@@ -832,9 +832,12 @@ export class CodexProvider implements AgentProvider {
   private mapEffortToReasoningEffort(
     effort?: import("@yep-anywhere/shared").EffortLevel,
     thinking?: import("@yep-anywhere/shared").ThinkingConfig,
-  ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
-    if (thinking?.type === "disabled" || !effort) {
-      return "minimal";
+  ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | undefined {
+    if (thinking?.type === "disabled") {
+      return "low";
+    }
+    if (!effort) {
+      return undefined;
     }
     switch (effort) {
       case "low":

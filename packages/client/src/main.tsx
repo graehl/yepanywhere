@@ -13,6 +13,7 @@ import { initializeTheme } from "./hooks/useTheme";
 import { NavigationLayout } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
+import { EmulatorPage } from "./pages/EmulatorPage";
 import { FilePage } from "./pages/FilePage";
 import { GitStatusPage } from "./pages/GitStatusPage";
 import { GlobalSessionsPage } from "./pages/GlobalSessionsPage";
@@ -64,6 +65,8 @@ createRoot(rootElement).render(
                 element={<Navigate to="/sessions" replace />}
               />
               <Route path="/git-status" element={<GitStatusPage />} />
+              <Route path="/emulator" element={<EmulatorPage />} />
+              <Route path="/emulator/:emulatorId" element={<EmulatorPage />} />
               <Route path="/new-session" element={<NewSessionPage />} />
               <Route
                 path="/projects/:projectId/sessions/:sessionId"

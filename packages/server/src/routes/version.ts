@@ -139,27 +139,42 @@ export interface VersionInfo {
 /** Resume protocol version with nonce challenge + proof binding. */
 const RESUME_PROTOCOL_VERSION = 2;
 
-/** Feature capabilities advertised to clients for UI gating. */
-const SERVER_CAPABILITIES = ["git-status"];
+/** Base capabilities always advertised. */
+const BASE_CAPABILITIES = ["git-status"];
 
-export const version = new Hono();
+interface VersionRouteOptions {
+  emulatorAvailable?: boolean;
+}
 
-version.get("/", async (c) => {
-  const current = getCurrentVersion();
-  const latest = await getLatestNpmVersion();
+export function createVersionRoutes(options?: VersionRouteOptions): Hono {
+  const capabilities = [...BASE_CAPABILITIES];
+  if (options?.emulatorAvailable) {
+    capabilities.push("emulator");
+  }
 
-  // For dev versions like "v0.1.7-3-g050bfd2", extract base version "v0.1.7"
-  // to compare against npm. This tells devs if they're behind the latest release.
-  const baseVersion = current.split("-")[0] || current;
-  const updateAvailable = latest ? isNewerVersion(baseVersion, latest) : false;
+  const routes = new Hono();
 
-  const info: VersionInfo = {
-    current,
-    latest,
-    updateAvailable,
-    resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
-    capabilities: SERVER_CAPABILITIES,
-  };
+  routes.get("/", async (c) => {
+    const current = getCurrentVersion();
+    const latest = await getLatestNpmVersion();
 
-  return c.json(info);
-});
+    // For dev versions like "v0.1.7-3-g050bfd2", extract base version "v0.1.7"
+    // to compare against npm. This tells devs if they're behind the latest release.
+    const baseVersion = current.split("-")[0] || current;
+    const updateAvailable = latest
+      ? isNewerVersion(baseVersion, latest)
+      : false;
+
+    const info: VersionInfo = {
+      current,
+      latest,
+      updateAvailable,
+      resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
+      capabilities,
+    };
+
+    return c.json(info);
+  });
+
+  return routes;
+}

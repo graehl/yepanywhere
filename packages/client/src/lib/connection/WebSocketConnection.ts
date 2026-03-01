@@ -1,4 +1,9 @@
-import type { UploadedFile, YepMessage } from "@yep-anywhere/shared";
+import type {
+  EmulatorServerMessage,
+  RemoteClientMessage,
+  UploadedFile,
+  YepMessage,
+} from "@yep-anywhere/shared";
 import {
   BinaryFrameError,
   decodeJsonFrame,
@@ -235,6 +240,14 @@ export class WebSocketConnection implements Connection {
     }
     this.connectionPromise = null;
     await this.ensureConnected();
+  }
+
+  sendMessage(msg: RemoteClientMessage): void {
+    this.send(msg);
+  }
+
+  onEmulatorMessage(handler: (msg: EmulatorServerMessage) => void): () => void {
+    return this.protocol.onEmulatorMessage(handler);
   }
 
   close(): void {

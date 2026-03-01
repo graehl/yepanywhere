@@ -377,6 +377,15 @@ export function Sidebar({
                 basePath={basePath}
               />
             )}
+            {capabilities.includes("emulator") && (
+              <SidebarNavItem
+                to="/emulator"
+                icon={SidebarIcons.emulator}
+                label="Emulator"
+                onClick={onNavigate}
+                basePath={basePath}
+              />
+            )}
             <AgentsNavItem onClick={onNavigate} basePath={basePath} />
             <SidebarNavItem
               to="/settings"

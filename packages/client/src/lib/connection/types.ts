@@ -1,4 +1,8 @@
-import type { UploadedFile } from "@yep-anywhere/shared";
+import type {
+  EmulatorServerMessage,
+  RemoteClientMessage,
+  UploadedFile,
+} from "@yep-anywhere/shared";
 
 /**
  * WebSocket close codes that indicate non-retryable errors.
@@ -277,4 +281,18 @@ export interface Connection {
    * Optional - only SecureConnection implements this.
    */
   forceReconnect?(): Promise<void>;
+
+  /**
+   * Send a raw protocol message (bypassing REST).
+   * Used for emulator signaling messages.
+   * Optional - only WebSocket-based connections support this.
+   */
+  sendMessage?(msg: RemoteClientMessage): void;
+
+  /**
+   * Register a handler for emulator signaling messages from the server.
+   * Returns an unsubscribe function.
+   * Optional - only WebSocket-based connections support this.
+   */
+  onEmulatorMessage?(handler: (msg: EmulatorServerMessage) => void): () => void;
 }

@@ -68,6 +68,14 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   },
 ];
 
+// Emulator category added conditionally when server reports "emulator" capability
+export const EMULATOR_CATEGORY: SettingsCategory = {
+  id: "emulator",
+  label: "Emulator",
+  icon: "🤖",
+  description: "Android emulator streaming",
+};
+
 // Development category added conditionally
 export const DEV_CATEGORY: SettingsCategory = {
   id: "development",

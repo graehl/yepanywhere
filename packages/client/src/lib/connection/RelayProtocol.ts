@@ -1,5 +1,6 @@
 import type {
   ClientPing,
+  EmulatorServerMessage,
   RelayEvent,
   RelayRequest,
   RelayResponse,
@@ -30,6 +31,8 @@ export interface RelayTransport {
   ensureConnected(): Promise<void>;
   isConnected(): boolean;
 }
+
+export type EmulatorMessageHandler = (msg: EmulatorServerMessage) => void;
 
 export interface RelayProtocolOptions {
   debugEnabled?: () => boolean;
@@ -83,6 +86,8 @@ export class RelayProtocol {
   readonly subscriptions = new Map<string, StreamHandlers>();
   /** Recently-closed subscription IDs — suppresses warnings for in-flight events */
   private recentlyClosed = new Set<string>();
+  /** Registered handlers for emulator signaling messages */
+  private emulatorHandlers = new Set<EmulatorMessageHandler>();
 
   private transport: RelayTransport;
   private options: RelayProtocolOptions;
@@ -139,12 +144,35 @@ export class RelayProtocol {
       case "pong":
         this.options.onPong?.(msg.id);
         break;
+      // Emulator signaling messages (server → client push)
+      case "emulator_webrtc_offer":
+      case "emulator_ice_candidate_event":
+      case "emulator_session_state":
+        this.handleEmulatorMessage(msg as EmulatorServerMessage);
+        break;
       default:
         console.warn(
           `${this.logPrefix} Unknown message type:`,
           (msg as { type?: string }).type,
         );
     }
+  }
+
+  private handleEmulatorMessage(msg: EmulatorServerMessage): void {
+    for (const handler of this.emulatorHandlers) {
+      handler(msg);
+    }
+  }
+
+  /**
+   * Register a handler for emulator signaling messages.
+   * Returns an unsubscribe function.
+   */
+  onEmulatorMessage(handler: EmulatorMessageHandler): () => void {
+    this.emulatorHandlers.add(handler);
+    return () => {
+      this.emulatorHandlers.delete(handler);
+    };
   }
 
   private handleEvent(event: RelayEvent): void {

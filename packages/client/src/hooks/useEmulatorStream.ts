@@ -1,0 +1,263 @@
+import type { EmulatorServerMessage } from "@yep-anywhere/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { getGlobalConnection } from "../lib/connection";
+import { getWebSocketConnection } from "../lib/connection/WebSocketConnection";
+import { generateUUID } from "../lib/uuid";
+
+export type EmulatorConnectionState =
+  | "idle"
+  | "connecting"
+  | "connected"
+  | "disconnected"
+  | "failed";
+
+interface UseEmulatorStreamResult {
+  /** Ref to attach to a <video> element */
+  remoteStream: MediaStream | null;
+  /** WebRTC DataChannel for touch/key input */
+  dataChannel: RTCDataChannel | null;
+  /** Current connection state */
+  connectionState: EmulatorConnectionState;
+  /** Error message if connection failed */
+  error: string | null;
+  /** Start streaming from the specified emulator */
+  connect: (emulatorId: string) => void;
+  /** Stop streaming */
+  disconnect: () => void;
+}
+
+/**
+ * Hook that manages WebRTC peer connection and signaling for emulator streaming.
+ *
+ * Signaling flow:
+ * 1. Client sends emulator_stream_start via relay
+ * 2. Server/sidecar responds with emulator_webrtc_offer (SDP)
+ * 3. Client creates RTCPeerConnection, sets remote description, creates answer
+ * 4. Client sends emulator_webrtc_answer
+ * 5. ICE candidates exchanged bidirectionally
+ * 6. WebRTC P2P established (video + data channel)
+ */
+export function useEmulatorStream(): UseEmulatorStreamResult {
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
+  const [connectionState, setConnectionState] =
+    useState<EmulatorConnectionState>("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const unsubRef = useRef<(() => void) | null>(null);
+
+  const getConnection = useCallback(() => {
+    // Remote mode: use global SecureConnection
+    const global = getGlobalConnection();
+    if (global) return global;
+    // Local mode: use WebSocket connection
+    return getWebSocketConnection();
+  }, []);
+
+  const disconnect = useCallback(() => {
+    // Send stop message
+    if (sessionIdRef.current) {
+      try {
+        const conn = getConnection();
+        conn.sendMessage?.({
+          type: "emulator_stream_stop",
+          sessionId: sessionIdRef.current,
+        });
+      } catch {
+        // Connection may already be closed
+      }
+    }
+
+    // Close peer connection
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+
+    // Unsubscribe from emulator messages
+    if (unsubRef.current) {
+      unsubRef.current();
+      unsubRef.current = null;
+    }
+
+    sessionIdRef.current = null;
+    setRemoteStream(null);
+    setDataChannel(null);
+    setConnectionState("idle");
+    setError(null);
+  }, [getConnection]);
+
+  const connect = useCallback(
+    (emulatorId: string) => {
+      // Clean up any existing connection
+      disconnect();
+
+      const sessionId = generateUUID();
+      sessionIdRef.current = sessionId;
+      setConnectionState("connecting");
+      setError(null);
+
+      const conn = getConnection();
+
+      // Create RTCPeerConnection
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+      pcRef.current = pc;
+
+      // Handle remote stream
+      pc.ontrack = (event) => {
+        if (event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+        }
+      };
+
+      // Handle data channel from sidecar
+      pc.ondatachannel = (event) => {
+        const dc = event.channel;
+        dc.onopen = () => {
+          setDataChannel(dc);
+        };
+        dc.onclose = () => {
+          setDataChannel(null);
+        };
+      };
+
+      // Connection state tracking
+      pc.onconnectionstatechange = () => {
+        switch (pc.connectionState) {
+          case "connected":
+            setConnectionState("connected");
+            break;
+          case "disconnected":
+            setConnectionState("disconnected");
+            break;
+          case "failed":
+            setConnectionState("failed");
+            setError("WebRTC connection failed");
+            break;
+          case "closed":
+            setConnectionState("disconnected");
+            break;
+        }
+      };
+
+      // Send ICE candidates to sidecar via relay
+      pc.onicecandidate = (event) => {
+        conn.sendMessage?.({
+          type: "emulator_ice_candidate",
+          sessionId,
+          candidate: event.candidate
+            ? {
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex,
+                usernameFragment: event.candidate.usernameFragment,
+              }
+            : null,
+        });
+      };
+
+      // Listen for signaling messages from server
+      const unsub = conn.onEmulatorMessage?.(
+        async (msg: EmulatorServerMessage) => {
+          if (msg.sessionId !== sessionId) return;
+
+          switch (msg.type) {
+            case "emulator_webrtc_offer": {
+              try {
+                await pc.setRemoteDescription({
+                  type: "offer",
+                  sdp: msg.sdp,
+                });
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                conn.sendMessage?.({
+                  type: "emulator_webrtc_answer",
+                  sessionId,
+                  sdp: answer.sdp ?? "",
+                });
+              } catch (err) {
+                setConnectionState("failed");
+                setError(
+                  `WebRTC negotiation failed: ${err instanceof Error ? err.message : String(err)}`,
+                );
+              }
+              break;
+            }
+
+            case "emulator_ice_candidate_event": {
+              if (msg.candidate) {
+                try {
+                  await pc.addIceCandidate(msg.candidate);
+                } catch (err) {
+                  console.warn(
+                    "[EmulatorStream] Failed to add ICE candidate:",
+                    err,
+                  );
+                }
+              }
+              break;
+            }
+
+            case "emulator_session_state": {
+              if (msg.state === "failed" || msg.state === "disconnected") {
+                setConnectionState(msg.state);
+                if (msg.error) setError(msg.error);
+              }
+              break;
+            }
+          }
+        },
+      );
+      unsubRef.current = unsub ?? null;
+
+      // Send start message to begin signaling
+      conn.sendMessage?.({
+        type: "emulator_stream_start",
+        sessionId,
+        emulatorId,
+        options: { maxFps: 30, maxWidth: 720 },
+      });
+    },
+    [disconnect, getConnection],
+  );
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pcRef.current) {
+        pcRef.current.close();
+        pcRef.current = null;
+      }
+      if (unsubRef.current) {
+        unsubRef.current();
+        unsubRef.current = null;
+      }
+      // Send stop if we have a session
+      if (sessionIdRef.current) {
+        try {
+          const global = getGlobalConnection();
+          const conn = global ?? getWebSocketConnection();
+          conn.sendMessage?.({
+            type: "emulator_stream_stop",
+            sessionId: sessionIdRef.current,
+          });
+        } catch {
+          // Best-effort
+        }
+      }
+    };
+  }, []);
+
+  return {
+    remoteStream,
+    dataChannel,
+    connectionState,
+    error,
+    connect,
+    disconnect,
+  };
+}

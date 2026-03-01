@@ -11,6 +11,7 @@
  */
 import type {
   ClientCapabilities,
+  EmulatorServerMessage,
   OriginMetadata,
   RemoteClientMessage,
   SrpClientHello,
@@ -1193,6 +1194,14 @@ export class SecureConnection implements Connection {
    */
   setOnPong(cb: (id: string) => void): void {
     this.protocol.setOnPong(cb);
+  }
+
+  sendMessage(msg: RemoteClientMessage): void {
+    this.send(msg);
+  }
+
+  onEmulatorMessage(handler: (msg: EmulatorServerMessage) => void): () => void {
+    return this.protocol.onEmulatorMessage(handler);
   }
 
   /**

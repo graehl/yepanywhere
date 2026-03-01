@@ -33,6 +33,7 @@ import { NavigationLayout } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
 import { DirectLoginPage } from "./pages/DirectLoginPage";
+import { EmulatorPage } from "./pages/EmulatorPage";
 import { FilePage } from "./pages/FilePage";
 import { GitStatusPage } from "./pages/GitStatusPage";
 import { GlobalSessionsPage } from "./pages/GlobalSessionsPage";
@@ -71,6 +72,8 @@ const APP_ROUTES = (
       <Route path="agents" element={<AgentsPage />} />
       <Route path="inbox" element={<InboxPage />} />
       <Route path="git-status" element={<GitStatusPage />} />
+      <Route path="emulator" element={<EmulatorPage />} />
+      <Route path="emulator/:emulatorId" element={<EmulatorPage />} />
       <Route path="settings" element={<SettingsLayout />} />
       <Route path="settings/:category" element={<SettingsLayout />} />
       <Route path="new-session" element={<NewSessionPage />} />

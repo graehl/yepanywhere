@@ -2,12 +2,14 @@ import { useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
 import { useReloadNotifications } from "../../hooks/useReloadNotifications";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
+import { useVersion } from "../../hooks/useVersion";
 import { useNavigationLayout } from "../../layouts";
 import { AboutSettings } from "./AboutSettings";
 import { AgentContextSettings } from "./AgentContextSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { DevelopmentSettings } from "./DevelopmentSettings";
 import { DevicesSettings } from "./DevicesSettings";
+import { EmulatorSettings } from "./EmulatorSettings";
 import { LocalAccessSettings } from "./LocalAccessSettings";
 import { ModelSettings } from "./ModelSettings";
 import { NotificationsSettings } from "./NotificationsSettings";
@@ -16,6 +18,7 @@ import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { RemoteExecutorsSettings } from "./RemoteExecutorsSettings";
 import {
   DEV_CATEGORY,
+  EMULATOR_CATEGORY,
   SETTINGS_CATEGORIES,
   type SettingsCategory,
 } from "./types";
@@ -31,6 +34,7 @@ const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   remote: RemoteAccessSettings,
   providers: ProvidersSettings,
   "remote-executors": RemoteExecutorsSettings,
+  emulator: EmulatorSettings,
   about: AboutSettings,
   development: DevelopmentSettings,
 };
@@ -71,11 +75,23 @@ export function SettingsLayout() {
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
   const { isManualReloadMode } = useReloadNotifications();
+  const { version: versionInfo } = useVersion();
+  const capabilities = versionInfo?.capabilities ?? [];
 
-  // Build the list of categories, including dev category if in dev mode
-  const categories = isManualReloadMode
-    ? [...SETTINGS_CATEGORIES, DEV_CATEGORY]
-    : SETTINGS_CATEGORIES;
+  // Build the list of categories, conditionally including emulator and dev
+  const categories: SettingsCategory[] = [...SETTINGS_CATEGORIES];
+  if (capabilities.includes("emulator")) {
+    // Insert before "about"
+    const aboutIndex = categories.findIndex((c) => c.id === "about");
+    categories.splice(
+      aboutIndex >= 0 ? aboutIndex : categories.length,
+      0,
+      EMULATOR_CATEGORY,
+    );
+  }
+  if (isManualReloadMode) {
+    categories.push(DEV_CATEGORY);
+  }
 
   // On wide screen, default to first category if none selected
   const effectiveCategory =

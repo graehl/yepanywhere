@@ -1,8 +1,46 @@
+import type { DeviceInfo } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { DeviceBridgeService } from "../device/DeviceBridgeService.js";
+import type { ServerSettingsService } from "../services/ServerSettingsService.js";
+import {
+  isValidSshHostAlias,
+  normalizeSshHostAlias,
+} from "../utils/sshHostAlias.js";
 
 interface DeviceRoutesDeps {
   deviceBridgeService: DeviceBridgeService;
+  serverSettingsService?: ServerSettingsService;
+}
+
+function mergeConfiguredChromeOSHosts(
+  devices: DeviceInfo[],
+  rawHosts: unknown,
+): DeviceInfo[] {
+  if (!Array.isArray(rawHosts) || rawHosts.length === 0) {
+    return devices;
+  }
+
+  const existingIds = new Set(devices.map((device) => device.id));
+  const additions: DeviceInfo[] = [];
+
+  for (const rawHost of rawHosts) {
+    if (typeof rawHost !== "string") continue;
+    const host = normalizeSshHostAlias(rawHost);
+    if (!host || !isValidSshHostAlias(host)) continue;
+
+    const id = `chromeos:${host}`;
+    if (existingIds.has(id)) continue;
+    additions.push({
+      id,
+      label: `ChromeOS (${host})`,
+      type: "chromeos",
+      state: "connected",
+      actions: ["stream"],
+      avd: `ChromeOS (${host})`,
+    });
+  }
+
+  return additions.length > 0 ? [...devices, ...additions] : devices;
 }
 
 /**
@@ -15,7 +53,7 @@ interface DeviceRoutesDeps {
  * POST /api/devices/bridge/download  - Download bridge runtime dependencies from GitHub
  */
 export function createDeviceRoutes(deps: DeviceRoutesDeps): Hono {
-  const { deviceBridgeService } = deps;
+  const { deviceBridgeService, serverSettingsService } = deps;
   const routes = new Hono();
 
   // POST /api/devices/bridge/download - Download bridge binary + Android server APK
@@ -35,7 +73,12 @@ export function createDeviceRoutes(deps: DeviceRoutesDeps): Hono {
   routes.get("/", async (c) => {
     try {
       const devices = await deviceBridgeService.listDevices();
-      return c.json(devices);
+      const chromeOsHosts = serverSettingsService?.getSetting("chromeOsHosts");
+      const withConfiguredHosts = mergeConfiguredChromeOSHosts(
+        devices,
+        chromeOsHosts,
+      );
+      return c.json(withConfiguredHosts);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("[DeviceRoutes] GET /devices error:", message);

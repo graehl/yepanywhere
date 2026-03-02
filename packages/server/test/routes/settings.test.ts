@@ -85,6 +85,46 @@ describe("Settings Routes", () => {
       expect(json.error).toContain("Invalid remote executor host alias");
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
+
+    it("accepts and normalizes valid aliases in chromeOsHosts setting", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chromeOsHosts: ["  chromeroot  ", "lab-book", "", " "],
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json.settings.chromeOsHosts).toEqual(["chromeroot", "lab-book"]);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        chromeOsHosts: ["chromeroot", "lab-book"],
+      });
+    });
+
+    it("rejects invalid aliases in chromeOsHosts setting", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chromeOsHosts: ["chromeroot", "-oProxyCommand=touch_/tmp/pwned"],
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      const json = await response.json();
+      expect(json.error).toContain("Invalid ChromeOS host alias");
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
   });
 
   describe("POST /remote-executors/:host/test", () => {

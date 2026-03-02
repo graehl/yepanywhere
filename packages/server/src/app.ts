@@ -627,6 +627,7 @@ export function createApp(options: AppOptions): AppResult {
       "/api/devices",
       createDeviceRoutes({
         deviceBridgeService: options.deviceBridgeService,
+        serverSettingsService: options.serverSettingsService,
       }),
     );
   }

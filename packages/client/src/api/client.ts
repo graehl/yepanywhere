@@ -989,6 +989,8 @@ export interface ServerSettings {
   persistRemoteSessionsToDisk: boolean;
   /** SSH host aliases for remote executors */
   remoteExecutors?: string[];
+  /** SSH host aliases for ChromeOS device bridge targets */
+  chromeOsHosts?: string[];
   /** Allowed hostnames for host/origin validation. "*" = allow all, comma-separated = specific hosts. */
   allowedHosts?: string;
   /** Free-form instructions appended to the system prompt for all sessions */

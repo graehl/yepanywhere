@@ -1,4 +1,4 @@
-import { useChromeOSHosts } from "../../hooks/useChromeOSHosts";
+import { useState } from "react";
 import {
   EMULATOR_FPS_OPTIONS,
   EMULATOR_WIDTH_OPTIONS,
@@ -7,6 +7,7 @@ import {
   useEmulatorSettings,
 } from "../../hooks/useEmulatorSettings";
 import { useEmulators } from "../../hooks/useEmulators";
+import { useServerSettings } from "../../hooks/useServerSettings";
 
 const QUALITY_OPTIONS: EmulatorQuality[] = ["high", "medium", "low"];
 
@@ -38,11 +39,56 @@ export function EmulatorSettings() {
     setAdaptiveFps,
   } = useEmulatorSettings();
   const {
-    hosts: chromeOsHosts,
-    error: chromeOsHostError,
-    addHost,
-    removeHost,
-  } = useChromeOSHosts();
+    settings,
+    isLoading: settingsLoading,
+    error: settingsError,
+    updateSetting,
+  } = useServerSettings();
+  const [hostInput, setHostInput] = useState("");
+  const [chromeOsHostError, setChromeOsHostError] = useState<string | null>(
+    null,
+  );
+
+  const chromeOsHosts = settings?.chromeOsHosts ?? [];
+
+  const addHost = async () => {
+    const value = hostInput.trim();
+    if (!value) {
+      setChromeOsHostError("Host alias is required");
+      return;
+    }
+    if (/\s/.test(value)) {
+      setChromeOsHostError("Host alias cannot contain spaces");
+      return;
+    }
+
+    const deduped = Array.from(new Set([...chromeOsHosts, value]));
+    try {
+      await updateSetting("chromeOsHosts", deduped);
+      setHostInput("");
+      setChromeOsHostError(null);
+      await refresh();
+    } catch (err) {
+      setChromeOsHostError(
+        err instanceof Error ? err.message : "Failed to save host alias",
+      );
+    }
+  };
+
+  const removeHost = async (host: string) => {
+    const next = chromeOsHosts.filter(
+      (item) => item.toLowerCase() !== host.toLowerCase(),
+    );
+    try {
+      await updateSetting("chromeOsHosts", next);
+      setChromeOsHostError(null);
+      await refresh();
+    } catch (err) {
+      setChromeOsHostError(
+        err instanceof Error ? err.message : "Failed to remove host alias",
+      );
+    }
+  };
 
   return (
     <section className="settings-section">
@@ -155,13 +201,7 @@ export function EmulatorSettings() {
             className="settings-item-actions"
             onSubmit={(event) => {
               event.preventDefault();
-              const form = event.currentTarget;
-              const input = form.elements.namedItem("chromeosHost");
-              if (!(input instanceof HTMLInputElement)) return;
-              if (addHost(input.value)) {
-                input.value = "";
-                void refresh();
-              }
+              void addHost();
             }}
           >
             <input
@@ -170,8 +210,14 @@ export function EmulatorSettings() {
               placeholder="chromeroot"
               className="settings-select"
               autoComplete="off"
+              value={hostInput}
+              onChange={(event) => setHostInput(event.target.value)}
             />
-            <button type="submit" className="settings-button">
+            <button
+              type="submit"
+              className="settings-button"
+              disabled={settingsLoading}
+            >
               Add
             </button>
           </form>
@@ -180,6 +226,7 @@ export function EmulatorSettings() {
         {chromeOsHostError && (
           <p className="settings-error">{chromeOsHostError}</p>
         )}
+        {settingsError && <p className="settings-error">{settingsError}</p>}
 
         {chromeOsHosts.length === 0 ? (
           <p className="settings-muted">No custom ChromeOS host aliases yet.</p>
@@ -197,9 +244,9 @@ export function EmulatorSettings() {
                   type="button"
                   className="settings-button"
                   onClick={() => {
-                    removeHost(host);
-                    void refresh();
+                    void removeHost(host);
                   }}
+                  disabled={settingsLoading}
                 >
                   Remove
                 </button>

@@ -29,25 +29,25 @@ export interface SettingsRoutesDeps {
   onOllamaUseFullSystemPromptChanged?: (enabled: boolean) => void;
 }
 
-function parseExecutorList(rawExecutors: unknown[]): {
-  executors: string[];
-  invalidExecutor?: string;
+function parseHostAliasList(rawHosts: unknown[]): {
+  hosts: string[];
+  invalidHost?: string;
 } {
-  const executors: string[] = [];
+  const hosts: string[] = [];
 
-  for (const rawExecutor of rawExecutors) {
-    if (typeof rawExecutor !== "string") continue;
+  for (const rawHost of rawHosts) {
+    if (typeof rawHost !== "string") continue;
 
-    const executor = normalizeSshHostAlias(rawExecutor);
-    if (!executor) continue;
-    if (!isValidSshHostAlias(executor)) {
-      return { executors: [], invalidExecutor: executor };
+    const host = normalizeSshHostAlias(rawHost);
+    if (!host) continue;
+    if (!isValidSshHostAlias(host)) {
+      return { hosts: [], invalidHost: host };
     }
 
-    executors.push(executor);
+    hosts.push(host);
   }
 
-  return { executors };
+  return { hosts };
 }
 
 export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
@@ -89,16 +89,26 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
 
     // Handle remoteExecutors array
     if (Array.isArray(body.remoteExecutors)) {
-      const { executors, invalidExecutor } = parseExecutorList(
-        body.remoteExecutors,
-      );
-      if (invalidExecutor) {
+      const { hosts, invalidHost } = parseHostAliasList(body.remoteExecutors);
+      if (invalidHost) {
         return c.json(
-          { error: `Invalid remote executor host alias: ${invalidExecutor}` },
+          { error: `Invalid remote executor host alias: ${invalidHost}` },
           400,
         );
       }
-      updates.remoteExecutors = executors;
+      updates.remoteExecutors = hosts;
+    }
+
+    // Handle chromeOsHosts array
+    if (Array.isArray(body.chromeOsHosts)) {
+      const { hosts, invalidHost } = parseHostAliasList(body.chromeOsHosts);
+      if (invalidHost) {
+        return c.json(
+          { error: `Invalid ChromeOS host alias: ${invalidHost}` },
+          400,
+        );
+      }
+      updates.chromeOsHosts = hosts;
     }
 
     // Handle allowedHosts string ("*", comma-separated hostnames, or undefined to clear)
@@ -214,12 +224,12 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       return c.json({ error: "executors must be an array" }, 400);
     }
 
-    const { executors: validExecutors, invalidExecutor } = parseExecutorList(
+    const { hosts: validExecutors, invalidHost } = parseHostAliasList(
       body.executors,
     );
-    if (invalidExecutor) {
+    if (invalidHost) {
       return c.json(
-        { error: `Invalid remote executor host alias: ${invalidExecutor}` },
+        { error: `Invalid remote executor host alias: ${invalidHost}` },
         400,
       );
     }

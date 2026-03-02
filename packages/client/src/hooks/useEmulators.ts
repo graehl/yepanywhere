@@ -1,10 +1,6 @@
 import type { DeviceAction, DeviceInfo } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import {
-  listChromeOSHosts,
-  mergeConfiguredChromeOSHosts,
-} from "../lib/chromeOsHosts";
 
 interface UseEmulatorsResult {
   emulators: DeviceInfo[];
@@ -85,9 +81,7 @@ export function useEmulators(
       const result = await api.getDevices();
       if (mountedRef.current) {
         const normalized = result.map(normalizeDeviceInfo);
-        setEmulators(
-          mergeConfiguredChromeOSHosts(normalized, listChromeOSHosts()),
-        );
+        setEmulators(normalized);
         setError(null);
         consecutiveErrorsRef.current = 0;
       }

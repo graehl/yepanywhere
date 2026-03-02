@@ -584,6 +584,9 @@ export function createApp(options: AppOptions): AppResult {
         onOllamaSystemPromptChanged: (prompt) => {
           ClaudeOllamaProvider.setSystemPrompt(prompt);
         },
+        onOllamaUseFullSystemPromptChanged: (enabled) => {
+          ClaudeOllamaProvider.setUseFullSystemPrompt(enabled);
+        },
       }),
     );
   }

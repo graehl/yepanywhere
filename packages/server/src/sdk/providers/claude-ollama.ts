@@ -36,6 +36,9 @@ export class ClaudeOllamaProvider extends ClaudeProvider {
   /** Custom system prompt override (undefined = use default minimal prompt). */
   private static customSystemPrompt: string | undefined;
 
+  /** Whether to use the full Claude system prompt instead of the minimal/custom one. */
+  private static useFullSystemPrompt = false;
+
   /**
    * Update the Ollama URL at runtime (called from settings route).
    */
@@ -55,6 +58,13 @@ export class ClaudeOllamaProvider extends ClaudeProvider {
    */
   static setSystemPrompt(prompt: string | undefined): void {
     ClaudeOllamaProvider.customSystemPrompt = prompt;
+  }
+
+  /**
+   * Toggle using the full Claude system prompt (called from settings route).
+   */
+  static setUseFullSystemPrompt(enabled: boolean): void {
+    ClaudeOllamaProvider.useFullSystemPrompt = enabled;
   }
 
   /**
@@ -118,8 +128,19 @@ export class ClaudeOllamaProvider extends ClaudeProvider {
    * Use a minimal system prompt that local models can actually follow.
    * The full claude_code preset is far too complex for most Ollama models
    * and causes them to get stuck in tool-calling loops.
+   *
+   * When useFullSystemPrompt is enabled (for large-context models like Qwen3),
+   * delegates to the parent ClaudeProvider to use the full claude_code preset.
    */
-  protected override getSystemPrompt(globalInstructions?: string): string {
+  protected override getSystemPrompt(
+    globalInstructions?: string,
+  ):
+    | string
+    | { type: "preset"; preset: "claude_code"; append?: string }
+    | undefined {
+    if (ClaudeOllamaProvider.useFullSystemPrompt) {
+      return super.getSystemPrompt(globalInstructions);
+    }
     const base =
       ClaudeOllamaProvider.customSystemPrompt ||
       "You are a helpful coding assistant. You help users with software engineering tasks. You have access to tools for reading files, editing files, running shell commands, and searching code. Use tools when needed to answer questions or make changes. Be concise and direct.";

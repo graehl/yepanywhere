@@ -972,4 +972,6 @@ export interface ServerSettings {
   ollamaUrl?: string;
   /** Custom system prompt for Ollama provider */
   ollamaSystemPrompt?: string;
+  /** Whether to use the full Claude system prompt for Ollama */
+  ollamaUseFullSystemPrompt?: boolean;
 }

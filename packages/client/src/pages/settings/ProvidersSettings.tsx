@@ -64,6 +64,35 @@ function OllamaUrlInput() {
   );
 }
 
+function OllamaUseFullSystemPrompt() {
+  const { settings, updateSetting } = useServerSettings();
+  const enabled = settings?.ollamaUseFullSystemPrompt ?? false;
+
+  return (
+    <label
+      style={{
+        display: "flex",
+        gap: "var(--space-2)",
+        alignItems: "center",
+        marginTop: "var(--space-2)",
+        cursor: "pointer",
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={enabled}
+        onChange={(e) =>
+          updateSetting("ollamaUseFullSystemPrompt", e.target.checked)
+        }
+      />
+      <span>Use full Claude system prompt</span>
+      <span className="settings-hint" style={{ marginLeft: "auto" }}>
+        For large-context models (Qwen3, etc.)
+      </span>
+    </label>
+  );
+}
+
 function OllamaSystemPromptInput() {
   const { settings, updateSetting } = useServerSettings();
   const [prompt, setPrompt] = useState("");
@@ -126,6 +155,19 @@ function OllamaSystemPromptInput() {
   );
 }
 
+function OllamaSettings() {
+  const { settings } = useServerSettings();
+  const useFullPrompt = settings?.ollamaUseFullSystemPrompt ?? false;
+
+  return (
+    <>
+      <OllamaUrlInput />
+      <OllamaUseFullSystemPrompt />
+      {!useFullPrompt && <OllamaSystemPromptInput />}
+    </>
+  );
+}
+
 export function ProvidersSettings() {
   const { providers: serverProviders, loading: providersLoading } =
     useProviders();
@@ -173,12 +215,7 @@ export function ProvidersSettings() {
                   ))}
                 </ul>
               )}
-              {provider.id === "claude-ollama" && (
-                <>
-                  <OllamaUrlInput />
-                  <OllamaSystemPromptInput />
-                </>
-              )}
+              {provider.id === "claude-ollama" && <OllamaSettings />}
             </div>
             {provider.metadata.website && (
               <a

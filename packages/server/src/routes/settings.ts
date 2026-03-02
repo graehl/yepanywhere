@@ -25,6 +25,8 @@ export interface SettingsRoutesDeps {
   onOllamaUrlChanged?: (url: string | undefined) => void;
   /** Callback to apply Ollama system prompt changes at runtime */
   onOllamaSystemPromptChanged?: (prompt: string | undefined) => void;
+  /** Callback to apply Ollama full system prompt toggle at runtime */
+  onOllamaUseFullSystemPromptChanged?: (enabled: boolean) => void;
 }
 
 function parseExecutorList(rawExecutors: unknown[]): {
@@ -56,6 +58,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     onRemoteSessionPersistenceChanged,
     onOllamaUrlChanged,
     onOllamaSystemPromptChanged,
+    onOllamaUseFullSystemPromptChanged,
   } = deps;
 
   /**
@@ -150,6 +153,11 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       }
     }
 
+    // Handle ollamaUseFullSystemPrompt boolean
+    if (typeof body.ollamaUseFullSystemPrompt === "boolean") {
+      updates.ollamaUseFullSystemPrompt = body.ollamaUseFullSystemPrompt;
+    }
+
     if (Object.keys(updates).length === 0) {
       return c.json({ error: "At least one valid setting is required" }, 400);
     }
@@ -173,6 +181,14 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     }
     if ("ollamaSystemPrompt" in updates && onOllamaSystemPromptChanged) {
       onOllamaSystemPromptChanged(settings.ollamaSystemPrompt);
+    }
+    if (
+      "ollamaUseFullSystemPrompt" in updates &&
+      onOllamaUseFullSystemPromptChanged
+    ) {
+      onOllamaUseFullSystemPromptChanged(
+        settings.ollamaUseFullSystemPrompt ?? false,
+      );
     }
 
     return c.json({ settings });

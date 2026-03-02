@@ -26,6 +26,8 @@ export interface ServerSettings {
   ollamaUrl?: string;
   /** Custom system prompt for Ollama provider (overrides the default minimal prompt) */
   ollamaSystemPrompt?: string;
+  /** Whether to use the full Claude system prompt for Ollama (for large-context models like Qwen3) */
+  ollamaUseFullSystemPrompt?: boolean;
 }
 
 /** Default settings */

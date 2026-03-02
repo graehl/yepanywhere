@@ -407,6 +407,9 @@ async function startServer() {
   ClaudeOllamaProvider.setSystemPrompt(
     serverSettingsService.getSetting("ollamaSystemPrompt"),
   );
+  ClaudeOllamaProvider.setUseFullSystemPrompt(
+    serverSettingsService.getSetting("ollamaUseFullSystemPrompt") ?? false,
+  );
 
   // Log auth status
   if (config.authDisabled) {

@@ -52,6 +52,7 @@ Everything in the AI coding agent supervisor/wrapper space, in one table. For de
 | **Chroxy** | React Native mobile app + Node.js daemon with Cloudflare tunnels and E2E | [blamechris/chroxy](https://github.com/blamechris/chroxy) | MIT | blamechris | 1 |
 | **VSClaude WebApp** | Scrapes VS Code via Chrome DevTools Protocol for real-time monitoring | [khyun1109/vscode_claude_webapp](https://github.com/khyun1109/vscode_claude_webapp) | — | khyun1109 | 1 |
 | **claude-link** | Control Claude Code from your phone via Telegram — message forwarding, voice support | [Qsanti/claude-link](https://github.com/Qsanti/claude-link) | MIT | Qsanti | 0 |
+| **Harnss** | Electron desktop app for parallel Claude Code, Codex, and ACP agents with MCP server integration | [OpenSource03/harnss](https://github.com/OpenSource03/harnss) | MIT | OpenSource03 | 3 |
 
 ## Adjacent: "Claw" Runtimes
 

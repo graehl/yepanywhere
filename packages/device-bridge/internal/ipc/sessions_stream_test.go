@@ -239,6 +239,12 @@ func TestLoadAdaptiveTuningDefaults(t *testing.T) {
 	if cfg.dropUntilKeyframe {
 		t.Fatal("expected dropUntilKeyframe to default false")
 	}
+	if cfg.nalInactivityProbe != 15*time.Second {
+		t.Fatalf("unexpected default inactivity probe: %v", cfg.nalInactivityProbe)
+	}
+	if cfg.nalInactivityCloseAfter != 5*time.Minute {
+		t.Fatalf("unexpected default inactivity close timeout: %v", cfg.nalInactivityCloseAfter)
+	}
 }
 
 func TestLoadAdaptiveTuningTestCycleMode(t *testing.T) {
@@ -271,6 +277,8 @@ func TestLoadAdaptiveTuningEnvOverrides(t *testing.T) {
 	t.Setenv("YEP_BRIDGE_ADAPTIVE_SEVERE_QUEUE", "6")
 	t.Setenv("YEP_BRIDGE_ADAPTIVE_RESTART_COOLDOWN_MS", "2500")
 	t.Setenv("YEP_BRIDGE_ADAPTIVE_DROP_UNTIL_KEYFRAME", "true")
+	t.Setenv("YEP_BRIDGE_NAL_INACTIVITY_PROBE_MS", "2000")
+	t.Setenv("YEP_BRIDGE_NAL_INACTIVITY_CLOSE_AFTER_MS", "17000")
 
 	cfg := loadAdaptiveTuning()
 	if cfg.minBitrate != 650_000 {
@@ -284,5 +292,11 @@ func TestLoadAdaptiveTuningEnvOverrides(t *testing.T) {
 	}
 	if !cfg.dropUntilKeyframe {
 		t.Fatal("dropUntilKeyframe override failed")
+	}
+	if cfg.nalInactivityProbe != 2*time.Second {
+		t.Fatalf("inactivity probe override failed: %v", cfg.nalInactivityProbe)
+	}
+	if cfg.nalInactivityCloseAfter != 17*time.Second {
+		t.Fatalf("inactivity close override failed: %v", cfg.nalInactivityCloseAfter)
 	}
 }

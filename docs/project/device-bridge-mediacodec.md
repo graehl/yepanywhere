@@ -364,6 +364,9 @@ Each phase/slice must be gated by tests before landing.
 - Added startup resolution downgrade retries (initial + up to 3 smaller attempts)
 - Added display-size change detection with automatic encoder/display pipeline restart
 - Added `internal/ipc` bridge gate tests covering stream-capable start path vs fallback path
+- Added H.264 payload normalization in sidecar (`avcC` config + length-prefixed NALs -> Annex-B) before WebRTC packetization
+- Added stream-format diagnostics (`YEP_BRIDGE_STREAM_DEBUG=true`) to log config/keyframe payload shape and conversion path for physical-device debug runs
+- Updated on-device encoder config to prefer H.264 baseline profile and prepend SPS/PPS on sync frames for browser decoder compatibility and long-duration stability
 
 ### Phase 3 — Adaptive quality
 
@@ -418,6 +421,17 @@ Minimum required gates:
    - Existing emulator and physical-android Playwright streaming tests must remain green
    - APK transport override E2E remains required for regression testing
    - Adaptive quality regression gate: `pnpm test:e2e:emulator:apk:adaptive` must show downshift and recovery/upshift profile events
+
+5. **Long-duration reliability soak (optional, recommended before release)**
+   - Physical Android stream remains connected and playback keeps advancing for a configurable duration
+   - Opt-in env vars:
+     - `YEP_E2E_ANDROID_LONG_STREAM=true`
+     - `YEP_E2E_ANDROID_LONG_STREAM_MS` (default `120000`)
+     - `YEP_E2E_ANDROID_LONG_STREAM_POLL_MS` (default `1000`)
+     - `YEP_E2E_ANDROID_LONG_STREAM_STALL_MS` (default `15000`)
+     - `YEP_E2E_ANDROID_LONG_STREAM_STARTUP_MS` (default `45000`)
+     - `YEP_E2E_ANDROID_LONG_STREAM_NUDGE_MS` (default `4000`)
+   - Run: `pnpm test:e2e:android:soak`
 
 ## Reference: scrcpy Source
 

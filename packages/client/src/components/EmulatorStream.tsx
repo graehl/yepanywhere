@@ -101,11 +101,11 @@ export function EmulatorStream({
 
     const tracks = stream.getVideoTracks();
     console.log(
-      `[EmulatorStream] attached stream: ${tracks.length} video track(s), active=${stream.active}`,
+      `[DeviceStream] attached stream: ${tracks.length} video track(s), active=${stream.active}`,
     );
     for (const t of tracks) {
       console.log(
-        `[EmulatorStream] track ${t.id}: readyState=${t.readyState} enabled=${t.enabled} muted=${t.muted}`,
+        `[DeviceStream] track ${t.id}: readyState=${t.readyState} enabled=${t.enabled} muted=${t.muted}`,
       );
     }
 
@@ -143,23 +143,23 @@ export function EmulatorStream({
 
         if (staleCount === 1) {
           console.warn(
-            `[EmulatorStream] video stale: currentTime=${ct.toFixed(3)} not advancing${statsInfo}`,
+            `[DeviceStream] video stale: currentTime=${ct.toFixed(3)} not advancing${statsInfo}`,
           );
         } else if (staleCount % 6 === 0) {
           // Log every 30s (6 × 5s intervals)
           const track = stream.getVideoTracks()[0];
           console.warn(
-            `[EmulatorStream] video still stale (${staleCount * 5}s): currentTime=${ct.toFixed(3)}, track=${track?.readyState ?? "none"}, streamActive=${stream.active}${statsInfo}`,
+            `[DeviceStream] video still stale (${staleCount * 5}s): currentTime=${ct.toFixed(3)}, track=${track?.readyState ?? "none"}, streamActive=${stream.active}${statsInfo}`,
           );
         } else {
           console.warn(
-            `[EmulatorStream] video stale (${staleCount * 5}s)${statsInfo}`,
+            `[DeviceStream] video stale (${staleCount * 5}s)${statsInfo}`,
           );
         }
       } else {
         if (staleCount > 0) {
           console.log(
-            `[EmulatorStream] video resumed after ${staleCount * 5}s stale`,
+            `[DeviceStream] video resumed after ${staleCount * 5}s stale`,
           );
         }
         staleCount = 0;
@@ -184,11 +184,11 @@ export function EmulatorStream({
     // Monitor stream-level events
     const onRemoveTrack = (e: MediaStreamTrackEvent) => {
       console.warn(
-        `[EmulatorStream] stream removetrack: ${e.track.kind} ${e.track.id}`,
+        `[DeviceStream] stream removetrack: ${e.track.kind} ${e.track.id}`,
       );
     };
     const onInactive = () => {
-      console.warn("[EmulatorStream] stream became inactive");
+      console.warn("[DeviceStream] stream became inactive");
     };
     stream.addEventListener("removetrack", onRemoveTrack);
     stream.addEventListener("inactive", onInactive);
@@ -244,7 +244,7 @@ export function EmulatorStream({
             JSON.stringify({ type: "fps_hint", fps: ADAPTIVE_DEGRADED_FPS }),
           );
           console.warn(
-            `[EmulatorStream] adaptive: loss rate ${(lossRate * 100).toFixed(1)}% > ${ADAPTIVE_LOSS_THRESHOLD * 100}%, dropping to ${ADAPTIVE_DEGRADED_FPS}fps`,
+            `[DeviceStream] adaptive: loss rate ${(lossRate * 100).toFixed(1)}% > ${ADAPTIVE_LOSS_THRESHOLD * 100}%, dropping to ${ADAPTIVE_DEGRADED_FPS}fps`,
           );
         } else {
           // Still degraded — reset recovery clock.
@@ -258,7 +258,7 @@ export function EmulatorStream({
             JSON.stringify({ type: "fps_hint", fps: configuredFps }),
           );
           console.log(
-            `[EmulatorStream] adaptive: loss-free for ${ADAPTIVE_RECOVERY_SECONDS}s, restoring to ${configuredFps}fps`,
+            `[DeviceStream] adaptive: loss-free for ${ADAPTIVE_RECOVERY_SECONDS}s, restoring to ${configuredFps}fps`,
           );
         }
       }

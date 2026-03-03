@@ -1256,7 +1256,21 @@ public final class DeviceServer {
                     if (index == MediaCodec.INFO_TRY_AGAIN_LATER) {
                         // no-op
                     } else if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        // no-op
+                        try {
+                            MediaFormat outputFormat = localCodec.getOutputFormat();
+                            ByteBuffer csd0 = outputFormat.getByteBuffer("csd-0");
+                            ByteBuffer csd1 = outputFormat.getByteBuffer("csd-1");
+                            int csd0Len = csd0 != null ? csd0.remaining() : 0;
+                            int csd1Len = csd1 != null ? csd1.remaining() : 0;
+                            String csd0Prefix = csd0 != null ? hexPrefix(csd0, 24) : "";
+                            String csd1Prefix = csd1 != null ? hexPrefix(csd1, 24) : "";
+                            log("encoder output format changed: " + outputFormat +
+                                " csd0=" + csd0Len + " csd1=" + csd1Len +
+                                " csd0Prefix=" + csd0Prefix +
+                                " csd1Prefix=" + csd1Prefix);
+                        } catch (Throwable t) {
+                            logError("failed to inspect output format", t);
+                        }
                     } else if (index >= 0) {
                         try {
                             ByteBuffer buf = localCodec.getOutputBuffer(index);
@@ -1415,6 +1429,24 @@ public final class DeviceServer {
             format.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);
             format.setInteger(MediaFormat.KEY_FRAME_RATE, fps);
             format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2);
+            // Browser decoders are most reliable with baseline-constrained streams.
+            try {
+                format.setInteger(
+                    MediaFormat.KEY_PROFILE,
+                    MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline
+                );
+            } catch (Throwable ignored) {
+            }
+            // Improves decoder recovery after packet drops and for late subscribers.
+            try {
+                format.setInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES, 1);
+            } catch (Throwable ignored) {
+                try {
+                    // Vendor key seen on some Android builds.
+                    format.setInteger("prepend-sps-pps-to-idr-frames", 1);
+                } catch (Throwable ignoredAgain) {
+                }
+            }
             try {
                 format.setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000);
             } catch (Throwable ignored) {
@@ -1696,6 +1728,24 @@ public final class DeviceServer {
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static String hexPrefix(ByteBuffer src, int maxBytes) {
+        if (src == null || maxBytes <= 0) {
+            return "";
+        }
+        ByteBuffer dup = src.duplicate();
+        int n = Math.min(maxBytes, dup.remaining());
+        if (n <= 0) {
+            return "";
+        }
+        byte[] out = new byte[n];
+        dup.get(out);
+        StringBuilder sb = new StringBuilder(n * 2);
+        for (byte b : out) {
+            sb.append(String.format(Locale.US, "%02x", b));
+        }
+        return sb.toString();
     }
 
     private static void log(String msg) {

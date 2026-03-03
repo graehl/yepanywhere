@@ -9,7 +9,7 @@ import { getWebSocketConnection } from "../lib/connection/WebSocketConnection";
 import { generateUUID } from "../lib/uuid";
 import { QUALITY_TO_CRF, getEmulatorSettings } from "./useEmulatorSettings";
 
-const LOG_PREFIX = "[EmulatorStream]";
+const LOG_PREFIX = "[DeviceStream]";
 const MAX_PROFILE_EVENT_HISTORY = 8;
 
 export type EmulatorConnectionState =

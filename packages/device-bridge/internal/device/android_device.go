@@ -371,6 +371,12 @@ func (d *AndroidDevice) StartStream(ctx context.Context, opts StreamOptions) (*N
 	d.nalSource = NewNalSource()
 	d.streaming = true
 	d.streamMu.Unlock()
+	if streamDebugEnabled() {
+		log.Printf(
+			"[AndroidDevice %s] StartStream requested: %dx%d@%dfps bitrate=%d",
+			d.serial, width, height, fps, bitrate,
+		)
+	}
 
 	payload, err := json.Marshal(struct {
 		Cmd     string `json:"cmd"`
@@ -411,6 +417,12 @@ func (d *AndroidDevice) StartStream(ctx context.Context, opts StreamOptions) (*N
 			_ = d.StopStream(context.Background())
 			return nil, ctx.Err()
 		case st := <-d.statusCh:
+			if streamDebugEnabled() {
+				log.Printf(
+					"[AndroidDevice %s] stream status: cmd=%q ok=%v err=%q",
+					d.serial, st.Cmd, st.OK, st.Error,
+				)
+			}
 			if st.Cmd == "stream_start" {
 				if !st.OK {
 					_ = d.StopStream(context.Background())
@@ -419,9 +431,18 @@ func (d *AndroidDevice) StartStream(ctx context.Context, opts StreamOptions) (*N
 					}
 					return nil, errors.New(st.Error)
 				}
+				if streamDebugEnabled() {
+					log.Printf(
+						"[AndroidDevice %s] StartStream ready via stream_start status",
+						d.serial,
+					)
+				}
 				return d.nalSource, nil
 			}
 		case <-d.startedCh:
+			if streamDebugEnabled() {
+				log.Printf("[AndroidDevice %s] StartStream ready via first NAL", d.serial)
+			}
 			return d.nalSource, nil
 		case <-timer.C:
 			_ = d.StopStream(context.Background())
@@ -514,6 +535,30 @@ func (d *AndroidDevice) runStreamReader(
 	defer close(doneCh)
 
 	started := false
+	debugEnabled := streamDebugEnabled()
+	startAt := time.Now()
+	timeoutPolls := 0
+	var (
+		nalCount    uint64
+		keyCount    uint64
+		configCount uint64
+		lastPTSUs   int64
+		lengthSize  = 4
+	)
+	defer func() {
+		if debugEnabled {
+			log.Printf(
+				"[AndroidDevice %s] stream reader exit after %v: started=%v nals=%d key=%d config=%d lastPtsUs=%d",
+				d.serial,
+				time.Since(startAt).Truncate(time.Millisecond),
+				started,
+				nalCount,
+				keyCount,
+				configCount,
+				lastPTSUs,
+			)
+		}
+	}()
 	for {
 		select {
 		case <-stopCh:
@@ -530,6 +575,17 @@ func (d *AndroidDevice) runStreamReader(
 		}
 		if err != nil {
 			if isTimeoutError(err) {
+				timeoutPolls++
+				if debugEnabled && timeoutPolls%50 == 0 {
+					log.Printf(
+						"[AndroidDevice %s] stream reader idle for ~%v (poll=%v, started=%v nals=%d)",
+						d.serial,
+						time.Duration(timeoutPolls)*streamReadPollTimeout,
+						streamReadPollTimeout,
+						started,
+						nalCount,
+					)
+				}
 				continue
 			}
 			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
@@ -537,6 +593,7 @@ func (d *AndroidDevice) runStreamReader(
 			}
 			return
 		}
+		timeoutPolls = 0
 
 		switch msgType {
 		case conn.TypeStreamStatus:
@@ -550,6 +607,15 @@ func (d *AndroidDevice) runStreamReader(
 				log.Printf("[AndroidDevice] bad stream status JSON: %v", err)
 				continue
 			}
+			if debugEnabled {
+				log.Printf(
+					"[AndroidDevice %s] stream status packet: cmd=%q ok=%v err=%q",
+					d.serial,
+					st.Cmd,
+					st.OK,
+					st.Error,
+				)
+			}
 			select {
 			case statusCh <- st:
 			default:
@@ -560,11 +626,57 @@ func (d *AndroidDevice) runStreamReader(
 				log.Printf("[AndroidDevice] read stream NAL: %v", err)
 				return
 			}
+			rawData := nal.Data
 			unit := &NalUnit{
-				Data:     nal.Data,
+				Data:     rawData,
 				Keyframe: (nal.Flags & 0x01) != 0,
 				Config:   (nal.Flags & 0x02) != 0,
 				PTSUs:    int64(nal.PTSUs),
+			}
+			normalized, meta := normalizeH264PayloadForWebRTC(unit.Data, unit.Config, lengthSize)
+			if meta.LengthSize >= 1 && meta.LengthSize <= 4 {
+				lengthSize = meta.LengthSize
+			}
+			if meta.Converted {
+				unit.Data = normalized
+			}
+			nalCount++
+			lastPTSUs = unit.PTSUs
+			if unit.Keyframe {
+				keyCount++
+			}
+			if unit.Config {
+				configCount++
+			}
+			if debugEnabled && (nalCount == 1 || nalCount%300 == 0) {
+				log.Printf(
+					"[AndroidDevice %s] stream NAL #%d: config=%v key=%v ptsUs=%d bytes=%d format=%s converted=%v nals=%d firstType=%d lenHint=%d started=%v",
+					d.serial,
+					nalCount,
+					unit.Config,
+					unit.Keyframe,
+					unit.PTSUs,
+					len(unit.Data),
+					meta.Kind,
+					meta.Converted,
+					meta.NALCount,
+					meta.FirstNALType,
+					lengthSize,
+					started,
+				)
+			}
+			if debugEnabled && unit.Config {
+				log.Printf(
+					"[AndroidDevice %s] stream config packet detail: rawBytes=%d outBytes=%d format=%s converted=%v firstType=%d rawPrefix=%s outPrefix=%s",
+					d.serial,
+					len(rawData),
+					len(unit.Data),
+					meta.Kind,
+					meta.Converted,
+					meta.FirstNALType,
+					h264HexPrefix(rawData, 24),
+					h264HexPrefix(unit.Data, 24),
+				)
 			}
 			nalSource.Publish(unit)
 			if !started {

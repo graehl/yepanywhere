@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/pion/rtcp"
@@ -29,7 +30,11 @@ type PeerSession struct {
 	connected   chan struct{} // closed when ICE reaches "connected" state
 	pli         chan struct{}
 	label       string // session ID prefix for log messages
+	mu          sync.Mutex
+	discTimer   *time.Timer
 }
+
+const iceDisconnectGrace = 12 * time.Second
 
 // NewPeerSession creates a PeerConnection with an h264 video track and a "control" DataChannel.
 // label is used as a prefix in log messages (typically the session ID).
@@ -132,19 +137,17 @@ func NewPeerSession(label string, stunServers []string, onInput func(msg []byte)
 		log.Printf("[peer %s] iceConnectionState: %s", label, state.String())
 		switch state {
 		case webrtc.ICEConnectionStateConnected, webrtc.ICEConnectionStateCompleted:
+			ps.cancelDisconnectTimer()
 			select {
 			case <-ps.connected:
 			default:
 				close(ps.connected)
 			}
-		case webrtc.ICEConnectionStateFailed,
-			webrtc.ICEConnectionStateDisconnected,
-			webrtc.ICEConnectionStateClosed:
-			select {
-			case <-ps.closed:
-			default:
-				close(ps.closed)
-			}
+		case webrtc.ICEConnectionStateDisconnected:
+			ps.armDisconnectTimer()
+		case webrtc.ICEConnectionStateFailed, webrtc.ICEConnectionStateClosed:
+			ps.cancelDisconnectTimer()
+			ps.closeDone()
 		}
 	})
 
@@ -251,11 +254,8 @@ func (ps *PeerSession) ICEConnectionState() string {
 func (ps *PeerSession) Close() error {
 	log.Printf("[peer %s] Close() called (iceState=%s, connState=%s)",
 		ps.label, ps.pc.ICEConnectionState().String(), ps.pc.ConnectionState().String())
-	select {
-	case <-ps.closed:
-	default:
-		close(ps.closed)
-	}
+	ps.cancelDisconnectTimer()
+	ps.closeDone()
 	return ps.pc.Close()
 }
 
@@ -272,4 +272,47 @@ func (ps *PeerSession) Done() <-chan struct{} {
 // PLI returns a channel that receives events when remote RTCP requests a keyframe.
 func (ps *PeerSession) PLI() <-chan struct{} {
 	return ps.pli
+}
+
+func (ps *PeerSession) closeDone() {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	select {
+	case <-ps.closed:
+	default:
+		close(ps.closed)
+	}
+}
+
+func (ps *PeerSession) cancelDisconnectTimer() {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if ps.discTimer != nil {
+		ps.discTimer.Stop()
+		ps.discTimer = nil
+	}
+}
+
+func (ps *PeerSession) armDisconnectTimer() {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if ps.discTimer != nil {
+		return
+	}
+	ps.discTimer = time.AfterFunc(iceDisconnectGrace, func() {
+		ps.mu.Lock()
+		ps.discTimer = nil
+		iceState := ps.pc.ICEConnectionState()
+		if iceState != webrtc.ICEConnectionStateDisconnected {
+			ps.mu.Unlock()
+			return
+		}
+		select {
+		case <-ps.closed:
+		default:
+			log.Printf("[peer %s] ICE disconnected for %v, closing session", ps.label, iceDisconnectGrace)
+			close(ps.closed)
+		}
+		ps.mu.Unlock()
+	})
 }

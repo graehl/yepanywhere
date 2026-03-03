@@ -55,23 +55,25 @@ type SessionManager struct {
 }
 
 type adaptiveTuning struct {
-	minBitrate             int
-	mildQueueDepth         int
-	moderateQueueDepth     int
-	severeQueueDepth       int
-	severeWindow           time.Duration
-	restartDownWindow      time.Duration
-	recoveryWindow         time.Duration
-	restartUpWindow        time.Duration
-	restartCooldown        time.Duration
-	keyframeRequestBackoff time.Duration
-	bitrateChangeBackoff   time.Duration
-	dropUntilKeyframe      bool
-	writeDelay             time.Duration
-	writeDelayDuration     time.Duration
-	forceProfileCycle      bool
-	forceDownAfter         time.Duration
-	forceUpAfter           time.Duration
+	minBitrate              int
+	mildQueueDepth          int
+	moderateQueueDepth      int
+	severeQueueDepth        int
+	severeWindow            time.Duration
+	restartDownWindow       time.Duration
+	recoveryWindow          time.Duration
+	restartUpWindow         time.Duration
+	restartCooldown         time.Duration
+	keyframeRequestBackoff  time.Duration
+	bitrateChangeBackoff    time.Duration
+	dropUntilKeyframe       bool
+	writeDelay              time.Duration
+	writeDelayDuration      time.Duration
+	forceProfileCycle       bool
+	forceDownAfter          time.Duration
+	forceUpAfter            time.Duration
+	nalInactivityProbe      time.Duration
+	nalInactivityCloseAfter time.Duration
 }
 
 // NewSessionManager creates a session manager.
@@ -560,9 +562,19 @@ func (sm *SessionManager) runNALPipeline(sess *streamSession) {
 		return
 	}
 
-	const activityTimeout = 15 * time.Second
-	activityTimer := time.NewTimer(activityTimeout)
+	tuning := loadAdaptiveTuning()
+	activityProbeInterval := tuning.nalInactivityProbe
+	if activityProbeInterval <= 0 {
+		activityProbeInterval = 15 * time.Second
+	}
+	activityCloseAfter := tuning.nalInactivityCloseAfter
+	if activityCloseAfter < activityProbeInterval {
+		activityCloseAfter = activityProbeInterval
+	}
+
+	activityTimer := time.NewTimer(activityProbeInterval)
 	defer activityTimer.Stop()
+	lastSampleAt := time.Now()
 
 	refreshActivity := func() {
 		if !activityTimer.Stop() {
@@ -571,18 +583,19 @@ func (sm *SessionManager) runNALPipeline(sess *streamSession) {
 			default:
 			}
 		}
-		activityTimer.Reset(activityTimeout)
+		lastSampleAt = time.Now()
+		activityTimer.Reset(activityProbeInterval)
 	}
 
 	profiles := buildAdaptiveProfiles(sess.targetW, sess.targetH, sess.maxFPS)
 	profileIndex := 0
 	currentProfile := profiles[profileIndex]
 	currentSource := sess.nalSource
+	debugEnabled := envTruthy("YEP_BRIDGE_STREAM_DEBUG")
 
 	// Progressive adaptation based on queue pressure and RTCP PLI feedback.
 	baseBitrate := currentProfile.BitrateBps
 	currentBitrate := currentProfile.BitrateBps
-	tuning := loadAdaptiveTuning()
 	minBitrate := tuning.minBitrate
 	mildQueueDepth := tuning.mildQueueDepth
 	moderateQueueDepth := tuning.moderateQueueDepth
@@ -650,6 +663,9 @@ func (sm *SessionManager) runNALPipeline(sess *streamSession) {
 
 	var (
 		lastPTSUs      int64
+		seen           uint64
+		seenConfig     uint64
+		seenKeyframe   uint64
 		written        uint64
 		totalWriteByte uint64
 		dropped        uint64
@@ -664,10 +680,27 @@ func (sm *SessionManager) runNALPipeline(sess *streamSession) {
 		defer forceTicker.Stop()
 		forceTick = forceTicker.C
 	}
+	var debugTick <-chan time.Time
+	var debugTicker *time.Ticker
+	if debugEnabled {
+		debugTicker = time.NewTicker(5 * time.Second)
+		debugTick = debugTicker.C
+		defer debugTicker.Stop()
+	}
 
 sourceLoop:
 	for {
 		id, nals := currentSource.Subscribe()
+		if debugEnabled {
+			log.Printf(
+				"[session %s] NAL subscription attached (profile=%dx%d@%d, bitrate=%d)",
+				sess.sessionID,
+				currentProfile.Width,
+				currentProfile.Height,
+				currentProfile.FPS,
+				currentBitrate,
+			)
+		}
 		restartProfile := func(restartTo int, now time.Time) (bool, bool) {
 			if restartTo < 0 || restartTo >= len(profiles) {
 				return false, false
@@ -723,10 +756,46 @@ sourceLoop:
 					dropUntilKeyframe = true
 				}
 			case <-activityTimer.C:
+				idleFor := time.Since(lastSampleAt)
+				if idleFor < activityCloseAfter {
+					log.Printf(
+						"[session %s] NAL inactivity for %v (probe=%v, closeAfter=%v), requesting keyframe and continuing",
+						sess.sessionID,
+						idleFor.Truncate(time.Millisecond),
+						activityProbeInterval,
+						activityCloseAfter,
+					)
+					requestKeyframe("nal inactivity")
+					activityTimer.Reset(activityProbeInterval)
+					continue
+				}
 				currentSource.Unsubscribe(id)
-				log.Printf("[session %s] NAL activity timeout (%v with no samples), closing", sess.sessionID, activityTimeout)
+				log.Printf(
+					"[session %s] NAL activity timeout (%v with no samples, closeAfter=%v), closing",
+					sess.sessionID,
+					idleFor.Truncate(time.Millisecond),
+					activityCloseAfter,
+				)
 				go sm.StopSession(sess.sessionID)
 				return
+			case <-debugTick:
+				log.Printf(
+					"[session %s] NAL debug: seen=%d written=%d dropped=%d config=%d key=%d q=%d idleFor=%v conn=%s ice=%s bitrate=%d profile=%dx%d@%d",
+					sess.sessionID,
+					seen,
+					written,
+					dropped,
+					seenConfig,
+					seenKeyframe,
+					len(nals),
+					time.Since(lastSampleAt).Truncate(time.Millisecond),
+					sess.peer.ConnectionState(),
+					sess.peer.ICEConnectionState(),
+					currentBitrate,
+					currentProfile.Width,
+					currentProfile.Height,
+					currentProfile.FPS,
+				)
 			case <-forceTick:
 				now := time.Now()
 				restartTo := -1
@@ -754,6 +823,23 @@ sourceLoop:
 					continue
 				}
 				refreshActivity()
+				seen++
+				if unit.Config {
+					seenConfig++
+				}
+				if unit.Keyframe {
+					seenKeyframe++
+				}
+				if debugEnabled && seen == 1 {
+					log.Printf(
+						"[session %s] first NAL observed: config=%v key=%v ptsUs=%d bytes=%d",
+						sess.sessionID,
+						unit.Config,
+						unit.Keyframe,
+						unit.PTSUs,
+						len(unit.Data),
+					)
+				}
 
 				now := time.Now()
 				queueDepth := len(nals)
@@ -979,17 +1065,19 @@ func normalizeStreamDimension(v int) int {
 
 func loadAdaptiveTuning() adaptiveTuning {
 	cfg := adaptiveTuning{
-		minBitrate:             500_000,
-		mildQueueDepth:         2,
-		moderateQueueDepth:     5,
-		severeQueueDepth:       8,
-		severeWindow:           2 * time.Second,
-		restartDownWindow:      4 * time.Second,
-		recoveryWindow:         1 * time.Second,
-		restartUpWindow:        12 * time.Second,
-		restartCooldown:        10 * time.Second,
-		keyframeRequestBackoff: 500 * time.Millisecond,
-		bitrateChangeBackoff:   500 * time.Millisecond,
+		minBitrate:              500_000,
+		mildQueueDepth:          2,
+		moderateQueueDepth:      5,
+		severeQueueDepth:        8,
+		severeWindow:            2 * time.Second,
+		restartDownWindow:       4 * time.Second,
+		recoveryWindow:          1 * time.Second,
+		restartUpWindow:         12 * time.Second,
+		restartCooldown:         10 * time.Second,
+		keyframeRequestBackoff:  500 * time.Millisecond,
+		bitrateChangeBackoff:    500 * time.Millisecond,
+		nalInactivityProbe:      15 * time.Second,
+		nalInactivityCloseAfter: 5 * time.Minute,
 	}
 
 	// Test-only mode for deterministic adaptive profile cycling in E2E.
@@ -1024,6 +1112,8 @@ func loadAdaptiveTuning() adaptiveTuning {
 	cfg.writeDelayDuration = envDurationMS("YEP_BRIDGE_TEST_NAL_WRITE_DELAY_DURATION_MS", cfg.writeDelayDuration)
 	cfg.forceDownAfter = envDurationMS("YEP_BRIDGE_TEST_FORCE_DOWN_AFTER_MS", cfg.forceDownAfter)
 	cfg.forceUpAfter = envDurationMS("YEP_BRIDGE_TEST_FORCE_UP_AFTER_MS", cfg.forceUpAfter)
+	cfg.nalInactivityProbe = envDurationMS("YEP_BRIDGE_NAL_INACTIVITY_PROBE_MS", cfg.nalInactivityProbe)
+	cfg.nalInactivityCloseAfter = envDurationMS("YEP_BRIDGE_NAL_INACTIVITY_CLOSE_AFTER_MS", cfg.nalInactivityCloseAfter)
 
 	if cfg.mildQueueDepth < 0 {
 		cfg.mildQueueDepth = 0
@@ -1036,6 +1126,12 @@ func loadAdaptiveTuning() adaptiveTuning {
 	}
 	if cfg.minBitrate < 100_000 {
 		cfg.minBitrate = 100_000
+	}
+	if cfg.nalInactivityProbe <= 0 {
+		cfg.nalInactivityProbe = 15 * time.Second
+	}
+	if cfg.nalInactivityCloseAfter < cfg.nalInactivityProbe {
+		cfg.nalInactivityCloseAfter = cfg.nalInactivityProbe
 	}
 	return cfg
 }
@@ -1142,6 +1238,16 @@ func maybeStartAndroidStream(
 		Height:     targetH,
 		FPS:        maxFPS,
 		BitrateBps: estimateAndroidBitrate(targetW, targetH, maxFPS),
+	}
+	if envTruthy("YEP_BRIDGE_STREAM_DEBUG") {
+		log.Printf(
+			"[stream probe] trying stream_start for %s at %dx%d@%dfps bitrate=%d",
+			deviceType,
+			streamOpts.Width,
+			streamOpts.Height,
+			streamOpts.FPS,
+			streamOpts.BitrateBps,
+		)
 	}
 	nalSource, err := sc.StartStream(context.Background(), streamOpts)
 	if err != nil {

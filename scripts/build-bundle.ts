@@ -26,7 +26,7 @@ const SHARED_DIST = path.join(ROOT_DIR, "packages/shared/dist");
 const STAGING_DIR = path.join(ROOT_DIR, "dist/npm-package");
 
 // Version for npm package - set via NPM_VERSION env var (from git tag in CI) or fallback
-const NPM_VERSION = process.env.NPM_VERSION || "0.1.4";
+const NPM_VERSION = process.env.NPM_VERSION || "0.4.8";
 
 interface StepResult {
   step: string;

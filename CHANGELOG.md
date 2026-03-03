@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-03-03
+
+### Added
+- Android device bridge with WebRTC streaming and MediaCodec capture
+- ChromeOS device transport and streaming with host aliases
+- Ollama local model provider with customizable system prompt
+- Adaptive bitrate and quality controls for device streaming
+- Immersive keyboard mode for Android device input
+- On-demand download for device bridge sidecar binary
+- CI pipeline for device bridge sidecar binaries
+- Emulator streaming E2E tests and validation scripts
+
+### Fixed
+- Fix Windows session spawning across all providers
+- Fix session resume losing provider for non-Claude models
+- Fix crash when tool result content is an array instead of string
+- Stabilize Android stream startup and soak reliability
+- Fix keyboard input mapping for emulator and Android streams
+- Fix WebRTC video stream stalling after a few seconds
+- Fix sidecar crash on WebSocket disconnect
+- Fix emulator bridge cascading restart loop
+
+### Changed
+- Rename Emulator to Devices in sidebar and routes
+- Refactor bridge to unified device interface with Android and ChromeOS transports
+
 ## [0.4.7] - 2026-03-01
 
 ### Added

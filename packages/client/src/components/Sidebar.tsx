@@ -380,9 +380,9 @@ export function Sidebar({
             {(capabilities.includes("deviceBridge") ||
               capabilities.includes("deviceBridge-download")) && (
               <SidebarNavItem
-                to="/emulator"
+                to="/devices"
                 icon={SidebarIcons.emulator}
-                label="Emulator"
+                label="Devices"
                 onClick={onNavigate}
                 basePath={basePath}
               />

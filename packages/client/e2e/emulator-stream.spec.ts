@@ -104,7 +104,7 @@ async function assertAutoStreamConnects(
     "No running Android emulator — run: emulator -avd <name> -no-window &",
   );
 
-  await page.goto(`${baseURL}/emulator?auto`);
+  await page.goto(`${baseURL}/devices?auto`);
 
   // Wait for WebRTC to reach "connected" — generous timeout covers sidecar
   // cold start, ADB query, ICE gathering, and first frame.
@@ -202,7 +202,7 @@ test("emits adaptive profile downshift/upshift events via APK transport override
     `APK not found at ${apkPath}; build it with: cd packages/android-device-server && ./build-apk.sh`,
   );
 
-  await page.goto(`${baseURL}/emulator`);
+  await page.goto(`${baseURL}/devices`);
   await dismissOnboardingIfVisible(page);
 
   await expect(

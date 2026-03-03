@@ -73,7 +73,7 @@ test("streams ChromeOS video over WebRTC when host is configured", async ({
     `ChromeOS daemon missing at ${CHROMEOS_DAEMON_PATH} on ${host}`,
   );
 
-  await page.goto(`${baseURL}/emulator`);
+  await page.goto(`${baseURL}/devices`);
 
   // Fresh E2E temp dirs can show onboarding modal which blocks clicks.
   const closeOnboarding = page.getByRole("button", { name: "Close" }).first();

@@ -65,8 +65,8 @@ createRoot(rootElement).render(
                 element={<Navigate to="/sessions" replace />}
               />
               <Route path="/git-status" element={<GitStatusPage />} />
-              <Route path="/emulator" element={<EmulatorPage />} />
-              <Route path="/emulator/:deviceId" element={<EmulatorPage />} />
+              <Route path="/devices" element={<EmulatorPage />} />
+              <Route path="/devices/:deviceId" element={<EmulatorPage />} />
               <Route path="/new-session" element={<NewSessionPage />} />
               <Route
                 path="/projects/:projectId/sessions/:sessionId"

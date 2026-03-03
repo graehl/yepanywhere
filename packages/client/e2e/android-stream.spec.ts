@@ -106,7 +106,7 @@ async function connectToPhysicalDeviceStream(
   baseURL: string,
   deviceSerial: string,
 ) {
-  await page.goto(`${baseURL}/emulator`);
+  await page.goto(`${baseURL}/devices`);
   await dismissOnboardingIfVisible(page);
 
   const row = page.locator(".emulator-list-item", { hasText: deviceSerial });

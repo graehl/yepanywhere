@@ -119,11 +119,25 @@ export interface DeviceSessionState {
   error?: string;
 }
 
+/** Server notifies client that adaptive profile tier changed. */
+export interface DeviceStreamProfileEvent {
+  type: "device_stream_profile_event";
+  sessionId: string;
+  width: number;
+  height: number;
+  fps: number;
+  bitrate: number;
+  tier: number;
+  totalTiers: number;
+  direction: "downshift" | "upshift";
+}
+
 /** Union of all server→client device messages */
 export type DeviceServerMessage =
   | DeviceWebRTCOffer
   | DeviceICECandidateEvent
-  | DeviceSessionState;
+  | DeviceSessionState
+  | DeviceStreamProfileEvent;
 
 // ============================================================================
 // RTCIceCandidateInit shim (for environments without WebRTC globals)

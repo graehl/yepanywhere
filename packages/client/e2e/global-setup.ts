@@ -58,6 +58,10 @@ async function waitForPortFile(
 }
 
 export default async function globalSetup() {
+  const serverLogLevel = process.env.E2E_SERVER_LOG_LEVEL ?? "warn";
+  const serverFileLogLevel =
+    process.env.E2E_SERVER_FILE_LOG_LEVEL ?? serverLogLevel;
+
   // Create a unique temp directory for this test run
   // This prevents collisions between parallel test runs
   E2E_TEMP_DIR = mkdtempSync(join(tmpdir(), "claude-e2e-"));
@@ -214,7 +218,8 @@ export default async function globalSetup() {
         SERVE_FRONTEND: "true",
         CLIENT_DIST_PATH: clientDist,
         LOG_FILE: "e2e-server.log",
-        LOG_LEVEL: "warn", // Reduce noise, port comes from file
+        LOG_LEVEL: serverLogLevel, // Override in targeted tests when log assertions are needed.
+        LOG_FILE_LEVEL: serverFileLogLevel,
         AUTH_DISABLED: "true",
         HTTPS_SELF_SIGNED: "", // force HTTP so health check URL works
         NODE_ENV: "production",

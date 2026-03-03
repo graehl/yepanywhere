@@ -96,6 +96,13 @@ func (rp *ResourcePool) createDeviceLocked(deviceID, deviceType string) (device.
 		}
 		return nil, fmt.Errorf("invalid android device id: %s", deviceID)
 	case "emulator":
+		if serial, ok := androidSerialForDevice(deviceID, "emulator"); ok {
+			d, err := device.NewAndroidDevice(serial, rp.adbPath)
+			if err != nil {
+				return nil, fmt.Errorf("connecting to emulator via android transport %s (id=%s): %w", serial, deviceID, err)
+			}
+			return d, nil
+		}
 		if strings.HasPrefix(deviceID, "emulator-") {
 			grpcAddr := GRPCAddr(deviceID)
 			d, err := emulator.NewClient(grpcAddr)
@@ -232,7 +239,12 @@ func androidSerialForDevice(deviceID, deviceType string) (string, bool) {
 		}
 		serial := strings.TrimSpace(deviceID)
 		return serial, serial != ""
-	case "emulator", "chromeos", "ios-simulator":
+	case "emulator":
+		if strings.HasPrefix(deviceID, "emulator-") && shouldUseAPKForEmulators() {
+			return deviceID, true
+		}
+		return "", false
+	case "chromeos", "ios-simulator":
 		return "", false
 	}
 

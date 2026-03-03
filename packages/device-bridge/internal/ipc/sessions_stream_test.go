@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/anthropics/yepanywhere/device-bridge/internal/device"
 )
@@ -101,6 +102,37 @@ func TestMaybeStartAndroidStreamReturnsErrorForFallback(t *testing.T) {
 	}
 }
 
+func TestMaybeStartAndroidStreamSkipsEmulatorByDefault(t *testing.T) {
+	dev := &streamTestDevice{source: device.NewNalSource()}
+
+	nalSource, streamCap, err := maybeStartAndroidStream(dev, "emulator", 720, 1280, 30)
+	if err != nil {
+		t.Fatalf("expected nil error for emulator default path, got %v", err)
+	}
+	if nalSource != nil || streamCap != nil {
+		t.Fatalf("expected nil stream results for emulator default path: nal=%v streamCap=%v", nalSource, streamCap)
+	}
+	if dev.startCalls != 0 {
+		t.Fatalf("expected no StartStream call for emulator default path, got %d", dev.startCalls)
+	}
+}
+
+func TestMaybeStartAndroidStreamStartsForEmulatorWhenAPKOverrideEnabled(t *testing.T) {
+	t.Setenv("DEVICE_BRIDGE_USE_APK_FOR_EMULATOR", "true")
+	dev := &streamTestDevice{source: device.NewNalSource()}
+
+	nalSource, streamCap, err := maybeStartAndroidStream(dev, "emulator", 720, 1280, 30)
+	if err != nil {
+		t.Fatalf("maybeStartAndroidStream returned error: %v", err)
+	}
+	if nalSource == nil || streamCap == nil {
+		t.Fatalf("expected stream results for emulator override path: nal=%v streamCap=%v", nalSource, streamCap)
+	}
+	if dev.startCalls != 1 {
+		t.Fatalf("expected StartStream call for emulator override path, got %d", dev.startCalls)
+	}
+}
+
 func TestClampBitrateDown(t *testing.T) {
 	if got := clampBitrateDown(2_000_000, 500_000); got != 1_500_000 {
 		t.Fatalf("expected 1,500,000, got %d", got)
@@ -190,5 +222,67 @@ func TestRestartNALStreamUpdatesSessionProfile(t *testing.T) {
 	}
 	if sess.targetW != nextOpts.Width || sess.targetH != nextOpts.Height || sess.maxFPS != nextOpts.FPS {
 		t.Fatalf("session profile not updated: target=%dx%d fps=%d", sess.targetW, sess.targetH, sess.maxFPS)
+	}
+}
+
+func TestLoadAdaptiveTuningDefaults(t *testing.T) {
+	cfg := loadAdaptiveTuning()
+	if cfg.minBitrate != 500_000 {
+		t.Fatalf("unexpected default min bitrate: %d", cfg.minBitrate)
+	}
+	if cfg.severeQueueDepth != 8 {
+		t.Fatalf("unexpected default severe queue depth: %d", cfg.severeQueueDepth)
+	}
+	if cfg.writeDelay != 0 {
+		t.Fatalf("expected no default write delay, got %v", cfg.writeDelay)
+	}
+	if cfg.dropUntilKeyframe {
+		t.Fatal("expected dropUntilKeyframe to default false")
+	}
+}
+
+func TestLoadAdaptiveTuningTestCycleMode(t *testing.T) {
+	t.Setenv("YEP_BRIDGE_TEST_ADAPTIVE_PROFILE_CYCLE", "true")
+
+	cfg := loadAdaptiveTuning()
+	if cfg.severeQueueDepth < cfg.moderateQueueDepth {
+		t.Fatalf("expected severe queue depth >= moderate depth, got severe=%d moderate=%d", cfg.severeQueueDepth, cfg.moderateQueueDepth)
+	}
+	if cfg.writeDelay <= 0 {
+		t.Fatalf("expected write delay in test mode, got %v", cfg.writeDelay)
+	}
+	if cfg.restartUpWindow <= 0 {
+		t.Fatalf("expected restart up window in test mode, got %v", cfg.restartUpWindow)
+	}
+	if !cfg.forceProfileCycle {
+		t.Fatal("expected forceProfileCycle to be enabled in test mode")
+	}
+	if cfg.forceDownAfter <= 0 || cfg.forceUpAfter <= cfg.forceDownAfter {
+		t.Fatalf(
+			"unexpected forced cycle timings: down=%v up=%v",
+			cfg.forceDownAfter,
+			cfg.forceUpAfter,
+		)
+	}
+}
+
+func TestLoadAdaptiveTuningEnvOverrides(t *testing.T) {
+	t.Setenv("YEP_BRIDGE_ADAPTIVE_MIN_BITRATE", "650000")
+	t.Setenv("YEP_BRIDGE_ADAPTIVE_SEVERE_QUEUE", "6")
+	t.Setenv("YEP_BRIDGE_ADAPTIVE_RESTART_COOLDOWN_MS", "2500")
+	t.Setenv("YEP_BRIDGE_ADAPTIVE_DROP_UNTIL_KEYFRAME", "true")
+
+	cfg := loadAdaptiveTuning()
+	if cfg.minBitrate != 650_000 {
+		t.Fatalf("min bitrate override failed: %d", cfg.minBitrate)
+	}
+	if cfg.severeQueueDepth != 6 {
+		t.Fatalf("severe queue override failed: %d", cfg.severeQueueDepth)
+	}
+	if cfg.restartCooldown != 2500*time.Millisecond {
+		t.Fatalf("restart cooldown override failed: %v", cfg.restartCooldown)
+	}
+	if !cfg.dropUntilKeyframe {
+		t.Fatal("dropUntilKeyframe override failed")
 	}
 }

@@ -12,6 +12,7 @@ import type {
   DeviceICECandidate,
   DeviceICECandidateEvent,
   DeviceSessionState,
+  DeviceStreamProfileEvent,
   DeviceStreamStart,
   DeviceStreamStop,
   DeviceWebRTCAnswer,
@@ -251,7 +252,8 @@ export type YepMessage =
   // Device bridge signaling
   | DeviceWebRTCOffer
   | DeviceICECandidateEvent
-  | DeviceSessionState;
+  | DeviceSessionState
+  | DeviceStreamProfileEvent;
 
 /** All relay protocol messages */
 export type RelayMessage = RemoteClientMessage | YepMessage;

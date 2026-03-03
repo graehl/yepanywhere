@@ -8,6 +8,7 @@ import type {
   DeviceICECandidateEvent,
   DeviceInfo,
   DeviceSessionState,
+  DeviceStreamProfileEvent,
   DeviceStreamStart,
   DeviceStreamStop,
   DeviceType,
@@ -42,11 +43,22 @@ interface SidecarMessage {
   candidate?: RTCIceCandidateInit | null;
   state?: string;
   error?: string;
+  width?: number;
+  height?: number;
+  fps?: number;
+  bitrate?: number;
+  tier?: number;
+  totalTiers?: number;
+  direction?: "downshift" | "upshift";
 }
 
 /** Callback for forwarding sidecar messages to a specific client */
 type ClientSendFn = (
-  msg: DeviceWebRTCOffer | DeviceICECandidateEvent | DeviceSessionState,
+  msg:
+    | DeviceWebRTCOffer
+    | DeviceICECandidateEvent
+    | DeviceSessionState
+    | DeviceStreamProfileEvent,
 ) => void;
 
 export interface DeviceBridgeServiceOptions {
@@ -573,6 +585,30 @@ export class DeviceBridgeService {
             | "failed",
           error: msg.error,
         });
+        break;
+
+      case "stream.profile":
+        if (
+          typeof msg.width === "number" &&
+          typeof msg.height === "number" &&
+          typeof msg.fps === "number" &&
+          typeof msg.bitrate === "number" &&
+          typeof msg.tier === "number" &&
+          typeof msg.totalTiers === "number" &&
+          (msg.direction === "downshift" || msg.direction === "upshift")
+        ) {
+          send({
+            type: "device_stream_profile_event",
+            sessionId,
+            width: msg.width,
+            height: msg.height,
+            fps: msg.fps,
+            bitrate: msg.bitrate,
+            tier: msg.tier,
+            totalTiers: msg.totalTiers,
+            direction: msg.direction,
+          });
+        }
         break;
     }
   }

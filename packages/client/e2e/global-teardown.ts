@@ -6,6 +6,11 @@ import { join } from "node:path";
 const SESSION_FILE = join(tmpdir(), "claude-e2e-session");
 
 export default async function globalTeardown() {
+  const keepTemp =
+    process.env.E2E_KEEP_TEMP === "1" ||
+    process.env.E2E_KEEP_TEMP === "true" ||
+    process.env.E2E_KEEP_TEMP === "yes";
+
   // Read the session file to find our temp directory
   if (!existsSync(SESSION_FILE)) {
     console.log("[E2E] No session file found, nothing to clean up");
@@ -64,6 +69,11 @@ export default async function globalTeardown() {
         }
       }
     }
+  }
+
+  if (keepTemp) {
+    console.log(`[E2E] Keeping temp directory for debugging: ${tempDir}`);
+    return;
   }
 
   // Clean up the entire temp directory

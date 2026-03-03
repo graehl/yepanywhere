@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -50,6 +52,26 @@ type SessionManager struct {
 	onIdle      func()           // called when no sessions remain for idleTimeout
 	idleTimer   *time.Timer
 	idleTimeout time.Duration
+}
+
+type adaptiveTuning struct {
+	minBitrate             int
+	mildQueueDepth         int
+	moderateQueueDepth     int
+	severeQueueDepth       int
+	severeWindow           time.Duration
+	restartDownWindow      time.Duration
+	recoveryWindow         time.Duration
+	restartUpWindow        time.Duration
+	restartCooldown        time.Duration
+	keyframeRequestBackoff time.Duration
+	bitrateChangeBackoff   time.Duration
+	dropUntilKeyframe      bool
+	writeDelay             time.Duration
+	writeDelayDuration     time.Duration
+	forceProfileCycle      bool
+	forceDownAfter         time.Duration
+	forceUpAfter           time.Duration
 }
 
 // NewSessionManager creates a session manager.
@@ -560,19 +582,18 @@ func (sm *SessionManager) runNALPipeline(sess *streamSession) {
 	// Progressive adaptation based on queue pressure and RTCP PLI feedback.
 	baseBitrate := currentProfile.BitrateBps
 	currentBitrate := currentProfile.BitrateBps
-	const (
-		minBitrate             = 500_000
-		mildQueueDepth         = 2
-		moderateQueueDepth     = 5
-		severeQueueDepth       = 8
-		severeWindow           = 2 * time.Second
-		restartDownWindow      = 4 * time.Second
-		recoveryWindow         = 1 * time.Second
-		restartUpWindow        = 12 * time.Second
-		restartCooldown        = 10 * time.Second
-		keyframeRequestBackoff = 500 * time.Millisecond
-		bitrateChangeBackoff   = 500 * time.Millisecond
-	)
+	tuning := loadAdaptiveTuning()
+	minBitrate := tuning.minBitrate
+	mildQueueDepth := tuning.mildQueueDepth
+	moderateQueueDepth := tuning.moderateQueueDepth
+	severeQueueDepth := tuning.severeQueueDepth
+	severeWindow := tuning.severeWindow
+	restartDownWindow := tuning.restartDownWindow
+	recoveryWindow := tuning.recoveryWindow
+	restartUpWindow := tuning.restartUpWindow
+	restartCooldown := tuning.restartCooldown
+	keyframeRequestBackoff := tuning.keyframeRequestBackoff
+	bitrateChangeBackoff := tuning.bitrateChangeBackoff
 	lastBitrateChangeAt := time.Time{}
 	lastKeyframeReqAt := time.Time{}
 	lastRestartAt := time.Time{}
@@ -633,15 +654,62 @@ func (sm *SessionManager) runNALPipeline(sess *streamSession) {
 		totalWriteByte uint64
 		dropped        uint64
 		statsStart     = time.Now()
+		forcedDownDone bool
+		forcedUpDone   bool
 	)
 	pliCh := sess.peer.PLI()
+	var forceTick <-chan time.Time
+	if tuning.forceProfileCycle {
+		forceTicker := time.NewTicker(200 * time.Millisecond)
+		defer forceTicker.Stop()
+		forceTick = forceTicker.C
+	}
 
 sourceLoop:
 	for {
 		id, nals := currentSource.Subscribe()
+		restartProfile := func(restartTo int, now time.Time) (bool, bool) {
+			if restartTo < 0 || restartTo >= len(profiles) {
+				return false, false
+			}
 
-		select {
-		default:
+			nextProfile := profiles[restartTo]
+			direction := "downshift"
+			if restartTo < profileIndex {
+				direction = "upshift"
+			}
+
+			currentSource.Unsubscribe(id)
+			newSource, err := sm.restartNALStream(sess, device.StreamOptions{
+				Width:      nextProfile.Width,
+				Height:     nextProfile.Height,
+				FPS:        nextProfile.FPS,
+				BitrateBps: nextProfile.BitrateBps,
+			})
+			if err != nil {
+				log.Printf("[session %s] stream restart to %dx%d@%dfps failed: %v",
+					sess.sessionID, nextProfile.Width, nextProfile.Height, nextProfile.FPS, err)
+				return false, true
+			}
+
+			profileIndex = restartTo
+			currentProfile = nextProfile
+			currentSource = newSource
+			lastRestartAt = now
+			lastPTSUs = 0
+			resetAdaptationState()
+			log.Printf("[session %s] stream profile -> %dx%d@%dfps bitrate=%d (tier %d/%d)",
+				sess.sessionID,
+				currentProfile.Width, currentProfile.Height, currentProfile.FPS, currentProfile.BitrateBps,
+				profileIndex+1, len(profiles))
+			sm.sendProfileEvent(
+				sess.sessionID,
+				currentProfile,
+				profileIndex+1,
+				len(profiles),
+				direction,
+			)
+			return true, false
 		}
 
 		for {
@@ -651,12 +719,32 @@ sourceLoop:
 				return
 			case <-pliCh:
 				requestKeyframe("pli")
-				dropUntilKeyframe = true
+				if !tuning.forceProfileCycle && tuning.dropUntilKeyframe {
+					dropUntilKeyframe = true
+				}
 			case <-activityTimer.C:
 				currentSource.Unsubscribe(id)
 				log.Printf("[session %s] NAL activity timeout (%v with no samples), closing", sess.sessionID, activityTimeout)
 				go sm.StopSession(sess.sessionID)
 				return
+			case <-forceTick:
+				now := time.Now()
+				restartTo := -1
+				elapsed := now.Sub(statsStart)
+				if !forcedDownDone && elapsed >= tuning.forceDownAfter && profileIndex+1 < len(profiles) &&
+					(lastRestartAt.IsZero() || now.Sub(lastRestartAt) >= restartCooldown) {
+					restartTo = profileIndex + 1
+					forcedDownDone = true
+				} else if forcedDownDone && !forcedUpDone && elapsed >= tuning.forceUpAfter && profileIndex > 0 &&
+					(lastRestartAt.IsZero() || now.Sub(lastRestartAt) >= restartCooldown) {
+					restartTo = profileIndex - 1
+					forcedUpDone = true
+				}
+				if restarted, fatal := restartProfile(restartTo, now); fatal {
+					return
+				} else if restarted {
+					continue sourceLoop
+				}
 			case unit, ok := <-nals:
 				if !ok {
 					currentSource.Unsubscribe(id)
@@ -671,64 +759,73 @@ sourceLoop:
 				queueDepth := len(nals)
 				restartTo := -1
 
-				if queueDepth >= severeQueueDepth {
-					if severeSince.IsZero() {
-						severeSince = now
-					}
-					if now.Sub(severeSince) >= severeWindow &&
-						currentBitrate > minBitrate &&
-						(lastBitrateChangeAt.IsZero() || now.Sub(lastBitrateChangeAt) >= bitrateChangeBackoff) {
-						applyBitrate(minBitrate, "severe congestion")
-						requestKeyframe("severe congestion")
-						dropUntilKeyframe = true
-					}
-					if now.Sub(severeSince) >= restartDownWindow &&
-						currentBitrate <= minBitrate &&
-						profileIndex+1 < len(profiles) &&
-						(lastRestartAt.IsZero() || now.Sub(lastRestartAt) >= restartCooldown) {
-						restartTo = profileIndex + 1
-					}
-				} else {
-					severeSince = time.Time{}
-				}
-
-				if queueDepth >= moderateQueueDepth {
-					requestKeyframe("moderate congestion")
-					dropUntilKeyframe = true
-				}
-
-				if queueDepth >= mildQueueDepth &&
-					currentBitrate > minBitrate &&
-					(lastBitrateChangeAt.IsZero() || now.Sub(lastBitrateChangeAt) >= bitrateChangeBackoff) {
-					next := clampBitrateDown(currentBitrate, minBitrate)
-					if next < currentBitrate {
-						applyBitrate(next, "queue pressure")
-					}
-				}
-
-				if queueDepth == 0 {
-					if recoverySince.IsZero() {
-						recoverySince = now
-					}
-					if now.Sub(recoverySince) >= recoveryWindow &&
-						currentBitrate < baseBitrate &&
-						(lastBitrateChangeAt.IsZero() || now.Sub(lastBitrateChangeAt) >= bitrateChangeBackoff) {
-						next := clampBitrateUp(currentBitrate, baseBitrate)
-						if next > currentBitrate {
-							applyBitrate(next, "recovery")
+				if !tuning.forceProfileCycle {
+					if queueDepth >= severeQueueDepth {
+						if severeSince.IsZero() {
+							severeSince = now
 						}
-					}
-
-					if currentBitrate >= baseBitrate && !dropUntilKeyframe {
-						if profileStableSince.IsZero() {
-							profileStableSince = now
+						if now.Sub(severeSince) >= severeWindow &&
+							currentBitrate > minBitrate &&
+							(lastBitrateChangeAt.IsZero() || now.Sub(lastBitrateChangeAt) >= bitrateChangeBackoff) {
+							applyBitrate(minBitrate, "severe congestion")
+							requestKeyframe("severe congestion")
+							if tuning.dropUntilKeyframe {
+								dropUntilKeyframe = true
+							}
 						}
-						if now.Sub(profileStableSince) >= restartUpWindow &&
-							profileIndex > 0 &&
+						if now.Sub(severeSince) >= restartDownWindow &&
+							currentBitrate <= minBitrate &&
+							profileIndex+1 < len(profiles) &&
 							(lastRestartAt.IsZero() || now.Sub(lastRestartAt) >= restartCooldown) {
-							restartTo = profileIndex - 1
+							restartTo = profileIndex + 1
 						}
 					} else {
+						severeSince = time.Time{}
+					}
+
+					if queueDepth >= moderateQueueDepth {
+						requestKeyframe("moderate congestion")
+						if tuning.dropUntilKeyframe {
+							dropUntilKeyframe = true
+						}
+					}
+
+					if queueDepth >= mildQueueDepth &&
+						currentBitrate > minBitrate &&
+						(lastBitrateChangeAt.IsZero() || now.Sub(lastBitrateChangeAt) >= bitrateChangeBackoff) {
+						next := clampBitrateDown(currentBitrate, minBitrate)
+						if next < currentBitrate {
+							applyBitrate(next, "queue pressure")
+						}
+					}
+
+					if queueDepth == 0 {
+						if recoverySince.IsZero() {
+							recoverySince = now
+						}
+						if now.Sub(recoverySince) >= recoveryWindow &&
+							currentBitrate < baseBitrate &&
+							(lastBitrateChangeAt.IsZero() || now.Sub(lastBitrateChangeAt) >= bitrateChangeBackoff) {
+							next := clampBitrateUp(currentBitrate, baseBitrate)
+							if next > currentBitrate {
+								applyBitrate(next, "recovery")
+							}
+						}
+
+						if currentBitrate >= baseBitrate && !dropUntilKeyframe {
+							if profileStableSince.IsZero() {
+								profileStableSince = now
+							}
+							if now.Sub(profileStableSince) >= restartUpWindow &&
+								profileIndex > 0 &&
+								(lastRestartAt.IsZero() || now.Sub(lastRestartAt) >= restartCooldown) {
+								restartTo = profileIndex - 1
+							}
+						} else {
+							profileStableSince = time.Time{}
+						}
+					} else {
+						recoverySince = time.Time{}
 						profileStableSince = time.Time{}
 					}
 				} else {
@@ -736,30 +833,9 @@ sourceLoop:
 					profileStableSince = time.Time{}
 				}
 
-				if restartTo >= 0 && restartTo < len(profiles) {
-					nextProfile := profiles[restartTo]
-					currentSource.Unsubscribe(id)
-					newSource, err := sm.restartNALStream(sess, device.StreamOptions{
-						Width:      nextProfile.Width,
-						Height:     nextProfile.Height,
-						FPS:        nextProfile.FPS,
-						BitrateBps: nextProfile.BitrateBps,
-					})
-					if err != nil {
-						log.Printf("[session %s] stream restart to %dx%d@%dfps failed: %v",
-							sess.sessionID, nextProfile.Width, nextProfile.Height, nextProfile.FPS, err)
-						return
-					}
-					profileIndex = restartTo
-					currentProfile = nextProfile
-					currentSource = newSource
-					lastRestartAt = now
-					lastPTSUs = 0
-					resetAdaptationState()
-					log.Printf("[session %s] stream profile -> %dx%d@%dfps bitrate=%d (tier %d/%d)",
-						sess.sessionID,
-						currentProfile.Width, currentProfile.Height, currentProfile.FPS, currentProfile.BitrateBps,
-						profileIndex+1, len(profiles))
+				if restarted, fatal := restartProfile(restartTo, now); fatal {
+					return
+				} else if restarted {
 					continue sourceLoop
 				}
 
@@ -769,6 +845,9 @@ sourceLoop:
 				}
 				if unit.Keyframe {
 					dropUntilKeyframe = false
+				}
+				if tuning.writeDelay > 0 && time.Since(statsStart) < tuning.writeDelayDuration {
+					time.Sleep(tuning.writeDelay)
 				}
 
 				duration := time.Second / 30
@@ -898,6 +977,105 @@ func normalizeStreamDimension(v int) int {
 	return v
 }
 
+func loadAdaptiveTuning() adaptiveTuning {
+	cfg := adaptiveTuning{
+		minBitrate:             500_000,
+		mildQueueDepth:         2,
+		moderateQueueDepth:     5,
+		severeQueueDepth:       8,
+		severeWindow:           2 * time.Second,
+		restartDownWindow:      4 * time.Second,
+		recoveryWindow:         1 * time.Second,
+		restartUpWindow:        12 * time.Second,
+		restartCooldown:        10 * time.Second,
+		keyframeRequestBackoff: 500 * time.Millisecond,
+		bitrateChangeBackoff:   500 * time.Millisecond,
+	}
+
+	// Test-only mode for deterministic adaptive profile cycling in E2E.
+	if envTruthy("YEP_BRIDGE_TEST_ADAPTIVE_PROFILE_CYCLE") {
+		cfg.severeQueueDepth = 3
+		cfg.severeWindow = 400 * time.Millisecond
+		cfg.restartDownWindow = 1500 * time.Millisecond
+		cfg.recoveryWindow = 300 * time.Millisecond
+		cfg.restartUpWindow = 2500 * time.Millisecond
+		cfg.restartCooldown = 1200 * time.Millisecond
+		cfg.writeDelay = 140 * time.Millisecond
+		cfg.writeDelayDuration = 3500 * time.Millisecond
+		cfg.forceProfileCycle = true
+		cfg.forceDownAfter = 2 * time.Second
+		cfg.forceUpAfter = 6 * time.Second
+	}
+
+	// Optional overrides for targeted diagnostics.
+	cfg.minBitrate = envInt("YEP_BRIDGE_ADAPTIVE_MIN_BITRATE", cfg.minBitrate)
+	cfg.mildQueueDepth = envInt("YEP_BRIDGE_ADAPTIVE_MILD_QUEUE", cfg.mildQueueDepth)
+	cfg.moderateQueueDepth = envInt("YEP_BRIDGE_ADAPTIVE_MODERATE_QUEUE", cfg.moderateQueueDepth)
+	cfg.severeQueueDepth = envInt("YEP_BRIDGE_ADAPTIVE_SEVERE_QUEUE", cfg.severeQueueDepth)
+	cfg.severeWindow = envDurationMS("YEP_BRIDGE_ADAPTIVE_SEVERE_WINDOW_MS", cfg.severeWindow)
+	cfg.restartDownWindow = envDurationMS("YEP_BRIDGE_ADAPTIVE_RESTART_DOWN_WINDOW_MS", cfg.restartDownWindow)
+	cfg.recoveryWindow = envDurationMS("YEP_BRIDGE_ADAPTIVE_RECOVERY_WINDOW_MS", cfg.recoveryWindow)
+	cfg.restartUpWindow = envDurationMS("YEP_BRIDGE_ADAPTIVE_RESTART_UP_WINDOW_MS", cfg.restartUpWindow)
+	cfg.restartCooldown = envDurationMS("YEP_BRIDGE_ADAPTIVE_RESTART_COOLDOWN_MS", cfg.restartCooldown)
+	cfg.keyframeRequestBackoff = envDurationMS("YEP_BRIDGE_ADAPTIVE_KEYFRAME_BACKOFF_MS", cfg.keyframeRequestBackoff)
+	cfg.bitrateChangeBackoff = envDurationMS("YEP_BRIDGE_ADAPTIVE_BITRATE_BACKOFF_MS", cfg.bitrateChangeBackoff)
+	cfg.dropUntilKeyframe = envTruthy("YEP_BRIDGE_ADAPTIVE_DROP_UNTIL_KEYFRAME")
+	cfg.writeDelay = envDurationMS("YEP_BRIDGE_TEST_NAL_WRITE_DELAY_MS", cfg.writeDelay)
+	cfg.writeDelayDuration = envDurationMS("YEP_BRIDGE_TEST_NAL_WRITE_DELAY_DURATION_MS", cfg.writeDelayDuration)
+	cfg.forceDownAfter = envDurationMS("YEP_BRIDGE_TEST_FORCE_DOWN_AFTER_MS", cfg.forceDownAfter)
+	cfg.forceUpAfter = envDurationMS("YEP_BRIDGE_TEST_FORCE_UP_AFTER_MS", cfg.forceUpAfter)
+
+	if cfg.mildQueueDepth < 0 {
+		cfg.mildQueueDepth = 0
+	}
+	if cfg.moderateQueueDepth < cfg.mildQueueDepth {
+		cfg.moderateQueueDepth = cfg.mildQueueDepth
+	}
+	if cfg.severeQueueDepth < cfg.moderateQueueDepth {
+		cfg.severeQueueDepth = cfg.moderateQueueDepth
+	}
+	if cfg.minBitrate < 100_000 {
+		cfg.minBitrate = 100_000
+	}
+	return cfg
+}
+
+func envInt(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+func envDurationMS(key string, fallback time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	if n <= 0 {
+		return 0
+	}
+	return time.Duration(n) * time.Millisecond
+}
+
+func envTruthy(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 func clampBitrateDown(current, min int) int {
 	if current <= min {
 		return min
@@ -952,7 +1130,7 @@ func maybeStartAndroidStream(
 	targetH int,
 	maxFPS int,
 ) (*device.NalSource, device.StreamCapable, error) {
-	if !strings.EqualFold(deviceType, "android") {
+	if !shouldUseMediaCodecStream(deviceType) {
 		return nil, nil, nil
 	}
 	sc, ok := client.(device.StreamCapable)
@@ -972,6 +1150,17 @@ func maybeStartAndroidStream(
 	return nalSource, sc, nil
 }
 
+func shouldUseMediaCodecStream(deviceType string) bool {
+	if strings.EqualFold(deviceType, "android") {
+		return true
+	}
+	if strings.EqualFold(deviceType, "emulator") &&
+		envTruthy("DEVICE_BRIDGE_USE_APK_FOR_EMULATOR") {
+		return true
+	}
+	return false
+}
+
 func estimateAndroidBitrate(width, height, fps int) int {
 	pixels := width * height
 	switch {
@@ -987,6 +1176,27 @@ func estimateAndroidBitrate(width, height, fps int) int {
 		}
 		return 3_000_000
 	}
+}
+
+func (sm *SessionManager) sendProfileEvent(
+	sessionID string,
+	profile streamProfile,
+	tier int,
+	totalTiers int,
+	direction string,
+) {
+	msg, _ := json.Marshal(map[string]interface{}{
+		"type":       "stream.profile",
+		"sessionId":  sessionID,
+		"width":      profile.Width,
+		"height":     profile.Height,
+		"fps":        profile.FPS,
+		"bitrate":    profile.BitrateBps,
+		"tier":       tier,
+		"totalTiers": totalTiers,
+		"direction":  direction,
+	})
+	sm.sendMsg(msg)
 }
 
 // sendOffer sends a WebRTC offer to the Yep server.

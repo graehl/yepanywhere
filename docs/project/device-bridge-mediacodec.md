@@ -417,6 +417,7 @@ Minimum required gates:
 4. **Browser E2E gate** (`packages/client/e2e/*.spec.ts`)
    - Existing emulator and physical-android Playwright streaming tests must remain green
    - APK transport override E2E remains required for regression testing
+   - Adaptive quality regression gate: `pnpm test:e2e:emulator:apk:adaptive` must show downshift and recovery/upshift profile events
 
 ## Reference: scrcpy Source
 

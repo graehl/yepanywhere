@@ -46,3 +46,19 @@ func TestAndroidSerialForDeviceExplicitType(t *testing.T) {
 		t.Fatal("ios-simulator type must not resolve as android serial")
 	}
 }
+
+func TestAndroidSerialForDeviceExplicitEmulatorTypeDefault(t *testing.T) {
+	t.Setenv(useAPKForEmulatorEnvVar, "")
+
+	if _, ok := androidSerialForDevice("emulator-5554", "emulator"); ok {
+		t.Fatal("expected explicit emulator type to stay on emulator transport by default")
+	}
+}
+
+func TestAndroidSerialForDeviceExplicitEmulatorTypeOverride(t *testing.T) {
+	t.Setenv(useAPKForEmulatorEnvVar, "true")
+
+	if serial, ok := androidSerialForDevice("emulator-5554", "emulator"); !ok || serial != "emulator-5554" {
+		t.Fatalf("expected explicit emulator type to map to android serial with override env: ok=%v serial=%q", ok, serial)
+	}
+}

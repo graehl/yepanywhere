@@ -2,6 +2,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type AgentStatus,
+  type ProviderName,
   SESSION_TITLE_MAX_LENGTH,
   type UrlProjectId,
   getModelContextWindow,
@@ -35,6 +36,11 @@ export interface ClaudeSessionReaderOptions {
   sessionDir: string;
   /** Additional session dirs from cross-machine merged projects */
   additionalDirs?: string[];
+  /** Optional context window resolver (from ModelInfoService) */
+  getContextWindow?: (
+    model: string | undefined,
+    provider?: ProviderName,
+  ) => number;
 }
 
 /** @deprecated Use ClaudeSessionReaderOptions */
@@ -149,6 +155,10 @@ export function computeCompactionOverhead(
 export class ClaudeSessionReader implements ISessionReader {
   private sessionDir: string;
   private allSessionDirs: string[];
+  private resolveContextWindow: (
+    model: string | undefined,
+    provider?: ProviderName,
+  ) => number;
 
   constructor(options: ClaudeSessionReaderOptions) {
     this.sessionDir = options.sessionDir;
@@ -156,6 +166,8 @@ export class ClaudeSessionReader implements ISessionReader {
       options.sessionDir,
       ...(options.additionalDirs ?? []),
     ];
+    this.resolveContextWindow =
+      options.getContextWindow ?? getModelContextWindow;
   }
 
   async listSessions(projectId: UrlProjectId): Promise<SessionSummary[]> {
@@ -260,15 +272,17 @@ export class ClaudeSessionReader implements ISessionReader {
       const firstUserMessage = this.findFirstUserMessage(messages);
       const fullTitle = firstUserMessage?.trim() || null;
       const model = this.extractModel(conversationMessages);
-      const contextUsage = this.extractContextUsage(
-        activeBranch.map((node) => node.raw),
-        model,
-      );
 
       // claude-ollama sessions use the same JSONL format but have non-Claude
       // model IDs (e.g. "qwen3-coder-128k:latest" vs "claude-opus-4-5-20251101")
       const provider =
         model && !model.startsWith("claude-") ? "claude-ollama" : "claude";
+
+      const contextUsage = this.extractContextUsage(
+        activeBranch.map((node) => node.raw),
+        model,
+        provider,
+      );
 
       return {
         id: sessionId,
@@ -545,8 +559,9 @@ export class ClaudeSessionReader implements ISessionReader {
   private extractContextUsage(
     messages: ClaudeSessionEntry[],
     model: string | undefined,
+    provider?: ProviderName,
   ): ContextUsage | undefined {
-    const contextWindowSize = getModelContextWindow(model);
+    const contextWindowSize = this.resolveContextWindow(model, provider);
 
     // Compute token overhead from compaction metadata.
     // After compaction, the API reports fewer input_tokens because old messages are

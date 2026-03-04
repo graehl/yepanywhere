@@ -69,6 +69,7 @@ import type {
 } from "./sdk/types.js";
 import type { BrowserProfileService } from "./services/BrowserProfileService.js";
 import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersService.js";
+import type { ModelInfoService } from "./services/ModelInfoService.js";
 import type { NetworkBindingService } from "./services/NetworkBindingService.js";
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
@@ -164,6 +165,8 @@ export interface AppOptions {
   browserProfileService?: BrowserProfileService;
   /** ServerSettingsService for server-wide settings */
   serverSettingsService?: ServerSettingsService;
+  /** ModelInfoService for cached model metadata (context windows, etc.) */
+  modelInfoService?: ModelInfoService;
   /** SharingService for session sharing */
   sharingService?: SharingService;
   /** DeviceBridgeService for Android emulator streaming */
@@ -294,15 +297,20 @@ export function createApp(options: AppOptions): AppResult {
             }),
         );
       case "claude":
-      case "claude-ollama":
+      case "claude-ollama": {
+        const mis = options.modelInfoService;
         return getOrCreateReader(
           `claude::${project.sessionDir}${mergedKey}`,
           () =>
             new ClaudeSessionReader({
               sessionDir: project.sessionDir,
               additionalDirs: project.mergedSessionDirs,
+              getContextWindow: mis
+                ? (model, provider) => mis.getContextWindow(model, provider)
+                : undefined,
             }),
         );
+      }
       case "opencode":
         return getOrCreateReader(
           `opencode::${project.path}`,
@@ -500,6 +508,7 @@ export function createApp(options: AppOptions): AppResult {
       geminiSessionsDir: GEMINI_TMP_DIR,
       geminiReaderFactory,
       serverSettingsService: options.serverSettingsService,
+      modelInfoService: options.modelInfoService,
     }),
   );
   app.route(
@@ -566,7 +575,10 @@ export function createApp(options: AppOptions): AppResult {
   }
 
   // Provider routes (multi-provider detection)
-  app.route("/api/providers", createProvidersRoutes());
+  app.route(
+    "/api/providers",
+    createProvidersRoutes({ modelInfoService: options.modelInfoService }),
+  );
 
   // Server settings routes
   if (options.serverSettingsService) {

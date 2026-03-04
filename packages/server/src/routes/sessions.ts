@@ -36,6 +36,7 @@ import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { getProjectDirFromCwd, syncSessions } from "../sdk/session-sync.js";
 import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
+import type { ModelInfoService } from "../services/ModelInfoService.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession, cloneCodexSession } from "../sessions/fork.js";
@@ -121,6 +122,8 @@ export interface SessionsDeps {
   geminiReaderFactory?: (projectPath: string) => GeminiSessionReader;
   /** ServerSettingsService for reading global instructions */
   serverSettingsService?: ServerSettingsService;
+  /** ModelInfoService for context window lookups */
+  modelInfoService?: ModelInfoService;
 }
 
 interface StartSessionBody {
@@ -260,8 +263,14 @@ function extractContextUsageFromSDKMessages(
   sdkMessages: SDKMessage[],
   model: string | undefined,
   provider?: ProviderName,
+  resolveContextWindow?: (
+    model: string | undefined,
+    provider?: ProviderName,
+  ) => number,
 ): ContextUsage | undefined {
-  const contextWindowSize = getModelContextWindow(model, provider);
+  const contextWindowSize = resolveContextWindow
+    ? resolveContextWindow(model, provider)
+    : getModelContextWindow(model, provider);
 
   const isCodexProvider = provider === "codex" || provider === "codex-oss";
 
@@ -885,10 +894,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         // Convert to client format
         const processMessages = sdkMessagesToClientMessages(sdkMessages);
         // Extract context usage from raw SDK messages (has usage field)
+        const mis = deps.modelInfoService;
         const contextUsage = extractContextUsageFromSDKMessages(
           sdkMessages,
           process.resolvedModel,
           process.provider,
+          mis ? (m, p) => mis.getContextWindow(m, p) : undefined,
         );
         // Get metadata even for new sessions (in case it was set before file was written)
         const metadata = deps.sessionMetadataService?.getMetadata(sessionId);

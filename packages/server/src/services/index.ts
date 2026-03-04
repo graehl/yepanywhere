@@ -42,3 +42,5 @@ export {
   type SharingConfig,
   type SharingServiceOptions,
 } from "./SharingService.js";
+
+export { ModelInfoService } from "./ModelInfoService.js";

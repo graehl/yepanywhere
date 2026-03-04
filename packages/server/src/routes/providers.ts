@@ -1,6 +1,11 @@
-import type { ProviderInfo } from "@yep-anywhere/shared";
+import type { ProviderInfo, ProviderName } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import { getAllProviders } from "../sdk/providers/index.js";
+import type { ModelInfoService } from "../services/ModelInfoService.js";
+
+interface ProviderRouteDeps {
+  modelInfoService?: ModelInfoService;
+}
 
 /**
  * Creates provider-related API routes.
@@ -8,7 +13,7 @@ import { getAllProviders } from "../sdk/providers/index.js";
  * GET /api/providers - Get all providers with their auth status
  * GET /api/providers/:name - Get specific provider status
  */
-export function createProvidersRoutes(): Hono {
+export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
   const routes = new Hono();
 
   // GET /api/providers - Get all available providers with auth status and models
@@ -21,6 +26,10 @@ export function createProvidersRoutes(): Hono {
         provider.getAuthStatus(),
         provider.getAvailableModels(),
       ]);
+      deps.modelInfoService?.ingestModels(
+        provider.name as ProviderName,
+        models,
+      );
       providerInfos.push({
         name: provider.name,
         displayName: provider.displayName,
@@ -53,6 +62,7 @@ export function createProvidersRoutes(): Hono {
       provider.getAuthStatus(),
       provider.getAvailableModels(),
     ]);
+    deps.modelInfoService?.ingestModels(provider.name as ProviderName, models);
     const providerInfo: ProviderInfo = {
       name: provider.name,
       displayName: provider.displayName,

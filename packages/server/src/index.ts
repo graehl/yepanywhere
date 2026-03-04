@@ -54,6 +54,7 @@ import {
   BrowserProfileService,
   ConnectedBrowsersService,
   InstallService,
+  ModelInfoService,
   NetworkBindingService,
   RelayClientService,
   ServerSettingsService,
@@ -358,6 +359,7 @@ const serverSettingsService = new ServerSettingsService({
 const sharingService = new SharingService({
   dataDir: config.dataDir,
 });
+const modelInfoService = new ModelInfoService();
 
 async function startServer() {
   let tlsOptions: { key: Buffer; cert: Buffer } | undefined;
@@ -410,6 +412,9 @@ async function startServer() {
   ClaudeOllamaProvider.setUseFullSystemPrompt(
     serverSettingsService.getSetting("ollamaUseFullSystemPrompt") ?? false,
   );
+
+  // Warm model info cache (non-blocking, best-effort)
+  modelInfoService.warmProvider("claude-ollama").catch(() => {});
 
   // Log auth status
   if (config.authDisabled) {
@@ -519,6 +524,7 @@ async function startServer() {
     serverSettingsService,
     sharingService,
     deviceBridgeService,
+    modelInfoService,
   });
 
   const focusedSessionWatchManager = new FocusedSessionWatchManager({

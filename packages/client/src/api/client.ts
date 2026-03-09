@@ -602,7 +602,12 @@ export const api = {
    * Clone a session, creating a new session with the same conversation history.
    * Supported for Claude and Codex sessions.
    */
-  cloneSession: (projectId: string, sessionId: string, title?: string) =>
+  cloneSession: (
+    projectId: string,
+    sessionId: string,
+    title?: string,
+    provider?: string,
+  ) =>
     fetchJSON<{
       sessionId: string;
       messageCount: number;
@@ -610,7 +615,7 @@ export const api = {
       provider: string;
     }>(`/projects/${projectId}/sessions/${sessionId}/clone`, {
       method: "POST",
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, provider }),
     }),
 
   // Push notification API

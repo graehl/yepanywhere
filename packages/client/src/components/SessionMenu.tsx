@@ -156,7 +156,12 @@ export function SessionMenu({
     setDropdownPosition(null);
     triggerRef.current?.blur();
     try {
-      const result = await api.cloneSession(projectId, sessionId);
+      const result = await api.cloneSession(
+        projectId,
+        sessionId,
+        undefined,
+        provider,
+      );
       onClone?.(result.sessionId);
     } catch (error) {
       console.error("Failed to clone session:", error);

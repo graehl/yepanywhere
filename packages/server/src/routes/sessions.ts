@@ -87,6 +87,12 @@ function parseOptionalExecutor(rawExecutor: unknown): {
   return { executor };
 }
 
+function isCodexProviderName(
+  provider: ProviderName | string | undefined,
+): provider is "codex" | "codex-oss" {
+  return provider === "codex" || provider === "codex-oss";
+}
+
 export interface SessionsDeps {
   supervisor: Supervisor;
   scanner: ProjectScanner;
@@ -330,6 +336,14 @@ function extractContextUsageFromSDKMessages(
 
 export function createSessionsRoutes(deps: SessionsDeps): Hono {
   const routes = new Hono();
+  const getCodexReader = (projectPath: string): CodexSessionReader | null =>
+    deps.codexReaderFactory?.(projectPath) ??
+    (deps.codexSessionsDir
+      ? new CodexSessionReader({
+          sessionsDir: deps.codexSessionsDir,
+          projectPath,
+        })
+      : null);
 
   // GET /api/projects/:projectId/sessions/:sessionId/agents - Get agent mappings
   // Used to find agent sessions for pending Tasks on page reload
@@ -1437,7 +1451,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       );
     }
 
-    let body: { title?: string } = {};
+    let body: { title?: string; provider?: ProviderName } = {};
     try {
       body = await c.req.json();
     } catch {
@@ -1453,24 +1467,39 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
       // Get original session to extract title for the clone
       const reader = deps.readerFactory(project);
-      const originalSession = await reader.getSessionSummary(
+      let originalSession = await reader.getSessionSummary(
         sessionId,
         projectId,
       );
+      let cloneProvider: ProviderName = project.provider;
 
       let result: { newSessionId: string; entries: number };
 
-      if (project.provider === "codex" || project.provider === "codex-oss") {
-        // Codex sessions use date-based directories; resolve file path via reader
-        const filePath = await reader.getSessionFilePath?.(sessionId);
+      const shouldCloneFromCodex =
+        isCodexProviderName(body.provider) ||
+        isCodexProviderName(project.provider) ||
+        (!originalSession && project.provider === "claude");
+
+      if (shouldCloneFromCodex) {
+        const codexReader = getCodexReader(project.path);
+        if (!codexReader) {
+          return c.json({ error: "Codex session reader not available" }, 500);
+        }
+        const filePath = await codexReader.getSessionFilePath(sessionId);
         if (!filePath) {
           return c.json({ error: "Session file not found" }, 404);
         }
+
+        originalSession =
+          originalSession ??
+          (await codexReader.getSessionSummary(sessionId, projectId)) ??
+          null;
+        cloneProvider =
+          originalSession?.provider ??
+          body.provider ??
+          (isCodexProviderName(project.provider) ? project.provider : "codex");
         result = await cloneCodexSession(filePath);
-        if (reader instanceof CodexSessionReader) {
-          reader.invalidateCache();
-        }
-        deps.codexReaderFactory?.(project.path).invalidateCache();
+        codexReader.invalidateCache();
         deps.codexScanner?.invalidateCache();
       } else {
         result = await cloneClaudeSession(sessionDir, sessionId);
@@ -1500,7 +1529,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         sessionId: result.newSessionId,
         messageCount: result.entries,
         clonedFrom: sessionId,
-        provider: project.provider,
+        provider: cloneProvider,
       });
     } catch (error) {
       const message =

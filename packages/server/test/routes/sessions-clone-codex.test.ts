@@ -9,6 +9,7 @@ import {
   createSessionsRoutes,
 } from "../../src/routes/sessions.js";
 import { CodexSessionReader } from "../../src/sessions/codex-reader.js";
+import type { ISessionReader } from "../../src/sessions/types.js";
 import type { Project } from "../../src/supervisor/types.js";
 
 describe("Codex clone route", () => {
@@ -114,5 +115,53 @@ describe("Codex clone route", () => {
     expect(clonedSummary).not.toBeNull();
     expect(clonedSummary?.id).toBe(body.sessionId);
     expect(codexScanner.invalidateCache).toHaveBeenCalledTimes(1);
+  });
+
+  it("clones Codex sessions for mixed-provider projects when the request specifies codex", async () => {
+    const claudeProject: Project = {
+      ...project,
+      provider: "claude",
+      sessionDir: join(testDir, "claude-project"),
+    };
+    const claudeReader = {
+      getSessionSummary: vi.fn(async () => null),
+    } as unknown as ISessionReader;
+
+    const routes = createSessionsRoutes({
+      supervisor: {} as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => claudeProject),
+      } as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => claudeReader),
+      codexReaderFactory: vi.fn(() => reader),
+    });
+
+    const response = await routes.request(
+      `/projects/${projectId}/sessions/source-session/clone`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ provider: "codex" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      sessionId: string;
+      provider: string;
+    };
+    expect(body.provider).toBe("codex");
+
+    const clonedSummary = await reader.getSessionSummary(
+      body.sessionId,
+      projectId,
+    );
+    expect(clonedSummary?.id).toBe(body.sessionId);
+    expect(claudeReader.getSessionSummary).toHaveBeenCalledWith(
+      "source-session",
+      projectId,
+    );
   });
 });

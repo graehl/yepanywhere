@@ -146,3 +146,44 @@ func TestIOSSimulatorBinaryCandidatesIncludeBuiltArtifactPath(t *testing.T) {
 		t.Fatalf("expected %q in binary candidates: %v", wantDataDir, candidates)
 	}
 }
+
+func TestSimctlReportsBootedUDID(t *testing.T) {
+	data := []byte(`{
+  "devices": {
+    "com.apple.CoreSimulator.SimRuntime.iOS-26-2": [
+      {"udid":"BOOTED-1","name":"iPhone 17","state":"Booted"},
+      {"udid":"SHUTDOWN-1","name":"iPhone 16","state":"Shutdown"}
+    ]
+  }
+}`)
+
+	booted, err := simctlReportsBootedUDID(data, "BOOTED-1")
+	if err != nil {
+		t.Fatalf("simctlReportsBootedUDID returned error: %v", err)
+	}
+	if !booted {
+		t.Fatal("expected BOOTED-1 to be reported as booted")
+	}
+
+	booted, err = simctlReportsBootedUDID(data, "SHUTDOWN-1")
+	if err != nil {
+		t.Fatalf("simctlReportsBootedUDID returned error: %v", err)
+	}
+	if booted {
+		t.Fatal("expected SHUTDOWN-1 to be reported as not booted")
+	}
+
+	booted, err = simctlReportsBootedUDID(data, "MISSING-1")
+	if err != nil {
+		t.Fatalf("simctlReportsBootedUDID returned error: %v", err)
+	}
+	if booted {
+		t.Fatal("expected missing UDID to be reported as not booted")
+	}
+}
+
+func TestSimctlReportsBootedUDIDRejectsInvalidJSON(t *testing.T) {
+	if _, err := simctlReportsBootedUDID([]byte("{"), "BOOTED-1"); err == nil {
+		t.Fatal("expected invalid json to fail")
+	}
+}

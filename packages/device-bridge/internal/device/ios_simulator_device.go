@@ -1,6 +1,7 @@
 package device
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,22 @@ const (
 	iosSimDataDirEnvVar     = "YEP_ANYWHERE_DATA_DIR"
 	defaultIOSSimServerName = "ios-sim-server"
 )
+
+const defaultXcodeDeveloperDir = "/Applications/Xcode.app/Contents/Developer"
+
+type iosSimctlDeviceList struct {
+	Devices map[string][]iosSimctlDevice `json:"devices"`
+}
+
+type iosSimctlDevice struct {
+	UDID  string `json:"udid"`
+	State string `json:"state"`
+	Name  string `json:"name"`
+}
+
+type iosSimulatorPreflight struct {
+	developerDir string
+}
 
 // IOSSimulatorDevice communicates with ios-sim-server over a subprocess stdio transport.
 type IOSSimulatorDevice struct {
@@ -47,6 +64,11 @@ func NewIOSSimulatorDevice(udid string) (*IOSSimulatorDevice, error) {
 		return nil, fmt.Errorf("ios simulator udid is required")
 	}
 
+	preflight, err := runIOSSimulatorPreflight(udid)
+	if err != nil {
+		return nil, err
+	}
+
 	serverPath, err := resolveIOSSimServerPath()
 	if err != nil {
 		return nil, err
@@ -61,21 +83,43 @@ func NewIOSSimulatorDevice(udid string) (*IOSSimulatorDevice, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ios-sim-server stdin pipe: %w", err)
 	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("ios-sim-server stderr pipe: %w", err)
+	}
+	cmd.Env = append(os.Environ(), "DEVELOPER_DIR="+preflight.developerDir)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start ios-sim-server: %w", err)
 	}
 
+	var stderrBuf bytes.Buffer
+	stderrDone := make(chan struct{})
+	go func() {
+		defer close(stderrDone)
+		_, _ = io.Copy(&stderrBuf, stderr)
+	}()
+
 	closeFn := func() error {
 		_ = stdin.Close()
 		_ = stdout.Close()
+		_ = stderr.Close()
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
 		_ = cmd.Wait()
+		<-stderrDone
 		return nil
 	}
 
-	return NewIOSSimulatorDeviceWithTransport(udid, stdout, stdin, closeFn)
+	device, err := NewIOSSimulatorDeviceWithTransport(udid, stdout, stdin, closeFn)
+	if err != nil {
+		startupDetail := strings.TrimSpace(stderrBuf.String())
+		if startupDetail != "" {
+			return nil, fmt.Errorf("%w (%s)", err, startupDetail)
+		}
+		return nil, err
+	}
+	return device, nil
 }
 
 // NewIOSSimulatorDeviceWithTransport creates an IOSSimulatorDevice from an existing transport.
@@ -145,7 +189,14 @@ func resolveIOSSimServerPath() (string, error) {
 	}
 
 	if runtime.GOOS == "darwin" {
-		if sourceDir := findIOSSimServerSourceDir(exePath, cwd); sourceDir != "" {
+		sourceDir := findIOSSimServerSourceDir(exePath, cwd)
+		if sourceDir == "" {
+			return "", fmt.Errorf("ios sim server binary not found and source package is unavailable; keep packages/ios-sim-server in the install or set %s", iosSimServerEnvVar)
+		}
+		if err := ensureSwiftAvailable(); err != nil {
+			return "", err
+		}
+		if sourceDir != "" {
 			log.Printf("[IOSSimulatorDevice] Building ios-sim-server in %s", sourceDir)
 			cmd := exec.Command("swift", "build", "-c", "release")
 			cmd.Dir = sourceDir
@@ -154,6 +205,7 @@ func resolveIOSSimServerPath() (string, error) {
 				if _, statErr := os.Stat(builtPath); statErr == nil {
 					return builtPath, nil
 				}
+				return "", fmt.Errorf("ios sim server build completed but binary was not produced at %s", builtPath)
 			} else {
 				return "", fmt.Errorf("build ios sim server: %w (%s)", err, strings.TrimSpace(string(output)))
 			}
@@ -161,6 +213,125 @@ func resolveIOSSimServerPath() (string, error) {
 	}
 
 	return "", fmt.Errorf("ios sim server not found; set %s or build packages/ios-sim-server/.build/release/%s", iosSimServerEnvVar, defaultIOSSimServerName)
+}
+
+func runIOSSimulatorPreflight(udid string) (*iosSimulatorPreflight, error) {
+	if runtime.GOOS != "darwin" {
+		return nil, fmt.Errorf("iOS simulator streaming requires macOS")
+	}
+
+	developerDir, err := developerDirForIOSSimulator()
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureXcrunAvailable(); err != nil {
+		return nil, err
+	}
+	if err := ensureSimulatorFrameworksAvailable(developerDir); err != nil {
+		return nil, err
+	}
+	if err := ensureBootedSimulatorUDID(udid); err != nil {
+		return nil, err
+	}
+	return &iosSimulatorPreflight{developerDir: developerDir}, nil
+}
+
+func ensureXcrunAvailable() error {
+	if _, err := exec.LookPath("xcrun"); err != nil {
+		return fmt.Errorf("Xcode command line tools unavailable: `xcrun` not found; install Xcode and run `xcode-select --switch %s`", defaultXcodeDeveloperDir)
+	}
+	return nil
+}
+
+func ensureSwiftAvailable() error {
+	if _, err := exec.LookPath("swift"); err != nil {
+		return fmt.Errorf("Swift toolchain unavailable: `swift` not found; install Xcode or Xcode command line tools")
+	}
+	return nil
+}
+
+func developerDirForIOSSimulator() (string, error) {
+	if envDir := strings.TrimSpace(os.Getenv("DEVELOPER_DIR")); envDir != "" {
+		if info, err := os.Stat(envDir); err == nil && info.IsDir() {
+			return envDir, nil
+		}
+		return "", fmt.Errorf("DEVELOPER_DIR is set but invalid: %s", envDir)
+	}
+	if _, err := exec.LookPath("xcode-select"); err != nil {
+		return "", fmt.Errorf("Xcode selection unavailable: `xcode-select` not found; install Xcode and run `xcode-select --switch %s`", defaultXcodeDeveloperDir)
+	}
+	output, err := exec.Command("xcode-select", "-p").CombinedOutput()
+	if err != nil {
+		detail := strings.TrimSpace(string(output))
+		if detail != "" {
+			return "", fmt.Errorf("unable to resolve active Xcode developer directory via `xcode-select -p`: %s", detail)
+		}
+		return "", fmt.Errorf("unable to resolve active Xcode developer directory via `xcode-select -p`: %w", err)
+	}
+	developerDir := strings.TrimSpace(string(output))
+	if developerDir == "" {
+		return "", fmt.Errorf("xcode-select did not return a developer directory; run `xcode-select --switch %s`", defaultXcodeDeveloperDir)
+	}
+	info, statErr := os.Stat(developerDir)
+	if statErr != nil || !info.IsDir() {
+		return "", fmt.Errorf("selected Xcode developer directory does not exist: %s", developerDir)
+	}
+	return developerDir, nil
+}
+
+func ensureSimulatorFrameworksAvailable(developerDir string) error {
+	simKitPath := filepath.Join(developerDir, "Library", "PrivateFrameworks", "SimulatorKit.framework", "SimulatorKit")
+	if _, err := os.Stat(simKitPath); err != nil {
+		return fmt.Errorf("SimulatorKit.framework not found under selected Xcode developer directory (%s); install full Xcode and run `xcode-select --switch %s`", developerDir, developerDir)
+	}
+
+	coreSimulatorCandidates := []string{
+		filepath.Join(developerDir, "Library", "PrivateFrameworks", "CoreSimulator.framework", "CoreSimulator"),
+		"/Library/Developer/PrivateFrameworks/CoreSimulator.framework/CoreSimulator",
+	}
+	for _, candidate := range coreSimulatorCandidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("CoreSimulator.framework not found; install Xcode command line tools or full Xcode")
+}
+
+func ensureBootedSimulatorUDID(udid string) error {
+	output, err := exec.Command("xcrun", "simctl", "list", "devices", "booted", "-j").CombinedOutput()
+	if err != nil {
+		detail := strings.TrimSpace(string(output))
+		if detail != "" {
+			return fmt.Errorf("unable to query booted iOS simulators with `xcrun simctl`: %s", detail)
+		}
+		return fmt.Errorf("unable to query booted iOS simulators with `xcrun simctl`: %w", err)
+	}
+
+	booted, err := simctlReportsBootedUDID(output, udid)
+	if err != nil {
+		return fmt.Errorf("unable to parse `xcrun simctl` output: %w", err)
+	}
+	if !booted {
+		return fmt.Errorf("iOS simulator %s is not booted; boot it in Simulator.app or with `xcrun simctl boot %s`", udid, udid)
+	}
+	return nil
+}
+
+func simctlReportsBootedUDID(data []byte, udid string) (bool, error) {
+	var parsed iosSimctlDeviceList
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return false, err
+	}
+	udid = strings.TrimSpace(udid)
+	for _, devices := range parsed.Devices {
+		for _, device := range devices {
+			if strings.TrimSpace(device.UDID) != udid {
+				continue
+			}
+			return strings.EqualFold(strings.TrimSpace(device.State), "booted"), nil
+		}
+	}
+	return false, nil
 }
 
 func iosSimServerBinaryCandidates(dataDir, exePath, cwd, home string) []string {

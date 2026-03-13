@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.12] - 2026-03-13
+
+### Added
+- iOS simulator device bridge support with HID input
+- Improved iOS simulator bridge preflight error messages
+
+### Changed
+- Reduce routine update checks
+
 ## [0.4.11] - 2026-03-12
 
 ### Added

@@ -117,25 +117,22 @@ func resolveIOSSimServerPath() (string, error) {
 		return envPath, nil
 	}
 
-	candidates := make([]string, 0, 6)
-	if dataDir := strings.TrimSpace(os.Getenv(iosSimDataDirEnvVar)); dataDir != "" {
-		candidates = append(candidates, filepath.Join(dataDir, "bin", defaultIOSSimServerName))
-	}
+	var exePath string
 	if exe, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exe)
-		candidates = append(candidates,
-			filepath.Join(exeDir, defaultIOSSimServerName),
-			filepath.Join(exeDir, "..", "..", "ios-sim-server", ".build", "release", defaultIOSSimServerName),
-		)
+		exePath = exe
 	}
-	if cwd, err := os.Getwd(); err == nil {
-		candidates = append(candidates,
-			filepath.Join(cwd, "packages", "ios-sim-server", ".build", "release", defaultIOSSimServerName),
-			filepath.Join(cwd, ".build", "release", defaultIOSSimServerName),
-		)
+	var cwd string
+	if dir, err := os.Getwd(); err == nil {
+		cwd = dir
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		candidates = append(candidates, filepath.Join(home, ".yep-anywhere", "bin", defaultIOSSimServerName))
+	var home string
+	if dir, err := os.UserHomeDir(); err == nil {
+		home = dir
+	}
+
+	candidates := iosSimServerBinaryCandidates(strings.TrimSpace(os.Getenv(iosSimDataDirEnvVar)), exePath, cwd, home)
+	for _, sourceDir := range iosSimServerSourceCandidates(exePath, cwd) {
+		candidates = append(candidates, filepath.Join(sourceDir, ".build", "release", defaultIOSSimServerName))
 	}
 
 	for _, candidate := range candidates {
@@ -148,7 +145,7 @@ func resolveIOSSimServerPath() (string, error) {
 	}
 
 	if runtime.GOOS == "darwin" {
-		if sourceDir := findIOSSimServerSourceDir(); sourceDir != "" {
+		if sourceDir := findIOSSimServerSourceDir(exePath, cwd); sourceDir != "" {
 			log.Printf("[IOSSimulatorDevice] Building ios-sim-server in %s", sourceDir)
 			cmd := exec.Command("swift", "build", "-c", "release")
 			cmd.Dir = sourceDir
@@ -166,21 +163,28 @@ func resolveIOSSimServerPath() (string, error) {
 	return "", fmt.Errorf("ios sim server not found; set %s or build packages/ios-sim-server/.build/release/%s", iosSimServerEnvVar, defaultIOSSimServerName)
 }
 
-func findIOSSimServerSourceDir() string {
-	candidates := make([]string, 0, 4)
-	if exe, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exe)
+func iosSimServerBinaryCandidates(dataDir, exePath, cwd, home string) []string {
+	candidates := make([]string, 0, 8)
+	if dataDir = strings.TrimSpace(dataDir); dataDir != "" {
+		candidates = append(candidates, filepath.Join(dataDir, "bin", defaultIOSSimServerName))
+	}
+	if exePath != "" {
+		exeDir := filepath.Dir(exePath)
 		candidates = append(candidates,
-			filepath.Join(exeDir, "..", "..", "ios-sim-server"),
-			filepath.Join(exeDir, "..", "..", "..", "ios-sim-server"),
+			filepath.Join(exeDir, defaultIOSSimServerName),
 		)
 	}
-	if cwd, err := os.Getwd(); err == nil {
-		candidates = append(candidates,
-			filepath.Join(cwd, "packages", "ios-sim-server"),
-			filepath.Join(cwd, "..", "..", "ios-sim-server"),
-		)
+	if cwd != "" {
+		candidates = append(candidates, filepath.Join(cwd, ".build", "release", defaultIOSSimServerName))
 	}
+	if home != "" {
+		candidates = append(candidates, filepath.Join(home, ".yep-anywhere", "bin", defaultIOSSimServerName))
+	}
+	return uniquePaths(candidates)
+}
+
+func findIOSSimServerSourceDir(exePath, cwd string) string {
+	candidates := iosSimServerSourceCandidates(exePath, cwd)
 	for _, candidate := range candidates {
 		if candidate == "" {
 			continue
@@ -190,6 +194,59 @@ func findIOSSimServerSourceDir() string {
 		}
 	}
 	return ""
+}
+
+func iosSimServerSourceCandidates(exePath, cwd string) []string {
+	roots := make([]string, 0, 10)
+	if exePath != "" {
+		roots = append(roots, ancestorDirs(filepath.Dir(exePath), 5)...)
+	}
+	if cwd != "" {
+		roots = append(roots, ancestorDirs(cwd, 5)...)
+	}
+
+	candidates := make([]string, 0, len(roots)*2)
+	for _, root := range uniquePaths(roots) {
+		candidates = append(candidates,
+			filepath.Join(root, "packages", "ios-sim-server"),
+			filepath.Join(root, "ios-sim-server"),
+		)
+	}
+	return uniquePaths(candidates)
+}
+
+func ancestorDirs(dir string, maxDepth int) []string {
+	if dir == "" || maxDepth <= 0 {
+		return nil
+	}
+	ancestors := make([]string, 0, maxDepth)
+	current := filepath.Clean(dir)
+	for range maxDepth {
+		ancestors = append(ancestors, current)
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return ancestors
+}
+
+func uniquePaths(paths []string) []string {
+	seen := make(map[string]struct{}, len(paths))
+	unique := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		clean := filepath.Clean(p)
+		if _, ok := seen[clean]; ok {
+			continue
+		}
+		seen[clean] = struct{}{}
+		unique = append(unique, clean)
+	}
+	return unique
 }
 
 func (d *IOSSimulatorDevice) readHandshake() error {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -106,5 +108,41 @@ func TestIOSSimulatorDeviceFramingWithMockTransport(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for mock device goroutine")
+	}
+}
+
+func TestIOSSimulatorSourceCandidatesIncludeRepoPaths(t *testing.T) {
+	exePath := "/Users/test/code/yepanywhere/packages/device-bridge/bridge"
+	cwd := "/Users/test/code/yepanywhere/packages/server"
+
+	candidates := iosSimServerSourceCandidates(exePath, cwd)
+	want := filepath.Clean("/Users/test/code/yepanywhere/packages/ios-sim-server")
+	if !slices.Contains(candidates, want) {
+		t.Fatalf("expected %q in candidates: %v", want, candidates)
+	}
+}
+
+func TestIOSSimulatorBinaryCandidatesIncludeBuiltArtifactPath(t *testing.T) {
+	exePath := "/Users/test/code/yepanywhere/packages/device-bridge/bridge"
+	cwd := "/Users/test/code/yepanywhere/packages/server"
+
+	candidates := iosSimServerBinaryCandidates("/tmp/yep-anywhere", exePath, cwd, "/Users/test")
+	sourceCandidates := iosSimServerSourceCandidates(exePath, cwd)
+
+	wantBuilt := filepath.Clean("/Users/test/code/yepanywhere/packages/ios-sim-server/.build/release/ios-sim-server")
+	foundBuilt := false
+	for _, sourceDir := range sourceCandidates {
+		if filepath.Join(sourceDir, ".build", "release", defaultIOSSimServerName) == wantBuilt {
+			foundBuilt = true
+			break
+		}
+	}
+	if !foundBuilt {
+		t.Fatalf("expected built artifact candidate derived from source dir %q", wantBuilt)
+	}
+
+	wantDataDir := filepath.Clean("/tmp/yep-anywhere/bin/ios-sim-server")
+	if !slices.Contains(candidates, wantDataDir) {
+		t.Fatalf("expected %q in binary candidates: %v", wantDataDir, candidates)
 	}
 }

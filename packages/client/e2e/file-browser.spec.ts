@@ -71,12 +71,6 @@ test.describe("Files API", () => {
       `/api/projects/${projectId}/files?path=test.txt`,
     );
 
-    if (!response.ok()) {
-      throw new Error(
-        `Expected file metadata request to succeed, got ${response.status()}: ${await response.text()}`,
-      );
-    }
-
     expect(response.ok()).toBe(true);
     const data = await response.json();
     expect(data.metadata.path).toBe("test.txt");

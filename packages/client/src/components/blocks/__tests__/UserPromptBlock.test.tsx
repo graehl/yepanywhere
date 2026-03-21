@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { I18nProvider } from "../../../i18n";
 import type { ContentBlock } from "../../../types";
 import { UserPromptBlock } from "../UserPromptBlock";
 
@@ -20,7 +21,11 @@ describe("UserPromptBlock", () => {
       },
     ];
 
-    render(<UserPromptBlock content={content} />);
+    render(
+      <I18nProvider>
+        <UserPromptBlock content={content} />
+      </I18nProvider>,
+    );
 
     expect(screen.getByText(/Please review this screenshot\./)).toBeDefined();
     expect(screen.getByText(/Thanks\./)).toBeDefined();
@@ -41,7 +46,11 @@ describe("UserPromptBlock", () => {
       },
     ];
 
-    render(<UserPromptBlock content={content} />);
+    render(
+      <I18nProvider>
+        <UserPromptBlock content={content} />
+      </I18nProvider>,
+    );
 
     const attachmentButton = screen.getByRole("button", {
       name: /pasted-image-1\.png/i,
@@ -65,7 +74,11 @@ describe("UserPromptBlock", () => {
       },
     ];
 
-    render(<UserPromptBlock content={content} />);
+    render(
+      <I18nProvider>
+        <UserPromptBlock content={content} />
+      </I18nProvider>,
+    );
 
     expect(screen.getByText(/Annotated image:/)).toBeDefined();
     expect(screen.queryByText("<image>")).toBeNull();

@@ -1,11 +1,13 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { FileViewer } from "../components/FileViewer";
+import { useI18n } from "../i18n";
 
 /**
  * FilePage - Standalone page for viewing files.
  * Route: /projects/:projectId/file?path=<path>
  */
 export function FilePage() {
+  const { t } = useI18n();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams] = useSearchParams();
   const filePath = searchParams.get("path");
@@ -14,10 +16,10 @@ export function FilePage() {
     return (
       <div className="file-page file-page-error">
         <div className="file-page-error-content">
-          <h1>Invalid URL</h1>
-          <p>Project ID is missing from the URL.</p>
+          <h1>{t("fileInvalidUrl" as never)}</h1>
+          <p>{t("fileMissingProjectId" as never)}</p>
           <Link to="/projects" className="file-page-back-link">
-            Go to Projects
+            {t("fileGoToProjects" as never)}
           </Link>
         </div>
       </div>
@@ -28,10 +30,10 @@ export function FilePage() {
     return (
       <div className="file-page file-page-error">
         <div className="file-page-error-content">
-          <h1>Invalid URL</h1>
-          <p>File path is missing from the URL.</p>
+          <h1>{t("fileInvalidUrl" as never)}</h1>
+          <p>{t("fileMissingPath" as never)}</p>
           <Link to={`/projects/${projectId}`} className="file-page-back-link">
-            Go to Project
+            {t("fileGoToProject" as never)}
           </Link>
         </div>
       </div>
@@ -44,10 +46,10 @@ export function FilePage() {
         <Link
           to={`/projects/${projectId}`}
           className="file-page-back-link"
-          title="Back to project"
+          title={t("fileBackToProject" as never)}
         >
           <BackIcon />
-          <span>Back to project</span>
+          <span>{t("fileBackToProject" as never)}</span>
         </Link>
       </div>
       <div className="file-page-content">

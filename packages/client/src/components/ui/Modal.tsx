@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "../../i18n";
 
 interface ModalProps {
   title: ReactNode;
@@ -13,6 +14,7 @@ interface ModalProps {
  * Closes on Escape key or clicking the overlay.
  */
 export function Modal({ title, children, onClose }: ModalProps) {
+  const { t } = useI18n();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // Close on Escape key
@@ -80,7 +82,7 @@ export function Modal({ title, children, onClose }: ModalProps) {
               e.stopPropagation();
               onClose();
             }}
-            aria-label="Close"
+            aria-label={t("modalClose")}
           >
             ×
           </button>

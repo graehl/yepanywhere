@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { useI18n } from "../i18n";
 import { type SavedHost, loadSavedHosts, removeHost } from "../lib/hostStorage";
 
 type HostStatus = "online" | "offline" | "checking" | "unknown";
@@ -19,6 +20,7 @@ interface HostStatusMap {
 }
 
 export function HostPickerPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { isAutoResuming, connectViaRelay, connect, setCurrentHostId } =
     useRemoteConnection();
@@ -90,7 +92,7 @@ export function HostPickerPage() {
       try {
         if (host.mode === "relay") {
           if (!host.relayUrl || !host.relayUsername) {
-            throw new Error("Missing relay configuration");
+            throw new Error(t("hostPickerMissingRelayConfiguration"));
           }
 
           // If host has a session, try to use it for auto-resume
@@ -117,7 +119,7 @@ export function HostPickerPage() {
         } else {
           // Direct mode
           if (!host.wsUrl) {
-            throw new Error("Missing WebSocket URL");
+            throw new Error(t("hostPickerMissingWebSocketUrl"));
           }
 
           if (host.session) {
@@ -131,7 +133,9 @@ export function HostPickerPage() {
         }
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Connection failed";
+          err instanceof Error
+            ? err.message
+            : t("hostPickerErrorConnectionFailed");
         // If session resumption failed, redirect to login page
         if (
           message.includes("Authentication failed") ||
@@ -151,19 +155,19 @@ export function HostPickerPage() {
         setConnectingHostId(null);
       }
     },
-    [connectViaRelay, connect, navigate, setCurrentHostId],
+    [connectViaRelay, connect, navigate, setCurrentHostId, t],
   );
 
   // Delete a host
   const handleDeleteHost = useCallback(
     (hostId: string, e: React.MouseEvent) => {
       e.stopPropagation();
-      if (confirm("Remove this saved host?")) {
+      if (confirm(t("hostPickerRemoveConfirm"))) {
         removeHost(hostId);
         setHosts((prev) => prev.filter((h) => h.id !== hostId));
       }
     },
-    [],
+    [t],
   );
 
   // Format last connected time
@@ -177,10 +181,13 @@ export function HostPickerPage() {
       const diffHours = Math.floor(diffMs / 3600000);
       const diffDays = Math.floor(diffMs / 86400000);
 
-      if (diffMins < 1) return "just now";
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      if (diffDays < 7) return `${diffDays}d ago`;
+      if (diffMins < 1) return t("hostPickerLastConnectedJustNow");
+      if (diffMins < 60)
+        return t("hostPickerLastConnectedMinutes", { count: diffMins });
+      if (diffHours < 24)
+        return t("hostPickerLastConnectedHours", { count: diffHours });
+      if (diffDays < 7)
+        return t("hostPickerLastConnectedDays", { count: diffDays });
       return date.toLocaleDateString();
     } catch {
       return "";
@@ -195,7 +202,7 @@ export function HostPickerPage() {
           <div className="login-logo">
             <YepAnywhereLogo />
           </div>
-          <p className="login-subtitle">Reconnecting...</p>
+          <p className="login-subtitle">{t("reconnecting")}</p>
           <div className="login-loading" data-testid="auto-resume-loading">
             <div className="login-spinner" />
           </div>
@@ -213,7 +220,7 @@ export function HostPickerPage() {
 
         {hosts.length > 0 && (
           <>
-            <p className="login-subtitle">Saved Hosts</p>
+            <p className="login-subtitle">{t("hostPickerSavedHosts")}</p>
 
             <div className="host-picker-list" data-testid="saved-hosts-list">
               {hosts.map((host) => {
@@ -232,7 +239,9 @@ export function HostPickerPage() {
                     <div className="host-picker-item-main">
                       <span
                         className={`host-picker-status host-picker-status-${status}`}
-                        title={status}
+                        title={t(
+                          `hostPickerStatus${status.charAt(0).toUpperCase()}${status.slice(1)}` as never,
+                        )}
                       />
                       <span className="host-picker-name">
                         {host.displayName}
@@ -249,7 +258,7 @@ export function HostPickerPage() {
                         type="button"
                         className="host-picker-delete"
                         onClick={(e) => handleDeleteHost(host.id, e)}
-                        title="Remove host"
+                        title={t("hostPickerRemoveHost")}
                         data-testid={`delete-host-${host.id}`}
                       >
                         &times;
@@ -271,12 +280,14 @@ export function HostPickerPage() {
               </div>
             )}
 
-            <p className="login-subtitle host-picker-add-title">Add New Host</p>
+            <p className="login-subtitle host-picker-add-title">
+              {t("hostPickerAddNewHost")}
+            </p>
           </>
         )}
 
         {hosts.length === 0 && (
-          <p className="login-subtitle">How would you like to connect?</p>
+          <p className="login-subtitle">{t("hostPickerHowToConnect")}</p>
         )}
 
         <div className="login-mode-options">
@@ -286,10 +297,11 @@ export function HostPickerPage() {
             onClick={() => navigate("/login/relay")}
             data-testid="relay-mode-button"
           >
-            <span className="login-mode-option-title">Connect via Relay</span>
+            <span className="login-mode-option-title">
+              {t("hostPickerRelayTitle")}
+            </span>
             <span className="login-mode-option-desc">
-              Use a relay server to connect from anywhere. No port forwarding
-              needed.
+              {t("hostPickerRelayDescription")}
             </span>
           </button>
 
@@ -299,17 +311,19 @@ export function HostPickerPage() {
             onClick={() => navigate("/login/direct")}
             data-testid="direct-mode-button"
           >
-            <span className="login-mode-option-title">Direct Connection</span>
+            <span className="login-mode-option-title">
+              {t("hostPickerDirectTitle")}
+            </span>
             <span className="login-mode-option-desc">
-              Connect directly via WebSocket URL. For LAN or Tailscale.
+              {t("hostPickerDirectDescription")}
             </span>
           </button>
         </div>
 
         <p className="login-hint">
           {hosts.length > 0
-            ? "Select a saved host above or add a new one."
-            : 'Most users should choose "Connect via Relay" for the easiest setup.'}
+            ? t("hostPickerSavedHint")
+            : t("hostPickerEmptyHint")}
         </p>
       </div>
     </div>

@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { InboxContent } from "../components/InboxContent";
 import { PageHeader } from "../components/PageHeader";
 import { useProjects } from "../hooks/useProjects";
+import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
 
 /**
@@ -10,6 +11,7 @@ import { useNavigationLayout } from "../layouts";
  * Shows sessions from all projects (or filtered to one) that need attention.
  */
 export function InboxPage() {
+  const { t } = useI18n();
   const { openSidebar, isWideScreen } = useNavigationLayout();
   const { projects } = useProjects();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -45,7 +47,11 @@ export function InboxPage() {
         }
       >
         <PageHeader
-          title={projectName ? `${projectName} Inbox` : "Inbox"}
+          title={
+            projectName
+              ? t("inboxTitleWithProject", { project: projectName })
+              : t("inboxTitle")
+          }
           onOpenSidebar={openSidebar}
         />
 

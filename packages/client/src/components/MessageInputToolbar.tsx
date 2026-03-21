@@ -1,6 +1,7 @@
 import type { UploadedFile } from "@yep-anywhere/shared";
 import type { RefObject } from "react";
 import { useModelSettings } from "../hooks/useModelSettings";
+import { useI18n } from "../i18n";
 import type { ContextUsage, PermissionMode } from "../types";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { ModeSelector } from "./ModeSelector";
@@ -81,6 +82,7 @@ export function MessageInputToolbar({
   disabled,
   pendingApproval,
 }: MessageInputToolbarProps) {
+  const { t } = useI18n();
   const { thinkingMode, cycleThinkingMode, thinkingLevel } = useModelSettings();
 
   return (
@@ -100,9 +102,7 @@ export function MessageInputToolbar({
           onClick={onAttachClick}
           disabled={!canAttach}
           title={
-            canAttach
-              ? "Attach files"
-              : "Send a message first to enable attachments"
+            canAttach ? t("toolbarAttachFiles") : t("toolbarAttachDisabled")
           }
         >
           <svg
@@ -127,12 +127,12 @@ export function MessageInputToolbar({
             onClick={cycleThinkingMode}
             title={
               thinkingMode === "off"
-                ? "Thinking: off"
+                ? t("newSessionThinkingOff")
                 : thinkingMode === "auto"
-                  ? "Thinking: auto"
-                  : `Thinking: on (${thinkingLevel})`
+                  ? t("newSessionThinkingAuto")
+                  : t("newSessionThinkingOn", { level: thinkingLevel })
             }
-            aria-label={`Thinking mode: ${thinkingMode}`}
+            aria-label={t("newSessionThinkingMode", { mode: thinkingMode })}
           >
             <svg
               width="16"
@@ -200,15 +200,15 @@ export function MessageInputToolbar({
             onClick={pendingApproval.onExpand}
             title={
               pendingApproval.type === "tool-approval"
-                ? "Expand tool approval"
-                : "Expand question"
+                ? t("toolbarPendingApprovalExpand")
+                : t("toolbarPendingQuestionExpand")
             }
           >
             <span className="pending-approval-dot" />
             <span className="pending-approval-text">
               {pendingApproval.type === "tool-approval"
-                ? "Approval"
-                : "Question"}
+                ? t("toolbarApproval")
+                : t("toolbarQuestion")}
             </span>
           </button>
         )}
@@ -219,8 +219,8 @@ export function MessageInputToolbar({
             type="button"
             onClick={onQueue}
             className="queue-button"
-            title="Queue message (Ctrl+Enter)"
-            aria-label="Queue message"
+            title={t("toolbarQueueTitle")}
+            aria-label={t("toolbarQueueLabel")}
           >
             <svg
               width="16"
@@ -248,7 +248,7 @@ export function MessageInputToolbar({
             type="button"
             onClick={onStop}
             className="stop-button"
-            aria-label="Stop"
+            aria-label={t("toolbarStop")}
           >
             <span className="stop-icon" />
           </button>
@@ -258,7 +258,7 @@ export function MessageInputToolbar({
             onClick={onSend}
             disabled={disabled || !canSend}
             className="send-button"
-            aria-label="Send"
+            aria-label={t("toolbarSend")}
           >
             <span className="send-icon">↑</span>
           </button>

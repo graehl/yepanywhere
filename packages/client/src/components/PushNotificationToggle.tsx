@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNotifyInApp } from "../hooks/useNotifyInApp";
 import { usePushNotifications } from "../hooks/usePushNotifications";
+import { useI18n } from "../i18n";
 
 export type TestNotificationUrgency = "normal" | "persistent" | "silent";
 
@@ -9,6 +10,7 @@ export type TestNotificationUrgency = "normal" | "persistent" | "silent";
  * Shows subscription status, toggle switch, and test button.
  */
 export function PushNotificationToggle() {
+  const { t } = useI18n();
   const {
     isSupported,
     isSubscribed,
@@ -41,20 +43,12 @@ export function PushNotificationToggle() {
     return (
       <div className="settings-item">
         <div className="settings-item-info">
-          <strong>Push Notifications</strong>
-          <p>
-            {error || "Push notifications are not supported in this browser."}
-          </p>
+          <strong>{t("pushToggleTitle")}</strong>
+          <p>{error || t("pushToggleUnsupported")}</p>
           {isDevModeDisabled && (
             <div className="settings-info-box" style={{ marginTop: "0.5rem" }}>
-              <p>
-                This only affects <strong>this device</strong>. Other subscribed
-                devices will still receive notifications from the server.
-              </p>
-              <p>
-                To enable push on this device in dev mode, restart with{" "}
-                <code>VITE_ENABLE_SW=true</code>.
-              </p>
+              <p>{t("pushToggleThisDeviceOnly")}</p>
+              <p>{t("pushToggleDevModeHint")}</p>
             </div>
           )}
           <p style={{ marginTop: "0.5rem" }}>
@@ -63,7 +57,7 @@ export function PushNotificationToggle() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              Troubleshooting guide
+              {t("pushToggleTroubleshooting")}
             </a>
           </p>
         </div>
@@ -76,11 +70,8 @@ export function PushNotificationToggle() {
     return (
       <div className="settings-item">
         <div className="settings-item-info">
-          <strong>Push Notifications</strong>
-          <p className="settings-warning">
-            Notifications are blocked. Enable them in your browser settings to
-            receive push notifications.
-          </p>
+          <strong>{t("pushToggleTitle")}</strong>
+          <p className="settings-warning">{t("pushToggleBlocked")}</p>
         </div>
       </div>
     );
@@ -90,11 +81,8 @@ export function PushNotificationToggle() {
     <>
       <div className="settings-item">
         <div className="settings-item-info">
-          <strong>Push Notifications</strong>
-          <p>
-            Receive notifications when a session needs your attention, even when
-            the app is in the background.
-          </p>
+          <strong>{t("pushToggleTitle")}</strong>
+          <p>{t("pushToggleDescription")}</p>
           {error && <p className="settings-error">{error}</p>}
         </div>
         <label className="toggle-switch">
@@ -112,11 +100,8 @@ export function PushNotificationToggle() {
         <>
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Notify When In App</strong>
-              <p>
-                Show notifications even when the app is open, as long as you're
-                not viewing that session.
-              </p>
+              <strong>{t("pushToggleNotifyInAppTitle")}</strong>
+              <p>{t("pushToggleNotifyInAppDescription")}</p>
             </div>
             <label className="toggle-switch">
               <input
@@ -129,8 +114,8 @@ export function PushNotificationToggle() {
           </div>
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Test Notification</strong>
-              <p>Send a test notification to verify push is working.</p>
+              <strong>{t("pushToggleTestTitle")}</strong>
+              <p>{t("pushToggleTestDescription")}</p>
             </div>
             <div className="settings-item-actions">
               <select
@@ -141,9 +126,11 @@ export function PushNotificationToggle() {
                 }
                 disabled={isLoading}
               >
-                <option value="normal">Normal (auto-dismiss)</option>
-                <option value="persistent">Persistent (stays visible)</option>
-                <option value="silent">Silent (no sound)</option>
+                <option value="normal">{t("pushToggleUrgencyNormal")}</option>
+                <option value="persistent">
+                  {t("pushToggleUrgencyPersistent")}
+                </option>
+                <option value="silent">{t("pushToggleUrgencySilent")}</option>
               </select>
               <button
                 type="button"
@@ -151,7 +138,7 @@ export function PushNotificationToggle() {
                 onClick={() => sendTest(testUrgency)}
                 disabled={isLoading}
               >
-                {isLoading ? "Sending..." : "Send Test"}
+                {isLoading ? t("pushToggleSending") : t("pushToggleSendTest")}
               </button>
             </div>
           </div>

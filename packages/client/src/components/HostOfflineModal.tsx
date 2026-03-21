@@ -9,7 +9,10 @@ import type {
   AutoResumeError,
   AutoResumeErrorReason,
 } from "../contexts/RemoteConnectionContext";
+import { useI18n } from "../i18n";
 import { Modal } from "./ui/Modal";
+
+type Translate = ReturnType<typeof useI18n>["t"];
 
 interface HostOfflineModalProps {
   error: AutoResumeError;
@@ -17,57 +20,57 @@ interface HostOfflineModalProps {
   onGoToLogin: () => void;
 }
 
-function getErrorTitle(reason: AutoResumeErrorReason): string {
+function getErrorTitle(reason: AutoResumeErrorReason, t: Translate): string {
   switch (reason) {
     case "server_offline":
-      return "Host Offline";
+      return t("hostOfflineTitleServerOffline");
     case "unknown_username":
-      return "Host Not Found";
+      return t("hostOfflineTitleUnknownUsername");
     case "relay_timeout":
-      return "Connection Timeout";
+      return t("hostOfflineTitleRelayTimeout");
     case "relay_unreachable":
-      return "Relay Unreachable";
+      return t("hostOfflineTitleRelayUnreachable");
     case "direct_unreachable":
-      return "Host Unreachable";
+      return t("hostOfflineTitleDirectUnreachable");
     case "resume_incompatible":
-      return "Server Update Required";
+      return t("hostOfflineTitleResumeIncompatible");
     default:
-      return "Connection Failed";
+      return t("hostOfflineTitleDefault");
   }
 }
 
-function getErrorMessage(error: AutoResumeError): string {
+function getErrorMessage(error: AutoResumeError, t: Translate): string {
   const { reason, mode, relayUsername } = error;
 
   switch (reason) {
     case "server_offline":
       return relayUsername
-        ? `The host "${relayUsername}" is not connected to the relay. The server may be offline or have closed its connection.`
-        : "The host is not connected to the relay.";
+        ? t("hostOfflineMessageServerOfflineNamed", { relayUsername })
+        : t("hostOfflineMessageServerOffline");
 
     case "unknown_username":
       return relayUsername
-        ? `No host found with username "${relayUsername}" on the relay. The username may have changed or the server may not be registered.`
-        : "No host found with that username on the relay.";
+        ? t("hostOfflineMessageUnknownUsernameNamed", { relayUsername })
+        : t("hostOfflineMessageUnknownUsername");
 
     case "relay_timeout":
       return relayUsername
-        ? `Timed out waiting for host "${relayUsername}". The server may be offline or experiencing high latency.`
-        : "Timed out waiting for the host.";
+        ? t("hostOfflineMessageRelayTimeoutNamed", { relayUsername })
+        : t("hostOfflineMessageRelayTimeout");
 
     case "relay_unreachable":
-      return "Could not connect to the relay server. Check your internet connection and try again.";
+      return t("hostOfflineMessageRelayUnreachable");
 
     case "direct_unreachable":
       return mode === "direct"
-        ? "Could not connect to the server. Make sure the server is running and accessible."
-        : "Could not establish a connection to the host.";
+        ? t("hostOfflineMessageDirectUnreachableDirect")
+        : t("hostOfflineMessageDirectUnreachable");
 
     case "resume_incompatible":
-      return "The server needs to be updated for improved session resume security. Until then, you'll need to log in again after refreshing or reconnecting.";
+      return t("hostOfflineMessageResumeIncompatible");
 
     default:
-      return "An unexpected error occurred while trying to reconnect.";
+      return t("hostOfflineMessageDefault");
   }
 }
 
@@ -76,8 +79,9 @@ export function HostOfflineModal({
   onRetry,
   onGoToLogin,
 }: HostOfflineModalProps) {
-  const title = getErrorTitle(error.reason);
-  const message = getErrorMessage(error);
+  const { t } = useI18n();
+  const title = getErrorTitle(error.reason, t);
+  const message = getErrorMessage(error, t);
 
   return (
     <Modal title={title} onClose={onGoToLogin}>
@@ -86,24 +90,24 @@ export function HostOfflineModal({
 
         {error.relayUsername && (
           <p className="host-offline-detail">
-            <strong>Username:</strong> {error.relayUsername}
+            <strong>{t("relayLoginUsername")}:</strong> {error.relayUsername}
           </p>
         )}
 
         <p className="host-offline-hint">
           {error.reason === "resume_incompatible"
-            ? "Run `npm update -g yepanywhere`, restart the server, then reconnect."
+            ? t("hostOfflineHintResumeIncompatible")
             : error.mode === "relay"
-              ? "Make sure your server is running and has relay enabled."
-              : "Make sure your server is running and accessible."}
+              ? t("hostOfflineHintRelay")
+              : t("hostOfflineHintDirect")}
         </p>
 
         <div className="host-offline-actions">
           <button type="button" className="btn-secondary" onClick={onGoToLogin}>
-            Go to Login
+            {t("hostOfflineGoToLogin")}
           </button>
           <button type="button" className="btn-primary" onClick={onRetry}>
-            Retry
+            {t("hostOfflineRetry")}
           </button>
         </div>
       </div>

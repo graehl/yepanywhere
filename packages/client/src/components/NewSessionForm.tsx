@@ -31,6 +31,7 @@ import {
 } from "../hooks/useProviders";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
+import { useI18n } from "../i18n";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import type { PermissionMode } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
@@ -49,20 +50,6 @@ const MODE_ORDER: PermissionMode[] = [
   "plan",
   "bypassPermissions",
 ];
-
-const MODE_LABELS: Record<PermissionMode, string> = {
-  default: "Ask before edits",
-  acceptEdits: "Edit automatically",
-  plan: "Plan mode",
-  bypassPermissions: "Bypass permissions",
-};
-
-const MODE_DESCRIPTIONS: Record<PermissionMode, string> = {
-  default: "Ask for approval before making changes",
-  acceptEdits: "Edit files without asking",
-  plan: "Create a plan before implementing",
-  bypassPermissions: "Skip all permission checks (use with caution)",
-};
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -88,9 +75,10 @@ export function NewSessionForm({
   projectId,
   autoFocus = true,
   rows = 6,
-  placeholder = "Describe what you'd like help with...",
+  placeholder,
   compact = false,
 }: NewSessionFormProps) {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
   const [message, setMessage, draftControls] = useDraftPersistence(
@@ -129,6 +117,19 @@ export function NewSessionForm({
   const { executors: remoteExecutors, loading: executorsLoading } =
     useRemoteExecutors();
   const availableProviders = getAvailableProviders(providers);
+  const resolvedPlaceholder = placeholder ?? t("newSessionPlaceholder");
+  const modeLabels: Record<PermissionMode, string> = {
+    default: t("modeDefaultLabel"),
+    acceptEdits: t("modeAcceptEditsLabel"),
+    plan: t("modePlanLabel"),
+    bypassPermissions: t("modeBypassPermissionsLabel"),
+  };
+  const modeDescriptions: Record<PermissionMode, string> = {
+    default: t("modeDefaultDescription"),
+    acceptEdits: t("modeAcceptEditsDescription"),
+    plan: t("modePlanDescription"),
+    bypassPermissions: t("modeBypassPermissionsDescription"),
+  };
 
   // Get models and capabilities for the currently selected provider
   const selectedProviderInfo = providers.find(
@@ -337,6 +338,12 @@ export function NewSessionForm({
             uploadedFiles.push(uploadedFile);
           } catch (uploadErr) {
             console.error("Failed to upload file:", uploadErr);
+            const uploadMessage =
+              uploadErr instanceof Error ? uploadErr.message : "";
+            showToast(
+              t("newSessionUploadError", { message: uploadMessage }),
+              "error",
+            );
             // Continue with other files
           }
         }
@@ -387,20 +394,20 @@ export function NewSessionForm({
       setIsStarting(false);
 
       // Show user-visible error message
-      let errorMessage = "Failed to start session";
+      let errorMessage = t("newSessionStartError");
       if (err instanceof Error) {
         // Check for specific error types
         if (err.message.includes("Queue is full")) {
-          errorMessage = "Server is busy. Please try again in a moment.";
+          errorMessage = t("newSessionServerBusy");
         } else if (err.message.includes("503")) {
-          errorMessage = "Server is at capacity. Please try again later.";
+          errorMessage = t("newSessionServerCapacity");
         } else if (err.message.includes("404")) {
-          errorMessage = "Project not found.";
+          errorMessage = t("newSessionProjectNotFound");
         } else if (
           err.message.includes("fetch") ||
           err.message.includes("network")
         ) {
-          errorMessage = "Network error. Check your connection.";
+          errorMessage = t("newSessionNetworkError");
         } else {
           errorMessage = err.message;
         }
@@ -510,7 +517,7 @@ export function NewSessionForm({
         }}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         disabled={isStarting}
         rows={rows}
         className="new-session-form-textarea"
@@ -529,7 +536,7 @@ export function NewSessionForm({
             className="toolbar-button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isStarting}
-            aria-label="Attach files"
+            aria-label={t("newSessionAttachFiles")}
           >
             <svg
               width="18"
@@ -559,12 +566,12 @@ export function NewSessionForm({
               disabled={isStarting}
               title={
                 thinkingMode === "off"
-                  ? "Thinking: off"
+                  ? t("newSessionThinkingOff")
                   : thinkingMode === "auto"
-                    ? "Thinking: auto"
-                    : `Thinking: on (${thinkingLevel})`
+                    ? t("newSessionThinkingAuto")
+                    : t("newSessionThinkingOn", { level: thinkingLevel })
               }
-              aria-label={`Thinking mode: ${thinkingMode}`}
+              aria-label={t("newSessionThinkingMode", { mode: thinkingMode })}
             >
               <svg
                 width="18"
@@ -612,7 +619,7 @@ export function NewSessionForm({
           onClick={handleStartSession}
           disabled={isStarting || !hasContent}
           className="send-button"
-          aria-label="Start session"
+          aria-label={t("newSessionStartAction")}
         >
           {isStarting ? (
             <span className="send-spinner" />
@@ -647,7 +654,9 @@ export function NewSessionForm({
                     type="button"
                     className="pending-file-remove"
                     onClick={() => handleRemoveFile(pf.id)}
-                    aria-label={`Remove ${pf.file.name}`}
+                    aria-label={t("newSessionRemoveFile", {
+                      name: pf.file.name,
+                    })}
                   >
                     <svg
                       width="14"
@@ -688,8 +697,8 @@ export function NewSessionForm({
       className={`new-session-form new-session-container ${interimTranscript ? "voice-recording" : ""}`}
     >
       <div className="new-session-header">
-        <h1>Start a New Session</h1>
-        <p className="new-session-subtitle">What would you like to work on?</p>
+        <h1>{t("newSessionHeaderTitle")}</h1>
+        <p className="new-session-subtitle">{t("newSessionHeaderSubtitle")}</p>
       </div>
 
       <div className="new-session-input-area">{inputArea}</div>
@@ -697,7 +706,7 @@ export function NewSessionForm({
       {/* Provider Selection */}
       {!providersLoading && availableProviders.length > 1 && (
         <div className="new-session-provider-section">
-          <h3>AI Provider</h3>
+          <h3>{t("newSessionProviderTitle")}</h3>
           <div className="provider-options">
             {providers.map((p) => {
               const isAvailable = p.installed && (p.authenticated || p.enabled);
@@ -711,7 +720,12 @@ export function NewSessionForm({
                   disabled={isStarting || !isAvailable}
                   title={
                     !isAvailable
-                      ? `${p.displayName} is not available (${!p.installed ? "not installed" : "not authenticated"})`
+                      ? t("newSessionProviderUnavailable", {
+                          provider: p.displayName,
+                          reason: !p.installed
+                            ? t("newSessionProviderNotInstalled")
+                            : t("newSessionProviderNotAuthenticated"),
+                        })
                       : p.displayName
                   }
                 >
@@ -722,7 +736,9 @@ export function NewSessionForm({
                     </span>
                     {!isAvailable && (
                       <span className="provider-option-status">
-                        {!p.installed ? "Not installed" : "Not authenticated"}
+                        {!p.installed
+                          ? t("newSessionProviderStatusNotInstalled")
+                          : t("newSessionProviderStatusNotAuthenticated")}
                       </span>
                     )}
                   </div>
@@ -736,14 +752,14 @@ export function NewSessionForm({
       {/* Model Selection */}
       {selectedProvider && modelOptions.length > 0 && (
         <div className="new-session-model-section">
-          <h3>Model</h3>
+          <h3>{t("newSessionModelTitle")}</h3>
           <FilterDropdown
-            label="Model"
+            label={t("newSessionModelTitle")}
             options={modelOptions}
             selected={selectedModel ? [selectedModel] : []}
             onChange={handleModelSelect}
             multiSelect={false}
-            placeholder="Select model"
+            placeholder={t("newSessionModelPlaceholder")}
           />
         </div>
       )}
@@ -751,7 +767,7 @@ export function NewSessionForm({
       {/* Executor Selection - only show if remote executors are configured */}
       {!executorsLoading && remoteExecutors.length > 0 && (
         <div className="new-session-executor-section">
-          <h3>Run On</h3>
+          <h3>{t("newSessionRunOnTitle")}</h3>
           <div className="executor-options">
             <button
               key="local"
@@ -762,9 +778,11 @@ export function NewSessionForm({
             >
               <span className="executor-option-dot executor-local" />
               <div className="executor-option-content">
-                <span className="executor-option-label">Local</span>
+                <span className="executor-option-label">
+                  {t("newSessionRunOnLocal")}
+                </span>
                 <span className="executor-option-desc">
-                  Run on this machine
+                  {t("newSessionRunOnLocalDesc")}
                 </span>
               </div>
             </button>
@@ -779,7 +797,9 @@ export function NewSessionForm({
                 <span className="executor-option-dot executor-remote" />
                 <div className="executor-option-content">
                   <span className="executor-option-label">{host}</span>
-                  <span className="executor-option-desc">Run via SSH</span>
+                  <span className="executor-option-desc">
+                    {t("newSessionRunOnRemoteDesc")}
+                  </span>
                 </div>
               </button>
             ))}
@@ -790,7 +810,7 @@ export function NewSessionForm({
       {/* Permission Mode Selection - only for providers that support it */}
       {supportsPermissionMode && (
         <div className="new-session-mode-section">
-          <h3>Permission Mode</h3>
+          <h3>{t("newSessionModeTitle")}</h3>
           <div className="mode-options">
             {MODE_ORDER.map((m) => (
               <button
@@ -802,9 +822,9 @@ export function NewSessionForm({
               >
                 <span className={`mode-option-dot mode-${m}`} />
                 <div className="mode-option-content">
-                  <span className="mode-option-label">{MODE_LABELS[m]}</span>
+                  <span className="mode-option-label">{modeLabels[m]}</span>
                   <span className="mode-option-desc">
-                    {MODE_DESCRIPTIONS[m]}
+                    {modeDescriptions[m]}
                   </span>
                 </div>
               </button>

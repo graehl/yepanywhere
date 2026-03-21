@@ -8,6 +8,7 @@ import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
 import { useRecentProjects } from "../hooks/useRecentProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useVersion } from "../hooks/useVersion";
+import { useI18n } from "../i18n";
 import { getSessionDisplayTitle, toUrlProjectId } from "../utils";
 import { AgentsNavItem } from "./AgentsNavItem";
 import { SessionListItem } from "./SessionListItem";
@@ -61,6 +62,7 @@ export function Sidebar({
   onResize,
   onResizeEnd,
 }: SidebarProps) {
+  const { t } = useI18n();
   // Get base path for relay mode (e.g., "/remote/my-server")
   const basePath = useRemoteBasePath();
   const navigate = useNavigate();
@@ -267,7 +269,7 @@ export function Sidebar({
           onKeyDown={(e) => e.key === "Escape" && onClose()}
           role="button"
           tabIndex={0}
-          aria-label="Close sidebar"
+          aria-label={t("actionCloseSidebar")}
         />
       )}
       <aside
@@ -289,8 +291,8 @@ export function Sidebar({
               type="button"
               className="sidebar-toggle"
               onClick={onToggleExpanded}
-              title="Expand sidebar"
-              aria-label="Expand sidebar"
+              title={t("actionExpandSidebar")}
+              aria-label={t("actionExpandSidebar")}
             >
               <SidebarToggleIcon />
             </button>
@@ -309,7 +311,7 @@ export function Sidebar({
                 type="button"
                 className="sidebar-close"
                 onClick={onClose}
-                aria-label="Close sidebar"
+                aria-label={t("actionCloseSidebar")}
               >
                 <svg
                   width="20"
@@ -337,7 +339,7 @@ export function Sidebar({
                 : "/new-session"
             }
             icon={SidebarIcons.newSession}
-            label="New Session"
+            label={t("sidebarNewSession")}
             onClick={onNavigate}
             basePath={basePath}
           />
@@ -349,7 +351,7 @@ export function Sidebar({
             <SidebarNavItem
               to="/inbox"
               icon={SidebarIcons.inbox}
-              label="Inbox"
+              label={t("sidebarInbox")}
               badge={inboxCount}
               onClick={onNavigate}
               basePath={basePath}
@@ -357,14 +359,14 @@ export function Sidebar({
             <SidebarNavItem
               to="/sessions"
               icon={SidebarIcons.allSessions}
-              label="All Sessions"
+              label={t("sidebarAllSessions")}
               onClick={onNavigate}
               basePath={basePath}
             />
             <SidebarNavItem
               to="/projects"
               icon={SidebarIcons.projects}
-              label="Projects"
+              label={t("sidebarProjects")}
               onClick={onNavigate}
               basePath={basePath}
             />
@@ -372,7 +374,7 @@ export function Sidebar({
               <SidebarNavItem
                 to="/git-status"
                 icon={SidebarIcons.sourceControl}
-                label="Source Control"
+                label={t("sidebarSourceControl")}
                 onClick={onNavigate}
                 basePath={basePath}
               />
@@ -382,7 +384,7 @@ export function Sidebar({
               <SidebarNavItem
                 to="/devices"
                 icon={SidebarIcons.emulator}
-                label="Devices"
+                label={t("sidebarDevices")}
                 onClick={onNavigate}
                 basePath={basePath}
               />
@@ -391,7 +393,7 @@ export function Sidebar({
             <SidebarNavItem
               to="/settings"
               icon={SidebarIcons.settings}
-              label="Settings"
+              label={t("sidebarSettings")}
               onClick={onNavigate}
               basePath={basePath}
             />
@@ -420,7 +422,9 @@ export function Sidebar({
                     <path d="M21 13v2a4 4 0 0 1-4 4H3" />
                   </svg>
                 </span>
-                <span className="sidebar-nav-label">Switch Host</span>
+                <span className="sidebar-nav-label">
+                  {t("sidebarSwitchHost")}
+                </span>
               </button>
             )}
           </SidebarNavSection>
@@ -428,7 +432,9 @@ export function Sidebar({
           {/* Global sessions list */}
           {filteredStarredSessions.length > 0 && (
             <div className="sidebar-section">
-              <h3 className="sidebar-section-title">Starred</h3>
+              <h3 className="sidebar-section-title">
+                {t("sidebarSectionStarred")}
+              </h3>
               <ul className="sidebar-session-list">
                 {filteredStarredSessions
                   .slice(0, starredSessionsLimit)
@@ -467,12 +473,12 @@ export function Sidebar({
                     )
                   }
                 >
-                  Show{" "}
-                  {Math.min(
-                    RECENT_SESSIONS_INCREMENT,
-                    filteredStarredSessions.length - starredSessionsLimit,
-                  )}{" "}
-                  more
+                  {t("actionShowMore", {
+                    count: Math.min(
+                      RECENT_SESSIONS_INCREMENT,
+                      filteredStarredSessions.length - starredSessionsLimit,
+                    ),
+                  })}
                 </button>
               )}
             </div>
@@ -480,7 +486,9 @@ export function Sidebar({
 
           {recentDaySessions.length > 0 && (
             <div className="sidebar-section">
-              <h3 className="sidebar-section-title">Last 24 Hours</h3>
+              <h3 className="sidebar-section-title">
+                {t("sidebarSectionLast24Hours")}
+              </h3>
               <ul className="sidebar-session-list">
                 {recentDaySessions
                   .slice(0, recentSessionsLimit)
@@ -519,12 +527,12 @@ export function Sidebar({
                     )
                   }
                 >
-                  Show{" "}
-                  {Math.min(
-                    RECENT_SESSIONS_INCREMENT,
-                    recentDaySessions.length - recentSessionsLimit,
-                  )}{" "}
-                  more
+                  {t("actionShowMore", {
+                    count: Math.min(
+                      RECENT_SESSIONS_INCREMENT,
+                      recentDaySessions.length - recentSessionsLimit,
+                    ),
+                  })}
                 </button>
               )}
             </div>
@@ -532,7 +540,9 @@ export function Sidebar({
 
           {olderSessions.length > 0 && (
             <div className="sidebar-section">
-              <h3 className="sidebar-section-title">Older</h3>
+              <h3 className="sidebar-section-title">
+                {t("sidebarSectionOlder")}
+              </h3>
               <ul className="sidebar-session-list">
                 {olderSessions.slice(0, olderSessionsLimit).map((session) => (
                   <SessionListItem
@@ -569,12 +579,12 @@ export function Sidebar({
                     )
                   }
                 >
-                  Show{" "}
-                  {Math.min(
-                    RECENT_SESSIONS_INCREMENT,
-                    olderSessions.length - olderSessionsLimit,
-                  )}{" "}
-                  more
+                  {t("actionShowMore", {
+                    count: Math.min(
+                      RECENT_SESSIONS_INCREMENT,
+                      olderSessions.length - olderSessionsLimit,
+                    ),
+                  })}
                 </button>
               )}
             </div>
@@ -584,7 +594,9 @@ export function Sidebar({
             recentDaySessions.length === 0 &&
             olderSessions.length === 0 && (
               <p className="sidebar-empty">
-                {sessionsLoading ? "Loading sessions..." : "No sessions yet"}
+                {sessionsLoading
+                  ? t("sidebarLoadingSessions")
+                  : t("sidebarNoSessions")}
               </p>
             )}
         </div>
@@ -596,7 +608,7 @@ export function Sidebar({
             onMouseDown={handleResizeMouseDown}
             role="separator"
             aria-orientation="vertical"
-            aria-label="Resize sidebar"
+            aria-label={t("actionResizeSidebar")}
             tabIndex={0}
           />
         )}

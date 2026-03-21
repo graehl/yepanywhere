@@ -9,8 +9,10 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useAuth } from "../contexts/AuthContext";
+import { useI18n } from "../i18n";
 
 export function LoginPage() {
+  const { t } = useI18n();
   const {
     isSetupMode,
     login,
@@ -42,17 +44,17 @@ export function LoginPage() {
     setError(null);
 
     if (!password) {
-      setError("Password is required");
+      setError(t("loginErrorPasswordRequired"));
       return;
     }
 
     if (isSetupMode) {
       if (password.length < 8) {
-        setError("Password must be at least 8 characters");
+        setError(t("loginErrorPasswordTooShort"));
         return;
       }
       if (password !== confirmPassword) {
-        setError("Passwords do not match");
+        setError(t("loginErrorPasswordMismatch"));
         return;
       }
     }
@@ -68,8 +70,10 @@ export function LoginPage() {
       navigate(from, { replace: true });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Authentication failed";
-      setError(message.includes("401") ? "Invalid password" : message);
+        err instanceof Error ? err.message : t("loginErrorAuthFailed");
+      setError(
+        message.includes("401") ? t("loginErrorInvalidPassword") : message,
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -79,7 +83,7 @@ export function LoginPage() {
     return (
       <div className="login-page">
         <div className="login-container">
-          <div className="login-loading">Loading...</div>
+          <div className="login-loading">{t("loginLoading")}</div>
         </div>
       </div>
     );
@@ -92,33 +96,37 @@ export function LoginPage() {
           <YepAnywhereLogo />
         </div>
         <p className="login-subtitle">
-          {isSetupMode
-            ? "Create your account to get started"
-            : "Enter your password to continue"}
+          {isSetupMode ? t("loginSetupSubtitle") : t("loginSubtitle")}
         </p>
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="login-field">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">{t("loginPasswordLabel")}</label>
             <input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={isSetupMode ? "Create a password" : "Enter password"}
+              placeholder={
+                isSetupMode
+                  ? t("loginPasswordPlaceholderSetup")
+                  : t("loginPasswordPlaceholder")
+              }
               disabled={isSubmitting}
             />
           </div>
 
           {isSetupMode && (
             <div className="login-field">
-              <label htmlFor="confirmPassword">Confirm Password</label>
+              <label htmlFor="confirmPassword">
+                {t("loginConfirmPasswordLabel")}
+              </label>
               <input
                 id="confirmPassword"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm password"
+                placeholder={t("loginConfirmPasswordPlaceholder")}
                 disabled={isSubmitting}
               />
             </div>
@@ -132,25 +140,17 @@ export function LoginPage() {
             disabled={isSubmitting}
           >
             {isSubmitting
-              ? "Please wait..."
+              ? t("loginSubmitPending")
               : isSetupMode
-                ? "Create Account"
-                : "Login"}
+                ? t("loginSubmitSetup")
+                : t("loginSubmit")}
           </button>
         </form>
 
-        {isSetupMode && (
-          <p className="login-hint">
-            This password will be used to access Yep Anywhere from any device.
-          </p>
-        )}
+        {isSetupMode && <p className="login-hint">{t("loginSetupHint")}</p>}
 
         {!isSetupMode && (
-          <p className="login-recovery-hint">
-            Forgot your password? Run{" "}
-            <code>yepanywhere --setup-auth "your-new-password"</code> to reset
-            it.
-          </p>
+          <p className="login-recovery-hint">{t("loginRecoveryHint")}</p>
         )}
       </div>
     </div>

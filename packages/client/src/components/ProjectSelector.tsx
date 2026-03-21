@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useProjects } from "../hooks/useProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useI18n } from "../i18n";
 import type { Project } from "../types";
 
 const DESKTOP_BREAKPOINT = 769;
@@ -25,6 +26,7 @@ export function ProjectSelector({
   currentProjectName,
   onProjectChange,
 }: ProjectSelectorProps) {
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(
     () => window.innerWidth >= DESKTOP_BREAKPOINT,
@@ -38,7 +40,8 @@ export function ProjectSelector({
 
   // Find current project name
   const currentProject = projects.find((p) => p.id === currentProjectId);
-  const displayName = currentProject?.name ?? currentProjectName ?? "Project";
+  const displayName =
+    currentProject?.name ?? currentProjectName ?? t("projectSelectorFallback");
 
   const handleButtonClick = () => {
     buttonRef.current?.blur();
@@ -147,7 +150,9 @@ export function ProjectSelector({
           >
             <span className="project-selector-name">{project.name}</span>
             <span className="project-selector-meta">
-              {project.sessionCount} sessions
+              {t("projectSelectorSessionsCount", {
+                count: project.sessionCount,
+              })}
             </span>
           </button>
         );
@@ -168,10 +173,12 @@ export function ProjectSelector({
               ref={sheetRef}
               className="project-selector-sheet"
               tabIndex={-1}
-              aria-label="Select project"
+              aria-label={t("projectSelectorSelectProject")}
             >
               <div className="project-selector-header">
-                <span className="project-selector-title">Select Project</span>
+                <span className="project-selector-title">
+                  {t("projectSelectorSelectProject")}
+                </span>
               </div>
               {optionsContent}
             </div>
@@ -186,7 +193,7 @@ export function ProjectSelector({
         ref={sheetRef}
         className="project-selector-dropdown"
         tabIndex={-1}
-        aria-label="Select project"
+        aria-label={t("projectSelectorSelectProject")}
       >
         {optionsContent}
       </div>
@@ -199,7 +206,7 @@ export function ProjectSelector({
         type="button"
         className="project-selector-button"
         onClick={handleButtonClick}
-        title="Change project"
+        title={t("projectSelectorChangeProject")}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >

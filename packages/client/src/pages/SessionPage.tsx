@@ -34,6 +34,7 @@ import {
   type StreamingMarkdownCallbacks,
   useSession,
 } from "../hooks/useSession";
+import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { generateUUID } from "../lib/uuid";
@@ -47,7 +48,7 @@ export function SessionPage() {
 
   // Guard against missing params - this shouldn't happen with proper routing
   if (!projectId || !sessionId) {
-    return <div className="error">Invalid session URL</div>;
+    return <SessionPageInvalidRoute />;
   }
 
   // Key ensures component remounts on session change, resetting all state
@@ -63,6 +64,11 @@ export function SessionPage() {
   );
 }
 
+function SessionPageInvalidRoute() {
+  const { t } = useI18n();
+  return <div className="error">{t("sessionInvalidUrl")}</div>;
+}
+
 function SessionPageContent({
   projectId,
   sessionId,
@@ -70,6 +76,7 @@ function SessionPageContent({
   projectId: string;
   sessionId: string;
 }) {
+  const { t } = useI18n();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
   const basePath = useRemoteBasePath();
@@ -334,7 +341,7 @@ function SessionPageContent({
     // Wait for any in-flight uploads to complete before sending
     const pendingAtSendTime = [...pendingUploadsRef.current.values()];
     if (pendingAtSendTime.length > 0) {
-      updatePendingMessage(tempId, { status: "Uploading..." });
+      updatePendingMessage(tempId, { status: t("sessionUploading") });
       setAttachments([]); // Clear input area immediately
       const results = await Promise.all(pendingAtSendTime);
       for (const result of results) {
@@ -434,8 +441,8 @@ function SessionPageContent({
       draftControlsRef.current?.restoreFromStorage();
       setAttachments(currentAttachments); // Restore attachments on error
       setProcessState("idle");
-      const errorMsg = err instanceof Error ? err.message : "Unknown error";
-      showToast(`Failed to send message: ${errorMsg}`, "error");
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      showToast(t("sessionSendFailed", { message: errorMsg }), "error");
     }
   };
 
@@ -449,7 +456,7 @@ function SessionPageContent({
     // Wait for any in-flight uploads to complete before queuing
     const pendingAtSendTime = [...pendingUploadsRef.current.values()];
     if (pendingAtSendTime.length > 0) {
-      updatePendingMessage(tempId, { status: "Uploading..." });
+      updatePendingMessage(tempId, { status: t("sessionUploading") });
       setAttachments([]);
       const results = await Promise.all(pendingAtSendTime);
       for (const result of results) {
@@ -480,17 +487,17 @@ function SessionPageContent({
       removePendingMessage(tempId);
       draftControlsRef.current?.restoreFromStorage();
       setAttachments(currentAttachments);
-      const errorMsg = err instanceof Error ? err.message : "Unknown error";
-      showToast(`Failed to queue message: ${errorMsg}`, "error");
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      showToast(t("sessionQueueFailed", { message: errorMsg }), "error");
     }
   };
 
   const handleModelChanged = useCallback(
     (model: string) => {
       setSessionModel(model);
-      showToast(`Switched to ${model}`, "success");
+      showToast(t("sessionSwitchedModel", { model }), "success");
     },
-    [setSessionModel, showToast],
+    [setSessionModel, showToast, t],
   );
 
   const handleCustomCommand = useCallback((command: string) => {
@@ -525,11 +532,11 @@ function SessionPageContent({
         await api.respondToInput(sessionId, pendingInputRequest.id, "approve");
       } catch (err) {
         const status = (err as { status?: number }).status;
-        const msg = status ? `Error ${status}` : "Failed to approve";
+        const msg = status ? `Error ${status}` : t("sessionApproveFailed");
         showToast(msg, "error");
       }
     }
-  }, [sessionId, pendingInputRequest, showToast]);
+  }, [sessionId, pendingInputRequest, showToast, t]);
 
   const handleApproveAcceptEdits = useCallback(async () => {
     if (pendingInputRequest) {
@@ -544,11 +551,11 @@ function SessionPageContent({
         setPermissionMode("acceptEdits");
       } catch (err) {
         const status = (err as { status?: number }).status;
-        const msg = status ? `Error ${status}` : "Failed to approve";
+        const msg = status ? `Error ${status}` : t("sessionApproveFailed");
         showToast(msg, "error");
       }
     }
-  }, [sessionId, pendingInputRequest, setPermissionMode, showToast]);
+  }, [sessionId, pendingInputRequest, setPermissionMode, showToast, t]);
 
   const handleDeny = useCallback(async () => {
     if (pendingInputRequest) {
@@ -556,11 +563,11 @@ function SessionPageContent({
         await api.respondToInput(sessionId, pendingInputRequest.id, "deny");
       } catch (err) {
         const status = (err as { status?: number }).status;
-        const msg = status ? `Error ${status}` : "Failed to deny";
+        const msg = status ? `Error ${status}` : t("sessionDenyFailed");
         showToast(msg, "error");
       }
     }
-  }, [sessionId, pendingInputRequest, showToast]);
+  }, [sessionId, pendingInputRequest, showToast, t]);
 
   const handleDenyWithFeedback = useCallback(
     async (feedback: string) => {
@@ -575,12 +582,12 @@ function SessionPageContent({
           );
         } catch (err) {
           const status = (err as { status?: number }).status;
-          const msg = status ? `Error ${status}` : "Failed to send feedback";
+          const msg = status ? `Error ${status}` : t("sessionFeedbackFailed");
           showToast(msg, "error");
         }
       }
     },
-    [sessionId, pendingInputRequest, showToast],
+    [sessionId, pendingInputRequest, showToast, t],
   );
 
   const handleQuestionSubmit = useCallback(
@@ -595,12 +602,12 @@ function SessionPageContent({
           );
         } catch (err) {
           const status = (err as { status?: number }).status;
-          const msg = status ? `Error ${status}` : "Failed to submit answer";
+          const msg = status ? `Error ${status}` : t("sessionAnswerFailed");
           showToast(msg, "error");
         }
       }
     },
-    [sessionId, pendingInputRequest, showToast],
+    [sessionId, pendingInputRequest, showToast, t],
   );
 
   // Handle file attachment uploads
@@ -648,8 +655,14 @@ function SessionPageContent({
             (err) => {
               console.error("Upload failed:", err);
               const errorMsg =
-                err instanceof Error ? err.message : "Upload failed";
-              showToast(`Failed to upload ${file.name}: ${errorMsg}`, "error");
+                err instanceof Error ? err.message : t("sessionShareFailed");
+              showToast(
+                t("sessionUploadFailed", {
+                  file: file.name,
+                  message: errorMsg,
+                }),
+                "error",
+              );
               return null as UploadedFile | null;
             },
           )
@@ -663,7 +676,7 @@ function SessionPageContent({
         pendingUploadsRef.current.set(tempId, uploadPromise);
       }
     },
-    [projectId, sessionId, showToast, connection],
+    [projectId, sessionId, showToast, connection, t],
   );
 
   const handleRemoveAttachment = useCallback((id: string) => {
@@ -705,7 +718,7 @@ function SessionPageContent({
     localCustomTitle ??
     (sessionTitle !== "Untitled" ? sessionTitle : null) ??
     initialTitle ??
-    "Untitled";
+    t("sessionUntitled");
   const isArchived = localIsArchived ?? session?.isArchived ?? false;
   const isStarred = localIsStarred ?? session?.isStarred ?? false;
 
@@ -750,10 +763,10 @@ function SessionPageContent({
       await api.updateSessionMetadata(sessionId, { title: renameValue.trim() });
       setLocalCustomTitle(renameValue.trim());
       setIsEditingTitle(false);
-      showToast("Session renamed", "success");
+      showToast(t("sessionRenamed"), "success");
     } catch (err) {
       console.error("Failed to rename session:", err);
-      showToast("Failed to rename session", "error");
+      showToast(t("sessionRenameFailed"), "error");
     } finally {
       setIsRenaming(false);
       isSavingTitleRef.current = false;
@@ -776,12 +789,12 @@ function SessionPageContent({
       await api.updateSessionMetadata(sessionId, { archived: newArchived });
       setLocalIsArchived(newArchived);
       showToast(
-        newArchived ? "Session archived" : "Session unarchived",
+        newArchived ? t("sessionArchived") : t("sessionUnarchived"),
         "success",
       );
     } catch (err) {
       console.error("Failed to update archive status:", err);
-      showToast("Failed to update archive status", "error");
+      showToast(t("sessionArchiveFailed"), "error");
     }
   };
 
@@ -791,12 +804,12 @@ function SessionPageContent({
       await api.updateSessionMetadata(sessionId, { starred: newStarred });
       setLocalIsStarred(newStarred);
       showToast(
-        newStarred ? "Session starred" : "Session unstarred",
+        newStarred ? t("sessionStarred") : t("sessionUnstarred"),
         "success",
       );
     } catch (err) {
       console.error("Failed to update star status:", err);
-      showToast("Failed to update star status", "error");
+      showToast(t("sessionStarFailed"), "error");
     }
   };
 
@@ -812,13 +825,13 @@ function SessionPageContent({
         await api.markSessionSeen(sessionId);
       }
       showToast(
-        newHasUnread ? "Marked as unread" : "Marked as read",
+        newHasUnread ? t("sessionMarkedUnread") : t("sessionMarkedRead"),
         "success",
       );
     } catch (err) {
       console.error("Failed to update read status:", err);
       setLocalHasUnread(undefined); // Revert on error
-      showToast("Failed to update read status", "error");
+      showToast(t("sessionReadFailed"), "error");
     }
   };
 
@@ -826,11 +839,11 @@ function SessionPageContent({
     if (status.owner === "self" && status.processId) {
       try {
         await api.abortProcess(status.processId);
-        showToast("Session terminated", "success");
+        showToast(t("sessionTerminated"), "success");
       } catch (err) {
         console.error("Failed to terminate session:", err);
-        const errorMsg = err instanceof Error ? err.message : "Unknown error";
-        showToast(`Failed to terminate: ${errorMsg}`, "error");
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(t("sessionTerminateFailed", { message: errorMsg }), "error");
       }
     }
   };
@@ -843,14 +856,19 @@ function SessionPageContent({
       const html = snapshotSession(displayTitle);
       const result = await api.shareSession(html, displayTitle);
       await navigator.clipboard.writeText(result.url);
-      showToast("Link copied to clipboard", "success");
+      showToast(t("sessionLinkCopied"), "success");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Share failed";
+      const msg = err instanceof Error ? err.message : t("sessionShareFailed");
       showToast(msg, "error");
     }
-  }, [displayTitle, showToast]);
+  }, [displayTitle, showToast, t]);
 
-  if (error) return <div className="error">Error: {error.message}</div>;
+  if (error)
+    return (
+      <div className="error">
+        {t("sessionErrorPrefix")} {error.message}
+      </div>
+    );
 
   // Sidebar icon component
   const SidebarIcon = () => (
@@ -891,8 +909,16 @@ function SessionPageContent({
                   type="button"
                   className="sidebar-toggle"
                   onClick={isWideScreen ? toggleSidebar : openSidebar}
-                  title={isWideScreen ? "Toggle sidebar" : "Open sidebar"}
-                  aria-label={isWideScreen ? "Toggle sidebar" : "Open sidebar"}
+                  title={
+                    isWideScreen
+                      ? t("sessionToggleSidebar")
+                      : t("sessionOpenSidebar")
+                  }
+                  aria-label={
+                    isWideScreen
+                      ? t("sessionToggleSidebar")
+                      : t("sessionOpenSidebar")
+                  }
                 >
                   <SidebarIcon />
                 </button>
@@ -920,9 +946,9 @@ function SessionPageContent({
                     stroke="currentColor"
                     strokeWidth="2"
                     role="img"
-                    aria-label="Starred"
+                    aria-label={t("sessionStarredLabel")}
                   >
-                    <title>Starred</title>
+                    <title>{t("sessionStarredLabel")}</title>
                     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                   </svg>
                 )}
@@ -975,7 +1001,9 @@ function SessionPageContent({
                   </>
                 )}
                 {!loading && isArchived && (
-                  <span className="archived-badge">Archived</span>
+                  <span className="archived-badge">
+                    {t("sessionArchivedBadge")}
+                  </span>
                 )}
                 {!loading && (
                   <SessionMenu
@@ -1012,7 +1040,7 @@ function SessionPageContent({
                   type="button"
                   className="provider-badge-button"
                   onClick={() => setShowProcessInfoModal(true)}
-                  title="View session info"
+                  title={t("sessionViewInfo")}
                 >
                   <ProviderBadge
                     provider={effectiveProvider}
@@ -1060,20 +1088,19 @@ function SessionPageContent({
 
         {status.owner === "external" && (
           <div className="external-session-warning">
-            External session active - enter messages at your own risk!
+            {t("sessionExternalWarning")}
           </div>
         )}
 
         {hasPendingToolCalls && (
           <div className="external-session-warning pending-tool-warning">
-            This session may be waiting for input in another process (VS Code,
-            CLI). Check there before sending a message.
+            {t("sessionPendingElsewhereWarning")}
           </div>
         )}
 
         <main className="session-messages">
           {loading ? (
-            <div className="loading">Loading session...</div>
+            <div className="loading">{t("sessionLoading")}</div>
           ) : (
             <SessionMetadataProvider
               projectId={projectId}
@@ -1181,10 +1208,10 @@ function SessionPageContent({
                 }
                 placeholder={
                   status.owner === "external"
-                    ? "External session - send at your own risk..."
+                    ? t("sessionPlaceholderExternal")
                     : processState === "idle"
-                      ? "Send a message to resume..."
-                      : "Queue a message..."
+                      ? t("sessionPlaceholderResume")
+                      : t("sessionPlaceholderQueue")
                 }
                 mode={permissionMode}
                 onModeChange={setPermissionMode}

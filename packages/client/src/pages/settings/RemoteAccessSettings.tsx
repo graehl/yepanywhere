@@ -1,9 +1,11 @@
 import { useNavigate } from "react-router-dom";
 import { RemoteAccessSetup } from "../../components/RemoteAccessSetup";
 import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
+import { useI18n } from "../../i18n";
 import { getHostById } from "../../lib/hostStorage";
 
 export function RemoteAccessSettings() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const remoteConnection = useOptionalRemoteConnection();
 
@@ -22,18 +24,18 @@ export function RemoteAccessSettings() {
     const displayName =
       currentHost?.displayName ||
       remoteConnection.storedUsername ||
-      "Remote server";
+      t("remoteAccessDefaultHost");
 
     return (
       <section className="settings-section">
-        <h2>Remote Access</h2>
+        <h2>{t("remoteAccessConnectedTitle")}</h2>
         <p className="settings-section-description">
-          You are connected to a remote server via relay.
+          {t("remoteAccessConnectedDescription")}
         </p>
         <div className="settings-group">
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Current Host</strong>
+              <strong>{t("remoteAccessCurrentHostTitle")}</strong>
               <p>{displayName}</p>
             </div>
             <button
@@ -41,20 +43,20 @@ export function RemoteAccessSettings() {
               className="settings-button"
               onClick={handleSwitchHost}
             >
-              Switch Host
+              {t("sidebarSwitchHost")}
             </button>
           </div>
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Logout</strong>
-              <p>Disconnect from the remote server</p>
+              <strong>{t("remoteAccessLogoutTitle")}</strong>
+              <p>{t("remoteAccessLogoutDescription")}</p>
             </div>
             <button
               type="button"
               className="settings-button settings-button-danger"
               onClick={() => remoteConnection.disconnect()}
             >
-              Logout
+              {t("remoteAccessLogout")}
             </button>
           </div>
         </div>
@@ -66,8 +68,8 @@ export function RemoteAccessSettings() {
   return (
     <section className="settings-section">
       <RemoteAccessSetup
-        title="Remote Access"
-        description="Access your yepanywhere server from anywhere through an encrypted relay connection."
+        title={t("remoteAccessConnectedTitle")}
+        description={t("remoteAccessSetupDescription")}
       />
     </section>
   );

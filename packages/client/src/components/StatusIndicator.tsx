@@ -1,4 +1,5 @@
 import type { ProcessState } from "../hooks/useSession";
+import { useI18n } from "../i18n";
 import type { SessionStatus } from "../types";
 
 interface Props {
@@ -12,6 +13,7 @@ export function StatusIndicator({
   connected,
   processState = "idle",
 }: Props) {
+  const { t } = useI18n();
   // Hide when session has no owner (no active subprocess from UX perspective)
   if (status.owner === "none") {
     return null;
@@ -24,11 +26,13 @@ export function StatusIndicator({
 
   // Determine status text for tooltip/accessibility
   const getStatusText = () => {
-    if (!connected && status.owner === "self") return "Reconnecting...";
-    if (status.owner === "external") return "External process";
-    if (processState === "in-turn") return "Processing";
-    if (processState === "waiting-input") return "Waiting for input";
-    return "Ready";
+    if (!connected && status.owner === "self")
+      return t("statusReconnecting" as never);
+    if (status.owner === "external") return t("statusExternalProcess" as never);
+    if (processState === "in-turn") return t("statusProcessing" as never);
+    if (processState === "waiting-input")
+      return t("statusWaitingForInput" as never);
+    return t("statusReady" as never);
   };
 
   const statusText = getStatusText();

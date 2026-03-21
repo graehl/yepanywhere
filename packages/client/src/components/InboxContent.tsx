@@ -2,6 +2,7 @@ import { useState } from "react";
 import { type InboxItem, useInboxContext } from "../contexts/InboxContext";
 import { useDrafts } from "../hooks/useDrafts";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useI18n } from "../i18n";
 import type { Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { SessionListItem } from "./SessionListItem";
@@ -11,7 +12,7 @@ import { SessionListItem } from "./SessionListItem";
  */
 interface TierConfig {
   key: string;
-  title: string;
+  titleKey: string;
   colorClass: string;
   getBadge?: (item: InboxItem) => { label: string; className: string } | null;
 }
@@ -19,37 +20,43 @@ interface TierConfig {
 const TIER_CONFIGS: TierConfig[] = [
   {
     key: "needsAttention",
-    title: "Needs Attention",
+    titleKey: "inboxTierNeedsAttention",
     colorClass: "inbox-tier-attention",
     getBadge: (item) => {
       if (item.pendingInputType === "tool-approval") {
-        return { label: "Approval", className: "inbox-badge-approval" };
+        return {
+          label: "inboxBadgeApproval",
+          className: "inbox-badge-approval",
+        };
       }
       if (item.pendingInputType === "user-question") {
-        return { label: "Question", className: "inbox-badge-question" };
+        return {
+          label: "inboxBadgeQuestion",
+          className: "inbox-badge-question",
+        };
       }
       return null;
     },
   },
   {
     key: "active",
-    title: "Active",
+    titleKey: "inboxTierActive",
     colorClass: "inbox-tier-active",
     // Active items show a pulsing dot instead of a text badge
   },
   {
     key: "recentActivity",
-    title: "Recent Activity",
+    titleKey: "inboxTierRecentActivity",
     colorClass: "inbox-tier-recent",
   },
   {
     key: "unread8h",
-    title: "Unread (8h)",
+    titleKey: "inboxTierUnread8h",
     colorClass: "inbox-tier-unread8h",
   },
   {
     key: "unread24h",
-    title: "Unread (24h)",
+    titleKey: "inboxTierUnread24h",
     colorClass: "inbox-tier-unread24h",
   },
 ];
@@ -72,6 +79,7 @@ function InboxSection({
   basePath = "",
   drafts,
 }: InboxSectionProps) {
+  const { t } = useI18n();
   const isEmpty = items.length === 0;
 
   return (
@@ -79,11 +87,11 @@ function InboxSection({
       className={`inbox-section ${config.colorClass} ${isEmpty ? "inbox-section-empty" : ""}`}
     >
       <h2 className="inbox-section-header">
-        {config.title}
+        {t(config.titleKey as never)}
         <span className="inbox-section-count">{items.length}</span>
       </h2>
       {isEmpty ? (
-        <p className="inbox-section-empty-message">No sessions</p>
+        <p className="inbox-section-empty-message">{t("inboxNoSessions")}</p>
       ) : (
         <ul className="sessions-list">
           {items.map((item) => {
@@ -104,7 +112,9 @@ function InboxSection({
                 showTimestamp
                 showContextUsage={false}
                 showStatusBadge={false}
-                customBadge={badge}
+                customBadge={
+                  badge ? { ...badge, label: t(badge.label as never) } : null
+                }
                 basePath={basePath}
                 hasDraft={drafts.has(item.sessionId)}
               />
@@ -146,6 +156,7 @@ export function InboxContent({
   projects,
   onProjectChange,
 }: InboxContentProps) {
+  const { t } = useI18n();
   const basePath = useRemoteBasePath();
   const {
     needsAttention: allNeedsAttention,
@@ -197,7 +208,7 @@ export function InboxContent({
   // Build project options for FilterDropdown
   const projectOptions: FilterOption<string>[] = projects
     ? [
-        { value: "", label: "All Projects" },
+        { value: "", label: t("inboxAllProjects") },
         ...projects.map((p) => ({ value: p.id, label: p.name })),
       ]
     : [];
@@ -214,12 +225,12 @@ export function InboxContent({
         <div className="inbox-toolbar">
           {projects && projects.length > 0 && (
             <FilterDropdown
-              label="Project"
+              label={t("inboxFilterProject")}
               options={projectOptions}
               selected={[projectId ?? ""]}
               onChange={handleProjectSelect}
               multiSelect={false}
-              placeholder="All Projects"
+              placeholder={t("inboxAllProjects")}
             />
           )}
           <button
@@ -227,7 +238,7 @@ export function InboxContent({
             className="inbox-refresh-button"
             onClick={handleRefresh}
             disabled={refreshing || loading}
-            title="Refresh inbox"
+            title={t("inboxRefreshTitle")}
           >
             <svg
               className={refreshing ? "spinning" : ""}
@@ -245,13 +256,15 @@ export function InboxContent({
               <polyline points="1 20 1 14 7 14" />
               <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
             </svg>
-            {refreshing ? "Refreshing..." : "Refresh"}
+            {refreshing ? t("inboxRefreshing") : t("inboxRefresh")}
           </button>
         </div>
 
-        {loading && <p className="loading">Loading inbox...</p>}
+        {loading && <p className="loading">{t("inboxLoading")}</p>}
 
-        {error && <p className="error">Error loading inbox: {error.message}</p>}
+        {error && (
+          <p className="error">{t("inboxError", { message: error.message })}</p>
+        )}
 
         {!loading && !error && isEmpty && (
           <div className="inbox-empty">
@@ -269,11 +282,11 @@ export function InboxContent({
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
               <polyline points="22 4 12 14.01 9 11.01" />
             </svg>
-            <h3>All caught up!</h3>
+            <h3>{t("inboxEmptyTitle")}</h3>
             <p>
               {projectId
-                ? "No sessions need attention in this project."
-                : "No sessions need attention."}
+                ? t("inboxEmptyDescriptionProject")
+                : t("inboxEmptyDescription")}
             </p>
           </div>
         )}

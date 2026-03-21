@@ -1,3 +1,5 @@
+import { useI18n } from "../i18n";
+
 interface BulkActionBarProps {
   selectedCount: number;
   onArchive: () => Promise<void>;
@@ -49,6 +51,7 @@ export function BulkActionBar({
   onArchiveAllFiltered,
   archivableFilteredCount = 0,
 }: BulkActionBarProps) {
+  const { t } = useI18n();
   // Show "Archive all N" bar when filters are active but no manual selection
   if (selectedCount === 0) {
     if (!onArchiveAllFiltered || archivableFilteredCount === 0) {
@@ -63,7 +66,9 @@ export function BulkActionBar({
             className="bulk-action-button bulk-action-button--primary"
             onClick={onArchiveAllFiltered}
             disabled={isPending}
-            title={`Archive all ${archivableFilteredCount} filtered sessions`}
+            title={t("bulkArchiveAllFilteredTitle", {
+              count: archivableFilteredCount,
+            })}
           >
             <svg
               width="16"
@@ -80,7 +85,9 @@ export function BulkActionBar({
               <rect x="1" y="3" width="22" height="5" />
               <line x1="10" y1="12" x2="14" y2="12" />
             </svg>
-            <span>Archive all {archivableFilteredCount}</span>
+            <span>
+              {t("bulkArchiveAll", { count: archivableFilteredCount })}
+            </span>
           </button>
         </div>
       </div>
@@ -90,13 +97,15 @@ export function BulkActionBar({
   return (
     <div className="bulk-action-bar">
       <div className="bulk-action-bar__info">
-        <span className="bulk-action-bar__count">{selectedCount} selected</span>
+        <span className="bulk-action-bar__count">
+          {t("bulkSelectedCount", { count: selectedCount })}
+        </span>
         <button
           type="button"
           className="bulk-action-bar__clear"
           onClick={onClearSelection}
           disabled={isPending}
-          aria-label="Clear selection"
+          aria-label={t("bulkClearSelection")}
         >
           <svg
             width="16"
@@ -122,7 +131,7 @@ export function BulkActionBar({
             className="bulk-action-button"
             onClick={onArchive}
             disabled={isPending}
-            title="Archive selected"
+            title={t("bulkArchiveSelected")}
           >
             <svg
               width="16"
@@ -139,7 +148,7 @@ export function BulkActionBar({
               <rect x="1" y="3" width="22" height="5" />
               <line x1="10" y1="12" x2="14" y2="12" />
             </svg>
-            <span>Archive</span>
+            <span>{t("bulkArchive")}</span>
           </button>
         )}
 
@@ -149,7 +158,7 @@ export function BulkActionBar({
             className="bulk-action-button"
             onClick={onUnarchive}
             disabled={isPending}
-            title="Unarchive selected"
+            title={t("bulkUnarchiveSelected")}
           >
             <svg
               width="16"
@@ -167,7 +176,7 @@ export function BulkActionBar({
               <polyline points="12 11 12 17" />
               <polyline points="9 14 12 11 15 14" />
             </svg>
-            <span>Unarchive</span>
+            <span>{t("bulkUnarchive")}</span>
           </button>
         )}
 
@@ -177,7 +186,7 @@ export function BulkActionBar({
             className="bulk-action-button"
             onClick={onStar}
             disabled={isPending}
-            title="Star selected"
+            title={t("bulkStarSelected")}
           >
             <svg
               width="16"
@@ -192,7 +201,7 @@ export function BulkActionBar({
             >
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
             </svg>
-            <span>Star</span>
+            <span>{t("bulkStar")}</span>
           </button>
         )}
 
@@ -202,7 +211,7 @@ export function BulkActionBar({
             className="bulk-action-button"
             onClick={onUnstar}
             disabled={isPending}
-            title="Unstar selected"
+            title={t("bulkUnstarSelected")}
           >
             <svg
               width="16"
@@ -218,7 +227,7 @@ export function BulkActionBar({
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               <line x1="4" y1="4" x2="20" y2="20" />
             </svg>
-            <span>Unstar</span>
+            <span>{t("bulkUnstar")}</span>
           </button>
         )}
 
@@ -228,7 +237,7 @@ export function BulkActionBar({
             className="bulk-action-button"
             onClick={onMarkRead}
             disabled={isPending}
-            title="Mark as read"
+            title={t("bulkMarkReadTitle")}
           >
             <svg
               width="16"
@@ -244,7 +253,7 @@ export function BulkActionBar({
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
               <polyline points="22 4 12 14.01 9 11.01" />
             </svg>
-            <span>Mark read</span>
+            <span>{t("bulkMarkRead")}</span>
           </button>
         )}
 
@@ -254,7 +263,7 @@ export function BulkActionBar({
             className="bulk-action-button"
             onClick={onMarkUnread}
             disabled={isPending}
-            title="Mark as unread"
+            title={t("bulkMarkUnreadTitle")}
           >
             <svg
               width="16"
@@ -270,7 +279,7 @@ export function BulkActionBar({
               <circle cx="12" cy="12" r="10" />
               <circle cx="12" cy="12" r="4" fill="currentColor" />
             </svg>
-            <span>Mark unread</span>
+            <span>{t("bulkMarkUnread")}</span>
           </button>
         )}
       </div>

@@ -4,9 +4,11 @@ import { PageHeader } from "../components/PageHeader";
 import { ProjectSelector } from "../components/ProjectSelector";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useProject, useProjects } from "../hooks/useProjects";
+import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
 
 export function NewSessionPage() {
+  const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const projectId = searchParams.get("projectId");
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
@@ -25,7 +27,7 @@ export function NewSessionPage() {
   } = useProject(effectiveProjectId);
 
   // Update browser tab title (must be called unconditionally before any early returns)
-  useDocumentTitle(project?.name, "New Session");
+  useDocumentTitle(project?.name, t("newSessionTitle"));
 
   // Callback to update projectId in URL without navigation
   const handleProjectChange = (newProjectId: string) => {
@@ -36,7 +38,7 @@ export function NewSessionPage() {
 
   // Guard against missing projectId (no projects available)
   if (!effectiveProjectId && !projectsLoading && projects.length === 0) {
-    return <div className="error">No projects available</div>;
+    return <div className="error">{t("newSessionNoProjects")}</div>;
   }
 
   // Render loading/error states
@@ -55,7 +57,7 @@ export function NewSessionPage() {
           }
         >
           <PageHeader
-            title="New Session"
+            title={t("newSessionTitle")}
             onOpenSidebar={openSidebar}
             onToggleSidebar={toggleSidebar}
             isWideScreen={isWideScreen}
@@ -64,9 +66,11 @@ export function NewSessionPage() {
           <main className="page-scroll-container">
             <div className="page-content-inner">
               {loading ? (
-                <div className="loading">Loading...</div>
+                <div className="loading">{t("newSessionLoading")}</div>
               ) : (
-                <div className="error">Error: {error?.message}</div>
+                <div className="error">
+                  {t("newSessionErrorPrefix")} {error?.message}
+                </div>
               )}
             </div>
           </main>
@@ -87,7 +91,7 @@ export function NewSessionPage() {
         }
       >
         <PageHeader
-          title={project?.name ?? "New Session"}
+          title={project?.name ?? t("newSessionTitle")}
           titleElement={
             effectiveProjectId ? (
               <ProjectSelector

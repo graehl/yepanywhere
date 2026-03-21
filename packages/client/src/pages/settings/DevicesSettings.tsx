@@ -1,12 +1,16 @@
 import { useBrowserProfiles } from "../../hooks/useBrowserProfiles";
 import { useConnectedDevices } from "../../hooks/useConnectedDevices";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
+import { useI18n } from "../../i18n";
 import { parseUserAgent } from "../../lib/deviceDetection";
 
 /**
  * Format a date for display with relative time.
  */
-function formatDate(isoDate: string): string {
+function formatDate(
+  isoDate: string,
+  t: (key: never, vars?: Record<string, string | number>) => string,
+): string {
   const date = new Date(isoDate);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -15,16 +19,22 @@ function formatDate(isoDate: string): string {
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
   if (diffMinutes < 1) {
-    return "just now";
+    return t("devicesJustNow" as never);
   }
   if (diffMinutes < 60) {
-    return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+    return t("devicesMinutesAgo" as never, {
+      count: diffMinutes,
+      suffix: diffMinutes === 1 ? "" : "s",
+    });
   }
   if (diffHours < 24) {
-    return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+    return t("devicesHoursAgo" as never, {
+      count: diffHours,
+      suffix: diffHours === 1 ? "" : "s",
+    });
   }
   if (diffDays === 1) {
-    return "yesterday";
+    return t("devicesYesterday" as never);
   }
   if (diffDays < 7) {
     return `${diffDays} days ago`;
@@ -45,6 +55,7 @@ function formatOrigin(origin: string): string {
  * Shows all browser profiles with their connection origin history.
  */
 export function DevicesSettings() {
+  const { t } = useI18n();
   const { profiles, isLoading, error, deleteProfile } = useBrowserProfiles();
   const { browserProfileId: currentBrowserProfileId } = usePushNotifications();
   const { connections } = useConnectedDevices();
@@ -52,23 +63,18 @@ export function DevicesSettings() {
   return (
     <>
       <section className="settings-section">
-        <h2>Browser Profiles</h2>
+        <h2>{t("devicesProfilesTitle")}</h2>
         <p className="settings-section-description">
-          Devices that have connected to this server, with their access origins.
-          Each browser profile may connect from multiple URLs (localhost,
-          Tailscale, etc.).
+          {t("devicesProfilesDescription")}
         </p>
 
         {error && <p className="form-error">{error}</p>}
 
         <div className="settings-group">
           {isLoading ? (
-            <p className="settings-hint">Loading profiles...</p>
+            <p className="settings-hint">{t("devicesLoadingProfiles")}</p>
           ) : profiles.length === 0 ? (
-            <p className="settings-hint">
-              No browser profiles recorded yet. Connect from a browser to see
-              profiles here.
-            </p>
+            <p className="settings-hint">{t("devicesEmpty")}</p>
           ) : (
             <div className="device-list">
               {profiles.map((profile) => {
@@ -88,12 +94,16 @@ export function DevicesSettings() {
                       <strong>
                         <span
                           className={`device-status ${isConnected ? "device-status-online" : "device-status-offline"}`}
-                          title={isConnected ? "Connected" : "Disconnected"}
+                          title={
+                            isConnected
+                              ? t("devicesConnected")
+                              : t("devicesDisconnected")
+                          }
                         />
                         {displayName}
                         {isCurrentDevice && (
                           <span className="device-current-badge">
-                            This device
+                            {t("devicesThisDevice")}
                           </span>
                         )}
                       </strong>
@@ -113,7 +123,9 @@ export function DevicesSettings() {
                                 {browser} · {os}
                               </span>
                               <span className="device-origin-time">
-                                Last seen {formatDate(origin.lastSeen)}
+                                {t("devicesLastSeen", {
+                                  date: formatDate(origin.lastSeen, t),
+                                })}
                               </span>
                             </div>
                           );
@@ -121,7 +133,9 @@ export function DevicesSettings() {
                       </div>
 
                       <p className="device-profile-meta">
-                        First seen {formatDate(profile.createdAt)}
+                        {t("devicesFirstSeen", {
+                          date: formatDate(profile.createdAt, t),
+                        })}
                       </p>
                     </div>
 
@@ -129,9 +143,9 @@ export function DevicesSettings() {
                       type="button"
                       className="settings-button settings-button-danger-subtle"
                       onClick={() => deleteProfile(profile.browserProfileId)}
-                      title="Forget this device"
+                      title={t("devicesForgetThisDevice")}
                     >
-                      Forget
+                      {t("devicesForget")}
                     </button>
                   </div>
                 );

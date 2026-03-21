@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { type RelayStatus, useRemoteAccess } from "../hooks/useRemoteAccess";
+import { useI18n } from "../i18n";
 import { parseUserAgent } from "../lib/deviceDetection";
 import { QRCode } from "./QRCode";
 
@@ -25,6 +26,13 @@ export interface RemoteAccessSetupProps {
  * Format a date for display with relative time.
  */
 function formatRelativeDate(isoDate: string): string {
+  return new Date(isoDate).toLocaleDateString();
+}
+
+function formatRelativeDateWithT(
+  isoDate: string,
+  t: (key: never, vars?: Record<string, string | number>) => string,
+): string {
   const date = new Date(isoDate);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -33,21 +41,27 @@ function formatRelativeDate(isoDate: string): string {
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
   if (diffMinutes < 1) {
-    return "just now";
+    return t("remoteSetupJustNow" as never);
   }
   if (diffMinutes < 60) {
-    return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+    return t("remoteSetupMinutesAgo" as never, {
+      count: diffMinutes,
+      suffix: diffMinutes === 1 ? "" : "s",
+    });
   }
   if (diffHours < 24) {
-    return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+    return t("remoteSetupHoursAgo" as never, {
+      count: diffHours,
+      suffix: diffHours === 1 ? "" : "s",
+    });
   }
   if (diffDays === 1) {
-    return "yesterday";
+    return t("remoteSetupYesterday" as never);
   }
   if (diffDays < 7) {
-    return `${diffDays} days ago`;
+    return t("hostPickerLastConnectedDays" as never, { count: diffDays });
   }
-  return date.toLocaleDateString();
+  return formatRelativeDate(isoDate);
 }
 
 /**
@@ -57,24 +71,46 @@ function getStatusDisplay(
   status: RelayStatus | null,
   enabled: boolean,
   hasCredentials: boolean,
+  t: (key: never) => string,
 ): { text: string; className: string } {
   if (!enabled) {
-    return { text: "Disabled", className: "status-disabled" };
+    return {
+      text: t("remoteSetupStatusDisabled" as never),
+      className: "status-disabled",
+    };
   }
   if (!hasCredentials) {
-    return { text: "Not configured", className: "status-warning" };
+    return {
+      text: t("remoteSetupStatusNotConfigured" as never),
+      className: "status-warning",
+    };
   }
   switch (status) {
     case "waiting":
-      return { text: "Connected", className: "status-success" };
+      return {
+        text: t("remoteSetupStatusConnected" as never),
+        className: "status-success",
+      };
     case "connecting":
-      return { text: "Connecting...", className: "status-pending" };
+      return {
+        text: t("remoteSetupStatusConnecting" as never),
+        className: "status-pending",
+      };
     case "registering":
-      return { text: "Registering...", className: "status-pending" };
+      return {
+        text: t("remoteSetupStatusRegistering" as never),
+        className: "status-pending",
+      };
     case "rejected":
-      return { text: "Username taken", className: "status-error" };
+      return {
+        text: t("remoteSetupStatusUsernameTaken" as never),
+        className: "status-error",
+      };
     default:
-      return { text: "Disconnected", className: "status-warning" };
+      return {
+        text: t("remoteSetupStatusDisconnected" as never),
+        className: "status-warning",
+      };
   }
 }
 
@@ -85,6 +121,7 @@ export function RemoteAccessSetup({
   description = "Access your server from anywhere.",
   onSetupComplete,
 }: RemoteAccessSetupProps) {
+  const { t } = useI18n();
   const {
     config,
     relayConfig,
@@ -168,27 +205,27 @@ export function RemoteAccessSetup({
 
     // Validation
     if (!username.trim()) {
-      setError("Username is required");
+      setError(t("remoteSetupErrorUsernameRequired" as never));
       return false;
     }
     if (username.length < 3) {
-      setError("Username must be at least 3 characters");
+      setError(t("remoteSetupErrorUsernameShort" as never));
       return false;
     }
     if (!hasCredentials && !password) {
-      setError("Password is required");
+      setError(t("remoteSetupErrorPasswordRequired" as never));
       return false;
     }
     if (password && password.length < 8) {
-      setError("Password must be at least 8 characters");
+      setError(t("remoteSetupErrorPasswordShort" as never));
       return false;
     }
     if (password && password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t("remoteSetupErrorPasswordMismatch" as never));
       return false;
     }
     if (relayOption === "custom" && !customRelayUrl.trim()) {
-      setError("Custom relay URL is required");
+      setError(t("remoteSetupErrorCustomRelayRequired" as never));
       return false;
     }
 
@@ -214,7 +251,11 @@ export function RemoteAccessSetup({
       setHasChanges(false);
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("remoteSetupErrorSaveFailed" as never),
+      );
       return false;
     }
   };
@@ -247,7 +288,11 @@ export function RemoteAccessSetup({
         await disable();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update");
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("remoteSetupErrorUpdateFailed" as never),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -278,7 +323,9 @@ export function RemoteAccessSetup({
             <p>{description}</p>
           </div>
         </div>
-        <div className="remote-access-loading">Loading...</div>
+        <div className="remote-access-loading">
+          {t("remoteSetupLoading" as never)}
+        </div>
       </div>
     );
   }
@@ -287,6 +334,7 @@ export function RemoteAccessSetup({
     relayStatus?.status ?? null,
     isEnabled,
     hasCredentials,
+    t,
   );
 
   // Build connect URL with query params (for manual entry - no password)
@@ -343,17 +391,19 @@ export function RemoteAccessSetup({
 
       <form onSubmit={handleSave} className="remote-access-form">
         <div className="form-field">
-          <label htmlFor="remote-username">Username</label>
+          <label htmlFor="remote-username">
+            {t("remoteSetupUsername" as never)}
+          </label>
           <input
             id="remote-username"
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value.toLowerCase())}
-            placeholder="my-server"
+            placeholder={t("remoteSetupUsernamePlaceholder" as never)}
             minLength={3}
             maxLength={32}
             pattern="[a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9]{1,2}"
-            title="Lowercase letters, numbers, and hyphens only"
+            title={t("remoteSetupUsernameHint" as never)}
             autoComplete="username"
             disabled={isSaving}
           />
@@ -361,7 +411,9 @@ export function RemoteAccessSetup({
 
         <div className="form-field">
           <label htmlFor="remote-password">
-            {hasCredentials ? "New Password (leave blank to keep)" : "Password"}
+            {hasCredentials
+              ? t("remoteSetupNewPassword" as never)
+              : t("remoteSetupPassword" as never)}
           </label>
           <input
             id="remote-password"
@@ -377,7 +429,9 @@ export function RemoteAccessSetup({
 
         {password && (
           <div className="form-field">
-            <label htmlFor="remote-confirm">Confirm Password</label>
+            <label htmlFor="remote-confirm">
+              {t("remoteSetupConfirmPassword" as never)}
+            </label>
             <input
               id="remote-confirm"
               type="password"
@@ -391,7 +445,9 @@ export function RemoteAccessSetup({
         )}
 
         <div className="form-field">
-          <label htmlFor="relay-select">Relay Server</label>
+          <label htmlFor="relay-select">
+            {t("remoteSetupRelayServer" as never)}
+          </label>
           <select
             id="relay-select"
             value={relayOption}
@@ -399,27 +455,35 @@ export function RemoteAccessSetup({
             disabled={isSaving}
             className="form-select"
           >
-            <option value="default">Default</option>
-            <option value="custom">Custom</option>
+            <option value="default">
+              {t("remoteSetupRelayDefault" as never)}
+            </option>
+            <option value="custom">
+              {t("remoteSetupRelayCustom" as never)}
+            </option>
           </select>
         </div>
 
         {relayOption === "custom" && (
           <div className="form-field">
-            <label htmlFor="custom-relay-url">Custom Relay URL</label>
+            <label htmlFor="custom-relay-url">
+              {t("remoteSetupCustomRelayUrl" as never)}
+            </label>
             <input
               id="custom-relay-url"
               type="text"
               value={customRelayUrl}
               onChange={(e) => setCustomRelayUrl(e.target.value)}
-              placeholder="wss://your-relay.example.com/ws"
+              placeholder={t("remoteSetupCustomRelayPlaceholder" as never)}
               disabled={isSaving}
             />
           </div>
         )}
 
         <div className="remote-access-status">
-          <span className="status-label">Status:</span>
+          <span className="status-label">
+            {t("remoteSetupStatus" as never)}
+          </span>
           <span className={`status-indicator ${status.className}`}>
             {status.text}
           </span>
@@ -434,16 +498,20 @@ export function RemoteAccessSetup({
 
         {isEnabled && username && (
           <div className="remote-access-connect">
-            <span className="connect-label">Connect from:</span>
+            <span className="connect-label">
+              {t("remoteSetupConnectFrom" as never)}
+            </span>
             <div className="connect-url-row">
               <code className="connect-url">{connectUrl}</code>
               <button
                 type="button"
                 className="copy-button"
                 onClick={() => handleCopyUrl(connectUrl)}
-                title="Copy URL"
+                title={t("remoteSetupCopyUrl" as never)}
               >
-                {copied ? "Copied!" : "Copy"}
+                {copied
+                  ? t("remoteSetupCopied" as never)
+                  : t("remoteSetupCopy" as never)}
               </button>
             </div>
           </div>
@@ -456,13 +524,15 @@ export function RemoteAccessSetup({
               className="qr-toggle-button"
               onClick={() => setShowQRCode(!showQRCode)}
             >
-              {showQRCode ? "Hide QR Code" : "Show QR Code"}
+              {showQRCode
+                ? t("remoteSetupHideQr" as never)
+                : t("remoteSetupShowQr" as never)}
             </button>
             {showQRCode && qrCodeUrl && (
               <div className="qr-code-container">
                 <QRCode value={qrCodeUrl} size={200} />
                 <p className="qr-code-hint">
-                  Scan to connect and auto-login from your phone
+                  {t("remoteSetupQrHint" as never)}
                 </p>
               </div>
             )}
@@ -471,7 +541,9 @@ export function RemoteAccessSetup({
 
         <div className="remote-access-sessions">
           <div className="sessions-header">
-            <span className="sessions-title">Sessions ({sessions.length})</span>
+            <span className="sessions-title">
+              {t("remoteSetupSessions" as never, { count: sessions.length })}
+            </span>
             {sessions.length > 0 && (
               <button
                 type="button"
@@ -479,18 +551,23 @@ export function RemoteAccessSetup({
                 onClick={() => revokeAllSessions()}
                 disabled={isSaving}
               >
-                Revoke All
+                {t("remoteSetupRevokeAll" as never)}
               </button>
             )}
           </div>
           {sessions.length === 0 ? (
-            <p className="sessions-empty">No sessions</p>
+            <p className="sessions-empty">
+              {t("remoteSetupNoSessions" as never)}
+            </p>
           ) : (
             <ul className="sessions-list">
               {sessions.map((session) => {
                 const { browser, os } = session.userAgent
                   ? parseUserAgent(session.userAgent)
-                  : { browser: "Unknown", os: "Unknown" };
+                  : {
+                      browser: t("remoteSetupUnknownBrowser" as never),
+                      os: t("remoteSetupUnknownOs" as never),
+                    };
                 const hasDeviceInfo = session.userAgent || session.origin;
 
                 return (
@@ -507,18 +584,29 @@ export function RemoteAccessSetup({
                             </code>
                           )}
                           <span className="session-dates">
-                            Created {formatRelativeDate(session.createdAt)} ·
-                            Last used {formatRelativeDate(session.lastUsed)}
+                            {t("remoteSetupCreated" as never, {
+                              date: formatRelativeDateWithT(
+                                session.createdAt,
+                                t,
+                              ),
+                            })}{" "}
+                            ·{" "}
+                            {t("remoteSetupLastUsed" as never, {
+                              date: formatRelativeDateWithT(
+                                session.lastUsed,
+                                t,
+                              ),
+                            })}
                           </span>
                         </>
                       ) : (
                         <>
                           <span className="session-created">
-                            Created:{" "}
+                            {t("remoteSetupCreatedLabel" as never)}{" "}
                             {new Date(session.createdAt).toLocaleDateString()}
                           </span>
                           <span className="session-last-used">
-                            Last used:{" "}
+                            {t("remoteSetupLastUsedLabel" as never)}{" "}
                             {new Date(session.lastUsed).toLocaleDateString()}
                           </span>
                         </>
@@ -530,7 +618,7 @@ export function RemoteAccessSetup({
                       onClick={() => revokeSession(session.sessionId)}
                       disabled={isSaving}
                     >
-                      Revoke
+                      {t("remoteSetupRevoke" as never)}
                     </button>
                   </li>
                 );
@@ -545,7 +633,9 @@ export function RemoteAccessSetup({
             className="settings-button"
             disabled={isSaving || !hasChanges}
           >
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving
+              ? t("remoteSetupSaving" as never)
+              : t("remoteSetupSave" as never)}
           </button>
         </div>
       </form>

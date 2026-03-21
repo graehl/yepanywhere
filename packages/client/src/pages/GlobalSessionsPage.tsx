@@ -12,6 +12,7 @@ import { SessionListItem } from "../components/SessionListItem";
 import { useDrafts } from "../hooks/useDrafts";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
 import { getSessionDisplayTitle, toUrlProjectId } from "../utils";
 
@@ -41,6 +42,7 @@ const PROVIDER_COLORS: Record<ProviderName, string> = {
  * Includes multi-select mode with bulk actions.
  */
 export function GlobalSessionsPage() {
+  const { t } = useI18n();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
   const basePath = useRemoteBasePath();
@@ -227,26 +229,26 @@ export function GlobalSessionsPage() {
     return [
       {
         value: "all",
-        label: "All",
+        label: t("globalSessionsStatusAll"),
         count: showCounts ? stats.totalCount : undefined,
       },
       {
         value: "unread",
-        label: "Unread",
+        label: t("globalSessionsStatusUnread"),
         count: showCounts ? stats.unreadCount : undefined,
       },
       {
         value: "starred",
-        label: "Starred",
+        label: t("globalSessionsStatusStarred"),
         count: showCounts ? stats.starredCount : undefined,
       },
       {
         value: "archived",
-        label: "Archived",
+        label: t("globalSessionsStatusArchived"),
         count: showCounts ? stats.archivedCount : undefined,
       },
     ];
-  }, [stats, projectFilter]);
+  }, [stats, projectFilter, t]);
 
   // Build provider filter options with global counts from server
   // When filtering by project, we don't have global stats, so omit counts
@@ -274,11 +276,12 @@ export function GlobalSessionsPage() {
   const ageOptions = useMemo((): FilterOption<AgeFilter>[] => {
     return [
       { value: "3", label: "Older than 3 days" },
-      { value: "7", label: "Older than 7 days" },
-      { value: "14", label: "Older than 14 days" },
-      { value: "30", label: "Older than 30 days" },
+      { value: "3", label: t("globalSessionsAge3Days") },
+      { value: "7", label: t("globalSessionsAge7Days") },
+      { value: "14", label: t("globalSessionsAge14Days") },
+      { value: "30", label: t("globalSessionsAge30Days") },
     ];
-  }, []);
+  }, [t]);
 
   // Build executor filter options with global counts from server
   const executorOptions = useMemo((): FilterOption<string>[] => {
@@ -298,10 +301,10 @@ export function GlobalSessionsPage() {
 
     return entries.map(([executor, count]) => ({
       value: executor,
-      label: executor === "local" ? "Local" : executor,
+      label: executor === "local" ? t("globalSessionsExecutorLocal") : executor,
       count: showCounts ? count : undefined,
     }));
-  }, [stats.executorCounts, projectFilter]);
+  }, [stats.executorCounts, projectFilter, t]);
 
   // Selection state for multi-select mode
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -590,7 +593,7 @@ export function GlobalSessionsPage() {
         }
       >
         <PageHeader
-          title="All Sessions"
+          title={t("globalSessionsTitle")}
           onOpenSidebar={openSidebar}
           onToggleSidebar={toggleSidebar}
           isWideScreen={isWideScreen}
@@ -605,7 +608,7 @@ export function GlobalSessionsPage() {
                 <input
                   type="text"
                   className="filter-search"
-                  placeholder="Search sessions..."
+                  placeholder={t("globalSessionsSearchPlaceholder")}
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                 />
@@ -629,46 +632,46 @@ export function GlobalSessionsPage() {
               <div className="filter-dropdowns">
                 {projectOptions.length > 0 && (
                   <FilterDropdown
-                    label="Project"
+                    label={t("inboxFilterProject")}
                     options={projectOptions}
                     selected={projectFilter ? [projectFilter] : []}
                     onChange={handleProjectFilter}
                     multiSelect={false}
-                    placeholder="All projects"
+                    placeholder={t("globalSessionsFilterProjectPlaceholder")}
                   />
                 )}
                 <FilterDropdown
-                  label="Status"
+                  label={t("globalSessionsFilterStatus")}
                   options={statusOptions}
                   selected={statusFilters}
                   onChange={setStatusFilters}
-                  placeholder="All statuses"
+                  placeholder={t("globalSessionsStatusAll")}
                 />
                 {providerOptions.length > 1 && (
                   <FilterDropdown
-                    label="Provider"
+                    label={t("globalSessionsFilterProvider")}
                     options={providerOptions}
                     selected={providerFilters}
                     onChange={setProviderFilters}
-                    placeholder="All providers"
+                    placeholder={t("globalSessionsStatusAll")}
                   />
                 )}
                 {executorOptions.length > 1 && (
                   <FilterDropdown
-                    label="Run On"
+                    label={t("globalSessionsFilterExecutor")}
                     options={executorOptions}
                     selected={executorFilters}
                     onChange={setExecutorFilters}
-                    placeholder="All machines"
+                    placeholder={t("globalSessionsFilterMachinePlaceholder")}
                   />
                 )}
                 <FilterDropdown
-                  label="Age"
+                  label={t("globalSessionsFilterAge")}
                   options={ageOptions}
                   selected={ageFilter ? [ageFilter] : []}
                   onChange={setAgeFilter}
                   multiSelect={false}
-                  placeholder="Any age"
+                  placeholder={t("globalSessionsFilterAgePlaceholder")}
                 />
               </div>
               {hasFilters && (
@@ -677,17 +680,19 @@ export function GlobalSessionsPage() {
                   onClick={clearFilters}
                   className="filter-clear-button"
                 >
-                  Clear filters
+                  {t("globalSessionsClearFilters")}
                 </button>
               )}
             </div>
 
             {loading && sessions.length === 0 && (
-              <p className="loading">Loading sessions...</p>
+              <p className="loading">{t("sidebarLoadingSessions")}</p>
             )}
 
             {error && (
-              <p className="error">Error loading sessions: {error.message}</p>
+              <p className="error">
+                {t("projectsErrorPrefix")} {error.message}
+              </p>
             )}
 
             {!loading && !error && isEmpty && (
@@ -705,11 +710,11 @@ export function GlobalSessionsPage() {
                 >
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
-                <h3>No sessions found</h3>
+                <h3>{t("globalSessionsNoResultsTitle")}</h3>
                 <p>
                   {hasFilters
-                    ? "Try adjusting your search or filters."
-                    : "Start a new session to get started."}
+                    ? t("globalSessionsNoResultsFiltered")
+                    : t("globalSessionsNoResultsEmpty")}
                 </p>
               </div>
             )}
@@ -735,8 +740,10 @@ export function GlobalSessionsPage() {
                         />
                         <span>
                           {selectedIds.size > 0
-                            ? `${selectedIds.size} selected`
-                            : "Select all"}
+                            ? t("bulkSelectedCount", {
+                                count: selectedIds.size,
+                              })
+                            : t("globalSessionsSelectAll")}
                         </span>
                       </label>
                     </div>
@@ -809,7 +816,9 @@ export function GlobalSessionsPage() {
                       className="global-sessions-load-more-button"
                       disabled={loading}
                     >
-                      {loading ? "Loading..." : "Load more"}
+                      {loading
+                        ? t("gitStatusLoading")
+                        : t("globalSessionsLoadMore")}
                     </button>
                   </div>
                 )}

@@ -8,6 +8,7 @@ import { Modal } from "../components/ui/Modal";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useGitStatus } from "../hooks/useGitStatus";
 import { useProject, useProjects } from "../hooks/useProjects";
+import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
 
 interface PatchHunk {
@@ -25,6 +26,7 @@ interface GitDiffResult {
 }
 
 export function GitStatusPage() {
+  const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const projectId = searchParams.get("projectId");
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
@@ -35,14 +37,14 @@ export function GitStatusPage() {
   const { project } = useProject(effectiveProjectId);
   const { gitStatus, loading, error } = useGitStatus(effectiveProjectId);
 
-  useDocumentTitle(project?.name, "Source Control");
+  useDocumentTitle(project?.name, t("gitStatusTitle"));
 
   const handleProjectChange = (newProjectId: string) => {
     setSearchParams({ projectId: newProjectId }, { replace: true });
   };
 
   if (!effectiveProjectId && !projectsLoading && projects.length === 0) {
-    return <div className="error">No projects available</div>;
+    return <div className="error">{t("gitStatusNoProjects")}</div>;
   }
 
   const wrapperClass = isWideScreen
@@ -56,7 +58,7 @@ export function GitStatusPage() {
     <div className={wrapperClass}>
       <div className={innerClass}>
         <PageHeader
-          title={project?.name ?? "Source Control"}
+          title={project?.name ?? t("gitStatusTitle")}
           titleElement={
             effectiveProjectId ? (
               <ProjectSelector
@@ -75,15 +77,18 @@ export function GitStatusPage() {
         <main className="page-scroll-container">
           <div className="page-content-inner">
             {loading || projectsLoading ? (
-              <div className="loading">Loading...</div>
+              <div className="loading">{t("gitStatusLoading")}</div>
             ) : error ? (
-              <div className="error">Error: {error.message}</div>
+              <div className="error">
+                {t("gitStatusErrorPrefix")} {error.message}
+              </div>
             ) : gitStatus && !gitStatus.isGitRepo ? (
-              <div className="git-status-empty">Not a git repository</div>
+              <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
             ) : gitStatus && effectiveProjectId ? (
               <GitStatusContent
                 status={gitStatus}
                 projectId={effectiveProjectId}
+                t={t as never}
               />
             ) : null}
           </div>
@@ -96,9 +101,11 @@ export function GitStatusPage() {
 function GitStatusContent({
   status,
   projectId,
+  t,
 }: {
   status: import("@yep-anywhere/shared").GitStatusInfo;
   projectId: string;
+  t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   const [selectedFile, setSelectedFile] = useState<GitFileChange | null>(null);
 
@@ -130,7 +137,7 @@ function GitStatusContent({
           </svg>
         </span>
         <span className="git-branch-name">
-          {status.branch ?? "(detached HEAD)"}
+          {status.branch ?? t("gitStatusDetachedHead")}
         </span>
         {status.upstream && (
           <span className="git-upstream"> → {status.upstream}</span>
@@ -144,31 +151,31 @@ function GitStatusContent({
         <span
           className={`git-clean-badge ${status.isClean ? "git-clean" : "git-dirty"}`}
         >
-          {status.isClean ? "Clean" : "Dirty"}
+          {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
         </span>
       </div>
 
       {status.isClean ? (
-        <div className="git-status-empty">Working tree clean</div>
+        <div className="git-status-empty">{t("gitStatusWorkingTreeClean")}</div>
       ) : (
         <>
           {stagedFiles.length > 0 && (
             <GitFileSection
-              title="Staged Changes"
+              title={t("gitStatusStaged")}
               files={stagedFiles}
               onFileClick={setSelectedFile}
             />
           )}
           {unstagedFiles.length > 0 && (
             <GitFileSection
-              title="Changes"
+              title={t("gitStatusChanges")}
               files={unstagedFiles}
               onFileClick={setSelectedFile}
             />
           )}
           {untrackedFiles.length > 0 && (
             <GitFileSection
-              title="Untracked"
+              title={t("gitStatusUntracked")}
               files={untrackedFiles}
               onFileClick={setSelectedFile}
             />
@@ -180,6 +187,7 @@ function GitStatusContent({
         <GitDiffModal
           file={selectedFile}
           projectId={projectId}
+          t={t}
           onClose={() => setSelectedFile(null)}
         />
       )}
@@ -258,10 +266,12 @@ function GitFileItem({
 function GitDiffModal({
   file,
   projectId,
+  t,
   onClose,
 }: {
   file: GitFileChange;
   projectId: string;
+  t: (key: string, vars?: Record<string, string | number>) => string;
   onClose: () => void;
 }) {
   const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
@@ -287,7 +297,7 @@ function GitDiffModal({
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err.message || "Failed to load diff");
+          setError(err.message || t("gitStatusLoadDiffFailed"));
           setLoading(false);
         }
       });
@@ -295,14 +305,14 @@ function GitDiffModal({
     return () => {
       cancelled = true;
     };
-  }, [projectId, file.path, file.staged, file.status]);
+  }, [projectId, file.path, file.staged, file.status, t]);
 
   const fileName = file.path.split("/").pop() || file.path;
 
   return (
     <Modal title={fileName} onClose={onClose}>
       {loading ? (
-        <div className="git-diff-loading">Loading diff...</div>
+        <div className="git-diff-loading">{t("gitStatusLoadingDiff")}</div>
       ) : error ? (
         <div className="git-diff-error">{error}</div>
       ) : diffResult ? (
@@ -310,6 +320,7 @@ function GitDiffModal({
           file={file}
           projectId={projectId}
           diffResult={diffResult}
+          t={t}
         />
       ) : null}
     </Modal>
@@ -320,10 +331,12 @@ function GitDiffModalContent({
   file,
   projectId,
   diffResult,
+  t,
 }: {
   file: GitFileChange;
   projectId: string;
   diffResult: GitDiffResult;
+  t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   const [showFullContext, setShowFullContext] = useState(false);
   const [fullContextResult, setFullContextResult] =
@@ -352,7 +365,7 @@ function GitDiffModalContent({
         setFullContextResult(result);
       } catch (err) {
         setContextError(
-          err instanceof Error ? err.message : "Failed to load full context",
+          err instanceof Error ? err.message : t("gitStatusLoadContextFailed"),
         );
         setContextLoading(false);
         return;
@@ -367,6 +380,7 @@ function GitDiffModalContent({
     file.path,
     file.staged,
     file.status,
+    t,
   ]);
 
   // Scroll to first changed line when showing full context
@@ -400,7 +414,7 @@ function GitDiffModalContent({
               className={`diff-context-toggle ${showMarkdownPreview ? "active" : ""}`}
               onClick={() => setShowMarkdownPreview(!showMarkdownPreview)}
             >
-              {showMarkdownPreview ? "Diff" : "Preview"}
+              {showMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")}
             </button>
           )}
           {!showMarkdownPreview && (
@@ -411,10 +425,10 @@ function GitDiffModalContent({
               disabled={contextLoading}
             >
               {contextLoading
-                ? "Loading..."
+                ? t("gitStatusLoading")
                 : showFullContext
-                  ? "Diff only"
-                  : "Full context"}
+                  ? t("gitStatusDiffOnly")
+                  : t("gitStatusFullContext")}
             </button>
           )}
         </div>

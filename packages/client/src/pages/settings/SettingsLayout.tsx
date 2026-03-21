@@ -3,6 +3,12 @@ import { PageHeader } from "../../components/PageHeader";
 import { useReloadNotifications } from "../../hooks/useReloadNotifications";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useVersion } from "../../hooks/useVersion";
+import { useI18n } from "../../i18n";
+import {
+  getDevelopmentCategory,
+  getEmulatorCategory,
+  getSettingsCategories,
+} from "../../i18n-settings";
 import { useNavigationLayout } from "../../layouts";
 import { AboutSettings } from "./AboutSettings";
 import { AgentContextSettings } from "./AgentContextSettings";
@@ -16,12 +22,7 @@ import { NotificationsSettings } from "./NotificationsSettings";
 import { ProvidersSettings } from "./ProvidersSettings";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { RemoteExecutorsSettings } from "./RemoteExecutorsSettings";
-import {
-  DEV_CATEGORY,
-  EMULATOR_CATEGORY,
-  SETTINGS_CATEGORIES,
-  type SettingsCategory,
-} from "./types";
+import type { SettingsCategory } from "./types";
 
 // Map category IDs to their components
 const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
@@ -69,6 +70,7 @@ function SettingsCategoryItem({
 }
 
 export function SettingsLayout() {
+  const { t } = useI18n();
   const { category } = useParams<{ category?: string }>();
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
@@ -79,7 +81,9 @@ export function SettingsLayout() {
   const capabilities = versionInfo?.capabilities ?? [];
 
   // Build the list of categories, conditionally including emulator and dev
-  const categories: SettingsCategory[] = [...SETTINGS_CATEGORIES];
+  const categories: SettingsCategory[] = [
+    ...getSettingsCategories((key) => t(key as never)),
+  ];
   if (
     capabilities.includes("deviceBridge") ||
     capabilities.includes("deviceBridge-download") ||
@@ -90,11 +94,11 @@ export function SettingsLayout() {
     categories.splice(
       aboutIndex >= 0 ? aboutIndex : categories.length,
       0,
-      EMULATOR_CATEGORY,
+      getEmulatorCategory((key) => t(key as never)),
     );
   }
   if (isManualReloadMode) {
-    categories.push(DEV_CATEGORY);
+    categories.push(getDevelopmentCategory((key) => t(key as never)));
   }
 
   // On wide screen, default to first category if none selected
@@ -122,7 +126,7 @@ export function SettingsLayout() {
         <div className="main-content-mobile">
           <div className="main-content-mobile-inner">
             <PageHeader
-              title="Settings"
+              title={t("pageTitleSettings")}
               onOpenSidebar={openSidebar}
               onToggleSidebar={toggleSidebar}
               isWideScreen={isWideScreen}
@@ -153,7 +157,7 @@ export function SettingsLayout() {
       <div className="main-content-mobile">
         <div className="main-content-mobile-inner">
           <PageHeader
-            title={currentCategory?.label || "Settings"}
+            title={currentCategory?.label || t("pageTitleSettings")}
             onOpenSidebar={openSidebar}
             showBack
             onBack={handleBack}
@@ -173,7 +177,7 @@ export function SettingsLayout() {
     <div className="main-content-wrapper">
       <div className="main-content-constrained">
         <PageHeader
-          title="Settings"
+          title={t("pageTitleSettings")}
           onOpenSidebar={openSidebar}
           onToggleSidebar={toggleSidebar}
           isWideScreen={isWideScreen}

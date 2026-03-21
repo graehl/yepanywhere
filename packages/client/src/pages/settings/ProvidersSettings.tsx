@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useProviders } from "../../hooks/useProviders";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useI18n } from "../../i18n";
 import { getAllProviders } from "../../providers/registry";
 
 const DEFAULT_OLLAMA_SYSTEM_PROMPT =
   "You are a helpful coding assistant. You help users with software engineering tasks. You have access to tools for reading files, editing files, running shell commands, and searching code. Use tools when needed to answer questions or make changes. Be concise and direct.";
 
 function OllamaUrlInput() {
+  const { t } = useI18n();
   const { settings, updateSetting } = useServerSettings();
   const [url, setUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -54,17 +56,16 @@ function OllamaUrlInput() {
           disabled={!hasChanges || isSaving}
           onClick={handleSave}
         >
-          {isSaving ? "Saving..." : "Save"}
+          {isSaving ? t("providersSaving") : t("providersSave")}
         </button>
       </div>
-      <span className="settings-hint">
-        Ollama server URL. Default: http://localhost:11434
-      </span>
+      <span className="settings-hint">{t("providersOllamaUrlHint")}</span>
     </div>
   );
 }
 
 function OllamaUseFullSystemPrompt() {
+  const { t } = useI18n();
   const { settings, updateSetting } = useServerSettings();
   const enabled = settings?.ollamaUseFullSystemPrompt ?? false;
 
@@ -85,15 +86,16 @@ function OllamaUseFullSystemPrompt() {
           updateSetting("ollamaUseFullSystemPrompt", e.target.checked)
         }
       />
-      <span>Use full Claude system prompt</span>
+      <span>{t("providersUseFullPrompt")}</span>
       <span className="settings-hint" style={{ marginLeft: "auto" }}>
-        For large-context models (Qwen3, etc.)
+        {t("providersUseFullPromptHint")}
       </span>
     </label>
   );
 }
 
 function OllamaSystemPromptInput() {
+  const { t } = useI18n();
   const { settings, updateSetting } = useServerSettings();
   const [prompt, setPrompt] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -139,16 +141,14 @@ function OllamaSystemPromptInput() {
           marginTop: "var(--space-2)",
         }}
       >
-        <span className="settings-hint">
-          System prompt for Ollama models. Leave empty for default.
-        </span>
+        <span className="settings-hint">{t("providersOllamaPromptHint")}</span>
         <button
           type="button"
           className="settings-button"
           disabled={!hasChanges || isSaving}
           onClick={handleSave}
         >
-          {isSaving ? "Saving..." : "Save"}
+          {isSaving ? t("providersSaving") : t("providersSave")}
         </button>
       </div>
     </div>
@@ -169,6 +169,7 @@ function OllamaSettings() {
 }
 
 export function ProvidersSettings() {
+  const { t } = useI18n();
   const { providers: serverProviders, loading: providersLoading } =
     useProviders();
 
@@ -187,9 +188,9 @@ export function ProvidersSettings() {
 
   return (
     <section className="settings-section">
-      <h2>Providers</h2>
+      <h2>{t("providersSectionTitle")}</h2>
       <p className="settings-section-description">
-        AI providers are auto-detected when their CLI is installed.
+        {t("providersSectionDescription")}
       </p>
       <div className="settings-group">
         {providerDisplayList.map((provider) => (
@@ -199,11 +200,11 @@ export function ProvidersSettings() {
                 <strong>{provider.displayName}</strong>
                 {provider.installed ? (
                   <span className="settings-status-badge settings-status-detected">
-                    Detected
+                    {t("providersDetected")}
                   </span>
                 ) : (
                   <span className="settings-status-badge settings-status-not-detected">
-                    Not Detected
+                    {t("providersNotDetected")}
                   </span>
                 )}
               </div>
@@ -224,7 +225,7 @@ export function ProvidersSettings() {
                 rel="noopener noreferrer"
                 className="settings-link"
               >
-                Website
+                {t("providersWebsite")}
               </a>
             )}
           </div>

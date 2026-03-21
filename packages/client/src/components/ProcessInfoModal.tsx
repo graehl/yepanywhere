@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useActivityBusState } from "../hooks/useActivityBusState";
 import type { ProcessState } from "../hooks/useSession";
+import { useI18n } from "../i18n";
 import type { SessionStatus } from "../types";
 import { Modal } from "./ui/Modal";
 
@@ -54,9 +55,19 @@ interface ProcessInfoModalProps {
 function formatThinkingConfig(
   thinking?: { type: string },
   effort?: string,
+  t?: (key: string) => string,
 ): string {
-  if (!thinking || thinking.type === "disabled") return "Disabled";
-  const mode = thinking.type === "adaptive" ? "Adaptive" : "Enabled";
+  if (!thinking || thinking.type === "disabled") {
+    return t ? t("processInfoThinkingDisabled") : "Disabled";
+  }
+  const mode =
+    thinking.type === "adaptive"
+      ? t
+        ? t("processInfoThinkingAdaptive")
+        : "Adaptive"
+      : t
+        ? t("processInfoThinkingEnabled")
+        : "Enabled";
   return effort ? `${mode} (${effort})` : mode;
 }
 
@@ -81,31 +92,47 @@ function formatTime(isoString: string): string {
   return date.toLocaleString();
 }
 
-function formatTimeAgo(timestamp: number | null): string {
-  if (!timestamp) return "Never";
+function formatTimeAgo(
+  timestamp: number | null,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
+  if (!timestamp) return t("processInfoNever");
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 5) return "Just now";
-  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 5) return t("processInfoJustNow");
+  if (seconds < 60) return t("processInfoSecondsAgo", { seconds });
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return t("processInfoMinutesAgo", { minutes });
   const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m ago`;
+  return t("processInfoHoursAgo", { hours, minutes: minutes % 60 });
 }
 
-function formatSandboxPolicy(policy?: SessionSandboxPolicy): string | null {
+function formatSandboxPolicy(
+  policy: SessionSandboxPolicy | undefined,
+  t: (key: string) => string,
+): string | null {
   if (!policy) return null;
 
   const details: string[] = [];
   if (policy.networkAccess !== undefined) {
-    details.push(`network ${policy.networkAccess ? "on" : "off"}`);
+    details.push(
+      policy.networkAccess
+        ? t("processInfoNetworkOn")
+        : t("processInfoNetworkOff"),
+    );
   }
   if (policy.excludeTmpdirEnvVar !== undefined) {
     details.push(
-      `$TMPDIR ${policy.excludeTmpdirEnvVar ? "excluded" : "included"}`,
+      policy.excludeTmpdirEnvVar
+        ? t("processInfoTmpdirExcluded")
+        : t("processInfoTmpdirIncluded"),
     );
   }
   if (policy.excludeSlashTmp !== undefined) {
-    details.push(`/tmp ${policy.excludeSlashTmp ? "excluded" : "included"}`);
+    details.push(
+      policy.excludeSlashTmp
+        ? t("processInfoTmpExcluded")
+        : t("processInfoTmpIncluded"),
+    );
   }
 
   if (details.length === 0) return policy.type;
@@ -164,6 +191,9 @@ export function ProcessInfoModal({
   lastSessionEventAt,
   onClose,
 }: ProcessInfoModalProps) {
+  const { t } = useI18n();
+  const tr = (key: string, vars?: Record<string, string | number>): string =>
+    t(key as never, vars);
   const [processInfo, setProcessInfo] = useState<ProcessInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -182,12 +212,12 @@ export function ProcessInfoModal({
         setProcessInfo(res.process);
       })
       .catch((err) => {
-        setError(err.message || "Failed to fetch process info");
+        setError(err.message || t("processInfoError"));
       })
       .finally(() => {
         setLoading(false);
       });
-  }, [sessionId, status.owner]);
+  }, [sessionId, status.owner, t]);
 
   // Format kebab-case to Title Case (e.g., "in-turn" -> "In Turn")
   const formatKebab = (s: string) =>
@@ -214,85 +244,128 @@ export function ProcessInfoModal({
   };
 
   return (
-    <Modal title="Session Info" onClose={onClose}>
+    <Modal title={t("processInfoTitle")} onClose={onClose}>
       <div className="process-info-content">
         {/* Session Info - always available */}
-        <Section title="Session">
-          <InfoRow label="Session ID" value={sessionId} mono />
-          {createdAt && (
-            <InfoRow label="Created" value={formatTime(createdAt)} />
-          )}
-          <InfoRow label="Provider" value={getProviderDisplay(provider)} />
-          <InfoRow label="Model" value={model || "Default"} mono />
-          <InfoRow label="Ownership" value={formatKebab(status.owner)} />
-          <InfoRow label="Activity" value={formatKebab(processState)} />
-          <InfoRow label="Originator" value={originator} />
-          <InfoRow label="CLI version" value={cliVersion} mono />
-          <InfoRow label="Session source" value={sessionSource} />
-          <InfoRow label="Approval policy" value={approvalPolicy} mono />
+        <Section title={t("processInfoSectionSession")}>
           <InfoRow
-            label="Sandbox policy"
-            value={formatSandboxPolicy(sandboxPolicy)}
+            label={t("processInfoLabelSessionId")}
+            value={sessionId}
+            mono
+          />
+          {createdAt && (
+            <InfoRow
+              label={t("processInfoLabelCreated")}
+              value={formatTime(createdAt)}
+            />
+          )}
+          <InfoRow
+            label={t("processInfoLabelProvider")}
+            value={getProviderDisplay(provider)}
+          />
+          <InfoRow
+            label={t("processInfoLabelModel")}
+            value={model || t("processInfoDefaultModel")}
+            mono
+          />
+          <InfoRow
+            label={t("processInfoLabelOwnership")}
+            value={formatKebab(status.owner)}
+          />
+          <InfoRow
+            label={t("processInfoLabelActivity")}
+            value={formatKebab(processState)}
+          />
+          <InfoRow label={t("processInfoLabelOriginator")} value={originator} />
+          <InfoRow
+            label={t("processInfoLabelCliVersion")}
+            value={cliVersion}
+            mono
+          />
+          <InfoRow
+            label={t("processInfoLabelSessionSource")}
+            value={sessionSource}
+          />
+          <InfoRow
+            label={t("processInfoLabelApprovalPolicy")}
+            value={approvalPolicy}
+            mono
+          />
+          <InfoRow
+            label={t("processInfoLabelSandboxPolicy")}
+            value={formatSandboxPolicy(sandboxPolicy, tr)}
             mono
           />
         </Section>
 
         {/* Connection Info */}
-        <Section title="Connection">
+        <Section title={t("processInfoSectionConnection")}>
           <InfoRow
-            label="Activity stream"
-            value={streamConnected ? "Connected" : "Disconnected"}
+            label={t("processInfoLabelActivityStream")}
+            value={
+              streamConnected
+                ? t("processInfoConnected")
+                : t("processInfoDisconnected")
+            }
           />
-          <InfoRow label="Connection state" value={connectionState} />
+          <InfoRow
+            label={t("processInfoLabelConnectionState")}
+            value={connectionState}
+          />
           <InfoRow
             label={
-              status.owner === "external" ? "Session watch" : "Session stream"
+              status.owner === "external"
+                ? t("processInfoLabelSessionWatch")
+                : t("processInfoLabelSessionStream")
             }
             value={
               status.owner === "none"
-                ? "Not subscribed"
+                ? t("processInfoNotSubscribed")
                 : sessionStreamConnected
-                  ? "Connected"
-                  : "Disconnected"
+                  ? t("processInfoConnected")
+                  : t("processInfoDisconnected")
             }
           />
           {status.owner === "self" && lastSessionEventAt && (
             <InfoRow
-              label="Last session event"
-              value={formatTimeAgo(new Date(lastSessionEventAt).getTime())}
+              label={t("processInfoLabelLastSessionEvent")}
+              value={formatTimeAgo(new Date(lastSessionEventAt).getTime(), tr)}
             />
           )}
           {status.owner === "external" && (
-            <InfoRow label="Subscription mode" value="Focused file watch" />
+            <InfoRow
+              label={t("processInfoLabelSubscriptionMode")}
+              value={t("processInfoFocusedWatch")}
+            />
           )}
         </Section>
 
         {/* Context Usage - if available */}
         {contextUsage && (
-          <Section title="Token Usage">
+          <Section title={t("processInfoSectionTokenUsage")}>
             <InfoRow
-              label="Input tokens"
+              label={t("processInfoLabelInputTokens")}
               value={contextUsage.inputTokens.toLocaleString()}
             />
             {contextUsage.outputTokens !== undefined && (
               <InfoRow
-                label="Output tokens"
+                label={t("processInfoLabelOutputTokens")}
                 value={contextUsage.outputTokens.toLocaleString()}
               />
             )}
             <InfoRow
-              label="Context used"
+              label={t("processInfoLabelContextUsed")}
               value={`${contextUsage.percentage.toFixed(1)}%`}
             />
             {contextUsage.cacheReadTokens !== undefined && (
               <InfoRow
-                label="Cache read"
+                label={t("processInfoLabelCacheRead")}
                 value={contextUsage.cacheReadTokens.toLocaleString()}
               />
             )}
             {contextUsage.cacheCreationTokens !== undefined && (
               <InfoRow
-                label="Cache created"
+                label={t("processInfoLabelCacheCreated")}
                 value={contextUsage.cacheCreationTokens.toLocaleString()}
               />
             )}
@@ -300,65 +373,90 @@ export function ProcessInfoModal({
         )}
 
         {/* Process Info - always show, with state-dependent content */}
-        <Section title="Process">
+        <Section title={t("processInfoSectionProcess")}>
           {status.owner === "self" ? (
             <>
               {loading && (
-                <div className="process-info-loading">Loading...</div>
+                <div className="process-info-loading">
+                  {t("newSessionLoading")}
+                </div>
               )}
               {error && <div className="process-info-error">{error}</div>}
               {processInfo && (
                 <>
-                  <InfoRow label="Process ID" value={processInfo.id} mono />
                   <InfoRow
-                    label="Started"
+                    label={t("processInfoLabelProcessId")}
+                    value={processInfo.id}
+                    mono
+                  />
+                  <InfoRow
+                    label={t("processInfoLabelStarted")}
                     value={formatTime(processInfo.startedAt)}
                   />
                   <InfoRow
-                    label="Uptime"
+                    label={t("processInfoLabelUptime")}
                     value={formatDuration(processInfo.startedAt)}
                   />
-                  <InfoRow label="Queue depth" value={processInfo.queueDepth} />
                   <InfoRow
-                    label="Extended thinking"
+                    label={t("processInfoLabelQueueDepth")}
+                    value={processInfo.queueDepth}
+                  />
+                  <InfoRow
+                    label={t("processInfoLabelExtendedThinking")}
                     value={formatThinkingConfig(
                       processInfo.thinking,
                       processInfo.effort,
+                      tr,
                     )}
                   />
                   {processInfo.idleSince && (
                     <InfoRow
-                      label="Idle since"
+                      label={t("processInfoLabelIdleSince")}
                       value={formatTime(processInfo.idleSince)}
                     />
                   )}
                   {processInfo.holdSince && (
                     <InfoRow
-                      label="Hold since"
+                      label={t("processInfoLabelHoldSince")}
                       value={formatTime(processInfo.holdSince)}
                     />
                   )}
                 </>
               )}
               {!loading && !processInfo && !error && (
-                <div className="process-info-loading">No process data</div>
+                <div className="process-info-loading">
+                  {t("processInfoNoProcessData")}
+                </div>
               )}
             </>
           ) : status.owner === "external" ? (
             <div className="process-info-muted">
-              Session controlled by external process (VS Code, CLI)
+              {t("processInfoExternalProcess")}
             </div>
           ) : (
-            <div className="process-info-muted">No active process</div>
+            <div className="process-info-muted">
+              {t("processInfoNoActiveProcess")}
+            </div>
           )}
         </Section>
 
         {/* Project Info - from process if available */}
         {processInfo && (
-          <Section title="Project">
-            <InfoRow label="Name" value={processInfo.projectName} />
-            <InfoRow label="Path" value={processInfo.projectPath} mono />
-            <InfoRow label="Remote host" value={processInfo.executor} mono />
+          <Section title={t("processInfoSectionProject")}>
+            <InfoRow
+              label={t("processInfoLabelProjectName")}
+              value={processInfo.projectName}
+            />
+            <InfoRow
+              label={t("processInfoLabelProjectPath")}
+              value={processInfo.projectPath}
+              mono
+            />
+            <InfoRow
+              label={t("processInfoLabelRemoteHost")}
+              value={processInfo.executor}
+              mono
+            />
           </Section>
         )}
       </div>

@@ -8,6 +8,7 @@ import {
   type SubscribedDevice,
   useSubscribedDevices,
 } from "../../hooks/useSubscribedDevices";
+import { useI18n } from "../../i18n";
 
 /**
  * Unified device that merges subscribed device info with connection status.
@@ -62,20 +63,23 @@ function formatDeviceName(
 /**
  * Format a date string to a relative or absolute format.
  */
-function formatDate(dateString: string): string {
+function formatDate(
+  dateString: string,
+  t: (key: never, vars?: Record<string, string | number>) => string,
+): string {
   const date = new Date(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
   if (diffDays === 0) {
-    return "today";
+    return new Date().toLocaleDateString();
   }
   if (diffDays === 1) {
-    return "yesterday";
+    return new Date(Date.now() - 86400000).toLocaleDateString();
   }
   if (diffDays < 7) {
-    return `${diffDays} days ago`;
+    return t("hostPickerLastConnectedDays" as never, { count: diffDays });
   }
   return date.toLocaleDateString();
 }
@@ -160,6 +164,7 @@ function mergeDevices(
 }
 
 export function NotificationsSettings() {
+  const { t } = useI18n();
   const { browserProfileId } = usePushNotifications();
   const { isMobile } = useBrowserNotifications();
   const {
@@ -188,19 +193,15 @@ export function NotificationsSettings() {
     <>
       {/* Server-side settings - what types of notifications are sent */}
       <section className="settings-section">
-        <h2>Server Notification Types</h2>
+        <h2>{t("notificationsServerTitle")}</h2>
         <p className="settings-section-description">
-          Control what types of events trigger push notifications to all
-          devices.
+          {t("notificationsServerDescription")}
         </p>
         <div className="settings-group">
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Tool Approvals</strong>
-              <p>
-                Notify when Claude needs permission to run a tool (file edits,
-                commands, etc.)
-              </p>
+              <strong>{t("notificationsToolApprovalsTitle")}</strong>
+              <p>{t("notificationsToolApprovalsDescription")}</p>
             </div>
             <label className="toggle-switch">
               <input
@@ -217,8 +218,8 @@ export function NotificationsSettings() {
 
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>User Questions</strong>
-              <p>Notify when Claude asks a question and needs your response.</p>
+              <strong>{t("notificationsQuestionsTitle")}</strong>
+              <p>{t("notificationsQuestionsDescription")}</p>
             </div>
             <label className="toggle-switch">
               <input
@@ -235,10 +236,8 @@ export function NotificationsSettings() {
 
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Session Halted</strong>
-              <p>
-                Notify when a session completes, errors out, or becomes idle.
-              </p>
+              <strong>{t("notificationsSessionHaltedTitle")}</strong>
+              <p>{t("notificationsSessionHaltedDescription")}</p>
             </div>
             <label className="toggle-switch">
               <input
@@ -255,8 +254,7 @@ export function NotificationsSettings() {
 
           {!hasSubscriptions && !devicesLoading && (
             <p className="settings-hint">
-              No devices subscribed. Enable push notifications below to use
-              these settings.
+              {t("notificationsNoSubscribedDevices")}
             </p>
           )}
         </div>
@@ -265,10 +263,9 @@ export function NotificationsSettings() {
       {/* Desktop notifications - browser Notification API (not available on mobile) */}
       {!isMobile && (
         <section className="settings-section">
-          <h2>Desktop Notifications</h2>
+          <h2>{t("notificationsDesktopTitle")}</h2>
           <p className="settings-section-description">
-            Get browser notifications when sessions need attention. Works while
-            the tab is open.
+            {t("notificationsDesktopDescription")}
           </p>
           <div className="settings-group">
             <BrowserNotificationToggle />
@@ -278,10 +275,9 @@ export function NotificationsSettings() {
 
       {/* Push notifications - service worker based */}
       <section className="settings-section">
-        <h2>Push Notifications</h2>
+        <h2>{t("notificationsPushTitle")}</h2>
         <p className="settings-section-description">
-          Receive push notifications even when the browser is closed or you're
-          on another device.
+          {t("notificationsPushDescription")}
         </p>
         <div className="settings-group">
           <PushNotificationToggle />
@@ -290,18 +286,15 @@ export function NotificationsSettings() {
 
       {/* Unified devices list */}
       <section className="settings-section">
-        <h2>Devices</h2>
+        <h2>{t("notificationsDevicesTitle")}</h2>
         <p className="settings-section-description">
-          All devices connected to or subscribed to this server.
+          {t("notificationsDevicesDescription")}
         </p>
         <div className="settings-group">
           {isLoading ? (
-            <p className="settings-hint">Loading devices...</p>
+            <p className="settings-hint">{t("notificationsLoadingDevices")}</p>
           ) : unifiedDevices.length === 0 ? (
-            <p className="settings-hint">
-              No devices connected or subscribed. Enable push notifications
-              above.
-            </p>
+            <p className="settings-hint">{t("notificationsNoDevices")}</p>
           ) : (
             <div className="device-list">
               {unifiedDevices.map((device) => (
@@ -312,7 +305,7 @@ export function NotificationsSettings() {
                       {device.browserType && ` ${device.browserType}`}
                       {device.isCurrentDevice && (
                         <span className="device-current-badge">
-                          This device
+                          {t("notificationsThisDevice")}
                         </span>
                       )}
                     </strong>
@@ -321,22 +314,28 @@ export function NotificationsSettings() {
                       {device.isConnected ? (
                         <span className="device-status device-status-online">
                           {device.tabCount === 1
-                            ? "1 tab"
-                            : `${device.tabCount} tabs`}
+                            ? t("notificationsOneTab")
+                            : t("notificationsTabs", {
+                                count: device.tabCount,
+                              })}
                         </span>
                       ) : (
                         <span className="device-status device-status-offline">
-                          Offline
+                          {t("notificationsOffline")}
                         </span>
                       )}
                       {/* No push indicator for connected-only devices */}
                       {!device.isSubscribed && (
-                        <span className="device-no-push">No push</span>
+                        <span className="device-no-push">
+                          {t("notificationsNoPush")}
+                        </span>
                       )}
                       {/* Subscription date for subscribed devices */}
                       {device.subscribedAt && (
                         <span className="device-subscribed-date">
-                          Subscribed {formatDate(device.subscribedAt)}
+                          {t("notificationsSubscribed", {
+                            date: formatDate(device.subscribedAt, t),
+                          })}
                         </span>
                       )}
                     </p>
@@ -349,11 +348,11 @@ export function NotificationsSettings() {
                       onClick={() => removeDevice(device.browserProfileId)}
                       title={
                         device.isCurrentDevice
-                          ? "Unsubscribe this device"
-                          : "Remove this device"
+                          ? t("notificationsRemoveThisDevice")
+                          : t("notificationsRemoveDevice")
                       }
                     >
-                      Remove
+                      {t("notificationsRemove")}
                     </button>
                   )}
                 </div>

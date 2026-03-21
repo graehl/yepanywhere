@@ -6,9 +6,11 @@ import { ProjectCard } from "../components/ProjectCard";
 import { useInboxContext } from "../contexts/InboxContext";
 import { useProjects } from "../hooks/useProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
 
 export function ProjectsPage() {
+  const { t } = useI18n();
   const { projects, loading, error, refetch } = useProjects();
   const { needsAttention, active } = useInboxContext();
   const [showAddForm, setShowAddForm] = useState(false);
@@ -73,14 +75,20 @@ export function ProjectsPage() {
       // Navigate to sessions filtered by the new project
       navigate(`${basePath}/sessions?project=${project.id}`);
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : "Failed to add project");
+      setAddError(err instanceof Error ? err.message : t("projectsAddFailed"));
     } finally {
       setAdding(false);
     }
   };
 
-  if (loading) return <div className="loading">Loading projects...</div>;
-  if (error) return <div className="error">Error: {error.message}</div>;
+  if (loading) return <div className="loading">{t("projectsLoading")}</div>;
+  if (error) {
+    return (
+      <div className="error">
+        {t("projectsErrorPrefix")} {error.message}
+      </div>
+    );
+  }
 
   const isEmpty = projects.length === 0;
 
@@ -96,7 +104,7 @@ export function ProjectsPage() {
         }
       >
         <PageHeader
-          title="Projects"
+          title={t("pageTitleProjects")}
           onOpenSidebar={openSidebar}
           onToggleSidebar={toggleSidebar}
           isWideScreen={isWideScreen}
@@ -127,7 +135,7 @@ export function ProjectsPage() {
                     <line x1="12" y1="5" x2="12" y2="19" />
                     <line x1="5" y1="12" x2="19" y2="12" />
                   </svg>
-                  Add Project
+                  {t("projectsAdd")}
                 </button>
               ) : (
                 <form onSubmit={handleAddProject} className="add-project-form">
@@ -135,7 +143,7 @@ export function ProjectsPage() {
                     type="text"
                     value={newProjectPath}
                     onChange={(e) => setNewProjectPath(e.target.value)}
-                    placeholder="Enter project path (e.g., ~/code/my-project)"
+                    placeholder={t("projectsAddPlaceholder")}
                     disabled={adding}
                   />
                   <div className="add-project-actions">
@@ -143,7 +151,7 @@ export function ProjectsPage() {
                       type="submit"
                       disabled={adding || !newProjectPath.trim()}
                     >
-                      {adding ? "Adding..." : "Add"}
+                      {adding ? t("projectsAdding") : t("projectsAddConfirm")}
                     </button>
                     <button
                       type="button"
@@ -154,7 +162,7 @@ export function ProjectsPage() {
                       }}
                       disabled={adding}
                     >
-                      Cancel
+                      {t("projectsCancel")}
                     </button>
                   </div>
                   {addError && (
@@ -179,11 +187,8 @@ export function ProjectsPage() {
                 >
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 </svg>
-                <h3>No projects yet</h3>
-                <p>
-                  Add a project above, or launch Claude in a folder and it will
-                  automatically appear here.
-                </p>
+                <h3>{t("projectsEmptyTitle")}</h3>
+                <p>{t("projectsEmptyDescription")}</p>
               </div>
             ) : (
               <ul className="project-list-cards">

@@ -3,18 +3,20 @@ import {
   MODEL_OPTIONS,
   useModelSettings,
 } from "../../hooks/useModelSettings";
+import { useI18n } from "../../i18n";
 
 export function ModelSettings() {
+  const { t } = useI18n();
   const { model, setModel, effortLevel, setEffortLevel } = useModelSettings();
 
   return (
     <section className="settings-section">
-      <h2>Model</h2>
+      <h2>{t("modelSettingsTitle")}</h2>
       <div className="settings-group">
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Model</strong>
-            <p>Select which Claude model to use for new sessions.</p>
+            <strong>{t("modelSettingsModelTitle")}</strong>
+            <p>{t("modelSettingsModelDescription")}</p>
           </div>
           <div className="font-size-selector">
             {MODEL_OPTIONS.map((opt) => (
@@ -31,11 +33,8 @@ export function ModelSettings() {
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Effort Level</strong>
-            <p>
-              Controls how much effort Claude puts into responses when thinking
-              is set to "on". Higher levels use more tokens.
-            </p>
+            <strong>{t("modelSettingsEffortTitle")}</strong>
+            <p>{t("modelSettingsEffortDescription")}</p>
           </div>
           <div className="font-size-selector">
             {EFFORT_LEVEL_OPTIONS.map((opt) => (

@@ -1,4 +1,5 @@
 import { useBrowserNotifications } from "../hooks/useBrowserNotifications";
+import { useI18n } from "../i18n";
 
 /**
  * Toggle component for browser notification permission.
@@ -6,6 +7,7 @@ import { useBrowserNotifications } from "../hooks/useBrowserNotifications";
  * Returns null on mobile devices (they should use push notifications instead).
  */
 export function BrowserNotificationToggle() {
+  const { t } = useI18n();
   const {
     isSupported,
     isMobile,
@@ -27,7 +29,7 @@ export function BrowserNotificationToggle() {
       <div className="settings-item">
         <div className="settings-item-info">
           <strong>Desktop Notifications</strong>
-          <p>Notifications are not supported in this browser.</p>
+          <p>{t("browserToggleUnsupported")}</p>
         </div>
       </div>
     );
@@ -38,11 +40,8 @@ export function BrowserNotificationToggle() {
     return (
       <div className="settings-item">
         <div className="settings-item-info">
-          <strong>Desktop Notifications</strong>
-          <p className="settings-warning">
-            Notifications are blocked. Enable them in your browser settings to
-            receive desktop alerts.
-          </p>
+          <strong>{t("browserToggleTitle")}</strong>
+          <p className="settings-warning">{t("browserToggleBlocked")}</p>
         </div>
       </div>
     );
@@ -51,8 +50,8 @@ export function BrowserNotificationToggle() {
   // Permission granted
   if (isEnabled) {
     const handleTest = () => {
-      showNotification("Test Notification", {
-        body: "Desktop notifications are working!",
+      showNotification(t("browserToggleTestNotification"), {
+        body: t("browserToggleTestBody"),
         icon: "/icon-192.png",
       });
     };
@@ -61,25 +60,24 @@ export function BrowserNotificationToggle() {
       <>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Desktop Notifications</strong>
-            <p>
-              Enabled. You'll receive notifications when sessions need attention
-              (while the tab is open).
-            </p>
+            <strong>{t("browserToggleTitle")}</strong>
+            <p>{t("browserToggleEnabled")}</p>
           </div>
-          <span className="settings-badge settings-badge-success">Enabled</span>
+          <span className="settings-badge settings-badge-success">
+            {t("browserToggleEnabledBadge")}
+          </span>
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Test Desktop Notification</strong>
-            <p>Send a test notification to verify it's working.</p>
+            <strong>{t("browserToggleTestTitle")}</strong>
+            <p>{t("browserToggleTestDescription")}</p>
           </div>
           <button
             type="button"
             className="settings-button"
             onClick={handleTest}
           >
-            Send Test
+            {t("pushToggleSendTest")}
           </button>
         </div>
       </>
@@ -90,11 +88,8 @@ export function BrowserNotificationToggle() {
   return (
     <div className="settings-item">
       <div className="settings-item-info">
-        <strong>Desktop Notifications</strong>
-        <p>
-          Get notified when sessions need your attention. Works while the tab is
-          open in the background.
-        </p>
+        <strong>{t("browserToggleTitle")}</strong>
+        <p>{t("browserToggleDescription")}</p>
       </div>
       <button
         type="button"
@@ -102,7 +97,7 @@ export function BrowserNotificationToggle() {
         onClick={requestPermission}
         disabled={isRequesting}
       >
-        {isRequesting ? "Requesting..." : "Enable"}
+        {isRequesting ? t("browserToggleRequesting") : t("browserToggleEnable")}
       </button>
     </div>
   );

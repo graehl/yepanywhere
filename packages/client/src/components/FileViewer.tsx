@@ -1,6 +1,7 @@
 import type { FileContentResponse } from "@yep-anywhere/shared";
 import { memo, useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
+import { useI18n } from "../i18n";
 
 interface FileViewerProps {
   projectId: string;
@@ -97,6 +98,7 @@ export const FileViewer = memo(function FileViewer({
   lineNumber,
   lineEnd,
 }: FileViewerProps) {
+  const { t } = useI18n();
   const [fileData, setFileData] = useState<FileContentResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +124,7 @@ export const FileViewer = memo(function FileViewer({
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err.message || "Failed to load file");
+          setError(err.message || t("fileViewerLoadFailed" as never));
           setLoading(false);
         }
       });
@@ -130,7 +132,7 @@ export const FileViewer = memo(function FileViewer({
     return () => {
       cancelled = true;
     };
-  }, [projectId, filePath]);
+  }, [projectId, filePath, t]);
 
   // Handle Escape key to exit fullscreen
   useEffect(() => {
@@ -185,7 +187,9 @@ export const FileViewer = memo(function FileViewer({
   if (loading) {
     return (
       <div className="file-viewer">
-        <div className="file-viewer-loading">Loading {fileName}...</div>
+        <div className="file-viewer-loading">
+          {t("fileViewerLoading" as never, { name: fileName })}
+        </div>
       </div>
     );
   }
@@ -194,7 +198,9 @@ export const FileViewer = memo(function FileViewer({
   if (error || !fileData) {
     return (
       <div className="file-viewer">
-        <div className="file-viewer-error">{error || "File not found"}</div>
+        <div className="file-viewer-error">
+          {error || t("fileViewerNotFound" as never)}
+        </div>
       </div>
     );
   }
@@ -226,14 +232,14 @@ export const FileViewer = memo(function FileViewer({
             className={`toggle-btn ${!showPreview ? "active" : ""}`}
             onClick={() => setShowPreview(false)}
           >
-            Source
+            {t("fileViewerSource" as never)}
           </button>
           <button
             type="button"
             className={`toggle-btn ${showPreview ? "active" : ""}`}
             onClick={() => setShowPreview(true)}
           >
-            Preview
+            {t("fileViewerPreview" as never)}
           </button>
         </div>
       );
@@ -272,7 +278,7 @@ export const FileViewer = memo(function FileViewer({
               />
               {fileData.highlightedTruncated && (
                 <div className="file-viewer-truncated">
-                  File truncated for highlighting (showing first 2000 lines)
+                  {t("fileViewerHighlightTruncated" as never)}
                 </div>
               )}
             </div>
@@ -341,19 +347,20 @@ export const FileViewer = memo(function FileViewer({
     // Binary files or files too large
     return (
       <div className="file-viewer-binary">
-        <p>This file cannot be displayed inline.</p>
+        <p>{t("fileViewerBinary" as never)}</p>
         <p>
-          <strong>Type:</strong> {metadata.mimeType}
+          <strong>{t("fileViewerType" as never)}</strong> {metadata.mimeType}
         </p>
         <p>
-          <strong>Size:</strong> {formatFileSize(metadata.size)}
+          <strong>{t("fileViewerSize" as never)}</strong>{" "}
+          {formatFileSize(metadata.size)}
         </p>
         <button
           type="button"
           className="file-viewer-download-btn"
           onClick={handleDownload}
         >
-          Download File
+          {t("fileViewerDownloadFile" as never)}
         </button>
       </div>
     );
@@ -370,7 +377,9 @@ export const FileViewer = memo(function FileViewer({
           {formatFileSize(metadata.size)}
           {metadata.isText &&
             content &&
-            ` \u2022 ${content.split("\n").length} lines`}
+            ` \u2022 ${t("fileViewerLines" as never, {
+              count: content.split("\n").length,
+            })}`}
         </span>
       </div>
       <div className="file-viewer-actions">
@@ -379,7 +388,11 @@ export const FileViewer = memo(function FileViewer({
             type="button"
             className={`file-viewer-action ${copied ? "copied" : ""}`}
             onClick={handleCopy}
-            title={copied ? "Copied!" : "Copy content"}
+            title={
+              copied
+                ? t("fileViewerCopied" as never)
+                : t("fileViewerCopyContent" as never)
+            }
           >
             {copied ? <CheckIcon /> : <CopyIcon />}
           </button>
@@ -389,7 +402,7 @@ export const FileViewer = memo(function FileViewer({
             type="button"
             className="file-viewer-action"
             onClick={handleOpenInNewTab}
-            title="Open in new tab"
+            title={t("fileViewerOpenNewTab" as never)}
           >
             <ExternalLinkIcon />
           </button>
@@ -398,7 +411,7 @@ export const FileViewer = memo(function FileViewer({
           type="button"
           className="file-viewer-action"
           onClick={handleDownload}
-          title="Download"
+          title={t("fileViewerDownload" as never)}
         >
           <DownloadIcon />
         </button>
@@ -406,7 +419,11 @@ export const FileViewer = memo(function FileViewer({
           type="button"
           className="file-viewer-action"
           onClick={() => setFullscreen(!fullscreen)}
-          title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+          title={
+            fullscreen
+              ? t("fileViewerExitFullscreen" as never)
+              : t("fileViewerFullscreen" as never)
+          }
         >
           {fullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
         </button>
@@ -415,7 +432,7 @@ export const FileViewer = memo(function FileViewer({
             type="button"
             className="file-viewer-action file-viewer-close"
             onClick={onClose}
-            title="Close"
+            title={t("modalClose")}
           >
             <CloseIcon />
           </button>

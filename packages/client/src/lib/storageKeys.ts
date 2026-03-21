@@ -42,6 +42,7 @@ export function getCurrentInstallId(): string | undefined {
 // ============================================================================
 
 export const UI_KEYS = {
+  locale: "yep-anywhere-locale",
   theme: "yep-anywhere-theme",
   fontSize: "yep-anywhere-font-size",
   tabSize: "yep-anywhere-tab-size",

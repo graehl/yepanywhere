@@ -12,6 +12,7 @@ import {
 } from "../hooks/useSpeechRecognition";
 import { useVersion } from "../hooks/useVersion";
 import { useViewportWidth } from "../hooks/useViewportWidth";
+import { useI18n } from "../i18n";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 
 export interface VoiceInputButtonRef {
@@ -54,6 +55,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   }: VoiceInputButtonProps,
   ref: ForwardedRef<VoiceInputButtonRef>,
 ) {
+  const { t } = useI18n();
   const { voiceInputEnabled } = useModelSettings();
   const { version: versionInfo } = useVersion();
   const serverVoiceEnabled =
@@ -166,10 +168,14 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
         error
           ? error
           : isListening
-            ? "Stop voice input (Ctrl+Space)"
-            : "Start voice input (Ctrl+Space)"
+            ? t("voiceInputStop" as never)
+            : t("voiceInputStart" as never)
       }
-      aria-label={isListening ? "Stop voice input" : "Start voice input"}
+      aria-label={
+        isListening
+          ? t("voiceInputStopLabel" as never)
+          : t("voiceInputStartLabel" as never)
+      }
       aria-pressed={isListening}
     >
       {isListening ? (

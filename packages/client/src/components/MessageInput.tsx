@@ -12,6 +12,7 @@ import {
   type DraftControls,
   useDraftPersistence,
 } from "../hooks/useDraftPersistence";
+import { useI18n } from "../i18n";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import type { ContextUsage, PermissionMode } from "../types";
 import { MessageInputToolbar } from "./MessageInputToolbar";
@@ -104,6 +105,7 @@ export function MessageInput({
   slashCommands = [],
   onCustomCommand,
 }: Props) {
+  const { t } = useI18n();
   const [text, setText, controls] = useDraftPersistence(draftKey);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -329,7 +331,7 @@ export function MessageInput({
           className="message-input-toggle"
           onClick={() => setUserCollapsed(!userCollapsed)}
           aria-label={
-            userCollapsed ? "Expand message input" : "Collapse message input"
+            userCollapsed ? t("messageInputExpand") : t("messageInputCollapse")
           }
           aria-expanded={!userCollapsed}
         >
@@ -364,9 +366,7 @@ export function MessageInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder={
-            externalCollapsed
-              ? "Continue typing while responding above..."
-              : placeholder
+            externalCollapsed ? t("messageInputContinueAbove") : placeholder
           }
           disabled={disabled}
           rows={collapsed ? 1 : 3}
@@ -388,7 +388,9 @@ export function MessageInput({
                     type="button"
                     className="attachment-remove"
                     onClick={() => onRemoveAttachment?.(file.id)}
-                    aria-label={`Remove ${file.originalName}`}
+                    aria-label={t("messageInputRemoveAttachment", {
+                      name: file.originalName,
+                    })}
                   >
                     x
                   </button>

@@ -5,6 +5,7 @@ import {
   type FileType,
   useFileActivity,
 } from "../hooks/useFileActivity";
+import { useI18n } from "../i18n";
 
 function formatTime(timestamp: string): string {
   return new Date(timestamp).toLocaleTimeString();
@@ -36,31 +37,37 @@ function getTypeColor(type: FileChangeEvent["changeType"]): string {
   }
 }
 
-function getTypeLabel(type: FileChangeEvent["changeType"]): string {
+function getTypeLabel(
+  type: FileChangeEvent["changeType"],
+  t: (key: never) => string,
+): string {
   switch (type) {
     case "create":
-      return "created";
+      return t("activityTypeCreated" as never);
     case "modify":
-      return "modified";
+      return t("activityTypeModified" as never);
     case "delete":
-      return "deleted";
+      return t("activityTypeDeleted" as never);
   }
 }
 
-function getFileTypeLabel(fileType: FileType): string {
+function getFileTypeLabel(
+  fileType: FileType,
+  t: (key: never) => string,
+): string {
   switch (fileType) {
     case "session":
-      return "Session";
+      return t("activityFileTypeSession" as never);
     case "agent-session":
-      return "Agent Session";
+      return t("activityFileTypeAgentSession" as never);
     case "settings":
-      return "Settings";
+      return t("activityFileTypeSettings" as never);
     case "credentials":
-      return "Credentials";
+      return t("activityFileTypeCredentials" as never);
     case "telemetry":
-      return "Telemetry";
+      return t("activityFileTypeTelemetry" as never);
     case "other":
-      return "Other";
+      return t("activityFileTypeOther" as never);
   }
 }
 
@@ -74,6 +81,7 @@ const FILE_TYPE_OPTIONS: FileType[] = [
 ];
 
 export function ActivityPage() {
+  const { t } = useI18n();
   const [pathFilter, setPathFilter] = useState("");
   const [typeFilters, setTypeFilters] = useState<Set<FileType>>(new Set());
   const { events, connected, paused, clearEvents, togglePause } =
@@ -153,7 +161,8 @@ export function ActivityPage() {
       }}
     >
       <nav className="breadcrumb">
-        <Link to="/projects">Projects</Link> / Activity
+        <Link to="/projects">{t("pageTitleProjects")}</Link> /{" "}
+        {t("activityBreadcrumb" as never)}
       </nav>
 
       <div
@@ -163,7 +172,7 @@ export function ActivityPage() {
           alignItems: "center",
         }}
       >
-        <h1>File Activity</h1>
+        <h1>{t("activityTitle" as never)}</h1>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <span
             style={{
@@ -174,7 +183,9 @@ export function ActivityPage() {
             }}
           />
           <span style={{ fontSize: "0.875rem", color: "#888" }}>
-            {connected ? "Connected" : "Disconnected"}
+            {connected
+              ? t("activityConnected" as never)
+              : t("activityDisconnected" as never)}
           </span>
         </div>
       </div>
@@ -192,7 +203,7 @@ export function ActivityPage() {
           type="text"
           value={pathFilter}
           onChange={(e) => setPathFilter(e.target.value)}
-          placeholder="Filter by path (regex)..."
+          placeholder={t("activityPathPlaceholder" as never)}
           style={{
             flex: 1,
             minWidth: "200px",
@@ -211,14 +222,14 @@ export function ActivityPage() {
             background: paused ? "#a44" : "#444",
           }}
         >
-          {paused ? "Resume" : "Pause"}
+          {paused ? t("activityResume" as never) : t("activityPause" as never)}
         </button>
         <button
           type="button"
           onClick={clearEvents}
           style={{ background: "#444" }}
         >
-          Clear
+          {t("activityClear" as never)}
         </button>
       </div>
 
@@ -245,7 +256,7 @@ export function ActivityPage() {
                 : "1px solid #444",
             }}
           >
-            {getFileTypeLabel(type)}
+            {getFileTypeLabel(type, t)}
           </button>
         ))}
         {typeFilters.size > 0 && (
@@ -258,7 +269,7 @@ export function ActivityPage() {
               background: "#444",
             }}
           >
-            Clear filters
+            {t("activityClearFilters" as never)}
           </button>
         )}
       </div>
@@ -273,8 +284,10 @@ export function ActivityPage() {
           color: "#888",
         }}
       >
-        <span>Total: {events.length} events</span>
-        <span>Showing: {displayedEvents.length}</span>
+        <span>{t("activityTotal" as never, { count: events.length })}</span>
+        <span>
+          {t("activityShowing" as never, { count: displayedEvents.length })}
+        </span>
       </div>
 
       {/* Events - scrollable container */}
@@ -293,8 +306,8 @@ export function ActivityPage() {
         {Object.entries(eventsByDate).length === 0 ? (
           <div style={{ textAlign: "center", padding: "3rem", color: "#888" }}>
             {events.length === 0
-              ? "Waiting for file changes..."
-              : "No events match current filters"}
+              ? t("activityWaiting" as never)
+              : t("activityNoMatches" as never)}
           </div>
         ) : (
           Object.entries(eventsByDate).map(([date, dateEvents]) => (
@@ -339,7 +352,7 @@ export function ActivityPage() {
                         fontWeight: "bold",
                         textAlign: "center",
                       }}
-                      title={getTypeLabel(event.changeType)}
+                      title={getTypeLabel(event.changeType, t)}
                     >
                       {getTypeIcon(event.changeType)}
                     </span>
@@ -353,7 +366,7 @@ export function ActivityPage() {
                         textAlign: "center",
                       }}
                     >
-                      {getFileTypeLabel(event.fileType)}
+                      {getFileTypeLabel(event.fileType, t)}
                     </span>
                     <span
                       style={{

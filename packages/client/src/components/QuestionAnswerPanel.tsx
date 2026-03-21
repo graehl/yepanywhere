@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuestionOtherDrafts } from "../hooks/useDrafts";
+import { useI18n } from "../i18n";
 import type { InputRequest } from "../types";
 import type { AskUserQuestionInput, Question } from "./renderers/tools/types";
 
@@ -20,6 +21,7 @@ export function QuestionAnswerPanel({
   onSubmit,
   onDeny,
 }: Props) {
+  const { t } = useI18n();
   const input = request.toolInput as AskUserQuestionInput;
   const questions = input?.questions || [];
 
@@ -191,7 +193,9 @@ export function QuestionAnswerPanel({
     return (
       <div className="question-panel-wrapper">
         <div className="question-panel">
-          <div className="question-panel-empty">No questions to answer</div>
+          <div className="question-panel-empty">
+            {t("questionPanelNoQuestions")}
+          </div>
         </div>
       </div>
     );
@@ -205,7 +209,7 @@ export function QuestionAnswerPanel({
         className="question-panel-toggle"
         onClick={() => setCollapsed(!collapsed)}
         aria-label={
-          collapsed ? "Expand question panel" : "Collapse question panel"
+          collapsed ? t("questionPanelExpand") : t("questionPanelCollapse")
         }
         aria-expanded={!collapsed}
       >
@@ -294,7 +298,9 @@ export function QuestionAnswerPanel({
                     {isOtherSelected ? "●" : "○"}
                   </span>
                   <div className="question-option-text">
-                    <span className="question-option-label">Other</span>
+                    <span className="question-option-label">
+                      {t("questionPanelOther")}
+                    </span>
                   </div>
                 </button>
 
@@ -304,7 +310,7 @@ export function QuestionAnswerPanel({
                     <input
                       ref={otherInputRef}
                       type="text"
-                      placeholder="Type your answer..."
+                      placeholder={t("questionPanelTypeAnswer")}
                       value={otherTexts[currentQuestion.question] || ""}
                       onChange={(e) => handleOtherTextChange(e.target.value)}
                     />
@@ -322,7 +328,7 @@ export function QuestionAnswerPanel({
               onClick={handleDeny}
               disabled={submitting}
             >
-              Cancel
+              {t("questionPanelCancel")}
               <kbd>esc</kbd>
             </button>
 
@@ -333,7 +339,7 @@ export function QuestionAnswerPanel({
                 onClick={handleSubmit}
                 disabled={!allAnswered || submitting}
               >
-                Submit
+                {t("questionPanelSubmit")}
                 <kbd>↵</kbd>
               </button>
             ) : (
@@ -343,7 +349,7 @@ export function QuestionAnswerPanel({
                 onClick={advanceToNext}
                 disabled={!currentAnswer || submitting}
               >
-                Next
+                {t("questionPanelNext")}
                 <kbd>↵</kbd>
               </button>
             )}

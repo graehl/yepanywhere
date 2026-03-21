@@ -8,6 +8,7 @@ import {
 } from "../../hooks/useEmulatorSettings";
 import { useEmulators } from "../../hooks/useEmulators";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useI18n } from "../../i18n";
 
 const QUALITY_OPTIONS: EmulatorQuality[] = ["high", "medium", "low"];
 
@@ -26,6 +27,7 @@ function canStopDevice(type: string, state: string, actions?: string[]) {
  * Shows discovered devices, stream settings, and ChromeOS host aliases.
  */
 export function EmulatorSettings() {
+  const { t } = useI18n();
   const { emulators, loading, error, startEmulator, stopEmulator, refresh } =
     useEmulators();
   const {
@@ -54,11 +56,11 @@ export function EmulatorSettings() {
   const addHost = async () => {
     const value = hostInput.trim();
     if (!value) {
-      setChromeOsHostError("Host alias is required");
+      setChromeOsHostError(t("emulatorHostAliasRequired"));
       return;
     }
     if (/\s/.test(value)) {
-      setChromeOsHostError("Host alias cannot contain spaces");
+      setChromeOsHostError(t("emulatorHostAliasNoSpaces"));
       return;
     }
 
@@ -70,7 +72,7 @@ export function EmulatorSettings() {
       await refresh();
     } catch (err) {
       setChromeOsHostError(
-        err instanceof Error ? err.message : "Failed to save host alias",
+        err instanceof Error ? err.message : t("emulatorHostAliasSaveFailed"),
       );
     }
   };
@@ -85,7 +87,7 @@ export function EmulatorSettings() {
       await refresh();
     } catch (err) {
       setChromeOsHostError(
-        err instanceof Error ? err.message : "Failed to remove host alias",
+        err instanceof Error ? err.message : t("emulatorHostAliasRemoveFailed"),
       );
     }
   };
@@ -94,20 +96,14 @@ export function EmulatorSettings() {
 
   return (
     <section className="settings-section">
-      <h2>Device Bridge</h2>
-      <p className="settings-description">
-        Stream and control Android emulators, Android devices, and ChromeOS
-        testbeds from your phone via WebRTC.
-      </p>
+      <h2>{t("emulatorSectionTitle")}</h2>
+      <p className="settings-description">{t("emulatorSectionDescription")}</p>
 
       <div className="settings-group">
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Enable Device Bridge</strong>
-            <p>
-              Experimental. Show device streaming in the sidebar and enable
-              device discovery.
-            </p>
+            <strong>{t("emulatorEnableTitle")}</strong>
+            <p>{t("emulatorEnableDescription")}</p>
           </div>
           <label className="toggle-switch">
             <input
@@ -126,15 +122,15 @@ export function EmulatorSettings() {
       {!deviceBridgeEnabled ? null : (
         <>
           <div className="settings-group">
-            <h3>Stream Quality</h3>
+            <h3>{t("emulatorStreamQualityTitle")}</h3>
             <p className="settings-description">
-              Changes take effect on the next connection.
+              {t("emulatorStreamQualityDescription")}
             </p>
 
             <div className="settings-item">
               <div className="settings-item-info">
-                <strong>Frame Rate</strong>
-                <p>Higher frame rates increase CPU and bandwidth usage.</p>
+                <strong>{t("emulatorFrameRateTitle")}</strong>
+                <p>{t("emulatorFrameRateDescription")}</p>
               </div>
               <div className="font-size-selector">
                 {EMULATOR_FPS_OPTIONS.map((fps) => (
@@ -152,10 +148,8 @@ export function EmulatorSettings() {
 
             <div className="settings-item">
               <div className="settings-item-info">
-                <strong>Resolution</strong>
-                <p>
-                  Maximum stream width in pixels (height scales proportionally).
-                </p>
+                <strong>{t("emulatorResolutionTitle")}</strong>
+                <p>{t("emulatorResolutionDescription")}</p>
               </div>
               <div className="font-size-selector">
                 {EMULATOR_WIDTH_OPTIONS.map((w) => (
@@ -173,11 +167,8 @@ export function EmulatorSettings() {
 
             <div className="settings-item">
               <div className="settings-item-info">
-                <strong>Quality</strong>
-                <p>
-                  High uses ~4 Mbps, Medium ~2.8 Mbps, Low ~1.5 Mbps at
-                  720p/30fps.
-                </p>
+                <strong>{t("emulatorQualityTitle")}</strong>
+                <p>{t("emulatorQualityDescription")}</p>
               </div>
               <div className="font-size-selector">
                 {QUALITY_OPTIONS.map((q) => (
@@ -195,11 +186,8 @@ export function EmulatorSettings() {
 
             <div className="settings-item">
               <div className="settings-item-info">
-                <strong>Adaptive Frame Rate</strong>
-                <p>
-                  Automatically reduces frame rate when packet loss is detected,
-                  and restores it once the connection recovers.
-                </p>
+                <strong>{t("emulatorAdaptiveFpsTitle")}</strong>
+                <p>{t("emulatorAdaptiveFpsDescription")}</p>
               </div>
               <label className="toggle-switch">
                 <input
@@ -213,17 +201,17 @@ export function EmulatorSettings() {
           </div>
 
           <div className="settings-group">
-            <h3>ChromeOS Hosts</h3>
+            <h3>{t("emulatorChromeOsHostsTitle")}</h3>
             <p className="settings-description">
-              Add SSH host aliases from your local SSH config (for example,
-              <code> chromeroot</code>). They appear in the device list as
-              streamable ChromeOS targets.
+              {t("emulatorChromeOsHostsDescription")}
+              <code> chromeroot</code>
+              {t("emulatorChromeOsHostsDescriptionSuffix")}
             </p>
 
             <div className="settings-item">
               <div className="settings-item-info">
-                <strong>Add Host Alias</strong>
-                <p>Host alias only, no spaces.</p>
+                <strong>{t("emulatorAddHostAliasTitle")}</strong>
+                <p>{t("emulatorAddHostAliasDescription")}</p>
               </div>
               <form
                 className="settings-item-actions"
@@ -235,7 +223,7 @@ export function EmulatorSettings() {
                 <input
                   type="text"
                   name="chromeosHost"
-                  placeholder="chromeroot"
+                  placeholder={t("emulatorHostAliasPlaceholder")}
                   className="settings-select"
                   autoComplete="off"
                   value={hostInput}
@@ -246,7 +234,7 @@ export function EmulatorSettings() {
                   className="settings-button"
                   disabled={settingsLoading}
                 >
-                  Add
+                  {t("projectsAddConfirm")}
                 </button>
               </form>
             </div>
@@ -257,9 +245,7 @@ export function EmulatorSettings() {
             {settingsError && <p className="settings-error">{settingsError}</p>}
 
             {chromeOsHosts.length === 0 ? (
-              <p className="settings-muted">
-                No custom ChromeOS host aliases yet.
-              </p>
+              <p className="settings-muted">{t("emulatorNoChromeOsHosts")}</p>
             ) : (
               chromeOsHosts.map((host) => (
                 <div key={host} className="settings-item">
@@ -278,7 +264,7 @@ export function EmulatorSettings() {
                       }}
                       disabled={settingsLoading}
                     >
-                      Remove
+                      {t("emulatorRemove")}
                     </button>
                   </div>
                 </div>
@@ -287,16 +273,15 @@ export function EmulatorSettings() {
           </div>
 
           <div className="settings-group">
-            <h3>Discovered Devices</h3>
+            <h3>{t("emulatorDiscoveredDevicesTitle")}</h3>
 
-            {loading && <p className="settings-muted">Loading...</p>}
+            {loading && (
+              <p className="settings-muted">{t("projectsLoading")}</p>
+            )}
             {error && <p className="settings-error">{error}</p>}
 
             {!loading && emulators.length === 0 && (
-              <p className="settings-muted">
-                No devices found. Ensure ADB is on your PATH and
-                emulators/devices are available.
-              </p>
+              <p className="settings-muted">{t("emulatorNoDevicesFound")}</p>
             )}
 
             {emulators.map((device) => (
@@ -316,7 +301,7 @@ export function EmulatorSettings() {
                       className="settings-button"
                       onClick={() => stopEmulator(device.id)}
                     >
-                      Stop
+                      {t("emulatorStop")}
                     </button>
                   ) : canStartDevice(
                       device.type,
@@ -328,7 +313,7 @@ export function EmulatorSettings() {
                       className="settings-button"
                       onClick={() => startEmulator(device.id)}
                     >
-                      Start
+                      {t("emulatorStart")}
                     </button>
                   ) : null}
                 </div>

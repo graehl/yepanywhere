@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { useI18n } from "../i18n";
 import {
   createRelayHost,
   getHostByRelayUsername,
@@ -56,6 +57,7 @@ type ConnectionStatus =
   | "error";
 
 export function RelayLoginPage() {
+  const { t } = useI18n();
   const { connectViaRelay, isAutoResuming, setCurrentHostId } =
     useRemoteConnection();
   const [searchParams] = useSearchParams();
@@ -114,8 +116,10 @@ export function RelayLoginPage() {
       })
       .catch((err) => {
         const message =
-          err instanceof Error ? err.message : "Connection failed";
-        setError(formatRelayError(message));
+          err instanceof Error
+            ? err.message
+            : t("relayLoginErrorConnectionFailed");
+        setError(formatRelayError(message, t));
         setStatus("error");
         // Pre-fill form with credentials from hash so user can retry
         setRelayUsername(username);
@@ -124,7 +128,7 @@ export function RelayLoginPage() {
           setShowAdvanced(true);
         }
       });
-  }, [connectViaRelay, isAutoResuming, setCurrentHostId]);
+  }, [connectViaRelay, isAutoResuming, setCurrentHostId, t]);
 
   // If auto-resume is in progress, show a loading screen
   if (isAutoResuming) {
@@ -134,7 +138,7 @@ export function RelayLoginPage() {
           <div className="login-logo">
             <YepAnywhereLogo />
           </div>
-          <p className="login-subtitle">Reconnecting...</p>
+          <p className="login-subtitle">{t("reconnecting")}</p>
           <div className="login-loading" data-testid="auto-resume-loading">
             <div className="login-spinner" />
           </div>
@@ -149,12 +153,12 @@ export function RelayLoginPage() {
 
     // Validate inputs
     if (!relayUsername.trim()) {
-      setError("Username is required");
+      setError(t("relayLoginErrorUsernameRequired"));
       return;
     }
 
     if (!srpPassword) {
-      setError("Password is required");
+      setError(t("relayLoginErrorPasswordRequired"));
       return;
     }
 
@@ -188,26 +192,29 @@ export function RelayLoginPage() {
       });
       // On success, the RemoteApp will render the main app instead of login
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Connection failed";
-      setError(formatRelayError(message));
+      const message =
+        err instanceof Error
+          ? err.message
+          : t("relayLoginErrorConnectionFailed");
+      setError(formatRelayError(message, t));
       setStatus("error");
     }
   };
 
   const isConnecting = status !== "idle" && status !== "error";
-  const statusMessage = getStatusMessage(status);
+  const statusMessage = getStatusMessage(status, t);
 
   return (
     <div className="login-page">
       <div className="login-container">
         <Link to="/login" className="login-back-link">
-          &larr; Back
+          &larr; {t("actionBack")}
         </Link>
 
         <div className="login-logo">
           <YepAnywhereLogo />
         </div>
-        <p className="login-subtitle">Connect via Relay</p>
+        <p className="login-subtitle">{t("relayLoginTitle")}</p>
 
         <form
           onSubmit={handleSubmit}
@@ -215,31 +222,29 @@ export function RelayLoginPage() {
           data-testid="relay-login-form"
         >
           <div className="login-field">
-            <label htmlFor="relayUsername">Username</label>
+            <label htmlFor="relayUsername">{t("relayLoginUsername")}</label>
             <input
               id="relayUsername"
               type="text"
               value={relayUsername}
               onChange={(e) => setRelayUsername(e.target.value)}
-              placeholder="e.g., my-server"
+              placeholder={t("relayLoginUsernamePlaceholder")}
               disabled={isConnecting}
               autoComplete="username"
               autoCapitalize="none"
               data-testid="relay-username-input"
             />
-            <p className="login-field-hint">
-              The username you configured on your server
-            </p>
+            <p className="login-field-hint">{t("relayLoginUsernameHint")}</p>
           </div>
 
           <div className="login-field">
-            <label htmlFor="srpPassword">Password</label>
+            <label htmlFor="srpPassword">{t("relayLoginPassword")}</label>
             <input
               id="srpPassword"
               type="password"
               value={srpPassword}
               onChange={(e) => setSrpPassword(e.target.value)}
-              placeholder="Enter password"
+              placeholder={t("relayLoginPasswordPlaceholder")}
               disabled={isConnecting}
               autoComplete="current-password"
               data-testid="srp-password-input"
@@ -255,7 +260,7 @@ export function RelayLoginPage() {
                 disabled={isConnecting}
                 data-testid="remember-me-checkbox"
               />
-              <span>Remember me</span>
+              <span>{t("relayLoginRememberMe")}</span>
             </label>
           </div>
 
@@ -265,12 +270,16 @@ export function RelayLoginPage() {
             onClick={() => setShowAdvanced(!showAdvanced)}
             disabled={isConnecting}
           >
-            {showAdvanced ? "Hide" : "Show"} Advanced Options
+            {showAdvanced
+              ? t("relayLoginHideAdvanced")
+              : t("relayLoginShowAdvanced")}
           </button>
 
           {showAdvanced && (
             <div className="login-field">
-              <label htmlFor="customRelayUrl">Custom Relay URL</label>
+              <label htmlFor="customRelayUrl">
+                {t("relayLoginCustomRelayUrl")}
+              </label>
               <input
                 id="customRelayUrl"
                 type="text"
@@ -281,7 +290,7 @@ export function RelayLoginPage() {
                 data-testid="custom-relay-url-input"
               />
               <p className="login-field-hint">
-                Leave blank to use the default relay
+                {t("relayLoginCustomRelayUrlHint")}
               </p>
             </div>
           )}
@@ -305,43 +314,44 @@ export function RelayLoginPage() {
             disabled={isConnecting}
             data-testid="login-button"
           >
-            {isConnecting ? "Connecting..." : "Connect"}
+            {isConnecting ? t("relayLoginConnecting") : t("relayLoginConnect")}
           </button>
         </form>
 
-        <p className="login-hint">
-          Configure relay settings in your server's Remote Access settings.
-        </p>
+        <p className="login-hint">{t("relayLoginHint")}</p>
       </div>
     </div>
   );
 }
 
-function getStatusMessage(status: ConnectionStatus): string | null {
+function getStatusMessage(
+  status: ConnectionStatus,
+  t: (key: never) => string,
+): string | null {
   switch (status) {
     case "connecting_relay":
-      return "Connecting to relay...";
+      return t("relayLoginStatusConnectingRelay" as never);
     case "waiting_server":
-      return "Waiting for server...";
+      return t("relayLoginStatusWaitingServer" as never);
     case "authenticating":
-      return "Authenticating...";
+      return t("relayLoginStatusAuthenticating" as never);
     default:
       return null;
   }
 }
 
-function formatRelayError(message: string): string {
+function formatRelayError(message: string, t: (key: never) => string): string {
   if (message.includes("server_offline")) {
-    return "Server is not connected to the relay. Make sure your server is running and has relay enabled.";
+    return t("relayLoginErrorServerOffline" as never);
   }
   if (message.includes("unknown_username")) {
-    return "No server found with that username. Check the username and try again.";
+    return t("relayLoginErrorUnknownUsername" as never);
   }
   if (
     message.includes("Authentication failed") ||
     message.includes("invalid_identity")
   ) {
-    return "Invalid username or password. Check your credentials and try again.";
+    return t("relayLoginErrorInvalidCredentials" as never);
   }
   return message;
 }

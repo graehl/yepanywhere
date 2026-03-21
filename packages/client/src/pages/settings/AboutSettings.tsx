@@ -5,9 +5,11 @@ import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import { usePwaInstall } from "../../hooks/usePwaInstall";
 import { useVersion } from "../../hooks/useVersion";
+import { useI18n } from "../../i18n";
 import { activityBus } from "../../lib/activityBus";
 
 export function AboutSettings() {
+  const { t } = useI18n();
   const { canInstall, isInstalled, install } = usePwaInstall();
   const {
     version: versionInfo,
@@ -57,69 +59,71 @@ export function AboutSettings() {
 
   return (
     <section className="settings-section">
-      <h2>About</h2>
+      <h2>{t("aboutTitle")}</h2>
       <div className="settings-group">
         {/* Only show Install option if install is possible or already installed */}
         {(canInstall || isInstalled) && (
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Install App</strong>
+              <strong>{t("aboutInstallTitle")}</strong>
               <p>
                 {isInstalled
-                  ? "Yep Anywhere is installed on your device."
-                  : "Add Yep Anywhere to your home screen for quick access."}
+                  ? t("aboutInstalledDescription")
+                  : t("aboutInstallDescription")}
               </p>
             </div>
             {isInstalled ? (
-              <span className="settings-status-badge">Installed</span>
+              <span className="settings-status-badge">
+                {t("aboutInstalled")}
+              </span>
             ) : (
               <button
                 type="button"
                 className="settings-button"
                 onClick={install}
               >
-                Install
+                {t("aboutInstall")}
               </button>
             )}
           </div>
         )}
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Version</strong>
+            <strong>{t("aboutVersionTitle")}</strong>
             <p>
-              Server:{" "}
+              {t("aboutServerVersion")}{" "}
               {versionInfo ? (
                 <>
                   v{versionInfo.current}
                   {versionInfo.updateAvailable && versionInfo.latest ? (
                     <span className="settings-update-available">
                       {" "}
-                      (v{versionInfo.latest} available)
+                      {t("aboutVersionAvailable", {
+                        version: versionInfo.latest,
+                      })}
                     </span>
                   ) : versionInfo.latest ? (
-                    <span className="settings-up-to-date"> (up to date)</span>
+                    <span className="settings-up-to-date">
+                      {" "}
+                      {t("aboutUpToDate")}
+                    </span>
                   ) : null}
                 </>
               ) : (
-                "Loading..."
+                t("loginLoading")
               )}
             </p>
-            <p>Client: v{__APP_VERSION__}</p>
+            <p>
+              {t("aboutClientVersion")} v{__APP_VERSION__}
+            </p>
             {versionError && (
-              <p className="settings-warning">
-                Unable to refresh update status right now.
-              </p>
+              <p className="settings-warning">{t("aboutUnableRefresh")}</p>
             )}
             {showRelayResumeUpdateWarning && (
-              <p className="settings-warning">
-                Relay session resume requires a server update. New login works,
-                but reconnect/resume will fail until the server is upgraded.
-              </p>
+              <p className="settings-warning">{t("aboutRelayResumeWarning")}</p>
             )}
             {versionInfo?.updateAvailable && (
-              <p className="settings-update-hint">
-                Run <code>npm i -g yepanywhere</code> to update
-              </p>
+              <p className="settings-update-hint">{t("aboutUpdateHint")}</p>
             )}
           </div>
           <button
@@ -128,17 +132,19 @@ export function AboutSettings() {
             onClick={() => void refetchVersionFresh()}
             disabled={versionLoading}
           >
-            {versionLoading ? "Checking..." : "Check for Updates"}
+            {versionLoading ? t("aboutChecking") : t("aboutCheckUpdates")}
           </button>
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Restart Server</strong>
-            <p>Restart the backend server process.</p>
+            <strong>{t("developmentRestartTitle")}</strong>
+            <p>{t("developmentRestartDescription")}</p>
             {activeWorkers > 0 && !restarting && (
               <p className="settings-warning">
-                {activeWorkers} active session
-                {activeWorkers !== 1 ? "s" : ""} will be interrupted
+                {t("developmentInterruptedWarning", {
+                  count: activeWorkers,
+                  suffix: activeWorkers !== 1 ? "s " : " ",
+                })}
               </p>
             )}
           </div>
@@ -149,18 +155,16 @@ export function AboutSettings() {
             disabled={restarting}
           >
             {restarting
-              ? "Restarting..."
+              ? t("developmentRestarting")
               : activeWorkers > 0
-                ? "Restart Anyway"
-                : "Restart Server"}
+                ? t("developmentRestartAnyway")
+                : t("developmentRestart")}
           </button>
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Report a Bug</strong>
-            <p>
-              Found an issue? Report it on GitHub to help improve Yep Anywhere.
-            </p>
+            <strong>{t("aboutReportBugTitle")}</strong>
+            <p>{t("aboutReportBugDescription")}</p>
           </div>
           <a
             href="https://github.com/kzahel/yepanywhere/issues"
@@ -168,29 +172,26 @@ export function AboutSettings() {
             rel="noopener noreferrer"
             className="settings-button"
           >
-            Report Bug
+            {t("aboutReportBug")}
           </a>
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Setup Wizard</strong>
-            <p>
-              Run the initial setup wizard again to configure theme and remote
-              access.
-            </p>
+            <strong>{t("aboutSetupWizardTitle")}</strong>
+            <p>{t("aboutSetupWizardDescription")}</p>
           </div>
           <button
             type="button"
             className="settings-button"
             onClick={resetOnboarding}
           >
-            Launch Wizard
+            {t("aboutLaunchWizard")}
           </button>
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Connection Diagnostics</strong>
-            <p>Capture connection logs and send to server for debugging.</p>
+            <strong>{t("aboutDiagnosticsTitle")}</strong>
+            <p>{t("aboutDiagnosticsDescription")}</p>
           </div>
           <label className="toggle-switch">
             <input

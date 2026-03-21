@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "../i18n";
 
 // Breakpoint for desktop behavior (should match CSS)
 const DESKTOP_BREAKPOINT = 769;
@@ -36,6 +37,7 @@ export function FilterDropdown<T extends string>({
   placeholder,
   align = "left",
 }: FilterDropdownProps<T>) {
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(
     () => window.innerWidth >= DESKTOP_BREAKPOINT,
@@ -155,7 +157,7 @@ export function FilterDropdown<T extends string>({
             className="filter-dropdown-option filter-dropdown-clear"
             onClick={handleClearAll}
           >
-            <span className="filter-dropdown-label">Clear all</span>
+            <span className="filter-dropdown-label">{t("filterClearAll")}</span>
           </button>
           <div className="filter-dropdown-divider" />
         </>
@@ -233,7 +235,7 @@ export function FilterDropdown<T extends string>({
               ref={sheetRef}
               className="filter-dropdown-sheet"
               tabIndex={-1}
-              aria-label={`Filter by ${label}`}
+              aria-label={t("filterByLabel", { label })}
             >
               <div className="filter-dropdown-header">
                 <span className="filter-dropdown-title">{label}</span>
@@ -251,7 +253,7 @@ export function FilterDropdown<T extends string>({
         ref={sheetRef}
         className={`filter-dropdown-dropdown ${align === "right" ? "align-right" : ""}`}
         tabIndex={-1}
-        aria-label={`Filter by ${label}`}
+        aria-label={t("filterByLabel", { label })}
       >
         <div className="filter-dropdown-options">{optionsContent}</div>
       </div>
@@ -264,7 +266,7 @@ export function FilterDropdown<T extends string>({
         type="button"
         className={`filter-dropdown-button ${selected.length > 0 ? "has-selection" : ""}`}
         onClick={handleButtonClick}
-        title={`Filter by ${label}`}
+        title={t("filterByLabel", { label })}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >

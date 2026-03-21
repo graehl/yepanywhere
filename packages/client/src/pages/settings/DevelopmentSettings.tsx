@@ -4,8 +4,10 @@ import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useReloadNotifications } from "../../hooks/useReloadNotifications";
 import { useSchemaValidation } from "../../hooks/useSchemaValidation";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useI18n } from "../../i18n";
 
 export function DevelopmentSettings() {
+  const { t } = useI18n();
   const {
     isManualReloadMode,
     pendingReloads,
@@ -41,16 +43,13 @@ export function DevelopmentSettings() {
 
   return (
     <section className="settings-section">
-      <h2>Development</h2>
+      <h2>{t("developmentSectionTitle")}</h2>
 
       <div className="settings-group">
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Schema Validation</strong>
-            <p>
-              Validate tool results against expected schemas. Shows toast
-              notifications and logs errors to console.
-            </p>
+            <strong>{t("developmentSchemaTitle")}</strong>
+            <p>{t("developmentSchemaDescription")}</p>
           </div>
           <label className="toggle-switch">
             <input
@@ -64,11 +63,8 @@ export function DevelopmentSettings() {
         {ignoredTools.length > 0 && (
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Ignored Tools</strong>
-              <p>
-                Tools with validation errors you chose to ignore. They will not
-                show toast notifications.
-              </p>
+              <strong>{t("developmentIgnoredToolsTitle")}</strong>
+              <p>{t("developmentIgnoredToolsDescription")}</p>
               <div className="ignored-tools-list">
                 {ignoredTools.map((tool) => (
                   <span key={tool} className="ignored-tool-badge">
@@ -82,17 +78,14 @@ export function DevelopmentSettings() {
               className="settings-button settings-button-secondary"
               onClick={clearIgnoredTools}
             >
-              Clear Ignored
+              {t("developmentClearIgnored")}
             </button>
           </div>
         )}
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Hold Mode</strong>
-            <p>
-              Show hold/resume option in the mode selector. Pauses execution at
-              the next yield point (experimental).
-            </p>
+            <strong>{t("developmentHoldModeTitle")}</strong>
+            <p>{t("developmentHoldModeDescription")}</p>
           </div>
           <label className="toggle-switch">
             <input
@@ -105,11 +98,8 @@ export function DevelopmentSettings() {
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Service Worker</strong>
-            <p>
-              Enable service worker for push notifications. Disabling can help
-              with page reload issues during development. Requires restart.
-            </p>
+            <strong>{t("developmentServiceWorkerTitle")}</strong>
+            <p>{t("developmentServiceWorkerDescription")}</p>
           </div>
           <label className="toggle-switch">
             <input
@@ -124,11 +114,11 @@ export function DevelopmentSettings() {
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Persist Remote Sessions To Disk</strong>
+            <strong>{t("developmentPersistRemoteTitle")}</strong>
             <p>
-              Store remote SRP resume sessions in{" "}
+              {t("developmentPersistRemoteDescriptionPrefix")}{" "}
               <code>remote-sessions.json</code> so relay reconnect survives
-              server restarts. Disabled by default for security.
+              {t("developmentPersistRemoteDescriptionSuffix")}
             </p>
           </div>
           <label className="toggle-switch">
@@ -150,18 +140,22 @@ export function DevelopmentSettings() {
       <div className="settings-group">
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Restart Server</strong>
+            <strong>{t("developmentRestartTitle")}</strong>
             <p>
-              Restart the backend server to pick up code changes.
+              {t("developmentRestartDescription")}
               {pendingReloads.backend && (
-                <span className="settings-pending"> (changes pending)</span>
+                <span className="settings-pending">
+                  {" "}
+                  {t("developmentChangesPending")}
+                </span>
               )}
             </p>
             {unsafeToRestart && (
               <p className="settings-warning">
-                {workerActivity.activeWorkers} active session
-                {workerActivity.activeWorkers !== 1 ? "s" : ""} will be
-                interrupted
+                {t("developmentInterruptedWarning", {
+                  count: workerActivity.activeWorkers,
+                  suffix: workerActivity.activeWorkers !== 1 ? "s " : " ",
+                })}
               </p>
             )}
           </div>
@@ -172,10 +166,10 @@ export function DevelopmentSettings() {
             disabled={restarting}
           >
             {restarting
-              ? "Restarting..."
+              ? t("developmentRestarting")
               : unsafeToRestart
-                ? "Restart Anyway"
-                : "Restart Server"}
+                ? t("developmentRestartAnyway")
+                : t("developmentRestart")}
           </button>
         </div>
       </div>

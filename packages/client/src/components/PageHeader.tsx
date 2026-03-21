@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useI18n } from "../i18n";
 import { truncateText } from "../lib/text";
 
 interface PageHeaderProps {
@@ -62,6 +63,7 @@ export function PageHeader({
   showBack = false,
   onBack,
 }: PageHeaderProps) {
+  const { t } = useI18n();
   // On desktop: toggle sidebar collapse. On mobile: open sidebar overlay
   // Hide the toggle on desktop when sidebar is collapsed (sidebar has its own toggle)
   const handleToggle = isWideScreen
@@ -69,7 +71,9 @@ export function PageHeader({
       ? undefined
       : onToggleSidebar
     : onOpenSidebar;
-  const toggleTitle = isWideScreen ? "Toggle sidebar" : "Open sidebar";
+  const toggleTitle = isWideScreen
+    ? t("actionToggleSidebar")
+    : t("actionOpenSidebar");
 
   return (
     <header className="session-header">
@@ -80,8 +84,8 @@ export function PageHeader({
               type="button"
               className="sidebar-toggle"
               onClick={onBack}
-              title="Back"
-              aria-label="Back"
+              title={t("actionBack")}
+              aria-label={t("actionBack")}
             >
               <BackIcon />
             </button>

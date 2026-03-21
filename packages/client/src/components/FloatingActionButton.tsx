@@ -14,6 +14,7 @@ import {
   setRecentProjectId,
 } from "../hooks/useRecentProject";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useI18n } from "../i18n";
 import { VoiceInputButton } from "./VoiceInputButton";
 
 const FAB_DRAFT_KEY = "fab-draft";
@@ -43,6 +44,7 @@ function setFabPrefill(text: string): void {
  * Desktop-only feature that appears in the right margin when there's room.
  */
 export function FloatingActionButton() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
   const basePath = useRemoteBasePath();
@@ -195,7 +197,7 @@ export function FloatingActionButton() {
               setMessage(e.target.value);
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Start a new session..."
+            placeholder={t("fabPlaceholder")}
             className="fab-textarea"
             rows={3}
           />
@@ -210,7 +212,7 @@ export function FloatingActionButton() {
               className="fab-submit"
               onClick={handleSubmit}
               disabled={!message.trim()}
-              aria-label="Go to new session"
+              aria-label={t("fabGoToNewSession")}
             >
               ↵
             </button>
@@ -222,7 +224,7 @@ export function FloatingActionButton() {
         type="button"
         className={`fab-button ${isExpanded ? "fab-button-active" : ""}`}
         onClick={isExpanded ? () => setIsExpanded(false) : handleButtonClick}
-        aria-label={isExpanded ? "Close" : "New session"}
+        aria-label={isExpanded ? t("fabClose") : t("fabNewSession")}
       >
         <svg
           width="20"

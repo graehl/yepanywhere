@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import { useI18n } from "../i18n";
 import { Modal } from "./ui/Modal";
 
 interface ModelSwitchModalProps {
@@ -21,6 +22,7 @@ export function ModelSwitchModal({
   onModelChanged,
   onClose,
 }: ModelSwitchModalProps) {
+  const { t } = useI18n();
   const [models, setModels] = useState<ModelOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,9 +32,9 @@ export function ModelSwitchModal({
     api
       .getProcessModels(processId)
       .then((res) => setModels(res.models))
-      .catch((err) => setError(err.message || "Failed to load models"))
+      .catch((err) => setError(err.message || t("modelSwitchLoadFailed")))
       .finally(() => setLoading(false));
-  }, [processId]);
+  }, [processId, t]);
 
   const handleSelect = async (modelId: string) => {
     if (switching) return;
@@ -43,20 +45,22 @@ export function ModelSwitchModal({
       onModelChanged(modelId);
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to switch model");
+      setError(
+        err instanceof Error ? err.message : t("modelSwitchChangeFailed"),
+      );
       setSwitching(false);
     }
   };
 
   return (
-    <Modal title="Switch Model" onClose={onClose}>
+    <Modal title={t("modelSwitchTitle")} onClose={onClose}>
       <div className="model-switch-content">
         {loading && (
-          <div className="model-switch-loading">Loading models...</div>
+          <div className="model-switch-loading">{t("modelSwitchLoading")}</div>
         )}
         {error && <div className="model-switch-error">{error}</div>}
         {!loading && !error && models.length === 0 && (
-          <div className="model-switch-loading">No models available</div>
+          <div className="model-switch-loading">{t("modelSwitchEmpty")}</div>
         )}
         {!loading && models.length > 0 && (
           <div className="model-switch-list">
@@ -80,7 +84,9 @@ export function ModelSwitchModal({
                     </span>
                   )}
                   {isCurrent && (
-                    <span className="model-switch-badge">Current</span>
+                    <span className="model-switch-badge">
+                      {t("modelSwitchCurrent")}
+                    </span>
                   )}
                 </button>
               );

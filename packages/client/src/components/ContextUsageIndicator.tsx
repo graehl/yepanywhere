@@ -1,3 +1,4 @@
+import { useI18n } from "../i18n";
 import type { ContextUsage } from "../types";
 
 interface ContextUsageIndicatorProps {
@@ -18,6 +19,7 @@ export function ContextUsageIndicator({
   size = 16,
   showLabel = true,
 }: ContextUsageIndicatorProps) {
+  const { t } = useI18n();
   if (!usage) return null;
 
   const { percentage } = usage;
@@ -38,8 +40,15 @@ export function ContextUsageIndicator({
   };
 
   const tooltip = usage.contextWindow
-    ? `Context: ${clampedPercentage}% (${formatTokens(usage.inputTokens)} / ${formatTokens(usage.contextWindow)} tokens)`
-    : `Context: ${clampedPercentage}% (${formatTokens(usage.inputTokens)} tokens)`;
+    ? t("contextTooltipWithWindow", {
+        percentage: clampedPercentage,
+        used: formatTokens(usage.inputTokens),
+        total: formatTokens(usage.contextWindow),
+      })
+    : t("contextTooltipNoWindow", {
+        percentage: clampedPercentage,
+        used: formatTokens(usage.inputTokens),
+      });
 
   return (
     <span className="context-usage-indicator" title={tooltip}>

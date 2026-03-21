@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useToolApprovalFeedbackDraft } from "../hooks/useDrafts";
+import { useI18n } from "../i18n";
 import type { InputRequest } from "../types";
 import { toolRegistry } from "./renderers/tools";
 import type { RenderContext } from "./renderers/types";
@@ -39,6 +40,7 @@ export function ToolApprovalPanel({
   collapsed = false,
   onCollapsedChange,
 }: Props) {
+  const { t } = useI18n();
   const [submitting, setSubmitting] = useState(false);
   // Prevent accidental clicks by disabling buttons briefly when panel appears
   const [armed, setArmed] = useState(false);
@@ -214,7 +216,7 @@ export function ToolApprovalPanel({
         className={`tool-approval-toggle ${collapsed ? "has-pending" : ""}`}
         onClick={() => onCollapsedChange?.(!collapsed)}
         aria-label={
-          collapsed ? "Expand approval panel" : "Collapse approval panel"
+          collapsed ? t("toolApprovalExpand") : t("toolApprovalCollapse")
         }
         aria-expanded={!collapsed}
       >
@@ -239,20 +241,21 @@ export function ToolApprovalPanel({
           <div className="tool-approval-header">
             {isExitPlanMode(request.toolName) ? (
               <>
-                <span className="tool-approval-title">Accept this plan?</span>
+                <span className="tool-approval-title">
+                  {t("toolApprovalPlanTitle")}
+                </span>
                 <span className="tool-approval-subtitle">
-                  Review the plan above and decide whether to proceed
+                  {t("toolApprovalPlanSubtitle")}
                 </span>
               </>
             ) : (
               <>
                 <div className="tool-approval-question-row">
                   <span className="tool-approval-question">
-                    Allow{" "}
-                    <span className="tool-approval-name">
-                      {request.toolName}
-                    </span>{" "}
-                    {summary}?
+                    {t("toolApprovalAllow", {
+                      tool: request.toolName ?? "",
+                      summary: summary ?? "",
+                    })}
                   </span>
                   {showViewDetails && (
                     <button
@@ -260,13 +263,15 @@ export function ToolApprovalPanel({
                       className="tool-approval-view-details"
                       onClick={() => setShowPreviewModal(true)}
                     >
-                      View details
+                      {t("toolApprovalViewDetails")}
                     </button>
                   )}
                 </div>
                 {showPreviewModal && request.toolName && (
                   <Modal
-                    title={`${request.toolName} details`}
+                    title={t("toolApprovalDetailsTitle", {
+                      tool: request.toolName,
+                    })}
                     onClose={() => setShowPreviewModal(false)}
                   >
                     <div className="tool-use-expanded">
@@ -292,7 +297,7 @@ export function ToolApprovalPanel({
                   disabled={!armed || submitting || !onApproveAcceptEdits}
                 >
                   <kbd>1</kbd>
-                  <span>Yes, and auto-accept</span>
+                  <span>{t("toolApprovalYesAuto")}</span>
                 </button>
                 <button
                   type="button"
@@ -301,7 +306,7 @@ export function ToolApprovalPanel({
                   disabled={!armed || submitting}
                 >
                   <kbd>2</kbd>
-                  <span>Yes, and manually approve edits</span>
+                  <span>{t("toolApprovalYesManual")}</span>
                 </button>
                 <button
                   type="button"
@@ -310,7 +315,7 @@ export function ToolApprovalPanel({
                   disabled={!armed || submitting}
                 >
                   <kbd>3</kbd>
-                  <span>No, keep planning</span>
+                  <span>{t("toolApprovalNoKeepPlanning")}</span>
                 </button>
               </>
             ) : (
@@ -322,7 +327,7 @@ export function ToolApprovalPanel({
                   disabled={!armed || submitting}
                 >
                   <kbd>1</kbd>
-                  <span>Yes</span>
+                  <span>{t("toolApprovalYes")}</span>
                 </button>
 
                 {isEditTool && onApproveAcceptEdits && (
@@ -333,7 +338,7 @@ export function ToolApprovalPanel({
                     disabled={!armed || submitting}
                   >
                     <kbd>2</kbd>
-                    <span>Yes, and don't ask again</span>
+                    <span>{t("toolApprovalYesDontAsk")}</span>
                   </button>
                 )}
 
@@ -344,7 +349,7 @@ export function ToolApprovalPanel({
                   disabled={!armed || submitting}
                 >
                   <kbd>{isEditTool && onApproveAcceptEdits ? "3" : "2"}</kbd>
-                  <span>No</span>
+                  <span>{t("toolApprovalNo")}</span>
                 </button>
               </>
             )}
@@ -356,7 +361,7 @@ export function ToolApprovalPanel({
                 onClick={() => setShowFeedback(true)}
                 disabled={!armed || submitting}
               >
-                <span>Tell Claude what to do instead</span>
+                <span>{t("toolApprovalTellInstead")}</span>
               </button>
             )}
 
@@ -365,7 +370,7 @@ export function ToolApprovalPanel({
                 <input
                   ref={feedbackInputRef}
                   type="text"
-                  placeholder="Tell Claude what to do instead..."
+                  placeholder={t("toolApprovalFeedbackPlaceholder")}
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
                   disabled={!armed || submitting}
@@ -377,7 +382,7 @@ export function ToolApprovalPanel({
                   onClick={handleDenyWithFeedback}
                   disabled={!armed || submitting || !feedback.trim()}
                 >
-                  Send
+                  {t("toolApprovalSend")}
                 </button>
               </div>
             )}

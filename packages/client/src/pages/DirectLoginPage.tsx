@@ -9,9 +9,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { useI18n } from "../i18n";
 import { createDirectHost, loadSavedHosts, saveHost } from "../lib/hostStorage";
 
 export function DirectLoginPage() {
+  const { t } = useI18n();
   const {
     connect,
     isConnecting,
@@ -42,7 +44,7 @@ export function DirectLoginPage() {
           <div className="login-logo">
             <YepAnywhereLogo />
           </div>
-          <p className="login-subtitle">Reconnecting...</p>
+          <p className="login-subtitle">{t("reconnecting")}</p>
           <div className="login-loading" data-testid="auto-resume-loading">
             <div className="login-spinner" />
           </div>
@@ -57,17 +59,17 @@ export function DirectLoginPage() {
 
     // Validate inputs
     if (!serverUrl.trim()) {
-      setLocalError("Server URL is required");
+      setLocalError(t("directLoginErrorServerUrlRequired"));
       return;
     }
 
     if (!username.trim()) {
-      setLocalError("Username is required");
+      setLocalError(t("directLoginErrorUsernameRequired"));
       return;
     }
 
     if (!password) {
-      setLocalError("Password is required");
+      setLocalError(t("directLoginErrorPasswordRequired"));
       return;
     }
 
@@ -124,13 +126,13 @@ export function DirectLoginPage() {
     <div className="login-page">
       <div className="login-container">
         <Link to="/login" className="login-back-link">
-          &larr; Back
+          &larr; {t("actionBack")}
         </Link>
 
         <div className="login-logo">
           <YepAnywhereLogo />
         </div>
-        <p className="login-subtitle">Direct Connection</p>
+        <p className="login-subtitle">{t("directLoginTitle")}</p>
 
         <form
           onSubmit={handleSubmit}
@@ -138,7 +140,7 @@ export function DirectLoginPage() {
           data-testid="login-form"
         >
           <div className="login-field">
-            <label htmlFor="serverUrl">Server URL</label>
+            <label htmlFor="serverUrl">{t("directLoginServerUrl")}</label>
             <input
               id="serverUrl"
               type="text"
@@ -149,19 +151,17 @@ export function DirectLoginPage() {
               autoComplete="url"
               data-testid="ws-url-input"
             />
-            <p className="login-field-hint">
-              Your server's address (e.g., ws://192.168.1.50:3400/api/ws)
-            </p>
+            <p className="login-field-hint">{t("directLoginServerUrlHint")}</p>
           </div>
 
           <div className="login-field">
-            <label htmlFor="username">Username</label>
+            <label htmlFor="username">{t("directLoginUsername")}</label>
             <input
               id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter username"
+              placeholder={t("directLoginUsernamePlaceholder")}
               disabled={isConnecting}
               autoComplete="username"
               data-testid="username-input"
@@ -169,13 +169,13 @@ export function DirectLoginPage() {
           </div>
 
           <div className="login-field">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">{t("directLoginPassword")}</label>
             <input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
+              placeholder={t("directLoginPasswordPlaceholder")}
               disabled={isConnecting}
               autoComplete="current-password"
               data-testid="password-input"
@@ -191,12 +191,12 @@ export function DirectLoginPage() {
                 disabled={isConnecting}
                 data-testid="remember-me-checkbox"
               />
-              <span>Remember me</span>
+              <span>{t("directLoginRememberMe")}</span>
             </label>
             <p className="login-field-hint">
               {hasStoredSession
-                ? "Session will resume automatically"
-                : "Stay logged in on this device"}
+                ? t("directLoginResumeHint")
+                : t("directLoginStayLoggedIn")}
             </p>
           </div>
 
@@ -212,14 +212,13 @@ export function DirectLoginPage() {
             disabled={isConnecting}
             data-testid="login-button"
           >
-            {isConnecting ? "Connecting..." : "Connect"}
+            {isConnecting
+              ? t("directLoginConnecting")
+              : t("directLoginConnect")}
           </button>
         </form>
 
-        <p className="login-hint">
-          Remote access must be enabled in your server's Settings. The username
-          and password are set there.
-        </p>
+        <p className="login-hint">{t("directLoginHint")}</p>
       </div>
     </div>
   );

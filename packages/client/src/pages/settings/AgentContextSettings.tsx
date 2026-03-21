@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useI18n } from "../../i18n";
 
 const MAX_LENGTH = 10000;
 
 export function AgentContextSettings() {
+  const { t } = useI18n();
   const { settings, isLoading, error, updateSetting } = useServerSettings();
   const [instructions, setInstructions] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -27,18 +29,20 @@ export function AgentContextSettings() {
       setHasChanges(false);
     } catch (err) {
       setSaveError(
-        err instanceof Error ? err.message : "Failed to save instructions",
+        err instanceof Error ? err.message : t("agentContextSaveFailed"),
       );
     } finally {
       setIsSaving(false);
     }
-  }, [instructions, updateSetting]);
+  }, [instructions, updateSetting, t]);
 
   if (isLoading) {
     return (
       <section className="settings-section">
-        <h2>Agent Context</h2>
-        <p className="settings-section-description">Loading...</p>
+        <h2>{t("agentContextTitle")}</h2>
+        <p className="settings-section-description">
+          {t("agentContextLoading")}
+        </p>
       </section>
     );
   }
@@ -47,10 +51,9 @@ export function AgentContextSettings() {
 
   return (
     <section className="settings-section">
-      <h2>Agent Context</h2>
+      <h2>{t("agentContextTitle")}</h2>
       <p className="settings-section-description">
-        Instructions included in every session's system prompt. Use this for
-        coding conventions, project context, or paths to reference files.
+        {t("agentContextDescription")}
       </p>
 
       <div className="settings-group">
@@ -59,11 +62,8 @@ export function AgentContextSettings() {
           style={{ flexDirection: "column", alignItems: "stretch" }}
         >
           <div className="settings-item-info">
-            <strong>Global Instructions</strong>
-            <p>
-              Appended to the system prompt for Claude. Prepended to the first
-              message for other providers.
-            </p>
+            <strong>{t("agentContextGlobalInstructions")}</strong>
+            <p>{t("agentContextGlobalInstructionsDescription")}</p>
           </div>
           <textarea
             className="settings-textarea"
@@ -74,9 +74,7 @@ export function AgentContextSettings() {
               setHasChanges(value !== serverValue);
               setSaveError(null);
             }}
-            placeholder={
-              "Use TypeScript strict mode. Prefer functional patterns.\n\nProject context: ~/code/dotfiles/projects/README.md"
-            }
+            placeholder={t("agentContextPlaceholder")}
             rows={10}
           />
           <div
@@ -88,8 +86,10 @@ export function AgentContextSettings() {
             }}
           >
             <span className="settings-hint">
-              {instructions.length.toLocaleString()}/
-              {MAX_LENGTH.toLocaleString()} characters
+              {t("agentContextCharacters", {
+                current: instructions.length.toLocaleString(),
+                max: MAX_LENGTH.toLocaleString(),
+              })}
             </span>
             <button
               type="button"
@@ -97,7 +97,7 @@ export function AgentContextSettings() {
               disabled={!hasChanges || isSaving}
               onClick={handleSave}
             >
-              {isSaving ? "Saving..." : "Save"}
+              {isSaving ? t("providersSaving") : t("providersSave")}
             </button>
           </div>
           {(saveError || error) && (

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { RemoteExecutorTestResult } from "../../api/client";
 import { useRemoteExecutors } from "../../hooks/useRemoteExecutors";
+import { useI18n } from "../../i18n";
 
 interface ExecutorStatus {
   testing: boolean;
@@ -8,6 +9,7 @@ interface ExecutorStatus {
 }
 
 export function RemoteExecutorsSettings() {
+  const { t } = useI18n();
   const { executors, loading, addExecutor, removeExecutor, testExecutor } =
     useRemoteExecutors();
 
@@ -29,7 +31,7 @@ export function RemoteExecutorsSettings() {
       setNewHost("");
     } catch (err) {
       setAddError(
-        err instanceof Error ? err.message : "Failed to add executor",
+        err instanceof Error ? err.message : t("remoteExecutorsAddFailed"),
       );
     } finally {
       setIsAdding(false);
@@ -68,7 +70,10 @@ export function RemoteExecutorsSettings() {
           testing: false,
           result: {
             success: false,
-            error: err instanceof Error ? err.message : "Connection failed",
+            error:
+              err instanceof Error
+                ? err.message
+                : t("remoteExecutorsConnectionFailed"),
           },
         },
       }));
@@ -84,18 +89,17 @@ export function RemoteExecutorsSettings() {
 
   return (
     <section className="settings-section">
-      <h2>Remote Executors</h2>
+      <h2>{t("remoteExecutorsTitle")}</h2>
       <p className="settings-section-description">
-        Run Claude sessions on remote machines via SSH. Add SSH host aliases
-        from your ~/.ssh/config file.
+        {t("remoteExecutorsDescription")}
       </p>
 
       {/* Add new executor */}
       <div className="settings-group">
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Add Remote Executor</strong>
-            <p>Enter an SSH host alias (e.g., "devbox", "gpu-server")</p>
+            <strong>{t("remoteExecutorsAddTitle")}</strong>
+            <p>{t("remoteExecutorsAddDescription")}</p>
           </div>
           <div className="remote-executor-add">
             <input
@@ -103,7 +107,7 @@ export function RemoteExecutorsSettings() {
               value={newHost}
               onChange={(e) => setNewHost(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="SSH host alias"
+              placeholder={t("remoteExecutorsHostPlaceholder")}
               disabled={isAdding}
               className="remote-executor-input"
             />
@@ -113,7 +117,7 @@ export function RemoteExecutorsSettings() {
               disabled={!newHost.trim() || isAdding}
               className="remote-executor-add-button"
             >
-              {isAdding ? "Adding..." : "Add"}
+              {isAdding ? t("remoteExecutorsAdding") : t("remoteExecutorsAdd")}
             </button>
           </div>
           {addError && <p className="settings-error">{addError}</p>}
@@ -122,14 +126,11 @@ export function RemoteExecutorsSettings() {
 
       {/* Executor list */}
       <div className="settings-group">
-        <h3>Configured Executors</h3>
+        <h3>{t("remoteExecutorsConfigured")}</h3>
         {loading ? (
-          <p className="settings-loading">Loading...</p>
+          <p className="settings-loading">{t("loginLoading")}</p>
         ) : executors.length === 0 ? (
-          <p className="settings-empty">
-            No remote executors configured. Add one above to run sessions on
-            remote machines.
-          </p>
+          <p className="settings-empty">{t("remoteExecutorsEmpty")}</p>
         ) : (
           <div className="remote-executor-list">
             {executors.map((host) => {
@@ -142,7 +143,9 @@ export function RemoteExecutorsSettings() {
                       <span
                         className={`settings-status-badge ${status.result.success ? "settings-status-detected" : "settings-status-not-detected"}`}
                       >
-                        {status.result.success ? "Connected" : "Failed"}
+                        {status.result.success
+                          ? t("remoteExecutorsConnected")
+                          : t("remoteExecutorsFailed")}
                       </span>
                     )}
                   </div>
@@ -154,8 +157,12 @@ export function RemoteExecutorsSettings() {
                   {status?.result?.success && (
                     <p className="remote-executor-details">
                       {status.result.claudeAvailable
-                        ? `Claude CLI ${status.result.claudeVersion ? `v${status.result.claudeVersion}` : "available"}`
-                        : "Claude CLI not found"}
+                        ? status.result.claudeVersion
+                          ? t("remoteExecutorsClaudeVersion", {
+                              version: status.result.claudeVersion,
+                            })
+                          : t("remoteExecutorsClaudeAvailable")
+                        : t("remoteExecutorsClaudeMissing")}
                     </p>
                   )}
                   <div className="remote-executor-actions">
@@ -165,14 +172,16 @@ export function RemoteExecutorsSettings() {
                       disabled={status?.testing}
                       className="remote-executor-test-button"
                     >
-                      {status?.testing ? "Testing..." : "Test Connection"}
+                      {status?.testing
+                        ? t("remoteExecutorsTesting")
+                        : t("remoteExecutorsTestConnection")}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleRemoveExecutor(host)}
                       className="remote-executor-remove-button"
                     >
-                      Remove
+                      {t("remoteExecutorsRemove")}
                     </button>
                   </div>
                 </div>
@@ -184,19 +193,12 @@ export function RemoteExecutorsSettings() {
 
       {/* Help text */}
       <div className="settings-group">
-        <h3>Setup Requirements</h3>
+        <h3>{t("remoteExecutorsSetupRequirements")}</h3>
         <ul className="settings-requirements">
-          <li>SSH host alias configured in ~/.ssh/config</li>
-          <li>SSH key-based authentication (no password prompts)</li>
-          <li>
-            Claude CLI installed on the remote machine (the SDK bundles its own
-            CLI for local sessions, so the remote CLI version can diverge — keep
-            them in sync to avoid feature incompatibilities)
-          </li>
-          <li>
-            Project paths must be the same on local and remote machines (e.g.,
-            ~/code/project)
-          </li>
+          <li>{t("remoteExecutorsRequirementSshConfig")}</li>
+          <li>{t("remoteExecutorsRequirementKeyAuth")}</li>
+          <li>{t("remoteExecutorsRequirementClaude")}</li>
+          <li>{t("remoteExecutorsRequirementPaths")}</li>
         </ul>
       </div>
     </section>

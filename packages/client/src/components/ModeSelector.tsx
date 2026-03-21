@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "../i18n";
 import type { PermissionMode } from "../types";
 
 const MODE_ORDER: PermissionMode[] = [
@@ -41,6 +42,7 @@ export function ModeSelector({
   isHeld = false,
   onHoldChange,
 }: ModeSelectorProps) {
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(
     () => window.innerWidth >= DESKTOP_BREAKPOINT,
@@ -145,7 +147,7 @@ export function ModeSelector({
   };
 
   // Display text: show "Hold" when held, otherwise show mode label
-  const displayLabel = isHeld ? "Hold" : MODE_LABELS[mode];
+  const displayLabel = isHeld ? t("modeHold" as never) : MODE_LABELS[mode];
   const displayDotClass = isHeld ? "mode-hold" : `mode-${mode}`;
 
   // Shared options content used by both mobile sheet and desktop dropdown
@@ -161,10 +163,12 @@ export function ModeSelector({
         >
           <span className="mode-dot mode-hold" />
           <span className="mode-selector-label">
-            {isHeld ? "Resume" : "Hold"}
+            {isHeld ? t("modeResume" as never) : t("modeHold" as never)}
           </span>
           <span className="mode-selector-description">
-            {isHeld ? "Continue execution" : "Pause execution"}
+            {isHeld
+              ? t("modeContinueExecution" as never)
+              : t("modePauseExecution" as never)}
           </span>
           {isHeld && (
             <span className="mode-selector-check" aria-hidden="true">
@@ -236,10 +240,12 @@ export function ModeSelector({
               ref={sheetRef}
               className="mode-selector-sheet"
               tabIndex={-1}
-              aria-label="Select mode"
+              aria-label={t("modeSelectLabel" as never)}
             >
               <div className="mode-selector-header">
-                <span className="mode-selector-title">Session Mode</span>
+                <span className="mode-selector-title">
+                  {t("modeSessionTitle" as never)}
+                </span>
               </div>
               <div className="mode-selector-options">{optionsContent}</div>
             </div>
@@ -255,7 +261,7 @@ export function ModeSelector({
         ref={sheetRef}
         className="mode-selector-dropdown"
         tabIndex={-1}
-        aria-label="Select mode"
+        aria-label={t("modeSelectLabel" as never)}
       >
         <div className="mode-selector-options">{optionsContent}</div>
       </div>
@@ -269,7 +275,7 @@ export function ModeSelector({
         className={`mode-button ${isHeld ? "mode-button-held" : ""}`}
         onClick={handleButtonClick}
         disabled={disabled}
-        title="Click to select mode"
+        title={t("modeClickToSelect" as never)}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >

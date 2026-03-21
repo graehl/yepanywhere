@@ -29,6 +29,7 @@ import { ConnectionGate, RemoteApp, UnauthenticatedGate } from "./RemoteApp";
 import { initializeFontSize } from "./hooks/useFontSize";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
+import { I18nProvider } from "./i18n";
 import { NavigationLayout } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
@@ -100,26 +101,28 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <Wrapper>
     <BrowserRouter basename={basename}>
-      <RemoteApp>
-        <Routes>
-          {/* Login routes — redirect to app if already connected */}
-          <Route element={<UnauthenticatedGate />}>
-            <Route path="/login" element={<HostPickerPage />} />
-            <Route path="/login/direct" element={<DirectLoginPage />} />
-            <Route path="/login/relay" element={<RelayLoginPage />} />
-          </Route>
+      <I18nProvider>
+        <RemoteApp>
+          <Routes>
+            {/* Login routes — redirect to app if already connected */}
+            <Route element={<UnauthenticatedGate />}>
+              <Route path="/login" element={<HostPickerPage />} />
+              <Route path="/login/direct" element={<DirectLoginPage />} />
+              <Route path="/login/relay" element={<RelayLoginPage />} />
+            </Route>
 
-          {/* Direct mode — requires connection, no relay username in URL */}
-          <Route element={<ConnectionGate />}>{APP_ROUTES}</Route>
+            {/* Direct mode — requires connection, no relay username in URL */}
+            <Route element={<ConnectionGate />}>{APP_ROUTES}</Route>
 
-          {/* Relay mode — manages relay connection by URL username.
-              React Router ranks static segments above dynamic params,
-              so /projects matches ConnectionGate, not /:relayUsername. */}
-          <Route path="/:relayUsername" element={<RelayConnectionGate />}>
-            {APP_ROUTES}
-          </Route>
-        </Routes>
-      </RemoteApp>
+            {/* Relay mode — manages relay connection by URL username.
+                React Router ranks static segments above dynamic params,
+                so /projects matches ConnectionGate, not /:relayUsername. */}
+            <Route path="/:relayUsername" element={<RelayConnectionGate />}>
+              {APP_ROUTES}
+            </Route>
+          </Routes>
+        </RemoteApp>
+      </I18nProvider>
     </BrowserRouter>
   </Wrapper>,
 );

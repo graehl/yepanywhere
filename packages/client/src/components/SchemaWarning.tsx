@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import type { ZodError } from "zod";
+import { useI18n } from "../i18n";
 import { Modal } from "./ui/Modal";
 
 interface SchemaWarningProps {
@@ -82,6 +83,7 @@ function buildIssueUrl(
  * inside clickable containers.
  */
 export function SchemaWarning({ toolName, errors }: SchemaWarningProps) {
+  const { t } = useI18n();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { missing, invalid } = formatErrors(errors);
   const issueUrl = buildIssueUrl(toolName, missing, invalid);
@@ -111,7 +113,7 @@ export function SchemaWarning({ toolName, errors }: SchemaWarningProps) {
         className="schema-warning"
         onClick={handleClick}
         onKeyDown={handleKeyDown}
-        title={`Schema warning for ${toolName} - click for details`}
+        title={t("schemaWarningTooltip" as never, { tool: toolName })}
       >
         <span className="schema-warning-icon" aria-hidden="true">
           !
@@ -122,6 +124,7 @@ export function SchemaWarning({ toolName, errors }: SchemaWarningProps) {
           title={
             <span className="schema-warning-modal-title">
               Schema validation failed: {toolName}
+              {t("schemaWarningTitle" as never, { tool: toolName })}
             </span>
           }
           onClose={handleClose}
@@ -130,7 +133,7 @@ export function SchemaWarning({ toolName, errors }: SchemaWarningProps) {
             {missing.length > 0 && (
               <div className="schema-warning-section">
                 <div className="schema-warning-section-title">
-                  Missing fields
+                  {t("schemaWarningMissing" as never)}
                 </div>
                 <ul className="schema-warning-list">
                   {missing.map((field) => (
@@ -144,7 +147,7 @@ export function SchemaWarning({ toolName, errors }: SchemaWarningProps) {
             {invalid.length > 0 && (
               <div className="schema-warning-section">
                 <div className="schema-warning-section-title">
-                  Invalid fields
+                  {t("schemaWarningInvalid" as never)}
                 </div>
                 <ul className="schema-warning-list">
                   {invalid.map(({ path, message }) => (
@@ -164,7 +167,7 @@ export function SchemaWarning({ toolName, errors }: SchemaWarningProps) {
                 className="schema-warning-report-link"
                 onClick={(e) => e.stopPropagation()}
               >
-                Report issue on GitHub
+                {t("schemaWarningReport" as never)}
               </a>
             </div>
           </div>

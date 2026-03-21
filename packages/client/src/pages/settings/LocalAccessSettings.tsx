@@ -7,8 +7,10 @@ import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useNetworkBinding } from "../../hooks/useNetworkBinding";
 import { useServerInfo } from "../../hooks/useServerInfo";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useI18n } from "../../i18n";
 
 export function LocalAccessSettings() {
+  const { t } = useI18n();
   const auth = useOptionalAuth();
   const remoteConnection = useOptionalRemoteConnection();
   const { relayDebugEnabled, setRelayDebugEnabled } = useDeveloperMode();
@@ -141,7 +143,7 @@ export function LocalAccessSettings() {
     // Validate port
     const portNum = Number.parseInt(localhostPort, 10);
     if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
-      setFormError("Port must be a number between 1 and 65535");
+      setFormError(t("localAccessErrorPortRange"));
       return;
     }
 
@@ -151,11 +153,11 @@ export function LocalAccessSettings() {
       requirePassword && auth.authEnabled && authPassword.length > 0;
     if (enablingAuth || changingPassword) {
       if (authPassword.length < 6) {
-        setFormError("Password must be at least 6 characters");
+        setFormError(t("localAccessErrorPasswordLength"));
         return;
       }
       if (authPassword !== authPasswordConfirm) {
-        setFormError("Passwords do not match");
+        setFormError(t("localAccessErrorPasswordMismatch"));
         return;
       }
     }
@@ -216,7 +218,7 @@ export function LocalAccessSettings() {
       }
     } catch (err) {
       setFormError(
-        err instanceof Error ? err.message : "Failed to apply changes",
+        err instanceof Error ? err.message : t("localAccessErrorApplyFailed"),
       );
     } finally {
       setIsApplying(false);
@@ -236,8 +238,10 @@ export function LocalAccessSettings() {
     if (isLoading) {
       return (
         <section className="settings-section">
-          <h2>Local Access</h2>
-          <p className="settings-section-description">Loading...</p>
+          <h2>{t("settingsLocalAccessTitle")}</h2>
+          <p className="settings-section-description">
+            {t("localAccessLoading")}
+          </p>
         </section>
       );
     }
@@ -247,16 +251,16 @@ export function LocalAccessSettings() {
 
     return (
       <section className="settings-section">
-        <h2>Local Access</h2>
+        <h2>{t("settingsLocalAccessTitle")}</h2>
         <p className="settings-section-description">
-          Control how this server is accessed on your local network.
+          {t("localAccessDescription")}
         </p>
 
         {/* Current status */}
         <div className="settings-group">
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Status</strong>
+              <strong>{t("localAccessStatusTitle")}</strong>
               <p>
                 {serverInfo
                   ? (() => {
@@ -275,7 +279,7 @@ export function LocalAccessSettings() {
                       ) {
                         return (
                           <>
-                            Listening on{" "}
+                            {t("localAccessListeningOn")}{" "}
                             <code>
                               {networkHost}:{networkPort}
                             </code>
@@ -286,14 +290,14 @@ export function LocalAccessSettings() {
                       // Otherwise show localhost, and optionally network
                       return (
                         <>
-                          Listening on{" "}
+                          {t("localAccessListeningOn")}{" "}
                           <code>
                             {serverInfo.host}:{serverInfo.port}
                           </code>
                           {binding?.network.enabled && networkHost && (
                             <>
                               {" "}
-                              and{" "}
+                              {t("localAccessListeningAnd")}{" "}
                               <code>
                                 {networkHost}:{networkPort}
                               </code>
@@ -302,18 +306,18 @@ export function LocalAccessSettings() {
                         </>
                       );
                     })()
-                  : "Unable to fetch server info"}
+                  : t("localAccessUnableToFetch")}
               </p>
             </div>
             {serverInfo?.localhostOnly && !binding?.network.enabled && (
               <span className="settings-status-badge settings-status-detected">
-                Local Only
+                {t("localAccessBadgeLocalOnly")}
               </span>
             )}
             {(serverInfo?.boundToAllInterfaces || binding?.network.enabled) &&
               !auth.authEnabled && (
                 <span className="settings-status-badge settings-status-warning">
-                  Network Exposed
+                  {t("localAccessBadgeNetworkExposed")}
                 </span>
               )}
           </div>
@@ -329,13 +333,15 @@ export function LocalAccessSettings() {
         >
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Listening Port</strong>
-              <p>Port used for all network access</p>
+              <strong>{t("localAccessListeningPortTitle")}</strong>
+              <p>{t("localAccessListeningPortDescription")}</p>
             </div>
             {binding?.localhost.overriddenByCli ? (
               <span className="settings-value-readonly">
                 {binding.localhost.port}{" "}
-                <span className="settings-hint">(set via --port)</span>
+                <span className="settings-hint">
+                  {t("localAccessSetViaPort")}
+                </span>
               </span>
             ) : (
               <input
@@ -355,13 +361,15 @@ export function LocalAccessSettings() {
 
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Local Network Access</strong>
-              <p>Allow access from other devices on your network</p>
+              <strong>{t("localAccessNetworkTitle")}</strong>
+              <p>{t("localAccessNetworkDescription")}</p>
             </div>
             {binding?.network.overriddenByCli ? (
               <span className="settings-value-readonly">
                 {binding.network.host}:{binding.network.port}{" "}
-                <span className="settings-hint">(set via --host)</span>
+                <span className="settings-hint">
+                  {t("localAccessSetViaHost")}
+                </span>
               </span>
             ) : (
               <label className="toggle-switch">
@@ -381,12 +389,12 @@ export function LocalAccessSettings() {
           {networkEnabled && !binding?.network.overriddenByCli && binding && (
             <div className="settings-item">
               <div className="settings-item-info">
-                <strong>Interface</strong>
-                <p>Select which network interface to bind to</p>
+                <strong>{t("localAccessInterfaceTitle")}</strong>
+                <p>{t("localAccessInterfaceDescription")}</p>
               </div>
               <FilterDropdown
-                label="Interface"
-                placeholder="Select interface..."
+                label={t("localAccessInterfaceTitle")}
+                placeholder={t("localAccessInterfacePlaceholder")}
                 multiSelect={false}
                 align="right"
                 options={[
@@ -394,8 +402,11 @@ export function LocalAccessSettings() {
                     value: iface.address,
                     label: iface.displayName,
                   })),
-                  { value: "0.0.0.0", label: "All interfaces (0.0.0.0)" },
-                  { value: "custom", label: "Custom IP..." },
+                  {
+                    value: "0.0.0.0",
+                    label: t("localAccessInterfaceAll"),
+                  },
+                  { value: "custom", label: t("localAccessInterfaceCustom") },
                 ]}
                 selected={selectedInterface ? [selectedInterface] : []}
                 onChange={(values) => {
@@ -412,8 +423,8 @@ export function LocalAccessSettings() {
             selectedInterface === "custom" && (
               <div className="settings-item">
                 <div className="settings-item-info">
-                  <strong>Custom IP</strong>
-                  <p>Enter the IP address to bind to</p>
+                  <strong>{t("localAccessCustomIpTitle")}</strong>
+                  <p>{t("localAccessCustomIpDescription")}</p>
                 </div>
                 <input
                   type="text"
@@ -428,11 +439,8 @@ export function LocalAccessSettings() {
           {/* Allowed Hosts — applies even on localhost (reverse proxy may use different hostname) */}
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Allow All Hostnames</strong>
-              <p>
-                Accept requests from any hostname (disables DNS rebinding
-                protection)
-              </p>
+              <strong>{t("localAccessAllowAllHostsTitle")}</strong>
+              <p>{t("localAccessAllowAllHostsDescription")}</p>
             </div>
             <label className="toggle-switch">
               <input
@@ -449,13 +457,13 @@ export function LocalAccessSettings() {
           {!allowAllHostsToggle && (
             <div className="settings-item">
               <div className="settings-item-info">
-                <strong>Allowed Hostnames</strong>
-                <p>Comma-separated list of additional allowed hostnames</p>
+                <strong>{t("localAccessAllowedHostsTitle")}</strong>
+                <p>{t("localAccessAllowedHostsDescription")}</p>
               </div>
               <input
                 type="text"
                 className="settings-input"
-                placeholder="mydomain.com, other.example.com"
+                placeholder={t("localAccessAllowedHostsPlaceholder")}
                 value={allowedHostsText}
                 onChange={(e) => {
                   setAllowedHostsText(e.target.value);
@@ -464,16 +472,14 @@ export function LocalAccessSettings() {
               />
             </div>
           )}
-          <p className="form-hint">
-            localhost, private IPs, and *.ts.net are always allowed.
-          </p>
+          <p className="form-hint">{t("localAccessAllowedHostsHint")}</p>
 
           {/* Require Password toggle */}
           {!auth.authDisabledByEnv && (
             <div className="settings-item">
               <div className="settings-item-info">
-                <strong>Require Password</strong>
-                <p>Require a password to access this server</p>
+                <strong>{t("localAccessRequirePasswordTitle")}</strong>
+                <p>{t("localAccessRequirePasswordDescription")}</p>
               </div>
               <label className="toggle-switch">
                 <input
@@ -506,11 +512,11 @@ export function LocalAccessSettings() {
               />
               <div className="settings-item">
                 <div className="settings-item-info">
-                  <strong>Password</strong>
+                  <strong>{t("localAccessPasswordTitle")}</strong>
                   <p>
                     {auth.authEnabled
-                      ? "Leave blank to keep current"
-                      : "At least 6 characters"}
+                      ? t("localAccessPasswordKeepCurrent")
+                      : t("localAccessPasswordMinLength")}
                   </p>
                 </div>
                 <input
@@ -523,14 +529,16 @@ export function LocalAccessSettings() {
                   }}
                   autoComplete="new-password"
                   placeholder={
-                    auth.authEnabled ? "New password" : "Enter password"
+                    auth.authEnabled
+                      ? t("localAccessPasswordNewPlaceholder")
+                      : t("localAccessPasswordPlaceholder")
                   }
                 />
               </div>
               {authPassword.length > 0 && (
                 <div className="settings-item">
                   <div className="settings-item-info">
-                    <strong>Confirm Password</strong>
+                    <strong>{t("localAccessConfirmPasswordTitle")}</strong>
                   </div>
                   <input
                     type="password"
@@ -538,15 +546,12 @@ export function LocalAccessSettings() {
                     value={authPasswordConfirm}
                     onChange={(e) => setAuthPasswordConfirm(e.target.value)}
                     autoComplete="new-password"
-                    placeholder="Confirm password"
+                    placeholder={t("localAccessConfirmPasswordPlaceholder")}
                   />
                 </div>
               )}
               {!auth.authEnabled && (
-                <p className="form-hint">
-                  Forgot your password? Use{" "}
-                  <code>yepanywhere --setup-auth</code> to set a new one.
-                </p>
+                <p className="form-hint">{t("localAccessPasswordResetHint")}</p>
               )}
             </>
           )}
@@ -557,8 +562,8 @@ export function LocalAccessSettings() {
             !auth.authDisabledByEnv && (
               <div className="settings-item">
                 <div className="settings-item-info">
-                  <strong>Allow Localhost Access</strong>
-                  <p>Let browsers on this device access without a password</p>
+                  <strong>{t("localAccessLocalhostOpenTitle")}</strong>
+                  <p>{t("localAccessLocalhostOpenDescription")}</p>
                 </div>
                 <label className="toggle-switch">
                   <input
@@ -575,9 +580,7 @@ export function LocalAccessSettings() {
             )}
 
           {auth.authDisabledByEnv && (
-            <p className="form-warning">
-              Authentication is bypassed by --auth-disable flag.
-            </p>
+            <p className="form-warning">{t("localAccessAuthDisabled")}</p>
           )}
 
           {/* Apply button - always visible */}
@@ -588,7 +591,9 @@ export function LocalAccessSettings() {
               className="settings-button"
               disabled={!hasChanges || isApplying || applying}
             >
-              {isApplying || applying ? "Applying..." : "Apply Changes"}
+              {isApplying || applying
+                ? t("localAccessApplying")
+                : t("localAccessApply")}
             </button>
           </div>
         </form>
@@ -598,15 +603,15 @@ export function LocalAccessSettings() {
           <div className="settings-group">
             <div className="settings-item">
               <div className="settings-item-info">
-                <strong>Logout</strong>
-                <p>Sign out on this device</p>
+                <strong>{t("remoteAccessLogoutTitle")}</strong>
+                <p>{t("localAccessLogoutDescription")}</p>
               </div>
               <button
                 type="button"
                 className="settings-button settings-button-danger"
                 onClick={auth.logout}
               >
-                Logout
+                {t("remoteAccessLogout")}
               </button>
             </div>
           </div>
@@ -619,31 +624,28 @@ export function LocalAccessSettings() {
   if (remoteConnection) {
     return (
       <section className="settings-section">
-        <h2>Local Access</h2>
+        <h2>{t("settingsLocalAccessTitle")}</h2>
         <p className="settings-section-description">
-          You are connected to a remote server via relay.
+          {t("localAccessRemoteDescription")}
         </p>
         <div className="settings-group">
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Logout</strong>
-              <p>Disconnect from the remote server.</p>
+              <strong>{t("remoteAccessLogoutTitle")}</strong>
+              <p>{t("localAccessRemoteLogoutDescription")}</p>
             </div>
             <button
               type="button"
               className="settings-button settings-button-danger"
               onClick={() => remoteConnection.disconnect()}
             >
-              Logout
+              {t("remoteAccessLogout")}
             </button>
           </div>
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Relay Debug Logging</strong>
-              <p>
-                Log relay requests and responses to the browser console. Useful
-                for debugging connection timeouts.
-              </p>
+              <strong>{t("localAccessRelayDebugTitle")}</strong>
+              <p>{t("localAccessRelayDebugDescription")}</p>
             </div>
             <label className="toggle-switch">
               <input

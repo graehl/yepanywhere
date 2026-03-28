@@ -48,7 +48,9 @@ describe("ReadRenderer", () => {
       </div>,
     );
 
-    expect(screen.getByRole("button", { name: /useGlobalSessions\.ts/i })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /useGlobalSessions\.ts/i }),
+    ).toBeDefined();
   });
 
   it("does not offer an empty modal for PTY handoff reads", () => {
@@ -73,7 +75,9 @@ describe("ReadRenderer", () => {
       </div>,
     );
 
-    expect(screen.queryByRole("button", { name: /useGlobalSessions\.ts/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /useGlobalSessions\.ts/i }),
+    ).toBeNull();
     expect(screen.getByText(/useGlobalSessions\.ts/)).toBeDefined();
     expect(screen.getByText(/continues in Shell/)).toBeDefined();
   });
@@ -99,7 +103,9 @@ describe("ReadRenderer", () => {
       </div>,
     );
 
-    expect(screen.queryByRole("button", { name: /useGlobalSessions\.ts/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /useGlobalSessions\.ts/i }),
+    ).toBeNull();
     expect(screen.getByText(/continues in Shell/)).toBeDefined();
   });
 });

@@ -41,7 +41,7 @@ describe("ToolCallRow", () => {
           isError: false,
         }}
         status="complete"
-      />
+      />,
     );
 
     expect(screen.getByText("Shell")).toBeDefined();
@@ -64,7 +64,7 @@ describe("ToolCallRow", () => {
           isError: false,
         }}
         status="complete"
-      />
+      />,
     );
 
     expect(container.querySelector(".expand-chevron")).not.toBeNull();

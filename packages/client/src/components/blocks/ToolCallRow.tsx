@@ -59,10 +59,19 @@ export const ToolCallRow = memo(function ToolCallRow({
       toolResult?.isError ?? false,
       renderContext,
     );
-  }, [status, toolName, toolInput, structuredResult, toolResult, renderContext]);
+  }, [
+    status,
+    toolName,
+    toolInput,
+    structuredResult,
+    toolResult,
+    renderContext,
+  ]);
 
   const hasInteractiveSummary =
-    interactiveSummaryContent !== null && interactiveSummaryContent !== undefined && interactiveSummaryContent !== false;
+    interactiveSummaryContent !== null &&
+    interactiveSummaryContent !== undefined &&
+    interactiveSummaryContent !== false;
 
   const collapsedPreviewContent = useMemo(() => {
     if (suppressCollapsedPreview) {
@@ -85,7 +94,9 @@ export const ToolCallRow = memo(function ToolCallRow({
   ]);
 
   const hasCollapsedPreview =
-    collapsedPreviewContent !== null && collapsedPreviewContent !== undefined && collapsedPreviewContent !== false;
+    collapsedPreviewContent !== null &&
+    collapsedPreviewContent !== undefined &&
+    collapsedPreviewContent !== false;
   const hideSummaryWhenPreviewVisible =
     toolName === "Bash" &&
     status === "pending" &&
@@ -177,7 +188,9 @@ export const ToolCallRow = memo(function ToolCallRow({
 
       {/* Collapsed preview - shown when tool supports it (non-expandable) */}
       {hasCollapsedPreview && (
-        <div className="tool-row-collapsed-preview">{collapsedPreviewContent}</div>
+        <div className="tool-row-collapsed-preview">
+          {collapsedPreviewContent}
+        </div>
       )}
 
       {expanded && !isNonExpandable && (

@@ -612,7 +612,10 @@ function withLinkedFilePath(input: unknown, filePath: string): unknown {
   if (!isRecord(input)) {
     return input;
   }
-  if (typeof input.linked_file_path === "string" && input.linked_file_path.trim()) {
+  if (
+    typeof input.linked_file_path === "string" &&
+    input.linked_file_path.trim()
+  ) {
     return input;
   }
   return { ...input, linked_file_path: filePath };
@@ -622,7 +625,10 @@ function withLinkedToolName(input: unknown, toolName: string): unknown {
   if (!isRecord(input)) {
     return input;
   }
-  if (typeof input.linked_tool_name === "string" && input.linked_tool_name.trim()) {
+  if (
+    typeof input.linked_tool_name === "string" &&
+    input.linked_tool_name.trim()
+  ) {
     return input;
   }
   return { ...input, linked_tool_name: toolName };
@@ -639,7 +645,9 @@ function isCommandSessionToolName(toolName: string): boolean {
 
 function isFileSessionToolName(toolName: string): boolean {
   const normalized = toolName.toLowerCase();
-  return normalized === "read" || normalized === "write" || normalized === "edit";
+  return (
+    normalized === "read" || normalized === "write" || normalized === "edit"
+  );
 }
 
 function extractFilePathFromToolInput(input: unknown): string | undefined {
@@ -661,7 +669,10 @@ function enrichWriteStdinWithCommand(items: RenderItem[]): RenderItem[] {
       return item;
     }
 
-    if (isCommandSessionToolName(item.toolName) || isFileSessionToolName(item.toolName)) {
+    if (
+      isCommandSessionToolName(item.toolName) ||
+      isFileSessionToolName(item.toolName)
+    ) {
       const sessionId = extractSessionIdFromToolResult(item);
       if (!sessionId) {
         return item;

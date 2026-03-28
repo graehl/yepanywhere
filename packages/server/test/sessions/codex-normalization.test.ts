@@ -757,7 +757,8 @@ describe("Codex Normalization", () => {
 
     const writeStdinItem = renderItems.find(
       (item) =>
-        item.type === "tool_call" && item.id === "call_soO8V845UAwDhcG4REHKJ0XF",
+        item.type === "tool_call" &&
+        item.id === "call_soO8V845UAwDhcG4REHKJ0XF",
     );
 
     expect(writeStdinItem?.type).toBe("tool_call");

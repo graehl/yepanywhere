@@ -15,7 +15,7 @@ describe("getToolSummary", () => {
       },
       {
         content:
-          "Chunk ID: 6dceb3\nWall time: 0.0522 seconds\nProcess exited with code 0\nOutput:\nimport { useCallback } from \"react\";\n",
+          'Chunk ID: 6dceb3\nWall time: 0.0522 seconds\nProcess exited with code 0\nOutput:\nimport { useCallback } from "react";\n',
         isError: false,
       },
       "complete",
@@ -37,7 +37,7 @@ describe("getToolSummary", () => {
       },
       {
         content:
-          "Chunk ID: fefaef\nWall time: 0.0520 seconds\nProcess exited with code 0\nOutput:\nimport { useEffect } from \"react\";\n",
+          'Chunk ID: fefaef\nWall time: 0.0520 seconds\nProcess exited with code 0\nOutput:\nimport { useEffect } from "react";\n',
         isError: false,
       },
       "complete",

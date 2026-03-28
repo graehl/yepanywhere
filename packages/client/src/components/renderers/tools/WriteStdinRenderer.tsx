@@ -203,7 +203,10 @@ function ReadViaPtyFile({
         </button>
       </div>
       {showModal && (
-        <Modal title={<span className="file-path">{fileName}</span>} onClose={() => setShowModal(false)}>
+        <Modal
+          title={<span className="file-path">{fileName}</span>}
+          onClose={() => setShowModal(false)}
+        >
           <div className="file-content-modal">
             <div className="file-content-with-lines">
               <div className="line-numbers">
@@ -269,7 +272,9 @@ export const writeStdinRenderer: ToolRenderer<
     }
 
     if (linkedToolName === "Read" && linkedFilePath) {
-      return <ReadViaPtyFile filePath={linkedFilePath} output={parsed.output} />;
+      return (
+        <ReadViaPtyFile filePath={linkedFilePath} output={parsed.output} />
+      );
     }
 
     return (
@@ -338,6 +343,8 @@ export const writeStdinRenderer: ToolRenderer<
       return null;
     }
 
-    return <ReadViaPtyFile filePath={linkedFilePath} output={parsed.output} inline />;
+    return (
+      <ReadViaPtyFile filePath={linkedFilePath} output={parsed.output} inline />
+    );
   },
 };

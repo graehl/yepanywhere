@@ -37,7 +37,9 @@ function getReadSessionId(result: unknown): string | number | undefined {
   return undefined;
 }
 
-function isPtyHandoffTextRead(result: ReadResultWithAugment | undefined): boolean {
+function isPtyHandoffTextRead(
+  result: ReadResultWithAugment | undefined,
+): boolean {
   if (!result || result.type !== "text") {
     return false;
   }
@@ -211,8 +213,7 @@ function TextFileResult({
   if (isPtyHandoff) {
     return (
       <div className="read-text-result">
-        <span className="file-path">{fileName}</span>
-        {" "}
+        <span className="file-path">{fileName}</span>{" "}
         <span className="file-line-count">continues in Shell</span>
       </div>
     );
@@ -512,8 +513,7 @@ function ReadInteractiveSummary({
   if (isPtyHandoff) {
     return (
       <span>
-        {fileName}
-        {" "}
+        {fileName}{" "}
         <span className="file-line-count-inline">continues in Shell</span>
       </span>
     );

@@ -80,9 +80,13 @@ describe("WriteStdinRenderer", () => {
       </div>,
     );
 
-    expect(screen.getByText(/origin: Read via PTY: useGlobalSessions\.ts/)).toBeDefined();
     expect(
-      screen.getByText(/file: packages\/client\/src\/hooks\/useGlobalSessions\.ts/),
+      screen.getByText(/origin: Read via PTY: useGlobalSessions\.ts/),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        /file: packages\/client\/src\/hooks\/useGlobalSessions\.ts/,
+      ),
     ).toBeDefined();
   });
 
@@ -142,13 +146,17 @@ describe("WriteStdinRenderer", () => {
       </div>,
     );
 
-    const button = screen.getByRole("button", { name: /useGlobalSessions\.ts/i });
+    const button = screen.getByRole("button", {
+      name: /useGlobalSessions\.ts/i,
+    });
     expect(button).toBeDefined();
     expect(screen.queryByText(/^line 1$/)).toBeNull();
 
     fireEvent.click(button);
 
-    const modalCode = container.querySelector(".file-content-modal .line-content code");
+    const modalCode = container.querySelector(
+      ".file-content-modal .line-content code",
+    );
     expect(modalCode?.textContent).toContain("line 1\nline 2");
   });
 });

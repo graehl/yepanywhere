@@ -174,6 +174,13 @@ export function loadConfig(): Config {
     0,
     parseIntOrDefault(process.env.PROJECT_SCAN_CACHE_TTL_MS, 5000),
   );
+  const managedUploadsDir = path.join(dataDir, "uploads");
+  const extraAllowedImagePaths =
+    process.env.ALLOWED_IMAGE_PATHS !== undefined
+      ? process.env.ALLOWED_IMAGE_PATHS.split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : ["/tmp"];
 
   return {
     dataDir,
@@ -243,13 +250,11 @@ export function loadConfig(): Config {
       : [],
     // Voice input (default: true, set VOICE_INPUT=false to disable)
     voiceInputEnabled: process.env.VOICE_INPUT !== "false",
-    // Allowed local image paths (default: /tmp). Set ALLOWED_IMAGE_PATHS to override, empty string to disable.
-    allowedImagePaths:
-      process.env.ALLOWED_IMAGE_PATHS !== undefined
-        ? process.env.ALLOWED_IMAGE_PATHS.split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : ["/tmp"],
+    // Always allow yep-managed uploads. ALLOWED_IMAGE_PATHS adds external paths
+    // like /tmp; an empty value disables only those extras.
+    allowedImagePaths: Array.from(
+      new Set([managedUploadsDir, ...extraAllowedImagePaths]),
+    ),
     // Auth disabled override (for recovery if user forgets password)
     authDisabled: process.env.AUTH_DISABLED === "true",
     authCookieSecret: process.env.AUTH_COOKIE_SECRET,

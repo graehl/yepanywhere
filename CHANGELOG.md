@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.25] - 2026-04-13
+
+### Added
+- Core workspace setup script
+
+### Fixed
+- Fix clearing empty server settings
+- Keep idle Claude sessions owned while alive
+- Fix Codex sessions not appearing in All Sessions on Windows
+- Fix Windows spawn ENOENT and EINVAL in scripts
+- Fix notification read-state persistence on restart
+- Fix Windows project path deduplication
+
 ## [0.4.24] - 2026-04-05
 
 ### Added

@@ -3,6 +3,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CodexSessionScanner } from "../../src/projects/codex-scanner.js";
 import { ProjectScanner } from "../../src/projects/scanner.js";
 import { encodeProjectId } from "../../src/supervisor/types.js";
 import { EventBus } from "../../src/watcher/EventBus.js";
@@ -31,6 +32,7 @@ describe("ProjectScanner missing projectsDir", () => {
   const tempDirs: string[] = [];
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await Promise.all(
       tempDirs
         .splice(0)
@@ -193,5 +195,46 @@ describe("ProjectScanner cache", () => {
 
     const afterEvent = await scanner.getProjectBySessionDirSuffix(secondSuffix);
     expect(afterEvent?.id).toBe(encodeProjectId("/home/user/project-two"));
+  });
+
+  it("marks claude projects that also have codex sessions", async () => {
+    const projectsDir = join(tmpdir(), `project-scanner-${randomUUID()}`);
+    tempDirs.push(projectsDir);
+
+    await createClaudeProject(
+      projectsDir,
+      "localhost",
+      "/home/user/project-one",
+      "sess-1",
+    );
+
+    vi.spyOn(CodexSessionScanner.prototype, "listProjects").mockResolvedValue([
+      {
+        id: encodeProjectId("/home/user/project-one"),
+        path: "/home/user/project-one",
+        name: "project-one",
+        sessionCount: 3,
+        sessionDir: "/codex/sessions",
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: "2025-01-01T00:00:00.000Z",
+        provider: "codex",
+      },
+    ]);
+
+    const scanner = new ProjectScanner({
+      projectsDir,
+      enableCodex: true,
+      enableGemini: false,
+      cacheTtlMs: 60000,
+    });
+
+    const projects = await scanner.listProjects();
+    expect(projects).toHaveLength(1);
+    expect(projects[0]?.provider).toBe("claude");
+    expect(projects[0]).toMatchObject({
+      path: "/home/user/project-one",
+      hasCodexSessions: true,
+    });
   });
 });

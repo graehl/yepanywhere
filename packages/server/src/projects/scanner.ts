@@ -181,6 +181,8 @@ export class ProjectScanner {
       mergedSessionDirs: project.mergedSessionDirs
         ? [...project.mergedSessionDirs]
         : undefined,
+      hasCodexSessions: project.hasCodexSessions,
+      hasGeminiSessions: project.hasGeminiSessions,
     };
   }
 
@@ -268,6 +270,8 @@ export class ProjectScanner {
           name: basename(projectPath),
           sessionCount,
           sessionDir,
+          hasCodexSessions: false,
+          hasGeminiSessions: false,
           activeOwnedCount: 0, // populated by route
           activeExternalCount: 0, // populated by route
           lastActivity,
@@ -325,14 +329,21 @@ export class ProjectScanner {
       const codexProjects = await this.codexScanner.listProjects();
       for (const codexProject of codexProjects) {
         const projectPath = canonicalizeProjectPath(codexProject.path);
-        // Skip if we've already seen this path from Claude
-        if (seenPaths.has(projectPath)) continue;
+        const existing = projects.find(
+          (project) => canonicalizeProjectPath(project.path) === projectPath,
+        );
+        if (existing) {
+          existing.hasCodexSessions = true;
+          continue;
+        }
         seenPaths.add(projectPath);
         projects.push({
           ...codexProject,
           id: encodeProjectId(projectPath),
           path: projectPath,
           name: basename(projectPath),
+          hasCodexSessions: true,
+          hasGeminiSessions: false,
         });
       }
     }
@@ -345,15 +356,21 @@ export class ProjectScanner {
       const geminiProjects = await this.geminiScanner.listProjects();
       for (const geminiProject of geminiProjects) {
         const projectPath = canonicalizeProjectPath(geminiProject.path);
-        // Skip if we've already seen this path from Claude/Codex
-        // (Gemini projects with unknown hashes will have paths like "gemini:xxxxxxxx")
-        if (seenPaths.has(projectPath)) continue;
+        const existing = projects.find(
+          (project) => canonicalizeProjectPath(project.path) === projectPath,
+        );
+        if (existing) {
+          existing.hasGeminiSessions = true;
+          continue;
+        }
         seenPaths.add(projectPath);
         projects.push({
           ...geminiProject,
           id: encodeProjectId(projectPath),
           path: projectPath,
           name: basename(projectPath),
+          hasCodexSessions: false,
+          hasGeminiSessions: true,
         });
       }
     }
@@ -383,6 +400,8 @@ export class ProjectScanner {
           name: basename(projectPath),
           sessionCount: 0,
           sessionDir: join(this.projectsDir, encodedPath),
+          hasCodexSessions: false,
+          hasGeminiSessions: false,
           activeOwnedCount: 0,
           activeExternalCount: 0,
           lastActivity: metadata.addedAt,

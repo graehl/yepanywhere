@@ -76,6 +76,12 @@ interface Props {
   slashCommands?: string[];
   /** Callback for custom client-side commands (e.g., "model"). Return true if handled. */
   onCustomCommand?: (command: string) => boolean;
+  /** Whether heartbeat turns are currently enabled for this session */
+  heartbeatEnabled?: boolean;
+  /** Quick-toggle session heartbeat */
+  onToggleHeartbeat?: () => void;
+  /** Open heartbeat session settings */
+  onConfigureHeartbeat?: () => void;
 }
 
 export function MessageInput({
@@ -104,6 +110,9 @@ export function MessageInput({
   supportsThinkingToggle = true,
   slashCommands = [],
   onCustomCommand,
+  heartbeatEnabled = false,
+  onToggleHeartbeat,
+  onConfigureHeartbeat,
 }: Props) {
   const { t } = useI18n();
   const [text, setText, controls] = useDraftPersistence(draftKey);
@@ -437,6 +446,9 @@ export function MessageInput({
             voiceDisabled={disabled}
             slashCommands={slashCommands}
             onSelectSlashCommand={handleSlashCommand}
+            heartbeatEnabled={heartbeatEnabled}
+            onToggleHeartbeat={onToggleHeartbeat}
+            onConfigureHeartbeat={onConfigureHeartbeat}
             contextUsage={contextUsage}
             isRunning={isRunning}
             isThinking={isThinking}

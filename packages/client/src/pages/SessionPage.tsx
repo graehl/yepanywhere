@@ -882,6 +882,23 @@ function SessionPageContent({
     }
   }, [displayTitle, showToast, t]);
 
+  const handleToggleHeartbeat = useCallback(async () => {
+    const previousEnabled = heartbeatTurnsEnabled;
+    const nextEnabled = !previousEnabled;
+    setLocalHeartbeatTurnsEnabled(nextEnabled);
+    try {
+      await api.updateSessionMetadata(actualSessionId, {
+        heartbeatTurnsEnabled: nextEnabled,
+      });
+    } catch (err) {
+      console.error("Failed to update heartbeat status:", err);
+      setLocalHeartbeatTurnsEnabled(previousEnabled);
+      const errorMsg =
+        err instanceof Error ? err.message : t("sessionHeartbeatSaveFailed");
+      showToast(errorMsg, "error");
+    }
+  }, [actualSessionId, heartbeatTurnsEnabled, showToast, t]);
+
   if (error)
     return (
       <div className="error">
@@ -1215,6 +1232,9 @@ function SessionPageContent({
                     onHoldChange={holdModeEnabled ? setHold : undefined}
                     supportsPermissionMode={supportsPermissionMode}
                     supportsThinkingToggle={supportsThinkingToggle}
+                    heartbeatEnabled={heartbeatTurnsEnabled}
+                    onToggleHeartbeat={handleToggleHeartbeat}
+                    onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                     contextUsage={session?.contextUsage}
                     isRunning={status.owner === "self"}
                     isThinking={processState === "in-turn"}
@@ -1277,6 +1297,9 @@ function SessionPageContent({
                 uploadProgress={uploadProgress}
                 slashCommands={status.owner === "self" ? allSlashCommands : []}
                 onCustomCommand={handleCustomCommand}
+                heartbeatEnabled={heartbeatTurnsEnabled}
+                onToggleHeartbeat={handleToggleHeartbeat}
+                onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
               />
             )}
           </div>

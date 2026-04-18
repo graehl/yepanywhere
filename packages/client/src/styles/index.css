@@ -2265,6 +2265,38 @@ a.sidebar-nav-item {
   background: rgba(59, 130, 246, 0.25);
 }
 
+.heartbeat-toolbar-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.heartbeat-toolbar-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-input);
+}
+
+.heartbeat-toolbar-button.active {
+  background: color-mix(in srgb, var(--app-yep-green) 18%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--app-yep-green) 60%,
+    var(--border-input)
+  );
+  color: var(--app-yep-green);
+}
+
+.heartbeat-toolbar-button.active:hover {
+  background: color-mix(in srgb, var(--app-yep-green) 26%, transparent);
+}
+
 /* Voice input button */
 .voice-input-button {
   display: flex;

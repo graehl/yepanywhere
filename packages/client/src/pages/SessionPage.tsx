@@ -10,6 +10,7 @@ import { ProcessInfoModal } from "../components/ProcessInfoModal";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { RecentSessionsDropdown } from "../components/RecentSessionsDropdown";
+import { SessionHeartbeatModal } from "../components/SessionHeartbeatModal";
 import { SessionMenu } from "../components/SessionMenu";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
@@ -242,6 +243,14 @@ function SessionPageContent({
   const [localIsStarred, setLocalIsStarred] = useState<boolean | undefined>(
     undefined,
   );
+  const [localHeartbeatTurnsEnabled, setLocalHeartbeatTurnsEnabled] = useState<
+    boolean | undefined
+  >(undefined);
+  const [localHeartbeatTurnsAfterMinutes, setLocalHeartbeatTurnsAfterMinutes] =
+    useState<number | undefined>(undefined);
+  const [localHeartbeatTurnText, setLocalHeartbeatTurnText] = useState<
+    string | undefined
+  >(undefined);
   const [localHasUnread, setLocalHasUnread] = useState<boolean | undefined>(
     undefined,
   );
@@ -252,6 +261,9 @@ function SessionPageContent({
     setLocalCustomTitle(undefined);
     setLocalIsArchived(undefined);
     setLocalIsStarred(undefined);
+    setLocalHeartbeatTurnsEnabled(undefined);
+    setLocalHeartbeatTurnsAfterMinutes(undefined);
+    setLocalHeartbeatTurnText(undefined);
     setLocalHasUnread(undefined);
   }, [sessionId]);
 
@@ -295,6 +307,7 @@ function SessionPageContent({
 
   // Process info modal state
   const [showProcessInfoModal, setShowProcessInfoModal] = useState(false);
+  const [showHeartbeatModal, setShowHeartbeatModal] = useState(false);
 
   // Model switch modal state
   const [showModelSwitchModal, setShowModelSwitchModal] = useState(false);
@@ -721,6 +734,12 @@ function SessionPageContent({
     t("sessionUntitled");
   const isArchived = localIsArchived ?? session?.isArchived ?? false;
   const isStarred = localIsStarred ?? session?.isStarred ?? false;
+  const heartbeatTurnsEnabled =
+    localHeartbeatTurnsEnabled ?? session?.heartbeatTurnsEnabled ?? false;
+  const heartbeatTurnsAfterMinutes =
+    localHeartbeatTurnsAfterMinutes ?? session?.heartbeatTurnsAfterMinutes;
+  const heartbeatTurnText =
+    localHeartbeatTurnText ?? session?.heartbeatTurnText;
 
   // Update browser tab title
   useDocumentTitle(project?.name, displayTitle);
@@ -1020,6 +1039,7 @@ function SessionPageContent({
                     onToggleArchive={handleToggleArchive}
                     onToggleRead={handleToggleRead}
                     onRename={handleStartEditingTitle}
+                    onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                     onClone={(newSessionId) => {
                       navigate(
                         `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
@@ -1071,6 +1091,24 @@ function SessionPageContent({
             sessionStreamConnected={sessionUpdatesConnected}
             lastSessionEventAt={lastStreamActivityAt}
             onClose={() => setShowProcessInfoModal(false)}
+          />
+        )}
+
+        {showHeartbeatModal && (
+          <SessionHeartbeatModal
+            sessionId={actualSessionId}
+            enabled={heartbeatTurnsEnabled}
+            heartbeatTurnsAfterMinutes={heartbeatTurnsAfterMinutes}
+            heartbeatTurnText={heartbeatTurnText}
+            onClose={() => setShowHeartbeatModal(false)}
+            onSaved={(next) => {
+              setLocalHeartbeatTurnsEnabled(next.enabled);
+              setLocalHeartbeatTurnsAfterMinutes(
+                next.heartbeatTurnsAfterMinutes,
+              );
+              setLocalHeartbeatTurnText(next.heartbeatTurnText);
+              showToast(t("sessionHeartbeatSaved"), "success");
+            }}
           />
         )}
 

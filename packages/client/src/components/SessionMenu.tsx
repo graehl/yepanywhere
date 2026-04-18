@@ -22,6 +22,8 @@ export interface SessionMenuProps {
   onClone?: (newSessionId: string) => void | Promise<void>;
   /** Called to terminate the session's process */
   onTerminate?: () => void | Promise<void>;
+  /** Called to configure session heartbeat settings */
+  onConfigureHeartbeat?: () => void;
   /** Use "..." icon instead of chevron */
   useEllipsisIcon?: boolean;
   /** Whether session sharing is configured */
@@ -48,6 +50,7 @@ export function SessionMenu({
   onRename,
   onClone,
   onTerminate,
+  onConfigureHeartbeat,
   sharingConfigured,
   onShare,
   useEllipsisIcon = false,
@@ -113,7 +116,7 @@ export function SessionMenu({
       // Calculate position synchronously before opening to avoid flicker
       if (useFixedPositioning && triggerRef.current) {
         const rect = triggerRef.current.getBoundingClientRect();
-        const dropdownWidth = 140; // Approximate width of dropdown
+        const dropdownWidth = 180; // Approximate width of dropdown
         const dropdownHeight = 180; // Approximate height of dropdown (varies by options)
         const rightPosition = window.innerWidth - rect.right;
         const margin = 8;
@@ -257,6 +260,29 @@ export function SessionMenu({
         </svg>
         {t("sessionMenuRename")}
       </button>
+      {onConfigureHeartbeat && (
+        <button type="button" onClick={() => handleAction(onConfigureHeartbeat)}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M12 2v4" />
+            <path d="M12 18v4" />
+            <path d="m4.93 4.93 2.83 2.83" />
+            <path d="m16.24 16.24 2.83 2.83" />
+            <path d="M2 12h4" />
+            <path d="M18 12h4" />
+            <path d="m4.93 19.07 2.83-2.83" />
+            <path d="m16.24 7.76 2.83-2.83" />
+          </svg>
+          {t("sessionMenuHeartbeat")}
+        </button>
+      )}
       {onClone && getProvider(provider).capabilities.supportsCloning && (
         <button type="button" onClick={handleClone} disabled={isCloning}>
           <svg

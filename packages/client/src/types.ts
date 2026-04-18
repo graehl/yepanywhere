@@ -138,6 +138,9 @@ export type SessionSummary = AppSessionSummary;
  */
 export interface Session extends SessionSummary {
   messages: Message[];
+  heartbeatTurnsEnabled?: boolean;
+  heartbeatTurnsAfterMinutes?: number;
+  heartbeatTurnText?: string;
 }
 
 /**

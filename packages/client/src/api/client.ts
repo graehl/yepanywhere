@@ -619,7 +619,14 @@ export const api = {
 
   updateSessionMetadata: (
     sessionId: string,
-    updates: { title?: string; archived?: boolean; starred?: boolean },
+    updates: {
+      title?: string;
+      archived?: boolean;
+      starred?: boolean;
+      heartbeatTurnsEnabled?: boolean;
+      heartbeatTurnsAfterMinutes?: number | null;
+      heartbeatTurnText?: string | null;
+    },
   ) =>
     fetchJSON<{ updated: boolean }>(`/sessions/${sessionId}/metadata`, {
       method: "PUT",
@@ -1036,6 +1043,10 @@ export interface ServerSettings {
   allowedHosts?: string;
   /** Free-form instructions appended to the system prompt for all sessions */
   globalInstructions?: string;
+  /** Default idle minutes before an opted-in session queues a heartbeat turn */
+  heartbeatTurnsAfterMinutes?: number;
+  /** Default text queued as the synthetic heartbeat user turn */
+  heartbeatTurnText?: string;
   /** Ollama server URL for claude-ollama provider */
   ollamaUrl?: string;
   /** Custom system prompt for Ollama provider */

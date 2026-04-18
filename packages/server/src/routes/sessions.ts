@@ -511,6 +511,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         customTitle: metadata?.customTitle,
         isArchived: metadata?.isArchived,
         isStarred: metadata?.isStarred,
+        heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
+        heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
+        heartbeatTurnText: metadata?.heartbeatTurnText,
         lastSeenAt,
         hasUnread,
       },
@@ -699,6 +702,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             customTitle: metadata?.customTitle,
             isArchived: metadata?.isArchived,
             isStarred: metadata?.isStarred,
+            heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
+            heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
+            heartbeatTurnText: metadata?.heartbeatTurnText,
             lastSeenAt: lastSeenEntry?.timestamp,
             hasUnread,
             provider: process.provider,
@@ -772,6 +778,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         customTitle: metadata?.customTitle,
         isArchived: metadata?.isArchived,
         isStarred: metadata?.isStarred,
+        heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
+        heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
+        heartbeatTurnText: metadata?.heartbeatTurnText,
         // Model comes from the session reader (extracted from JSONL)
         model: session.model,
         lastSeenAt,
@@ -1483,7 +1492,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     });
   });
 
-  // PUT /api/sessions/:sessionId/metadata - Update session metadata (title, archived, starred)
+  // PUT /api/sessions/:sessionId/metadata - Update session metadata
   routes.put("/sessions/:sessionId/metadata", async (c) => {
     const sessionId = c.req.param("sessionId");
 
@@ -1491,7 +1500,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Session metadata service not available" }, 503);
     }
 
-    let body: { title?: string; archived?: boolean; starred?: boolean } = {};
+    let body: {
+      title?: string;
+      archived?: boolean;
+      starred?: boolean;
+      heartbeatTurnsEnabled?: boolean;
+      heartbeatTurnsAfterMinutes?: number | null;
+      heartbeatTurnText?: string | null;
+    } = {};
     try {
       body = await c.req.json();
     } catch {
@@ -1502,18 +1518,70 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (
       body.title === undefined &&
       body.archived === undefined &&
-      body.starred === undefined
+      body.starred === undefined &&
+      body.heartbeatTurnsEnabled === undefined &&
+      body.heartbeatTurnsAfterMinutes === undefined &&
+      body.heartbeatTurnText === undefined
     ) {
       return c.json(
-        { error: "At least title, archived, or starred must be provided" },
+        {
+          error:
+            "At least one session metadata field must be provided",
+        },
         400,
       );
+    }
+
+    let heartbeatTurnsAfterMinutes: number | null | undefined;
+    if (body.heartbeatTurnsAfterMinutes !== undefined) {
+      if (
+        body.heartbeatTurnsAfterMinutes === null ||
+        body.heartbeatTurnsAfterMinutes === 0
+      ) {
+        heartbeatTurnsAfterMinutes = null;
+      } else if (
+        typeof body.heartbeatTurnsAfterMinutes === "number" &&
+        Number.isInteger(body.heartbeatTurnsAfterMinutes) &&
+        body.heartbeatTurnsAfterMinutes >= 1 &&
+        body.heartbeatTurnsAfterMinutes <= 1440
+      ) {
+        heartbeatTurnsAfterMinutes = body.heartbeatTurnsAfterMinutes;
+      } else {
+        return c.json(
+          {
+            error:
+              "heartbeatTurnsAfterMinutes must be null or an integer between 1 and 1440",
+          },
+          400,
+        );
+      }
+    }
+
+    const heartbeatTurnText =
+      body.heartbeatTurnText === undefined
+        ? undefined
+        : body.heartbeatTurnText === null || body.heartbeatTurnText === ""
+          ? null
+          : typeof body.heartbeatTurnText === "string"
+            ? body.heartbeatTurnText.slice(0, 200)
+            : null;
+
+    if (
+      body.heartbeatTurnText !== undefined &&
+      body.heartbeatTurnText !== null &&
+      body.heartbeatTurnText !== "" &&
+      typeof body.heartbeatTurnText !== "string"
+    ) {
+      return c.json({ error: "heartbeatTurnText must be a string or null" }, 400);
     }
 
     await deps.sessionMetadataService.updateMetadata(sessionId, {
       title: body.title,
       archived: body.archived,
       starred: body.starred,
+      heartbeatTurnsEnabled: body.heartbeatTurnsEnabled,
+      heartbeatTurnsAfterMinutes,
+      heartbeatTurnText,
     });
 
     // Emit SSE event so sidebar and other clients can update
@@ -1524,6 +1592,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         title: body.title,
         archived: body.archived,
         starred: body.starred,
+        heartbeatTurnsEnabled: body.heartbeatTurnsEnabled,
+        heartbeatTurnsAfterMinutes,
+        heartbeatTurnText,
         timestamp: new Date().toISOString(),
       });
     }

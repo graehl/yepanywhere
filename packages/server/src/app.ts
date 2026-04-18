@@ -386,6 +386,26 @@ export function createApp(options: AppOptions): AppResult {
           Promise.resolve()
       : undefined,
     onSessionSummary: getSessionSummary,
+    getHeartbeatTurnSettings:
+      options.serverSettingsService || options.sessionMetadataService
+        ? (sessionId) => {
+            const sessionHeartbeat =
+              options.sessionMetadataService?.getMetadata(sessionId);
+            return {
+              enabled: sessionHeartbeat?.heartbeatTurnsEnabled ?? false,
+              afterMinutes:
+                sessionHeartbeat?.heartbeatTurnsAfterMinutes ??
+                options.serverSettingsService?.getSetting(
+                  "heartbeatTurnsAfterMinutes",
+                ) ??
+                5,
+              text:
+                sessionHeartbeat?.heartbeatTurnText ??
+                options.serverSettingsService?.getSetting("heartbeatTurnText") ??
+                "yepanywhere heartbeat",
+            };
+          }
+      : undefined,
   });
 
   // Create external session tracker if eventBus is available

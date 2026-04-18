@@ -41,6 +41,9 @@ import { preprocessMessages } from "../lib/preprocessMessages";
 import { generateUUID } from "../lib/uuid";
 import { getSessionDisplayTitle } from "../utils";
 
+const PENDING_ELSEWHERE_DISMISS_KEY_PREFIX =
+  "yepanywhere:pending-elsewhere-dismissed:";
+
 export function SessionPage() {
   const { projectId, sessionId } = useParams<{
     projectId: string;
@@ -308,6 +311,8 @@ function SessionPageContent({
   // Process info modal state
   const [showProcessInfoModal, setShowProcessInfoModal] = useState(false);
   const [showHeartbeatModal, setShowHeartbeatModal] = useState(false);
+  const [pendingElsewhereDismissed, setPendingElsewhereDismissed] =
+    useState(false);
 
   // Model switch modal state
   const [showModelSwitchModal, setShowModelSwitchModal] = useState(false);
@@ -720,6 +725,10 @@ function SessionPageContent({
       (item) => item.type === "tool_call" && item.status === "pending",
     );
   }, [messages, status.owner]);
+  const pendingElsewhereDismissKey = useMemo(
+    () => `${PENDING_ELSEWHERE_DISMISS_KEY_PREFIX}${actualSessionId}`,
+    [actualSessionId],
+  );
 
   // Compute display title - priority:
   // 1. Local custom title (user renamed in this session)
@@ -740,6 +749,27 @@ function SessionPageContent({
     localHeartbeatTurnsAfterMinutes ?? session?.heartbeatTurnsAfterMinutes;
   const heartbeatTurnText =
     localHeartbeatTurnText ?? session?.heartbeatTurnText;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPendingElsewhereDismissed(
+      window.localStorage.getItem(pendingElsewhereDismissKey) === "1",
+    );
+  }, [pendingElsewhereDismissKey]);
+
+  const handleDismissPendingElsewhereWarning = useCallback(() => {
+    setPendingElsewhereDismissed(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(pendingElsewhereDismissKey, "1");
+    }
+  }, [pendingElsewhereDismissKey]);
+
+  const handleRestorePendingElsewhereWarning = useCallback(() => {
+    setPendingElsewhereDismissed(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(pendingElsewhereDismissKey);
+    }
+  }, [pendingElsewhereDismissKey]);
 
   // Update browser tab title
   useDocumentTitle(project?.name, displayTitle);
@@ -1057,6 +1087,10 @@ function SessionPageContent({
                     onToggleRead={handleToggleRead}
                     onRename={handleStartEditingTitle}
                     onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
+                    warningRestoreAvailable={
+                      hasPendingToolCalls && pendingElsewhereDismissed
+                    }
+                    onRestoreWarnings={handleRestorePendingElsewhereWarning}
                     onClone={(newSessionId) => {
                       navigate(
                         `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
@@ -1147,9 +1181,52 @@ function SessionPageContent({
           </div>
         )}
 
-        {hasPendingToolCalls && (
-          <div className="external-session-warning pending-tool-warning">
-            {t("sessionPendingElsewhereWarning")}
+        {hasPendingToolCalls && !pendingElsewhereDismissed && (
+          <div
+            className="external-session-warning pending-tool-warning"
+            role="status"
+          >
+            <div className="pending-tool-warning-copy">
+              <svg
+                className="pending-tool-warning-icon"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v4" />
+                <path d="M12 16h.01" />
+              </svg>
+              <span>{t("sessionPendingElsewhereWarning")}</span>
+            </div>
+            <button
+              type="button"
+              className="pending-tool-warning-close"
+              onClick={handleDismissPendingElsewhereWarning}
+              aria-label={t("sessionPendingElsewhereDismiss")}
+              title={t("sessionPendingElsewhereDismiss")}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
           </div>
         )}
 

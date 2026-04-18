@@ -2655,6 +2655,52 @@ a.sidebar-nav-item {
   background: var(--status-badge-input-bg);
   border-color: var(--primary-color);
   color: var(--status-badge-input-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  text-align: left;
+}
+
+.pending-tool-warning-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.pending-tool-warning-icon {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  opacity: 0.8;
+}
+
+.pending-tool-warning-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.pending-tool-warning-close:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.pending-tool-warning-close:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 2px;
 }
 
 /* Status badges for session list */

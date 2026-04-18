@@ -79,6 +79,27 @@ const SUBSET_EXPORTS = [
     file: "v2/ItemCompletedNotification.ts",
   },
   {
+    name: "RawResponseItemCompletedNotification",
+    file: "v2/RawResponseItemCompletedNotification.ts",
+  },
+  {
+    name: "AgentMessageDeltaNotification",
+    file: "v2/AgentMessageDeltaNotification.ts",
+  },
+  { name: "PlanDeltaNotification", file: "v2/PlanDeltaNotification.ts" },
+  {
+    name: "CommandExecutionOutputDeltaNotification",
+    file: "v2/CommandExecutionOutputDeltaNotification.ts",
+  },
+  {
+    name: "FileChangeOutputDeltaNotification",
+    file: "v2/FileChangeOutputDeltaNotification.ts",
+  },
+  {
+    name: "ReasoningSummaryTextDeltaNotification",
+    file: "v2/ReasoningSummaryTextDeltaNotification.ts",
+  },
+  {
     name: "ThreadTokenUsageUpdatedNotification",
     file: "v2/ThreadTokenUsageUpdatedNotification.ts",
   },

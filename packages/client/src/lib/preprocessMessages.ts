@@ -78,6 +78,8 @@ const SESSION_SETUP_PREFIXES = [
   "<environment_context>",
 ];
 
+const INTERNAL_REASONING_PLACEHOLDER = "Reasoning [internal]";
+
 function getPromptText(content: string | ContentBlock[]): string {
   if (typeof content === "string") {
     return content;
@@ -89,6 +91,13 @@ function getPromptText(content: string | ContentBlock[]): string {
     )
     .map((block) => block.text)
     .join("\n");
+}
+
+function isDisplayableThinking(
+  thinking: string | undefined,
+): thinking is string {
+  const trimmed = thinking?.trim();
+  return !!trimmed && trimmed !== INTERNAL_REASONING_PLACEHOLDER;
 }
 
 function isSessionSetupPrompt(item: UserPromptItem): boolean {
@@ -327,11 +336,12 @@ function processMessage(
         });
       }
     } else if (block.type === "thinking") {
-      if (block.thinking?.trim()) {
+      const thinking = block.thinking;
+      if (isDisplayableThinking(thinking)) {
         items.push({
           type: "thinking",
           id: blockId,
-          thinking: block.thinking,
+          thinking,
           signature: undefined,
           status: "complete",
           sourceMessages: [msg],

@@ -484,37 +484,30 @@ function convertCodexReasoningPayload(
   payload: CodexReasoningPayload,
   uuid: string,
   timestamp: string,
-): Message {
+): Message | null {
   const summaryText = payload.summary
     ?.map((s) => s.text)
     .join("\n")
     .trim();
 
-  const content: ContentBlock[] = [];
-
   if (summaryText) {
-    content.push({
-      type: "thinking",
-      thinking: summaryText,
-    });
+    return {
+      uuid,
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "thinking",
+            thinking: summaryText,
+          },
+        ],
+      },
+      timestamp,
+    };
   }
 
-  if (payload.encrypted_content && !summaryText) {
-    content.push({
-      type: "thinking",
-      thinking: "Reasoning [internal]",
-    });
-  }
-
-  return {
-    uuid,
-    type: "assistant",
-    message: {
-      role: "assistant",
-      content,
-    },
-    timestamp,
-  };
+  return null;
 }
 
 type CodexInputImageBlock = Extract<

@@ -850,7 +850,7 @@ describe("Codex Normalization", () => {
     });
   });
 
-  it("adds internal reasoning placeholder thinking block when no summary is present", () => {
+  it("skips encrypted reasoning blocks when no summary is present", () => {
     const entries: CodexSessionEntry[] = [
       {
         type: "response_item",
@@ -863,16 +863,7 @@ describe("Codex Normalization", () => {
     ];
 
     const result = normalizeSession(buildLoadedSession(entries));
-    expect(result.messages).toHaveLength(1);
-
-    const content = result.messages[0]?.message?.content;
-    const blocks = Array.isArray(content) ? content : [];
-
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0]).toMatchObject({
-      type: "thinking",
-      thinking: "Reasoning [internal]",
-    });
+    expect(result.messages).toHaveLength(0);
   });
 
   it("skips developer messages from the normalized transcript", () => {

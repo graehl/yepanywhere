@@ -139,6 +139,11 @@ step("Copy server dist to staging", () => {
   const stagingDist = path.join(STAGING_DIR, "dist");
   log(`Copying server dist to ${path.relative(ROOT_DIR, stagingDist)}...`);
   copyRecursive(SERVER_DIST, stagingDist);
+  const cliPath = path.join(stagingDist, "cli.js");
+  if (fs.existsSync(cliPath)) {
+    fs.chmodSync(cliPath, 0o755);
+    log(`  Marked executable: ${path.relative(ROOT_DIR, cliPath)}`);
+  }
   log("  Server dist copied to staging");
 });
 
@@ -375,6 +380,9 @@ if (allSuccess) {
   log("  1. cd dist/npm-package");
   log("  2. Test: npm pack");
   log("  3. Publish: npm publish");
+  log(
+    "\nFor local fork testing, prefer 'pnpm install:bundle-local' over 'npm link' so runtime dependencies are installed like a real release.",
+  );
   log("\nNote: packages/server/package.json is unchanged (workspace intact)");
 } else {
   error("\n✗ Build failed. See errors above.");

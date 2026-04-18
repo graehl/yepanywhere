@@ -14,9 +14,12 @@ import {
   summarizeCodexNormalizedMessage,
 } from "../../codex/correlationDebugLogger.js";
 import {
+  canonicalizeCodexToolName,
   type CodexToolCallContext,
   normalizeCodexCommandExecutionOutput,
   normalizeCodexToolInvocation,
+  normalizeCodexToolOutputWithContext,
+  parseCodexToolArguments,
 } from "../../codex/normalization.js";
 import { getLogger } from "../../logging/logger.js";
 import { findCodexCliPath, whichCommand } from "../cli-detection.js";
@@ -29,10 +32,16 @@ import type {
 } from "../types.js";
 import type { ToolApprovalResult } from "../types.js";
 import type {
+  AgentMessageDeltaNotification,
   AskForApproval as CodexAskForApproval,
+  CommandExecutionOutputDeltaNotification,
   ErrorNotification as CodexErrorNotification,
+  FileChangeOutputDeltaNotification,
   ItemCompletedNotification as CodexItemCompletedNotification,
   ItemStartedNotification as CodexItemStartedNotification,
+  PlanDeltaNotification,
+  RawResponseItemCompletedNotification,
+  ReasoningSummaryTextDeltaNotification,
   SandboxMode as CodexSandboxMode,
   ThreadItem as CodexThreadItem,
   CommandExecutionApprovalDecision,
@@ -228,6 +237,13 @@ interface NormalizedFileChange {
   path: string;
   kind: "add" | "delete" | "update";
   diff?: string;
+}
+
+interface CodexLiveEventState {
+  streamingTextByItemKey: Map<string, string>;
+  streamingReasoningSummaryByItemKey: Map<string, string[]>;
+  streamingToolOutputByItemKey: Map<string, string>;
+  toolCallContexts: Map<string, CodexToolCallContext>;
 }
 
 type NormalizedThreadItem =
@@ -1097,43 +1113,31 @@ export class CodexProvider implements AgentProvider {
     try {
       await appServer.connect();
 
-      await appServer.request<{ userAgent: string }>("initialize", {
-        clientInfo: {
-          name: this.getCodexClientName(),
-          version: "dev",
-        },
-        capabilities: null,
-      });
+      const experimentalApiEnabled = await this.initializeAppServer(appServer);
       appServer.notify("initialized");
 
       const policy = this.mapPermissionModeToThreadPolicy(
         options.permissionMode,
       );
 
-      const threadResumeParams: ThreadResumeParams = {
-        threadId: options.resumeSessionId ?? sessionId,
-        model: options.model ?? null,
-        cwd: options.cwd,
-        approvalPolicy: policy.approvalPolicy,
-        sandbox: policy.sandbox,
-      };
-      const threadStartParams: ThreadStartParams = {
-        model: options.model ?? null,
-        cwd: options.cwd,
-        approvalPolicy: policy.approvalPolicy,
-        sandbox: policy.sandbox,
-        experimentalRawEvents: false,
-      };
-      const threadResult: ThreadResumeResponse | ThreadStartResponse =
-        options.resumeSessionId
-          ? await appServer.request<ThreadResumeResponse>(
-              "thread/resume",
-              threadResumeParams,
-            )
-          : await appServer.request<ThreadStartResponse>(
-              "thread/start",
-              threadStartParams,
-            );
+      const threadResumeParams = this.createThreadResumeParams(
+        options,
+        sessionId,
+        policy,
+        experimentalApiEnabled,
+      );
+      const threadStartParams = this.createThreadStartParams(
+        options,
+        policy,
+        experimentalApiEnabled,
+      );
+      const threadResult = await this.startOrResumeThread(
+        appServer,
+        options,
+        threadStartParams,
+        threadResumeParams,
+        experimentalApiEnabled,
+      );
 
       sessionId = threadResult.thread.id;
       runtimeState.threadId = sessionId;
@@ -1163,6 +1167,7 @@ export class CodexProvider implements AgentProvider {
       );
 
       const messageGen = queue.generator();
+      const liveEventState = this.createLiveEventState();
       let isFirstMessage = !options.resumeSessionId;
 
       for await (const message of messageGen) {
@@ -1200,14 +1205,11 @@ export class CodexProvider implements AgentProvider {
         });
         yield logMessage(userMessage);
 
-        const turnStartParams: TurnStartParams = {
-          threadId: sessionId,
-          input: [{ type: "text", text: userPrompt, text_elements: [] }],
-          effort: this.mapEffortToReasoningEffort(
-            options.effort,
-            options.thinking,
-          ),
-        };
+        const turnStartParams = this.createTurnStartParams(
+          sessionId,
+          userPrompt,
+          options,
+        );
         const turnResult = await appServer.request<TurnStartResponse>(
           "turn/start",
           turnStartParams,
@@ -1240,6 +1242,7 @@ export class CodexProvider implements AgentProvider {
             notification,
             sessionId,
             usageByTurnId,
+            liveEventState,
           );
           for (const msg of messages) {
             yield logMessage(msg);
@@ -1307,6 +1310,166 @@ export class CodexProvider implements AgentProvider {
     }
 
     return false;
+  }
+
+  private createInitializeParams(experimentalApiEnabled: boolean): {
+    clientInfo: { name: string; title: null; version: string };
+    capabilities: { experimentalApi: boolean } | null;
+  } {
+    return {
+      clientInfo: {
+        name: this.getCodexClientName(),
+        title: null,
+        version: "dev",
+      },
+      capabilities: experimentalApiEnabled
+        ? { experimentalApi: true }
+        : null,
+    };
+  }
+
+  private async initializeAppServer(
+    appServer: CodexAppServerClient,
+  ): Promise<boolean> {
+    try {
+      await appServer.request<{ userAgent: string }>(
+        "initialize",
+        this.createInitializeParams(true),
+      );
+      return true;
+    } catch (error) {
+      log.warn(
+        { error },
+        "Codex initialize with experimentalApi failed; retrying without capabilities",
+      );
+      await appServer.request<{ userAgent: string }>(
+        "initialize",
+        this.createInitializeParams(false),
+      );
+      return false;
+    }
+  }
+
+  private async startOrResumeThread(
+    appServer: CodexAppServerClient,
+    options: StartSessionOptions,
+    threadStartParams: ThreadStartParams,
+    threadResumeParams: ThreadResumeParams,
+    experimentalApiEnabled: boolean,
+  ): Promise<ThreadStartResponse | ThreadResumeResponse> {
+    const requestThread = async (
+      startParams: ThreadStartParams,
+      resumeParams: ThreadResumeParams,
+    ): Promise<ThreadStartResponse | ThreadResumeResponse> =>
+      options.resumeSessionId
+        ? await appServer.request<ThreadResumeResponse>(
+            "thread/resume",
+            resumeParams,
+          )
+        : await appServer.request<ThreadStartResponse>(
+            "thread/start",
+            startParams,
+          );
+
+    try {
+      return await requestThread(threadStartParams, threadResumeParams);
+    } catch (error) {
+      if (
+        !experimentalApiEnabled ||
+        !this.isExperimentalCapabilityError(error)
+      ) {
+        throw error;
+      }
+
+      log.warn(
+        { error },
+        "Codex rejected experimental thread flags; retrying with stable startup params",
+      );
+      return await requestThread(
+        {
+          ...threadStartParams,
+          experimentalRawEvents: false,
+          persistExtendedHistory: false,
+        },
+        {
+          ...threadResumeParams,
+          persistExtendedHistory: false,
+        },
+      );
+    }
+  }
+
+  private isExperimentalCapabilityError(error: unknown): boolean {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "";
+    return (
+      /experimentalApi capability/i.test(message) ||
+      /unknown field .*experimentalRawEvents/i.test(message) ||
+      /unknown field .*persist(?:Full|Extended)History/i.test(message)
+    );
+  }
+
+  private createThreadStartParams(
+    options: StartSessionOptions,
+    policy: {
+      approvalPolicy: CodexAskForApproval;
+      sandbox: CodexSandboxMode;
+    },
+    experimentalApiEnabled: boolean,
+  ): ThreadStartParams {
+    return {
+      model: options.model ?? null,
+      cwd: options.cwd,
+      approvalPolicy: policy.approvalPolicy,
+      sandbox: policy.sandbox,
+      experimentalRawEvents: experimentalApiEnabled,
+      persistExtendedHistory: experimentalApiEnabled,
+    };
+  }
+
+  private createThreadResumeParams(
+    options: StartSessionOptions,
+    sessionId: string,
+    policy: {
+      approvalPolicy: CodexAskForApproval;
+      sandbox: CodexSandboxMode;
+    },
+    experimentalApiEnabled: boolean,
+  ): ThreadResumeParams {
+    return {
+      threadId: options.resumeSessionId ?? sessionId,
+      model: options.model ?? null,
+      cwd: options.cwd,
+      approvalPolicy: policy.approvalPolicy,
+      sandbox: policy.sandbox,
+      persistExtendedHistory: experimentalApiEnabled,
+    };
+  }
+
+  private createTurnStartParams(
+    threadId: string,
+    userPrompt: string,
+    options: StartSessionOptions,
+  ): TurnStartParams {
+    return {
+      threadId,
+      input: [{ type: "text", text: userPrompt, text_elements: [] }],
+      effort: this.mapEffortToReasoningEffort(options.effort, options.thinking),
+      summary: "auto",
+    };
+  }
+
+  private createLiveEventState(): CodexLiveEventState {
+    return {
+      streamingTextByItemKey: new Map(),
+      streamingReasoningSummaryByItemKey: new Map(),
+      streamingToolOutputByItemKey: new Map(),
+      toolCallContexts: new Map(),
+    };
   }
 
   private extractTurnUsage(params: unknown): {
@@ -1604,6 +1767,7 @@ export class CodexProvider implements AgentProvider {
     notification: JsonRpcNotification,
     sessionId: string,
     usageByTurnId: Map<string, TokenUsageSnapshot>,
+    liveEventState: CodexLiveEventState,
   ): SDKMessage[] {
     switch (notification.method) {
       case "turn/completed": {
@@ -1668,12 +1832,112 @@ export class CodexProvider implements AgentProvider {
         }
 
         const turnId = params.turnId;
-
-        return this.convertItemToSDKMessages(
+        const messages = this.convertItemToSDKMessages(
           normalized,
           sessionId,
           turnId,
           notification.method,
+        );
+        if (notification.method === "item/completed") {
+          this.clearLiveEventStateForItem(
+            liveEventState,
+            turnId,
+            normalized.id,
+          );
+        }
+        return messages;
+      }
+
+      case "item/agentMessage/delta": {
+        const params = this.asAgentMessageDeltaNotification(notification.params);
+        if (!params || !params.delta) return [];
+        return [
+          this.buildStreamingAssistantMessage(
+            sessionId,
+            params.turnId,
+            params.itemId,
+            params.delta,
+            "agent_message_delta",
+            liveEventState,
+          ),
+        ];
+      }
+
+      case "item/plan/delta": {
+        const params = this.asPlanDeltaNotification(notification.params);
+        if (!params || !params.delta) return [];
+        return [
+          this.buildStreamingAssistantMessage(
+            sessionId,
+            params.turnId,
+            params.itemId,
+            params.delta,
+            "plan_delta",
+            liveEventState,
+          ),
+        ];
+      }
+
+      case "item/reasoning/summaryTextDelta": {
+        const params = this.asReasoningSummaryTextDeltaNotification(
+          notification.params,
+        );
+        if (!params || !params.delta) return [];
+        return [
+          this.buildStreamingReasoningSummaryMessage(
+            sessionId,
+            params.turnId,
+            params.itemId,
+            params.summaryIndex,
+            params.delta,
+            liveEventState,
+          ),
+        ];
+      }
+
+      case "item/commandExecution/outputDelta": {
+        const params = this.asCommandExecutionOutputDeltaNotification(
+          notification.params,
+        );
+        if (!params || !params.delta) return [];
+        return [
+          this.buildStreamingToolResultMessage(
+            sessionId,
+            params.turnId,
+            params.itemId,
+            params.delta,
+            "command_output_delta",
+            liveEventState,
+          ),
+        ];
+      }
+
+      case "item/fileChange/outputDelta": {
+        const params = this.asFileChangeOutputDeltaNotification(
+          notification.params,
+        );
+        if (!params || !params.delta) return [];
+        return [
+          this.buildStreamingToolResultMessage(
+            sessionId,
+            params.turnId,
+            params.itemId,
+            params.delta,
+            "file_change_output_delta",
+            liveEventState,
+          ),
+        ];
+      }
+
+      case "rawResponseItem/completed": {
+        const params = this.asRawResponseItemCompletedNotification(
+          notification.params,
+        );
+        if (!params) return [];
+        return this.convertRawResponseItemToSDKMessages(
+          params,
+          sessionId,
+          liveEventState,
         );
       }
 
@@ -1861,18 +2125,18 @@ export class CodexProvider implements AgentProvider {
     const text = this.getOptionalString(item.text);
     if (text) return text;
 
-    const content = Array.isArray(item.content)
-      ? item.content.filter((part): part is string => typeof part === "string")
-      : [];
-    if (content.length > 0) {
-      return content.join("\n");
-    }
-
     const summary = Array.isArray(item.summary)
       ? item.summary.filter((part): part is string => typeof part === "string")
       : [];
     if (summary.length > 0) {
       return summary.join("\n");
+    }
+
+    const content = Array.isArray(item.content)
+      ? item.content.filter((part): part is string => typeof part === "string")
+      : [];
+    if (content.length > 0) {
+      return content.join("\n");
     }
 
     return "";
@@ -2017,6 +2281,440 @@ export class CodexProvider implements AgentProvider {
       return null;
     }
     return params as CodexItemCompletedNotification;
+  }
+
+  private asAgentMessageDeltaNotification(
+    params: unknown,
+  ): AgentMessageDeltaNotification | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      typeof record.itemId !== "string" ||
+      typeof record.delta !== "string"
+    ) {
+      return null;
+    }
+    return params as AgentMessageDeltaNotification;
+  }
+
+  private asPlanDeltaNotification(params: unknown): PlanDeltaNotification | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      typeof record.itemId !== "string" ||
+      typeof record.delta !== "string"
+    ) {
+      return null;
+    }
+    return params as PlanDeltaNotification;
+  }
+
+  private asReasoningSummaryTextDeltaNotification(
+    params: unknown,
+  ): ReasoningSummaryTextDeltaNotification | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      typeof record.itemId !== "string" ||
+      typeof record.delta !== "string" ||
+      typeof record.summaryIndex !== "number"
+    ) {
+      return null;
+    }
+    return params as ReasoningSummaryTextDeltaNotification;
+  }
+
+  private asCommandExecutionOutputDeltaNotification(
+    params: unknown,
+  ): CommandExecutionOutputDeltaNotification | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      typeof record.itemId !== "string" ||
+      typeof record.delta !== "string"
+    ) {
+      return null;
+    }
+    return params as CommandExecutionOutputDeltaNotification;
+  }
+
+  private asFileChangeOutputDeltaNotification(
+    params: unknown,
+  ): FileChangeOutputDeltaNotification | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      typeof record.itemId !== "string" ||
+      typeof record.delta !== "string"
+    ) {
+      return null;
+    }
+    return params as FileChangeOutputDeltaNotification;
+  }
+
+  private asRawResponseItemCompletedNotification(
+    params: unknown,
+  ): RawResponseItemCompletedNotification | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      !record.item ||
+      typeof record.item !== "object" ||
+      typeof (record.item as { type?: unknown }).type !== "string"
+    ) {
+      return null;
+    }
+    return params as RawResponseItemCompletedNotification;
+  }
+
+  private buildItemEventKey(turnId: string, itemId: string): string {
+    return `${turnId}:${itemId}`;
+  }
+
+  private buildItemMessageUuid(turnId: string, itemId: string): string {
+    return `${itemId}-${turnId}`;
+  }
+
+  private buildItemResultUuid(turnId: string, itemId: string): string {
+    return `${this.buildItemMessageUuid(turnId, itemId)}-result`;
+  }
+
+  private buildStreamingAssistantMessage(
+    sessionId: string,
+    turnId: string,
+    itemId: string,
+    delta: string,
+    sourceEvent: string,
+    liveEventState: CodexLiveEventState,
+  ): SDKMessage {
+    const key = this.buildItemEventKey(turnId, itemId);
+    const text = `${liveEventState.streamingTextByItemKey.get(key) ?? ""}${delta}`;
+    liveEventState.streamingTextByItemKey.set(key, text);
+
+    const message = withCodexTimestamp({
+      type: "assistant",
+      session_id: sessionId,
+      uuid: this.buildItemMessageUuid(turnId, itemId),
+      _isStreaming: true,
+      message: {
+        role: "assistant",
+        content: text,
+      },
+    } as SDKMessage);
+    logSdkCorrelationDebug(sessionId, message, {
+      eventKind: sourceEvent,
+      turnId,
+      itemId,
+      phase: "delta",
+      sourceEvent,
+    });
+    return message;
+  }
+
+  private buildStreamingReasoningSummaryMessage(
+    sessionId: string,
+    turnId: string,
+    itemId: string,
+    summaryIndex: number,
+    delta: string,
+    liveEventState: CodexLiveEventState,
+  ): SDKMessage {
+    const key = this.buildItemEventKey(turnId, itemId);
+    const parts =
+      liveEventState.streamingReasoningSummaryByItemKey.get(key) ?? [];
+    parts[summaryIndex] = `${parts[summaryIndex] ?? ""}${delta}`;
+    liveEventState.streamingReasoningSummaryByItemKey.set(key, parts);
+
+    const thinking = parts.filter(Boolean).join("\n");
+    const message = withCodexTimestamp({
+      type: "assistant",
+      session_id: sessionId,
+      uuid: this.buildItemMessageUuid(turnId, itemId),
+      _isStreaming: true,
+      message: {
+        role: "assistant",
+        content: [{ type: "thinking", thinking }],
+      },
+    } as SDKMessage);
+    logSdkCorrelationDebug(sessionId, message, {
+      eventKind: "reasoning_summary_delta",
+      turnId,
+      itemId,
+      phase: "delta",
+      sourceEvent: "item/reasoning/summaryTextDelta",
+    });
+    return message;
+  }
+
+  private buildStreamingToolResultMessage(
+    sessionId: string,
+    turnId: string,
+    itemId: string,
+    delta: string,
+    sourceEvent: string,
+    liveEventState: CodexLiveEventState,
+  ): SDKMessage {
+    const key = this.buildItemEventKey(turnId, itemId);
+    const content = `${liveEventState.streamingToolOutputByItemKey.get(key) ?? ""}${delta}`;
+    liveEventState.streamingToolOutputByItemKey.set(key, content);
+
+    const message = withCodexTimestamp({
+      type: "user",
+      session_id: sessionId,
+      uuid: this.buildItemResultUuid(turnId, itemId),
+      _isStreaming: true,
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: itemId,
+            content,
+          },
+        ],
+      },
+    } as SDKMessage);
+    logSdkCorrelationDebug(sessionId, message, {
+      eventKind: "tool_result",
+      turnId,
+      itemId,
+      callId: itemId,
+      phase: "delta",
+      sourceEvent,
+    });
+    return message;
+  }
+
+  private clearLiveEventStateForItem(
+    liveEventState: CodexLiveEventState,
+    turnId: string,
+    itemId: string,
+  ): void {
+    const key = this.buildItemEventKey(turnId, itemId);
+    liveEventState.streamingTextByItemKey.delete(key);
+    liveEventState.streamingReasoningSummaryByItemKey.delete(key);
+    liveEventState.streamingToolOutputByItemKey.delete(key);
+  }
+
+  private convertRawResponseItemToSDKMessages(
+    params: RawResponseItemCompletedNotification,
+    sessionId: string,
+    liveEventState: CodexLiveEventState,
+  ): SDKMessage[] {
+    const item = params.item as Record<string, unknown>;
+    const itemType = this.getOptionalString(item.type);
+    if (!itemType) return [];
+
+    const observedAt = new Date().toISOString();
+
+    switch (itemType) {
+      case "function_call": {
+        const callId = this.getOptionalString(item.call_id);
+        const rawToolName = this.getOptionalString(item.name);
+        const argumentsText = this.getOptionalString(item.arguments);
+        if (!callId || !rawToolName) return [];
+
+        const normalizedInvocation = normalizeCodexToolInvocation(
+          canonicalizeCodexToolName(rawToolName),
+          parseCodexToolArguments(argumentsText ?? undefined),
+        );
+        liveEventState.toolCallContexts.set(callId, {
+          toolName: normalizedInvocation.toolName,
+          input: normalizedInvocation.input,
+          readShellInfo: normalizedInvocation.readShellInfo,
+          writeShellInfo: normalizedInvocation.writeShellInfo,
+        });
+
+        const message = withCodexTimestamp(
+          {
+            type: "assistant",
+            session_id: sessionId,
+            uuid: this.buildItemMessageUuid(params.turnId, callId),
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: callId,
+                  name: normalizedInvocation.toolName,
+                  input: normalizedInvocation.input,
+                },
+              ],
+            },
+          } as SDKMessage,
+          observedAt,
+        );
+        logSdkCorrelationDebug(sessionId, message, {
+          eventKind: "function_call",
+          turnId: params.turnId,
+          itemId: callId,
+          callId,
+          phase: "completed",
+          sourceEvent: "rawResponseItem/completed",
+        });
+        return [message];
+      }
+
+      case "function_call_output": {
+        const callId = this.getOptionalString(item.call_id);
+        if (!callId) return [];
+        const normalized = normalizeCodexToolOutputWithContext(
+          item.output,
+          liveEventState.toolCallContexts.get(callId),
+        );
+        liveEventState.toolCallContexts.delete(callId);
+
+        const toolResult: {
+          type: "tool_result";
+          tool_use_id: string;
+          content: string;
+          is_error?: boolean;
+        } = {
+          type: "tool_result",
+          tool_use_id: callId,
+          content: normalized.content,
+        };
+        if (normalized.isError) {
+          toolResult.is_error = true;
+        }
+
+        const message = withCodexTimestamp(
+          {
+            type: "user",
+            session_id: sessionId,
+            uuid: this.buildItemResultUuid(params.turnId, callId),
+            message: {
+              role: "user",
+              content: [toolResult],
+            },
+            ...(normalized.structured !== undefined
+              ? { toolUseResult: normalized.structured }
+              : {}),
+          } as SDKMessage,
+          observedAt,
+        );
+        logSdkCorrelationDebug(sessionId, message, {
+          eventKind: "tool_result",
+          turnId: params.turnId,
+          itemId: callId,
+          callId,
+          phase: "completed",
+          sourceEvent: "rawResponseItem/completed",
+        });
+        return [message];
+      }
+
+      case "custom_tool_call": {
+        const callId = this.getOptionalString(item.call_id);
+        const rawToolName = this.getOptionalString(item.name);
+        const input = this.getOptionalString(item.input);
+        if (!callId || !rawToolName) return [];
+
+        const normalizedInvocation = normalizeCodexToolInvocation(
+          canonicalizeCodexToolName(rawToolName),
+          parseCodexToolArguments(input ?? undefined),
+        );
+        liveEventState.toolCallContexts.set(callId, {
+          toolName: normalizedInvocation.toolName,
+          input: normalizedInvocation.input,
+          readShellInfo: normalizedInvocation.readShellInfo,
+          writeShellInfo: normalizedInvocation.writeShellInfo,
+        });
+
+        const message = withCodexTimestamp(
+          {
+            type: "assistant",
+            session_id: sessionId,
+            uuid: this.buildItemMessageUuid(params.turnId, callId),
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: callId,
+                  name: normalizedInvocation.toolName,
+                  input: normalizedInvocation.input,
+                },
+              ],
+            },
+          } as SDKMessage,
+          observedAt,
+        );
+        logSdkCorrelationDebug(sessionId, message, {
+          eventKind: "custom_tool_call",
+          turnId: params.turnId,
+          itemId: callId,
+          callId,
+          phase: "completed",
+          sourceEvent: "rawResponseItem/completed",
+        });
+        return [message];
+      }
+
+      case "custom_tool_call_output": {
+        const callId = this.getOptionalString(item.call_id);
+        if (!callId) return [];
+        const normalized = normalizeCodexToolOutputWithContext(
+          item.output,
+          liveEventState.toolCallContexts.get(callId),
+        );
+        liveEventState.toolCallContexts.delete(callId);
+
+        const toolResult: {
+          type: "tool_result";
+          tool_use_id: string;
+          content: string;
+          is_error?: boolean;
+        } = {
+          type: "tool_result",
+          tool_use_id: callId,
+          content: normalized.content,
+        };
+        if (normalized.isError) {
+          toolResult.is_error = true;
+        }
+
+        const message = withCodexTimestamp(
+          {
+            type: "user",
+            session_id: sessionId,
+            uuid: this.buildItemResultUuid(params.turnId, callId),
+            message: {
+              role: "user",
+              content: [toolResult],
+            },
+            ...(normalized.structured !== undefined
+              ? { toolUseResult: normalized.structured }
+              : {}),
+          } as SDKMessage,
+          observedAt,
+        );
+        logSdkCorrelationDebug(sessionId, message, {
+          eventKind: "tool_result",
+          turnId: params.turnId,
+          itemId: callId,
+          callId,
+          phase: "completed",
+          sourceEvent: "rawResponseItem/completed",
+        });
+        return [message];
+      }
+
+      default:
+        return [];
+    }
   }
 
   /**

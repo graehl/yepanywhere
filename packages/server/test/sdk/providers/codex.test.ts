@@ -192,6 +192,15 @@ describe("CodexProvider Event Normalization", () => {
     return new CodexProvider();
   }
 
+  function createLiveEventState() {
+    return {
+      streamingTextByItemKey: new Map<string, string>(),
+      streamingReasoningSummaryByItemKey: new Map<string, string[]>(),
+      streamingToolOutputByItemKey: new Map<string, string>(),
+      toolCallContexts: new Map<string, unknown>(),
+    };
+  }
+
   it("should have correct provider interface", () => {
     const provider = createTestProvider();
 
@@ -410,12 +419,300 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
+  it("prefers reasoning summaries over raw reasoning content", () => {
+    const provider = createTestProvider() as unknown as {
+      normalizeThreadItem: (item: unknown) => Record<string, unknown> | null;
+    };
+
+    const normalized = provider.normalizeThreadItem({
+      id: "reason-1",
+      type: "reasoning",
+      summary: ["Short summary"],
+      content: ["internal raw reasoning"],
+    });
+
+    expect(normalized).toMatchObject({
+      id: "reason-1",
+      type: "reasoning",
+      text: "Short summary",
+    });
+  });
+
+  it("declares experimentalApi during initialize when enabled", () => {
+    const provider = createTestProvider() as unknown as {
+      createInitializeParams: (
+        experimentalApiEnabled: boolean,
+      ) => Record<string, unknown>;
+    };
+
+    const params = provider.createInitializeParams(true);
+
+    expect(params).toMatchObject({
+      clientInfo: {
+        title: null,
+        version: "dev",
+      },
+      capabilities: {
+        experimentalApi: true,
+      },
+    });
+    expect((params.clientInfo as { name?: unknown }).name).toEqual(
+      expect.any(String),
+    );
+  });
+
+  it("requests automatic reasoning summaries on turn start", () => {
+    const provider = createTestProvider() as unknown as {
+      createTurnStartParams: (
+        threadId: string,
+        userPrompt: string,
+        options: { effort?: unknown; thinking?: unknown },
+      ) => Record<string, unknown>;
+    };
+
+    const params = provider.createTurnStartParams("thread-1", "test prompt", {});
+
+    expect(params).toMatchObject({
+      threadId: "thread-1",
+      summary: "auto",
+    });
+  });
+
+  it("opts into experimental thread flags when experimental API is negotiated", () => {
+    const provider = createTestProvider() as unknown as {
+      createThreadStartParams: (
+        options: { model?: string; cwd: string },
+        policy: { approvalPolicy: string; sandbox: string },
+        experimentalApiEnabled: boolean,
+      ) => Record<string, unknown>;
+    };
+
+    const start = provider.createThreadStartParams(
+      { model: "gpt-5.2-codex", cwd: "/tmp" },
+      { approvalPolicy: "on-request", sandbox: "workspace-write" },
+      true,
+    );
+
+    expect(start).toMatchObject({
+      experimentalRawEvents: true,
+      persistExtendedHistory: true,
+    });
+  });
+
+  it("keeps experimental thread flags disabled without negotiated experimental capability", () => {
+    const provider = createTestProvider() as unknown as {
+      createThreadStartParams: (
+        options: { model?: string; cwd: string },
+        policy: { approvalPolicy: string; sandbox: string },
+        experimentalApiEnabled: boolean,
+      ) => Record<string, unknown>;
+      createThreadResumeParams: (
+        options: { resumeSessionId?: string; model?: string; cwd: string },
+        sessionId: string,
+        policy: { approvalPolicy: string; sandbox: string },
+        experimentalApiEnabled: boolean,
+      ) => Record<string, unknown>;
+    };
+
+    const start = provider.createThreadStartParams(
+      { model: "gpt-5.2-codex", cwd: "/tmp" },
+      { approvalPolicy: "on-request", sandbox: "workspace-write" },
+      false,
+    );
+    const resume = provider.createThreadResumeParams(
+      {
+        resumeSessionId: "thread-1",
+        model: "gpt-5.2-codex",
+        cwd: "/tmp",
+      },
+      "thread-1",
+      { approvalPolicy: "on-request", sandbox: "workspace-write" },
+      false,
+    );
+
+    expect(start).toMatchObject({
+      experimentalRawEvents: false,
+      persistExtendedHistory: false,
+    });
+    expect(resume).toMatchObject({
+      persistExtendedHistory: false,
+    });
+  });
+
+  it("treats experimental thread field rejections as capability fallback errors", () => {
+    const provider = createTestProvider() as unknown as {
+      isExperimentalCapabilityError: (error: unknown) => boolean;
+    };
+
+    expect(
+      provider.isExperimentalCapabilityError(
+        new Error("thread/start.experimentalRawEvents requires experimentalApi capability"),
+      ),
+    ).toBe(true);
+    expect(
+      provider.isExperimentalCapabilityError(
+        new Error("unknown field `persistExtendedHistory`"),
+      ),
+    ).toBe(true);
+    expect(
+      provider.isExperimentalCapabilityError(
+        new Error("connection closed"),
+      ),
+    ).toBe(false);
+  });
+
+  it("accumulates agent message deltas into a stable streaming assistant message", () => {
+    const provider = createTestProvider() as unknown as {
+      convertNotificationToSDKMessages: (
+        notification: { method: string; params?: unknown },
+        sessionId: string,
+        usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const liveEventState = createLiveEventState();
+
+    const first = provider.convertNotificationToSDKMessages(
+      {
+        method: "item/agentMessage/delta",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "item-1",
+          delta: "Hello",
+        },
+      },
+      "session-1",
+      new Map(),
+      liveEventState,
+    );
+    const second = provider.convertNotificationToSDKMessages(
+      {
+        method: "item/agentMessage/delta",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "item-1",
+          delta: " world",
+        },
+      },
+      "session-1",
+      new Map(),
+      liveEventState,
+    );
+
+    expect(first[0]).toMatchObject({
+      type: "assistant",
+      session_id: "session-1",
+      uuid: "item-1-turn-1",
+      _isStreaming: true,
+      message: {
+        role: "assistant",
+        content: "Hello",
+      },
+    });
+    expect(second[0]).toMatchObject({
+      type: "assistant",
+      session_id: "session-1",
+      uuid: "item-1-turn-1",
+      _isStreaming: true,
+      message: {
+        role: "assistant",
+        content: "Hello world",
+      },
+    });
+  });
+
+  it("normalizes raw response function calls and outputs into tool messages", () => {
+    const provider = createTestProvider() as unknown as {
+      convertNotificationToSDKMessages: (
+        notification: { method: string; params?: unknown },
+        sessionId: string,
+        usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const liveEventState = createLiveEventState();
+    const toolUse = provider.convertNotificationToSDKMessages(
+      {
+        method: "rawResponseItem/completed",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "function_call",
+            name: "exec_command",
+            call_id: "call-1",
+            arguments: '{"command":"pnpm lint"}',
+          },
+        },
+      },
+      "session-1",
+      new Map(),
+      liveEventState,
+    );
+    const toolResult = provider.convertNotificationToSDKMessages(
+      {
+        method: "rawResponseItem/completed",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "function_call_output",
+            call_id: "call-1",
+            output: "Process exited with code 0",
+          },
+        },
+      },
+      "session-1",
+      new Map(),
+      liveEventState,
+    );
+
+    expect(toolUse[0]).toMatchObject({
+      type: "assistant",
+      session_id: "session-1",
+      uuid: "call-1-turn-1",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "call-1",
+            name: "Bash",
+            input: {
+              command: "pnpm lint",
+            },
+          },
+        ],
+      },
+    });
+    expect(toolResult[0]).toMatchObject({
+      type: "user",
+      session_id: "session-1",
+      uuid: "call-1-turn-1-result",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "call-1",
+            content: "Process exited with code 0",
+          },
+        ],
+      },
+    });
+  });
+
   it("does not emit rate limit errors when hasCredits is false but usage is below 100%", () => {
     const provider = createTestProvider() as unknown as {
       convertNotificationToSDKMessages: (
         notification: { method: string; params?: unknown },
         sessionId: string,
         usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
       ) => Array<Record<string, unknown>>;
     };
 
@@ -438,6 +735,7 @@ describe("CodexProvider Event Normalization", () => {
       },
       "session-1",
       new Map(),
+      createLiveEventState(),
     );
 
     expect(messages).toEqual([]);
@@ -449,6 +747,7 @@ describe("CodexProvider Event Normalization", () => {
         notification: { method: string; params?: unknown },
         sessionId: string,
         usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
       ) => Array<Record<string, unknown>>;
     };
 
@@ -471,6 +770,7 @@ describe("CodexProvider Event Normalization", () => {
       },
       "session-1",
       new Map(),
+      createLiveEventState(),
     );
 
     expect(messages).toEqual([]);
@@ -482,6 +782,7 @@ describe("CodexProvider Event Normalization", () => {
         notification: { method: string; params?: unknown },
         sessionId: string,
         usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
       ) => Array<Record<string, unknown>>;
     };
 
@@ -501,6 +802,7 @@ describe("CodexProvider Event Normalization", () => {
       },
       "session-1",
       new Map(),
+      createLiveEventState(),
     );
 
     expect(messages).toHaveLength(1);

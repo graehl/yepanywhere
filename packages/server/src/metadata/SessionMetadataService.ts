@@ -22,6 +22,12 @@ export interface SessionMetadata {
   provider?: ProviderName;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
+  /** Whether this session is opted in to heartbeat turns */
+  heartbeatTurnsEnabled?: boolean;
+  /** Optional per-session idle threshold override in minutes */
+  heartbeatTurnsAfterMinutes?: number;
+  /** Optional per-session heartbeat text override */
+  heartbeatTurnText?: string;
 }
 
 export interface SessionMetadataState {
@@ -197,7 +203,14 @@ export class SessionMetadataService {
    */
   async updateMetadata(
     sessionId: string,
-    updates: { title?: string; archived?: boolean; starred?: boolean },
+    updates: {
+      title?: string;
+      archived?: boolean;
+      starred?: boolean;
+      heartbeatTurnsEnabled?: boolean;
+      heartbeatTurnsAfterMinutes?: number | null;
+      heartbeatTurnText?: string | null;
+    },
   ): Promise<void> {
     this.updateSessionMetadata(sessionId, (metadata) => {
       const result = { ...metadata };
@@ -216,6 +229,19 @@ export class SessionMetadataService {
       // Handle starred
       if (updates.starred !== undefined) {
         result.isStarred = updates.starred || undefined;
+      }
+
+      if (updates.heartbeatTurnsEnabled !== undefined) {
+        result.heartbeatTurnsEnabled = updates.heartbeatTurnsEnabled || undefined;
+      }
+
+      if (updates.heartbeatTurnsAfterMinutes !== undefined) {
+        result.heartbeatTurnsAfterMinutes =
+          updates.heartbeatTurnsAfterMinutes ?? undefined;
+      }
+
+      if (updates.heartbeatTurnText !== undefined) {
+        result.heartbeatTurnText = updates.heartbeatTurnText?.trim() || undefined;
       }
 
       return result;
@@ -241,6 +267,15 @@ export class SessionMetadataService {
     if (updated.model) cleaned.model = updated.model;
     if (updated.provider) cleaned.provider = updated.provider;
     if (updated.executor) cleaned.executor = updated.executor;
+    if (updated.heartbeatTurnsEnabled) {
+      cleaned.heartbeatTurnsEnabled = updated.heartbeatTurnsEnabled;
+    }
+    if (updated.heartbeatTurnsAfterMinutes !== undefined) {
+      cleaned.heartbeatTurnsAfterMinutes = updated.heartbeatTurnsAfterMinutes;
+    }
+    if (updated.heartbeatTurnText) {
+      cleaned.heartbeatTurnText = updated.heartbeatTurnText;
+    }
 
     if (Object.keys(cleaned).length === 0) {
       // Remove the entry entirely if empty

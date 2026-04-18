@@ -1,5 +1,5 @@
-import type { UploadedFile } from "@yep-anywhere/shared";
-import type { RefObject } from "react";
+import { useRef } from "react";
+import type { MouseEvent, RefObject, TouchEvent } from "react";
 import { useModelSettings } from "../hooks/useModelSettings";
 import { useI18n } from "../i18n";
 import type { ContextUsage, PermissionMode } from "../types";
@@ -34,6 +34,11 @@ export interface MessageInputToolbarProps {
   // Slash commands
   slashCommands?: string[];
   onSelectSlashCommand?: (command: string) => void;
+
+  // Session heartbeat
+  heartbeatEnabled?: boolean;
+  onToggleHeartbeat?: () => void;
+  onConfigureHeartbeat?: () => void;
 
   // Context usage
   contextUsage?: ContextUsage;
@@ -72,6 +77,9 @@ export function MessageInputToolbar({
   voiceDisabled,
   slashCommands = [],
   onSelectSlashCommand,
+  heartbeatEnabled = false,
+  onToggleHeartbeat,
+  onConfigureHeartbeat,
   contextUsage,
   isRunning,
   isThinking,
@@ -84,6 +92,57 @@ export function MessageInputToolbar({
 }: MessageInputToolbarProps) {
   const { t } = useI18n();
   const { thinkingMode, cycleThinkingMode, thinkingLevel } = useModelSettings();
+  const heartbeatLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const suppressHeartbeatClickRef = useRef(false);
+
+  const clearHeartbeatLongPress = () => {
+    if (heartbeatLongPressTimerRef.current) {
+      clearTimeout(heartbeatLongPressTimerRef.current);
+      heartbeatLongPressTimerRef.current = null;
+    }
+  };
+
+  const handleHeartbeatClick = () => {
+    if (suppressHeartbeatClickRef.current) {
+      suppressHeartbeatClickRef.current = false;
+      return;
+    }
+    onToggleHeartbeat?.();
+  };
+
+  const handleHeartbeatContextMenu = (
+    e: MouseEvent<HTMLButtonElement>,
+  ) => {
+    if (!onConfigureHeartbeat) return;
+    e.preventDefault();
+    clearHeartbeatLongPress();
+    suppressHeartbeatClickRef.current = false;
+    onConfigureHeartbeat();
+  };
+
+  const handleHeartbeatTouchStart = () => {
+    if (!onConfigureHeartbeat) return;
+    clearHeartbeatLongPress();
+    suppressHeartbeatClickRef.current = false;
+    heartbeatLongPressTimerRef.current = setTimeout(() => {
+      suppressHeartbeatClickRef.current = true;
+      heartbeatLongPressTimerRef.current = null;
+      onConfigureHeartbeat();
+    }, 450);
+  };
+
+  const handleHeartbeatTouchEnd = (
+    e: TouchEvent<HTMLButtonElement>,
+  ) => {
+    if (suppressHeartbeatClickRef.current) {
+      e.preventDefault();
+    }
+    clearHeartbeatLongPress();
+  };
+
+  const heartbeatTitle = t("sessionHeartbeatTitle");
 
   return (
     <div className="message-input-toolbar">
@@ -171,6 +230,48 @@ export function MessageInputToolbar({
                   </text>
                 </g>
               )}
+            </svg>
+          </button>
+        )}
+        {onToggleHeartbeat && (
+          <button
+            type="button"
+            className={`heartbeat-toolbar-button ${heartbeatEnabled ? "active" : ""}`}
+            onClick={handleHeartbeatClick}
+            onContextMenu={handleHeartbeatContextMenu}
+            onTouchStart={handleHeartbeatTouchStart}
+            onTouchEnd={handleHeartbeatTouchEnd}
+            onTouchCancel={clearHeartbeatLongPress}
+            onTouchMove={clearHeartbeatLongPress}
+            title={heartbeatTitle}
+            aria-label={heartbeatTitle}
+            aria-pressed={heartbeatEnabled}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 2v3" />
+              <path d="M12 19v3" />
+              <path d="m4.93 4.93 2.12 2.12" />
+              <path d="m16.95 16.95 2.12 2.12" />
+              <path d="M2 12h3" />
+              <path d="M19 12h3" />
+              <path d="m4.93 19.07 2.12-2.12" />
+              <path d="m16.95 7.05 2.12-2.12" />
+              <circle
+                cx="12"
+                cy="12"
+                r="3.5"
+                fill={heartbeatEnabled ? "currentColor" : "none"}
+              />
             </svg>
           </button>
         )}

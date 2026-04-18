@@ -57,6 +57,9 @@ const STALE_CHECK_INTERVAL_MS = 60 * 1000;
 const DEFAULT_STALE_IN_TURN_THRESHOLD_MS = 5 * 60 * 1000;
 /** Codex sessions can be silent for long periods during backend retries/reconnects. */
 const CODEX_STALE_IN_TURN_THRESHOLD_MS = 60 * 60 * 1000;
+const HEARTBEAT_TURN_CHECK_INTERVAL_MS = 30 * 1000;
+const DEFAULT_HEARTBEAT_TURN_TEXT = "yepanywhere heartbeat";
+const DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES = 5;
 
 function getStaleInTurnThresholdMs(provider: ProviderName): number {
   return provider === "codex" || provider === "codex-oss"
@@ -90,6 +93,12 @@ export interface ModelSettings {
 export interface QueueFullResponse {
   error: "queue_full";
   maxQueueSize: number;
+}
+
+export interface HeartbeatTurnSettings {
+  enabled: boolean;
+  afterMinutes: number;
+  text: string;
 }
 
 /** Optional callback to persist executor when session ID is received */
@@ -129,6 +138,10 @@ export interface SupervisorOptions {
   onSessionExecutor?: OnSessionExecutorCallback;
   /** Callback to fetch session summary for initial metadata reconciliation */
   onSessionSummary?: OnSessionSummaryCallback;
+  /** Callback to read the current heartbeat-turn settings for a session */
+  getHeartbeatTurnSettings?: (
+    sessionId: string,
+  ) => HeartbeatTurnSettings | undefined;
 }
 
 export class Supervisor {
@@ -148,6 +161,10 @@ export class Supervisor {
   private onSessionExecutor?: OnSessionExecutorCallback;
   private onSessionSummary?: OnSessionSummaryCallback;
   private staleCheckTimer: ReturnType<typeof setInterval>;
+  private getHeartbeatTurnSettings?: (
+    sessionId: string,
+  ) => HeartbeatTurnSettings | undefined;
+  private heartbeatTurnTimer: ReturnType<typeof setInterval>;
 
   constructor(options: SupervisorOptions) {
     this.provider = options.provider ?? null;
@@ -165,11 +182,17 @@ export class Supervisor {
     });
     this.onSessionExecutor = options.onSessionExecutor;
     this.onSessionSummary = options.onSessionSummary;
+    this.getHeartbeatTurnSettings = options.getHeartbeatTurnSettings;
     this.staleCheckTimer = setInterval(
       () => this.terminateStaleProcesses(),
       STALE_CHECK_INTERVAL_MS,
     );
     this.staleCheckTimer.unref(); // Don't keep process alive for cleanup
+    this.heartbeatTurnTimer = setInterval(
+      () => this.queueHeartbeatTurns(),
+      HEARTBEAT_TURN_CHECK_INTERVAL_MS,
+    );
+    this.heartbeatTurnTimer.unref();
 
     if (!this.provider && !this.sdk && !this.realSdk) {
       throw new Error("Either provider, sdk, or realSdk must be provided");
@@ -1056,6 +1079,67 @@ export class Supervisor {
 
   getAllProcesses(): Process[] {
     return Array.from(this.processes.values());
+  }
+
+  private queueHeartbeatTurns(): void {
+    const now = Date.now();
+    const log = getLogger();
+
+    for (const process of this.processes.values()) {
+      const settings = this.getHeartbeatTurnSettings?.(process.sessionId);
+      if (!settings?.enabled) {
+        continue;
+      }
+      if (process.isTerminated || process.isHeld) {
+        continue;
+      }
+      if (process.state.type !== "idle") {
+        continue;
+      }
+      if (process.queueDepth > 0 || process.isProcessAlive === false) {
+        continue;
+      }
+
+      const afterMinutes = Number.isFinite(settings.afterMinutes)
+        ? Math.max(1, Math.min(settings.afterMinutes, 1440))
+        : DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES;
+      const idleThresholdMs = afterMinutes * 60 * 1000;
+      const text = settings.text.trim() || DEFAULT_HEARTBEAT_TURN_TEXT;
+
+      const idleMs = now - process.state.since.getTime();
+      if (idleMs < idleThresholdMs) {
+        continue;
+      }
+
+      const result = process.queueMessage({ text });
+      if (result.success) {
+        log.info(
+          {
+            event: "heartbeat_turn_queued",
+            sessionId: process.sessionId,
+            processId: process.id,
+            projectId: process.projectId,
+            idleMs,
+            afterMinutes,
+            text,
+          },
+          `Queued heartbeat turn for idle session: ${process.sessionId}`,
+        );
+      } else {
+        log.warn(
+          {
+            event: "heartbeat_turn_failed",
+            sessionId: process.sessionId,
+            processId: process.id,
+            projectId: process.projectId,
+            idleMs,
+            afterMinutes,
+            error: result.error,
+          },
+          `Failed to queue heartbeat turn for idle session: ${process.sessionId}`,
+        );
+      }
+    }
   }
 
   getProcessInfoList(): ProcessInfo[] {

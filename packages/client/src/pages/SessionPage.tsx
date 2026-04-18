@@ -10,6 +10,7 @@ import { ProcessInfoModal } from "../components/ProcessInfoModal";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { RecentSessionsDropdown } from "../components/RecentSessionsDropdown";
+import { SessionHeartbeatModal } from "../components/SessionHeartbeatModal";
 import { SessionMenu } from "../components/SessionMenu";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
@@ -39,6 +40,9 @@ import { useNavigationLayout } from "../layouts";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { generateUUID } from "../lib/uuid";
 import { getSessionDisplayTitle } from "../utils";
+
+const PENDING_ELSEWHERE_DISMISS_KEY_PREFIX =
+  "yepanywhere:pending-elsewhere-dismissed:";
 
 export function SessionPage() {
   const { projectId, sessionId } = useParams<{
@@ -242,6 +246,14 @@ function SessionPageContent({
   const [localIsStarred, setLocalIsStarred] = useState<boolean | undefined>(
     undefined,
   );
+  const [localHeartbeatTurnsEnabled, setLocalHeartbeatTurnsEnabled] = useState<
+    boolean | undefined
+  >(undefined);
+  const [localHeartbeatTurnsAfterMinutes, setLocalHeartbeatTurnsAfterMinutes] =
+    useState<number | undefined>(undefined);
+  const [localHeartbeatTurnText, setLocalHeartbeatTurnText] = useState<
+    string | undefined
+  >(undefined);
   const [localHasUnread, setLocalHasUnread] = useState<boolean | undefined>(
     undefined,
   );
@@ -252,6 +264,9 @@ function SessionPageContent({
     setLocalCustomTitle(undefined);
     setLocalIsArchived(undefined);
     setLocalIsStarred(undefined);
+    setLocalHeartbeatTurnsEnabled(undefined);
+    setLocalHeartbeatTurnsAfterMinutes(undefined);
+    setLocalHeartbeatTurnText(undefined);
     setLocalHasUnread(undefined);
   }, [sessionId]);
 
@@ -295,6 +310,9 @@ function SessionPageContent({
 
   // Process info modal state
   const [showProcessInfoModal, setShowProcessInfoModal] = useState(false);
+  const [showHeartbeatModal, setShowHeartbeatModal] = useState(false);
+  const [pendingElsewhereDismissed, setPendingElsewhereDismissed] =
+    useState(false);
 
   // Model switch modal state
   const [showModelSwitchModal, setShowModelSwitchModal] = useState(false);
@@ -697,16 +715,21 @@ function SessionPageContent({
     processState === "waiting-input" ||
     (hasSessionUpdateStream && !sessionUpdatesConnected);
 
-  // Detect if session has pending tool calls without results
-  // This can happen when the session is unowned but was active in another process (VS Code, CLI)
-  // that is waiting for user input (tool approval, question answer)
+  // Detect if session has pending tool calls without results.
+  // Show this warning whenever the current browser is not the owner:
+  // - owner === "none": session may be waiting in another process
+  // - owner === "external": another process currently owns the session
   const hasPendingToolCalls = useMemo(() => {
-    if (status.owner !== "none") return false;
+    if (status.owner === "self") return false;
     const items = preprocessMessages(messages);
     return items.some(
       (item) => item.type === "tool_call" && item.status === "pending",
     );
   }, [messages, status.owner]);
+  const pendingElsewhereDismissKey = useMemo(
+    () => `${PENDING_ELSEWHERE_DISMISS_KEY_PREFIX}${actualSessionId}`,
+    [actualSessionId],
+  );
 
   // Compute display title - priority:
   // 1. Local custom title (user renamed in this session)
@@ -721,6 +744,33 @@ function SessionPageContent({
     t("sessionUntitled");
   const isArchived = localIsArchived ?? session?.isArchived ?? false;
   const isStarred = localIsStarred ?? session?.isStarred ?? false;
+  const heartbeatTurnsEnabled =
+    localHeartbeatTurnsEnabled ?? session?.heartbeatTurnsEnabled ?? false;
+  const heartbeatTurnsAfterMinutes =
+    localHeartbeatTurnsAfterMinutes ?? session?.heartbeatTurnsAfterMinutes;
+  const heartbeatTurnText =
+    localHeartbeatTurnText ?? session?.heartbeatTurnText;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPendingElsewhereDismissed(
+      window.localStorage.getItem(pendingElsewhereDismissKey) === "1",
+    );
+  }, [pendingElsewhereDismissKey]);
+
+  const handleDismissPendingElsewhereWarning = useCallback(() => {
+    setPendingElsewhereDismissed(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(pendingElsewhereDismissKey, "1");
+    }
+  }, [pendingElsewhereDismissKey]);
+
+  const handleRestorePendingElsewhereWarning = useCallback(() => {
+    setPendingElsewhereDismissed(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(pendingElsewhereDismissKey);
+    }
+  }, [pendingElsewhereDismissKey]);
 
   // Update browser tab title
   useDocumentTitle(project?.name, displayTitle);
@@ -847,6 +897,23 @@ function SessionPageContent({
       }
     }
   };
+
+  const handleToggleHeartbeat = useCallback(async () => {
+    const previousEnabled = heartbeatTurnsEnabled;
+    const nextEnabled = !previousEnabled;
+    setLocalHeartbeatTurnsEnabled(nextEnabled);
+    try {
+      await api.updateSessionMetadata(actualSessionId, {
+        heartbeatTurnsEnabled: nextEnabled,
+      });
+    } catch (err) {
+      console.error("Failed to update heartbeat status:", err);
+      setLocalHeartbeatTurnsEnabled(previousEnabled);
+      const errorMsg =
+        err instanceof Error ? err.message : t("sessionHeartbeatSaveFailed");
+      showToast(errorMsg, "error");
+    }
+  }, [actualSessionId, heartbeatTurnsEnabled, showToast, t]);
 
   const handleShare = useCallback(async () => {
     try {
@@ -1006,9 +1073,9 @@ function SessionPageContent({
                   </span>
                 )}
                 {!loading && (
-                  <SessionMenu
-                    sessionId={sessionId}
-                    projectId={projectId}
+                <SessionMenu
+                  sessionId={sessionId}
+                  projectId={projectId}
                     isStarred={isStarred}
                     isArchived={isArchived}
                     hasUnread={hasUnread}
@@ -1017,9 +1084,12 @@ function SessionPageContent({
                       status.owner === "self" ? status.processId : undefined
                     }
                     onToggleStar={handleToggleStar}
-                    onToggleArchive={handleToggleArchive}
-                    onToggleRead={handleToggleRead}
-                    onRename={handleStartEditingTitle}
+                  onToggleArchive={handleToggleArchive}
+                  onToggleRead={handleToggleRead}
+                  onRename={handleStartEditingTitle}
+                  onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
+                  warningRestoreAvailable={pendingElsewhereDismissed}
+                  onRestoreWarnings={handleRestorePendingElsewhereWarning}
                     onClone={(newSessionId) => {
                       navigate(
                         `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
@@ -1074,6 +1144,24 @@ function SessionPageContent({
           />
         )}
 
+        {showHeartbeatModal && (
+          <SessionHeartbeatModal
+            sessionId={actualSessionId}
+            enabled={heartbeatTurnsEnabled}
+            heartbeatTurnsAfterMinutes={heartbeatTurnsAfterMinutes}
+            heartbeatTurnText={heartbeatTurnText}
+            onClose={() => setShowHeartbeatModal(false)}
+            onSaved={(next) => {
+              setLocalHeartbeatTurnsEnabled(next.enabled);
+              setLocalHeartbeatTurnsAfterMinutes(
+                next.heartbeatTurnsAfterMinutes,
+              );
+              setLocalHeartbeatTurnText(next.heartbeatTurnText);
+              showToast(t("sessionHeartbeatSaved"), "success");
+            }}
+          />
+        )}
+
         {/* Model Switch Modal */}
         {showModelSwitchModal &&
           status.owner === "self" &&
@@ -1092,9 +1180,52 @@ function SessionPageContent({
           </div>
         )}
 
-        {hasPendingToolCalls && (
-          <div className="external-session-warning pending-tool-warning">
-            {t("sessionPendingElsewhereWarning")}
+        {hasPendingToolCalls && !pendingElsewhereDismissed && (
+          <div
+            className="external-session-warning pending-tool-warning"
+            role="status"
+          >
+            <div className="pending-tool-warning-copy">
+              <svg
+                className="pending-tool-warning-icon"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v4" />
+                <path d="M12 16h.01" />
+              </svg>
+              <span>{t("sessionPendingElsewhereWarning")}</span>
+            </div>
+            <button
+              type="button"
+              className="pending-tool-warning-close"
+              onClick={handleDismissPendingElsewhereWarning}
+              aria-label={t("sessionPendingElsewhereDismiss")}
+              title={t("sessionPendingElsewhereDismiss")}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
           </div>
         )}
 
@@ -1177,6 +1308,9 @@ function SessionPageContent({
                     onHoldChange={holdModeEnabled ? setHold : undefined}
                     supportsPermissionMode={supportsPermissionMode}
                     supportsThinkingToggle={supportsThinkingToggle}
+                    heartbeatEnabled={heartbeatTurnsEnabled}
+                    onToggleHeartbeat={handleToggleHeartbeat}
+                    onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                     contextUsage={session?.contextUsage}
                     isRunning={status.owner === "self"}
                     isThinking={processState === "in-turn"}
@@ -1239,6 +1373,9 @@ function SessionPageContent({
                 uploadProgress={uploadProgress}
                 slashCommands={status.owner === "self" ? allSlashCommands : []}
                 onCustomCommand={handleCustomCommand}
+                heartbeatEnabled={heartbeatTurnsEnabled}
+                onToggleHeartbeat={handleToggleHeartbeat}
+                onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
               />
             )}
           </div>

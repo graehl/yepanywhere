@@ -142,6 +142,12 @@ export interface SessionMetadataChangedEvent {
   archived?: boolean;
   /** Updated starred status (if changed) */
   starred?: boolean;
+  /** Updated heartbeat opt-in flag (if changed) */
+  heartbeatTurnsEnabled?: boolean;
+  /** Updated per-session heartbeat interval override (if changed) */
+  heartbeatTurnsAfterMinutes?: number | null;
+  /** Updated per-session heartbeat text override (if changed) */
+  heartbeatTurnText?: string | null;
   timestamp: string;
 }
 

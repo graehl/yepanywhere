@@ -487,6 +487,25 @@ describe("preprocessMessages", () => {
     expect(items[1]?.type).toBe("text");
   });
 
+  it("hides internal reasoning placeholders but keeps real text", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-1",
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Reasoning [internal]" },
+          { type: "text", text: "Here is my response." },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.type).toBe("text");
+  });
+
   it("handles user prompts with string content", () => {
     const messages: Message[] = [
       {

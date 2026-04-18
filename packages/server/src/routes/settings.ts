@@ -15,6 +15,7 @@ import type {
   ServerSettings,
   ServerSettingsService,
 } from "../services/ServerSettingsService.js";
+import { DEFAULT_SERVER_SETTINGS } from "../services/ServerSettingsService.js";
 import {
   isValidSshHostAlias,
   normalizeSshHostAlias,
@@ -205,6 +206,40 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         updates.globalInstructions = undefined;
       } else if (typeof body.globalInstructions === "string") {
         updates.globalInstructions = body.globalInstructions.slice(0, 10000);
+      }
+    }
+
+    if ("heartbeatTurnsAfterMinutes" in body) {
+      if (
+        body.heartbeatTurnsAfterMinutes === undefined ||
+        body.heartbeatTurnsAfterMinutes === null
+      ) {
+        updates.heartbeatTurnsAfterMinutes =
+          DEFAULT_SERVER_SETTINGS.heartbeatTurnsAfterMinutes;
+      } else if (
+        typeof body.heartbeatTurnsAfterMinutes === "number" &&
+        Number.isInteger(body.heartbeatTurnsAfterMinutes) &&
+        body.heartbeatTurnsAfterMinutes >= 1 &&
+        body.heartbeatTurnsAfterMinutes <= 1440
+      ) {
+        updates.heartbeatTurnsAfterMinutes = body.heartbeatTurnsAfterMinutes;
+      } else {
+        return c.json(
+          { error: "heartbeatTurnsAfterMinutes must be an integer between 1 and 1440" },
+          400,
+        );
+      }
+    }
+
+    if ("heartbeatTurnText" in body) {
+      if (
+        body.heartbeatTurnText === undefined ||
+        body.heartbeatTurnText === null ||
+        body.heartbeatTurnText === ""
+      ) {
+        updates.heartbeatTurnText = DEFAULT_SERVER_SETTINGS.heartbeatTurnText;
+      } else if (typeof body.heartbeatTurnText === "string") {
+        updates.heartbeatTurnText = body.heartbeatTurnText.slice(0, 200);
       }
     }
 

@@ -2265,6 +2265,34 @@ a.sidebar-nav-item {
   background: rgba(59, 130, 246, 0.25);
 }
 
+.heartbeat-toolbar-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.heartbeat-toolbar-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-input);
+}
+
+.heartbeat-toolbar-button.active {
+  background: color-mix(in srgb, var(--app-yep-green) 18%, transparent);
+  border-color: color-mix(in srgb, var(--app-yep-green) 60%, var(--border-input));
+  color: var(--app-yep-green);
+}
+
+.heartbeat-toolbar-button.active:hover {
+  background: color-mix(in srgb, var(--app-yep-green) 26%, transparent);
+}
+
 /* Voice input button */
 .voice-input-button {
   display: flex;
@@ -2623,6 +2651,52 @@ a.sidebar-nav-item {
   background: var(--status-badge-input-bg);
   border-color: var(--primary-color);
   color: var(--status-badge-input-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  text-align: left;
+}
+
+.pending-tool-warning-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.pending-tool-warning-icon {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  opacity: 0.8;
+}
+
+.pending-tool-warning-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.pending-tool-warning-close:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.pending-tool-warning-close:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 2px;
 }
 
 /* Status badges for session list */
@@ -3876,6 +3950,60 @@ a.sidebar-nav-item {
 .settings-textarea::placeholder {
   color: var(--text-muted);
   opacity: 0.6;
+}
+
+.settings-input,
+.settings-input-small,
+.session-heartbeat-input,
+.session-heartbeat-input-small {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.settings-input,
+.session-heartbeat-input {
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
+.settings-input-small,
+.session-heartbeat-input-small {
+  width: 96px;
+  flex-shrink: 0;
+}
+
+.settings-input:focus,
+.settings-input-small:focus,
+.session-heartbeat-input:focus,
+.session-heartbeat-input-small:focus {
+  outline: none;
+  border-color: var(--app-yep-green);
+}
+
+.settings-input::placeholder,
+.settings-input-small::placeholder,
+.session-heartbeat-input::placeholder,
+.session-heartbeat-input-small::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.session-heartbeat-modal {
+  min-width: min(100%, 560px);
+}
+
+.session-heartbeat-hint {
+  margin: var(--space-2) 0 0;
+}
+
+.session-heartbeat-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 .settings-item-header {

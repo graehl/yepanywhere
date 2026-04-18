@@ -17,6 +17,7 @@ import type {
 import {
   type FileChangeEvent,
   type ProcessStateEvent,
+  type SessionMetadataChangedEvent,
   type SessionStatusEvent,
   type SessionUpdatedEvent,
   useFileActivity,
@@ -501,6 +502,33 @@ export function useSession(
     [sessionId, setSession],
   );
 
+  const handleSessionMetadataChange = useCallback(
+    (event: SessionMetadataChangedEvent) => {
+      if (event.sessionId !== sessionId) return;
+
+      setSession((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          ...(event.title !== undefined && { customTitle: event.title }),
+          ...(event.archived !== undefined && { isArchived: event.archived }),
+          ...(event.starred !== undefined && { isStarred: event.starred }),
+          ...(event.heartbeatTurnsEnabled !== undefined && {
+            heartbeatTurnsEnabled: event.heartbeatTurnsEnabled,
+          }),
+          ...(event.heartbeatTurnsAfterMinutes !== undefined && {
+            heartbeatTurnsAfterMinutes:
+              event.heartbeatTurnsAfterMinutes ?? undefined,
+          }),
+          ...(event.heartbeatTurnText !== undefined && {
+            heartbeatTurnText: event.heartbeatTurnText ?? undefined,
+          }),
+        };
+      });
+    },
+    [sessionId, setSession],
+  );
+
   // Listen for session status changes via stream
   const handleSessionStatusChange = useCallback(
     (event: SessionStatusEvent) => {
@@ -570,6 +598,7 @@ export function useSession(
   useFileActivity({
     onSessionStatusChange: handleSessionStatusChange,
     onFileChange: handleFileChange,
+    onSessionMetadataChange: handleSessionMetadataChange,
     onSessionUpdated: handleSessionUpdated,
     onProcessStateChange: handleProcessStateChange,
     onReconnect: handleActivityReconnect,

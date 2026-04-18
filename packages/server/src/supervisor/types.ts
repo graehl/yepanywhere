@@ -88,6 +88,12 @@ export interface SessionSummary {
   isArchived?: boolean;
   /** Whether the session is starred/favorited */
   isStarred?: boolean;
+  /** Whether this session is opted in to heartbeat turns */
+  heartbeatTurnsEnabled?: boolean;
+  /** Optional per-session idle threshold override in minutes */
+  heartbeatTurnsAfterMinutes?: number;
+  /** Optional per-session heartbeat text override */
+  heartbeatTurnText?: string;
   /** Context usage from the last assistant message */
   contextUsage?: ContextUsage;
   /** AI provider used for this session */

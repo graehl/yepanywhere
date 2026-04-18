@@ -25,6 +25,10 @@ export interface ServerSettings {
   allowedHosts?: string;
   /** Free-form instructions appended to the system prompt for all sessions */
   globalInstructions?: string;
+  /** Default idle minutes before an opted-in session queues a heartbeat turn */
+  heartbeatTurnsAfterMinutes?: number;
+  /** Default text queued as the synthetic heartbeat user turn */
+  heartbeatTurnText?: string;
   /** Ollama server URL for claude-ollama provider (default: http://localhost:11434) */
   ollamaUrl?: string;
   /** Custom system prompt for Ollama provider (overrides the default minimal prompt) */
@@ -49,6 +53,8 @@ export interface ServerSettings {
 export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   serviceWorkerEnabled: true,
   persistRemoteSessionsToDisk: false,
+  heartbeatTurnsAfterMinutes: 5,
+  heartbeatTurnText: "yepanywhere heartbeat",
   lifecycleWebhooksEnabled: false,
   lifecycleWebhookDryRun: true,
 };

@@ -64,20 +64,31 @@ function getPreferredModelId(
   models: ModelInfo[],
   preferredModelId?: string | null,
 ) {
-  const configuredModelId = preferredModelId ?? resolveModel(getModelSetting());
-
-  if (!configuredModelId) {
-    return models.find((m) => m.id === "default")?.id ?? null;
-  }
-
-  if (configuredModelId) {
-    const matchingPreferredModel = models.find(
-      (m) => m.id === configuredModelId,
-    );
+  if (preferredModelId) {
+    const matchingPreferredModel = models.find((m) => m.id === preferredModelId);
     if (matchingPreferredModel) return matchingPreferredModel.id;
   }
 
-  return models[0]?.id ?? null;
+  return models.find((m) => m.id === "default")?.id ?? models[0]?.id ?? null;
+}
+
+function getPreferredProviderModelId(
+  providerName: ProviderName,
+  models: ModelInfo[],
+  defaults?: {
+    provider?: ProviderName;
+    model?: string;
+  } | null,
+) {
+  const sessionDefaultModel =
+    defaults?.provider === providerName ? defaults.model : undefined;
+  const legacyClaudeFallbackModel =
+    providerName === "claude" ? resolveModel(getModelSetting()) : undefined;
+
+  return getPreferredModelId(
+    models,
+    sessionDefaultModel ?? legacyClaudeFallbackModel,
+  );
 }
 
 export interface NewSessionFormProps {
@@ -123,6 +134,7 @@ export function NewSessionForm({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
   const hasInitializedDefaultsRef = useRef(false);
+  const hasUserCustomizedDefaultsRef = useRef(false);
 
   // Thinking toggle state
   const { thinkingMode, cycleThinkingMode, thinkingLevel } = useModelSettings();
@@ -181,6 +193,9 @@ export function NewSessionForm({
     }
 
     hasInitializedDefaultsRef.current = true;
+    if (hasUserCustomizedDefaultsRef.current) {
+      return;
+    }
 
     if (providers.length === 0) return;
 
@@ -201,7 +216,11 @@ export function NewSessionForm({
 
     setSelectedProvider(initialProvider.name);
     setSelectedModel(
-      getPreferredModelId(initialProvider.models ?? [], savedDefaults?.model),
+      getPreferredProviderModelId(
+        initialProvider.name,
+        initialProvider.models ?? [],
+        savedDefaults,
+      ),
     );
     setMode(savedDefaults?.permissionMode ?? "default");
   }, [
@@ -214,10 +233,17 @@ export function NewSessionForm({
 
   // When provider changes, reset model based on user settings
   const handleProviderSelect = (providerName: ProviderName) => {
+    hasUserCustomizedDefaultsRef.current = true;
     setSelectedProvider(providerName);
     const provider = providers.find((p) => p.name === providerName);
     if (provider?.models && provider.models.length > 0) {
-      setSelectedModel(getPreferredModelId(provider.models));
+      setSelectedModel(
+        getPreferredProviderModelId(
+          providerName,
+          provider.models,
+          settings?.newSessionDefaults,
+        ),
+      );
     } else {
       setSelectedModel(null);
     }
@@ -248,6 +274,7 @@ export function NewSessionForm({
 
   // Handle model selection from FilterDropdown
   const handleModelSelect = useCallback((selected: string[]) => {
+    hasUserCustomizedDefaultsRef.current = true;
     setSelectedModel(selected[0] ?? null);
   }, []);
 
@@ -315,6 +342,7 @@ export function NewSessionForm({
   };
 
   const handleModeSelect = (selectedMode: PermissionMode) => {
+    hasUserCustomizedDefaultsRef.current = true;
     setMode(selectedMode);
   };
 
@@ -467,9 +495,26 @@ export function NewSessionForm({
       // Show user-visible error message
       let errorMessage = t("newSessionStartError");
       if (err instanceof Error) {
+        const providerDisplayName =
+          selectedProviderInfo?.displayName ?? selectedProvider ?? "Provider";
+        const lowerMessage = err.message.toLowerCase();
+        const status = (err as Error & { status?: number }).status;
+
         // Check for specific error types
         if (err.message.includes("Queue is full")) {
           errorMessage = t("newSessionServerBusy");
+        } else if (
+          lowerMessage.includes("invalid authentication credentials") ||
+          lowerMessage.includes("authentication_error") ||
+          lowerMessage.includes("please run /login") ||
+          (status === 401 &&
+            (selectedProvider === "claude" ||
+              selectedProvider === "gemini" ||
+              selectedProvider === "codex"))
+        ) {
+          errorMessage = t("newSessionProviderAuthError", {
+            provider: providerDisplayName,
+          });
         } else if (err.message.includes("503")) {
           errorMessage = t("newSessionServerCapacity");
         } else if (err.message.includes("404")) {

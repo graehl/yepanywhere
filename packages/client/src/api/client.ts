@@ -545,10 +545,25 @@ export const api = {
     }>(`/processes/${processId}/models`),
 
   setProcessModel: (processId: string, model?: string) =>
-    fetchJSON<{ success: boolean; model?: string }>(
+    fetchJSON<{ success: boolean; processId: string; model?: string }>(
       `/processes/${processId}/model`,
       { method: "POST", body: JSON.stringify({ model }) },
     ),
+
+  setProcessConfig: (
+    processId: string,
+    config: { model?: string; thinking?: ThinkingOption },
+  ) =>
+    fetchJSON<{
+      success: boolean;
+      processId: string;
+      model?: string;
+      thinking?: { type: string };
+      effort?: string;
+    }>(`/processes/${processId}/config`, {
+      method: "POST",
+      body: JSON.stringify(config),
+    }),
 
   respondToInput: (
     sessionId: string,

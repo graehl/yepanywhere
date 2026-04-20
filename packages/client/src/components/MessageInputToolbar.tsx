@@ -3,6 +3,7 @@ import { useRef } from "react";
 import type { MouseEvent, RefObject, TouchEvent } from "react";
 import { useModelSettings } from "../hooks/useModelSettings";
 import { useI18n } from "../i18n";
+import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 import type { ContextUsage, PermissionMode } from "../types";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { ModeSelector } from "./ModeSelector";
@@ -35,6 +36,8 @@ export interface MessageInputToolbarProps {
   // Slash commands
   slashCommands?: string[];
   onSelectSlashCommand?: (command: string) => void;
+  modelIndicatorTone?: ModelIndicatorTone;
+  modelIndicatorTitle?: string;
 
   // Session heartbeat
   heartbeatEnabled?: boolean;
@@ -78,6 +81,8 @@ export function MessageInputToolbar({
   voiceDisabled,
   slashCommands = [],
   onSelectSlashCommand,
+  modelIndicatorTone,
+  modelIndicatorTitle,
   heartbeatEnabled = false,
   onToggleHeartbeat,
   onConfigureHeartbeat,
@@ -286,6 +291,10 @@ export function MessageInputToolbar({
             commands={slashCommands}
             onSelectCommand={onSelectSlashCommand}
             disabled={voiceDisabled}
+            modelIndicatorTone={
+              slashCommands.includes("model") ? modelIndicatorTone : undefined
+            }
+            modelIndicatorTitle={modelIndicatorTitle}
           />
         )}
       </div>

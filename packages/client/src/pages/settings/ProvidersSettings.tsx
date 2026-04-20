@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useToastContext } from "../../contexts/ToastContext";
 import { useProviders } from "../../hooks/useProviders";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
@@ -170,8 +171,18 @@ function OllamaSettings() {
 
 export function ProvidersSettings() {
   const { t } = useI18n();
+  const { showToast } = useToastContext();
   const { providers: serverProviders, loading: providersLoading } =
     useProviders();
+
+  const handleCopyClaudeLoginCommand = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText("claude auth login --claudeai");
+      showToast(t("providersClaudeLoginCommandCopied"), "success");
+    } catch {
+      showToast(t("providersClaudeLoginCommandCopyError"), "error");
+    }
+  }, [showToast, t]);
 
   // Merge server detection status with client-side metadata
   const registeredProviders = getAllProviders();
@@ -216,6 +227,23 @@ export function ProvidersSettings() {
                   ))}
                 </ul>
               )}
+              {provider.id === "claude" &&
+                provider.installed &&
+                !provider.authenticated && (
+                  <div style={{ marginTop: "var(--space-2)" }}>
+                    <p className="settings-hint">
+                      {t("providersClaudeLoginHint")}
+                    </p>
+                    <button
+                      type="button"
+                      className="settings-button"
+                      onClick={() => void handleCopyClaudeLoginCommand()}
+                      style={{ marginTop: "var(--space-2)" }}
+                    >
+                      {t("providersClaudeLoginCommandCopy")}
+                    </button>
+                  </div>
+                )}
               {provider.id === "claude-ollama" && <OllamaSettings />}
             </div>
             {provider.metadata.website && (

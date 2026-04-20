@@ -43,6 +43,7 @@ export function preprocessMessages(
   const items: RenderItem[] = [];
   const toolCallIndices = new Map<string, number>(); // tool_use_id → index in items
   const pendingToolCalls = new Map<string, number>(); // tool_use_id → index in items
+  const configAckState = { lastSignature: null as string | null };
 
   // Collect all orphaned tool IDs from messages (set by server DAG filtering)
   // If there's an active tool approval, skip orphan detection entirely -
@@ -65,6 +66,7 @@ export function preprocessMessages(
       toolCallIndices,
       pendingToolCalls,
       orphanedToolIds,
+      configAckState,
       augments,
     );
   }
@@ -170,6 +172,7 @@ function processMessage(
   toolCallIndices: Map<string, number>,
   pendingToolCalls: Map<string, number>,
   orphanedToolIds: Set<string>,
+  configAckState: { lastSignature: string | null },
   augments?: PreprocessAugments,
 ): void {
   const msgId = getMessageId(msg);
@@ -195,7 +198,13 @@ function processMessage(
   if (msg.type === "system") {
     const subtype = (msg as { subtype?: string }).subtype ?? "unknown";
     // Render compact_boundary as a visible system message
-    if (subtype === "compact_boundary" || subtype === "turn_aborted") {
+    if (
+      subtype === "compact_boundary" ||
+      subtype === "turn_aborted" ||
+      subtype === "config_ack"
+    ) {
+      const configSignature =
+        subtype === "config_ack" ? getConfigAckSignature(msg) : null;
       const systemItem: SystemItem = {
         type: "system",
         id: msgId,
@@ -205,10 +214,23 @@ function processMessage(
             ? msg.content
             : subtype === "turn_aborted"
               ? "Turn aborted"
+              : subtype === "config_ack"
+                ? "Configuration updated"
               : "Context compacted",
         sourceMessages: [msg],
+        ...(subtype === "config_ack"
+          ? {
+              configChanged:
+                msg.configMismatch === true &&
+                configSignature !== null &&
+                configSignature !== configAckState.lastSignature,
+            }
+          : {}),
       };
       items.push(systemItem);
+      if (subtype === "config_ack" && configSignature !== null) {
+        configAckState.lastSignature = configSignature;
+      }
     }
     // Status messages (compacting indicator) are transient - handled separately via isCompacting state
     // Skip other system entries (init, status, etc.) - they're internal
@@ -383,6 +405,17 @@ function processMessage(
       }
     }
   }
+}
+
+function getConfigAckSignature(msg: Message): string | null {
+  const configModel =
+    typeof msg.configModel === "string" ? msg.configModel.trim() : "";
+  const configThinking =
+    typeof msg.configThinking === "string" ? msg.configThinking.trim() : "";
+  if (configModel || configThinking) {
+    return `${configModel}::${configThinking}`;
+  }
+  return typeof msg.content === "string" ? msg.content.trim() : null;
 }
 
 function appendSourceMessage(

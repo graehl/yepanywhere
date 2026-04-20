@@ -108,9 +108,11 @@ export function createSessionSubscription(
           const message = normalizeStreamMessage(
             event.message as Record<string, unknown>,
           );
-          const aug = await getAugmenter();
-          await aug.processMessage(message);
-          emit("message", markSubagent(message));
+          const isStreamEvent = message.type === "stream_event";
+          const processAugments = async () => {
+            const aug = await getAugmenter();
+            await aug.processMessage(message);
+          };
 
           const startMessageId =
             extractMessageIdFromStart(message) ??
@@ -126,6 +128,16 @@ export function createSessionSubscription(
               currentStreamingMessageId,
               textDelta,
             );
+          }
+
+          if (isStreamEvent) {
+            emit("message", markSubagent(message));
+            void processAugments().catch((err) => {
+              options?.onError?.(err);
+            });
+          } else {
+            await processAugments();
+            emit("message", markSubagent(message));
           }
 
           if (isStreamingComplete(message)) {

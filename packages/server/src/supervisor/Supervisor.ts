@@ -362,6 +362,7 @@ export class Supervisor {
     projectId: UrlProjectId,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    resumeSessionId?: string,
   ): Promise<Process> {
     if (!this.realSdk) {
       throw new Error("realSdk is not available");
@@ -374,6 +375,7 @@ export class Supervisor {
     const result = await this.realSdk.startSession({
       cwd: projectPath,
       // No initialMessage - queue will block until one is pushed
+      resumeSessionId,
       permissionMode: effectiveMode,
       model: modelSettings?.model,
       thinking: modelSettings?.thinking,
@@ -399,7 +401,7 @@ export class Supervisor {
       setModel,
     } = result;
 
-    const tempSessionId = randomUUID();
+    const tempSessionId = resumeSessionId ?? randomUUID();
     const options: ProcessConstructorOptions = {
       projectPath,
       projectId,
@@ -430,10 +432,12 @@ export class Supervisor {
     processHolder.process = process;
 
     // Wait for the real session ID from the SDK
-    await process.waitForSessionId();
+    if (!resumeSessionId) {
+      await process.waitForSessionId();
+    }
 
-    // Register as a new session
-    this.registerProcess(process, true);
+    // Recreated processes for an existing session should not emit session-created again.
+    this.registerProcess(process, !resumeSessionId);
 
     return process;
   }
@@ -558,6 +562,7 @@ export class Supervisor {
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
     provider?: AgentProvider,
+    resumeSessionId?: string,
   ): Promise<Process> {
     const activeProvider = provider ?? this.provider;
     if (!activeProvider) {
@@ -571,6 +576,7 @@ export class Supervisor {
     const result = await activeProvider.startSession({
       cwd: projectPath,
       // No initialMessage - queue will block until one is pushed
+      resumeSessionId,
       permissionMode: effectiveMode,
       model: modelSettings?.model,
       thinking: modelSettings?.thinking,
@@ -599,7 +605,7 @@ export class Supervisor {
       setModel,
     } = result;
 
-    const tempSessionId = randomUUID();
+    const tempSessionId = resumeSessionId ?? randomUUID();
     const options: ProcessConstructorOptions = {
       projectPath,
       projectId,
@@ -631,10 +637,12 @@ export class Supervisor {
     processHolder.process = process;
 
     // Wait for the real session ID from the provider
-    await process.waitForSessionId();
+    if (!resumeSessionId) {
+      await process.waitForSessionId();
+    }
 
-    // Register as a new session
-    this.registerProcess(process, true);
+    // Recreated processes for an existing session should not emit session-created again.
+    this.registerProcess(process, !resumeSessionId);
 
     return process;
   }
@@ -962,6 +970,82 @@ export class Supervisor {
 
   getProcess(processId: string): Process | undefined {
     return this.processes.get(processId);
+  }
+
+  async reconfigureProcess(
+    processId: string,
+    updates: ModelSettings,
+  ): Promise<Process | null> {
+    const process = this.getProcess(processId);
+    if (!process || process.isTerminated) {
+      return null;
+    }
+
+    const hasModelUpdate = Object.prototype.hasOwnProperty.call(
+      updates,
+      "model",
+    );
+    const hasThinkingUpdate = Object.prototype.hasOwnProperty.call(
+      updates,
+      "thinking",
+    );
+    const hasEffortUpdate = Object.prototype.hasOwnProperty.call(
+      updates,
+      "effort",
+    );
+
+    const nextModel = hasModelUpdate ? updates.model : process.resolvedModel;
+    const nextThinking = hasThinkingUpdate ? updates.thinking : process.thinking;
+    const nextEffort = hasEffortUpdate ? updates.effort : process.effort;
+
+    const modelChanged = nextModel !== process.resolvedModel;
+    const thinkingChanged = nextThinking?.type !== process.thinking?.type;
+    const effortChanged = nextEffort !== process.effort;
+
+    if (!modelChanged && !thinkingChanged && !effortChanged) {
+      return process;
+    }
+
+    if (!thinkingChanged && !effortChanged && process.supportsSetModel) {
+      const changed = await process.setModel(nextModel);
+      return changed ? process : null;
+    }
+
+    const provider = getProvider(process.provider);
+    const effectiveProvider = provider ?? this.provider;
+    if (!effectiveProvider) {
+      return null;
+    }
+
+    const mergedSettings: ModelSettings = {
+      model: nextModel,
+      thinking: nextThinking,
+      effort: nextEffort,
+      providerName: process.provider,
+      executor: process.executor,
+    };
+
+    await process.abort();
+    this.unregisterProcess(process);
+
+    if (effectiveProvider) {
+      return await this.createProviderSession(
+        process.projectPath,
+        process.projectId,
+        process.permissionMode,
+        mergedSettings,
+        effectiveProvider,
+        process.sessionId,
+      );
+    }
+
+    return await this.createRealSession(
+      process.projectPath,
+      process.projectId,
+      process.permissionMode,
+      mergedSettings,
+      process.sessionId,
+    );
   }
 
   getProcessForSession(sessionId: string): Process | undefined {

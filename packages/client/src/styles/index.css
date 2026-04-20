@@ -2444,6 +2444,7 @@ a.sidebar-nav-item {
 }
 
 .slash-command-button {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2477,6 +2478,42 @@ a.sidebar-nav-item {
   font-weight: 600;
   font-size: var(--font-size-sm);
   line-height: 1;
+}
+
+.slash-command-indicator {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--bg-primary);
+  background: var(--text-muted);
+  pointer-events: none;
+}
+
+.slash-command-indicator.tone-off {
+  background: var(--text-muted);
+}
+
+.slash-command-indicator.tone-auto {
+  background: var(--link-color);
+}
+
+.slash-command-indicator.tone-low {
+  background: #2f9e44;
+}
+
+.slash-command-indicator.tone-medium {
+  background: #d97706;
+}
+
+.slash-command-indicator.tone-high {
+  background: #ea580c;
+}
+
+.slash-command-indicator.tone-max {
+  background: #dc2626;
 }
 
 .slash-command-menu {
@@ -2876,6 +2913,25 @@ a.sidebar-nav-item {
 }
 
 .system-message-error .system-message-icon {
+  opacity: 1;
+  font-weight: 700;
+}
+
+.system-message-config-ack {
+  border-left-color: var(--success-color, #10b981);
+  background: color-mix(
+    in srgb,
+    var(--success-color, #10b981) 10%,
+    var(--bg-tertiary, #2a2a2a)
+  );
+  color: var(--text-primary);
+}
+
+.system-message-config-ack .system-message-text {
+  font-style: normal;
+}
+
+.system-message-config-ack .system-message-icon {
   opacity: 1;
   font-weight: 700;
 }
@@ -3698,6 +3754,39 @@ a.sidebar-nav-item {
   margin: 0;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
+}
+
+.model-settings-subsection {
+  margin-bottom: calc(var(--space-2) * -1);
+}
+
+.model-settings-subsection h3 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-base);
+}
+
+.model-settings-subsection p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.model-settings-item {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.model-settings-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.model-settings-empty {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  padding: var(--space-1) var(--space-2);
 }
 
 .settings-pending {
@@ -4925,6 +5014,54 @@ a.sidebar-nav-item {
   margin-left: 2px;
   opacity: 0.7;
   font-weight: 400;
+}
+
+.provider-badge-effort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding-left: 6px;
+  border-left: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.provider-badge-effort-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.provider-badge-effort-dot.tone-off {
+  background: var(--text-muted);
+}
+
+.provider-badge-effort-dot.tone-auto {
+  background: var(--link-color);
+}
+
+.provider-badge-effort-dot.tone-low {
+  background: #2f9e44;
+}
+
+.provider-badge-effort-dot.tone-medium {
+  background: #d97706;
+}
+
+.provider-badge-effort-dot.tone-high {
+  background: #ea580c;
+}
+
+.provider-badge-effort-dot.tone-max {
+  background: #dc2626;
+}
+
+.provider-badge-effort-label {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  opacity: 0.82;
 }
 
 .provider-badge-model::before {

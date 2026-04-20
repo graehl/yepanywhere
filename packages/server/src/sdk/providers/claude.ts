@@ -1,6 +1,8 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import {
   type SDKMessage as AgentSDKMessage,
   type Query,
@@ -42,6 +44,7 @@ import type {
  * old time-only heuristic if the wrapper causes issues.
  */
 const USE_SPAWN_WRAPPER = true;
+const execFileAsync = promisify(execFile);
 
 /** Static fallback list of Claude models (used if probe fails) */
 const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
@@ -164,16 +167,110 @@ export class ClaudeProvider implements AgentProvider {
 
   /**
    * Get detailed authentication status.
-   * If Claude CLI is installed, assume it's authenticated.
-   * The SDK handles auth internally and will error at session start if not authenticated.
+   * Uses environment/API-key and local Claude credentials heuristics.
+   * This is still only a local signal; upstream tokens can expire or be revoked.
    */
   async getAuthStatus(): Promise<AuthStatus> {
     const installed = await this.isClaudeCliInstalled();
-    return {
-      installed,
-      authenticated: installed,
-      enabled: installed,
-    };
+    if (!installed) {
+      return {
+        installed: false,
+        authenticated: false,
+        enabled: false,
+      };
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+    if (apiKey) {
+      return {
+        installed: true,
+        authenticated: true,
+        enabled: true,
+      };
+    }
+
+    const cliAuthStatus = await this.getCliAuthStatus();
+    if (cliAuthStatus) {
+      return cliAuthStatus;
+    }
+
+    const credentialsPath = join(homedir(), ".claude", ".credentials.json");
+    if (!existsSync(credentialsPath)) {
+      return {
+        installed: true,
+        authenticated: false,
+        enabled: false,
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(readFileSync(credentialsPath, "utf-8")) as {
+        claudeAiOauth?: {
+          accessToken?: string;
+          refreshToken?: string;
+          expiresAt?: number;
+        };
+      };
+
+      const oauth = parsed.claudeAiOauth;
+      const hasTokens = Boolean(oauth?.accessToken || oauth?.refreshToken);
+      if (!hasTokens) {
+        return {
+          installed: true,
+          authenticated: false,
+          enabled: false,
+        };
+      }
+
+      const expiresAt =
+        typeof oauth?.expiresAt === "number"
+          ? new Date(oauth.expiresAt)
+          : undefined;
+      const authenticated =
+        !expiresAt || expiresAt >= new Date() || Boolean(oauth?.refreshToken);
+
+      return {
+        installed: true,
+        authenticated,
+        enabled: authenticated,
+        expiresAt,
+      };
+    } catch {
+      return {
+        installed: true,
+        authenticated: false,
+        enabled: false,
+      };
+    }
+  }
+
+  private async getCliAuthStatus(): Promise<AuthStatus | null> {
+    try {
+      const cliInfo = detectClaudeCli();
+      const claudePath = cliInfo.path ?? "claude";
+      const { stdout } = await execFileAsync(claudePath, ["auth", "status"], {
+        encoding: "utf-8",
+        timeout: 5000,
+      });
+
+      const parsed = JSON.parse(stdout) as {
+        loggedIn?: boolean;
+        email?: string;
+      };
+
+      if (typeof parsed.loggedIn !== "boolean") {
+        return null;
+      }
+
+      return {
+        installed: true,
+        authenticated: parsed.loggedIn,
+        enabled: parsed.loggedIn,
+        user: parsed.email ? { email: parsed.email } : undefined,
+      };
+    } catch {
+      return null;
+    }
   }
 
   /**

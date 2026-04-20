@@ -1,11 +1,14 @@
 import {
+  type ThinkingOption,
   type UrlProjectId,
   getSessionDisplayTitle,
+  thinkingOptionToConfig,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
 import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { getProvider } from "../sdk/providers/index.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { ProcessInfo, Project } from "../supervisor/types.js";
@@ -177,15 +180,19 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
     }
 
     const models = await process.supportedModels();
-    if (models === null) {
-      // Process doesn't support dynamic model listing
+    if (models !== null) {
+      return c.json({ models });
+    }
+
+    const provider = getProvider(process.provider);
+    if (!provider) {
       return c.json(
         { error: "Dynamic model listing not supported for this process" },
         400,
       );
     }
 
-    return c.json({ models });
+    return c.json({ models: await provider.getAvailableModels() });
   });
 
   // GET /api/processes/:processId/commands - Get available slash commands from SDK
@@ -210,9 +217,9 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
     return c.json({ commands });
   });
 
-  // POST /api/processes/:processId/model - Change model mid-session
-  // Body: { model?: string } - model to switch to, or undefined for default
-  routes.post("/:processId/model", async (c) => {
+  // POST /api/processes/:processId/config - Reconfigure an active process
+  // Body: { model?: string, thinking?: ThinkingOption }
+  routes.post("/:processId/config", async (c) => {
     const processId = c.req.param("processId");
 
     const process = deps.supervisor.getProcess(processId);
@@ -220,17 +227,67 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
       return c.json({ error: "Process not found" }, 404);
     }
 
-    const body = await c.req.json<{ model?: string }>();
-    const success = await process.setModel(body.model);
+    const body = await c.req.json<{
+      model?: string;
+      thinking?: ThinkingOption;
+    }>();
+    const updates: {
+      model?: string;
+      thinking?: ReturnType<typeof thinkingOptionToConfig>["thinking"];
+      effort?: ReturnType<typeof thinkingOptionToConfig>["effort"];
+    } = {};
 
-    if (!success) {
-      return c.json(
-        { error: "Model switching not supported for this process" },
-        400,
-      );
+    if ("model" in body) {
+      updates.model = body.model;
+    }
+    if ("thinking" in body) {
+      if (body.thinking === undefined) {
+        updates.thinking = undefined;
+        updates.effort = undefined;
+      } else {
+        const { thinking, effort } = thinkingOptionToConfig(body.thinking);
+        updates.thinking = thinking;
+        updates.effort = effort;
+      }
     }
 
-    return c.json({ success: true, model: body.model });
+    const updatedProcess = await deps.supervisor.reconfigureProcess(
+      processId,
+      updates,
+    );
+
+    if (!updatedProcess) {
+      return c.json({ error: "Process reconfiguration failed" }, 400);
+    }
+
+    return c.json({
+      success: true,
+      processId: updatedProcess.id,
+      model: updatedProcess.resolvedModel ?? body.model,
+      thinking: updatedProcess.thinking,
+      effort: updatedProcess.effort,
+    });
+  });
+
+  // Backward-compatible alias used by the existing model switch UI.
+  routes.post("/:processId/model", async (c) => {
+    const processId = c.req.param("processId");
+    const body = await c.req.json<{ model?: string }>();
+    const process = deps.supervisor.getProcess(processId);
+    if (!process) {
+      return c.json({ error: "Process not found" }, 404);
+    }
+    const updatedProcess = await deps.supervisor.reconfigureProcess(processId, {
+      model: body.model,
+    });
+    if (!updatedProcess) {
+      return c.json({ error: "Model switching failed" }, 400);
+    }
+    return c.json({
+      success: true,
+      processId: updatedProcess.id,
+      model: updatedProcess.resolvedModel ?? body.model,
+    });
   });
 
   return routes;

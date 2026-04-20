@@ -1,5 +1,6 @@
 import type { ProviderName } from "@yep-anywhere/shared";
 import { MODEL_OPTIONS } from "../hooks/useModelSettings";
+import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
 
 const PROVIDER_COLORS: Record<ProviderName, string> = {
   claude: "var(--provider-claude)", // Claude orange
@@ -27,6 +28,10 @@ interface ProviderBadgeProps {
   compact?: boolean;
   /** Model name to display alongside provider (e.g., "opus", "sonnet") */
   model?: string;
+  /** Current thinking mode for live process config */
+  thinking?: { type: string };
+  /** Current effort level for live process config */
+  effort?: string;
   /** Whether the session is actively thinking/processing */
   isThinking?: boolean;
   className?: string;
@@ -40,6 +45,8 @@ export function ProviderBadge({
   provider,
   compact = false,
   model,
+  thinking,
+  effort,
   isThinking = false,
   className = "",
 }: ProviderBadgeProps) {
@@ -81,6 +88,34 @@ export function ProviderBadge({
   };
 
   const modelLabel = getModelLabel(model);
+  const isGptModel =
+    provider === "codex" &&
+    typeof model === "string" &&
+    model.toLowerCase().startsWith("gpt-");
+
+  const effortTone = isGptModel
+    ? getIndicatorToneFromProcess(thinking, effort)
+    : null;
+
+  const effortLabel = (() => {
+    if (!isGptModel) return null;
+    if (!thinking && !effort) return null;
+    if (!thinking || thinking.type === "disabled") return "Off";
+    if (!effort) return "Auto";
+    switch (effort) {
+      case "low":
+        return "Low";
+      case "medium":
+        return "Med";
+      case "high":
+        return "High";
+      case "max":
+      case "xhigh":
+        return "Max";
+      default:
+        return effort;
+    }
+  })();
 
   if (compact) {
     return (
@@ -109,6 +144,15 @@ export function ProviderBadge({
       <span className={dotClass} style={dotStyle} />
       <span className="provider-badge-label">{label}</span>
       {modelLabel && <span className="provider-badge-model">{modelLabel}</span>}
+      {effortLabel && effortTone && (
+        <span className="provider-badge-effort" title={`Effort: ${effortLabel}`}>
+          <span
+            className={`provider-badge-effort-dot tone-${effortTone}`}
+            aria-hidden="true"
+          />
+          <span className="provider-badge-effort-label">{effortLabel}</span>
+        </span>
+      )}
     </span>
   );
 }

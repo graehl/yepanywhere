@@ -958,7 +958,7 @@ export class CodexProvider implements AgentProvider {
     thinking?: import("@yep-anywhere/shared").ThinkingConfig,
   ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | undefined {
     if (thinking?.type === "disabled") {
-      return "low";
+      return "none";
     }
     if (!effort) {
       return undefined;
@@ -1165,6 +1165,21 @@ export class CodexProvider implements AgentProvider {
           cwd: options.cwd,
         } as SDKMessage),
       );
+
+      const requestedReasoningEffort = this.mapEffortToReasoningEffort(
+        options.effort,
+        options.thinking,
+      );
+      const sessionConfigAck = this.createSessionConfigAckMessage(
+        sessionId,
+        threadResult.model,
+        options.model,
+        threadResult.reasoningEffort,
+        requestedReasoningEffort,
+      );
+      if (sessionConfigAck) {
+        yield logMessage(withCodexTimestamp(sessionConfigAck));
+      }
 
       const messageGen = queue.generator();
       const liveEventState = this.createLiveEventState();
@@ -1457,10 +1472,79 @@ export class CodexProvider implements AgentProvider {
   ): TurnStartParams {
     return {
       threadId,
+      model: options.model ?? null,
       input: [{ type: "text", text: userPrompt, text_elements: [] }],
       effort: this.mapEffortToReasoningEffort(options.effort, options.thinking),
       summary: "auto",
     };
+  }
+
+  private createSessionConfigAckMessage(
+    sessionId: string,
+    model?: string | null,
+    requestedModel?: string | null,
+    reasoningEffort?:
+      | "none"
+      | "minimal"
+      | "low"
+      | "medium"
+      | "high"
+      | "xhigh"
+      | null,
+    requestedReasoningEffort?:
+      | "none"
+      | "minimal"
+      | "low"
+      | "medium"
+      | "high"
+      | "xhigh"
+      | undefined,
+  ): SDKMessage | null {
+    const parts: string[] = [];
+    const normalizedModel = typeof model === "string" ? model.trim() : "";
+    const normalizedRequestedModel =
+      typeof requestedModel === "string" ? requestedModel.trim() : "";
+    if (normalizedModel) {
+      parts.push(normalizedModel);
+    }
+    const effortLabel =
+      this.describeAcknowledgedSessionReasoningEffort(reasoningEffort);
+    const configMismatch =
+      (normalizedRequestedModel.length > 0 &&
+        normalizedRequestedModel !== normalizedModel) ||
+      (requestedReasoningEffort !== undefined &&
+        requestedReasoningEffort !== reasoningEffort);
+    if (effortLabel) {
+      parts.push(effortLabel);
+    }
+    if (parts.length === 0) {
+      return null;
+    }
+    return {
+      type: "system",
+      subtype: "config_ack",
+      session_id: sessionId,
+      content: `Codex acknowledged config: ${parts.join(" · ")}`,
+      isSynthetic: true,
+      configScope: "session",
+      configMismatch,
+      ...(normalizedModel ? { configModel: normalizedModel } : {}),
+      ...(effortLabel ? { configThinking: effortLabel } : {}),
+    } as SDKMessage;
+  }
+
+  private describeAcknowledgedSessionReasoningEffort(
+    effort:
+      | "none"
+      | "minimal"
+      | "low"
+      | "medium"
+      | "high"
+      | "xhigh"
+      | null
+      | undefined,
+  ): string | null {
+    return effort ? `effort ${effort}` : null;
   }
 
   private createLiveEventState(): CodexLiveEventState {

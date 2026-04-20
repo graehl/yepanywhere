@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import type { PermissionMode } from "../types";
@@ -9,13 +10,6 @@ const MODE_ORDER: PermissionMode[] = [
   "plan",
   "bypassPermissions",
 ];
-
-const MODE_LABELS: Record<PermissionMode, string> = {
-  default: "Ask before edits",
-  acceptEdits: "Edit automatically",
-  plan: "Plan mode",
-  bypassPermissions: "Bypass permissions",
-};
 
 // Breakpoint for desktop behavior (should match CSS)
 const DESKTOP_BREAKPOINT = 769;
@@ -58,7 +52,12 @@ export function ModeSelector({
     }
   };
 
-  const handleModeSelect = (selectedMode: PermissionMode) => {
+  const handleModeSelect = (
+    selectedMode: PermissionMode,
+    e?: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     // If held, resume first
     if (isHeld && onHoldChange) {
       onHoldChange(false);
@@ -67,7 +66,9 @@ export function ModeSelector({
     setIsOpen(false);
   };
 
-  const handleHoldToggle = () => {
+  const handleHoldToggle = (e?: ReactMouseEvent<HTMLButtonElement>) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     if (onHoldChange) {
       onHoldChange(!isHeld);
     }
@@ -146,8 +147,15 @@ export function ModeSelector({
     }
   };
 
+  const modeLabels: Record<PermissionMode, string> = {
+    default: t("modeDefaultLabel" as never),
+    acceptEdits: t("modeAcceptEditsLabel" as never),
+    plan: t("modePlanLabel" as never),
+    bypassPermissions: t("modeBypassPermissionsLabel" as never),
+  };
+
   // Display text: show "Hold" when held, otherwise show mode label
-  const displayLabel = isHeld ? t("modeHold" as never) : MODE_LABELS[mode];
+  const displayLabel = isHeld ? t("modeHold" as never) : modeLabels[mode];
   const displayDotClass = isHeld ? "mode-hold" : `mode-${mode}`;
 
   // Shared options content used by both mobile sheet and desktop dropdown
@@ -158,7 +166,7 @@ export function ModeSelector({
         <button
           type="button"
           className={`mode-selector-option ${isHeld ? "selected" : ""}`}
-          onClick={handleHoldToggle}
+          onClick={(e) => handleHoldToggle(e)}
           aria-pressed={isHeld}
         >
           <span className="mode-dot mode-hold" />
@@ -199,11 +207,11 @@ export function ModeSelector({
           key={m}
           type="button"
           className={`mode-selector-option ${!isHeld && mode === m ? "selected" : ""}`}
-          onClick={() => handleModeSelect(m)}
+          onClick={(e) => handleModeSelect(m, e)}
           aria-pressed={!isHeld && mode === m}
         >
           <span className={`mode-dot mode-${m}`} />
-          <span className="mode-selector-label">{MODE_LABELS[m]}</span>
+          <span className="mode-selector-label">{modeLabels[m]}</span>
           {!isHeld && mode === m && (
             <span className="mode-selector-check" aria-hidden="true">
               <svg

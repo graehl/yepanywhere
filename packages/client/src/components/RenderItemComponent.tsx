@@ -196,10 +196,13 @@ export const RenderItemComponent = memo(function RenderItemComponent({
         const isCompacting =
           item.subtype === "status" && item.status === "compacting";
         const isError = item.subtype === "error";
-        const icon = isError ? "!" : "⟳";
+        const isConfigAck = item.subtype === "config_ack";
+        const isHighlightedConfigAck =
+          isConfigAck && item.configChanged !== false;
+        const icon = isError ? "!" : isConfigAck ? "✓" : "⟳";
         return (
           <div
-            className={`system-message ${isCompacting ? "system-message-compacting" : ""} ${isError ? "system-message-error" : ""}`}
+            className={`system-message ${isCompacting ? "system-message-compacting" : ""} ${isError ? "system-message-error" : ""} ${isHighlightedConfigAck ? "system-message-config-ack" : ""}`}
           >
             <span
               className={`system-message-icon ${isCompacting ? "spinning" : ""}`}

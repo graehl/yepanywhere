@@ -77,4 +77,6 @@ export interface SystemItem extends RenderItemBase {
   content: string;
   /** For status subtype: the current status (e.g., "compacting") */
   status?: "compacting" | null;
+  /** For config_ack subtype: whether it differs from the previous config ack */
+  configChanged?: boolean;
 }

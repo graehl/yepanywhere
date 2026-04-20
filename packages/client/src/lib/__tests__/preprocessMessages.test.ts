@@ -817,6 +817,59 @@ describe("preprocessMessages", () => {
     });
   });
 
+  it("only highlights config_ack messages for new mismatches", () => {
+    const messages: Message[] = [
+      {
+        id: "cfg-1",
+        type: "system",
+        subtype: "config_ack",
+        content: "Codex acknowledged config: gpt-5.4 · effort high",
+        configModel: "gpt-5.4",
+        configThinking: "effort high",
+        configMismatch: true,
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "cfg-2",
+        type: "system",
+        subtype: "config_ack",
+        content: "Codex acknowledged config: gpt-5.4 · effort high",
+        configModel: "gpt-5.4",
+        configThinking: "effort high",
+        configMismatch: true,
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+      {
+        id: "cfg-3",
+        type: "system",
+        subtype: "config_ack",
+        content: "Codex acknowledged config: gpt-5.4 · effort xhigh",
+        configModel: "gpt-5.4",
+        configThinking: "effort xhigh",
+        configMismatch: false,
+        timestamp: "2024-01-01T00:00:02Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    expect(items).toHaveLength(3);
+    expect(items[0]).toMatchObject({
+      type: "system",
+      subtype: "config_ack",
+      configChanged: true,
+    });
+    expect(items[1]).toMatchObject({
+      type: "system",
+      subtype: "config_ack",
+      configChanged: false,
+    });
+    expect(items[2]).toMatchObject({
+      type: "system",
+      subtype: "config_ack",
+      configChanged: false,
+    });
+  });
+
   it("renders provider error messages", () => {
     const messages: Message[] = [
       {

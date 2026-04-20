@@ -13,6 +13,7 @@ import {
   useDraftPersistence,
 } from "../hooks/useDraftPersistence";
 import { useI18n } from "../i18n";
+import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import type { ContextUsage, PermissionMode } from "../types";
 import { MessageInputToolbar } from "./MessageInputToolbar";
@@ -76,6 +77,9 @@ interface Props {
   slashCommands?: string[];
   /** Callback for custom client-side commands (e.g., "model"). Return true if handled. */
   onCustomCommand?: (command: string) => boolean;
+  /** Live model/effort indicator shown on the slash button */
+  modelIndicatorTone?: ModelIndicatorTone;
+  modelIndicatorTitle?: string;
   /** Whether heartbeat turns are currently enabled for this session */
   heartbeatEnabled?: boolean;
   /** Quick-toggle session heartbeat */
@@ -110,6 +114,8 @@ export function MessageInput({
   supportsThinkingToggle = true,
   slashCommands = [],
   onCustomCommand,
+  modelIndicatorTone,
+  modelIndicatorTitle,
   heartbeatEnabled = false,
   onToggleHeartbeat,
   onConfigureHeartbeat,
@@ -446,6 +452,8 @@ export function MessageInput({
             voiceDisabled={disabled}
             slashCommands={slashCommands}
             onSelectSlashCommand={handleSlashCommand}
+            modelIndicatorTone={modelIndicatorTone}
+            modelIndicatorTitle={modelIndicatorTitle}
             heartbeatEnabled={heartbeatEnabled}
             onToggleHeartbeat={onToggleHeartbeat}
             onConfigureHeartbeat={onConfigureHeartbeat}

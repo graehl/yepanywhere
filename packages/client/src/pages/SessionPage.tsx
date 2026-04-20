@@ -37,12 +37,59 @@ import {
 } from "../hooks/useSession";
 import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
+import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { generateUUID } from "../lib/uuid";
 import { getSessionDisplayTitle } from "../utils";
 
 const PENDING_ELSEWHERE_DISMISS_KEY_PREFIX =
   "yepanywhere:pending-elsewhere-dismissed:";
+
+function parseCodexConfigAck(
+  message: { [key: string]: unknown } | null | undefined,
+): {
+  model?: string;
+  thinking?: { type: string };
+  effort?: string;
+} | null {
+  if (
+    !message ||
+    message.type !== "system" ||
+    message.subtype !== "config_ack"
+  ) {
+    return null;
+  }
+
+  const configModel =
+    typeof message.configModel === "string" ? message.configModel.trim() : "";
+  const configThinking =
+    typeof message.configThinking === "string"
+      ? message.configThinking.trim().toLowerCase()
+      : "";
+
+  const ack: {
+    model?: string;
+    thinking?: { type: string };
+    effort?: string;
+  } = {};
+
+  if (configModel) {
+    ack.model = configModel;
+  }
+
+  if (configThinking.startsWith("effort ")) {
+    const acknowledgedEffort = configThinking.slice("effort ".length).trim();
+    if (acknowledgedEffort === "none") {
+      ack.thinking = { type: "disabled" };
+      ack.effort = "none";
+    } else if (acknowledgedEffort) {
+      ack.thinking = { type: "enabled" };
+      ack.effort = acknowledgedEffort;
+    }
+  }
+
+  return ack.model || ack.thinking || ack.effort ? ack : null;
+}
 
 export function SessionPage() {
   const { projectId, sessionId } = useParams<{
@@ -180,6 +227,11 @@ function SessionPageContent({
   // Effective provider/model for immediate display before session data loads
   const effectiveProvider = session?.provider ?? initialProvider;
   const effectiveModel = session?.model ?? initialModel;
+  const [liveModelConfig, setLiveModelConfig] = useState<{
+    model?: string;
+    thinking?: { type: string };
+    effort?: string;
+  } | null>(null);
 
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
@@ -223,6 +275,69 @@ function SessionPageContent({
     currentProviderInfo?.supportsThinkingToggle ?? true;
   const supportsSlashCommands =
     currentProviderInfo?.supportsSlashCommands ?? false;
+  const currentOwnedProcessId =
+    status.owner === "self" ? status.processId : undefined;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!currentOwnedProcessId) {
+      setLiveModelConfig(null);
+      return;
+    }
+
+    api
+      .getProcessInfo(actualSessionId)
+      .then((res) => {
+        if (cancelled) return;
+        const process = res.process;
+        setLiveModelConfig(
+          process
+            ? {
+                model: process.model,
+                thinking: process.thinking,
+                effort: process.effort,
+              }
+            : null,
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLiveModelConfig(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actualSessionId, currentOwnedProcessId]);
+
+  const latestCodexConfigAck = useMemo(() => {
+    if (effectiveProvider !== "codex" && effectiveProvider !== "codex-oss") {
+      return null;
+    }
+
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const acknowledged = parseCodexConfigAck(
+        messages[index] as { [key: string]: unknown } | undefined,
+      );
+      if (acknowledged) {
+        return acknowledged;
+      }
+    }
+
+    return null;
+  }, [effectiveProvider, messages]);
+
+  useEffect(() => {
+    if (!latestCodexConfigAck) return;
+
+    setLiveModelConfig((prev) => ({
+      model: latestCodexConfigAck.model ?? prev?.model,
+      thinking: latestCodexConfigAck.thinking ?? prev?.thinking,
+      effort: latestCodexConfigAck.effort ?? prev?.effort,
+    }));
+  }, [latestCodexConfigAck]);
 
   // Inline title editing state
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -511,11 +626,35 @@ function SessionPageContent({
   };
 
   const handleModelChanged = useCallback(
-    (model: string) => {
-      setSessionModel(model);
-      showToast(t("sessionSwitchedModel", { model }), "success");
+    (next: {
+      processId: string;
+      model?: string;
+      thinking?: { type: string };
+      effort?: string;
+    }) => {
+      if (next.model) {
+        setSessionModel(next.model);
+        showToast(t("sessionSwitchedModel", { model: next.model }), "success");
+      }
+      if (next.thinking !== undefined || next.effort !== undefined) {
+        setLiveModelConfig({
+          model: next.model ?? liveModelConfig?.model,
+          thinking: next.thinking,
+          effort: next.effort,
+        });
+      } else if (next.model) {
+        setLiveModelConfig((prev) =>
+          prev ? { ...prev, model: next.model } : { model: next.model },
+        );
+      }
+      if (status.owner === "self") {
+        if (status.processId !== next.processId) {
+          setStatus({ owner: "self", processId: next.processId });
+          reconnectStream();
+        }
+      }
     },
-    [setSessionModel, showToast, t],
+    [liveModelConfig?.model, reconnectStream, setSessionModel, showToast, status.owner, t],
   );
 
   const handleCustomCommand = useCallback((command: string) => {
@@ -525,6 +664,33 @@ function SessionPageContent({
     }
     return false;
   }, []);
+
+  const handleToolbarSlashCommand = useCallback(
+    (command: string) => {
+      const bare = command.startsWith("/") ? command.slice(1) : command;
+      handleCustomCommand(bare);
+    },
+    [handleCustomCommand],
+  );
+
+  const slashModelIndicatorTone =
+    currentOwnedProcessId && liveModelConfig
+      ? getIndicatorToneFromProcess(
+          liveModelConfig.thinking,
+          liveModelConfig.effort,
+        )
+      : undefined;
+  const liveBadgeModel = liveModelConfig?.model ?? effectiveModel;
+  const slashModelIndicatorTitle =
+    currentOwnedProcessId && liveBadgeModel
+      ? `${liveBadgeModel} · ${
+          liveModelConfig?.thinking?.type === "disabled" || !liveModelConfig?.thinking
+            ? "Thinking off"
+            : liveModelConfig?.effort
+              ? `Effort ${liveModelConfig.effort === "xhigh" ? "max" : liveModelConfig.effort}`
+              : "Thinking auto"
+        }`
+      : "Slash commands";
 
   const handleAbort = async () => {
     if (status.owner === "self" && status.processId) {
@@ -1115,7 +1281,9 @@ function SessionPageContent({
                 >
                   <ProviderBadge
                     provider={effectiveProvider}
-                    model={effectiveModel}
+                    model={liveBadgeModel}
+                    thinking={liveModelConfig?.thinking}
+                    effort={liveModelConfig?.effort}
                     isThinking={processState === "in-turn"}
                   />
                 </button>
@@ -1169,6 +1337,7 @@ function SessionPageContent({
           status.processId && (
             <ModelSwitchModal
               processId={status.processId}
+              sessionId={actualSessionId}
               currentModel={session?.model}
               onModelChanged={handleModelChanged}
               onClose={() => setShowModelSwitchModal(false)}
@@ -1309,6 +1478,12 @@ function SessionPageContent({
                     onHoldChange={holdModeEnabled ? setHold : undefined}
                     supportsPermissionMode={supportsPermissionMode}
                     supportsThinkingToggle={supportsThinkingToggle}
+                    slashCommands={
+                      status.owner === "self" ? ["model"] : []
+                    }
+                    onSelectSlashCommand={handleToolbarSlashCommand}
+                    modelIndicatorTone={slashModelIndicatorTone}
+                    modelIndicatorTitle={slashModelIndicatorTitle}
                     heartbeatEnabled={heartbeatTurnsEnabled}
                     onToggleHeartbeat={handleToggleHeartbeat}
                     onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
@@ -1334,7 +1509,7 @@ function SessionPageContent({
               pendingInputRequest.sessionId === actualSessionId &&
               !isAskUserQuestion
             ) && (
-              <MessageInput
+                <MessageInput
                 onSend={handleSend}
                 onQueue={
                   status.owner !== "none" && processState !== "idle"
@@ -1374,6 +1549,8 @@ function SessionPageContent({
                 uploadProgress={uploadProgress}
                 slashCommands={status.owner === "self" ? allSlashCommands : []}
                 onCustomCommand={handleCustomCommand}
+                modelIndicatorTone={slashModelIndicatorTone}
+                modelIndicatorTitle={slashModelIndicatorTitle}
                 heartbeatEnabled={heartbeatTurnsEnabled}
                 onToggleHeartbeat={handleToggleHeartbeat}
                 onConfigureHeartbeat={() => setShowHeartbeatModal(true)}

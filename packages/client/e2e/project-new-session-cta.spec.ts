@@ -4,12 +4,24 @@ import { e2ePaths, expect, test } from "./fixtures.js";
 const mockProjectPath = join(e2ePaths.tempDir, "mockproject");
 const projectId = Buffer.from(mockProjectPath).toString("base64url");
 
+async function dismissOnboardingIfVisible(
+  page: import("@playwright/test").Page,
+) {
+  const dialog = page.getByText("Welcome to yepanywhere");
+  await page.waitForTimeout(250);
+  if (!(await dialog.isVisible().catch(() => false))) return;
+  const skipAll = page.getByRole("button", { name: "Skip all" });
+  await skipAll.click({ force: true });
+  await expect(dialog).not.toBeVisible();
+}
+
 test.describe("Project-scoped new session CTA", () => {
   test("shows the CTA when entering sessions from Projects", async ({
     page,
     baseURL,
   }) => {
     await page.goto(`${baseURL}/projects`);
+    await dismissOnboardingIfVisible(page);
 
     const projectCard = page.locator(".project-card__link", {
       hasText: "mockproject",
@@ -21,13 +33,13 @@ test.describe("Project-scoped new session CTA", () => {
     await expect(page).toHaveURL(
       new RegExp(`/sessions\\?project=${projectId}&source=projects`),
     );
-    await expect(page.getByText("mockproject")).toBeVisible();
-    await expect(page.getByText("Open session for")).toBeVisible();
-    await expect(
-      page.locator(".global-sessions-project-cta").getByRole("button", {
-        name: "New Session",
-      }),
-    ).toBeVisible();
+    const cta = page.locator(".global-sessions-project-cta");
+    await expect(cta).toBeVisible();
+    await expect(cta.locator(".global-sessions-project-cta__token")).toHaveCount(
+      2,
+    );
+    await expect(cta.getByText("Open session for")).toBeVisible();
+    await expect(cta.getByRole("button", { name: "New Session" })).toBeVisible();
   });
 
   test("prefills the new session prompt from project search text", async ({
@@ -35,6 +47,7 @@ test.describe("Project-scoped new session CTA", () => {
     baseURL,
   }) => {
     await page.goto(`${baseURL}/projects`);
+    await dismissOnboardingIfVisible(page);
 
     const projectCard = page.locator(".project-card__link", {
       hasText: "mockproject",

@@ -1441,6 +1441,7 @@ export class CodexProvider implements AgentProvider {
       cwd: options.cwd,
       approvalPolicy: policy.approvalPolicy,
       sandbox: policy.sandbox,
+      config: this.buildThreadConfigOverrides(options),
       experimentalRawEvents: experimentalApiEnabled,
       persistExtendedHistory: experimentalApiEnabled,
     };
@@ -1461,8 +1462,22 @@ export class CodexProvider implements AgentProvider {
       cwd: options.cwd,
       approvalPolicy: policy.approvalPolicy,
       sandbox: policy.sandbox,
+      config: this.buildThreadConfigOverrides(options),
       persistExtendedHistory: experimentalApiEnabled,
     };
+  }
+
+  private buildThreadConfigOverrides(
+    options: StartSessionOptions,
+  ): Record<string, string> | null {
+    const reasoningEffort = this.mapEffortToReasoningEffort(
+      options.effort,
+      options.thinking,
+    );
+    if (!reasoningEffort) {
+      return null;
+    }
+    return { model_reasoning_effort: reasoningEffort };
   }
 
   private createTurnStartParams(

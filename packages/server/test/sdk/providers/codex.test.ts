@@ -539,6 +539,57 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
+  it("pins thread-scope reasoning effort via config when effort is requested", () => {
+    const provider = createTestProvider() as unknown as {
+      createThreadStartParams: (
+        options: { model?: string; cwd: string; effort?: string },
+        policy: { approvalPolicy: string; sandbox: string },
+        experimentalApiEnabled: boolean,
+      ) => Record<string, unknown>;
+      createThreadResumeParams: (
+        options: {
+          resumeSessionId?: string;
+          model?: string;
+          cwd: string;
+          effort?: string;
+        },
+        sessionId: string,
+        policy: { approvalPolicy: string; sandbox: string },
+        experimentalApiEnabled: boolean,
+      ) => Record<string, unknown>;
+    };
+
+    const start = provider.createThreadStartParams(
+      { model: "gpt-5.4-codex", cwd: "/tmp", effort: "max" },
+      { approvalPolicy: "on-request", sandbox: "workspace-write" },
+      true,
+    );
+    const resume = provider.createThreadResumeParams(
+      {
+        resumeSessionId: "thread-1",
+        model: "gpt-5.4-codex",
+        cwd: "/tmp",
+        effort: "high",
+      },
+      "thread-1",
+      { approvalPolicy: "on-request", sandbox: "workspace-write" },
+      true,
+    );
+    const omitted = provider.createThreadStartParams(
+      { model: "gpt-5.4-codex", cwd: "/tmp" },
+      { approvalPolicy: "on-request", sandbox: "workspace-write" },
+      true,
+    );
+
+    expect(start).toMatchObject({
+      config: { model_reasoning_effort: "xhigh" },
+    });
+    expect(resume).toMatchObject({
+      config: { model_reasoning_effort: "high" },
+    });
+    expect(omitted.config ?? null).toBeNull();
+  });
+
   it("treats experimental thread field rejections as capability fallback errors", () => {
     const provider = createTestProvider() as unknown as {
       isExperimentalCapabilityError: (error: unknown) => boolean;

@@ -52,6 +52,7 @@ import { createOnboardingRoutes } from "./routes/onboarding.js";
 import { createProcessesRoutes } from "./routes/processes.js";
 import { createProjectsRoutes } from "./routes/projects.js";
 import { createProvidersRoutes } from "./routes/providers.js";
+import { createCodexUpdateRoutes } from "./routes/codex-updates.js";
 import { createRecentsRoutes } from "./routes/recents.js";
 import { createServerAdminRoutes } from "./routes/server-admin.js";
 import { createServerInfoRoutes } from "./routes/server-info.js";
@@ -69,6 +70,7 @@ import type {
   RealClaudeSDKInterface,
 } from "./sdk/types.js";
 import type { BrowserProfileService } from "./services/BrowserProfileService.js";
+import { CodexUpdateChecker } from "./services/CodexUpdateChecker.js";
 import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersService.js";
 import type { ModelInfoService } from "./services/ModelInfoService.js";
 import type { NetworkBindingService } from "./services/NetworkBindingService.js";
@@ -710,6 +712,13 @@ export function createApp(options: AppOptions): AppResult {
       }),
     );
   }
+
+  // Codex CLI update checker
+  const codexUpdateChecker = new CodexUpdateChecker();
+  app.route(
+    "/api/codex/updates",
+    createCodexUpdateRoutes({ codexUpdateChecker }),
+  );
 
   // Sharing routes (session snapshot sharing via Worker)
   if (options.sharingService) {

@@ -13,31 +13,12 @@ import {
   resolvePreferredProjectId,
   setRecentProjectId,
 } from "../hooks/useRecentProject";
+import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { VoiceInputButton } from "./VoiceInputButton";
 
 const FAB_DRAFT_KEY = "fab-draft";
-const FAB_PREFILL_KEY = "fab-prefill";
-
-/**
- * Set pre-fill text for NewSessionForm to read on mount.
- * This is how FAB hands off the draft to the full form.
- */
-export function getFabPrefill(): string | null {
-  if (typeof window === "undefined") return null;
-  return sessionStorage.getItem(FAB_PREFILL_KEY);
-}
-
-export function clearFabPrefill(): void {
-  if (typeof window === "undefined") return;
-  sessionStorage.removeItem(FAB_PREFILL_KEY);
-}
-
-function setFabPrefill(text: string): void {
-  if (typeof window === "undefined") return;
-  sessionStorage.setItem(FAB_PREFILL_KEY, text);
-}
 
 /**
  * Floating Action Button for quick session creation.
@@ -104,7 +85,7 @@ export function FloatingActionButton() {
     }
 
     // Store the message for NewSessionForm to pick up
-    setFabPrefill(trimmed);
+    setNewSessionPrefill(trimmed);
     draftControls.clearDraft();
     setIsExpanded(false);
 

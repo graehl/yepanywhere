@@ -167,9 +167,9 @@ vi.mock("../FilterDropdown", () => ({
   },
 }));
 
-vi.mock("../FloatingActionButton", () => ({
-  clearFabPrefill: vi.fn(),
-  getFabPrefill: () => "",
+vi.mock("../../lib/newSessionPrefill", () => ({
+  clearNewSessionPrefill: vi.fn(),
+  getNewSessionPrefill: () => "",
 }));
 
 vi.mock("../VoiceInputButton", () => ({

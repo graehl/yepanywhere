@@ -1,7 +1,7 @@
 import { ALL_PROVIDERS, type ProviderName } from "@yep-anywhere/shared";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { type GlobalSessionItem, api } from "../api/client";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { api } from "../api/client";
 import { BulkActionBar } from "../components/BulkActionBar";
 import {
   FilterDropdown,
@@ -11,10 +11,11 @@ import { PageHeader } from "../components/PageHeader";
 import { SessionListItem } from "../components/SessionListItem";
 import { useDrafts } from "../hooks/useDrafts";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
+import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
-import { getSessionDisplayTitle, toUrlProjectId } from "../utils";
+import { getSessionDisplayTitle } from "../utils";
 
 // Long-press threshold for entering selection mode on mobile
 const LONG_PRESS_MS = 500;
@@ -46,11 +47,13 @@ export function GlobalSessionsPage() {
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
   const basePath = useRemoteBasePath();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Get filter params from URL
   const searchQuery = searchParams.get("q") || "";
   const projectFilter = searchParams.get("project") || undefined;
+  const source = searchParams.get("source");
 
   // Local state for search input (instant feedback)
   const [searchInput, setSearchInput] = useState(searchQuery);
@@ -566,6 +569,26 @@ export function GlobalSessionsPage() {
     }));
   }, [projects]);
 
+  const activeProject = useMemo(
+    () => projects.find((project) => project.id === projectFilter) ?? null,
+    [projectFilter, projects],
+  );
+
+  const projectScopedSearchText = searchQuery.trim();
+  const showProjectNewSessionCta =
+    Boolean(projectFilter && activeProject) &&
+    (source === "projects" || projectScopedSearchText.length > 0);
+
+  const handleStartProjectSession = useCallback(() => {
+    if (!projectFilter) return;
+    if (projectScopedSearchText) {
+      setNewSessionPrefill(projectScopedSearchText);
+    }
+    navigate(
+      `${basePath}/new-session?projectId=${encodeURIComponent(projectFilter)}`,
+    );
+  }, [basePath, navigate, projectFilter, projectScopedSearchText]);
+
   // Clear all filters
   const clearFilters = () => {
     setSearchInput("");
@@ -684,6 +707,56 @@ export function GlobalSessionsPage() {
                 </button>
               )}
             </div>
+
+            {showProjectNewSessionCta && activeProject && (
+              <div className="global-sessions-project-cta">
+                <div className="global-sessions-project-cta__copy">
+                  <strong>
+                    {t("sidebarNewSession")}{" "}
+                    <code className="global-sessions-project-cta__token">
+                      {activeProject.name}
+                    </code>
+                  </strong>
+                  {projectScopedSearchText && (
+                    <span>
+                      {t("globalSessionsProjectCtaPromptLabel")}{" "}
+                      <code className="global-sessions-project-cta__token">
+                        {projectScopedSearchText}
+                      </code>
+                    </span>
+                  )}
+                  {!projectScopedSearchText && (
+                    <span>
+                      {t("globalSessionsProjectCtaHint")}{" "}
+                      <code className="global-sessions-project-cta__token">
+                        {activeProject.name}
+                      </code>
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="inbox-refresh-button global-sessions-project-cta__button"
+                  onClick={handleStartProjectSession}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  {t("sidebarNewSession")}
+                </button>
+              </div>
+            )}
 
             {loading && sessions.length === 0 && (
               <p className="loading">{t("sidebarLoadingSessions")}</p>

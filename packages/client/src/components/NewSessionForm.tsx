@@ -34,9 +34,12 @@ import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import { hasCoarsePointer } from "../lib/deviceDetection";
+import {
+  clearNewSessionPrefill,
+  getNewSessionPrefill,
+} from "../lib/newSessionPrefill";
 import type { PermissionMode } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
-import { clearFabPrefill, getFabPrefill } from "./FloatingActionButton";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
 interface PendingFile {
@@ -301,12 +304,12 @@ export function NewSessionForm({
     }
   }, [autoFocus]);
 
-  // Check for FAB pre-fill on mount (when coming from FloatingActionButton)
+  // Check for opt-in new-session prefill on mount.
   useEffect(() => {
-    const prefill = getFabPrefill();
+    const prefill = getNewSessionPrefill();
     if (prefill) {
       setMessage(prefill);
-      clearFabPrefill();
+      clearNewSessionPrefill();
       // Focus and move cursor to end
       if (textareaRef.current) {
         textareaRef.current.focus();

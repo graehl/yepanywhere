@@ -52,7 +52,7 @@ export function ProjectCard({
   return (
     <li className="project-card">
       <Link
-        to={`${basePath}/sessions?project=${project.id}`}
+        to={`${basePath}/sessions?project=${project.id}&source=projects`}
         className="project-card__link"
       >
         <div className="project-card__header">

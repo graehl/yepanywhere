@@ -53,7 +53,6 @@ export function GlobalSessionsPage() {
   // Get filter params from URL
   const searchQuery = searchParams.get("q") || "";
   const projectFilter = searchParams.get("project") || undefined;
-  const source = searchParams.get("source");
 
   // Local state for search input (instant feedback)
   const [searchInput, setSearchInput] = useState(searchQuery);
@@ -575,9 +574,7 @@ export function GlobalSessionsPage() {
   );
 
   const projectScopedSearchText = searchQuery.trim();
-  const showProjectNewSessionCta =
-    Boolean(projectFilter && activeProject) &&
-    (source === "projects" || projectScopedSearchText.length > 0);
+  const showProjectNewSessionCta = Boolean(projectFilter && activeProject);
 
   const handleStartProjectSession = useCallback(() => {
     if (!projectFilter) return;

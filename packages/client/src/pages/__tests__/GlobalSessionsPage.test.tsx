@@ -191,6 +191,15 @@ describe("GlobalSessionsPage", () => {
     );
   });
 
+  it("shows the project CTA for project-filtered views without a source hint", () => {
+    renderPage("/sessions?project=project-1");
+
+    expect(screen.getAllByText("New Session")[0]).toBeDefined();
+    expect(screen.getAllByText("Alpha")).toHaveLength(2);
+    expect(screen.getByText("Open session for")).toBeDefined();
+    expect(screen.getByRole("button", { name: "New Session" })).toBeDefined();
+  });
+
   it("prefills the new session from the active project search query", () => {
     renderPage("/sessions?project=project-1&q=fix%20login%20flow");
 

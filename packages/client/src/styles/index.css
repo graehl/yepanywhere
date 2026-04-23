@@ -4859,8 +4859,8 @@ a.sidebar-nav-item {
   gap: 1rem;
   align-items: start;
   grid-template-areas:
-    "project"
     "main"
+    "project"
     "provider";
 }
 

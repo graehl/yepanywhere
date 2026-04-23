@@ -11,6 +11,7 @@ const {
   mockStartSession,
   mockStartDetachedSession,
   mockAddProject,
+  draftKeys,
   providersState,
   serverSettingsState,
   filterDropdownState,
@@ -20,6 +21,7 @@ const {
   mockStartSession: vi.fn(),
   mockStartDetachedSession: vi.fn(),
   mockAddProject: vi.fn(),
+  draftKeys: [] as string[],
   providersState: {
     providers: [] as Array<{
       name: string;
@@ -77,7 +79,8 @@ vi.mock("../../hooks/useConnection", () => ({
 }));
 
 vi.mock("../../hooks/useDraftPersistence", () => ({
-  useDraftPersistence: () => {
+  useDraftPersistence: (key: string) => {
+    draftKeys.push(key);
     const [value, setValue] = useState("");
     const clearInput = useCallback(() => setValue(""), []);
     const clearDraft = useCallback(() => setValue(""), []);
@@ -243,6 +246,7 @@ describe("NewSessionForm", () => {
     mockStartSession.mockReset();
     mockStartDetachedSession.mockReset();
     mockAddProject.mockReset();
+    draftKeys.length = 0;
     mockStartSession.mockResolvedValue({
       sessionId: "session-1",
       processId: "process-1",
@@ -409,6 +413,20 @@ describe("NewSessionForm", () => {
         ) as HTMLTextAreaElement
       ).value,
     ).toBe("draft the migration plan");
+  });
+
+  it("keeps the same draft storage key when project selection changes", () => {
+    const { rerender } = render(<NewSessionForm projects={[...chooserProjects]} />);
+
+    rerender(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    expect(new Set(draftKeys)).toEqual(new Set(["draft-new-session"]));
   });
 
   it("resolves a typed project path before starting the session", async () => {

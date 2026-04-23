@@ -19,9 +19,12 @@ export function NewSessionPage() {
     loading: projectLoading,
     error,
   } = useProject(projectId);
+  const selectedProject =
+    (projectId ? projects.find((candidate) => candidate.id === projectId) : null) ??
+    project;
 
   // Update browser tab title (must be called unconditionally before any early returns)
-  useDocumentTitle(project?.name, t("newSessionTitle"));
+  useDocumentTitle(selectedProject?.name, t("newSessionTitle"));
 
   // Callback to update projectId in URL without navigation
   const handleProjectChange = (newProjectId: string | null) => {
@@ -34,10 +37,11 @@ export function NewSessionPage() {
     setSearchParams(nextParams, { replace: true });
   };
 
-  const loading = Boolean(projectId) && projectLoading;
+  const loading = Boolean(projectId) && projectLoading && !selectedProject;
+  const renderError = !selectedProject ? error : null;
 
   // Render loading/error states
-  if (loading || error) {
+  if (loading || renderError) {
     return (
       <div
         className={
@@ -64,7 +68,7 @@ export function NewSessionPage() {
                 <div className="loading">{t("newSessionLoading")}</div>
               ) : (
                 <div className="error">
-                  {t("newSessionErrorPrefix")} {error?.message}
+                  {t("newSessionErrorPrefix")} {renderError?.message}
                 </div>
               )}
             </div>
@@ -97,7 +101,7 @@ export function NewSessionPage() {
           <div className="page-content-inner new-session-page-shell">
             <NewSessionForm
               projectId={projectId}
-              selectedProject={project}
+              selectedProject={selectedProject}
               projects={projects}
               projectsLoading={projectsLoading}
               onProjectChange={handleProjectChange}

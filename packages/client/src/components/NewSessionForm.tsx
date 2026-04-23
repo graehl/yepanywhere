@@ -55,7 +55,7 @@ const MODE_ORDER: PermissionMode[] = [
   "plan",
   "bypassPermissions",
 ];
-const DETACHED_PROJECT_DRAFT_KEY = "__detached__";
+const NEW_SESSION_DRAFT_KEY = "draft-new-session";
 const QUICK_PROJECT_COUNT = 4;
 
 function formatSize(bytes: number): string {
@@ -172,13 +172,8 @@ export function NewSessionForm({
   const { t } = useI18n();
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
-  const draftProjectId = projectId ?? DETACHED_PROJECT_DRAFT_KEY;
-  const [message, setMessage, draftControls] = useDraftPersistence(
-    `draft-new-session-${draftProjectId}`,
-    {
-      preserveValueOnKeyChange: true,
-    },
-  );
+  const [message, setMessage, draftControls] =
+    useDraftPersistence(NEW_SESSION_DRAFT_KEY);
   const [mode, setMode] = useState<PermissionMode>("default");
   const [selectedProvider, setSelectedProvider] = useState<ProviderName | null>(
     null,

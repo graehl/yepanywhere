@@ -1,4 +1,4 @@
-Read and follow `CLAUDE.md` for repo context and instructions.
+Read and follow `CLAUDE.md` for repo context and instructions, and `DEVELOPMENT.md` for dev/contributor policy (setup, commands, contribution ethos).
 
 ## Commit Message Guidance
 

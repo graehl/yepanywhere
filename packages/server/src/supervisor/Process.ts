@@ -10,6 +10,7 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
+import { getProjectName } from "../projects/paths.js";
 import type { MessageQueue } from "../sdk/messageQueue.js";
 import type {
   PermissionMode,
@@ -704,7 +705,7 @@ export class Process {
       sessionId: this._sessionId,
       projectId: this.projectId,
       projectPath: this.projectPath,
-      projectName: path.basename(this.projectPath),
+      projectName: getProjectName(this.projectPath),
       sessionTitle: null, // Will be populated by Supervisor with session data
       state: activity,
       startedAt: this.startedAt.toISOString(),

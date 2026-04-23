@@ -9,6 +9,7 @@ const {
   mockNavigate,
   mockUpdateSetting,
   mockStartSession,
+  mockStartDetachedSession,
   mockAddProject,
   providersState,
   serverSettingsState,
@@ -17,6 +18,7 @@ const {
   mockNavigate: vi.fn(),
   mockUpdateSetting: vi.fn(),
   mockStartSession: vi.fn(),
+  mockStartDetachedSession: vi.fn(),
   mockAddProject: vi.fn(),
   providersState: {
     providers: [] as Array<{
@@ -61,6 +63,8 @@ vi.mock("../../api/client", () => ({
   api: {
     addProject: mockAddProject,
     startSession: mockStartSession,
+    startDetachedSession: mockStartDetachedSession,
+    createDetachedSession: vi.fn(),
     createSession: vi.fn(),
     queueMessage: vi.fn(),
   },
@@ -237,10 +241,19 @@ describe("NewSessionForm", () => {
     mockNavigate.mockReset();
     mockUpdateSetting.mockReset();
     mockStartSession.mockReset();
+    mockStartDetachedSession.mockReset();
     mockAddProject.mockReset();
     mockStartSession.mockResolvedValue({
       sessionId: "session-1",
       processId: "process-1",
+      projectId: "project-1",
+      permissionMode: "default",
+      modeVersion: 0,
+    });
+    mockStartDetachedSession.mockResolvedValue({
+      sessionId: "session-detached",
+      processId: "process-detached",
+      projectId: "detached-project",
       permissionMode: "default",
       modeVersion: 0,
     });
@@ -422,7 +435,7 @@ describe("NewSessionForm", () => {
     });
   });
 
-  it("opens project suggestions instead of starting without a project", async () => {
+  it("starts a detached session when no project is selected", async () => {
     render(<NewSessionForm projects={[...chooserProjects]} />);
 
     fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
@@ -430,8 +443,17 @@ describe("NewSessionForm", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "newSessionStartAction" }));
 
+    await waitFor(() => {
+      expect(mockStartDetachedSession).toHaveBeenCalledWith(
+        "hello",
+        expect.any(Object),
+      );
+    });
+
     expect(mockStartSession).not.toHaveBeenCalled();
-    expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Beta").length).toBeGreaterThan(0);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      "/projects/detached-project/sessions/session-detached",
+      expect.any(Object),
+    );
   });
 });

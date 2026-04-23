@@ -15,6 +15,7 @@ import type { SessionMetadataService } from "../metadata/SessionMetadataService.
 import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
+import { isDetachedProjectPath } from "../projects/paths.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { CodexSessionReader } from "../sessions/codex-reader.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
@@ -283,6 +284,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
 
     // Build project options for filter dropdown (from all projects, sorted by name)
     const projectOptions: ProjectOption[] = allProjects
+      .filter((project) => !isDetachedProjectPath(project.path))
       .map((p) => ({ id: p.id, name: p.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
 

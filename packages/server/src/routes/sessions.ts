@@ -10,13 +10,16 @@ import {
   isUrlProjectId,
   thinkingOptionToConfig,
 } from "@yep-anywhere/shared";
+import { mkdir } from "node:fs/promises";
 import { Hono } from "hono";
 import { augmentTextBlocks } from "../augments/markdown-augments.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
+import { DETACHED_PROJECT_PATH } from "../projects/paths.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { ensureRemoteDirectory } from "../sdk/remote-spawn.js";
 import { getProjectDirFromCwd, syncSessions } from "../sdk/session-sync.js";
 import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
 import type { ModelInfoService } from "../services/ModelInfoService.js";
@@ -349,6 +352,35 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           projectPath,
         })
       : null);
+
+  const getGlobalInstructions = (): string | undefined =>
+    deps.serverSettingsService?.getSetting("globalInstructions") || undefined;
+
+  const persistLaunchMetadata = async (
+    sessionId: string,
+    provider: ProviderName | undefined,
+    executor: string | undefined,
+  ): Promise<void> => {
+    if (!deps.sessionMetadataService) {
+      return;
+    }
+    if (provider) {
+      await deps.sessionMetadataService.setProvider(sessionId, provider);
+    }
+    if (executor) {
+      await deps.sessionMetadataService.setExecutor(sessionId, executor);
+    }
+  };
+
+  const ensureDetachedProjectPath = async (
+    executor?: string,
+  ): Promise<string> => {
+    await mkdir(DETACHED_PROJECT_PATH, { recursive: true });
+    if (executor) {
+      await ensureRemoteDirectory(executor, DETACHED_PROJECT_PATH);
+    }
+    return DETACHED_PROJECT_PATH;
+  };
 
   // GET /api/projects/:projectId/sessions/:sessionId/agents - Get agent mappings
   // Used to find agent sessions for pending Tasks on page reload
@@ -851,9 +883,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       model: body.model,
     });
 
-    const globalInstructions =
-      deps.serverSettingsService?.getSetting("globalInstructions") || undefined;
-
     const result = await deps.supervisor.startSession(
       project.path,
       userMessage,
@@ -864,7 +893,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         effort,
         providerName: body.provider,
         executor,
-        globalInstructions,
+        globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
       },
     );
@@ -882,25 +911,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json(result, 202); // 202 Accepted - queued for processing
     }
 
-    // Save provider and executor to session metadata for resume
-    if (deps.sessionMetadataService) {
-      if (body.provider) {
-        await deps.sessionMetadataService.setProvider(
-          result.sessionId,
-          body.provider,
-        );
-      }
-      if (executor) {
-        await deps.sessionMetadataService.setExecutor(
-          result.sessionId,
-          executor,
-        );
-      }
-    }
+    await persistLaunchMetadata(result.sessionId, body.provider, executor);
 
     return c.json({
       sessionId: result.sessionId,
       processId: result.id,
+      projectId: result.projectId,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
     });
@@ -945,9 +961,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
 
-    const globalInstructions =
-      deps.serverSettingsService?.getSetting("globalInstructions") || undefined;
-
     const result = await deps.supervisor.createSession(
       project.path,
       body.mode,
@@ -957,7 +970,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         effort,
         providerName: body.provider,
         executor,
-        globalInstructions,
+        globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
       },
     );
@@ -975,25 +988,143 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json(result, 202); // 202 Accepted - queued for processing
     }
 
-    // Save provider and executor to session metadata for resume
-    if (deps.sessionMetadataService) {
-      if (body.provider) {
-        await deps.sessionMetadataService.setProvider(
-          result.sessionId,
-          body.provider,
-        );
-      }
-      if (executor) {
-        await deps.sessionMetadataService.setExecutor(
-          result.sessionId,
-          executor,
-        );
-      }
-    }
+    await persistLaunchMetadata(result.sessionId, body.provider, executor);
 
     return c.json({
       sessionId: result.sessionId,
       processId: result.id,
+      projectId: result.projectId,
+      permissionMode: result.permissionMode,
+      modeVersion: result.modeVersion,
+    });
+  });
+
+  // POST /api/sessions - Start a detached new session under the hidden No Project workspace
+  routes.post("/sessions", async (c) => {
+    let body: StartSessionBody;
+    try {
+      body = await c.req.json<StartSessionBody>();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    if (!body.message) {
+      return c.json({ error: "Message is required" }, 400);
+    }
+    const { executor, error: executorError } = parseOptionalExecutor(
+      body.executor,
+    );
+    if (executorError) {
+      return c.json({ error: executorError }, 400);
+    }
+
+    const projectPath = await ensureDetachedProjectPath(executor);
+    const userMessage: UserMessage = {
+      text: body.message,
+      images: body.images,
+      documents: body.documents,
+      attachments: body.attachments,
+      mode: body.mode,
+      tempId: body.tempId,
+    };
+
+    const { thinking, effort } = body.thinking
+      ? thinkingOptionToConfig(body.thinking)
+      : { thinking: undefined, effort: undefined };
+    const model =
+      body.model && body.model !== "default" ? body.model : undefined;
+
+    const result = await deps.supervisor.startSession(
+      projectPath,
+      userMessage,
+      body.mode,
+      {
+        model,
+        thinking,
+        effort,
+        providerName: body.provider,
+        executor,
+        globalInstructions: getGlobalInstructions(),
+        permissions: body.permissions,
+      },
+    );
+
+    if (isQueueFullResponse(result)) {
+      return c.json(
+        { error: "Queue is full", maxQueueSize: result.maxQueueSize },
+        503,
+      );
+    }
+
+    if (isQueuedResponse(result)) {
+      return c.json(result, 202);
+    }
+
+    await persistLaunchMetadata(result.sessionId, body.provider, executor);
+
+    return c.json({
+      sessionId: result.sessionId,
+      processId: result.id,
+      projectId: result.projectId,
+      permissionMode: result.permissionMode,
+      modeVersion: result.modeVersion,
+    });
+  });
+
+  // POST /api/sessions/create - Create a detached session without sending an initial message
+  routes.post("/sessions/create", async (c) => {
+    let body: CreateSessionBody = {};
+    try {
+      body = await c.req.json<CreateSessionBody>();
+    } catch {
+      // Body is optional for this endpoint
+    }
+
+    const { executor, error: executorError } = parseOptionalExecutor(
+      body.executor,
+    );
+    if (executorError) {
+      return c.json({ error: executorError }, 400);
+    }
+
+    const projectPath = await ensureDetachedProjectPath(executor);
+    const { thinking, effort } = body.thinking
+      ? thinkingOptionToConfig(body.thinking)
+      : { thinking: undefined, effort: undefined };
+    const model =
+      body.model && body.model !== "default" ? body.model : undefined;
+
+    const result = await deps.supervisor.createSession(
+      projectPath,
+      body.mode,
+      {
+        model,
+        thinking,
+        effort,
+        providerName: body.provider,
+        executor,
+        globalInstructions: getGlobalInstructions(),
+        permissions: body.permissions,
+      },
+    );
+
+    if (isQueueFullResponse(result)) {
+      return c.json(
+        { error: "Queue is full", maxQueueSize: result.maxQueueSize },
+        503,
+      );
+    }
+
+    if (isQueuedResponse(result)) {
+      return c.json(result, 202);
+    }
+
+    await persistLaunchMetadata(result.sessionId, body.provider, executor);
+
+    return c.json({
+      sessionId: result.sessionId,
+      processId: result.id,
+      projectId: result.projectId,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
     });

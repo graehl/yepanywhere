@@ -9,7 +9,11 @@ import type {
 import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
-import { canonicalizeProjectPath, isAbsolutePath } from "../projects/paths.js";
+import {
+  canonicalizeProjectPath,
+  isAbsolutePath,
+  isDetachedProjectPath,
+} from "../projects/paths.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { CodexSessionReader } from "../sessions/codex-reader.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
@@ -224,7 +228,9 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
 
   // GET /api/projects - List all projects
   routes.get("/", async (c) => {
-    const rawProjects = await deps.scanner.listProjects();
+    const rawProjects = (await deps.scanner.listProjects()).filter(
+      (project) => !isDetachedProjectPath(project.path),
+    );
     const activityCounts = await getProjectActivityCounts(
       deps.supervisor,
       deps.externalTracker,

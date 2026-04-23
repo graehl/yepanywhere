@@ -16,6 +16,7 @@ import {
   canonicalizeProjectPath,
   decodeProjectId,
   encodeProjectId,
+  getProjectName,
   isAbsolutePath,
   normalizeProjectPathForDedup,
   readCwdFromSessionFile,
@@ -269,14 +270,14 @@ export class ProjectScanner {
         if (!existingIsLocal && newIsLocal) {
           existing.path = projectPath;
           existing.id = encodeProjectId(projectPath);
-          existing.name = basename(projectPath);
+          existing.name = getProjectName(projectPath);
         }
       } else {
         normalizedIndex.set(normalized, projects.length);
         projects.push({
           id: encodeProjectId(projectPath),
           path: projectPath,
-          name: basename(projectPath),
+          name: getProjectName(projectPath),
           sessionCount,
           sessionDir,
           hasCodexSessions: false,
@@ -350,7 +351,7 @@ export class ProjectScanner {
           ...codexProject,
           id: encodeProjectId(projectPath),
           path: projectPath,
-          name: basename(projectPath),
+          name: getProjectName(projectPath),
           hasCodexSessions: true,
           hasGeminiSessions: false,
         });
@@ -377,7 +378,7 @@ export class ProjectScanner {
           ...geminiProject,
           id: encodeProjectId(projectPath),
           path: projectPath,
-          name: basename(projectPath),
+          name: getProjectName(projectPath),
           hasCodexSessions: false,
           hasGeminiSessions: true,
         });
@@ -406,7 +407,7 @@ export class ProjectScanner {
         projects.push({
           id: encodeProjectId(projectPath),
           path: projectPath,
-          name: basename(projectPath),
+          name: getProjectName(projectPath),
           sessionCount: 0,
           sessionDir: join(this.projectsDir, encodedPath),
           hasCodexSessions: false,
@@ -535,7 +536,7 @@ export class ProjectScanner {
     return {
       id: resolvedProjectId as UrlProjectId,
       path: projectPath,
-      name: basename(projectPath),
+      name: getProjectName(projectPath),
       sessionCount: 0,
       sessionDir,
       activeOwnedCount: 0,

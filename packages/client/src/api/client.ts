@@ -434,6 +434,7 @@ export const api = {
     fetchJSON<{
       sessionId: string;
       processId: string;
+      projectId: string;
       permissionMode: PermissionMode;
       modeVersion: number;
     }>(`/projects/${projectId}/sessions`, {
@@ -457,9 +458,52 @@ export const api = {
     fetchJSON<{
       sessionId: string;
       processId: string;
+      projectId: string;
       permissionMode: PermissionMode;
       modeVersion: number;
     }>(`/projects/${projectId}/sessions/create`, {
+      method: "POST",
+      body: JSON.stringify({
+        mode: options?.mode,
+        model: options?.model,
+        thinking: options?.thinking,
+        provider: options?.provider,
+        executor: options?.executor,
+      }),
+    }),
+
+  startDetachedSession: (
+    message: string,
+    options?: SessionOptions,
+    attachments?: UploadedFile[],
+  ) =>
+    fetchJSON<{
+      sessionId: string;
+      processId: string;
+      projectId: string;
+      permissionMode: PermissionMode;
+      modeVersion: number;
+    }>(`/sessions`, {
+      method: "POST",
+      body: JSON.stringify({
+        message,
+        mode: options?.mode,
+        model: options?.model,
+        thinking: options?.thinking,
+        provider: options?.provider,
+        executor: options?.executor,
+        attachments,
+      }),
+    }),
+
+  createDetachedSession: (options?: SessionOptions) =>
+    fetchJSON<{
+      sessionId: string;
+      processId: string;
+      projectId: string;
+      permissionMode: PermissionMode;
+      modeVersion: number;
+    }>(`/sessions/create`, {
       method: "POST",
       body: JSON.stringify({
         mode: options?.mode,

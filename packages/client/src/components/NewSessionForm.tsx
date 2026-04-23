@@ -553,21 +553,19 @@ export function NewSessionForm({
 
     const trimmedMessage = finalMessage.trim();
     const trimmedProjectInput = normalizeProjectInput(projectInput);
-    if (!trimmedProjectInput) {
-      setIsProjectChooserExpanded(true);
-      return;
-    }
 
     setInterimTranscript("");
     setIsStarting(true);
 
     try {
       let resolvedProjectId =
-        currentProjectSelection?.path === trimmedProjectInput
-          ? currentProjectSelection.id
-          : findProjectByInput(projects, trimmedProjectInput)?.id;
+        trimmedProjectInput
+          ? currentProjectSelection?.path === trimmedProjectInput
+            ? currentProjectSelection.id
+            : findProjectByInput(projects, trimmedProjectInput)?.id
+          : null;
 
-      if (!resolvedProjectId) {
+      if (trimmedProjectInput && !resolvedProjectId) {
         const addProjectResult = await api.addProject(trimmedProjectInput);
         resolvedProjectId = addProjectResult.project.id;
         lastSyncedProjectIdRef.current = resolvedProjectId;
@@ -591,18 +589,19 @@ export function NewSessionForm({
       if (pendingFiles.length > 0) {
         // Two-phase flow: create session first, then upload to real session folder
         // Step 1: Create the session without sending a message
-        const createResult = await api.createSession(
-          resolvedProjectId,
-          sessionOptions,
-        );
+        const createResult = resolvedProjectId
+          ? await api.createSession(resolvedProjectId, sessionOptions)
+          : await api.createDetachedSession(sessionOptions);
+        const activeProjectId = createResult.projectId;
         sessionId = createResult.sessionId;
         processId = createResult.processId;
+        resolvedProjectId = activeProjectId;
 
         // Step 2: Upload files to the real session folder
         for (const pendingFile of pendingFiles) {
           try {
             const uploadedFile = await connection.upload(
-              resolvedProjectId,
+              activeProjectId,
               sessionId,
               pendingFile.file,
               {
@@ -641,13 +640,20 @@ export function NewSessionForm({
         );
       } else {
         // No files - use single-step flow for efficiency
-        const result = await api.startSession(
-          resolvedProjectId,
-          trimmedMessage,
-          sessionOptions,
-        );
+        const result = resolvedProjectId
+          ? await api.startSession(
+              resolvedProjectId,
+              trimmedMessage,
+              sessionOptions,
+            )
+          : await api.startDetachedSession(trimmedMessage, sessionOptions);
         sessionId = result.sessionId;
         processId = result.processId;
+        resolvedProjectId = result.projectId;
+      }
+
+      if (!resolvedProjectId) {
+        throw new Error("Missing project ID for new session");
       }
 
       // Clean up preview URLs

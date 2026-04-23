@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -130,7 +132,7 @@ describe("Sidebar collapsed toggle", () => {
 
     expect(mockToggleExpanded).not.toHaveBeenCalled();
     expect(mockWindowOpen).toHaveBeenCalledWith(
-      "/remote/test/new-session?projectId=project-1",
+      "/remote/test/new-session?projectId=project-1&sidebar=expanded",
       "_blank",
       "noopener",
     );

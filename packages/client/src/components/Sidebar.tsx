@@ -98,6 +98,7 @@ export function Sidebar({
     ? `/new-session?projectId=${encodeURIComponent(newSessionProjectId)}`
     : "/new-session";
   const newSessionHref = `${basePath}${newSessionPath}`;
+  const expandedSidebarNewSessionHref = `${newSessionHref}${newSessionHref.includes("?") ? "&" : "?"}sidebar=expanded`;
 
   const sidebarRef = useRef<HTMLElement>(null);
   const touchStartX = useRef<number | null>(null);
@@ -218,13 +219,13 @@ export function Sidebar({
       if (e.button === 1 || e.metaKey || e.ctrlKey || e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();
-        window.open(newSessionHref, "_blank", "noopener");
+        window.open(expandedSidebarNewSessionHref, "_blank", "noopener");
         return;
       }
 
       onToggleExpanded?.();
     },
-    [newSessionHref, onToggleExpanded],
+    [expandedSidebarNewSessionHref, onToggleExpanded],
   );
 
   const handleCollapsedToggleMouseDown = useCallback(
@@ -241,9 +242,9 @@ export function Sidebar({
       if (e.button !== 1) return;
       e.preventDefault();
       e.stopPropagation();
-      window.open(newSessionHref, "_blank", "noopener");
+      window.open(expandedSidebarNewSessionHref, "_blank", "noopener");
     },
-    [newSessionHref],
+    [expandedSidebarNewSessionHref],
   );
 
   // Starred sessions come from dedicated fetch (filtered by server)

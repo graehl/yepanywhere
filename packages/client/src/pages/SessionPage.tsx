@@ -10,6 +10,10 @@ import { ProcessInfoModal } from "../components/ProcessInfoModal";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { RecentSessionsDropdown } from "../components/RecentSessionsDropdown";
+import {
+  BrandWordmark,
+  isYepAnywhereBrandName,
+} from "../components/BrandWordmark";
 import { SessionHeartbeatModal } from "../components/SessionHeartbeatModal";
 import { SessionMenu } from "../components/SessionMenu";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
@@ -1120,6 +1124,8 @@ function SessionPageContent({
     </svg>
   );
 
+  const showBrandBreadcrumb = isYepAnywhereBrandName(project?.name);
+
   return (
     <div
       className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
@@ -1159,12 +1165,17 @@ function SessionPageContent({
               {project?.name && (
                 <Link
                   to={`${basePath}/sessions?project=${projectId}`}
-                  className="project-breadcrumb"
+                  className={`project-breadcrumb ${showBrandBreadcrumb ? "project-breadcrumb--brand" : ""}`}
                   title={project.name}
+                  aria-label={project.name}
                 >
-                  {project.name.length > 12
-                    ? `${project.name.slice(0, 12)}...`
-                    : project.name}
+                  {showBrandBreadcrumb ? (
+                    <BrandWordmark />
+                  ) : project.name.length > 12 ? (
+                    `${project.name.slice(0, 12)}...`
+                  ) : (
+                    project.name
+                  )}
                 </Link>
               )}
               <div className="session-title-row">

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import {
+  BrandWordmark,
+  isYepAnywhereBrandName,
+} from "./BrandWordmark";
 import { useProjects } from "../hooks/useProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
@@ -42,6 +46,7 @@ export function ProjectSelector({
   const currentProject = projects.find((p) => p.id === currentProjectId);
   const displayName =
     currentProject?.name ?? currentProjectName ?? t("projectSelectorFallback");
+  const showBrandDisplayName = isYepAnywhereBrandName(displayName);
 
   const handleButtonClick = () => {
     buttonRef.current?.blur();
@@ -134,7 +139,11 @@ export function ProjectSelector({
 
   // Don't show selector if only one project
   if (!loading && projects.length <= 1) {
-    return <span className="session-title">{displayName}</span>;
+    return (
+      <span className="session-title">
+        {showBrandDisplayName ? <BrandWordmark /> : displayName}
+      </span>
+    );
   }
 
   const optionsContent = (
@@ -148,7 +157,13 @@ export function ProjectSelector({
             className={`project-selector-option ${isSelected ? "selected" : ""}`}
             onClick={() => handleProjectSelect(project)}
           >
-            <span className="project-selector-name">{project.name}</span>
+            <span className="project-selector-name">
+              {isYepAnywhereBrandName(project.name) ? (
+                <BrandWordmark />
+              ) : (
+                project.name
+              )}
+            </span>
             <span className="project-selector-meta">
               {t("projectSelectorSessionsCount", {
                 count: project.sessionCount,
@@ -210,7 +225,9 @@ export function ProjectSelector({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        <span className="project-selector-text">{displayName}</span>
+        <span className="project-selector-text">
+          {showBrandDisplayName ? <BrandWordmark /> : displayName}
+        </span>
         <svg
           className="project-selector-chevron"
           width="14"

@@ -26,6 +26,8 @@
   /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
     sans-serif;
+  --font-brand: "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
+    Baskerville, Georgia, "Times New Roman", ui-serif, serif;
   --font-mono: "SF Mono", Monaco, "Cascadia Code", Consolas, monospace;
   --font-size-xs: 10px;
   --font-size-sm: 12px;
@@ -887,6 +889,8 @@ h2 {
 
 /* Project breadcrumb in session header */
 .project-breadcrumb {
+  display: inline-flex;
+  align-items: center;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   text-decoration: none;
@@ -898,6 +902,10 @@ h2 {
 
 .project-breadcrumb:hover {
   color: var(--text-primary);
+}
+
+.project-breadcrumb .brand-wordmark {
+  --brand-wordmark-size: 13px;
 }
 
 /* ==========================================================================
@@ -974,22 +982,28 @@ h2 {
 }
 
 .yep-anywhere-logo-text {
-  font-family: "Inter", system-ui, sans-serif;
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
+  display: inline-flex;
+  align-items: baseline;
 }
 
-.yep-anywhere-logo-yep {
+.brand-wordmark {
+  --brand-wordmark-size: 16px;
+  font-family: var(--font-brand);
+  font-size: var(--brand-wordmark-size);
+  font-weight: 600;
+  letter-spacing: -0.06em;
+  line-height: 0.95;
+  text-transform: lowercase;
+  font-kerning: normal;
+  text-rendering: geometricPrecision;
+}
+
+.brand-wordmark--yep {
   color: var(--app-yep-green);
 }
 
-[data-theme="light"] .yep-anywhere-logo-yep {
+[data-theme="light"] .brand-wordmark--yep {
   color: var(--app-yep-green-dark);
-}
-
-.yep-anywhere-logo-anywhere {
-  color: var(--text-primary);
 }
 
 /* Login page logo - larger version */
@@ -1004,8 +1018,8 @@ h2 {
   height: 36px;
 }
 
-.login-logo .yep-anywhere-logo-text {
-  font-size: 22px;
+.login-logo .brand-wordmark {
+  --brand-wordmark-size: 22px;
 }
 
 .sidebar-close {
@@ -7590,6 +7604,8 @@ a.sidebar-nav-item {
 }
 
 .project-selector-text {
+  display: inline-flex;
+  align-items: center;
   white-space: nowrap;
 }
 
@@ -7655,9 +7671,20 @@ a.sidebar-nav-item {
 }
 
 .project-selector-name {
+  display: inline-flex;
+  align-items: center;
   color: var(--text-primary);
   font-weight: 500;
   font-size: var(--font-size-sm);
+}
+
+.project-selector-text .brand-wordmark {
+  --brand-wordmark-size: 15px;
+}
+
+.project-selector-name .brand-wordmark,
+.session-title .brand-wordmark {
+  --brand-wordmark-size: 14px;
 }
 
 .project-selector-meta {

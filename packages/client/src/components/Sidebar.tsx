@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useDrafts } from "../hooks/useDrafts";
@@ -94,6 +94,10 @@ export function Sidebar({
     projects,
     recentProjects[0]?.id,
   );
+  const newSessionPath = newSessionProjectId
+    ? `/new-session?projectId=${encodeURIComponent(newSessionProjectId)}`
+    : "/new-session";
+  const newSessionHref = `${basePath}${newSessionPath}`;
 
   const sidebarRef = useRef<HTMLElement>(null);
   const touchStartX = useRef<number | null>(null);
@@ -209,6 +213,39 @@ export function Sidebar({
     onNavigate();
   };
 
+  const handleCollapsedToggleClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (e.button === 1 || e.metaKey || e.ctrlKey || e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(newSessionHref, "_blank", "noopener");
+        return;
+      }
+
+      onToggleExpanded?.();
+    },
+    [newSessionHref, onToggleExpanded],
+  );
+
+  const handleCollapsedToggleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (e.button === 1) {
+        e.preventDefault();
+      }
+    },
+    [],
+  );
+
+  const handleCollapsedToggleAuxClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(newSessionHref, "_blank", "noopener");
+    },
+    [newSessionHref],
+  );
+
   // Starred sessions come from dedicated fetch (filtered by server)
   // Filter out archived just in case
   const filteredStarredSessions = useMemo(() => {
@@ -294,7 +331,9 @@ export function Sidebar({
             <button
               type="button"
               className="sidebar-toggle"
-              onClick={onToggleExpanded}
+              onClick={handleCollapsedToggleClick}
+              onMouseDown={handleCollapsedToggleMouseDown}
+              onAuxClick={handleCollapsedToggleAuxClick}
               title={t("actionExpandSidebar")}
               aria-label={t("actionExpandSidebar")}
             >
@@ -337,11 +376,7 @@ export function Sidebar({
         <div className="sidebar-actions">
           {/* New Session: link to most recent project's new session page */}
           <SidebarNavItem
-            to={
-              newSessionProjectId
-                ? `/new-session?projectId=${encodeURIComponent(newSessionProjectId)}`
-                : "/new-session"
-            }
+            to={newSessionPath}
             icon={SidebarIcons.newSession}
             label={t("sidebarNewSession")}
             onClick={onNavigate}

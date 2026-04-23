@@ -28,6 +28,16 @@
     sans-serif;
   --font-brand: "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
     Baskerville, Georgia, "Times New Roman", ui-serif, serif;
+  --brand-wordmark-yep-full: color-mix(
+    in srgb,
+    var(--app-yep-green) 76%,
+    var(--text-primary) 24%
+  );
+  --brand-wordmark-anywhere: color-mix(
+    in srgb,
+    var(--app-claude-orange) 38%,
+    var(--text-primary) 62%
+  );
   --font-mono: "SF Mono", Monaco, "Cascadia Code", Consolas, monospace;
   --font-size-xs: 10px;
   --font-size-sm: 12px;
@@ -904,10 +914,6 @@ h2 {
   color: var(--text-primary);
 }
 
-.project-breadcrumb .brand-wordmark {
-  --brand-wordmark-size: 13px;
-}
-
 /* ==========================================================================
    Sidebar
    ========================================================================== */
@@ -998,12 +1004,42 @@ h2 {
   text-rendering: geometricPrecision;
 }
 
-.brand-wordmark--yep {
+.brand-wordmark--short {
   color: var(--app-yep-green);
 }
 
-[data-theme="light"] .brand-wordmark--yep {
+[data-theme="light"] .brand-wordmark--short {
   color: var(--app-yep-green-dark);
+}
+
+.brand-wordmark--full {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+}
+
+.brand-wordmark__yep {
+  color: var(--brand-wordmark-yep-full);
+}
+
+[data-theme="light"] .brand-wordmark__yep {
+  color: color-mix(
+    in srgb,
+    var(--app-yep-green-dark) 74%,
+    var(--text-primary) 26%
+  );
+}
+
+.brand-wordmark__anywhere {
+  color: var(--brand-wordmark-anywhere);
+}
+
+[data-theme="light"] .brand-wordmark__anywhere {
+  color: color-mix(
+    in srgb,
+    var(--app-claude-orange) 44%,
+    var(--text-primary) 56%
+  );
 }
 
 /* Login page logo - larger version */
@@ -1020,6 +1056,15 @@ h2 {
 
 .login-logo .brand-wordmark {
   --brand-wordmark-size: 22px;
+}
+
+.sidebar-brand-link {
+  text-decoration: none;
+}
+
+.sidebar-brand-link:hover .brand-wordmark__anywhere,
+.sidebar-brand-link:hover .brand-wordmark--short {
+  filter: brightness(1.08);
 }
 
 .sidebar-close {
@@ -7676,15 +7721,6 @@ a.sidebar-nav-item {
   color: var(--text-primary);
   font-weight: 500;
   font-size: var(--font-size-sm);
-}
-
-.project-selector-text .brand-wordmark {
-  --brand-wordmark-size: 15px;
-}
-
-.project-selector-name .brand-wordmark,
-.session-title .brand-wordmark {
-  --brand-wordmark-size: 14px;
 }
 
 .project-selector-meta {

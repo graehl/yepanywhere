@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useDrafts } from "../hooks/useDrafts";
@@ -341,15 +341,24 @@ export function Sidebar({
             </button>
           ) : isDesktop ? (
             /* Desktop expanded mode: show brand (toggle is in toolbar) */
-            <span className="sidebar-brand">
+            <Link
+              to={newSessionPath}
+              className="sidebar-brand sidebar-brand-link"
+              title={t("sidebarNewSession")}
+            >
               <YepAnywhereLogo />
-            </span>
+            </Link>
           ) : (
             /* Mobile mode: brand text + close button */
             <>
-              <span className="sidebar-brand">
+              <Link
+                to={newSessionPath}
+                className="sidebar-brand sidebar-brand-link"
+                title={t("sidebarNewSession")}
+                onClick={onNavigate}
+              >
                 <YepAnywhereLogo />
-              </span>
+              </Link>
               <button
                 type="button"
                 className="sidebar-close"

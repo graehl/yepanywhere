@@ -44,6 +44,8 @@ docs/investigations/
 
 # Yep Anywhere local data
 .yep-anywhere/
+/.codex
+/last-session.md
 
 # Codex sample sessions (local dev data)
 codex-sample-sessions/

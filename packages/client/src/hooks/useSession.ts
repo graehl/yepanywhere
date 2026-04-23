@@ -532,11 +532,21 @@ export function useSession(
   // Listen for session status changes via stream
   const handleSessionStatusChange = useCallback(
     (event: SessionStatusEvent) => {
-      if (event.sessionId === sessionId) {
-        setStatus(event.ownership);
+      if (event.sessionId !== sessionId) return;
+
+      const ownershipDropped =
+        status.owner !== "none" && event.ownership.owner === "none";
+
+      setStatus(event.ownership);
+
+      if (ownershipDropped) {
+        setProcessState("idle");
+        setPendingInputRequest(null);
+        setDeferredMessages([]);
+        throttledFetch();
       }
     },
-    [sessionId],
+    [sessionId, status.owner, throttledFetch],
   );
 
   // Listen for process state changes via activity bus as a backup for session stream
@@ -863,6 +873,7 @@ export function useSession(
         setStatus({ owner: "none" });
         setPendingInputRequest(null);
         setDeferredMessages([]);
+        throttledFetch();
       } else if (data.eventType === "connected") {
         // Sync state and permission mode from connected event
         const connectedData = data as {
@@ -1036,6 +1047,7 @@ export function useSession(
       setMessages,
       setSession,
       fetchNewMessages,
+      throttledFetch,
       session?.provider,
     ],
   );

@@ -27,18 +27,6 @@ vi.mock("../../hooks/useNeedsAttentionBadge", () => ({
   useNeedsAttentionBadge: () => 0,
 }));
 
-vi.mock("../../hooks/useRecentProjects", () => ({
-  useRecentProjects: () => ({
-    recentProjects: [{ id: "project-1" }],
-    projects: [{ id: "project-1" }],
-    loading: false,
-  }),
-}));
-
-vi.mock("../../hooks/useRecentProject", () => ({
-  resolvePreferredProjectId: () => "project-1",
-}));
-
 vi.mock("../../hooks/useRemoteBasePath", () => ({
   useRemoteBasePath: () => "/remote/test",
 }));
@@ -132,7 +120,7 @@ describe("Sidebar collapsed toggle", () => {
 
     expect(mockToggleExpanded).not.toHaveBeenCalled();
     expect(mockWindowOpen).toHaveBeenCalledWith(
-      "/remote/test/new-session?projectId=project-1&sidebar=expanded",
+      "/remote/test/new-session?sidebar=expanded",
       "_blank",
       "noopener",
     );

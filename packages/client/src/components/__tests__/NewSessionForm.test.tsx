@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useCallback, useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +9,7 @@ const {
   mockNavigate,
   mockUpdateSetting,
   mockStartSession,
+  mockAddProject,
   providersState,
   serverSettingsState,
   filterDropdownState,
@@ -14,6 +17,7 @@ const {
   mockNavigate: vi.fn(),
   mockUpdateSetting: vi.fn(),
   mockStartSession: vi.fn(),
+  mockAddProject: vi.fn(),
   providersState: {
     providers: [] as Array<{
       name: string;
@@ -55,6 +59,7 @@ vi.mock("react-router-dom", async () => {
 
 vi.mock("../../api/client", () => ({
   api: {
+    addProject: mockAddProject,
     startSession: mockStartSession,
     createSession: vi.fn(),
     queueMessage: vi.fn(),
@@ -176,6 +181,27 @@ vi.mock("../VoiceInputButton", () => ({
   VoiceInputButton: () => <button type="button">voice</button>,
 }));
 
+const chooserProjects = [
+  {
+    id: "project-1",
+    name: "Alpha",
+    path: "/tmp/alpha",
+    sessionCount: 3,
+    activeOwnedCount: 0,
+    activeExternalCount: 0,
+    lastActivity: "2026-04-23T10:00:00.000Z",
+  },
+  {
+    id: "project-2",
+    name: "Beta",
+    path: "/tmp/beta",
+    sessionCount: 1,
+    activeOwnedCount: 0,
+    activeExternalCount: 0,
+    lastActivity: "2026-04-22T10:00:00.000Z",
+  },
+] as const;
+
 describe("NewSessionForm", () => {
   beforeEach(() => {
     providersState.providers = [
@@ -211,11 +237,23 @@ describe("NewSessionForm", () => {
     mockNavigate.mockReset();
     mockUpdateSetting.mockReset();
     mockStartSession.mockReset();
+    mockAddProject.mockReset();
     mockStartSession.mockResolvedValue({
       sessionId: "session-1",
       processId: "process-1",
       permissionMode: "default",
       modeVersion: 0,
+    });
+    mockAddProject.mockResolvedValue({
+      project: {
+        id: "project-added",
+        name: "added-project",
+        path: "/tmp/added-project",
+        sessionCount: 0,
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: null,
+      },
     });
   });
 
@@ -259,7 +297,13 @@ describe("NewSessionForm", () => {
   it("does not reuse the Claude fallback model when switching to Codex", async () => {
     serverSettingsState.isLoading = false;
 
-    render(<NewSessionForm projectId="project-1" />);
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Codex" }));
 
@@ -281,7 +325,13 @@ describe("NewSessionForm", () => {
     };
     serverSettingsState.isLoading = false;
 
-    render(<NewSessionForm projectId="project-1" />);
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Claude" }));
     fireEvent.click(screen.getByRole("button", { name: "Opus" }));
@@ -302,5 +352,86 @@ describe("NewSessionForm", () => {
         model: "opus",
       }),
     );
+  });
+
+  it("shows detached and recent project choices in the default launcher", () => {
+    render(<NewSessionForm projects={[...chooserProjects]} />);
+
+    expect(
+      screen.getByPlaceholderText("newSessionProjectPathPlaceholder"),
+    ).toBeDefined();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /newSessionProjectDetached/i }),
+    );
+
+    expect(screen.getAllByText("newSessionProjectDetached")).toHaveLength(2);
+    expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Beta").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the drafted prompt when switching from detached to a project", async () => {
+    const onProjectChange = vi.fn();
+
+    render(
+      <NewSessionForm
+        projects={[...chooserProjects]}
+        onProjectChange={onProjectChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "draft the migration plan" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /newSessionProjectDetached/i }),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: /Alpha/i })[0]!);
+
+    expect(onProjectChange).toHaveBeenCalledWith("project-1");
+    expect(
+      (
+        screen.getByPlaceholderText(
+          "newSessionPlaceholder",
+        ) as HTMLTextAreaElement
+      ).value,
+    ).toBe("draft the migration plan");
+  });
+
+  it("resolves a typed project path before starting the session", async () => {
+    render(<NewSessionForm projects={[...chooserProjects]} />);
+
+    fireEvent.change(
+      screen.getByPlaceholderText("newSessionProjectPathPlaceholder"),
+      {
+        target: { value: "/tmp/added-project" },
+      },
+    );
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "newSessionStartAction" }));
+
+    await waitFor(() => {
+      expect(mockAddProject).toHaveBeenCalledWith("/tmp/added-project");
+      expect(mockStartSession).toHaveBeenCalledWith(
+        "project-added",
+        "hello",
+        expect.any(Object),
+      );
+    });
+  });
+
+  it("opens project suggestions instead of starting without a project", async () => {
+    render(<NewSessionForm projects={[...chooserProjects]} />);
+
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "newSessionStartAction" }));
+
+    expect(mockStartSession).not.toHaveBeenCalled();
+    expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Beta").length).toBeGreaterThan(0);
   });
 });

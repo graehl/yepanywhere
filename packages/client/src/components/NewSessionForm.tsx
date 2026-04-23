@@ -38,7 +38,8 @@ import {
   clearNewSessionPrefill,
   getNewSessionPrefill,
 } from "../lib/newSessionPrefill";
-import type { PermissionMode } from "../types";
+import { shortenPath } from "../lib/text";
+import type { PermissionMode, Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
@@ -54,6 +55,8 @@ const MODE_ORDER: PermissionMode[] = [
   "plan",
   "bypassPermissions",
 ];
+const DETACHED_PROJECT_DRAFT_KEY = "__detached__";
+const QUICK_PROJECT_COUNT = 4;
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -94,8 +97,57 @@ function getPreferredProviderModelId(
   );
 }
 
+function getProjectSortValue(project: Project): number {
+  return project.lastActivity ? new Date(project.lastActivity).getTime() : 0;
+}
+
+function sortProjectsForChooser(projects: readonly Project[]): Project[] {
+  return [...projects].sort((a, b) => {
+    const activityDiff = getProjectSortValue(b) - getProjectSortValue(a);
+    if (activityDiff !== 0) return activityDiff;
+    const nameDiff = a.name.localeCompare(b.name);
+    if (nameDiff !== 0) return nameDiff;
+    return a.path.localeCompare(b.path);
+  });
+}
+
+function normalizeProjectInput(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (trimmed.length > 1 && /[/\\]$/.test(trimmed)) {
+    return trimmed.slice(0, -1);
+  }
+  return trimmed;
+}
+
+function findProjectByInput(
+  projects: readonly Project[],
+  candidate: string,
+): Project | null {
+  const normalizedCandidate = normalizeProjectInput(candidate);
+  if (!normalizedCandidate) return null;
+
+  const exactPathMatch = projects.find(
+    (project) => project.path === normalizedCandidate,
+  );
+  if (exactPathMatch) return exactPathMatch;
+
+  const exactNameMatches = projects.filter(
+    (project) => project.name.toLowerCase() === normalizedCandidate.toLowerCase(),
+  );
+  if (exactNameMatches.length === 1) {
+    return exactNameMatches[0] ?? null;
+  }
+
+  return null;
+}
+
 export interface NewSessionFormProps {
-  projectId: string;
+  projectId?: string;
+  selectedProject?: Project | null;
+  projects?: Project[];
+  projectsLoading?: boolean;
+  onProjectChange?: (projectId: string | null) => void;
   /** Whether to focus the textarea on mount (default: true) */
   autoFocus?: boolean;
   /** Number of rows for the textarea (default: 6) */
@@ -108,6 +160,10 @@ export interface NewSessionFormProps {
 
 export function NewSessionForm({
   projectId,
+  selectedProject,
+  projects = [],
+  projectsLoading = false,
+  onProjectChange,
   autoFocus = true,
   rows = 6,
   placeholder,
@@ -116,8 +172,12 @@ export function NewSessionForm({
   const { t } = useI18n();
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
+  const draftProjectId = projectId ?? DETACHED_PROJECT_DRAFT_KEY;
   const [message, setMessage, draftControls] = useDraftPersistence(
-    `draft-new-session-${projectId}`,
+    `draft-new-session-${draftProjectId}`,
+    {
+      preserveValueOnKeyChange: true,
+    },
   );
   const [mode, setMode] = useState<PermissionMode>("default");
   const [selectedProvider, setSelectedProvider] = useState<ProviderName | null>(
@@ -133,11 +193,18 @@ export function NewSessionForm({
   >({});
   const [interimTranscript, setInterimTranscript] = useState("");
   const [isSavingDefaults, setIsSavingDefaults] = useState(false);
+  const [isProjectChooserExpanded, setIsProjectChooserExpanded] =
+    useState(false);
+  const [projectInput, setProjectInput] = useState(
+    () => selectedProject?.path ?? "",
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const projectInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
   const hasInitializedDefaultsRef = useRef(false);
   const hasUserCustomizedDefaultsRef = useRef(false);
+  const lastSyncedProjectIdRef = useRef<string | null>(projectId ?? null);
 
   // Thinking toggle state
   const { thinkingMode, cycleThinkingMode, thinkingLevel } = useModelSettings();
@@ -184,6 +251,50 @@ export function NewSessionForm({
     selectedProviderInfo?.supportsPermissionMode ?? true;
   const supportsThinkingToggle =
     selectedProviderInfo?.supportsThinkingToggle ?? true;
+  const sortedProjects = useMemo(
+    () => sortProjectsForChooser(projects),
+    [projects],
+  );
+  const quickProjects = useMemo(
+    () => sortedProjects.slice(0, QUICK_PROJECT_COUNT),
+    [sortedProjects],
+  );
+  const normalizedProjectInput = normalizeProjectInput(projectInput);
+  const exactProjectMatch = useMemo(
+    () => findProjectByInput(projects, normalizedProjectInput),
+    [normalizedProjectInput, projects],
+  );
+  const projectMatches = useMemo(() => {
+    if (!normalizedProjectInput) {
+      return sortedProjects;
+    }
+
+    const query = normalizedProjectInput.toLowerCase();
+    return sortedProjects.filter((project) => {
+      return (
+        project.name.toLowerCase().includes(query) ||
+        project.path.toLowerCase().includes(query)
+      );
+    });
+  }, [normalizedProjectInput, sortedProjects]);
+  const projectSuggestions = useMemo(() => {
+    const source = normalizedProjectInput ? projectMatches : quickProjects;
+    return source.slice(0, 6);
+  }, [normalizedProjectInput, projectMatches, quickProjects]);
+  const hasCustomProjectPath =
+    Boolean(normalizedProjectInput) && exactProjectMatch === null;
+  const currentProjectSelection = exactProjectMatch ?? selectedProject ?? null;
+  const isDetachedProject =
+    !hasCustomProjectPath && currentProjectSelection === null;
+  const projectSummaryTitle =
+    currentProjectSelection?.name ?? t("newSessionProjectDetached");
+  const projectSummaryMeta = hasCustomProjectPath
+    ? normalizedProjectInput
+    : currentProjectSelection?.path ?? t("newSessionProjectDetachedHint");
+  const displayedProjectSummaryMeta =
+    hasCustomProjectPath || currentProjectSelection
+      ? shortenPath(projectSummaryMeta)
+      : projectSummaryMeta;
 
   // Initialize provider/model/mode from saved defaults once settings and providers load.
   useEffect(() => {
@@ -233,6 +344,16 @@ export function NewSessionForm({
     settings,
     settingsLoading,
   ]);
+
+  useEffect(() => {
+    const nextProjectId = projectId ?? null;
+    if (lastSyncedProjectIdRef.current === nextProjectId) {
+      return;
+    }
+
+    lastSyncedProjectIdRef.current = nextProjectId;
+    setProjectInput(selectedProject?.path ?? "");
+  }, [projectId, selectedProject]);
 
   // When provider changes, reset model based on user settings
   const handleProviderSelect = (providerName: ProviderName) => {
@@ -318,6 +439,45 @@ export function NewSessionForm({
     }
   }, [setMessage]);
 
+  const handleProjectOptionSelect = useCallback(
+    (project: Project) => {
+      setProjectInput(project.path);
+      lastSyncedProjectIdRef.current = project.id;
+      onProjectChange?.(project.id);
+      setIsProjectChooserExpanded(false);
+    },
+    [onProjectChange],
+  );
+
+  const handleDetachedProject = useCallback(() => {
+    setProjectInput("");
+    lastSyncedProjectIdRef.current = null;
+    onProjectChange?.(null);
+    setIsProjectChooserExpanded(false);
+  }, [onProjectChange]);
+
+  const handleProjectInputKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (exactProjectMatch) {
+          handleProjectOptionSelect(exactProjectMatch);
+        } else if (normalizedProjectInput) {
+          setIsProjectChooserExpanded(false);
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setIsProjectChooserExpanded(false);
+      }
+    },
+    [
+      exactProjectMatch,
+      handleProjectOptionSelect,
+      normalizedProjectInput,
+      setIsProjectChooserExpanded,
+    ],
+  );
+
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files?.length) return;
@@ -389,14 +549,31 @@ export function NewSessionForm({
     }
 
     const hasContent = finalMessage.trim() || pendingFiles.length > 0;
-    if (!projectId || !hasContent || isStarting) return;
+    if (!hasContent || isStarting) return;
 
     const trimmedMessage = finalMessage.trim();
+    const trimmedProjectInput = normalizeProjectInput(projectInput);
+    if (!trimmedProjectInput) {
+      setIsProjectChooserExpanded(true);
+      return;
+    }
 
     setInterimTranscript("");
     setIsStarting(true);
 
     try {
+      let resolvedProjectId =
+        currentProjectSelection?.path === trimmedProjectInput
+          ? currentProjectSelection.id
+          : findProjectByInput(projects, trimmedProjectInput)?.id;
+
+      if (!resolvedProjectId) {
+        const addProjectResult = await api.addProject(trimmedProjectInput);
+        resolvedProjectId = addProjectResult.project.id;
+        lastSyncedProjectIdRef.current = resolvedProjectId;
+        onProjectChange?.(resolvedProjectId);
+      }
+
       let sessionId: string;
       let processId: string;
       const uploadedFiles: UploadedFile[] = [];
@@ -414,7 +591,10 @@ export function NewSessionForm({
       if (pendingFiles.length > 0) {
         // Two-phase flow: create session first, then upload to real session folder
         // Step 1: Create the session without sending a message
-        const createResult = await api.createSession(projectId, sessionOptions);
+        const createResult = await api.createSession(
+          resolvedProjectId,
+          sessionOptions,
+        );
         sessionId = createResult.sessionId;
         processId = createResult.processId;
 
@@ -422,7 +602,7 @@ export function NewSessionForm({
         for (const pendingFile of pendingFiles) {
           try {
             const uploadedFile = await connection.upload(
-              projectId,
+              resolvedProjectId,
               sessionId,
               pendingFile.file,
               {
@@ -462,7 +642,7 @@ export function NewSessionForm({
       } else {
         // No files - use single-step flow for efficiency
         const result = await api.startSession(
-          projectId,
+          resolvedProjectId,
           trimmedMessage,
           sessionOptions,
         );
@@ -482,14 +662,17 @@ export function NewSessionForm({
       // without waiting for getSession to complete
       // Also pass initial message as optimistic title (session name = first message)
       // Pass model/provider so ProviderBadge can render immediately
-      navigate(`${basePath}/projects/${projectId}/sessions/${sessionId}`, {
-        state: {
-          initialStatus: { state: "owned", processId },
-          initialTitle: trimmedMessage,
-          initialModel: selectedModel,
-          initialProvider: selectedProvider,
+      navigate(
+        `${basePath}/projects/${resolvedProjectId}/sessions/${sessionId}`,
+        {
+          state: {
+            initialStatus: { state: "owned", processId },
+            initialTitle: trimmedMessage,
+            initialModel: selectedModel,
+            initialProvider: selectedProvider,
+          },
         },
-      });
+      );
     } catch (err) {
       console.error("Failed to start session:", err);
       draftControls.restoreFromStorage();
@@ -623,6 +806,7 @@ export function NewSessionForm({
   }, []);
 
   const hasContent = message.trim() || pendingFiles.length > 0;
+  const canStart = Boolean(hasContent);
   const savedDefaults = settings?.newSessionDefaults;
   const defaultsMatchCurrent =
     (savedDefaults?.provider ?? undefined) ===
@@ -742,7 +926,7 @@ export function NewSessionForm({
         <button
           type="button"
           onClick={handleStartSession}
-          disabled={isStarting || !hasContent}
+          disabled={isStarting || !canStart}
           className="send-button"
           aria-label={t("newSessionStartAction")}
         >
@@ -805,6 +989,202 @@ export function NewSessionForm({
     </>
   );
 
+  const projectChooser = (
+    <div
+      className={`new-session-project-chooser ${isProjectChooserExpanded ? "expanded" : ""}`}
+    >
+      <div className="new-session-project-controls">
+        <button
+          type="button"
+          className="new-session-project-summary"
+          onClick={() => setIsProjectChooserExpanded((prev) => !prev)}
+          aria-expanded={isProjectChooserExpanded}
+          aria-controls="new-session-project-panel"
+        >
+          <span className="new-session-project-summary-body">
+            <span className="new-session-project-summary-title">
+              {projectSummaryTitle}
+            </span>
+            <span
+              className="new-session-project-summary-path"
+              title={projectSummaryMeta}
+            >
+              {isDetachedProject ? (
+                <>
+                  <span className="new-session-project-summary-path-long">
+                    {t("newSessionProjectDetachedHint")}
+                  </span>
+                  <span className="new-session-project-summary-path-short">
+                    {t("newSessionProjectDetachedHintShort")}
+                  </span>
+                </>
+              ) : (
+                displayedProjectSummaryMeta
+              )}
+            </span>
+          </span>
+          <svg
+            className="new-session-project-summary-chevron"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+
+        <label className="new-session-project-inline-field">
+          <span className="new-session-project-inline-label">
+            {t("newSessionProjectPathLabel")}
+          </span>
+          <input
+            ref={projectInputRef}
+            type="text"
+            value={projectInput}
+            onChange={(e) => {
+              setProjectInput(e.target.value);
+              if (!isProjectChooserExpanded) {
+                setIsProjectChooserExpanded(true);
+              }
+            }}
+            onFocus={() => setIsProjectChooserExpanded(true)}
+            onKeyDown={handleProjectInputKeyDown}
+            placeholder={t("newSessionProjectPathPlaceholder")}
+            disabled={isStarting}
+            className="new-session-project-input"
+            spellCheck={false}
+            list="new-session-project-options"
+          />
+        </label>
+        <datalist id="new-session-project-options">
+          {sortedProjects.map((project) => (
+            <option key={project.id} value={project.path}>
+              {project.name}
+            </option>
+          ))}
+        </datalist>
+      </div>
+
+      {isProjectChooserExpanded && (
+        <div
+          id="new-session-project-panel"
+          className="new-session-project-panel"
+        >
+          <p className="new-session-project-field-hint">
+            {t("newSessionProjectPathHint")}
+          </p>
+
+          <div className="new-session-project-suggestions">
+            <button
+              type="button"
+              className={`new-session-project-option ${!normalizedProjectInput ? "selected" : ""}`}
+              onClick={handleDetachedProject}
+            >
+              <span className="new-session-project-option-name">
+                {t("newSessionProjectDetached")}
+              </span>
+              <span className="new-session-project-option-path">
+                {t("newSessionProjectDetachedHint")}
+              </span>
+            </button>
+
+            {hasCustomProjectPath && (
+              <button
+                type="button"
+                className="new-session-project-option new-session-project-option-custom"
+                onClick={() => setIsProjectChooserExpanded(false)}
+              >
+                <span className="new-session-project-option-name">
+                  {t("newSessionProjectUseTypedPath")}
+                </span>
+                <span className="new-session-project-option-path">
+                  {normalizedProjectInput}
+                </span>
+              </button>
+            )}
+
+            {projectsLoading ? (
+              <div className="new-session-project-empty">
+                {t("newSessionLoading")}
+              </div>
+            ) : projectSuggestions.length === 0 ? (
+              <div className="new-session-project-empty">
+                {t("newSessionProjectNoMatches")}
+              </div>
+            ) : (
+              projectSuggestions.map((project) => (
+                <button
+                  key={project.id}
+                  type="button"
+                  className={`new-session-project-option ${currentProjectSelection?.id === project.id && !hasCustomProjectPath ? "selected" : ""}`}
+                  onClick={() => handleProjectOptionSelect(project)}
+                  title={project.path}
+                >
+                  <span className="new-session-project-option-name">
+                    {project.name}
+                  </span>
+                  <span className="new-session-project-option-path">
+                    {shortenPath(project.path)}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const providerSection =
+    !providersLoading && availableProviders.length > 1 ? (
+      <div className="new-session-provider-section">
+        <h3>{t("newSessionProviderTitle")}</h3>
+        <div className="provider-options">
+          {providers.map((p) => {
+            const isAvailable = p.installed && (p.authenticated || p.enabled);
+            const isSelected = selectedProvider === p.name;
+            return (
+              <button
+                key={p.name}
+                type="button"
+                className={`provider-option ${isSelected ? "selected" : ""} ${!isAvailable ? "disabled" : ""}`}
+                onClick={() => isAvailable && handleProviderSelect(p.name)}
+                disabled={isStarting || !isAvailable}
+                title={
+                  !isAvailable
+                    ? t("newSessionProviderUnavailable", {
+                        provider: p.displayName,
+                        reason: !p.installed
+                          ? t("newSessionProviderNotInstalled")
+                          : t("newSessionProviderNotAuthenticated"),
+                      })
+                    : p.displayName
+                }
+              >
+                <span className={`provider-option-dot provider-${p.name}`} />
+                <div className="provider-option-content">
+                  <span className="provider-option-label">{p.displayName}</span>
+                  {!isAvailable && (
+                    <span className="provider-option-status">
+                      {!p.installed
+                        ? t("newSessionProviderStatusNotInstalled")
+                        : t("newSessionProviderStatusNotAuthenticated")}
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    ) : null;
+
   // Compact mode: just the input area, no header or mode selector
   if (compact) {
     return (
@@ -822,57 +1202,18 @@ export function NewSessionForm({
       className={`new-session-form new-session-container ${interimTranscript ? "voice-recording" : ""}`}
     >
       <div className="new-session-header">
-        <h1>{t("newSessionHeaderTitle")}</h1>
         <p className="new-session-subtitle">{t("newSessionHeaderSubtitle")}</p>
       </div>
 
-      <div className="new-session-input-area">{inputArea}</div>
-
-      {/* Provider Selection */}
-      {!providersLoading && availableProviders.length > 1 && (
-        <div className="new-session-provider-section">
-          <h3>{t("newSessionProviderTitle")}</h3>
-          <div className="provider-options">
-            {providers.map((p) => {
-              const isAvailable = p.installed && (p.authenticated || p.enabled);
-              const isSelected = selectedProvider === p.name;
-              return (
-                <button
-                  key={p.name}
-                  type="button"
-                  className={`provider-option ${isSelected ? "selected" : ""} ${!isAvailable ? "disabled" : ""}`}
-                  onClick={() => isAvailable && handleProviderSelect(p.name)}
-                  disabled={isStarting || !isAvailable}
-                  title={
-                    !isAvailable
-                      ? t("newSessionProviderUnavailable", {
-                          provider: p.displayName,
-                          reason: !p.installed
-                            ? t("newSessionProviderNotInstalled")
-                            : t("newSessionProviderNotAuthenticated"),
-                        })
-                      : p.displayName
-                  }
-                >
-                  <span className={`provider-option-dot provider-${p.name}`} />
-                  <div className="provider-option-content">
-                    <span className="provider-option-label">
-                      {p.displayName}
-                    </span>
-                    {!isAvailable && (
-                      <span className="provider-option-status">
-                        {!p.installed
-                          ? t("newSessionProviderStatusNotInstalled")
-                          : t("newSessionProviderStatusNotAuthenticated")}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+      <div className="new-session-top-layout">
+        <div className="new-session-main-stack">
+          <div className="new-session-input-area">{inputArea}</div>
         </div>
-      )}
+        <aside className="new-session-project-slot">{projectChooser}</aside>
+        {providerSection && (
+          <div className="new-session-provider-slot">{providerSection}</div>
+        )}
+      </div>
 
       {/* Model Selection */}
       {selectedProvider && modelOptions.length > 0 && (

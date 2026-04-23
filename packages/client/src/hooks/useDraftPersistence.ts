@@ -11,6 +11,11 @@ export interface DraftControls {
   restoreFromStorage: () => void;
 }
 
+export interface UseDraftPersistenceOptions {
+  /** Keep the current in-memory draft when switching to a new storage key that has no draft yet. */
+  preserveValueOnKeyChange?: boolean;
+}
+
 /** Save a value to localStorage immediately */
 function saveToStorage(key: string, value: string): void {
   try {
@@ -33,6 +38,7 @@ function saveToStorage(key: string, value: string): void {
  */
 export function useDraftPersistence(
   key: string,
+  options?: UseDraftPersistenceOptions,
 ): [string, (value: string) => void, DraftControls] {
   const [value, setValueInternal] = useState(() => {
     try {
@@ -46,21 +52,42 @@ export function useDraftPersistence(
   const keyRef = useRef(key);
   // Track pending value so we can flush on unmount/beforeunload
   const pendingValueRef = useRef<string | null>(null);
+  const valueRef = useRef(value);
+
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   // Update keyRef when key changes
   useEffect(() => {
-    keyRef.current = key;
-  }, [key]);
+    const previousKey = keyRef.current;
+    const previousValue = pendingValueRef.current ?? valueRef.current;
+    const keyChanged = previousKey !== key;
 
-  // Restore from localStorage when key changes
-  useEffect(() => {
+    if (keyChanged && pendingValueRef.current !== null) {
+      saveToStorage(previousKey, pendingValueRef.current);
+      pendingValueRef.current = null;
+    }
+
+    keyRef.current = key;
+
     try {
       const stored = localStorage.getItem(key);
+      if (
+        keyChanged &&
+        options?.preserveValueOnKeyChange &&
+        previousValue &&
+        !stored
+      ) {
+        saveToStorage(key, previousValue);
+        setValueInternal(previousValue);
+        return;
+      }
       setValueInternal(stored ?? "");
     } catch {
       setValueInternal("");
     }
-  }, [key]);
+  }, [key, options?.preserveValueOnKeyChange]);
 
   // Flush pending value to localStorage
   const flushPending = useCallback(() => {

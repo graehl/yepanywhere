@@ -2,6 +2,8 @@
 
 For cross-project context (how this project relates to other Kyle projects), see `~/code/dotfiles/projects/README.md`.
 
+For dev/contributor guidance (setup, commands, style, contribution ethos), see [DEVELOPMENT.md](DEVELOPMENT.md).
+
 A mobile-first supervisor for Claude Code agents. Like the VS Code Claude extension, but designed for phones and multi-session workflows.
 
 **Key ideas:**

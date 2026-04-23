@@ -29,6 +29,24 @@ pnpm test       # Unit tests
 pnpm test:e2e   # E2E tests
 ```
 
+## Contribution Ethos: Minimalist Runtime
+
+Running code — everything outside test/build tooling — is hand-built and lean on
+dependencies. Before adding a runtime dep:
+
+- **Narrow-scope utilities**: prefer a ~100-line hand-rolled implementation over
+  a package. SGR parsers, debounces, small date helpers, tiny encoders — code
+  them. A dep's long-term reading/audit cost usually exceeds the one-time write.
+- **Exemptions**: don't hand-roll crypto (bcrypt, NaCl), auth protocols
+  (SRP-6a), web frameworks (Hono), syntax highlighting (Shiki), or the official
+  provider SDKs. Use the audited/canonical implementation.
+- **Client bundle**: mobile-first — anything entering the client bundle must
+  justify its payload. Prefer server-side rendering.
+- **Dev-deps**: tooling (vitest, biome, playwright, tsx, types) doesn't ship to
+  users; lower bar applies.
+
+Rule of thumb: if a dep is essentially a one-file helper, write the file.
+
 ## Port Configuration
 
 Ports are derived from a single `PORT` variable (default: 3400):

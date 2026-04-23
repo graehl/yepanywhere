@@ -1127,7 +1127,7 @@ function SessionPageContent({
       <div
         className={
           isWideScreen
-            ? "main-content-constrained"
+            ? `main-content-constrained${isSidebarCollapsed ? " session-pane-collapsed-sidebar" : ""}`
             : "main-content-mobile-inner"
         }
       >

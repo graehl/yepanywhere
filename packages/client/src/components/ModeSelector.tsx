@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import type { PermissionMode } from "../types";
 
@@ -10,9 +9,6 @@ const MODE_ORDER: PermissionMode[] = [
   "plan",
   "bypassPermissions",
 ];
-
-// Breakpoint for desktop behavior (should match CSS)
-const DESKTOP_BREAKPOINT = 769;
 
 interface ModeSelectorProps {
   mode: PermissionMode;
@@ -25,7 +21,7 @@ interface ModeSelectorProps {
 }
 
 /**
- * Mode selector button that opens a bottom sheet (mobile) or dropdown (desktop).
+ * Mode selector button that opens an anchored dropdown above the button.
  * Includes hold (soft pause) as a special first option.
  * Clicking outside the popup or selecting a mode closes it.
  */
@@ -38,9 +34,6 @@ export function ModeSelector({
 }: ModeSelectorProps) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(
-    () => window.innerWidth >= DESKTOP_BREAKPOINT,
-  );
   const buttonRef = useRef<HTMLButtonElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -79,15 +72,6 @@ export function ModeSelector({
     setIsOpen(false);
   }, []);
 
-  // Track window resize to update desktop/mobile state
-  useEffect(() => {
-    const handleResize = () => {
-      setIsDesktop(window.innerWidth >= DESKTOP_BREAKPOINT);
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -103,9 +87,9 @@ export function ModeSelector({
     return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [isOpen, handleClose]);
 
-  // Close on click outside (for desktop dropdown)
+  // Close on click outside.
   useEffect(() => {
-    if (!isOpen || !isDesktop) return;
+    if (!isOpen) return;
 
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -119,17 +103,7 @@ export function ModeSelector({
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen, isDesktop, handleClose]);
-
-  // Prevent body scroll when sheet is open (mobile only)
-  useEffect(() => {
-    if (isOpen && !isDesktop) {
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = "";
-      };
-    }
-  }, [isOpen, isDesktop]);
+  }, [isOpen, handleClose]);
 
   // Focus the sheet when opened for accessibility
   useEffect(() => {
@@ -137,15 +111,6 @@ export function ModeSelector({
       sheetRef.current?.focus();
     }
   }, [isOpen]);
-
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    // Only close if clicking directly on the overlay, not its children
-    if (e.target === e.currentTarget) {
-      e.preventDefault();
-      e.stopPropagation();
-      handleClose();
-    }
-  };
 
   const modeLabels: Record<PermissionMode, string> = {
     default: t("modeDefaultLabel" as never),
@@ -158,7 +123,7 @@ export function ModeSelector({
   const displayLabel = isHeld ? t("modeHold" as never) : modeLabels[mode];
   const displayDotClass = isHeld ? "mode-hold" : `mode-${mode}`;
 
-  // Shared options content used by both mobile sheet and desktop dropdown
+  // Shared dropdown options content
   const optionsContent = (
     <>
       {/* Hold option - special first item */}
@@ -234,37 +199,8 @@ export function ModeSelector({
     </>
   );
 
-  // Mobile: bottom sheet with overlay (portaled)
-  const mobileSheet =
-    isOpen && !isDesktop
-      ? createPortal(
-          // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled globally
-          <div
-            className="mode-selector-overlay"
-            onClick={handleOverlayClick}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div
-              ref={sheetRef}
-              className="mode-selector-sheet"
-              tabIndex={-1}
-              aria-label={t("modeSelectLabel" as never)}
-            >
-              <div className="mode-selector-header">
-                <span className="mode-selector-title">
-                  {t("modeSessionTitle" as never)}
-                </span>
-              </div>
-              <div className="mode-selector-options">{optionsContent}</div>
-            </div>
-          </div>,
-          document.body,
-        )
-      : null;
-
-  // Desktop: dropdown positioned relative to button (inline)
-  const desktopDropdown =
-    isOpen && isDesktop ? (
+  const dropdown =
+    isOpen ? (
       <div
         ref={sheetRef}
         className="mode-selector-dropdown"
@@ -290,8 +226,7 @@ export function ModeSelector({
         <span className={`mode-dot ${displayDotClass}`} />
         {displayLabel}
       </button>
-      {desktopDropdown}
-      {mobileSheet}
+      {dropdown}
     </div>
   );
 }

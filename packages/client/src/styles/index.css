@@ -2042,66 +2042,39 @@ a.sidebar-nav-item {
 
 /* Desktop dropdown (positioned relative to button, no overlay) */
 .mode-selector-dropdown {
-  display: none;
+  display: block;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: var(--space-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  min-width: 220px;
+  max-width: calc(100vw - 16px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  animation: dropdownFadeIn 0.15s ease-out;
 }
 
-@media (min-width: 769px) {
-  .mode-selector-dropdown {
-    display: block;
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    margin-bottom: var(--space-2);
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-lg);
-    min-width: 220px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 100;
-    animation: dropdownFadeIn 0.15s ease-out;
-  }
-
-  .mode-selector-dropdown .mode-selector-options {
-    padding: var(--space-1) 0;
-  }
-
-  .mode-selector-dropdown .mode-selector-option {
-    padding: var(--space-2) var(--space-3);
-  }
-
-  .mode-selector-dropdown .mode-selector-divider {
-    margin: var(--space-1) var(--space-3);
-  }
-
-  @keyframes dropdownFadeIn {
-    from {
-      opacity: 0;
-      transform: translateX(-50%) translateY(4px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-  }
-
-  /* Hide mobile overlay/sheet on desktop - it's handled via JS now but this is a fallback */
-  .mode-selector-overlay {
-    display: none;
-  }
+.mode-selector-dropdown .mode-selector-options {
+  padding: var(--space-1) 0;
 }
 
-/* Mobile-only: bottom sheet animation */
-@media (max-width: 768px) {
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: scale(0.95);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
+.mode-selector-dropdown .mode-selector-option {
+  padding: var(--space-2) var(--space-3);
+}
+
+.mode-selector-dropdown .mode-selector-divider {
+  margin: var(--space-1) var(--space-3);
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
@@ -5609,6 +5582,23 @@ a.sidebar-nav-item {
     max-width: 830px;
     margin: 0 auto;
     width: 100%;
+  }
+
+  /* When the desktop sidebar is collapsed, widen and left-align the session
+     pane so it doesn't lose usable width or split the breadcrumb from chat. */
+  .main-content-constrained.session-pane-collapsed-sidebar .session-header-inner,
+  .main-content-constrained.session-pane-collapsed-sidebar .session-messages .message-list,
+  .main-content-constrained.session-pane-collapsed-sidebar .session-input-inner {
+    max-width: min(1100px, 100%);
+    margin-left: 0;
+    margin-right: auto;
+  }
+
+  .main-content-constrained.session-pane-collapsed-sidebar .session-header-inner {
+    width: 100%;
+    box-sizing: border-box;
+    padding-left: 1rem;
+    padding-right: 1rem;
   }
 
   /* Show sidebar toggle on desktop for collapse/expand functionality */

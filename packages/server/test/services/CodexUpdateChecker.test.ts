@@ -5,6 +5,7 @@ import {
 } from "../../src/services/CodexUpdateChecker.js";
 
 const { normalizeVersion, compareVersions } = __testing__;
+const { extractNpmGlobalPackageName } = __testing__;
 
 describe("CodexUpdateChecker version helpers", () => {
   it("extracts semver from typical CLI output", () => {
@@ -28,6 +29,27 @@ describe("CodexUpdateChecker version helpers", () => {
     expect(compareVersions("0.4.3", "0.4.3-rc.1")).toBeGreaterThan(0);
     expect(compareVersions("0.4.3-rc.1", "0.4.3-rc.2")).toBeLessThan(0);
   });
+
+  it("extracts npm package names from global node_modules paths", () => {
+    expect(
+      extractNpmGlobalPackageName(
+        "/usr/local/lib/node_modules/@openai/codex/bin/codex.js",
+        "/usr/local/lib/node_modules",
+      ),
+    ).toBe("@openai/codex");
+    expect(
+      extractNpmGlobalPackageName(
+        "/usr/local/lib/node_modules/codex/bin/codex.js",
+        "/usr/local/lib/node_modules",
+      ),
+    ).toBe("codex");
+    expect(
+      extractNpmGlobalPackageName(
+        "/usr/local/bin/codex",
+        "/usr/local/lib/node_modules",
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("CodexUpdateChecker", () => {
@@ -41,12 +63,18 @@ describe("CodexUpdateChecker", () => {
         tagName: "v0.4.3",
         htmlUrl: "https://github.com/openai/codex/releases/tag/v0.4.3",
       }),
+      detectInstallMetadata: async () => ({
+        installedPackage: "@openai/codex",
+        updateMethod: "npm",
+      }),
     });
 
     const status = await checker.getStatus();
     expect(status).toMatchObject({
       installed: "0.4.2",
       installedPath: "/usr/local/bin/codex",
+      installedPackage: "@openai/codex",
+      updateMethod: "npm",
       latest: "0.4.3",
       releaseUrl: "https://github.com/openai/codex/releases/tag/v0.4.3",
       updateAvailable: true,
@@ -62,6 +90,7 @@ describe("CodexUpdateChecker", () => {
     });
     const status = await checker.getStatus();
     expect(status.updateAvailable).toBe(false);
+    expect(status.updateMethod).toBe("manual");
   });
 
   it("surfaces fetch errors without throwing", async () => {

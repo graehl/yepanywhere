@@ -1,5 +1,11 @@
+import { exec } from "node:child_process";
+import { realpath } from "node:fs/promises";
+import * as path from "node:path";
+import { promisify } from "node:util";
 import { getLogger } from "../logging/logger.js";
 import { detectCodexCli } from "../sdk/cli-detection.js";
+
+const execAsync = promisify(exec);
 
 const GITHUB_LATEST_URL =
   "https://api.github.com/repos/openai/codex/releases/latest";
@@ -7,9 +13,24 @@ const DEFAULT_REFRESH_TTL_MS = 24 * 60 * 60 * 1000;
 
 const log = getLogger().child({ component: "codex-update-checker" });
 
+/** How YA can update Codex on this host. */
+export type CodexUpdateMethod = "npm" | "manual";
+
+interface CodexInstallMetadata {
+  installedPackage: string | null;
+  updateMethod: CodexUpdateMethod;
+}
+
 export interface CodexUpdateStatus {
   installed: string | null;
   installedPath: string | null;
+  /** npm package name (e.g. "@openai/codex") if install path is npm-global. */
+  installedPackage: string | null;
+  /**
+   * How the install can be updated. "npm" means YA can shell out to `npm i -g`
+   * itself. "manual" means the user needs to run a platform-specific command.
+   */
+  updateMethod: CodexUpdateMethod;
   latest: string | null;
   releaseUrl: string | null;
   updateAvailable: boolean;
@@ -25,6 +46,10 @@ export interface CodexUpdateCheckerOptions {
     version: string | null;
     path: string | null;
   }>;
+  /** Override install metadata detection (for tests). */
+  detectInstallMetadata?: (
+    installedPath: string | null,
+  ) => Promise<CodexInstallMetadata>;
   /** Refresh TTL in ms (default: 24h). */
   refreshTtlMs?: number;
 }
@@ -32,11 +57,18 @@ export interface CodexUpdateCheckerOptions {
 const INITIAL_STATUS: CodexUpdateStatus = {
   installed: null,
   installedPath: null,
+  installedPackage: null,
+  updateMethod: "manual",
   latest: null,
   releaseUrl: null,
   updateAvailable: false,
   lastCheckedAt: null,
   error: null,
+};
+
+const DEFAULT_INSTALL_METADATA: CodexInstallMetadata = {
+  installedPackage: null,
+  updateMethod: "manual",
 };
 
 export class CodexUpdateChecker {
@@ -48,11 +80,16 @@ export class CodexUpdateChecker {
   private readonly detectInstalled: NonNullable<
     CodexUpdateCheckerOptions["detectInstalled"]
   >;
+  private readonly detectInstallMetadata: NonNullable<
+    CodexUpdateCheckerOptions["detectInstallMetadata"]
+  >;
   private readonly refreshTtlMs: number;
 
   constructor(options: CodexUpdateCheckerOptions = {}) {
     this.fetchLatest = options.fetchLatest ?? fetchLatestFromGitHub;
     this.detectInstalled = options.detectInstalled ?? detectInstalledFromCli;
+    this.detectInstallMetadata =
+      options.detectInstallMetadata ?? detectInstallMetadataFromPath;
     this.refreshTtlMs = options.refreshTtlMs ?? DEFAULT_REFRESH_TTL_MS;
   }
 
@@ -78,10 +115,12 @@ export class CodexUpdateChecker {
   private async doRefresh(): Promise<CodexUpdateStatus> {
     let installed: string | null = null;
     let installedPath: string | null = null;
+    let installMetadata = DEFAULT_INSTALL_METADATA;
     try {
       const info = await this.detectInstalled();
       installed = normalizeVersion(info.version);
       installedPath = info.path;
+      installMetadata = await this.detectInstallMetadata(installedPath);
     } catch (error) {
       log.debug({ error }, "detectInstalled failed");
     }
@@ -106,6 +145,8 @@ export class CodexUpdateChecker {
     this.status = {
       installed,
       installedPath,
+      installedPackage: installMetadata.installedPackage,
+      updateMethod: installMetadata.updateMethod,
       latest,
       releaseUrl,
       updateAvailable,
@@ -125,6 +166,82 @@ async function detectInstalledFromCli(): Promise<{
     version: info.version ?? null,
     path: info.path ?? null,
   };
+}
+
+async function detectInstallMetadataFromPath(
+  installedPath: string | null,
+): Promise<CodexInstallMetadata> {
+  if (!installedPath) {
+    return { ...DEFAULT_INSTALL_METADATA };
+  }
+
+  let resolvedInstalledPath = path.resolve(installedPath);
+  try {
+    resolvedInstalledPath = await realpath(installedPath);
+  } catch {
+    // Keep the original resolved path if realpath fails (e.g. broken symlink).
+  }
+
+  const npmGlobalRoot = await getNpmGlobalRoot();
+  if (!npmGlobalRoot) {
+    return { ...DEFAULT_INSTALL_METADATA };
+  }
+
+  const installedPackage = extractNpmGlobalPackageName(
+    resolvedInstalledPath,
+    npmGlobalRoot,
+  );
+  if (!installedPackage) {
+    return { ...DEFAULT_INSTALL_METADATA };
+  }
+
+  return {
+    installedPackage,
+    updateMethod: "npm",
+  };
+}
+
+async function getNpmGlobalRoot(): Promise<string | null> {
+  try {
+    const { stdout } = await execAsync("npm root -g", {
+      encoding: "utf-8",
+    });
+    const npmGlobalRoot = stdout.trim();
+    if (!npmGlobalRoot) return null;
+    try {
+      return await realpath(npmGlobalRoot);
+    } catch {
+      return path.resolve(npmGlobalRoot);
+    }
+  } catch {
+    return null;
+  }
+}
+
+function extractNpmGlobalPackageName(
+  installedPath: string,
+  npmGlobalRoot: string,
+): string | null {
+  const relativePath = path.relative(npmGlobalRoot, installedPath);
+  if (
+    !relativePath ||
+    relativePath === ".." ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  ) {
+    return null;
+  }
+
+  const segments = relativePath.split(path.sep).filter(Boolean);
+  const firstSegment = segments[0];
+  if (!firstSegment) return null;
+
+  if (firstSegment.startsWith("@")) {
+    const secondSegment = segments[1];
+    return secondSegment ? `${firstSegment}/${secondSegment}` : null;
+  }
+
+  return firstSegment;
 }
 
 async function fetchLatestFromGitHub(): Promise<{
@@ -183,4 +300,8 @@ function splitVersion(v: string): { parts: number[]; pre: string | null } {
   return { parts, pre };
 }
 
-export const __testing__ = { normalizeVersion, compareVersions };
+export const __testing__ = {
+  normalizeVersion,
+  compareVersions,
+  extractNpmGlobalPackageName,
+};

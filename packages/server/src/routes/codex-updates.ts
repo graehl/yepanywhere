@@ -15,5 +15,10 @@ export function createCodexUpdateRoutes(deps: CodexUpdateRoutesDeps): Hono {
     return c.json({ status });
   });
 
+  app.post("/refresh", async (c) => {
+    const status = await codexUpdateChecker.getStatus({ force: true });
+    return c.json({ status });
+  });
+
   return app;
 }

@@ -75,8 +75,40 @@ Agents running inside YA can assume the effective TERM is
 cursor-movement, alternate-screen, or other non-color terminal
 features — those escapes are dropped.
 
+## LaTeX math (KaTeX)
+
+TeX math is rendered server-side via KaTeX. Two forms, same as Pandoc
+and most GitHub-style math extensions:
+
+- **Inline**: `$…$` — e.g. `the residual is $y - \hat{y}$ at step t`.
+  Requires non-space immediately after the opening `$` and before the
+  closing `$`; the closing `$` must not be followed by a digit or
+  another `$`. This means `$100 and $200` (currency) is left alone.
+- **Display / block**: `$$…$$` on its own — can span multiple lines.
+  Renders centered as a `div.katex-display` block.
+
+KaTeX is invoked with `throwOnError: false` and `strict: "ignore"`, so
+unknown commands render as a visible error span instead of failing the
+whole message. `\href` and other macros that could emit arbitrary
+attributes run with `trust: false`, so `javascript:` / `data:` URLs in
+math are rejected even though the KaTeX HTML bypasses the outer
+sanitize-html pass.
+
+When to use it:
+
+- Algorithm descriptions, loss functions, gradient derivations
+- Statistical notation in research-paper or log updates
+- Matrix / vector expressions in explanations
+
+Prefer the `$…$` / `$$…$$` syntax in message bodies over rendering
+equations as ASCII — the rendered output is clickable, selectable, and
+scales with font size. Inside fenced code blocks math is **not**
+rendered (code blocks are opaque to the math extension).
+
 ## Sanitization
 
 Rendered HTML is passed through `sanitize-html`. Disallowed tags are
 escaped (visible) rather than silently stripped, so oversights surface
-in the output.
+in the output. KaTeX output is substituted in after sanitization via
+placeholder spans, so KaTeX's own markup (spans, MathML) doesn't need
+to be added to the allowlist.

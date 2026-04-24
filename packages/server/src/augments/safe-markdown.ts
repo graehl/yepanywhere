@@ -1,3 +1,4 @@
+import katex from "katex";
 import {
   Marked,
   type RendererObject,
@@ -189,6 +190,86 @@ const markdownRenderer = new Marked({
   gfm: true,
 });
 
+// KaTeX output is generated inside the marked renderer and stashed in
+// this buffer; the renderer emits placeholder spans that survive
+// sanitize-html unchanged, and we substitute the real HTML back in
+// after sanitization. This keeps katex's complex span/svg markup out
+// of the sanitize allowlist while still running the rest of the
+// markdown through strict sanitization.
+//
+// Safe as module state because `renderSafeMarkdown` is synchronous and
+// Node is single-threaded — no interleaving is possible between reset
+// and substitute.
+let katexBuffer: string[] = [];
+
+function renderKatexPlaceholder(tex: string, displayMode: boolean): string {
+  let html: string;
+  try {
+    html = katex.renderToString(tex, {
+      throwOnError: false,
+      displayMode,
+      output: "html",
+      strict: "ignore",
+      trust: false,
+    });
+  } catch {
+    html = `<span class="katex-error">${escapeHtml(tex)}</span>`;
+  }
+  const id = katexBuffer.length;
+  katexBuffer.push(html);
+  return `<span class="yepkatex-placeholder yepkatex-id-${id}"></span>`;
+}
+
+markdownRenderer.use({
+  extensions: [
+    {
+      name: "mathBlock",
+      level: "block",
+      start(src: string) {
+        const idx = src.indexOf("$$");
+        return idx < 0 ? undefined : idx;
+      },
+      tokenizer(src: string) {
+        const match = /^\$\$\s*([\s\S]+?)\s*\$\$(?:\n|$)/.exec(src);
+        if (!match) return undefined;
+        return {
+          type: "mathBlock",
+          raw: match[0],
+          text: match[1] ?? "",
+        };
+      },
+      renderer(token) {
+        const tex = (token as { text?: string }).text ?? "";
+        return renderKatexPlaceholder(tex, true);
+      },
+    },
+    {
+      name: "mathInline",
+      level: "inline",
+      start(src: string) {
+        const idx = src.indexOf("$");
+        return idx < 0 ? undefined : idx;
+      },
+      tokenizer(src: string) {
+        // Require non-space immediately after opening $ and before
+        // closing $; require non-digit/non-$ after closing $ to avoid
+        // matching prices like "$100 and $200".
+        const match = /^\$(?!\s)([^\n$]+?)(?<!\s)\$(?![\d$])/.exec(src);
+        if (!match) return undefined;
+        return {
+          type: "mathInline",
+          raw: match[0],
+          text: match[1] ?? "",
+        };
+      },
+      renderer(token) {
+        const tex = (token as { text?: string }).text ?? "";
+        return renderKatexPlaceholder(tex, false);
+      },
+    },
+  ],
+});
+
 markdownRenderer.use({ renderer });
 
 /**
@@ -224,10 +305,16 @@ export function sanitizeUrl(
  * Render markdown to sanitized HTML with raw HTML disabled.
  */
 export function renderSafeMarkdown(markdown: string): string {
+  katexBuffer = [];
   const rendered = markdownRenderer.parse(markdown, { async: false });
   const html = typeof rendered === "string" ? rendered : "";
   const sanitized = sanitizeHtml(html, MARKDOWN_SANITIZE_OPTIONS);
-  return sanitized.trim();
+  const substituted = sanitized.replace(
+    /<span class="yepkatex-placeholder yepkatex-id-(\d+)"><\/span>/g,
+    (_match, idxStr) => katexBuffer[Number(idxStr)] ?? "",
+  );
+  katexBuffer = [];
+  return substituted.trim();
 }
 
 function escapeHtml(text: string): string {

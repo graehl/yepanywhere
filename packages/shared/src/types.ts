@@ -56,6 +56,19 @@ export interface ModelInfo {
   parentModel?: string;
   /** Quantization level, e.g. "Q4_K_M" */
   quantizationLevel?: string;
+  /** Provider-reported default marker, when available. */
+  isDefault?: boolean;
+  /** Provider-reported default reasoning effort, when available. */
+  defaultReasoningEffort?: string;
+  /** Provider-reported supported reasoning efforts, when available. */
+  supportedReasoningEfforts?: Array<{
+    reasoningEffort: string;
+    description?: string;
+  }>;
+  /** Provider-reported input modalities, e.g. text/image. */
+  inputModalities?: string[];
+  /** Provider-reported personality support. */
+  supportsPersonality?: boolean;
 }
 
 /**

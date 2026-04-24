@@ -5,7 +5,7 @@
  * server-initiated permission requests (command/file approval).
  */
 
-import { type ChildProcess, exec, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import type { ModelInfo } from "@yep-anywhere/shared";
 import {
@@ -67,7 +67,7 @@ import type {
 } from "./types.js";
 
 const log = getLogger().child({ component: "codex-provider" });
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 function logSdkCorrelationDebug(
   sessionId: string,
@@ -113,6 +113,7 @@ const MODEL_LIST_TIMEOUT_MS = 8000;
 const APP_SERVER_INIT_REQUEST_ID = 1;
 const APP_SERVER_MODEL_LIST_REQUEST_ID = 2;
 const APP_SERVER_SHUTDOWN_GRACE_MS = 1500;
+const CODEX_CLI_GPT55_MIN_VERSION = "0.124.0";
 
 /**
  * Local debug knobs for Codex app-server policy behavior.
@@ -137,7 +138,11 @@ const DECLARE_CODEX_ORIGINATOR = true;
 const DECLARED_CODEX_ORIGINATOR = "Codex Desktop";
 
 const PREFERRED_MODEL_ORDER = [
+  "gpt-5.5",
+  "gpt-5.4",
+  "gpt-5.4-mini",
   "gpt-5.3-codex",
+  "gpt-5.3-codex-spark",
   "gpt-5.2-codex",
   "gpt-5.1-codex-max",
   "gpt-5.2",
@@ -145,6 +150,93 @@ const PREFERRED_MODEL_ORDER = [
 ] as const;
 
 const FALLBACK_CODEX_MODELS: ModelInfo[] = [
+  {
+    id: "gpt-5.5",
+    name: "GPT-5.5",
+    description:
+      "Frontier model for complex coding, research, and real-world work.",
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: [
+      {
+        reasoningEffort: "low",
+        description: "Fast responses with lighter reasoning",
+      },
+      {
+        reasoningEffort: "medium",
+        description: "Balances speed and reasoning depth for everyday tasks",
+      },
+      {
+        reasoningEffort: "high",
+        description: "Greater reasoning depth for complex problems",
+      },
+      {
+        reasoningEffort: "xhigh",
+        description: "Extra high reasoning depth for complex problems",
+      },
+    ],
+    inputModalities: ["text", "image"],
+    supportsPersonality: true,
+  },
+  {
+    id: "gpt-5.4",
+    name: "GPT-5.4",
+    description: "Strong model for everyday coding.",
+    isDefault: true,
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: [
+      {
+        reasoningEffort: "low",
+        description: "Fast responses with lighter reasoning",
+      },
+      {
+        reasoningEffort: "medium",
+        description: "Balances speed and reasoning depth for everyday tasks",
+      },
+      {
+        reasoningEffort: "high",
+        description: "Greater reasoning depth for complex problems",
+      },
+      {
+        reasoningEffort: "xhigh",
+        description: "Extra high reasoning depth for complex problems",
+      },
+    ],
+    inputModalities: ["text", "image"],
+    supportsPersonality: true,
+  },
+  {
+    id: "gpt-5.4-mini",
+    name: "GPT-5.4-Mini",
+    description:
+      "Small, fast, and cost-efficient model for simpler coding tasks.",
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: [
+      {
+        reasoningEffort: "low",
+        description: "Fast responses with lighter reasoning",
+      },
+      {
+        reasoningEffort: "medium",
+        description: "Balances speed and reasoning depth for everyday tasks",
+      },
+      {
+        reasoningEffort: "high",
+        description: "Greater reasoning depth for complex problems",
+      },
+      {
+        reasoningEffort: "xhigh",
+        description: "Extra high reasoning depth for complex problems",
+      },
+    ],
+    inputModalities: ["text", "image"],
+    supportsPersonality: true,
+  },
+  { id: "gpt-5.3-codex", name: "GPT-5.3-Codex" },
+  { id: "gpt-5.3-codex-spark", name: "GPT-5.3-Codex-Spark" },
+  { id: "gpt-5.2", name: "GPT-5.2" },
+];
+
+const LEGACY_FALLBACK_CODEX_MODELS: ModelInfo[] = [
   { id: "gpt-5.3-codex", name: "GPT-5.3-Codex" },
   { id: "gpt-5.2-codex", name: "GPT-5.2-Codex" },
   { id: "gpt-5.1-codex-max", name: "GPT-5.1-Codex-Max" },
@@ -181,6 +273,16 @@ interface AppServerModel {
   displayName?: string;
   description?: string;
   upgrade?: string | null;
+  upgradeInfo?: { model?: string | null } | null;
+  hidden?: boolean | null;
+  isDefault?: boolean | null;
+  defaultReasoningEffort?: string | null;
+  supportedReasoningEfforts?: Array<{
+    reasoningEffort?: string | null;
+    description?: string | null;
+  }> | null;
+  inputModalities?: string[] | null;
+  supportsPersonality?: boolean | null;
 }
 
 interface TokenUsageSnapshot {
@@ -192,6 +294,41 @@ interface TokenUsageSnapshot {
 interface CodexTurnRuntimeState {
   threadId: string;
   activeTurnId: string | null;
+}
+
+function normalizeSemver(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const match = raw.match(/(\d+)\.(\d+)\.(\d+)(?:-([\w.]+))?/);
+  if (!match) return null;
+  const [, major, minor, patch, pre] = match;
+  return pre ? `${major}.${minor}.${patch}-${pre}` : `${major}.${minor}.${patch}`;
+}
+
+function compareSemver(a: string, b: string): number {
+  const parsedA = splitSemver(a);
+  const parsedB = splitSemver(b);
+  for (let i = 0; i < 3; i++) {
+    const partA = parsedA.parts[i] ?? 0;
+    const partB = parsedB.parts[i] ?? 0;
+    if (partA !== partB) return partA < partB ? -1 : 1;
+  }
+  if (parsedA.pre === null && parsedB.pre === null) return 0;
+  if (parsedA.pre === null) return 1;
+  if (parsedB.pre === null) return -1;
+  return parsedA.pre < parsedB.pre ? -1 : parsedA.pre > parsedB.pre ? 1 : 0;
+}
+
+function splitSemver(version: string): { parts: number[]; pre: string | null } {
+  const dashIndex = version.indexOf("-");
+  const core = dashIndex === -1 ? version : version.slice(0, dashIndex);
+  const pre = dashIndex === -1 ? null : version.slice(dashIndex + 1);
+  return {
+    parts: core.split(".").map((part) => {
+      const parsed = Number.parseInt(part, 10);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }),
+    pre,
+  };
 }
 
 async function terminateChildProcess(
@@ -735,7 +872,7 @@ export class CodexProvider implements AgentProvider {
     }
 
     if (models.length === 0) {
-      models = FALLBACK_CODEX_MODELS;
+      models = await this.getFallbackCodexModels();
     }
 
     this.modelCache = {
@@ -906,35 +1043,140 @@ export class CodexProvider implements AgentProvider {
     const orderLookup = new Map<string, number>(
       PREFERRED_MODEL_ORDER.map((id, idx) => [id, idx]),
     );
-    const deduped = new Map<string, ModelInfo>();
+    const deduped = new Map<
+      string,
+      { model: ModelInfo; serverIndex: number }
+    >();
 
-    for (const model of models) {
+    for (const [serverIndex, model] of models.entries()) {
+      if (model.hidden === true) continue;
+
       const modelId = (model.model || model.id || "").trim();
       if (!modelId) continue;
 
       deduped.set(modelId, {
-        id: modelId,
-        name: this.formatModelName(model.displayName || modelId),
-        description: model.description,
+        model: {
+          id: modelId,
+          name: this.formatModelName(model.displayName || modelId),
+          description: model.description,
+          ...(model.isDefault === true ? { isDefault: true } : {}),
+          ...this.normalizeModelReasoningMetadata(model),
+          ...(Array.isArray(model.inputModalities)
+            ? { inputModalities: model.inputModalities }
+            : {}),
+          ...(typeof model.supportsPersonality === "boolean"
+            ? { supportsPersonality: model.supportsPersonality }
+            : {}),
+        },
+        serverIndex,
       });
 
-      const upgradeId = model.upgrade?.trim();
+      const upgradeId =
+        model.upgrade?.trim() ||
+        (typeof model.upgradeInfo?.model === "string"
+          ? model.upgradeInfo.model.trim()
+          : "");
       if (upgradeId && !deduped.has(upgradeId)) {
         deduped.set(upgradeId, {
-          id: upgradeId,
-          name: this.formatModelName(upgradeId),
+          model: {
+            id: upgradeId,
+            name: this.formatModelName(upgradeId),
+          },
+          serverIndex,
         });
       }
     }
 
     return [...deduped.values()]
-      .map((model, index) => ({
-        model,
+      .map((entry, index) => ({
+        model: entry.model,
         index,
-        rank: orderLookup.get(model.id) ?? PREFERRED_MODEL_ORDER.length + index,
+        rank: this.getModelSortRank(
+          entry.model,
+          entry.serverIndex,
+          orderLookup,
+        ),
       }))
-      .sort((a, b) => a.rank - b.rank)
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
       .map((entry) => entry.model);
+  }
+
+  private normalizeModelReasoningMetadata(
+    model: AppServerModel,
+  ): Pick<ModelInfo, "defaultReasoningEffort" | "supportedReasoningEfforts"> {
+    const metadata: Pick<
+      ModelInfo,
+      "defaultReasoningEffort" | "supportedReasoningEfforts"
+    > = {};
+    if (typeof model.defaultReasoningEffort === "string") {
+      metadata.defaultReasoningEffort = model.defaultReasoningEffort;
+    }
+    if (Array.isArray(model.supportedReasoningEfforts)) {
+      const efforts = model.supportedReasoningEfforts
+        .map((effort) => {
+          if (typeof effort.reasoningEffort !== "string") return null;
+          return {
+            reasoningEffort: effort.reasoningEffort,
+            ...(typeof effort.description === "string"
+              ? { description: effort.description }
+              : {}),
+          };
+        })
+        .filter(
+          (
+            effort,
+          ): effort is {
+            reasoningEffort: string;
+            description?: string;
+          } => effort !== null,
+        );
+      if (efforts.length > 0) {
+        metadata.supportedReasoningEfforts = efforts;
+      }
+    }
+    return metadata;
+  }
+
+  private getModelSortRank(
+    model: ModelInfo,
+    serverIndex: number,
+    orderLookup: Map<string, number>,
+  ): number {
+    if (model.id === "gpt-5.5") {
+      return 0;
+    }
+    if (model.isDefault) {
+      return 1;
+    }
+    const preferredRank = orderLookup.get(model.id);
+    if (preferredRank !== undefined) {
+      return 2 + preferredRank;
+    }
+    return 2 + PREFERRED_MODEL_ORDER.length + serverIndex;
+  }
+
+  private async getFallbackCodexModels(): Promise<ModelInfo[]> {
+    const version = await this.getInstalledCodexCliVersion();
+    if (
+      version &&
+      compareSemver(version, CODEX_CLI_GPT55_MIN_VERSION) < 0
+    ) {
+      return LEGACY_FALLBACK_CODEX_MODELS;
+    }
+    return FALLBACK_CODEX_MODELS;
+  }
+
+  private async getInstalledCodexCliVersion(): Promise<string | null> {
+    try {
+      const codexCommand = await this.resolveCodexCommand();
+      const { stdout } = await execFileAsync(codexCommand, ["--version"], {
+        encoding: "utf-8",
+        timeout: 3000,
+      });
+      return normalizeSemver(stdout);
+    } catch {
+      return null;
+    }
   }
 
   private formatModelName(value: string): string {

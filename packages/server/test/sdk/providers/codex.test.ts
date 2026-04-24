@@ -478,6 +478,95 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
+  it("prefers GPT-5.5 over Codex's model/list default when available", () => {
+    const provider = createTestProvider() as unknown as {
+      normalizeModelList: (models: unknown[]) => Array<{
+        id: string;
+        name: string;
+        isDefault?: boolean;
+        defaultReasoningEffort?: string;
+        supportedReasoningEfforts?: Array<{
+          reasoningEffort: string;
+          description?: string;
+        }>;
+        inputModalities?: string[];
+        supportsPersonality?: boolean;
+      }>;
+    };
+
+    const models = provider.normalizeModelList([
+      {
+        id: "gpt-5.4",
+        model: "gpt-5.4",
+        displayName: "gpt-5.4",
+        description: "Strong model for everyday coding.",
+        isDefault: true,
+        defaultReasoningEffort: "medium",
+        supportedReasoningEfforts: [
+          {
+            reasoningEffort: "low",
+            description: "Fast responses with lighter reasoning",
+          },
+          {
+            reasoningEffort: "medium",
+            description: "Balanced speed and reasoning",
+          },
+        ],
+        inputModalities: ["text", "image"],
+        supportsPersonality: true,
+      },
+      {
+        id: "gpt-5.5",
+        model: "gpt-5.5",
+        displayName: "GPT-5.5",
+        description: "Frontier model.",
+        isDefault: false,
+        defaultReasoningEffort: "medium",
+        supportedReasoningEfforts: [
+          {
+            reasoningEffort: "high",
+            description: "Greater reasoning depth",
+          },
+        ],
+        inputModalities: ["text", "image"],
+        supportsPersonality: true,
+      },
+      {
+        id: "gpt-5.3-codex",
+        model: "gpt-5.3-codex",
+        upgrade: "gpt-5.4",
+        hidden: false,
+      },
+      {
+        id: "internal-hidden",
+        model: "internal-hidden",
+        hidden: true,
+      },
+    ]);
+
+    expect(models.map((model) => model.id)).toEqual([
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.3-codex",
+    ]);
+    expect(models[0]).toMatchObject({
+      name: "GPT-5.5",
+      defaultReasoningEffort: "medium",
+      supportedReasoningEfforts: [
+        {
+          reasoningEffort: "high",
+          description: "Greater reasoning depth",
+        },
+      ],
+      inputModalities: ["text", "image"],
+      supportsPersonality: true,
+    });
+    expect(models[1]).toMatchObject({
+      isDefault: true,
+      inputModalities: ["text", "image"],
+    });
+  });
+
   it("opts into experimental thread flags when experimental API is negotiated", () => {
     const provider = createTestProvider() as unknown as {
       createThreadStartParams: (

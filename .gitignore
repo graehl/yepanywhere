@@ -41,6 +41,7 @@ test-results/
 .temp/
 docs/tasks/schema-report.json
 docs/investigations/
+tasks/
 
 # Yep Anywhere local data
 .yep-anywhere/

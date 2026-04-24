@@ -1,6 +1,5 @@
 import {
   type ContextUsage,
-  type ModelOption,
   type PermissionRules,
   type ProviderName,
   type ThinkingOption,
@@ -42,7 +41,7 @@ import type {
   Supervisor,
 } from "../supervisor/Supervisor.js";
 import type { QueuedResponse } from "../supervisor/WorkerQueue.js";
-import type { ContentBlock, Message, Project } from "../supervisor/types.js";
+import type { ContentBlock, Message, Project, Session } from "../supervisor/types.js";
 import {
   isValidSshHostAlias,
   normalizeSshHostAlias,
@@ -126,7 +125,7 @@ interface StartSessionBody {
   documents?: string[];
   attachments?: UploadedFile[];
   mode?: PermissionMode;
-  model?: ModelOption;
+  model?: string;
   thinking?: ThinkingOption;
   provider?: ProviderName;
   /** Client-generated temp ID for optimistic UI tracking */
@@ -139,7 +138,7 @@ interface StartSessionBody {
 
 interface CreateSessionBody {
   mode?: PermissionMode;
-  model?: ModelOption;
+  model?: string;
   thinking?: ThinkingOption;
   provider?: ProviderName;
   /** SSH host alias for remote execution (undefined = local) */
@@ -153,6 +152,220 @@ interface InputResponseBody {
   response: "approve" | "approve_accept_edits" | "deny" | string;
   answers?: Record<string, string>;
   feedback?: string;
+}
+
+interface RestartSessionBody extends CreateSessionBody {
+  reason?: string;
+}
+
+const RESTART_HANDOFF_MAX_CHARS = 40_000;
+const RESTART_HANDOFF_MESSAGE_MAX_CHARS = 6_000;
+const RESTART_HANDOFF_JSON_MAX_CHARS = 2_000;
+
+function truncateForRestart(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+  const omitted = text.length - maxChars;
+  return `${text.slice(0, maxChars).trimEnd()}\n[truncated ${omitted} chars]`;
+}
+
+function stringifyForRestart(value: unknown, maxChars: number): string {
+  if (typeof value === "string") {
+    return truncateForRestart(value, maxChars);
+  }
+  try {
+    return truncateForRestart(JSON.stringify(value, null, 2), maxChars);
+  } catch {
+    return "[unserializable content]";
+  }
+}
+
+function renderRestartContent(content: unknown): string {
+  if (content === undefined || content === null) {
+    return "";
+  }
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return stringifyForRestart(content, RESTART_HANDOFF_JSON_MAX_CHARS);
+  }
+
+  return content
+    .map((block) => {
+      if (typeof block === "string") {
+        return block;
+      }
+      if (!block || typeof block !== "object") {
+        return "";
+      }
+
+      const typed = block as ContentBlock;
+      switch (typed.type) {
+        case "text":
+          return typed.text ?? "";
+        case "thinking":
+          return typed.thinking ? `[thinking]\n${typed.thinking}` : "[thinking]";
+        case "tool_use":
+          return `[tool_use ${typed.name ?? "unknown"}]\n${stringifyForRestart(
+            typed.input,
+            RESTART_HANDOFF_JSON_MAX_CHARS,
+          )}`;
+        case "tool_result":
+          return `[tool_result${typed.is_error ? " error" : ""} ${
+            typed.tool_use_id ?? ""
+          }]\n${renderRestartContent(typed.content)}`;
+        case "image":
+        case "input_image":
+          return "[image]";
+        case "document":
+          return "[document]";
+        default:
+          return `[${typed.type}]\n${stringifyForRestart(
+            typed,
+            RESTART_HANDOFF_JSON_MAX_CHARS,
+          )}`;
+      }
+    })
+    .filter((part) => part.trim().length > 0)
+    .join("\n\n");
+}
+
+function formatRestartMessage(message: Message): string | null {
+  const nested = message.message as
+    | { role?: unknown; content?: unknown }
+    | undefined;
+  const role =
+    (typeof nested?.role === "string" && nested.role) ||
+    (typeof message.role === "string" && message.role) ||
+    message.type ||
+    "message";
+  const timestamp =
+    typeof message.timestamp === "string" && message.timestamp.trim()
+      ? ` ${message.timestamp}`
+      : "";
+  const content =
+    renderRestartContent(nested?.content) ||
+    renderRestartContent((message as { content?: unknown }).content) ||
+    (message.toolUse
+      ? `[tool_use ${message.toolUse.name}]\n${stringifyForRestart(
+          message.toolUse.input,
+          RESTART_HANDOFF_JSON_MAX_CHARS,
+        )}`
+      : "") ||
+    (message.toolUseResult !== undefined
+      ? `[tool_result]\n${renderRestartContent(message.toolUseResult)}`
+      : "");
+  const subtype =
+    typeof message.subtype === "string" ? `:${message.subtype}` : "";
+  const trimmed = content.trim();
+
+  if (!trimmed && !subtype) {
+    return null;
+  }
+
+  return `### ${role}${subtype}${timestamp}\n\n${truncateForRestart(
+    trimmed || "[no textual content]",
+    RESTART_HANDOFF_MESSAGE_MAX_CHARS,
+  )}`;
+}
+
+function buildRestartTranscript(messages: Message[]): {
+  transcript: string;
+  omittedCount: number;
+} {
+  const formatted = messages
+    .map(formatRestartMessage)
+    .filter((message): message is string => Boolean(message));
+  const selected: string[] = [];
+  let used = 0;
+
+  for (let index = formatted.length - 1; index >= 0; index -= 1) {
+    const next = formatted[index];
+    if (!next) continue;
+    const nextSize = next.length + 2;
+    if (selected.length > 0 && used + nextSize > RESTART_HANDOFF_MAX_CHARS) {
+      break;
+    }
+    selected.push(next);
+    used += nextSize;
+    if (used >= RESTART_HANDOFF_MAX_CHARS) {
+      break;
+    }
+  }
+
+  selected.reverse();
+  return {
+    transcript: selected.join("\n\n"),
+    omittedCount: Math.max(0, formatted.length - selected.length),
+  };
+}
+
+function deriveRestartTitle(title: string | null | undefined): string {
+  const suffix = " [restart]";
+  const base = title?.trim() || "Restarted session";
+  const maxBaseLength = 120 - suffix.length;
+  const trimmedBase =
+    base.length > maxBaseLength
+      ? `${base.slice(0, maxBaseLength - 3).trimEnd()}...`
+      : base;
+  return `${trimmedBase}${suffix}`;
+}
+
+function buildRestartHandoff(params: {
+  sourceSession: Session;
+  sourceProvider?: ProviderName;
+  sourceModel?: string;
+  sourceProcess?: Process;
+  projectPath: string;
+  reason?: string;
+  omittedCount: number;
+  transcript: string;
+}): string {
+  const {
+    sourceSession,
+    sourceProvider,
+    sourceModel,
+    sourceProcess,
+    projectPath,
+    reason,
+    omittedCount,
+    transcript,
+  } = params;
+  const oldProcessLine = sourceProcess
+    ? `- Previous YA process: ${sourceProcess.id} (${sourceProcess.state.type})`
+    : "- Previous YA process: none active";
+  const omittedLine =
+    omittedCount > 0
+      ? `\n${omittedCount} older rendered messages were omitted to keep this restart handoff bounded.`
+      : "";
+
+  return [
+    "# Restart Handoff",
+    "",
+    "Yep Anywhere is starting this as a fresh agent session because the previous process became unhealthy or was manually restarted.",
+    "Treat the transcript below as context, not as a new request to repeat. Continue the user's latest unresolved work after checking the live repository state.",
+    "",
+    "## Source Session",
+    "",
+    `- Session ID: ${sourceSession.id}`,
+    `- Project path: ${projectPath}`,
+    `- Provider: ${sourceProvider ?? sourceSession.provider}`,
+    `- Model: ${sourceModel ?? sourceSession.model ?? "unknown"}`,
+    oldProcessLine,
+    reason ? `- Restart reason: ${reason}` : undefined,
+    "",
+    "## Recent Transcript",
+    omittedLine,
+    transcript || "[No textual transcript was available.]",
+  ]
+    .filter((line): line is string => line !== undefined)
+    .join("\n");
+}
+
+function isRestartReplacementActivity(message: SDKMessage): boolean {
+  return message.type === "assistant";
 }
 
 /**
@@ -370,6 +583,124 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (executor) {
       await deps.sessionMetadataService.setExecutor(sessionId, executor);
     }
+  };
+
+  const loadRestartSourceSession = async (
+    project: Project,
+    sessionId: string,
+    projectId: UrlProjectId,
+    preferredProvider?: ProviderName,
+    process?: Process,
+  ): Promise<Session | null> => {
+    const resolved = await findSessionSummaryAcrossProviders(
+      project,
+      sessionId,
+      projectId,
+      {
+        readerFactory: deps.readerFactory,
+        codexSessionsDir: deps.codexSessionsDir,
+        codexReaderFactory: deps.codexReaderFactory,
+        geminiSessionsDir: deps.geminiSessionsDir,
+        geminiReaderFactory: deps.geminiReaderFactory,
+        geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
+      },
+      preferredProvider,
+    );
+
+    if (resolved) {
+      const loaded = await resolved.source.reader.getSession(
+        sessionId,
+        projectId,
+        undefined,
+        { includeOrphans: false },
+      );
+      if (loaded) {
+        return normalizeSession(loaded);
+      }
+    }
+
+    if (process) {
+      const messages = sdkMessagesToClientMessages(process.getMessageHistory());
+      return {
+        id: sessionId,
+        projectId,
+        title: null,
+        fullTitle: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        messageCount: messages.length,
+        ownership: {
+          owner: "self",
+          processId: process.id,
+          permissionMode: process.permissionMode,
+          modeVersion: process.modeVersion,
+        },
+        provider: process.provider,
+        model: process.resolvedModel ?? process.model,
+        messages,
+      };
+    }
+
+    return null;
+  };
+
+  const interruptOldProcessForHandoff = async (
+    oldProcess: Process | undefined,
+  ): Promise<boolean> => {
+    if (!oldProcess) {
+      return false;
+    }
+    try {
+      const result = await deps.supervisor.interruptProcess(oldProcess.id);
+      return result.success;
+    } catch (error) {
+      console.warn(
+        `[restart] Failed to interrupt old process ${oldProcess.id}:`,
+        error,
+      );
+      return false;
+    }
+  };
+
+  const abortOldProcessAfterReplacementActivity = (
+    oldProcess: Process | undefined,
+    replacement: Process,
+  ): boolean => {
+    if (!oldProcess || oldProcess.id === replacement.id) {
+      return false;
+    }
+
+    let unsubscribe: (() => void) | null = null;
+    let finished = false;
+    const cleanup = () => {
+      if (finished) return;
+      finished = true;
+      unsubscribe?.();
+      unsubscribe = null;
+    };
+
+    unsubscribe = replacement.subscribe((event) => {
+      if (event.type === "message" && isRestartReplacementActivity(event.message)) {
+        cleanup();
+        void deps.supervisor.abortProcess(oldProcess.id).catch((error) => {
+          console.warn(
+            `[restart] Failed to abort old process ${oldProcess.id}:`,
+            error,
+          );
+        });
+        return;
+      }
+
+      if (
+        event.type === "terminated" ||
+        event.type === "complete" ||
+        event.type === "error"
+      ) {
+        cleanup();
+      }
+    });
+
+    return true;
   };
 
   const ensureDetachedProjectPath = async (
@@ -1280,6 +1611,152 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       processId: result.id,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+    });
+  });
+
+  // POST /api/projects/:projectId/sessions/:sessionId/restart
+  // Start a fresh session from a bounded handoff, then terminate the old YA-owned process.
+  routes.post("/projects/:projectId/sessions/:sessionId/restart", async (c) => {
+    const projectId = c.req.param("projectId");
+    const sessionId = c.req.param("sessionId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getOrCreateProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found or path does not exist" }, 404);
+    }
+
+    let body: RestartSessionBody = {};
+    try {
+      body = await c.req.json<RestartSessionBody>();
+    } catch {
+      // Body is optional for this endpoint.
+    }
+
+    const parsedBodyExecutor = parseOptionalExecutor(body.executor);
+    if (parsedBodyExecutor.error) {
+      return c.json({ error: parsedBodyExecutor.error }, 400);
+    }
+
+    let executor = parsedBodyExecutor.executor;
+    if (!executor) {
+      const parsedSavedExecutor = parseOptionalExecutor(
+        deps.sessionMetadataService?.getExecutor(sessionId),
+      );
+      if (parsedSavedExecutor.error) {
+        return c.json({ error: parsedSavedExecutor.error }, 400);
+      }
+      executor = parsedSavedExecutor.executor;
+    }
+
+    const oldProcess = deps.supervisor.getProcessForSession(sessionId);
+    const metadataProvider = deps.sessionMetadataService?.getProvider(
+      sessionId,
+    ) as ProviderName | undefined;
+    const sourceProvider =
+      metadataProvider ?? oldProcess?.provider ?? body.provider ?? project.provider;
+    const oldProcessInterrupted =
+      await interruptOldProcessForHandoff(oldProcess);
+    const sourceSession = await loadRestartSourceSession(
+      project,
+      sessionId,
+      projectId,
+      sourceProvider,
+      oldProcess,
+    );
+
+    if (!sourceSession) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+
+    const providerName = body.provider ?? sourceSession.provider ?? sourceProvider;
+    const { transcript, omittedCount } = buildRestartTranscript(
+      sourceSession.messages,
+    );
+    const handoff = buildRestartHandoff({
+      sourceSession,
+      sourceProvider,
+      sourceModel: oldProcess?.resolvedModel ?? sourceSession.model,
+      sourceProcess: oldProcess,
+      projectPath: project.path,
+      reason: body.reason,
+      omittedCount,
+      transcript,
+    });
+
+    const { thinking, effort } = body.thinking
+      ? thinkingOptionToConfig(body.thinking)
+      : { thinking: undefined, effort: undefined };
+    const model =
+      body.model && body.model !== "default" ? body.model : undefined;
+
+    const result = await deps.supervisor.startSession(
+      project.path,
+      {
+        text: handoff,
+        mode: body.mode,
+      },
+      body.mode,
+      {
+        model,
+        thinking,
+        effort,
+        providerName,
+        executor,
+        globalInstructions: getGlobalInstructions(),
+        permissions: body.permissions,
+      },
+    );
+
+    if (isQueueFullResponse(result)) {
+      return c.json(
+        { error: "Queue is full", maxQueueSize: result.maxQueueSize },
+        503,
+      );
+    }
+
+    if (isQueuedResponse(result)) {
+      deps.supervisor.cancelQueuedRequest(result.queueId);
+      return c.json(
+        {
+          error:
+            "Restart could not start immediately; old process was left running",
+        },
+        503,
+      );
+    }
+
+    await persistLaunchMetadata(result.sessionId, providerName, executor);
+    if (deps.sessionMetadataService) {
+      const originalMetadata = deps.sessionMetadataService.getMetadata(sessionId);
+      await deps.sessionMetadataService.updateMetadata(result.sessionId, {
+        title: deriveRestartTitle(
+          originalMetadata?.customTitle ?? sourceSession.title,
+        ),
+      });
+    }
+
+    const oldProcessAbortDeferred = abortOldProcessAfterReplacementActivity(
+      oldProcess,
+      result,
+    );
+
+    return c.json({
+      sessionId: result.sessionId,
+      processId: result.id,
+      projectId: result.projectId,
+      provider: result.provider,
+      model: result.resolvedModel ?? result.model,
+      permissionMode: result.permissionMode,
+      modeVersion: result.modeVersion,
+      restartedFrom: sessionId,
+      oldProcessId: oldProcess?.id,
+      oldProcessInterrupted,
+      oldProcessAbortDeferred,
+      oldProcessAborted: false,
     });
   });
 

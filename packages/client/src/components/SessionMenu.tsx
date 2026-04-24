@@ -20,6 +20,10 @@ export interface SessionMenuProps {
   onRename: () => void;
   /** Called after successful clone with the new session ID */
   onClone?: (newSessionId: string) => void | Promise<void>;
+  /** Called to request compaction in the current session */
+  onCompact?: () => void | Promise<void>;
+  /** Called to hand off the session into a fresh agent session */
+  onHandoff?: () => void | Promise<void>;
   /** Called to terminate the session's process */
   onTerminate?: () => void | Promise<void>;
   /** Called to configure session heartbeat settings */
@@ -53,6 +57,8 @@ export function SessionMenu({
   onToggleRead,
   onRename,
   onClone,
+  onCompact,
+  onHandoff,
   onTerminate,
   onConfigureHeartbeat,
   warningRestoreAvailable = false,
@@ -321,6 +327,44 @@ export function SessionMenu({
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
           {isCloning ? t("sessionMenuCloning") : t("sessionMenuClone")}
+        </button>
+      )}
+      {onCompact && (
+        <button type="button" onClick={() => handleAction(onCompact)}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M4 14h6v6" />
+            <path d="m4 20 7-7" />
+            <path d="M20 10h-6V4" />
+            <path d="m20 4-7 7" />
+          </svg>
+          {t("sessionMenuCompact")}
+        </button>
+      )}
+      {onHandoff && (
+        <button type="button" onClick={() => handleAction(onHandoff)}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M17 1l4 4-4 4" />
+            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+            <path d="M7 23l-4-4 4-4" />
+            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+          </svg>
+          {t("sessionMenuHandoff")}
         </button>
       )}
       {sharingConfigured && onShare && (

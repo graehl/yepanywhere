@@ -7,6 +7,11 @@ When work is split into multiple completed parts, land each part directly on
 feature branches. Only use stacked PRs when the user explicitly asks for that
 workflow.
 
+Do not apply the usual branch-per-task discipline in this project for now.
+Work on `main` by default; deal with concurrent agents and unrelated WIP
+manually by reading the dirty tree carefully, keeping edits scoped, and
+sculpting commits rather than creating a branch per task.
+
 ## Remotes: origin vs kzahel
 
 `origin` is `graehl/yepanywhere` on GitHub — that is where we push. `main`
@@ -55,6 +60,18 @@ Did not work:
 - A single root `pnpm vitest <client files> <server files>` invocation
   without splitting environments. The root runner defaults to Node, so
   client RTL tests fail with `document is not defined`.
+
+## Local Task Files
+
+`tasks/` is local and gitignored in this clone. Do not create a task file for
+minor requests or small self-contained fixes; reserve task files for follow-up
+work that is likely to span sessions, need design notes, or produce a later YA
+mitigation/upstream PR.
+
+When task files do exist, treat them as real follow-up inventory. Check and
+update the relevant task when resuming that line of work. Cite any related task
+file in planning and again when concluding a feature/bugfix request, and suggest
+the next useful task follow-up when it would help the user steer future work.
 
 ## Host Tooling Constraints
 

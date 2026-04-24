@@ -111,12 +111,24 @@ function withCodexTimestamp<T extends SDKMessage>(
   } as TimestampedSDKMessage<T>;
 }
 
+function stringifyTraceValue(value: unknown): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 const MODEL_CACHE_TTL_MS = 60 * 60 * 1000;
 const MODEL_LIST_TIMEOUT_MS = 8000;
 const APP_SERVER_INIT_REQUEST_ID = 1;
 const APP_SERVER_MODEL_LIST_REQUEST_ID = 2;
 const APP_SERVER_SHUTDOWN_GRACE_MS = 1500;
 const CODEX_CLI_GPT55_MIN_VERSION = "0.124.0";
+const CODEX_FAILURE_TRACE_LIMIT = 12;
+const CODEX_FAILURE_PREVIEW_CHARS = 240;
 
 /**
  * Local debug knobs for Codex app-server policy behavior.
@@ -392,6 +404,36 @@ interface CodexLiveEventState {
   toolCallContexts: Map<string, CodexToolCallContext>;
 }
 
+interface CodexFailureTraceEvent {
+  at: string;
+  sourceEvent: string;
+  turnId?: string;
+  itemId?: string;
+  itemType?: string;
+  status?: string;
+  phase?: string;
+  toolName?: string;
+  command?: string;
+  deltaChars?: number;
+  outputChars?: number;
+  errorMessage?: string;
+  codexErrorInfo?: unknown;
+  additionalDetails?: string | null;
+  openaiRequestId?: string;
+}
+
+interface CodexFailureTrace {
+  sessionId?: string;
+  activeTurnId?: string | null;
+  lastUserMessage?: {
+    uuid?: string;
+    chars: number;
+  };
+  lastNotification?: CodexFailureTraceEvent;
+  lastEmittedMessage?: CodexFailureTraceEvent;
+  recentNotifications: CodexFailureTraceEvent[];
+}
+
 type NormalizedThreadItem =
   | { id: string; type: "reasoning"; text: string }
   | { id: string; type: "agent_message"; text: string }
@@ -661,7 +703,13 @@ class CodexAppServerClient {
 
       if (message.error && typeof message.error === "object") {
         const error = message.error as JsonRpcError;
-        pending.reject(new Error(error.message ?? "JSON-RPC request failed"));
+        const rpcError = new Error(error.message ?? "JSON-RPC request failed");
+        Object.assign(rpcError, {
+          jsonRpcCode: error.code,
+          jsonRpcData: error.data,
+          jsonRpcRequestId: id,
+        });
+        pending.reject(rpcError);
         return;
       }
 
@@ -1374,6 +1422,11 @@ export class CodexProvider implements AgentProvider {
 
     let sessionId = options.resumeSessionId ?? "";
     const usageByTurnId = new Map<string, TokenUsageSnapshot>();
+    const failureTrace: CodexFailureTrace = {
+      sessionId: sessionId || undefined,
+      activeTurnId: null,
+      recentNotifications: [],
+    };
     const logMessage = (message: SDKMessage): SDKMessage => {
       const messageSessionId =
         typeof (message as { session_id?: unknown }).session_id === "string"
@@ -1433,6 +1486,7 @@ export class CodexProvider implements AgentProvider {
 
       sessionId = threadResult.thread.id;
       runtimeState.threadId = sessionId;
+      failureTrace.sessionId = sessionId;
       const supportsPermissionProfile = "permissionProfile" in threadResult;
       log.info(
         {
@@ -1512,6 +1566,10 @@ export class CodexProvider implements AgentProvider {
           phase: "submitted",
           sourceEvent: "queued_input",
         });
+        failureTrace.lastUserMessage = {
+          uuid: message.uuid,
+          chars: userPrompt.length,
+        };
         yield logMessage(userMessage);
 
         const messagePermissionMode =
@@ -1533,6 +1591,7 @@ export class CodexProvider implements AgentProvider {
 
         const activeTurnId = turnResult.turn.id;
         runtimeState.activeTurnId = activeTurnId;
+        failureTrace.activeTurnId = activeTurnId;
         log.info(
           {
             sessionId,
@@ -1554,13 +1613,31 @@ export class CodexProvider implements AgentProvider {
             }
           }
 
+          this.recordCodexFailureTraceEvent(
+            failureTrace,
+            this.describeNotificationForFailureTrace(notification),
+          );
+
           const messages = this.convertNotificationToSDKMessages(
             notification,
             sessionId,
             usageByTurnId,
             liveEventState,
           );
-          for (const msg of messages) {
+          for (const rawMsg of messages) {
+            const msg =
+              rawMsg.type === "error"
+                ? ({
+                    ...rawMsg,
+                    codexFailureTrace:
+                      this.snapshotCodexFailureTrace(failureTrace),
+                    codexFailureSummary: this.formatCodexFailureTrace(
+                      failureTrace,
+                    ),
+                  } as SDKMessage)
+                : rawMsg;
+            failureTrace.lastEmittedMessage =
+              this.describeSDKMessageForFailureTrace(msg);
             yield logMessage(msg);
           }
 
@@ -1572,6 +1649,7 @@ export class CodexProvider implements AgentProvider {
           }
         }
         runtimeState.activeTurnId = null;
+        failureTrace.activeTurnId = null;
 
         // If turn failed without an emitted error notification, surface start response error.
         if (
@@ -1583,6 +1661,16 @@ export class CodexProvider implements AgentProvider {
             type: "error",
             session_id: sessionId,
             error: turnResult.turn.error.message,
+            codexErrorInfo: turnResult.turn.error.codexErrorInfo ?? null,
+            codexAdditionalDetails:
+              turnResult.turn.error.additionalDetails ?? null,
+            codexFailureTrace: this.snapshotCodexFailureTrace(failureTrace),
+            codexFailureSummary: this.formatCodexFailureTrace(failureTrace),
+            codexRequestId: this.extractOpenAIRequestId(
+              turnResult.turn.error,
+              turnResult.turn.error.additionalDetails,
+              turnResult.turn.error.message,
+            ),
           } as SDKMessage);
         }
 
@@ -1592,12 +1680,19 @@ export class CodexProvider implements AgentProvider {
         } as SDKMessage);
       }
     } catch (error) {
-      log.error({ error }, "Error in codex app-server session");
+      const codexFailureTrace = this.snapshotCodexFailureTrace(failureTrace);
+      log.error(
+        { error, codexFailureTrace },
+        "Error in codex app-server session",
+      );
       if (!signal.aborted) {
         yield logMessage({
           type: "error",
           session_id: sessionId,
           error: error instanceof Error ? error.message : String(error),
+          codexFailureTrace,
+          codexFailureSummary:
+            this.formatCodexFailureTrace(codexFailureTrace),
         } as SDKMessage);
       }
     } finally {
@@ -1940,6 +2035,359 @@ export class CodexProvider implements AgentProvider {
       streamingToolOutputByItemKey: new Map(),
       toolCallContexts: new Map(),
     };
+  }
+
+  private recordCodexFailureTraceEvent(
+    trace: CodexFailureTrace,
+    event: CodexFailureTraceEvent,
+  ): void {
+    trace.lastNotification = event;
+    trace.recentNotifications.push(event);
+    if (trace.recentNotifications.length > CODEX_FAILURE_TRACE_LIMIT) {
+      trace.recentNotifications.splice(
+        0,
+        trace.recentNotifications.length - CODEX_FAILURE_TRACE_LIMIT,
+      );
+    }
+  }
+
+  private snapshotCodexFailureTrace(
+    trace: CodexFailureTrace,
+  ): CodexFailureTrace {
+    return {
+      sessionId: trace.sessionId,
+      activeTurnId: trace.activeTurnId,
+      lastUserMessage: trace.lastUserMessage
+        ? { ...trace.lastUserMessage }
+        : undefined,
+      lastNotification: trace.lastNotification
+        ? { ...trace.lastNotification }
+        : undefined,
+      lastEmittedMessage: trace.lastEmittedMessage
+        ? { ...trace.lastEmittedMessage }
+        : undefined,
+      recentNotifications: trace.recentNotifications.map((event) => ({
+        ...event,
+      })),
+    };
+  }
+
+  private formatCodexFailureTrace(trace: CodexFailureTrace): string {
+    const lastNotification = trace.lastNotification
+      ? this.formatCodexTraceEvent(trace.lastNotification)
+      : "none";
+    const lastEmitted = trace.lastEmittedMessage
+      ? this.formatCodexTraceEvent(trace.lastEmittedMessage)
+      : "none";
+    return `last notification: ${lastNotification}; last emitted SDK message: ${lastEmitted}`;
+  }
+
+  private formatCodexTraceEvent(event: CodexFailureTraceEvent): string {
+    const details = [
+      event.sourceEvent,
+      event.itemType,
+      event.toolName,
+      event.status,
+      event.phase,
+      event.command ? `command=${event.command}` : undefined,
+      event.errorMessage ? `error=${event.errorMessage}` : undefined,
+      event.openaiRequestId ? `requestId=${event.openaiRequestId}` : undefined,
+    ].filter(Boolean);
+    return details.join(" ");
+  }
+
+  private describeNotificationForFailureTrace(
+    notification: JsonRpcNotification,
+  ): CodexFailureTraceEvent {
+    const base = (event: Omit<CodexFailureTraceEvent, "at">) => ({
+      at: new Date().toISOString(),
+      ...event,
+    });
+
+    switch (notification.method) {
+      case "item/started":
+      case "item/completed": {
+        const params =
+          notification.method === "item/started"
+            ? this.asItemStartedNotification(notification.params)
+            : this.asItemCompletedNotification(notification.params);
+        const item =
+          params?.item && typeof params.item === "object"
+            ? (params.item as Record<string, unknown>)
+            : null;
+        return base({
+          sourceEvent: notification.method,
+          turnId: params?.turnId,
+          itemId:
+            this.getOptionalString(item?.id) ??
+            this.getOptionalString((item as { call_id?: unknown })?.call_id) ??
+            undefined,
+          itemType: this.normalizeCodexItemType(
+            this.getOptionalString(item?.type),
+          ),
+          status: this.normalizeStatus(item?.status),
+          phase: notification.method === "item/completed" ? "completed" : "started",
+          toolName: this.getTraceToolName(item) ?? undefined,
+          command: this.previewTraceString(
+            this.getOptionalString(item?.command) ??
+              this.getOptionalString(item?.aggregated_output) ??
+              this.getOptionalString(item?.aggregatedOutput),
+          ),
+        });
+      }
+
+      case "item/agentMessage/delta":
+      case "item/plan/delta":
+      case "item/reasoning/summaryTextDelta":
+      case "item/commandExecution/outputDelta":
+      case "item/fileChange/outputDelta": {
+        const params =
+          notification.params && typeof notification.params === "object"
+            ? (notification.params as Record<string, unknown>)
+            : null;
+        const delta = this.getOptionalString(params?.delta);
+        return base({
+          sourceEvent: notification.method,
+          turnId: this.getOptionalString(params?.turnId) ?? undefined,
+          itemId: this.getOptionalString(params?.itemId) ?? undefined,
+          itemType: this.inferTraceItemTypeFromDeltaEvent(notification.method),
+          phase: "delta",
+          deltaChars: delta?.length,
+          outputChars: delta?.length,
+        });
+      }
+
+      case "rawResponseItem/completed": {
+        const params = this.asRawResponseItemCompletedNotification(
+          notification.params,
+        );
+        const item =
+          params?.item && typeof params.item === "object"
+            ? (params.item as Record<string, unknown>)
+            : null;
+        return base({
+          sourceEvent: notification.method,
+          turnId: params?.turnId,
+          itemId:
+            this.getOptionalString(item?.id) ??
+            this.getOptionalString(item?.call_id) ??
+            undefined,
+          itemType: this.normalizeCodexItemType(
+            this.getOptionalString(item?.type),
+          ),
+          phase: "completed",
+          toolName: this.getTraceToolName(item) ?? undefined,
+        });
+      }
+
+      case "thread/tokenUsage/updated": {
+        const params =
+          notification.params && typeof notification.params === "object"
+            ? (notification.params as Record<string, unknown>)
+            : null;
+        return base({
+          sourceEvent: notification.method,
+          turnId: this.getOptionalString(params?.turnId) ?? undefined,
+          phase: "usage",
+        });
+      }
+
+      case "turn/completed": {
+        const params = this.asTurnCompletedNotification(notification.params);
+        return base({
+          sourceEvent: notification.method,
+          turnId: params?.turn.id,
+          status: params?.turn.status,
+          phase: "completed",
+          errorMessage: params?.turn.error?.message,
+          codexErrorInfo: params?.turn.error?.codexErrorInfo ?? undefined,
+          additionalDetails: params?.turn.error?.additionalDetails ?? undefined,
+          openaiRequestId: this.extractOpenAIRequestId(
+            params?.turn.error,
+            params?.turn.error?.additionalDetails,
+            params?.turn.error?.message,
+          ),
+        });
+      }
+
+      case "error": {
+        const params = this.asErrorNotification(notification.params);
+        const fallbackError = this.extractErrorRecord(notification.params);
+        const errorMessage =
+          params?.error.message ??
+          this.getOptionalString(fallbackError?.message) ??
+          "Codex turn failed";
+        return base({
+          sourceEvent: notification.method,
+          turnId: params?.turnId,
+          phase: params?.willRetry ? "retrying" : "terminal",
+          errorMessage,
+          codexErrorInfo:
+            params?.error.codexErrorInfo ??
+            fallbackError?.codexErrorInfo ??
+            undefined,
+          additionalDetails:
+            params?.error.additionalDetails ??
+            (this.getOptionalString(fallbackError?.additionalDetails) ??
+              undefined),
+          openaiRequestId: this.extractOpenAIRequestId(
+            notification.params,
+            fallbackError,
+            errorMessage,
+          ),
+        });
+      }
+
+      default:
+        return base({ sourceEvent: notification.method });
+    }
+  }
+
+  private describeSDKMessageForFailureTrace(
+    message: SDKMessage,
+  ): CodexFailureTraceEvent {
+    const event: CodexFailureTraceEvent = {
+      at: new Date().toISOString(),
+      sourceEvent: `sdk:${message.type}`,
+      phase:
+        typeof message.subtype === "string" ? message.subtype : undefined,
+    };
+
+    if (message.error !== undefined) {
+      event.errorMessage = this.previewTraceString(
+        typeof message.error === "string"
+          ? message.error
+          : stringifyTraceValue(message.error),
+      );
+      event.openaiRequestId = this.extractOpenAIRequestId(message.error);
+    }
+
+    const content = message.message?.content;
+    if (typeof content === "string") {
+      event.outputChars = content.length;
+      return event;
+    }
+    if (!Array.isArray(content)) {
+      return event;
+    }
+
+    const interestingBlock = content.find(
+      (block) =>
+        block.type === "tool_use" ||
+        block.type === "tool_result" ||
+        block.type === "thinking",
+    );
+    if (!interestingBlock) {
+      return event;
+    }
+
+    event.itemType = interestingBlock.type;
+    if (interestingBlock.type === "tool_use") {
+      event.itemId = interestingBlock.id;
+      event.toolName = interestingBlock.name;
+      event.command = this.previewTraceString(
+        this.getTraceCommandFromInput(interestingBlock.input),
+      );
+    } else if (interestingBlock.type === "tool_result") {
+      event.itemId = interestingBlock.tool_use_id;
+      event.outputChars = interestingBlock.content?.length;
+    } else if (interestingBlock.type === "thinking") {
+      event.outputChars = interestingBlock.thinking?.length;
+    }
+
+    return event;
+  }
+
+  private inferTraceItemTypeFromDeltaEvent(method: string): string | undefined {
+    if (method.includes("commandExecution")) return "command_execution";
+    if (method.includes("fileChange")) return "file_change";
+    if (method.includes("reasoning")) return "reasoning";
+    if (method.includes("plan")) return "plan";
+    if (method.includes("agentMessage")) return "agent_message";
+    return undefined;
+  }
+
+  private normalizeCodexItemType(type: string | null): string | undefined {
+    return type?.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
+  }
+
+  private getTraceToolName(item: Record<string, unknown> | null): string | null {
+    if (!item) return null;
+    const type = this.normalizeCodexItemType(this.getOptionalString(item.type));
+    if (type === "command_execution") return "Bash";
+    if (type === "file_change") return "Edit";
+    if (type === "web_search") return "WebSearch";
+    if (type === "mcp_tool_call") {
+      const server = this.getOptionalString(item.server);
+      const tool = this.getOptionalString(item.tool);
+      return server && tool ? `${server}:${tool}` : (tool ?? null);
+    }
+    if (type === "dynamic_tool_call") {
+      const namespace = this.getOptionalString(item.namespace);
+      const tool = this.getOptionalString(item.tool);
+      return namespace && tool ? `${namespace}:${tool}` : (tool ?? null);
+    }
+    return this.getOptionalString(item.name);
+  }
+
+  private getTraceCommandFromInput(input: unknown): string | null {
+    if (!input || typeof input !== "object") return null;
+    const record = input as Record<string, unknown>;
+    return (
+      this.getOptionalString(record.command) ??
+      this.getOptionalString(record.cmd) ??
+      null
+    );
+  }
+
+  private extractErrorRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== "object") return null;
+    const record = value as Record<string, unknown>;
+    if (record.error && typeof record.error === "object") {
+      return record.error as Record<string, unknown>;
+    }
+    return record;
+  }
+
+  private extractOpenAIRequestId(...values: unknown[]): string | undefined {
+    for (const value of values) {
+      const direct = this.findRequestIdInValue(value, 0);
+      if (direct) return direct;
+      const text = typeof value === "string" ? value : stringifyTraceValue(value);
+      const match =
+        /request\s*id[:\s]+([0-9a-f]{8}-[0-9a-f-]{20,})/i.exec(text) ??
+        /request[_-]?id["'\s:=]+([0-9a-f]{8}-[0-9a-f-]{20,})/i.exec(text);
+      if (match?.[1]) {
+        return match[1];
+      }
+    }
+    return undefined;
+  }
+
+  private findRequestIdInValue(value: unknown, depth: number): string | null {
+    if (!value || typeof value !== "object" || depth > 3) return null;
+    const record = value as Record<string, unknown>;
+    for (const [key, entry] of Object.entries(record)) {
+      if (
+        /^(request[_-]?id|x-request-id)$/i.test(key) &&
+        typeof entry === "string" &&
+        entry.trim()
+      ) {
+        return entry.trim();
+      }
+      const nested = this.findRequestIdInValue(entry, depth + 1);
+      if (nested) return nested;
+    }
+    return null;
+  }
+
+  private previewTraceString(value: string | null | undefined): string | undefined {
+    if (!value) return undefined;
+    const trimmed = value.replace(/\s+/g, " ").trim();
+    if (trimmed.length <= CODEX_FAILURE_PREVIEW_CHARS) {
+      return trimmed;
+    }
+    return `${trimmed.slice(0, CODEX_FAILURE_PREVIEW_CHARS)}...`;
   }
 
   private extractTurnUsage(params: unknown): {
@@ -2349,6 +2797,16 @@ export class CodexProvider implements AgentProvider {
           type: "error",
           session_id: sessionId,
           error: message,
+          codexErrorInfo: params?.error.codexErrorInfo ?? null,
+          codexAdditionalDetails: params?.error.additionalDetails ?? null,
+          codexWillRetry: params?.willRetry ?? false,
+          codexThreadId: params?.threadId,
+          codexTurnId: params?.turnId,
+          codexRequestId: this.extractOpenAIRequestId(
+            notification.params,
+            params?.error,
+            message,
+          ),
         } as SDKMessage;
         logSdkCorrelationDebug(sessionId, errorEvent, {
           eventKind: "error",

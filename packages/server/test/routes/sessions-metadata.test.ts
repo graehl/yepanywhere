@@ -230,4 +230,177 @@ describe("Sessions metadata route", () => {
       }),
     );
   });
+
+  it("starts a fresh handoff session before aborting the old process", async () => {
+    const project = createProject();
+    let replacementListener: ((event: { type: string; message?: unknown }) => void) | undefined;
+    const startSession = vi.fn(async () => ({
+      id: "proc-new",
+      sessionId: "sess-new",
+      projectId: project.id,
+      provider: "codex",
+      model: "gpt-5.4",
+      resolvedModel: "gpt-5.4",
+      permissionMode: "default",
+      modeVersion: 0,
+      subscribe: vi.fn((listener) => {
+        replacementListener = listener;
+        return vi.fn();
+      }),
+    }));
+    const abortProcess = vi.fn(async () => true);
+    const interruptProcess = vi.fn(async () => ({
+      success: true,
+      supported: true,
+    }));
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-old",
+          provider: "codex",
+          model: "gpt-5.5",
+          resolvedModel: "gpt-5.5",
+          permissionMode: "default",
+          modeVersion: 0,
+          state: { type: "idle", since: new Date() },
+          getMessageHistory: vi.fn(() => [
+            {
+              type: "user",
+              uuid: "u1",
+              timestamp: "2026-04-24T20:00:00.000Z",
+              message: { role: "user", content: "please continue the bugfix" },
+            },
+          ]),
+        })),
+        startSession,
+        interruptProcess,
+        abortProcess,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "codex"),
+        getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => ({ customTitle: "Broken Codex session" })),
+        setProvider: vi.fn(async () => undefined),
+        updateMetadata: vi.fn(async () => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "codex",
+          model: "gpt-5.4",
+          reason: "test restart",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      sessionId: "sess-new",
+      processId: "proc-new",
+      restartedFrom: "sess-1",
+      oldProcessId: "proc-old",
+      oldProcessInterrupted: true,
+      oldProcessAbortDeferred: true,
+      oldProcessAborted: false,
+    });
+    expect(interruptProcess).toHaveBeenCalledWith("proc-old");
+    expect(startSession).toHaveBeenCalledWith(
+      project.path,
+      expect.objectContaining({
+        text: expect.stringContaining("please continue the bugfix"),
+      }),
+      undefined,
+      expect.objectContaining({
+        model: "gpt-5.4",
+        providerName: "codex",
+      }),
+    );
+    expect(interruptProcess.mock.invocationCallOrder[0]).toBeLessThan(
+      startSession.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(abortProcess).not.toHaveBeenCalled();
+
+    replacementListener?.({
+      type: "message",
+      message: { type: "assistant", message: { content: "working" } },
+    });
+    await Promise.resolve();
+    expect(abortProcess).toHaveBeenCalledWith("proc-old");
+  });
+
+  it("does not abort the old process when handoff startup is queued", async () => {
+    const project = createProject();
+    const abortProcess = vi.fn(async () => true);
+    const interruptProcess = vi.fn(async () => ({
+      success: true,
+      supported: true,
+    }));
+    const cancelQueuedRequest = vi.fn(() => true);
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-old",
+          provider: "codex",
+          model: "gpt-5.5",
+          resolvedModel: "gpt-5.5",
+          permissionMode: "default",
+          modeVersion: 0,
+          state: { type: "idle", since: new Date() },
+          getMessageHistory: vi.fn(() => []),
+        })),
+        interruptProcess,
+        startSession: vi.fn(async () => ({
+          queued: true,
+          queueId: "queue-1",
+          position: 1,
+        })),
+        cancelQueuedRequest,
+        abortProcess,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "codex"),
+        getExecutor: vi.fn(() => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "codex", model: "gpt-5.4" }),
+      },
+    );
+
+    expect(response.status).toBe(503);
+    expect(interruptProcess).toHaveBeenCalledWith("proc-old");
+    expect(cancelQueuedRequest).toHaveBeenCalledWith("queue-1");
+    expect(abortProcess).not.toHaveBeenCalled();
+  });
 });

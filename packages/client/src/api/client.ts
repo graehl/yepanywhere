@@ -435,6 +435,8 @@ export const api = {
       sessionId: string;
       processId: string;
       projectId: string;
+      provider?: ProviderName;
+      model?: string;
       permissionMode: PermissionMode;
       modeVersion: number;
     }>(`/projects/${projectId}/sessions`, {
@@ -537,6 +539,34 @@ export const api = {
         executor: options?.executor,
         attachments,
         tempId,
+      }),
+    }),
+
+  restartSession: (
+    projectId: string,
+    sessionId: string,
+    options?: SessionOptions & { reason?: string },
+  ) =>
+    fetchJSON<{
+      sessionId: string;
+      processId: string;
+      projectId: string;
+      permissionMode: PermissionMode;
+      modeVersion: number;
+      restartedFrom: string;
+      oldProcessId?: string;
+      oldProcessInterrupted: boolean;
+      oldProcessAbortDeferred: boolean;
+      oldProcessAborted: boolean;
+    }>(`/projects/${projectId}/sessions/${sessionId}/restart`, {
+      method: "POST",
+      body: JSON.stringify({
+        mode: options?.mode,
+        model: options?.model,
+        thinking: options?.thinking,
+        provider: options?.provider,
+        executor: options?.executor,
+        reason: options?.reason,
       }),
     }),
 

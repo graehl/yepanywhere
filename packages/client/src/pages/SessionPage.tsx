@@ -10,6 +10,7 @@ import { ProcessInfoModal } from "../components/ProcessInfoModal";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { RecentSessionsDropdown } from "../components/RecentSessionsDropdown";
+import { RestartSessionModal } from "../components/RestartSessionModal";
 import { SessionHeartbeatModal } from "../components/SessionHeartbeatModal";
 import { SessionMenu } from "../components/SessionMenu";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
@@ -264,6 +265,8 @@ function SessionPageContent({
     }
     return slashCommands;
   }, [slashCommands, status.owner]);
+  const supportsManualCompact =
+    status.owner === "self" && slashCommands.includes("compact");
 
   // Get provider capabilities based on session's provider
   const { providers } = useProviders();
@@ -434,6 +437,7 @@ function SessionPageContent({
 
   // Model switch modal state
   const [showModelSwitchModal, setShowModelSwitchModal] = useState(false);
+  const [showHandoffModal, setShowHandoffModal] = useState(false);
 
   // Track user engagement to mark session as "seen"
   // Only enabled when not in external session (we own or it's idle)
@@ -1081,6 +1085,25 @@ function SessionPageContent({
     }
   }, [displayTitle, showToast, t]);
 
+  const handleCompactSession = useCallback(async () => {
+    if (status.owner !== "self" || !supportsManualCompact) return;
+    try {
+      await api.queueMessage(actualSessionId, "/compact", permissionMode);
+      showToast(t("sessionCompactRequested"), "success");
+    } catch (err) {
+      console.error("Failed to request compaction:", err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      showToast(t("sessionCompactFailed", { message: errorMsg }), "error");
+    }
+  }, [
+    actualSessionId,
+    permissionMode,
+    showToast,
+    status.owner,
+    supportsManualCompact,
+    t,
+  ]);
+
   const handleToggleHeartbeat = useCallback(async () => {
     const previousEnabled = heartbeatTurnsEnabled;
     const nextEnabled = !previousEnabled;
@@ -1268,6 +1291,14 @@ function SessionPageContent({
                         `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
                       );
                     }}
+                    onHandoff={
+                      effectiveProvider
+                        ? () => setShowHandoffModal(true)
+                        : undefined
+                    }
+                    onCompact={
+                      supportsManualCompact ? handleCompactSession : undefined
+                    }
                     onTerminate={handleTerminate}
                     sharingConfigured={sharingConfigured}
                     onShare={handleShare}
@@ -1349,6 +1380,44 @@ function SessionPageContent({
               onClose={() => setShowModelSwitchModal(false)}
             />
           )}
+
+        {showHandoffModal && effectiveProvider && (
+          <RestartSessionModal
+            projectId={projectId}
+            sessionId={actualSessionId}
+            provider={effectiveProvider}
+            providerDisplayName={currentProviderInfo?.displayName}
+            models={currentProviderInfo?.models}
+            currentModel={liveBadgeModel}
+            mode={permissionMode}
+            thinking={getThinkingSetting()}
+            executor={session?.executor}
+            onRestarted={(result, options) => {
+              setShowHandoffModal(false);
+              showToast(t("sessionHandoffStarted"), "success");
+              const handoffUrl = `${basePath}/projects/${projectId}/sessions/${result.sessionId}`;
+              if (options?.targetWindow && !options.targetWindow.closed) {
+                options.targetWindow.location.href = handoffUrl;
+                return;
+              }
+              if (options?.openInNewWindow) {
+                window.open(handoffUrl, "_blank", "noopener");
+                return;
+              }
+              navigate(handoffUrl, {
+                state: {
+                  initialStatus: {
+                    owner: "self",
+                    processId: result.processId,
+                  },
+                  initialModel: result.model ?? liveBadgeModel,
+                  initialProvider: effectiveProvider,
+                },
+              });
+            }}
+            onClose={() => setShowHandoffModal(false)}
+          />
+        )}
 
         {status.owner === "external" && (
           <div className="external-session-warning">

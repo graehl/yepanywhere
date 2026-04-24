@@ -47,7 +47,18 @@ export interface ServerSettings {
   lifecycleWebhookToken?: string;
   /** When true, include dryRun=true in lifecycle webhook payloads */
   lifecycleWebhookDryRun?: boolean;
+  /**
+   * How the server handles Codex CLI updates:
+   * - "auto": automatically run `npm install -g <pkg>@latest` when an update
+   *   is available and the install was done via npm (best effort, logs only).
+   * - "notify": surface a banner in the UI but do nothing automatically.
+   * - "off": don't check or surface updates.
+   */
+  codexUpdatePolicy?: "auto" | "notify" | "off";
 }
+
+export const CODEX_UPDATE_POLICIES = ["auto", "notify", "off"] as const;
+export type CodexUpdatePolicy = (typeof CODEX_UPDATE_POLICIES)[number];
 
 /** Default settings */
 export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
@@ -57,6 +68,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   heartbeatTurnText: "yepanywhere heartbeat",
   lifecycleWebhooksEnabled: false,
   lifecycleWebhookDryRun: true,
+  codexUpdatePolicy: "notify",
 };
 
 /** Stored state with version for migrations */

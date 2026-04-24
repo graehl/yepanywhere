@@ -50,6 +50,8 @@ export interface CodexUpdateCheckerOptions {
   detectInstallMetadata?: (
     installedPath: string | null,
   ) => Promise<CodexInstallMetadata>;
+  /** Override the package install command (for tests). Returns combined stdout/stderr. */
+  runInstall?: (pkg: string) => Promise<string>;
   /** Refresh TTL in ms (default: 24h). */
   refreshTtlMs?: number;
 }
@@ -83,6 +85,9 @@ export class CodexUpdateChecker {
   private readonly detectInstallMetadata: NonNullable<
     CodexUpdateCheckerOptions["detectInstallMetadata"]
   >;
+  private readonly runInstall: NonNullable<
+    CodexUpdateCheckerOptions["runInstall"]
+  >;
   private readonly refreshTtlMs: number;
 
   constructor(options: CodexUpdateCheckerOptions = {}) {
@@ -90,6 +95,7 @@ export class CodexUpdateChecker {
     this.detectInstalled = options.detectInstalled ?? detectInstalledFromCli;
     this.detectInstallMetadata =
       options.detectInstallMetadata ?? detectInstallMetadataFromPath;
+    this.runInstall = options.runInstall ?? runNpmGlobalInstall;
     this.refreshTtlMs = options.refreshTtlMs ?? DEFAULT_REFRESH_TTL_MS;
   }
 
@@ -154,6 +160,51 @@ export class CodexUpdateChecker {
       error,
     };
     return { ...this.status };
+  }
+
+  /**
+   * Run `npm install -g <pkg>@latest` when the install is npm-global.
+   * Refreshes status on success. Returns combined stdout/stderr.
+   */
+  async install(): Promise<{
+    success: boolean;
+    output: string;
+    status: CodexUpdateStatus;
+    error?: string;
+  }> {
+    const current = await this.getStatus();
+    if (current.updateMethod !== "npm" || !current.installedPackage) {
+      return {
+        success: false,
+        output: "",
+        status: current,
+        error:
+          "Codex was not installed via npm; update the CLI manually with your package manager",
+      };
+    }
+    const pkg = current.installedPackage;
+    log.info({ pkg }, "Running npm install -g for Codex CLI update");
+    try {
+      const output = await this.runInstall(pkg);
+      const refreshed = await this.getStatus({ force: true });
+      return { success: true, output, status: refreshed };
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException & {
+        stdout?: string;
+        stderr?: string;
+      };
+      const output = [err.stdout ?? "", err.stderr ?? ""]
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+      log.warn({ error: err.message }, "npm install -g failed for Codex CLI");
+      return {
+        success: false,
+        output,
+        status: current,
+        error: err.message,
+      };
+    }
   }
 }
 
@@ -242,6 +293,14 @@ function extractNpmGlobalPackageName(
   }
 
   return firstSegment;
+}
+
+async function runNpmGlobalInstall(pkg: string): Promise<string> {
+  const { stdout, stderr } = await execAsync(`npm install -g ${pkg}@latest`, {
+    timeout: 5 * 60 * 1000,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  return [stdout, stderr].filter(Boolean).join("\n").trim();
 }
 
 async function fetchLatestFromGitHub(): Promise<{

@@ -159,4 +159,76 @@ describe("CodexUpdateChecker", () => {
     await Promise.all([a, b]);
     expect(fetchLatest).toHaveBeenCalledTimes(1);
   });
+
+  it("install() refuses when updateMethod is manual", async () => {
+    const runInstall = vi.fn(async () => "should not run");
+    const checker = new CodexUpdateChecker({
+      detectInstalled: async () => ({
+        version: "0.4.2",
+        path: "/opt/homebrew/bin/codex",
+      }),
+      fetchLatest: async () => ({ tagName: "v0.4.3", htmlUrl: null }),
+      detectInstallMetadata: async () => ({
+        installedPackage: null,
+        updateMethod: "manual",
+      }),
+      runInstall,
+    });
+
+    const result = await checker.install();
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/manual/i);
+    expect(runInstall).not.toHaveBeenCalled();
+  });
+
+  it("install() runs npm install and refreshes on success", async () => {
+    const versions = ["0.4.2", "0.4.3"];
+    const detectInstalled = vi.fn(async () => ({
+      version: versions.shift() ?? "0.4.3",
+      path: "/usr/local/bin/codex",
+    }));
+    const runInstall = vi.fn(async (pkg: string) => `installed ${pkg}`);
+    const checker = new CodexUpdateChecker({
+      detectInstalled,
+      fetchLatest: async () => ({ tagName: "v0.4.3", htmlUrl: null }),
+      detectInstallMetadata: async () => ({
+        installedPackage: "@openai/codex",
+        updateMethod: "npm",
+      }),
+      runInstall,
+    });
+
+    const result = await checker.install();
+    expect(result.success).toBe(true);
+    expect(result.output).toBe("installed @openai/codex");
+    expect(runInstall).toHaveBeenCalledWith("@openai/codex");
+    expect(result.status.installed).toBe("0.4.3");
+    expect(result.status.updateAvailable).toBe(false);
+  });
+
+  it("install() surfaces errors from the install command", async () => {
+    const runInstall = vi.fn(async () => {
+      throw Object.assign(new Error("npm ERR! permission denied"), {
+        stdout: "",
+        stderr: "EACCES",
+      });
+    });
+    const checker = new CodexUpdateChecker({
+      detectInstalled: async () => ({
+        version: "0.4.2",
+        path: "/usr/local/bin/codex",
+      }),
+      fetchLatest: async () => ({ tagName: "v0.4.3", htmlUrl: null }),
+      detectInstallMetadata: async () => ({
+        installedPackage: "@openai/codex",
+        updateMethod: "npm",
+      }),
+      runInstall,
+    });
+
+    const result = await checker.install();
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/permission denied/);
+    expect(result.output).toBe("EACCES");
+  });
 });

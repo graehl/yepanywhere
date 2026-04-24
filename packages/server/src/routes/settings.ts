@@ -12,10 +12,14 @@ import {
 import { Hono } from "hono";
 import { testSSHConnection } from "../sdk/remote-spawn.js";
 import type {
+  CodexUpdatePolicy,
   ServerSettings,
   ServerSettingsService,
 } from "../services/ServerSettingsService.js";
-import { DEFAULT_SERVER_SETTINGS } from "../services/ServerSettingsService.js";
+import {
+  CODEX_UPDATE_POLICIES,
+  DEFAULT_SERVER_SETTINGS,
+} from "../services/ServerSettingsService.js";
 import {
   isValidSshHostAlias,
   normalizeSshHostAlias,
@@ -315,6 +319,28 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         updates.lifecycleWebhookToken = body.lifecycleWebhookToken.slice(
           0,
           5000,
+        );
+      }
+    }
+
+    if ("codexUpdatePolicy" in body) {
+      if (
+        body.codexUpdatePolicy === undefined ||
+        body.codexUpdatePolicy === null
+      ) {
+        updates.codexUpdatePolicy =
+          DEFAULT_SERVER_SETTINGS.codexUpdatePolicy;
+      } else if (
+        typeof body.codexUpdatePolicy === "string" &&
+        CODEX_UPDATE_POLICIES.includes(
+          body.codexUpdatePolicy as CodexUpdatePolicy,
+        )
+      ) {
+        updates.codexUpdatePolicy = body.codexUpdatePolicy as CodexUpdatePolicy;
+      } else {
+        return c.json(
+          { error: "codexUpdatePolicy must be one of: auto, notify, off" },
+          400,
         );
       }
     }

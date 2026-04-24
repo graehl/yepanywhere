@@ -40,6 +40,9 @@ import type {
   ItemCompletedNotification as CodexItemCompletedNotification,
   ItemStartedNotification as CodexItemStartedNotification,
   PlanDeltaNotification,
+  PermissionProfile,
+  PermissionsRequestApprovalParams,
+  PermissionsRequestApprovalResponse,
   RawResponseItemCompletedNotification,
   ReasoningSummaryTextDeltaNotification,
   SandboxMode as CodexSandboxMode,
@@ -129,6 +132,12 @@ const CODEX_POLICY_OVERRIDES: {
   approvalPolicy: null,
   sandbox: null,
 };
+
+interface CodexThreadPolicy {
+  approvalPolicy: CodexAskForApproval;
+  sandbox: CodexSandboxMode;
+  permissionProfile: PermissionProfile | null;
+}
 
 /**
  * When enabled, declare Codex session originator as "Codex Desktop"
@@ -406,9 +415,20 @@ type NormalizedThreadItem =
       server: string;
       tool: string;
       arguments: unknown;
+      mcpAppResourceUri?: string;
       result?: unknown;
       error?: { message: string };
       status: string;
+    }
+  | {
+      id: string;
+      type: "dynamic_tool_call";
+      namespace?: string | null;
+      tool: string;
+      arguments: unknown;
+      status: string;
+      content_items?: unknown[] | null;
+      success?: boolean | null;
     }
   | { id: string; type: "web_search"; query: string }
   | {
@@ -1219,23 +1239,22 @@ export class CodexProvider implements AgentProvider {
 
   private mapPermissionModeToThreadPolicy(
     permissionMode?: StartSessionOptions["permissionMode"],
-  ): {
-    approvalPolicy: CodexAskForApproval;
-    sandbox: CodexSandboxMode;
-  } {
-    const applyOverrides = (policy: {
-      approvalPolicy: CodexAskForApproval;
-      sandbox: CodexSandboxMode;
-    }) => ({
+  ): CodexThreadPolicy {
+    const applyOverrides = (policy: CodexThreadPolicy): CodexThreadPolicy => ({
       approvalPolicy:
         CODEX_POLICY_OVERRIDES.approvalPolicy ?? policy.approvalPolicy,
       sandbox: CODEX_POLICY_OVERRIDES.sandbox ?? policy.sandbox,
+      permissionProfile:
+        CODEX_POLICY_OVERRIDES.sandbox === null
+          ? policy.permissionProfile
+          : null,
     });
 
     if (permissionMode === "bypassPermissions") {
       return applyOverrides({
         approvalPolicy: "never",
         sandbox: "danger-full-access",
+        permissionProfile: this.createDangerFullAccessPermissionProfile(),
       });
     }
 
@@ -1243,13 +1262,29 @@ export class CodexProvider implements AgentProvider {
       return applyOverrides({
         approvalPolicy: "on-request",
         sandbox: "read-only",
+        permissionProfile: null,
       });
     }
 
     return applyOverrides({
       approvalPolicy: "on-request",
       sandbox: "workspace-write",
+      permissionProfile: null,
     });
+  }
+
+  private createDangerFullAccessPermissionProfile(): PermissionProfile {
+    return {
+      network: { enabled: true },
+      fileSystem: {
+        entries: [
+          {
+            path: { type: "special", value: { kind: "root" } },
+            access: "write",
+          },
+        ],
+      },
+    };
   }
 
   /**
@@ -1368,27 +1403,44 @@ export class CodexProvider implements AgentProvider {
         policy,
         experimentalApiEnabled,
       );
+      const legacyThreadResumeParams = this.createThreadResumeParams(
+        options,
+        sessionId,
+        policy,
+        experimentalApiEnabled,
+        false,
+      );
       const threadStartParams = this.createThreadStartParams(
         options,
         policy,
         experimentalApiEnabled,
+      );
+      const legacyThreadStartParams = this.createThreadStartParams(
+        options,
+        policy,
+        experimentalApiEnabled,
+        false,
       );
       const threadResult = await this.startOrResumeThread(
         appServer,
         options,
         threadStartParams,
         threadResumeParams,
+        legacyThreadStartParams,
+        legacyThreadResumeParams,
         experimentalApiEnabled,
       );
 
       sessionId = threadResult.thread.id;
       runtimeState.threadId = sessionId;
+      const supportsPermissionProfile = "permissionProfile" in threadResult;
       log.info(
         {
           sessionId,
           permissionMode: options.permissionMode ?? "default",
           approvalPolicy: policy.approvalPolicy,
           sandbox: policy.sandbox,
+          permissionProfile: policy.permissionProfile,
           policyOverrides: {
             approvalPolicy: CODEX_POLICY_OVERRIDES.approvalPolicy,
             sandbox: CODEX_POLICY_OVERRIDES.sandbox,
@@ -1462,10 +1514,17 @@ export class CodexProvider implements AgentProvider {
         });
         yield logMessage(userMessage);
 
+        const messagePermissionMode =
+          this.getPermissionModeFromMessage(message);
+        const turnPolicy = messagePermissionMode
+          ? this.mapPermissionModeToThreadPolicy(messagePermissionMode)
+          : null;
         const turnStartParams = this.createTurnStartParams(
           sessionId,
           userPrompt,
           options,
+          turnPolicy,
+          supportsPermissionProfile,
         );
         const turnResult = await appServer.request<TurnStartResponse>(
           "turn/start",
@@ -1612,6 +1671,8 @@ export class CodexProvider implements AgentProvider {
     options: StartSessionOptions,
     threadStartParams: ThreadStartParams,
     threadResumeParams: ThreadResumeParams,
+    legacyThreadStartParams: ThreadStartParams,
+    legacyThreadResumeParams: ThreadResumeParams,
     experimentalApiEnabled: boolean,
   ): Promise<ThreadStartResponse | ThreadResumeResponse> {
     const requestThread = async (
@@ -1627,31 +1688,55 @@ export class CodexProvider implements AgentProvider {
             "thread/start",
             startParams,
           );
+    const requestThreadWithExperimentalFallback = async (
+      startParams: ThreadStartParams,
+      resumeParams: ThreadResumeParams,
+    ): Promise<ThreadStartResponse | ThreadResumeResponse> => {
+      try {
+        return await requestThread(startParams, resumeParams);
+      } catch (error) {
+        if (
+          !experimentalApiEnabled ||
+          !this.isExperimentalCapabilityError(error)
+        ) {
+          throw error;
+        }
+
+        log.warn(
+          { error },
+          "Codex rejected experimental thread flags; retrying with stable startup params",
+        );
+        return await requestThread(
+          {
+            ...startParams,
+            experimentalRawEvents: false,
+            persistExtendedHistory: false,
+          },
+          {
+            ...resumeParams,
+            persistExtendedHistory: false,
+          },
+        );
+      }
+    };
 
     try {
-      return await requestThread(threadStartParams, threadResumeParams);
+      return await requestThreadWithExperimentalFallback(
+        threadStartParams,
+        threadResumeParams,
+      );
     } catch (error) {
-      if (
-        !experimentalApiEnabled ||
-        !this.isExperimentalCapabilityError(error)
-      ) {
+      if (!this.isPermissionProfileCompatibilityError(error)) {
         throw error;
       }
 
       log.warn(
         { error },
-        "Codex rejected experimental thread flags; retrying with stable startup params",
+        "Codex rejected permissionProfile; retrying with legacy sandbox params",
       );
-      return await requestThread(
-        {
-          ...threadStartParams,
-          experimentalRawEvents: false,
-          persistExtendedHistory: false,
-        },
-        {
-          ...threadResumeParams,
-          persistExtendedHistory: false,
-        },
+      return await requestThreadWithExperimentalFallback(
+        legacyThreadStartParams,
+        legacyThreadResumeParams,
       );
     }
   }
@@ -1670,19 +1755,30 @@ export class CodexProvider implements AgentProvider {
     );
   }
 
+  private isPermissionProfileCompatibilityError(error: unknown): boolean {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "";
+    return (
+      /unknown field .*permissionProfile/i.test(message) ||
+      /permissionProfile.*unknown field/i.test(message) ||
+      /permissionProfile.*unsupported/i.test(message)
+    );
+  }
+
   private createThreadStartParams(
     options: StartSessionOptions,
-    policy: {
-      approvalPolicy: CodexAskForApproval;
-      sandbox: CodexSandboxMode;
-    },
+    policy: CodexThreadPolicy,
     experimentalApiEnabled: boolean,
+    usePermissionProfile = true,
   ): ThreadStartParams {
     return {
       model: options.model ?? null,
       cwd: options.cwd,
-      approvalPolicy: policy.approvalPolicy,
-      sandbox: policy.sandbox,
+      ...this.buildThreadPermissionParams(policy, usePermissionProfile),
       config: this.buildThreadConfigOverrides(options),
       experimentalRawEvents: experimentalApiEnabled,
       persistExtendedHistory: experimentalApiEnabled,
@@ -1692,20 +1788,36 @@ export class CodexProvider implements AgentProvider {
   private createThreadResumeParams(
     options: StartSessionOptions,
     sessionId: string,
-    policy: {
-      approvalPolicy: CodexAskForApproval;
-      sandbox: CodexSandboxMode;
-    },
+    policy: CodexThreadPolicy,
     experimentalApiEnabled: boolean,
+    usePermissionProfile = true,
   ): ThreadResumeParams {
     return {
       threadId: options.resumeSessionId ?? sessionId,
       model: options.model ?? null,
       cwd: options.cwd,
-      approvalPolicy: policy.approvalPolicy,
-      sandbox: policy.sandbox,
+      ...this.buildThreadPermissionParams(policy, usePermissionProfile),
       config: this.buildThreadConfigOverrides(options),
       persistExtendedHistory: experimentalApiEnabled,
+    };
+  }
+
+  private buildThreadPermissionParams(
+    policy: CodexThreadPolicy,
+    usePermissionProfile: boolean,
+  ): Pick<
+    ThreadStartParams,
+    "approvalPolicy" | "sandbox" | "permissionProfile"
+  > {
+    if (usePermissionProfile && policy.permissionProfile) {
+      return {
+        approvalPolicy: policy.approvalPolicy,
+        permissionProfile: policy.permissionProfile,
+      };
+    }
+    return {
+      approvalPolicy: policy.approvalPolicy,
+      sandbox: policy.sandbox,
     };
   }
 
@@ -1726,6 +1838,8 @@ export class CodexProvider implements AgentProvider {
     threadId: string,
     userPrompt: string,
     options: StartSessionOptions,
+    turnPolicy: CodexThreadPolicy | null = null,
+    usePermissionProfile = false,
   ): TurnStartParams {
     return {
       threadId,
@@ -1733,7 +1847,22 @@ export class CodexProvider implements AgentProvider {
       input: [{ type: "text", text: userPrompt, text_elements: [] }],
       effort: this.mapEffortToReasoningEffort(options.effort, options.thinking),
       summary: "auto",
+      ...this.buildTurnPermissionParams(turnPolicy, usePermissionProfile),
     };
+  }
+
+  private buildTurnPermissionParams(
+    policy: CodexThreadPolicy | null,
+    usePermissionProfile: boolean,
+  ): Pick<TurnStartParams, "approvalPolicy" | "permissionProfile"> {
+    if (!policy) return {};
+    if (usePermissionProfile && policy.permissionProfile) {
+      return {
+        approvalPolicy: policy.approvalPolicy,
+        permissionProfile: policy.permissionProfile,
+      };
+    }
+    return { approvalPolicy: policy.approvalPolicy };
   }
 
   private createSessionConfigAckMessage(
@@ -2035,6 +2164,28 @@ export class CodexProvider implements AgentProvider {
         return { decision };
       }
 
+      case "item/permissions/requestApproval": {
+        const permissionParams = this.asPermissionsRequestApprovalParams(
+          request.params,
+        );
+        if (!permissionParams) {
+          log.warn(
+            {
+              method: request.method,
+              requestId: request.id,
+            },
+            "Codex permission approval params invalid; declining",
+          );
+          return this.createDeclinedPermissionResponse();
+        }
+
+        return await this.resolvePermissionRequestApproval(
+          options,
+          permissionParams,
+          signal,
+        );
+      }
+
       case "item/tool/requestUserInput": {
         const requestInput = this.asToolRequestUserInputParams(request.params);
         const questions = requestInput?.questions ?? [];
@@ -2102,6 +2253,54 @@ export class CodexProvider implements AgentProvider {
     );
 
     return result.behavior === "allow" ? allowDecision : denyDecision;
+  }
+
+  private async resolvePermissionRequestApproval(
+    options: StartSessionOptions,
+    params: PermissionsRequestApprovalParams,
+    signal: AbortSignal,
+  ): Promise<PermissionsRequestApprovalResponse> {
+    if (options.permissionMode === "bypassPermissions") {
+      return this.createGrantedPermissionResponse(params, "session");
+    }
+
+    const toolInput = {
+      cwd: params.cwd,
+      reason: params.reason,
+      permissions: params.permissions,
+      threadId: params.threadId,
+      turnId: params.turnId,
+      itemId: params.itemId,
+    };
+    const decision = await this.resolveApprovalDecision(
+      options,
+      "Permissions",
+      toolInput,
+      signal,
+      "accept",
+      "decline",
+    );
+    return decision === "accept"
+      ? this.createGrantedPermissionResponse(params, "session")
+      : this.createDeclinedPermissionResponse();
+  }
+
+  private createGrantedPermissionResponse(
+    params: PermissionsRequestApprovalParams,
+    scope: PermissionsRequestApprovalResponse["scope"],
+  ): PermissionsRequestApprovalResponse {
+    const permissions: PermissionsRequestApprovalResponse["permissions"] = {};
+    if (params.permissions.network) {
+      permissions.network = params.permissions.network;
+    }
+    if (params.permissions.fileSystem) {
+      permissions.fileSystem = params.permissions.fileSystem;
+    }
+    return { permissions, scope };
+  }
+
+  private createDeclinedPermissionResponse(): PermissionsRequestApprovalResponse {
+    return { permissions: {}, scope: "turn" };
   }
 
   private convertNotificationToSDKMessages(
@@ -2397,12 +2596,32 @@ export class CodexProvider implements AgentProvider {
           server: this.getOptionalString(itemRecord.server) ?? "unknown",
           tool: this.getOptionalString(itemRecord.tool) ?? "unknown",
           arguments: itemRecord.arguments,
+          mcpAppResourceUri:
+            this.getOptionalString(itemRecord.mcpAppResourceUri) ?? undefined,
           result: itemRecord.result,
           error:
             this.getOptionalString(errorObj?.message) !== null
               ? { message: this.getOptionalString(errorObj?.message) ?? "" }
               : undefined,
           status: this.normalizeStatus(itemRecord.status),
+        };
+      }
+
+      case "dynamic_tool_call": {
+        return {
+          id,
+          type: "dynamic_tool_call",
+          namespace: this.getOptionalString(itemRecord.namespace),
+          tool: this.getOptionalString(itemRecord.tool) ?? "unknown",
+          arguments: itemRecord.arguments,
+          status: this.normalizeStatus(itemRecord.status),
+          content_items: Array.isArray(itemRecord.contentItems)
+            ? itemRecord.contentItems
+            : null,
+          success:
+            typeof itemRecord.success === "boolean"
+              ? itemRecord.success
+              : null,
         };
       }
 
@@ -2574,6 +2793,24 @@ export class CodexProvider implements AgentProvider {
       return null;
     }
     return params as FileChangeRequestApprovalParams;
+  }
+
+  private asPermissionsRequestApprovalParams(
+    params: unknown,
+  ): PermissionsRequestApprovalParams | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      typeof record.itemId !== "string" ||
+      typeof record.cwd !== "string" ||
+      !record.permissions ||
+      typeof record.permissions !== "object"
+    ) {
+      return null;
+    }
+    return params as PermissionsRequestApprovalParams;
   }
 
   private asToolRequestUserInputParams(
@@ -3305,6 +3542,12 @@ export class CodexProvider implements AgentProvider {
 
       case "mcp_tool_call": {
         const messages: SDKMessage[] = [];
+        const input = item.mcpAppResourceUri
+          ? {
+              arguments: item.arguments,
+              mcpAppResourceUri: item.mcpAppResourceUri,
+            }
+          : item.arguments;
 
         const toolUseMessage = withCodexTimestamp(
           {
@@ -3318,7 +3561,7 @@ export class CodexProvider implements AgentProvider {
                   type: "tool_use",
                   id: item.id,
                   name: `${item.server}:${item.tool}`,
-                  input: item.arguments,
+                  input,
                 },
               ],
             },
@@ -3354,6 +3597,85 @@ export class CodexProvider implements AgentProvider {
                         : item.error?.message || "MCP tool call failed",
                   },
                 ],
+              },
+            } as SDKMessage,
+            observedAt,
+          );
+          logSdkCorrelationDebug(sessionId, toolResultMessage, {
+            eventKind: "tool_result",
+            turnId,
+            itemId: item.id,
+            callId: item.id,
+            phase: "completed",
+            sourceEvent,
+            status: item.status,
+          });
+          messages.push(toolResultMessage);
+        }
+
+        return messages;
+      }
+
+      case "dynamic_tool_call": {
+        const messages: SDKMessage[] = [];
+        const toolName = item.namespace
+          ? `${item.namespace}:${item.tool}`
+          : canonicalizeCodexToolName(item.tool);
+
+        const toolUseMessage = withCodexTimestamp(
+          {
+            type: "assistant",
+            session_id: sessionId,
+            uuid,
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: item.id,
+                  name: toolName,
+                  input: item.arguments,
+                },
+              ],
+            },
+          } as SDKMessage,
+          observedAt,
+        );
+        logSdkCorrelationDebug(sessionId, toolUseMessage, {
+          eventKind: "dynamic_tool_call",
+          turnId,
+          itemId: item.id,
+          callId: item.id,
+          phase: isComplete ? "completed" : "started",
+          sourceEvent,
+          status: item.status,
+        });
+        messages.push(toolUseMessage);
+
+        if (isComplete && item.status !== "in_progress") {
+          const isError = item.success === false || item.status === "failed";
+          const toolResultBlock: {
+            type: "tool_result";
+            tool_use_id: string;
+            content: string;
+            is_error?: boolean;
+          } = {
+            type: "tool_result",
+            tool_use_id: item.id,
+            content: this.formatDynamicToolContent(item.content_items),
+          };
+          if (isError) {
+            toolResultBlock.is_error = true;
+          }
+
+          const toolResultMessage = withCodexTimestamp(
+            {
+              type: "user",
+              session_id: sessionId,
+              uuid: `${uuid}-result`,
+              message: {
+                role: "user",
+                content: [toolResultBlock],
               },
             } as SDKMessage,
             observedAt,
@@ -3510,6 +3832,46 @@ export class CodexProvider implements AgentProvider {
 
       default:
         return [];
+    }
+  }
+
+  private formatDynamicToolContent(contentItems: unknown[] | null | undefined) {
+    if (!Array.isArray(contentItems) || contentItems.length === 0) {
+      return "(no output)";
+    }
+
+    const parts = contentItems
+      .map((item) => {
+        if (!item || typeof item !== "object") return "";
+        const record = item as Record<string, unknown>;
+        const type = this.getOptionalString(record.type);
+        if (type === "inputText") {
+          return this.getOptionalString(record.text) ?? "";
+        }
+        if (type === "inputImage") {
+          const imageUrl = this.getOptionalString(record.imageUrl);
+          return imageUrl ? `[image: ${imageUrl}]` : "[image]";
+        }
+        return "";
+      })
+      .filter(Boolean);
+
+    return parts.length > 0 ? parts.join("\n") : JSON.stringify(contentItems);
+  }
+
+  private getPermissionModeFromMessage(
+    message: unknown,
+  ): StartSessionOptions["permissionMode"] | undefined {
+    if (!message || typeof message !== "object") return undefined;
+    const mode = (message as { mode?: unknown }).mode;
+    switch (mode) {
+      case "default":
+      case "acceptEdits":
+      case "plan":
+      case "bypassPermissions":
+        return mode;
+      default:
+        return undefined;
     }
   }
 

@@ -2,6 +2,7 @@
 
 export type { AskForApproval } from "./generated/v2/AskForApproval.js";
 export type { SandboxMode } from "./generated/v2/SandboxMode.js";
+export type { PermissionProfile } from "./generated/v2/PermissionProfile.js";
 export type { ThreadStartParams } from "./generated/v2/ThreadStartParams.js";
 export type { ThreadResumeParams } from "./generated/v2/ThreadResumeParams.js";
 export type { TurnStartParams } from "./generated/v2/TurnStartParams.js";
@@ -14,6 +15,8 @@ export type { CommandExecutionApprovalDecision } from "./generated/v2/CommandExe
 export type { FileChangeApprovalDecision } from "./generated/v2/FileChangeApprovalDecision.js";
 export type { ToolRequestUserInputParams } from "./generated/v2/ToolRequestUserInputParams.js";
 export type { ToolRequestUserInputResponse } from "./generated/v2/ToolRequestUserInputResponse.js";
+export type { PermissionsRequestApprovalParams } from "./generated/v2/PermissionsRequestApprovalParams.js";
+export type { PermissionsRequestApprovalResponse } from "./generated/v2/PermissionsRequestApprovalResponse.js";
 export type { ItemStartedNotification } from "./generated/v2/ItemStartedNotification.js";
 export type { ItemCompletedNotification } from "./generated/v2/ItemCompletedNotification.js";
 export type { RawResponseItemCompletedNotification } from "./generated/v2/RawResponseItemCompletedNotification.js";

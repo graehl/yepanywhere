@@ -43,6 +43,7 @@ const SUBSET_INDEX_FILE = join(
 const SUBSET_EXPORTS = [
   { name: "AskForApproval", file: "v2/AskForApproval.ts" },
   { name: "SandboxMode", file: "v2/SandboxMode.ts" },
+  { name: "PermissionProfile", file: "v2/PermissionProfile.ts" },
   { name: "ThreadStartParams", file: "v2/ThreadStartParams.ts" },
   { name: "ThreadResumeParams", file: "v2/ThreadResumeParams.ts" },
   { name: "TurnStartParams", file: "v2/TurnStartParams.ts" },
@@ -72,6 +73,14 @@ const SUBSET_EXPORTS = [
   {
     name: "ToolRequestUserInputResponse",
     file: "v2/ToolRequestUserInputResponse.ts",
+  },
+  {
+    name: "PermissionsRequestApprovalParams",
+    file: "v2/PermissionsRequestApprovalParams.ts",
+  },
+  {
+    name: "PermissionsRequestApprovalResponse",
+    file: "v2/PermissionsRequestApprovalResponse.ts",
   },
   { name: "ItemStartedNotification", file: "v2/ItemStartedNotification.ts" },
   {

@@ -6,6 +6,7 @@ import type { ServiceTier } from "../ServiceTier.js";
 import type { JsonValue } from "../serde_json/JsonValue.js";
 import type { ApprovalsReviewer } from "./ApprovalsReviewer.js";
 import type { AskForApproval } from "./AskForApproval.js";
+import type { PermissionProfile } from "./PermissionProfile.js";
 import type { SandboxMode } from "./SandboxMode.js";
 import type { ThreadStartSource } from "./ThreadStartSource.js";
 
@@ -13,7 +14,11 @@ export type ThreadStartParams = {model?: string | null, modelProvider?: string |
  * Override where approval requests are routed for review on this thread
  * and subsequent turns.
  */
-approvalsReviewer?: ApprovalsReviewer | null, sandbox?: SandboxMode | null, config?: { [key in string]?: JsonValue } | null, serviceName?: string | null, baseInstructions?: string | null, developerInstructions?: string | null, personality?: Personality | null, ephemeral?: boolean | null, sessionStartSource?: ThreadStartSource | null, /**
+approvalsReviewer?: ApprovalsReviewer | null, sandbox?: SandboxMode | null, /**
+ * Full permissions override for this thread. Cannot be combined with
+ * `sandbox`.
+ */
+permissionProfile?: PermissionProfile | null, config?: { [key in string]?: JsonValue } | null, serviceName?: string | null, baseInstructions?: string | null, developerInstructions?: string | null, personality?: Personality | null, ephemeral?: boolean | null, sessionStartSource?: ThreadStartSource | null, /**
  * If true, opt into emitting raw Responses API items on the event stream.
  * This is for internal use only (e.g. Codex Cloud).
  */

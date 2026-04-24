@@ -569,36 +569,87 @@ describe("CodexProvider Event Normalization", () => {
 
   it("opts into experimental thread flags when experimental API is negotiated", () => {
     const provider = createTestProvider() as unknown as {
+      mapPermissionModeToThreadPolicy: (permissionMode?: string) => {
+        approvalPolicy: string;
+        sandbox: string;
+        permissionProfile?: unknown;
+      };
       createThreadStartParams: (
         options: { model?: string; cwd: string },
-        policy: { approvalPolicy: string; sandbox: string },
+        policy: {
+          approvalPolicy: string;
+          sandbox: string;
+          permissionProfile?: unknown;
+        },
         experimentalApiEnabled: boolean,
+        usePermissionProfile?: boolean,
       ) => Record<string, unknown>;
     };
+    const bypassPolicy =
+      provider.mapPermissionModeToThreadPolicy("bypassPermissions");
 
     const start = provider.createThreadStartParams(
       { model: "gpt-5.2-codex", cwd: "/tmp" },
       { approvalPolicy: "on-request", sandbox: "workspace-write" },
       true,
     );
+    const bypassStart = provider.createThreadStartParams(
+      { model: "gpt-5.5", cwd: "/tmp" },
+      bypassPolicy,
+      true,
+    );
+    const legacyBypassStart = provider.createThreadStartParams(
+      { model: "gpt-5.5", cwd: "/tmp" },
+      bypassPolicy,
+      true,
+      false,
+    );
 
     expect(start).toMatchObject({
       experimentalRawEvents: true,
       persistExtendedHistory: true,
     });
+    expect(bypassStart).toMatchObject({
+      approvalPolicy: "never",
+      permissionProfile: {
+        network: { enabled: true },
+        fileSystem: {
+          entries: [
+            {
+              path: { type: "special", value: { kind: "root" } },
+              access: "write",
+            },
+          ],
+        },
+      },
+    });
+    expect(bypassStart.sandbox).toBeUndefined();
+    expect(legacyBypassStart).toMatchObject({
+      approvalPolicy: "never",
+      sandbox: "danger-full-access",
+    });
+    expect(legacyBypassStart.permissionProfile).toBeUndefined();
   });
 
   it("keeps experimental thread flags disabled without negotiated experimental capability", () => {
     const provider = createTestProvider() as unknown as {
       createThreadStartParams: (
         options: { model?: string; cwd: string },
-        policy: { approvalPolicy: string; sandbox: string },
+        policy: {
+          approvalPolicy: string;
+          sandbox: string;
+          permissionProfile?: unknown;
+        },
         experimentalApiEnabled: boolean,
       ) => Record<string, unknown>;
       createThreadResumeParams: (
         options: { resumeSessionId?: string; model?: string; cwd: string },
         sessionId: string,
-        policy: { approvalPolicy: string; sandbox: string },
+        policy: {
+          approvalPolicy: string;
+          sandbox: string;
+          permissionProfile?: unknown;
+        },
         experimentalApiEnabled: boolean,
       ) => Record<string, unknown>;
     };
@@ -632,7 +683,11 @@ describe("CodexProvider Event Normalization", () => {
     const provider = createTestProvider() as unknown as {
       createThreadStartParams: (
         options: { model?: string; cwd: string; effort?: string },
-        policy: { approvalPolicy: string; sandbox: string },
+        policy: {
+          approvalPolicy: string;
+          sandbox: string;
+          permissionProfile?: unknown;
+        },
         experimentalApiEnabled: boolean,
       ) => Record<string, unknown>;
       createThreadResumeParams: (
@@ -643,7 +698,11 @@ describe("CodexProvider Event Normalization", () => {
           effort?: string;
         },
         sessionId: string,
-        policy: { approvalPolicy: string; sandbox: string },
+        policy: {
+          approvalPolicy: string;
+          sandbox: string;
+          permissionProfile?: unknown;
+        },
         experimentalApiEnabled: boolean,
       ) => Record<string, unknown>;
     };
@@ -846,6 +905,56 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
+  it("normalizes dynamic tool calls with namespace and output content", () => {
+    const provider = createTestProvider() as unknown as {
+      convertItemToSDKMessages: (
+        item: unknown,
+        sessionId: string,
+        turnId: string,
+        sourceEvent: "item/started" | "item/completed",
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const messages = provider.convertItemToSDKMessages(
+      {
+        id: "call-dynamic",
+        type: "dynamic_tool_call",
+        namespace: "web",
+        tool: "search",
+        arguments: { query: "codex release" },
+        status: "completed",
+        success: true,
+        content_items: [{ type: "inputText", text: "Search completed" }],
+      },
+      "session-1",
+      "turn-1",
+      "item/completed",
+    );
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.message).toMatchObject({
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "call-dynamic",
+          name: "web:search",
+          input: { query: "codex release" },
+        },
+      ],
+    });
+    expect(messages[1]?.message).toMatchObject({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "call-dynamic",
+          content: "Search completed",
+        },
+      ],
+    });
+  });
+
   it("does not emit rate limit errors when hasCredits is false but usage is below 100%", () => {
     const provider = createTestProvider() as unknown as {
       convertNotificationToSDKMessages: (
@@ -951,6 +1060,58 @@ describe("CodexProvider Event Normalization", () => {
       session_id: "session-1",
       error:
         "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again later.",
+    });
+  });
+
+  it("grants requested permission profiles automatically in bypass mode", async () => {
+    const provider = createTestProvider() as unknown as {
+      handleServerRequestApproval: (
+        request: { method: string; id: number; params?: unknown },
+        options: { permissionMode?: string },
+        signal: AbortSignal,
+      ) => Promise<Record<string, unknown>>;
+    };
+
+    const response = await provider.handleServerRequestApproval(
+      {
+        method: "item/permissions/requestApproval",
+        id: 1,
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "permission-1",
+          cwd: "/tmp/project",
+          reason: "Need unrestricted filesystem for GPU tooling",
+          permissions: {
+            network: { enabled: true },
+            fileSystem: {
+              entries: [
+                {
+                  path: { type: "special", value: { kind: "root" } },
+                  access: "write",
+                },
+              ],
+            },
+          },
+        },
+      },
+      { permissionMode: "bypassPermissions" },
+      new AbortController().signal,
+    );
+
+    expect(response).toMatchObject({
+      scope: "session",
+      permissions: {
+        network: { enabled: true },
+        fileSystem: {
+          entries: [
+            {
+              path: { type: "special", value: { kind: "root" } },
+              access: "write",
+            },
+          ],
+        },
+      },
     });
   });
 });

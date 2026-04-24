@@ -1,10 +1,12 @@
 import type { UploadedFile } from "@yep-anywhere/shared";
 import { useRef } from "react";
 import type { MouseEvent, RefObject, TouchEvent } from "react";
+import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
 import { useModelSettings } from "../hooks/useModelSettings";
 import { useI18n } from "../i18n";
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 import type { ContextUsage, PermissionMode } from "../types";
+import { RenderModeGlyph } from "./ui/RenderModeGlyph";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { ModeSelector } from "./ModeSelector";
 import { SlashCommandButton } from "./SlashCommandButton";
@@ -98,10 +100,17 @@ export function MessageInputToolbar({
 }: MessageInputToolbarProps) {
   const { t } = useI18n();
   const { thinkingMode, cycleThinkingMode, thinkingLevel } = useModelSettings();
+  const renderMode = useOptionalRenderModeContext();
   const heartbeatLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const suppressHeartbeatClickRef = useRef(false);
+  const renderModeTitle =
+    renderMode?.state === "rendered"
+      ? t("toolbarRenderModeRendered")
+      : renderMode?.state === "source"
+        ? t("toolbarRenderModeSource")
+        : t("toolbarRenderModeMixed");
 
   const clearHeartbeatLongPress = () => {
     if (heartbeatLongPressTimerRef.current) {
@@ -233,6 +242,28 @@ export function MessageInputToolbar({
                 </g>
               )}
             </svg>
+          </button>
+        )}
+        {renderMode && (
+          <button
+            type="button"
+            className={`render-mode-toolbar-button ${
+              renderMode.state === "rendered"
+                ? "is-rendered"
+                : renderMode.state === "mixed"
+                  ? "is-mixed"
+                  : ""
+            }`}
+            onClick={renderMode.toggleGlobalMode}
+            title={renderModeTitle}
+            aria-label={renderModeTitle}
+            aria-pressed={
+              renderMode.state === "mixed"
+                ? "mixed"
+                : renderMode.state === "rendered"
+            }
+          >
+            <RenderModeGlyph />
           </button>
         )}
         {onToggleHeartbeat && (

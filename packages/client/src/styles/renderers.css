@@ -28,6 +28,15 @@
   position: relative;
 }
 
+.render-mode-glyph {
+  display: inline-block;
+  font-family: "KaTeX_Main", "Times New Roman", serif;
+  font-size: 0.94em;
+  font-weight: 500;
+  line-height: 1;
+  transform: translateY(-0.03em);
+}
+
 .fixed-font-render-toggle__button {
   position: absolute;
   right: -0.35rem;
@@ -55,6 +64,8 @@
 
 .fixed-font-render-toggle__button.is-rendered {
   color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--app-yep-green) 45%, var(--border-color));
+  background: color-mix(in srgb, var(--app-yep-green) 14%, var(--bg-surface));
 }
 
 .fixed-font-rendered-panel {
@@ -234,6 +245,8 @@
 .text-block-toggle.is-rendered {
   color: var(--text-primary, #ccc);
   opacity: 1;
+  border-color: color-mix(in srgb, var(--app-yep-green) 45%, var(--border-color, #333));
+  background: color-mix(in srgb, var(--app-yep-green) 14%, var(--bg-secondary, #252525));
 }
 
 .text-block-source {

@@ -1,5 +1,7 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo } from "react";
 import katex from "katex";
+import { useRenderModeToggle } from "../../contexts/RenderModeContext";
+import { RenderModeGlyph } from "./RenderModeGlyph";
 
 interface FixedFontMathToggleProps {
   sourceText: string;
@@ -143,11 +145,10 @@ export function FixedFontMathToggle({
   renderRenderedView,
 }: FixedFontMathToggleProps) {
   const rendered = useMemo(() => renderFixedFontMath(sourceText), [sourceText]);
-  const [showRendered, setShowRendered] = useState(rendered.changed);
-
-  useEffect(() => {
-    setShowRendered(rendered.changed);
-  }, [rendered.changed, sourceText]);
+  const { showRendered, toggleLocalMode } = useRenderModeToggle(rendered.changed, {
+    renderWhenDisabled: false,
+    resetDependencies: [sourceText],
+  });
 
   return (
     <div className="fixed-font-render-toggle">
@@ -158,11 +159,12 @@ export function FixedFontMathToggle({
         <button
           type="button"
           className={`fixed-font-render-toggle__button ${showRendered ? "is-rendered" : ""}`}
-          onClick={() => setShowRendered((current) => !current)}
+          onClick={toggleLocalMode}
           aria-label={showRendered ? "Show source" : "Show rendered math"}
           title={showRendered ? "Show source" : "Show rendered math"}
+          aria-pressed={showRendered}
         >
-          ∑
+          <RenderModeGlyph />
         </button>
       )}
     </div>

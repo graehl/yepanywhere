@@ -1,8 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
 import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
 import { LocalMediaModal, useLocalMediaClick } from "../LocalMediaModal";
 import { renderFixedFontMath } from "../ui/FixedFontMathToggle";
+import { RenderModeGlyph } from "../ui/RenderModeGlyph";
 
 interface Props {
   text: string;
@@ -17,7 +19,6 @@ export const TextBlock = memo(function TextBlock({
   augmentHtml,
 }: Props) {
   const [copied, setCopied] = useState(false);
-  const [showRendered, setShowRendered] = useState(true);
   const localMathPreview = useMemo(() => renderFixedFontMath(text), [text]);
 
   // Streaming markdown hook for server-rendered content
@@ -68,10 +69,9 @@ export const TextBlock = memo(function TextBlock({
 
   const showStreamingContent = isStreaming && useStreamingContent;
   const canToggleMath = localMathPreview.changed;
-
-  useEffect(() => {
-    setShowRendered(true);
-  }, [text, augmentHtml]);
+  const { showRendered, toggleLocalMode } = useRenderModeToggle(canToggleMath, {
+    resetDependencies: [text, augmentHtml ?? ""],
+  });
 
   // Always render streaming container when isStreaming so refs are attached
   // before first augment arrives. Hidden until useStreamingContent becomes true.
@@ -88,11 +88,12 @@ export const TextBlock = memo(function TextBlock({
           <button
             type="button"
             className={`text-block-toggle ${showRendered ? "is-rendered" : ""}`}
-            onClick={() => setShowRendered((current) => !current)}
+            onClick={toggleLocalMode}
             title={showRendered ? "Show source" : "Show rendered math"}
             aria-label={showRendered ? "Show source" : "Show rendered math"}
+            aria-pressed={showRendered}
           >
-            ∑
+            <RenderModeGlyph />
           </button>
         )}
         <button

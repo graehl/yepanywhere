@@ -2298,6 +2298,53 @@ a.sidebar-nav-item {
   background: rgba(59, 130, 246, 0.25);
 }
 
+.render-mode-toolbar-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    box-shadow 0.15s;
+  position: relative;
+}
+
+.render-mode-toolbar-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-input);
+  color: var(--text-primary);
+}
+
+.render-mode-toolbar-button.is-rendered {
+  color: var(--app-yep-green);
+  border-color: color-mix(in srgb, var(--app-yep-green) 45%, var(--border-color));
+  background: color-mix(in srgb, var(--app-yep-green) 12%, transparent);
+}
+
+.render-mode-toolbar-button.is-mixed {
+  color: var(--attention-color);
+  border-color: color-mix(in srgb, var(--attention-color) 45%, var(--border-color));
+  background: color-mix(in srgb, var(--attention-color) 14%, transparent);
+}
+
+.render-mode-toolbar-button.is-mixed::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
 .heartbeat-toolbar-button {
   display: flex;
   align-items: center;

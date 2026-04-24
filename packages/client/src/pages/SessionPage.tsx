@@ -14,6 +14,7 @@ import { SessionHeartbeatModal } from "../components/SessionHeartbeatModal";
 import { SessionMenu } from "../components/SessionMenu";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
+import { RenderModeProvider } from "../contexts/RenderModeContext";
 import { SessionMetadataProvider } from "../contexts/SessionMetadataContext";
 import {
   StreamingMarkdownProvider,
@@ -106,11 +107,13 @@ export function SessionPage() {
   // Wrap with StreamingMarkdownProvider for server-rendered markdown streaming
   return (
     <StreamingMarkdownProvider>
-      <SessionPageContent
-        key={sessionId}
-        projectId={projectId}
-        sessionId={sessionId}
-      />
+      <RenderModeProvider key={sessionId}>
+        <SessionPageContent
+          key={sessionId}
+          projectId={projectId}
+          sessionId={sessionId}
+        />
+      </RenderModeProvider>
     </StreamingMarkdownProvider>
   );
 }

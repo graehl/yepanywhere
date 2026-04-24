@@ -56,6 +56,13 @@ Did not work:
   without splitting environments. The root runner defaults to Node, so
   client RTL tests fail with `document is not defined`.
 
+## Host Tooling Constraints
+
+Do not run Biome on this `gra` host. The checked-in Biome binary requires a
+newer glibc than this machine provides, so `pnpm lint` / `pnpm exec biome ...`
+fails before checking the code. Use TypeScript and targeted tests here, and
+report that Biome was skipped for host compatibility.
+
 ## Runtime Restart Discipline
 
 Treat full YA restarts as something to justify, not a default reflex.
@@ -68,5 +75,10 @@ When deciding whether to restart:
 - Avoid calling `reyep` from a process tree that is plausibly a child
   of the running YA server/session supervisor; in that context it can
   kill the serving process and fail to bring the app back cleanly.
+- If using the `reyep` shell function for a full YA restart, run the
+  function atomically as one shell invocation. Do not copy or execute
+  the function's component commands line-by-line from a YA server
+  subprocess; the serving process can be killed before the restart
+  sequence finishes.
 - If a restart is needed, use a path that is robust from the current
   execution context rather than assuming `reyep` is safe everywhere.

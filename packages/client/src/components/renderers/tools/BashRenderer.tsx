@@ -7,6 +7,7 @@ import {
 } from "../../../lib/bashCommand";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
+import { AnsiText } from "../../ui/AnsiText";
 import { Modal } from "../../ui/Modal";
 import type { BashInput, BashResult, ToolRenderer } from "./types";
 
@@ -123,7 +124,7 @@ function BashModalContent({
           <div className="bash-modal-label">Output</div>
           <div className="bash-modal-code">
             <pre className="code-block">
-              <code>{stdout}</code>
+              <AnsiText text={stdout} />
             </pre>
           </div>
         </div>
@@ -135,7 +136,7 @@ function BashModalContent({
           </div>
           <div className="bash-modal-code bash-modal-code-error">
             <pre className="code-block code-block-error">
-              <code>{stderr}</code>
+              <AnsiText text={stderr} />
             </pre>
           </div>
         </div>
@@ -253,7 +254,7 @@ function BashToolResult({
       {stdout && (
         <div className="bash-stdout">
           <pre className="code-block">
-            <code>{displayStdout}</code>
+            <AnsiText text={displayStdout} />
           </pre>
           {needsCollapse && (
             <button
@@ -271,7 +272,7 @@ function BashToolResult({
       {stderr && (
         <div className="bash-stderr">
           <pre className="code-block code-block-error">
-            <code>{stderr}</code>
+            <AnsiText text={stderr} />
           </pre>
         </div>
       )}
@@ -393,7 +394,7 @@ function BashCollapsedPreview({
               className={`bash-preview-output ${truncated ? "bash-preview-truncated" : ""} ${isError || result?.stderr ? "bash-preview-error" : ""}`}
             >
               <pre>
-                <code>{previewText}</code>
+                <AnsiText text={previewText} />
               </pre>
               {truncated && <div className="bash-preview-fade" />}
             </div>

@@ -16,6 +16,9 @@ export {
   transformFilePathsToHtml,
 } from "./filePathDetection.js";
 
+// ANSI escape rendering (shared between server and client)
+export { hasAnsiEscapes, renderAnsiToHtml } from "./ansi-renderer.js";
+
 export type {
   ProviderName,
   ProviderInfo,

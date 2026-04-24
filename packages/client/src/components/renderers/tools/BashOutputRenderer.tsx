@@ -3,6 +3,7 @@ import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
+import { AnsiText } from "../../ui/AnsiText";
 import type { BashOutputInput, BashOutputResult, ToolRenderer } from "./types";
 
 const MAX_LINES_COLLAPSED = 20;
@@ -151,12 +152,12 @@ function BashOutputToolResult({
         <>
           {result.stdout && (
             <pre className="bash-stdout code-block">
-              <code>{displayStdout.join("\n")}</code>
+              <AnsiText text={displayStdout.join("\n")} />
             </pre>
           )}
           {result.stderr && (
             <pre className="bash-stderr code-block">
-              <code>{result.stderr}</code>
+              <AnsiText text={result.stderr} />
             </pre>
           )}
           {needsCollapse && (

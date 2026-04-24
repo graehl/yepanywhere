@@ -13,6 +13,7 @@ import {
   createHighlighter,
 } from "shiki";
 import { createCssVariablesTheme } from "shiki/core";
+import { hasAnsiEscapes, renderAnsiToHtml } from "@yep-anywhere/shared";
 import type {
   CompletedBlock,
   StreamingCodeBlock,
@@ -161,6 +162,13 @@ async function renderCodeWithHighlighter(
   highlighter: Highlighter,
   loadedLanguages: Set<string>,
 ): Promise<string> {
+  // Route colored terminal output through the ANSI renderer when the
+  // fence is tagged `ansi` or contains raw CSI bytes; otherwise shiki
+  // would render the escapes literally.
+  if (lang === "ansi" || hasAnsiEscapes(code)) {
+    return renderAnsiBlock(code);
+  }
+
   // Check if language is loaded and valid
   const isValidLang = lang && lang in bundledLanguages;
 
@@ -212,6 +220,16 @@ function renderPlainCodeBlock(code: string, lang: string): string {
   const escapedCode = escapeHtml(code);
   const langClass = lang ? ` class="language-${escapeHtml(lang)}"` : "";
   return `<pre class="shiki"><code${langClass}>${escapedCode}</code></pre>`;
+}
+
+/**
+ * Render an ANSI-colored code block. The inner renderer already escapes
+ * HTML special characters, so we just wrap its output in a matching
+ * `<pre class="shiki"><code>` shell for styling parity with shiki.
+ */
+function renderAnsiBlock(code: string): string {
+  const innerHtml = renderAnsiToHtml(code);
+  return `<pre class="shiki ansi-block"><code class="language-ansi">${innerHtml}</code></pre>`;
 }
 
 /**

@@ -25,6 +25,91 @@
 }
 
 /* ==========================================================================
+   ANSI terminal colors (SGR escape rendering)
+
+   Palette is tuned against a mid-to-dark background. Overridable per
+   theme via the `--ansi-*` custom properties. See ansi-renderer in
+   @yep-anywhere/shared for the HTML shape.
+   ========================================================================== */
+:root {
+  --ansi-black: #4f5254;
+  --ansi-red: #cd3131;
+  --ansi-green: #0dbc79;
+  --ansi-yellow: #cca700;
+  --ansi-blue: #2472c8;
+  --ansi-magenta: #bc3fbc;
+  --ansi-cyan: #11a8cd;
+  --ansi-white: #d4d4d4;
+  --ansi-bright-black: #7c7c7c;
+  --ansi-bright-red: #f14c4c;
+  --ansi-bright-green: #23d18b;
+  --ansi-bright-yellow: #f5f543;
+  --ansi-bright-blue: #3b8eea;
+  --ansi-bright-magenta: #d670d6;
+  --ansi-bright-cyan: #29b8db;
+  --ansi-bright-white: #ffffff;
+}
+
+[data-theme="light"] {
+  --ansi-black: #000000;
+  --ansi-red: #c5252f;
+  --ansi-green: #0a7a3a;
+  --ansi-yellow: #8a6200;
+  --ansi-blue: #1a5aa0;
+  --ansi-magenta: #9d2f9d;
+  --ansi-cyan: #0a7e96;
+  --ansi-white: #505050;
+  --ansi-bright-black: #696969;
+  --ansi-bright-red: #d73a3a;
+  --ansi-bright-green: #1a9d5b;
+  --ansi-bright-yellow: #b18400;
+  --ansi-bright-blue: #2d7bd0;
+  --ansi-bright-magenta: #bd57bd;
+  --ansi-bright-cyan: #1c9cba;
+  --ansi-bright-white: #1a1a1a;
+}
+
+.ansi-fg-black { color: var(--ansi-black); }
+.ansi-fg-red { color: var(--ansi-red); }
+.ansi-fg-green { color: var(--ansi-green); }
+.ansi-fg-yellow { color: var(--ansi-yellow); }
+.ansi-fg-blue { color: var(--ansi-blue); }
+.ansi-fg-magenta { color: var(--ansi-magenta); }
+.ansi-fg-cyan { color: var(--ansi-cyan); }
+.ansi-fg-white { color: var(--ansi-white); }
+.ansi-fg-bright-black { color: var(--ansi-bright-black); }
+.ansi-fg-bright-red { color: var(--ansi-bright-red); }
+.ansi-fg-bright-green { color: var(--ansi-bright-green); }
+.ansi-fg-bright-yellow { color: var(--ansi-bright-yellow); }
+.ansi-fg-bright-blue { color: var(--ansi-bright-blue); }
+.ansi-fg-bright-magenta { color: var(--ansi-bright-magenta); }
+.ansi-fg-bright-cyan { color: var(--ansi-bright-cyan); }
+.ansi-fg-bright-white { color: var(--ansi-bright-white); }
+
+.ansi-bg-black { background-color: var(--ansi-black); }
+.ansi-bg-red { background-color: var(--ansi-red); }
+.ansi-bg-green { background-color: var(--ansi-green); }
+.ansi-bg-yellow { background-color: var(--ansi-yellow); }
+.ansi-bg-blue { background-color: var(--ansi-blue); }
+.ansi-bg-magenta { background-color: var(--ansi-magenta); }
+.ansi-bg-cyan { background-color: var(--ansi-cyan); }
+.ansi-bg-white { background-color: var(--ansi-white); }
+.ansi-bg-bright-black { background-color: var(--ansi-bright-black); }
+.ansi-bg-bright-red { background-color: var(--ansi-bright-red); }
+.ansi-bg-bright-green { background-color: var(--ansi-bright-green); }
+.ansi-bg-bright-yellow { background-color: var(--ansi-bright-yellow); }
+.ansi-bg-bright-blue { background-color: var(--ansi-bright-blue); }
+.ansi-bg-bright-magenta { background-color: var(--ansi-bright-magenta); }
+.ansi-bg-bright-cyan { background-color: var(--ansi-bright-cyan); }
+.ansi-bg-bright-white { background-color: var(--ansi-bright-white); }
+
+.ansi-bold { font-weight: 600; }
+.ansi-italic { font-style: italic; }
+.ansi-underline { text-decoration: underline; }
+.ansi-strikethrough { text-decoration: line-through; }
+.ansi-inverse { filter: invert(1); }
+
+/* ==========================================================================
    Text Blocks
    ========================================================================== */
 

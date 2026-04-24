@@ -40,6 +40,41 @@ dedicated renderers (diff views, collapsible panels, status badges).
 Do not paraphrase or re-quote tool output in your prose — the client
 already displays it richly below your message.
 
+## ANSI color
+
+Terminal-style SGR escape sequences (the CSI `\x1b[...m` family) are
+parsed and rendered as styled spans. Supported: 16 base + 8 bright
+foreground/background colors, bold, italic, underline, strikethrough,
+and reverse-video. 256-color and 24-bit truecolor params are parsed
+for offset correctness but fall back to the default color (attributes
+still apply). Non-SGR escapes (cursor moves, OSC titles, etc.) are
+silently stripped.
+
+**Where it renders:**
+
+- Inside **Bash / BashOutput tool results** — stdout/stderr with ANSI
+  escapes are auto-rendered. You can safely pass `--color=always` to
+  any color-capable tool, or set `CLICOLOR_FORCE=1` / `FORCE_COLOR=1`
+  / `TERM=xterm-256color` in the environment.
+- Inside **fenced code blocks in your reply text** — either tag the
+  fence ` ```ansi ` explicitly, or simply paste text that contains
+  raw escape bytes; auto-detection will route it through the ANSI
+  renderer instead of Shiki.
+
+**When to use it:**
+
+- Showing colored diffs (`git diff --color=always`, `delta
+  --color-only`, `diff --color=always`)
+- `ls --color=always`, `rg --color=always`, `grep --color=always`
+- Compiler / linter output that already colors severity (`cargo`,
+  `gcc`, `tsc`, `clippy`)
+- Any script output you author that uses SGR escapes intentionally
+
+Agents running inside YA can assume the effective TERM is
+`xterm-256color`-compatible for coloring purposes. Do not rely on
+cursor-movement, alternate-screen, or other non-color terminal
+features — those escapes are dropped.
+
 ## Sanitization
 
 Rendered HTML is passed through `sanitize-html`. Disallowed tags are

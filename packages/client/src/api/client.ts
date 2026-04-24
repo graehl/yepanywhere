@@ -1004,6 +1004,20 @@ export const api = {
       ),
     }),
 
+  // Codex CLI update checker
+  getCodexUpdateStatus: (force?: boolean) =>
+    fetchJSON<{ status: CodexUpdateStatus }>(
+      `/codex/updates${force ? "?force=true" : ""}`,
+    ),
+
+  installCodexUpdate: () =>
+    fetchJSON<{
+      success: boolean;
+      output: string;
+      status: CodexUpdateStatus;
+      error?: string;
+    }>("/codex/updates/install", { method: "POST" }),
+
   // Remote executors API
   getRemoteExecutors: () =>
     fetchJSON<{ executors: string[] }>("/settings/remote-executors"),
@@ -1124,4 +1138,20 @@ export interface ServerSettings {
   lifecycleWebhookToken?: string;
   /** When true, include dryRun=true in lifecycle webhook payloads */
   lifecycleWebhookDryRun?: boolean;
+  /** How the server handles Codex CLI updates */
+  codexUpdatePolicy?: "auto" | "notify" | "off";
+}
+
+/** Status from the server's Codex CLI update checker */
+export interface CodexUpdateStatus {
+  installed: string | null;
+  installedPath: string | null;
+  installedPackage: string | null;
+  updateMethod: "npm" | "manual";
+  manualInstallCommand: string | null;
+  latest: string | null;
+  releaseUrl: string | null;
+  updateAvailable: boolean;
+  lastCheckedAt: number | null;
+  error: string | null;
 }

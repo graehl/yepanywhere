@@ -19,6 +19,8 @@ export type CodexUpdateMethod = "npm" | "manual";
 interface CodexInstallMetadata {
   installedPackage: string | null;
   updateMethod: CodexUpdateMethod;
+  /** Best-effort copy-pasteable upgrade command for this install path. */
+  manualInstallCommand: string | null;
 }
 
 export interface CodexUpdateStatus {
@@ -31,6 +33,12 @@ export interface CodexUpdateStatus {
    * itself. "manual" means the user needs to run a platform-specific command.
    */
   updateMethod: CodexUpdateMethod;
+  /**
+   * A shell command the user can run to upgrade Codex themselves. Populated
+   * for npm / homebrew / cargo installs; null when we can't confidently infer
+   * the right command.
+   */
+  manualInstallCommand: string | null;
   latest: string | null;
   releaseUrl: string | null;
   updateAvailable: boolean;
@@ -61,6 +69,7 @@ const INITIAL_STATUS: CodexUpdateStatus = {
   installedPath: null,
   installedPackage: null,
   updateMethod: "manual",
+  manualInstallCommand: null,
   latest: null,
   releaseUrl: null,
   updateAvailable: false,
@@ -71,6 +80,7 @@ const INITIAL_STATUS: CodexUpdateStatus = {
 const DEFAULT_INSTALL_METADATA: CodexInstallMetadata = {
   installedPackage: null,
   updateMethod: "manual",
+  manualInstallCommand: null,
 };
 
 export class CodexUpdateChecker {
@@ -153,6 +163,7 @@ export class CodexUpdateChecker {
       installedPath,
       installedPackage: installMetadata.installedPackage,
       updateMethod: installMetadata.updateMethod,
+      manualInstallCommand: installMetadata.manualInstallCommand,
       latest,
       releaseUrl,
       updateAvailable,
@@ -234,22 +245,40 @@ async function detectInstallMetadataFromPath(
   }
 
   const npmGlobalRoot = await getNpmGlobalRoot();
-  if (!npmGlobalRoot) {
-    return { ...DEFAULT_INSTALL_METADATA };
-  }
+  const installedPackage = npmGlobalRoot
+    ? extractNpmGlobalPackageName(resolvedInstalledPath, npmGlobalRoot)
+    : null;
 
-  const installedPackage = extractNpmGlobalPackageName(
-    resolvedInstalledPath,
-    npmGlobalRoot,
-  );
-  if (!installedPackage) {
-    return { ...DEFAULT_INSTALL_METADATA };
+  if (installedPackage) {
+    return {
+      installedPackage,
+      updateMethod: "npm",
+      manualInstallCommand: `npm install -g ${installedPackage}@latest`,
+    };
   }
 
   return {
-    installedPackage,
-    updateMethod: "npm",
+    installedPackage: null,
+    updateMethod: "manual",
+    manualInstallCommand: inferManualInstallCommand(resolvedInstalledPath),
   };
+}
+
+/**
+ * Best-effort inference of an upgrade command from an install path.
+ * Recognized: Homebrew (any prefix containing /Cellar/), cargo installs
+ * under ~/.cargo/bin. Returns null when we can't be sure.
+ */
+export function inferManualInstallCommand(
+  resolvedInstalledPath: string,
+): string | null {
+  if (resolvedInstalledPath.includes(`${path.sep}Cellar${path.sep}`)) {
+    return "brew upgrade codex";
+  }
+  if (resolvedInstalledPath.includes(`${path.sep}.cargo${path.sep}bin${path.sep}`)) {
+    return "cargo install --locked codex";
+  }
+  return null;
 }
 
 async function getNpmGlobalRoot(): Promise<string | null> {
@@ -363,4 +392,5 @@ export const __testing__ = {
   normalizeVersion,
   compareVersions,
   extractNpmGlobalPackageName,
+  inferManualInstallCommand,
 };

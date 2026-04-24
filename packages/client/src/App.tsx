@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect } from "react";
+import { CodexUpdatePrompt } from "./components/CodexUpdatePrompt";
 import { ConnectionBar } from "./components/ConnectionBar";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { ReloadBanner } from "./components/ReloadBanner";
@@ -87,6 +88,7 @@ export function App({ children }: Props) {
               {!isLoading && showWizard && (
                 <OnboardingWizard onComplete={completeOnboarding} />
               )}
+              {!isLoading && !showWizard && <CodexUpdatePrompt />}
             </SchemaValidationProvider>
           </InboxProvider>
         </AuthProvider>

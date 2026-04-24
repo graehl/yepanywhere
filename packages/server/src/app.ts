@@ -719,6 +719,29 @@ export function createApp(options: AppOptions): AppResult {
     "/api/codex/updates",
     createCodexUpdateRoutes({ codexUpdateChecker }),
   );
+  if (
+    options.serverSettingsService?.getSetting("codexUpdatePolicy") === "auto"
+  ) {
+    void (async () => {
+      try {
+        const status = await codexUpdateChecker.getStatus();
+        if (status.updateAvailable && status.updateMethod === "npm") {
+          const result = await codexUpdateChecker.install();
+          if (result.success) {
+            console.log(
+              `[codex-update] Auto-updated to ${result.status.installed ?? "?"}`,
+            );
+          } else {
+            console.warn(
+              `[codex-update] Auto-update failed: ${result.error ?? "unknown"}`,
+            );
+          }
+        }
+      } catch (err) {
+        console.warn("[codex-update] Auto-update threw:", err);
+      }
+    })();
+  }
 
   // Sharing routes (session snapshot sharing via Worker)
   if (options.sharingService) {

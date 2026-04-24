@@ -5,7 +5,7 @@ import {
 } from "../../src/services/CodexUpdateChecker.js";
 
 const { normalizeVersion, compareVersions } = __testing__;
-const { extractNpmGlobalPackageName } = __testing__;
+const { extractNpmGlobalPackageName, inferManualInstallCommand } = __testing__;
 
 describe("CodexUpdateChecker version helpers", () => {
   it("extracts semver from typical CLI output", () => {
@@ -28,6 +28,23 @@ describe("CodexUpdateChecker version helpers", () => {
     expect(compareVersions("0.4.3-rc.1", "0.4.3")).toBeLessThan(0);
     expect(compareVersions("0.4.3", "0.4.3-rc.1")).toBeGreaterThan(0);
     expect(compareVersions("0.4.3-rc.1", "0.4.3-rc.2")).toBeLessThan(0);
+  });
+
+  it("infers manual install command from homebrew and cargo paths", () => {
+    expect(
+      inferManualInstallCommand("/opt/homebrew/Cellar/codex/0.4.3/bin/codex"),
+    ).toBe("brew upgrade codex");
+    expect(
+      inferManualInstallCommand(
+        "/usr/local/Cellar/codex/0.4.3/libexec/bin/codex",
+      ),
+    ).toBe("brew upgrade codex");
+    expect(
+      inferManualInstallCommand("/home/graehl/.cargo/bin/codex"),
+    ).toBe("cargo install --locked codex");
+    expect(
+      inferManualInstallCommand("/opt/codex-bundle/codex"),
+    ).toBeNull();
   });
 
   it("extracts npm package names from global node_modules paths", () => {
@@ -66,6 +83,7 @@ describe("CodexUpdateChecker", () => {
       detectInstallMetadata: async () => ({
         installedPackage: "@openai/codex",
         updateMethod: "npm",
+        manualInstallCommand: "npm install -g @openai/codex@latest",
       }),
     });
 
@@ -75,6 +93,7 @@ describe("CodexUpdateChecker", () => {
       installedPath: "/usr/local/bin/codex",
       installedPackage: "@openai/codex",
       updateMethod: "npm",
+      manualInstallCommand: "npm install -g @openai/codex@latest",
       latest: "0.4.3",
       releaseUrl: "https://github.com/openai/codex/releases/tag/v0.4.3",
       updateAvailable: true,
@@ -171,6 +190,7 @@ describe("CodexUpdateChecker", () => {
       detectInstallMetadata: async () => ({
         installedPackage: null,
         updateMethod: "manual",
+        manualInstallCommand: "brew upgrade codex",
       }),
       runInstall,
     });
@@ -179,6 +199,7 @@ describe("CodexUpdateChecker", () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/manual/i);
     expect(runInstall).not.toHaveBeenCalled();
+    expect(result.status.manualInstallCommand).toBe("brew upgrade codex");
   });
 
   it("install() runs npm install and refreshes on success", async () => {
@@ -194,6 +215,7 @@ describe("CodexUpdateChecker", () => {
       detectInstallMetadata: async () => ({
         installedPackage: "@openai/codex",
         updateMethod: "npm",
+        manualInstallCommand: "npm install -g @openai/codex@latest",
       }),
       runInstall,
     });
@@ -222,6 +244,7 @@ describe("CodexUpdateChecker", () => {
       detectInstallMetadata: async () => ({
         installedPackage: "@openai/codex",
         updateMethod: "npm",
+        manualInstallCommand: "npm install -g @openai/codex@latest",
       }),
       runInstall,
     });

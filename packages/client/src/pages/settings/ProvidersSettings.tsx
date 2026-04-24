@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useToastContext } from "../../contexts/ToastContext";
+import { useCodexUpdateStatus } from "../../hooks/useCodexUpdateStatus";
 import { useProviders } from "../../hooks/useProviders";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
@@ -156,6 +157,206 @@ function OllamaSystemPromptInput() {
   );
 }
 
+function CodexUpdatePanel() {
+  const { showToast } = useToastContext();
+  const { settings, updateSetting } = useServerSettings();
+  const {
+    status,
+    isChecking,
+    isInstalling,
+    error,
+    installOutput,
+    refresh,
+    install,
+  } = useCodexUpdateStatus();
+
+  const policy = settings?.codexUpdatePolicy ?? "notify";
+  const canAuto = status?.updateMethod === "npm";
+
+  const copy = useCallback(
+    async (text: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast("Command copied", "success");
+      } catch {
+        showToast("Copy failed", "error");
+      }
+    },
+    [showToast],
+  );
+
+  if (!status || !status.installed || !status.latest) {
+    return null;
+  }
+
+  const updateAvailable = status.updateAvailable;
+
+  return (
+    <div style={{ marginTop: "var(--space-2)", width: "100%" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "var(--space-2)",
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        {updateAvailable ? (
+          <span>
+            <strong>Update available:</strong> {status.installed} →{" "}
+            {status.latest}
+          </span>
+        ) : (
+          <span className="settings-hint">
+            Codex CLI {status.installed} is up to date
+          </span>
+        )}
+        <button
+          type="button"
+          className="settings-button"
+          onClick={() => void refresh(true)}
+          disabled={isChecking}
+          style={{ marginLeft: "auto" }}
+        >
+          {isChecking ? "Checking…" : "Check now"}
+        </button>
+        {status.releaseUrl && updateAvailable && (
+          <a
+            href={status.releaseUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="settings-link"
+          >
+            Release notes
+          </a>
+        )}
+      </div>
+
+      {updateAvailable && (
+        <div
+          style={{
+            display: "flex",
+            gap: "var(--space-2)",
+            alignItems: "center",
+            marginTop: "var(--space-2)",
+            flexWrap: "wrap",
+          }}
+        >
+          {status.updateMethod === "npm" ? (
+            <button
+              type="button"
+              className="settings-button"
+              onClick={() => void install()}
+              disabled={isInstalling}
+            >
+              {isInstalling ? "Installing…" : "Update now"}
+            </button>
+          ) : (
+            <span className="settings-hint">
+              Update with your installer:
+            </span>
+          )}
+          {status.manualInstallCommand && (
+            <>
+              <code
+                style={{
+                  padding: "2px 6px",
+                  background: "var(--color-surface-raised, #f5f5f5)",
+                  borderRadius: 4,
+                  fontSize: "0.85em",
+                }}
+              >
+                {status.manualInstallCommand}
+              </code>
+              <button
+                type="button"
+                className="settings-button"
+                onClick={() => void copy(status.manualInstallCommand ?? "")}
+              >
+                Copy
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <p className="settings-hint" style={{ color: "var(--color-error)" }}>
+          {error}
+        </p>
+      )}
+      {installOutput && (
+        <details style={{ marginTop: "var(--space-2)" }}>
+          <summary className="settings-hint">Install output</summary>
+          <pre
+            style={{
+              fontSize: "0.8em",
+              whiteSpace: "pre-wrap",
+              maxHeight: 200,
+              overflow: "auto",
+            }}
+          >
+            {installOutput}
+          </pre>
+        </details>
+      )}
+
+      <fieldset
+        style={{
+          border: "none",
+          padding: 0,
+          marginTop: "var(--space-3)",
+          display: "flex",
+          gap: "var(--space-3)",
+          flexWrap: "wrap",
+        }}
+      >
+        <legend className="settings-hint" style={{ marginBottom: 4 }}>
+          Update policy
+        </legend>
+        {(["auto", "notify", "off"] as const).map((value) => {
+          const disabled = value === "auto" && !canAuto;
+          return (
+            <label
+              key={value}
+              style={{
+                display: "inline-flex",
+                gap: 4,
+                alignItems: "center",
+                opacity: disabled ? 0.55 : 1,
+                cursor: disabled ? "not-allowed" : "pointer",
+              }}
+              title={
+                disabled
+                  ? "Auto requires an npm-global install"
+                  : undefined
+              }
+            >
+              <input
+                type="radio"
+                name="codex-update-policy"
+                value={value}
+                checked={policy === value}
+                disabled={disabled}
+                onChange={() =>
+                  void updateSetting("codexUpdatePolicy", value)
+                }
+              />
+              <span>
+                {value === "auto"
+                  ? "Auto"
+                  : value === "notify"
+                    ? "Notify me"
+                    : "Off"}
+              </span>
+            </label>
+          );
+        })}
+      </fieldset>
+    </div>
+  );
+}
+
 function OllamaSettings() {
   const { settings } = useServerSettings();
   const useFullPrompt = settings?.ollamaUseFullSystemPrompt ?? false;
@@ -245,6 +446,9 @@ export function ProvidersSettings() {
                   </div>
                 )}
               {provider.id === "claude-ollama" && <OllamaSettings />}
+              {provider.id === "codex" && provider.installed && (
+                <CodexUpdatePanel />
+              )}
             </div>
             {provider.metadata.website && (
               <a

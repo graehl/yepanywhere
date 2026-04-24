@@ -1,1 +1,2 @@
 - new session project selection
+- Rich rendering for agent output via yepanywhere

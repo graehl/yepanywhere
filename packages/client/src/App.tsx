@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect } from "react";
+import { BottomOverscrollReload } from "./components/BottomOverscrollReload";
 import { CodexUpdatePrompt } from "./components/CodexUpdatePrompt";
 import { ConnectionBar } from "./components/ConnectionBar";
 import { FloatingActionButton } from "./components/FloatingActionButton";
@@ -65,6 +66,7 @@ function AppContent({ children }: Props) {
           onDismiss={() => dismiss("frontend")}
         />
       )}
+      <BottomOverscrollReload onReload={reloadFrontend} />
       {children}
       <FloatingActionButton />
     </>

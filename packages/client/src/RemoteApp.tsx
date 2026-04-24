@@ -18,6 +18,7 @@
 
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { BottomOverscrollReload } from "./components/BottomOverscrollReload";
 import { ConnectionBar } from "./components/ConnectionBar";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { HostOfflineModal } from "./components/HostOfflineModal";
@@ -119,6 +120,7 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
           onDismiss={() => dismiss("frontend")}
         />
       )}
+      <BottomOverscrollReload onReload={reloadFrontend} />
       {children}
       <FloatingActionButton />
     </>

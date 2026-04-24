@@ -208,6 +208,41 @@ describe("Codex Normalization", () => {
     });
   });
 
+  it("extracts exec_command envelope output into structured Bash stdout", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "function_call",
+          name: "exec_command",
+          call_id: "call-exec-ansi",
+          arguments: '{"cmd":"printf demo"}',
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call-exec-ansi",
+          output:
+            "Chunk ID: ff710e\nWall time: 0.0518 seconds\nProcess exited with code 0\nOutput:\nplain\n\u001b[32mgreen bold\u001b[0m\n",
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    const toolResultMessage = result.messages[1];
+
+    expect(toolResultMessage?.toolUseResult).toMatchObject({
+      stdout: "plain\n\u001b[32mgreen bold\u001b[0m\n",
+      stderr: "",
+      interrupted: false,
+      isImage: false,
+    });
+  });
+
   it("maps ripgrep exec_command calls to Grep and treats no matches as non-error", () => {
     const entries: CodexSessionEntry[] = [
       {

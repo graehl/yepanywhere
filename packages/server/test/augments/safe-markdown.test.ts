@@ -61,4 +61,29 @@ describe("renderSafeMarkdown — math", () => {
     const count = (html.match(/class="katex"/g) ?? []).length;
     expect(count).toBe(3);
   });
+
+  it("renders inline math inside markdown list items", () => {
+    const html = renderSafeMarkdown("- first $x^2$\n- second $y^2$");
+    expect(html).toContain("<ul>");
+    expect(html).toContain("<li>first ");
+    const count = (html.match(/class="katex"/g) ?? []).length;
+    expect(count).toBe(2);
+  });
+
+  it("renders inline math inside markdown table cells", () => {
+    const html = renderSafeMarkdown(
+      "| expr | value |\n| --- | --- |\n| $x^2$ | $\\frac{1}{2}$ |",
+    );
+    expect(html).toContain("<table>");
+    expect(html).toContain("<td>");
+    const count = (html.match(/class="katex"/g) ?? []).length;
+    expect(count).toBe(2);
+  });
+
+  it("does not leave rendered formulas HTML-escaped in markdown output", () => {
+    const html = renderSafeMarkdown("row: $x^2$");
+    expect(html).toContain('class="katex"');
+    expect(html).not.toContain("&lt;span class=&quot;katex&quot;");
+    expect(html).not.toContain("$x^2$");
+  });
 });

@@ -3,6 +3,7 @@ import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
+import { FixedFontMathToggle } from "../../ui/FixedFontMathToggle";
 import { Modal } from "../../ui/Modal";
 import type {
   ImageFile,
@@ -56,6 +57,18 @@ function isPtyHandoffTextRead(
  */
 function getFileName(filePath: string): string {
   return filePath.split("/").pop() || filePath;
+}
+
+function renderReadMathPanel(html: string) {
+  return (
+    <div className="file-viewer-code fixed-font-rendered-panel">
+      <div
+        className="fixed-font-rendered__content"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is trusted HTML from local rendering
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  );
 }
 
 /**
@@ -132,39 +145,55 @@ function FileModalContent({
 
   // Use highlighted HTML if available
   if (highlightedHtml) {
+    const sourceView = (
+      <div className="file-viewer-code file-viewer-code-highlighted">
+        <div
+          className="shiki-container"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+        />
+        {highlightedTruncated && (
+          <div className="file-viewer-truncated">
+            Content truncated for highlighting (showing first 2000 lines)
+          </div>
+        )}
+      </div>
+    );
+
     return (
       <div className="file-content-modal">
         {toggleButton}
-        <div className="file-viewer-code file-viewer-code-highlighted">
-          <div
-            className="shiki-container"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-          />
-          {highlightedTruncated && (
-            <div className="file-viewer-truncated">
-              Content truncated for highlighting (showing first 2000 lines)
-            </div>
-          )}
-        </div>
+        <FixedFontMathToggle
+          sourceText={file.content}
+          sourceView={sourceView}
+          renderRenderedView={(html) => renderReadMathPanel(html)}
+        />
       </div>
     );
   }
 
   // Fallback: plain text with line numbers
+  const sourceView = (
+    <div className="file-content-with-lines">
+      <div className="line-numbers">
+        {lines.map((_, i) => (
+          <div key={`ln-${i + 1}`}>{file.startLine + i}</div>
+        ))}
+      </div>
+      <pre className="line-content">
+        <code>{file.content}</code>
+      </pre>
+    </div>
+  );
+
   return (
     <div className="file-content-modal">
       {toggleButton}
-      <div className="file-content-with-lines">
-        <div className="line-numbers">
-          {lines.map((_, i) => (
-            <div key={`ln-${i + 1}`}>{file.startLine + i}</div>
-          ))}
-        </div>
-        <pre className="line-content">
-          <code>{file.content}</code>
-        </pre>
-      </div>
+      <FixedFontMathToggle
+        sourceText={file.content}
+        sourceView={sourceView}
+        renderRenderedView={(html) => renderReadMathPanel(html)}
+      />
     </div>
   );
 }

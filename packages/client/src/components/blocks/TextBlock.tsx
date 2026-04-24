@@ -1,7 +1,8 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
 import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
 import { LocalMediaModal, useLocalMediaClick } from "../LocalMediaModal";
+import { renderFixedFontMath } from "../ui/FixedFontMathToggle";
 
 interface Props {
   text: string;
@@ -16,6 +17,8 @@ export const TextBlock = memo(function TextBlock({
   augmentHtml,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const [showRendered, setShowRendered] = useState(true);
+  const localMathPreview = useMemo(() => renderFixedFontMath(text), [text]);
 
   // Streaming markdown hook for server-rendered content
   const streamingMarkdown = useStreamingMarkdown();
@@ -64,6 +67,11 @@ export const TextBlock = memo(function TextBlock({
   const { modal, handleClick, closeModal } = useLocalMediaClick();
 
   const showStreamingContent = isStreaming && useStreamingContent;
+  const canToggleMath = localMathPreview.changed;
+
+  useEffect(() => {
+    setShowRendered(true);
+  }, [text, augmentHtml]);
 
   // Always render streaming container when isStreaming so refs are attached
   // before first augment arrives. Hidden until useStreamingContent becomes true.
@@ -75,19 +83,36 @@ export const TextBlock = memo(function TextBlock({
       className={`text-block timeline-item${isStreaming ? " streaming" : ""}`}
       onClick={handleClick}
     >
-      <button
-        type="button"
-        className={`text-block-copy ${copied ? "copied" : ""}`}
-        onClick={handleCopy}
-        title={copied ? "Copied!" : "Copy markdown"}
-        aria-label={copied ? "Copied!" : "Copy markdown"}
-      >
-        {copied ? <CheckIcon /> : <CopyIcon />}
-      </button>
+      <div className="text-block-actions">
+        {canToggleMath && (
+          <button
+            type="button"
+            className={`text-block-toggle ${showRendered ? "is-rendered" : ""}`}
+            onClick={() => setShowRendered((current) => !current)}
+            title={showRendered ? "Show source" : "Show rendered math"}
+            aria-label={showRendered ? "Show source" : "Show rendered math"}
+          >
+            ∑
+          </button>
+        )}
+        <button
+          type="button"
+          className={`text-block-copy ${copied ? "copied" : ""}`}
+          onClick={handleCopy}
+          title={copied ? "Copied!" : "Copy markdown"}
+          aria-label={copied ? "Copied!" : "Copy markdown"}
+        >
+          {copied ? <CheckIcon /> : <CopyIcon />}
+        </button>
+      </div>
 
       {/* Always render streaming elements when streaming so refs are ready for augments */}
       {renderStreamingContainer && (
-        <div style={showStreamingContent ? undefined : { display: "none" }}>
+        <div
+          style={
+            showStreamingContent && showRendered ? undefined : { display: "none" }
+          }
+        >
           <div
             ref={streamingMarkdown.containerRef}
             className="streaming-blocks"
@@ -101,12 +126,19 @@ export const TextBlock = memo(function TextBlock({
 
       {/* Show fallback content when not actively streaming */}
       {!showStreamingContent &&
-        (augmentHtml ? (
+        (showRendered && augmentHtml ? (
           // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
           <div dangerouslySetInnerHTML={{ __html: augmentHtml }} />
+        ) : showRendered && localMathPreview.changed ? (
+          <div
+            className="text-block-local-rendered"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is trusted HTML from local rendering
+            dangerouslySetInnerHTML={{ __html: localMathPreview.html }}
+          />
         ) : (
-          // Plain text fallback (no server augment available)
-          <p>{text}</p>
+          <pre className="text-block-source">
+            <code>{text}</code>
+          </pre>
         ))}
       {modal && (
         <LocalMediaModal

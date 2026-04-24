@@ -24,6 +24,60 @@
   background: var(--bg-error, rgba(207, 34, 46, 0.1));
 }
 
+.fixed-font-render-toggle {
+  position: relative;
+}
+
+.fixed-font-render-toggle__button {
+  position: absolute;
+  right: -0.35rem;
+  bottom: -0.35rem;
+  width: 1.45rem;
+  height: 1.45rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  z-index: 2;
+}
+
+.fixed-font-render-toggle__button:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong, var(--border-color));
+}
+
+.fixed-font-render-toggle__button.is-rendered {
+  color: var(--text-primary);
+}
+
+.fixed-font-rendered-panel {
+  display: block;
+}
+
+.fixed-font-rendered__content {
+  min-height: 1.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: var(--tab-size);
+  font-family: "SF Mono", Monaco, "Cascadia Code", "Consolas", monospace;
+  line-height: 1.5;
+}
+
+.fixed-font-rendered__content .katex-display {
+  margin: 0.35rem 0;
+}
+
+.fixed-font-rendered__content .katex-error {
+  color: var(--error-color);
+}
+
 /* ==========================================================================
    ANSI terminal colors (SGR escape rendering)
 
@@ -121,11 +175,18 @@
   position: relative;
 }
 
-/* Copy button for text blocks */
-.text-block-copy {
+.text-block-actions {
   position: absolute;
   top: 0;
   right: 0;
+  display: flex;
+  gap: 0.35rem;
+  z-index: 10;
+}
+
+/* Copy button for text blocks */
+.text-block-copy,
+.text-block-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -139,24 +200,28 @@
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s, background 0.15s, color 0.15s;
-  z-index: 10;
 }
 
 .text-block:hover .text-block-copy,
-.text-block-copy:focus {
+.text-block:hover .text-block-toggle,
+.text-block-copy:focus,
+.text-block-toggle:focus {
   opacity: 1;
 }
 
-.text-block-copy:hover {
+.text-block-copy:hover,
+.text-block-toggle:hover {
   background: var(--bg-tertiary, #333);
   color: var(--text-primary, #ccc);
 }
 
-.text-block-copy:active {
+.text-block-copy:active,
+.text-block-toggle:active {
   background: var(--bg-tertiary, #444);
 }
 
-.text-block-copy:focus {
+.text-block-copy:focus,
+.text-block-toggle:focus {
   outline: 1px solid var(--focus-border, #007acc);
   outline-offset: -1px;
 }
@@ -164,6 +229,27 @@
 .text-block-copy.copied {
   color: #4a4;
   opacity: 1;
+}
+
+.text-block-toggle.is-rendered {
+  color: var(--text-primary, #ccc);
+  opacity: 1;
+}
+
+.text-block-source {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "SF Mono", Monaco, "Cascadia Code", "Consolas", monospace;
+}
+
+.text-block-local-rendered {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.text-block-local-rendered .katex-display {
+  margin: 0.5rem 0;
 }
 
 .text-block p {

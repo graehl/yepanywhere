@@ -165,6 +165,11 @@ export function normalizeCodexToolOutputWithContext(
         ? { ...writeResult, session_id: sessionId }
         : writeResult;
     }
+  } else if (context?.toolName === "Bash") {
+    const bashContent = extractCodexShellOutputContent(content);
+    if (bashContent !== content) {
+      structured = createBashToolResult(bashContent, isError);
+    }
   }
 
   return { content, structured, isError };
@@ -229,6 +234,8 @@ export function normalizeCodexCommandExecutionOutput(
     execution.status !== "declined"
   ) {
     structured = normalizeWriteOutput(context.writeShellInfo);
+  } else if (context?.toolName === "Bash" && execution.status !== "declined") {
+    structured = createBashToolResult(baseOutput, isError);
   }
 
   return { content, structured, isError };
@@ -749,6 +756,20 @@ function extractCodexShellOutputContent(content: string): string {
 
   const rawOutput = normalized.slice(markerIndex + marker.length);
   return rawOutput.startsWith("\n") ? rawOutput.slice(1) : rawOutput;
+}
+
+function createBashToolResult(output: string, isError: boolean): {
+  stdout: string;
+  stderr: string;
+  interrupted: false;
+  isImage: false;
+} {
+  return {
+    stdout: isError ? "" : output,
+    stderr: isError ? output : "",
+    interrupted: false,
+    isImage: false,
+  };
 }
 
 function normalizeRipgrepOutput(output: string): {

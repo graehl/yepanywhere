@@ -1,13 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import {
   getDisplayBashCommandFromInput,
   isCodexProvider,
 } from "../../../lib/bashCommand";
+import { parseShellToolOutput } from "../../../lib/shellToolOutput";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
 import { AnsiText } from "../../ui/AnsiText";
+import {
+  FixedFontMathToggle,
+  renderFixedFontMath,
+} from "../../ui/FixedFontMathToggle";
 import { Modal } from "../../ui/Modal";
 import type { BashInput, BashResult, ToolRenderer } from "./types";
 
@@ -35,10 +40,12 @@ function normalizeBashResult(
     return { stdout: "", stderr: "", interrupted: false, isImage: false };
   }
   if (typeof result === "string") {
+    const parsed = parseShellToolOutput(result);
+    const output = parsed.hasEnvelope ? parsed.output : result;
     // Plain string result - put in stderr if error, stdout otherwise
     return {
-      stdout: isError ? "" : result,
-      stderr: isError ? result : "",
+      stdout: isError ? "" : output,
+      stderr: isError ? output : "",
       interrupted: false,
       isImage: false,
     };
@@ -89,6 +96,18 @@ function getPreviewLimits(provider?: string): {
   };
 }
 
+function renderFixedFontMathPanel(html: string, className = "code-block") {
+  return (
+    <div className={`${className} fixed-font-rendered-panel`}>
+      <div
+        className="fixed-font-rendered__content"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is trusted HTML from local rendering
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  );
+}
+
 /**
  * Modal content for viewing full bash input and output
  */
@@ -123,9 +142,15 @@ function BashModalContent({
         <div className="bash-modal-section">
           <div className="bash-modal-label">Output</div>
           <div className="bash-modal-code">
-            <pre className="code-block">
-              <AnsiText text={stdout} />
-            </pre>
+            <FixedFontMathToggle
+              sourceText={stdout}
+              sourceView={
+                <pre className="code-block">
+                  <AnsiText text={stdout} />
+                </pre>
+              }
+              renderRenderedView={(html) => renderFixedFontMathPanel(html)}
+            />
           </div>
         </div>
       )}
@@ -135,9 +160,17 @@ function BashModalContent({
             {isError ? "Error" : "Stderr"}
           </div>
           <div className="bash-modal-code bash-modal-code-error">
-            <pre className="code-block code-block-error">
-              <AnsiText text={stderr} />
-            </pre>
+            <FixedFontMathToggle
+              sourceText={stderr}
+              sourceView={
+                <pre className="code-block code-block-error">
+                  <AnsiText text={stderr} />
+                </pre>
+              }
+              renderRenderedView={(html) =>
+                renderFixedFontMathPanel(html, "code-block code-block-error")
+              }
+            />
           </div>
         </div>
       )}
@@ -253,9 +286,15 @@ function BashToolResult({
       )}
       {stdout && (
         <div className="bash-stdout">
-          <pre className="code-block">
-            <AnsiText text={displayStdout} />
-          </pre>
+          <FixedFontMathToggle
+            sourceText={displayStdout}
+            sourceView={
+              <pre className="code-block">
+                <AnsiText text={displayStdout} />
+              </pre>
+            }
+            renderRenderedView={(html) => renderFixedFontMathPanel(html)}
+          />
           {needsCollapse && (
             <button
               type="button"
@@ -271,9 +310,17 @@ function BashToolResult({
       )}
       {stderr && (
         <div className="bash-stderr">
-          <pre className="code-block code-block-error">
-            <AnsiText text={stderr} />
-          </pre>
+          <FixedFontMathToggle
+            sourceText={stderr}
+            sourceView={
+              <pre className="code-block code-block-error">
+                <AnsiText text={stderr} />
+              </pre>
+            }
+            renderRenderedView={(html) =>
+              renderFixedFontMathPanel(html, "code-block code-block-error")
+            }
+          />
         </div>
       )}
       {!stdout && !stderr && !result?.interrupted && (
@@ -363,6 +410,10 @@ function BashCollapsedPreview({
     output,
     getPreviewLimits(provider),
   );
+  const mathPreview = useMemo(
+    () => renderFixedFontMath(previewText),
+    [previewText],
+  );
   const hasOutput = previewText.length > 0;
 
   const handleClick = useCallback(() => {
@@ -394,7 +445,15 @@ function BashCollapsedPreview({
               className={`bash-preview-output ${truncated ? "bash-preview-truncated" : ""} ${isError || result?.stderr ? "bash-preview-error" : ""}`}
             >
               <pre>
-                <AnsiText text={previewText} />
+                {mathPreview.changed ? (
+                  <div
+                    className="fixed-font-rendered__content"
+                    // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is trusted HTML from local rendering
+                    dangerouslySetInnerHTML={{ __html: mathPreview.html }}
+                  />
+                ) : (
+                  <AnsiText text={previewText} />
+                )}
               </pre>
               {truncated && <div className="bash-preview-fade" />}
             </div>

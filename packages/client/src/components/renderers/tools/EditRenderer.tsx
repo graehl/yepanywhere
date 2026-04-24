@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { useSessionMetadata } from "../../../contexts/SessionMetadataContext";
@@ -10,6 +18,7 @@ import {
 } from "../../../lib/classifyToolError";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
+import { FixedFontMathToggle } from "../../ui/FixedFontMathToggle";
 import { Modal } from "../../ui/Modal";
 import type { EditInput, EditResult, PatchHunk, ToolRenderer } from "./types";
 
@@ -108,6 +117,48 @@ function truncateByLines(
     text: lines.slice(0, maxLines).join("\n"),
     truncated: true,
   };
+}
+
+function renderFixedFontMathPanel(html: string, className: string) {
+  return (
+    <div className={`${className} fixed-font-rendered-panel`}>
+      <div
+        className="fixed-font-rendered__content"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is trusted HTML from local rendering
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  );
+}
+
+function DiffMathView({
+  sourceText,
+  sourceView,
+  truncated = false,
+}: {
+  sourceText: string;
+  sourceView: ReactNode;
+  truncated?: boolean;
+}) {
+  return (
+    <FixedFontMathToggle
+      sourceText={sourceText}
+      sourceView={
+        <div className={`diff-view-container ${truncated ? "truncated" : ""}`}>
+          <div className="diff-view">{sourceView}</div>
+          {truncated && <div className="diff-fade-overlay" />}
+        </div>
+      }
+      renderRenderedView={(html) => (
+        <div className={`diff-view-container ${truncated ? "truncated" : ""}`}>
+          <div className="diff-view">
+            {renderFixedFontMathPanel(html, "diff-content")}
+          </div>
+          {truncated && <div className="diff-fade-overlay" />}
+        </div>
+      )}
+    />
+  );
 }
 
 /**
@@ -227,25 +278,46 @@ function RawPatchPreview({
   }, [rawPatch, truncateLines]);
 
   return (
-    <div
-      className={`diff-view-container ${preview.truncated ? "truncated" : ""}`}
-    >
-      <div className="diff-view">
-        <pre className="code-block">
-          <code>{preview.text}</code>
-        </pre>
-      </div>
-      {preview.truncated && <div className="diff-fade-overlay" />}
-    </div>
+    <FixedFontMathToggle
+      sourceText={preview.text}
+      sourceView={
+        <div
+          className={`diff-view-container ${preview.truncated ? "truncated" : ""}`}
+        >
+          <div className="diff-view">
+            <pre className="code-block">
+              <code>{preview.text}</code>
+            </pre>
+          </div>
+          {preview.truncated && <div className="diff-fade-overlay" />}
+        </div>
+      }
+      renderRenderedView={(html) => (
+        <div
+          className={`diff-view-container ${preview.truncated ? "truncated" : ""}`}
+        >
+          <div className="diff-view">
+            {renderFixedFontMathPanel(html, "code-block")}
+          </div>
+          {preview.truncated && <div className="diff-fade-overlay" />}
+        </div>
+      )}
+    />
   );
 }
 
 function RawPatchModalContent({ rawPatch }: { rawPatch: string }) {
   return (
     <div className="diff-modal-content">
-      <pre className="code-block">
-        <code>{rawPatch}</code>
-      </pre>
+      <FixedFontMathToggle
+        sourceText={rawPatch}
+        sourceView={
+          <pre className="code-block">
+            <code>{rawPatch}</code>
+          </pre>
+        }
+        renderRenderedView={(html) => renderFixedFontMathPanel(html, "code-block")}
+      />
     </div>
   );
 }
@@ -280,19 +352,20 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
       {changeSummary && (
         <div className="edit-change-summary">{changeSummary}</div>
       )}
-      <div className={`diff-view-container ${isTruncated ? "truncated" : ""}`}>
-        <div className="diff-view">
-          {input._diffHtml ? (
+      <DiffMathView
+        sourceText={diffLines.join("\n")}
+        truncated={isTruncated}
+        sourceView={
+          input._diffHtml ? (
             <HighlightedDiff
               diffHtml={input._diffHtml}
               truncateLines={isTruncated ? MAX_VISIBLE_LINES : undefined}
             />
           ) : (
             <DiffLines lines={diffLines} />
-          )}
-        </div>
-        {isTruncated && <div className="diff-fade-overlay" />}
-      </div>
+          )
+        }
+      />
     </div>
   );
 }
@@ -398,11 +471,16 @@ function DiffModalContent({
         {error && <span className="diff-context-error">{error}</span>}
       </div>
 
-      {displayHtml ? (
-        <HighlightedDiff diffHtml={displayHtml} />
-      ) : (
-        <DiffLines lines={displayPatch.flatMap((h) => h.lines)} />
-      )}
+      <DiffMathView
+        sourceText={displayPatch.flatMap((h) => h.lines).join("\n")}
+        sourceView={
+          displayHtml ? (
+            <HighlightedDiff diffHtml={displayHtml} />
+          ) : (
+            <DiffLines lines={displayPatch.flatMap((h) => h.lines)} />
+          )
+        }
+      />
     </div>
   );
 }

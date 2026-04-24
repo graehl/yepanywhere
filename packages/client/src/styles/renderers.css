@@ -29,12 +29,10 @@
 }
 
 .render-mode-glyph {
-  display: inline-block;
-  font-family: "KaTeX_Main", "Times New Roman", serif;
-  font-size: 0.94em;
-  font-weight: 500;
-  line-height: 1;
-  transform: translateY(-0.03em);
+  display: block;
+  width: 0.9rem;
+  height: 0.9rem;
+  overflow: visible;
 }
 
 .fixed-font-render-toggle__button {

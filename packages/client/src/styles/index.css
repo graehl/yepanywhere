@@ -1834,6 +1834,8 @@ a.sidebar-nav-item {
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
+  --composer-control-size: 32px;
+  --composer-primary-control-size: 36px;
 }
 
 /* Pending approval indicator button in toolbar */
@@ -2086,11 +2088,10 @@ a.sidebar-nav-item {
   flex-shrink: 0;
 }
 
-.send-button,
-.stop-button,
-.queue-button {
-  width: 36px;
-  height: 36px;
+.queue-button,
+.stop-button {
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2099,6 +2100,27 @@ a.sidebar-nav-item {
   cursor: pointer;
   transition: opacity 0.15s;
   flex-shrink: 0;
+  padding: 0;
+}
+
+.send-button {
+  width: var(--composer-primary-control-size);
+  height: var(--composer-primary-control-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.send-button,
+.stop-button,
+.queue-button {
+  box-sizing: border-box;
 }
 
 .send-button {
@@ -2218,8 +2240,9 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-1);
-  padding: var(--space-1);
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
+  padding: 0;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -2228,6 +2251,8 @@ a.sidebar-nav-item {
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
   position: relative;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .attach-button:hover:not(:disabled) {
@@ -2262,13 +2287,17 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-1);
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
+  padding: 0;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   color: var(--text-muted);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .thinking-toggle-button:hover {
@@ -2302,7 +2331,9 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-1);
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
+  padding: 0;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -2314,6 +2345,8 @@ a.sidebar-nav-item {
     color 0.15s,
     box-shadow 0.15s;
   position: relative;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .render-mode-toolbar-button:hover {
@@ -2349,13 +2382,17 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-1);
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
+  padding: 0;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   color: var(--text-muted);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .heartbeat-toolbar-button:hover {
@@ -2382,13 +2419,17 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-1);
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
+  padding: 0;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   color: var(--text-muted);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .voice-input-button:hover {
@@ -2528,14 +2569,18 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-1);
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
+  padding: 0;
   background: transparent;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   color: var(--text-muted);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
-  min-width: 28px;
+  min-width: 0;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .slash-command-button:hover {

@@ -6906,6 +6906,154 @@ a.sidebar-nav-item {
   flex-wrap: wrap;
 }
 
+.codex-update-prompt {
+  min-width: min(32rem, 100%);
+}
+
+.codex-update-prompt__summary {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.codex-update-prompt__release-link {
+  align-self: flex-start;
+  padding: 0;
+}
+
+.codex-update-prompt__command-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.codex-update-prompt__command {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.codex-update-prompt__checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.codex-update-prompt__checkbox {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  display: grid;
+  place-content: center;
+  flex-shrink: 0;
+  border: 1px solid
+    color-mix(in srgb, var(--text-muted) 45%, var(--border-input));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-input) 70%, var(--bg-secondary));
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.codex-update-prompt__checkbox::before {
+  content: "✓";
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  transform: scale(0);
+  transition: transform 0.15s ease;
+}
+
+.codex-update-prompt__checkbox:hover {
+  border-color: color-mix(in srgb, var(--provider-codex) 55%, var(--border-input));
+}
+
+.codex-update-prompt__checkbox:checked {
+  background: var(--provider-codex);
+  border-color: var(--provider-codex);
+}
+
+.codex-update-prompt__checkbox:checked::before {
+  transform: scale(1);
+}
+
+.codex-update-prompt__checkbox:focus-visible {
+  outline: 2px solid
+    color-mix(in srgb, var(--provider-codex) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.codex-update-prompt__checkbox:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.codex-update-prompt__progress {
+  margin: 0;
+}
+
+.codex-update-prompt__output-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.codex-update-prompt__output-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.codex-update-prompt__output-title {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.codex-update-prompt__output-command {
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  word-break: break-word;
+}
+
+.codex-update-prompt__output {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.codex-update-prompt__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 /* ==========================================================================
    RemoteAccessSetup Component
    ========================================================================== */

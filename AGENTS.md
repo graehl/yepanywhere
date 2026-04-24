@@ -1,5 +1,30 @@
 Read and follow `CLAUDE.md` for repo context and instructions, and `DEVELOPMENT.md` for dev/contributor policy (setup, commands, contribution ethos).
 
+## Codex Version Bump Audit
+
+Treat `package.json` `yepAnywhere.codexCli.expectedVersion` as the repo's
+declared Codex CLI target version. When that value increases, or when Codex
+API/protocol docs or checked-in Codex protocol files have changed in a way that
+plainly implies a newer target version, do a routine compatibility check before
+making YA source changes that respond to the Codex-side change.
+
+The routine check may be automatic and read-only at first: inspect the
+Codex-facing surfaces that are most likely to drift, especially
+`packages/server/src/sdk/providers/codex*`,
+`packages/shared/src/codex-schema/`, generated protocol files, and related
+tests/scripts such as `scripts/update-codex-protocol.mjs`. A preliminary audit
+that only identifies likely drift can happen immediately without asking first.
+
+Before actually editing YA code for that compatibility work, pause and ask the
+user whether they want the audit enacted now. Quote a prompt they can approve
+or reuse, for example: "Audit YA for Codex CLI/API changes from <old> to <new>:
+compare the changed Codex docs/files against our Codex-facing types, protocol
+definitions, generated files, and tests; update whatever is needed for
+compatibility; then summarize the behavioral changes, risks, and follow-on work."
+
+Also state the likely benefit in one sentence, e.g. that this catches protocol
+or schema drift early and reduces silent breakage in YA's Codex integration.
+
 ## Commit Message Guidance
 
 Aim for a <=65 char subject, and strictly enforce a 72-column line wrap

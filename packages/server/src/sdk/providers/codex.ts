@@ -1323,15 +1323,9 @@ export class CodexProvider implements AgentProvider {
 
   private createDangerFullAccessPermissionProfile(): PermissionProfile {
     return {
+      type: "managed",
       network: { enabled: true },
-      fileSystem: {
-        entries: [
-          {
-            path: { type: "special", value: { kind: "root" } },
-            access: "write",
-          },
-        ],
-      },
+      fileSystem: { type: "unrestricted" },
     };
   }
 
@@ -1860,7 +1854,14 @@ export class CodexProvider implements AgentProvider {
     return (
       /unknown field .*permissionProfile/i.test(message) ||
       /permissionProfile.*unknown field/i.test(message) ||
-      /permissionProfile.*unsupported/i.test(message)
+      /permissionProfile.*unsupported/i.test(message) ||
+      /permissionProfile.*invalid/i.test(message) ||
+      /unknown variant .*(managed|disabled|external|restricted|unrestricted)/i.test(
+        message,
+      ) ||
+      /unknown field .*type.*expected.*(network|fileSystem|entries|globScanMaxDepth)/i.test(
+        message,
+      )
     );
   }
 
@@ -1893,6 +1894,7 @@ export class CodexProvider implements AgentProvider {
       cwd: options.cwd,
       ...this.buildThreadPermissionParams(policy, usePermissionProfile),
       config: this.buildThreadConfigOverrides(options),
+      excludeTurns: true,
       persistExtendedHistory: experimentalApiEnabled,
     };
   }

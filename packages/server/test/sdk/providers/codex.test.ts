@@ -612,15 +612,9 @@ describe("CodexProvider Event Normalization", () => {
     expect(bypassStart).toMatchObject({
       approvalPolicy: "never",
       permissionProfile: {
+        type: "managed",
         network: { enabled: true },
-        fileSystem: {
-          entries: [
-            {
-              path: { type: "special", value: { kind: "root" } },
-              access: "write",
-            },
-          ],
-        },
+        fileSystem: { type: "unrestricted" },
       },
     });
     expect(bypassStart.sandbox).toBeUndefined();
@@ -675,6 +669,7 @@ describe("CodexProvider Event Normalization", () => {
       persistExtendedHistory: false,
     });
     expect(resume).toMatchObject({
+      excludeTurns: true,
       persistExtendedHistory: false,
     });
   });
@@ -755,6 +750,28 @@ describe("CodexProvider Event Normalization", () => {
     ).toBe(true);
     expect(
       provider.isExperimentalCapabilityError(
+        new Error("connection closed"),
+      ),
+    ).toBe(false);
+  });
+
+  it("treats old permission profile shape rejections as fallback errors", () => {
+    const provider = createTestProvider() as unknown as {
+      isPermissionProfileCompatibilityError: (error: unknown) => boolean;
+    };
+
+    expect(
+      provider.isPermissionProfileCompatibilityError(
+        new Error("unknown variant `managed`, expected struct PermissionProfile"),
+      ),
+    ).toBe(true);
+    expect(
+      provider.isPermissionProfileCompatibilityError(
+        new Error("unknown field `type`, expected `network` or `fileSystem`"),
+      ),
+    ).toBe(true);
+    expect(
+      provider.isPermissionProfileCompatibilityError(
         new Error("connection closed"),
       ),
     ).toBe(false);

@@ -207,14 +207,19 @@
   border-radius: var(--radius-sm, 4px);
   color: var(--text-muted, #888);
   cursor: pointer;
-  opacity: 0;
   transition: opacity 0.15s, background 0.15s, color 0.15s;
 }
 
+.text-block-copy {
+  opacity: 0;
+}
+
+.text-block-toggle {
+  opacity: 1;
+}
+
 .text-block:hover .text-block-copy,
-.text-block:hover .text-block-toggle,
-.text-block-copy:focus,
-.text-block-toggle:focus {
+.text-block-copy:focus {
   opacity: 1;
 }
 

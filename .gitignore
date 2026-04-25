@@ -47,6 +47,7 @@ tasks/
 .yep-anywhere/
 /.codex
 /last-session.md
+/AGENTS.local.md
 
 # Codex sample sessions (local dev data)
 codex-sample-sessions/

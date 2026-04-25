@@ -928,13 +928,27 @@ export function NewSessionForm({
           type="button"
           onClick={handleStartSession}
           disabled={isStarting || !canStart}
-          className="send-button"
+          className="send-button new-session-submit-button"
           aria-label={t("newSessionStartAction")}
         >
           {isStarting ? (
             <span className="send-spinner" />
           ) : (
-            <span className="send-icon">↑</span>
+            <svg
+              className="send-icon new-session-submit-icon"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 19V5" />
+              <path d="m5 12 7-7 7 7" />
+            </svg>
           )}
         </button>
       </div>

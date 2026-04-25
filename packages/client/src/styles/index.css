@@ -776,6 +776,8 @@ h2 {
   justify-content: space-between;
   align-items: center;
   margin-top: 0.5rem;
+  --composer-control-size: 32px;
+  --composer-primary-control-size: 40px;
 }
 
 .new-session-form-toolbar-left {
@@ -789,8 +791,9 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
+  min-width: var(--composer-control-size);
   padding: 0;
   background: transparent;
   border: 1px solid var(--border-input);
@@ -798,6 +801,8 @@ h2 {
   color: var(--text-muted);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .toolbar-button:hover:not(:disabled) {
@@ -5220,6 +5225,37 @@ a.sidebar-nav-item {
 
 .new-session-input-area {
   margin-bottom: 0;
+}
+
+.new-session-form-toolbar .toolbar-button,
+.new-session-form-toolbar .voice-input-button,
+.new-session-form-toolbar .thinking-toggle-button {
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
+  min-width: var(--composer-control-size);
+  border-radius: var(--radius-md);
+}
+
+.new-session-form-toolbar .toolbar-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.new-session-submit-button {
+  width: var(--composer-primary-control-size);
+  height: var(--composer-primary-control-size);
+  border-radius: var(--radius-lg);
+}
+
+.new-session-submit-button:disabled {
+  opacity: 1;
+  background: color-mix(in srgb, var(--app-yep-green) 46%, var(--bg-input));
+  color: color-mix(in srgb, white 76%, transparent);
+}
+
+.new-session-submit-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .new-session-provider-slot .new-session-provider-section {

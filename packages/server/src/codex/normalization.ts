@@ -133,6 +133,8 @@ export function normalizeCodexToolOutputWithContext(
   let isError = normalized.isError;
   const exitCode = normalized.exitCode ?? extractExitCodeFromText(content);
   const sessionId = extractSessionIdFromText(content);
+  const backgroundTaskId = extractCodexBackgroundTaskId(content);
+  const interrupted = isCodexInterruptedToolOutput(content);
 
   if (context?.toolName === "Grep") {
     const grepContent = extractCodexShellOutputContent(content);
@@ -167,8 +169,13 @@ export function normalizeCodexToolOutputWithContext(
     }
   } else if (context?.toolName === "Bash") {
     const bashContent = extractCodexShellOutputContent(content);
-    if (bashContent !== content) {
-      structured = createBashToolResult(bashContent, isError);
+    if (bashContent !== content || backgroundTaskId || interrupted) {
+      structured = createBashToolResult(
+        interrupted ? "" : bashContent,
+        isError,
+        backgroundTaskId,
+        interrupted,
+      );
     }
   }
 
@@ -662,14 +669,44 @@ function extractExitCodeFromText(output: string): number | undefined {
   return Number.parseInt(match[1], 10);
 }
 
-function extractSessionIdFromText(output: string): number | undefined {
+export function extractCodexBackgroundTaskId(
+  output: unknown,
+): string | undefined {
+  if (typeof output !== "string") {
+    return undefined;
+  }
   const match = output.match(
     /(?:^|\n)\s*(?:Process\s+running\s+with\s+session\s+ID|session(?:\s+id)?)\s*:?\s*(\d+)\b/i,
   );
   if (!match?.[1]) {
     return undefined;
   }
-  return Number.parseInt(match[1], 10);
+  return match[1];
+}
+
+export function isCodexBackgroundProcessOutput(output: unknown): boolean {
+  if (typeof output !== "string") {
+    return false;
+  }
+  return (
+    extractCodexBackgroundTaskId(output) !== undefined &&
+    extractExitCodeFromText(output) === undefined
+  );
+}
+
+export function isCodexInterruptedToolOutput(output: unknown): boolean {
+  return (
+    typeof output === "string" &&
+    /(?:^|\n)\s*(?:aborted by user|interrupted by user)(?:\s|$)/i.test(output)
+  );
+}
+
+function extractSessionIdFromText(output: string): number | undefined {
+  const taskId = extractCodexBackgroundTaskId(output);
+  if (!taskId) {
+    return undefined;
+  }
+  return Number.parseInt(taskId, 10);
 }
 
 function normalizeCodexToolOutput(
@@ -758,17 +795,24 @@ function extractCodexShellOutputContent(content: string): string {
   return rawOutput.startsWith("\n") ? rawOutput.slice(1) : rawOutput;
 }
 
-function createBashToolResult(output: string, isError: boolean): {
+function createBashToolResult(
+  output: string,
+  isError: boolean,
+  backgroundTaskId?: string,
+  interrupted = false,
+): {
   stdout: string;
   stderr: string;
-  interrupted: false;
+  interrupted: boolean;
   isImage: false;
+  backgroundTaskId?: string;
 } {
   return {
-    stdout: isError ? "" : output,
-    stderr: isError ? output : "",
-    interrupted: false,
+    stdout: interrupted || isError ? "" : output,
+    stderr: interrupted ? "" : isError ? output : "",
+    interrupted,
     isImage: false,
+    ...(backgroundTaskId ? { backgroundTaskId } : {}),
   };
 }
 

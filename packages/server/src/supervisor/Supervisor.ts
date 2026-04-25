@@ -60,6 +60,7 @@ const CODEX_STALE_IN_TURN_THRESHOLD_MS = 60 * 60 * 1000;
 const HEARTBEAT_TURN_CHECK_INTERVAL_MS = 30 * 1000;
 const DEFAULT_HEARTBEAT_TURN_TEXT = "yepanywhere heartbeat";
 const DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES = 5;
+const DEFAULT_INTERRUPT_TIMEOUT_MS = 2000;
 
 function getStaleInTurnThresholdMs(provider: ProviderName): number {
   return provider === "codex" || provider === "codex-oss"
@@ -142,6 +143,8 @@ export interface SupervisorOptions {
   getHeartbeatTurnSettings?: (
     sessionId: string,
   ) => HeartbeatTurnSettings | undefined;
+  /** Maximum time to wait for a graceful provider interrupt before hard abort. */
+  interruptTimeoutMs?: number;
 }
 
 export class Supervisor {
@@ -165,6 +168,7 @@ export class Supervisor {
     sessionId: string,
   ) => HeartbeatTurnSettings | undefined;
   private heartbeatTurnTimer: ReturnType<typeof setInterval>;
+  private interruptTimeoutMs: number;
 
   constructor(options: SupervisorOptions) {
     this.provider = options.provider ?? null;
@@ -183,6 +187,8 @@ export class Supervisor {
     this.onSessionExecutor = options.onSessionExecutor;
     this.onSessionSummary = options.onSessionSummary;
     this.getHeartbeatTurnSettings = options.getHeartbeatTurnSettings;
+    this.interruptTimeoutMs =
+      options.interruptTimeoutMs ?? DEFAULT_INTERRUPT_TIMEOUT_MS;
     this.staleCheckTimer = setInterval(
       () => this.terminateStaleProcesses(),
       STALE_CHECK_INTERVAL_MS,
@@ -471,7 +477,7 @@ export class Supervisor {
     // Generate UUID for the initial message so SDK and SSE use the same ID.
     // This ensures the client can match the SSE replay to its temp message,
     // and prevents duplicates when JSONL is later fetched.
-    const messageUuid = randomUUID();
+    const messageUuid = message.uuid ?? randomUUID();
     const messageWithUuid: UserMessage = { ...message, uuid: messageUuid };
 
     const result = await this.realSdk.startSession({
@@ -673,7 +679,7 @@ export class Supervisor {
     const effectiveMode = permissionMode ?? this.defaultPermissionMode;
 
     // Generate UUID for the initial message so SDK and SSE use the same ID.
-    const messageUuid = randomUUID();
+    const messageUuid = message.uuid ?? randomUUID();
     const messageWithUuid: UserMessage = { ...message, uuid: messageUuid };
 
     const result = await activeProvider.startSession({
@@ -1272,7 +1278,7 @@ export class Supervisor {
    */
   async interruptProcess(
     processId: string,
-  ): Promise<{ success: boolean; supported: boolean }> {
+  ): Promise<{ success: boolean; supported: boolean; hardAborted?: boolean }> {
     const process = this.processes.get(processId);
     if (!process) return { success: false, supported: false };
 
@@ -1293,8 +1299,182 @@ export class Supervisor {
       `Session interrupt requested: ${process.sessionId}`,
     );
 
-    const interrupted = await process.interrupt();
-    return { success: interrupted, supported: true };
+    const { interrupted, timedOut } =
+      await this.interruptProcessWithTimeout(process);
+    if (interrupted) {
+      return { success: true, supported: true };
+    }
+
+    if (timedOut) {
+      log.warn(
+        {
+          event: "session_interrupt_timeout",
+          sessionId: process.sessionId,
+          processId: process.id,
+          projectId: process.projectId,
+          currentState: process.state.type,
+          timeoutMs: this.interruptTimeoutMs,
+        },
+        `Session interrupt timed out; hard-aborting process: ${process.sessionId}`,
+      );
+    }
+
+    log.warn(
+      {
+        event: "session_interrupt_incomplete",
+        sessionId: process.sessionId,
+        processId: process.id,
+        projectId: process.projectId,
+        currentState: process.state.type,
+      },
+      `Session interrupt incomplete; hard-aborting process: ${process.sessionId}`,
+    );
+
+    const deferredMessages = process.drainPendingUserMessages("promoted");
+    this.emitSessionAborted(process.sessionId, process.projectId);
+    process.terminate("interrupt fallback abort");
+    this.unregisterProcess(process);
+    this.recoverDeferredMessagesAfterHardAbort(process, deferredMessages);
+    return { success: false, supported: true, hardAborted: true };
+  }
+
+  private async interruptProcessWithTimeout(
+    process: Process,
+  ): Promise<{ interrupted: boolean; timedOut: boolean }> {
+    const log = getLogger();
+    const interruptPromise = process
+      .interrupt()
+      .then((interrupted) => ({ interrupted, timedOut: false }))
+      .catch((error) => {
+        log.warn(
+          {
+            event: "session_interrupt_failed",
+            sessionId: process.sessionId,
+            processId: process.id,
+            projectId: process.projectId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          `Session interrupt failed: ${process.sessionId}`,
+        );
+        return { interrupted: false, timedOut: false };
+      });
+
+    if (
+      !Number.isFinite(this.interruptTimeoutMs) ||
+      this.interruptTimeoutMs <= 0
+    ) {
+      return interruptPromise;
+    }
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<{
+      interrupted: boolean;
+      timedOut: boolean;
+    }>((resolve) => {
+      timeout = setTimeout(() => {
+        resolve({ interrupted: false, timedOut: true });
+      }, this.interruptTimeoutMs);
+      timeout.unref?.();
+    });
+
+    try {
+      return await Promise.race([interruptPromise, timeoutPromise]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+
+  private recoverDeferredMessagesAfterHardAbort(
+    sourceProcess: Process,
+    deferredMessages: UserMessage[],
+  ): void {
+    if (deferredMessages.length === 0) {
+      return;
+    }
+
+    void this.resumeDeferredMessagesAfterHardAbort(
+      sourceProcess,
+      deferredMessages,
+    ).catch((error) => {
+      const log = getLogger();
+      log.warn(
+        {
+          event: "deferred_recovery_failed",
+          sessionId: sourceProcess.sessionId,
+          processId: sourceProcess.id,
+          projectId: sourceProcess.projectId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to recover deferred messages after hard abort",
+      );
+    });
+  }
+
+  private async resumeDeferredMessagesAfterHardAbort(
+    sourceProcess: Process,
+    deferredMessages: UserMessage[],
+  ): Promise<void> {
+    const [firstMessage, ...remainingMessages] = deferredMessages;
+    if (!firstMessage) {
+      return;
+    }
+
+    const providerName =
+      sourceProcess.provider === "claude" && this.realSdk && !this.provider
+        ? undefined
+        : sourceProcess.provider;
+
+    const result = await this.resumeSession(
+      sourceProcess.sessionId,
+      sourceProcess.projectPath,
+      firstMessage,
+      firstMessage.mode ?? sourceProcess.permissionMode,
+      {
+        model: sourceProcess.resolvedModel ?? sourceProcess.model,
+        thinking: sourceProcess.thinking,
+        effort: sourceProcess.effort,
+        providerName,
+        executor: sourceProcess.executor,
+        permissions: sourceProcess.permissions,
+      },
+    );
+
+    const log = getLogger();
+    if (!("id" in result)) {
+      log.warn(
+        {
+          event: "deferred_recovery_not_started",
+          sessionId: sourceProcess.sessionId,
+          processId: sourceProcess.id,
+          projectId: sourceProcess.projectId,
+          recoveredCount: deferredMessages.length,
+        },
+        "Deferred recovery was queued or rejected after hard abort",
+      );
+      return;
+    }
+
+    for (const message of remainingMessages) {
+      if (message.mode) {
+        result.setPermissionMode(message.mode);
+      }
+      const queued = result.deferMessage(message, { promoteIfReady: false });
+      if (!queued.success) {
+        log.warn(
+          {
+            event: "deferred_recovery_enqueue_failed",
+            sessionId: sourceProcess.sessionId,
+            processId: result.id,
+            projectId: sourceProcess.projectId,
+            tempId: message.tempId,
+            error: queued.error,
+          },
+          "Failed to recover deferred message on replacement process",
+        );
+      }
+    }
   }
 
   private emitSessionAborted(sessionId: string, projectId: UrlProjectId): void {

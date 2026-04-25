@@ -79,7 +79,7 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   /** Function to change max thinking tokens at runtime (SDK 0.2.7+) */
   setMaxThinkingTokensFn?: (tokens: number | null) => Promise<void>;
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
-  interruptFn?: () => Promise<void>;
+  interruptFn?: () => Promise<void | boolean>;
   /**
    * Function to steer an active turn with additional user input.
    * Returns false when steering is unavailable and caller should enqueue.
@@ -158,7 +158,7 @@ export class Process {
     | null;
 
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
-  private interruptFn: (() => Promise<void>) | null;
+  private interruptFn: (() => Promise<void | boolean>) | null;
   /** Function to steer an active turn (provider-specific, currently Codex app-server) */
   private steerFn: ((message: UserMessage) => Promise<boolean>) | null;
 
@@ -320,6 +320,10 @@ export class Process {
     return this._permissionMode;
   }
 
+  get permissions(): PermissionRules | undefined {
+    return this._permissions;
+  }
+
   get modeVersion(): number {
     return this._modeVersion;
   }
@@ -387,8 +391,8 @@ export class Process {
       `Interrupting process: ${this._sessionId}`,
     );
 
-    await this.interruptFn();
-    return true;
+    const interrupted = await this.interruptFn();
+    return interrupted !== false;
   }
 
   /**
@@ -1164,6 +1168,41 @@ export class Process {
           : {}),
       };
     });
+  }
+
+  /**
+   * Remove all deferred messages so they can be handed to a replacement
+   * process after this process is hard-aborted.
+   */
+  drainDeferredMessages(
+    reason: "cancelled" | "promoted" = "promoted",
+  ): UserMessage[] {
+    if (this.deferredQueue.length === 0) {
+      this.deferredEditBarrier = null;
+      return [];
+    }
+
+    const drained = this.deferredQueue.map((entry) => entry.message);
+    const firstTempId = drained[0]?.tempId;
+    this.deferredQueue = [];
+    this.deferredEditBarrier = null;
+    this.emitDeferredQueueChange(reason, firstTempId);
+    return drained;
+  }
+
+  /**
+   * Remove user messages that YA accepted but the provider has not processed.
+   * This includes messages in the direct provider queue as well as editable
+   * deferred messages.
+   */
+  drainPendingUserMessages(
+    reason: "cancelled" | "promoted" = "promoted",
+  ): UserMessage[] {
+    const queuedMessages = this.messageQueue?.drain() ?? [];
+    return [
+      ...queuedMessages,
+      ...this.drainDeferredMessages(reason),
+    ];
   }
 
   /**

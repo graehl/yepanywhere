@@ -158,7 +158,7 @@ export interface StartSessionResult {
    * Interrupt the current turn gracefully without killing the process.
    * Only supported by Claude SDK 0.2.7+.
    */
-  interrupt?: () => Promise<void>;
+  interrupt?: () => Promise<void | boolean>;
   /**
    * Get the list of available models from the SDK.
    * Only supported by Claude SDK 0.2.7+.

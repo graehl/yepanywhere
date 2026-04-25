@@ -6,6 +6,7 @@ import {
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getMessageId } from "../lib/mergeMessages";
 import { findPendingTasks } from "../lib/pendingTasks";
 import { extractSessionIdFromFileEvent } from "../lib/sessionFile";
@@ -378,6 +379,18 @@ function removeDeliveredDeferredMessages(
     : filtered;
 }
 
+function summarizeDeferredMessages(messages: DeferredMessage[]): Array<{
+  tempId?: string;
+  deliveryState?: DeferredMessage["deliveryState"];
+  blockedByEdit?: boolean;
+}> {
+  return messages.map((message) => ({
+    tempId: message.tempId,
+    deliveryState: message.deliveryState,
+    blockedByEdit: message.blockedByEdit,
+  }));
+}
+
 export function useSession(
   projectId: string,
   sessionId: string,
@@ -430,6 +443,15 @@ export function useSession(
       setDeferredMessagesState((current) => {
         const next = typeof update === "function" ? update(current) : update;
         saveDeferredMessages(sessionId, next);
+        if (next !== current) {
+          logSessionUiTrace("deferred-state", {
+            sessionId,
+            beforeCount: current.length,
+            afterCount: next.length,
+            before: summarizeDeferredMessages(current),
+            after: summarizeDeferredMessages(next),
+          });
+        }
         return next;
       });
     },
@@ -615,26 +637,37 @@ export function useSession(
   // Generates a tempId that will be sent to the server and echoed back in stream
   const addPendingMessage = useCallback((content: string): string => {
     const tempId = `temp-${Date.now()}`;
+    logSessionUiTrace("pending-add", {
+      sessionId,
+      tempId,
+      textLength: content.length,
+    });
     setPendingMessages((prev) => [
       ...prev,
       { tempId, content, timestamp: new Date().toISOString() },
     ]);
     return tempId;
-  }, []);
+  }, [sessionId]);
 
   // Remove a pending message by tempId (used when server confirms or send fails)
   const removePendingMessage = useCallback((tempId: string) => {
+    logSessionUiTrace("pending-remove", { sessionId, tempId });
     setPendingMessages((prev) => prev.filter((p) => p.tempId !== tempId));
-  }, []);
+  }, [sessionId]);
 
   // Update a pending message's fields (e.g. status text)
   const updatePendingMessage = useCallback(
     (tempId: string, updates: Partial<PendingMessage>) => {
+      logSessionUiTrace("pending-update", {
+        sessionId,
+        tempId,
+        hasStatus: updates.status !== undefined,
+      });
       setPendingMessages((prev) =>
         prev.map((p) => (p.tempId === tempId ? { ...p, ...updates } : p)),
       );
     },
-    [],
+    [sessionId],
   );
 
   const addDeferredMessage = useCallback(
@@ -658,6 +691,13 @@ export function useSession(
         source?: "connected" | "event" | "rest";
       },
     ) => {
+      logSessionUiTrace("deferred-sync", {
+        sessionId,
+        reason: meta?.reason ?? null,
+        source: meta?.source ?? null,
+        tempId: meta?.tempId ?? null,
+        incoming: summarizeDeferredMessages(messages),
+      });
       setDeferredMessages((prev) =>
         mergeDeferredMessages(prev, messages, meta),
       );
@@ -888,6 +928,19 @@ export function useSession(
       const ownershipDropped =
         status.owner !== "none" && event.ownership.owner === "none";
 
+      logSessionUiTrace("activity-session-status", {
+        sessionId,
+        previousOwner: status.owner,
+        nextOwner: event.ownership.owner,
+        processId:
+          event.ownership.owner === "self"
+            ? event.ownership.processId
+            : null,
+        permissionMode:
+          event.ownership.owner === "self"
+            ? event.ownership.permissionMode
+            : null,
+      });
       setStatus(event.ownership);
 
       if (ownershipDropped) {
@@ -913,6 +966,11 @@ export function useSession(
         event.activity === "waiting-input" ||
         event.activity === "hold"
       ) {
+        logSessionUiTrace("activity-process-state", {
+          sessionId,
+          activity: event.activity,
+          pendingInputType: event.pendingInputType ?? null,
+        });
         setProcessState(event.activity);
       }
 
@@ -1034,6 +1092,14 @@ export function useSession(
   // Subscribe to live updates
   const handleStreamMessage = useCallback(
     (data: { eventType: string; [key: string]: unknown }) => {
+      logSessionUiTrace("session-stream-dispatch", {
+        sessionId,
+        eventType: data.eventType,
+        sdkType: typeof data.type === "string" ? data.type : undefined,
+        subtype: typeof data.subtype === "string" ? data.subtype : undefined,
+        state: typeof data.state === "string" ? data.state : undefined,
+        tempId: typeof data.tempId === "string" ? data.tempId : undefined,
+      });
       if (data.eventType === "message") {
         // Track stream activity for engagement tracking
         // This ensures sessions are marked as "seen" even when receiving
@@ -1149,6 +1215,11 @@ export function useSession(
         const tempId = sdkMessage.tempId as string | undefined;
         if (msgType === "user") {
           const incomingText = extractUserMessageText(sdkMessage);
+          logSessionUiTrace("user-echo", {
+            sessionId,
+            tempId: tempId ?? null,
+            textLength: incomingText?.length ?? 0,
+          });
           if (tempId) {
             removePendingMessage(tempId);
             setDeferredMessages((prev) =>
@@ -1198,6 +1269,11 @@ export function useSession(
           statusData.state === "waiting-input" ||
           statusData.state === "hold"
         ) {
+          logSessionUiTrace("stream-status", {
+            sessionId,
+            state: statusData.state,
+            hasRequest: !!statusData.request,
+          });
           setProcessState(statusData.state as ProcessState);
         }
         // Capture pending input request when waiting for user input
@@ -1223,11 +1299,18 @@ export function useSession(
           reason?: "queued" | "cancelled" | "edited" | "promoted";
           tempId?: string;
         };
+        logSessionUiTrace("stream-deferred-queue", {
+          sessionId,
+          reason: deferredData.reason ?? null,
+          tempId: deferredData.tempId ?? null,
+          incoming: summarizeDeferredMessages(deferredData.messages ?? []),
+        });
         syncDeferredMessages(deferredData.messages ?? [], {
           reason: deferredData.reason,
           tempId: deferredData.tempId,
         });
       } else if (data.eventType === "complete") {
+        logSessionUiTrace("stream-complete", { sessionId });
         setProcessState("idle");
         setStatus({ owner: "none" });
         setPendingInputRequest(null);
@@ -1252,6 +1335,16 @@ export function useSession(
         // Check both the connected event's sessionId and the request's sessionId
         const serverSessionId =
           connectedData.sessionId ?? connectedData.request?.sessionId;
+        logSessionUiTrace("stream-connected", {
+          sessionId,
+          serverSessionId: serverSessionId ?? null,
+          state: connectedData.state ?? null,
+          permissionMode: connectedData.permissionMode ?? null,
+          modeVersion: connectedData.modeVersion ?? null,
+          provider: connectedData.provider ?? null,
+          model: connectedData.model ?? null,
+          deferredCount: connectedData.deferredMessages?.length ?? 0,
+        });
         if (serverSessionId && serverSessionId !== sessionId) {
           setActualSessionId(serverSessionId);
         }

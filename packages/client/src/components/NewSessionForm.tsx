@@ -34,6 +34,7 @@ import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import { hasCoarsePointer } from "../lib/deviceDetection";
+import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import {
   clearNewSessionPrefill,
   getNewSessionPrefill,
@@ -580,6 +581,17 @@ export function NewSessionForm({
         provider: selectedProvider ?? undefined,
         executor: selectedExecutor ?? undefined,
       };
+      logSessionUiTrace("new-session-submit", {
+        projectId: resolvedProjectId ?? null,
+        detached: !resolvedProjectId,
+        mode,
+        model: selectedModel ?? null,
+        thinking,
+        provider: selectedProvider ?? null,
+        executor: selectedExecutor ?? null,
+        textLength: trimmedMessage.length,
+        pendingFileCount: pendingFiles.length,
+      });
 
       if (pendingFiles.length > 0) {
         // Two-phase flow: create session first, then upload to real session folder
@@ -591,6 +603,13 @@ export function NewSessionForm({
         sessionId = createResult.sessionId;
         processId = createResult.processId;
         resolvedProjectId = activeProjectId;
+        logSessionUiTrace("new-session-created", {
+          sessionId,
+          processId,
+          projectId: resolvedProjectId,
+          thinking,
+          mode,
+        });
 
         // Step 2: Upload files to the real session folder
         for (const pendingFile of pendingFiles) {
@@ -645,6 +664,15 @@ export function NewSessionForm({
         sessionId = result.sessionId;
         processId = result.processId;
         resolvedProjectId = result.projectId;
+        logSessionUiTrace("new-session-started", {
+          sessionId,
+          processId,
+          projectId: resolvedProjectId,
+          thinking,
+          mode,
+          provider: selectedProvider ?? null,
+          model: selectedModel ?? null,
+        });
       }
 
       if (!resolvedProjectId) {

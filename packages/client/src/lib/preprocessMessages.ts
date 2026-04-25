@@ -11,11 +11,11 @@ import type {
 import { getMessageId } from "./mergeMessages";
 
 /**
- * When true, indicates the session has an active tool approval request.
- * All orphaned tools will be treated as pending (not interrupted).
+ * When true, indicates the session has active tool work or approval.
+ * Orphaned tools in the current trailing user turn are treated as pending.
  *
- * This handles the case where multiple tools are queued for approval -
- * only the first is sent to the client, but all are waiting in the server queue.
+ * This handles the case where multiple tools are queued for approval while
+ * still allowing older orphaned tools from prior turns to render interrupted.
  */
 export type ActiveToolApproval = boolean;
 
@@ -45,19 +45,10 @@ export function preprocessMessages(
   const pendingToolCalls = new Map<string, number>(); // tool_use_id → index in items
   const configAckState = { lastSignature: null as string | null };
 
-  // Collect all orphaned tool IDs from messages (set by server DAG filtering)
-  // If there's an active tool approval, skip orphan detection entirely -
-  // all tools without results are pending (either current or queued for approval)
-  const orphanedToolIds = new Set<string>();
-  if (!augments?.activeToolApproval) {
-    for (const msg of messages) {
-      if (msg.orphanedToolUseIds) {
-        for (const id of msg.orphanedToolUseIds) {
-          orphanedToolIds.add(id);
-        }
-      }
-    }
-  }
+  const orphanedToolIds = collectOrphanedToolIds(
+    messages,
+    augments?.activeToolApproval === true,
+  );
 
   for (const msg of messages) {
     processMessage(
@@ -73,6 +64,43 @@ export function preprocessMessages(
 
   const enrichedItems = enrichWriteStdinWithCommand(items);
   return collapseSessionSetupRuns(enrichedItems);
+}
+
+function collectOrphanedToolIds(
+  messages: Message[],
+  suppressCurrentTurnOrphans: boolean,
+): Set<string> {
+  const orphanedToolIds = new Set<string>();
+  const suppressFromIndex = suppressCurrentTurnOrphans
+    ? findLastUserPromptMessageIndex(messages)
+    : messages.length;
+
+  for (let index = 0; index < messages.length; index++) {
+    const msg = messages[index];
+    if (!msg?.orphanedToolUseIds) {
+      continue;
+    }
+
+    if (suppressCurrentTurnOrphans && index >= suppressFromIndex) {
+      continue;
+    }
+
+    for (const id of msg.orphanedToolUseIds) {
+      orphanedToolIds.add(id);
+    }
+  }
+
+  return orphanedToolIds;
+}
+
+function findLastUserPromptMessageIndex(messages: Message[]): number {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const msg = messages[index];
+    if (msg && isUserPromptMessage(msg)) {
+      return index;
+    }
+  }
+  return 0;
 }
 
 const SESSION_SETUP_PREFIXES = [
@@ -93,6 +121,30 @@ function getPromptText(content: string | ContentBlock[]): string {
     )
     .map((block) => block.text)
     .join("\n");
+}
+
+function getPreprocessMessageContent(
+  msg: Message,
+): string | ContentBlock[] | undefined {
+  return (
+    (msg.message as { content?: string | ContentBlock[] } | undefined)
+      ?.content ?? msg.content
+  );
+}
+
+function isUserPromptMessage(msg: Message): boolean {
+  const content = getPreprocessMessageContent(msg);
+  const role =
+    (msg.message as { role?: "user" | "assistant" } | undefined)?.role ??
+    msg.role;
+  const isUserMessage = msg.type === "user" || role === "user";
+  if (!isUserMessage) {
+    return false;
+  }
+  if (Array.isArray(content)) {
+    return !content.every((block) => block.type === "tool_result");
+  }
+  return typeof content === "string";
 }
 
 function isDisplayableThinking(
@@ -304,7 +356,7 @@ function processMessage(
     // Attach results to pending tool calls
     for (const block of content) {
       if (block.type === "tool_result" && block.tool_use_id) {
-        attachToolResult(block, msg, items, pendingToolCalls);
+        attachToolResult(block, msg, items, pendingToolCalls, orphanedToolIds);
       }
     }
     return;
@@ -533,6 +585,7 @@ function attachToolResult(
   resultMessage: Message,
   items: RenderItem[],
   pendingToolCalls: Map<string, number>,
+  orphanedToolIds: Set<string>,
 ): void {
   const toolUseId = block.tool_use_id;
   if (!toolUseId) return;
@@ -564,21 +617,83 @@ function attachToolResult(
     isError: block.is_error || false,
     structured,
   };
+  const isBackgroundProcessResult = isBackgroundProcessToolResult(
+    block,
+    item.toolName,
+  );
+  const isInterruptedProcessResult = isInterruptedToolResult(
+    block,
+    resultData,
+    item.toolName,
+  );
 
   // Create a new ToolCallItem to ensure React sees the change
+  const isOrphaned = orphanedToolIds.has(toolUseId);
+  let status: ToolCallItem["status"] = "complete";
+  if (isOrphaned || isInterruptedProcessResult) {
+    status = "aborted";
+  } else if (isBackgroundProcessResult) {
+    status = "pending";
+  } else if (block.is_error) {
+    status = "error";
+  }
   const updatedItem: ToolCallItem = {
     type: "tool_call",
     id: item.id,
     toolName: item.toolName,
     toolInput: item.toolInput,
     toolResult: resultData,
-    status: block.is_error ? "error" : "complete",
+    status,
     sourceMessages: appendSourceMessage(item, resultMessage).sourceMessages,
     isSubagent: item.isSubagent,
   };
 
   items[index] = updatedItem;
-  pendingToolCalls.delete(toolUseId);
+  if (!isBackgroundProcessResult && !isInterruptedProcessResult) {
+    pendingToolCalls.delete(toolUseId);
+  }
+}
+
+function isBackgroundProcessToolResult(
+  block: ContentBlock,
+  toolName: string,
+): boolean {
+  if (toolName !== "Bash") {
+    return false;
+  }
+  const content = typeof block.content === "string" ? block.content : "";
+  if (!content) {
+    return false;
+  }
+  return (
+    /(?:^|\n)\s*(?:Process\s+running\s+with\s+session\s+ID|session(?:\s+id)?)\s*:?\s*\d+\b/i.test(
+      content,
+    ) &&
+    !/(?:^|\n)\s*(?:Exit code:|Process exited with code)\s*-?\d+\b/i.test(
+      content,
+    )
+  );
+}
+
+function isInterruptedToolResult(
+  block: ContentBlock,
+  result: ToolResultData,
+  toolName: string,
+): boolean {
+  if (toolName !== "Bash") {
+    return false;
+  }
+  if (
+    result.structured &&
+    typeof result.structured === "object" &&
+    (result.structured as { interrupted?: unknown }).interrupted === true
+  ) {
+    return true;
+  }
+  const content = typeof block.content === "string" ? block.content : "";
+  return /(?:^|\n)\s*(?:aborted by user|interrupted by user)(?:\s|$)/i.test(
+    content,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Message } from "../../types";
 import { preprocessMessages } from "../preprocessMessages";
 
@@ -996,6 +996,143 @@ describe("preprocessMessages", () => {
         status: "pending",
       });
     });
+
+    it("keeps Codex background process handles pending", () => {
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Bash",
+              input: { command: "sleep 20" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "msg-2",
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content:
+                "Chunk ID: abc\nWall time: 1.0 seconds\nProcess running with session ID 123\nOutput:\n",
+            },
+          ],
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+      ];
+
+      const items = preprocessMessages(messages);
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        type: "tool_call",
+        id: "tool-1",
+        status: "pending",
+      });
+    });
+
+    it("marks interrupted Codex background processes aborted", () => {
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Bash",
+              input: { command: "sleep 20" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+          orphanedToolUseIds: ["tool-1"],
+        },
+        {
+          id: "msg-2",
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content:
+                "Chunk ID: abc\nWall time: 1.0 seconds\nProcess running with session ID 123\nOutput:\n",
+            },
+          ],
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+      ];
+
+      const items = preprocessMessages(messages);
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        type: "tool_call",
+        id: "tool-1",
+        status: "aborted",
+      });
+    });
+
+    it("keeps interrupted Bash results attachable for final output", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Bash",
+              input: { command: "sleep 20" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+          orphanedToolUseIds: ["tool-1"],
+        },
+        {
+          id: "msg-2",
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: "aborted by user after 2.3s",
+            },
+          ],
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+        {
+          id: "msg-3",
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: "(no output)",
+            },
+          ],
+          timestamp: "2024-01-01T00:00:20Z",
+        },
+      ];
+
+      const items = preprocessMessages(messages);
+
+      expect(warn).not.toHaveBeenCalled();
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        type: "tool_call",
+        id: "tool-1",
+        status: "aborted",
+        toolResult: expect.objectContaining({ content: "(no output)" }),
+      });
+      warn.mockRestore();
+    });
   });
 
   describe("activeToolApproval handling", () => {
@@ -1102,6 +1239,60 @@ describe("preprocessMessages", () => {
           status: "pending",
         });
       }
+    });
+
+    it("keeps older orphaned tools aborted during later active tool work", () => {
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "old-tool",
+              name: "Bash",
+              input: { command: "sleep 15" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+          orphanedToolUseIds: ["old-tool"],
+        },
+        {
+          id: "msg-2",
+          role: "user",
+          content: "next prompt",
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+        {
+          id: "msg-3",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "current-tool",
+              name: "Edit",
+              input: { file_path: "a.ts" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:02Z",
+          orphanedToolUseIds: ["current-tool"],
+        },
+      ];
+
+      const items = preprocessMessages(messages, {
+        activeToolApproval: true,
+      });
+      const oldTool = items.find(
+        (item) => item.type === "tool_call" && item.id === "old-tool",
+      );
+      const currentTool = items.find(
+        (item) => item.type === "tool_call" && item.id === "current-tool",
+      );
+
+      expect(oldTool?.type === "tool_call" && oldTool.status).toBe("aborted");
+      expect(currentTool?.type === "tool_call" && currentTool.status).toBe(
+        "pending",
+      );
     });
 
     it("handles activeToolApproval with no orphaned tools (no-op)", () => {

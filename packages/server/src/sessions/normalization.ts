@@ -30,6 +30,9 @@ import {
 import {
   type CodexToolCallContext,
   canonicalizeCodexToolName,
+  isCodexBackgroundProcessOutput,
+  isCodexInterruptedToolOutput,
+  normalizeCodexCommandExecutionOutput,
   normalizeCodexToolInvocation,
   normalizeCodexToolOutputWithContext,
   parseCodexToolArguments,
@@ -205,13 +208,20 @@ function convertCodexEntries(
   let messageIndex = 0;
   const hasResponseItemUser = hasCodexResponseItemUserMessages(entries);
   const toolCallContexts = new Map<string, CodexToolCallContext>();
+  const closedToolResultIds = new Set<string>();
+  const openToolUses = new Map<string, Message>();
 
   for (const entry of entries) {
+    if (isCodexToolLifecycleBoundary(entry)) {
+      markOpenCodexToolUsesOrphaned(openToolUses);
+    }
+
     if (entry.type === "response_item") {
       const msg = convertCodexResponseItem(
         entry,
         messageIndex++,
         toolCallContexts,
+        closedToolResultIds,
       );
       if (msg) {
         if (isCodexCorrelationDebugEnabled()) {
@@ -228,6 +238,7 @@ function convertCodexEntries(
           });
         }
         messages.push(msg);
+        observeCodexToolLifecycleMessage(msg, openToolUses);
       }
     } else if (entry.type === "compacted") {
       const msg = convertCodexCompactedEntry(entry, messageIndex++);
@@ -243,6 +254,7 @@ function convertCodexEntries(
           });
         }
         messages.push(msg);
+        observeCodexToolLifecycleMessage(msg, openToolUses);
       }
     } else if (entry.type === "event_msg") {
       const shouldIncludeUserMessage =
@@ -250,14 +262,23 @@ function convertCodexEntries(
       const shouldIncludeTurnAborted = entry.payload.type === "turn_aborted";
       const shouldIncludeContextCompacted =
         entry.payload.type === "context_compacted";
+      const shouldIncludeExecCommandEnd = isCodexExecCommandEndPayload(
+        entry.payload,
+      );
       // Skip agent_message and agent_reasoning events when response_item exists;
       // those are streaming artifacts that duplicate full response data.
       if (
         shouldIncludeUserMessage ||
         shouldIncludeTurnAborted ||
-        shouldIncludeContextCompacted
+        shouldIncludeContextCompacted ||
+        shouldIncludeExecCommandEnd
       ) {
-        const msg = convertCodexEventMsg(entry, messageIndex++);
+        const msg = convertCodexEventMsg(
+          entry,
+          messageIndex++,
+          toolCallContexts,
+          closedToolResultIds,
+        );
         if (msg) {
           if (isCodexCorrelationDebugEnabled()) {
             logCodexCorrelationDebug({
@@ -273,12 +294,68 @@ function convertCodexEntries(
             });
           }
           messages.push(msg);
+          observeCodexToolLifecycleMessage(msg, openToolUses);
         }
       }
     }
   }
 
   return messages;
+}
+
+function isCodexToolLifecycleBoundary(entry: CodexSessionEntry): boolean {
+  if (entry.type === "response_item") {
+    return entry.payload.type === "message" && entry.payload.role === "user";
+  }
+
+  if (entry.type !== "event_msg") {
+    return false;
+  }
+
+  return (
+    entry.payload.type === "user_message" ||
+    entry.payload.type === "task_started" ||
+    entry.payload.type === "task_complete" ||
+    entry.payload.type === "turn_aborted" ||
+    entry.payload.type === "context_compacted"
+  );
+}
+
+function observeCodexToolLifecycleMessage(
+  message: Message,
+  openToolUses: Map<string, Message>,
+): void {
+  const content = message.message?.content;
+  if (!Array.isArray(content)) {
+    return;
+  }
+
+  for (const block of content) {
+    if (block.type === "tool_use" && block.id) {
+      openToolUses.set(block.id, message);
+      continue;
+    }
+    if (block.type === "tool_result" && block.tool_use_id) {
+      if (
+        isCodexBackgroundProcessOutput(block.content) ||
+        isCodexInterruptedToolOutput(block.content)
+      ) {
+        continue;
+      }
+      openToolUses.delete(block.tool_use_id);
+    }
+  }
+}
+
+function markOpenCodexToolUsesOrphaned(
+  openToolUses: Map<string, Message>,
+): void {
+  for (const [toolUseId, message] of openToolUses) {
+    const orphaned = new Set(message.orphanedToolUseIds ?? []);
+    orphaned.add(toolUseId);
+    message.orphanedToolUseIds = Array.from(orphaned);
+    openToolUses.delete(toolUseId);
+  }
 }
 
 function getCodexResponseEventKind(
@@ -368,6 +445,7 @@ function convertCodexResponseItem(
   entry: CodexResponseItemEntry,
   index: number,
   toolCallContexts: Map<string, CodexToolCallContext>,
+  closedToolResultIds: Set<string>,
 ): Message | null {
   const payload = entry.payload;
   const uuid = `codex-${index}-${entry.timestamp}`;
@@ -375,6 +453,12 @@ function convertCodexResponseItem(
   switch (payload.type) {
     case "message":
       if (payload.role === "developer") {
+        return null;
+      }
+      if (isCodexStartupInstructionMessage(payload)) {
+        return null;
+      }
+      if (isCodexSyntheticTurnAbortedMessage(payload)) {
         return null;
       }
       return convertCodexMessagePayload(payload, uuid, entry.timestamp);
@@ -392,14 +476,26 @@ function convertCodexResponseItem(
       return converted.message;
     }
 
-    case "function_call_output":
-      return convertCodexToolCallOutputPayload(
+    case "function_call_output": {
+      if (closedToolResultIds.has(payload.call_id)) {
+        return null;
+      }
+      const message = convertCodexToolCallOutputPayload(
         payload.call_id,
         payload.output,
         uuid,
         entry.timestamp,
         toolCallContexts.get(payload.call_id),
       );
+      if (
+        !isCodexBackgroundProcessOutput(payload.output) &&
+        !isCodexInterruptedToolOutput(payload.output)
+      ) {
+        toolCallContexts.delete(payload.call_id);
+        closedToolResultIds.add(payload.call_id);
+      }
+      return message;
+    }
 
     case "custom_tool_call": {
       const converted = convertCodexCustomToolCallPayload(
@@ -413,13 +509,24 @@ function convertCodexResponseItem(
 
     case "custom_tool_call_output": {
       const customCallId = payload.call_id ?? `${uuid}-custom-tool-result`;
-      return convertCodexToolCallOutputPayload(
+      if (closedToolResultIds.has(customCallId)) {
+        return null;
+      }
+      const message = convertCodexToolCallOutputPayload(
         customCallId,
         payload.output,
         uuid,
         entry.timestamp,
         toolCallContexts.get(customCallId),
       );
+      if (
+        !isCodexBackgroundProcessOutput(payload.output) &&
+        !isCodexInterruptedToolOutput(payload.output)
+      ) {
+        toolCallContexts.delete(customCallId);
+        closedToolResultIds.add(customCallId);
+      }
+      return message;
     }
 
     case "web_search_call":
@@ -431,6 +538,23 @@ function convertCodexResponseItem(
     default:
       return null;
   }
+}
+
+function isCodexStartupInstructionMessage(payload: CodexMessagePayload): boolean {
+  if (payload.role !== "user") {
+    return false;
+  }
+
+  const text = payload.content
+    .map((block) =>
+      "text" in block && typeof block.text === "string" ? block.text : "",
+    )
+    .join("");
+
+  return (
+    text.startsWith("# AGENTS.md instructions for ") &&
+    text.includes("<INSTRUCTIONS>")
+  );
 }
 
 function convertCodexMessagePayload(
@@ -478,6 +602,21 @@ function convertCodexMessagePayload(
     },
     timestamp,
   };
+}
+
+function isCodexSyntheticTurnAbortedMessage(
+  payload: CodexMessagePayload,
+): boolean {
+  if (payload.role !== "user") {
+    return false;
+  }
+  const fullText = payload.content
+    .map((block) =>
+      "text" in block && typeof block.text === "string" ? block.text : "",
+    )
+    .join("")
+    .trim();
+  return /^<turn_aborted>[\s\S]*<\/turn_aborted>$/.test(fullText);
 }
 
 function convertCodexReasoningPayload(
@@ -746,6 +885,82 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function getStringField(
+  record: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  const value = record[field];
+  return typeof value === "string" ? value : undefined;
+}
+
+function getNumberField(
+  record: Record<string, unknown>,
+  field: string,
+): number | undefined {
+  const value = record[field];
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function isCodexExecCommandEndPayload(
+  payload: unknown,
+): payload is Record<string, unknown> & {
+  type: "exec_command_end";
+  call_id: string;
+} {
+  return (
+    isRecord(payload) &&
+    payload.type === "exec_command_end" &&
+    typeof payload.call_id === "string"
+  );
+}
+
+function convertCodexExecCommandEndPayload(
+  payload: Record<string, unknown> & { call_id: string },
+  uuid: string,
+  timestamp: string,
+  context?: CodexToolCallContext,
+): Message {
+  const aggregatedOutput =
+    getStringField(payload, "aggregated_output") ??
+    getStringField(payload, "aggregatedOutput") ??
+    getStringField(payload, "formatted_output") ??
+    [getStringField(payload, "stdout"), getStringField(payload, "stderr")]
+      .filter((value): value is string => !!value)
+      .join("\n");
+  const normalized = normalizeCodexCommandExecutionOutput(
+    {
+      aggregatedOutput,
+      exitCode:
+        getNumberField(payload, "exit_code") ??
+        getNumberField(payload, "exitCode"),
+      status: getStringField(payload, "status"),
+    },
+    context,
+  );
+
+  const toolResult: ContentBlock = {
+    type: "tool_result",
+    tool_use_id: payload.call_id,
+    content: normalized.content,
+    ...(normalized.isError && { is_error: true }),
+  };
+
+  return {
+    uuid,
+    type: "user",
+    message: {
+      role: "user",
+      content: [toolResult],
+    },
+    ...(normalized.structured !== undefined && {
+      toolUseResult: normalized.structured,
+    }),
+    timestamp,
+  };
+}
+
 function convertCodexCompactedEntry(
   entry: CodexCompactedEntry,
   index: number,
@@ -763,9 +978,29 @@ function convertCodexCompactedEntry(
 function convertCodexEventMsg(
   entry: CodexEventMsgEntry,
   index: number,
+  toolCallContexts: Map<string, CodexToolCallContext>,
+  closedToolResultIds: Set<string>,
 ): Message | null {
-  const payload = entry.payload;
+  const payloadUnknown: unknown = entry.payload;
   const uuid = `codex-event-${index}-${entry.timestamp}`;
+
+  if (isCodexExecCommandEndPayload(payloadUnknown)) {
+    const context = toolCallContexts.get(payloadUnknown.call_id);
+    if (!context) {
+      return null;
+    }
+    const message = convertCodexExecCommandEndPayload(
+      payloadUnknown,
+      uuid,
+      entry.timestamp,
+      context,
+    );
+    toolCallContexts.delete(payloadUnknown.call_id);
+    closedToolResultIds.add(payloadUnknown.call_id);
+    return message;
+  }
+
+  const payload = entry.payload;
 
   switch (payload.type) {
     case "user_message":

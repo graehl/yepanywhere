@@ -100,6 +100,19 @@ export class MessageQueue {
   }
 
   /**
+   * Remove and return messages that have been queued but not yet yielded to
+   * the provider.
+   */
+  drain(): UserMessage[] {
+    if (this.queue.length === 0) {
+      return [];
+    }
+    const drained = this.queue;
+    this.queue = [];
+    return drained;
+  }
+
+  /**
    * Async generator that yields SDK-formatted user messages.
    * Blocks when the queue is empty, waiting for push() to be called.
    */

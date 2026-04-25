@@ -41,6 +41,7 @@ import {
 import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
 import { buildCorrectionText } from "../lib/correctionText";
+import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { generateUUID } from "../lib/uuid";
@@ -346,7 +347,20 @@ function SessionPageContent({
     currentProviderInfo?.supportsSlashCommands ?? false;
   const currentOwnedProcessId =
     status.owner === "self" ? status.processId : undefined;
-  const shouldDeferMessages = status.owner === "self" && processState !== "idle";
+  const hasPendingRenderedToolCalls = useMemo(() => {
+    const items = preprocessMessages(messages);
+    return items.some(
+      (item) => item.type === "tool_call" && item.status === "pending",
+    );
+  }, [messages]);
+  const hasOwnedPendingToolCalls =
+    status.owner === "self" && hasPendingRenderedToolCalls;
+  const canStopOwnedProcess =
+    status.owner === "self" &&
+    (processState === "in-turn" || hasOwnedPendingToolCalls);
+  const shouldDeferMessages =
+    status.owner === "self" &&
+    (processState !== "idle" || hasPendingRenderedToolCalls);
 
   useEffect(() => {
     let cancelled = false;
@@ -614,6 +628,19 @@ function SessionPageContent({
     const tempId = addPendingMessage(outgoingText);
     setProcessState("in-turn"); // Optimistic: show processing indicator immediately
     setScrollTrigger((prev) => prev + 1); // Force scroll to bottom
+    logSessionUiTrace("composer-send-start", {
+      sessionId,
+      projectId,
+      tempId,
+      owner: status.owner,
+      processId: status.owner === "self" ? status.processId : null,
+      permissionMode,
+      thinking: getThinkingSetting(),
+      textLength: outgoingText.length,
+      attachmentCount: attachments.length,
+      hasCorrectionDraft: !!correctionDraft,
+      hasQueuedEditDraft: !!queuedEditDraft,
+    });
 
     // Capture already-completed attachments
     const currentAttachments = [...attachments];
@@ -661,6 +688,11 @@ function SessionPageContent({
           tempId,
         );
         // Update status to trigger SSE connection
+        logSessionUiTrace("composer-send-resume-success", {
+          sessionId,
+          tempId,
+          processId: result.processId,
+        });
         setStatus({ owner: "self", processId: result.processId });
       } else {
         // Queue to existing process with current permission mode and thinking setting
@@ -673,6 +705,12 @@ function SessionPageContent({
           tempId,
           thinking,
         );
+        logSessionUiTrace("composer-send-queue-success", {
+          sessionId,
+          tempId,
+          restarted: !!result.restarted,
+          processId: result.processId ?? null,
+        });
         // If process was restarted due to thinking mode change, reconnect stream
         if (result.restarted && result.processId) {
           setStatus({ owner: "self", processId: result.processId });
@@ -692,6 +730,11 @@ function SessionPageContent({
       setQueuedEditDraft(null);
     } catch (err) {
       console.error("Failed to send:", err);
+      logSessionUiTrace("composer-send-error", {
+        sessionId,
+        tempId,
+        message: err instanceof Error ? err.message : String(err),
+      });
 
       // Check if process is dead (404) - auto-retry with resumeSession
       const is404 =
@@ -716,6 +759,11 @@ function SessionPageContent({
             currentAttachments.length > 0 ? currentAttachments : undefined,
             tempId,
           );
+          logSessionUiTrace("composer-send-retry-resume-success", {
+            sessionId,
+            tempId,
+            processId: result.processId,
+          });
           setStatus({ owner: "self", processId: result.processId });
           if (text.trim()) {
             lastComposerSubmissionRef.current = {
@@ -730,6 +778,12 @@ function SessionPageContent({
           return;
         } catch (retryErr) {
           console.error("Failed to resume session:", retryErr);
+          logSessionUiTrace("composer-send-retry-resume-error", {
+            sessionId,
+            tempId,
+            message:
+              retryErr instanceof Error ? retryErr.message : String(retryErr),
+          });
           // Fall through to error handling below
         }
       }
@@ -752,6 +806,17 @@ function SessionPageContent({
 
     const tempId = addPendingMessage(outgoingText);
     setScrollTrigger((prev) => prev + 1);
+    logSessionUiTrace("composer-deferred-start", {
+      sessionId,
+      tempId,
+      owner: status.owner,
+      processId: status.owner === "self" ? status.processId : null,
+      permissionMode,
+      thinking: getThinkingSetting(),
+      textLength: outgoingText.length,
+      attachmentCount: attachments.length,
+      queuedEditOriginalTempId: queuedEditDraft?.originalTempId ?? null,
+    });
 
     // Capture already-completed attachments
     const currentAttachments = [...attachments];
@@ -785,6 +850,14 @@ function SessionPageContent({
         true, // deferred
         queuedEditDraftAtSubmit?.placement,
       );
+      logSessionUiTrace("composer-deferred-result", {
+        sessionId,
+        tempId,
+        deferred: result.deferred ?? null,
+        promoted: result.promoted ?? null,
+        position: result.position ?? null,
+        deferredCount: result.deferredMessages?.length ?? null,
+      });
       removePendingMessage(tempId);
       if (result.deferred === false || result.promoted) {
         removeDeferredMessage(tempId);
@@ -860,6 +933,65 @@ function SessionPageContent({
       setQueuedEditDraft(null);
     } catch (err) {
       console.error("Failed to queue deferred message:", err);
+      logSessionUiTrace("composer-deferred-error", {
+        sessionId,
+        tempId,
+        message: err instanceof Error ? err.message : String(err),
+      });
+
+      const isProcessUnavailable =
+        err instanceof Error &&
+        ((err as Error & { status?: number }).status === 404 ||
+          (err as Error & { status?: number }).status === 410 ||
+          err.message.includes("No active process") ||
+          err.message.includes("Process terminated"));
+      if (isProcessUnavailable) {
+        try {
+          const model = session?.model ?? getModelSetting();
+          const thinking = getThinkingSetting();
+          const result = await api.resumeSession(
+            projectId,
+            sessionId,
+            outgoingText,
+            {
+              mode: permissionMode,
+              model,
+              thinking,
+              provider: effectiveProvider,
+              executor: session?.executor,
+            },
+            currentAttachments.length > 0 ? currentAttachments : undefined,
+            tempId,
+          );
+          logSessionUiTrace("composer-deferred-retry-resume-success", {
+            sessionId,
+            tempId,
+            processId: result.processId,
+          });
+          setStatus({ owner: "self", processId: result.processId });
+          removePendingMessage(tempId);
+          if (text.trim()) {
+            lastComposerSubmissionRef.current = {
+              kind: "sent",
+              text: text.trim(),
+              id: tempId,
+            };
+          }
+          draftControlsRef.current?.clearDraft();
+          setCorrectionDraft(null);
+          setQueuedEditDraft(null);
+          return;
+        } catch (retryErr) {
+          console.error("Failed to resume session:", retryErr);
+          logSessionUiTrace("composer-deferred-retry-resume-error", {
+            sessionId,
+            tempId,
+            message:
+              retryErr instanceof Error ? retryErr.message : String(retryErr),
+          });
+        }
+      }
+
       removePendingMessage(tempId);
       draftControlsRef.current?.restoreFromStorage();
       setAttachments(currentAttachments);
@@ -1129,17 +1261,40 @@ function SessionPageContent({
     if (status.owner === "self" && status.processId) {
       // Try interrupt first (graceful stop), fall back to abort if not supported
       try {
+        logSessionUiTrace("stop-request", {
+          sessionId,
+          processId: status.processId,
+          processState,
+        });
         const result = await api.interruptProcess(status.processId);
-        if (result.interrupted) {
-          // Successfully interrupted - process is still alive
+        logSessionUiTrace("stop-interrupt-result", {
+          sessionId,
+          processId: status.processId,
+          interrupted: result.interrupted,
+          aborted: result.aborted,
+          supported: result.supported,
+        });
+        if (result.interrupted || result.aborted) {
+          if (result.aborted) {
+            setStatus({ owner: "none" });
+            setProcessState("idle");
+          }
           return;
         }
         // Interrupt not supported or failed, fall back to abort
       } catch {
+        logSessionUiTrace("stop-interrupt-error", {
+          sessionId,
+          processId: status.processId,
+        });
         // Interrupt endpoint failed (404 = old server, or other error)
       }
       // Fall back to abort (kills the process)
       await api.abortProcess(status.processId);
+      logSessionUiTrace("stop-abort-fallback", {
+        sessionId,
+        processId: status.processId,
+      });
     }
   };
 
@@ -1312,18 +1467,14 @@ function SessionPageContent({
   const activeToolApproval =
     processState === "in-turn" ||
     processState === "waiting-input" ||
+    hasOwnedPendingToolCalls ||
     (hasSessionUpdateStream && !sessionUpdatesConnected);
 
   // Detect if session has pending tool calls without results
   // This can happen when the session is unowned but was active in another process (VS Code, CLI)
   // that is waiting for user input (tool approval, question answer)
-  const hasPendingToolCalls = useMemo(() => {
-    if (status.owner !== "none") return false;
-    const items = preprocessMessages(messages);
-    return items.some(
-      (item) => item.type === "tool_call" && item.status === "pending",
-    );
-  }, [messages, status.owner]);
+  const hasPendingToolCalls =
+    status.owner === "none" && hasPendingRenderedToolCalls;
   const pendingElsewhereDismissKey = useMemo(
     () => `${PENDING_ELSEWHERE_DISMISS_KEY_PREFIX}${actualSessionId}`,
     [actualSessionId],
@@ -1728,7 +1879,7 @@ function SessionPageContent({
                     model={liveBadgeModel}
                     thinking={liveModelConfig?.thinking}
                     effort={liveModelConfig?.effort}
-                    isThinking={processState === "in-turn"}
+                    isThinking={canStopOwnedProcess}
                   />
                 </button>
               )}
@@ -1902,7 +2053,8 @@ function SessionPageContent({
                   messages={messages}
                   provider={session?.provider}
                   isProcessing={
-                    status.owner === "self" && processState === "in-turn"
+                    status.owner === "self" &&
+                    (processState === "in-turn" || hasOwnedPendingToolCalls)
                   }
                   isCompacting={isCompacting}
                   scrollTrigger={scrollTrigger}
@@ -1972,7 +2124,7 @@ function SessionPageContent({
                     onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                     contextUsage={session?.contextUsage}
                     isRunning={status.owner === "self"}
-                    isThinking={processState === "in-turn"}
+                    isThinking={canStopOwnedProcess}
                     onStop={handleAbort}
                     pendingApproval={
                       approvalCollapsed
@@ -2001,7 +2153,9 @@ function SessionPageContent({
                   status.owner === "external"
                     ? t("sessionPlaceholderExternal")
                     : processState === "idle"
-                      ? t("sessionPlaceholderResume")
+                      ? shouldDeferMessages
+                        ? t("sessionPlaceholderQueue")
+                        : t("sessionPlaceholderResume")
                       : t("sessionPlaceholderQueue")
                 }
                 mode={permissionMode}
@@ -2011,7 +2165,7 @@ function SessionPageContent({
                 supportsPermissionMode={supportsPermissionMode}
                 supportsThinkingToggle={supportsThinkingToggle}
                 isRunning={status.owner === "self"}
-                isThinking={processState === "in-turn"}
+                isThinking={canStopOwnedProcess}
                 onStop={handleAbort}
                 draftKey={`draft-message-${sessionId}`}
                 onDraftControlsReady={handleDraftControlsReady}

@@ -230,6 +230,279 @@ describe("Supervisor", () => {
     });
   });
 
+  describe("interruptProcess", () => {
+    it("hard-aborts and unregisters when interrupt reports incomplete", async () => {
+      let aborted = false;
+      const interrupt = vi.fn(async () => false);
+
+      const realSdk: RealClaudeSDKInterface = {
+        startSession: async () => {
+          async function* iterator() {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id: "interrupt-fallback-session",
+            };
+            while (!aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+
+          return {
+            iterator: iterator(),
+            queue: new MessageQueue(),
+            abort: () => {
+              aborted = true;
+            },
+            interrupt,
+          };
+        },
+      };
+
+      const supervisorWithRealSdk = new Supervisor({
+        realSdk,
+        idleTimeoutMs: 100,
+      });
+
+      const process = await supervisorWithRealSdk.resumeSession(
+        "interrupt-fallback-session",
+        "/tmp/test",
+        { text: "hi" },
+      );
+
+      const result = await supervisorWithRealSdk.interruptProcess(process.id);
+
+      expect(result).toMatchObject({
+        success: false,
+        supported: true,
+        hardAborted: true,
+      });
+      expect(interrupt).toHaveBeenCalledTimes(1);
+      expect(aborted).toBe(true);
+      expect(
+        supervisorWithRealSdk.getProcessForSession(
+          "interrupt-fallback-session",
+        ),
+      ).toBeUndefined();
+    });
+
+    it("times out a stalled interrupt before hard-aborting", async () => {
+      let aborted = false;
+      const interrupt = vi.fn(() => new Promise<boolean>(() => {}));
+
+      const realSdk: RealClaudeSDKInterface = {
+        startSession: async () => {
+          async function* iterator() {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id: "interrupt-timeout-session",
+            };
+            while (!aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+
+          return {
+            iterator: iterator(),
+            queue: new MessageQueue(),
+            abort: () => {
+              aborted = true;
+            },
+            interrupt,
+          };
+        },
+      };
+
+      const supervisorWithRealSdk = new Supervisor({
+        realSdk,
+        idleTimeoutMs: 100,
+        interruptTimeoutMs: 10,
+      });
+
+      const process = await supervisorWithRealSdk.resumeSession(
+        "interrupt-timeout-session",
+        "/tmp/test",
+        { text: "hi" },
+      );
+
+      const startedAt = Date.now();
+      const result = await supervisorWithRealSdk.interruptProcess(process.id);
+
+      expect(result).toMatchObject({
+        success: false,
+        supported: true,
+        hardAborted: true,
+      });
+      expect(Date.now() - startedAt).toBeLessThan(500);
+      expect(interrupt).toHaveBeenCalledTimes(1);
+      expect(aborted).toBe(true);
+      expect(
+        supervisorWithRealSdk.getProcessForSession("interrupt-timeout-session"),
+      ).toBeUndefined();
+    });
+
+    it("recovers deferred messages onto a replacement after hard abort", async () => {
+      const startMessages: Array<{ text?: string; tempId?: string }> = [];
+      const aborts: Array<() => void> = [];
+      const interrupt = vi.fn(async () => false);
+
+      const realSdk: RealClaudeSDKInterface = {
+        startSession: async (options) => {
+          const run = { aborted: false };
+          startMessages.push({
+            text: options.initialMessage?.text,
+            tempId: options.initialMessage?.tempId,
+          });
+
+          async function* iterator() {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id:
+                options.resumeSessionId ??
+                `interrupt-recovery-${startMessages.length}`,
+            };
+            while (!run.aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+
+          const abort = () => {
+            run.aborted = true;
+          };
+          aborts.push(abort);
+
+          return {
+            iterator: iterator(),
+            queue: new MessageQueue(),
+            abort,
+            interrupt,
+          };
+        },
+      };
+
+      const supervisorWithRealSdk = new Supervisor({
+        realSdk,
+        idleTimeoutMs: 100,
+      });
+
+      const process = await supervisorWithRealSdk.resumeSession(
+        "interrupt-fallback-session",
+        "/tmp/test",
+        { text: "hi" },
+      );
+      process.deferMessage(
+        { text: "ping", tempId: "temp-ping" },
+        { promoteIfReady: true },
+      );
+
+      const result = await supervisorWithRealSdk.interruptProcess(process.id);
+
+      expect(result).toMatchObject({
+        success: false,
+        supported: true,
+        hardAborted: true,
+      });
+      await vi.waitFor(() => {
+        expect(startMessages[1]).toMatchObject({
+          text: "ping",
+          tempId: "temp-ping",
+        });
+      });
+
+      const replacement = supervisorWithRealSdk.getProcessForSession(
+        "interrupt-fallback-session",
+      );
+      expect(replacement).toBeDefined();
+      expect(replacement?.id).not.toBe(process.id);
+      expect(aborts).toHaveLength(2);
+
+      await replacement?.abort();
+    });
+
+    it("recovers queued provider messages onto a replacement after hard abort", async () => {
+      const startMessages: Array<{
+        text?: string;
+        tempId?: string;
+        uuid?: string;
+      }> = [];
+      const aborts: Array<() => void> = [];
+      const interrupt = vi.fn(async () => false);
+
+      const realSdk: RealClaudeSDKInterface = {
+        startSession: async (options) => {
+          const run = { aborted: false };
+          startMessages.push({
+            text: options.initialMessage?.text,
+            tempId: options.initialMessage?.tempId,
+            uuid: options.initialMessage?.uuid,
+          });
+
+          async function* iterator() {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id:
+                options.resumeSessionId ??
+                `interrupt-queue-recovery-${startMessages.length}`,
+            };
+            while (!run.aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+
+          const abort = () => {
+            run.aborted = true;
+          };
+          aborts.push(abort);
+
+          return {
+            iterator: iterator(),
+            queue: new MessageQueue(),
+            abort,
+            interrupt,
+          };
+        },
+      };
+
+      const supervisorWithRealSdk = new Supervisor({
+        realSdk,
+        idleTimeoutMs: 100,
+      });
+
+      const process = await supervisorWithRealSdk.resumeSession(
+        "interrupt-queued-provider-session",
+        "/tmp/test",
+        { text: "hi" },
+      );
+      process.queueMessage({ text: "ping", tempId: "temp-ping" });
+
+      const result = await supervisorWithRealSdk.interruptProcess(process.id);
+
+      expect(result).toMatchObject({
+        success: false,
+        supported: true,
+        hardAborted: true,
+      });
+      await vi.waitFor(() => {
+        expect(startMessages[1]).toMatchObject({
+          text: "ping",
+          tempId: "temp-ping",
+        });
+      });
+
+      expect(startMessages[1]?.uuid).toBeDefined();
+      const replacement = supervisorWithRealSdk.getProcessForSession(
+        "interrupt-queued-provider-session",
+      );
+      expect(replacement).toBeDefined();
+      expect(replacement?.id).not.toBe(process.id);
+
+      await replacement?.abort();
+    });
+  });
+
   describe("queue propagation", () => {
     it("preserves model settings when a queued session starts later", async () => {
       let aborted = false;

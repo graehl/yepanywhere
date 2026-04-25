@@ -299,6 +299,42 @@ describe("Process", () => {
       ]);
     });
 
+    it("drains deferred messages for replacement process recovery", async () => {
+      const iterator = createMockIterator([
+        { type: "system", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+      const deferredEvents: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        if (event.type === "deferred-queue") {
+          deferredEvents.push(event);
+        }
+      });
+
+      process.deferMessage({ text: "first", tempId: "temp-1" });
+      process.deferMessage({ text: "second", tempId: "temp-2" });
+
+      const drained = process.drainDeferredMessages("promoted");
+
+      expect(drained).toMatchObject([
+        { text: "first", tempId: "temp-1" },
+        { text: "second", tempId: "temp-2" },
+      ]);
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(deferredEvents[deferredEvents.length - 1]).toMatchObject({
+        type: "deferred-queue",
+        reason: "promoted",
+        tempId: "temp-1",
+        messages: [],
+      });
+    });
+
     it("takes a deferred message for editing and emits queue metadata", async () => {
       const iterator = createMockIterator([
         { type: "system", session_id: "sess-1" },
@@ -700,6 +736,26 @@ describe("Process", () => {
 
       // Listener should have been called once for complete event
       expect(completeCount).toBe(1);
+    });
+  });
+
+  describe("interrupt", () => {
+    it("propagates provider soft-interrupt failure", async () => {
+      const controller = createControllableIterator();
+      const interruptFn = vi.fn(async () => false);
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        interruptFn,
+      });
+
+      await expect(process.interrupt()).resolves.toBe(false);
+      expect(interruptFn).toHaveBeenCalledTimes(1);
+
+      controller.finish();
+      await process.abort();
     });
   });
 

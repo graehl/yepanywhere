@@ -166,7 +166,11 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
       return c.json({ error: "Interrupt not supported for this process" }, 400);
     }
 
-    return c.json({ interrupted: result.success, supported: result.supported });
+    return c.json({
+      interrupted: result.success,
+      supported: result.supported,
+      aborted: result.hardAborted === true,
+    });
   });
 
   // GET /api/processes/:processId/models - Get available models from SDK

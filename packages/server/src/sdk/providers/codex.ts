@@ -15,6 +15,8 @@ import {
 } from "../../codex/correlationDebugLogger.js";
 import {
   canonicalizeCodexToolName,
+  isCodexBackgroundProcessOutput,
+  isCodexInterruptedToolOutput,
   type CodexToolCallContext,
   normalizeCodexCommandExecutionOutput,
   normalizeCodexToolInvocation,
@@ -59,8 +61,12 @@ import type {
   ToolRequestUserInputParams,
   ToolRequestUserInputResponse,
   TurnCompletedNotification,
+  TurnInterruptParams,
+  TurnInterruptResponse,
   TurnStartParams,
   TurnStartResponse,
+  TurnSteerParams,
+  TurnSteerResponse,
 } from "./codex-protocol/index.js";
 import type {
   AgentProvider,
@@ -315,6 +321,8 @@ interface TokenUsageSnapshot {
 interface CodexTurnRuntimeState {
   threadId: string;
   activeTurnId: string | null;
+  activeToolCallIds: Set<string>;
+  backgroundToolCallIds: Set<string>;
 }
 
 function normalizeSemver(raw: string | null | undefined): string | null {
@@ -402,6 +410,7 @@ interface CodexLiveEventState {
   streamingReasoningSummaryByItemKey: Map<string, string[]>;
   streamingToolOutputByItemKey: Map<string, string>;
   toolCallContexts: Map<string, CodexToolCallContext>;
+  resultBackedToolItemsByTurnId: Map<string, Set<string>>;
 }
 
 interface CodexFailureTraceEvent {
@@ -1338,6 +1347,8 @@ export class CodexProvider implements AgentProvider {
     const runtimeState: CodexTurnRuntimeState = {
       threadId: options.resumeSessionId ?? "",
       activeTurnId: null,
+      activeToolCallIds: new Set(),
+      backgroundToolCallIds: new Set(),
     };
 
     // Push initial message if provided
@@ -1375,11 +1386,17 @@ export class CodexProvider implements AgentProvider {
         if (!userPrompt) return true;
 
         try {
-          await activeClient.request<{ turnId: string }>("turn/steer", {
-            threadId: runtimeState.threadId,
-            input: [{ type: "text", text: userPrompt, text_elements: [] }],
-            expectedTurnId: runtimeState.activeTurnId,
-          });
+          const steerResult = await activeClient.request<TurnSteerResponse>(
+            "turn/steer",
+            {
+              threadId: runtimeState.threadId,
+              input: [{ type: "text", text: userPrompt, text_elements: [] }],
+              expectedTurnId: runtimeState.activeTurnId,
+            } satisfies TurnSteerParams,
+          );
+          if (steerResult.turnId) {
+            runtimeState.activeTurnId = steerResult.turnId;
+          }
           return true;
         } catch (error) {
           log.warn(
@@ -1392,6 +1409,15 @@ export class CodexProvider implements AgentProvider {
           );
           return false;
         }
+      },
+      interrupt: async () => {
+        if (!activeClient) return false;
+        if (!runtimeState.threadId || !runtimeState.activeTurnId) return false;
+        await activeClient.request<TurnInterruptResponse>("turn/interrupt", {
+          threadId: runtimeState.threadId,
+          turnId: runtimeState.activeTurnId,
+        } satisfies TurnInterruptParams);
+        return true;
       },
     };
   }
@@ -1585,6 +1611,8 @@ export class CodexProvider implements AgentProvider {
 
         const activeTurnId = turnResult.turn.id;
         runtimeState.activeTurnId = activeTurnId;
+        runtimeState.activeToolCallIds.clear();
+        runtimeState.backgroundToolCallIds.clear();
         failureTrace.activeTurnId = activeTurnId;
         log.info(
           {
@@ -1599,6 +1627,8 @@ export class CodexProvider implements AgentProvider {
 
         while (!turnComplete && !signal.aborted) {
           const notification = await appServer.nextNotification(signal);
+          const currentActiveTurnId = runtimeState.activeTurnId ?? activeTurnId;
+          failureTrace.activeTurnId = currentActiveTurnId;
 
           if (notification.method === "thread/tokenUsage/updated") {
             const usage = this.extractTurnUsage(notification.params);
@@ -1606,6 +1636,7 @@ export class CodexProvider implements AgentProvider {
               usageByTurnId.set(usage.turnId, usage.snapshot);
             }
           }
+          this.updateBackgroundProcessTracking(notification, runtimeState);
 
           this.recordCodexFailureTraceEvent(
             failureTrace,
@@ -1635,7 +1666,9 @@ export class CodexProvider implements AgentProvider {
             yield logMessage(msg);
           }
 
-          if (this.isTurnTerminalNotification(notification, activeTurnId)) {
+          if (
+            this.isTurnTerminalNotification(notification, currentActiveTurnId)
+          ) {
             if (notification.method === "error") {
               emittedTurnError = true;
             }
@@ -1715,6 +1748,66 @@ export class CodexProvider implements AgentProvider {
     }
 
     return false;
+  }
+
+  private updateBackgroundProcessTracking(
+    notification: JsonRpcNotification,
+    runtimeState: CodexTurnRuntimeState,
+  ): void {
+    if (notification.method === "rawResponseItem/completed") {
+      const params = this.asRawResponseItemCompletedNotification(
+        notification.params,
+      );
+      const item =
+        params?.item && typeof params.item === "object"
+          ? (params.item as Record<string, unknown>)
+          : null;
+      const itemType = this.getOptionalString(item?.type);
+      if (
+        itemType === "function_call" ||
+        itemType === "custom_tool_call"
+      ) {
+        const callId = this.getOptionalString(item?.call_id);
+        if (callId) {
+          runtimeState.activeToolCallIds.add(callId);
+        }
+        return;
+      }
+      if (
+        itemType === "function_call_output" ||
+        itemType === "custom_tool_call_output"
+      ) {
+        const callId = this.getOptionalString(item?.call_id);
+        if (!callId) return;
+        if (isCodexBackgroundProcessOutput(item?.output)) {
+          runtimeState.backgroundToolCallIds.add(callId);
+        } else {
+          runtimeState.activeToolCallIds.delete(callId);
+          runtimeState.backgroundToolCallIds.delete(callId);
+        }
+      }
+      return;
+    }
+
+    if (notification.method === "item/completed") {
+      const params = this.asItemCompletedNotification(notification.params);
+      if (!params) return;
+      const normalized = this.normalizeThreadItem(params.item);
+      if (normalized?.type === "command_execution") {
+        runtimeState.activeToolCallIds.delete(normalized.id);
+        runtimeState.backgroundToolCallIds.delete(normalized.id);
+      }
+      return;
+    }
+
+    if (notification.method === "item/started") {
+      const params = this.asItemStartedNotification(notification.params);
+      if (!params) return;
+      const normalized = this.normalizeThreadItem(params.item);
+      if (normalized && this.isResultBackedThreadItem(normalized)) {
+        runtimeState.activeToolCallIds.add(normalized.id);
+      }
+    }
   }
 
   private createInitializeParams(experimentalApiEnabled: boolean): {
@@ -2036,6 +2129,7 @@ export class CodexProvider implements AgentProvider {
       streamingReasoningSummaryByItemKey: new Map(),
       streamingToolOutputByItemKey: new Map(),
       toolCallContexts: new Map(),
+      resultBackedToolItemsByTurnId: new Map(),
     };
   }
 
@@ -2764,6 +2858,28 @@ export class CodexProvider implements AgentProvider {
         const params = this.asTurnCompletedNotification(notification.params);
         const turnId = params?.turn.id ?? null;
         const usage = turnId ? usageByTurnId.get(turnId) : undefined;
+        const messages: SDKMessage[] = [];
+        const orphanedToolUseIds = turnId
+          ? this.consumeLiveResultBackedToolItems(liveEventState, turnId)
+          : [];
+        if (turnId && orphanedToolUseIds.length > 0) {
+          const orphanMarker = withCodexTimestamp({
+            type: "system",
+            subtype: "codex_tool_orphans",
+            session_id: sessionId,
+            uuid: `codex-tool-orphans-${turnId}`,
+            isSynthetic: true,
+            orphanedToolUseIds,
+          } as SDKMessage);
+          logSdkCorrelationDebug(sessionId, orphanMarker, {
+            eventKind: "tool_orphans",
+            turnId,
+            phase: "completed",
+            sourceEvent: notification.method,
+          });
+          messages.push(orphanMarker);
+        }
+
         const message = withCodexTimestamp({
           type: "system",
           subtype: "turn_complete",
@@ -2782,7 +2898,8 @@ export class CodexProvider implements AgentProvider {
           phase: "completed",
           sourceEvent: notification.method,
         });
-        return [message];
+        messages.push(message);
+        return messages;
       }
 
       case "error": {
@@ -2832,6 +2949,16 @@ export class CodexProvider implements AgentProvider {
         }
 
         const turnId = params.turnId;
+        if (
+          notification.method === "item/started" &&
+          this.isResultBackedThreadItem(normalized)
+        ) {
+          this.recordLiveResultBackedToolItem(
+            liveEventState,
+            turnId,
+            normalized.id,
+          );
+        }
         const messages = this.convertItemToSDKMessages(
           normalized,
           sessionId,
@@ -2839,6 +2966,11 @@ export class CodexProvider implements AgentProvider {
           notification.method,
         );
         if (notification.method === "item/completed") {
+          this.clearLiveResultBackedToolItem(
+            liveEventState,
+            turnId,
+            normalized.id,
+          );
           this.clearLiveEventStateForItem(
             liveEventState,
             turnId,
@@ -3429,6 +3561,50 @@ export class CodexProvider implements AgentProvider {
     return `${this.buildItemMessageUuid(turnId, itemId)}-result`;
   }
 
+  private isResultBackedThreadItem(item: NormalizedThreadItem): boolean {
+    return (
+      item.type === "command_execution" ||
+      item.type === "file_change" ||
+      item.type === "mcp_tool_call" ||
+      item.type === "dynamic_tool_call" ||
+      item.type === "image_view"
+    );
+  }
+
+  private recordLiveResultBackedToolItem(
+    liveEventState: CodexLiveEventState,
+    turnId: string,
+    itemId: string,
+  ): void {
+    const items =
+      liveEventState.resultBackedToolItemsByTurnId.get(turnId) ?? new Set();
+    items.add(itemId);
+    liveEventState.resultBackedToolItemsByTurnId.set(turnId, items);
+  }
+
+  private clearLiveResultBackedToolItem(
+    liveEventState: CodexLiveEventState,
+    turnId: string,
+    itemId: string,
+  ): void {
+    const items = liveEventState.resultBackedToolItemsByTurnId.get(turnId);
+    if (!items) return;
+    items.delete(itemId);
+    if (items.size === 0) {
+      liveEventState.resultBackedToolItemsByTurnId.delete(turnId);
+    }
+  }
+
+  private consumeLiveResultBackedToolItems(
+    liveEventState: CodexLiveEventState,
+    turnId: string,
+  ): string[] {
+    const items = liveEventState.resultBackedToolItemsByTurnId.get(turnId);
+    if (!items) return [];
+    liveEventState.resultBackedToolItemsByTurnId.delete(turnId);
+    return [...items];
+  }
+
   private buildStreamingAssistantMessage(
     sessionId: string,
     turnId: string,
@@ -3574,6 +3750,11 @@ export class CodexProvider implements AgentProvider {
           readShellInfo: normalizedInvocation.readShellInfo,
           writeShellInfo: normalizedInvocation.writeShellInfo,
         });
+        this.recordLiveResultBackedToolItem(
+          liveEventState,
+          params.turnId,
+          callId,
+        );
 
         const message = withCodexTimestamp(
           {
@@ -3612,7 +3793,17 @@ export class CodexProvider implements AgentProvider {
           item.output,
           liveEventState.toolCallContexts.get(callId),
         );
-        liveEventState.toolCallContexts.delete(callId);
+        if (
+          !isCodexBackgroundProcessOutput(item.output) &&
+          !isCodexInterruptedToolOutput(item.output)
+        ) {
+          liveEventState.toolCallContexts.delete(callId);
+          this.clearLiveResultBackedToolItem(
+            liveEventState,
+            params.turnId,
+            callId,
+          );
+        }
 
         const toolResult: {
           type: "tool_result";
@@ -3670,6 +3861,11 @@ export class CodexProvider implements AgentProvider {
           readShellInfo: normalizedInvocation.readShellInfo,
           writeShellInfo: normalizedInvocation.writeShellInfo,
         });
+        this.recordLiveResultBackedToolItem(
+          liveEventState,
+          params.turnId,
+          callId,
+        );
 
         const message = withCodexTimestamp(
           {
@@ -3708,7 +3904,17 @@ export class CodexProvider implements AgentProvider {
           item.output,
           liveEventState.toolCallContexts.get(callId),
         );
-        liveEventState.toolCallContexts.delete(callId);
+        if (
+          !isCodexBackgroundProcessOutput(item.output) &&
+          !isCodexInterruptedToolOutput(item.output)
+        ) {
+          liveEventState.toolCallContexts.delete(callId);
+          this.clearLiveResultBackedToolItem(
+            liveEventState,
+            params.turnId,
+            callId,
+          );
+        }
 
         const toolResult: {
           type: "tool_result";

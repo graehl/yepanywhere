@@ -645,7 +645,7 @@ export const api = {
     }),
 
   interruptProcess: (processId: string) =>
-    fetchJSON<{ interrupted: boolean; supported: boolean }>(
+    fetchJSON<{ interrupted: boolean; supported: boolean; aborted?: boolean }>(
       `/processes/${processId}/interrupt`,
       { method: "POST" },
     ),

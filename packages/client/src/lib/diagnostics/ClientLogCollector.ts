@@ -22,6 +22,7 @@ const DB_VERSION = 1;
 const STORE_NAME = "entries";
 const MAX_ENTRIES = 2000;
 const FLUSH_BATCH_SIZE = 500;
+const FLUSH_DEBOUNCE_MS = 1000;
 
 const PREFIX_REGEX = /^\[([A-Za-z]+)\]/;
 const DEVICE_ID_KEY = "yep-anywhere-device-id";
@@ -53,6 +54,7 @@ export class ClientLogCollector {
   private _unsubscribeState: (() => void) | null = null;
   private _errorHandler: ((e: ErrorEvent) => void) | null = null;
   private _rejectionHandler: ((e: PromiseRejectionEvent) => void) | null = null;
+  private _flushTimer: ReturnType<typeof setTimeout> | null = null;
 
   async start(): Promise<void> {
     if (this._started) return;
@@ -99,6 +101,7 @@ export class ClientLogCollector {
       this._unsubscribeState();
       this._unsubscribeState = null;
     }
+    this._clearScheduledFlush();
 
     if (this._db) {
       this._db.close();
@@ -173,12 +176,29 @@ export class ClientLogCollector {
       if (this._memoryBuffer.length > MAX_ENTRIES) {
         this._memoryBuffer = this._memoryBuffer.slice(-MAX_ENTRIES);
       }
+      this._scheduleFlush();
       return;
     }
 
     putEntry(this._db, STORE_NAME, entry).then(() => {
       this._trimEntries();
+      this._scheduleFlush();
     });
+  }
+
+  private _scheduleFlush(): void {
+    if (!this._started || connectionManager.state !== "connected") return;
+    if (this._flushTimer) return;
+    this._flushTimer = setTimeout(() => {
+      this._flushTimer = null;
+      void this.flush();
+    }, FLUSH_DEBOUNCE_MS);
+  }
+
+  private _clearScheduledFlush(): void {
+    if (!this._flushTimer) return;
+    clearTimeout(this._flushTimer);
+    this._flushTimer = null;
   }
 
   private async _trimEntries(): Promise<void> {

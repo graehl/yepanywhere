@@ -20,6 +20,7 @@ import { useToastContext } from "../contexts/ToastContext";
 import { useConnection } from "../hooks/useConnection";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import {
+  EFFORT_LEVEL_OPTIONS,
   getModelSetting,
   getThinkingSetting,
   useModelSettings,
@@ -203,7 +204,13 @@ export function NewSessionForm({
   const lastSyncedProjectIdRef = useRef<string | null>(projectId ?? null);
 
   // Thinking toggle state
-  const { thinkingMode, cycleThinkingMode, thinkingLevel } = useModelSettings();
+  const {
+    effortLevel,
+    setEffortLevel,
+    thinkingMode,
+    cycleThinkingMode,
+    thinkingLevel,
+  } = useModelSettings();
 
   // Connection for uploads (uses WebSocket when enabled)
   const connection = useConnection();
@@ -897,59 +904,83 @@ export function NewSessionForm({
             className="toolbar-button"
           />
           {supportsThinkingToggle && (
-            <button
-              type="button"
-              className={`toolbar-button thinking-toggle-button ${thinkingMode !== "off" ? `active ${thinkingMode}` : ""}`}
-              onClick={cycleThinkingMode}
-              disabled={isStarting}
-              title={
-                thinkingMode === "off"
-                  ? t("newSessionThinkingOff")
-                  : thinkingMode === "auto"
-                    ? t("newSessionThinkingAuto")
-                    : t("newSessionThinkingOn", { level: thinkingLevel })
-              }
-              aria-label={t("newSessionThinkingMode", { mode: thinkingMode })}
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+            <>
+              <button
+                type="button"
+                className={`toolbar-button thinking-toggle-button ${thinkingMode !== "off" ? `active ${thinkingMode}` : ""}`}
+                onClick={cycleThinkingMode}
+                disabled={isStarting}
+                title={
+                  thinkingMode === "off"
+                    ? t("newSessionThinkingOff")
+                    : thinkingMode === "auto"
+                      ? t("newSessionThinkingAuto")
+                      : t("newSessionThinkingOn", { level: thinkingLevel })
+                }
+                aria-label={t("newSessionThinkingMode", { mode: thinkingMode })}
               >
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-                {thinkingMode === "auto" && (
-                  <g>
-                    <circle
-                      cx="19"
-                      cy="5"
-                      r="5.5"
-                      fill="currentColor"
-                      stroke="none"
-                    />
-                    <text
-                      x="19"
-                      y="5"
-                      textAnchor="middle"
-                      dominantBaseline="central"
-                      fill="var(--bg-primary, #1a1a2e)"
-                      fontSize="8"
-                      fontWeight="700"
-                      fontFamily="system-ui, sans-serif"
-                      stroke="none"
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                  {thinkingMode === "auto" && (
+                    <g>
+                      <circle
+                        cx="19"
+                        cy="5"
+                        r="5.5"
+                        fill="currentColor"
+                        stroke="none"
+                      />
+                      <text
+                        x="19"
+                        y="5"
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill="var(--bg-primary, #1a1a2e)"
+                        fontSize="8"
+                        fontWeight="700"
+                        fontFamily="system-ui, sans-serif"
+                        stroke="none"
+                      >
+                        A
+                      </text>
+                    </g>
+                  )}
+                </svg>
+              </button>
+              {thinkingMode === "on" && (
+                <div
+                  className="new-session-effort-selector"
+                  aria-label={t("modelSettingsEffortTitle")}
+                >
+                  {EFFORT_LEVEL_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`new-session-effort-option ${
+                        effortLevel === option.value ? "active" : ""
+                      }`}
+                      onClick={() => setEffortLevel(option.value)}
+                      disabled={isStarting}
+                      title={option.description}
+                      aria-label={`${t("modelSettingsEffortTitle")}: ${option.label}`}
                     >
-                      A
-                    </text>
-                  </g>
-                )}
-              </svg>
-            </button>
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
         <button

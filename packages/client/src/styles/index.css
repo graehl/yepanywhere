@@ -2529,6 +2529,50 @@ a.sidebar-nav-item {
   background: rgba(59, 130, 246, 0.25);
 }
 
+.new-session-effort-selector {
+  display: flex;
+  align-items: center;
+  height: var(--composer-control-size);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.new-session-effort-option {
+  height: 100%;
+  min-width: 2.5rem;
+  padding: 0 0.5rem;
+  border: 0;
+  border-left: 1px solid var(--border-input);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.new-session-effort-option:first-child {
+  border-left: 0;
+}
+
+.new-session-effort-option:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.new-session-effort-option.active {
+  background: rgba(59, 130, 246, 0.15);
+  color: rgb(59, 130, 246);
+}
+
+.new-session-effort-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .render-mode-toolbar-button {
   display: flex;
   align-items: center;

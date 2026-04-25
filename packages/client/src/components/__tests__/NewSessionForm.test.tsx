@@ -11,7 +11,10 @@ const {
   mockStartSession,
   mockStartDetachedSession,
   mockAddProject,
+  mockCycleThinkingMode,
+  mockSetEffortLevel,
   draftKeys,
+  modelSettingsState,
   providersState,
   serverSettingsState,
   filterDropdownState,
@@ -21,7 +24,13 @@ const {
   mockStartSession: vi.fn(),
   mockStartDetachedSession: vi.fn(),
   mockAddProject: vi.fn(),
+  mockCycleThinkingMode: vi.fn(),
+  mockSetEffortLevel: vi.fn(),
   draftKeys: [] as string[],
+  modelSettingsState: {
+    thinkingMode: "off" as "off" | "auto" | "on",
+    effortLevel: "high" as "low" | "medium" | "high" | "max",
+  },
   providersState: {
     providers: [] as Array<{
       name: string;
@@ -103,12 +112,25 @@ vi.mock("../../hooks/useDraftPersistence", () => ({
 
 vi.mock("../../hooks/useModelSettings", () => ({
   useModelSettings: () => ({
-    thinkingMode: "off",
-    cycleThinkingMode: vi.fn(),
-    thinkingLevel: "high",
+    effortLevel: modelSettingsState.effortLevel,
+    setEffortLevel: mockSetEffortLevel,
+    thinkingMode: modelSettingsState.thinkingMode,
+    cycleThinkingMode: mockCycleThinkingMode,
+    thinkingLevel: modelSettingsState.effortLevel,
   }),
-  getThinkingSetting: () => "off",
+  getThinkingSetting: () =>
+    modelSettingsState.thinkingMode === "off"
+      ? "off"
+      : modelSettingsState.thinkingMode === "auto"
+        ? "auto"
+        : `on:${modelSettingsState.effortLevel}`,
   getModelSetting: () => "opus",
+  EFFORT_LEVEL_OPTIONS: [
+    { value: "low", label: "Low", description: "Fastest responses" },
+    { value: "medium", label: "Medium", description: "Moderate thinking" },
+    { value: "high", label: "High", description: "Deep reasoning" },
+    { value: "max", label: "Max", description: "Maximum effort" },
+  ],
 }));
 
 vi.mock("../../hooks/useProviders", () => ({
@@ -243,11 +265,15 @@ describe("NewSessionForm", () => {
     serverSettingsState.settings = null;
     serverSettingsState.isLoading = true;
     filterDropdownState.selected = [];
+    modelSettingsState.thinkingMode = "off";
+    modelSettingsState.effortLevel = "high";
     mockNavigate.mockReset();
     mockUpdateSetting.mockReset();
     mockStartSession.mockReset();
     mockStartDetachedSession.mockReset();
     mockAddProject.mockReset();
+    mockCycleThinkingMode.mockReset();
+    mockSetEffortLevel.mockReset();
     draftKeys.length = 0;
     mockStartSession.mockResolvedValue({
       sessionId: "session-1",
@@ -371,6 +397,30 @@ describe("NewSessionForm", () => {
         model: "opus",
       }),
     );
+  });
+
+  it("shows and updates the initial effort selector when thinking is on", () => {
+    modelSettingsState.thinkingMode = "on";
+    modelSettingsState.effortLevel = "medium";
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    const medium = screen.getByRole("button", {
+      name: "modelSettingsEffortTitle: Medium",
+    });
+    expect(medium.className).toContain("active");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "modelSettingsEffortTitle: Low" }),
+    );
+
+    expect(mockSetEffortLevel).toHaveBeenCalledWith("low");
   });
 
   it("shows detached and recent project choices in the default launcher", () => {

@@ -121,6 +121,8 @@ export function MessageInputToolbar({
   const primaryActionHelp = queueMode
     ? t("toolbarQueueHelp")
     : t("toolbarSendTitle");
+  const showStopButton = !!(isRunning && onStop && isThinking);
+  const showSendButton = !!(onSend && (!showStopButton || canSend));
 
   const clearHeartbeatLongPress = () => {
     if (heartbeatLongPressTimerRef.current) {
@@ -362,17 +364,18 @@ export function MessageInputToolbar({
           </button>
         )}
         <ContextUsageIndicator usage={contextUsage} size={16} />
-        {/* Show stop button when thinking and nothing to send, otherwise show send */}
-        {isRunning && onStop && isThinking && !canSend ? (
+        {showStopButton && (
           <button
             type="button"
             onClick={onStop}
             className="stop-button"
             aria-label={t("toolbarStop")}
+            title={t("toolbarStop")}
           >
             <span className="stop-icon" />
           </button>
-        ) : onSend ? (
+        )}
+        {showSendButton ? (
           <button
             type="button"
             onClick={onSend}

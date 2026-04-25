@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { useCallback, useMemo, useState } from "react";
+import { type ComponentProps, useCallback, useMemo, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageInput } from "../MessageInput";
 
@@ -53,7 +53,10 @@ vi.mock("../VoiceInputButton", async () => {
   };
 });
 
-function renderMessageInput(onRecallLastSubmission = vi.fn(() => true)) {
+function renderMessageInput(
+  onRecallLastSubmission = vi.fn(() => true),
+  extraProps: Partial<ComponentProps<typeof MessageInput>> = {},
+) {
   render(
     <MessageInput
       onSend={vi.fn()}
@@ -62,6 +65,7 @@ function renderMessageInput(onRecallLastSubmission = vi.fn(() => true)) {
       supportsPermissionMode={false}
       supportsThinkingToggle={false}
       onRecallLastSubmission={onRecallLastSubmission}
+      {...extraProps}
     />,
   );
 
@@ -102,5 +106,22 @@ describe("MessageInput", () => {
     fireEvent.keyDown(textarea, { key: "p", ctrlKey: true });
 
     expect(onRecallLastSubmission).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps stop available while a running composer has queued text", () => {
+    const onStop = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      isRunning: true,
+      isThinking: true,
+      onQueue: vi.fn(),
+      onStop,
+    });
+
+    fireEvent.change(textarea, { target: { value: "still editable" } });
+
+    fireEvent.click(screen.getByLabelText("toolbarStop"));
+
+    expect(screen.getByLabelText("toolbarQueueLabel")).toBeTruthy();
+    expect(onStop).toHaveBeenCalledTimes(1);
   });
 });

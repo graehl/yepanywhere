@@ -3,10 +3,12 @@ import {
   getDisplayBashCommandFromInput,
   isCodexLikeBashInput,
 } from "../../lib/bashCommand";
+import { parseShellToolOutput } from "../../lib/shellToolOutput";
 import type { ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
 import type { RenderContext } from "../renderers/types";
 import { getToolSummary } from "../tools/summaries";
+import { hasFixedFontRichContent } from "../ui/FixedFontMathToggle";
 
 interface Props {
   id: string;
@@ -44,6 +46,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   const suppressCollapsedPreview = shouldSuppressBashCollapsedPreview(
     toolName,
     toolInput,
+    structuredResult,
     sessionProvider,
     status,
   );
@@ -218,6 +221,7 @@ export const ToolCallRow = memo(function ToolCallRow({
 function shouldSuppressBashCollapsedPreview(
   toolName: string,
   toolInput: unknown,
+  result: unknown,
   sessionProvider?: string,
   status?: "pending" | "complete" | "error" | "aborted",
 ): boolean {
@@ -230,14 +234,14 @@ function shouldSuppressBashCollapsedPreview(
   }
 
   // Keep Codex bash rows compact by default (header + expandable details) for
-  // both running and completed commands to avoid persistent IN/OUT cards.
-  if (
-    status === "pending" ||
-    status === "complete" ||
-    status === "error" ||
-    status === "aborted"
-  ) {
+  // ordinary commands, but surface markdown-like output so the render toggle is
+  // reachable from the row instead of requiring an expansion first.
+  if (status === "pending") {
     return true;
+  }
+  if (status === "complete" || status === "error" || status === "aborted") {
+    const output = getBashResultOutputForRichPreview(result);
+    return !output || !hasFixedFontRichContent(output);
   }
 
   const command = getDisplayBashCommandFromInput(toolInput);
@@ -246,6 +250,34 @@ function shouldSuppressBashCollapsedPreview(
   }
 
   return /^(rg|grep|sed|nl|cat)\b/.test(command.trimStart());
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function getBashResultOutputForRichPreview(result: unknown): string {
+  if (typeof result === "string") {
+    const parsed = parseShellToolOutput(result);
+    return parsed.hasEnvelope ? parsed.output : result;
+  }
+
+  if (!isRecord(result)) {
+    return "";
+  }
+
+  const stdout = typeof result.stdout === "string" ? result.stdout : "";
+  const stderr = typeof result.stderr === "string" ? result.stderr : "";
+  if (stdout || stderr) {
+    return [stdout, stderr].filter(Boolean).join("\n");
+  }
+
+  if (typeof result.content === "string") {
+    const parsed = parseShellToolOutput(result.content);
+    return parsed.hasEnvelope ? parsed.output : result.content;
+  }
+
+  return "";
 }
 
 function ToolUseExpanded({

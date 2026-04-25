@@ -1,5 +1,6 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
 import { editRenderer } from "../EditRenderer";
 
 vi.mock("../../../../contexts/SchemaValidationContext", () => ({
@@ -102,6 +103,171 @@ describe("EditRenderer collapsed preview fallback", () => {
     expect(screen.queryByText("Computing diff...")).toBeNull();
     expect(screen.getByText("-const x = 1;")).toBeDefined();
     expect(screen.getByText("+const x = 2;")).toBeDefined();
+  });
+
+  it("renders completed markdown table edits through the render toggle", () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 3,
+        newStart: 1,
+        newLines: 3,
+        lines: [
+          " | name | value |",
+          " | --- | --- |",
+          "-| old | $x^2$ |",
+          "+| new | $y^2$ |",
+        ],
+      },
+    ];
+
+    const { container } = render(
+      <div>
+        {renderCollapsedPreview(
+          {
+            _structuredPatch: structuredPatch,
+          } as never,
+          {
+            filePath: "notes.md",
+            structuredPatch,
+          } as never,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.getByRole("table")).toBeDefined();
+    expect(screen.getByText("old")).toBeDefined();
+    expect(screen.getByText("new")).toBeDefined();
+    expect(container.querySelector(".katex")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show source" }));
+
+    expect(container.textContent).toContain("-| old | $x^2$ |");
+  });
+
+  it("renders markdown headings and inline markup in completed edits", () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 2,
+        lines: ["-old text", "+## Findings", "+- **win** in `dev`"],
+      },
+    ];
+
+    const { container } = render(
+      <div>
+        {renderCollapsedPreview(
+          {
+            _structuredPatch: structuredPatch,
+          } as never,
+          {
+            filePath: "notes.md",
+            structuredPatch,
+          } as never,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.getByText("Findings")).toBeDefined();
+    expect(container.querySelector(".fixed-font-markdown-heading")).toBeTruthy();
+    expect(container.querySelector("strong")?.textContent).toBe("win");
+    expect(container.querySelector("code")?.textContent).toBe("dev");
+    const gutters = Array.from(
+      container.querySelectorAll(".fixed-font-diff-gutter"),
+    ).map((node) => node.textContent);
+    expect(gutters).toContain("+");
+    expect(gutters).toContain("-");
+  });
+
+  it("renders headerless markdown table edit hunks", () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 2,
+        newStart: 1,
+        newLines: 3,
+        lines: [
+          "@@ -1,2 +1,3 @@",
+          "-| `POL-E2P-Q35-BASE` | `en->pl` | Qwen3.5-4B base | 200 | 3.1581 | 290.64 tok/s / 7,598 tok |",
+          "-| `POL-E2P-TG4B-BASE` | `en->pl` | TranslateGemma-4B base | 200 | **2.7577** | 235.79 tok/s / 7,726 tok |",
+          "+| `POL-E2P-EURO-BASE` | `en->pl` | EuroLLM-9B base | 200 | **2.5526** | 98.89 tok/s / 6,527 tok |",
+          "+| `POL-E2P-Q35-BASE` | `en->pl` | Qwen3.5-4B base | 200 | 3.1581 | 290.64 tok/s / 7,598 tok |",
+          "+| `POL-E2P-TG4B-BASE` | `en->pl` | TranslateGemma-4B base | 200 | 2.7577 | 235.79 tok/s / 7,726 tok |",
+        ],
+      },
+    ];
+
+    const { container } = render(
+      <div>
+        {renderCollapsedPreview(
+          {
+            _structuredPatch: structuredPatch,
+          } as never,
+          {
+            filePath: "research/conditioned-diversity.md",
+            structuredPatch,
+          } as never,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.getByRole("table")).toBeDefined();
+    expect(screen.getByText("POL-E2P-EURO-BASE")).toBeDefined();
+    expect(
+      Array.from(container.querySelectorAll("strong")).map(
+        (node) => node.textContent,
+      ),
+    ).toContain("2.5526");
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(5);
+  });
+
+  it("resolves markdown links in edit table cells relative to the edited file", () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 3,
+        lines: [
+          "+| Ref | Artifacts |",
+          "+| --- | --- |",
+          "+| `PILOT` | [decode](../untracked/pilot.meta.md) |",
+        ],
+      },
+    ];
+
+    render(
+      <SessionMetadataProvider
+        projectId="project-1"
+        projectPath="/repo"
+        sessionId="session-1"
+      >
+        {renderCollapsedPreview(
+          {
+            _structuredPatch: structuredPatch,
+          } as never,
+          {
+            filePath: "research/conditioned-diversity.md",
+            structuredPatch,
+          } as never,
+          false,
+          renderContext,
+        )}
+      </SessionMetadataProvider>,
+    );
+
+    const link = screen.getByRole("link", { name: "decode" });
+    expect(link.getAttribute("data-fixed-font-file-path")).toBe(
+      "untracked/pilot.meta.md",
+    );
   });
 
   it("renders server-provided highlighted diff HTML when available", () => {

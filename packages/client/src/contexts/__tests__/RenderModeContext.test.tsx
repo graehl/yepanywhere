@@ -156,4 +156,65 @@ describe("RenderModeProvider", () => {
     expect(screen.getByTestId("global-state").textContent).toBe("rendered");
     expect(screen.getByTestId("first-rendered")).toBeDefined();
   });
+
+  it("renders markdown tables without losing diff prefixes", () => {
+    const sourceText = [
+      " | name | value |",
+      " | --- | --- |",
+      "-| old | $x^2$ |",
+      "+| new | $y^2$ |",
+    ].join("\n");
+
+    const { container } = render(
+      <RenderModeProvider>
+        <MathPane id="diff-table" sourceText={sourceText} />
+      </RenderModeProvider>,
+    );
+
+    expect(screen.getByRole("table")).toBeDefined();
+    expect(screen.getByText("old")).toBeDefined();
+    expect(screen.getByText("new")).toBeDefined();
+    const gutters = Array.from(
+      container.querySelectorAll(".fixed-font-diff-gutter"),
+    ).map((node) => node.textContent);
+    expect(gutters).toContain("-");
+    expect(gutters).toContain("+");
+    expect(container.querySelector(".katex")).toBeTruthy();
+
+    fireEvent.click(
+      within(screen.getByTestId("diff-table")).getByRole("button", {
+        name: "Show source",
+      }),
+    );
+
+    expect(screen.getByTestId("diff-table-source").textContent).toContain(
+      "-| old | $x^2$ |",
+    );
+  });
+
+  it("detects markdown tables in ANSI-colored unified diffs", () => {
+    const sourceText = [
+      "\u001b[1mdiff --git a/notes.md b/notes.md\u001b[0m",
+      "@@ -1,4 +1,4 @@",
+      " | name | value |",
+      " | --- | --- |",
+      "\u001b[31m-| old | $x^2$ |\u001b[0m",
+      "\u001b[32m+| new | $y^2$ |\u001b[0m",
+    ].join("\n");
+
+    const { container } = render(
+      <RenderModeProvider>
+        <MathPane id="ansi-diff-table" sourceText={sourceText} />
+      </RenderModeProvider>,
+    );
+
+    expect(screen.getByRole("table")).toBeDefined();
+    expect(screen.getByText("old")).toBeDefined();
+    expect(screen.getByText("new")).toBeDefined();
+    const gutters = Array.from(
+      container.querySelectorAll(".fixed-font-diff-gutter"),
+    ).map((node) => node.textContent);
+    expect(gutters).toContain("-");
+    expect(gutters).toContain("+");
+  });
 });

@@ -135,14 +135,20 @@ function DiffMathView({
   sourceText,
   sourceView,
   truncated = false,
+  diffAware = true,
+  baseFilePath,
 }: {
   sourceText: string;
   sourceView: ReactNode;
   truncated?: boolean;
+  diffAware?: boolean;
+  baseFilePath?: string;
 }) {
   return (
     <FixedFontMathToggle
       sourceText={sourceText}
+      diffAware={diffAware}
+      baseFilePath={baseFilePath}
       sourceView={
         <div className={`diff-view-container ${truncated ? "truncated" : ""}`}>
           <div className="diff-view">{sourceView}</div>
@@ -266,9 +272,11 @@ const DiffHunk = memo(function DiffHunk({ hunk }: { hunk: PatchHunk }) {
 function RawPatchPreview({
   rawPatch,
   truncateLines,
+  baseFilePath,
 }: {
   rawPatch: string;
   truncateLines?: number;
+  baseFilePath?: string;
 }) {
   const preview = useMemo(() => {
     if (!truncateLines) {
@@ -280,6 +288,8 @@ function RawPatchPreview({
   return (
     <FixedFontMathToggle
       sourceText={preview.text}
+      diffAware
+      baseFilePath={baseFilePath ?? extractFilePathFromRawPatch(rawPatch)}
       sourceView={
         <div
           className={`diff-view-container ${preview.truncated ? "truncated" : ""}`}
@@ -306,11 +316,19 @@ function RawPatchPreview({
   );
 }
 
-function RawPatchModalContent({ rawPatch }: { rawPatch: string }) {
+function RawPatchModalContent({
+  rawPatch,
+  baseFilePath,
+}: {
+  rawPatch: string;
+  baseFilePath?: string;
+}) {
   return (
     <div className="diff-modal-content">
       <FixedFontMathToggle
         sourceText={rawPatch}
+        diffAware
+        baseFilePath={baseFilePath ?? extractFilePathFromRawPatch(rawPatch)}
         sourceView={
           <pre className="code-block">
             <code>{rawPatch}</code>
@@ -332,7 +350,10 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
     if (input._rawPatch) {
       return (
         <div className="edit-result">
-          <RawPatchPreview rawPatch={input._rawPatch} />
+          <RawPatchPreview
+            rawPatch={input._rawPatch}
+            baseFilePath={getEditFilePath(input)}
+          />
         </div>
       );
     }
@@ -344,6 +365,7 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
   }
 
   const diffLines = input._structuredPatch.flatMap((hunk) => hunk.lines);
+  const filePath = getEditFilePath(input);
   const changeSummary = computeChangeSummary(input._structuredPatch);
   const isTruncated = diffLines.length > MAX_VISIBLE_LINES;
 
@@ -354,6 +376,7 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
       )}
       <DiffMathView
         sourceText={diffLines.join("\n")}
+        baseFilePath={filePath}
         truncated={isTruncated}
         sourceView={
           input._diffHtml ? (
@@ -473,6 +496,7 @@ function DiffModalContent({
 
       <DiffMathView
         sourceText={displayPatch.flatMap((h) => h.lines).join("\n")}
+        baseFilePath={displayPath}
         sourceView={
           displayHtml ? (
             <HighlightedDiff diffHtml={displayHtml} />
@@ -604,11 +628,12 @@ function EditCollapsedPreview({
             </span>
           ) : null}
           {hasProposedDiff && (
-            <div
-              className={`diff-view-container ${proposedDiffTruncated ? "truncated" : ""}`}
-            >
-              <div className="diff-view">
-                {input._diffHtml ? (
+            <DiffMathView
+              sourceText={proposedDiffLines.join("\n")}
+              baseFilePath={filePath}
+              truncated={proposedDiffTruncated}
+              sourceView={
+                input._diffHtml ? (
                   <HighlightedDiff
                     diffHtml={input._diffHtml}
                     truncateLines={
@@ -617,10 +642,9 @@ function EditCollapsedPreview({
                   />
                 ) : (
                   <DiffLines lines={proposedDiffLines} />
-                )}
-              </div>
-              {proposedDiffTruncated && <div className="diff-fade-overlay" />}
-            </div>
+                )
+              }
+            />
           )}
           {hasProposedDiff && proposedDiffTruncated && (
             <button
@@ -674,6 +698,7 @@ function EditCollapsedPreview({
             <RawPatchPreview
               rawPatch={rawPatch}
               truncateLines={MAX_VISIBLE_LINES}
+              baseFilePath={filePath}
             />
             {rawPatchPreview.truncated && (
               <button
@@ -693,7 +718,10 @@ function EditCollapsedPreview({
               title={<span className="file-path">{fileName}</span>}
               onClose={handleClose}
             >
-              <RawPatchModalContent rawPatch={rawPatch} />
+              <RawPatchModalContent
+                rawPatch={rawPatch}
+                baseFilePath={filePath}
+              />
             </Modal>
           )}
         </>
@@ -719,21 +747,21 @@ function EditCollapsedPreview({
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Edit" errors={validationErrors} />
         )}
-        <div
-          className={`diff-view-container ${isTruncated ? "truncated" : ""}`}
-        >
-          <div className="diff-view">
-            {diffHtml ? (
+        <DiffMathView
+          sourceText={diffLines.join("\n")}
+          baseFilePath={filePath}
+          truncated={isTruncated}
+          sourceView={
+            diffHtml ? (
               <HighlightedDiff
                 diffHtml={diffHtml}
                 truncateLines={isTruncated ? MAX_VISIBLE_LINES : undefined}
               />
             ) : (
               <DiffLines lines={diffLines} />
-            )}
-          </div>
-          {isTruncated && <div className="diff-fade-overlay" />}
-        </div>
+            )
+          }
+        />
         {isTruncated && (
           <button
             type="button"
@@ -988,37 +1016,37 @@ function EditToolResult({
             </div>
           ) : null}
           {hasProposedDiff && (
-            <div
-              className={`diff-view-container ${proposedDiffTruncated ? "truncated" : ""}`}
-            >
-              <div className="diff-view">
-                {inputWithAugment?._diffHtml ? (
-                  <HighlightedDiff
-                    diffHtml={inputWithAugment._diffHtml}
-                    truncateLines={
-                      proposedDiffTruncated ? MAX_VISIBLE_LINES : undefined
-                    }
-                  />
-                ) : (
-                  <DiffLines lines={proposedDiffLines} />
-                )}
-              </div>
+            <>
+              <DiffMathView
+                sourceText={proposedDiffLines.join("\n")}
+                baseFilePath={filePath}
+                truncated={proposedDiffTruncated}
+                sourceView={
+                  inputWithAugment?._diffHtml ? (
+                    <HighlightedDiff
+                      diffHtml={inputWithAugment._diffHtml}
+                      truncateLines={
+                        proposedDiffTruncated ? MAX_VISIBLE_LINES : undefined
+                      }
+                    />
+                  ) : (
+                    <DiffLines lines={proposedDiffLines} />
+                  )
+                }
+              />
               {proposedDiffTruncated && (
-                <>
-                  <div className="diff-fade-overlay" />
-                  <button
-                    type="button"
-                    className="diff-expand-button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowModal(true);
-                    }}
-                  >
-                    Show full diff
-                  </button>
-                </>
+                <button
+                  type="button"
+                  className="diff-expand-button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowModal(true);
+                  }}
+                >
+                  Show full diff
+                </button>
               )}
-            </div>
+            </>
           )}
         </div>
         {showModal && hasProposedDiff && inputWithAugment && (
@@ -1091,30 +1119,32 @@ function EditToolResult({
         {result.userModified && (
           <span className="badge badge-info">User modified</span>
         )}
-        <div
-          className={`diff-view-container ${isTruncated ? "truncated" : ""}`}
-        >
-          <div className="diff-view">
-            {result.structuredPatch.map((hunk, i) => (
-              <DiffHunk key={`hunk-${hunk.oldStart}-${i}`} hunk={hunk} />
-            ))}
-          </div>
-          {isTruncated && (
+        <DiffMathView
+          sourceText={result.structuredPatch
+            .flatMap((hunk) => hunk.lines)
+            .join("\n")}
+          baseFilePath={result.filePath}
+          truncated={isTruncated}
+          sourceView={
             <>
-              <div className="diff-fade-overlay" />
-              <button
-                type="button"
-                className="diff-expand-button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowModal(true);
-                }}
-              >
-                Click to expand
-              </button>
+              {result.structuredPatch.map((hunk, i) => (
+                <DiffHunk key={`hunk-${hunk.oldStart}-${i}`} hunk={hunk} />
+              ))}
             </>
-          )}
-        </div>
+          }
+        />
+        {isTruncated && (
+          <button
+            type="button"
+            className="diff-expand-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowModal(true);
+            }}
+          >
+            Click to expand
+          </button>
+        )}
       </div>
       {showModal && (
         <Modal

@@ -1,6 +1,14 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToolCallRow } from "../ToolCallRow";
+
+vi.mock("../../../contexts/SchemaValidationContext", () => ({
+  useSchemaValidationContext: () => ({
+    enabled: false,
+    reportValidationError: vi.fn(),
+    isToolIgnored: vi.fn(() => false),
+  }),
+}));
 
 describe("ToolCallRow", () => {
   afterEach(() => {
@@ -22,6 +30,45 @@ describe("ToolCallRow", () => {
     expect(screen.getByText("npm run test:e2e:pipeline-v2")).toBeDefined();
     expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
     expect(container.querySelector(".tool-use-expanded")).toBeNull();
+  });
+
+  it("shows completed Codex Bash markdown output as a renderable preview", () => {
+    const output = [
+      "diff --git a/notes.md b/notes.md",
+      "@@ -1,2 +1,2 @@",
+      "-## Old",
+      "+## New",
+      "+- **done** in `dev`",
+    ].join("\n");
+
+    const { container } = render(
+      <ToolCallRow
+        id="tool-markdown-bash"
+        toolName="Bash"
+        toolInput={{ command: "git diff -- notes.md" }}
+        toolResult={{
+          structured: {
+            stdout: output,
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+          },
+          content: output,
+          isError: false,
+        }}
+        status="complete"
+        sessionProvider="codex"
+      />,
+    );
+
+    expect(container.querySelector(".tool-row-collapsed-preview")).not.toBeNull();
+    expect(screen.getByText("New")).toBeDefined();
+    expect(container.querySelector(".fixed-font-markdown-heading")).toBeTruthy();
+    expect(container.querySelector("strong")?.textContent).toBe("done");
+    expect(
+      container.querySelector(".fixed-font-rendered__content code")?.textContent,
+    ).toBe("dev");
+    expect(container.querySelector(".expand-chevron")).toBeNull();
   });
 
   it("shows PTY-backed read shell rows inline without requiring expansion", () => {

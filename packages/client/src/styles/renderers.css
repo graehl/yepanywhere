@@ -68,6 +68,7 @@
 
 .fixed-font-rendered-panel {
   display: block;
+  overflow-x: visible;
 }
 
 .fixed-font-rendered__content {
@@ -75,8 +76,139 @@
   white-space: pre-wrap;
   word-break: break-word;
   tab-size: var(--tab-size);
-  font-family: "SF Mono", Monaco, "Cascadia Code", "Consolas", monospace;
+  font-family: var(--font-sans);
   line-height: 1.5;
+}
+
+.fixed-font-rendered-line {
+  display: grid;
+  grid-template-columns: 1.35rem minmax(0, 1fr);
+  column-gap: 0.25rem;
+}
+
+.fixed-font-rendered-line__content {
+  min-width: 0;
+}
+
+.fixed-font-file-link {
+  color: var(--vscode-textLink-foreground, #3794ff);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.15s;
+}
+
+.fixed-font-file-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.fixed-font-rendered__content code {
+  font-family: "SF Mono", Monaco, "Cascadia Code", "Consolas", monospace;
+  font-size: 0.92em;
+  background: var(--bg-code);
+  border: 1px solid var(--border-subtle, var(--border-color));
+  border-radius: 4px;
+  padding: 0.05rem 0.22rem;
+}
+
+.fixed-font-rendered__content strong {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.fixed-font-markdown-heading {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.fixed-font-markdown-heading-1 {
+  font-size: 1.35em;
+}
+
+.fixed-font-markdown-heading-2 {
+  font-size: 1.2em;
+}
+
+.fixed-font-markdown-heading-3,
+.fixed-font-markdown-heading-4,
+.fixed-font-markdown-heading-5,
+.fixed-font-markdown-heading-6 {
+  font-size: 1.08em;
+}
+
+.fixed-font-markdown-list-line .fixed-font-rendered-line__content {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(0, 1fr);
+  column-gap: 0.2rem;
+}
+
+.fixed-font-markdown-list-marker {
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.fixed-font-markdown-blockquote .fixed-font-rendered-line__content {
+  border-left: 3px solid var(--border-strong, var(--border-color));
+  padding-left: 0.65rem;
+  color: var(--text-secondary, var(--text-muted));
+}
+
+.fixed-font-markdown-rule {
+  display: block;
+  border-top: 1px solid var(--border-color);
+  margin: 0.65rem 0;
+}
+
+.fixed-font-diff-gutter {
+  display: inline-block;
+  width: 1.1rem;
+  color: var(--text-muted);
+  font-family: "SF Mono", Monaco, "Cascadia Code", "Consolas", monospace;
+  text-align: center;
+  user-select: none;
+}
+
+.fixed-font-diff-added {
+  background: var(--bg-diff-added, rgba(26, 127, 55, 0.15));
+}
+
+.fixed-font-diff-removed {
+  background: var(--bg-diff-removed, rgba(207, 34, 46, 0.15));
+}
+
+.fixed-font-markdown-block {
+  overflow-x: auto;
+  white-space: normal;
+}
+
+.fixed-font-markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.25rem 0;
+  white-space: normal;
+}
+
+.fixed-font-markdown-table th,
+.fixed-font-markdown-table td {
+  border: 1px solid var(--border-color);
+  padding: 0.35rem 0.5rem;
+  vertical-align: top;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.fixed-font-markdown-table th {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+}
+
+.fixed-font-markdown-table .fixed-font-diff-gutter-cell {
+  width: 1.35rem;
+  min-width: 1.35rem;
+  padding-left: 0;
+  padding-right: 0;
+  text-align: center;
+  background: color-mix(in srgb, var(--bg-tertiary) 70%, transparent);
 }
 
 .fixed-font-rendered__content .katex-display {
@@ -768,6 +900,59 @@ details[open] .collapsible__icon {
   gap: 0.5rem;
 }
 
+.bash-expanded-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.bash-inline-section-header,
+.bash-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bash-inline-section-label {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.bash-section-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 4px);
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.bash-section-copy:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong, var(--border-color));
+}
+
+.bash-section-copy:focus {
+  outline: 1px solid var(--focus-border, #007acc);
+  outline-offset: -1px;
+}
+
+.bash-section-copy.copied {
+  color: var(--app-yep-green);
+}
+
+.bash-section-copy:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .bash-stdout,
 .bash-stderr {
   margin: 0;
@@ -807,6 +992,7 @@ details[open] .collapsible__icon {
 
 .bash-preview-row {
   display: flex;
+  align-items: center;
   gap: 0.75rem;
   padding: 0.375rem 0.5rem;
   border-bottom: 1px solid var(--border-subtle, var(--border-color));

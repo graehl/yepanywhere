@@ -41,6 +41,11 @@ import {
 import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
 import { buildCorrectionText } from "../lib/correctionText";
+import {
+  getRecallSubmissionAfterQueuedCancel,
+  type LastComposerSubmission,
+  type SentComposerSubmission,
+} from "../lib/composerRecall";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
 import { preprocessMessages } from "../lib/preprocessMessages";
@@ -49,10 +54,6 @@ import { getSessionDisplayTitle } from "../utils";
 
 const PENDING_ELSEWHERE_DISMISS_KEY_PREFIX =
   "yepanywhere:pending-elsewhere-dismissed:";
-
-type LastComposerSubmission =
-  | { kind: "sent"; text: string; id: string }
-  | { kind: "queued"; text: string; tempId: string };
 
 interface QueuedEditDraft {
   originalTempId: string;
@@ -285,6 +286,8 @@ function SessionPageContent({
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
   const lastComposerSubmissionRef = useRef<LastComposerSubmission | null>(null);
+  const lastSentComposerSubmissionRef =
+    useRef<SentComposerSubmission | null>(null);
   const [correctionDraft, setCorrectionDraft] = useState<{
     messageId: string;
     originalText: string;
@@ -295,6 +298,20 @@ function SessionPageContent({
     draftControlsRef.current = controls;
   }, []);
   const { showToast } = useToastContext();
+
+  const rememberSentSubmission = useCallback((text: string, id: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return;
+    }
+    const submission: SentComposerSubmission = {
+      kind: "sent",
+      text: trimmed,
+      id,
+    };
+    lastSentComposerSubmissionRef.current = submission;
+    lastComposerSubmissionRef.current = submission;
+  }, []);
 
   // Sharing: check if configured (hidden unless sharing.json exists on server)
   const [sharingConfigured, setSharingConfigured] = useState(false);
@@ -508,6 +525,7 @@ function SessionPageContent({
     setCorrectionDraft(null);
     setQueuedEditDraft(null);
     lastComposerSubmissionRef.current = null;
+    lastSentComposerSubmissionRef.current = null;
   }, [sessionId]);
 
   const handleCancelCorrection = useCallback(() => {
@@ -718,13 +736,7 @@ function SessionPageContent({
         }
       }
       // Success - clear the draft from localStorage
-      if (text.trim()) {
-        lastComposerSubmissionRef.current = {
-          kind: "sent",
-          text: text.trim(),
-          id: tempId,
-        };
-      }
+      rememberSentSubmission(text, tempId);
       draftControlsRef.current?.clearDraft();
       setCorrectionDraft(null);
       setQueuedEditDraft(null);
@@ -765,13 +777,7 @@ function SessionPageContent({
             processId: result.processId,
           });
           setStatus({ owner: "self", processId: result.processId });
-          if (text.trim()) {
-            lastComposerSubmissionRef.current = {
-              kind: "sent",
-              text: text.trim(),
-              id: tempId,
-            };
-          }
+          rememberSentSubmission(text, tempId);
           draftControlsRef.current?.clearDraft();
           setCorrectionDraft(null);
           setQueuedEditDraft(null);
@@ -884,13 +890,7 @@ function SessionPageContent({
             source: "rest",
           });
         }
-        if (text.trim()) {
-          lastComposerSubmissionRef.current = {
-            kind: "sent",
-            text: text.trim(),
-            id: tempId,
-          };
-        }
+        rememberSentSubmission(text, tempId);
         draftControlsRef.current?.clearDraft();
         setCorrectionDraft(null);
         setQueuedEditDraft(null);
@@ -973,13 +973,7 @@ function SessionPageContent({
           });
           setStatus({ owner: "self", processId: result.processId });
           removePendingMessage(tempId);
-          if (text.trim()) {
-            lastComposerSubmissionRef.current = {
-              kind: "sent",
-              text: text.trim(),
-              id: tempId,
-            };
-          }
+          rememberSentSubmission(text, tempId);
           draftControlsRef.current?.clearDraft();
           setCorrectionDraft(null);
           setQueuedEditDraft(null);
@@ -1008,6 +1002,14 @@ function SessionPageContent({
       const localMessage = deferredMessages.find(
         (message) => message.tempId === tempId,
       );
+      const previousLastSubmission = lastComposerSubmissionRef.current;
+      lastComposerSubmissionRef.current =
+        getRecallSubmissionAfterQueuedCancel(
+          lastComposerSubmissionRef.current,
+          lastSentComposerSubmissionRef.current,
+          deferredMessages,
+          tempId,
+        );
       removeDeferredMessage(tempId);
       if (localMessage?.deliveryState === "recovered") {
         return;
@@ -1022,6 +1024,7 @@ function SessionPageContent({
         if (localMessage) {
           addDeferredMessage(localMessage);
         }
+        lastComposerSubmissionRef.current = previousLastSubmission;
         console.error("Failed to cancel deferred message:", err);
         const errorMsg = err instanceof Error ? err.message : String(err);
         showToast(t("sessionDeferredCancelFailed", { message: errorMsg }), "error");

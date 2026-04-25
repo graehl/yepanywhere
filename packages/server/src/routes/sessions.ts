@@ -5,6 +5,7 @@ import {
   type ThinkingOption,
   type UploadedFile,
   type UrlProjectId,
+  SESSION_TITLE_MAX_LENGTH,
   getModelContextWindow,
   isUrlProjectId,
   thinkingOptionToConfig,
@@ -159,8 +160,16 @@ interface RestartSessionBody extends CreateSessionBody {
 }
 
 const RESTART_HANDOFF_MAX_CHARS = 40_000;
-const RESTART_HANDOFF_MESSAGE_MAX_CHARS = 6_000;
 const RESTART_HANDOFF_JSON_MAX_CHARS = 2_000;
+const RESTART_HANDOFF_COMPACT_MAX_CHARS = 10_000;
+const RESTART_HANDOFF_USER_TURNS_MAX_CHARS = 28_000;
+const RESTART_HANDOFF_ACTIVITY_MAX_CHARS = 14_000;
+const RESTART_HANDOFF_USER_TURN_MAX_CHARS = 4_000;
+const RESTART_HANDOFF_ACTIVITY_ITEM_MAX_CHARS = 900;
+const RESTART_HANDOFF_QUEUED_MAX_CHARS = 4_000;
+const RESTART_HANDOFF_RECENT_USER_TURNS = 10;
+const RESTART_HANDOFF_RECENT_ACTIVITY_ITEMS = 24;
+const RESTART_COMPACT_WAIT_MS = 12_000;
 
 function truncateForRestart(text: string, maxChars: number): string {
   if (text.length <= maxChars) {
@@ -232,31 +241,149 @@ function renderRestartContent(content: unknown): string {
     .join("\n\n");
 }
 
-function formatRestartMessage(message: Message): string | null {
-  const nested = message.message as
-    | { role?: unknown; content?: unknown }
-    | undefined;
-  const role =
+function compactRestartLine(text: string, maxChars: number): string {
+  return truncateForRestart(text.replace(/\s+/g, " ").trim(), maxChars);
+}
+
+function messageRole(message: Message): string {
+  const nested = message.message as { role?: unknown } | undefined;
+  return (
     (typeof nested?.role === "string" && nested.role) ||
     (typeof message.role === "string" && message.role) ||
     message.type ||
-    "message";
-  const timestamp =
-    typeof message.timestamp === "string" && message.timestamp.trim()
-      ? ` ${message.timestamp}`
-      : "";
+    "message"
+  );
+}
+
+function messageTimestampSuffix(message: Message): string {
+  return typeof message.timestamp === "string" && message.timestamp.trim()
+    ? ` ${message.timestamp}`
+    : "";
+}
+
+function messageContent(message: Message): unknown {
+  const nested = message.message as { content?: unknown } | undefined;
+  return nested?.content ?? (message as { content?: unknown }).content;
+}
+
+function messageHasToolResult(message: Message): boolean {
+  if (message.toolUseResult !== undefined) {
+    return true;
+  }
+  const content = messageContent(message);
+  return (
+    Array.isArray(content) &&
+    content.some(
+      (block) =>
+        !!block &&
+        typeof block === "object" &&
+        (block as ContentBlock).type === "tool_result",
+    )
+  );
+}
+
+function isRestartInternalCompactCommand(message: Message): boolean {
+  if (messageRole(message) !== "user" || messageHasToolResult(message)) {
+    return false;
+  }
+  const content = renderRestartContent(messageContent(message)).trim();
+  return /^\/(?:compact|compress)\b/i.test(content);
+}
+
+function toolInputSummary(input: unknown): string {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return compactRestartLine(stringifyForRestart(input, 400), 400);
+  }
+
+  const record = input as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const key of [
+    "file_path",
+    "path",
+    "command",
+    "query",
+    "pattern",
+    "old_string",
+    "new_string",
+  ]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      parts.push(`${key}=${compactRestartLine(value, 180)}`);
+    }
+  }
+
+  return parts.length > 0
+    ? parts.join("; ")
+    : compactRestartLine(stringifyForRestart(input, 400), 400);
+}
+
+function summarizeToolUse(name: string | undefined, input: unknown): string {
+  const toolName = name ?? "unknown";
+  const summary = toolInputSummary(input);
+  const lowerName = toolName.toLowerCase();
+  const behavior = /read|grep|glob|search|ls|list/.test(lowerName)
+    ? "read/search details omitted; rerun if needed"
+    : /edit|write|patch|notebook/.test(lowerName)
+      ? "edit/write details omitted; inspect the current repo diff"
+      : "tool input summarized";
+  return `[tool_use ${toolName}] ${summary} (${behavior})`;
+}
+
+function summarizeToolResult(content: unknown): string {
+  const rendered = renderRestartContent(content);
+  const charCount = rendered.length;
+  return `[tool_result] output omitted (${charCount} chars; inspect live files or rerun reads if needed)`;
+}
+
+function renderRestartActivityContent(message: Message): string {
+  if (message.toolUse) {
+    return summarizeToolUse(message.toolUse.name, message.toolUse.input);
+  }
+  if (message.toolUseResult !== undefined) {
+    return summarizeToolResult(message.toolUseResult);
+  }
+
+  const content = messageContent(message);
+  if (!Array.isArray(content)) {
+    return renderRestartContent(content);
+  }
+
+  return content
+    .map((block) => {
+      if (typeof block === "string") {
+        return block;
+      }
+      if (!block || typeof block !== "object") {
+        return "";
+      }
+
+      const typed = block as ContentBlock;
+      switch (typed.type) {
+        case "tool_use":
+          return summarizeToolUse(typed.name, typed.input);
+        case "tool_result":
+          return summarizeToolResult(typed.content);
+        case "thinking":
+          return typed.thinking ? "[thinking summary omitted]" : "[thinking]";
+        default:
+          return renderRestartContent([typed]);
+      }
+    })
+    .filter((part) => part.trim().length > 0)
+    .join("\n");
+}
+
+function formatRestartMessage(message: Message): string | null {
+  if (isRestartInternalCompactCommand(message)) {
+    return null;
+  }
+
+  const role = messageRole(message);
+  const timestamp = messageTimestampSuffix(message);
   const content =
-    renderRestartContent(nested?.content) ||
-    renderRestartContent((message as { content?: unknown }).content) ||
-    (message.toolUse
-      ? `[tool_use ${message.toolUse.name}]\n${stringifyForRestart(
-          message.toolUse.input,
-          RESTART_HANDOFF_JSON_MAX_CHARS,
-        )}`
-      : "") ||
-    (message.toolUseResult !== undefined
-      ? `[tool_result]\n${renderRestartContent(message.toolUseResult)}`
-      : "");
+    isHumanUserMessage(message)
+      ? renderRestartContent(messageContent(message))
+      : renderRestartActivityContent(message);
   const subtype =
     typeof message.subtype === "string" ? `:${message.subtype}` : "";
   const trimmed = content.trim();
@@ -267,67 +394,380 @@ function formatRestartMessage(message: Message): string | null {
 
   return `### ${role}${subtype}${timestamp}\n\n${truncateForRestart(
     trimmed || "[no textual content]",
-    RESTART_HANDOFF_MESSAGE_MAX_CHARS,
+    isHumanUserMessage(message)
+      ? RESTART_HANDOFF_USER_TURN_MAX_CHARS
+      : RESTART_HANDOFF_ACTIVITY_ITEM_MAX_CHARS,
   )}`;
+}
+
+function formatRestartQueuedMessage(
+  message: {
+    tempId?: string;
+    content: string;
+    timestamp: string;
+    attachmentCount?: number;
+  },
+  index: number,
+): string {
+  const attachmentLine =
+    message.attachmentCount && message.attachmentCount > 0
+      ? `\nAttachments queued: ${message.attachmentCount}`
+      : "";
+  const tempIdLine = message.tempId ? `\nTemp ID: ${message.tempId}` : "";
+  return `### queued user ${index + 1} ${message.timestamp}\n\n${truncateForRestart(
+    message.content.trim() || "[empty queued turn]",
+    RESTART_HANDOFF_QUEUED_MAX_CHARS,
+  )}${attachmentLine}${tempIdLine}`;
+}
+
+type RestartQueuedMessage = {
+  tempId?: string;
+  content: string;
+  timestamp: string;
+  attachmentCount?: number;
+};
+
+function getRestartQueuedMessages(
+  process: Process | undefined,
+): RestartQueuedMessage[] {
+  return process?.getDeferredQueueSummary?.() ?? [];
+}
+
+type RestartCompactAttempt =
+  | { status: "unavailable"; reason: string }
+  | { status: "skipped"; reason: string }
+  | { status: "completed"; command: string }
+  | { status: "timed-out"; command: string }
+  | { status: "failed"; command?: string; reason: string };
+
+function isCompactBoundaryMessage(message: SDKMessage | Message): boolean {
+  return message.type === "system" && message.subtype === "compact_boundary";
+}
+
+function describeRestartCompactAttempt(
+  attempt: RestartCompactAttempt,
+): string {
+  switch (attempt.status) {
+    case "completed":
+      return `completed with /${attempt.command}`;
+    case "timed-out":
+      return `tried /${attempt.command}; no compact boundary arrived before YA fallback`;
+    case "failed":
+      return attempt.command
+        ? `tried /${attempt.command}; failed: ${attempt.reason}`
+        : `failed: ${attempt.reason}`;
+    case "skipped":
+    case "unavailable":
+      return `${attempt.status}: ${attempt.reason}`;
+  }
+}
+
+async function waitForRestartCompactBoundary(
+  process: Process,
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let finished = false;
+    let unsubscribe: (() => void) | undefined;
+    const finish = (completed: boolean) => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      clearTimeout(timeout);
+      unsubscribe?.();
+      resolve(completed);
+    };
+    const timeout = setTimeout(() => finish(false), timeoutMs);
+
+    unsubscribe = process.subscribe((event) => {
+      if (event.type === "message" && isCompactBoundaryMessage(event.message)) {
+        finish(true);
+        return;
+      }
+      if (event.type === "terminated" || event.type === "error") {
+        finish(false);
+      }
+    });
+  });
+}
+
+async function tryRestartCompact(
+  process: Process | undefined,
+): Promise<RestartCompactAttempt> {
+  if (!process) {
+    return { status: "unavailable", reason: "no active source process" };
+  }
+  if (process.state.type !== "idle") {
+    return {
+      status: "skipped",
+      reason: `source process was ${process.state.type}`,
+    };
+  }
+  if (!process.supportsDynamicCommands) {
+    return {
+      status: "unavailable",
+      reason: "source process does not advertise slash commands",
+    };
+  }
+
+  let command: string | undefined;
+  try {
+    const commands = await process.supportedCommands();
+    command =
+      commands?.find((candidate) => candidate.name === "compact")?.name ??
+      commands?.find((candidate) => candidate.name === "compress")?.name;
+  } catch (error) {
+    return {
+      status: "failed",
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  if (!command) {
+    return {
+      status: "unavailable",
+      reason: "no compact/compress slash command advertised",
+    };
+  }
+
+  const waitForCompact = waitForRestartCompactBoundary(
+    process,
+    RESTART_COMPACT_WAIT_MS,
+  );
+  const queued = process.queueMessage({ text: `/${command}` });
+  if (!queued.success) {
+    return {
+      status: "failed",
+      command,
+      reason: queued.error ?? "compact command was not accepted",
+    };
+  }
+
+  return (await waitForCompact)
+    ? { status: "completed", command }
+    : { status: "timed-out", command };
+}
+
+function latestCompactSummary(messages: Message[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
+      message?.type !== "system" ||
+      (message as { subtype?: unknown }).subtype !== "compact_boundary"
+    ) {
+      continue;
+    }
+
+    const summary = renderRestartContent(messageContent(message)).trim();
+    if (summary && !/^context compacted\.?$/i.test(summary)) {
+      return truncateForRestart(summary, RESTART_HANDOFF_COMPACT_MAX_CHARS);
+    }
+  }
+  return null;
+}
+
+function selectRestartMessages(params: {
+  messages: Message[];
+  maxItems: number;
+  maxChars: number;
+  predicate: (message: Message) => boolean;
+  selectedIndexes: Set<number>;
+}): string[] {
+  const selected: string[] = [];
+  let used = 0;
+
+  for (let index = params.messages.length - 1; index >= 0; index -= 1) {
+    const message = params.messages[index];
+    if (!message || !params.predicate(message)) {
+      continue;
+    }
+    const formatted = formatRestartMessage(message);
+    if (!formatted) {
+      continue;
+    }
+    const nextSize = formatted.length + 2;
+    if (
+      selected.length >= params.maxItems ||
+      (selected.length > 0 && used + nextSize > params.maxChars)
+    ) {
+      break;
+    }
+    selected.push(formatted);
+    params.selectedIndexes.add(index);
+    used += nextSize;
+  }
+
+  return selected.reverse();
 }
 
 function buildRestartTranscript(messages: Message[]): {
   transcript: string;
   omittedCount: number;
 } {
-  const formatted = messages
-    .map(formatRestartMessage)
-    .filter((message): message is string => Boolean(message));
-  const selected: string[] = [];
-  let used = 0;
+  const selectedIndexes = new Set<number>();
+  const compactSummary = latestCompactSummary(messages);
+  const userTurns = selectRestartMessages({
+    messages,
+    maxItems: RESTART_HANDOFF_RECENT_USER_TURNS,
+    maxChars: RESTART_HANDOFF_USER_TURNS_MAX_CHARS,
+    predicate: isHumanUserMessage,
+    selectedIndexes,
+  });
+  const activity = selectRestartMessages({
+    messages,
+    maxItems: RESTART_HANDOFF_RECENT_ACTIVITY_ITEMS,
+    maxChars: RESTART_HANDOFF_ACTIVITY_MAX_CHARS,
+    predicate: (message) =>
+      !isHumanUserMessage(message) &&
+      !(
+        message.type === "system" &&
+        (message as { subtype?: unknown }).subtype === "compact_boundary" &&
+        compactSummary
+      ),
+    selectedIndexes,
+  });
 
-  for (let index = formatted.length - 1; index >= 0; index -= 1) {
-    const next = formatted[index];
-    if (!next) continue;
-    const nextSize = next.length + 2;
-    if (selected.length > 0 && used + nextSize > RESTART_HANDOFF_MAX_CHARS) {
-      break;
-    }
-    selected.push(next);
-    used += nextSize;
-    if (used >= RESTART_HANDOFF_MAX_CHARS) {
-      break;
-    }
-  }
+  const sections = [
+    compactSummary
+      ? `## Provider-Native Compact Summary\n\n${compactSummary}`
+      : undefined,
+    userTurns.length > 0
+      ? `## Recent User Turns\n\n${userTurns.join("\n\n")}`
+      : undefined,
+    activity.length > 0
+      ? `## Recent Agent and Tool Activity\n\n${activity.join("\n\n")}`
+      : undefined,
+  ].filter((section): section is string => Boolean(section));
 
-  selected.reverse();
   return {
-    transcript: selected.join("\n\n"),
-    omittedCount: Math.max(0, formatted.length - selected.length),
+    transcript: truncateForRestart(
+      sections.join("\n\n"),
+      RESTART_HANDOFF_MAX_CHARS,
+    ),
+    omittedCount: Math.max(0, messages.length - selectedIndexes.size),
   };
 }
 
-function deriveRestartTitle(title: string | null | undefined): string {
-  const suffix = " [restart]";
-  const base = title?.trim() || "Restarted session";
-  const maxBaseLength = 120 - suffix.length;
-  const trimmedBase =
-    base.length > maxBaseLength
-      ? `${base.slice(0, maxBaseLength - 3).trimEnd()}...`
-      : base;
-  return `${trimmedBase}${suffix}`;
+function compactRestartTitleText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function stripMarkdownHeading(text: string): string {
+  return text.replace(/^#+\s*/, "");
+}
+
+function isGeneratedRestartHandoffTitle(text: string): boolean {
+  const title = stripMarkdownHeading(compactRestartTitleText(text));
+  return (
+    /^Restart Handoff\b/i.test(title) ||
+    /^Handoff:\s*Restart Handoff\b/i.test(title) ||
+    /^Handoff:\s*Yep Anywhere is starting this as a fresh agent session\b/i.test(
+      title,
+    ) ||
+    /^Yep Anywhere is starting this as a fresh agent session\b/i.test(title)
+  );
+}
+
+function normalizeRestartTitleCandidate(
+  title: string | null | undefined,
+): string | undefined {
+  if (!title) {
+    return undefined;
+  }
+  const candidate = stripMarkdownHeading(compactRestartTitleText(title));
+  if (!candidate || isGeneratedRestartHandoffTitle(candidate)) {
+    return undefined;
+  }
+  return candidate;
+}
+
+function isHumanUserMessage(message: Message): boolean {
+  const nested = message.message as { role?: unknown } | undefined;
+  const role =
+    (typeof nested?.role === "string" && nested.role) ||
+    (typeof message.role === "string" && message.role) ||
+    message.type;
+  return role === "user" && !messageHasToolResult(message);
+}
+
+function messageTitleCandidate(message: Message): string | undefined {
+  if (!isHumanUserMessage(message) || isRestartInternalCompactCommand(message)) {
+    return undefined;
+  }
+
+  const nested = message.message as { content?: unknown } | undefined;
+  const content =
+    renderRestartContent(nested?.content) ||
+    renderRestartContent((message as { content?: unknown }).content);
+  const candidate = normalizeRestartTitleCandidate(content);
+
+  if (
+    !candidate ||
+    /^\[(tool_result|tool_use|thinking|image|document)\]/i.test(candidate)
+  ) {
+    return undefined;
+  }
+  return candidate;
+}
+
+function latestUserTitleCandidate(messages: Message[]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message) {
+      continue;
+    }
+    const candidate = messageTitleCandidate(message);
+    if (candidate) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function truncateRestartTitle(title: string): string {
+  if (title.length <= SESSION_TITLE_MAX_LENGTH) {
+    return title;
+  }
+  return `${title.slice(0, SESSION_TITLE_MAX_LENGTH - 3).trimEnd()}...`;
+}
+
+function deriveRestartTitle(params: {
+  preferredTitle?: string | null;
+  sourceSession: Session;
+}): string {
+  const candidates = [
+    params.preferredTitle,
+    params.sourceSession.customTitle,
+    params.sourceSession.title,
+    latestUserTitleCandidate(params.sourceSession.messages),
+  ];
+  const base =
+    candidates.map(normalizeRestartTitleCandidate).find(Boolean) ??
+    "restarted session";
+  const title = /^Handoff:/i.test(base) ? base : `Handoff: ${base}`;
+  return truncateRestartTitle(title);
 }
 
 function buildRestartHandoff(params: {
+  handoffTitle: string;
   sourceSession: Session;
   sourceProvider?: ProviderName;
   sourceModel?: string;
   sourceProcess?: Process;
+  compactAttempt?: RestartCompactAttempt;
   projectPath: string;
   reason?: string;
   omittedCount: number;
   transcript: string;
 }): string {
   const {
+    handoffTitle,
     sourceSession,
     sourceProvider,
     sourceModel,
     sourceProcess,
+    compactAttempt,
     projectPath,
     reason,
     omittedCount,
@@ -340,12 +780,23 @@ function buildRestartHandoff(params: {
     omittedCount > 0
       ? `\n${omittedCount} older rendered messages were omitted to keep this restart handoff bounded.`
       : "";
+  const queuedMessages = getRestartQueuedMessages(sourceProcess);
+  const queuedSection =
+    queuedMessages.length > 0
+      ? [
+          "## Queued User Turns (Not Yet Processed)",
+          "",
+          "These user turns were accepted by YA's deferred queue after the source transcript. No agent response in the source session has processed them yet.",
+          "",
+          queuedMessages.map(formatRestartQueuedMessage).join("\n\n"),
+        ].join("\n")
+      : undefined;
 
   return [
-    "# Restart Handoff",
+    `# ${handoffTitle}`,
     "",
     "Yep Anywhere is starting this as a fresh agent session because the previous process became unhealthy or was manually restarted.",
-    "Treat the transcript below as context, not as a new request to repeat. Continue the user's latest unresolved work after checking the live repository state.",
+    "Treat the transcript below as context, not as a new request to repeat. Prefer any provider-native compact summary when present, then use the recent user turns and summarized activity to continue the user's latest unresolved work after checking the live repository state.",
     "",
     "## Source Session",
     "",
@@ -354,11 +805,15 @@ function buildRestartHandoff(params: {
     `- Provider: ${sourceProvider ?? sourceSession.provider}`,
     `- Model: ${sourceModel ?? sourceSession.model ?? "unknown"}`,
     oldProcessLine,
+    compactAttempt
+      ? `- Provider-native compact: ${describeRestartCompactAttempt(compactAttempt)}`
+      : undefined,
     reason ? `- Restart reason: ${reason}` : undefined,
     "",
     "## Recent Transcript",
     omittedLine,
     transcript || "[No textual transcript was available.]",
+    queuedSection,
   ]
     .filter((line): line is string => line !== undefined)
     .join("\n");
@@ -375,6 +830,27 @@ function isRestartReplacementActivity(message: SDKMessage): boolean {
 function sdkMessagesToClientMessages(sdkMessages: SDKMessage[]): Message[] {
   const messages: Message[] = [];
   for (const msg of sdkMessages) {
+    if (isCompactBoundaryMessage(msg)) {
+      const content =
+        (typeof msg.message?.content === "string"
+          ? msg.message.content
+          : undefined) ??
+        (typeof msg.content === "string" ? msg.content : "Context compacted");
+      messages.push({
+        id: msg.uuid ?? `msg-${Date.now()}-${messages.length}`,
+        type: "system",
+        role: "system",
+        subtype: "compact_boundary",
+        content,
+        message: { role: "system", content },
+        timestamp:
+          typeof msg.timestamp === "string" && msg.timestamp.trim().length > 0
+            ? msg.timestamp
+            : new Date().toISOString(),
+      });
+      continue;
+    }
+
     // Only include user and assistant messages with content
     if (
       (msg.type === "user" || msg.type === "assistant") &&
@@ -1658,6 +2134,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     ) as ProviderName | undefined;
     const sourceProvider =
       metadataProvider ?? oldProcess?.provider ?? body.provider ?? project.provider;
+    const compactAttempt = await tryRestartCompact(oldProcess);
     const oldProcessInterrupted =
       await interruptOldProcessForHandoff(oldProcess);
     const sourceSession = await loadRestartSourceSession(
@@ -1673,14 +2150,21 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     const providerName = body.provider ?? sourceSession.provider ?? sourceProvider;
+    const originalMetadata = deps.sessionMetadataService?.getMetadata(sessionId);
+    const handoffTitle = deriveRestartTitle({
+      preferredTitle: originalMetadata?.customTitle,
+      sourceSession,
+    });
     const { transcript, omittedCount } = buildRestartTranscript(
       sourceSession.messages,
     );
     const handoff = buildRestartHandoff({
+      handoffTitle,
       sourceSession,
       sourceProvider,
       sourceModel: oldProcess?.resolvedModel ?? sourceSession.model,
       sourceProcess: oldProcess,
+      compactAttempt,
       projectPath: project.path,
       reason: body.reason,
       omittedCount,
@@ -1731,11 +2215,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     await persistLaunchMetadata(result.sessionId, providerName, executor);
     if (deps.sessionMetadataService) {
-      const originalMetadata = deps.sessionMetadataService.getMetadata(sessionId);
       await deps.sessionMetadataService.updateMetadata(result.sessionId, {
-        title: deriveRestartTitle(
-          originalMetadata?.customTitle ?? sourceSession.title,
-        ),
+        title: handoffTitle,
+      });
+      deps.eventBus?.emit({
+        type: "session-metadata-changed",
+        sessionId: result.sessionId,
+        title: handoffTitle,
+        timestamp: new Date().toISOString(),
       });
     }
 
@@ -1750,6 +2237,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId: result.projectId,
       provider: result.provider,
       model: result.resolvedModel ?? result.model,
+      title: handoffTitle,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
       restartedFrom: sessionId,

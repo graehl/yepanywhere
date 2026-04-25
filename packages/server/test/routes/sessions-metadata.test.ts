@@ -253,6 +253,8 @@ describe("Sessions metadata route", () => {
       success: true,
       supported: true,
     }));
+    const updateMetadata = vi.fn(async () => undefined);
+    const emit = vi.fn();
 
     const routes = createSessionsRoutes({
       supervisor: {
@@ -291,8 +293,9 @@ describe("Sessions metadata route", () => {
         getExecutor: vi.fn(() => undefined),
         getMetadata: vi.fn(() => ({ customTitle: "Broken Codex session" })),
         setProvider: vi.fn(async () => undefined),
-        updateMetadata: vi.fn(async () => undefined),
+        updateMetadata,
       } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+      eventBus: { emit } as unknown as SessionsDeps["eventBus"],
     });
 
     const response = await routes.request(
@@ -313,6 +316,7 @@ describe("Sessions metadata route", () => {
     expect(body).toMatchObject({
       sessionId: "sess-new",
       processId: "proc-new",
+      title: "Handoff: Broken Codex session",
       restartedFrom: "sess-1",
       oldProcessId: "proc-old",
       oldProcessInterrupted: true,
@@ -323,12 +327,24 @@ describe("Sessions metadata route", () => {
     expect(startSession).toHaveBeenCalledWith(
       project.path,
       expect.objectContaining({
-        text: expect.stringContaining("please continue the bugfix"),
+        text: expect.stringContaining("# Handoff: Broken Codex session"),
       }),
       undefined,
       expect.objectContaining({
         model: "gpt-5.4",
         providerName: "codex",
+      }),
+    );
+    const handoffText = startSession.mock.calls[0]?.[1].text;
+    expect(handoffText).toContain("please continue the bugfix");
+    expect(updateMetadata).toHaveBeenCalledWith("sess-new", {
+      title: "Handoff: Broken Codex session",
+    });
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "session-metadata-changed",
+        sessionId: "sess-new",
+        title: "Handoff: Broken Codex session",
       }),
     );
     expect(interruptProcess.mock.invocationCallOrder[0]).toBeLessThan(
@@ -342,6 +358,368 @@ describe("Sessions metadata route", () => {
     });
     await Promise.resolve();
     expect(abortProcess).toHaveBeenCalledWith("proc-old");
+  });
+
+  it("does not reuse generated handoff boilerplate as the next handoff title", async () => {
+    const project = createProject();
+    const startSession = vi.fn(async () => ({
+      id: "proc-new",
+      sessionId: "sess-new",
+      projectId: project.id,
+      provider: "codex",
+      model: "gpt-5.4",
+      resolvedModel: "gpt-5.4",
+      permissionMode: "default",
+      modeVersion: 0,
+      subscribe: vi.fn(() => vi.fn()),
+    }));
+    const updateMetadata = vi.fn(async () => undefined);
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-old",
+          provider: "codex",
+          model: "gpt-5.5",
+          resolvedModel: "gpt-5.5",
+          permissionMode: "default",
+          modeVersion: 0,
+          state: { type: "idle", since: new Date() },
+          getMessageHistory: vi.fn(() => [
+            {
+              type: "user",
+              uuid: "u1",
+              message: {
+                role: "user",
+                content:
+                  "# Restart Handoff\n\nYep Anywhere is starting this as a fresh agent session.",
+              },
+            },
+            {
+              type: "user",
+              uuid: "u2",
+              message: {
+                role: "user",
+                content: "fix handoff session titles",
+              },
+            },
+          ]),
+        })),
+        startSession,
+        interruptProcess: vi.fn(async () => ({
+          success: true,
+          supported: true,
+        })),
+        abortProcess: vi.fn(async () => true),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "codex"),
+        getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => undefined),
+        setProvider: vi.fn(async () => undefined),
+        updateMetadata,
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "codex", model: "gpt-5.4" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.title).toBe("Handoff: fix handoff session titles");
+    expect(startSession.mock.calls[0]?.[1].text).toContain(
+      "# Handoff: fix handoff session titles",
+    );
+    expect(updateMetadata).toHaveBeenCalledWith("sess-new", {
+      title: "Handoff: fix handoff session titles",
+    });
+  });
+
+  it("tries provider-native compact before starting the handoff", async () => {
+    const project = createProject();
+    const history: unknown[] = [
+      {
+        type: "user",
+        uuid: "u1",
+        timestamp: "2026-04-24T20:00:00.000Z",
+        message: { role: "user", content: "handoff after compact please" },
+      },
+    ];
+    let compactListener:
+      | ((event: { type: string; message?: unknown }) => void)
+      | undefined;
+    const queueMessage = vi.fn((message) => {
+      history.push({
+        type: "user",
+        uuid: "compact-command",
+        timestamp: "2026-04-24T20:00:01.000Z",
+        message: { role: "user", content: message.text },
+      });
+      queueMicrotask(() => {
+        const compactMessage = {
+          type: "system",
+          subtype: "compact_boundary",
+          uuid: "compact-1",
+          timestamp: "2026-04-24T20:00:02.000Z",
+          message: {
+            role: "system",
+            content: "Native compact summary text",
+          },
+        };
+        history.push(compactMessage);
+        compactListener?.({ type: "message", message: compactMessage });
+      });
+      return { success: true, position: 1 };
+    });
+    const interruptProcess = vi.fn(async () => ({
+      success: true,
+      supported: true,
+    }));
+    const startSession = vi.fn(async () => ({
+      id: "proc-new",
+      sessionId: "sess-new",
+      projectId: project.id,
+      provider: "codex",
+      model: "gpt-5.4",
+      resolvedModel: "gpt-5.4",
+      permissionMode: "default",
+      modeVersion: 0,
+      subscribe: vi.fn(() => vi.fn()),
+    }));
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-old",
+          provider: "codex",
+          model: "gpt-5.5",
+          resolvedModel: "gpt-5.5",
+          permissionMode: "default",
+          modeVersion: 0,
+          state: { type: "idle", since: new Date() },
+          supportsDynamicCommands: true,
+          supportedCommands: vi.fn(async () => [
+            { name: "compact", description: "Compact conversation" },
+          ]),
+          queueMessage,
+          subscribe: vi.fn((listener) => {
+            compactListener = listener;
+            return vi.fn();
+          }),
+          getMessageHistory: vi.fn(() => history),
+          getDeferredQueueSummary: vi.fn(() => []),
+        })),
+        startSession,
+        interruptProcess,
+        abortProcess: vi.fn(async () => true),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "codex"),
+        getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => undefined),
+        setProvider: vi.fn(async () => undefined),
+        updateMetadata: vi.fn(async () => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "codex", model: "gpt-5.4" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(queueMessage).toHaveBeenCalledWith({ text: "/compact" });
+    expect(queueMessage.mock.invocationCallOrder[0]).toBeLessThan(
+      interruptProcess.mock.invocationCallOrder[0] ?? 0,
+    );
+    const handoffText = startSession.mock.calls[0]?.[1].text;
+    expect(handoffText).toContain(
+      "- Provider-native compact: completed with /compact",
+    );
+    expect(handoffText).toContain("## Provider-Native Compact Summary");
+    expect(handoffText).toContain("Native compact summary text");
+    expect(handoffText).not.toContain(
+      "### user 2026-04-24T20:00:01.000Z\n\n/compact",
+    );
+  });
+
+  it("summarizes fallback activity and appends queued turns last", async () => {
+    const project = createProject();
+    const verboseReadOutput = "VERBOSE_READ_OUTPUT".repeat(200);
+    const startSession = vi.fn(async () => ({
+      id: "proc-new",
+      sessionId: "sess-new",
+      projectId: project.id,
+      provider: "codex",
+      model: "gpt-5.4",
+      resolvedModel: "gpt-5.4",
+      permissionMode: "default",
+      modeVersion: 0,
+      subscribe: vi.fn(() => vi.fn()),
+    }));
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-old",
+          provider: "codex",
+          model: "gpt-5.5",
+          resolvedModel: "gpt-5.5",
+          permissionMode: "default",
+          modeVersion: 0,
+          state: { type: "in-turn" },
+          getMessageHistory: vi.fn(() => [
+            {
+              type: "system",
+              subtype: "compact_boundary",
+              uuid: "compact-1",
+              timestamp: "2026-04-24T20:00:00.000Z",
+              message: {
+                role: "system",
+                content: "Existing compact summary",
+              },
+            },
+            {
+              type: "user",
+              uuid: "u1",
+              timestamp: "2026-04-24T20:01:00.000Z",
+              message: { role: "user", content: "older user turn" },
+            },
+            {
+              type: "assistant",
+              uuid: "a1",
+              timestamp: "2026-04-24T20:02:00.000Z",
+              message: {
+                role: "assistant",
+                content: [
+                  {
+                    type: "tool_use",
+                    id: "read-1",
+                    name: "Read",
+                    input: {
+                      file_path: "packages/server/src/routes/sessions.ts",
+                    },
+                  },
+                ],
+              },
+            },
+            {
+              type: "user",
+              uuid: "tool-result-1",
+              timestamp: "2026-04-24T20:03:00.000Z",
+              message: {
+                role: "user",
+                content: [
+                  {
+                    type: "tool_result",
+                    tool_use_id: "read-1",
+                    content: verboseReadOutput,
+                  },
+                ],
+              },
+            },
+            {
+              type: "user",
+              uuid: "u2",
+              timestamp: "2026-04-24T20:04:00.000Z",
+              message: { role: "user", content: "latest user direction" },
+            },
+          ]),
+          getDeferredQueueSummary: vi.fn(() => [
+            {
+              tempId: "queued-1",
+              content: "queued follow-up",
+              timestamp: "2026-04-24T20:05:00.000Z",
+              attachmentCount: 1,
+            },
+          ]),
+        })),
+        startSession,
+        interruptProcess: vi.fn(async () => ({
+          success: true,
+          supported: true,
+        })),
+        abortProcess: vi.fn(async () => true),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "codex"),
+        getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => undefined),
+        setProvider: vi.fn(async () => undefined),
+        updateMetadata: vi.fn(async () => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "codex", model: "gpt-5.4" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const handoffText = startSession.mock.calls[0]?.[1].text;
+    expect(handoffText).toContain(
+      "- Provider-native compact: skipped: source process was in-turn",
+    );
+    expect(handoffText).toContain("## Provider-Native Compact Summary");
+    expect(handoffText).toContain("Existing compact summary");
+    expect(handoffText).toContain("## Recent User Turns");
+    expect(handoffText).toContain("older user turn");
+    expect(handoffText).toContain("latest user direction");
+    expect(handoffText).toContain("[tool_use Read]");
+    expect(handoffText).toContain("read/search details omitted");
+    expect(handoffText).toContain("[tool_result] output omitted");
+    expect(handoffText).not.toContain(verboseReadOutput);
+    expect(handoffText).toContain("## Queued User Turns (Not Yet Processed)");
+    expect(handoffText).toContain(
+      "No agent response in the source session has processed them yet.",
+    );
+    expect(handoffText).toContain("queued follow-up");
+    expect(handoffText).toContain("Attachments queued: 1");
+    expect(handoffText?.trim().endsWith("Temp ID: queued-1")).toBe(true);
+    expect(handoffText?.indexOf("## Queued User Turns")).toBeGreaterThan(
+      handoffText?.indexOf("## Recent Agent and Tool Activity") ?? -1,
+    );
   });
 
   it("does not abort the old process when handoff startup is queued", async () => {
@@ -386,6 +764,7 @@ describe("Sessions metadata route", () => {
       sessionMetadataService: {
         getProvider: vi.fn(() => "codex"),
         getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => undefined),
       } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
     });
 

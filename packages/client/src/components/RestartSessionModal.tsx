@@ -101,6 +101,7 @@ interface RestartSessionModalProps {
     sessionId: string;
     processId: string;
     model?: string;
+    title?: string;
     oldProcessAborted: boolean;
   }, options?: {
     openInNewWindow?: boolean;

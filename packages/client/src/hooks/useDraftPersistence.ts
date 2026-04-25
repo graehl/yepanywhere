@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const DEBOUNCE_MS = 500;
 
 export interface DraftControls {
+  /** Replace input state and localStorage immediately */
+  setDraft: (value: string) => void;
   /** Clear input state only, keeping localStorage for failure recovery */
   clearInput: () => void;
   /** Clear both input state and localStorage (call on confirmed success) */
@@ -127,11 +129,26 @@ export function useDraftPersistence(
     }, DEBOUNCE_MS);
   }, []);
 
+  // Replace the draft immediately. This is used when another UI action, such
+  // as editing a queued message, needs to take over the composer.
+  const setDraft = useCallback((newValue: string) => {
+    setValueInternal(newValue);
+    pendingValueRef.current = null;
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    saveToStorage(keyRef.current, newValue);
+  }, []);
+
   // Clear input state only (for optimistic UI on submit)
   const clearInput = useCallback(() => {
+    if (pendingValueRef.current !== null) {
+      saveToStorage(keyRef.current, pendingValueRef.current);
+    }
     setValueInternal("");
     pendingValueRef.current = null;
-    // Cancel pending debounce so we don't overwrite localStorage with ""
+    // Cancel pending debounce so we don't overwrite the recovery draft with ""
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
@@ -179,8 +196,8 @@ export function useDraftPersistence(
   }, []);
 
   const controls = useMemo(
-    () => ({ clearInput, clearDraft, restoreFromStorage }),
-    [clearInput, clearDraft, restoreFromStorage],
+    () => ({ setDraft, clearInput, clearDraft, restoreFromStorage }),
+    [setDraft, clearInput, clearDraft, restoreFromStorage],
   );
 
   return [value, setValue, controls];

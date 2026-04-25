@@ -38,6 +38,227 @@ function createSummary(): SessionSummary {
 }
 
 describe("Sessions metadata route", () => {
+  it("returns queue summaries after accepting a deferred message", async () => {
+    const deferMessage = vi.fn(() => ({ success: true, deferred: true }));
+    const setPermissionMode = vi.fn();
+    const getDeferredQueueSummary = vi.fn(() => [
+      {
+        tempId: "temp-queued",
+        content: "queued text",
+        timestamp: "2026-04-25T00:00:00.000Z",
+      },
+    ]);
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          isTerminated: false,
+          setPermissionMode,
+          deferMessage,
+          getDeferredQueueSummary,
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+    });
+
+    const response = await routes.request("/sessions/sess-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "queued text",
+        tempId: "temp-queued",
+        mode: "default",
+        deferred: true,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(deferMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "queued text",
+        tempId: "temp-queued",
+        mode: "default",
+      }),
+      { promoteIfReady: true, placement: undefined },
+    );
+    expect(setPermissionMode).toHaveBeenCalledWith("default");
+    await expect(response.json()).resolves.toMatchObject({
+      queued: true,
+      deferred: true,
+      deferredMessages: [
+        {
+          tempId: "temp-queued",
+          content: "queued text",
+        },
+      ],
+    });
+  });
+
+  it("reports immediate promotion when returned by the process", async () => {
+    const deferMessage = vi.fn(() => ({
+      success: true,
+      deferred: false,
+      promoted: true,
+      position: 0,
+    }));
+    const getDeferredQueueSummary = vi.fn(() => []);
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          isTerminated: false,
+          deferMessage,
+          getDeferredQueueSummary,
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+    });
+
+    const response = await routes.request("/sessions/sess-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "steer this",
+        tempId: "temp-steered",
+        deferred: true,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(deferMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "steer this",
+        tempId: "temp-steered",
+      }),
+      { promoteIfReady: true, placement: undefined },
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      queued: true,
+      deferred: false,
+      promoted: true,
+      position: 0,
+      deferredMessages: [],
+    });
+  });
+
+  it("takes a deferred message for queued-message editing", async () => {
+    const takeDeferredMessage = vi.fn(() => ({
+      message: {
+        text: "queued text",
+        tempId: "temp-edit",
+        mode: "acceptEdits",
+        attachments: [
+          {
+            id: "file-1",
+            originalName: "notes.txt",
+            size: 12,
+            mimeType: "text/plain",
+            path: "/uploads/notes.txt",
+          },
+        ],
+      },
+      placement: {
+        afterTempId: "temp-before",
+        beforeTempId: "temp-after",
+      },
+    }));
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          takeDeferredMessage,
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+    });
+
+    const response = await routes.request(
+      "/sessions/sess-1/deferred/temp-edit/edit",
+      { method: "POST" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(takeDeferredMessage).toHaveBeenCalledWith("temp-edit");
+    await expect(response.json()).resolves.toMatchObject({
+      message: "queued text",
+      tempId: "temp-edit",
+      mode: "acceptEdits",
+      placement: {
+        afterTempId: "temp-before",
+        beforeTempId: "temp-after",
+      },
+      attachments: [
+        {
+          id: "file-1",
+          originalName: "notes.txt",
+        },
+      ],
+    });
+  });
+
+  it("passes deferred queue reinsertion anchors when queuing an edited message", async () => {
+    const deferMessage = vi.fn(() => ({ success: true, deferred: true }));
+    const getDeferredQueueSummary = vi.fn(() => [
+      {
+        tempId: "temp-1",
+        content: "first",
+        timestamp: "2026-04-25T00:00:00.000Z",
+      },
+      {
+        tempId: "temp-edited",
+        content: "second edited",
+        timestamp: "2026-04-25T00:00:01.000Z",
+      },
+      {
+        tempId: "temp-3",
+        content: "third",
+        timestamp: "2026-04-25T00:00:02.000Z",
+      },
+    ]);
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          isTerminated: false,
+          deferMessage,
+          getDeferredQueueSummary,
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+    });
+
+    const response = await routes.request("/sessions/sess-1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "second edited",
+        tempId: "temp-edited",
+        deferred: true,
+        insertAfterTempId: "temp-1",
+        insertBeforeTempId: "temp-3",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(deferMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "second edited",
+        tempId: "temp-edited",
+      }),
+      {
+        promoteIfReady: true,
+        placement: {
+          afterTempId: "temp-1",
+          beforeTempId: "temp-3",
+        },
+      },
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      queued: true,
+      deferredMessages: [
+        { tempId: "temp-1" },
+        { tempId: "temp-edited" },
+        { tempId: "temp-3" },
+      ],
+    });
+  });
+
   it("resolves metadata across providers for mixed-provider projects", async () => {
     const project = createProject();
     const summary = createSummary();

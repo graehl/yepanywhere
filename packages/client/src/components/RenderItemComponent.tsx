@@ -12,6 +12,7 @@ interface Props {
   thinkingExpanded: boolean;
   toggleThinkingExpanded: () => void;
   sessionProvider?: string;
+  onCorrectUserPrompt?: () => void;
 }
 
 function getMessageIdLike(message: Record<string, unknown>): string {
@@ -126,6 +127,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   thinkingExpanded,
   toggleThinkingExpanded,
   sessionProvider,
+  onCorrectUserPrompt,
 }: Props) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -186,7 +188,12 @@ export const RenderItemComponent = memo(function RenderItemComponent({
         );
 
       case "user_prompt":
-        return <UserPromptBlock content={item.content} />;
+        return (
+          <UserPromptBlock
+            content={item.content}
+            onCorrect={onCorrectUserPrompt}
+          />
+        );
 
       case "session_setup":
         return <SessionSetupBlock title={item.title} prompts={item.prompts} />;

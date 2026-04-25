@@ -56,6 +56,8 @@ export interface MessageInputToolbarProps {
   onSend?: () => void;
   /** Queue a deferred message. Only provided when agent is running. */
   onQueue?: () => void;
+  /** Primary action queues instead of sending immediately. */
+  queueMode?: boolean;
   canSend?: boolean;
   disabled?: boolean;
 
@@ -93,7 +95,7 @@ export function MessageInputToolbar({
   isThinking,
   onStop,
   onSend,
-  onQueue,
+  queueMode = false,
   canSend,
   disabled,
   pendingApproval,
@@ -111,6 +113,12 @@ export function MessageInputToolbar({
       : renderMode?.state === "source"
         ? t("toolbarRenderModeSource")
         : t("toolbarRenderModeMixed");
+  const primaryActionLabel = queueMode
+    ? t("toolbarQueueLabel")
+    : t("toolbarSend");
+  const primaryActionHelp = queueMode
+    ? t("toolbarQueueHelp")
+    : t("toolbarSendTitle");
 
   const clearHeartbeatLongPress = () => {
     if (heartbeatLongPressTimerRef.current) {
@@ -351,35 +359,6 @@ export function MessageInputToolbar({
           </button>
         )}
         <ContextUsageIndicator usage={contextUsage} size={16} />
-        {/* Queue button - shown when agent is running and there's content to queue */}
-        {onQueue && canSend && (
-          <button
-            type="button"
-            onClick={onQueue}
-            className="queue-button"
-            title={t("toolbarQueueTitle")}
-            aria-label={t("toolbarQueueLabel")}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-          </button>
-        )}
         {/* Show stop button when thinking and nothing to send, otherwise show send */}
         {isRunning && onStop && isThinking && !canSend ? (
           <button
@@ -395,8 +374,9 @@ export function MessageInputToolbar({
             type="button"
             onClick={onSend}
             disabled={disabled || !canSend}
-            className="send-button"
-            aria-label={t("toolbarSend")}
+            className={`send-button send-button-with-help ${queueMode ? "queue-mode" : ""}`}
+            aria-label={primaryActionLabel}
+            data-tooltip={primaryActionHelp}
           >
             <span className="send-icon">↑</span>
           </button>

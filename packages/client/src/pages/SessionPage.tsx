@@ -1,7 +1,7 @@
 import type { ProviderName, UploadedFile } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { api } from "../api/client";
+import { api, type DeferredMessagePlacement } from "../api/client";
 import { MessageInput, type UploadProgress } from "../components/MessageInput";
 import { MessageInputToolbar } from "../components/MessageInputToolbar";
 import { MessageList } from "../components/MessageList";
@@ -34,11 +34,13 @@ import { useProviders } from "../hooks/useProviders";
 import { recordSessionVisit } from "../hooks/useRecentSessions";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import {
+  type DeferredMessage,
   type StreamingMarkdownCallbacks,
   useSession,
 } from "../hooks/useSession";
 import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
+import { buildCorrectionText } from "../lib/correctionText";
 import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { generateUUID } from "../lib/uuid";
@@ -46,6 +48,45 @@ import { getSessionDisplayTitle } from "../utils";
 
 const PENDING_ELSEWHERE_DISMISS_KEY_PREFIX =
   "yepanywhere:pending-elsewhere-dismissed:";
+
+type LastComposerSubmission =
+  | { kind: "sent"; text: string; id: string }
+  | { kind: "queued"; text: string; tempId: string };
+
+interface QueuedEditDraft {
+  originalTempId: string;
+  placement?: DeferredMessagePlacement;
+}
+
+function getDeferredEditPlacement(
+  messages: DeferredMessage[],
+  tempId: string,
+): DeferredMessagePlacement | undefined {
+  const index = messages.findIndex((message) => message.tempId === tempId);
+  if (index === -1) {
+    return undefined;
+  }
+  const afterTempId = messages[index - 1]?.tempId;
+  const beforeTempId = messages[index + 1]?.tempId;
+  if (!afterTempId && !beforeTempId) {
+    return undefined;
+  }
+  return {
+    ...(afterTempId ? { afterTempId } : {}),
+    ...(beforeTempId ? { beforeTempId } : {}),
+  };
+}
+
+function isMissingDeferredQueueEntryError(error: unknown): boolean {
+  if ((error as { status?: number } | null)?.status === 404) {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("No active process") ||
+    message.includes("Deferred message not found")
+  );
+}
 
 function parseCodexConfigAck(
   message: { [key: string]: unknown } | null | undefined,
@@ -197,6 +238,9 @@ function SessionPageContent({
     removePendingMessage,
     updatePendingMessage,
     deferredMessages,
+    addDeferredMessage,
+    syncDeferredMessages,
+    removeDeferredMessage,
     slashCommands,
     setSessionModel,
     sessionTools,
@@ -239,6 +283,13 @@ function SessionPageContent({
 
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
+  const lastComposerSubmissionRef = useRef<LastComposerSubmission | null>(null);
+  const [correctionDraft, setCorrectionDraft] = useState<{
+    messageId: string;
+    originalText: string;
+  } | null>(null);
+  const [queuedEditDraft, setQueuedEditDraft] =
+    useState<QueuedEditDraft | null>(null);
   const handleDraftControlsReady = useCallback((controls: DraftControls) => {
     draftControlsRef.current = controls;
   }, []);
@@ -256,17 +307,29 @@ function SessionPageContent({
   // Connection for uploads (uses WebSocket when enabled)
   const connection = useConnection();
 
-  // Inject custom client-side commands alongside SDK-discovered ones
-  const allSlashCommands = useMemo(() => {
-    if (status.owner === "self") {
-      return slashCommands.includes("model")
-        ? slashCommands
-        : ["model", ...slashCommands];
-    }
-    return slashCommands;
-  }, [slashCommands, status.owner]);
   const supportsManualCompact =
     status.owner === "self" && slashCommands.includes("compact");
+
+  // Inject custom client-side commands alongside SDK-discovered ones.
+  // Keep /model first because it doubles as the visible model/effort status.
+  const allSlashCommands = useMemo(() => {
+    if (status.owner !== "self") {
+      return slashCommands;
+    }
+
+    const orderedCommands = ["model"];
+    if (supportsManualCompact) {
+      orderedCommands.push("compact");
+    }
+
+    for (const command of slashCommands) {
+      if (!orderedCommands.includes(command)) {
+        orderedCommands.push(command);
+      }
+    }
+
+    return orderedCommands;
+  }, [slashCommands, status.owner, supportsManualCompact]);
 
   // Get provider capabilities based on session's provider
   const { providers } = useProviders();
@@ -283,6 +346,7 @@ function SessionPageContent({
     currentProviderInfo?.supportsSlashCommands ?? false;
   const currentOwnedProcessId =
     status.owner === "self" ? status.processId : undefined;
+  const shouldDeferMessages = status.owner === "self" && processState !== "idle";
 
   useEffect(() => {
     let cancelled = false;
@@ -426,6 +490,60 @@ function SessionPageContent({
     new Map(),
   );
 
+  useEffect(() => {
+    setCorrectionDraft(null);
+    setQueuedEditDraft(null);
+    lastComposerSubmissionRef.current = null;
+  }, [sessionId]);
+
+  const handleCancelCorrection = useCallback(() => {
+    setCorrectionDraft(null);
+    setQueuedEditDraft(null);
+    draftControlsRef.current?.clearDraft();
+    setAttachments([]);
+  }, []);
+
+  const handleCorrectLatestUserMessage = useCallback(
+    (messageId: string, content: string) => {
+      const draftControls = draftControlsRef.current;
+      if (!draftControls) {
+        showToast(
+          t("sessionCorrectionEditFailed", {
+            message: "Composer is not available",
+          }),
+          "error",
+        );
+        return;
+      }
+
+      draftControls.setDraft(content);
+      setAttachments([]);
+      setCorrectionDraft({ messageId, originalText: content });
+      setQueuedEditDraft(null);
+    },
+    [showToast, t],
+  );
+
+  const getOutgoingMessageText = useCallback(
+    (text: string): string | null => {
+      if (!correctionDraft) {
+        return text;
+      }
+
+      const correctionText = buildCorrectionText(
+        correctionDraft.originalText,
+        text,
+      );
+      if (!correctionText) {
+        draftControlsRef.current?.setDraft(text);
+        showToast(t("sessionCorrectionNoChanges"), "info");
+        return null;
+      }
+      return correctionText;
+    },
+    [correctionDraft, showToast, t],
+  );
+
   // Approval panel collapsed state (separate from message input collapse)
   const [approvalCollapsed, setApprovalCollapsed] = useState(false);
 
@@ -470,8 +588,13 @@ function SessionPageContent({
   });
 
   const handleSend = async (text: string) => {
+    const outgoingText = getOutgoingMessageText(text);
+    if (!outgoingText) {
+      return;
+    }
+
     // Add to pending queue and get tempId to pass to server
-    const tempId = addPendingMessage(text);
+    const tempId = addPendingMessage(outgoingText);
     setProcessState("in-turn"); // Optimistic: show processing indicator immediately
     setScrollTrigger((prev) => prev + 1); // Force scroll to bottom
 
@@ -509,7 +632,7 @@ function SessionPageContent({
         const result = await api.resumeSession(
           projectId,
           sessionId,
-          text,
+          outgoingText,
           {
             mode: permissionMode,
             model,
@@ -527,7 +650,7 @@ function SessionPageContent({
         const thinking = getThinkingSetting();
         const result = await api.queueMessage(
           sessionId,
-          text,
+          outgoingText,
           permissionMode,
           currentAttachments.length > 0 ? currentAttachments : undefined,
           tempId,
@@ -540,7 +663,16 @@ function SessionPageContent({
         }
       }
       // Success - clear the draft from localStorage
+      if (text.trim()) {
+        lastComposerSubmissionRef.current = {
+          kind: "sent",
+          text: text.trim(),
+          id: tempId,
+        };
+      }
       draftControlsRef.current?.clearDraft();
+      setCorrectionDraft(null);
+      setQueuedEditDraft(null);
     } catch (err) {
       console.error("Failed to send:", err);
 
@@ -556,7 +688,7 @@ function SessionPageContent({
           const result = await api.resumeSession(
             projectId,
             sessionId,
-            text,
+            outgoingText,
             {
               mode: permissionMode,
               model,
@@ -568,7 +700,16 @@ function SessionPageContent({
             tempId,
           );
           setStatus({ owner: "self", processId: result.processId });
+          if (text.trim()) {
+            lastComposerSubmissionRef.current = {
+              kind: "sent",
+              text: text.trim(),
+              id: tempId,
+            };
+          }
           draftControlsRef.current?.clearDraft();
+          setCorrectionDraft(null);
+          setQueuedEditDraft(null);
           return;
         } catch (retryErr) {
           console.error("Failed to resume session:", retryErr);
@@ -587,7 +728,12 @@ function SessionPageContent({
   };
 
   const handleQueue = async (text: string) => {
-    const tempId = addPendingMessage(text);
+    const outgoingText = getOutgoingMessageText(text);
+    if (!outgoingText) {
+      return;
+    }
+
+    const tempId = addPendingMessage(outgoingText);
     setScrollTrigger((prev) => prev + 1);
 
     // Capture already-completed attachments
@@ -611,17 +757,90 @@ function SessionPageContent({
 
     try {
       const thinking = getThinkingSetting();
-      await api.queueMessage(
+      const queuedEditDraftAtSubmit = queuedEditDraft;
+      const result = await api.queueMessage(
         sessionId,
-        text,
+        outgoingText,
         permissionMode,
         currentAttachments.length > 0 ? currentAttachments : undefined,
         tempId,
         thinking,
         true, // deferred
+        queuedEditDraftAtSubmit?.placement,
       );
       removePendingMessage(tempId);
+      if (result.deferred === false || result.promoted) {
+        removeDeferredMessage(tempId);
+        if (result.deferredMessages) {
+          syncDeferredMessages(result.deferredMessages, {
+            reason: "promoted",
+            tempId,
+            source: "rest",
+          });
+        }
+        if (text.trim()) {
+          lastComposerSubmissionRef.current = {
+            kind: "sent",
+            text: text.trim(),
+            id: tempId,
+          };
+        }
+        draftControlsRef.current?.clearDraft();
+        setCorrectionDraft(null);
+        setQueuedEditDraft(null);
+        return;
+      }
+      const localDeferredMessage = {
+        tempId,
+        content: outgoingText,
+        timestamp: new Date().toISOString(),
+        ...(currentAttachments.length > 0
+          ? {
+              attachmentCount: currentAttachments.length,
+              attachments: currentAttachments,
+            }
+          : {}),
+        mode: permissionMode,
+        deliveryState: "queued" as const,
+      };
+      const serverDeferredMessages = result.deferredMessages?.map((message) =>
+        message.tempId === tempId
+          ? {
+              ...message,
+              attachments: currentAttachments,
+              mode: permissionMode,
+              deliveryState: "queued" as const,
+            }
+          : message,
+      );
+      if (
+        serverDeferredMessages?.some((message) => message.tempId === tempId)
+      ) {
+        syncDeferredMessages(serverDeferredMessages, {
+          reason: "queued",
+          tempId,
+          source: "rest",
+        });
+      } else {
+        addDeferredMessage(localDeferredMessage);
+        if (serverDeferredMessages) {
+          syncDeferredMessages(serverDeferredMessages, {
+            reason: "queued",
+            tempId,
+            source: "rest",
+          });
+        }
+      }
+      if (text.trim()) {
+        lastComposerSubmissionRef.current = {
+          kind: "queued",
+          text: text.trim(),
+          tempId,
+        };
+      }
       draftControlsRef.current?.clearDraft();
+      setCorrectionDraft(null);
+      setQueuedEditDraft(null);
     } catch (err) {
       console.error("Failed to queue deferred message:", err);
       removePendingMessage(tempId);
@@ -631,6 +850,170 @@ function SessionPageContent({
       showToast(t("sessionQueueFailed", { message: errorMsg }), "error");
     }
   };
+
+  const handleCancelDeferred = useCallback(
+    async (tempId: string) => {
+      const localMessage = deferredMessages.find(
+        (message) => message.tempId === tempId,
+      );
+      removeDeferredMessage(tempId);
+      if (localMessage?.deliveryState === "recovered") {
+        return;
+      }
+
+      try {
+        await api.cancelDeferredMessage(sessionId, tempId);
+      } catch (err) {
+        if (isMissingDeferredQueueEntryError(err)) {
+          return;
+        }
+        if (localMessage) {
+          addDeferredMessage(localMessage);
+        }
+        console.error("Failed to cancel deferred message:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(t("sessionDeferredCancelFailed", { message: errorMsg }), "error");
+      }
+    },
+    [
+      addDeferredMessage,
+      deferredMessages,
+      removeDeferredMessage,
+      sessionId,
+      showToast,
+      t,
+    ],
+  );
+
+  const handleEditDeferred = useCallback(
+    async (tempId: string) => {
+      const draftControls = draftControlsRef.current;
+      if (!draftControls) {
+        showToast(
+          t("sessionDeferredEditFailed", {
+            message: "Composer is not available",
+          }),
+          "error",
+        );
+        return;
+      }
+
+      const localMessage = deferredMessages.find(
+        (message) => message.tempId === tempId,
+      );
+      const localPlacement = getDeferredEditPlacement(deferredMessages, tempId);
+      if (localMessage?.deliveryState === "recovered") {
+        const restoredAttachments = localMessage.attachments ?? [];
+        draftControls.setDraft(localMessage.content);
+        setAttachments(restoredAttachments);
+        if (localMessage.mode) {
+          setPermissionMode(localMessage.mode);
+        }
+        removeDeferredMessage(tempId);
+        setQueuedEditDraft({
+          originalTempId: tempId,
+          placement: localPlacement,
+        });
+        if (
+          (localMessage.attachmentCount ?? 0) > 0 &&
+          restoredAttachments.length === 0
+        ) {
+          showToast(t("sessionDeferredEditMissingAttachments"), "error");
+        }
+        return;
+      }
+
+      try {
+        const result = await api.editDeferredMessage(sessionId, tempId);
+        const restoredAttachments =
+          result.attachments ?? localMessage?.attachments ?? [];
+        draftControls.setDraft(result.message);
+        setAttachments(restoredAttachments);
+        setQueuedEditDraft({
+          originalTempId: result.tempId ?? tempId,
+          placement: result.placement ?? localPlacement,
+        });
+        const restoredMode = result.mode ?? localMessage?.mode;
+        if (restoredMode) {
+          setPermissionMode(restoredMode);
+        }
+        removeDeferredMessage(tempId);
+        if (
+          (localMessage?.attachmentCount ?? 0) > 0 &&
+          restoredAttachments.length === 0
+        ) {
+          showToast(t("sessionDeferredEditMissingAttachments"), "error");
+        }
+      } catch (err) {
+        if (localMessage && isMissingDeferredQueueEntryError(err)) {
+          const restoredAttachments = localMessage.attachments ?? [];
+          draftControls.setDraft(localMessage.content);
+          setAttachments(restoredAttachments);
+          setQueuedEditDraft({
+            originalTempId: tempId,
+            placement: localPlacement,
+          });
+          if (localMessage.mode) {
+            setPermissionMode(localMessage.mode);
+          }
+          removeDeferredMessage(tempId);
+          showToast(t("sessionDeferredEditLocalOnly"), "info");
+          if (
+            (localMessage.attachmentCount ?? 0) > 0 &&
+            restoredAttachments.length === 0
+          ) {
+            showToast(t("sessionDeferredEditMissingAttachments"), "error");
+          }
+          return;
+        }
+
+        console.error("Failed to edit deferred message:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(t("sessionDeferredEditFailed", { message: errorMsg }), "error");
+      }
+    },
+    [
+      deferredMessages,
+      removeDeferredMessage,
+      sessionId,
+      setPermissionMode,
+      showToast,
+      t,
+    ],
+  );
+
+  const handleRecallLastSubmission = useCallback((): boolean => {
+    const lastSubmission = lastComposerSubmissionRef.current;
+    if (!lastSubmission?.text.trim()) {
+      return false;
+    }
+
+    if (
+      lastSubmission.kind === "queued" &&
+      deferredMessages.some(
+        (message) => message.tempId === lastSubmission.tempId,
+      )
+    ) {
+      void handleEditDeferred(lastSubmission.tempId);
+      return true;
+    }
+
+    const draftControls = draftControlsRef.current;
+    if (!draftControls) {
+      return false;
+    }
+
+    draftControls.setDraft(lastSubmission.text);
+    setAttachments([]);
+    setCorrectionDraft({
+      messageId:
+        lastSubmission.kind === "sent"
+          ? lastSubmission.id
+          : lastSubmission.tempId,
+      originalText: lastSubmission.text,
+    });
+    return true;
+  }, [deferredMessages, handleEditDeferred]);
 
   const handleModelChanged = useCallback(
     (next: {
@@ -664,13 +1047,39 @@ function SessionPageContent({
     [liveModelConfig?.model, reconnectStream, setSessionModel, showToast, status.owner, t],
   );
 
-  const handleCustomCommand = useCallback((command: string) => {
-    if (command === "model") {
-      setShowModelSwitchModal(true);
-      return true;
+  const handleCompactSession = useCallback(async () => {
+    if (status.owner !== "self" || !supportsManualCompact) return;
+    try {
+      await api.queueMessage(actualSessionId, "/compact", permissionMode);
+      showToast(t("sessionCompactRequested"), "success");
+    } catch (err) {
+      console.error("Failed to request compaction:", err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      showToast(t("sessionCompactFailed", { message: errorMsg }), "error");
     }
-    return false;
-  }, []);
+  }, [
+    actualSessionId,
+    permissionMode,
+    showToast,
+    status.owner,
+    supportsManualCompact,
+    t,
+  ]);
+
+  const handleCustomCommand = useCallback(
+    (command: string) => {
+      if (command === "model") {
+        setShowModelSwitchModal(true);
+        return true;
+      }
+      if (command === "compact") {
+        void handleCompactSession();
+        return true;
+      }
+      return false;
+    },
+    [handleCompactSession],
+  );
 
   const handleToolbarSlashCommand = useCallback(
     (command: string) => {
@@ -1085,25 +1494,6 @@ function SessionPageContent({
     }
   }, [displayTitle, showToast, t]);
 
-  const handleCompactSession = useCallback(async () => {
-    if (status.owner !== "self" || !supportsManualCompact) return;
-    try {
-      await api.queueMessage(actualSessionId, "/compact", permissionMode);
-      showToast(t("sessionCompactRequested"), "success");
-    } catch (err) {
-      console.error("Failed to request compaction:", err);
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      showToast(t("sessionCompactFailed", { message: errorMsg }), "error");
-    }
-  }, [
-    actualSessionId,
-    permissionMode,
-    showToast,
-    status.owner,
-    supportsManualCompact,
-    t,
-  ]);
-
   const handleToggleHeartbeat = useCallback(async () => {
     const previousEnabled = heartbeatTurnsEnabled;
     const nextEnabled = !previousEnabled;
@@ -1410,6 +1800,7 @@ function SessionPageContent({
                     owner: "self",
                     processId: result.processId,
                   },
+                  initialTitle: result.title,
                   initialModel: result.model ?? liveBadgeModel,
                   initialProvider: effectiveProvider,
                 },
@@ -1500,9 +1891,9 @@ function SessionPageContent({
                   scrollTrigger={scrollTrigger}
                   pendingMessages={pendingMessages}
                   deferredMessages={deferredMessages}
-                  onCancelDeferred={(tempId) =>
-                    api.cancelDeferredMessage(sessionId, tempId)
-                  }
+                  onCancelDeferred={handleCancelDeferred}
+                  onEditDeferred={handleEditDeferred}
+                  onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
                   markdownAugments={markdownAugments}
                   activeToolApproval={activeToolApproval}
                   hasOlderMessages={pagination?.hasOlderMessages}
@@ -1554,7 +1945,7 @@ function SessionPageContent({
                     supportsPermissionMode={supportsPermissionMode}
                     supportsThinkingToggle={supportsThinkingToggle}
                     slashCommands={
-                      status.owner === "self" ? ["model"] : []
+                      status.owner === "self" ? allSlashCommands : []
                     }
                     onSelectSlashCommand={handleToolbarSlashCommand}
                     modelIndicatorTone={slashModelIndicatorTone}
@@ -1584,12 +1975,10 @@ function SessionPageContent({
               pendingInputRequest.sessionId === actualSessionId &&
               !isAskUserQuestion
             ) && (
-                <MessageInput
-                onSend={handleSend}
+              <MessageInput
+                onSend={shouldDeferMessages ? handleQueue : handleSend}
                 onQueue={
-                  status.owner !== "none" && processState !== "idle"
-                    ? handleQueue
-                    : undefined
+                  shouldDeferMessages ? handleQueue : undefined
                 }
                 placeholder={
                   status.owner === "external"
@@ -1609,6 +1998,9 @@ function SessionPageContent({
                 onStop={handleAbort}
                 draftKey={`draft-message-${sessionId}`}
                 onDraftControlsReady={handleDraftControlsReady}
+                correctionActive={correctionDraft !== null}
+                onCancelCorrection={handleCancelCorrection}
+                onRecallLastSubmission={handleRecallLastSubmission}
                 collapsed={
                   !!(
                     pendingInputRequest &&

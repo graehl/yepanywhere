@@ -86,6 +86,12 @@ interface Props {
   onToggleHeartbeat?: () => void;
   /** Open heartbeat session settings */
   onConfigureHeartbeat?: () => void;
+  /** Whether the current draft will be sent as a correction to the latest user turn */
+  correctionActive?: boolean;
+  /** Cancel correction mode and clear the restored draft */
+  onCancelCorrection?: () => void;
+  /** Restore the last sent/queued text when the composer is blank */
+  onRecallLastSubmission?: () => boolean;
 }
 
 export function MessageInput({
@@ -119,6 +125,9 @@ export function MessageInput({
   heartbeatEnabled = false,
   onToggleHeartbeat,
   onConfigureHeartbeat,
+  correctionActive = false,
+  onCancelCorrection,
+  onRecallLastSubmission,
 }: Props) {
   const { t } = useI18n();
   const [text, setText, controls] = useDraftPersistence(draftKey);
@@ -204,12 +213,80 @@ export function MessageInput({
     }
   }, [text, disabled, controls, onQueue, attachments.length]);
 
+  const recallLastSubmission = useCallback((allowExistingText = false) => {
+    if (
+      disabled ||
+      (!allowExistingText && displayText.trim()) ||
+      attachments.length > 0 ||
+      uploadProgress.length > 0
+    ) {
+      return false;
+    }
+    const recalled = onRecallLastSubmission?.() ?? false;
+    if (recalled) {
+      setInterimTranscript("");
+      textareaRef.current?.focus();
+    }
+    return recalled;
+  }, [
+    attachments.length,
+    disabled,
+    displayText,
+    onRecallLastSubmission,
+    uploadProgress.length,
+  ]);
+
   const handleKeyDown = (e: KeyboardEvent) => {
     // Ctrl+Space toggles voice input
     if (e.key === " " && e.ctrlKey && !e.shiftKey && !e.altKey) {
       e.preventDefault();
       if (voiceButtonRef.current?.isAvailable) {
         voiceButtonRef.current.toggle();
+      }
+      return;
+    }
+
+    if (
+      e.key === "ArrowUp" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      !e.altKey
+    ) {
+      if (recallLastSubmission()) {
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (
+      e.key.toLowerCase() === "p" &&
+      e.ctrlKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      !e.altKey
+    ) {
+      e.preventDefault();
+      recallLastSubmission(true);
+      return;
+    }
+
+    if (
+      e.key.toLowerCase() === "g" &&
+      e.ctrlKey &&
+      !e.shiftKey &&
+      !e.altKey
+    ) {
+      e.preventDefault();
+      if (!disabled) {
+        voiceButtonRef.current?.stopAndFinalize();
+        controls.clearDraft();
+        setInterimTranscript("");
+        for (const attachment of attachments) {
+          onRemoveAttachment?.(attachment.id);
+        }
+        onCancelCorrection?.();
+        textareaRef.current?.focus();
       }
       return;
     }
@@ -387,6 +464,23 @@ export function MessageInput({
           rows={collapsed ? 1 : 3}
         />
 
+        {!collapsed && correctionActive && (
+          <div className="correction-draft">
+            <span className="correction-draft-label">
+              {t("sessionCorrectionActive")}
+            </span>
+            <button
+              type="button"
+              className="correction-draft-cancel"
+              onClick={onCancelCorrection}
+              aria-label={t("sessionCorrectionCancel")}
+              title={t("sessionCorrectionCancel")}
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         {/* Attachment chips - show below textarea when not collapsed */}
         {!collapsed &&
           (attachments.length > 0 || uploadProgress.length > 0) && (
@@ -463,6 +557,7 @@ export function MessageInput({
             onStop={onStop}
             onSend={handleSubmit}
             onQueue={onQueue ? handleQueue : undefined}
+            queueMode={!!onQueue}
             canSend={!!(text.trim() || attachments.length > 0)}
             disabled={disabled}
           />

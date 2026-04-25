@@ -4,7 +4,9 @@ import {
   type ActiveToolApproval,
   preprocessMessages,
 } from "../lib/preprocessMessages";
+import { parseUserPrompt } from "../lib/parseUserPrompt";
 import type { Message } from "../types";
+import type { ContentBlock } from "../types";
 import type { RenderItem } from "../types/renderItems";
 import { ProcessingIndicator } from "./ProcessingIndicator";
 import { RenderItemComponent } from "./RenderItemComponent";
@@ -42,6 +44,30 @@ function groupItemsIntoTurns(
   return groups;
 }
 
+const SESSION_SETUP_PREFIXES = [
+  "# AGENTS.md instructions",
+  "<environment_context>",
+];
+
+function getPromptTextForCorrection(content: string | ContentBlock[]): string {
+  const rawText =
+    typeof content === "string"
+      ? content
+      : content
+          .filter(
+            (block): block is ContentBlock & { type: "text"; text: string } =>
+              block.type === "text" && typeof block.text === "string",
+          )
+          .map((block) => block.text)
+          .join("\n");
+  return parseUserPrompt(rawText).text.trim();
+}
+
+function isSessionSetupText(text: string): boolean {
+  const trimmed = text.trimStart();
+  return SESSION_SETUP_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
+}
+
 /** Pending message waiting for server confirmation */
 interface PendingMessage {
   tempId: string;
@@ -55,6 +81,8 @@ interface DeferredMessage {
   tempId?: string;
   content: string;
   timestamp: string;
+  attachmentCount?: number;
+  deliveryState?: "queued" | "sending" | "recovered";
 }
 
 interface Props {
@@ -72,6 +100,10 @@ interface Props {
   deferredMessages?: DeferredMessage[];
   /** Callback to cancel a deferred message */
   onCancelDeferred?: (tempId: string) => void;
+  /** Callback to take a deferred message back into the composer */
+  onEditDeferred?: (tempId: string) => void;
+  /** Callback to correct the latest actually-sent user message */
+  onCorrectLatestUserMessage?: (messageId: string, content: string) => void;
   /** Pre-rendered markdown HTML from server (keyed by message ID) */
   markdownAugments?: Record<string, MarkdownAugment>;
   /** Active tool approval - prevents matching orphaned tool from showing as interrupted */
@@ -94,6 +126,8 @@ export const MessageList = memo(function MessageList({
   pendingMessages = [],
   deferredMessages = [],
   onCancelDeferred,
+  onEditDeferred,
+  onCorrectLatestUserMessage,
   markdownAugments,
   activeToolApproval,
   hasOlderMessages = false,
@@ -149,6 +183,22 @@ export const MessageList = memo(function MessageList({
     () => groupItemsIntoTurns(renderItems),
     [renderItems],
   );
+  const latestCorrectablePrompt = useMemo(() => {
+    if (!onCorrectLatestUserMessage) return null;
+
+    for (let index = renderItems.length - 1; index >= 0; index -= 1) {
+      const item = renderItems[index];
+      if (!item || item.type !== "user_prompt" || item.isSubagent) {
+        continue;
+      }
+      const content = getPromptTextForCorrection(item.content);
+      if (!content || isSessionSetupText(content)) {
+        continue;
+      }
+      return { id: item.id, content };
+    }
+    return null;
+  }, [renderItems, onCorrectLatestUserMessage]);
 
   const toggleThinkingExpanded = useCallback(() => {
     setThinkingExpanded((prev) => !prev);
@@ -297,6 +347,15 @@ export const MessageList = memo(function MessageList({
               thinkingExpanded={thinkingExpanded}
               toggleThinkingExpanded={toggleThinkingExpanded}
               sessionProvider={provider}
+              onCorrectUserPrompt={
+                latestCorrectablePrompt?.id === item.id
+                  ? () =>
+                      onCorrectLatestUserMessage?.(
+                        latestCorrectablePrompt.id,
+                        latestCorrectablePrompt.content,
+                      )
+                  : undefined
+              }
             />
           );
         }
@@ -330,18 +389,64 @@ export const MessageList = memo(function MessageList({
         </div>
       ))}
       {/* Deferred messages - queued server-side, waiting for agent turn to end */}
-      {deferredMessages.map((deferred, index) => (
-        <div
-          key={deferred.tempId ?? `deferred-${index}`}
-          className="deferred-message"
-        >
-          <div className="message-user-prompt deferred-message-bubble">
-            {deferred.content}
-          </div>
+      {deferredMessages.map((deferred, index) => {
+        const canEditDeferred = !!(deferred.tempId && onEditDeferred);
+        return (
+          <div
+            key={deferred.tempId ?? `deferred-${index}`}
+            className="deferred-message"
+          >
+            {canEditDeferred ? (
+              <button
+                type="button"
+                className="message-user-prompt deferred-message-bubble deferred-message-edit"
+                onClick={() => onEditDeferred?.(deferred.tempId as string)}
+                title="Edit queued message"
+                aria-label="Edit queued message"
+              >
+                {deferred.content}
+              </button>
+            ) : (
+              <div className="message-user-prompt deferred-message-bubble">
+                {deferred.content}
+              </div>
+            )}
           <div className="deferred-message-footer">
             <span className="deferred-message-status">
-              {index === 0 ? "Queued (next)" : `Queued (#${index + 1})`}
+              {deferred.deliveryState === "sending"
+                ? "Sending queued message..."
+                : deferred.deliveryState === "recovered"
+                  ? "Recovered draft (not queued)"
+                : index === 0
+                  ? "Queued (next)"
+                  : `Queued (#${index + 1})`}
             </span>
+            {deferred.attachmentCount ? (
+              <span
+                className="deferred-message-attachments"
+                title={`${deferred.attachmentCount} attachment${
+                  deferred.attachmentCount === 1 ? "" : "s"
+                } queued`}
+                aria-label={`${deferred.attachmentCount} attachment${
+                  deferred.attachmentCount === 1 ? "" : "s"
+                } queued`}
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
+                <span>{deferred.attachmentCount}</span>
+              </span>
+            ) : null}
             {deferred.tempId && onCancelDeferred && (
               <button
                 type="button"
@@ -354,7 +459,8 @@ export const MessageList = memo(function MessageList({
             )}
           </div>
         </div>
-      ))}
+        );
+      })}
       {/* Compacting indicator - shown when context is being compressed */}
       {isCompacting && (
         <div className="system-message system-message-compacting">

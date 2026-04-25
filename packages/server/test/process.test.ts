@@ -16,6 +16,59 @@ function createMockIterator(messages: SDKMessage[]): AsyncIterator<SDKMessage> {
   };
 }
 
+function createControllableIterator(): {
+  iterator: AsyncIterator<SDKMessage>;
+  push: (message: SDKMessage) => void;
+  finish: () => void;
+} {
+  const queue: IteratorResult<SDKMessage>[] = [];
+  let resolveNext: ((result: IteratorResult<SDKMessage>) => void) | null =
+    null;
+
+  const pushResult = (result: IteratorResult<SDKMessage>) => {
+    if (resolveNext) {
+      const resolve = resolveNext;
+      resolveNext = null;
+      resolve(result);
+      return;
+    }
+    queue.push(result);
+  };
+
+  return {
+    iterator: {
+      next() {
+        const queued = queue.shift();
+        if (queued) {
+          return Promise.resolve(queued);
+        }
+        return new Promise<IteratorResult<SDKMessage>>((resolve) => {
+          resolveNext = resolve;
+        });
+      },
+    },
+    push(message: SDKMessage) {
+      pushResult({ done: false, value: message });
+    },
+    finish() {
+      pushResult({ done: true, value: undefined });
+    },
+  };
+}
+
+async function waitFor(assertion: () => void): Promise<void> {
+  const timeoutAt = Date.now() + 1000;
+  while (Date.now() < timeoutAt) {
+    try {
+      assertion();
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+  assertion();
+}
+
 describe("Process", () => {
   describe("event subscription", () => {
     it("emits message events", async () => {
@@ -206,6 +259,255 @@ describe("Process", () => {
       // Let the iterator complete so abort() doesn't hang
       resolveIterator?.();
       await process.abort();
+    });
+  });
+
+  describe("deferred queue", () => {
+    it("includes attachment count in deferred queue summaries", async () => {
+      const iterator = createMockIterator([
+        { type: "system", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      process.deferMessage({
+        text: "see attached",
+        tempId: "temp-1",
+        attachments: [
+          {
+            id: "file-1",
+            originalName: "screenshot.png",
+            size: 1024,
+            mimeType: "image/png",
+            path: "/uploads/screenshot.png",
+          },
+        ],
+      });
+
+      expect(process.getDeferredQueueSummary()).toEqual([
+        {
+          tempId: "temp-1",
+          content: "see attached",
+          timestamp: expect.any(String),
+          attachmentCount: 1,
+        },
+      ]);
+    });
+
+    it("takes a deferred message for editing and emits queue metadata", async () => {
+      const iterator = createMockIterator([
+        { type: "system", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+      const deferredEvents: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        if (event.type === "deferred-queue") {
+          deferredEvents.push(event);
+        }
+      });
+
+      process.deferMessage({
+        text: "edit me",
+        tempId: "temp-edit",
+        mode: "acceptEdits",
+      });
+
+      const taken = process.takeDeferredMessage("temp-edit");
+
+      expect(taken?.message).toMatchObject({
+        text: "edit me",
+        tempId: "temp-edit",
+        mode: "acceptEdits",
+      });
+      expect(taken?.placement).toEqual({});
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(deferredEvents[deferredEvents.length - 1]).toMatchObject({
+        type: "deferred-queue",
+        reason: "edited",
+        tempId: "temp-edit",
+        messages: [],
+      });
+    });
+
+    it("reinserts an edited deferred message at its original queue position", async () => {
+      const iterator = createMockIterator([
+        { type: "system", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      process.deferMessage({ text: "first", tempId: "temp-1" });
+      process.deferMessage({ text: "second", tempId: "temp-2" });
+      process.deferMessage({ text: "third", tempId: "temp-3" });
+
+      const taken = process.takeDeferredMessage("temp-2");
+
+      expect(taken?.placement).toEqual({
+        afterTempId: "temp-1",
+        beforeTempId: "temp-3",
+      });
+      process.deferMessage(
+        { text: "second edited", tempId: "temp-2-edited" },
+        { placement: taken?.placement },
+      );
+
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        { tempId: "temp-1", content: "first" },
+        { tempId: "temp-2-edited", content: "second edited" },
+        { tempId: "temp-3", content: "third" },
+      ]);
+    });
+
+    it("keeps steerable active-turn deferred messages editable", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const steerFn = vi.fn(async () => true);
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        steerFn,
+      });
+      const deferredEvents: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        if (event.type === "deferred-queue") {
+          deferredEvents.push(event);
+        }
+      });
+
+      const result = process.deferMessage(
+        { text: "keep queued", tempId: "temp-queued" },
+        { promoteIfReady: true },
+      );
+
+      expect(result).toMatchObject({
+        success: true,
+        deferred: true,
+      });
+      expect(steerFn).not.toHaveBeenCalled();
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        {
+          tempId: "temp-queued",
+          content: "keep queued",
+        },
+      ]);
+      expect(deferredEvents[deferredEvents.length - 1]).toMatchObject({
+        type: "deferred-queue",
+        reason: "queued",
+        tempId: "temp-queued",
+      });
+
+      controller.finish();
+      await waitFor(() => expect(process.getDeferredQueueSummary()).toEqual([]));
+      await process.abort();
+    });
+
+    it("promotes the next deferred message after a completed tool result", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const steerFn = vi.fn(async () => true);
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        steerFn,
+      });
+      const deferredEvents: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        if (event.type === "deferred-queue") {
+          deferredEvents.push(event);
+        }
+      });
+
+      process.deferMessage(
+        { text: "send after bash", tempId: "temp-tool-boundary" },
+        { promoteIfReady: true },
+      );
+
+      controller.push({
+        type: "user",
+        session_id: "sess-1",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: "done",
+            },
+          ],
+        },
+      });
+
+      await waitFor(() => expect(steerFn).toHaveBeenCalledTimes(1));
+      expect(steerFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "send after bash",
+          tempId: "temp-tool-boundary",
+        }),
+      );
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(deferredEvents[deferredEvents.length - 1]).toMatchObject({
+        type: "deferred-queue",
+        reason: "promoted",
+        tempId: "temp-tool-boundary",
+        messages: [],
+      });
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("promotes deferred messages immediately when the process is already idle", async () => {
+      const iterator = createMockIterator([
+        { type: "system", subtype: "init", session_id: "sess-1" },
+        { type: "result", session_id: "sess-1" },
+      ]);
+      const queue = new MessageQueue();
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(process.state.type).toBe("idle");
+
+      const result = process.deferMessage(
+        { text: "idle race", tempId: "temp-idle" },
+        { promoteIfReady: true },
+      );
+
+      expect(result).toMatchObject({
+        success: true,
+        deferred: false,
+        promoted: true,
+        position: 1,
+      });
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(process.queueDepth).toBe(1);
     });
   });
 

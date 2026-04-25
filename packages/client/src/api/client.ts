@@ -96,6 +96,18 @@ export interface GlobalSessionStats {
   executorCounts: Record<string, number>;
 }
 
+export interface DeferredQueueMessage {
+  tempId?: string;
+  content: string;
+  timestamp: string;
+  attachmentCount?: number;
+}
+
+export interface DeferredMessagePlacement {
+  beforeTempId?: string;
+  afterTempId?: string;
+}
+
 /** Minimal project info for filter dropdowns */
 export interface ProjectOption {
   id: string;
@@ -551,6 +563,7 @@ export const api = {
       sessionId: string;
       processId: string;
       projectId: string;
+      title?: string;
       permissionMode: PermissionMode;
       modeVersion: number;
       restartedFrom: string;
@@ -578,12 +591,16 @@ export const api = {
     tempId?: string,
     thinking?: ThinkingOption,
     deferred?: boolean,
+    placement?: DeferredMessagePlacement,
   ) =>
     fetchJSON<{
       queued: boolean;
       restarted?: boolean;
       processId?: string;
       deferred?: boolean;
+      promoted?: boolean;
+      position?: number;
+      deferredMessages?: DeferredQueueMessage[];
     }>(`/sessions/${sessionId}/messages`, {
       method: "POST",
       body: JSON.stringify({
@@ -593,6 +610,8 @@ export const api = {
         tempId,
         thinking,
         deferred,
+        insertBeforeTempId: placement?.beforeTempId,
+        insertAfterTempId: placement?.afterTempId,
       }),
     }),
 
@@ -601,6 +620,17 @@ export const api = {
       `/sessions/${sessionId}/deferred/${encodeURIComponent(tempId)}`,
       { method: "DELETE" },
     ),
+
+  editDeferredMessage: (sessionId: string, tempId: string) =>
+    fetchJSON<{
+      message: string;
+      tempId?: string;
+      mode?: PermissionMode;
+      attachments?: UploadedFile[];
+      placement?: DeferredMessagePlacement;
+    }>(`/sessions/${sessionId}/deferred/${encodeURIComponent(tempId)}/edit`, {
+      method: "POST",
+    }),
 
   abortProcess: (processId: string) =>
     fetchJSON<{ aborted: boolean }>(`/processes/${processId}/abort`, {

@@ -175,7 +175,11 @@ export function createSessionSubscription(
           break;
 
         case "deferred-queue":
-          emit("deferred-queue", { messages: event.messages });
+          emit("deferred-queue", {
+            messages: event.messages,
+            reason: event.reason,
+            tempId: event.tempId,
+          });
           break;
 
         case "complete":

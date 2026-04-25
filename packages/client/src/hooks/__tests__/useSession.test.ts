@@ -24,6 +24,29 @@ let sessionStreamHandler:
 
 const PROJECT_ID = "proj-1" as unknown as UrlProjectId;
 
+function installLocalStorageMock(): void {
+  const store = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: vi.fn((key: string) => store.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        store.set(key, value);
+      }),
+      removeItem: vi.fn((key: string) => {
+        store.delete(key);
+      }),
+      clear: vi.fn(() => {
+        store.clear();
+      }),
+      key: vi.fn((index: number) => Array.from(store.keys())[index] ?? null),
+      get length() {
+        return store.size;
+      },
+    },
+  });
+}
+
 vi.mock("../useSessionMessages", () => ({
   useSessionMessages: vi.fn(() => ({
     messages: [],
@@ -82,6 +105,7 @@ describe("useSession completion reconciliation", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    installLocalStorageMock();
     fileActivityOptions = undefined;
     sessionStreamHandler = null;
   });
@@ -153,5 +177,167 @@ describe("useSession completion reconciliation", () => {
     });
 
     expect(fetchNewMessages).not.toHaveBeenCalled();
+  });
+
+  it("clears deferred queue chips when the queued turn is echoed as a user message", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "deferred-queue",
+        messages: [
+          {
+            tempId: "temp-queued",
+            content: "i see it already.",
+            timestamp: "2026-04-24T00:00:00.000Z",
+          },
+        ],
+      });
+    });
+
+    expect(result.current.deferredMessages).toHaveLength(1);
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "user",
+        uuid: "uuid-queued",
+        tempId: "temp-queued",
+        message: {
+          role: "user",
+          content: "i see it already.",
+        },
+      });
+    });
+
+    expect(result.current.deferredMessages).toEqual([]);
+  });
+
+  it("keeps deferred queue chips on an idle status boundary", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "deferred-queue",
+        messages: [
+          {
+            tempId: "temp-stale",
+            content: "stale queued text",
+            timestamp: "2026-04-24T00:00:00.000Z",
+          },
+        ],
+      });
+    });
+
+    expect(result.current.deferredMessages).toHaveLength(1);
+
+    act(() => {
+      sessionStreamHandler?.({ eventType: "status", state: "idle" });
+    });
+
+    expect(result.current.deferredMessages).toMatchObject([
+      {
+        tempId: "temp-stale",
+        content: "stale queued text",
+        deliveryState: "queued",
+      },
+    ]);
+  });
+
+  it("marks a promoted deferred queue chip as sending until the user echo arrives", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      result.current.addDeferredMessage({
+        tempId: "temp-promoted",
+        content: "promote this",
+        timestamp: "2026-04-24T00:00:00.000Z",
+      });
+    });
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "deferred-queue",
+        reason: "promoted",
+        tempId: "temp-promoted",
+        messages: [],
+      });
+    });
+
+    expect(result.current.deferredMessages).toMatchObject([
+      {
+        tempId: "temp-promoted",
+        content: "promote this",
+        deliveryState: "sending",
+      },
+    ]);
+  });
+
+  it("uses server queue order when a REST sync inserts an edited message", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      result.current.addDeferredMessage({
+        tempId: "temp-1",
+        content: "first",
+        timestamp: "2026-04-24T00:00:00.000Z",
+      });
+      result.current.addDeferredMessage({
+        tempId: "temp-3",
+        content: "third",
+        timestamp: "2026-04-24T00:00:02.000Z",
+      });
+    });
+
+    act(() => {
+      result.current.syncDeferredMessages(
+        [
+          {
+            tempId: "temp-1",
+            content: "first",
+            timestamp: "2026-04-24T00:00:00.000Z",
+          },
+          {
+            tempId: "temp-2-edited",
+            content: "second edited",
+            timestamp: "2026-04-24T00:00:01.000Z",
+          },
+          {
+            tempId: "temp-3",
+            content: "third",
+            timestamp: "2026-04-24T00:00:02.000Z",
+          },
+        ],
+        {
+          reason: "queued",
+          tempId: "temp-2-edited",
+          source: "rest",
+        },
+      );
+    });
+
+    expect(result.current.deferredMessages.map((message) => message.tempId)).toEqual(
+      ["temp-1", "temp-2-edited", "temp-3"],
+    );
   });
 });

@@ -223,7 +223,14 @@ export type ProcessEvent =
   | { type: "terminated"; reason: string; error?: Error }
   | {
       type: "deferred-queue";
-      messages: { tempId?: string; content: string; timestamp: string }[];
+      messages: {
+        tempId?: string;
+        content: string;
+        timestamp: string;
+        attachmentCount?: number;
+      }[];
+      reason?: "queued" | "cancelled" | "edited" | "promoted";
+      tempId?: string;
     };
 
 // Process options

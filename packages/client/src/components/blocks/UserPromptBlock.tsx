@@ -13,6 +13,7 @@ const MAX_CHARS = MAX_LINES * 100;
 
 interface Props {
   content: string | ContentBlock[];
+  onCorrect?: () => void;
 }
 
 interface InputImageBlock extends ContentBlock {
@@ -20,6 +21,38 @@ interface InputImageBlock extends ContentBlock {
   file_path?: string;
   image_url?: string;
   mime_type?: string;
+}
+
+interface CorrectionDisplay {
+  correctedText: string;
+  change?: string;
+}
+
+const CORRECTION_PREFIX = "Correction to previous message:\n";
+const CORRECTION_CHANGE_SEPARATOR = "\n\nChange: ";
+
+function parseCorrectionDisplay(text: string): CorrectionDisplay | null {
+  if (!text.startsWith(CORRECTION_PREFIX)) {
+    return null;
+  }
+
+  const body = text.slice(CORRECTION_PREFIX.length);
+  const changeIndex = body.indexOf(CORRECTION_CHANGE_SEPARATOR);
+  const correctedText =
+    changeIndex === -1 ? body : body.slice(0, changeIndex);
+  const change =
+    changeIndex === -1
+      ? undefined
+      : body.slice(changeIndex + CORRECTION_CHANGE_SEPARATOR.length).trim();
+
+  if (!correctedText.trim()) {
+    return null;
+  }
+
+  return {
+    correctedText,
+    ...(change ? { change } : {}),
+  };
 }
 
 /**
@@ -328,8 +361,57 @@ function CollapsibleText({ text }: { text: string }) {
   );
 }
 
+function CorrectionButton({ onCorrect }: { onCorrect?: () => void }) {
+  if (!onCorrect) return null;
+
+  return (
+    <button
+      type="button"
+      className="user-prompt-correct"
+      onClick={onCorrect}
+      aria-label="Edit latest message"
+      title="Edit latest message"
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </svg>
+    </button>
+  );
+}
+
+function UserPromptText({ text }: { text: string }) {
+  const correction = parseCorrectionDisplay(text);
+  if (!correction) {
+    return <CollapsibleText text={text} />;
+  }
+
+  return (
+    <div className="user-prompt-correction">
+      <div className="user-prompt-correction-label">Correction</div>
+      <CollapsibleText text={correction.correctedText} />
+      {correction.change && (
+        <div className="user-prompt-correction-change">
+          Change: {correction.change}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const UserPromptBlock = memo(function UserPromptBlock({
   content,
+  onCorrect,
 }: Props) {
   if (typeof content === "string") {
     const { text, openedFiles, uploadedFiles } = parseUserPrompt(content);
@@ -347,12 +429,15 @@ export const UserPromptBlock = memo(function UserPromptBlock({
 
     return (
       <div className="user-prompt-container">
-        <div className="message message-user-prompt">
+        <div
+          className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}`}
+        >
           <div className="message-content">
-            <CollapsibleText text={text} />
+            <UserPromptText text={text} />
             <UploadedFilesMetadata files={uploadedFiles} />
           </div>
         </div>
+        <CorrectionButton onCorrect={onCorrect} />
         <OpenedFilesMetadata files={openedFiles} />
       </div>
     );
@@ -391,12 +476,15 @@ export const UserPromptBlock = memo(function UserPromptBlock({
 
   return (
     <div className="user-prompt-container">
-      <div className="message message-user-prompt">
+      <div
+        className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}`}
+      >
         <div className="message-content">
-          <CollapsibleText text={text} />
+          <UserPromptText text={text} />
           <UploadedFilesMetadata files={allUploadedFiles} />
         </div>
       </div>
+      <CorrectionButton onCorrect={onCorrect} />
       <OpenedFilesMetadata files={openedFiles} />
     </div>
   );

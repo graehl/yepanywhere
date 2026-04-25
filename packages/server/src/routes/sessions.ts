@@ -36,7 +36,10 @@ import { augmentPersistedSessionMessages } from "../sessions/persisted-augments.
 import { findSessionSummaryAcrossProviders } from "../sessions/provider-resolution.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
-import type { Process } from "../supervisor/Process.js";
+import type {
+  DeferredMessagePlacement,
+  Process,
+} from "../supervisor/Process.js";
 import type {
   QueueFullResponse,
   Supervisor,
@@ -98,6 +101,28 @@ function isCodexProviderName(
   return provider === "codex" || provider === "codex-oss";
 }
 
+function parseDeferredPlacement(body: {
+  insertBeforeTempId?: unknown;
+  insertAfterTempId?: unknown;
+}): DeferredMessagePlacement | undefined {
+  const beforeTempId =
+    typeof body.insertBeforeTempId === "string" &&
+    body.insertBeforeTempId.trim()
+      ? body.insertBeforeTempId.trim()
+      : undefined;
+  const afterTempId =
+    typeof body.insertAfterTempId === "string" && body.insertAfterTempId.trim()
+      ? body.insertAfterTempId.trim()
+      : undefined;
+  if (!beforeTempId && !afterTempId) {
+    return undefined;
+  }
+  return {
+    ...(afterTempId ? { afterTempId } : {}),
+    ...(beforeTempId ? { beforeTempId } : {}),
+  };
+}
+
 export interface SessionsDeps {
   supervisor: Supervisor;
   scanner: ProjectScanner;
@@ -131,6 +156,10 @@ interface StartSessionBody {
   provider?: ProviderName;
   /** Client-generated temp ID for optimistic UI tracking */
   tempId?: string;
+  /** Deferred queue reinsertion anchor for edited queued messages */
+  insertBeforeTempId?: string;
+  /** Deferred queue reinsertion anchor for edited queued messages */
+  insertAfterTempId?: string;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
   /** Permission rules for tool filtering (deny/allow patterns) */
@@ -2288,10 +2317,32 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       ); // 410 Gone
     }
 
-    // Deferred messages are held server-side and auto-sent when the agent finishes
+    // Deferred messages stay server-side until Process reaches a safe delivery
+    // boundary. If the process is already idle, Process can accept them now.
     if (body.deferred) {
-      process.deferMessage(userMessage);
-      return c.json({ queued: true, deferred: true });
+      if (body.mode) {
+        process.setPermissionMode(body.mode);
+      }
+      const deferredResult = process.deferMessage(userMessage, {
+        promoteIfReady: true,
+        placement: parseDeferredPlacement(body),
+      });
+      if (!deferredResult.success) {
+        return c.json(
+          {
+            error: "Failed to queue message",
+            reason: deferredResult.error,
+          },
+          410,
+        );
+      }
+      return c.json({
+        queued: true,
+        deferred: deferredResult.deferred,
+        promoted: deferredResult.promoted,
+        position: deferredResult.position,
+        deferredMessages: process.getDeferredQueueSummary(),
+      });
     }
 
     // Convert thinking option to SDK config
@@ -2377,6 +2428,30 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     return c.json({ cancelled: true });
+  });
+
+  // POST /api/sessions/:sessionId/deferred/:tempId/edit - Take a deferred message for editing
+  routes.post("/sessions/:sessionId/deferred/:tempId/edit", (c) => {
+    const sessionId = c.req.param("sessionId");
+    const tempId = c.req.param("tempId");
+
+    const process = deps.supervisor.getProcessForSession(sessionId);
+    if (!process) {
+      return c.json({ error: "No active process for session" }, 404);
+    }
+
+    const taken = process.takeDeferredMessage(tempId);
+    if (!taken) {
+      return c.json({ error: "Deferred message not found" }, 404);
+    }
+
+    return c.json({
+      message: taken.message.text,
+      tempId: taken.message.tempId,
+      mode: taken.message.mode,
+      attachments: taken.message.attachments,
+      placement: taken.placement,
+    });
   });
 
   // PUT /api/sessions/:sessionId/mode - Update permission mode without sending a message

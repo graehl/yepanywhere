@@ -31,6 +31,16 @@ import { DEFAULT_IDLE_TIMEOUT_MS } from "./types.js";
 
 type Listener = (event: ProcessEvent) => void;
 
+export interface DeferredMessagePlacement {
+  afterTempId?: string;
+  beforeTempId?: string;
+}
+
+export interface TakenDeferredMessage {
+  message: UserMessage;
+  placement: DeferredMessagePlacement;
+}
+
 /**
  * IMPORTANT: Never filter out messages by type before emitting to SSE!
  *
@@ -852,7 +862,10 @@ export class Process {
    *
    * @returns Object with success status and queue position or error
    */
-  queueMessage(message: UserMessage): {
+  queueMessage(
+    message: UserMessage,
+    options?: { allowSteer?: boolean },
+  ): {
     success: boolean;
     position?: number;
     error?: string;
@@ -918,7 +931,11 @@ export class Process {
 
     if (this.messageQueue) {
       // If provider supports in-turn steering, prefer that over queue-after-turn behavior.
-      if (this._state.type === "in-turn" && this.steerFn) {
+      if (
+        this._state.type === "in-turn" &&
+        this.steerFn &&
+        options?.allowSteer !== false
+      ) {
         const steerMessage: UserMessage = {
           ...messageWithUuid,
           // Mirror MessageQueue's attachment expansion for steer payloads.
@@ -968,15 +985,85 @@ export class Process {
 
   /**
    * Add a message to the deferred queue.
-   * Deferred messages are held server-side and auto-sent when the agent's current turn ends.
+   * Deferred messages are held server-side and auto-sent when the agent reaches
+   * a safe delivery boundary. Idle processes can accept the message
+   * immediately; active turns keep the message editable until a later boundary
+   * such as a completed tool call or turn completion.
    */
-  deferMessage(message: UserMessage): { success: true } {
-    this.deferredQueue.push({
+  deferMessage(
+    message: UserMessage,
+    options?: {
+      promoteIfReady?: boolean;
+      placement?: DeferredMessagePlacement;
+    },
+  ): {
+    success: boolean;
+    deferred: boolean;
+    promoted?: boolean;
+    position?: number;
+    error?: string;
+  } {
+    if (options?.promoteIfReady && this.messageQueue) {
+      if (this._state.type === "idle") {
+        const result = this.queueMessage(message);
+        if (!result.success) {
+          return {
+            success: false,
+            deferred: false,
+            error: result.error ?? "Failed to queue message",
+          };
+        }
+        this.emitDeferredQueueChange("promoted", message.tempId);
+        return {
+          success: true,
+          deferred: false,
+          promoted: true,
+          position: result.position,
+        };
+      }
+    }
+
+    const entry = {
       message,
       timestamp: new Date().toISOString(),
-    });
-    this.emitDeferredQueueChange();
-    return { success: true };
+    };
+    const insertionIndex = this.getDeferredInsertionIndex(options?.placement);
+    this.deferredQueue.splice(insertionIndex, 0, entry);
+    this.emitDeferredQueueChange("queued", message.tempId);
+    return { success: true, deferred: true };
+  }
+
+  private getDeferredPlacement(index: number): DeferredMessagePlacement {
+    const afterTempId = this.deferredQueue[index - 1]?.message.tempId;
+    const beforeTempId = this.deferredQueue[index + 1]?.message.tempId;
+    return {
+      ...(afterTempId ? { afterTempId } : {}),
+      ...(beforeTempId ? { beforeTempId } : {}),
+    };
+  }
+
+  private getDeferredInsertionIndex(
+    placement?: DeferredMessagePlacement,
+  ): number {
+    if (placement?.beforeTempId) {
+      const beforeIndex = this.deferredQueue.findIndex(
+        (entry) => entry.message.tempId === placement.beforeTempId,
+      );
+      if (beforeIndex !== -1) {
+        return beforeIndex;
+      }
+    }
+
+    if (placement?.afterTempId) {
+      const afterIndex = this.deferredQueue.findIndex(
+        (entry) => entry.message.tempId === placement.afterTempId,
+      );
+      if (afterIndex !== -1) {
+        return afterIndex + 1;
+      }
+    }
+
+    return this.deferredQueue.length;
   }
 
   /**
@@ -988,8 +1075,23 @@ export class Process {
     );
     if (index === -1) return false;
     this.deferredQueue.splice(index, 1);
-    this.emitDeferredQueueChange();
+    this.emitDeferredQueueChange("cancelled", tempId);
     return true;
+  }
+
+  /**
+   * Remove and return a deferred message so a client can edit it safely.
+   */
+  takeDeferredMessage(tempId: string): TakenDeferredMessage | null {
+    const index = this.deferredQueue.findIndex(
+      (entry) => entry.message.tempId === tempId,
+    );
+    if (index === -1) return null;
+    const placement = this.getDeferredPlacement(index);
+    const [entry] = this.deferredQueue.splice(index, 1);
+    this.emitDeferredQueueChange("edited", tempId);
+    if (!entry) return null;
+    return { message: entry.message, placement };
   }
 
   /**
@@ -999,21 +1101,35 @@ export class Process {
     tempId?: string;
     content: string;
     timestamp: string;
+    attachmentCount?: number;
   }[] {
-    return this.deferredQueue.map((entry) => ({
-      tempId: entry.message.tempId,
-      content: entry.message.text,
-      timestamp: entry.timestamp,
-    }));
+    return this.deferredQueue.map((entry) => {
+      const attachmentCount =
+        (entry.message.attachments?.length ?? 0) +
+        (entry.message.images?.length ?? 0) +
+        (entry.message.documents?.length ?? 0);
+
+      return {
+        tempId: entry.message.tempId,
+        content: entry.message.text,
+        timestamp: entry.timestamp,
+        ...(attachmentCount > 0 ? { attachmentCount } : {}),
+      };
+    });
   }
 
   /**
    * Emit a deferred-queue event with the current queue state.
    */
-  private emitDeferredQueueChange(): void {
+  private emitDeferredQueueChange(
+    reason?: "queued" | "cancelled" | "edited" | "promoted",
+    tempId?: string,
+  ): void {
     this.emit({
       type: "deferred-queue",
       messages: this.getDeferredQueueSummary(),
+      reason,
+      tempId,
     });
   }
 
@@ -1572,6 +1688,8 @@ export class Process {
             }
           }
           this.transitionToIdle();
+        } else if (this.isCompletedToolResultMessage(message)) {
+          this.promoteNextDeferredMessage({ allowSteer: true });
         }
       }
     } catch (error) {
@@ -1655,15 +1773,61 @@ export class Process {
   private transitionToIdle(): void {
     this.clearIdleTimer();
     // Feed next deferred message before transitioning to idle
-    const next = this.deferredQueue.shift();
-    if (next) {
-      this.emitDeferredQueueChange();
-      this.queueMessage(next.message); // stays in-turn, SDK picks it up
+    const promotion = this.promoteNextDeferredMessage({ allowSteer: false });
+    if (promotion === "promoted") {
+      return;
+    }
+    if (promotion === "failed") {
+      this.setState({ type: "idle", since: new Date() });
+      this.startIdleTimer();
       return;
     }
     this.setState({ type: "idle", since: new Date() });
     this.startIdleTimer();
     this.processNextInQueue();
+  }
+
+  private promoteNextDeferredMessage(options: {
+    allowSteer: boolean;
+  }): "empty" | "promoted" | "failed" {
+    const next = this.deferredQueue.shift();
+    if (!next) {
+      return "empty";
+    }
+
+    const result = this.queueMessage(next.message, {
+      allowSteer: options.allowSteer,
+    });
+    if (!result.success) {
+      this.deferredQueue.unshift(next);
+      this.emitDeferredQueueChange("queued", next.message.tempId);
+      return "failed";
+    }
+
+    this.emitDeferredQueueChange("promoted", next.message.tempId);
+    return "promoted";
+  }
+
+  private isCompletedToolResultMessage(message: SDKMessage): boolean {
+    if (
+      this._state.type !== "in-turn" ||
+      !this.messageQueue ||
+      !this.steerFn
+    ) {
+      return false;
+    }
+
+    const content = message.message?.content;
+    if (!Array.isArray(content)) {
+      return false;
+    }
+
+    return content.some(
+      (block) =>
+        typeof block === "object" &&
+        block !== null &&
+        block.type === "tool_result",
+    );
   }
 
   /**

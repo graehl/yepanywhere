@@ -218,6 +218,26 @@ function mergeDeferredMessages(
     source?: "connected" | "event" | "rest";
   },
 ): DeferredMessage[] {
+  const mergeDeferredSummary = (
+    incomingMessage: DeferredMessage,
+    previous: DeferredMessage | undefined,
+    deliveryState: DeferredMessage["deliveryState"],
+  ): DeferredMessage => {
+    const attachments = previous?.attachments;
+    const attachmentCount =
+      incomingMessage.attachmentCount ??
+      previous?.attachmentCount ??
+      attachments?.length;
+
+    return {
+      ...incomingMessage,
+      ...(attachmentCount ? { attachmentCount } : {}),
+      ...(attachments ? { attachments } : {}),
+      ...(previous?.mode ? { mode: previous.mode } : {}),
+      ...(deliveryState ? { deliveryState } : {}),
+    };
+  };
+
   const removedTempId =
     meta?.reason === "cancelled" || meta?.reason === "edited"
       ? meta.tempId
@@ -243,14 +263,7 @@ function mergeDeferredMessages(
         const previous = message.tempId
           ? currentByTempId.get(message.tempId)
           : undefined;
-        return {
-          ...message,
-          ...(previous?.attachments
-            ? { attachments: previous.attachments }
-            : {}),
-          ...(previous?.mode ? { mode: previous.mode } : {}),
-          deliveryState: "queued" as const,
-        };
+        return mergeDeferredSummary(message, previous, "queued");
       });
     for (const message of current) {
       if (message.tempId && message.tempId === removedTempId) {
@@ -276,12 +289,7 @@ function mergeDeferredMessages(
       : undefined;
     if (incomingMatch) {
       usedIncoming.add(message.tempId as string);
-      merged.push({
-        ...incomingMatch,
-        ...(message.attachments ? { attachments: message.attachments } : {}),
-        ...(message.mode ? { mode: message.mode } : {}),
-        deliveryState: "queued",
-      });
+      merged.push(mergeDeferredSummary(incomingMatch, message, "queued"));
       continue;
     }
 

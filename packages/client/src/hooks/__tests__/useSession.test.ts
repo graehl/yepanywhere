@@ -340,4 +340,57 @@ describe("useSession completion reconciliation", () => {
       ["temp-1", "temp-2-edited", "temp-3"],
     );
   });
+
+  it("preserves queued attachment metadata across server summaries", () => {
+    const attachment = {
+      id: "file-1",
+      originalName: "notes.txt",
+      name: "file-1-notes.txt",
+      size: 12,
+      mimeType: "text/plain",
+      path: "/uploads/notes.txt",
+    };
+
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      result.current.addDeferredMessage({
+        tempId: "temp-with-file",
+        content: "see attached",
+        timestamp: "2026-04-24T00:00:00.000Z",
+        attachmentCount: 1,
+        attachments: [attachment],
+        mode: "acceptEdits",
+      });
+    });
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "deferred-queue",
+        messages: [
+          {
+            tempId: "temp-with-file",
+            content: "see attached",
+            timestamp: "2026-04-24T00:00:01.000Z",
+          },
+        ],
+      });
+    });
+
+    expect(result.current.deferredMessages).toMatchObject([
+      {
+        tempId: "temp-with-file",
+        content: "see attached",
+        attachmentCount: 1,
+        attachments: [attachment],
+        mode: "acceptEdits",
+        deliveryState: "queued",
+      },
+    ]);
+  });
 });

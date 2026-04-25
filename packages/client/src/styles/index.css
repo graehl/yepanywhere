@@ -45,6 +45,7 @@
   --font-size-base: 13px;
   --font-size-lg: 14px;
   --tab-size: 2;
+  --content-max-width: 4000px;
 
   /* Spacing */
   --space-1: 4px;
@@ -4621,7 +4622,7 @@ a.sidebar-nav-item {
   gap: var(--space-4);
   min-height: 0;
   padding: 1rem;
-  max-width: calc(280px + 830px + var(--space-4));
+  max-width: calc(280px + var(--content-max-width) + var(--space-4));
   margin: 0 auto;
 }
 
@@ -4634,7 +4635,7 @@ a.sidebar-nav-item {
 .settings-content-panel {
   flex: 1;
   min-width: 0;
-  max-width: 830px;
+  max-width: var(--content-max-width);
   overflow-y: auto;
 }
 
@@ -5587,7 +5588,7 @@ a.sidebar-nav-item {
 
 @media (min-width: 900px) {
   .main-content-constrained .page-content-inner.new-session-page-shell {
-    max-width: 980px;
+    max-width: var(--content-max-width);
   }
 
   .new-session-top-layout {
@@ -6293,7 +6294,7 @@ a.sidebar-nav-item {
   .main-content-constrained .session-messages .message-list,
   .main-content-constrained .session-input-inner,
   .main-content-constrained .page-content-inner {
-    max-width: 830px;
+    max-width: var(--content-max-width);
     margin: 0 auto;
     width: 100%;
   }
@@ -6303,7 +6304,7 @@ a.sidebar-nav-item {
   .main-content-constrained.session-pane-collapsed-sidebar .session-header-inner,
   .main-content-constrained.session-pane-collapsed-sidebar .session-messages .message-list,
   .main-content-constrained.session-pane-collapsed-sidebar .session-input-inner {
-    max-width: min(1100px, 100%);
+    max-width: min(var(--content-max-width), 100%);
     margin-left: 0;
     margin-right: auto;
   }

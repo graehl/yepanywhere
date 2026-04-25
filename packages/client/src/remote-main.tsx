@@ -26,6 +26,7 @@ const Wrapper = STRICT_MODE ? StrictMode : Fragment;
 
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ConnectionGate, RemoteApp, UnauthenticatedGate } from "./RemoteApp";
+import { initializeContentMaxWidth } from "./hooks/useContentMaxWidth";
 import { initializeFontSize } from "./hooks/useFontSize";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
@@ -52,6 +53,7 @@ import "./styles/index.css";
 initializeTheme();
 initializeFontSize();
 initializeTabSize();
+initializeContentMaxWidth();
 
 // Get base URL for router (Vite sets this based on --base flag)
 // Remove trailing slash for BrowserRouter basename

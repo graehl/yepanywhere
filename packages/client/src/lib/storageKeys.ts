@@ -46,6 +46,7 @@ export const UI_KEYS = {
   theme: "yep-anywhere-theme",
   fontSize: "yep-anywhere-font-size",
   tabSize: "yep-anywhere-tab-size",
+  contentMaxWidth: "yep-anywhere-content-max-width",
   sidebarWidth: "yep-anywhere-sidebar-width",
   sidebarExpanded: "yep-anywhere-sidebar-expanded",
   funPhrases: "yep-anywhere-fun-phrases-enabled",

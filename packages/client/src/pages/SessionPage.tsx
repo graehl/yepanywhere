@@ -347,7 +347,6 @@ function SessionPageContent({
   const currentOwnedProcessId =
     status.owner === "self" ? status.processId : undefined;
   const shouldDeferMessages = status.owner === "self" && processState !== "idle";
-  const modeChangesApplyNextTurn = shouldDeferMessages;
 
   useEffect(() => {
     let cancelled = false;
@@ -1941,7 +1940,6 @@ function SessionPageContent({
                   <MessageInputToolbar
                     mode={permissionMode}
                     onModeChange={setPermissionMode}
-                    modeChangesApplyNextTurn={modeChangesApplyNextTurn}
                     isHeld={holdModeEnabled ? isHeld : undefined}
                     onHoldChange={holdModeEnabled ? setHold : undefined}
                     supportsPermissionMode={supportsPermissionMode}
@@ -1991,7 +1989,6 @@ function SessionPageContent({
                 }
                 mode={permissionMode}
                 onModeChange={setPermissionMode}
-                modeChangesApplyNextTurn={modeChangesApplyNextTurn}
                 isHeld={holdModeEnabled ? isHeld : undefined}
                 onHoldChange={holdModeEnabled ? setHold : undefined}
                 supportsPermissionMode={supportsPermissionMode}

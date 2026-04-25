@@ -106,6 +106,8 @@ export class Process {
 
   private legacyQueue: UserMessage[] = [];
   private messageQueue: MessageQueue | null;
+  private deferredEditBarrier: { originalTempId: string; index: number } | null =
+    null;
   private abortFn: (() => void) | null;
   private _state: ProcessState = { type: "in-turn" };
   private listeners: Set<Listener> = new Set();
@@ -1003,6 +1005,12 @@ export class Process {
     position?: number;
     error?: string;
   } {
+    const replacesDeferredEdit =
+      !!options?.placement && this.deferredEditBarrier !== null;
+    const deferredEditInsertionIndex = replacesDeferredEdit
+      ? Math.min(this.deferredEditBarrier?.index ?? 0, this.deferredQueue.length)
+      : null;
+
     if (options?.promoteIfReady && this.messageQueue) {
       if (this._state.type === "idle") {
         const result = this.queueMessage(message);
@@ -1012,6 +1020,9 @@ export class Process {
             deferred: false,
             error: result.error ?? "Failed to queue message",
           };
+        }
+        if (replacesDeferredEdit) {
+          this.deferredEditBarrier = null;
         }
         this.emitDeferredQueueChange("promoted", message.tempId);
         return {
@@ -1027,8 +1038,13 @@ export class Process {
       message,
       timestamp: new Date().toISOString(),
     };
-    const insertionIndex = this.getDeferredInsertionIndex(options?.placement);
+    const insertionIndex = replacesDeferredEdit
+      ? (deferredEditInsertionIndex as number)
+      : this.getDeferredInsertionIndex(options?.placement);
     this.deferredQueue.splice(insertionIndex, 0, entry);
+    if (replacesDeferredEdit) {
+      this.deferredEditBarrier = null;
+    }
     this.emitDeferredQueueChange("queued", message.tempId);
     return { success: true, deferred: true };
   }
@@ -1075,6 +1091,13 @@ export class Process {
     );
     if (index === -1) return false;
     this.deferredQueue.splice(index, 1);
+    if (this.deferredEditBarrier) {
+      if (index < this.deferredEditBarrier.index) {
+        this.deferredEditBarrier.index--;
+      } else if (this.deferredQueue.length <= this.deferredEditBarrier.index) {
+        this.deferredEditBarrier.index = this.deferredQueue.length;
+      }
+    }
     this.emitDeferredQueueChange("cancelled", tempId);
     return true;
   }
@@ -1089,9 +1112,29 @@ export class Process {
     if (index === -1) return null;
     const placement = this.getDeferredPlacement(index);
     const [entry] = this.deferredQueue.splice(index, 1);
+    this.deferredEditBarrier = { originalTempId: tempId, index };
     this.emitDeferredQueueChange("edited", tempId);
     if (!entry) return null;
     return { message: entry.message, placement };
+  }
+
+  releaseDeferredEditBarrier(originalTempId?: string): boolean {
+    if (!this.deferredEditBarrier) return false;
+    if (
+      originalTempId &&
+      this.deferredEditBarrier.originalTempId !== originalTempId
+    ) {
+      return false;
+    }
+    this.deferredEditBarrier = null;
+    if (this._state.type === "idle") {
+      const promotion = this.promoteNextDeferredMessage({ allowSteer: false });
+      if (promotion === "promoted" || promotion === "failed") {
+        return true;
+      }
+    }
+    this.emitDeferredQueueChange("edited", originalTempId);
+    return true;
   }
 
   /**
@@ -1102,8 +1145,9 @@ export class Process {
     content: string;
     timestamp: string;
     attachmentCount?: number;
+    blockedByEdit?: boolean;
   }[] {
-    return this.deferredQueue.map((entry) => {
+    return this.deferredQueue.map((entry, index) => {
       const attachmentCount =
         (entry.message.attachments?.length ?? 0) +
         (entry.message.images?.length ?? 0) +
@@ -1114,6 +1158,10 @@ export class Process {
         content: entry.message.text,
         timestamp: entry.timestamp,
         ...(attachmentCount > 0 ? { attachmentCount } : {}),
+        ...(this.deferredEditBarrier &&
+        index >= this.deferredEditBarrier.index
+          ? { blockedByEdit: true }
+          : {}),
       };
     });
   }
@@ -1789,10 +1837,17 @@ export class Process {
 
   private promoteNextDeferredMessage(options: {
     allowSteer: boolean;
-  }): "empty" | "promoted" | "failed" {
+  }): "empty" | "blocked" | "promoted" | "failed" {
+    if (this.deferredEditBarrier?.index === 0) {
+      return "blocked";
+    }
     const next = this.deferredQueue.shift();
     if (!next) {
       return "empty";
+    }
+    const shiftedBeforeBarrier = !!this.deferredEditBarrier;
+    if (this.deferredEditBarrier) {
+      this.deferredEditBarrier.index--;
     }
 
     const result = this.queueMessage(next.message, {
@@ -1800,6 +1855,9 @@ export class Process {
     });
     if (!result.success) {
       this.deferredQueue.unshift(next);
+      if (shiftedBeforeBarrier && this.deferredEditBarrier) {
+        this.deferredEditBarrier.index++;
+      }
       this.emitDeferredQueueChange("queued", next.message.tempId);
       return "failed";
     }

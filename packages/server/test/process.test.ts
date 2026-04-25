@@ -374,6 +374,133 @@ describe("Process", () => {
       ]);
     });
 
+    it("blocks later deferred messages while a mid-queue edit is open", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const steerFn = vi.fn(async () => true);
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        steerFn,
+      });
+
+      process.deferMessage({ text: "first", tempId: "temp-1" });
+      process.deferMessage({ text: "second", tempId: "temp-2" });
+      process.deferMessage({ text: "third", tempId: "temp-3" });
+
+      const taken = process.takeDeferredMessage("temp-2");
+
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        { tempId: "temp-1", content: "first" },
+        { tempId: "temp-3", content: "third", blockedByEdit: true },
+      ]);
+
+      controller.push({
+        type: "user",
+        session_id: "sess-1",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "tool-1" }],
+        },
+      });
+
+      await waitFor(() => expect(steerFn).toHaveBeenCalledTimes(1));
+      expect(steerFn).toHaveBeenLastCalledWith(
+        expect.objectContaining({ tempId: "temp-1" }),
+      );
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        { tempId: "temp-3", content: "third", blockedByEdit: true },
+      ]);
+
+      controller.push({
+        type: "user",
+        session_id: "sess-1",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "tool-2" }],
+        },
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(steerFn).toHaveBeenCalledTimes(1);
+
+      process.deferMessage(
+        { text: "second edited", tempId: "temp-2-edited" },
+        { placement: taken?.placement, promoteIfReady: true },
+      );
+
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        { tempId: "temp-2-edited", content: "second edited" },
+        { tempId: "temp-3", content: "third" },
+      ]);
+
+      controller.push({
+        type: "user",
+        session_id: "sess-1",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "tool-3" }],
+        },
+      });
+
+      await waitFor(() => expect(steerFn).toHaveBeenCalledTimes(2));
+      expect(steerFn).toHaveBeenLastCalledWith(
+        expect.objectContaining({ tempId: "temp-2-edited" }),
+      );
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("promotes later deferred messages when a blocking edit is cancelled while idle", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+      });
+      const deferredEvents: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        if (event.type === "deferred-queue") {
+          deferredEvents.push(event);
+        }
+      });
+
+      process.deferMessage({ text: "first", tempId: "temp-1" });
+      process.deferMessage({ text: "second", tempId: "temp-2" });
+      process.takeDeferredMessage("temp-1");
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        { tempId: "temp-2", content: "second", blockedByEdit: true },
+      ]);
+
+      expect(process.releaseDeferredEditBarrier("temp-1")).toBe(true);
+
+      expect(process.state.type).toBe("in-turn");
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(deferredEvents[deferredEvents.length - 1]).toMatchObject({
+        type: "deferred-queue",
+        reason: "promoted",
+        tempId: "temp-2",
+        messages: [],
+      });
+
+      controller.finish();
+      await process.abort();
+    });
+
     it("keeps steerable active-turn deferred messages editable", async () => {
       const controller = createControllableIterator();
       const queue = new MessageQueue();

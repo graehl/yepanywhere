@@ -497,11 +497,28 @@ function SessionPageContent({
   }, [sessionId]);
 
   const handleCancelCorrection = useCallback(() => {
+    const editDraft = queuedEditDraft;
     setCorrectionDraft(null);
     setQueuedEditDraft(null);
     draftControlsRef.current?.clearDraft();
     setAttachments([]);
-  }, []);
+    if (editDraft) {
+      api
+        .releaseDeferredEditBarrier(sessionId, editDraft.originalTempId)
+        .then((result) => {
+          if (result.deferredMessages) {
+            syncDeferredMessages(result.deferredMessages, {
+              reason: "edited",
+              tempId: editDraft.originalTempId,
+              source: "rest",
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn("Failed to release deferred edit barrier:", err);
+        });
+    }
+  }, [queuedEditDraft, sessionId, syncDeferredMessages]);
 
   const handleCorrectLatestUserMessage = useCallback(
     (messageId: string, content: string) => {

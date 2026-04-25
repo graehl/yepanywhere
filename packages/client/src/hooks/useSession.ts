@@ -62,6 +62,7 @@ export interface DeferredMessage {
   attachmentCount?: number;
   attachments?: UploadedFile[];
   mode?: PermissionMode;
+  blockedByEdit?: boolean;
   deliveryState?: "queued" | "sending" | "recovered";
 }
 
@@ -138,6 +139,7 @@ function normalizeDeferredMessage(value: unknown): DeferredMessage | null {
     ...(attachmentCount ? { attachmentCount } : {}),
     ...(attachments ? { attachments } : {}),
     ...(mode ? { mode } : {}),
+    ...(record.blockedByEdit === true ? { blockedByEdit: true } : {}),
     deliveryState,
   };
 }

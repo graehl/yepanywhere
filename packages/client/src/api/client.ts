@@ -101,6 +101,7 @@ export interface DeferredQueueMessage {
   content: string;
   timestamp: string;
   attachmentCount?: number;
+  blockedByEdit?: boolean;
 }
 
 export interface DeferredMessagePlacement {
@@ -631,6 +632,12 @@ export const api = {
     }>(`/sessions/${sessionId}/deferred/${encodeURIComponent(tempId)}/edit`, {
       method: "POST",
     }),
+
+  releaseDeferredEditBarrier: (sessionId: string, tempId: string) =>
+    fetchJSON<{ released: boolean; deferredMessages?: DeferredQueueMessage[] }>(
+      `/sessions/${sessionId}/deferred/${encodeURIComponent(tempId)}/edit/release`,
+      { method: "POST" },
+    ),
 
   abortProcess: (processId: string) =>
     fetchJSON<{ aborted: boolean }>(`/processes/${processId}/abort`, {

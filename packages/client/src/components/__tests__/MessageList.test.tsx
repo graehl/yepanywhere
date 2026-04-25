@@ -104,4 +104,22 @@ describe("MessageList", () => {
       screen.getByText('Change: replace "testing" with "test correction".'),
     ).toBeTruthy();
   });
+
+  it("marks queued messages that are blocked behind an edit", () => {
+    render(
+      <MessageList
+        messages={[]}
+        deferredMessages={[
+          {
+            tempId: "temp-3",
+            content: "third",
+            timestamp: "2026-04-25T00:00:00.000Z",
+            blockedByEdit: true,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Queued (after edit)")).toBeTruthy();
+  });
 });

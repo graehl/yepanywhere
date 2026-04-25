@@ -82,6 +82,7 @@ interface DeferredMessage {
   content: string;
   timestamp: string;
   attachmentCount?: number;
+  blockedByEdit?: boolean;
   deliveryState?: "queued" | "sending" | "recovered";
 }
 
@@ -417,9 +418,11 @@ export const MessageList = memo(function MessageList({
                 ? "Sending queued message..."
                 : deferred.deliveryState === "recovered"
                   ? "Recovered draft (not queued)"
-                : index === 0
-                  ? "Queued (next)"
-                  : `Queued (#${index + 1})`}
+                  : deferred.blockedByEdit
+                    ? "Queued (after edit)"
+                  : index === 0
+                    ? "Queued (next)"
+                    : `Queued (#${index + 1})`}
             </span>
             {deferred.attachmentCount ? (
               <span

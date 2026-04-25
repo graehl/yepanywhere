@@ -2454,6 +2454,23 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     });
   });
 
+  // POST /api/sessions/:sessionId/deferred/:tempId/edit/release - Release a queued edit barrier
+  routes.post("/sessions/:sessionId/deferred/:tempId/edit/release", (c) => {
+    const sessionId = c.req.param("sessionId");
+    const tempId = c.req.param("tempId");
+
+    const process = deps.supervisor.getProcessForSession(sessionId);
+    if (!process) {
+      return c.json({ error: "No active process for session" }, 404);
+    }
+
+    const released = process.releaseDeferredEditBarrier(tempId);
+    return c.json({
+      released,
+      deferredMessages: process.getDeferredQueueSummary(),
+    });
+  });
+
   // PUT /api/sessions/:sessionId/mode - Update permission mode without sending a message
   routes.put("/sessions/:sessionId/mode", async (c) => {
     const sessionId = c.req.param("sessionId");

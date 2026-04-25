@@ -193,6 +193,38 @@ describe("Sessions metadata route", () => {
     });
   });
 
+  it("releases a queued-message edit barrier", async () => {
+    const releaseDeferredEditBarrier = vi.fn(() => true);
+    const getDeferredQueueSummary = vi.fn(() => [
+      {
+        tempId: "temp-3",
+        content: "third",
+        timestamp: "2026-04-25T00:00:02.000Z",
+      },
+    ]);
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          releaseDeferredEditBarrier,
+          getDeferredQueueSummary,
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+    });
+
+    const response = await routes.request(
+      "/sessions/sess-1/deferred/temp-edit/edit/release",
+      { method: "POST" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(releaseDeferredEditBarrier).toHaveBeenCalledWith("temp-edit");
+    await expect(response.json()).resolves.toMatchObject({
+      released: true,
+      deferredMessages: [{ tempId: "temp-3", content: "third" }],
+    });
+  });
+
   it("passes deferred queue reinsertion anchors when queuing an edited message", async () => {
     const deferMessage = vi.fn(() => ({ success: true, deferred: true }));
     const getDeferredQueueSummary = vi.fn(() => [

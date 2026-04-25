@@ -14,6 +14,8 @@ interface ModeSelectorProps {
   mode: PermissionMode;
   onModeChange: (mode: PermissionMode) => void;
   disabled?: boolean;
+  /** Whether permission mode changes are deferred until the next user turn. */
+  changesApplyNextTurn?: boolean;
   /** Whether the session is currently held (soft pause) */
   isHeld?: boolean;
   /** Callback when hold state changes */
@@ -29,6 +31,7 @@ export function ModeSelector({
   mode,
   onModeChange,
   disabled,
+  changesApplyNextTurn = false,
   isHeld = false,
   onHoldChange,
 }: ModeSelectorProps) {
@@ -122,6 +125,9 @@ export function ModeSelector({
   // Display text: show "Hold" when held, otherwise show mode label
   const displayLabel = isHeld ? t("modeHold" as never) : modeLabels[mode];
   const displayDotClass = isHeld ? "mode-hold" : `mode-${mode}`;
+  const buttonTitle = changesApplyNextTurn
+    ? `${t("modeClickToSelect" as never)} - ${t("modeNextTurnHint" as never)}`
+    : t("modeClickToSelect" as never);
 
   // Shared dropdown options content
   const optionsContent = (
@@ -165,6 +171,12 @@ export function ModeSelector({
 
       {/* Divider between hold and permission modes */}
       {onHoldChange && <div className="mode-selector-divider" />}
+
+      {changesApplyNextTurn && (
+        <div className="mode-selector-timing-note" role="status">
+          {t("modeNextTurnHint" as never)}
+        </div>
+      )}
 
       {/* Permission mode options */}
       {MODE_ORDER.map((m) => (
@@ -216,15 +228,22 @@ export function ModeSelector({
       <button
         ref={buttonRef}
         type="button"
-        className={`mode-button ${isHeld ? "mode-button-held" : ""}`}
+        className={`mode-button ${isHeld ? "mode-button-held" : ""} ${
+          changesApplyNextTurn ? "mode-button-next-turn" : ""
+        }`}
         onClick={handleButtonClick}
         disabled={disabled}
-        title={t("modeClickToSelect" as never)}
+        title={buttonTitle}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
         <span className={`mode-dot ${displayDotClass}`} />
-        {displayLabel}
+        <span className="mode-button-label">{displayLabel}</span>
+        {changesApplyNextTurn && (
+          <span className="mode-button-badge">
+            {t("modeNextTurnBadge" as never)}
+          </span>
+        )}
       </button>
       {dropdown}
     </div>

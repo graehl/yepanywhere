@@ -18,6 +18,7 @@ export interface MessageInputToolbarProps {
   onModeChange?: (mode: PermissionMode) => void;
   isHeld?: boolean;
   onHoldChange?: (held: boolean) => void;
+  modeChangesApplyNextTurn?: boolean;
 
   // Provider capability flags (default to true for backwards compatibility)
   supportsPermissionMode?: boolean;
@@ -73,6 +74,7 @@ export function MessageInputToolbar({
   onModeChange,
   isHeld,
   onHoldChange,
+  modeChangesApplyNextTurn,
   supportsPermissionMode = true,
   supportsThinkingToggle = true,
   canAttach,
@@ -170,6 +172,7 @@ export function MessageInputToolbar({
           <ModeSelector
             mode={mode}
             onModeChange={onModeChange}
+            changesApplyNextTurn={modeChangesApplyNextTurn}
             isHeld={isHeld}
             onHoldChange={onHoldChange}
           />

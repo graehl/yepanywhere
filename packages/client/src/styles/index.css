@@ -2002,9 +2002,31 @@ a.sidebar-nav-item {
   border-color: var(--border-input);
 }
 
+.mode-button-next-turn {
+  border-color: color-mix(in srgb, var(--warning-color) 55%, var(--border-color));
+}
+
 .mode-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.mode-button-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mode-button-badge {
+  flex-shrink: 0;
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--warning-color) 45%, transparent);
+  border-radius: 999px;
+  color: var(--warning-color);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0;
 }
 
 .mode-dot {
@@ -2135,6 +2157,16 @@ a.sidebar-nav-item {
   height: 1px;
   background: var(--border-subtle);
   margin: var(--space-2) var(--space-4);
+}
+
+.mode-selector-timing-note {
+  margin: 0 var(--space-3) var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warning-color) 10%, transparent);
+  color: var(--warning-color);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
 }
 
 /* Container for relative positioning of desktop dropdown */

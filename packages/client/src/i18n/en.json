@@ -187,6 +187,8 @@
   "modeAcceptEditsDescription": "Edit files without asking",
   "modePlanDescription": "Create a plan before implementing",
   "modeBypassPermissionsDescription": "Skip all permission checks (use with caution)",
+  "modeNextTurnBadge": "Next turn",
+  "modeNextTurnHint": "Applies to the next user turn",
   "sessionInvalidUrl": "Invalid session URL",
   "sessionUntitled": "Untitled",
   "sessionUploading": "Uploading...",

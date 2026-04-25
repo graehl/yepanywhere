@@ -187,6 +187,8 @@
   "modeAcceptEditsDescription": "直接修改文件，不再询问",
   "modePlanDescription": "先生成计划，再开始实现",
   "modeBypassPermissionsDescription": "跳过全部权限检查（请谨慎使用）",
+  "modeNextTurnBadge": "下一轮",
+  "modeNextTurnHint": "从下一次用户回合开始生效",
   "sessionInvalidUrl": "无效的会话地址",
   "sessionUntitled": "未命名",
   "sessionUploading": "上传中...",

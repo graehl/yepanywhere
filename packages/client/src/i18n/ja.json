@@ -187,6 +187,8 @@
   "modeAcceptEditsDescription": "確認せずにファイルを編集する",
   "modePlanDescription": "実装前に計画を作成する",
   "modeBypassPermissionsDescription": "すべての権限チェックをスキップする（注意して使用）",
+  "modeNextTurnBadge": "次のターン",
+  "modeNextTurnHint": "次のユーザーターンから適用されます",
   "sessionInvalidUrl": "無効なセッション URL です",
   "sessionUntitled": "無題",
   "sessionUploading": "アップロード中...",

@@ -45,6 +45,8 @@ interface Props {
   placeholder?: string;
   mode?: PermissionMode;
   onModeChange?: (mode: PermissionMode) => void;
+  /** Permission mode changes are visibly staged for the next user turn. */
+  modeChangesApplyNextTurn?: boolean;
   isHeld?: boolean;
   onHoldChange?: (held: boolean) => void;
   isRunning?: boolean;
@@ -101,6 +103,7 @@ export function MessageInput({
   placeholder,
   mode = "default",
   onModeChange,
+  modeChangesApplyNextTurn,
   isHeld,
   onHoldChange,
   isRunning,
@@ -532,6 +535,7 @@ export function MessageInput({
           <MessageInputToolbar
             mode={mode}
             onModeChange={onModeChange}
+            modeChangesApplyNextTurn={modeChangesApplyNextTurn}
             isHeld={isHeld}
             onHoldChange={onHoldChange}
             supportsPermissionMode={supportsPermissionMode}

@@ -124,4 +124,30 @@ describe("MessageInput", () => {
     expect(screen.getByLabelText("toolbarQueueLabel")).toBeTruthy();
     expect(onStop).toHaveBeenCalledTimes(1);
   });
+
+  it("stops the current turn with Escape from the composer", () => {
+    const onStop = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      isRunning: true,
+      isThinking: true,
+      onStop,
+    });
+
+    fireEvent.keyDown(textarea, { key: "Escape" });
+
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Escape alone when the current turn is not stoppable", () => {
+    const onStop = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      isRunning: true,
+      isThinking: false,
+      onStop,
+    });
+
+    fireEvent.keyDown(textarea, { key: "Escape" });
+
+    expect(onStop).not.toHaveBeenCalled();
+  });
 });

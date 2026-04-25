@@ -240,6 +240,22 @@ export function MessageInput({
   ]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (
+      e.key === "Escape" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      !e.altKey &&
+      isRunning &&
+      isThinking &&
+      onStop
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      onStop();
+      return;
+    }
+
     // Ctrl+Space toggles voice input
     if (e.key === " " && e.ctrlKey && !e.shiftKey && !e.altKey) {
       e.preventDefault();

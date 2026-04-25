@@ -121,6 +121,7 @@ export function MessageInputToolbar({
   const primaryActionHelp = queueMode
     ? t("toolbarQueueHelp")
     : t("toolbarSendTitle");
+  const stopTitle = `${t("toolbarStop")} (Esc)`;
   const showStopButton = !!(isRunning && onStop && isThinking);
   const showSendButton = !!(onSend && (!showStopButton || canSend));
 
@@ -370,7 +371,7 @@ export function MessageInputToolbar({
             onClick={onStop}
             className="stop-button"
             aria-label={t("toolbarStop")}
-            title={t("toolbarStop")}
+            title={stopTitle}
           >
             <span className="stop-icon" />
           </button>

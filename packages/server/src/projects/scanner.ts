@@ -232,6 +232,7 @@ export class ProjectScanner {
       lastActivity: string | null,
     ) => {
       const projectPath = canonicalizeProjectPath(rawProjectPath);
+      if (this.isHiddenProjectPath(projectPath)) return;
       if (seenPaths.has(projectPath)) return; // exact path duplicate
       seenPaths.add(projectPath);
 
@@ -339,6 +340,7 @@ export class ProjectScanner {
       const codexProjects = await this.codexScanner.listProjects();
       for (const codexProject of codexProjects) {
         const projectPath = canonicalizeProjectPath(codexProject.path);
+        if (this.isHiddenProjectPath(projectPath)) continue;
         const existing = projects.find(
           (project) => canonicalizeProjectPath(project.path) === projectPath,
         );
@@ -366,6 +368,7 @@ export class ProjectScanner {
       const geminiProjects = await this.geminiScanner.listProjects();
       for (const geminiProject of geminiProjects) {
         const projectPath = canonicalizeProjectPath(geminiProject.path);
+        if (this.isHiddenProjectPath(projectPath)) continue;
         const existing = projects.find(
           (project) => canonicalizeProjectPath(project.path) === projectPath,
         );
@@ -390,6 +393,7 @@ export class ProjectScanner {
       const addedProjects = this.projectMetadataService.getAllProjects();
       for (const metadata of Object.values(addedProjects)) {
         const projectPath = canonicalizeProjectPath(metadata.path);
+        if (this.isHiddenProjectPath(projectPath)) continue;
         // Skip if we've already seen this path from another source
         if (seenPaths.has(projectPath)) continue;
 
@@ -445,6 +449,13 @@ export class ProjectScanner {
     const snapshot = await this.getSnapshot();
     const project = snapshot.byId.get(projectId);
     return project ? this.cloneProject(project) : null;
+  }
+
+  private isHiddenProjectPath(projectPath: string): boolean {
+    if (!this.projectMetadataService) return false;
+    return this.projectMetadataService.isHiddenProject(
+      encodeProjectId(projectPath),
+    );
   }
 
   /**

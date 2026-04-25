@@ -385,6 +385,14 @@ export const api = {
   getProject: (projectId: string) =>
     fetchJSON<{ project: Project }>(`/projects/${projectId}`),
 
+  deleteProject: (projectId: string) =>
+    fetchJSON<{ removed: boolean; projectId: string; path: string }>(
+      `/projects/${projectId}`,
+      {
+        method: "DELETE",
+      },
+    ),
+
   getSession: (
     projectId: string,
     sessionId: string,

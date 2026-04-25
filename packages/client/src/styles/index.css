@@ -654,7 +654,16 @@ h2 {
   flex-shrink: 0;
 }
 
-.project-card__new-session {
+.project-card__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.project-card__new-session,
+.project-card__delete {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -674,6 +683,23 @@ h2 {
   background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--text-muted);
+}
+
+.project-card__delete {
+  color: var(--error-color, #ef4444);
+  opacity: 0.85;
+}
+
+.project-card__delete:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--error-color, #ef4444) 12%, transparent);
+  color: var(--error-color, #ef4444);
+  border-color: var(--error-color, #ef4444);
+  opacity: 1;
+}
+
+.project-card__delete:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .project-card__meta {

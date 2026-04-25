@@ -1,11 +1,15 @@
 import type {
   EffortLevel,
   ModelInfo,
+  NewSessionDefaults,
   ProviderName,
   ThinkingOption,
 } from "@yep-anywhere/shared";
-import { type MouseEvent, useEffect, useMemo, useState } from "react";
+import { resolveModel } from "@yep-anywhere/shared";
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
+import { getModelSetting } from "../hooks/useModelSettings";
+import { useServerSettings } from "../hooks/useServerSettings";
 import type { PermissionMode } from "../types";
 import { useI18n } from "../i18n";
 import { Modal } from "./ui/Modal";
@@ -50,6 +54,39 @@ function toThinkingOption(
   return `on:${effort}`;
 }
 
+function getPreferredModelId(
+  models: ModelInfo[],
+  preferredModelId?: string | null,
+): string | null {
+  if (preferredModelId) {
+    const matchingPreferredModel = models.find((m) => m.id === preferredModelId);
+    if (matchingPreferredModel) return matchingPreferredModel.id;
+  }
+
+  return models.find((m) => m.id === "default")?.id ?? models[0]?.id ?? null;
+}
+
+function getRestartDefaultModel(params: {
+  provider: ProviderName;
+  models: ModelInfo[];
+  currentModel?: string;
+  defaults?: NewSessionDefaults | null;
+}): string {
+  const sessionDefaultModel =
+    params.defaults?.provider === params.provider ? params.defaults.model : undefined;
+  const legacyClaudeFallbackModel =
+    params.provider === "claude" ? resolveModel(getModelSetting()) : undefined;
+
+  return (
+    getPreferredModelId(
+      params.models,
+      sessionDefaultModel ?? legacyClaudeFallbackModel ?? params.currentModel,
+    ) ??
+    params.currentModel ??
+    "default"
+  );
+}
+
 interface RestartSessionModalProps {
   projectId: string;
   sessionId: string;
@@ -86,13 +123,20 @@ export function RestartSessionModal({
   onClose,
 }: RestartSessionModalProps) {
   const { t } = useI18n();
+  const { settings, isLoading: settingsLoading } = useServerSettings();
   const modelOptions = useMemo<ModelInfo[]>(() => {
     if (models.length > 0) return models;
     return [{ id: "default", name: "Default" }];
   }, [models]);
   const [selectedModel, setSelectedModel] = useState<string>(
-    currentModel ?? modelOptions[0]?.id ?? "default",
+    getRestartDefaultModel({
+      provider,
+      models: modelOptions,
+      currentModel,
+      defaults: settings?.newSessionDefaults,
+    }),
   );
+  const hasUserSelectedModelRef = useRef(false);
   const initialThinking = useMemo(
     () => parseThinkingOption(thinking),
     [thinking],
@@ -108,9 +152,18 @@ export function RestartSessionModal({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const alternate = modelOptions.find((model) => model.id !== currentModel);
-    setSelectedModel(alternate?.id ?? currentModel ?? modelOptions[0]?.id ?? "default");
-  }, [currentModel, modelOptions]);
+    if (settingsLoading || hasUserSelectedModelRef.current) {
+      return;
+    }
+    setSelectedModel(
+      getRestartDefaultModel({
+        provider,
+        models: modelOptions,
+        currentModel,
+        defaults: settings?.newSessionDefaults,
+      }),
+    );
+  }, [currentModel, modelOptions, provider, settings, settingsLoading]);
 
   useEffect(() => {
     setThinkingMode(initialThinking.mode);
@@ -211,7 +264,10 @@ export function RestartSessionModal({
                   <button
                     type="button"
                     className={`model-switch-item ${isCurrent ? "current" : ""} ${isSelected ? "active" : ""}`}
-                    onClick={() => setSelectedModel(model.id)}
+                    onClick={() => {
+                      hasUserSelectedModelRef.current = true;
+                      setSelectedModel(model.id);
+                    }}
                     disabled={restarting}
                   >
                     <span className="model-switch-item-main">

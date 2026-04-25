@@ -67,6 +67,11 @@ export interface DeferredMessage {
   deliveryState?: "queued" | "sending" | "recovered";
 }
 
+interface DeliveredUserEcho {
+  tempId?: string;
+  content: string;
+}
+
 function extractUserMessageText(
   sdkMessage: Record<string, unknown>,
 ): string | null {
@@ -360,11 +365,30 @@ function userTurnMatchesDeferred(
   return text === deferredText || text.startsWith(`${deferredText}\n\n`);
 }
 
+function deliveredEchoMatchesDeferred(
+  echo: DeliveredUserEcho,
+  deferred: DeferredMessage,
+): boolean {
+  if (deferred.tempId && echo.tempId === deferred.tempId) {
+    return true;
+  }
+  const echoText = echo.content.trim();
+  const deferredText = deferred.content.trim();
+  if (!echoText || !deferredText) {
+    return false;
+  }
+  return echoText === deferredText || echoText.startsWith(`${deferredText}\n\n`);
+}
+
 function removeDeliveredDeferredMessages(
   deferredMessages: DeferredMessage[],
   messages: Message[],
+  deliveredEchoes: DeliveredUserEcho[] = [],
 ): DeferredMessage[] {
-  if (deferredMessages.length === 0 || messages.length === 0) {
+  if (
+    deferredMessages.length === 0 ||
+    (messages.length === 0 && deliveredEchoes.length === 0)
+  ) {
     return deferredMessages;
   }
   const recentMessages = messages.slice(-30);
@@ -372,6 +396,9 @@ function removeDeliveredDeferredMessages(
     (deferred) =>
       !recentMessages.some((message) =>
         userTurnMatchesDeferred(message, deferred),
+      ) &&
+      !deliveredEchoes.some((echo) =>
+        deliveredEchoMatchesDeferred(echo, deferred),
       ),
   );
   return filtered.length === deferredMessages.length
@@ -577,6 +604,11 @@ export function useSession(
     onLoadComplete: handleLoadComplete,
     onLoadError: handleLoadError,
   });
+  const deliveredUserEchoesRef = useRef<DeliveredUserEcho[]>([]);
+
+  useEffect(() => {
+    deliveredUserEchoesRef.current = [];
+  }, [sessionId]);
 
   // Update local mode (UI selection) and sync to server if process is active
   const setPermissionMode = useCallback(
@@ -673,18 +705,22 @@ export function useSession(
   const addDeferredMessage = useCallback(
     (message: DeferredMessage) => {
       setDeferredMessages((prev) =>
-        upsertDeferredMessage(prev, {
-          ...message,
-          deliveryState: message.deliveryState ?? "queued",
-        }),
+        removeDeliveredDeferredMessages(
+          upsertDeferredMessage(prev, {
+            ...message,
+            deliveryState: message.deliveryState ?? "queued",
+          }),
+          messages,
+          deliveredUserEchoesRef.current,
+        ),
       );
     },
-    [setDeferredMessages],
+    [messages, setDeferredMessages],
   );
 
   const syncDeferredMessages = useCallback(
     (
-      messages: DeferredMessage[],
+      incomingMessages: DeferredMessage[],
       meta?: {
         reason?: "queued" | "cancelled" | "edited" | "promoted";
         tempId?: string;
@@ -696,13 +732,17 @@ export function useSession(
         reason: meta?.reason ?? null,
         source: meta?.source ?? null,
         tempId: meta?.tempId ?? null,
-        incoming: summarizeDeferredMessages(messages),
+        incoming: summarizeDeferredMessages(incomingMessages),
       });
       setDeferredMessages((prev) =>
-        mergeDeferredMessages(prev, messages, meta),
+        removeDeliveredDeferredMessages(
+          mergeDeferredMessages(prev, incomingMessages, meta),
+          messages,
+          deliveredUserEchoesRef.current,
+        ),
       );
     },
-    [setDeferredMessages],
+    [messages, setDeferredMessages],
   );
 
   const removeDeferredMessage = useCallback(
@@ -716,7 +756,11 @@ export function useSession(
 
   useEffect(() => {
     setDeferredMessages((prev) =>
-      removeDeliveredDeferredMessages(prev, messages),
+      removeDeliveredDeferredMessages(
+        prev,
+        messages,
+        deliveredUserEchoesRef.current,
+      ),
     );
   }, [messages, setDeferredMessages]);
 
@@ -1215,6 +1259,12 @@ export function useSession(
         const tempId = sdkMessage.tempId as string | undefined;
         if (msgType === "user") {
           const incomingText = extractUserMessageText(sdkMessage);
+          if (tempId || incomingText) {
+            deliveredUserEchoesRef.current = [
+              ...deliveredUserEchoesRef.current,
+              { ...(tempId ? { tempId } : {}), content: incomingText ?? "" },
+            ].slice(-50);
+          }
           logSessionUiTrace("user-echo", {
             sessionId,
             tempId: tempId ?? null,

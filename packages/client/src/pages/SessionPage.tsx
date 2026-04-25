@@ -859,8 +859,24 @@ function SessionPageContent({
         deferredCount: result.deferredMessages?.length ?? null,
       });
       removePendingMessage(tempId);
+      const localDeferredMessage = {
+        tempId,
+        content: outgoingText,
+        timestamp: new Date().toISOString(),
+        ...(currentAttachments.length > 0
+          ? {
+              attachmentCount: currentAttachments.length,
+              attachments: currentAttachments,
+            }
+          : {}),
+        mode: permissionMode,
+        deliveryState: "queued" as const,
+      };
       if (result.deferred === false || result.promoted) {
-        removeDeferredMessage(tempId);
+        addDeferredMessage({
+          ...localDeferredMessage,
+          deliveryState: "sending" as const,
+        });
         if (result.deferredMessages) {
           syncDeferredMessages(result.deferredMessages, {
             reason: "promoted",
@@ -880,19 +896,6 @@ function SessionPageContent({
         setQueuedEditDraft(null);
         return;
       }
-      const localDeferredMessage = {
-        tempId,
-        content: outgoingText,
-        timestamp: new Date().toISOString(),
-        ...(currentAttachments.length > 0
-          ? {
-              attachmentCount: currentAttachments.length,
-              attachments: currentAttachments,
-            }
-          : {}),
-        mode: permissionMode,
-        deliveryState: "queued" as const,
-      };
       const serverDeferredMessages = result.deferredMessages?.map((message) =>
         message.tempId === tempId
           ? {
@@ -1033,6 +1036,17 @@ function SessionPageContent({
       t,
     ],
   );
+
+  const handleCancelLatestDeferred = useCallback(() => {
+    const latest = [...deferredMessages]
+      .reverse()
+      .find((message) => message.tempId && message.deliveryState !== "sending");
+    if (!latest?.tempId) {
+      return false;
+    }
+    void handleCancelDeferred(latest.tempId);
+    return true;
+  }, [deferredMessages, handleCancelDeferred]);
 
   const handleEditDeferred = useCallback(
     async (tempId: string) => {
@@ -2172,6 +2186,7 @@ function SessionPageContent({
                 correctionActive={correctionDraft !== null}
                 onCancelCorrection={handleCancelCorrection}
                 onRecallLastSubmission={handleRecallLastSubmission}
+                onCancelLatestDeferred={handleCancelLatestDeferred}
                 collapsed={
                   !!(
                     pendingInputRequest &&

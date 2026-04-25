@@ -218,6 +218,39 @@ describe("useSession completion reconciliation", () => {
     expect(result.current.deferredMessages).toEqual([]);
   });
 
+  it("does not re-add a promoted queued chip after the user echo already arrived", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "user",
+        uuid: "uuid-promoted",
+        tempId: "temp-promoted",
+        message: {
+          role: "user",
+          content: "already promoted",
+        },
+      });
+    });
+
+    act(() => {
+      result.current.addDeferredMessage({
+        tempId: "temp-promoted",
+        content: "already promoted",
+        timestamp: "2026-04-24T00:00:00.000Z",
+        deliveryState: "sending",
+      });
+    });
+
+    expect(result.current.deferredMessages).toEqual([]);
+  });
+
   it("keeps deferred queue chips on an idle status boundary", () => {
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {

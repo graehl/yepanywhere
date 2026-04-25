@@ -150,4 +150,15 @@ describe("MessageInput", () => {
 
     expect(onStop).not.toHaveBeenCalled();
   });
+
+  it("cancels the newest queued message with Ctrl+K", () => {
+    const onCancelLatestDeferred = vi.fn(() => true);
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      onCancelLatestDeferred,
+    });
+
+    fireEvent.keyDown(textarea, { key: "k", ctrlKey: true });
+
+    expect(onCancelLatestDeferred).toHaveBeenCalledTimes(1);
+  });
 });

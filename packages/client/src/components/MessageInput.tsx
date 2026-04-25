@@ -94,6 +94,8 @@ interface Props {
   onCancelCorrection?: () => void;
   /** Restore the last sent/queued text when the composer is blank */
   onRecallLastSubmission?: () => boolean;
+  /** Cancel the newest cancellable queued message. */
+  onCancelLatestDeferred?: () => boolean;
 }
 
 export function MessageInput({
@@ -131,6 +133,7 @@ export function MessageInput({
   correctionActive = false,
   onCancelCorrection,
   onRecallLastSubmission,
+  onCancelLatestDeferred,
 }: Props) {
   const { t } = useI18n();
   const [text, setText, controls] = useDraftPersistence(draftKey);
@@ -288,6 +291,19 @@ export function MessageInput({
       e.preventDefault();
       recallLastSubmission(true);
       return;
+    }
+
+    if (
+      e.key.toLowerCase() === "k" &&
+      e.ctrlKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      !e.altKey
+    ) {
+      if (onCancelLatestDeferred?.()) {
+        e.preventDefault();
+        return;
+      }
     }
 
     if (

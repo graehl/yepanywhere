@@ -1153,6 +1153,123 @@ h2 {
   padding: 0.25rem 0 1rem;
 }
 
+.sidebar-desktop:not(.sidebar-collapsed) .sidebar {
+  --sidebar-idle-bg: var(--bg-surface);
+  --sidebar-idle-border: var(--border-color);
+  --sidebar-idle-text: var(--text-secondary);
+  --sidebar-idle-muted: var(--text-muted);
+  --sidebar-idle-brand-opacity: 1;
+
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+:where([data-theme="dark"], [data-theme="verydark"])
+  .sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar {
+  --sidebar-idle-bg: color-mix(in srgb, var(--bg-surface) 92%, black 8%);
+  --sidebar-idle-border: color-mix(
+    in srgb,
+    var(--border-color) 72%,
+    transparent
+  );
+  --sidebar-idle-text: color-mix(
+    in srgb,
+    var(--text-secondary) 74%,
+    var(--text-dimmed)
+  );
+  --sidebar-idle-muted: color-mix(
+    in srgb,
+    var(--text-muted) 58%,
+    var(--text-dimmed)
+  );
+  --sidebar-idle-brand-opacity: 0.84;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] .sidebar-desktop:not(.sidebar-collapsed) .sidebar {
+    --sidebar-idle-bg: color-mix(in srgb, var(--bg-surface) 92%, black 8%);
+    --sidebar-idle-border: color-mix(
+      in srgb,
+      var(--border-color) 72%,
+      transparent
+    );
+    --sidebar-idle-text: color-mix(
+      in srgb,
+      var(--text-secondary) 74%,
+      var(--text-dimmed)
+    );
+    --sidebar-idle-muted: color-mix(
+      in srgb,
+      var(--text-muted) 58%,
+      var(--text-dimmed)
+    );
+    --sidebar-idle-brand-opacity: 0.84;
+  }
+}
+
+.sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-brand,
+.sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-nav-text,
+.sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-nav-label,
+.sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-nav-item svg,
+.sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-section-title,
+.sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-show-more,
+.sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-empty,
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar
+  .session-list-item__title-text,
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar
+  .session-list-item__project-compact {
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar:not(:hover):not(:focus-within) {
+  background: var(--sidebar-idle-bg);
+  border-right-color: var(--sidebar-idle-border);
+}
+
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar:not(:hover):not(:focus-within)
+  .sidebar-brand {
+  opacity: var(--sidebar-idle-brand-opacity);
+}
+
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar:not(:hover):not(:focus-within)
+  .sidebar-nav-item:not(.active)
+  .sidebar-nav-text,
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar:not(:hover):not(:focus-within)
+  .sidebar-nav-item:not(.active)
+  .sidebar-nav-label,
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar:not(:hover):not(:focus-within)
+  .session-list-item--compact:not(.current):not(.unread)
+  .session-list-item__title-text {
+  color: var(--sidebar-idle-text);
+}
+
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar:not(:hover):not(:focus-within)
+  .sidebar-nav-item:not(.active)
+  svg,
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar:not(:hover):not(:focus-within)
+  .sidebar-section-title,
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar:not(:hover):not(:focus-within)
+  .sidebar-show-more,
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar:not(:hover):not(:focus-within)
+  .sidebar-empty,
+.sidebar-desktop:not(.sidebar-collapsed)
+  .sidebar:not(:hover):not(:focus-within)
+  .session-list-item--compact:not(.current):not(.unread)
+  .session-list-item__project-compact {
+  color: var(--sidebar-idle-muted);
+}
+
 /* Unified sidebar navigation section and items */
 .sidebar-nav-section {
   display: flex;

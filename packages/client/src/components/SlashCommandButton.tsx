@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getSlashCommandMenuParts } from "../lib/slashCommands";
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 
 interface SlashCommandButtonProps {
@@ -105,18 +106,38 @@ export function SlashCommandButton({
           aria-label="Slash commands"
         >
           {commands.map((command) => (
-            <button
+            <SlashCommandMenuItem
               key={command}
-              type="button"
-              className="slash-command-item"
-              onClick={() => handleCommandClick(command)}
-              role="menuitem"
-            >
-              /{command}
-            </button>
+              command={command}
+              onSelect={handleCommandClick}
+            />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function SlashCommandMenuItem({
+  command,
+  onSelect,
+}: {
+  command: string;
+  onSelect: (command: string) => void;
+}) {
+  const parts = getSlashCommandMenuParts(command);
+  return (
+    <button
+      type="button"
+      className="slash-command-item"
+      onClick={() => onSelect(command)}
+      role="menuitem"
+      aria-label={parts.label}
+    >
+      {parts.shortcut && (
+        <strong className="slash-command-shortcut">{parts.shortcut}</strong>
+      )}
+      <span>{parts.rest}</span>
+    </button>
   );
 }

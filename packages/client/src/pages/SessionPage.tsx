@@ -1,4 +1,8 @@
-import type { ProviderName, UploadedFile } from "@yep-anywhere/shared";
+import type {
+  ProviderName,
+  ThinkingOption,
+  UploadedFile,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, type DeferredMessagePlacement } from "../api/client";
@@ -49,6 +53,10 @@ import {
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
 import { preprocessMessages } from "../lib/preprocessMessages";
+import {
+  CLIENT_SLASH_COMMANDS,
+  resolveComposerSlashTurn,
+} from "../lib/slashCommands";
 import { generateUUID } from "../lib/uuid";
 import { getSessionDisplayTitle } from "../utils";
 
@@ -58,6 +66,12 @@ const PENDING_ELSEWHERE_DISMISS_KEY_PREFIX =
 interface QueuedEditDraft {
   originalTempId: string;
   placement?: DeferredMessagePlacement;
+}
+
+interface PreparedComposerSubmission {
+  outgoingText: string;
+  thinking?: ThinkingOption;
+  slashCommand?: "fast" | "run";
 }
 
 function getDeferredEditPlacement(
@@ -329,22 +343,26 @@ function SessionPageContent({
     status.owner === "self" && slashCommands.includes("compact");
 
   // Inject custom client-side commands alongside SDK-discovered ones.
-  // Keep /model first because it doubles as the visible model/effort status.
+  // Keep /model last so it stays nearest the slash button in the upward menu.
   const allSlashCommands = useMemo(() => {
     if (status.owner !== "self") {
       return slashCommands;
     }
 
-    const orderedCommands = ["model"];
+    const orderedCommands: string[] = CLIENT_SLASH_COMMANDS.filter(
+      (command) => command !== "model",
+    );
     if (supportsManualCompact) {
       orderedCommands.push("compact");
     }
 
     for (const command of slashCommands) {
-      if (!orderedCommands.includes(command)) {
+      if (command !== "model" && !orderedCommands.includes(command)) {
         orderedCommands.push(command);
       }
     }
+
+    orderedCommands.push("model");
 
     return orderedCommands;
   }, [slashCommands, status.owner, supportsManualCompact]);
@@ -593,6 +611,36 @@ function SessionPageContent({
     [correctionDraft, showToast, t],
   );
 
+  const prepareComposerSubmission = (
+    text: string,
+  ): PreparedComposerSubmission | null => {
+    const slashTurn = resolveComposerSlashTurn(text);
+    if (slashTurn.kind === "custom") {
+      if (handleCustomCommand(slashTurn.command)) {
+        return null;
+      }
+      const outgoingText = getOutgoingMessageText(text);
+      return outgoingText ? { outgoingText } : null;
+    }
+
+    if (slashTurn.kind === "error") {
+      draftControlsRef.current?.setDraft(text);
+      showToast(slashTurn.message, "error");
+      return null;
+    }
+
+    const outgoingText = getOutgoingMessageText(slashTurn.text);
+    if (!outgoingText) {
+      return null;
+    }
+
+    return {
+      outgoingText,
+      thinking: slashTurn.thinking,
+      slashCommand: slashTurn.command,
+    };
+  };
+
   // Approval panel collapsed state (separate from message input collapse)
   const [approvalCollapsed, setApprovalCollapsed] = useState(false);
 
@@ -637,10 +685,12 @@ function SessionPageContent({
   });
 
   const handleSend = async (text: string) => {
-    const outgoingText = getOutgoingMessageText(text);
-    if (!outgoingText) {
+    const prepared = prepareComposerSubmission(text);
+    if (!prepared) {
       return;
     }
+    const { outgoingText, slashCommand } = prepared;
+    const thinking = prepared.thinking ?? getThinkingSetting();
 
     // Add to pending queue and get tempId to pass to server
     const tempId = addPendingMessage(outgoingText);
@@ -653,7 +703,8 @@ function SessionPageContent({
       owner: status.owner,
       processId: status.owner === "self" ? status.processId : null,
       permissionMode,
-      thinking: getThinkingSetting(),
+      thinking,
+      slashCommand: slashCommand ?? null,
       textLength: outgoingText.length,
       attachmentCount: attachments.length,
       hasCorrectionDraft: !!correctionDraft,
@@ -688,7 +739,6 @@ function SessionPageContent({
         // Use session's existing model if available (important for non-Claude providers),
         // otherwise fall back to user's model preference for new Claude sessions
         const model = session?.model ?? getModelSetting();
-        const thinking = getThinkingSetting();
         // Use effectiveProvider to ensure correct provider even if session data hasn't loaded
         // effectiveProvider = session?.provider ?? initialProvider (from navigation state)
         const result = await api.resumeSession(
@@ -714,7 +764,6 @@ function SessionPageContent({
         setStatus({ owner: "self", processId: result.processId });
       } else {
         // Queue to existing process with current permission mode and thinking setting
-        const thinking = getThinkingSetting();
         const result = await api.queueMessage(
           sessionId,
           outgoingText,
@@ -756,7 +805,6 @@ function SessionPageContent({
       if (is404) {
         try {
           const model = session?.model ?? getModelSetting();
-          const thinking = getThinkingSetting();
           const result = await api.resumeSession(
             projectId,
             sessionId,
@@ -805,10 +853,12 @@ function SessionPageContent({
   };
 
   const handleQueue = async (text: string) => {
-    const outgoingText = getOutgoingMessageText(text);
-    if (!outgoingText) {
+    const prepared = prepareComposerSubmission(text);
+    if (!prepared) {
       return;
     }
+    const { outgoingText, slashCommand } = prepared;
+    const thinking = prepared.thinking ?? getThinkingSetting();
 
     const tempId = addPendingMessage(outgoingText);
     setScrollTrigger((prev) => prev + 1);
@@ -818,7 +868,8 @@ function SessionPageContent({
       owner: status.owner,
       processId: status.owner === "self" ? status.processId : null,
       permissionMode,
-      thinking: getThinkingSetting(),
+      thinking,
+      slashCommand: slashCommand ?? null,
       textLength: outgoingText.length,
       attachmentCount: attachments.length,
       queuedEditOriginalTempId: queuedEditDraft?.originalTempId ?? null,
@@ -844,7 +895,6 @@ function SessionPageContent({
     }
 
     try {
-      const thinking = getThinkingSetting();
       const queuedEditDraftAtSubmit = queuedEditDraft;
       const result = await api.queueMessage(
         sessionId,
@@ -951,7 +1001,6 @@ function SessionPageContent({
       if (isProcessUnavailable) {
         try {
           const model = session?.model ?? getModelSetting();
-          const thinking = getThinkingSetting();
           const result = await api.resumeSession(
             projectId,
             sessionId,

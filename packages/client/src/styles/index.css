@@ -2947,6 +2947,11 @@ a.sidebar-nav-item {
   background: var(--bg-hover);
 }
 
+.slash-command-shortcut {
+  color: var(--link-color);
+  font-weight: 700;
+}
+
 .slash-command-item:first-child {
   border-radius: var(--radius-md) var(--radius-md) 0 0;
 }

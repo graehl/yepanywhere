@@ -165,6 +165,10 @@ export function MessageInput({
 
   // Panel is collapsed if user collapsed it OR if externally collapsed (approval panel showing)
   const collapsed = userCollapsed || externalCollapsed;
+  const canSubmit = !!(text.trim() || attachments.length > 0);
+  const primaryActionLabel = onQueue
+    ? t("toolbarQueueLabel")
+    : t("toolbarSend");
 
   const canAttach = !!(projectId && sessionId && onAttach);
 
@@ -221,6 +225,8 @@ export function MessageInput({
       textareaRef.current?.focus();
     }
   }, [text, disabled, controls, onQueue, attachments.length]);
+
+  const submitFromCollapsed = onQueue ? handleQueue : handleSubmit;
 
   const recallLastSubmission = useCallback((allowExistingText = false) => {
     if (
@@ -495,12 +501,28 @@ export function MessageInput({
           }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
+          enterKeyHint="send"
           placeholder={
             externalCollapsed ? t("messageInputContinueAbove") : placeholder
           }
           disabled={disabled}
           rows={collapsed ? 1 : 3}
         />
+
+        {collapsed && (
+          <div className="message-input-collapsed-actions">
+            <button
+              type="button"
+              onClick={submitFromCollapsed}
+              disabled={disabled || !canSubmit}
+              className={`send-button message-input-collapsed-send ${onQueue ? "queue-mode" : ""}`}
+              aria-label={primaryActionLabel}
+              title={primaryActionLabel}
+            >
+              <span className="send-icon">↑</span>
+            </button>
+          </div>
+        )}
 
         {!collapsed && correctionActive && (
           <div className="correction-draft">
@@ -598,7 +620,7 @@ export function MessageInput({
             onSend={handleSubmit}
             onQueue={onQueue ? handleQueue : undefined}
             queueMode={!!onQueue}
-            canSend={!!(text.trim() || attachments.length > 0)}
+            canSend={canSubmit}
             disabled={disabled}
           />
         )}

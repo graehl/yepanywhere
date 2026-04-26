@@ -2085,6 +2085,7 @@ a.sidebar-nav-item {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  position: relative;
 }
 
 .message-input textarea {
@@ -2149,6 +2150,22 @@ a.sidebar-nav-item {
   padding: 0.5rem 0.75rem;
   font-size: var(--font-size-sm);
   min-height: 0;
+  padding-right: calc(var(--composer-primary-control-size, 36px) + 0.75rem);
+}
+
+.message-input-collapsed-actions {
+  position: absolute;
+  right: 0.375rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  z-index: 2;
+}
+
+.message-input-collapsed-send {
+  --composer-primary-control-size: 30px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.22);
 }
 
 .message-input-toolbar {
@@ -5477,6 +5494,26 @@ a.sidebar-nav-item {
   .message-input-left,
   .message-input-actions {
     gap: 0.375rem;
+  }
+
+  .message-input-left {
+    flex: 0 1 auto;
+    overflow: visible;
+  }
+
+  .composer-activity-age {
+    position: absolute;
+    right: calc(var(--composer-primary-control-size) + 0.375rem);
+    bottom: calc(100% + 0.375rem);
+    z-index: 3;
+    margin-left: 0;
+    padding: 2px 6px;
+    border: 1px solid color-mix(in srgb, var(--warning-color) 28%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-surface) 96%, transparent);
+    color: color-mix(in srgb, var(--warning-color) 78%, var(--text-primary));
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.24);
+    opacity: 0.96;
   }
 
   .mode-button {

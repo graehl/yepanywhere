@@ -57,11 +57,12 @@ function renderMessageInput(
   onRecallLastSubmission = vi.fn(() => true),
   extraProps: Partial<ComponentProps<typeof MessageInput>> = {},
 ) {
+  const placeholder = extraProps.placeholder ?? "Message";
   render(
     <MessageInput
       onSend={vi.fn()}
       draftKey="test-draft"
-      placeholder="Message"
+      placeholder={placeholder}
       supportsPermissionMode={false}
       supportsThinkingToggle={false}
       onRecallLastSubmission={onRecallLastSubmission}
@@ -69,7 +70,9 @@ function renderMessageInput(
     />,
   );
 
-  return screen.getByPlaceholderText("Message");
+  return screen.getByPlaceholderText(
+    extraProps.collapsed ? "messageInputContinueAbove" : placeholder,
+  );
 }
 
 describe("MessageInput", () => {
@@ -172,5 +175,33 @@ describe("MessageInput", () => {
     });
 
     expect(screen.getByText("Last activity 6m")).toBeTruthy();
+  });
+
+  it("keeps a send affordance visible when the composer is collapsed", () => {
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      onSend,
+      collapsed: true,
+      placeholder: "messageInputContinueAbove",
+    });
+
+    fireEvent.change(textarea, { target: { value: "collapsed send" } });
+    fireEvent.click(screen.getByLabelText("toolbarSend"));
+
+    expect(onSend).toHaveBeenCalledWith("collapsed send");
+  });
+
+  it("keeps a queue affordance visible when the running composer is collapsed", () => {
+    const onQueue = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      onQueue,
+      collapsed: true,
+      placeholder: "messageInputContinueAbove",
+    });
+
+    fireEvent.change(textarea, { target: { value: "collapsed queue" } });
+    fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
+
+    expect(onQueue).toHaveBeenCalledWith("collapsed queue");
   });
 });

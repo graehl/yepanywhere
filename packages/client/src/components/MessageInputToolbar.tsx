@@ -3,9 +3,12 @@ import { useRef } from "react";
 import type { MouseEvent, RefObject, TouchEvent } from "react";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
 import { useModelSettings } from "../hooks/useModelSettings";
+import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useI18n } from "../i18n";
+import { isStaleTimestamp, parseTimestampMs } from "../lib/messageAge";
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 import type { ContextUsage, PermissionMode } from "../types";
+import { MessageAge } from "./MessageAge";
 import { RenderModeGlyph } from "./ui/RenderModeGlyph";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { ModeSelector } from "./ModeSelector";
@@ -49,6 +52,8 @@ export interface MessageInputToolbarProps {
 
   // Context usage
   contextUsage?: ContextUsage;
+  /** Last session activity timestamp for stale composer liveness display. */
+  lastActivityAt?: string | null;
 
   // Actions
   isRunning?: boolean;
@@ -93,6 +98,7 @@ export function MessageInputToolbar({
   onToggleHeartbeat,
   onConfigureHeartbeat,
   contextUsage,
+  lastActivityAt,
   isRunning,
   isThinking,
   onStop,
@@ -105,6 +111,9 @@ export function MessageInputToolbar({
   const { t } = useI18n();
   const { thinkingMode, cycleThinkingMode, thinkingLevel } = useModelSettings();
   const renderMode = useOptionalRenderModeContext();
+  const nowMs = useRelativeNow();
+  const lastActivityMs = parseTimestampMs(lastActivityAt);
+  const showLastActivityAge = isStaleTimestamp(lastActivityMs, nowMs);
   const heartbeatLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -343,6 +352,19 @@ export function MessageInputToolbar({
           />
         )}
       </div>
+      {showLastActivityAge && (
+        <div
+          className="composer-activity-age"
+          aria-label="Session last activity"
+        >
+          <MessageAge
+            timestampMs={lastActivityMs}
+            nowMs={nowMs}
+            className="composer-activity-age-time"
+            prefix="Last activity"
+          />
+        </div>
+      )}
       <div className="message-input-actions">
         {/* Pending approval indicator */}
         {pendingApproval && (

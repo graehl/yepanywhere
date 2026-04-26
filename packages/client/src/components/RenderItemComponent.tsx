@@ -1,5 +1,10 @@
 import { memo, useCallback } from "react";
+import {
+  MESSAGE_STALE_THRESHOLD_MS,
+  getLatestMessageTimestampMs,
+} from "../lib/messageAge";
 import type { RenderItem } from "../types/renderItems";
+import { MessageAge } from "./MessageAge";
 import { SessionSetupBlock } from "./blocks/SessionSetupBlock";
 import { TextBlock } from "./blocks/TextBlock";
 import { ThinkingBlock } from "./blocks/ThinkingBlock";
@@ -13,6 +18,8 @@ interface Props {
   toggleThinkingExpanded: () => void;
   sessionProvider?: string;
   onCorrectUserPrompt?: () => void;
+  nowMs?: number;
+  latestVisibleTimestampMs?: number | null;
 }
 
 function getMessageIdLike(message: Record<string, unknown>): string {
@@ -128,7 +135,16 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   toggleThinkingExpanded,
   sessionProvider,
   onCorrectUserPrompt,
+  nowMs = Date.now(),
+  latestVisibleTimestampMs,
 }: Props) {
+  const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
+  const hasTimestamp = timestampMs !== null;
+  const showAgeByDefault =
+    hasTimestamp &&
+    latestVisibleTimestampMs === timestampMs &&
+    nowMs - timestampMs >= MESSAGE_STALE_THRESHOLD_MS;
+
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       // Don't interfere with text selection (important for mobile long-press)
@@ -229,12 +245,20 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: debug feature, shift+click only
     <div
-      className={item.isSubagent ? "subagent-item" : undefined}
+      className={[
+        "message-render-row",
+        hasTimestamp ? "has-message-age" : "",
+        showAgeByDefault ? "is-message-age-visible" : "",
+        item.isSubagent ? "subagent-item" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       data-render-type={item.type}
       data-render-id={item.id}
       onClick={handleClick}
     >
-      {renderContent()}
+      <div className="message-render-content">{renderContent()}</div>
+      <MessageAge timestampMs={timestampMs} nowMs={nowMs} />
     </div>
   );
 });

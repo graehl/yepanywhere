@@ -59,6 +59,8 @@ interface Props {
   onDraftControlsReady?: (controls: DraftControls) => void;
   /** Context usage for displaying usage indicator */
   contextUsage?: ContextUsage;
+  /** Last session activity timestamp for stale composer liveness display. */
+  lastActivityAt?: string | null;
   /** Project ID for uploads (required to enable attach button) */
   projectId?: string;
   /** Session ID for uploads (required to enable attach button) */
@@ -115,6 +117,7 @@ export function MessageInput({
   collapsed: externalCollapsed,
   onDraftControlsReady,
   contextUsage,
+  lastActivityAt,
   projectId,
   sessionId,
   attachments = [],
@@ -588,6 +591,7 @@ export function MessageInput({
             onToggleHeartbeat={onToggleHeartbeat}
             onConfigureHeartbeat={onConfigureHeartbeat}
             contextUsage={contextUsage}
+            lastActivityAt={lastActivityAt}
             isRunning={isRunning}
             isThinking={isThinking}
             onStop={onStop}

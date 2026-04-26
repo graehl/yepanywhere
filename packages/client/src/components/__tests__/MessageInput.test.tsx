@@ -75,6 +75,7 @@ function renderMessageInput(
 describe("MessageInput", () => {
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -160,5 +161,16 @@ describe("MessageInput", () => {
     fireEvent.keyDown(textarea, { key: "k", ctrlKey: true });
 
     expect(onCancelLatestDeferred).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows stale last activity in the composer chrome", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T12:06:00.000Z"));
+
+    renderMessageInput(vi.fn(() => true), {
+      lastActivityAt: "2026-04-26T12:00:00.000Z",
+    });
+
+    expect(screen.getByText("Last activity 6m")).toBeTruthy();
   });
 });

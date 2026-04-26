@@ -4,11 +4,19 @@ import {
   type ActiveToolApproval,
   preprocessMessages,
 } from "../lib/preprocessMessages";
+import { useRelativeNow } from "../hooks/useRelativeNow";
+import {
+  MESSAGE_STALE_THRESHOLD_MS,
+  getLatestMessageTimestampMs,
+  isStaleTimestamp,
+  parseTimestampMs,
+} from "../lib/messageAge";
 import { parseUserPrompt } from "../lib/parseUserPrompt";
 import type { Message } from "../types";
 import type { ContentBlock } from "../types";
 import type { RenderItem } from "../types/renderItems";
 import { ProcessingIndicator } from "./ProcessingIndicator";
+import { MessageAge } from "./MessageAge";
 import { RenderItemComponent } from "./RenderItemComponent";
 
 /**
@@ -142,6 +150,7 @@ export const MessageList = memo(function MessageList({
   const lastHeightRef = useRef(0);
   const followUpScrollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
+  const nowMs = useRelativeNow();
 
   // Scroll to bottom, marking it as programmatic so scroll handler ignores it
   const scrollToBottom = useCallback((container: HTMLElement) => {
@@ -184,6 +193,25 @@ export const MessageList = memo(function MessageList({
     () => groupItemsIntoTurns(renderItems),
     [renderItems],
   );
+  const latestVisibleTimestampMs = useMemo(() => {
+    let latest: number | null = null;
+    const includeTimestamp = (timestampMs: number | null) => {
+      if (timestampMs === null) return;
+      latest = latest === null ? timestampMs : Math.max(latest, timestampMs);
+    };
+
+    for (const item of renderItems) {
+      includeTimestamp(getLatestMessageTimestampMs(item.sourceMessages));
+    }
+    for (const pending of pendingMessages) {
+      includeTimestamp(parseTimestampMs(pending.timestamp));
+    }
+    for (const deferred of deferredMessages) {
+      includeTimestamp(parseTimestampMs(deferred.timestamp));
+    }
+
+    return latest;
+  }, [renderItems, pendingMessages, deferredMessages]);
   const latestCorrectablePrompt = useMemo(() => {
     if (!onCorrectLatestUserMessage) return null;
 
@@ -357,6 +385,8 @@ export const MessageList = memo(function MessageList({
                       )
                   : undefined
               }
+              nowMs={nowMs}
+              latestVisibleTimestampMs={latestVisibleTimestampMs}
             />
           );
         }
@@ -373,95 +403,128 @@ export const MessageList = memo(function MessageList({
                 thinkingExpanded={thinkingExpanded}
                 toggleThinkingExpanded={toggleThinkingExpanded}
                 sessionProvider={provider}
+                nowMs={nowMs}
+                latestVisibleTimestampMs={latestVisibleTimestampMs}
               />
             ))}
           </div>
         );
       })}
       {/* Pending messages - shown as "Uploading..." or "Sending..." until server confirms */}
-      {pendingMessages.map((pending) => (
-        <div key={pending.tempId} className="pending-message">
-          <div className="message-user-prompt pending-message-bubble">
-            {pending.content}
+      {pendingMessages.map((pending) => {
+        const timestampMs = parseTimestampMs(pending.timestamp);
+        const showAgeByDefault =
+          latestVisibleTimestampMs === timestampMs &&
+          isStaleTimestamp(
+            timestampMs,
+            nowMs,
+            MESSAGE_STALE_THRESHOLD_MS,
+          );
+        return (
+          <div
+            key={pending.tempId}
+            className={`pending-message message-render-row ${
+              timestampMs !== null ? "has-message-age" : ""
+            } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
+          >
+            <div className="message-render-content">
+              <div className="message-user-prompt pending-message-bubble">
+                {pending.content}
+              </div>
+              <div className="pending-message-status">
+                {pending.status || "Sending..."}
+              </div>
+            </div>
+            <MessageAge timestampMs={timestampMs} nowMs={nowMs} />
           </div>
-          <div className="pending-message-status">
-            {pending.status || "Sending..."}
-          </div>
-        </div>
-      ))}
+        );
+      })}
       {/* Deferred messages - queued server-side, waiting for agent turn to end */}
       {deferredMessages.map((deferred, index) => {
         const canEditDeferred = !!(deferred.tempId && onEditDeferred);
+        const timestampMs = parseTimestampMs(deferred.timestamp);
+        const showAgeByDefault =
+          latestVisibleTimestampMs === timestampMs &&
+          isStaleTimestamp(
+            timestampMs,
+            nowMs,
+            MESSAGE_STALE_THRESHOLD_MS,
+          );
         return (
           <div
             key={deferred.tempId ?? `deferred-${index}`}
-            className="deferred-message"
+            className={`deferred-message message-render-row ${
+              timestampMs !== null ? "has-message-age" : ""
+            } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
           >
-            {canEditDeferred ? (
-              <button
-                type="button"
-                className="message-user-prompt deferred-message-bubble deferred-message-edit"
-                onClick={() => onEditDeferred?.(deferred.tempId as string)}
-                title="Edit queued message"
-                aria-label="Edit queued message"
-              >
-                {deferred.content}
-              </button>
-            ) : (
-              <div className="message-user-prompt deferred-message-bubble">
-                {deferred.content}
-              </div>
-            )}
-          <div className="deferred-message-footer">
-            <span className="deferred-message-status">
-              {deferred.deliveryState === "sending"
-                ? "Sending queued message..."
-                : deferred.deliveryState === "recovered"
-                  ? "Recovered draft (not queued)"
-                  : deferred.blockedByEdit
-                    ? "Queued (after edit)"
-                  : index === 0
-                    ? "Queued (next)"
-                    : `Queued (#${index + 1})`}
-            </span>
-            {deferred.attachmentCount ? (
-              <span
-                className="deferred-message-attachments"
-                title={`${deferred.attachmentCount} attachment${
-                  deferred.attachmentCount === 1 ? "" : "s"
-                } queued`}
-                aria-label={`${deferred.attachmentCount} attachment${
-                  deferred.attachmentCount === 1 ? "" : "s"
-                } queued`}
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
+            <div className="message-render-content">
+              {canEditDeferred ? (
+                <button
+                  type="button"
+                  className="message-user-prompt deferred-message-bubble deferred-message-edit"
+                  onClick={() => onEditDeferred?.(deferred.tempId as string)}
+                  title="Edit queued message"
+                  aria-label="Edit queued message"
                 >
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                </svg>
-                <span>{deferred.attachmentCount}</span>
-              </span>
-            ) : null}
-            {deferred.tempId && onCancelDeferred && (
-              <button
-                type="button"
-                className="deferred-message-cancel"
-                onClick={() => onCancelDeferred(deferred.tempId as string)}
-                aria-label="Cancel queued message"
-              >
-                ×
-              </button>
-            )}
+                  {deferred.content}
+                </button>
+              ) : (
+                <div className="message-user-prompt deferred-message-bubble">
+                  {deferred.content}
+                </div>
+              )}
+              <div className="deferred-message-footer">
+                <span className="deferred-message-status">
+                  {deferred.deliveryState === "sending"
+                    ? "Sending queued message..."
+                    : deferred.deliveryState === "recovered"
+                      ? "Recovered draft (not queued)"
+                      : deferred.blockedByEdit
+                        ? "Queued (after edit)"
+                        : index === 0
+                          ? "Queued (next)"
+                          : `Queued (#${index + 1})`}
+                </span>
+                {deferred.attachmentCount ? (
+                  <span
+                    className="deferred-message-attachments"
+                    title={`${deferred.attachmentCount} attachment${
+                      deferred.attachmentCount === 1 ? "" : "s"
+                    } queued`}
+                    aria-label={`${deferred.attachmentCount} attachment${
+                      deferred.attachmentCount === 1 ? "" : "s"
+                    } queued`}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                    </svg>
+                    <span>{deferred.attachmentCount}</span>
+                  </span>
+                ) : null}
+                {deferred.tempId && onCancelDeferred && (
+                  <button
+                    type="button"
+                    className="deferred-message-cancel"
+                    onClick={() => onCancelDeferred(deferred.tempId as string)}
+                    aria-label="Cancel queued message"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+            <MessageAge timestampMs={timestampMs} nowMs={nowMs} />
           </div>
-        </div>
         );
       })}
       {/* Compacting indicator - shown when context is being compressed */}

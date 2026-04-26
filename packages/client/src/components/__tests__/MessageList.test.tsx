@@ -6,18 +6,28 @@ import { buildCorrectionText } from "../../lib/correctionText";
 import type { Message } from "../../types";
 import { MessageList } from "../MessageList";
 
-function userMessage(uuid: string, content: string): Message {
+function userMessage(
+  uuid: string,
+  content: string,
+  timestamp?: string,
+): Message {
   return {
     type: "user",
     uuid,
+    timestamp,
     message: { role: "user", content },
   };
 }
 
-function assistantMessage(uuid: string, content: string): Message {
+function assistantMessage(
+  uuid: string,
+  content: string,
+  timestamp?: string,
+): Message {
   return {
     type: "assistant",
     uuid,
+    timestamp,
     message: { role: "assistant", content },
   };
 }
@@ -37,6 +47,7 @@ describe("MessageList", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -121,5 +132,27 @@ describe("MessageList", () => {
     );
 
     expect(screen.getByText("Queued (after edit)")).toBeTruthy();
+  });
+
+  it("keeps the latest stale message age visible in the right rail", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T12:10:00.000Z"));
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage(
+            "user-1",
+            "stale request",
+            "2026-04-26T12:00:00.000Z",
+          ),
+        ]}
+      />,
+    );
+
+    const row = container.querySelector('[data-render-id="user-1"]');
+
+    expect(row?.classList.contains("has-message-age")).toBe(true);
+    expect(row?.classList.contains("is-message-age-visible")).toBe(true);
+    expect(row?.querySelector(".message-age")?.textContent).toBe("10m");
   });
 });

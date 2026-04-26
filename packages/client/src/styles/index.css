@@ -1841,6 +1841,59 @@ a.sidebar-nav-item {
   padding-left: 24px;
 }
 
+.message-render-row {
+  position: relative;
+}
+
+.message-render-row.has-message-age {
+  padding-bottom: 1rem;
+}
+
+.message-render-content {
+  min-width: 0;
+}
+
+.message-age {
+  position: absolute;
+  right: -0.25rem;
+  bottom: 0;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-primary) 92%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-subtle) 65%, transparent);
+  color: var(--text-dimmed);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
+  opacity: 0;
+  pointer-events: none;
+  text-align: right;
+  transition: opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .message-render-row.has-message-age:hover .message-age,
+  .message-render-row.has-message-age:focus-within .message-age {
+    opacity: 0.78;
+  }
+}
+
+.message-render-row.is-message-age-visible .message-age {
+  color: color-mix(in srgb, var(--warning-color) 70%, var(--text-dimmed));
+  opacity: 0.9;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .message-render-row.has-message-age:not(.is-message-age-visible) {
+    padding-bottom: 0;
+  }
+
+  .message-render-row.has-message-age:not(.is-message-age-visible) .message-age {
+    display: none;
+  }
+}
+
 .message-content {
   white-space: pre-wrap;
   word-break: break-word;
@@ -1963,6 +2016,22 @@ a.sidebar-nav-item {
   position: relative;
   --composer-control-size: 32px;
   --composer-primary-control-size: 36px;
+}
+
+.composer-activity-age {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: color-mix(in srgb, var(--warning-color) 62%, var(--text-dimmed));
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
+  opacity: 0.88;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.composer-activity-age-time {
+  color: inherit;
 }
 
 /* Pending approval indicator button in toolbar */

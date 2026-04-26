@@ -2189,6 +2189,7 @@ function SessionPageContent({
                     onToggleHeartbeat={handleToggleHeartbeat}
                     onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                     contextUsage={session?.contextUsage}
+                    lastActivityAt={activityAt}
                     isRunning={status.owner === "self"}
                     isThinking={canStopOwnedProcess}
                     onStop={handleAbort}
@@ -2246,6 +2247,7 @@ function SessionPageContent({
                   )
                 }
                 contextUsage={session?.contextUsage}
+                lastActivityAt={activityAt}
                 projectId={projectId}
                 sessionId={sessionId}
                 attachments={attachments}

@@ -1,3 +1,4 @@
 - new session project selection
 - Rich rendering for agent output via yepanywhere
 - Codex GPT-5.5 model and protocol compatibility
+- Pluggable speech recognition providers

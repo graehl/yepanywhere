@@ -76,6 +76,7 @@ describe("StreamCoordinator", () => {
       expect(result1.augments).toHaveLength(1);
       expect(result1.augments[0]?.type).toBe("code");
       expect(result1.augments[0]?.blockIndex).toBe(0);
+      expect(result1.augments[0]?.html).not.toContain("<span");
       expect(result1.pendingHtml).toBe(""); // No pending when streaming code block
 
       const result2 = await coordinator.onChunk("const x = 1;\n");
@@ -83,11 +84,13 @@ describe("StreamCoordinator", () => {
       expect(result2.augments[0]?.type).toBe("code");
       expect(result2.augments[0]?.blockIndex).toBe(0); // Same block index
       expect(result2.augments[0]?.html).toContain("const");
+      expect(result2.augments[0]?.html).not.toContain("<span");
 
       const result3 = await coordinator.onChunk("```\n");
       expect(result3.augments).toHaveLength(1);
       expect(result3.augments[0]?.type).toBe("code");
       expect(result3.augments[0]?.blockIndex).toBe(0); // Still same block index
+      expect(result3.augments[0]?.html).toContain("<span");
     });
   });
 

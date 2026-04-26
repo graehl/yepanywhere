@@ -104,12 +104,10 @@ export async function createAugmentGenerator(
       const code = extractStreamingCodeContent(block.content);
       const lang = block.lang ?? "";
 
-      const html = await renderCodeWithHighlighter(
-        code,
-        lang,
-        highlighter,
-        loadedLanguages,
-      );
+      // Avoid running Shiki over the whole growing code block on every token.
+      // Completed code blocks still get full syntax highlighting through
+      // processBlock once the closing fence arrives.
+      const html = renderPlainCodeBlock(code, lang);
       return { blockIndex, html, type: "code" };
     },
 

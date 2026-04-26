@@ -104,6 +104,7 @@ function isCodexProviderName(
 function parseDeferredPlacement(body: {
   insertBeforeTempId?: unknown;
   insertAfterTempId?: unknown;
+  replaceDeferredTempId?: unknown;
 }): DeferredMessagePlacement | undefined {
   const beforeTempId =
     typeof body.insertBeforeTempId === "string" &&
@@ -114,12 +115,18 @@ function parseDeferredPlacement(body: {
     typeof body.insertAfterTempId === "string" && body.insertAfterTempId.trim()
       ? body.insertAfterTempId.trim()
       : undefined;
-  if (!beforeTempId && !afterTempId) {
+  const replaceTempId =
+    typeof body.replaceDeferredTempId === "string" &&
+    body.replaceDeferredTempId.trim()
+      ? body.replaceDeferredTempId.trim()
+      : undefined;
+  if (!beforeTempId && !afterTempId && !replaceTempId) {
     return undefined;
   }
   return {
     ...(afterTempId ? { afterTempId } : {}),
     ...(beforeTempId ? { beforeTempId } : {}),
+    ...(replaceTempId ? { replaceTempId } : {}),
   };
 }
 
@@ -160,6 +167,8 @@ interface StartSessionBody {
   insertBeforeTempId?: string;
   /** Deferred queue reinsertion anchor for edited queued messages */
   insertAfterTempId?: string;
+  /** Queued temp ID currently held behind an edit barrier */
+  replaceDeferredTempId?: string;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
   /** Permission rules for tool filtering (deny/allow patterns) */

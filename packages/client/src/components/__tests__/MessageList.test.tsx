@@ -69,6 +69,7 @@ describe("MessageList", () => {
       name: "Edit latest message",
     });
     expect(buttons).toHaveLength(1);
+    expect((buttons[0] as HTMLElement).textContent).toContain("Edit");
 
     fireEvent.click(buttons[0] as HTMLElement);
 
@@ -132,6 +133,36 @@ describe("MessageList", () => {
     );
 
     expect(screen.getByText("Queued (after edit)")).toBeTruthy();
+  });
+
+  it("exposes explicit edit and cancel controls for queued messages", () => {
+    const onEditDeferred = vi.fn();
+    const onCancelDeferred = vi.fn();
+
+    render(
+      <MessageList
+        messages={[]}
+        deferredMessages={[
+          {
+            tempId: "temp-queued",
+            content: "queued text",
+            timestamp: "2026-04-25T00:00:00.000Z",
+          },
+        ]}
+        onEditDeferred={onEditDeferred}
+        onCancelDeferred={onCancelDeferred}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel queued message" }),
+    );
+
+    expect(onEditDeferred).toHaveBeenCalledWith("temp-queued");
+    expect(onCancelDeferred).toHaveBeenCalledWith("temp-queued");
   });
 
   it("keeps the latest stale message age visible in the right rail", () => {

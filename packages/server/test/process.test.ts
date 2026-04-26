@@ -400,7 +400,7 @@ describe("Process", () => {
       });
       process.deferMessage(
         { text: "second edited", tempId: "temp-2-edited" },
-        { placement: taken?.placement },
+        { placement: { ...taken?.placement, replaceTempId: "temp-2" } },
       );
 
       expect(process.getDeferredQueueSummary()).toMatchObject([
@@ -465,7 +465,10 @@ describe("Process", () => {
 
       process.deferMessage(
         { text: "second edited", tempId: "temp-2-edited" },
-        { placement: taken?.placement, promoteIfReady: true },
+        {
+          placement: { ...taken?.placement, replaceTempId: "temp-2" },
+          promoteIfReady: true,
+        },
       );
 
       expect(process.getDeferredQueueSummary()).toMatchObject([
@@ -488,6 +491,72 @@ describe("Process", () => {
       );
 
       controller.finish();
+      await process.abort();
+    });
+
+    it("clears a blocking edit when the edited message has no anchors", async () => {
+      const iterator = createMockIterator([
+        { type: "system", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      process.deferMessage({ text: "first", tempId: "temp-1" });
+      const taken = process.takeDeferredMessage("temp-1");
+      process.deferMessage({ text: "second", tempId: "temp-2" });
+
+      expect(taken?.placement).toEqual({});
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        { tempId: "temp-2", content: "second", blockedByEdit: true },
+      ]);
+
+      const result = process.deferMessage(
+        { text: "first edited", tempId: "temp-1-edited" },
+        { placement: { replaceTempId: "temp-1" } },
+      );
+
+      expect(result.success).toBe(true);
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        { tempId: "temp-1-edited", content: "first edited" },
+        { tempId: "temp-2", content: "second" },
+      ]);
+      expect(
+        process
+          .getDeferredQueueSummary()
+          .some((message) => message.blockedByEdit),
+      ).toBe(false);
+
+      await process.abort();
+    });
+
+    it("rejects a deferred edit replacement without a matching barrier", async () => {
+      const iterator = createMockIterator([
+        { type: "system", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      const result = process.deferMessage(
+        { text: "edited", tempId: "temp-edited" },
+        { placement: { replaceTempId: "temp-missing" } },
+      );
+
+      expect(result).toMatchObject({
+        success: false,
+        error: "Deferred edit barrier does not match replacement message",
+      });
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+
       await process.abort();
     });
 

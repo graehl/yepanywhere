@@ -313,6 +313,34 @@ function SessionPageContent({
   }, []);
   const { showToast } = useToastContext();
 
+  const releaseQueuedEditBarrier = useCallback(
+    (editDraft: QueuedEditDraft | null, reason: string) => {
+      if (!editDraft) {
+        return;
+      }
+      logSessionUiTrace("queued-edit-release", {
+        sessionId,
+        originalTempId: editDraft.originalTempId,
+        reason,
+      });
+      api
+        .releaseDeferredEditBarrier(sessionId, editDraft.originalTempId)
+        .then((result) => {
+          if (result.deferredMessages) {
+            syncDeferredMessages(result.deferredMessages, {
+              reason: "edited",
+              tempId: editDraft.originalTempId,
+              source: "rest",
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn("Failed to release deferred edit barrier:", err);
+        });
+    },
+    [sessionId, syncDeferredMessages],
+  );
+
   const rememberSentSubmission = useCallback((text: string, id: string) => {
     const trimmed = text.trim();
     if (!trimmed) {
@@ -552,23 +580,8 @@ function SessionPageContent({
     setQueuedEditDraft(null);
     draftControlsRef.current?.clearDraft();
     setAttachments([]);
-    if (editDraft) {
-      api
-        .releaseDeferredEditBarrier(sessionId, editDraft.originalTempId)
-        .then((result) => {
-          if (result.deferredMessages) {
-            syncDeferredMessages(result.deferredMessages, {
-              reason: "edited",
-              tempId: editDraft.originalTempId,
-              source: "rest",
-            });
-          }
-        })
-        .catch((err) => {
-          console.warn("Failed to release deferred edit barrier:", err);
-        });
-    }
-  }, [queuedEditDraft, sessionId, syncDeferredMessages]);
+    releaseQueuedEditBarrier(editDraft, "cancel-correction");
+  }, [queuedEditDraft, releaseQueuedEditBarrier]);
 
   const handleCorrectLatestUserMessage = useCallback(
     (messageId: string, content: string) => {
@@ -585,10 +598,11 @@ function SessionPageContent({
 
       draftControls.setDraft(content);
       setAttachments([]);
+      releaseQueuedEditBarrier(queuedEditDraft, "start-sent-correction");
       setCorrectionDraft({ messageId, originalText: content });
       setQueuedEditDraft(null);
     },
-    [showToast, t],
+    [queuedEditDraft, releaseQueuedEditBarrier, showToast, t],
   );
 
   const getOutgoingMessageText = useCallback(
@@ -691,6 +705,7 @@ function SessionPageContent({
     }
     const { outgoingText, slashCommand } = prepared;
     const thinking = prepared.thinking ?? getThinkingSetting();
+    const queuedEditDraftAtSubmit = queuedEditDraft;
 
     // Add to pending queue and get tempId to pass to server
     const tempId = addPendingMessage(outgoingText);
@@ -789,6 +804,7 @@ function SessionPageContent({
       draftControlsRef.current?.clearDraft();
       setCorrectionDraft(null);
       setQueuedEditDraft(null);
+      releaseQueuedEditBarrier(queuedEditDraftAtSubmit, "send-edited-queue");
     } catch (err) {
       console.error("Failed to send:", err);
       logSessionUiTrace("composer-send-error", {
@@ -829,6 +845,10 @@ function SessionPageContent({
           draftControlsRef.current?.clearDraft();
           setCorrectionDraft(null);
           setQueuedEditDraft(null);
+          releaseQueuedEditBarrier(
+            queuedEditDraftAtSubmit,
+            "retry-send-edited-queue",
+          );
           return;
         } catch (retryErr) {
           console.error("Failed to resume session:", retryErr);
@@ -896,6 +916,12 @@ function SessionPageContent({
 
     try {
       const queuedEditDraftAtSubmit = queuedEditDraft;
+      const queuedEditPlacement = queuedEditDraftAtSubmit
+        ? {
+            ...(queuedEditDraftAtSubmit.placement ?? {}),
+            replaceTempId: queuedEditDraftAtSubmit.originalTempId,
+          }
+        : undefined;
       const result = await api.queueMessage(
         sessionId,
         outgoingText,
@@ -904,7 +930,7 @@ function SessionPageContent({
         tempId,
         thinking,
         true, // deferred
-        queuedEditDraftAtSubmit?.placement,
+        queuedEditPlacement,
       );
       logSessionUiTrace("composer-deferred-result", {
         sessionId,

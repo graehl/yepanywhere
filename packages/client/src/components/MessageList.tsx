@@ -125,6 +125,44 @@ interface Props {
   onLoadOlderMessages?: () => void;
 }
 
+function PencilIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function XIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
 export const MessageList = memo(function MessageList({
   messages,
   provider,
@@ -464,7 +502,7 @@ export const MessageList = memo(function MessageList({
                   className="message-user-prompt deferred-message-bubble deferred-message-edit"
                   onClick={() => onEditDeferred?.(deferred.tempId as string)}
                   title="Edit queued message"
-                  aria-label="Edit queued message"
+                  aria-label="Edit queued message text"
                 >
                   {deferred.content}
                 </button>
@@ -511,15 +549,37 @@ export const MessageList = memo(function MessageList({
                     <span>{deferred.attachmentCount}</span>
                   </span>
                 ) : null}
-                {deferred.tempId && onCancelDeferred && (
-                  <button
-                    type="button"
-                    className="deferred-message-cancel"
-                    onClick={() => onCancelDeferred(deferred.tempId as string)}
-                    aria-label="Cancel queued message"
-                  >
-                    ×
-                  </button>
+                {(canEditDeferred || (deferred.tempId && onCancelDeferred)) && (
+                  <div className="deferred-message-actions">
+                    {canEditDeferred && (
+                      <button
+                        type="button"
+                        className="deferred-message-action deferred-message-action-edit"
+                        onClick={() =>
+                          onEditDeferred?.(deferred.tempId as string)
+                        }
+                        aria-label="Edit queued message"
+                        title="Edit queued message"
+                      >
+                        <PencilIcon />
+                        <span>Edit</span>
+                      </button>
+                    )}
+                    {deferred.tempId && onCancelDeferred && (
+                      <button
+                        type="button"
+                        className="deferred-message-action deferred-message-action-cancel"
+                        onClick={() =>
+                          onCancelDeferred(deferred.tempId as string)
+                        }
+                        aria-label="Cancel queued message"
+                        title="Cancel queued message"
+                      >
+                        <XIcon />
+                        <span>Cancel</span>
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

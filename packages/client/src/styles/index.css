@@ -1780,17 +1780,20 @@ a.sidebar-nav-item {
 }
 
 .user-prompt-correct {
+  appearance: none;
   width: 28px;
   height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-1);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   cursor: pointer;
   opacity: 0.75;
+  touch-action: manipulation;
 }
 
 .user-prompt-correct:hover,
@@ -1800,6 +1803,29 @@ a.sidebar-nav-item {
   color: var(--text-primary);
   opacity: 1;
   outline: none;
+}
+
+.user-prompt-correct-label {
+  display: none;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+@media (hover: none), (pointer: coarse), (max-width: 600px) {
+  .user-prompt-correct {
+    width: auto;
+    min-width: 44px;
+    min-height: 36px;
+    padding: 0 var(--space-2);
+    background: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+    opacity: 1;
+  }
+
+  .user-prompt-correct-label {
+    display: inline;
+  }
 }
 
 .user-prompt-correction-label {
@@ -2584,6 +2610,7 @@ a.sidebar-nav-item {
 }
 
 .deferred-message-edit {
+  appearance: none;
   border-top: 0;
   border-right: 0;
   border-bottom: 0;
@@ -2591,6 +2618,7 @@ a.sidebar-nav-item {
   cursor: pointer;
   font: inherit;
   text-align: left;
+  touch-action: manipulation;
 }
 
 .deferred-message-edit:hover,
@@ -2603,6 +2631,7 @@ a.sidebar-nav-item {
 .deferred-message-footer {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-1);
 }
@@ -2622,19 +2651,60 @@ a.sidebar-nav-item {
   line-height: 1;
 }
 
-.deferred-message-cancel {
-  background: none;
-  border: none;
-  color: var(--text-dimmed);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-sm);
+.deferred-message-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
-.deferred-message-cancel:hover {
+.deferred-message-action {
+  appearance: none;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1;
+  touch-action: manipulation;
+}
+
+.deferred-message-action:hover,
+.deferred-message-action:focus-visible {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.deferred-message-action-edit {
+  color: var(--attention-color);
+}
+
+.deferred-message-action-cancel:hover,
+.deferred-message-action-cancel:focus-visible {
   color: var(--error-color);
+}
+
+@media (hover: none), (pointer: coarse), (max-width: 600px) {
+  .deferred-message-actions {
+    flex-basis: 100%;
+    margin-top: var(--space-1);
+  }
+
+  .deferred-message-action {
+    min-width: 44px;
+    min-height: 36px;
+    font-size: var(--font-size-sm);
+  }
 }
 
 /* ==========================================================================

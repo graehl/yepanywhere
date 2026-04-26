@@ -107,6 +107,7 @@ export interface DeferredQueueMessage {
 export interface DeferredMessagePlacement {
   beforeTempId?: string;
   afterTempId?: string;
+  replaceTempId?: string;
 }
 
 /** Minimal project info for filter dropdowns */
@@ -621,6 +622,7 @@ export const api = {
         deferred,
         insertBeforeTempId: placement?.beforeTempId,
         insertAfterTempId: placement?.afterTempId,
+        replaceDeferredTempId: placement?.replaceTempId,
       }),
     }),
 

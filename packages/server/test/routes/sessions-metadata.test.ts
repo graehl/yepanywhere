@@ -264,6 +264,7 @@ describe("Sessions metadata route", () => {
         deferred: true,
         insertAfterTempId: "temp-1",
         insertBeforeTempId: "temp-3",
+        replaceDeferredTempId: "temp-2",
       }),
     });
 
@@ -278,6 +279,7 @@ describe("Sessions metadata route", () => {
         placement: {
           afterTempId: "temp-1",
           beforeTempId: "temp-3",
+          replaceTempId: "temp-2",
         },
       },
     );

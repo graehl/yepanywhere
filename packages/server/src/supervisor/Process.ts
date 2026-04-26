@@ -34,6 +34,7 @@ type Listener = (event: ProcessEvent) => void;
 export interface DeferredMessagePlacement {
   afterTempId?: string;
   beforeTempId?: string;
+  replaceTempId?: string;
 }
 
 export interface TakenDeferredMessage {
@@ -1009,8 +1010,17 @@ export class Process {
     position?: number;
     error?: string;
   } {
+    const replaceTempId = options?.placement?.replaceTempId;
     const replacesDeferredEdit =
-      !!options?.placement && this.deferredEditBarrier !== null;
+      !!replaceTempId &&
+      this.deferredEditBarrier?.originalTempId === replaceTempId;
+    if (replaceTempId && !replacesDeferredEdit) {
+      return {
+        success: false,
+        deferred: true,
+        error: "Deferred edit barrier does not match replacement message",
+      };
+    }
     const deferredEditInsertionIndex = replacesDeferredEdit
       ? Math.min(this.deferredEditBarrier?.index ?? 0, this.deferredQueue.length)
       : null;

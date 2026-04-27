@@ -30,6 +30,7 @@ import { GeminiSessionReader } from "../sessions/gemini-reader.js";
 import { normalizeSession } from "../sessions/normalization.js";
 import {
   type PaginationInfo,
+  sliceAfterMessageId,
   sliceAtCompactBoundaries,
 } from "../sessions/pagination.js";
 import { augmentPersistedSessionMessages } from "../sessions/persisted-augments.js";
@@ -1504,6 +1505,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     let session = loadedSession ? normalizeSession(loadedSession) : null;
+    if (session && afterMessageId) {
+      session = {
+        ...session,
+        messages: sliceAfterMessageId(session.messages, afterMessageId),
+      };
+    }
 
     // Determine the session ownership
     const ownership = process

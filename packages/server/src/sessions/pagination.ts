@@ -32,6 +32,32 @@ function getMessageId(m: Message): string | undefined {
   return m.uuid ?? (typeof m.id === "string" ? m.id : undefined);
 }
 
+/**
+ * Return only messages after the requested message id.
+ *
+ * Some provider readers can apply afterMessageId while reading, but others only
+ * expose a full normalized message list. Applying this after normalization keeps
+ * incremental refresh responses small when the anchor is present, while leaving
+ * already-filtered reader results unchanged when the anchor is absent.
+ */
+export function sliceAfterMessageId(
+  messages: Message[],
+  afterMessageId?: string,
+): Message[] {
+  if (!afterMessageId) {
+    return messages;
+  }
+
+  const index = messages.findIndex((message) => {
+    return getMessageId(message) === afterMessageId;
+  });
+  if (index === -1) {
+    return messages;
+  }
+
+  return messages.slice(index + 1);
+}
+
 function isCompactBoundary(m: Message): boolean {
   return m.type === "system" && m.subtype === "compact_boundary";
 }

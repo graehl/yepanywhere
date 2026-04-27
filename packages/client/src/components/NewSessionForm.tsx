@@ -40,6 +40,10 @@ import {
   clearNewSessionPrefill,
   getNewSessionPrefill,
 } from "../lib/newSessionPrefill";
+import {
+  getBuiltinSpeechMethods,
+  type SpeechMethodId,
+} from "../lib/speechProviders/methods";
 import { shortenPath } from "../lib/text";
 import type { PermissionMode, Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
@@ -210,6 +214,9 @@ export function NewSessionForm({
     thinkingMode,
     cycleThinkingMode,
     thinkingLevel,
+    voiceInputEnabled,
+    speechMethod,
+    setSpeechMethod,
   } = useModelSettings();
 
   // Connection for uploads (uses WebSocket when enabled)
@@ -404,6 +411,27 @@ export function NewSessionForm({
     hasUserCustomizedDefaultsRef.current = true;
     setSelectedModel(selected[0] ?? null);
   }, []);
+
+  // Build speech-method options for FilterDropdown.
+  // The catalog is intentionally static at the moment; server-routed
+  // methods will be filtered by capability advertisement in a later phase.
+  const speechMethodOptions = useMemo((): FilterOption<SpeechMethodId>[] => {
+    return getBuiltinSpeechMethods().map((method) => ({
+      value: method.id,
+      label: method.label,
+      description: method.description,
+    }));
+  }, []);
+
+  const handleSpeechMethodSelect = useCallback(
+    (selected: string[]) => {
+      const next = selected[0];
+      if (next && (next === "browser-native" || next === "ya-dummy")) {
+        setSpeechMethod(next);
+      }
+    },
+    [setSpeechMethod],
+  );
 
   // Combined display text: committed text + interim transcript
   const displayText = interimTranscript
@@ -1300,6 +1328,21 @@ export function NewSessionForm({
             onChange={handleModelSelect}
             multiSelect={false}
             placeholder={t("newSessionModelPlaceholder")}
+          />
+        </div>
+      )}
+
+      {/* Voice transcription method */}
+      {voiceInputEnabled && speechMethodOptions.length > 1 && (
+        <div className="new-session-speech-section">
+          <h3>{t("newSessionSpeechTitle")}</h3>
+          <FilterDropdown
+            label={t("newSessionSpeechTitle")}
+            options={speechMethodOptions}
+            selected={[speechMethod]}
+            onChange={handleSpeechMethodSelect}
+            multiSelect={false}
+            placeholder={t("newSessionSpeechPlaceholder")}
           />
         </div>
       )}

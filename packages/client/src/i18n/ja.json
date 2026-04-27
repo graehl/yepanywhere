@@ -181,6 +181,8 @@
   "newSessionProviderStatusNotAuthenticated": "未認証",
   "newSessionModelTitle": "モデル",
   "newSessionModelPlaceholder": "モデルを選択",
+  "newSessionSpeechTitle": "音声入力",
+  "newSessionSpeechPlaceholder": "音声方式を選択",
   "newSessionRunOnTitle": "実行場所",
   "newSessionRunOnLocal": "ローカル",
   "newSessionRunOnLocalDesc": "このマシンで実行",

@@ -181,6 +181,8 @@
   "newSessionProviderStatusNotAuthenticated": "No autenticado",
   "newSessionModelTitle": "Modelo",
   "newSessionModelPlaceholder": "Seleccionar modelo",
+  "newSessionSpeechTitle": "Transcripción de voz",
+  "newSessionSpeechPlaceholder": "Seleccionar método de voz",
   "newSessionRunOnTitle": "Ejecutar en",
   "newSessionRunOnLocal": "Local",
   "newSessionRunOnLocalDesc": "Ejecutar en esta máquina",

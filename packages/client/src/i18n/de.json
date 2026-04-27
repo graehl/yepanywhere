@@ -181,6 +181,8 @@
   "newSessionProviderStatusNotAuthenticated": "Nicht authentifiziert",
   "newSessionModelTitle": "Modell",
   "newSessionModelPlaceholder": "Modell auswählen",
+  "newSessionSpeechTitle": "Sprachtranskription",
+  "newSessionSpeechPlaceholder": "Sprachmethode auswählen",
   "newSessionRunOnTitle": "Ausführen auf",
   "newSessionRunOnLocal": "Lokal",
   "newSessionRunOnLocalDesc": "Auf diesem Gerät ausführen",

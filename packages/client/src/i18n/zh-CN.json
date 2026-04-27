@@ -181,6 +181,8 @@
   "newSessionProviderStatusNotAuthenticated": "未认证",
   "newSessionModelTitle": "模型",
   "newSessionModelPlaceholder": "选择模型",
+  "newSessionSpeechTitle": "语音转文字",
+  "newSessionSpeechPlaceholder": "选择语音方法",
   "newSessionRunOnTitle": "运行位置",
   "newSessionRunOnLocal": "本地",
   "newSessionRunOnLocalDesc": "在当前机器上运行",

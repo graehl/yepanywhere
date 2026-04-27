@@ -573,6 +573,7 @@ export const api = {
       sessionId: string;
       processId: string;
       projectId: string;
+      provider?: ProviderName;
       title?: string;
       permissionMode: PermissionMode;
       modeVersion: number;

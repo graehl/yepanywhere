@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ProviderInfo } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RestartSessionModal } from "../RestartSessionModal";
 
@@ -9,7 +10,7 @@ const { mockRestartSession, serverSettingsState } = vi.hoisted(() => ({
   serverSettingsState: {
     settings: null as {
       newSessionDefaults?: {
-        provider?: "codex";
+        provider?: "claude" | "codex";
         model?: string;
         permissionMode?: "default";
       };
@@ -45,6 +46,19 @@ vi.mock("../../i18n", () => ({
       params?.level ? `${key}:${params.level}` : key,
   }),
 }));
+
+const providerInfo = (
+  provider: "claude" | "codex",
+  models: ProviderInfo["models"],
+): ProviderInfo => ({
+  name: provider,
+  displayName: provider === "claude" ? "Claude" : "Codex",
+  installed: true,
+  authenticated: true,
+  enabled: true,
+  models,
+  supportsThinkingToggle: true,
+});
 
 describe("RestartSessionModal", () => {
   beforeEach(() => {
@@ -87,6 +101,48 @@ describe("RestartSessionModal", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "sessionRestartStart" }));
+
+    await waitFor(() => {
+      expect(mockRestartSession).toHaveBeenCalledWith(
+        "proj-1",
+        "sess-1",
+        expect.objectContaining({
+          provider: "codex",
+          model: "gpt-5.5",
+        }),
+      );
+    });
+  });
+
+  it("can hand off to a different provider", async () => {
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        model: "sonnet",
+        permissionMode: "default",
+      },
+    };
+
+    render(
+      <RestartSessionModal
+        projectId="proj-1"
+        sessionId="sess-1"
+        provider="claude"
+        providerDisplayName="Claude"
+        providers={[
+          providerInfo("claude", [{ id: "sonnet", name: "Sonnet" }]),
+          providerInfo("codex", [{ id: "gpt-5.5", name: "GPT-5.5" }]),
+        ]}
+        currentModel="sonnet"
+        mode="default"
+        thinking="off"
+        onRestarted={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Codex/ }));
     fireEvent.click(screen.getByRole("button", { name: "sessionRestartStart" }));
 
     await waitFor(() => {

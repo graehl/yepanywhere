@@ -615,6 +615,92 @@ describe("Sessions metadata route", () => {
     expect(abortProcess).toHaveBeenCalledWith("proc-old");
   });
 
+  it("uses the requested provider only as the handoff target", async () => {
+    const project = createProject();
+    const summary: SessionSummary = {
+      ...createSummary(),
+      title: "Claude source session",
+      fullTitle: "Claude source session",
+      provider: "claude",
+      model: "sonnet",
+    };
+    const reader = {
+      getSessionSummary: vi.fn(async () => summary),
+      getSession: vi.fn(async () => ({
+        summary,
+        data: {
+          provider: "claude",
+          session: {
+            messages: [
+              {
+                type: "user",
+                timestamp: "2026-04-24T20:00:00.000Z",
+                message: {
+                  role: "user",
+                  content: "please hand this Claude session to Codex",
+                },
+              },
+            ],
+          },
+        },
+      })),
+    } as unknown as ISessionReader;
+    const startSession = vi.fn(async () => ({
+      id: "proc-new",
+      sessionId: "sess-new",
+      projectId: project.id,
+      provider: "codex",
+      model: "gpt-5.5",
+      resolvedModel: "gpt-5.5",
+      permissionMode: "default",
+      modeVersion: 0,
+      subscribe: vi.fn(() => vi.fn()),
+    }));
+    const setProvider = vi.fn(async () => undefined);
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => undefined),
+        startSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => undefined),
+        getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => undefined),
+        setProvider,
+        updateMetadata: vi.fn(async () => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "codex", model: "gpt-5.5" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(startSession).toHaveBeenCalledWith(
+      project.path,
+      expect.objectContaining({
+        text: expect.stringContaining("- Provider: claude"),
+      }),
+      undefined,
+      expect.objectContaining({
+        model: "gpt-5.5",
+        providerName: "codex",
+      }),
+    );
+    expect(startSession.mock.calls[0]?.[1].text).toContain("- Model: sonnet");
+    expect(setProvider).toHaveBeenCalledWith("sess-new", "codex");
+  });
+
   it("does not reuse generated handoff boilerplate as the next handoff title", async () => {
     const project = createProject();
     const startSession = vi.fn(async () => ({

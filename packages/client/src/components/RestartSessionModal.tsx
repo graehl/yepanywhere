@@ -2,6 +2,7 @@ import type {
   EffortLevel,
   ModelInfo,
   NewSessionDefaults,
+  ProviderInfo,
   ProviderName,
   ThinkingOption,
 } from "@yep-anywhere/shared";
@@ -9,6 +10,7 @@ import { resolveModel } from "@yep-anywhere/shared";
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { getModelSetting } from "../hooks/useModelSettings";
+import { getAvailableProviders, getDefaultProvider } from "../hooks/useProviders";
 import { useServerSettings } from "../hooks/useServerSettings";
 import type { PermissionMode } from "../types";
 import { useI18n } from "../i18n";
@@ -87,11 +89,46 @@ function getRestartDefaultModel(params: {
   );
 }
 
+function getRestartDefaultProvider(params: {
+  sourceProvider: ProviderName;
+  providers: ProviderInfo[];
+  defaults?: NewSessionDefaults | null;
+}): ProviderName {
+  const availableProviders = getAvailableProviders(params.providers);
+  const availableProviderNames = new Set(availableProviders.map((p) => p.name));
+
+  if (
+    params.defaults?.provider &&
+    availableProviderNames.has(params.defaults.provider)
+  ) {
+    return params.defaults.provider;
+  }
+
+  if (availableProviderNames.has(params.sourceProvider)) {
+    return params.sourceProvider;
+  }
+
+  return getDefaultProvider(params.providers)?.name ?? params.sourceProvider;
+}
+
+function getProviderModels(
+  providerName: ProviderName,
+  providers: ProviderInfo[],
+  sourceProvider: ProviderName,
+  sourceModels: ModelInfo[],
+): ModelInfo[] {
+  return (
+    providers.find((p) => p.name === providerName)?.models ??
+    (providerName === sourceProvider ? sourceModels : [])
+  );
+}
+
 interface RestartSessionModalProps {
   projectId: string;
   sessionId: string;
   provider: ProviderName;
   providerDisplayName?: string;
+  providers?: ProviderInfo[];
   models?: ModelInfo[];
   currentModel?: string;
   mode?: PermissionMode;
@@ -100,6 +137,7 @@ interface RestartSessionModalProps {
   onRestarted: (result: {
     sessionId: string;
     processId: string;
+    provider?: ProviderName;
     model?: string;
     title?: string;
     oldProcessAborted: boolean;
@@ -115,6 +153,7 @@ export function RestartSessionModal({
   sessionId,
   provider,
   providerDisplayName,
+  providers = [],
   models = [],
   currentModel,
   mode,
@@ -125,15 +164,44 @@ export function RestartSessionModal({
 }: RestartSessionModalProps) {
   const { t } = useI18n();
   const { settings, isLoading: settingsLoading } = useServerSettings();
+  const providerOptions = useMemo<ProviderInfo[]>(() => {
+    if (providers.length > 0) return providers;
+    return [
+      {
+        name: provider,
+        displayName: providerDisplayName ?? provider,
+        installed: true,
+        authenticated: true,
+        enabled: true,
+        models,
+      },
+    ];
+  }, [models, provider, providerDisplayName, providers]);
+  const availableProviders = useMemo(
+    () => getAvailableProviders(providerOptions),
+    [providerOptions],
+  );
+  const [selectedProvider, setSelectedProvider] = useState<ProviderName>(() =>
+    getRestartDefaultProvider({
+      sourceProvider: provider,
+      providers: providerOptions,
+      defaults: settings?.newSessionDefaults,
+    }),
+  );
+  const hasUserSelectedProviderRef = useRef(false);
+  const selectedProviderModels = useMemo(
+    () => getProviderModels(selectedProvider, providerOptions, provider, models),
+    [models, provider, providerOptions, selectedProvider],
+  );
   const modelOptions = useMemo<ModelInfo[]>(() => {
-    if (models.length > 0) return models;
+    if (selectedProviderModels.length > 0) return selectedProviderModels;
     return [{ id: "default", name: "Default" }];
-  }, [models]);
+  }, [selectedProviderModels]);
   const [selectedModel, setSelectedModel] = useState<string>(
     getRestartDefaultModel({
-      provider,
+      provider: selectedProvider,
       models: modelOptions,
-      currentModel,
+      currentModel: selectedProvider === provider ? currentModel : undefined,
       defaults: settings?.newSessionDefaults,
     }),
   );
@@ -151,6 +219,28 @@ export function RestartSessionModal({
   const [openInNewWindow, setOpenInNewWindow] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const selectedProviderInfo = providerOptions.find(
+    (p) => p.name === selectedProvider,
+  );
+  const selectedProviderDisplayName =
+    selectedProviderInfo?.displayName ??
+    (selectedProvider === provider ? providerDisplayName : undefined) ??
+    selectedProvider;
+  const supportsThinkingToggle =
+    selectedProviderInfo?.supportsThinkingToggle ?? true;
+
+  useEffect(() => {
+    if (settingsLoading || hasUserSelectedProviderRef.current) {
+      return;
+    }
+    setSelectedProvider(
+      getRestartDefaultProvider({
+        sourceProvider: provider,
+        providers: providerOptions,
+        defaults: settings?.newSessionDefaults,
+      }),
+    );
+  }, [provider, providerOptions, settings, settingsLoading]);
 
   useEffect(() => {
     if (settingsLoading || hasUserSelectedModelRef.current) {
@@ -158,13 +248,21 @@ export function RestartSessionModal({
     }
     setSelectedModel(
       getRestartDefaultModel({
-        provider,
+        provider: selectedProvider,
         models: modelOptions,
-        currentModel,
+        currentModel:
+          selectedProvider === provider ? currentModel : undefined,
         defaults: settings?.newSessionDefaults,
       }),
     );
-  }, [currentModel, modelOptions, provider, settings, settingsLoading]);
+  }, [
+    currentModel,
+    modelOptions,
+    provider,
+    selectedProvider,
+    settings,
+    settingsLoading,
+  ]);
 
   useEffect(() => {
     setThinkingMode(initialThinking.mode);
@@ -192,8 +290,10 @@ export function RestartSessionModal({
       const result = await api.restartSession(projectId, sessionId, {
         mode,
         model: selectedModel,
-        thinking: toThinkingOption(thinkingMode, effortLevel),
-        provider,
+        thinking: supportsThinkingToggle
+          ? toThinkingOption(thinkingMode, effortLevel)
+          : undefined,
+        provider: selectedProvider,
         executor,
         reason: "Manual restart from Yep Anywhere",
       });
@@ -206,6 +306,30 @@ export function RestartSessionModal({
       setError(err instanceof Error ? err.message : t("sessionRestartFailed"));
       setRestarting(false);
     }
+  };
+
+  const handleProviderSelect = (providerName: ProviderName) => {
+    hasUserSelectedProviderRef.current = true;
+    hasUserSelectedModelRef.current = false;
+    setSelectedProvider(providerName);
+    const providerModels = getProviderModels(
+      providerName,
+      providerOptions,
+      provider,
+      models,
+    );
+    const nextModelOptions =
+      providerModels.length > 0
+        ? providerModels
+        : [{ id: "default", name: "Default" }];
+    setSelectedModel(
+      getRestartDefaultModel({
+        provider: providerName,
+        models: nextModelOptions,
+        currentModel: providerName === provider ? currentModel : undefined,
+        defaults: settings?.newSessionDefaults,
+      }),
+    );
   };
 
   const handleStartClick = (
@@ -245,12 +369,61 @@ export function RestartSessionModal({
               {selectedModel ?? "Default"}
             </span>
             <span className="model-switch-status-detail">
-              {renderThinkingLabel(thinkingMode, effortLevel)}
+              {supportsThinkingToggle
+                ? `${selectedProviderDisplayName} · ${renderThinkingLabel(thinkingMode, effortLevel)}`
+                : selectedProviderDisplayName}
             </span>
           </div>
         </div>
 
         {error && <div className="model-switch-error">{error}</div>}
+
+        {availableProviders.length > 1 && (
+          <section className="model-switch-section">
+            <div className="model-switch-section-header">
+              <strong>{t("newSessionProviderTitle")}</strong>
+            </div>
+            <div className="provider-options">
+              {providerOptions.map((p) => {
+                const isAvailable = p.installed && (p.authenticated || p.enabled);
+                const isSelected = selectedProvider === p.name;
+                return (
+                  <button
+                    key={p.name}
+                    type="button"
+                    className={`provider-option ${isSelected ? "selected" : ""} ${!isAvailable ? "disabled" : ""}`}
+                    onClick={() => isAvailable && handleProviderSelect(p.name)}
+                    disabled={restarting || !isAvailable}
+                    title={
+                      !isAvailable
+                        ? t("newSessionProviderUnavailable", {
+                            provider: p.displayName,
+                            reason: !p.installed
+                              ? t("newSessionProviderNotInstalled")
+                              : t("newSessionProviderNotAuthenticated"),
+                          })
+                        : p.displayName
+                    }
+                  >
+                    <span className={`provider-option-dot provider-${p.name}`} />
+                    <div className="provider-option-content">
+                      <span className="provider-option-label">
+                        {p.displayName}
+                      </span>
+                      {!isAvailable && (
+                        <span className="provider-option-status">
+                          {!p.installed
+                            ? t("newSessionProviderStatusNotInstalled")
+                            : t("newSessionProviderStatusNotAuthenticated")}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         <section className="model-switch-section">
           <div className="model-switch-section-header">
@@ -299,68 +472,74 @@ export function RestartSessionModal({
           </div>
         </section>
 
-        <section className="model-switch-section">
-          <div className="model-switch-section-header">
-            <strong>{t("newSessionThinkingMode")}</strong>
-          </div>
-          <div className="model-switch-chip-group">
-            {(["off", "auto", "on"] as ThinkingMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={`model-switch-chip ${thinkingMode === mode ? "active" : ""}`}
-                onClick={() => setThinkingMode(mode)}
-                disabled={restarting}
-              >
-                <span
-                  className={`model-switch-indicator-dot tone-${
-                    mode === "off"
-                      ? "off"
-                      : mode === "auto"
-                        ? "auto"
-                        : effortLevel
-                  }`}
-                  aria-hidden="true"
-                />
-                <span>
-                  {mode === "off"
-                    ? t("newSessionThinkingOff")
-                    : mode === "auto"
-                      ? t("newSessionThinkingAuto")
-                      : t("newSessionThinkingOn", { level: effortLevel })}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
+        {supportsThinkingToggle && (
+          <>
+            <section className="model-switch-section">
+              <div className="model-switch-section-header">
+                <strong>{t("newSessionThinkingMode")}</strong>
+              </div>
+              <div className="model-switch-chip-group">
+                {(["off", "auto", "on"] as ThinkingMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`model-switch-chip ${thinkingMode === mode ? "active" : ""}`}
+                    onClick={() => setThinkingMode(mode)}
+                    disabled={restarting}
+                  >
+                    <span
+                      className={`model-switch-indicator-dot tone-${
+                        mode === "off"
+                          ? "off"
+                          : mode === "auto"
+                            ? "auto"
+                            : effortLevel
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span>
+                      {mode === "off"
+                        ? t("newSessionThinkingOff")
+                        : mode === "auto"
+                          ? t("newSessionThinkingAuto")
+                          : t("newSessionThinkingOn", { level: effortLevel })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
 
-        <section className="model-switch-section">
-          <div className="model-switch-section-header">
-            <strong>{t("modelSettingsEffortTitle")}</strong>
-          </div>
-          <div className="model-switch-chip-group">
-            {EFFORT_LEVELS.map((level) => (
-              <button
-                key={level}
-                type="button"
-                className={`model-switch-chip ${
-                  thinkingMode === "on" && effortLevel === level ? "active" : ""
-                }`}
-                onClick={() => {
-                  setThinkingMode("on");
-                  setEffortLevel(level);
-                }}
-                disabled={restarting}
-              >
-                <span
-                  className={`model-switch-indicator-dot tone-${level}`}
-                  aria-hidden="true"
-                />
-                <span>{level}</span>
-              </button>
-            ))}
-          </div>
-        </section>
+            <section className="model-switch-section">
+              <div className="model-switch-section-header">
+                <strong>{t("modelSettingsEffortTitle")}</strong>
+              </div>
+              <div className="model-switch-chip-group">
+                {EFFORT_LEVELS.map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    className={`model-switch-chip ${
+                      thinkingMode === "on" && effortLevel === level
+                        ? "active"
+                        : ""
+                    }`}
+                    onClick={() => {
+                      setThinkingMode("on");
+                      setEffortLevel(level);
+                    }}
+                    disabled={restarting}
+                  >
+                    <span
+                      className={`model-switch-indicator-dot tone-${level}`}
+                      aria-hidden="true"
+                    />
+                    <span>{level}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
 
         <label className="model-switch-chip">
           <input

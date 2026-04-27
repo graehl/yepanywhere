@@ -2037,6 +2037,7 @@ function SessionPageContent({
             sessionId={actualSessionId}
             provider={effectiveProvider}
             providerDisplayName={currentProviderInfo?.displayName}
+            providers={providers}
             models={currentProviderInfo?.models}
             currentModel={liveBadgeModel}
             mode={permissionMode}
@@ -2062,7 +2063,7 @@ function SessionPageContent({
                   },
                   initialTitle: result.title,
                   initialModel: result.model ?? liveBadgeModel,
-                  initialProvider: effectiveProvider,
+                  initialProvider: result.provider ?? effectiveProvider,
                 },
               });
             }}

@@ -2170,8 +2170,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const metadataProvider = deps.sessionMetadataService?.getProvider(
       sessionId,
     ) as ProviderName | undefined;
-    const sourceProvider =
-      metadataProvider ?? oldProcess?.provider ?? body.provider ?? project.provider;
+    const preferredSourceProvider =
+      metadataProvider ?? oldProcess?.provider ?? project.provider;
     const compactAttempt = await tryRestartCompact(oldProcess);
     const oldProcessInterrupted =
       await interruptOldProcessForHandoff(oldProcess);
@@ -2179,7 +2179,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       project,
       sessionId,
       projectId,
-      sourceProvider,
+      preferredSourceProvider,
       oldProcess,
     );
 
@@ -2187,7 +2187,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Session not found" }, 404);
     }
 
-    const providerName = body.provider ?? sourceSession.provider ?? sourceProvider;
+    const sourceProvider = sourceSession.provider ?? preferredSourceProvider;
+    const providerName = body.provider ?? sourceProvider;
     const originalMetadata = deps.sessionMetadataService?.getMetadata(sessionId);
     const handoffTitle = deriveRestartTitle({
       preferredTitle: originalMetadata?.customTitle,

@@ -103,6 +103,8 @@ export interface Config {
   enabledProviders: string[];
   /** Whether voice input is enabled. Default: true */
   voiceInputEnabled: boolean;
+  /** Explicitly enabled server-routed voice backend ids. Empty = none. */
+  voiceBackends: string[];
   /** Allowed directory prefixes for serving local images (e.g., ["/tmp"]). Empty = disabled. */
   allowedImagePaths: string[];
 
@@ -177,9 +179,7 @@ export function loadConfig(): Config {
   const managedUploadsDir = path.join(dataDir, "uploads");
   const extraAllowedImagePaths =
     process.env.ALLOWED_IMAGE_PATHS !== undefined
-      ? process.env.ALLOWED_IMAGE_PATHS.split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
+      ? parseCommaSeparatedList(process.env.ALLOWED_IMAGE_PATHS)
       : ["/tmp"];
 
   return {
@@ -250,6 +250,8 @@ export function loadConfig(): Config {
       : [],
     // Voice input (default: true, set VOICE_INPUT=false to disable)
     voiceInputEnabled: process.env.VOICE_INPUT !== "false",
+    // Server-routed voice backends default off. Example: VOICE_BACKENDS=ya-dummy
+    voiceBackends: parseCommaSeparatedList(process.env.VOICE_BACKENDS),
     // Always allow yep-managed uploads. ALLOWED_IMAGE_PATHS adds external paths
     // like /tmp; an empty value disables only those extras.
     allowedImagePaths: Array.from(
@@ -274,6 +276,15 @@ export function loadConfig(): Config {
     httpsSelfSigned: process.env.HTTPS_SELF_SIGNED === "true",
     desktopAuthToken: process.env.DESKTOP_AUTH_TOKEN || undefined,
   };
+}
+
+function parseCommaSeparatedList(value: string | undefined): string[] {
+  return value
+    ? value
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
 }
 
 /**

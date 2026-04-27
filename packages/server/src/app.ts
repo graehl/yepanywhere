@@ -77,6 +77,7 @@ import type { NetworkBindingService } from "./services/NetworkBindingService.js"
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
 import type { SharingService } from "./services/SharingService.js";
+import type { SpeechBackendRegistry } from "./services/voice/registry.js";
 import { CodexSessionReader } from "./sessions/codex-reader.js";
 import { GeminiSessionReader } from "./sessions/gemini-reader.js";
 import { OpenCodeSessionReader } from "./sessions/opencode-reader.js";
@@ -180,6 +181,8 @@ export interface AppOptions {
   enabledProviders?: string[];
   /** Whether voice input is enabled. Default: true */
   voiceInputEnabled?: boolean;
+  /** Validated server-routed speech backends for capability advertisement. */
+  speechBackendRegistry?: SpeechBackendRegistry;
   /** Allowed directory prefixes for serving local images. Default: ["/tmp"] */
   allowedImagePaths?: string[];
 }
@@ -467,6 +470,8 @@ export function createApp(options: AppOptions): AppResult {
         false,
       installId: options.installId,
       voiceInputEnabled: options.voiceInputEnabled,
+      getEnabledVoiceBackends: () =>
+        options.speechBackendRegistry?.enabledIds() ?? [],
     }),
   );
 

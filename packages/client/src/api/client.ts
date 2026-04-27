@@ -272,6 +272,8 @@ export interface VersionInfo {
   resumeProtocolVersion?: number;
   /** Feature capabilities supported by the server. Undefined on older servers. */
   capabilities?: string[];
+  /** Server-routed speech backend ids validated by the server. */
+  voiceBackends?: string[];
   /** Device bridge availability and update state. Undefined on older servers. */
   deviceBridgeState?:
     | "available"

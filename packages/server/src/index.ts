@@ -65,6 +65,7 @@ import {
   ServerSettingsService,
   SharingService,
 } from "./services/index.js";
+import { initSpeechBackendRegistry } from "./services/voice/registry.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
 import { UploadManager } from "./uploads/manager.js";
 import {
@@ -494,6 +495,17 @@ async function startServer() {
     );
   }
 
+  const speechBackendRegistry = await initSpeechBackendRegistry({
+    voiceInputEnabled: config.voiceInputEnabled,
+    voiceBackends: config.voiceBackends,
+  });
+  const enabledSpeechBackends = speechBackendRegistry.enabledIds();
+  if (enabledSpeechBackends.length > 0) {
+    console.log(
+      `[Voice] Enabled server-routed backends: ${enabledSpeechBackends.join(", ")}`,
+    );
+  }
+
   // Create the app first (without WebSocket support initially)
   // We'll add WebSocket routes after setting up WebSocket support
   const { app, supervisor, scanner } = createApp({
@@ -534,6 +546,7 @@ async function startServer() {
     modelInfoService,
     enabledProviders: config.enabledProviders,
     voiceInputEnabled: config.voiceInputEnabled,
+    speechBackendRegistry,
     allowedImagePaths: config.allowedImagePaths,
   });
 

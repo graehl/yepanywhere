@@ -152,9 +152,12 @@ export class BrowserNativeProvider implements SpeechProvider {
     this.recognition = recognition;
     recognition.continuous = true;
     recognition.interimResults = true;
-    if (this.options.lang) {
-      recognition.lang = this.options.lang;
-    }
+    // Always set lang explicitly so we don't depend on the browser's
+    // locale guess. Caller's override wins; otherwise fall back to the
+    // browser's reported preferred language.
+    recognition.lang =
+      this.options.lang ??
+      (typeof navigator !== "undefined" ? navigator.language : "en-US");
 
     recognition.onstart = () => {
       this.setState({ isListening: true, status: "listening" });

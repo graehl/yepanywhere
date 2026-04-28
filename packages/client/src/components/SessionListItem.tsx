@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { AgentActivity } from "../hooks/useFileActivity";
@@ -318,6 +318,51 @@ export function SessionListItem({
     .filter(Boolean)
     .join(" ");
 
+  const sessionHref = `${basePath}/projects/${projectId}/sessions/${sessionId}`;
+
+  const handleSessionClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (isSelectionMode) {
+        e.preventDefault();
+        onNavigate?.();
+        return;
+      }
+
+      if (e.metaKey || e.ctrlKey || e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(sessionHref, "_blank", "noopener");
+        return;
+      }
+
+      if (e.altKey) {
+        return;
+      }
+
+      onNavigate?.();
+    },
+    [isSelectionMode, onNavigate, sessionHref],
+  );
+
+  const handleSessionMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (e.button === 1) {
+        e.preventDefault();
+      }
+    },
+    [],
+  );
+
+  const handleSessionAuxClick = useCallback(
+    (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(sessionHref, "_blank", "noopener");
+    },
+    [sessionHref],
+  );
+
   // Star icon SVG
   const StarIcon = ({
     filled,
@@ -364,13 +409,10 @@ export function SessionListItem({
         />
       ) : (
         <Link
-          to={`${basePath}/projects/${projectId}/sessions/${sessionId}`}
-          onClick={(e) => {
-            if (isSelectionMode) {
-              e.preventDefault();
-            }
-            onNavigate?.();
-          }}
+          to={sessionHref}
+          onClick={handleSessionClick}
+          onMouseDown={handleSessionMouseDown}
+          onAuxClick={handleSessionAuxClick}
           title={fullTitle || displayTitle}
           className="session-list-item__link"
         >

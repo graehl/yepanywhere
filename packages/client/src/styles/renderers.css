@@ -138,13 +138,28 @@
 
 .fixed-font-markdown-list-line .fixed-font-rendered-line__content {
   display: grid;
-  grid-template-columns: 1.4rem minmax(0, 1fr);
-  column-gap: 0.2rem;
+  grid-template-columns:
+    calc(var(--fixed-font-list-indent-ch, 0) * 1ch)
+    calc(var(--fixed-font-list-marker-ch, 2) * 1ch)
+    minmax(0, 1fr);
+  column-gap: 0;
 }
 
 .fixed-font-markdown-list-marker {
   color: var(--text-muted);
-  text-align: right;
+  grid-column: 2;
+  text-align: left;
+}
+
+.fixed-font-markdown-list-body {
+  grid-column: 3;
+  min-width: 0;
+}
+
+.fixed-font-leading-indent {
+  display: inline-block;
+  width: calc(var(--fixed-font-leading-ch, 0) * 1ch);
+  white-space: nowrap;
 }
 
 .fixed-font-markdown-blockquote .fixed-font-rendered-line__content {

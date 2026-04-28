@@ -527,6 +527,7 @@ function renderMarkdownLineContent(
   html: string;
   changed: boolean;
   className?: string;
+  style?: string;
 } {
   const heading = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/.exec(content);
   if (heading?.[1] && heading[2]) {
@@ -556,13 +557,25 @@ function renderMarkdownLineContent(
 
   const listItem = /^(\s*)([-*+]|\d+[.)])\s+(.+)$/.exec(content);
   if (listItem?.[2] && listItem[3]) {
+    const leadingColumns = listItem[1]?.length ?? 0;
+    const markerColumns = listItem[2].length + 1;
     const markerHtml = /^\d/.test(listItem[2])
       ? escapeHtml(listItem[2])
       : "&bull;";
     return {
-      html: `<span class="fixed-font-markdown-list-marker">${markerHtml}</span><span>${renderInlineFixedFontContent(listItem[3], options).html}</span>`,
+      html: `<span class="fixed-font-markdown-list-marker">${markerHtml}</span><span class="fixed-font-markdown-list-body">${renderInlineFixedFontContent(listItem[3], options).html}</span>`,
       changed: true,
       className: "fixed-font-markdown-list-line",
+      style: `--fixed-font-list-indent-ch:${leadingColumns};--fixed-font-list-marker-ch:${markerColumns};`,
+    };
+  }
+
+  const leadingSpaces = /^(\s+)(\S[\s\S]*)$/.exec(content);
+  if (leadingSpaces?.[1] && leadingSpaces[2]) {
+    const inline = renderInlineFixedFontContent(leadingSpaces[2], options);
+    return {
+      html: `<span class="fixed-font-leading-indent" style="--fixed-font-leading-ch:${leadingSpaces[1].length};"></span>${inline.html}`,
+      changed: inline.changed,
     };
   }
 
@@ -581,7 +594,8 @@ function renderRichLine(
   ]
     .filter(Boolean)
     .join(" ");
-  return `<div class="${classes}">${renderDiffGutter(line.prefix)}<div class="fixed-font-rendered-line__content">${rendered.html}</div></div>`;
+  const styleAttr = rendered.style ? ` style="${rendered.style}"` : "";
+  return `<div class="${classes}">${renderDiffGutter(line.prefix)}<div class="fixed-font-rendered-line__content"${styleAttr}>${rendered.html}</div></div>`;
 }
 
 export function renderFixedFontRichContent(
@@ -591,11 +605,12 @@ export function renderFixedFontRichContent(
   const renderText = stripAnsiEscapes(sourceText);
   const baseFilePath =
     options.baseFilePath ?? inferBaseFilePathFromDiff(renderText);
+  const diffAware = options.diffAware ?? looksLikeUnifiedDiff(renderText);
   const renderOptions: RenderOptions = {
     ...options,
     baseFilePath,
+    diffAware,
   };
-  const diffAware = renderOptions.diffAware ?? looksLikeUnifiedDiff(renderText);
   const lines = renderText
     .replace(/\r\n/g, "\n")
     .split("\n")

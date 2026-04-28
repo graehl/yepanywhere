@@ -217,4 +217,37 @@ describe("RenderModeProvider", () => {
     expect(gutters).toContain("-");
     expect(gutters).toContain("+");
   });
+
+  it("compensates fixed-column list continuation indents in rendered diffs", () => {
+    const sourceText = [
+      "@@ -1,1 +1,2 @@",
+      "-old",
+      "+  - Version keyword: include `INCREMENT_PATCH_VERSION` on its own line in",
+      "+    the commit body, immediately before the `Change-Id` trailer.",
+    ].join("\n");
+
+    const { container } = render(
+      <RenderModeProvider>
+        <MathPane id="diff-list-wrap" sourceText={sourceText} />
+      </RenderModeProvider>,
+    );
+
+    const listContent = container.querySelector(
+      ".fixed-font-markdown-list-line .fixed-font-rendered-line__content",
+    );
+    expect(listContent?.getAttribute("style")).toContain(
+      "--fixed-font-list-indent-ch:2",
+    );
+    expect(listContent?.getAttribute("style")).toContain(
+      "--fixed-font-list-marker-ch:2",
+    );
+
+    const continuationIndent = container.querySelector(
+      ".fixed-font-leading-indent",
+    );
+    expect(continuationIndent?.getAttribute("style")).toContain(
+      "--fixed-font-leading-ch:4",
+    );
+    expect(screen.getByText(/the commit body/)).toBeDefined();
+  });
 });

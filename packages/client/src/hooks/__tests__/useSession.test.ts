@@ -8,6 +8,10 @@ import type {
 import type { SessionStatus } from "../../types";
 import { useSession } from "../useSession";
 
+const apiMocks = vi.hoisted(() => ({
+  getSessionMetadata: vi.fn(),
+}));
+
 const fetchNewMessages = vi.fn(async () => {});
 const fetchSessionMetadata = vi.fn(async () => {});
 
@@ -15,6 +19,7 @@ let fileActivityOptions:
   | {
       onSessionStatusChange?: (event: SessionStatusEvent) => void;
       onSessionUpdated?: (event: SessionUpdatedEvent) => void;
+      onReconnect?: () => void | Promise<void>;
     }
   | undefined;
 
@@ -76,6 +81,10 @@ vi.mock("../useSessionMessages", () => ({
   })),
 }));
 
+vi.mock("../../api/client", () => ({
+  api: apiMocks,
+}));
+
 vi.mock("../useFileActivity", () => ({
   useFileActivity: vi.fn((options) => {
     fileActivityOptions = options;
@@ -105,6 +114,7 @@ describe("useSession completion reconciliation", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    apiMocks.getSessionMetadata.mockReset();
     installLocalStorageMock();
     fileActivityOptions = undefined;
     sessionStreamHandler = null;
@@ -177,6 +187,37 @@ describe("useSession completion reconciliation", () => {
     });
 
     expect(fetchNewMessages).not.toHaveBeenCalled();
+  });
+
+  it("syncs metadata process state when reconnect keeps ownership self", async () => {
+    apiMocks.getSessionMetadata.mockResolvedValue({
+      session: {},
+      ownership: {
+        owner: "self",
+        processId: "proc-1",
+        state: "idle",
+      },
+      pendingInputRequest: null,
+    });
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    expect(result.current.processState).toBe("in-turn");
+
+    await act(async () => {
+      await fileActivityOptions?.onReconnect?.();
+    });
+
+    expect(result.current.status).toMatchObject({
+      owner: "self",
+      processId: "proc-1",
+    });
+    expect(result.current.processState).toBe("idle");
+    expect(fetchNewMessages).toHaveBeenCalledTimes(1);
   });
 
   it("clears deferred queue chips when the queued turn is echoed as a user message", () => {

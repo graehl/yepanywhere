@@ -44,6 +44,18 @@ export type { AgentContent, AgentContentMap } from "./useSessionMessages";
 const THROTTLE_MS = 500;
 const STREAM_ACTIVITY_TOKEN_UPDATE_MS = 500;
 
+function parseProcessState(value: unknown): ProcessState | null {
+  if (
+    value === "idle" ||
+    value === "in-turn" ||
+    value === "waiting-input" ||
+    value === "hold"
+  ) {
+    return value;
+  }
+  return null;
+}
+
 // Re-export StreamingMarkdownCallbacks for consumers
 export type { StreamingMarkdownCallbacks } from "./useStreamingContent";
 
@@ -1097,9 +1109,25 @@ export function useSession(
     fetchNewMessages();
     try {
       const data = await api.getSessionMetadata(projectId, sessionId);
+      const metadataProcessState = parseProcessState(
+        (data.ownership as { state?: unknown }).state,
+      );
       setStatus(data.ownership);
+      if (metadataProcessState) {
+        setProcessState(metadataProcessState);
+      }
       if (data.ownership.owner === "none") {
         setProcessState("idle");
+        setPendingInputRequest(null);
+      } else if (
+        metadataProcessState === "waiting-input" &&
+        data.pendingInputRequest
+      ) {
+        setPendingInputRequest(data.pendingInputRequest);
+      } else if (
+        metadataProcessState &&
+        metadataProcessState !== "waiting-input"
+      ) {
         setPendingInputRequest(null);
       }
     } catch {
@@ -1616,14 +1644,32 @@ export function useSession(
   const handleStreamError = useCallback(async () => {
     try {
       const data = await api.getSessionMetadata(projectId, sessionId);
+      const metadataProcessState = parseProcessState(
+        (data.ownership as { state?: unknown }).state,
+      );
       if (data.ownership.owner !== "self") {
         setStatus({ owner: "none" });
         setProcessState("idle");
+        setPendingInputRequest(null);
+        return;
+      }
+      setStatus(data.ownership);
+      if (metadataProcessState) {
+        setProcessState(metadataProcessState);
+        if (
+          metadataProcessState === "waiting-input" &&
+          data.pendingInputRequest
+        ) {
+          setPendingInputRequest(data.pendingInputRequest);
+        } else if (metadataProcessState !== "waiting-input") {
+          setPendingInputRequest(null);
+        }
       }
     } catch {
       // If session fetch fails, assume process is dead
       setStatus({ owner: "none" });
       setProcessState("idle");
+      setPendingInputRequest(null);
     }
   }, [projectId, sessionId]);
 

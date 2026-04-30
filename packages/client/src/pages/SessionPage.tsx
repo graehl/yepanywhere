@@ -57,6 +57,7 @@ import {
   CLIENT_SLASH_COMMANDS,
   resolveComposerSlashTurn,
 } from "../lib/slashCommands";
+import { getSessionActivityUiState } from "../lib/sessionActivityUi";
 import { generateUUID } from "../lib/uuid";
 import { getSessionDisplayTitle } from "../utils";
 
@@ -410,20 +411,30 @@ function SessionPageContent({
     currentProviderInfo?.supportsSlashCommands ?? false;
   const currentOwnedProcessId =
     status.owner === "self" ? status.processId : undefined;
-  const hasPendingRenderedToolCalls = useMemo(() => {
-    const items = preprocessMessages(messages);
-    return items.some(
-      (item) => item.type === "tool_call" && item.status === "pending",
-    );
-  }, [messages]);
-  const hasOwnedPendingToolCalls =
-    status.owner === "self" && hasPendingRenderedToolCalls;
-  const canStopOwnedProcess =
-    status.owner === "self" &&
-    (processState === "in-turn" || hasOwnedPendingToolCalls);
-  const shouldDeferMessages =
-    status.owner === "self" &&
-    (processState !== "idle" || hasPendingRenderedToolCalls);
+  const activityRenderItems = useMemo(() => preprocessMessages(messages), [
+    messages,
+  ]);
+  const sessionActivityUi = useMemo(
+    () =>
+      getSessionActivityUiState({
+        owner: status.owner,
+        processState,
+        items: activityRenderItems,
+        hasSessionUpdateStream,
+        sessionUpdatesConnected,
+      }),
+    [
+      activityRenderItems,
+      hasSessionUpdateStream,
+      processState,
+      sessionUpdatesConnected,
+      status.owner,
+    ],
+  );
+  const hasPendingRenderedToolCalls =
+    sessionActivityUi.hasPendingToolCalls;
+  const canStopOwnedProcess = sessionActivityUi.canStopOwnedProcess;
+  const shouldDeferMessages = sessionActivityUi.shouldDeferMessages;
 
   useEffect(() => {
     let cancelled = false;
@@ -1550,17 +1561,11 @@ function SessionPageContent({
   // Check if pending request is an AskUserQuestion
   const isAskUserQuestion = pendingInputRequest?.toolName === "AskUserQuestion";
 
-  // If process is actively in-turn or waiting for input, don't mark tools as orphaned.
-  // "orphanedToolUseIds" from server just means "no result yet" - but if the process is
-  // in-turn (e.g., executing a Task subagent) or waiting for approval, they're not orphaned.
-  // Also suppress orphan marking when the session stream is disconnected - we can't trust
-  // processState without the stream, so show tools as pending (spinner) rather than
-  // incorrectly marking them as interrupted.
+  // Suppress current-turn orphan markers only while the latest turn still
+  // appears active. Terminal assistant text should win over stale process state
+  // or stale pending tool rows so old activity cannot orphan the bottom spinner.
   const activeToolApproval =
-    processState === "in-turn" ||
-    processState === "waiting-input" ||
-    hasOwnedPendingToolCalls ||
-    (hasSessionUpdateStream && !sessionUpdatesConnected);
+    sessionActivityUi.shouldSuppressCurrentTurnOrphans;
 
   // Detect if session has pending tool calls without results
   // This can happen when the session is unowned but was active in another process (VS Code, CLI)
@@ -2146,8 +2151,7 @@ function SessionPageContent({
                   messages={messages}
                   provider={session?.provider}
                   isProcessing={
-                    status.owner === "self" &&
-                    (processState === "in-turn" || hasOwnedPendingToolCalls)
+                    sessionActivityUi.showProcessingIndicator
                   }
                   isCompacting={isCompacting}
                   scrollTrigger={scrollTrigger}

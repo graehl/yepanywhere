@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const STREAMING_MARKDOWN_MIN_UPDATE_MS = 100;
+const STREAMING_MARKDOWN_BASE_UPDATE_MS = 100;
+const STREAMING_MARKDOWN_MAX_UPDATE_MS = 750;
+const STREAMING_MARKDOWN_FLUSH_BUDGET_MS = 16;
+const STREAMING_MARKDOWN_BURST_EVENT_THRESHOLD = 20;
+
+function nowMs(): number {
+  return typeof performance !== "undefined" &&
+    typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
 
 // Debug logging - enable via window.__STREAMING_DEBUG__ = true
 declare global {
@@ -95,6 +105,8 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
   const bufferedPendingHtmlRef = useRef<string | null>(null);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFlushAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const adaptiveFlushMsRef = useRef(STREAMING_MARKDOWN_BASE_UPDATE_MS);
+  const pendingEventCountRef = useRef(0);
 
   const markStreaming = useCallback(() => {
     setIsStreaming((current) => (current ? current : true));
@@ -231,15 +243,19 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
     const bufferedAugments = bufferedAugmentsRef.current;
     const bufferedPendingHtml = bufferedPendingHtmlRef.current;
     if (bufferedAugments.size === 0 && bufferedPendingHtml === null) {
+      pendingEventCountRef.current = 0;
       return;
     }
 
     const augments = [...bufferedAugments.values()].sort(
       (a, b) => a.blockIndex - b.blockIndex,
     );
+    const eventCount = pendingEventCountRef.current;
     bufferedAugments.clear();
     bufferedPendingHtmlRef.current = null;
+    pendingEventCountRef.current = 0;
 
+    const startMs = nowMs();
     for (const augment of augments) {
       applyAugment(augment);
     }
@@ -247,22 +263,42 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
       applyPending({ html: bufferedPendingHtml });
     }
 
-    lastFlushAtRef.current = performance.now();
+    const durationMs = nowMs() - startMs;
+    if (
+      durationMs > STREAMING_MARKDOWN_FLUSH_BUDGET_MS ||
+      eventCount > STREAMING_MARKDOWN_BURST_EVENT_THRESHOLD
+    ) {
+      adaptiveFlushMsRef.current = Math.min(
+        STREAMING_MARKDOWN_MAX_UPDATE_MS,
+        Math.max(200, Math.ceil(adaptiveFlushMsRef.current * 1.5)),
+      );
+    } else if (
+      durationMs < STREAMING_MARKDOWN_FLUSH_BUDGET_MS / 2 &&
+      eventCount <= 6
+    ) {
+      adaptiveFlushMsRef.current = Math.max(
+        STREAMING_MARKDOWN_BASE_UPDATE_MS,
+        Math.floor(adaptiveFlushMsRef.current * 0.8),
+      );
+    }
+
+    lastFlushAtRef.current = nowMs();
   }, [applyAugment, applyPending, clearScheduledFlush]);
 
   const scheduleBufferedFlush = useCallback(() => {
     if (flushTimerRef.current !== null) return;
 
-    const now = performance.now();
+    const now = nowMs();
     const elapsed = now - lastFlushAtRef.current;
-    if (elapsed >= STREAMING_MARKDOWN_MIN_UPDATE_MS) {
+    const updateMs = adaptiveFlushMsRef.current;
+    if (elapsed >= updateMs) {
       flushBufferedUpdates();
       return;
     }
 
     flushTimerRef.current = setTimeout(
       flushBufferedUpdates,
-      STREAMING_MARKDOWN_MIN_UPDATE_MS - elapsed,
+      updateMs - elapsed,
     );
   }, [flushBufferedUpdates]);
 
@@ -273,6 +309,7 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
   const onAugment = useCallback(
     (augment: AugmentEvent) => {
       bufferedAugmentsRef.current.set(augment.blockIndex, augment);
+      pendingEventCountRef.current += 1;
       scheduleBufferedFlush();
     },
     [scheduleBufferedFlush],
@@ -285,6 +322,7 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
   const onPending = useCallback(
     (pending: PendingEvent) => {
       bufferedPendingHtmlRef.current = pending.html;
+      pendingEventCountRef.current += 1;
       scheduleBufferedFlush();
     },
     [scheduleBufferedFlush],
@@ -316,6 +354,8 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
     clearScheduledFlush();
     bufferedAugmentsRef.current.clear();
     bufferedPendingHtmlRef.current = null;
+    pendingEventCountRef.current = 0;
+    adaptiveFlushMsRef.current = STREAMING_MARKDOWN_BASE_UPDATE_MS;
 
     const container = containerRef.current;
     const pendingElement = pendingRef.current;

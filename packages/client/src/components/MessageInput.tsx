@@ -499,6 +499,7 @@ export function MessageInput({
             setInterimTranscript("");
             setText(e.target.value);
           }}
+          onBlur={controls.flushDraft}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           enterKeyHint="send"

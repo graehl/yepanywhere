@@ -5,6 +5,8 @@ const DEBOUNCE_MS = 500;
 export interface DraftControls {
   /** Replace input state and localStorage immediately */
   setDraft: (value: string) => void;
+  /** Flush any pending debounced draft write immediately */
+  flushDraft: () => void;
   /** Clear input state only, keeping localStorage for failure recovery */
   clearInput: () => void;
   /** Clear both input state and localStorage (call on confirmed success) */
@@ -103,14 +105,25 @@ export function useDraftPersistence(
     }
   }, []);
 
-  // Handle beforeunload to save draft before page unload (including HMR)
+  // Handle lifecycle boundaries to save drafts before the page can be frozen,
+  // discarded, or refreshed. `pagehide` covers mobile/browser cache paths where
+  // `beforeunload` is skipped.
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const handlePageExit = () => {
       flushPending();
     };
-    window.addEventListener("beforeunload", handleBeforeUnload);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPending();
+      }
+    };
+    window.addEventListener("beforeunload", handlePageExit);
+    window.addEventListener("pagehide", handlePageExit);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("beforeunload", handlePageExit);
+      window.removeEventListener("pagehide", handlePageExit);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [flushPending]);
 
@@ -196,8 +209,14 @@ export function useDraftPersistence(
   }, []);
 
   const controls = useMemo(
-    () => ({ setDraft, clearInput, clearDraft, restoreFromStorage }),
-    [setDraft, clearInput, clearDraft, restoreFromStorage],
+    () => ({
+      setDraft,
+      flushDraft: flushPending,
+      clearInput,
+      clearDraft,
+      restoreFromStorage,
+    }),
+    [setDraft, flushPending, clearInput, clearDraft, restoreFromStorage],
   );
 
   return [value, setValue, controls];

@@ -9,13 +9,20 @@ vi.mock("../../hooks/useDraftPersistence", () => ({
   useDraftPersistence: () => {
     const [value, setValue] = useState("");
     const setDraft = useCallback((nextValue: string) => setValue(nextValue), []);
+    const flushDraft = useCallback(() => {}, []);
     const clearInput = useCallback(() => setValue(""), []);
     const clearDraft = useCallback(() => setValue(""), []);
     const restoreFromStorage = useCallback(() => {}, []);
 
     const controls = useMemo(
-      () => ({ setDraft, clearInput, clearDraft, restoreFromStorage }),
-      [setDraft, clearInput, clearDraft, restoreFromStorage],
+      () => ({
+        setDraft,
+        flushDraft,
+        clearInput,
+        clearDraft,
+        restoreFromStorage,
+      }),
+      [setDraft, flushDraft, clearInput, clearDraft, restoreFromStorage],
     );
 
     return [value, setValue, controls] as const;

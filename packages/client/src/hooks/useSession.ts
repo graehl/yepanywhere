@@ -42,6 +42,7 @@ export type ProcessState = "idle" | "in-turn" | "waiting-input" | "hold";
 export type { AgentContent, AgentContentMap } from "./useSessionMessages";
 
 const THROTTLE_MS = 500;
+const STREAM_ACTIVITY_TOKEN_UPDATE_MS = 500;
 
 // Re-export StreamingMarkdownCallbacks for consumers
 export type { StreamingMarkdownCallbacks } from "./useStreamingContent";
@@ -447,6 +448,55 @@ export function useSession(
   const [lastStreamActivityAt, setLastStreamActivityAt] = useState<
     string | null
   >(null);
+  const streamActivityRef = useRef<{
+    lastUpdateMs: number;
+    pendingIso: string | null;
+    timer: ReturnType<typeof setTimeout> | null;
+  }>({
+    lastUpdateMs: Number.NEGATIVE_INFINITY,
+    pendingIso: null,
+    timer: null,
+  });
+
+  const noteStreamActivity = useCallback((immediate = false) => {
+    const nowMs = Date.now();
+    const iso = new Date(nowMs).toISOString();
+    const ref = streamActivityRef.current;
+    const elapsedMs = nowMs - ref.lastUpdateMs;
+
+    if (immediate || elapsedMs >= STREAM_ACTIVITY_TOKEN_UPDATE_MS) {
+      if (ref.timer) {
+        clearTimeout(ref.timer);
+        ref.timer = null;
+      }
+      ref.pendingIso = null;
+      ref.lastUpdateMs = nowMs;
+      setLastStreamActivityAt(iso);
+      return;
+    }
+
+    ref.pendingIso = iso;
+    if (!ref.timer) {
+      ref.timer = setTimeout(() => {
+        const pendingIso = ref.pendingIso;
+        ref.pendingIso = null;
+        ref.timer = null;
+        ref.lastUpdateMs = Date.now();
+        if (pendingIso) {
+          setLastStreamActivityAt(pendingIso);
+        }
+      }, STREAM_ACTIVITY_TOKEN_UPDATE_MS - elapsedMs);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      const timer = streamActivityRef.current.timer;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, []);
 
   // Pending messages queue - messages waiting for server confirmation
   // These are displayed separately from the main message list
@@ -1145,11 +1195,6 @@ export function useSession(
         tempId: typeof data.tempId === "string" ? data.tempId : undefined,
       });
       if (data.eventType === "message") {
-        // Track stream activity for engagement tracking
-        // This ensures sessions are marked as "seen" even when receiving
-        // subagent content (which doesn't update parent session file mtime)
-        setLastStreamActivityAt(new Date().toISOString());
-
         // The message event contains the SDK message directly
         // Pass through all fields without stripping
         const sdkMessage = data as Record<string, unknown> & {
@@ -1168,6 +1213,11 @@ export function useSession(
         const msgType =
           typeof sdkMessage.type === "string" ? sdkMessage.type : undefined;
         const msgRole = sdkMessage.role as Message["role"] | undefined;
+
+        // Track stream activity for engagement/freshness UI. Queue state,
+        // status, and full user/assistant messages stay immediate; only
+        // token-level stream_event freshness is coalesced.
+        noteStreamActivity(msgType !== "stream_event");
 
         // Handle stream_event messages (partial content from streaming API)
         // Delegate to useStreamingContent hook
@@ -1542,6 +1592,7 @@ export function useSession(
       applyServerModeUpdate,
       sessionId,
       handleStreamEvent,
+      noteStreamActivity,
       clearStreaming,
       removePendingMessage,
       setDeferredMessages,

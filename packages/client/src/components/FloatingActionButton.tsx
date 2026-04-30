@@ -130,9 +130,15 @@ export function FloatingActionButton() {
     ? message + (message.trimEnd() ? " " : "") + interimTranscript
     : message;
 
-  // Hide (but don't unmount) when not visible or on new-session page
+  // Hide (but don't unmount) when not visible, on new-session page, or while
+  // supervising an active session. On session pages it duplicates the sidebar
+  // new-session affordance and competes with the real composer.
   // This preserves expanded state and draft across navigation
-  const isHidden = !fabVisibility || location.pathname.endsWith("/new-session");
+  const isSessionPage = /\/sessions\/[^/]+/.test(location.pathname);
+  const isHidden =
+    !fabVisibility ||
+    location.pathname.endsWith("/new-session") ||
+    isSessionPage;
 
   const { right, bottom, maxWidth } = fabVisibility ?? {
     right: 24,

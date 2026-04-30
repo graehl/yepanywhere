@@ -44,7 +44,7 @@ export const TextBlock = memo(function TextBlock({
     const unregister = streamingContext.registerStreamingHandler({
       onAugment: (augment) => {
         // Mark that we're using streaming content on first augment
-        setUseStreamingContent(true);
+        setUseStreamingContent((current) => (current ? current : true));
         streamingMarkdown.onAugment(augment);
       },
       onPending: streamingMarkdown.onPending,
@@ -53,7 +53,15 @@ export const TextBlock = memo(function TextBlock({
     });
 
     return unregister;
-  }, [isStreaming, streamingContext, streamingMarkdown]);
+  }, [
+    isStreaming,
+    streamingContext,
+    streamingMarkdown.captureHtml,
+    streamingMarkdown.onAugment,
+    streamingMarkdown.onPending,
+    streamingMarkdown.onStreamEnd,
+    streamingMarkdown.reset,
+  ]);
 
   const handleCopy = useCallback(async () => {
     try {

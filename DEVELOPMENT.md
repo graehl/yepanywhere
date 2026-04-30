@@ -42,6 +42,11 @@ dependencies. Before adding a runtime dep:
   provider SDKs. Use the audited/canonical implementation.
 - **Client bundle**: mobile-first — anything entering the client bundle must
   justify its payload. Prefer server-side rendering.
+- **Client rendering**: rich renderers should operate on block/tool-sized input
+  and return cheap metadata they already know, such as whether output changed.
+  Reuse a first completed scan for both control decisions and display instead
+  of rendering once to decide whether a toggle exists and again to show it. See
+  [packages/client/RENDERING_PERFORMANCE.md](packages/client/RENDERING_PERFORMANCE.md).
 - **Dev-deps**: tooling (vitest, biome, playwright, tsx, types) doesn't ship to
   users; lower bar applies.
 

@@ -2,6 +2,7 @@ import { type ReactNode, useCallback, useMemo, useState } from "react";
 import katex from "katex";
 import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContext";
+import { profileRenderWork } from "../../lib/diagnostics/renderProfiler";
 import { FileViewerModal } from "../FilePathLink";
 import { RenderModeGlyph } from "./RenderModeGlyph";
 
@@ -11,6 +12,7 @@ interface FixedFontMathToggleProps {
   renderRenderedView: (html: string) => ReactNode;
   diffAware?: boolean;
   baseFilePath?: string;
+  precomputedRendered?: RenderedMathResult;
 }
 
 export interface RenderedMathResult {
@@ -244,7 +246,14 @@ function tryMatchInlineMath(
   };
 }
 
-export function renderFixedFontMath(sourceText: string): RenderedMathResult {
+function getProfileSize(sourceText: string): { chars: number; lines: number } {
+  return {
+    chars: sourceText.length,
+    lines: sourceText.length === 0 ? 0 : sourceText.split("\n").length,
+  };
+}
+
+function renderFixedFontMathInner(sourceText: string): RenderedMathResult {
   let html = "";
   let changed = false;
   let plainStart = 0;
@@ -269,6 +278,14 @@ export function renderFixedFontMath(sourceText: string): RenderedMathResult {
 
   html += escapeHtml(sourceText.slice(plainStart));
   return { html, changed };
+}
+
+export function renderFixedFontMath(sourceText: string): RenderedMathResult {
+  return profileRenderWork(
+    "fixed-font-math",
+    () => getProfileSize(sourceText),
+    () => renderFixedFontMathInner(sourceText),
+  );
 }
 
 function looksLikeUnifiedDiff(sourceText: string): boolean {
@@ -598,7 +615,7 @@ function renderRichLine(
   return `<div class="${classes}">${renderDiffGutter(line.prefix)}<div class="fixed-font-rendered-line__content"${styleAttr}>${rendered.html}</div></div>`;
 }
 
-export function renderFixedFontRichContent(
+function renderFixedFontRichContentInner(
   sourceText: string,
   options: RenderOptions = {},
 ): RenderedMathResult {
@@ -649,6 +666,42 @@ export function renderFixedFontRichContent(
   return { html, changed };
 }
 
+export function renderFixedFontRichContent(
+  sourceText: string,
+  options: RenderOptions = {},
+): RenderedMathResult {
+  return profileRenderWork(
+    "fixed-font-rich-content",
+    () => ({
+      ...getProfileSize(sourceText),
+      diffAware: options.diffAware ?? null,
+      hasProjectId: Boolean(options.projectId),
+      hasBaseFilePath: Boolean(options.baseFilePath),
+    }),
+    () => renderFixedFontRichContentInner(sourceText, options),
+  );
+}
+
+export function mayHaveFixedFontRichContent(sourceText: string): boolean {
+  if (!sourceText) {
+    return false;
+  }
+
+  if (
+    sourceText.includes("$") ||
+    sourceText.includes("`") ||
+    sourceText.includes("[") ||
+    sourceText.includes("**") ||
+    sourceText.includes("__")
+  ) {
+    return true;
+  }
+
+  return /(^|\n)\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+|[-*_]{3,}\s*$|\|.*\|)/.test(
+    sourceText,
+  );
+}
+
 export function hasFixedFontRichContent(
   sourceText: string,
   options: RenderOptions = {},
@@ -662,17 +715,25 @@ export function FixedFontMathToggle({
   renderRenderedView,
   diffAware,
   baseFilePath,
+  precomputedRendered,
 }: FixedFontMathToggleProps) {
   const sessionMetadata = useOptionalSessionMetadata();
   const [viewerFilePath, setViewerFilePath] = useState<string | null>(null);
   const rendered = useMemo(
     () =>
+      precomputedRendered ??
       renderFixedFontRichContent(sourceText, {
         diffAware,
         projectId: sessionMetadata?.projectId,
         baseFilePath,
       }),
-    [sourceText, diffAware, sessionMetadata?.projectId, baseFilePath],
+    [
+      precomputedRendered,
+      sourceText,
+      diffAware,
+      sessionMetadata?.projectId,
+      baseFilePath,
+    ],
   );
   const { showRendered, toggleLocalMode } = useRenderModeToggle(rendered.changed, {
     renderWhenDisabled: false,

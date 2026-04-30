@@ -12,6 +12,7 @@ import {
   parseTimestampMs,
 } from "../lib/messageAge";
 import { parseUserPrompt } from "../lib/parseUserPrompt";
+import { stabilizeRenderItems } from "../lib/stableRenderItems";
 import type { Message } from "../types";
 import type { ContentBlock } from "../types";
 import type { RenderItem } from "../types/renderItems";
@@ -187,6 +188,7 @@ export const MessageList = memo(function MessageList({
   const isProgrammaticScrollRef = useRef(false);
   const lastHeightRef = useRef(0);
   const followUpScrollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previousRenderItemsRef = useRef<RenderItem[]>([]);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const nowMs = useRelativeNow();
 
@@ -220,13 +222,21 @@ export const MessageList = memo(function MessageList({
 
   // Preprocess messages into render items and group into turns
   const renderItems = useMemo(
-    () =>
-      preprocessMessages(messages, {
+    () => {
+      const nextRenderItems = preprocessMessages(messages, {
         markdown: markdownAugments,
         activeToolApproval,
-      }),
+      });
+      return stabilizeRenderItems(
+        previousRenderItemsRef.current,
+        nextRenderItems,
+      );
+    },
     [messages, markdownAugments, activeToolApproval],
   );
+  useEffect(() => {
+    previousRenderItemsRef.current = renderItems;
+  }, [renderItems]);
   const turnGroups = useMemo(
     () => groupItemsIntoTurns(renderItems),
     [renderItems],

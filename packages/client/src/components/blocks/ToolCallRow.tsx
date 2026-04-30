@@ -8,7 +8,7 @@ import type { ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
 import type { RenderContext } from "../renderers/types";
 import { getToolSummary } from "../tools/summaries";
-import { hasFixedFontRichContent } from "../ui/FixedFontMathToggle";
+import { mayHaveFixedFontRichContent } from "../ui/FixedFontMathToggle";
 
 interface Props {
   id: string;
@@ -241,7 +241,7 @@ function shouldSuppressBashCollapsedPreview(
   }
   if (status === "complete" || status === "error" || status === "aborted") {
     const output = getBashResultOutputForRichPreview(result);
-    return !output || !hasFixedFontRichContent(output);
+    return !output || !mayHaveFixedFontRichContent(output);
   }
 
   const command = getDisplayBashCommandFromInput(toolInput);

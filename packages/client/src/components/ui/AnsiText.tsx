@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { hasAnsiEscapes, renderAnsiToHtml } from "@yep-anywhere/shared";
+import { profileRenderWork } from "../../lib/diagnostics/renderProfiler";
 
 interface Props {
   text: string;
@@ -20,7 +21,14 @@ export const AnsiText = memo(function AnsiText({
     );
   }
 
-  const html = renderAnsiToHtml(text);
+  const html = profileRenderWork(
+    "ansi-render",
+    () => ({
+      chars: text.length,
+      lines: text.length === 0 ? 0 : text.split("\n").length,
+    }),
+    () => renderAnsiToHtml(text),
+  );
   return as === "span" ? (
     <span
       className={className}

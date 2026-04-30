@@ -6,6 +6,7 @@ import {
   reconcileCodexLinearMessages,
 } from "../lib/codexLinearMessages";
 import {
+  findMessageIndexById,
   getMessageId,
   mergeJSONLMessages,
   mergeStreamMessage,
@@ -257,7 +258,7 @@ export function useSessionMessages(
           status: "running" as const,
         };
         const incomingId = getMessageId(incoming);
-        if (existing.messages.some((m) => getMessageId(m) === incomingId)) {
+        if (findMessageIndexById(existing.messages, incomingId) !== -1) {
           return prev;
         }
         return {
@@ -362,8 +363,9 @@ export function useSessionMessages(
             messages: [],
             status: "running" as const,
           };
-          const existingIdx = existing.messages.findIndex(
-            (m) => getMessageId(m) === messageId,
+          const existingIdx = findMessageIndexById(
+            existing.messages,
+            messageId,
           );
 
           if (existingIdx >= 0) {
@@ -384,9 +386,7 @@ export function useSessionMessages(
 
       // Route to main messages
       setMessages((prev) => {
-        const existingIdx = prev.findIndex(
-          (m) => getMessageId(m) === messageId,
-        );
+        const existingIdx = findMessageIndexById(prev, messageId);
         if (existingIdx >= 0) {
           const updated = [...prev];
           updated[existingIdx] = streamingMessage;

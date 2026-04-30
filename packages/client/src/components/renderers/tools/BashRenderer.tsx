@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import {
   getDisplayBashCommandFromInput,
   isCodexProvider,
@@ -17,6 +18,7 @@ import { SchemaWarning } from "../../SchemaWarning";
 import { AnsiText } from "../../ui/AnsiText";
 import {
   FixedFontMathToggle,
+  type RenderedMathResult,
   renderFixedFontRichContent,
 } from "../../ui/FixedFontMathToggle";
 import { Modal } from "../../ui/Modal";
@@ -30,6 +32,10 @@ const CODEX_PREVIEW_LINES = 2;
 const CODEX_PREVIEW_MAX_CHARS = 220;
 const RICH_PREVIEW_LINES = 20;
 const RICH_PREVIEW_MAX_CHARS = 4000;
+const NO_FIXED_FONT_RICH_CONTENT: RenderedMathResult = {
+  html: "",
+  changed: false,
+};
 
 const CODEX_NOISE_PATTERNS = [
   /^npm warn (?:unknown env config|config)\s+["']recursive["']/i,
@@ -383,10 +389,21 @@ function BashToolResult({
   const stdout = result.stdout || "";
   const stderr = result.stderr || "";
   const command = input ? getBashCommand(input) : "";
+  const sessionMetadata = useOptionalSessionMetadata();
   const stdoutLines = stdout.split("\n");
   const richStdout = useMemo(
-    () => renderFixedFontRichContent(stdout),
-    [stdout],
+    () =>
+      renderFixedFontRichContent(stdout, {
+        projectId: sessionMetadata?.projectId,
+      }),
+    [stdout, sessionMetadata?.projectId],
+  );
+  const richStderr = useMemo(
+    () =>
+      renderFixedFontRichContent(stderr, {
+        projectId: sessionMetadata?.projectId,
+      }),
+    [stderr, sessionMetadata?.projectId],
   );
   const needsCollapse = stdoutLines.length > MAX_LINES_COLLAPSED;
   const displayStdout =
@@ -427,6 +444,11 @@ function BashToolResult({
           </div>
           <FixedFontMathToggle
             sourceText={stdoutRenderText}
+            precomputedRendered={
+              stdoutRenderText === stdout
+                ? richStdout
+                : NO_FIXED_FONT_RICH_CONTENT
+            }
             sourceView={
               <pre className="code-block">
                 <AnsiText text={displayStdout} />
@@ -460,6 +482,7 @@ function BashToolResult({
           </div>
           <FixedFontMathToggle
             sourceText={stderr}
+            precomputedRendered={richStderr}
             sourceView={
               <pre className="code-block code-block-error">
                 <AnsiText text={stderr} />
@@ -548,14 +571,18 @@ function BashCollapsedPreview({
 
   const showValidationWarning =
     enabled && validationErrors && !isToolIgnored("Bash");
+  const sessionMetadata = useOptionalSessionMetadata();
   const output = sanitizeOutputForPreview(
     result?.stdout || result?.stderr || "",
     provider,
   );
   const command = getBashCommand(input);
   const fullRichPreview = useMemo(
-    () => renderFixedFontRichContent(output),
-    [output],
+    () =>
+      renderFixedFontRichContent(output, {
+        projectId: sessionMetadata?.projectId,
+      }),
+    [output, sessionMetadata?.projectId],
   );
   const { text: previewText, truncated } = truncateOutput(
     output,
@@ -563,6 +590,17 @@ function BashCollapsedPreview({
       ? { maxLines: RICH_PREVIEW_LINES, maxChars: RICH_PREVIEW_MAX_CHARS }
       : getPreviewLimits(provider),
   );
+  const previewRichContent = useMemo(() => {
+    if (previewText === output) {
+      return fullRichPreview;
+    }
+    if (!fullRichPreview.changed) {
+      return NO_FIXED_FONT_RICH_CONTENT;
+    }
+    return renderFixedFontRichContent(previewText, {
+      projectId: sessionMetadata?.projectId,
+    });
+  }, [previewText, output, fullRichPreview, sessionMetadata?.projectId]);
   const hasOutput = previewText.length > 0;
 
   const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
@@ -613,6 +651,7 @@ function BashCollapsedPreview({
             >
               <FixedFontMathToggle
                 sourceText={previewText}
+                precomputedRendered={previewRichContent}
                 sourceView={
                   <pre>
                     <AnsiText text={previewText} />

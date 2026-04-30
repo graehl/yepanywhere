@@ -6,6 +6,8 @@ import { LocalMediaModal, useLocalMediaClick } from "../LocalMediaModal";
 import { renderFixedFontMath } from "../ui/FixedFontMathToggle";
 import { RenderModeGlyph } from "../ui/RenderModeGlyph";
 
+const EMPTY_LOCAL_MATH_PREVIEW = { html: "", changed: false };
+
 interface Props {
   text: string;
   isStreaming?: boolean;
@@ -19,7 +21,10 @@ export const TextBlock = memo(function TextBlock({
   augmentHtml,
 }: Props) {
   const [copied, setCopied] = useState(false);
-  const localMathPreview = useMemo(() => renderFixedFontMath(text), [text]);
+  const localMathPreview = useMemo(
+    () => (isStreaming ? EMPTY_LOCAL_MATH_PREVIEW : renderFixedFontMath(text)),
+    [isStreaming, text],
+  );
 
   // Streaming markdown hook for server-rendered content
   const streamingMarkdown = useStreamingMarkdown();
@@ -78,7 +83,7 @@ export const TextBlock = memo(function TextBlock({
   const showStreamingContent = isStreaming && useStreamingContent;
   const canToggleMath = localMathPreview.changed;
   const { showRendered, toggleLocalMode } = useRenderModeToggle(canToggleMath, {
-    resetDependencies: [text, augmentHtml ?? ""],
+    resetDependencies: [isStreaming, isStreaming ? "" : text, augmentHtml ?? ""],
   });
 
   // Always render streaming container when isStreaming so refs are attached

@@ -36,6 +36,7 @@ function buildPublicShareUrl(
   relayConfig: RelayConfigForPublicShare,
   display: {
     mode: CreatePublicSessionShareResponse["mode"];
+    capturedAt?: string | null;
     initialPrompt?: string | null;
     projectName: string;
     title: string | null;
@@ -54,6 +55,9 @@ function buildPublicShareUrl(
   const displayParams = new URLSearchParams();
   displayParams.set("m", display.mode);
   displayParams.set("p", display.projectName);
+  if (display.capturedAt) {
+    displayParams.set("c", display.capturedAt);
+  }
   if (display.title) {
     displayParams.set("t", display.title);
   }
@@ -229,7 +233,13 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
       url: buildPublicShareUrl(
         secret,
         relayConfig,
-        { mode: record.mode, initialPrompt, projectName, title },
+        {
+          mode: record.mode,
+          capturedAt: record.capturedAt,
+          initialPrompt,
+          projectName,
+          title,
+        },
         deps.publicShareOrigin,
       ),
       mode: record.mode,

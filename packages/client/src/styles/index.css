@@ -9781,51 +9781,68 @@ a.sidebar-nav-item {
 
 .public-share-header {
   flex-shrink: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.public-share-title-block {
+.public-share-header-inner {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0.5rem 1rem;
+}
+
+.public-share-header-left {
   min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
-.public-share-header h1 {
-  margin: var(--space-1) 0 0;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.public-share-eyebrow-row {
+.public-share-title-row {
+  min-width: 0;
+  flex: 1;
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--space-1);
+  gap: var(--space-2);
+}
+
+.public-share-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: inherit;
+  font-weight: 500;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.public-share-project {
+  display: inline-flex;
+  align-items: center;
+  max-width: 12rem;
+  overflow: hidden;
   color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  text-transform: uppercase;
-  letter-spacing: 0;
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .public-share-brand-wordmark {
   --brand-wordmark-size: 14px;
-  margin-right: var(--space-1);
-  text-transform: none;
-}
-
-.public-share-eyebrow-separator {
-  color: var(--text-faint);
+  flex-shrink: 0;
 }
 
 .public-share-loading-line {
-  margin-top: var(--space-1);
+  flex-shrink: 0;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
+  white-space: nowrap;
 }
 
 .public-share-badge {
@@ -9887,8 +9904,23 @@ a.sidebar-nav-item {
   }
 
   .public-share-header {
-    align-items: flex-start;
-    flex-direction: column;
+    border-bottom-color: var(--border-subtle);
+  }
+
+  .public-share-header-inner {
     gap: var(--space-2);
+    padding: 0.5rem 0.75rem;
+  }
+
+  .public-share-header-left {
+    gap: var(--space-2);
+  }
+
+  .public-share-project {
+    max-width: 7rem;
+  }
+
+  .public-share-loading-line {
+    display: none;
   }
 }

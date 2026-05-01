@@ -19,6 +19,7 @@ const LIVE_POLL_MS = 5000;
 const RETRY_POLL_MS = 2000;
 
 interface PublicShareHints {
+  capturedAt: string | null;
   initialPrompt: string | null;
   mode: PublicSessionShareMode | null;
   projectName: string | null;
@@ -132,11 +133,29 @@ function parseShareHints(hash: string): PublicShareHints {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   const mode = params.get("m");
   return {
+    capturedAt: params.get("c"),
     initialPrompt: params.get("q"),
     mode: mode === "frozen" || mode === "live" ? mode : null,
     projectName: params.get("p"),
     title: params.get("t"),
   };
+}
+
+function formatSnapshotDate(timestamp: string | null): string | null {
+  if (!timestamp) {
+    return null;
+  }
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const now = new Date();
+  const includeYear = date.getFullYear() !== now.getFullYear();
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(includeYear ? { year: "numeric" } : {}),
+  });
 }
 
 function buildPreviewMessage(initialPrompt: string | null): Message[] {
@@ -189,6 +208,19 @@ export function PublicSharePage() {
   );
   const projectName = share?.share.source.projectName ?? hints.projectName;
   const mode = share?.share.mode ?? hints.mode;
+  const capturedAt = share?.share.capturedAt ?? hints.capturedAt;
+  const badgeLabel = useMemo(() => {
+    if (mode === "live") {
+      return t("publicShareLiveBadge");
+    }
+    if (mode === "frozen") {
+      const snapshotDate = formatSnapshotDate(capturedAt);
+      return snapshotDate
+        ? `${t("publicShareFrozenBadge")} ${snapshotDate}`
+        : t("publicShareFrozenBadge");
+    }
+    return null;
+  }, [capturedAt, mode, t]);
   const previewMessages = useMemo(
     () => buildPreviewMessage(hints.initialPrompt),
     [hints.initialPrompt],
@@ -272,34 +304,32 @@ export function PublicSharePage() {
   return (
     <main className="public-share-page">
       <header className="public-share-header">
-        <div className="public-share-title-block">
-          <div className="public-share-eyebrow-row">
+        <div className="public-share-header-inner">
+          <div className="public-share-header-left">
             <BrandWordmark
               variant="full"
               className="public-share-brand-wordmark"
             />
-            <span>{t("publicShareEyebrow")}</span>
             {projectName && (
-              <>
-                <span className="public-share-eyebrow-separator">/</span>
-                <span>{projectName}</span>
-              </>
+              <span className="public-share-project" title={projectName}>
+                {projectName}
+              </span>
             )}
-          </div>
-          <h1>{title ?? t("publicShareUntitled")}</h1>
-          {(loading || retrying) && (
-            <div className="public-share-loading-line">
-              {retrying ? t("publicShareRetrying") : t("publicShareLoading")}
+            <div className="public-share-title-row">
+              <h1 className="public-share-title">
+                {title ?? t("publicShareUntitled")}
+              </h1>
+              {(loading || retrying) && (
+                <span className="public-share-loading-line">
+                  {retrying ? t("publicShareRetrying") : t("publicShareLoading")}
+                </span>
+              )}
             </div>
+          </div>
+          {badgeLabel && (
+            <span className="public-share-badge">{badgeLabel}</span>
           )}
         </div>
-        {mode && (
-          <span className="public-share-badge">
-            {mode === "live"
-              ? t("publicShareLiveBadge")
-              : t("publicShareFrozenBadge")}
-          </span>
-        )}
       </header>
       <section className="public-share-scroll">
         <ToastProvider>

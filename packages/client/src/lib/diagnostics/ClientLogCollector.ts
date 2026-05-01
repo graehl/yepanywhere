@@ -112,6 +112,11 @@ export class ClientLogCollector {
     this._useMemoryFallback = false;
   }
 
+  record(level: string, prefix: string, message: string): void {
+    if (!this._started) return;
+    this._writeEntry(level, prefix, message);
+  }
+
   async flush(): Promise<void> {
     if (this._flushing) return;
     this._flushing = true;

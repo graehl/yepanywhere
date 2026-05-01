@@ -1,8 +1,10 @@
 import { getRemoteLogCollectionEnabled } from "../../hooks/useDeveloperMode";
+import { clientLogCollector } from "./index";
 
 type TraceDetails = Record<string, unknown>;
 
 const HIGH_CHURN_TRACE_FLUSH_MS = 1_000;
+const SESSION_UI_TRACE_PREFIX = "[SessionUITrace]";
 
 interface HighChurnTraceBatch {
   timer: ReturnType<typeof setTimeout> | null;
@@ -28,16 +30,37 @@ function getHighChurnTraceKey(
   event: string,
   details: TraceDetails,
 ): string | null {
-  if (event !== "session-stream-event") return null;
-  const eventType = details.eventType;
-  const sdkType = details.sdkType;
-  if (eventType === "message" && sdkType === "stream_event") {
-    return "message:stream_event";
+  if (event === "session-stream-event") {
+    const eventType = details.eventType;
+    const sdkType = details.sdkType;
+    if (eventType === "message" && sdkType === "stream_event") {
+      return "stream:message:stream_event";
+    }
+    if (eventType === "pending" || eventType === "markdown-augment") {
+      return `stream:${String(eventType)}`;
+    }
   }
-  if (eventType === "pending" || eventType === "markdown-augment") {
-    return String(eventType);
+
+  if (event === "session-stream-dispatch") {
+    const eventType = details.eventType;
+    const sdkType = details.sdkType;
+    if (eventType === "message" && sdkType === "stream_event") {
+      return "dispatch:message:stream_event";
+    }
+    if (eventType === "pending" || eventType === "markdown-augment") {
+      return `dispatch:${String(eventType)}`;
+    }
   }
+
   return null;
+}
+
+function recordSessionTrace(details: TraceDetails): void {
+  clientLogCollector.record(
+    "log",
+    SESSION_UI_TRACE_PREFIX,
+    `${SESSION_UI_TRACE_PREFIX} ${safeStringify(details)}`,
+  );
 }
 
 function flushHighChurnTraceBatch(): void {
@@ -47,18 +70,15 @@ function flushHighChurnTraceBatch(): void {
   if (batch.timer) {
     clearTimeout(batch.timer);
   }
-  console.log(
-    "[SessionUITrace]",
-    safeStringify({
-      event: "session-stream-event-batch",
-      sessionId: batch.sessionId,
-      total: batch.total,
-      counts: batch.counts,
-      windowMs: Date.now() - batch.startedAt,
-      firstEventId: batch.firstEventId ?? null,
-      lastEventId: batch.lastEventId ?? null,
-    }),
-  );
+  recordSessionTrace({
+    event: "session-ui-trace-batch",
+    sessionId: batch.sessionId,
+    total: batch.total,
+    counts: batch.counts,
+    windowMs: Date.now() - batch.startedAt,
+    firstEventId: batch.firstEventId ?? null,
+    lastEventId: batch.lastEventId ?? null,
+  });
 }
 
 function recordHighChurnTrace(key: string, details: TraceDetails): void {
@@ -92,11 +112,8 @@ export function logSessionUiTrace(
     recordHighChurnTrace(highChurnKey, details);
     return;
   }
-  console.log(
-    "[SessionUITrace]",
-    safeStringify({
-      event,
-      ...details,
-    }),
-  );
+  recordSessionTrace({
+    event,
+    ...details,
+  });
 }

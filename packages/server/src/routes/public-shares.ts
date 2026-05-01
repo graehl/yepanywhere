@@ -10,6 +10,7 @@ import {
 } from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { decodeProjectId, getProjectName } from "../projects/paths.js";
 import type { PublicShareService } from "../services/PublicShareService.js";
 
 const DEFAULT_PUBLIC_SHARE_ORIGIN = "https://ya.graehl.org";
@@ -33,6 +34,12 @@ export interface PublicShareRoutesDeps {
 function buildPublicShareUrl(
   secret: string,
   relayConfig: RelayConfigForPublicShare,
+  display: {
+    mode: CreatePublicSessionShareResponse["mode"];
+    initialPrompt?: string | null;
+    projectName: string;
+    title: string | null;
+  },
   publicShareOrigin?: string,
 ): string {
   const origin =
@@ -44,7 +51,77 @@ function buildPublicShareUrl(
   if (relayConfig.url !== DEFAULT_RELAY_URL) {
     url.searchParams.set("r", relayConfig.url);
   }
+  const displayParams = new URLSearchParams();
+  displayParams.set("m", display.mode);
+  displayParams.set("p", display.projectName);
+  if (display.title) {
+    displayParams.set("t", display.title);
+  }
+  if (display.initialPrompt) {
+    displayParams.set("q", display.initialPrompt);
+  }
+  url.hash = displayParams.toString();
   return url.toString();
+}
+
+function contentToPlainText(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .map((block) => {
+      if (!block || typeof block !== "object") {
+        return "";
+      }
+      const value = block as { content?: unknown; text?: unknown; type?: unknown };
+      if (value.type === "text" && typeof value.text === "string") {
+        return value.text;
+      }
+      if (typeof value.content === "string") {
+        return value.content;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function normalizePromptPreview(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (
+    trimmed.startsWith("# AGENTS.md instructions") ||
+    trimmed.startsWith("<environment_context>")
+  ) {
+    return null;
+  }
+  const normalized = trimmed.replace(/\s+/g, " ");
+  return normalized.length > 700
+    ? `${normalized.slice(0, 697).trimEnd()}...`
+    : normalized;
+}
+
+function getInitialPromptPreview(session: AppSession): string | null {
+  for (const message of session.messages) {
+    if ((message as { type?: unknown }).type !== "user") {
+      continue;
+    }
+    const content =
+      contentToPlainText((message as { content?: unknown }).content) ||
+      contentToPlainText(
+        (message as { message?: { content?: unknown } }).message?.content,
+      );
+    const preview = normalizePromptPreview(content);
+    if (preview) {
+      return preview;
+    }
+  }
+  return null;
 }
 
 function notFound(c: Context) {
@@ -133,6 +210,8 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     }
 
     const title = body.title ?? session.customTitle ?? session.title;
+    const projectName = getProjectName(decodeProjectId(body.projectId));
+    const initialPrompt = getInitialPromptPreview(session);
     const { secret, secretBits, record } =
       await deps.publicShareService.createShare({
         mode: body.mode,
@@ -140,13 +219,19 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
         source: {
           projectId: body.projectId,
           sessionId: body.sessionId,
+          projectName,
           provider: session.provider,
         },
         ...(body.mode === "frozen" ? { snapshot: session } : {}),
       });
 
     const response: CreatePublicSessionShareResponse = {
-      url: buildPublicShareUrl(secret, relayConfig, deps.publicShareOrigin),
+      url: buildPublicShareUrl(
+        secret,
+        relayConfig,
+        { mode: record.mode, initialPrompt, projectName, title },
+        deps.publicShareOrigin,
+      ),
       mode: record.mode,
       createdAt: record.createdAt,
       secretBits,

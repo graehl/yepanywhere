@@ -1,9 +1,11 @@
 import type {
+  PublicSessionShareMode,
   PublicSessionShareResponse,
   RelayResponse,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
+import { BrandWordmark } from "../components/BrandWordmark";
 import { MessageList } from "../components/MessageList";
 import { SchemaValidationProvider } from "../contexts/SchemaValidationContext";
 import { SessionMetadataProvider } from "../contexts/SessionMetadataContext";
@@ -14,6 +16,14 @@ import type { Message } from "../types";
 
 const DEFAULT_RELAY_URL = "wss://relay.yepanywhere.com/ws";
 const LIVE_POLL_MS = 5000;
+const RETRY_POLL_MS = 2000;
+
+interface PublicShareHints {
+  initialPrompt: string | null;
+  mode: PublicSessionShareMode | null;
+  projectName: string | null;
+  title: string | null;
+}
 
 function generateRequestId(): string {
   if (globalThis.crypto?.randomUUID) {
@@ -118,6 +128,44 @@ async function fetchPublicShareViaRelay(options: {
   });
 }
 
+function parseShareHints(hash: string): PublicShareHints {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const mode = params.get("m");
+  return {
+    initialPrompt: params.get("q"),
+    mode: mode === "frozen" || mode === "live" ? mode : null,
+    projectName: params.get("p"),
+    title: params.get("t"),
+  };
+}
+
+function buildPreviewMessage(initialPrompt: string | null): Message[] {
+  if (!initialPrompt) {
+    return [];
+  }
+  return [
+    {
+      type: "user",
+      uuid: "public-share-initial-prompt-preview",
+      message: { role: "user", content: initialPrompt },
+      timestamp: new Date(0).toISOString(),
+      content: initialPrompt,
+      role: "user",
+    } as Message,
+  ];
+}
+
+function shouldRetryPublicShareError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return (
+    error.message === "Relay connection closed" ||
+    error.message === "Relay connection failed" ||
+    error.message === "Share request timed out"
+  );
+}
+
 export function PublicSharePage() {
   const { t } = useI18n();
   const { secret } = useParams<{ secret: string }>();
@@ -125,14 +173,29 @@ export function PublicSharePage() {
   const [share, setShare] = useState<PublicSessionShareResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [retrying, setRetrying] = useState(false);
 
   const relayUsername = searchParams.get("h") ?? "";
   const relayUrl = searchParams.get("r") ?? DEFAULT_RELAY_URL;
+  const hints = useMemo(() => parseShareHints(window.location.hash), []);
 
   const title = useMemo(
-    () => share?.share.title ?? share?.session.customTitle ?? share?.session.title,
-    [share],
+    () =>
+      share?.share.title ??
+      share?.session.customTitle ??
+      share?.session.title ??
+      hints.title,
+    [share, hints.title],
   );
+  const projectName = share?.share.source.projectName ?? hints.projectName;
+  const mode = share?.share.mode ?? hints.mode;
+  const previewMessages = useMemo(
+    () => buildPreviewMessage(hints.initialPrompt),
+    [hints.initialPrompt],
+  );
+  const visibleMessages = share
+    ? (share.session.messages as Message[])
+    : previewMessages;
 
   const refresh = useCallback(async () => {
     if (!secret || !relayUsername) {
@@ -156,12 +219,20 @@ export function PublicSharePage() {
         setShare(response);
         setError(null);
         setLoading(false);
+        setRetrying(false);
         if (response.share.mode === "live") {
           timer = setTimeout(run, LIVE_POLL_MS);
         }
       } catch (err) {
         if (cancelled) return;
         setLoading(false);
+        if (shouldRetryPublicShareError(err)) {
+          setRetrying(true);
+          setError(null);
+          timer = setTimeout(run, RETRY_POLL_MS);
+          return;
+        }
+        setRetrying(false);
         setError(err instanceof Error ? err.message : t("publicShareUnavailable"));
       }
     };
@@ -180,47 +251,71 @@ export function PublicSharePage() {
     document.title = title ? `${title} - Public Share` : "Public Share";
   }, [title]);
 
-  if (loading) {
-    return <main className="public-share-page">{t("publicShareLoading")}</main>;
-  }
-
-  if (error || !share) {
-    return (
-      <main className="public-share-page public-share-page--center">
-        <div className="public-share-error">
-          {error ?? t("publicShareUnavailable")}
-        </div>
-      </main>
-    );
-  }
+  const messageList = (
+    <MessageList
+      messages={visibleMessages}
+      provider={share?.session.provider}
+    />
+  );
+  const messageContent = share ? (
+    <SessionMetadataProvider
+      projectId={share.share.source.projectId}
+      projectPath={null}
+      sessionId={share.share.source.sessionId}
+    >
+      {messageList}
+    </SessionMetadataProvider>
+  ) : (
+    messageList
+  );
 
   return (
     <main className="public-share-page">
       <header className="public-share-header">
-        <div>
-          <div className="public-share-eyebrow">{t("publicShareEyebrow")}</div>
+        <div className="public-share-title-block">
+          <div className="public-share-eyebrow-row">
+            <BrandWordmark
+              variant="full"
+              className="public-share-brand-wordmark"
+            />
+            <span>{t("publicShareEyebrow")}</span>
+            {projectName && (
+              <>
+                <span className="public-share-eyebrow-separator">/</span>
+                <span>{projectName}</span>
+              </>
+            )}
+          </div>
           <h1>{title ?? t("publicShareUntitled")}</h1>
+          {(loading || retrying) && (
+            <div className="public-share-loading-line">
+              {retrying ? t("publicShareRetrying") : t("publicShareLoading")}
+            </div>
+          )}
         </div>
-        <span className="public-share-badge">
-          {share.share.mode === "live"
-            ? t("publicShareLiveBadge")
-            : t("publicShareFrozenBadge")}
-        </span>
+        {mode && (
+          <span className="public-share-badge">
+            {mode === "live"
+              ? t("publicShareLiveBadge")
+              : t("publicShareFrozenBadge")}
+          </span>
+        )}
       </header>
       <section className="public-share-scroll">
         <ToastProvider>
           <SchemaValidationProvider>
             <StreamingMarkdownProvider>
-              <SessionMetadataProvider
-                projectId={share.share.source.projectId}
-                projectPath={null}
-                sessionId={share.share.source.sessionId}
-              >
-                <MessageList
-                  messages={share.session.messages as Message[]}
-                  provider={share.session.provider}
-                />
-              </SessionMetadataProvider>
+              {error && !retrying && !share ? (
+                <div className="public-share-error public-share-error--inline">
+                  {error}
+                </div>
+              ) : visibleMessages.length > 0 ? (
+                messageContent
+              ) : (
+                <div className="public-share-empty">
+                  {retrying ? t("publicShareRetrying") : t("publicShareLoading")}
+                </div>
+              )}
             </StreamingMarkdownProvider>
           </SchemaValidationProvider>
         </ToastProvider>

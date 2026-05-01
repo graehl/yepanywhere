@@ -23,11 +23,7 @@ export interface PublicShareRecord {
   createdAt: string;
   updatedAt: string;
   capturedAt?: string;
-  source: {
-    projectId: UrlProjectId;
-    sessionId: string;
-    provider?: AppSession["provider"];
-  };
+  source: PublicSessionShareMetadata["source"];
   frozenSession?: AppSession;
 }
 

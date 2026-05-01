@@ -38,6 +38,7 @@ export interface PublicSessionShareMetadata {
   source: {
     projectId: UrlProjectId;
     sessionId: string;
+    projectName?: string;
     provider?: ProviderName;
   };
 }

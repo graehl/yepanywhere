@@ -49,7 +49,12 @@ describe("PublicShareService", () => {
     const { secret, secretBits } = await service.createShare({
       mode: "frozen",
       title: "Share me",
-      source: { projectId, sessionId: "session-1", provider: "codex" },
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
       snapshot: makeSession(),
     });
 
@@ -69,7 +74,12 @@ describe("PublicShareService", () => {
   it("rejects missing, short, and guessed secrets", async () => {
     await service.createShare({
       mode: "frozen",
-      source: { projectId, sessionId: "session-1", provider: "codex" },
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
       snapshot: makeSession(),
     });
 
@@ -102,7 +112,12 @@ describe("PublicShareService", () => {
     const { secret } = await service.createShare({
       mode: "frozen",
       title: "Frozen",
-      source: { projectId, sessionId: "session-1", provider: "codex" },
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
       snapshot: session,
     });
 
@@ -123,7 +138,12 @@ describe("PublicShareService", () => {
     const { secret } = await service.createShare({
       mode: "live",
       title: "Live",
-      source: { projectId, sessionId: "session-1", provider: "codex" },
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
     });
     const record = service.getRecordBySecret(secret);
 
@@ -142,18 +162,33 @@ describe("PublicShareService", () => {
     await service.createShare({
       mode: "frozen",
       title: "Frozen",
-      source: { projectId, sessionId: "session-1", provider: "codex" },
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
       snapshot: makeSession(),
     });
     await service.createShare({
       mode: "live",
       title: "Live",
-      source: { projectId, sessionId: "session-1", provider: "codex" },
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
     });
     await service.createShare({
       mode: "live",
       title: "Other",
-      source: { projectId, sessionId: "session-2", provider: "codex" },
+      source: {
+        projectId,
+        sessionId: "session-2",
+        projectName: "project",
+        provider: "codex",
+      },
     });
 
     expect(service.getSessionShareStatus(projectId, "session-1")).toEqual({

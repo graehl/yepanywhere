@@ -9790,6 +9790,10 @@ a.sidebar-nav-item {
   background: var(--bg-surface);
 }
 
+.public-share-title-block {
+  min-width: 0;
+}
+
 .public-share-header h1 {
   margin: var(--space-1) 0 0;
   font-size: 18px;
@@ -9797,11 +9801,31 @@ a.sidebar-nav-item {
   line-height: 1.2;
 }
 
-.public-share-eyebrow {
+.public-share-eyebrow-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   text-transform: uppercase;
   letter-spacing: 0;
+}
+
+.public-share-brand-wordmark {
+  --brand-wordmark-size: 14px;
+  margin-right: var(--space-1);
+  text-transform: none;
+}
+
+.public-share-eyebrow-separator {
+  color: var(--text-faint);
+}
+
+.public-share-loading-line {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
 }
 
 .public-share-badge {
@@ -9817,12 +9841,12 @@ a.sidebar-nav-item {
 .public-share-scroll {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .public-share-scroll .message-list {
-  height: 100%;
-  overflow-y: auto;
+  min-height: 100%;
+  overflow: visible;
   padding: var(--space-4);
 }
 
@@ -9832,6 +9856,16 @@ a.sidebar-nav-item {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
+}
+
+.public-share-error--inline,
+.public-share-empty {
+  margin: var(--space-4);
+}
+
+.public-share-empty {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
 }
 
 @media (max-width: 600px) {

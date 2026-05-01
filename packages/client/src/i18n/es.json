@@ -1003,5 +1003,6 @@
   "sessionShareRevokeAll": "Revoke All Shared Links",
   "sessionShareRevoking": "Revoking...",
   "sessionShareRevoked": "Revoked {count} shared link(s).",
-  "sessionShareRevokeFailed": "Failed to revoke shared links"
+  "sessionShareRevokeFailed": "Failed to revoke shared links",
+  "publicShareRetrying": "Reconnecting to share..."
 }

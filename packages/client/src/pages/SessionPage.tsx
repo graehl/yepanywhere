@@ -17,6 +17,7 @@ import { RecentSessionsDropdown } from "../components/RecentSessionsDropdown";
 import { RestartSessionModal } from "../components/RestartSessionModal";
 import { SessionHeartbeatModal } from "../components/SessionHeartbeatModal";
 import { SessionMenu } from "../components/SessionMenu";
+import { SessionShareModal } from "../components/SessionShareModal";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
 import { RenderModeProvider } from "../contexts/RenderModeContext";
@@ -356,15 +357,6 @@ function SessionPageContent({
     lastComposerSubmissionRef.current = submission;
   }, []);
 
-  // Sharing: check if configured (hidden unless sharing.json exists on server)
-  const [sharingConfigured, setSharingConfigured] = useState(false);
-  useEffect(() => {
-    api
-      .getSharingStatus()
-      .then((res) => setSharingConfigured(res.configured))
-      .catch(() => {});
-  }, []);
-
   // Connection for uploads (uses WebSocket when enabled)
   const connection = useConnection();
 
@@ -672,6 +664,7 @@ function SessionPageContent({
   // Process info modal state
   const [showProcessInfoModal, setShowProcessInfoModal] = useState(false);
   const [showHeartbeatModal, setShowHeartbeatModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [pendingElsewhereDismissed, setPendingElsewhereDismissed] =
     useState(false);
 
@@ -1744,20 +1737,9 @@ function SessionPageContent({
     }
   };
 
-  const handleShare = useCallback(async () => {
-    try {
-      const { snapshotSession } = await import(
-        "../lib/sharing/snapshotSession"
-      );
-      const html = snapshotSession(displayTitle);
-      const result = await api.shareSession(html, displayTitle);
-      await navigator.clipboard.writeText(result.url);
-      showToast(t("sessionLinkCopied"), "success");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : t("sessionShareFailed");
-      showToast(msg, "error");
-    }
-  }, [displayTitle, showToast, t]);
+  const handleShare = useCallback(() => {
+    setShowShareModal(true);
+  }, []);
 
   const handleToggleHeartbeat = useCallback(async () => {
     const previousEnabled = heartbeatTurnsEnabled;
@@ -1955,7 +1937,6 @@ function SessionPageContent({
                       supportsManualCompact ? handleCompactSession : undefined
                     }
                     onTerminate={handleTerminate}
-                    sharingConfigured={sharingConfigured}
                     onShare={handleShare}
                     useFixedPositioning
                     useEllipsisIcon
@@ -2020,6 +2001,15 @@ function SessionPageContent({
               setLocalHeartbeatTurnText(next.heartbeatTurnText);
               showToast(t("sessionHeartbeatSaved"), "success");
             }}
+          />
+        )}
+
+        {showShareModal && (
+          <SessionShareModal
+            projectId={projectId}
+            sessionId={actualSessionId}
+            title={displayTitle}
+            onClose={() => setShowShareModal(false)}
           />
         )}
 

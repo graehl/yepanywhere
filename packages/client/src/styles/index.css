@@ -9654,3 +9654,207 @@ a.sidebar-nav-item {
 .git-lines-deleted {
   color: var(--error-color);
 }
+
+/* Public session shares */
+.modal:has(.session-share-modal) {
+  width: min(420px, calc(100vw - 32px));
+  max-width: 420px;
+  height: auto;
+}
+
+.session-share-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.session-share-readonly-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.session-share-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.session-share-action {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 84px;
+  padding: var(--space-3);
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.session-share-action:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.session-share-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.session-share-option-title {
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.session-share-option-description {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+}
+
+.session-share-url-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.session-share-url-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-2);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.session-share-error {
+  color: var(--error-color);
+  font-size: var(--font-size-sm);
+}
+
+.session-share-status {
+  color: var(--success-color);
+  font-size: var(--font-size-sm);
+}
+
+.session-share-revoke-button {
+  align-self: stretch;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  color: var(--error-color);
+  background: var(--bg-secondary);
+  cursor: pointer;
+}
+
+.session-share-revoke-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.session-share-revoke-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.public-share-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.public-share-page--center {
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.public-share-header {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.public-share-header h1 {
+  margin: var(--space-1) 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.public-share-eyebrow {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.public-share-badge {
+  flex-shrink: 0;
+  padding: 2px var(--space-2);
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+}
+
+.public-share-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.public-share-scroll .message-list {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.public-share-error {
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+@media (max-width: 600px) {
+  .modal:has(.session-share-modal) {
+    width: min(420px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    height: auto;
+    max-height: calc(100dvh - 48px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+  }
+
+  .session-share-modal {
+    padding: var(--space-2);
+  }
+
+  .session-share-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .public-share-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+}

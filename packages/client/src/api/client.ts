@@ -2,6 +2,8 @@ import type {
   AgentActivity,
   BrowserProfilesResponse,
   ConnectionsResponse,
+  CreatePublicSessionShareRequest,
+  CreatePublicSessionShareResponse,
   DeviceInfo,
   EnrichedRecentEntry,
   FileContentResponse,
@@ -10,6 +12,8 @@ import type {
   PendingInputType,
   ProviderInfo,
   ProviderName,
+  PublicSessionShareSessionStatusResponse,
+  RevokePublicSessionSharesResponse,
   SlashCommand,
   ThinkingOption,
   UploadedFile,
@@ -1122,6 +1126,28 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ html, title }),
     }),
+
+  getPublicShareStatus: () =>
+    fetchJSON<{ configured: boolean; requiresRelay: boolean }>(
+      "/public-shares/status",
+    ),
+
+  getPublicSessionShareStatus: (projectId: string, sessionId: string) =>
+    fetchJSON<PublicSessionShareSessionStatusResponse>(
+      `/public-shares/sessions/${encodeURIComponent(projectId)}/${encodeURIComponent(sessionId)}`,
+    ),
+
+  createPublicSessionShare: (body: CreatePublicSessionShareRequest) =>
+    fetchJSON<CreatePublicSessionShareResponse>("/public-shares", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  revokePublicSessionShares: (projectId: string, sessionId: string) =>
+    fetchJSON<RevokePublicSessionSharesResponse>(
+      `/public-shares/sessions/${encodeURIComponent(projectId)}/${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" },
+    ),
 
   // Device bridge API
   getDevices: () => fetchJSON<DeviceInfo[]>("/devices"),

@@ -3,3 +3,4 @@
 - Codex GPT-5.5 model and protocol compatibility
 - Pluggable speech recognition providers
 - Browser-load session UI reliability
+- Public read-only session shares

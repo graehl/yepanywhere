@@ -177,6 +177,16 @@ export type {
   CodexSessionContent,
 } from "./session/index.js";
 
+export type {
+  CreatePublicSessionShareRequest,
+  CreatePublicSessionShareResponse,
+  PublicSessionShareMetadata,
+  PublicSessionShareMode,
+  PublicSessionShareSessionStatusResponse,
+  PublicSessionShareResponse,
+  RevokePublicSessionSharesResponse,
+} from "./public-shares.js";
+
 // Tool result schemas (for runtime validation)
 export {
   TaskResultSchema,

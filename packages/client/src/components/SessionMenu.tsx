@@ -34,9 +34,9 @@ export interface SessionMenuProps {
   onRestoreWarnings?: () => void | Promise<void>;
   /** Use "..." icon instead of chevron */
   useEllipsisIcon?: boolean;
-  /** Whether session sharing is configured */
+  /** @deprecated Public share availability is checked when the modal creates the link. */
   sharingConfigured?: boolean;
-  /** Called to share the session as a snapshot */
+  /** Called to open the public share flow */
   onShare?: () => void | Promise<void>;
   /** Additional class for the wrapper */
   className?: string;
@@ -63,7 +63,6 @@ export function SessionMenu({
   onConfigureHeartbeat,
   warningRestoreAvailable = false,
   onRestoreWarnings,
-  sharingConfigured,
   onShare,
   useEllipsisIcon = false,
   className = "",
@@ -367,7 +366,7 @@ export function SessionMenu({
           {t("sessionMenuHandoff")}
         </button>
       )}
-      {sharingConfigured && onShare && (
+      {onShare && (
         <button type="button" onClick={handleShare} disabled={isSharing}>
           <svg
             width="14"
@@ -378,9 +377,11 @@ export function SessionMenu({
             strokeWidth="2"
             aria-hidden="true"
           >
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            <polyline points="15 3 21 3 21 9" />
-            <line x1="10" y1="14" x2="21" y2="3" />
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <path d="m8.6 13.5 6.8 4" />
+            <path d="m15.4 6.5-6.8 4" />
           </svg>
           {isSharing ? t("sessionMenuSharing") : t("sessionMenuShare")}
         </button>

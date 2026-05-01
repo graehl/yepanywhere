@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { SessionMenu } from "./SessionMenu";
+import { SessionShareModal } from "./SessionShareModal";
 import { SessionStatusBadge } from "./StatusBadge";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
@@ -134,6 +135,7 @@ export function SessionListItem({
     undefined,
   );
   const [isEditing, setIsEditing] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [localTitle, setLocalTitle] = useState<string | undefined>(undefined);
@@ -504,9 +506,19 @@ export function SessionListItem({
               `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
             );
           }}
+          onShare={() => setShowShareModal(true)}
           useEllipsisIcon
           useFixedPositioning
           className="session-list-item__menu"
+        />
+      )}
+
+      {showShareModal && (
+        <SessionShareModal
+          projectId={projectId}
+          sessionId={sessionId}
+          title={displayTitle}
+          onClose={() => setShowShareModal(false)}
         />
       )}
     </li>

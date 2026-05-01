@@ -43,6 +43,7 @@ import { HostPickerPage } from "./pages/HostPickerPage";
 import { InboxPage } from "./pages/InboxPage";
 import { NewSessionPage } from "./pages/NewSessionPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { PublicSharePage } from "./pages/PublicSharePage";
 import { RelayConnectionGate } from "./pages/RelayConnectionGate";
 import { RelayLoginPage } from "./pages/RelayLoginPage";
 import { SessionPage } from "./pages/SessionPage";
@@ -104,8 +105,13 @@ createRoot(rootElement).render(
   <Wrapper>
     <BrowserRouter basename={basename}>
       <I18nProvider>
-        <RemoteApp>
-          <Routes>
+        <Routes>
+          <Route path="/share/:secret" element={<PublicSharePage />} />
+          <Route
+            path="*"
+            element={
+              <RemoteApp>
+                <Routes>
             {/* Login routes — redirect to app if already connected */}
             <Route element={<UnauthenticatedGate />}>
               <Route path="/login" element={<HostPickerPage />} />
@@ -122,8 +128,11 @@ createRoot(rootElement).render(
             <Route path="/:relayUsername" element={<RelayConnectionGate />}>
               {APP_ROUTES}
             </Route>
-          </Routes>
-        </RemoteApp>
+                </Routes>
+              </RemoteApp>
+            }
+          />
+        </Routes>
       </I18nProvider>
     </BrowserRouter>
   </Wrapper>,

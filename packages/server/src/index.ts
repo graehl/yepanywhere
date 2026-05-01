@@ -61,6 +61,7 @@ import {
   InstallService,
   ModelInfoService,
   NetworkBindingService,
+  PublicShareService,
   RelayClientService,
   ServerSettingsService,
   SharingService,
@@ -367,6 +368,9 @@ const serverSettingsService = new ServerSettingsService({
 const sharingService = new SharingService({
   dataDir: config.dataDir,
 });
+const publicShareService = new PublicShareService({
+  dataDir: config.dataDir,
+});
 const modelInfoService = new ModelInfoService();
 
 async function startServer() {
@@ -400,6 +404,7 @@ async function startServer() {
   await remoteAccessService.initialize();
   await serverSettingsService.initialize();
   await sharingService.initialize();
+  await publicShareService.initialize();
   await remoteSessionService.setDiskPersistenceEnabled(
     serverSettingsService.getSetting("persistRemoteSessionsToDisk"),
   );
@@ -542,6 +547,7 @@ async function startServer() {
     browserProfileService,
     serverSettingsService,
     sharingService,
+    publicShareService,
     deviceBridgeService,
     modelInfoService,
     enabledProviders: config.enabledProviders,

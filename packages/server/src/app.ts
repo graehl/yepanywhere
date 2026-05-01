@@ -1,5 +1,6 @@
 import type { HttpBindings } from "@hono/node-server";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
+import type { AppSession, UrlProjectId } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { AuthService } from "./auth/AuthService.js";
 import { createAuthRoutes } from "./auth/routes.js";
@@ -53,6 +54,10 @@ import { createProcessesRoutes } from "./routes/processes.js";
 import { createProjectsRoutes } from "./routes/projects.js";
 import { createProvidersRoutes } from "./routes/providers.js";
 import { createCodexUpdateRoutes } from "./routes/codex-updates.js";
+import {
+  createPublicSharePublicRoutes,
+  createPublicShareRoutes,
+} from "./routes/public-shares.js";
 import { createRecentsRoutes } from "./routes/recents.js";
 import { createServerAdminRoutes } from "./routes/server-admin.js";
 import { createServerInfoRoutes } from "./routes/server-info.js";
@@ -64,11 +69,13 @@ import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 import { createLocalImageRoutes } from "./routes/local-image.js";
 import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
 import { createVersionRoutes } from "./routes/version.js";
+import { WS_INTERNAL_AUTHENTICATED } from "./middleware/internal-auth.js";
 import type {
   ClaudeSDK,
   PermissionMode,
   RealClaudeSDKInterface,
 } from "./sdk/types.js";
+import type { PublicShareService } from "./services/PublicShareService.js";
 import type { BrowserProfileService } from "./services/BrowserProfileService.js";
 import { CodexUpdateChecker } from "./services/CodexUpdateChecker.js";
 import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersService.js";
@@ -175,6 +182,8 @@ export interface AppOptions {
   modelInfoService?: ModelInfoService;
   /** SharingService for session sharing */
   sharingService?: SharingService;
+  /** PublicShareService for secret-link read-only session shares */
+  publicShareService?: PublicShareService;
   /** DeviceBridgeService for Android emulator streaming */
   deviceBridgeService?: DeviceBridgeService;
   /** If non-empty, only these provider names are exposed via the API. */
@@ -753,6 +762,40 @@ export function createApp(options: AppOptions): AppResult {
     app.route(
       "/api/sharing",
       createSharingRoutes({ sharingService: options.sharingService }),
+    );
+  }
+
+  // Public read-only session shares. Creation is authenticated under /api;
+  // public reads are secret-only and stay outside /api auth/mutation routes.
+  if (options.publicShareService) {
+    const loadPublicShareSession = async (
+      projectId: UrlProjectId,
+      sessionId: string,
+    ): Promise<AppSession | null> => {
+      const response = await app.fetch(
+        new Request(
+          `http://127.0.0.1/api/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}`,
+          { headers: { "X-Yep-Anywhere": "true" } },
+        ),
+        { [WS_INTERNAL_AUTHENTICATED]: true },
+      );
+      if (!response.ok) {
+        return null;
+      }
+      const body = (await response.json()) as { session?: AppSession };
+      return body.session ?? null;
+    };
+
+    const publicShareDeps = {
+      publicShareService: options.publicShareService,
+      loadSession: loadPublicShareSession,
+      getRelayConfig: () => options.remoteAccessService?.getRelayConfig() ?? null,
+    };
+
+    app.route("/api/public-shares", createPublicShareRoutes(publicShareDeps));
+    app.route(
+      "/public-api/shares",
+      createPublicSharePublicRoutes(publicShareDeps),
     );
   }
 

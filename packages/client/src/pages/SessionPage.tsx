@@ -1,10 +1,18 @@
 import type {
+  AppContentBlock,
   ProviderName,
   PublicSessionShareSessionStatusResponse,
   ThinkingOption,
   UploadedFile,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  type MouseEvent as ReactMouseEvent,
+  useRef,
+  useState,
+} from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, type DeferredMessagePlacement } from "../api/client";
 import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
@@ -21,6 +29,7 @@ import { SessionHeartbeatModal } from "../components/SessionHeartbeatModal";
 import { SessionMenu } from "../components/SessionMenu";
 import { SessionShareModal } from "../components/SessionShareModal";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
+import type { ModalAnchorRect } from "../components/ui/Modal";
 import { ViewerCountIndicator } from "../components/ViewerCountIndicator";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
 import { RenderModeProvider } from "../contexts/RenderModeContext";
@@ -68,6 +77,7 @@ import { getSessionDisplayTitle } from "../utils";
 const PENDING_ELSEWHERE_DISMISS_KEY_PREFIX =
   "yepanywhere:pending-elsewhere-dismissed:";
 const PUBLIC_SHARE_STATUS_POLL_MS = 5000;
+const PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH = 700;
 
 interface QueuedEditDraft {
   originalTempId: string;
@@ -108,6 +118,69 @@ function isMissingDeferredQueueEntryError(error: unknown): boolean {
     message.includes("No active process") ||
     message.includes("Deferred message not found")
   );
+}
+
+function messageContentToPlainText(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .map((block) => {
+      if (!block || typeof block !== "object") {
+        return "";
+      }
+      const value = block as AppContentBlock;
+      if (value.type === "text" && typeof value.text === "string") {
+        return value.text;
+      }
+      return typeof value.content === "string" ? value.content : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function normalizePublicShareInitialPrompt(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (
+    trimmed.startsWith("# AGENTS.md instructions") ||
+    trimmed.startsWith("<environment_context>")
+  ) {
+    return null;
+  }
+  const normalized = trimmed.replace(/\s+/g, " ");
+  return normalized.length > PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH
+    ? `${normalized.slice(0, PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH - 3).trimEnd()}...`
+    : normalized;
+}
+
+function getPublicShareInitialPrompt(messages: unknown[]): string | null {
+  for (const message of messages) {
+    if (!message || typeof message !== "object") {
+      continue;
+    }
+    const entry = message as {
+      content?: unknown;
+      message?: { content?: unknown };
+      type?: unknown;
+    };
+    if (entry.type !== "user") {
+      continue;
+    }
+    const content =
+      messageContentToPlainText(entry.content) ||
+      messageContentToPlainText(entry.message?.content);
+    const preview = normalizePublicShareInitialPrompt(content);
+    if (preview) {
+      return preview;
+    }
+  }
+  return null;
 }
 
 function parseCodexConfigAck(
@@ -483,6 +556,11 @@ function SessionPageContent({
     return null;
   }, [effectiveProvider, messages]);
 
+  const publicShareInitialPrompt = useMemo(
+    () => getPublicShareInitialPrompt(messages),
+    [messages],
+  );
+
   useEffect(() => {
     if (!latestCodexConfigAck) return;
 
@@ -669,6 +747,8 @@ function SessionPageContent({
   const [showProcessInfoModal, setShowProcessInfoModal] = useState(false);
   const [showHeartbeatModal, setShowHeartbeatModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [shareModalAnchor, setShareModalAnchor] =
+    useState<ModalAnchorRect | null>(null);
   const [publicShareStatus, setPublicShareStatus] =
     useState<PublicSessionShareSessionStatusResponse | null>(null);
   const [pendingElsewhereDismissed, setPendingElsewhereDismissed] =
@@ -1744,8 +1824,25 @@ function SessionPageContent({
   };
 
   const handleShare = useCallback(() => {
+    setShareModalAnchor(null);
     setShowShareModal(true);
   }, []);
+
+  const handleShareIndicatorClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      setShareModalAnchor({
+        bottom: rect.bottom,
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width,
+      });
+      setShowShareModal(true);
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1990,17 +2087,25 @@ function SessionPageContent({
             </div>
             <div className="session-header-right">
               <ClientLogRecordingBadge inline />
-              {publicShareStatus &&
-                (publicShareStatus.activeCount > 0 ||
-                  publicShareStatus.activeViewerCount > 0) && (
-                  <ViewerCountIndicator
-                    className="session-header-viewer-count"
-                    count={publicShareStatus.activeViewerCount}
-                    label={t("sessionShareActiveViewers", {
-                      count: publicShareStatus.activeViewerCount,
-                    })}
-                  />
-                )}
+              <ViewerCountIndicator
+                className="session-header-viewer-count"
+                count={
+                  publicShareStatus && publicShareStatus.liveCount > 0
+                    ? publicShareStatus.activeViewerCount
+                    : null
+                }
+                label={
+                  publicShareStatus
+                    ? t("sessionShareViewerSummary", {
+                        active: publicShareStatus.activeViewerCount,
+                        total: publicShareStatus.viewers.length,
+                        live: publicShareStatus.liveCount,
+                        frozen: publicShareStatus.frozenCount,
+                      })
+                    : t("sessionShareOpenTitle")
+                }
+                onClick={handleShareIndicatorClick}
+              />
               {!loading && effectiveProvider && (
                 <button
                   type="button"
@@ -2062,10 +2167,16 @@ function SessionPageContent({
 
         {showShareModal && (
           <SessionShareModal
+            anchorRect={shareModalAnchor}
             projectId={projectId}
             sessionId={actualSessionId}
+            initialPrompt={publicShareInitialPrompt}
             title={displayTitle}
-            onClose={() => setShowShareModal(false)}
+            onStatusChange={setPublicShareStatus}
+            onClose={() => {
+              setShowShareModal(false);
+              setShareModalAnchor(null);
+            }}
           />
         )}
 

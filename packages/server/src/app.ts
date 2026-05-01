@@ -771,10 +771,17 @@ export function createApp(options: AppOptions): AppResult {
     const loadPublicShareSession = async (
       projectId: UrlProjectId,
       sessionId: string,
+      options?: { afterMessageId?: string },
     ): Promise<AppSession | null> => {
+      const searchParams = new URLSearchParams();
+      if (options?.afterMessageId) {
+        searchParams.set("afterMessageId", options.afterMessageId);
+      }
+      searchParams.set("publicShare", "1");
+      const query = searchParams.toString();
       const response = await app.fetch(
         new Request(
-          `http://127.0.0.1/api/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}`,
+          `http://127.0.0.1/api/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}${query ? `?${query}` : ""}`,
           { headers: { "X-Yep-Anywhere": "true" } },
         ),
         { [WS_INTERNAL_AUTHENTICATED]: true },
@@ -786,9 +793,56 @@ export function createApp(options: AppOptions): AppResult {
       return body.session ?? null;
     };
 
+    const loadPublicShareSessionUpdatedAt = async (
+      projectId: UrlProjectId,
+      sessionId: string,
+    ): Promise<string | null> => {
+      const response = await app.fetch(
+        new Request(
+          `http://127.0.0.1/api/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/metadata`,
+          { headers: { "X-Yep-Anywhere": "true" } },
+        ),
+        { [WS_INTERNAL_AUTHENTICATED]: true },
+      );
+      if (!response.ok) {
+        return null;
+      }
+      const body = (await response.json()) as {
+        session?: { updatedAt?: string | null };
+      };
+      return body.session?.updatedAt ?? null;
+    };
+
+    const loadPublicShareSessionSummary = async (
+      projectId: UrlProjectId,
+      sessionId: string,
+    ): Promise<
+      Pick<AppSession, "customTitle" | "provider" | "title" | "updatedAt"> | null
+    > => {
+      const response = await app.fetch(
+        new Request(
+          `http://127.0.0.1/api/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/metadata`,
+          { headers: { "X-Yep-Anywhere": "true" } },
+        ),
+        { [WS_INTERNAL_AUTHENTICATED]: true },
+      );
+      if (!response.ok) {
+        return null;
+      }
+      const body = (await response.json()) as {
+        session?: Pick<
+          AppSession,
+          "customTitle" | "provider" | "title" | "updatedAt"
+        >;
+      };
+      return body.session ?? null;
+    };
+
     const publicShareDeps = {
       publicShareService: options.publicShareService,
       loadSession: loadPublicShareSession,
+      loadSessionUpdatedAt: loadPublicShareSessionUpdatedAt,
+      loadSessionSummary: loadPublicShareSessionSummary,
       getRelayConfig: () => options.remoteAccessService?.getRelayConfig() ?? null,
     };
 

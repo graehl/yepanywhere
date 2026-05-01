@@ -1,9 +1,12 @@
 import type {
   AppSession,
+  FreezePublicSessionLiveSharesResponse,
   PublicSessionShareMetadata,
   PublicSessionShareMode,
   PublicSessionShareResponse,
   PublicSessionShareSessionStatusResponse,
+  PublicSessionShareViewerActionResponse,
+  PublicSessionShareViewerSummary,
   RevokePublicSessionSharesResponse,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -14,7 +17,8 @@ import { enforceOwnerReadWriteFilePermissions } from "../utils/filePermissions.j
 
 export const PUBLIC_SHARE_SECRET_BYTES = 64;
 export const PUBLIC_SHARE_SECRET_BITS = PUBLIC_SHARE_SECRET_BYTES * 8;
-const PUBLIC_SHARE_VIEWER_TTL_MS = 20_000;
+const PUBLIC_SHARE_VIEWER_TTL_MS = 120_000;
+const PUBLIC_SHARE_VIEWER_UPDATE_GRACE_MS = 30_000;
 const PUBLIC_SHARE_VIEWER_ID_REGEX = /^[A-Za-z0-9_-]{8,128}$/;
 
 export interface PublicShareRecord {
@@ -27,10 +31,28 @@ export interface PublicShareRecord {
   capturedAt?: string;
   source: PublicSessionShareMetadata["source"];
   frozenSession?: AppSession;
+  disconnectedViewerIds?: string[];
+  viewerSnapshots?: Record<
+    string,
+    {
+      capturedAt: string;
+      frozenSession: AppSession;
+    }
+  >;
 }
 
 interface PublicShareState {
   shares: PublicShareRecord[];
+}
+
+interface ViewerAccessRecord {
+  firstSeenAt: string;
+  lastSeenAt: string;
+  accessCount: number;
+}
+
+interface PublicShareStatusOptions {
+  sessionUpdatedAt?: string | null;
 }
 
 export interface PublicShareServiceOptions {
@@ -123,6 +145,42 @@ function matchesSession(
   );
 }
 
+function minIso(a?: string, b?: string): string | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return a < b ? a : b;
+}
+
+function maxIso(a?: string, b?: string): string | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
+function parseIsoTime(value?: string | null): number | null {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function isViewerActiveForStatus(
+  lastSeenAt: number,
+  now: number,
+  options: PublicShareStatusOptions,
+): boolean {
+  if (now - lastSeenAt > PUBLIC_SHARE_VIEWER_TTL_MS) {
+    return false;
+  }
+  const sessionUpdatedAt = parseIsoTime(options.sessionUpdatedAt);
+  if (sessionUpdatedAt === null) {
+    return true;
+  }
+  if (now <= sessionUpdatedAt + PUBLIC_SHARE_VIEWER_UPDATE_GRACE_MS) {
+    return true;
+  }
+  return lastSeenAt >= sessionUpdatedAt;
+}
+
 function summarizeRecords(
   records: PublicShareRecord[],
 ): PublicSessionShareSessionStatusResponse {
@@ -140,6 +198,7 @@ function summarizeRecords(
     frozenCount,
     liveCount,
     activeViewerCount: 0,
+    viewers: [],
   };
 }
 
@@ -147,6 +206,10 @@ export class PublicShareService {
   private state: PublicShareState = EMPTY_STATE;
   private readonly filePath: string;
   private readonly viewerHeartbeats = new Map<string, Map<string, number>>();
+  private readonly viewerAccesses = new Map<
+    string,
+    Map<string, ViewerAccessRecord>
+  >();
 
   constructor(options: PublicShareServiceOptions) {
     this.filePath = path.join(options.dataDir, "public-shares.json");
@@ -236,13 +299,15 @@ export class PublicShareService {
   getSessionShareStatus(
     projectId: UrlProjectId,
     sessionId: string,
+    options: PublicShareStatusOptions = {},
   ): PublicSessionShareSessionStatusResponse {
     const records = this.state.shares.filter((record) =>
       matchesSession(record, projectId, sessionId),
     );
     return {
       ...summarizeRecords(records),
-      activeViewerCount: this.countViewersForRecords(records),
+      activeViewerCount: this.countViewersForRecords(records, options),
+      viewers: this.summarizeViewersForRecords(records, options),
     };
   }
 
@@ -250,16 +315,148 @@ export class PublicShareService {
     projectId: UrlProjectId,
     sessionId: string,
   ): Promise<RevokePublicSessionSharesResponse> {
+    const revokedRecords = this.state.shares.filter((record) =>
+      matchesSession(record, projectId, sessionId),
+    );
     const remaining = this.state.shares.filter(
       (record) => !matchesSession(record, projectId, sessionId),
     );
     const revokedCount = this.state.shares.length - remaining.length;
     if (revokedCount > 0) {
       this.state = { shares: remaining };
+      for (const record of revokedRecords) {
+        this.viewerHeartbeats.delete(record.secretHash);
+        this.viewerAccesses.delete(record.secretHash);
+      }
       await this.save();
     }
     return {
       revokedCount,
+      ...this.getSessionShareStatus(projectId, sessionId),
+    };
+  }
+
+  async freezeSessionLiveShares(
+    projectId: UrlProjectId,
+    sessionId: string,
+    session: AppSession,
+  ): Promise<FreezePublicSessionLiveSharesResponse> {
+    const now = new Date().toISOString();
+    const frozenSession = sanitizeSessionForPublicShare(session);
+    let convertedCount = 0;
+    const shares = this.state.shares.map((record) => {
+      if (!matchesSession(record, projectId, sessionId) || record.mode !== "live") {
+        return record;
+      }
+      convertedCount += 1;
+      return {
+        ...record,
+        mode: "frozen" as const,
+        updatedAt: now,
+        capturedAt: now,
+        frozenSession,
+        viewerSnapshots: undefined,
+      };
+    });
+    if (convertedCount > 0) {
+      this.state = { shares };
+      await this.save();
+    }
+    return {
+      convertedCount,
+      ...this.getSessionShareStatus(projectId, sessionId),
+    };
+  }
+
+  async freezeSessionViewerToken(
+    projectId: UrlProjectId,
+    sessionId: string,
+    viewerId: string,
+    session: AppSession,
+  ): Promise<PublicSessionShareViewerActionResponse> {
+    if (!PUBLIC_SHARE_VIEWER_ID_REGEX.test(viewerId)) {
+      return {
+        viewerId,
+        convertedCount: 0,
+        ...this.getSessionShareStatus(projectId, sessionId),
+      };
+    }
+
+    const now = new Date().toISOString();
+    const frozenSession = sanitizeSessionForPublicShare(session);
+    let convertedCount = 0;
+    const shares = this.state.shares.map((record) => {
+      if (!matchesSession(record, projectId, sessionId) || record.mode !== "live") {
+        return record;
+      }
+      if (this.isViewerDisconnected(record, viewerId)) {
+        return record;
+      }
+      convertedCount += 1;
+      return {
+        ...record,
+        updatedAt: now,
+        viewerSnapshots: {
+          ...(record.viewerSnapshots ?? {}),
+          [viewerId]: {
+            capturedAt: now,
+            frozenSession,
+          },
+        },
+      };
+    });
+    if (convertedCount > 0) {
+      this.state = { shares };
+      this.removeViewerHeartbeatForSession(projectId, sessionId, viewerId);
+      await this.save();
+    }
+    return {
+      viewerId,
+      convertedCount,
+      ...this.getSessionShareStatus(projectId, sessionId),
+    };
+  }
+
+  async disconnectSessionViewerToken(
+    projectId: UrlProjectId,
+    sessionId: string,
+    viewerId: string,
+  ): Promise<PublicSessionShareViewerActionResponse> {
+    if (!PUBLIC_SHARE_VIEWER_ID_REGEX.test(viewerId)) {
+      return {
+        viewerId,
+        ...this.getSessionShareStatus(projectId, sessionId),
+      };
+    }
+
+    let changed = false;
+    const shares = this.state.shares.map((record) => {
+      if (!matchesSession(record, projectId, sessionId)) {
+        return record;
+      }
+      const disconnectedViewerIds = new Set(record.disconnectedViewerIds ?? []);
+      if (!disconnectedViewerIds.has(viewerId)) {
+        disconnectedViewerIds.add(viewerId);
+        changed = true;
+      }
+      const { [viewerId]: _removedSnapshot, ...remainingViewerSnapshots } =
+        record.viewerSnapshots ?? {};
+      return {
+        ...record,
+        disconnectedViewerIds: [...disconnectedViewerIds],
+        viewerSnapshots:
+          Object.keys(remainingViewerSnapshots).length > 0
+            ? remainingViewerSnapshots
+            : undefined,
+      };
+    });
+    if (changed) {
+      this.state = { shares };
+      this.removeViewerHeartbeatForSession(projectId, sessionId, viewerId);
+      await this.save();
+    }
+    return {
+      viewerId,
       ...this.getSessionShareStatus(projectId, sessionId),
     };
   }
@@ -286,12 +483,43 @@ export class PublicShareService {
     };
   }
 
+  getViewerSnapshotResponse(
+    record: PublicShareRecord,
+    viewerId: string,
+  ): PublicSessionShareResponse | null {
+    const snapshot = record.viewerSnapshots?.[viewerId];
+    if (!snapshot) {
+      return null;
+    }
+    return {
+      share: {
+        mode: "frozen",
+        title: record.title,
+        createdAt: record.createdAt,
+        updatedAt: snapshot.frozenSession.updatedAt,
+        capturedAt: snapshot.capturedAt,
+        activeViewerCount: this.getActiveViewerCount(record),
+        source: record.source,
+      },
+      session: snapshot.frozenSession,
+    };
+  }
+
+  isViewerDisconnected(record: PublicShareRecord, viewerId: string): boolean {
+    return record.disconnectedViewerIds?.includes(viewerId) ?? false;
+  }
+
   recordViewerHeartbeat(record: PublicShareRecord, viewerId: string): number {
     if (!PUBLIC_SHARE_VIEWER_ID_REGEX.test(viewerId)) {
       return this.getActiveViewerCount(record);
     }
+    if (this.isViewerDisconnected(record, viewerId)) {
+      this.viewerHeartbeats.get(record.secretHash)?.delete(viewerId);
+      return this.getActiveViewerCount(record);
+    }
 
     const now = Date.now();
+    const nowIso = new Date(now).toISOString();
     this.pruneViewerHeartbeats(now);
     let viewers = this.viewerHeartbeats.get(record.secretHash);
     if (!viewers) {
@@ -299,6 +527,17 @@ export class PublicShareService {
       this.viewerHeartbeats.set(record.secretHash, viewers);
     }
     viewers.set(viewerId, now);
+    let accesses = this.viewerAccesses.get(record.secretHash);
+    if (!accesses) {
+      accesses = new Map();
+      this.viewerAccesses.set(record.secretHash, accesses);
+    }
+    const existing = accesses.get(viewerId);
+    accesses.set(viewerId, {
+      firstSeenAt: existing?.firstSeenAt ?? nowIso,
+      lastSeenAt: nowIso,
+      accessCount: (existing?.accessCount ?? 0) + 1,
+    });
     return viewers.size;
   }
 
@@ -307,13 +546,94 @@ export class PublicShareService {
     return this.viewerHeartbeats.get(record.secretHash)?.size ?? 0;
   }
 
-  private countViewersForRecords(records: PublicShareRecord[]): number {
-    this.pruneViewerHeartbeats();
+  private countViewersForRecords(
+    records: PublicShareRecord[],
+    options: PublicShareStatusOptions,
+  ): number {
+    const now = Date.now();
+    this.pruneViewerHeartbeats(now);
     let count = 0;
     for (const record of records) {
-      count += this.viewerHeartbeats.get(record.secretHash)?.size ?? 0;
+      const viewers = this.viewerHeartbeats.get(record.secretHash);
+      if (!viewers) continue;
+      for (const lastSeenAt of viewers.values()) {
+        if (isViewerActiveForStatus(lastSeenAt, now, options)) {
+          count += 1;
+        }
+      }
     }
     return count;
+  }
+
+  private summarizeViewersForRecords(
+    records: PublicShareRecord[],
+    options: PublicShareStatusOptions,
+  ): PublicSessionShareViewerSummary[] {
+    const now = Date.now();
+    this.pruneViewerHeartbeats(now);
+    const byViewerId = new Map<
+      string,
+      Omit<PublicSessionShareViewerSummary, "shortId">
+    >();
+    for (const record of records) {
+      const activeViewers = this.viewerHeartbeats.get(record.secretHash);
+      const accesses = this.viewerAccesses.get(record.secretHash);
+      const viewerIds = new Set<string>([
+        ...(activeViewers?.keys() ?? []),
+        ...(accesses?.keys() ?? []),
+        ...(record.disconnectedViewerIds ?? []),
+        ...Object.keys(record.viewerSnapshots ?? {}),
+      ]);
+      for (const viewerId of viewerIds) {
+        const access = accesses?.get(viewerId);
+        const lastHeartbeatAt = activeViewers?.get(viewerId);
+        const active =
+          typeof lastHeartbeatAt === "number" &&
+          isViewerActiveForStatus(lastHeartbeatAt, now, options);
+        if (!active) {
+          continue;
+        }
+        const existing = byViewerId.get(viewerId);
+        byViewerId.set(viewerId, {
+          viewerId,
+          firstSeenAt:
+            minIso(existing?.firstSeenAt, access?.firstSeenAt) ??
+            access?.firstSeenAt ??
+            new Date(0).toISOString(),
+          lastSeenAt:
+            maxIso(existing?.lastSeenAt, access?.lastSeenAt) ??
+            access?.lastSeenAt ??
+            new Date(0).toISOString(),
+          accessCount: (existing?.accessCount ?? 0) + (access?.accessCount ?? 0),
+          active: (existing?.active ?? false) || active,
+          disconnected:
+            (existing?.disconnected ?? false) ||
+            this.isViewerDisconnected(record, viewerId),
+          frozen:
+            (existing?.frozen ?? false) ||
+            Boolean(record.viewerSnapshots?.[viewerId]),
+        });
+      }
+    }
+
+    return [...byViewerId.values()]
+      .map((viewer) => ({
+        ...viewer,
+        shortId: viewer.viewerId.slice(0, 8),
+      }))
+      .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+  }
+
+  private removeViewerHeartbeatForSession(
+    projectId: UrlProjectId,
+    sessionId: string,
+    viewerId: string,
+  ): void {
+    for (const record of this.state.shares) {
+      if (matchesSession(record, projectId, sessionId)) {
+        this.viewerHeartbeats.get(record.secretHash)?.delete(viewerId);
+      }
+    }
   }
 
   private pruneViewerHeartbeats(now = Date.now()): void {
@@ -326,6 +646,17 @@ export class PublicShareService {
       }
       if (viewers.size === 0) {
         this.viewerHeartbeats.delete(secretHash);
+      }
+    }
+    for (const [secretHash, accesses] of this.viewerAccesses) {
+      for (const [viewerId, access] of accesses) {
+        const lastSeenAt = Date.parse(access.lastSeenAt);
+        if (Number.isNaN(lastSeenAt) || lastSeenAt < cutoff) {
+          accesses.delete(viewerId);
+        }
+      }
+      if (accesses.size === 0) {
+        this.viewerAccesses.delete(secretHash);
       }
     }
   }

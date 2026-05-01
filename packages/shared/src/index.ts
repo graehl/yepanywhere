@@ -180,10 +180,13 @@ export type {
 export type {
   CreatePublicSessionShareRequest,
   CreatePublicSessionShareResponse,
+  FreezePublicSessionLiveSharesResponse,
   PublicSessionShareMetadata,
   PublicSessionShareMode,
   PublicSessionShareSessionStatusResponse,
+  PublicSessionShareViewerActionResponse,
   PublicSessionShareViewerHeartbeatResponse,
+  PublicSessionShareViewerSummary,
   PublicSessionShareResponse,
   RevokePublicSessionSharesResponse,
 } from "./public-shares.js";

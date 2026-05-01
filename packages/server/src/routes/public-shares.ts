@@ -2,8 +2,10 @@ import {
   type AppSession,
   type CreatePublicSessionShareRequest,
   type CreatePublicSessionShareResponse,
+  type FreezePublicSessionLiveSharesResponse,
   type PublicSessionShareResponse,
   type PublicSessionShareSessionStatusResponse,
+  type PublicSessionShareViewerActionResponse,
   type PublicSessionShareViewerHeartbeatResponse,
   type RevokePublicSessionSharesResponse,
   type UrlProjectId,
@@ -27,7 +29,18 @@ export interface PublicShareRoutesDeps {
   loadSession: (
     projectId: UrlProjectId,
     sessionId: string,
+    options?: { afterMessageId?: string },
   ) => Promise<AppSession | null>;
+  loadSessionUpdatedAt?: (
+    projectId: UrlProjectId,
+    sessionId: string,
+  ) => Promise<string | null>;
+  loadSessionSummary?: (
+    projectId: UrlProjectId,
+    sessionId: string,
+  ) => Promise<
+    Pick<AppSession, "customTitle" | "provider" | "title" | "updatedAt"> | null
+  >;
   getRelayConfig?: () => RelayConfigForPublicShare | null;
   publicShareOrigin?: string;
 }
@@ -158,13 +171,17 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     });
   });
 
-  app.get("/sessions/:projectId/:sessionId", (c) => {
+  app.get("/sessions/:projectId/:sessionId", async (c) => {
     const params = getSessionParams(c);
     if ("error" in params) return params.error;
+    const sessionUpdatedAt = deps.loadSessionUpdatedAt
+      ? await deps.loadSessionUpdatedAt(params.projectId, params.sessionId)
+      : (await deps.loadSession(params.projectId, params.sessionId))?.updatedAt;
     const response: PublicSessionShareSessionStatusResponse =
       deps.publicShareService.getSessionShareStatus(
         params.projectId,
         params.sessionId,
+        { sessionUpdatedAt },
       );
     return c.json(response);
   });
@@ -176,6 +193,53 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
       await deps.publicShareService.revokeSessionShares(
         params.projectId,
         params.sessionId,
+      );
+    return c.json(response);
+  });
+
+  app.post("/sessions/:projectId/:sessionId/freeze-live", async (c) => {
+    const params = getSessionParams(c);
+    if ("error" in params) return params.error;
+    const session = await deps.loadSession(params.projectId, params.sessionId);
+    if (!session) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+    const response: FreezePublicSessionLiveSharesResponse =
+      await deps.publicShareService.freezeSessionLiveShares(
+        params.projectId,
+        params.sessionId,
+        session,
+      );
+    return c.json(response);
+  });
+
+  app.post("/sessions/:projectId/:sessionId/viewers/:viewerId/freeze", async (c) => {
+    const params = getSessionParams(c);
+    if ("error" in params) return params.error;
+    const viewerId = c.req.param("viewerId");
+    const session = await deps.loadSession(params.projectId, params.sessionId);
+    if (!session) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+    const response: PublicSessionShareViewerActionResponse =
+      await deps.publicShareService.freezeSessionViewerToken(
+        params.projectId,
+        params.sessionId,
+        viewerId,
+        session,
+      );
+    return c.json(response);
+  });
+
+  app.delete("/sessions/:projectId/:sessionId/viewers/:viewerId", async (c) => {
+    const params = getSessionParams(c);
+    if ("error" in params) return params.error;
+    const viewerId = c.req.param("viewerId");
+    const response: PublicSessionShareViewerActionResponse =
+      await deps.publicShareService.disconnectSessionViewerToken(
+        params.projectId,
+        params.sessionId,
+        viewerId,
       );
     return c.json(response);
   });
@@ -209,14 +273,25 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
       );
     }
 
-    const session = await deps.loadSession(body.projectId, body.sessionId);
-    if (!session) {
+    let session: AppSession | null = null;
+    let sessionSummary:
+      | Pick<AppSession, "customTitle" | "provider" | "title" | "updatedAt">
+      | null = null;
+    if (body.mode === "frozen" || !deps.loadSessionSummary) {
+      session = await deps.loadSession(body.projectId, body.sessionId);
+      sessionSummary = session;
+    } else {
+      sessionSummary = await deps.loadSessionSummary(body.projectId, body.sessionId);
+    }
+    if (!sessionSummary) {
       return c.json({ error: "Session not found" }, 404);
     }
 
-    const title = body.title ?? session.customTitle ?? session.title;
+    const title = body.title ?? sessionSummary.customTitle ?? sessionSummary.title;
     const projectName = getProjectName(decodeProjectId(body.projectId));
-    const initialPrompt = getInitialPromptPreview(session);
+    const initialPrompt =
+      normalizePromptPreview(body.initialPrompt ?? "") ??
+      (session ? getInitialPromptPreview(session) : null);
     const { secret, secretBits, record } =
       await deps.publicShareService.createShare({
         mode: body.mode,
@@ -225,9 +300,9 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
           projectId: body.projectId,
           sessionId: body.sessionId,
           projectName,
-          provider: session.provider,
+          provider: sessionSummary.provider,
         },
-        ...(body.mode === "frozen" ? { snapshot: session } : {}),
+        ...(body.mode === "frozen" && session ? { snapshot: session } : {}),
       });
 
     const response: CreatePublicSessionShareResponse = {
@@ -262,7 +337,7 @@ export function createPublicSharePublicRoutes(
     const secret = c.req.param("secret");
     const viewerId = c.req.param("viewerId");
     const record = deps.publicShareService.getRecordBySecret(secret);
-    if (!record) {
+    if (!record || deps.publicShareService.isViewerDisconnected(record, viewerId)) {
       return notFound(c);
     }
 
@@ -279,18 +354,32 @@ export function createPublicSharePublicRoutes(
   app.get("/:secret", async (c) => {
     const secret = c.req.param("secret");
     const viewerId = c.req.query("viewerId");
+    const afterMessageId = c.req.query("afterMessageId");
     const record = deps.publicShareService.getRecordBySecret(secret);
     if (!record) {
       return notFound(c);
     }
+    if (viewerId && deps.publicShareService.isViewerDisconnected(record, viewerId)) {
+      return notFound(c);
+    }
 
     let response: PublicSessionShareResponse | null;
-    if (record.mode === "frozen") {
-      response = deps.publicShareService.getFrozenShareBySecret(secret);
+    if (viewerId) {
+      response = deps.publicShareService.getViewerSnapshotResponse(
+        record,
+        viewerId,
+      );
     } else {
+      response = null;
+    }
+
+    if (!response && record.mode === "frozen") {
+      response = deps.publicShareService.getFrozenShareBySecret(secret);
+    } else if (!response) {
       const session = await deps.loadSession(
         record.source.projectId,
         record.source.sessionId,
+        { afterMessageId },
       );
       response = session
         ? deps.publicShareService.buildLiveResponse(record, session)

@@ -1,20 +1,20 @@
+import type { MouseEvent } from "react";
+
 interface ViewerCountIndicatorProps {
   className?: string;
-  count: number;
+  count?: number | null;
   label: string;
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
 }
 
 export function ViewerCountIndicator({
   className,
   count,
   label,
+  onClick,
 }: ViewerCountIndicatorProps) {
-  return (
-    <span
-      className={`viewer-count-indicator${className ? ` ${className}` : ""}`}
-      title={label}
-      aria-label={label}
-    >
+  const content = (
+    <>
       <svg
         viewBox="0 0 24 24"
         aria-hidden="true"
@@ -25,7 +25,32 @@ export function ViewerCountIndicator({
         <path d="M12 10v8" />
         <path d="M9 18h6" />
       </svg>
-      <span>{count}</span>
+      {typeof count === "number" && <span>{count}</span>}
+    </>
+  );
+  const classes = `viewer-count-indicator${onClick ? " viewer-count-indicator-button" : ""}${className ? ` ${className}` : ""}`;
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        className={classes}
+        title={label}
+        aria-label={label}
+        onClick={onClick}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <span
+      className={classes}
+      title={label}
+      aria-label={label}
+    >
+      {content}
     </span>
   );
 }

@@ -7,12 +7,14 @@ import type {
   DeviceInfo,
   EnrichedRecentEntry,
   FileContentResponse,
+  FreezePublicSessionLiveSharesResponse,
   GitStatusInfo,
   NewSessionDefaults,
   PendingInputType,
   ProviderInfo,
   ProviderName,
   PublicSessionShareSessionStatusResponse,
+  PublicSessionShareViewerActionResponse,
   RevokePublicSessionSharesResponse,
   SlashCommand,
   ThinkingOption,
@@ -1146,6 +1148,32 @@ export const api = {
   revokePublicSessionShares: (projectId: string, sessionId: string) =>
     fetchJSON<RevokePublicSessionSharesResponse>(
       `/public-shares/sessions/${encodeURIComponent(projectId)}/${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" },
+    ),
+
+  freezePublicSessionLiveShares: (projectId: string, sessionId: string) =>
+    fetchJSON<FreezePublicSessionLiveSharesResponse>(
+      `/public-shares/sessions/${encodeURIComponent(projectId)}/${encodeURIComponent(sessionId)}/freeze-live`,
+      { method: "POST" },
+    ),
+
+  freezePublicSessionViewerToken: (
+    projectId: string,
+    sessionId: string,
+    viewerId: string,
+  ) =>
+    fetchJSON<PublicSessionShareViewerActionResponse>(
+      `/public-shares/sessions/${encodeURIComponent(projectId)}/${encodeURIComponent(sessionId)}/viewers/${encodeURIComponent(viewerId)}/freeze`,
+      { method: "POST" },
+    ),
+
+  disconnectPublicSessionViewerToken: (
+    projectId: string,
+    sessionId: string,
+    viewerId: string,
+  ) =>
+    fetchJSON<PublicSessionShareViewerActionResponse>(
+      `/public-shares/sessions/${encodeURIComponent(projectId)}/${encodeURIComponent(sessionId)}/viewers/${encodeURIComponent(viewerId)}`,
       { method: "DELETE" },
     ),
 

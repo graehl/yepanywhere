@@ -1561,6 +1561,11 @@ details[open] .collapsible__icon {
   z-index: 9999;
 }
 
+.modal-overlay--anchored {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
 .modal {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
@@ -1571,6 +1576,11 @@ details[open] .collapsible__icon {
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.modal--anchored {
+  position: fixed;
+  margin: 0;
 }
 
 .modal-header {

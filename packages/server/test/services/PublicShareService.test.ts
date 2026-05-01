@@ -2,7 +2,7 @@ import type { AppSession, UrlProjectId } from "@yep-anywhere/shared";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PUBLIC_SHARE_SECRET_BITS,
   PUBLIC_SHARE_SECRET_BYTES,
@@ -196,6 +196,7 @@ describe("PublicShareService", () => {
       frozenCount: 1,
       liveCount: 1,
       activeViewerCount: 0,
+      viewers: [],
     });
 
     await expect(
@@ -205,6 +206,7 @@ describe("PublicShareService", () => {
       frozenCount: 0,
       liveCount: 0,
       activeViewerCount: 0,
+      viewers: [],
       revokedCount: 2,
     });
     expect(service.getSessionShareStatus(projectId, "session-2")).toEqual({
@@ -212,7 +214,82 @@ describe("PublicShareService", () => {
       frozenCount: 0,
       liveCount: 1,
       activeViewerCount: 0,
+      viewers: [],
     });
+  });
+
+  it("freezes live shares as snapshots without changing their secrets", async () => {
+    const { secret } = await service.createShare({
+      mode: "live",
+      title: "Live",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+    });
+
+    await expect(
+      service.freezeSessionLiveShares(
+        projectId,
+        "session-1",
+        makeSession({ updatedAt: "2026-05-01T00:03:00.000Z" }),
+      ),
+    ).resolves.toMatchObject({
+      activeCount: 1,
+      frozenCount: 1,
+      liveCount: 0,
+      convertedCount: 1,
+    });
+
+    const response = service.getFrozenShareBySecret(secret);
+    expect(response?.share.mode).toBe("frozen");
+    expect(response?.session.updatedAt).toBe("2026-05-01T00:03:00.000Z");
+  });
+
+  it("freezes and disconnects individual viewer tokens", async () => {
+    const { secret } = await service.createShare({
+      mode: "live",
+      title: "Live",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+    });
+    const record = service.getRecordBySecret(secret);
+    expect(record).not.toBeNull();
+    service.recordViewerHeartbeat(record!, "viewer-one");
+
+    await service.freezeSessionViewerToken(
+      projectId,
+      "session-1",
+      "viewer-one",
+      makeSession({ updatedAt: "2026-05-01T00:04:00.000Z" }),
+    );
+    const frozenRecord = service.getRecordBySecret(secret);
+    expect(
+      service.getViewerSnapshotResponse(frozenRecord!, "viewer-one")?.session
+        .updatedAt,
+    ).toBe("2026-05-01T00:04:00.000Z");
+    expect(service.getSessionShareStatus(projectId, "session-1").viewers).toEqual(
+      [],
+    );
+
+    await service.disconnectSessionViewerToken(
+      projectId,
+      "session-1",
+      "viewer-one",
+    );
+    const disconnectedRecord = service.getRecordBySecret(secret);
+    expect(service.isViewerDisconnected(disconnectedRecord!, "viewer-one")).toBe(
+      true,
+    );
+    expect(
+      service.getViewerSnapshotResponse(disconnectedRecord!, "viewer-one"),
+    ).toBeNull();
   });
 
   it("counts active viewers by share secret", async () => {
@@ -257,5 +334,42 @@ describe("PublicShareService", () => {
     expect(service.getSessionShareStatus(projectId, "session-1")).toMatchObject({
       activeViewerCount: 3,
     });
+  });
+
+  it("keeps viewers active until they miss a session update grace period", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-05-01T00:00:00.000Z"));
+      const { secret } = await service.createShare({
+        mode: "live",
+        title: "Live",
+        source: {
+          projectId,
+          sessionId: "session-1",
+          projectName: "project",
+          provider: "codex",
+        },
+      });
+      const record = service.getRecordBySecret(secret);
+      expect(record).not.toBeNull();
+      service.recordViewerHeartbeat(record!, "viewer-one");
+
+      vi.setSystemTime(new Date("2026-05-01T00:01:00.000Z"));
+      expect(
+        service.getSessionShareStatus(projectId, "session-1").activeViewerCount,
+      ).toBe(1);
+      expect(
+        service.getSessionShareStatus(projectId, "session-1", {
+          sessionUpdatedAt: "2026-05-01T00:00:40.000Z",
+        }).activeViewerCount,
+      ).toBe(1);
+      expect(
+        service.getSessionShareStatus(projectId, "session-1", {
+          sessionUpdatedAt: "2026-05-01T00:00:20.000Z",
+        }).activeViewerCount,
+      ).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

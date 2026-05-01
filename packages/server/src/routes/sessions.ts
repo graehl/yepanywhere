@@ -1410,6 +1410,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const projectId = c.req.param("projectId");
     const sessionId = c.req.param("sessionId");
     const afterMessageId = c.req.query("afterMessageId");
+    const publicShare = c.req.query("publicShare") === "1";
     const tailCompactionsParam = c.req.query("tailCompactions");
     const beforeMessageId = c.req.query("beforeMessageId");
     const tailCompactions =
@@ -1650,7 +1651,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     // Keep persisted rendering in lockstep with stream augmentation behavior.
-    await augmentPersistedSessionMessages(session.messages);
+    if (!publicShare) {
+      await augmentPersistedSessionMessages(session.messages);
+    }
 
     // Override context usage with SDK-reported context window from live process
     // The reader uses hardcoded defaults; the process captures the real value at runtime

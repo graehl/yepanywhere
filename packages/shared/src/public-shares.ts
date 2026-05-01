@@ -9,6 +9,7 @@ export interface CreatePublicSessionShareRequest {
   sessionId: string;
   mode: PublicSessionShareMode;
   title?: string;
+  initialPrompt?: string;
 }
 
 export interface CreatePublicSessionShareResponse {
@@ -23,6 +24,7 @@ export interface PublicSessionShareSessionStatusResponse {
   frozenCount: number;
   liveCount: number;
   activeViewerCount: number;
+  viewers: PublicSessionShareViewerSummary[];
 }
 
 export interface RevokePublicSessionSharesResponse
@@ -30,8 +32,30 @@ export interface RevokePublicSessionSharesResponse
   revokedCount: number;
 }
 
+export interface FreezePublicSessionLiveSharesResponse
+  extends PublicSessionShareSessionStatusResponse {
+  convertedCount: number;
+}
+
+export interface PublicSessionShareViewerActionResponse
+  extends PublicSessionShareSessionStatusResponse {
+  viewerId: string;
+  convertedCount?: number;
+}
+
 export interface PublicSessionShareViewerHeartbeatResponse {
   activeViewerCount: number;
+}
+
+export interface PublicSessionShareViewerSummary {
+  viewerId: string;
+  shortId: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  accessCount: number;
+  active: boolean;
+  disconnected: boolean;
+  frozen: boolean;
 }
 
 export interface PublicSessionShareMetadata {

@@ -3,7 +3,14 @@ import type {
   PublicSessionShareResponse,
   RelayResponse,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { BrandWordmark } from "../components/BrandWordmark";
 import { MessageList } from "../components/MessageList";
@@ -16,8 +23,9 @@ import { useI18n } from "../i18n";
 import type { Message } from "../types";
 
 const DEFAULT_RELAY_URL = "wss://relay.yepanywhere.com/ws";
-const LIVE_POLL_MS = 5000;
+const LIVE_POLL_MS = 2000;
 const RETRY_POLL_MS = 2000;
+const PUBLIC_SHARE_BOTTOM_STICKY_PX = 96;
 const PUBLIC_SHARE_VIEWER_ID_KEY = "yep-anywhere-public-share-viewer-id";
 const PUBLIC_SHARE_VIEWER_ID_REGEX = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -78,12 +86,13 @@ async function decodeWebSocketData(data: MessageEvent["data"]): Promise<string> 
 }
 
 async function fetchPublicShareViaRelay(options: {
+  afterMessageId?: string;
   relayUrl: string;
   relayUsername: string;
   secret: string;
   viewerId: string;
 }): Promise<PublicSessionShareResponse> {
-  const { relayUrl, relayUsername, secret, viewerId } = options;
+  const { afterMessageId, relayUrl, relayUsername, secret, viewerId } = options;
   const ws = new WebSocket(relayUrl);
   const requestId = generateRequestId();
 
@@ -129,12 +138,16 @@ async function fetchPublicShareViaRelay(options: {
           typeof message === "object" &&
           (message as { type?: unknown }).type === "client_connected"
         ) {
+          const shareParams = new URLSearchParams({ viewerId });
+          if (afterMessageId) {
+            shareParams.set("afterMessageId", afterMessageId);
+          }
           ws.send(
             JSON.stringify({
               type: "request",
               id: requestId,
               method: "GET",
-              path: `/public-api/shares/${encodeURIComponent(secret)}?viewerId=${encodeURIComponent(viewerId)}`,
+              path: `/public-api/shares/${encodeURIComponent(secret)}?${shareParams.toString()}`,
               headers: {},
             }),
           );
@@ -201,6 +214,86 @@ function shouldRetryPublicShareError(error: unknown): boolean {
   );
 }
 
+function isNearScrollBottom(element: HTMLElement): boolean {
+  return (
+    element.scrollHeight - element.scrollTop - element.clientHeight <=
+    PUBLIC_SHARE_BOTTOM_STICKY_PX
+  );
+}
+
+function getPublicShareMessageId(
+  message: PublicSessionShareResponse["session"]["messages"][number],
+): string | null {
+  const value = (message as { id?: unknown; uuid?: unknown }).id;
+  if (typeof value === "string" && value) {
+    return value;
+  }
+  const uuid = (message as { uuid?: unknown }).uuid;
+  return typeof uuid === "string" && uuid ? uuid : null;
+}
+
+function getLastPublicShareMessageId(
+  messages: PublicSessionShareResponse["session"]["messages"],
+): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message) continue;
+    const id = getPublicShareMessageId(message);
+    if (id) {
+      return id;
+    }
+  }
+  return null;
+}
+
+function mergePublicShareResponse(
+  current: PublicSessionShareResponse | null,
+  next: PublicSessionShareResponse,
+  incremental: boolean,
+): PublicSessionShareResponse {
+  if (
+    !current ||
+    !incremental ||
+    current.share.mode !== "live" ||
+    next.share.mode !== "live"
+  ) {
+    return next;
+  }
+
+  const seenMessageIds = new Set<string>();
+  for (const message of current.session.messages) {
+    const id = getPublicShareMessageId(message);
+    if (id) {
+      seenMessageIds.add(id);
+    }
+  }
+
+  const mergedMessages = [...current.session.messages];
+  for (const message of next.session.messages) {
+    const id = getPublicShareMessageId(message);
+    if (id && seenMessageIds.has(id)) {
+      continue;
+    }
+    if (id) {
+      seenMessageIds.add(id);
+    }
+    mergedMessages.push(message);
+  }
+
+  return {
+    share: next.share,
+    session: {
+      ...next.session,
+      messageCount: Math.max(
+        current.session.messageCount,
+        next.session.messageCount,
+        mergedMessages.length,
+      ),
+      messages: mergedMessages,
+    },
+  };
+}
+
 export function PublicSharePage() {
   const { t } = useI18n();
   const { secret } = useParams<{ secret: string }>();
@@ -210,6 +303,11 @@ export function PublicSharePage() {
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState(false);
   const [viewerId] = useState(getPublicShareViewerId);
+  const scrollRef = useRef<HTMLElement | null>(null);
+  const hasRenderedShareRef = useRef(false);
+  const lastMessageIdRef = useRef<string | null>(null);
+  const shareRef = useRef<PublicSessionShareResponse | null>(null);
+  const wasNearBottomRef = useRef(true);
 
   const relayUsername = searchParams.get("h") ?? "";
   const relayUrl = searchParams.get("r") ?? DEFAULT_RELAY_URL;
@@ -244,11 +342,12 @@ export function PublicSharePage() {
     : t("publicShareLoading");
   const isFetching = loading || retrying;
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (afterMessageId?: string) => {
     if (!secret || !relayUsername) {
       throw new Error(t("publicShareMissingRelay"));
     }
     return await fetchPublicShareViaRelay({
+      afterMessageId,
       relayUrl,
       relayUsername,
       secret,
@@ -262,9 +361,22 @@ export function PublicSharePage() {
 
     const run = async () => {
       try {
-        const response = await refresh();
+        const afterMessageId =
+          shareRef.current?.share.mode === "live"
+            ? (lastMessageIdRef.current ?? undefined)
+            : undefined;
+        const response = await refresh(afterMessageId);
         if (cancelled) return;
-        setShare(response);
+        const nextShare = mergePublicShareResponse(
+          shareRef.current,
+          response,
+          !!afterMessageId,
+        );
+        shareRef.current = nextShare;
+        lastMessageIdRef.current = getLastPublicShareMessageId(
+          nextShare.session.messages,
+        );
+        setShare(nextShare);
         setError(null);
         setLoading(false);
         setRetrying(false);
@@ -299,6 +411,27 @@ export function PublicSharePage() {
     document.title = title ? `${title} - Public Share` : "Public Share";
   }, [title]);
 
+  const handleScroll = useCallback(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) return;
+    wasNearBottomRef.current = isNearScrollBottom(scrollElement);
+  }, []);
+
+  useLayoutEffect(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement || !share) return;
+
+    if (!hasRenderedShareRef.current) {
+      hasRenderedShareRef.current = true;
+      wasNearBottomRef.current = isNearScrollBottom(scrollElement);
+      return;
+    }
+
+    if (wasNearBottomRef.current) {
+      scrollElement.scrollTop = scrollElement.scrollHeight;
+    }
+  }, [share]);
+
   const messageContent = share ? (
     <SessionMetadataProvider
       projectId={share.share.source.projectId}
@@ -310,13 +443,6 @@ export function PublicSharePage() {
         provider={share.session.provider}
       />
     </SessionMetadataProvider>
-  ) : null;
-
-  const loadingStatus = isFetching ? (
-    <span className="public-share-loading-line" role="status">
-      <span className="public-share-spinner" aria-hidden="true" />
-      {loadStatusLabel}
-    </span>
   ) : null;
 
   return (
@@ -337,7 +463,6 @@ export function PublicSharePage() {
               <h1 className="public-share-title">
                 {title ?? t("publicShareUntitled")}
               </h1>
-              {loadingStatus}
             </div>
           </div>
           <div className="public-share-header-actions">
@@ -356,7 +481,11 @@ export function PublicSharePage() {
           </div>
         </div>
       </header>
-      <section className="public-share-scroll">
+      <section
+        className="public-share-scroll"
+        ref={scrollRef}
+        onScroll={handleScroll}
+      >
         <ToastProvider>
           <SchemaValidationProvider>
             <StreamingMarkdownProvider>

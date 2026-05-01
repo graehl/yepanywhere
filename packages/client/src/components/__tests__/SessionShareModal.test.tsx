@@ -15,6 +15,7 @@ describe("SessionShareModal", () => {
       frozenCount: 0,
       liveCount: 0,
       activeViewerCount: 0,
+      viewers: [],
     });
     vi.spyOn(api, "createPublicSessionShare").mockResolvedValue({
       url: "https://ya.graehl.org/share/secret?h=test-host",
@@ -27,7 +28,44 @@ describe("SessionShareModal", () => {
       frozenCount: 0,
       liveCount: 0,
       activeViewerCount: 0,
+      viewers: [],
       revokedCount: 2,
+    });
+    vi.spyOn(api, "freezePublicSessionLiveShares").mockResolvedValue({
+      activeCount: 1,
+      frozenCount: 1,
+      liveCount: 0,
+      activeViewerCount: 0,
+      viewers: [],
+      convertedCount: 1,
+    });
+    vi.spyOn(api, "freezePublicSessionViewerToken").mockResolvedValue({
+      activeCount: 1,
+      frozenCount: 0,
+      liveCount: 1,
+      activeViewerCount: 0,
+      viewers: [
+        {
+          viewerId: "viewer-token-1",
+          shortId: "viewer-t",
+          firstSeenAt: "2026-05-01T00:00:00.000Z",
+          lastSeenAt: "2026-05-01T00:01:00.000Z",
+          accessCount: 2,
+          active: false,
+          disconnected: false,
+          frozen: true,
+        },
+      ],
+      viewerId: "viewer-token-1",
+      convertedCount: 1,
+    });
+    vi.spyOn(api, "disconnectPublicSessionViewerToken").mockResolvedValue({
+      activeCount: 1,
+      frozenCount: 0,
+      liveCount: 1,
+      activeViewerCount: 0,
+      viewers: [],
+      viewerId: "viewer-token-1",
     });
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -47,6 +85,7 @@ describe("SessionShareModal", () => {
         <SessionShareModal
           projectId="cHJvamVjdA"
           sessionId="session-1"
+          initialPrompt="first prompt"
           title="Build logs"
           onClose={vi.fn()}
         />
@@ -62,6 +101,7 @@ describe("SessionShareModal", () => {
         projectId: "cHJvamVjdA",
         sessionId: "session-1",
         mode: "frozen",
+        initialPrompt: "first prompt",
         title: "Build logs",
       });
     });
@@ -75,12 +115,14 @@ describe("SessionShareModal", () => {
   });
 
   it("creates and copies a live read-only public share in one click", async () => {
+    const onStatusChange = vi.fn();
     render(
       <I18nProvider>
         <SessionShareModal
           projectId="cHJvamVjdA"
           sessionId="session-1"
           title="Build logs"
+          onStatusChange={onStatusChange}
           onClose={vi.fn()}
         />
       </I18nProvider>,
@@ -95,6 +137,12 @@ describe("SessionShareModal", () => {
         expect.objectContaining({ mode: "live" }),
       );
     });
+    expect(onStatusChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeCount: 1,
+        liveCount: 1,
+      }),
+    );
   });
 
   it("does not surface raw focus errors when clipboard access is blocked", async () => {
@@ -166,6 +214,7 @@ describe("SessionShareModal", () => {
       frozenCount: 1,
       liveCount: 1,
       activeViewerCount: 3,
+      viewers: [],
     });
 
     render(
@@ -183,7 +232,9 @@ describe("SessionShareModal", () => {
       name: "Revoke All Shared Links",
     });
     expect(
-      screen.getByLabelText("3 active public viewer(s)"),
+      screen.getByLabelText(
+        "3 active viewer(s), 0 token(s), 1 live link(s), 1 snapshot link(s)",
+      ),
     ).toBeTruthy();
     fireEvent.click(revoke);
 
@@ -194,5 +245,102 @@ describe("SessionShareModal", () => {
       );
     });
     expect(screen.getByText("Revoked 2 shared link(s).")).toBeTruthy();
+  });
+
+  it("freezes all live public links", async () => {
+    vi.mocked(api.getPublicSessionShareStatus).mockResolvedValue({
+      activeCount: 1,
+      frozenCount: 0,
+      liveCount: 1,
+      activeViewerCount: 0,
+      viewers: [],
+    });
+
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          projectId="cHJvamVjdA"
+          sessionId="session-1"
+          title="Build logs"
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", {
+      name: "Stop live updates",
+    }));
+
+    await waitFor(() => {
+      expect(api.freezePublicSessionLiveShares).toHaveBeenCalledWith(
+        "cHJvamVjdA",
+        "session-1",
+      );
+    });
+    expect(
+      screen.getByText(
+        "Live updates stopped for 1 link(s); they now open as read-only snapshots.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("shows viewer tokens with freeze and disconnect controls", async () => {
+    vi.mocked(api.getPublicSessionShareStatus).mockResolvedValue({
+      activeCount: 1,
+      frozenCount: 0,
+      liveCount: 1,
+      activeViewerCount: 1,
+      viewers: [
+        {
+          viewerId: "viewer-token-1",
+          shortId: "viewer-t",
+          firstSeenAt: "2026-05-01T00:00:00.000Z",
+          lastSeenAt: "2026-05-01T00:01:00.000Z",
+          accessCount: 2,
+          active: true,
+          disconnected: false,
+          frozen: false,
+        },
+      ],
+    });
+
+    render(
+      <I18nProvider>
+        <SessionShareModal
+          projectId="cHJvamVjdA"
+          sessionId="session-1"
+          title="Build logs"
+          onClose={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByText("viewer-t")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Snapshot this token viewer-t",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.freezePublicSessionViewerToken).toHaveBeenCalledWith(
+        "cHJvamVjdA",
+        "session-1",
+        "viewer-token-1",
+      );
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Disconnect this token viewer-t",
+      }),
+    );
+    await waitFor(() => {
+      expect(api.disconnectPublicSessionViewerToken).toHaveBeenCalledWith(
+        "cHJvamVjdA",
+        "session-1",
+        "viewer-token-1",
+      );
+    });
   });
 });

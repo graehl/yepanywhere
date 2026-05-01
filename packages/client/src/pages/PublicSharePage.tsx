@@ -190,22 +190,6 @@ function formatSnapshotDate(timestamp: string | null): string | null {
   });
 }
 
-function buildPreviewMessage(initialPrompt: string | null): Message[] {
-  if (!initialPrompt) {
-    return [];
-  }
-  return [
-    {
-      type: "user",
-      uuid: "public-share-initial-prompt-preview",
-      message: { role: "user", content: initialPrompt },
-      timestamp: new Date(0).toISOString(),
-      content: initialPrompt,
-      role: "user",
-    } as Message,
-  ];
-}
-
 function shouldRetryPublicShareError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -255,13 +239,10 @@ export function PublicSharePage() {
     }
     return null;
   }, [capturedAt, mode, t]);
-  const previewMessages = useMemo(
-    () => buildPreviewMessage(hints.initialPrompt),
-    [hints.initialPrompt],
-  );
-  const visibleMessages = share
-    ? (share.session.messages as Message[])
-    : previewMessages;
+  const loadStatusLabel = retrying
+    ? t("publicShareRetrying")
+    : t("publicShareLoading");
+  const isFetching = loading || retrying;
 
   const refresh = useCallback(async () => {
     if (!secret || !relayUsername) {
@@ -318,23 +299,25 @@ export function PublicSharePage() {
     document.title = title ? `${title} - Public Share` : "Public Share";
   }, [title]);
 
-  const messageList = (
-    <MessageList
-      messages={visibleMessages}
-      provider={share?.session.provider}
-    />
-  );
   const messageContent = share ? (
     <SessionMetadataProvider
       projectId={share.share.source.projectId}
       projectPath={null}
       sessionId={share.share.source.sessionId}
     >
-      {messageList}
+      <MessageList
+        messages={share.session.messages as Message[]}
+        provider={share.session.provider}
+      />
     </SessionMetadataProvider>
-  ) : (
-    messageList
-  );
+  ) : null;
+
+  const loadingStatus = isFetching ? (
+    <span className="public-share-loading-line" role="status">
+      <span className="public-share-spinner" aria-hidden="true" />
+      {loadStatusLabel}
+    </span>
+  ) : null;
 
   return (
     <main className="public-share-page">
@@ -354,11 +337,7 @@ export function PublicSharePage() {
               <h1 className="public-share-title">
                 {title ?? t("publicShareUntitled")}
               </h1>
-              {(loading || retrying) && (
-                <span className="public-share-loading-line">
-                  {retrying ? t("publicShareRetrying") : t("publicShareLoading")}
-                </span>
-              )}
+              {loadingStatus}
             </div>
           </div>
           <div className="public-share-header-actions">
@@ -385,11 +364,27 @@ export function PublicSharePage() {
                 <div className="public-share-error public-share-error--inline">
                   {error}
                 </div>
-              ) : visibleMessages.length > 0 ? (
+              ) : messageContent ? (
                 messageContent
+              ) : hints.initialPrompt ? (
+                <div className="public-share-preview">
+                  <div className="public-share-preview-text">
+                    {hints.initialPrompt}
+                  </div>
+                  <div className="public-share-fetch-status" role="status">
+                    <span className="public-share-spinner" aria-hidden="true" />
+                    {loadStatusLabel}
+                  </div>
+                </div>
               ) : (
                 <div className="public-share-empty">
-                  {retrying ? t("publicShareRetrying") : t("publicShareLoading")}
+                  {isFetching && (
+                    <span
+                      className="public-share-spinner"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {loadStatusLabel}
                 </div>
               )}
             </StreamingMarkdownProvider>

@@ -4,7 +4,7 @@ import {
   isCodexLikeBashInput,
 } from "../../lib/bashCommand";
 import { parseShellToolOutput } from "../../lib/shellToolOutput";
-import type { ToolResultData } from "../../types/renderItems";
+import type { ToolCallItem, ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
 import type { RenderContext } from "../renderers/types";
 import { getToolSummary } from "../tools/summaries";
@@ -15,7 +15,7 @@ interface Props {
   toolName: string;
   toolInput: unknown;
   toolResult?: ToolResultData;
-  status: "pending" | "complete" | "error" | "aborted";
+  status: ToolCallItem["status"];
   sessionProvider?: string;
 }
 
@@ -164,6 +164,11 @@ export const ToolCallRow = memo(function ToolCallRow({
             ⨯
           </span>
         )}
+        {status === "incomplete" && (
+          <span className="tool-incomplete-icon" aria-label="Result unavailable">
+            ?
+          </span>
+        )}
 
         <span className="tool-name">
           {toolRegistry.getDisplayName(toolName)}
@@ -178,6 +183,12 @@ export const ToolCallRow = memo(function ToolCallRow({
             {summary}
             {status === "aborted" && (
               <span className="tool-aborted-label"> (interrupted)</span>
+            )}
+            {status === "incomplete" && (
+              <span className="tool-incomplete-label">
+                {" "}
+                (result unavailable)
+              </span>
             )}
           </span>
         ) : null}
@@ -198,7 +209,9 @@ export const ToolCallRow = memo(function ToolCallRow({
 
       {expanded && !isNonExpandable && (
         <div className="tool-row-content">
-          {status === "pending" || status === "aborted" ? (
+          {status === "pending" ||
+          status === "aborted" ||
+          status === "incomplete" ? (
             <ToolUseExpanded
               toolName={toolName}
               toolInput={toolInput}
@@ -223,7 +236,7 @@ function shouldSuppressBashCollapsedPreview(
   toolInput: unknown,
   result: unknown,
   sessionProvider?: string,
-  status?: "pending" | "complete" | "error" | "aborted",
+  status?: ToolCallItem["status"],
 ): boolean {
   if (toolName !== "Bash") {
     return false;
@@ -239,7 +252,12 @@ function shouldSuppressBashCollapsedPreview(
   if (status === "pending") {
     return true;
   }
-  if (status === "complete" || status === "error" || status === "aborted") {
+  if (
+    status === "complete" ||
+    status === "error" ||
+    status === "aborted" ||
+    status === "incomplete"
+  ) {
     const output = getBashResultOutputForRichPreview(result);
     return !output || !mayHaveFixedFontRichContent(output);
   }

@@ -356,7 +356,7 @@ function processMessage(
     // Attach results to pending tool calls
     for (const block of content) {
       if (block.type === "tool_result" && block.tool_use_id) {
-        attachToolResult(block, msg, items, pendingToolCalls, orphanedToolIds);
+        attachToolResult(block, msg, items, pendingToolCalls);
       }
     }
     return;
@@ -438,7 +438,10 @@ function processMessage(
           continue;
         }
 
-        // Check if this tool call is orphaned (process killed before result)
+        // Check if this tool call is missing a result after the turn boundary.
+        // That is not the same as an explicit interruption: Codex/YA may have
+        // missed the result event even though a side effect, such as an edit,
+        // landed in the filesystem.
         const isOrphaned = orphanedToolIds.has(block.id);
         const toolCall: ToolCallItem = {
           type: "tool_call",
@@ -446,7 +449,7 @@ function processMessage(
           toolName: block.name,
           toolInput: block.input,
           toolResult: undefined,
-          status: isOrphaned ? "aborted" : "pending",
+          status: isOrphaned ? "incomplete" : "pending",
           sourceMessages: [msg],
           isSubagent: msg.isSubagent,
         };
@@ -585,7 +588,6 @@ function attachToolResult(
   resultMessage: Message,
   items: RenderItem[],
   pendingToolCalls: Map<string, number>,
-  orphanedToolIds: Set<string>,
 ): void {
   const toolUseId = block.tool_use_id;
   if (!toolUseId) return;
@@ -628,9 +630,8 @@ function attachToolResult(
   );
 
   // Create a new ToolCallItem to ensure React sees the change
-  const isOrphaned = orphanedToolIds.has(toolUseId);
   let status: ToolCallItem["status"] = "complete";
-  if (isOrphaned || isInterruptedProcessResult) {
+  if (isInterruptedProcessResult || item.status === "aborted") {
     status = "aborted";
   } else if (isBackgroundProcessResult) {
     status = "pending";

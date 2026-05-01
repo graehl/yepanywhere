@@ -890,7 +890,7 @@ describe("preprocessMessages", () => {
   });
 
   describe("orphaned tool handling", () => {
-    it("marks orphaned tool_use as aborted", () => {
+    it("marks orphaned tool_use as result unavailable", () => {
       const messages: Message[] = [
         {
           id: "msg-1",
@@ -914,7 +914,7 @@ describe("preprocessMessages", () => {
       expect(items[0]).toMatchObject({
         type: "tool_call",
         id: "tool-1",
-        status: "aborted",
+        status: "incomplete",
         toolResult: undefined,
       });
     });
@@ -966,7 +966,7 @@ describe("preprocessMessages", () => {
       );
 
       expect(tool1?.type === "tool_call" && tool1.status).toBe("complete");
-      expect(tool2?.type === "tool_call" && tool2.status).toBe("aborted");
+      expect(tool2?.type === "tool_call" && tool2.status).toBe("incomplete");
     });
 
     it("non-orphaned pending tools remain pending", () => {
@@ -1037,7 +1037,7 @@ describe("preprocessMessages", () => {
       });
     });
 
-    it("marks interrupted Codex background processes aborted", () => {
+    it("keeps Codex background process handles pending despite orphan markers", () => {
       const messages: Message[] = [
         {
           id: "msg-1",
@@ -1074,7 +1074,48 @@ describe("preprocessMessages", () => {
       expect(items[0]).toMatchObject({
         type: "tool_call",
         id: "tool-1",
-        status: "aborted",
+        status: "pending",
+      });
+    });
+
+    it("lets a later observed result win over an orphan marker", () => {
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Edit",
+              input: { file_path: "a.ts" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+          orphanedToolUseIds: ["tool-1"],
+        },
+        {
+          id: "msg-2",
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: "Patch applied",
+            },
+          ],
+          timestamp: "2024-01-01T00:00:01Z",
+        },
+      ];
+
+      const items = preprocessMessages(messages);
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        type: "tool_call",
+        id: "tool-1",
+        status: "complete",
+        toolResult: expect.objectContaining({ content: "Patch applied" }),
       });
     });
 
@@ -1166,7 +1207,7 @@ describe("preprocessMessages", () => {
       });
     });
 
-    it("still marks orphaned tools as aborted when activeToolApproval is false", () => {
+    it("still marks orphaned tools incomplete when activeToolApproval is false", () => {
       const messages: Message[] = [
         {
           id: "msg-1",
@@ -1192,7 +1233,7 @@ describe("preprocessMessages", () => {
       expect(items[0]).toMatchObject({
         type: "tool_call",
         id: "tool-1",
-        status: "aborted",
+        status: "incomplete",
       });
     });
 
@@ -1241,7 +1282,7 @@ describe("preprocessMessages", () => {
       }
     });
 
-    it("keeps older orphaned tools aborted during later active tool work", () => {
+    it("keeps older orphaned tools incomplete during later active tool work", () => {
       const messages: Message[] = [
         {
           id: "msg-1",
@@ -1289,7 +1330,9 @@ describe("preprocessMessages", () => {
         (item) => item.type === "tool_call" && item.id === "current-tool",
       );
 
-      expect(oldTool?.type === "tool_call" && oldTool.status).toBe("aborted");
+      expect(oldTool?.type === "tool_call" && oldTool.status).toBe(
+        "incomplete",
+      );
       expect(currentTool?.type === "tool_call" && currentTool.status).toBe(
         "pending",
       );

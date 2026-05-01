@@ -1,4 +1,5 @@
 import {
+  ALL_PERMISSION_MODES,
   type MarkdownAugment,
   type ProviderName,
   type UploadedFile,
@@ -10,6 +11,11 @@ import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getMessageId } from "../lib/mergeMessages";
 import { findPendingTasks } from "../lib/pendingTasks";
 import { extractSessionIdFromFileEvent } from "../lib/sessionFile";
+import {
+  LEGACY_KEYS,
+  getServerScoped,
+  setServerScoped,
+} from "../lib/storageKeys";
 import type {
   InputRequest,
   Message,
@@ -43,6 +49,30 @@ export type { AgentContent, AgentContentMap } from "./useSessionMessages";
 
 const THROTTLE_MS = 500;
 const STREAM_ACTIVITY_TOKEN_UPDATE_MS = 500;
+
+function isPermissionMode(value: unknown): value is PermissionMode {
+  return (
+    typeof value === "string" &&
+    ALL_PERMISSION_MODES.includes(value as PermissionMode)
+  );
+}
+
+function loadStickyPermissionMode(): PermissionMode {
+  try {
+    const stored = getServerScoped("permissionMode", LEGACY_KEYS.permissionMode);
+    return isPermissionMode(stored) ? stored : "default";
+  } catch {
+    return "default";
+  }
+}
+
+function saveStickyPermissionMode(mode: PermissionMode): void {
+  try {
+    setServerScoped("permissionMode", mode, LEGACY_KEYS.permissionMode);
+  } catch {
+    // Ignore storage failures; the in-memory selection still applies this turn.
+  }
+}
 
 function parseProcessState(value: unknown): ProcessState | null {
   if (
@@ -556,9 +586,12 @@ export function useSession(
   >({});
 
   // Permission mode state: localMode is UI-selected, serverMode is confirmed by server
-  const [localMode, setLocalMode] = useState<PermissionMode>("default");
+  const [localMode, setLocalMode] = useState<PermissionMode>(
+    loadStickyPermissionMode,
+  );
   const [serverMode, setServerMode] = useState<PermissionMode>("default");
   const [modeVersion, setModeVersion] = useState<number>(0);
+  const localModeRef = useRef<PermissionMode>(localMode);
   // Track whether we've already processed a stream "connected" event in this mount.
   // For Codex providers, the first connected-event catch-up fetch can duplicate
   // freshly streamed messages because JSONL and stream IDs are not yet aligned.
@@ -578,15 +611,27 @@ export function useSession(
   const [mcpServers, setMcpServers] = useState<string[]>([]);
   const lastKnownModeVersionRef = useRef<number>(0);
 
+  useEffect(() => {
+    localModeRef.current = localMode;
+  }, [localMode]);
+
   // Apply server mode update only if version is >= our last known version
-  // This syncs both local and server mode to the confirmed value
+  // This syncs local mode only when the server update is authoritative.
   const applyServerModeUpdate = useCallback(
     (mode: PermissionMode, version: number) => {
       if (version >= lastKnownModeVersionRef.current) {
         lastKnownModeVersionRef.current = version;
         setServerMode(mode);
-        setLocalMode(mode); // Sync local to server-confirmed mode
         setModeVersion(version);
+        const preserveStickyMode =
+          mode === "default" &&
+          version === 0 &&
+          localModeRef.current !== "default";
+        if (!preserveStickyMode) {
+          localModeRef.current = mode;
+          setLocalMode(mode);
+          saveStickyPermissionMode(mode);
+        }
       }
     },
     [],
@@ -675,7 +720,9 @@ export function useSession(
   // Update local mode (UI selection) and sync to server if process is active
   const setPermissionMode = useCallback(
     async (mode: PermissionMode) => {
+      localModeRef.current = mode;
       setLocalMode(mode);
+      saveStickyPermissionMode(mode);
 
       // If there's an active process, immediately sync to server
       if (status.owner === "self" || status.owner === "external") {
@@ -1497,10 +1544,29 @@ export function useSession(
           connectedData.permissionMode &&
           connectedData.modeVersion !== undefined
         ) {
+          const shouldReapplyStickyMode =
+            connectedData.permissionMode === "default" &&
+            connectedData.modeVersion === 0 &&
+            localModeRef.current !== "default";
           applyServerModeUpdate(
             connectedData.permissionMode,
             connectedData.modeVersion,
           );
+          if (shouldReapplyStickyMode) {
+            const desiredMode = localModeRef.current;
+            void api
+              .setPermissionMode(serverSessionId ?? sessionId, desiredMode)
+              .then((result) => {
+                if (result.modeVersion >= lastKnownModeVersionRef.current) {
+                  lastKnownModeVersionRef.current = result.modeVersion;
+                  setServerMode(result.permissionMode);
+                  setModeVersion(result.modeVersion);
+                }
+              })
+              .catch((err) => {
+                console.warn("Failed to reapply permission mode:", err);
+              });
+          }
         }
 
         // Update session with provider/model from connected event (belt-and-suspenders)

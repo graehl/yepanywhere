@@ -1,5 +1,5 @@
 import { getDisplayBashCommandFromInput } from "../../lib/bashCommand";
-import type { ToolResultData } from "../../types/renderItems";
+import type { ToolCallItem, ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
 
 /**
@@ -25,12 +25,12 @@ export function getToolSummary(
   toolName: string,
   input: unknown,
   result: ToolResultData | undefined,
-  status: "pending" | "complete" | "error" | "aborted",
+  status: ToolCallItem["status"],
 ): string {
   const renderer = toolRegistry.get(toolName);
 
-  if (status === "pending" || status === "aborted") {
-    // Show input summary while pending or aborted (no result available)
+  if (status === "pending" || status === "aborted" || status === "incomplete") {
+    // Show input summary while no ordinary result is available.
     if (renderer.getUseSummary) {
       const summary = safeCall(() => renderer.getUseSummary?.(input));
       if (summary !== undefined) return summary;

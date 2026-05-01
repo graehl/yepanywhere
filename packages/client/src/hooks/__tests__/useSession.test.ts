@@ -10,6 +10,7 @@ import { useSession } from "../useSession";
 
 const apiMocks = vi.hoisted(() => ({
   getSessionMetadata: vi.fn(),
+  setPermissionMode: vi.fn(),
 }));
 
 const fetchNewMessages = vi.fn(async () => {});
@@ -115,6 +116,11 @@ describe("useSession completion reconciliation", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     apiMocks.getSessionMetadata.mockReset();
+    apiMocks.setPermissionMode.mockReset();
+    apiMocks.setPermissionMode.mockResolvedValue({
+      permissionMode: "acceptEdits",
+      modeVersion: 1,
+    });
     installLocalStorageMock();
     fileActivityOptions = undefined;
     sessionStreamHandler = null;
@@ -466,5 +472,60 @@ describe("useSession completion reconciliation", () => {
         deliveryState: "queued",
       },
     ]);
+  });
+
+  it("keeps sticky permission mode across a backend reload default ack", async () => {
+    window.localStorage.setItem(
+      "yep-anywhere-permission-mode",
+      "acceptEdits",
+    );
+
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    expect(result.current.permissionMode).toBe("acceptEdits");
+
+    await act(async () => {
+      sessionStreamHandler?.({
+        eventType: "connected",
+        sessionId: "sess-1",
+        state: "idle",
+        permissionMode: "default",
+        modeVersion: 0,
+        provider: "codex",
+      });
+    });
+
+    expect(result.current.permissionMode).toBe("acceptEdits");
+    expect(apiMocks.setPermissionMode).toHaveBeenCalledWith(
+      "sess-1",
+      "acceptEdits",
+    );
+  });
+
+  it("persists user-selected permission mode for remounts", async () => {
+    const { result, unmount } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1"),
+    );
+
+    await act(async () => {
+      await result.current.setPermissionMode("bypassPermissions");
+    });
+
+    expect(window.localStorage.getItem("yep-anywhere-permission-mode")).toBe(
+      "bypassPermissions",
+    );
+
+    unmount();
+
+    const { result: remounted } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1"),
+    );
+
+    expect(remounted.current.permissionMode).toBe("bypassPermissions");
   });
 });

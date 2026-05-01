@@ -1,5 +1,6 @@
 import type {
   ProviderName,
+  PublicSessionShareSessionStatusResponse,
   ThinkingOption,
   UploadedFile,
 } from "@yep-anywhere/shared";
@@ -20,6 +21,7 @@ import { SessionHeartbeatModal } from "../components/SessionHeartbeatModal";
 import { SessionMenu } from "../components/SessionMenu";
 import { SessionShareModal } from "../components/SessionShareModal";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
+import { ViewerCountIndicator } from "../components/ViewerCountIndicator";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
 import { RenderModeProvider } from "../contexts/RenderModeContext";
 import { SessionMetadataProvider } from "../contexts/SessionMetadataContext";
@@ -65,6 +67,7 @@ import { getSessionDisplayTitle } from "../utils";
 
 const PENDING_ELSEWHERE_DISMISS_KEY_PREFIX =
   "yepanywhere:pending-elsewhere-dismissed:";
+const PUBLIC_SHARE_STATUS_POLL_MS = 5000;
 
 interface QueuedEditDraft {
   originalTempId: string;
@@ -666,6 +669,8 @@ function SessionPageContent({
   const [showProcessInfoModal, setShowProcessInfoModal] = useState(false);
   const [showHeartbeatModal, setShowHeartbeatModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [publicShareStatus, setPublicShareStatus] =
+    useState<PublicSessionShareSessionStatusResponse | null>(null);
   const [pendingElsewhereDismissed, setPendingElsewhereDismissed] =
     useState(false);
 
@@ -1742,6 +1747,44 @@ function SessionPageContent({
     setShowShareModal(true);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    setPublicShareStatus(null);
+
+    const refreshPublicShareStatus = async () => {
+      try {
+        const nextStatus = await api.getPublicSessionShareStatus(
+          projectId,
+          actualSessionId,
+        );
+        if (!cancelled) {
+          setPublicShareStatus(nextStatus);
+        }
+      } catch {
+        if (!cancelled) {
+          setPublicShareStatus(null);
+        }
+      } finally {
+        if (!cancelled) {
+          timer = setTimeout(
+            refreshPublicShareStatus,
+            PUBLIC_SHARE_STATUS_POLL_MS,
+          );
+        }
+      }
+    };
+
+    void refreshPublicShareStatus();
+
+    return () => {
+      cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [actualSessionId, projectId]);
+
   const handleToggleHeartbeat = useCallback(async () => {
     const previousEnabled = heartbeatTurnsEnabled;
     const nextEnabled = !previousEnabled;
@@ -1947,6 +1990,17 @@ function SessionPageContent({
             </div>
             <div className="session-header-right">
               <ClientLogRecordingBadge inline />
+              {publicShareStatus &&
+                (publicShareStatus.activeCount > 0 ||
+                  publicShareStatus.activeViewerCount > 0) && (
+                  <ViewerCountIndicator
+                    className="session-header-viewer-count"
+                    count={publicShareStatus.activeViewerCount}
+                    label={t("sessionShareActiveViewers", {
+                      count: publicShareStatus.activeViewerCount,
+                    })}
+                  />
+                )}
               {!loading && effectiveProvider && (
                 <button
                   type="button"

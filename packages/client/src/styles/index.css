@@ -1446,14 +1446,15 @@ a.sidebar-nav-item {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  /* Allow shrinking but don't grow to push chevron away */
-  max-width: calc(100vw - 150px);
+  /* Allow shrinking inside the header instead of leaving unused space. */
+  max-width: 100%;
   /* Button reset for clickable title */
   background: none;
   border: none;
   padding: 0;
   cursor: pointer;
-  font-size: inherit;
+  font-size: 0.95em;
+  font-stretch: condensed;
   font-family: inherit;
   text-align: left;
 }
@@ -1505,6 +1506,7 @@ a.sidebar-nav-item {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .session-title-text {
@@ -9824,6 +9826,10 @@ body:has(.session-page)
 
 .session-share-viewer-count {
   align-self: flex-start;
+}
+
+.session-header-viewer-count {
+  flex-shrink: 0;
 }
 
 .session-share-revoke-button {

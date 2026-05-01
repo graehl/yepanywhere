@@ -17,6 +17,8 @@ export interface ServerSettings {
   serviceWorkerEnabled: boolean;
   /** Whether remote SRP resume sessions should be persisted to disk (default: false/in-memory only) */
   persistRemoteSessionsToDisk: boolean;
+  /** Whether the server is requesting browser clients to upload diagnostic logs */
+  clientLogCollectionRequested: boolean;
   /** SSH host aliases for remote executors (from ~/.ssh/config) */
   remoteExecutors?: string[];
   /** SSH host aliases for ChromeOS device-bridge targets */
@@ -64,6 +66,7 @@ export type CodexUpdatePolicy = (typeof CODEX_UPDATE_POLICIES)[number];
 export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   serviceWorkerEnabled: true,
   persistRemoteSessionsToDisk: false,
+  clientLogCollectionRequested: false,
   heartbeatTurnsAfterMinutes: 5,
   heartbeatTurnText: "yepanywhere heartbeat",
   lifecycleWebhooksEnabled: false,

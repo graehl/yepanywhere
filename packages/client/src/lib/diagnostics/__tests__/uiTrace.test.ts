@@ -1,18 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getRemoteLogCollectionEnabled: vi.fn(() => true),
+  isClientLogCollectionActive: vi.fn(() => true),
   record: vi.fn(),
-}));
-
-vi.mock("../../../hooks/useDeveloperMode", () => ({
-  getRemoteLogCollectionEnabled: mocks.getRemoteLogCollectionEnabled,
 }));
 
 vi.mock("../index", () => ({
   clientLogCollector: {
     record: mocks.record,
   },
+  isClientLogCollectionActive: mocks.isClientLogCollectionActive,
 }));
 
 import { logSessionUiTrace } from "../uiTrace";
@@ -28,7 +25,7 @@ describe("logSessionUiTrace", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-01T00:00:00.000Z"));
     vi.clearAllMocks();
-    mocks.getRemoteLogCollectionEnabled.mockReturnValue(true);
+    mocks.isClientLogCollectionActive.mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -52,6 +49,14 @@ describe("logSessionUiTrace", () => {
       },
     );
     expect(consoleLog).not.toHaveBeenCalled();
+  });
+
+  it("skips traces when collection is inactive", () => {
+    mocks.isClientLogCollectionActive.mockReturnValue(false);
+
+    logSessionUiTrace("stream-complete", { sessionId: "session-1" });
+
+    expect(mocks.record).not.toHaveBeenCalled();
   });
 
   it("batches token-level stream dispatch traces", () => {

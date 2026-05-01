@@ -195,6 +195,7 @@ describe("PublicShareService", () => {
       activeCount: 2,
       frozenCount: 1,
       liveCount: 1,
+      activeViewerCount: 0,
     });
 
     await expect(
@@ -203,12 +204,58 @@ describe("PublicShareService", () => {
       activeCount: 0,
       frozenCount: 0,
       liveCount: 0,
+      activeViewerCount: 0,
       revokedCount: 2,
     });
     expect(service.getSessionShareStatus(projectId, "session-2")).toEqual({
       activeCount: 1,
       frozenCount: 0,
       liveCount: 1,
+      activeViewerCount: 0,
+    });
+  });
+
+  it("counts active viewers by share secret", async () => {
+    const first = await service.createShare({
+      mode: "live",
+      title: "Live",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+    });
+    const second = await service.createShare({
+      mode: "frozen",
+      title: "Frozen",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+      snapshot: makeSession(),
+    });
+
+    const firstRecord = service.getRecordBySecret(first.secret);
+    const secondRecord = service.getRecordBySecret(second.secret);
+    expect(firstRecord).not.toBeNull();
+    expect(secondRecord).not.toBeNull();
+
+    expect(service.recordViewerHeartbeat(firstRecord!, "viewer-one")).toBe(1);
+    expect(service.recordViewerHeartbeat(firstRecord!, "viewer-two")).toBe(2);
+    expect(service.recordViewerHeartbeat(firstRecord!, "bad id")).toBe(2);
+    expect(service.recordViewerHeartbeat(secondRecord!, "viewer-three")).toBe(
+      1,
+    );
+
+    expect(
+      service.buildLiveResponse(firstRecord!, makeSession()).share
+        .activeViewerCount,
+    ).toBe(2);
+    expect(service.getSessionShareStatus(projectId, "session-1")).toMatchObject({
+      activeViewerCount: 3,
     });
   });
 });

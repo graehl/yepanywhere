@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type PaginationInfo,
   sliceAfterMessageId,
+  sliceAfterMessageIdWithMatch,
   sliceAtCompactBoundaries,
 } from "../../src/sessions/pagination.js";
 import type { Message } from "../../src/supervisor/types.js";
@@ -35,6 +36,23 @@ describe("sliceAtCompactBoundaries", () => {
     const messages = [msg("user", "u1"), msg("assistant", "a1")];
 
     expect(sliceAfterMessageId(messages, "missing")).toBe(messages);
+  });
+
+  it("reports whether the incremental anchor was found", () => {
+    const messages = [
+      msg("user", "u1"),
+      msg("assistant", "a1"),
+      msg("user", "u2"),
+    ];
+
+    expect(sliceAfterMessageIdWithMatch(messages, "a1")).toEqual({
+      messages: [msg("user", "u2")],
+      found: true,
+    });
+    expect(sliceAfterMessageIdWithMatch(messages, "missing")).toEqual({
+      messages,
+      found: false,
+    });
   });
 
   it("keeps messages unchanged when no incremental anchor is requested", () => {

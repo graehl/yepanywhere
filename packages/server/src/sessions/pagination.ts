@@ -28,6 +28,11 @@ export interface SliceResult {
   pagination: PaginationInfo;
 }
 
+export interface SliceAfterResult {
+  messages: Message[];
+  found: boolean;
+}
+
 function getMessageId(m: Message): string | undefined {
   return m.uuid ?? (typeof m.id === "string" ? m.id : undefined);
 }
@@ -44,18 +49,25 @@ export function sliceAfterMessageId(
   messages: Message[],
   afterMessageId?: string,
 ): Message[] {
+  return sliceAfterMessageIdWithMatch(messages, afterMessageId).messages;
+}
+
+export function sliceAfterMessageIdWithMatch(
+  messages: Message[],
+  afterMessageId?: string,
+): SliceAfterResult {
   if (!afterMessageId) {
-    return messages;
+    return { messages, found: false };
   }
 
   const index = messages.findIndex((message) => {
     return getMessageId(message) === afterMessageId;
   });
   if (index === -1) {
-    return messages;
+    return { messages, found: false };
   }
 
-  return messages.slice(index + 1);
+  return { messages: messages.slice(index + 1), found: true };
 }
 
 function isCompactBoundary(m: Message): boolean {

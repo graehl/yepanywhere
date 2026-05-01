@@ -1,5 +1,7 @@
-import { getRemoteLogCollectionEnabled } from "../../hooks/useDeveloperMode";
-import { clientLogCollector } from "./index";
+import {
+  clientLogCollector,
+  isClientLogCollectionActive,
+} from "./index";
 
 type TraceDetails = Record<string, unknown>;
 
@@ -106,7 +108,7 @@ export function logSessionUiTrace(
   event: string,
   details: TraceDetails = {},
 ): void {
-  if (!getRemoteLogCollectionEnabled()) return;
+  if (!isClientLogCollectionActive()) return;
   const highChurnKey = getHighChurnTraceKey(event, details);
   if (highChurnKey) {
     recordHighChurnTrace(highChurnKey, details);

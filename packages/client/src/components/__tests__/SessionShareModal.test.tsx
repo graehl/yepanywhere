@@ -14,6 +14,7 @@ describe("SessionShareModal", () => {
       activeCount: 0,
       frozenCount: 0,
       liveCount: 0,
+      activeViewerCount: 0,
     });
     vi.spyOn(api, "createPublicSessionShare").mockResolvedValue({
       url: "https://ya.graehl.org/share/secret?h=test-host",
@@ -25,6 +26,7 @@ describe("SessionShareModal", () => {
       activeCount: 0,
       frozenCount: 0,
       liveCount: 0,
+      activeViewerCount: 0,
       revokedCount: 2,
     });
     Object.defineProperty(navigator, "clipboard", {
@@ -163,6 +165,7 @@ describe("SessionShareModal", () => {
       activeCount: 2,
       frozenCount: 1,
       liveCount: 1,
+      activeViewerCount: 3,
     });
 
     render(
@@ -179,6 +182,9 @@ describe("SessionShareModal", () => {
     const revoke = await screen.findByRole("button", {
       name: "Revoke All Shared Links",
     });
+    expect(
+      screen.getByLabelText("3 active public viewer(s)"),
+    ).toBeTruthy();
     fireEvent.click(revoke);
 
     await waitFor(() => {

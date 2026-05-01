@@ -6,6 +6,7 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, type DeferredMessagePlacement } from "../api/client";
+import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
 import { MessageInput, type UploadProgress } from "../components/MessageInput";
 import { MessageInputToolbar } from "../components/MessageInputToolbar";
 import { MessageList } from "../components/MessageList";
@@ -1945,6 +1946,7 @@ function SessionPageContent({
               </div>
             </div>
             <div className="session-header-right">
+              <ClientLogRecordingBadge inline />
               {!loading && effectiveProvider && (
                 <button
                   type="button"

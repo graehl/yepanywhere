@@ -14,6 +14,8 @@ import { enforceOwnerReadWriteFilePermissions } from "../utils/filePermissions.j
 
 export const PUBLIC_SHARE_SECRET_BYTES = 64;
 export const PUBLIC_SHARE_SECRET_BITS = PUBLIC_SHARE_SECRET_BYTES * 8;
+const PUBLIC_SHARE_VIEWER_TTL_MS = 20_000;
+const PUBLIC_SHARE_VIEWER_ID_REGEX = /^[A-Za-z0-9_-]{8,128}$/;
 
 export interface PublicShareRecord {
   version: 1;
@@ -137,12 +139,14 @@ function summarizeRecords(
     activeCount: frozenCount + liveCount,
     frozenCount,
     liveCount,
+    activeViewerCount: 0,
   };
 }
 
 export class PublicShareService {
   private state: PublicShareState = EMPTY_STATE;
   private readonly filePath: string;
+  private readonly viewerHeartbeats = new Map<string, Map<string, number>>();
 
   constructor(options: PublicShareServiceOptions) {
     this.filePath = path.join(options.dataDir, "public-shares.json");
@@ -233,11 +237,13 @@ export class PublicShareService {
     projectId: UrlProjectId,
     sessionId: string,
   ): PublicSessionShareSessionStatusResponse {
-    return summarizeRecords(
-      this.state.shares.filter((record) =>
-        matchesSession(record, projectId, sessionId),
-      ),
+    const records = this.state.shares.filter((record) =>
+      matchesSession(record, projectId, sessionId),
     );
+    return {
+      ...summarizeRecords(records),
+      activeViewerCount: this.countViewersForRecords(records),
+    };
   }
 
   async revokeSessionShares(
@@ -269,6 +275,7 @@ export class PublicShareService {
         title: record.title,
         createdAt: record.createdAt,
         updatedAt: sanitizedSession.updatedAt,
+        activeViewerCount: this.getActiveViewerCount(record),
         capturedAt: record.capturedAt,
         source: {
           ...record.source,
@@ -277,6 +284,50 @@ export class PublicShareService {
       },
       session: sanitizedSession,
     };
+  }
+
+  recordViewerHeartbeat(record: PublicShareRecord, viewerId: string): number {
+    if (!PUBLIC_SHARE_VIEWER_ID_REGEX.test(viewerId)) {
+      return this.getActiveViewerCount(record);
+    }
+
+    const now = Date.now();
+    this.pruneViewerHeartbeats(now);
+    let viewers = this.viewerHeartbeats.get(record.secretHash);
+    if (!viewers) {
+      viewers = new Map();
+      this.viewerHeartbeats.set(record.secretHash, viewers);
+    }
+    viewers.set(viewerId, now);
+    return viewers.size;
+  }
+
+  getActiveViewerCount(record: PublicShareRecord): number {
+    this.pruneViewerHeartbeats();
+    return this.viewerHeartbeats.get(record.secretHash)?.size ?? 0;
+  }
+
+  private countViewersForRecords(records: PublicShareRecord[]): number {
+    this.pruneViewerHeartbeats();
+    let count = 0;
+    for (const record of records) {
+      count += this.viewerHeartbeats.get(record.secretHash)?.size ?? 0;
+    }
+    return count;
+  }
+
+  private pruneViewerHeartbeats(now = Date.now()): void {
+    const cutoff = now - PUBLIC_SHARE_VIEWER_TTL_MS;
+    for (const [secretHash, viewers] of this.viewerHeartbeats) {
+      for (const [viewerId, lastSeenAt] of viewers) {
+        if (lastSeenAt < cutoff) {
+          viewers.delete(viewerId);
+        }
+      }
+      if (viewers.size === 0) {
+        this.viewerHeartbeats.delete(secretHash);
+      }
+    }
   }
 
   private async save(): Promise<void> {

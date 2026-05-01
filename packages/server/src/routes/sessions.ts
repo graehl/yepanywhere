@@ -30,7 +30,7 @@ import { GeminiSessionReader } from "../sessions/gemini-reader.js";
 import { normalizeSession } from "../sessions/normalization.js";
 import {
   type PaginationInfo,
-  sliceAfterMessageId,
+  sliceAfterMessageIdWithMatch,
   sliceAtCompactBoundaries,
 } from "../sessions/pagination.js";
 import { augmentPersistedSessionMessages } from "../sessions/persisted-augments.js";
@@ -1505,11 +1505,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     let session = loadedSession ? normalizeSession(loadedSession) : null;
+    let incrementalAnchorFound = false;
     if (session && afterMessageId) {
+      const sliced = sliceAfterMessageIdWithMatch(
+        session.messages,
+        afterMessageId,
+      );
       session = {
         ...session,
-        messages: sliceAfterMessageId(session.messages, afterMessageId),
+        messages: sliced.messages,
       };
+      incrementalAnchorFound = sliced.found;
     }
 
     // Determine the session ownership
@@ -1629,6 +1635,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         tailCompactions,
         beforeMessageId,
       );
+      session = { ...session, messages: sliced.messages };
+      paginationInfo = sliced.pagination;
+    }
+
+    // Codex normalized IDs can drift between stream and JSONL. If an
+    // incremental request misses its anchor, never return the full historical
+    // session into a compact-tail client; bound the fallback to the same tail
+    // window used for initial loads.
+    if (afterMessageId && !incrementalAnchorFound) {
+      const sliced = sliceAtCompactBoundaries(session.messages, 2);
       session = { ...session, messages: sliced.messages };
       paginationInfo = sliced.pagination;
     }

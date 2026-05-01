@@ -183,6 +183,7 @@ export type {
   PublicSessionShareMetadata,
   PublicSessionShareMode,
   PublicSessionShareSessionStatusResponse,
+  PublicSessionShareViewerHeartbeatResponse,
   PublicSessionShareResponse,
   RevokePublicSessionSharesResponse,
 } from "./public-shares.js";

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
 import { Modal } from "./ui/Modal";
+import { ViewerCountIndicator } from "./ViewerCountIndicator";
 
 interface SessionShareModalProps {
   projectId: string;
@@ -16,6 +17,7 @@ interface SessionShareModalProps {
 }
 
 const CLIPBOARD_WRITE_TIMEOUT_MS = 250;
+const STATUS_POLL_MS = 10_000;
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -102,20 +104,35 @@ export function SessionShareModal({
 
   useEffect(() => {
     let cancelled = false;
-    void api
-      .getPublicSessionShareStatus(projectId, sessionId)
-      .then((nextStatus) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const refreshStatus = async () => {
+      try {
+        const nextStatus = await api.getPublicSessionShareStatus(
+          projectId,
+          sessionId,
+        );
         if (!cancelled) {
           setStatus(nextStatus);
         }
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
           setStatus(null);
         }
-      });
+      } finally {
+        if (!cancelled) {
+          timer = setTimeout(refreshStatus, STATUS_POLL_MS);
+        }
+      }
+    };
+
+    void refreshStatus();
+
     return () => {
       cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
     };
   }, [projectId, sessionId]);
 
@@ -152,6 +169,7 @@ export function SessionShareModal({
           activeCount: (current?.activeCount ?? 0) + 1,
           frozenCount: (current?.frozenCount ?? 0) + frozenDelta,
           liveCount: (current?.liveCount ?? 0) + liveDelta,
+          activeViewerCount: current?.activeViewerCount ?? 0,
         };
       });
     } catch (err) {
@@ -178,6 +196,7 @@ export function SessionShareModal({
   };
 
   const hasActiveShares = (status?.activeCount ?? 0) > 0;
+  const activeViewerCount = status?.activeViewerCount ?? 0;
 
   return (
     <Modal title={t("sessionShareTitle")} onClose={onClose}>
@@ -234,16 +253,25 @@ export function SessionShareModal({
         {result && <div className="session-share-status">{result}</div>}
 
         {hasActiveShares && (
-          <button
-            type="button"
-            className="session-share-revoke-button"
-            onClick={() => void revokeAll()}
-            disabled={isWorking !== null}
-          >
-            {isWorking === "revoke"
-              ? t("sessionShareRevoking")
-              : t("sessionShareRevokeAll")}
-          </button>
+          <>
+            <ViewerCountIndicator
+              className="session-share-viewer-count"
+              count={activeViewerCount}
+              label={t("sessionShareActiveViewers", {
+                count: activeViewerCount,
+              })}
+            />
+            <button
+              type="button"
+              className="session-share-revoke-button"
+              onClick={() => void revokeAll()}
+              disabled={isWorking !== null}
+            >
+              {isWorking === "revoke"
+                ? t("sessionShareRevoking")
+                : t("sessionShareRevokeAll")}
+            </button>
+          </>
         )}
       </div>
     </Modal>

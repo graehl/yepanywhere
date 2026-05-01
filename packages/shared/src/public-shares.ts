@@ -22,6 +22,7 @@ export interface PublicSessionShareSessionStatusResponse {
   activeCount: number;
   frozenCount: number;
   liveCount: number;
+  activeViewerCount: number;
 }
 
 export interface RevokePublicSessionSharesResponse
@@ -29,11 +30,16 @@ export interface RevokePublicSessionSharesResponse
   revokedCount: number;
 }
 
+export interface PublicSessionShareViewerHeartbeatResponse {
+  activeViewerCount: number;
+}
+
 export interface PublicSessionShareMetadata {
   mode: PublicSessionShareMode;
   title: string | null;
   createdAt: string;
   updatedAt: string;
+  activeViewerCount?: number;
   capturedAt?: string;
   source: {
     projectId: UrlProjectId;

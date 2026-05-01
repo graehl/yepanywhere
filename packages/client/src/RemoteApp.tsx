@@ -19,6 +19,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { BottomOverscrollReload } from "./components/BottomOverscrollReload";
+import { ClientLogRecordingBadge } from "./components/ClientLogRecordingBadge";
 import { ConnectionBar } from "./components/ConnectionBar";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { HostOfflineModal } from "./components/HostOfflineModal";
@@ -222,11 +223,15 @@ export function ConnectionGate() {
  * Must be rendered inside InboxProvider.
  */
 function RemoteAppInner({ children }: Props) {
+  const location = useLocation();
+  const isSessionDetailRoute = /\/sessions\/[^/]+/.test(location.pathname);
+
   useNeedsAttentionBadge();
 
   return (
     <>
       <ConnectionBar />
+      {!isSessionDetailRoute && <ClientLogRecordingBadge />}
       {children}
     </>
   );

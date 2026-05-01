@@ -1214,6 +1214,8 @@ export interface ServerSettings {
   serviceWorkerEnabled: boolean;
   /** Whether remote SRP resume sessions should be persisted to disk */
   persistRemoteSessionsToDisk: boolean;
+  /** Whether the server is requesting browser clients to upload diagnostic logs */
+  clientLogCollectionRequested?: boolean;
   /** SSH host aliases for remote executors */
   remoteExecutors?: string[];
   /** SSH host aliases for ChromeOS device bridge targets */

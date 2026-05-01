@@ -162,6 +162,9 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     if (typeof body.persistRemoteSessionsToDisk === "boolean") {
       updates.persistRemoteSessionsToDisk = body.persistRemoteSessionsToDisk;
     }
+    if (typeof body.clientLogCollectionRequested === "boolean") {
+      updates.clientLogCollectionRequested = body.clientLogCollectionRequested;
+    }
 
     // Handle remoteExecutors array
     if (Array.isArray(body.remoteExecutors)) {

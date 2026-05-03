@@ -1,5 +1,5 @@
 import type { UploadedFile } from "@yep-anywhere/shared";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MouseEvent, RefObject, TouchEvent } from "react";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
 import { useModelSettings } from "../hooks/useModelSettings";
@@ -7,6 +7,11 @@ import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useI18n } from "../i18n";
 import { isStaleTimestamp, parseTimestampMs } from "../lib/messageAge";
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
+import {
+  SESSION_ISEARCH_GUIDE_EVENT,
+  type SessionIsearchGuideState,
+  type SessionIsearchScope,
+} from "../lib/sessionIsearchGuide";
 import type { ContextUsage, PermissionMode } from "../types";
 import { MessageAge } from "./MessageAge";
 import { RenderModeGlyph } from "./ui/RenderModeGlyph";
@@ -112,6 +117,9 @@ export function MessageInputToolbar({
   const { thinkingMode, cycleThinkingMode, thinkingLevel } = useModelSettings();
   const renderMode = useOptionalRenderModeContext();
   const nowMs = useRelativeNow();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [isearchScope, setIsearchScope] =
+    useState<SessionIsearchScope | null>(null);
   const lastActivityMs = parseTimestampMs(lastActivityAt);
   const showLastActivityAge = isStaleTimestamp(lastActivityMs, nowMs);
   const heartbeatLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -127,6 +135,26 @@ export function MessageInputToolbar({
   const primaryActionLabel = queueMode
     ? t("toolbarQueueLabel")
     : t("toolbarSend");
+  const shortcutsPopoverOpen = shortcutsOpen || isearchScope !== null;
+
+  useEffect(() => {
+    const handleIsearchGuide = (event: Event) => {
+      const detail = (event as CustomEvent<SessionIsearchGuideState>).detail;
+      if (detail?.active) {
+        setIsearchScope(detail.scope);
+        return;
+      }
+      setIsearchScope(null);
+      setShortcutsOpen(false);
+    };
+
+    window.addEventListener(SESSION_ISEARCH_GUIDE_EVENT, handleIsearchGuide);
+    return () =>
+      window.removeEventListener(
+        SESSION_ISEARCH_GUIDE_EVENT,
+        handleIsearchGuide,
+      );
+  }, []);
   const primaryActionHelp = queueMode
     ? t("toolbarQueueHelp")
     : t("toolbarSendTitle");
@@ -386,6 +414,152 @@ export function MessageInputToolbar({
             </span>
           </button>
         )}
+        <div
+          className="session-shortcuts-help"
+          onMouseLeave={() => {
+            if (isearchScope === null) {
+              setShortcutsOpen(false);
+            }
+          }}
+        >
+          <button
+            type="button"
+            className="session-shortcuts-help-button"
+            aria-label="Session keyboard shortcuts"
+            aria-expanded={shortcutsPopoverOpen}
+            onClick={() => setShortcutsOpen((open) => !open)}
+            onFocus={() => setShortcutsOpen(true)}
+            onBlur={(event) => {
+              if (
+                isearchScope === null &&
+                !event.currentTarget.parentElement?.contains(
+                  event.relatedTarget as Node | null,
+                )
+              ) {
+                setShortcutsOpen(false);
+              }
+            }}
+            onMouseEnter={() => setShortcutsOpen(true)}
+          >
+            ?
+          </button>
+          {shortcutsPopoverOpen && (
+            <div
+              className={`session-shortcuts-popover ${
+                isearchScope !== null ? "is-isearch-guide" : ""
+              }`}
+              role="tooltip"
+            >
+              {isearchScope !== null ? (
+                <>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd>
+                      <kbd>{isearchScope === "all" ? "S" : "R"}</kbd>
+                    </span>
+                    <span>Previous match</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Enter</kbd>
+                    </span>
+                    <span>Jump</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Esc</kbd>
+                    </span>
+                    <span>Cancel / restore focus</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd><kbd>End</kbd>
+                    </span>
+                    <span>Scroll to current</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd>
+                      <kbd>{isearchScope === "all" ? "R" : "S"}</kbd>
+                    </span>
+                    <span>
+                      {isearchScope === "all" ? "User turns" : "All turns"}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd><kbd>R</kbd>
+                    </span>
+                    <span>User-turn reverse search</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd><kbd>S</kbd>
+                    </span>
+                    <span>All-turn reverse search</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Enter</kbd>
+                    </span>
+                    <span>Send / confirm search</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Shift</kbd><kbd>Enter</kbd>
+                    </span>
+                    <span>New line</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd><kbd>Enter</kbd>
+                    </span>
+                    <span>Queue while agent runs</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Esc</kbd>
+                    </span>
+                    <span>Stop agent / cancel overlay</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd><kbd>P</kbd>
+                    </span>
+                    <span>Recall last sent text</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd><kbd>K</kbd>
+                    </span>
+                    <span>Cancel latest queued message</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd><kbd>End</kbd>
+                    </span>
+                    <span>Scroll to current</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd><kbd>G</kbd>
+                    </span>
+                    <span>Clear composer</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>M</kbd>
+                    </span>
+                    <span>Rendered/source mode</span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
         <ContextUsageIndicator usage={contextUsage} size={16} />
         {showStopButton && (
           <button

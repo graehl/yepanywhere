@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildCorrectionText } from "../../lib/correctionText";
 import type { Message } from "../../types";
@@ -29,6 +35,15 @@ function assistantMessage(
     uuid,
     timestamp,
     message: { role: "assistant", content },
+  };
+}
+
+function systemMessage(uuid: string, content: string): Message {
+  return {
+    type: "system",
+    uuid,
+    subtype: "compact_boundary",
+    content,
   };
 }
 
@@ -185,5 +200,170 @@ describe("MessageList", () => {
     expect(row?.classList.contains("has-message-age")).toBe(true);
     expect(row?.classList.contains("is-message-age-visible")).toBe(true);
     expect(row?.querySelector(".message-age")?.textContent).toBe("10m");
+  });
+
+  it("scrolls to current from a focused composer with Ctrl+End", () => {
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+      />,
+    );
+    const scrollTo = vi.fn();
+
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1200,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    container.scrollTo = scrollTo as typeof container.scrollTo;
+
+    const editableTarget = document.createElement("textarea");
+    document.body.append(editableTarget);
+    editableTarget.focus();
+    fireEvent.keyDown(editableTarget, {
+      key: "End",
+      code: "End",
+      ctrlKey: true,
+    });
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 900, behavior: "smooth" });
+    editableTarget.remove();
+  });
+
+  it("opens reverse user-turn search with Ctrl+R and hides nonmatches", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const composerTarget = document.createElement("div");
+    composerTarget.className = "session-input-inner";
+    document.body.append(composerTarget);
+
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "alpha setup request"),
+          assistantMessage("assistant-1", "first response"),
+          userMessage(
+            "user-2",
+            "please inspect the render latency regression in the client",
+          ),
+          assistantMessage("assistant-2", "second response"),
+        ]}
+      />,
+    );
+
+    const editableTarget = document.createElement("textarea");
+    document.body.append(editableTarget);
+    editableTarget.focus();
+    fireEvent.keyDown(editableTarget, { key: "r", ctrlKey: true });
+
+    const input = await screen.findByRole("textbox", {
+      name: "Reverse search user turns",
+    });
+    expect(composerTarget.contains(input)).toBe(true);
+    expect(screen.getByText("2+ chars")).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "latency" } });
+
+    expect(await screen.findByText("1/1")).toBeTruthy();
+    expect(screen.queryByText("alpha setup request")).toBeNull();
+    expect(screen.getByText(/render latency regression/)).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(editableTarget);
+    });
+    editableTarget.remove();
+    composerTarget.remove();
+  });
+
+  it("closes reverse search when focus moves back to the composer", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "first searchable request"),
+          userMessage("user-2", "second searchable request"),
+        ]}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "r", ctrlKey: true });
+    const input = await screen.findByRole("textbox", {
+      name: "Reverse search user turns",
+    });
+    const composer = document.createElement("textarea");
+    document.body.append(composer);
+
+    fireEvent.blur(input, { relatedTarget: composer });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("textbox", { name: "Reverse search user turns" }),
+      ).toBeNull();
+    });
+    composer.remove();
+  });
+
+  it("opens all-turn reverse search with Ctrl+S", async () => {
+    const scrollTo = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    });
+
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "look at the first thing"),
+          assistantMessage("assistant-1", "the assistant found needle text"),
+          systemMessage("system-1", "system compacted needle context"),
+        ]}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
+
+    const input = await screen.findByRole("textbox", {
+      name: "Reverse search all turns",
+    });
+    expect(screen.getByText("All turns")).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "needle" } });
+
+    expect(await screen.findByText("2/2")).toBeTruthy();
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: "smooth" }),
+      );
+    });
+    expect(screen.queryByText("look at the first thing")).toBeNull();
+    expect(screen.getByText("the assistant found needle text")).toBeTruthy();
+    expect(screen.getByText("system compacted needle context")).toBeTruthy();
+
+    scrollTo.mockClear();
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenLastCalledWith(
+        expect.objectContaining({ behavior: "auto" }),
+      );
+    });
   });
 });

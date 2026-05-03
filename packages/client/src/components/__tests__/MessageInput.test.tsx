@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { type ComponentProps, useCallback, useMemo, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SESSION_ISEARCH_GUIDE_EVENT } from "../../lib/sessionIsearchGuide";
 import { MessageInput } from "../MessageInput";
 
 vi.mock("../../hooks/useDraftPersistence", () => ({
@@ -117,6 +125,44 @@ describe("MessageInput", () => {
     fireEvent.keyDown(textarea, { key: "p", ctrlKey: true });
 
     expect(onRecallLastSubmission).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the isearch key guide from the shortcut help while search is active", async () => {
+    renderMessageInput();
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(SESSION_ISEARCH_GUIDE_EVENT, {
+          detail: { active: true, scope: "all" },
+        }),
+      );
+    });
+
+    expect(await screen.findByText("Previous match")).toBeTruthy();
+    expect(screen.getByText("Cancel / restore focus")).toBeTruthy();
+    expect(screen.getByText("User turns")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Session keyboard shortcuts" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(SESSION_ISEARCH_GUIDE_EVENT, {
+          detail: { active: false, scope: "all" },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Previous match")).toBeNull();
+    });
+    expect(
+      screen
+        .getByRole("button", { name: "Session keyboard shortcuts" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
   });
 
   it("keeps stop available while a running composer has queued text", () => {

@@ -47,6 +47,8 @@ interface CodexToolUseConversion {
   context: CodexToolCallContext;
 }
 
+const CODEX_CONTEXT_COMPACTED_DEDUPE_WINDOW_MS = 5000;
+
 function normalizeClaudeQueueOperationContent(content: unknown): string {
   if (content === undefined) {
     return "";
@@ -210,6 +212,7 @@ function convertCodexEntries(
   const toolCallContexts = new Map<string, CodexToolCallContext>();
   const closedToolResultIds = new Set<string>();
   const openToolUses = new Map<string, Message>();
+  const compactedTimestampMs = collectCodexCompactedTimestampMs(entries);
 
   for (const entry of entries) {
     if (isCodexToolLifecycleBoundary(entry)) {
@@ -257,11 +260,16 @@ function convertCodexEntries(
         observeCodexToolLifecycleMessage(msg, openToolUses);
       }
     } else if (entry.type === "event_msg") {
+      const duplicateContextCompacted = isDuplicateCodexContextCompactedEvent(
+        entry,
+        compactedTimestampMs,
+      );
       const shouldIncludeUserMessage =
         entry.payload.type === "user_message" && !hasResponseItemUser;
       const shouldIncludeTurnAborted = entry.payload.type === "turn_aborted";
       const shouldIncludeContextCompacted =
-        entry.payload.type === "context_compacted";
+        entry.payload.type === "context_compacted" &&
+        !duplicateContextCompacted;
       const shouldIncludeExecCommandEnd = isCodexExecCommandEndPayload(
         entry.payload,
       );
@@ -296,6 +304,11 @@ function convertCodexEntries(
           messages.push(msg);
           observeCodexToolLifecycleMessage(msg, openToolUses);
         }
+      } else if (duplicateContextCompacted) {
+        // This event would previously have consumed a normalized message index.
+        // Keep that gap so later Codex message IDs remain stable while the
+        // duplicate compact boundary stops rendering and paginating.
+        messageIndex++;
       }
     }
   }
@@ -319,6 +332,43 @@ function isCodexToolLifecycleBoundary(entry: CodexSessionEntry): boolean {
     entry.payload.type === "turn_aborted" ||
     entry.payload.type === "context_compacted"
   );
+}
+
+function collectCodexCompactedTimestampMs(
+  entries: CodexSessionEntry[],
+): number[] {
+  const timestamps: number[] = [];
+  for (const entry of entries) {
+    if (entry.type !== "compacted") {
+      continue;
+    }
+    const timestampMs = Date.parse(entry.timestamp);
+    if (Number.isFinite(timestampMs)) {
+      timestamps.push(timestampMs);
+    }
+  }
+  return timestamps;
+}
+
+function isDuplicateCodexContextCompactedEvent(
+  entry: CodexEventMsgEntry,
+  compactedTimestampMs: readonly number[],
+): boolean {
+  if (entry.payload.type !== "context_compacted") {
+    return false;
+  }
+
+  const eventTimestampMs = Date.parse(entry.timestamp);
+  if (!Number.isFinite(eventTimestampMs)) {
+    return false;
+  }
+
+  return compactedTimestampMs.some((compactedMs) => {
+    return (
+      compactedMs <= eventTimestampMs &&
+      eventTimestampMs - compactedMs <= CODEX_CONTEXT_COMPACTED_DEDUPE_WINDOW_MS
+    );
+  });
 }
 
 function observeCodexToolLifecycleMessage(

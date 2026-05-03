@@ -263,10 +263,10 @@ describe("sliceAtCompactBoundaries", () => {
       msg("assistant", "a1"),
     ];
 
-    // Non-existent ID → falls back to all messages
+    // Non-existent ID means there is no safe older page to prepend.
     const result = sliceAtCompactBoundaries(messages, 2, "nonexistent");
 
-    expect(result.messages).toEqual(messages);
+    expect(result.messages).toEqual([]);
     expect(result.pagination.hasOlderMessages).toBe(false);
   });
 

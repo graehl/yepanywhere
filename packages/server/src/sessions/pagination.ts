@@ -95,10 +95,11 @@ export function sliceAtCompactBoundaries(
   let workingMessages = messages;
   if (beforeMessageId) {
     const idx = messages.findIndex((m) => getMessageId(m) === beforeMessageId);
-    if (idx > 0) {
-      workingMessages = messages.slice(0, idx);
-    }
-    // If not found or idx === 0, use all messages (graceful fallback)
+    // A stale or missing older-page cursor must not fall back to the current
+    // tail/full history: the client prepends this response, so overlap can
+    // duplicate large chunks in memory. Missing and first-message cursors both
+    // mean "there is no known older page to return."
+    workingMessages = idx > 0 ? messages.slice(0, idx) : [];
   }
 
   // Find all compact_boundary indices in the working set

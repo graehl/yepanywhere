@@ -1,7 +1,8 @@
-import type {
-  PublicSessionShareMode,
-  PublicSessionShareResponse,
-  RelayResponse,
+import {
+  sanitizeSessionTitle,
+  type PublicSessionShareMode,
+  type PublicSessionShareResponse,
+  type RelayResponse,
 } from "@yep-anywhere/shared";
 import {
   useCallback,
@@ -408,7 +409,8 @@ export function PublicSharePage() {
   }, [refresh, t]);
 
   useEffect(() => {
-    document.title = title ? `${title} - Public Share` : "Public Share";
+    const safeTitle = title ? sanitizeSessionTitle(title) : "";
+    document.title = safeTitle ? `${safeTitle} - Public Share` : "Public Share";
   }, [title]);
 
   const handleScroll = useCallback(() => {

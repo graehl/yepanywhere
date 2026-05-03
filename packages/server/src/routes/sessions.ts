@@ -5,10 +5,10 @@ import {
   type ThinkingOption,
   type UploadedFile,
   type UrlProjectId,
-  SESSION_TITLE_MAX_LENGTH,
   getModelContextWindow,
   isUrlProjectId,
   thinkingOptionToConfig,
+  truncateSessionTitle,
 } from "@yep-anywhere/shared";
 import { mkdir } from "node:fs/promises";
 import { Hono } from "hono";
@@ -768,10 +768,7 @@ function latestUserTitleCandidate(messages: Message[]): string | undefined {
 }
 
 function truncateRestartTitle(title: string): string {
-  if (title.length <= SESSION_TITLE_MAX_LENGTH) {
-    return title;
-  }
-  return `${title.slice(0, SESSION_TITLE_MAX_LENGTH - 3).trimEnd()}...`;
+  return truncateSessionTitle(title);
 }
 
 function deriveRestartTitle(params: {

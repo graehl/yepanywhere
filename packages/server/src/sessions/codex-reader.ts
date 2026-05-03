@@ -23,11 +23,11 @@ import {
   type CodexSessionEntry,
   type CodexSessionMetaEntry,
   type CodexTurnContextEntry,
-  SESSION_TITLE_MAX_LENGTH,
   type UnifiedSession,
   type UrlProjectId,
   getModelContextWindow,
   parseCodexSessionEntry,
+  truncateSessionTitle,
 } from "@yep-anywhere/shared";
 import { canonicalizeProjectPath } from "../projects/paths.js";
 import type {
@@ -452,10 +452,7 @@ export class CodexSessionReader implements ISessionReader {
         ) {
           continue;
         }
-        const title =
-          fullTitle.length <= SESSION_TITLE_MAX_LENGTH
-            ? fullTitle
-            : `${fullTitle.slice(0, SESSION_TITLE_MAX_LENGTH - 3)}...`;
+        const title = truncateSessionTitle(fullTitle) || null;
         return { title, fullTitle };
       }
 
@@ -470,10 +467,7 @@ export class CodexSessionReader implements ISessionReader {
             text &&
             !(skipLeadingSystemPrompts && this.isSystemPromptUserMessage(text))
           ) {
-            const title =
-              text.length <= SESSION_TITLE_MAX_LENGTH
-                ? text
-                : `${text.slice(0, SESSION_TITLE_MAX_LENGTH - 3)}...`;
+            const title = truncateSessionTitle(text) || null;
             return { title, fullTitle: text };
           }
         }

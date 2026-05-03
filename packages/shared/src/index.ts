@@ -169,6 +169,8 @@ export {
   SessionView,
   getSessionDisplayTitle,
   SESSION_TITLE_MAX_LENGTH,
+  sanitizeSessionTitle,
+  truncateSessionTitle,
 } from "./session/index.js";
 
 export type {

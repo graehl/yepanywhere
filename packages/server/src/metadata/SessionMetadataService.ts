@@ -7,7 +7,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { ProviderName } from "@yep-anywhere/shared";
+import { type ProviderName, sanitizeSessionTitle } from "@yep-anywhere/shared";
 
 export interface SessionMetadata {
   /** Custom title that overrides auto-generated title */
@@ -121,7 +121,8 @@ export class SessionMetadataService {
    * Pass undefined or empty string to clear the custom title.
    */
   async setTitle(sessionId: string, title: string | undefined): Promise<void> {
-    const trimmedTitle = title?.trim();
+    const trimmedTitle =
+      title === undefined ? undefined : sanitizeSessionTitle(title);
     this.updateSessionMetadata(sessionId, (metadata) => ({
       ...metadata,
       customTitle: trimmedTitle || undefined,
@@ -217,7 +218,7 @@ export class SessionMetadataService {
 
       // Handle title
       if (updates.title !== undefined) {
-        const trimmedTitle = updates.title.trim();
+        const trimmedTitle = sanitizeSessionTitle(updates.title);
         result.customTitle = trimmedTitle || undefined;
       }
 

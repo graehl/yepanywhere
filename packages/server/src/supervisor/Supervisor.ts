@@ -3,9 +3,9 @@ import {
   type EffortLevel,
   type PermissionRules,
   type ProviderName,
-  SESSION_TITLE_MAX_LENGTH,
   type ThinkingConfig,
   type UrlProjectId,
+  truncateSessionTitle,
 } from "@yep-anywhere/shared";
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
@@ -1800,10 +1800,7 @@ export class Supervisor {
       return { title: null, fullTitle: null, messageCount: 0 };
     }
 
-    const title =
-      fullTitle.length <= SESSION_TITLE_MAX_LENGTH
-        ? fullTitle
-        : `${fullTitle.slice(0, SESSION_TITLE_MAX_LENGTH - 3)}...`;
+    const title = truncateSessionTitle(fullTitle) || null;
 
     return { title, fullTitle, messageCount: 1 };
   }

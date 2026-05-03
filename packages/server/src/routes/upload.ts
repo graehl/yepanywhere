@@ -71,8 +71,9 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
           return false;
         }
 
-        // Validate project exists
-        const project = await deps.scanner.getProject(projectId);
+        // Validate project exists, including first-time directories that have
+        // not produced provider session files yet.
+        const project = await deps.scanner.getOrCreateProject(projectId);
         if (!project) {
           return false;
         }

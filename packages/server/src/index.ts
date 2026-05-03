@@ -40,7 +40,6 @@ import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
 import { NotificationService } from "./notifications/index.js";
 import { CodexSessionScanner } from "./projects/codex-scanner.js";
 import { GeminiSessionScanner } from "./projects/gemini-scanner.js";
-import { ProjectScanner } from "./projects/scanner.js";
 import { PushService, getOrCreateVapidKeys } from "./push/index.js";
 import { RecentsService } from "./recents/index.js";
 import {
@@ -590,11 +589,8 @@ async function startServer() {
 
   // Add upload routes with WebSocket support
   // These must be added BEFORE the frontend proxy catch-all
-  const uploadScanner = new ProjectScanner({
-    projectsDir: config.claudeProjectsDir,
-  });
   const uploadRoutes = createUploadRoutes({
-    scanner: uploadScanner,
+    scanner,
     upgradeWebSocket,
     maxUploadSizeBytes: config.maxUploadSizeBytes,
   });

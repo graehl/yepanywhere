@@ -29,6 +29,7 @@ import type {
   PermissionMode,
   Project,
   Session,
+  SessionMetadata,
   SessionStatus,
   SessionSummary,
 } from "../types";
@@ -416,7 +417,7 @@ export const api = {
       params.set("beforeMessageId", options.beforeMessageId);
     const qs = params.toString();
     return fetchJSON<{
-      session: Session;
+      session: SessionMetadata;
       messages: Message[];
       ownership: SessionStatus;
       pendingInputRequest?: InputRequest | null;
@@ -431,7 +432,7 @@ export const api = {
    */
   getSessionMetadata: (projectId: string, sessionId: string) =>
     fetchJSON<{
-      session: Session;
+      session: SessionMetadata;
       ownership: SessionStatus;
       pendingInputRequest?: InputRequest | null;
       slashCommands?: SlashCommand[] | null;

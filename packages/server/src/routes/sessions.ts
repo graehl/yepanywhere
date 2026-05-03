@@ -1589,7 +1589,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             updatedAt: newSessionUpdatedAt,
             messageCount: processMessages.length,
             ownership,
-            messages: processMessages,
             customTitle: metadata?.customTitle,
             isArchived: metadata?.isArchived,
             isStarred: metadata?.isStarred,
@@ -1673,9 +1672,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       );
     }
 
+    const { messages: _messages, ...sessionMetadata } = session;
+
     return c.json({
       session: {
-        ...session,
+        ...sessionMetadata,
         ownership,
         contextUsage,
         customTitle: metadata?.customTitle,

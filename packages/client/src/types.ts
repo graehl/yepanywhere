@@ -132,15 +132,18 @@ import type {
 export type SessionStatus = SessionOwnershipType;
 export type SessionSummary = AppSessionSummary;
 
+export interface SessionMetadata extends SessionSummary {
+  heartbeatTurnsEnabled?: boolean;
+  heartbeatTurnsAfterMinutes?: number;
+  heartbeatTurnText?: string;
+}
+
 /**
  * Full session with messages.
  * Uses Message type (AppMessage with required id).
  */
-export interface Session extends SessionSummary {
+export interface Session extends SessionMetadata {
   messages: Message[];
-  heartbeatTurnsEnabled?: boolean;
-  heartbeatTurnsAfterMinutes?: number;
-  heartbeatTurnText?: string;
 }
 
 /**

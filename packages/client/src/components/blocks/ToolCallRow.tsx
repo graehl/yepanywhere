@@ -1,4 +1,11 @@
-import { memo, useMemo, useState } from "react";
+import {
+  memo,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   getDisplayBashCommandFromInput,
   isCodexLikeBashInput,
@@ -17,6 +24,68 @@ interface Props {
   toolResult?: ToolResultData;
   status: ToolCallItem["status"];
   sessionProvider?: string;
+}
+
+const TOOL_ROW_HYDRATION_ROOT_MARGIN = "1600px 0px";
+
+function canDeferRichToolRow(status: ToolCallItem["status"]): boolean {
+  return status === "complete" || status === "error";
+}
+
+function useNearViewportHydration(status: ToolCallItem["status"]): {
+  rowRef: RefObject<HTMLDivElement | null>;
+  shouldHydrate: boolean;
+  hydrateNow: () => void;
+} {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const [shouldHydrate, setShouldHydrate] = useState(
+    () =>
+      !canDeferRichToolRow(status) ||
+      typeof window === "undefined" ||
+      typeof IntersectionObserver === "undefined",
+  );
+
+  useEffect(() => {
+    if (!canDeferRichToolRow(status)) {
+      setShouldHydrate(true);
+      return;
+    }
+    if (typeof IntersectionObserver === "undefined") {
+      setShouldHydrate(true);
+      return;
+    }
+    setShouldHydrate(false);
+  }, [status]);
+
+  useEffect(() => {
+    if (shouldHydrate || !canDeferRichToolRow(status)) {
+      return;
+    }
+
+    const node = rowRef.current;
+    if (!node) {
+      setShouldHydrate(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldHydrate(true);
+          observer.disconnect();
+        }
+      },
+      { root: null, rootMargin: TOOL_ROW_HYDRATION_ROOT_MARGIN },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [shouldHydrate, status]);
+
+  return {
+    rowRef,
+    shouldHydrate,
+    hydrateNow: () => setShouldHydrate(true),
+  };
 }
 
 export const ToolCallRow = memo(function ToolCallRow({
@@ -40,6 +109,11 @@ export const ToolCallRow = memo(function ToolCallRow({
 
   // Get structured result for interactive summary
   const structuredResult = toolResult?.structured ?? toolResult?.content;
+  const {
+    rowRef,
+    shouldHydrate: shouldHydrateRichContent,
+    hydrateNow,
+  } = useNearViewportHydration(status);
 
   // Check if this tool renders inline (bypasses entire tool-row structure)
   const hasInlineRenderer = toolRegistry.hasInlineRenderer(toolName);
@@ -52,7 +126,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   );
 
   const interactiveSummaryContent = useMemo(() => {
-    if (status !== "complete") {
+    if (status !== "complete" || !shouldHydrateRichContent) {
       return null;
     }
     return toolRegistry.renderInteractiveSummary(
@@ -69,6 +143,7 @@ export const ToolCallRow = memo(function ToolCallRow({
     structuredResult,
     toolResult,
     renderContext,
+    shouldHydrateRichContent,
   ]);
 
   const hasInteractiveSummary =
@@ -77,7 +152,7 @@ export const ToolCallRow = memo(function ToolCallRow({
     interactiveSummaryContent !== false;
 
   const collapsedPreviewContent = useMemo(() => {
-    if (suppressCollapsedPreview) {
+    if (suppressCollapsedPreview || !shouldHydrateRichContent) {
       return null;
     }
     return toolRegistry.renderCollapsedPreview(
@@ -94,6 +169,7 @@ export const ToolCallRow = memo(function ToolCallRow({
     structuredResult,
     toolResult,
     renderContext,
+    shouldHydrateRichContent,
   ]);
 
   const hasCollapsedPreview =
@@ -118,6 +194,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   }, [toolName, toolInput, toolResult, status]);
 
   const handleToggle = () => {
+    hydrateNow();
     if (!isNonExpandable) {
       setExpanded(!expanded);
     }
@@ -141,7 +218,10 @@ export const ToolCallRow = memo(function ToolCallRow({
 
   return (
     <div
-      className={`tool-row timeline-item ${expanded ? "expanded" : "collapsed"} status-${status} ${isNonExpandable ? "interactive" : ""}`}
+      ref={rowRef}
+      onPointerEnter={hydrateNow}
+      onFocus={hydrateNow}
+      className={`tool-row timeline-item ${expanded ? "expanded" : "collapsed"} status-${status} ${isNonExpandable ? "interactive" : ""} ${shouldHydrateRichContent ? "" : "rich-deferred"}`}
     >
       <div
         className={`tool-row-header ${isNonExpandable ? "non-expandable" : ""}`}

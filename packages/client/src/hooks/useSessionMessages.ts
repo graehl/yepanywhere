@@ -13,7 +13,7 @@ import {
 } from "../lib/mergeMessages";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { getProvider } from "../providers/registry";
-import type { Message, Session, SessionStatus } from "../types";
+import type { Message, SessionMetadata, SessionStatus } from "../types";
 
 /** Content from a subagent (Task tool) */
 export interface AgentContent {
@@ -31,7 +31,7 @@ export type AgentContentMap = Record<string, AgentContent>;
 
 /** Result from initial session load */
 export interface SessionLoadResult {
-  session: Session;
+  session: SessionMetadata;
   status: SessionStatus;
   pendingInputRequest?: unknown;
   slashCommands?: Array<{
@@ -62,9 +62,9 @@ export interface UseSessionMessagesResult {
   /** Whether initial load is in progress */
   loading: boolean;
   /** Session data from initial load */
-  session: Session | null;
+  session: SessionMetadata | null;
   /** Set session data (for stream connected event) */
-  setSession: React.Dispatch<React.SetStateAction<Session | null>>;
+  setSession: React.Dispatch<React.SetStateAction<SessionMetadata | null>>;
   /** Handle streaming content updates (for useStreamingContent) */
   handleStreamingUpdate: (message: Message, agentId?: string) => void;
   /** Handle stream message event (buffered until initial load completes) */
@@ -166,7 +166,7 @@ export function useSessionMessages(
     () => new Map(),
   );
   const [loading, setLoading] = useState(true);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<SessionMetadata | null>(null);
   const [pagination, setPagination] = useState<PaginationInfo | undefined>();
   const [loadingOlder, setLoadingOlder] = useState(false);
 
@@ -485,7 +485,7 @@ export function useSessionMessages(
       // For new sessions, prev may be null if JSONL didn't exist on initial load
       setSession((prev) =>
         prev
-          ? { ...prev, ...data.session, messages: prev.messages }
+          ? { ...prev, ...data.session }
           : data.session,
       );
     } catch {
@@ -530,8 +530,8 @@ export function useSessionMessages(
       // For new sessions, prev may be null if JSONL didn't exist on initial load
       setSession((prev) =>
         prev
-          ? { ...prev, ...data.session, messages: prev.messages }
-          : { ...data.session, messages: [] },
+          ? { ...prev, ...data.session }
+          : data.session,
       );
     } catch {
       // Silent fail for metadata updates

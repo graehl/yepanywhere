@@ -29,6 +29,13 @@ interface RuntimeMetrics {
   [name: string]: number;
 }
 
+interface ReloadPerfProbeMark {
+  name: string;
+  at: number;
+  elapsedMs: number;
+  detail?: Record<string, unknown>;
+}
+
 interface ProbeEvent {
   eventIndex: number;
   timestamp: string;
@@ -99,6 +106,7 @@ interface PageStats {
       duration: number;
       name: string;
     }>;
+    marks: ReloadPerfProbeMark[];
   } | null;
 }
 
@@ -538,6 +546,7 @@ async function installPageProbe(page: Page): Promise<void> {
       (() => {
         const state = {
           startedAt: performance.now(),
+          nextRequestId: 1,
           frameCount: 0,
           lastRafAt: null,
           maxRafGapMs: 0,
@@ -548,6 +557,215 @@ async function installPageProbe(page: Page): Promise<void> {
           longTaskTotalMs: 0,
           longTaskMaxMs: 0,
           recentLongTasks: [],
+          marks: [],
+          firstMessageRowAt: null,
+          firstToolRowAt: null,
+          lastDomStableTimer: null,
+        };
+
+        const cloneDetail = (detail) => {
+          if (!detail || typeof detail !== "object") return undefined;
+          try {
+            return JSON.parse(JSON.stringify(detail));
+          } catch {
+            return { error: "detail_not_serializable" };
+          }
+        };
+
+        const mark = (name, detail) => {
+          const at = performance.now();
+          state.marks.push({
+            name,
+            at,
+            elapsedMs: at - state.startedAt,
+            ...(detail ? { detail: cloneDetail(detail) } : {}),
+          });
+          if (state.marks.length > 1000) {
+            state.marks.splice(0, state.marks.length - 1000);
+          }
+        };
+
+        const compactUrl = (input) => {
+          try {
+            const url = new URL(input, window.location.href);
+            return url.pathname + url.search;
+          } catch {
+            return String(input);
+          }
+        };
+
+        const requestUrl = (input) => {
+          if (typeof input === "string") return input;
+          if (input && typeof input.url === "string") return input.url;
+          return String(input);
+        };
+
+        const requestMethod = (input, init) => {
+          if (init?.method) return String(init.method).toUpperCase();
+          if (input && typeof input.method === "string") {
+            return input.method.toUpperCase();
+          }
+          return "GET";
+        };
+
+        const isSessionApiUrl = (input) => {
+          try {
+            const url = new URL(input, window.location.href);
+            return (
+              url.pathname.startsWith("/api/") &&
+              url.pathname.includes("/sessions/")
+            );
+          } catch {
+            return false;
+          }
+        };
+
+        const summarizeSessionPayload = (data) => {
+          if (!data || typeof data !== "object") return {};
+          const messages = Array.isArray(data.messages) ? data.messages : null;
+          const session = data.session && typeof data.session === "object"
+            ? data.session
+            : null;
+          return {
+            messages: messages ? messages.length : undefined,
+            sessionMessages: Array.isArray(session?.messages)
+              ? session.messages.length
+              : undefined,
+            sessionMessageCount:
+              typeof session?.messageCount === "number"
+                ? session.messageCount
+                : undefined,
+            totalMessages:
+              typeof data.pagination?.totalMessageCount === "number"
+                ? data.pagination.totalMessageCount
+                : undefined,
+            hasOlderMessages:
+              typeof data.pagination?.hasOlderMessages === "boolean"
+                ? data.pagination.hasOlderMessages
+                : undefined,
+          };
+        };
+
+        const responseMeta = new WeakMap();
+        if (typeof window.fetch === "function") {
+          const originalFetch = window.fetch.bind(window);
+          window.fetch = async (...args) => {
+            const input = args[0];
+            const init = args[1];
+            const url = requestUrl(input);
+            const method = requestMethod(input, init);
+            const relevant = isSessionApiUrl(url);
+            const requestId = state.nextRequestId++;
+            const startedAt = performance.now();
+            if (relevant) {
+              mark("fetch_start", {
+                requestId,
+                method,
+                url: compactUrl(url),
+              });
+            }
+            try {
+              const response = await originalFetch(...args);
+              if (relevant) {
+                responseMeta.set(response, {
+                  requestId,
+                  method,
+                  url: compactUrl(url),
+                  startedAt,
+                  responseHeadersAt: performance.now(),
+                });
+                mark("fetch_response_headers", {
+                  requestId,
+                  method,
+                  url: compactUrl(url),
+                  status: response.status,
+                  durationMs: performance.now() - startedAt,
+                });
+              }
+              return response;
+            } catch (error) {
+              if (relevant) {
+                mark("fetch_error", {
+                  requestId,
+                  method,
+                  url: compactUrl(url),
+                  durationMs: performance.now() - startedAt,
+                  message: String(error?.message || error),
+                });
+              }
+              throw error;
+            }
+          };
+        }
+
+        if (
+          typeof Response !== "undefined" &&
+          typeof Response.prototype.json === "function"
+        ) {
+          const originalJson = Response.prototype.json;
+          Response.prototype.json = function (...args) {
+            const meta = responseMeta.get(this);
+            const startedAt = performance.now();
+            const result = originalJson.apply(this, args);
+            if (!meta) return result;
+            return Promise.resolve(result).then(
+              (data) => {
+                mark("response_json_complete", {
+                  requestId: meta.requestId,
+                  method: meta.method,
+                  url: meta.url,
+                  durationMs: performance.now() - startedAt,
+                  sinceFetchStartMs: performance.now() - meta.startedAt,
+                  ...summarizeSessionPayload(data),
+                });
+                return data;
+              },
+              (error) => {
+                mark("response_json_error", {
+                  requestId: meta.requestId,
+                  method: meta.method,
+                  url: meta.url,
+                  durationMs: performance.now() - startedAt,
+                  message: String(error?.message || error),
+                });
+                throw error;
+              },
+            );
+          };
+        }
+
+        const rowSnapshot = () => ({
+          nodes: document.getElementsByTagName("*").length,
+          messageRows: document.querySelectorAll(".message-render-row").length,
+          turnGroups: document.querySelectorAll(".turn-group").length,
+          toolRows: document.querySelectorAll(".tool-row").length,
+          loadOlderButtons: document.querySelectorAll(".load-older-button").length,
+        });
+
+        const noteDomMutation = () => {
+          const snapshot = rowSnapshot();
+          if (state.firstMessageRowAt === null && snapshot.messageRows > 0) {
+            state.firstMessageRowAt = performance.now();
+            mark("dom_first_message_row", snapshot);
+          }
+          if (state.firstToolRowAt === null && snapshot.toolRows > 0) {
+            state.firstToolRowAt = performance.now();
+            mark("dom_first_tool_row", snapshot);
+          }
+          if (state.lastDomStableTimer !== null) {
+            clearTimeout(state.lastDomStableTimer);
+          }
+          state.lastDomStableTimer = setTimeout(() => {
+            mark("dom_rows_stable", rowSnapshot());
+          }, 500);
+        };
+
+        const installDomObserver = () => {
+          const target = document.documentElement || document;
+          if (!target) return;
+          const observer = new MutationObserver(noteDomMutation);
+          observer.observe(target, { childList: true, subtree: true });
+          noteDomMutation();
         };
 
         const onFrame = (now) => {
@@ -595,6 +813,17 @@ async function installPageProbe(page: Page): Promise<void> {
           }
         }
 
+        mark("probe_init", {
+          url: compactUrl(window.location.href),
+        });
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", installDomObserver, {
+            once: true,
+          });
+        } else {
+          installDomObserver();
+        }
+
         Object.defineProperty(window, "__YA_PERF_PROBE__", {
           configurable: true,
           value: {
@@ -610,8 +839,15 @@ async function installPageProbe(page: Page): Promise<void> {
                 longTaskTotalMs: state.longTaskTotalMs,
                 longTaskMaxMs: state.longTaskMaxMs,
                 recentLongTasks: state.recentLongTasks,
+                marks: state.marks,
               };
             },
+          },
+        });
+        Object.defineProperty(window, "__YA_RELOAD_PERF_PROBE__", {
+          configurable: true,
+          value: {
+            mark,
           },
         });
       })();
@@ -812,6 +1048,153 @@ function summarizeEvents(events: ProbeEvent[]): Record<string, unknown> {
   };
 }
 
+function markDetail(mark: ReloadPerfProbeMark | undefined): Record<
+  string,
+  unknown
+> {
+  return mark?.detail && typeof mark.detail === "object" ? mark.detail : {};
+}
+
+function detailNumber(
+  mark: ReloadPerfProbeMark | undefined,
+  key: string,
+): number | null {
+  const value = markDetail(mark)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function firstMark(
+  marks: ReloadPerfProbeMark[],
+  name: string,
+  predicate?: (mark: ReloadPerfProbeMark) => boolean,
+): ReloadPerfProbeMark | undefined {
+  return marks.find((mark) => mark.name === name && (!predicate || predicate(mark)));
+}
+
+function firstMarkAfter(
+  marks: ReloadPerfProbeMark[],
+  name: string,
+  afterElapsedMs: number,
+): ReloadPerfProbeMark | undefined {
+  return marks.find(
+    (mark) => mark.name === name && mark.elapsedMs >= afterElapsedMs,
+  );
+}
+
+function markForRequest(
+  marks: ReloadPerfProbeMark[],
+  name: string,
+  requestId: unknown,
+): ReloadPerfProbeMark | undefined {
+  return marks.find(
+    (mark) =>
+      mark.name === name && markDetail(mark).requestId === requestId,
+  );
+}
+
+function durationBetween(
+  start: ReloadPerfProbeMark | undefined,
+  end: ReloadPerfProbeMark | undefined,
+): number | null {
+  return start && end ? end.elapsedMs - start.elapsedMs : null;
+}
+
+function milestone(mark: ReloadPerfProbeMark | undefined): Record<
+  string,
+  unknown
+> | null {
+  if (!mark) return null;
+  return {
+    elapsedMs: mark.elapsedMs,
+    detail: mark.detail ?? {},
+  };
+}
+
+function summarizeReloadPhases(samples: Sample[]): Record<string, unknown> {
+  const marks = samples.at(-1)?.page.probe?.marks ?? [];
+  const initialFetch = firstMark(marks, "fetch_start", (mark) => {
+    const url = markDetail(mark).url;
+    return (
+      typeof url === "string" &&
+      url.includes("/sessions/") &&
+      url.includes("tailCompactions=2")
+    );
+  });
+  const requestId = markDetail(initialFetch).requestId;
+  const fetchHeaders = markForRequest(
+    marks,
+    "fetch_response_headers",
+    requestId,
+  );
+  const jsonComplete = markForRequest(
+    marks,
+    "response_json_complete",
+    requestId,
+  );
+  const dataReady = firstMark(marks, "session_initial_load_data_ready");
+  const stateQueued = firstMark(marks, "session_initial_messages_state_queued");
+  const loadComplete = firstMark(marks, "session_initial_load_complete");
+  const preprocessEnd = firstMark(marks, "message_list_preprocess_end", (mark) => {
+    const messages = detailNumber(mark, "messages");
+    return messages !== null && messages > 0;
+  });
+  const preprocessStart = preprocessEnd
+    ? firstMarkAfter(
+        marks,
+        "message_list_preprocess_start",
+        Math.max(0, preprocessEnd.elapsedMs - (detailNumber(preprocessEnd, "durationMs") ?? 0) - 1),
+      )
+    : undefined;
+  const groupEnd = firstMark(marks, "message_list_group_end", (mark) => {
+    const renderItems = detailNumber(mark, "renderItems");
+    return renderItems !== null && renderItems > 0;
+  });
+  const commit = firstMark(marks, "message_list_commit_effect", (mark) => {
+    const messages = detailNumber(mark, "messages");
+    return messages !== null && messages > 0;
+  });
+  const firstRow = firstMark(marks, "dom_first_message_row");
+  const stableRows = firstRow
+    ? firstMarkAfter(marks, "dom_rows_stable", firstRow.elapsedMs)
+    : firstMark(marks, "dom_rows_stable");
+
+  return {
+    markCount: marks.length,
+    milestones: {
+      initialFetch: milestone(initialFetch),
+      fetchHeaders: milestone(fetchHeaders),
+      jsonComplete: milestone(jsonComplete),
+      dataReady: milestone(dataReady),
+      stateQueued: milestone(stateQueued),
+      loadComplete: milestone(loadComplete),
+      preprocessEnd: milestone(preprocessEnd),
+      groupEnd: milestone(groupEnd),
+      commit: milestone(commit),
+      firstRow: milestone(firstRow),
+      stableRows: milestone(stableRows),
+    },
+    durationsMs: {
+      fetchToHeaders: durationBetween(initialFetch, fetchHeaders),
+      jsonBodyAndParse: detailNumber(jsonComplete, "durationMs"),
+      fetchToJsonComplete: durationBetween(initialFetch, jsonComplete),
+      jsonCompleteToDataReady: durationBetween(jsonComplete, dataReady),
+      dataReadyToStateQueued: durationBetween(dataReady, stateQueued),
+      stateQueuedToPreprocessStart: durationBetween(stateQueued, preprocessStart),
+      stateQueuedToFirstRow: durationBetween(stateQueued, firstRow),
+      stateQueuedToStableRows: durationBetween(stateQueued, stableRows),
+      stateQueuedToCommitEffect: durationBetween(stateQueued, commit),
+      preprocess: detailNumber(preprocessEnd, "durationMs"),
+      preprocessEndToFirstRow: durationBetween(preprocessEnd, firstRow),
+      grouping: detailNumber(groupEnd, "durationMs"),
+      firstRowToCommitEffect: durationBetween(firstRow, commit),
+      firstRowToStableRows: durationBetween(firstRow, stableRows),
+      fetchToStableRows: durationBetween(initialFetch, stableRows),
+    },
+    recentMarks: marks.slice(-40),
+    preprocessStart: milestone(preprocessStart),
+  };
+}
+
 function summarize(samples: Sample[], events: ProbeEvent[]): Record<string, unknown> {
   const first = samples[0];
   const last = samples.at(-1);
@@ -862,6 +1245,7 @@ function summarize(samples: Sample[], events: ProbeEvent[]): Record<string, unkn
       totalMs: last?.page.probe?.longTaskTotalMs ?? null,
       maxMs: last?.page.probe?.longTaskMaxMs ?? null,
     },
+    reloadPhases: summarizeReloadPhases(samples),
     events: summarizeEvents(events),
   };
 }

@@ -12,6 +12,7 @@ import {
   isStaleTimestamp,
   parseTimestampMs,
 } from "../lib/messageAge";
+import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { parseUserPrompt } from "../lib/parseUserPrompt";
 import {
   dispatchSessionIsearchGuideState,
@@ -167,6 +168,13 @@ interface UserTurnSearchSession {
 }
 
 const NAV_MOTION_CUE_CLEAR_MS = 760;
+
+function highResolutionNowMs(): number {
+  return typeof performance !== "undefined" &&
+    typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
 
 /** Pending message waiting for server confirmation */
 interface PendingMessage {
@@ -347,14 +355,26 @@ export const MessageList = memo(function MessageList({
   // Preprocess messages into render items and group into turns
   const renderItems = useMemo(
     () => {
+      const startedAt = highResolutionNowMs();
+      markReloadPerfPhase("message_list_preprocess_start", {
+        messages: messages.length,
+        markdownAugments: Object.keys(markdownAugments ?? {}).length,
+        hasActiveToolApproval: !!activeToolApproval,
+      });
       const nextRenderItems = preprocessMessages(messages, {
         markdown: markdownAugments,
         activeToolApproval,
       });
-      return stabilizeRenderItems(
+      const stabilized = stabilizeRenderItems(
         previousRenderItemsRef.current,
         nextRenderItems,
       );
+      markReloadPerfPhase("message_list_preprocess_end", {
+        messages: messages.length,
+        renderItems: stabilized.length,
+        durationMs: highResolutionNowMs() - startedAt,
+      });
+      return stabilized;
     },
     [messages, markdownAugments, activeToolApproval],
   );
@@ -362,9 +382,25 @@ export const MessageList = memo(function MessageList({
     previousRenderItemsRef.current = renderItems;
   }, [renderItems]);
   const turnGroups = useMemo(
-    () => groupItemsIntoTurns(renderItems),
+    () => {
+      const startedAt = highResolutionNowMs();
+      const grouped = groupItemsIntoTurns(renderItems);
+      markReloadPerfPhase("message_list_group_end", {
+        renderItems: renderItems.length,
+        turnGroups: grouped.length,
+        durationMs: highResolutionNowMs() - startedAt,
+      });
+      return grouped;
+    },
     [renderItems],
   );
+  useEffect(() => {
+    markReloadPerfPhase("message_list_commit_effect", {
+      messages: messages.length,
+      renderItems: renderItems.length,
+      turnGroups: turnGroups.length,
+    });
+  }, [messages.length, renderItems.length, turnGroups.length]);
   const userSearchableTurnCount = useMemo(() => {
     let count = 0;
     for (const item of renderItems) {

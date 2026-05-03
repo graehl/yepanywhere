@@ -11,6 +11,7 @@ import {
   mergeJSONLMessages,
   mergeStreamMessage,
 } from "../lib/mergeMessages";
+import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { getProvider } from "../providers/registry";
 import type { Message, Session, SessionStatus } from "../types";
 
@@ -289,6 +290,11 @@ export function useSessionMessages(
 
   // Initial load
   useEffect(() => {
+    markReloadPerfPhase("session_initial_load_start", {
+      projectId,
+      sessionId,
+      tailCompactions: 2,
+    });
     initialLoadCompleteRef.current = false;
     streamBufferRef.current = [];
     maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
@@ -298,6 +304,12 @@ export function useSessionMessages(
     api
       .getSession(projectId, sessionId, undefined, { tailCompactions: 2 })
       .then((data) => {
+        markReloadPerfPhase("session_initial_load_data_ready", {
+          messages: data.messages.length,
+          provider: data.session.provider,
+          totalMessages: data.pagination?.totalMessageCount,
+          hasOlderMessages: data.pagination?.hasOlderMessages,
+        });
         setSession(data.session);
         setPagination(data.pagination);
         providerRef.current = data.session.provider;
@@ -313,6 +325,10 @@ export function useSessionMessages(
             ? reconcileCodexLinearMessages(taggedMessages)
             : taggedMessages,
         );
+        markReloadPerfPhase("session_initial_messages_state_queued", {
+          messages: taggedMessages.length,
+          provider: data.session.provider,
+        });
 
         // Update lastMessageIdRef synchronously to avoid race condition:
         // stream "connected" event calls fetchNewMessages() immediately, but the
@@ -328,6 +344,9 @@ export function useSessionMessages(
         flushBuffer();
 
         setLoading(false);
+        markReloadPerfPhase("session_initial_load_complete", {
+          messages: taggedMessages.length,
+        });
 
         // Notify parent
         onLoadComplete?.({
@@ -338,6 +357,9 @@ export function useSessionMessages(
         });
       })
       .catch((err) => {
+        markReloadPerfPhase("session_initial_load_error", {
+          message: err instanceof Error ? err.message : String(err),
+        });
         setLoading(false);
         onLoadError?.(err);
       });

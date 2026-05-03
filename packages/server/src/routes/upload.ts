@@ -1,6 +1,5 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import {
   type UploadClientMessage,
   type UploadCompleteMessage,
@@ -14,7 +13,11 @@ import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import type { WSContext, WSEvents } from "hono/ws";
 import type { ProjectScanner } from "../projects/scanner.js";
-import { UPLOADS_DIR, UploadManager } from "../uploads/index.js";
+import {
+  UPLOADS_DIR,
+  UploadManager,
+  resolveUploadStoragePath,
+} from "../uploads/index.js";
 
 /** Progress update interval in bytes (64KB) */
 const PROGRESS_INTERVAL_BYTES = 64 * 1024;
@@ -304,11 +307,13 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
         return c.json({ error: "Invalid filename" }, 400);
       }
 
-      // Construct file path
-      const filePath = join(UPLOADS_DIR, projectId, sessionId, filename);
-
-      // Security: ensure the resolved path is within UPLOADS_DIR
-      if (!filePath.startsWith(UPLOADS_DIR)) {
+      const filePath = resolveUploadStoragePath(
+        UPLOADS_DIR,
+        projectId,
+        sessionId,
+        filename,
+      );
+      if (!filePath) {
         return c.json({ error: "Invalid path" }, 400);
       }
 

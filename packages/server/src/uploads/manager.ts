@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { type WriteStream, createWriteStream } from "node:fs";
 import { mkdir, rm, stat } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { UploadedFile } from "@yep-anywhere/shared";
 import { getDataDir } from "../config.js";
 
@@ -74,6 +74,47 @@ export function sanitizeFilename(original: string): {
   };
 }
 
+export function isSafeUploadPathSegment(segment: string): boolean {
+  return (
+    segment.length > 0 &&
+    segment !== "." &&
+    segment !== ".." &&
+    !/[<>:"/\\|?*\0]/.test(segment)
+  );
+}
+
+export function resolveUploadStoragePath(
+  uploadsDir: string,
+  encodedProjectPath: string,
+  sessionId: string,
+  filename?: string,
+): string | null {
+  if (
+    !isSafeUploadPathSegment(encodedProjectPath) ||
+    !isSafeUploadPathSegment(sessionId) ||
+    (filename !== undefined && !isSafeUploadPathSegment(filename))
+  ) {
+    return null;
+  }
+
+  const root = resolve(uploadsDir);
+  const resolved = resolve(
+    root,
+    encodedProjectPath,
+    sessionId,
+    ...(filename === undefined ? [] : [filename]),
+  );
+  const relativePath = relative(root, resolved);
+  if (
+    relativePath === "" ||
+    relativePath.startsWith("..") ||
+    isAbsolute(relativePath)
+  ) {
+    return null;
+  }
+  return resolved;
+}
+
 /**
  * Get the upload directory for a project+session.
  * Creates the directory if it doesn't exist.
@@ -87,7 +128,14 @@ export async function getUploadDir(
   sessionId: string,
   uploadsDir: string = UPLOADS_DIR,
 ): Promise<string> {
-  const dir = join(uploadsDir, encodedProjectPath, sessionId);
+  const dir = resolveUploadStoragePath(
+    uploadsDir,
+    encodedProjectPath,
+    sessionId,
+  );
+  if (!dir) {
+    throw new Error("Invalid upload path segment");
+  }
   await mkdir(dir, { recursive: true });
   return dir;
 }

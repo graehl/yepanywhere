@@ -348,11 +348,7 @@ describe("MessageList", () => {
     fireEvent.change(input, { target: { value: "needle" } });
 
     expect(await screen.findByText("2/2")).toBeTruthy();
-    await waitFor(() => {
-      expect(scrollTo).toHaveBeenCalledWith(
-        expect.objectContaining({ behavior: "smooth" }),
-      );
-    });
+    expect(scrollTo).not.toHaveBeenCalled();
     expect(screen.queryByText("look at the first thing")).toBeNull();
     expect(screen.getByText("the assistant found needle text")).toBeTruthy();
     expect(screen.getByText("system compacted needle context")).toBeTruthy();

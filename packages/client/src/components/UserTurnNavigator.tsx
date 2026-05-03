@@ -23,10 +23,16 @@ export interface UserTurnNavSearchState {
   query: string;
 }
 
+export interface UserTurnNavMotionCue {
+  direction: "up" | "down";
+  token: number;
+}
+
 interface Props {
   anchors?: UserTurnNavAnchor[];
   getAnchors?: () => UserTurnNavAnchor[];
   messageListRef: RefObject<HTMLDivElement | null>;
+  motionCue?: UserTurnNavMotionCue | null;
   onNavigateStart?: () => void;
   searchState?: UserTurnNavSearchState | null;
 }
@@ -63,7 +69,7 @@ const PREVIEW_FULL_MIN_GAP_PX = 62;
 const PREVIEW_COMPACT_MIN_GAP_PX = 24;
 const NAV_REVEAL_HOTZONE_PX = 64;
 const MAX_SEARCH_PREVIEW_LABELS = 10;
-const SMOOTH_SCROLL_CLEAR_MS = 420;
+const MOTION_CUE_CLEAR_MS = 760;
 
 type LayoutUpdateKind = "full" | "scroll";
 
@@ -181,8 +187,9 @@ function buildSignature(layout: Omit<UserTurnNavLayout, "signature">): string {
 function measureLayout(
   anchors: UserTurnNavAnchor[],
   messageList: HTMLDivElement | null,
+  minAnchors = MIN_NAV_ANCHORS,
 ): UserTurnNavLayout | null {
-  if (anchors.length < MIN_NAV_ANCHORS || !messageList) {
+  if (anchors.length < minAnchors || !messageList) {
     return null;
   }
 
@@ -224,7 +231,7 @@ function measureLayout(
     });
   }
 
-  if (markers.length < MIN_NAV_ANCHORS) {
+  if (markers.length < minAnchors) {
     return null;
   }
 
@@ -357,19 +364,25 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   anchors = [],
   getAnchors,
   messageListRef,
+  motionCue,
   onNavigateStart,
   searchState,
 }: Props) {
   const [layout, setLayout] = useState<UserTurnNavLayout | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [railActive, setRailActive] = useState(false);
+  const [internalMotionCue, setInternalMotionCue] =
+    useState<UserTurnNavMotionCue | null>(null);
   const anchorsRef = useRef(anchors);
   const frameRef = useRef<number | null>(null);
   const pendingUpdateKindRef = useRef<LayoutUpdateKind>("scroll");
-  const scrollClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+  const motionCueTokenRef = useRef(0);
+  const motionCueClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const shouldMeasure = railActive || !!searchState;
+  const activeMotionCue = motionCue ?? internalMotionCue;
+  const minAnchorCount = searchState ? 1 : MIN_NAV_ANCHORS;
+  const shouldMeasure = railActive || !!searchState || !!activeMotionCue;
   const resolveAnchors = useCallback(
     () => (getAnchors ? getAnchors() : anchors),
     [anchors, getAnchors],
@@ -383,11 +396,15 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     }
     const nextAnchors = resolveAnchors();
     anchorsRef.current = nextAnchors;
-    const nextLayout = measureLayout(nextAnchors, messageListRef.current);
+    const nextLayout = measureLayout(
+      nextAnchors,
+      messageListRef.current,
+      minAnchorCount,
+    );
     setLayout((previous) =>
       previous?.signature === nextLayout?.signature ? previous : nextLayout,
     );
-  }, [messageListRef, resolveAnchors, shouldMeasure]);
+  }, [messageListRef, minAnchorCount, resolveAnchors, shouldMeasure]);
 
   const updateScrollLayout = useCallback(() => {
     if (!shouldMeasure) {
@@ -402,12 +419,16 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
 
     setLayout((previous) => {
       if (!previous) {
-        return measureLayout(anchorsRef.current, messageListRef.current);
+        return measureLayout(
+          anchorsRef.current,
+          messageListRef.current,
+          minAnchorCount,
+        );
       }
       const nextLayout = updateScrollPosition(previous, scrollContainer);
       return previous.signature === nextLayout.signature ? previous : nextLayout;
     });
-  }, [messageListRef, shouldMeasure]);
+  }, [messageListRef, minAnchorCount, shouldMeasure]);
 
   const scheduleLayoutUpdate = useCallback(
     (kind: LayoutUpdateKind = "scroll") => {
@@ -517,12 +538,26 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
 
   useEffect(
     () => () => {
-      if (scrollClearTimerRef.current !== null) {
-        clearTimeout(scrollClearTimerRef.current);
+      if (motionCueClearTimerRef.current !== null) {
+        clearTimeout(motionCueClearTimerRef.current);
       }
     },
     [],
   );
+
+  const showInternalMotionCue = useCallback((direction: "up" | "down") => {
+    if (motionCueClearTimerRef.current !== null) {
+      clearTimeout(motionCueClearTimerRef.current);
+    }
+    setInternalMotionCue({
+      direction,
+      token: (motionCueTokenRef.current += 1),
+    });
+    motionCueClearTimerRef.current = setTimeout(() => {
+      setInternalMotionCue(null);
+      motionCueClearTimerRef.current = null;
+    }, MOTION_CUE_CLEAR_MS);
+  }, []);
 
   const handleJump = useCallback(
     (id: string) => {
@@ -538,15 +573,12 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
         0,
         scrollContainer.scrollTop + rowRect.top - scrollRect.top - 12,
       );
-      scrollContainer.scrollTo({ top: nextTop, behavior: "smooth" });
-      if (scrollClearTimerRef.current !== null) {
-        clearTimeout(scrollClearTimerRef.current);
-      }
-      scrollClearTimerRef.current = setTimeout(() => {
-        scheduleLayoutUpdate("scroll");
-      }, SMOOTH_SCROLL_CLEAR_MS);
+      const direction = nextTop < scrollContainer.scrollTop ? "up" : "down";
+      showInternalMotionCue(direction);
+      scrollContainer.scrollTo({ top: nextTop, behavior: "auto" });
+      scheduleLayoutUpdate("scroll");
     },
-    [messageListRef, onNavigateStart, scheduleLayoutUpdate],
+    [messageListRef, onNavigateStart, scheduleLayoutUpdate, showInternalMotionCue],
   );
 
   const previewLabels = useMemo<UserTurnPreviewLabel[]>(() => {
@@ -628,6 +660,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   const activeMarkerId = searchState?.activeId ?? layout.activeId;
   const searchMatchIds = searchState?.matchIds;
   const hasSearchMatches = !!searchMatchIds && searchMatchIds.size > 0;
+  const hasSingleSearchMatch = !!searchMatchIds && searchMatchIds.size === 1;
   const markersToRender = hasSearchMatches
     ? layout.markers.filter((marker) => searchMatchIds.has(marker.id))
     : layout.markers;
@@ -652,6 +685,16 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
             height: `${layout.thumbHeightPct * 100}%`,
           }}
         />
+        {activeMotionCue && (
+          <span
+            key={activeMotionCue.token}
+            className={[
+              "user-turn-nav-motion-cue",
+              `is-${activeMotionCue.direction}`,
+            ].join(" ")}
+            style={{ top: `${layout.thumbTopPct * 100}%` }}
+          />
+        )}
         {markersToRender.map((marker) => (
           <button
             key={marker.id}
@@ -683,11 +726,16 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
         ))}
         {previewLabels.map((label) => (
           <button
-            key={label.id}
+            key={
+              hasSingleSearchMatch && searchState
+                ? `${label.id}:${searchState.query}`
+                : label.id
+            }
             type="button"
             className={[
               "user-turn-nav-preview",
               hasSearchMatches ? "is-search-preview" : "",
+              hasSingleSearchMatch ? "is-single-search-match" : "",
               label.compact ? "is-compact" : "",
               label.active ? "is-search-active" : "",
             ]

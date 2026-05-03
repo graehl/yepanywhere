@@ -27,6 +27,7 @@ import { RenderItemComponent } from "./RenderItemComponent";
 import {
   UserTurnNavigator,
   type UserTurnNavAnchor,
+  type UserTurnNavMotionCue,
   type UserTurnNavSearchState,
 } from "./UserTurnNavigator";
 
@@ -165,6 +166,8 @@ interface UserTurnSearchSession {
   originalScrollTop: number | null;
 }
 
+const NAV_MOTION_CUE_CLEAR_MS = 760;
+
 /** Pending message waiting for server confirmation */
 interface PendingMessage {
   tempId: string;
@@ -277,10 +280,16 @@ export const MessageList = memo(function MessageList({
   const lastHeightRef = useRef(0);
   const followUpScrollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousRenderItemsRef = useRef<RenderItem[]>([]);
+  const navMotionCueTokenRef = useRef(0);
+  const navMotionCueClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchRestoreFocusRef = useRef<HTMLElement | null>(null);
   const searchOriginalScrollTopRef = useRef<number | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
+  const [navMotionCue, setNavMotionCue] =
+    useState<UserTurnNavMotionCue | null>(null);
   const [userTurnSearch, setUserTurnSearch] =
     useState<UserTurnSearchSession>({
       active: false,
@@ -590,6 +599,20 @@ export const MessageList = memo(function MessageList({
     setThinkingExpanded((prev) => !prev);
   }, []);
 
+  const showNavMotionCue = useCallback((direction: "up" | "down") => {
+    if (navMotionCueClearTimerRef.current !== null) {
+      clearTimeout(navMotionCueClearTimerRef.current);
+    }
+    setNavMotionCue({
+      direction,
+      token: (navMotionCueTokenRef.current += 1),
+    });
+    navMotionCueClearTimerRef.current = setTimeout(() => {
+      setNavMotionCue(null);
+      navMotionCueClearTimerRef.current = null;
+    }, NAV_MOTION_CUE_CLEAR_MS);
+  }, []);
+
   const cycleUserTurnSearch = useCallback(() => {
     setUserTurnSearch((previous) => {
       if (!previous.active || userTurnSearchMatches.length === 0) {
@@ -615,6 +638,7 @@ export const MessageList = memo(function MessageList({
       id: string,
       behavior: ScrollBehavior,
       align: "start" | "center" = "start",
+      showMotionCue = false,
     ) => {
       const messageList = containerRef.current;
       const scrollContainer = messageList?.parentElement;
@@ -627,15 +651,19 @@ export const MessageList = memo(function MessageList({
         align === "center"
           ? Math.max(0, (scrollContainer.clientHeight - rowRect.height) / 2)
           : 12;
+      const nextTop = Math.max(
+        0,
+        scrollContainer.scrollTop + rowRect.top - scrollRect.top - offset,
+      );
+      if (showMotionCue) {
+        showNavMotionCue(nextTop < scrollContainer.scrollTop ? "up" : "down");
+      }
       scrollContainer.scrollTo({
-        top: Math.max(
-          0,
-          scrollContainer.scrollTop + rowRect.top - scrollRect.top - offset,
-        ),
+        top: nextTop,
         behavior,
       });
     },
-    [],
+    [showNavMotionCue],
   );
 
   const scrollToCurrent = useCallback(() => {
@@ -743,16 +771,6 @@ export const MessageList = memo(function MessageList({
   ]);
 
   useEffect(() => {
-    if (!searchReady || !userTurnSearch.selectedId) {
-      return;
-    }
-    const frame = requestAnimationFrame(() => {
-      scrollToRenderId(userTurnSearch.selectedId as string, "smooth");
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [scrollToRenderId, searchReady, userTurnSearch.selectedId]);
-
-  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) {
         return;
@@ -807,7 +825,7 @@ export const MessageList = memo(function MessageList({
         closeUserTurnSearch(false);
         if (selectedId) {
           requestAnimationFrame(() =>
-            scrollToRenderId(selectedId, "auto", "center"),
+            scrollToRenderId(selectedId, "auto", "center", true),
           );
         }
       }
@@ -911,6 +929,9 @@ export const MessageList = memo(function MessageList({
       if (followUpScrollRef.current !== null) {
         clearTimeout(followUpScrollRef.current);
       }
+      if (navMotionCueClearTimerRef.current !== null) {
+        clearTimeout(navMotionCueClearTimerRef.current);
+      }
     };
   }, [scrollToBottom]);
 
@@ -991,6 +1012,7 @@ export const MessageList = memo(function MessageList({
       <UserTurnNavigator
         getAnchors={getNavigatorAnchors}
         messageListRef={containerRef}
+        motionCue={navMotionCue}
         onNavigateStart={() => {
           shouldAutoScrollRef.current = false;
         }}

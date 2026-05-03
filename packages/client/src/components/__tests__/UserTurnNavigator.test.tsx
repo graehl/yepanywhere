@@ -147,9 +147,12 @@ describe("UserTurnNavigator", () => {
     await waitFor(() => {
       expect(scrollTo).toHaveBeenCalledWith({
         top: 608,
-        behavior: "smooth",
+        behavior: "auto",
       });
     });
+    expect(
+      document.querySelector(".user-turn-nav-motion-cue.is-down"),
+    ).toBeTruthy();
   });
 
   it("does not build normal rail anchors until the scrollbar hotzone is active", async () => {
@@ -276,6 +279,52 @@ describe("UserTurnNavigator", () => {
     expect(
       previews.every((preview) => preview.classList.contains("is-compact")),
     ).toBe(true);
+  });
+
+  it("pulses the preview for one remaining search match", async () => {
+    const scrollContainer = document.createElement("div");
+    const messageList = document.createElement("div");
+    const row = document.createElement("div");
+
+    row.dataset.renderId = "user-1";
+    messageList.append(row);
+    scrollContainer.append(messageList);
+    document.body.append(scrollContainer);
+
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    setReadonlyNumber(scrollContainer, "scrollHeight", 1000);
+    setReadonlyNumber(scrollContainer, "clientHeight", 200);
+    setReadonlyNumber(scrollContainer, "clientWidth", 360);
+    setReadonlyNumber(scrollContainer, "offsetWidth", 380);
+    scrollContainer.getBoundingClientRect = () =>
+      rect({ top: 100, height: 200 });
+    row.getBoundingClientRect = () => rect({ top: 180, height: 24 });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    const { container } = render(
+      <UserTurnNavigator
+        anchors={[{ id: "user-1", preview: "Only matching request" }]}
+        messageListRef={{ current: messageList }}
+        searchState={{
+          activeId: "user-1",
+          matchIds: new Set(["user-1"]),
+          preview: "Only matching request",
+          query: "only",
+          previewsById: new Map([["user-1", "Only matching request"]]),
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".user-turn-nav-preview")).toBeTruthy();
+    });
+    const preview = container.querySelector(".user-turn-nav-preview");
+    expect(preview?.classList.contains("is-single-search-match")).toBe(true);
+    expect(preview?.textContent).toBe("Only matching request");
   });
 
   it("keeps spaced search previews multi-line when there is room", async () => {

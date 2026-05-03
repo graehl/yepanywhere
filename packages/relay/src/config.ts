@@ -22,6 +22,10 @@ export interface RelayConfig {
   pongTimeoutMs: number;
   /** Days of inactivity before username can be reclaimed (default: 90) */
   reclaimDays: number;
+  /** Pending unauthenticated WebSocket connections allowed per source IP. */
+  unauthenticatedConnectionLimitPerIp: number;
+  /** Time allowed for a new WebSocket to send a valid relay protocol message. */
+  unauthenticatedConnectionTimeoutMs: number;
   /** Logging configuration */
   logging: LogConfig;
   /** Structured relay telemetry configuration */
@@ -53,6 +57,14 @@ export function loadConfig(): RelayConfig {
     pingIntervalMs: getEnvNumber("RELAY_PING_INTERVAL_MS", 60_000),
     pongTimeoutMs: getEnvNumber("RELAY_PONG_TIMEOUT_MS", 30_000),
     reclaimDays: getEnvNumber("RELAY_RECLAIM_DAYS", 90),
+    unauthenticatedConnectionLimitPerIp: getEnvNumber(
+      "RELAY_UNAUTHENTICATED_CONNECTION_LIMIT_PER_IP",
+      10,
+    ),
+    unauthenticatedConnectionTimeoutMs: getEnvNumber(
+      "RELAY_UNAUTHENTICATED_CONNECTION_TIMEOUT_MS",
+      30_000,
+    ),
     logging: {
       logDir: process.env.RELAY_LOG_DIR ?? join(dataDir, "logs"),
       logFile: process.env.RELAY_LOG_FILE ?? "relay.log",

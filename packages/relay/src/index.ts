@@ -11,6 +11,11 @@ import { createLogger } from "./logger.js";
 import { UsernameRegistry } from "./registry.js";
 import { generateRelayStatsHtml } from "./stats.js";
 import { createRelayTelemetryRecorder } from "./telemetry.js";
+import {
+  UnauthenticatedConnectionLimiter,
+  getConnectionIp,
+  rejectUpgrade,
+} from "./unauthenticated-limiter.js";
 import { createWsHandler } from "./ws-handler.js";
 
 const config = loadConfig();
@@ -41,6 +46,10 @@ if (reclaimed > 0) {
 
 // Create connection manager
 const connectionManager = new ConnectionManager(registry);
+const unauthenticatedLimiter = new UnauthenticatedConnectionLimiter(
+  config.unauthenticatedConnectionLimitPerIp,
+  config.unauthenticatedConnectionTimeoutMs,
+);
 const telemetry = createRelayTelemetryRecorder(config.telemetry, logger);
 telemetry.startSampling(() => ({
   waiting: connectionManager.getWaitingCount(),
@@ -108,7 +117,9 @@ app.get("/online/:username", (c) => {
 });
 
 // Create WebSocket handler
-const wsHandler = createWsHandler(connectionManager, config, logger, telemetry);
+const wsHandler = createWsHandler(connectionManager, config, logger, telemetry, {
+  onProtocolAccepted: (ws) => unauthenticatedLimiter.release(ws),
+});
 
 // Create HTTP server with Hono
 const requestListener = getRequestListener(app.fetch);
@@ -119,7 +130,8 @@ const server = createServer(requestListener);
 const wss = new WebSocketServer({ noServer: true });
 
 // Handle WebSocket connections
-wss.on("connection", (ws) => {
+wss.on("connection", (ws, request) => {
+  unauthenticatedLimiter.track(ws, getConnectionIp(request));
   wsHandler.onOpen(ws);
 
   ws.on("message", (data, isBinary) => {
@@ -127,6 +139,7 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", (code, reason) => {
+    unauthenticatedLimiter.release(ws);
     wsHandler.onClose(ws, code, reason);
   });
 
@@ -155,6 +168,13 @@ server.on("upgrade", (request, socket, head) => {
   }
 
   // Upgrade to WebSocket
+  const ip = getConnectionIp(request);
+  if (!unauthenticatedLimiter.canAccept(ip)) {
+    logger.info({ ip }, "Rejected unauthenticated relay connection over cap");
+    rejectUpgrade(socket);
+    return;
+  }
+
   wss.handleUpgrade(request, socket, head, (ws) => {
     logger.info({ urlPath }, "WebSocket upgrade complete");
     wss.emit("connection", ws, request);

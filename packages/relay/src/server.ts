@@ -21,6 +21,13 @@ import type { LogLevel } from "./logger.js";
 import { UsernameRegistry } from "./registry.js";
 import { generateRelayStatsHtml } from "./stats.js";
 import { createRelayTelemetryRecorder } from "./telemetry.js";
+import {
+  DEFAULT_UNAUTHENTICATED_CONNECTION_LIMIT_PER_IP,
+  DEFAULT_UNAUTHENTICATED_CONNECTION_TIMEOUT_MS,
+  UnauthenticatedConnectionLimiter,
+  getConnectionIp,
+  rejectUpgrade,
+} from "./unauthenticated-limiter.js";
 import { createWsHandler } from "./ws-handler.js";
 
 export interface RelayServerOptions {
@@ -48,6 +55,10 @@ export interface RelayServerOptions {
   telemetryNodeId?: string;
   /** Disable structured telemetry */
   disableTelemetry?: boolean;
+  /** Pending unauthenticated WebSocket connections allowed per source IP. */
+  unauthenticatedConnectionLimitPerIp?: number;
+  /** Time allowed for a new WebSocket to send a valid relay protocol message. */
+  unauthenticatedConnectionTimeoutMs?: number;
 }
 
 export interface RelayServer {
@@ -93,6 +104,12 @@ export async function createRelayServer(
     pingIntervalMs: options.pingIntervalMs ?? 60_000,
     pongTimeoutMs: options.pongTimeoutMs ?? 30_000,
     reclaimDays: options.reclaimDays ?? 90,
+    unauthenticatedConnectionLimitPerIp:
+      options.unauthenticatedConnectionLimitPerIp ??
+      DEFAULT_UNAUTHENTICATED_CONNECTION_LIMIT_PER_IP,
+    unauthenticatedConnectionTimeoutMs:
+      options.unauthenticatedConnectionTimeoutMs ??
+      DEFAULT_UNAUTHENTICATED_CONNECTION_TIMEOUT_MS,
     logging: {
       logDir: "",
       logFile: "relay.log",
@@ -143,6 +160,10 @@ export async function createRelayServer(
 
   // Create connection manager
   const connectionManager = new ConnectionManager(registry);
+  const unauthenticatedLimiter = new UnauthenticatedConnectionLimiter(
+    config.unauthenticatedConnectionLimitPerIp,
+    config.unauthenticatedConnectionTimeoutMs,
+  );
   const telemetry = createRelayTelemetryRecorder(config.telemetry, logger);
   telemetry.startSampling(() => ({
     waiting: connectionManager.getWaitingCount(),
@@ -215,6 +236,9 @@ export async function createRelayServer(
     config,
     logger,
     telemetry,
+    {
+      onProtocolAccepted: (ws) => unauthenticatedLimiter.release(ws),
+    },
   );
 
   // Create HTTP server with Hono
@@ -225,7 +249,8 @@ export async function createRelayServer(
   const wss = new WebSocketServer({ noServer: true });
 
   // Handle WebSocket connections
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws, request) => {
+    unauthenticatedLimiter.track(ws, getConnectionIp(request));
     wsHandler.onOpen(ws);
 
     ws.on("message", (data, isBinary) => {
@@ -233,6 +258,7 @@ export async function createRelayServer(
     });
 
     ws.on("close", (code, reason) => {
+      unauthenticatedLimiter.release(ws);
       wsHandler.onClose(ws, code, reason);
     });
 
@@ -257,6 +283,13 @@ export async function createRelayServer(
     }
 
     // Upgrade to WebSocket
+    const ip = getConnectionIp(request);
+    if (!unauthenticatedLimiter.canAccept(ip)) {
+      logger.info({ ip }, "Rejected unauthenticated relay connection over cap");
+      rejectUpgrade(socket);
+      return;
+    }
+
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit("connection", ws, request);
     });

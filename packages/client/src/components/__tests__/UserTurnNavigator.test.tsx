@@ -152,6 +152,60 @@ describe("UserTurnNavigator", () => {
     });
   });
 
+  it("does not build normal rail anchors until the scrollbar hotzone is active", async () => {
+    const scrollContainer = document.createElement("div");
+    const messageList = document.createElement("div");
+    const firstRow = document.createElement("div");
+    const secondRow = document.createElement("div");
+    const getAnchors = vi.fn(() => [
+      { id: "user-1", preview: "First request" },
+      { id: "user-2", preview: "Second request" },
+    ]);
+
+    firstRow.dataset.renderId = "user-1";
+    secondRow.dataset.renderId = "user-2";
+    messageList.append(firstRow, secondRow);
+    scrollContainer.append(messageList);
+    document.body.append(scrollContainer);
+
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    setReadonlyNumber(scrollContainer, "scrollHeight", 1000);
+    setReadonlyNumber(scrollContainer, "clientHeight", 200);
+    setReadonlyNumber(scrollContainer, "clientWidth", 360);
+    setReadonlyNumber(scrollContainer, "offsetWidth", 380);
+    scrollContainer.getBoundingClientRect = () =>
+      rect({ top: 100, height: 200 });
+    firstRow.getBoundingClientRect = () => rect({ top: 120, height: 30 });
+    secondRow.getBoundingClientRect = () => rect({ top: 520, height: 30 });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    render(
+      <UserTurnNavigator
+        getAnchors={getAnchors}
+        messageListRef={{ current: messageList }}
+      />,
+    );
+
+    expect(getAnchors).not.toHaveBeenCalled();
+
+    act(() => {
+      dispatchPointerMove(scrollContainer, 492, 150);
+    });
+
+    await waitFor(() => {
+      expect(getAnchors).toHaveBeenCalledTimes(1);
+    });
+    expect(
+      await screen.findByRole("button", {
+        name: "Jump to turn: Second request",
+      }),
+    ).toBeTruthy();
+  });
+
   it("shows compact previews for every matching search marker when crowded", async () => {
     const scrollContainer = document.createElement("div");
     const messageList = document.createElement("div");

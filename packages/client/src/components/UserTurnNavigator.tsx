@@ -24,7 +24,8 @@ export interface UserTurnNavSearchState {
 }
 
 interface Props {
-  anchors: UserTurnNavAnchor[];
+  anchors?: UserTurnNavAnchor[];
+  getAnchors?: () => UserTurnNavAnchor[];
   messageListRef: RefObject<HTMLDivElement | null>;
   onNavigateStart?: () => void;
   searchState?: UserTurnNavSearchState | null;
@@ -353,7 +354,8 @@ function getSearchPreviewWindow(
 }
 
 export const UserTurnNavigator = memo(function UserTurnNavigator({
-  anchors,
+  anchors = [],
+  getAnchors,
   messageListRef,
   onNavigateStart,
   searchState,
@@ -368,17 +370,24 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     null,
   );
   const shouldMeasure = railActive || !!searchState;
+  const resolveAnchors = useCallback(
+    () => (getAnchors ? getAnchors() : anchors),
+    [anchors, getAnchors],
+  );
 
   const updateFullLayout = useCallback(() => {
     if (!shouldMeasure) {
+      anchorsRef.current = [];
       setLayout(null);
       return;
     }
-    const nextLayout = measureLayout(anchorsRef.current, messageListRef.current);
+    const nextAnchors = resolveAnchors();
+    anchorsRef.current = nextAnchors;
+    const nextLayout = measureLayout(nextAnchors, messageListRef.current);
     setLayout((previous) =>
       previous?.signature === nextLayout?.signature ? previous : nextLayout,
     );
-  }, [messageListRef, shouldMeasure]);
+  }, [messageListRef, resolveAnchors, shouldMeasure]);
 
   const updateScrollLayout = useCallback(() => {
     if (!shouldMeasure) {
@@ -422,13 +431,13 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   );
 
   useEffect(() => {
-    anchorsRef.current = anchors;
     if (shouldMeasure) {
       scheduleLayoutUpdate("full");
     } else {
+      anchorsRef.current = [];
       setLayout(null);
     }
-  }, [anchors, scheduleLayoutUpdate, shouldMeasure]);
+  }, [resolveAnchors, scheduleLayoutUpdate, shouldMeasure]);
 
   useEffect(() => {
     const messageList = messageListRef.current;

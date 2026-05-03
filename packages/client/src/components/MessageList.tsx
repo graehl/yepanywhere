@@ -165,11 +165,6 @@ interface UserTurnSearchSession {
   originalScrollTop: number | null;
 }
 
-interface CachedUserTurnAnchor {
-  item: RenderItem;
-  anchor: UserTurnNavAnchor | null;
-}
-
 /** Pending message waiting for server confirmation */
 interface PendingMessage {
   tempId: string;
@@ -282,9 +277,6 @@ export const MessageList = memo(function MessageList({
   const lastHeightRef = useRef(0);
   const followUpScrollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previousRenderItemsRef = useRef<RenderItem[]>([]);
-  const userTurnAnchorCacheRef = useRef<Map<string, CachedUserTurnAnchor>>(
-    new Map(),
-  );
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchRestoreFocusRef = useRef<HTMLElement | null>(null);
   const searchOriginalScrollTopRef = useRef<number | null>(null);
@@ -364,40 +356,56 @@ export const MessageList = memo(function MessageList({
     () => groupItemsIntoTurns(renderItems),
     [renderItems],
   );
-  const userTurnNavAnchors = useMemo<UserTurnNavAnchor[]>(() => {
-    const previousCache = userTurnAnchorCacheRef.current;
-    const nextCache = new Map<string, CachedUserTurnAnchor>();
+  const userSearchableTurnCount = useMemo(() => {
+    let count = 0;
+    for (const item of renderItems) {
+      if (item.type === "user_prompt" && !item.isSubagent) {
+        count += 1;
+        if (count >= 2) {
+          break;
+        }
+      }
+    }
+    return count;
+  }, [renderItems]);
+  const getUserTurnNavAnchors = useCallback((): UserTurnNavAnchor[] => {
     const anchors: UserTurnNavAnchor[] = [];
     for (const item of renderItems) {
       if (item.type !== "user_prompt" || item.isSubagent) {
         continue;
       }
-      const cached = previousCache.get(item.id);
-      if (cached?.item === item) {
-        nextCache.set(item.id, cached);
-        if (cached.anchor) {
-          anchors.push(cached.anchor);
-        }
-        continue;
-      }
       const preview = getUserTurnPreview(item.content);
       if (!preview || isSessionSetupText(preview)) {
-        nextCache.set(item.id, { item, anchor: null });
         continue;
       }
-      const anchor = {
-        id: item.id,
-        preview,
-        searchText: getPromptTextForCorrection(item.content),
-      };
-      nextCache.set(item.id, { item, anchor });
-      anchors.push(anchor);
+      anchors.push({ id: item.id, preview });
     }
-    userTurnAnchorCacheRef.current = nextCache;
     return anchors;
   }, [renderItems]);
+  const searchReady =
+    userTurnSearch.active &&
+    normalizeSearchText(userTurnSearch.query).length >= 2;
+  const includeUserTurnSearchAnchors =
+    searchReady && userTurnSearch.scope === "user";
+  const userTurnSearchAnchors = useMemo<UserTurnNavAnchor[]>(() => {
+    if (!includeUserTurnSearchAnchors) {
+      return [];
+    }
+    const anchors: UserTurnNavAnchor[] = [];
+    for (const item of renderItems) {
+      if (item.type !== "user_prompt" || item.isSubagent) {
+        continue;
+      }
+      const text = getPromptTextForCorrection(item.content);
+      const preview = getSearchPreviewFallback(text);
+      if (preview && !isSessionSetupText(preview)) {
+        anchors.push({ id: item.id, preview, searchText: text });
+      }
+    }
+    return anchors;
+  }, [includeUserTurnSearchAnchors, renderItems]);
   const includeAllTurnSearchAnchors =
-    userTurnSearch.active && userTurnSearch.scope === "all";
+    searchReady && userTurnSearch.scope === "all";
   const sessionTurnNavAnchors = useMemo<UserTurnNavAnchor[]>(() => {
     if (!includeAllTurnSearchAnchors) {
       return [];
@@ -429,10 +437,9 @@ export const MessageList = memo(function MessageList({
     return anchors;
   }, [includeAllTurnSearchAnchors, renderItems]);
   const activeSearchAnchors =
-    userTurnSearch.scope === "all" ? sessionTurnNavAnchors : userTurnNavAnchors;
-  const searchReady =
-    userTurnSearch.active &&
-    normalizeSearchText(userTurnSearch.query).length >= 2;
+    userTurnSearch.scope === "all"
+      ? sessionTurnNavAnchors
+      : userTurnSearchAnchors;
   const userTurnSearchMatches = useMemo(() => {
     if (!searchReady) {
       return [];
@@ -462,11 +469,20 @@ export const MessageList = memo(function MessageList({
     }
     return previewsById;
   }, [searchReady, userTurnSearch.query, userTurnSearchMatches]);
-  const navigatorAnchors = searchReady
-    ? userTurnSearchMatches
-    : userTurnSearch.active
-      ? []
-      : userTurnNavAnchors;
+  const getNavigatorAnchors = useCallback(
+    () =>
+      searchReady
+        ? userTurnSearchMatches
+        : userTurnSearch.active
+          ? []
+          : getUserTurnNavAnchors(),
+    [
+      getUserTurnNavAnchors,
+      searchReady,
+      userTurnSearch.active,
+      userTurnSearchMatches,
+    ],
+  );
   const selectedSearchAnchor =
     userTurnSearch.selectedId && searchReady
       ? (activeSearchAnchors.find(
@@ -491,6 +507,7 @@ export const MessageList = memo(function MessageList({
     [
       searchReady,
       selectedSearchAnchor?.id,
+      userTurnSearch.query,
       userTurnSearchPreviewsById,
       userTurnSearchMatchIds,
       userTurnSearchPreview,
@@ -573,61 +590,25 @@ export const MessageList = memo(function MessageList({
     setThinkingExpanded((prev) => !prev);
   }, []);
 
-  const findPreviousUserTurnMatchId = useCallback(
-    (query: string, fromId?: string | null) => {
-      const normalizedQuery = normalizeSearchText(query);
-      if (normalizedQuery.length < 2 || activeSearchAnchors.length === 0) {
-        return null;
-      }
-      const matches = activeSearchAnchors.filter((anchor) =>
-        normalizeSearchText(anchor.searchText ?? anchor.preview).includes(
-          normalizedQuery,
-        ),
-      );
-      if (matches.length === 0) {
-        return null;
-      }
-      const matchIds = new Set(matches.map((match) => match.id));
-      const foundIndex = fromId
-        ? activeSearchAnchors.findIndex((anchor) => anchor.id === fromId)
-        : -1;
-      const fromIndex =
-        foundIndex >= 0 ? foundIndex : activeSearchAnchors.length - 1;
-      for (let offset = 0; offset < activeSearchAnchors.length; offset += 1) {
-        const index =
-          (fromIndex - offset + activeSearchAnchors.length) %
-          activeSearchAnchors.length;
-        const anchor = activeSearchAnchors[index];
-        if (anchor && matchIds.has(anchor.id)) {
-          return anchor.id;
-        }
-      }
-      return matches[matches.length - 1]?.id ?? null;
-    },
-    [activeSearchAnchors],
-  );
-
   const cycleUserTurnSearch = useCallback(() => {
     setUserTurnSearch((previous) => {
-      if (!previous.active || activeSearchAnchors.length === 0) {
+      if (!previous.active || userTurnSearchMatches.length === 0) {
         return previous;
       }
-      const nextSelectedId = findPreviousUserTurnMatchId(
-        previous.query,
-        previous.selectedId
-          ? activeSearchAnchors[
-              (activeSearchAnchors.findIndex(
-                (anchor) => anchor.id === previous.selectedId,
-              ) -
-                1 +
-                activeSearchAnchors.length) %
-                activeSearchAnchors.length
-            ]?.id
-          : null,
-      );
+      const currentIndex = previous.selectedId
+        ? userTurnSearchMatches.findIndex(
+            (anchor) => anchor.id === previous.selectedId,
+          )
+        : -1;
+      const nextIndex =
+        currentIndex >= 0
+          ? (currentIndex - 1 + userTurnSearchMatches.length) %
+            userTurnSearchMatches.length
+          : userTurnSearchMatches.length - 1;
+      const nextSelectedId = userTurnSearchMatches[nextIndex]?.id ?? null;
       return { ...previous, selectedId: nextSelectedId };
     });
-  }, [activeSearchAnchors, findPreviousUserTurnMatchId]);
+  }, [userTurnSearchMatches]);
 
   const scrollToRenderId = useCallback(
     (
@@ -697,7 +678,7 @@ export const MessageList = memo(function MessageList({
 
   const openUserTurnSearch = useCallback((scope: SessionIsearchScope) => {
     const canSearch =
-      scope === "all" ? renderItems.length >= 2 : userTurnNavAnchors.length >= 2;
+      scope === "all" ? renderItems.length >= 2 : userSearchableTurnCount >= 2;
     if (!canSearch) {
       return;
     }
@@ -719,18 +700,47 @@ export const MessageList = memo(function MessageList({
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
     });
-  }, [renderItems.length, userTurnNavAnchors]);
+  }, [renderItems.length, userSearchableTurnCount]);
 
   const handleUserTurnSearchQueryChange = useCallback(
     (query: string) => {
       setUserTurnSearch((previous) => ({
         ...previous,
         query,
-        selectedId: findPreviousUserTurnMatchId(query),
+        selectedId: null,
       }));
     },
-    [findPreviousUserTurnMatchId],
+    [],
   );
+
+  useEffect(() => {
+    if (!userTurnSearch.active) {
+      return;
+    }
+    setUserTurnSearch((previous) => {
+      if (!previous.active) {
+        return previous;
+      }
+      let nextSelectedId: string | null = null;
+      if (searchReady && userTurnSearchMatches.length > 0) {
+        nextSelectedId =
+          previous.selectedId &&
+          userTurnSearchMatchIds.has(previous.selectedId)
+            ? previous.selectedId
+            : (userTurnSearchMatches[userTurnSearchMatches.length - 1]?.id ??
+              null);
+      }
+      if (previous.selectedId === nextSelectedId) {
+        return previous;
+      }
+      return { ...previous, selectedId: nextSelectedId };
+    });
+  }, [
+    searchReady,
+    userTurnSearch.active,
+    userTurnSearchMatches,
+    userTurnSearchMatchIds,
+  ]);
 
   useEffect(() => {
     if (!searchReady || !userTurnSearch.selectedId) {
@@ -979,7 +989,7 @@ export const MessageList = memo(function MessageList({
   return (
     <>
       <UserTurnNavigator
-        anchors={navigatorAnchors}
+        getAnchors={getNavigatorAnchors}
         messageListRef={containerRef}
         onNavigateStart={() => {
           shouldAutoScrollRef.current = false;

@@ -52,6 +52,13 @@ dependencies. Before adding a runtime dep:
 
 Rule of thumb: if a dep is essentially a one-file helper, write the file.
 
+## Architecture
+
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the entry-point map of how
+provider events flow through the server to the client, the transport modes,
+and the large-scope refactor proposals. Read it before changing message-flow
+or render-path code.
+
 ## Port Configuration
 
 Ports are derived from a single `PORT` variable (default: 3400):

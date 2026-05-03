@@ -591,6 +591,7 @@ export function createApp(options: AppOptions): AppResult {
       geminiReaderFactory,
       serverSettingsService: options.serverSettingsService,
       modelInfoService: options.modelInfoService,
+      dataDir: options.dataDir,
     }),
   );
   app.route(

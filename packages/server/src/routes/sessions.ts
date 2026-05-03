@@ -22,6 +22,7 @@ import type { ProjectScanner } from "../projects/scanner.js";
 import { ensureRemoteDirectory } from "../sdk/remote-spawn.js";
 import { getProjectDirFromCwd, syncSessions } from "../sdk/session-sync.js";
 import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
+import { appendApprovalAuditLog } from "../security/approvalAuditLog.js";
 import type { ModelInfoService } from "../services/ModelInfoService.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
@@ -151,6 +152,8 @@ export interface SessionsDeps {
   serverSettingsService?: ServerSettingsService;
   /** ModelInfoService for context window lookups */
   modelInfoService?: ModelInfoService;
+  /** Data directory for local security/audit logs */
+  dataDir?: string;
 }
 
 interface StartSessionBody {
@@ -2587,10 +2590,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "No active process for session" }, 404);
     }
 
-    if (process.state.type !== "waiting-input") {
-      return c.json({ error: "No pending input request" }, 400);
-    }
-
     let body: InputResponseBody;
     try {
       body = await c.req.json<InputResponseBody>();
@@ -2613,6 +2612,33 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         ? "approve"
         : "deny";
 
+    const requestBefore = process.getPendingInputRequest();
+    const permissionModeBefore = process.permissionMode;
+
+    if (process.state.type !== "waiting-input") {
+      try {
+        await appendApprovalAuditLog(deps.dataDir, {
+          timestamp: new Date().toISOString(),
+          sessionId,
+          processId: process.id,
+          provider: process.provider,
+          requestId: body.requestId,
+          request: requestBefore,
+          response: body.response,
+          normalizedResponse,
+          answers: body.answers,
+          feedback: body.feedback,
+          accepted: false,
+          failure: "No pending input request",
+          permissionModeBefore,
+          permissionModeAfter: process.permissionMode,
+        });
+      } catch (error) {
+        console.warn("[approval-audit] Failed to append audit log:", error);
+      }
+      return c.json({ error: "No pending input request" }, 400);
+    }
+
     // Call respondToInput which resolves the SDK's canUseTool promise
     const accepted = process.respondToInput(
       body.requestId,
@@ -2622,6 +2648,26 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     );
 
     if (!accepted) {
+      try {
+        await appendApprovalAuditLog(deps.dataDir, {
+          timestamp: new Date().toISOString(),
+          sessionId,
+          processId: process.id,
+          provider: process.provider,
+          requestId: body.requestId,
+          request: requestBefore,
+          response: body.response,
+          normalizedResponse,
+          answers: body.answers,
+          feedback: body.feedback,
+          accepted: false,
+          failure: "Invalid request ID or no pending request",
+          permissionModeBefore,
+          permissionModeAfter: process.permissionMode,
+        });
+      } catch (error) {
+        console.warn("[approval-audit] Failed to append audit log:", error);
+      }
       return c.json({ error: "Invalid request ID or no pending request" }, 400);
     }
 
@@ -2630,7 +2676,28 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       process.setPermissionMode("acceptEdits");
     }
 
-    return c.json({ accepted: true });
+    const pendingInputRequest = process.getPendingInputRequest();
+    try {
+      await appendApprovalAuditLog(deps.dataDir, {
+        timestamp: new Date().toISOString(),
+        sessionId,
+        processId: process.id,
+        provider: process.provider,
+        requestId: body.requestId,
+        request: requestBefore,
+        response: body.response,
+        normalizedResponse,
+        answers: body.answers,
+        feedback: body.feedback,
+        accepted: true,
+        permissionModeBefore,
+        permissionModeAfter: process.permissionMode,
+      });
+    } catch (error) {
+      console.warn("[approval-audit] Failed to append audit log:", error);
+    }
+
+    return c.json({ accepted: true, pendingInputRequest });
   });
 
   // POST /api/sessions/:sessionId/mark-seen - Mark session as seen (read)

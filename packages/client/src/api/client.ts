@@ -702,10 +702,18 @@ export const api = {
     answers?: Record<string, string>,
     feedback?: string,
   ) =>
-    fetchJSON<{ accepted: boolean }>(`/sessions/${sessionId}/input`, {
-      method: "POST",
-      body: JSON.stringify({ requestId, response, answers, feedback }),
-    }),
+    fetchJSON<{ accepted: boolean; pendingInputRequest?: InputRequest | null }>(
+      `/sessions/${sessionId}/input`,
+      {
+        method: "POST",
+        body: JSON.stringify({ requestId, response, answers, feedback }),
+      },
+    ),
+
+  getPendingInputRequest: (sessionId: string) =>
+    fetchJSON<{ request: InputRequest | null }>(
+      `/sessions/${sessionId}/pending-input`,
+    ),
 
   setPermissionMode: (sessionId: string, mode: PermissionMode) =>
     fetchJSON<{ permissionMode: PermissionMode; modeVersion: number }>(

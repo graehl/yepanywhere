@@ -1785,6 +1785,7 @@ export function useSession(
     lastStreamActivityAt, // Last stream message timestamp for engagement tracking
     setStatus,
     setProcessState,
+    setPendingInputRequest,
     setPermissionMode,
     setHold, // Set hold (soft pause) state
     pendingMessages, // Messages waiting for server confirmation

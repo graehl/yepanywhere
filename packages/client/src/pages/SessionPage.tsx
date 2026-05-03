@@ -325,6 +325,7 @@ function SessionPageContent({
     lastStreamActivityAt,
     setStatus,
     setProcessState,
+    setPendingInputRequest,
     setPermissionMode,
     setHold,
     isHeld,
@@ -1480,88 +1481,143 @@ function SessionPageContent({
     }
   };
 
+  const syncPendingInputFromServer = useCallback(async () => {
+    try {
+      const result = await api.getPendingInputRequest(sessionId);
+      setPendingInputRequest(result.request ?? null);
+    } catch {
+      // Best-effort stale approval cleanup; the stream will also reconcile.
+    }
+  }, [sessionId, setPendingInputRequest]);
+
+  const handleInputResponseError = useCallback(
+    async (err: unknown, fallbackMessage: string) => {
+      const status = (err as { status?: number }).status;
+      const msg = status ? `Error ${status}` : fallbackMessage;
+      showToast(msg, "error");
+      if (status === 400) {
+        await syncPendingInputFromServer();
+      }
+    },
+    [showToast, syncPendingInputFromServer],
+  );
+
   const handleApprove = useCallback(async () => {
     if (pendingInputRequest) {
       try {
-        await api.respondToInput(sessionId, pendingInputRequest.id, "approve");
+        const result = await api.respondToInput(
+          sessionId,
+          pendingInputRequest.id,
+          "approve",
+        );
+        setPendingInputRequest(result.pendingInputRequest ?? null);
       } catch (err) {
-        const status = (err as { status?: number }).status;
-        const msg = status ? `Error ${status}` : t("sessionApproveFailed");
-        showToast(msg, "error");
+        await handleInputResponseError(err, t("sessionApproveFailed"));
       }
     }
-  }, [sessionId, pendingInputRequest, showToast, t]);
+  }, [
+    sessionId,
+    pendingInputRequest,
+    setPendingInputRequest,
+    handleInputResponseError,
+    t,
+  ]);
 
   const handleApproveAcceptEdits = useCallback(async () => {
     if (pendingInputRequest) {
       try {
         // Approve and switch to acceptEdits mode
-        await api.respondToInput(
+        const result = await api.respondToInput(
           sessionId,
           pendingInputRequest.id,
           "approve_accept_edits",
         );
+        setPendingInputRequest(result.pendingInputRequest ?? null);
         // Update local permission mode
         setPermissionMode("acceptEdits");
       } catch (err) {
-        const status = (err as { status?: number }).status;
-        const msg = status ? `Error ${status}` : t("sessionApproveFailed");
-        showToast(msg, "error");
+        await handleInputResponseError(err, t("sessionApproveFailed"));
       }
     }
-  }, [sessionId, pendingInputRequest, setPermissionMode, showToast, t]);
+  }, [
+    sessionId,
+    pendingInputRequest,
+    setPendingInputRequest,
+    setPermissionMode,
+    handleInputResponseError,
+    t,
+  ]);
 
   const handleDeny = useCallback(async () => {
     if (pendingInputRequest) {
       try {
-        await api.respondToInput(sessionId, pendingInputRequest.id, "deny");
+        const result = await api.respondToInput(
+          sessionId,
+          pendingInputRequest.id,
+          "deny",
+        );
+        setPendingInputRequest(result.pendingInputRequest ?? null);
       } catch (err) {
-        const status = (err as { status?: number }).status;
-        const msg = status ? `Error ${status}` : t("sessionDenyFailed");
-        showToast(msg, "error");
+        await handleInputResponseError(err, t("sessionDenyFailed"));
       }
     }
-  }, [sessionId, pendingInputRequest, showToast, t]);
+  }, [
+    sessionId,
+    pendingInputRequest,
+    setPendingInputRequest,
+    handleInputResponseError,
+    t,
+  ]);
 
   const handleDenyWithFeedback = useCallback(
     async (feedback: string) => {
       if (pendingInputRequest) {
         try {
-          await api.respondToInput(
+          const result = await api.respondToInput(
             sessionId,
             pendingInputRequest.id,
             "deny",
             undefined,
             feedback,
           );
+          setPendingInputRequest(result.pendingInputRequest ?? null);
         } catch (err) {
-          const status = (err as { status?: number }).status;
-          const msg = status ? `Error ${status}` : t("sessionFeedbackFailed");
-          showToast(msg, "error");
+          await handleInputResponseError(err, t("sessionFeedbackFailed"));
         }
       }
     },
-    [sessionId, pendingInputRequest, showToast, t],
+    [
+      sessionId,
+      pendingInputRequest,
+      setPendingInputRequest,
+      handleInputResponseError,
+      t,
+    ],
   );
 
   const handleQuestionSubmit = useCallback(
     async (answers: Record<string, string>) => {
       if (pendingInputRequest) {
         try {
-          await api.respondToInput(
+          const result = await api.respondToInput(
             sessionId,
             pendingInputRequest.id,
             "approve",
             answers,
           );
+          setPendingInputRequest(result.pendingInputRequest ?? null);
         } catch (err) {
-          const status = (err as { status?: number }).status;
-          const msg = status ? `Error ${status}` : t("sessionAnswerFailed");
-          showToast(msg, "error");
+          await handleInputResponseError(err, t("sessionAnswerFailed"));
         }
       }
     },
-    [sessionId, pendingInputRequest, showToast, t],
+    [
+      sessionId,
+      pendingInputRequest,
+      setPendingInputRequest,
+      handleInputResponseError,
+      t,
+    ],
   );
 
   // Handle file attachment uploads

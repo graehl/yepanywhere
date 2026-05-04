@@ -5,3 +5,4 @@
 - Browser-load session UI reliability
 - Public read-only session shares
 - Approval and local access security hardening
+- Provider image sizing guidance

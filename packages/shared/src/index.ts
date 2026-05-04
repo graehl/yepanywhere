@@ -22,6 +22,7 @@ export { hasAnsiEscapes, renderAnsiToHtml } from "./ansi-renderer.js";
 export type {
   ProviderName,
   ProviderInfo,
+  ProviderImageSizing,
   ModelInfo,
   SlashCommand,
   PermissionMode,

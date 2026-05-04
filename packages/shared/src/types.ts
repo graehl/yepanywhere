@@ -72,6 +72,20 @@ export interface ModelInfo {
 }
 
 /**
+ * Provider-level image sizing guidance for client-side rescaling before upload.
+ * These are model-input recommendations, not archival display sizes; keep an
+ * original/full-resolution path if the session should preserve readable history.
+ */
+export interface ProviderImageSizing {
+  /** Default long-edge target to use for ordinary attachments. */
+  defaultLongEdgePx: number;
+  /** Upper bound that still tends to be useful before provider-side downscale. */
+  maxUsefulLongEdgePx: number;
+  /** Optional note about model-family caveats or detail behavior. */
+  note?: string;
+}
+
+/**
  * Slash command (skill) available in a session.
  */
 export interface SlashCommand {
@@ -96,6 +110,8 @@ export interface ProviderInfo {
   user?: { email?: string; name?: string };
   /** Available models for this provider */
   models?: ModelInfo[];
+  /** Long-edge image sizing guidance for client-side attachment rescaling. */
+  imageSizing?: ProviderImageSizing;
   /** Whether this provider supports permission modes (default: true for backward compat) */
   supportsPermissionMode?: boolean;
   /** Whether this provider supports extended thinking toggle (default: true for backward compat) */

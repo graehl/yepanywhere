@@ -9,6 +9,31 @@ interface ProviderRouteDeps {
   enabledProviders?: string[];
 }
 
+function getProviderImageSizing(
+  providerName: ProviderName,
+): ProviderInfo["imageSizing"] {
+  switch (providerName) {
+    case "claude":
+    case "claude-ollama":
+      return {
+        defaultLongEdgePx: 1568,
+        maxUsefulLongEdgePx: 1568,
+        note:
+          "Anthropic recommends resizing Claude images to no more than 1568 px on the long edge.",
+      };
+    case "codex":
+    case "codex-oss":
+      return {
+        defaultLongEdgePx: 2048,
+        maxUsefulLongEdgePx: 2048,
+        note:
+          "GPT-5.2/5.3-Codex high detail allows up to 2048 px max dimension.",
+      };
+    default:
+      return undefined;
+  }
+}
+
 /**
  * Creates provider-related API routes.
  *
@@ -44,6 +69,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
         expiresAt: authStatus.expiresAt?.toISOString(),
         user: authStatus.user,
         models,
+        imageSizing: getProviderImageSizing(provider.name),
         supportsPermissionMode: provider.supportsPermissionMode,
         supportsThinkingToggle: provider.supportsThinkingToggle,
         supportsSlashCommands: provider.supportsSlashCommands,
@@ -77,6 +103,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
       expiresAt: authStatus.expiresAt?.toISOString(),
       user: authStatus.user,
       models,
+      imageSizing: getProviderImageSizing(provider.name),
       supportsPermissionMode: provider.supportsPermissionMode,
       supportsThinkingToggle: provider.supportsThinkingToggle,
       supportsSlashCommands: provider.supportsSlashCommands,

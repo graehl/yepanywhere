@@ -3268,6 +3268,49 @@ a.sidebar-nav-item {
   cursor: not-allowed;
 }
 
+.attachment-quality-toggle {
+  display: flex;
+  align-items: center;
+  height: var(--composer-control-size);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.attachment-quality-option {
+  height: 100%;
+  min-width: 2.5rem;
+  padding: 0 0.6rem;
+  border: 0;
+  border-left: 1px solid var(--border-input);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.attachment-quality-option:first-child {
+  border-left: 0;
+}
+
+.attachment-quality-option:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.attachment-quality-option.active {
+  background: rgba(59, 130, 246, 0.15);
+  color: rgb(59, 130, 246);
+}
+
+.attachment-quality-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .render-mode-toolbar-button {
   display: flex;
   align-items: center;

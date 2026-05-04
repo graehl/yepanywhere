@@ -57,6 +57,7 @@ export const UI_KEYS = {
   emulatorMaxWidth: "yep-anywhere-emulator-max-width",
   emulatorQuality: "yep-anywhere-emulator-quality",
   emulatorAdaptiveFps: "yep-anywhere-emulator-adaptive-fps",
+  attachmentUploadQuality: "yep-anywhere-attachment-upload-quality",
 } as const;
 
 // ============================================================================

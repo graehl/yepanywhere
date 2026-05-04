@@ -12,6 +12,7 @@ import {
   type DraftControls,
   useDraftPersistence,
 } from "../hooks/useDraftPersistence";
+import type { AttachmentUploadQuality } from "../hooks/useAttachmentUploadQuality";
 import { useI18n } from "../i18n";
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 import { hasCoarsePointer } from "../lib/deviceDetection";
@@ -72,6 +73,10 @@ interface Props {
   onAttach?: (files: File[]) => void;
   /** Callback when user removes an attachment */
   onRemoveAttachment?: (id: string) => void;
+  /** Current attachment upload quality (SD/HD) */
+  attachmentQuality?: AttachmentUploadQuality;
+  /** Update attachment upload quality for future uploads */
+  onAttachmentQualityChange?: (quality: AttachmentUploadQuality) => void;
   /** Progress info for in-flight uploads */
   uploadProgress?: UploadProgress[];
   /** Whether the provider supports permission modes (default: true) */
@@ -124,6 +129,8 @@ export function MessageInput({
   attachments = [],
   onAttach,
   onRemoveAttachment,
+  attachmentQuality,
+  onAttachmentQualityChange,
   uploadProgress = [],
   supportsPermissionMode = true,
   supportsThinkingToggle = true,
@@ -596,6 +603,8 @@ export function MessageInput({
             canAttach={canAttach}
             attachmentCount={attachments.length}
             onAttachClick={() => fileInputRef.current?.click()}
+            attachmentQuality={attachmentQuality}
+            onAttachmentQualityChange={onAttachmentQualityChange}
             voiceButtonRef={voiceButtonRef}
             onVoiceTranscript={handleVoiceTranscript}
             onInterimTranscript={handleInterimTranscript}

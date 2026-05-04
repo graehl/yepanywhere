@@ -40,6 +40,10 @@ import {
 } from "../contexts/StreamingMarkdownContext";
 import { useToastContext } from "../contexts/ToastContext";
 import { useActivityBusState } from "../hooks/useActivityBusState";
+import {
+  getAttachmentUploadLongEdgePx,
+  useAttachmentUploadQuality,
+} from "../hooks/useAttachmentUploadQuality";
 import { useConnection } from "../hooks/useConnection";
 import { useDeveloperMode } from "../hooks/useDeveloperMode";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -66,6 +70,7 @@ import {
 } from "../lib/composerRecall";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
+import { resizeImageFile } from "../lib/imageAttachmentResize";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import {
   getEstimatedServerOffsetMs,
@@ -655,6 +660,8 @@ function SessionPageContent({
   // File attachment state
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
+  const [attachmentQuality, setAttachmentQuality] =
+    useAttachmentUploadQuality();
   // Track in-flight upload promises so handleSend can wait for them
   const pendingUploadsRef = useRef<Map<string, Promise<UploadedFile | null>>>(
     new Map(),
@@ -1725,8 +1732,15 @@ function SessionPageContent({
         ]);
 
         // Start upload and track promise for handleSend to await
-        const uploadPromise = connection
-          .upload(projectId, sessionId, file, {
+        const uploadPromise = (async () => {
+          const uploadFile =
+            file.type.startsWith("image/")
+              ? await resizeImageFile(
+                  file,
+                  getAttachmentUploadLongEdgePx(attachmentQuality),
+                )
+              : file;
+          return connection.upload(projectId, sessionId, uploadFile, {
             onProgress: (bytesUploaded) => {
               setUploadProgress((prev) =>
                 prev.map((p) =>
@@ -1734,13 +1748,16 @@ function SessionPageContent({
                     ? {
                         ...p,
                         bytesUploaded,
-                        percent: Math.round((bytesUploaded / file.size) * 100),
+                        percent: Math.round(
+                          (bytesUploaded / uploadFile.size) * 100,
+                        ),
                       }
                     : p,
                 ),
               );
             },
-          })
+          });
+        })()
           .then(
             (uploaded) => {
               if (uploaded.mimeType.startsWith("image/")) {
@@ -1780,7 +1797,7 @@ function SessionPageContent({
         pendingUploadsRef.current.set(tempId, uploadPromise);
       }
     },
-    [projectId, sessionId, showToast, connection, t],
+    [projectId, sessionId, showToast, connection, t, attachmentQuality],
   );
 
   const handleRemoveAttachment = useCallback((id: string) => {
@@ -2520,6 +2537,8 @@ function SessionPageContent({
                     slashCommands={
                       status.owner === "self" ? allSlashCommands : []
                     }
+                    attachmentQuality={attachmentQuality}
+                    onAttachmentQualityChange={setAttachmentQuality}
                     onSelectSlashCommand={handleToolbarSlashCommand}
                     modelIndicatorTone={slashModelIndicatorTone}
                     modelIndicatorTitle={slashModelIndicatorTitle}
@@ -2591,6 +2610,8 @@ function SessionPageContent({
                 attachments={attachments}
                 onAttach={handleAttach}
                 onRemoveAttachment={handleRemoveAttachment}
+                attachmentQuality={attachmentQuality}
+                onAttachmentQualityChange={setAttachmentQuality}
                 uploadProgress={uploadProgress}
                 slashCommands={status.owner === "self" ? allSlashCommands : []}
                 onCustomCommand={handleCustomCommand}

@@ -30,10 +30,15 @@ import {
   getDefaultProvider,
   useProviders,
 } from "../hooks/useProviders";
+import {
+  getAttachmentUploadLongEdgePx,
+  useAttachmentUploadQuality,
+} from "../hooks/useAttachmentUploadQuality";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
+import { resizeImageFile } from "../lib/imageAttachmentResize";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import {
@@ -52,6 +57,7 @@ import {
 } from "../lib/speechProviders/methods";
 import { shortenPath } from "../lib/text";
 import type { PermissionMode, Project } from "../types";
+import { AttachmentQualityToggle } from "./AttachmentQualityToggle";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
@@ -198,6 +204,8 @@ export function NewSessionForm({
   const [uploadProgress, setUploadProgress] = useState<
     Record<string, { uploaded: number; total: number }>
   >({});
+  const [attachmentQuality, setAttachmentQuality] =
+    useAttachmentUploadQuality();
   const [interimTranscript, setInterimTranscript] = useState("");
   const [isSavingDefaults, setIsSavingDefaults] = useState(false);
   const [isProjectChooserExpanded, setIsProjectChooserExpanded] =
@@ -669,17 +677,23 @@ export function NewSessionForm({
         // Step 2: Upload files to the real session folder
         for (const pendingFile of pendingFiles) {
           try {
+            const uploadFile = pendingFile.file.type.startsWith("image/")
+              ? await resizeImageFile(
+                  pendingFile.file,
+                  getAttachmentUploadLongEdgePx(attachmentQuality),
+                )
+              : pendingFile.file;
             const uploadedFile = await connection.upload(
               activeProjectId,
               sessionId,
-              pendingFile.file,
+              uploadFile,
               {
                 onProgress: (bytesUploaded) => {
                   setUploadProgress((prev) => ({
                     ...prev,
                     [pendingFile.id]: {
                       uploaded: bytesUploaded,
-                      total: pendingFile.file.size,
+                      total: uploadFile.size,
                     },
                   }));
                 },
@@ -985,6 +999,11 @@ export function NewSessionForm({
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           </button>
+          <AttachmentQualityToggle
+            quality={attachmentQuality}
+            onChange={setAttachmentQuality}
+            disabled={isStarting}
+          />
           <VoiceInputButton
             ref={voiceButtonRef}
             onTranscript={handleVoiceTranscript}

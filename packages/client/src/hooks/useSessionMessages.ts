@@ -91,6 +91,59 @@ export interface UseSessionMessagesResult {
   loadOlderMessages: () => Promise<void>;
 }
 
+interface SessionLoadCacheEntry {
+  messages: Message[];
+  session: SessionMetadata;
+  pagination?: PaginationInfo;
+  agentContent: AgentContentMap;
+  toolUseToAgentEntries: Array<[string, string]>;
+  lastMessageId?: string;
+  maxPersistedTimestampMs: number;
+}
+
+interface SessionLoadCacheGlobal {
+  __YA_SESSION_LOAD_CACHE__?: Map<string, SessionLoadCacheEntry>;
+}
+
+function cloneForCache<T>(value: T): T {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function getSessionLoadCache(): Map<string, SessionLoadCacheEntry> {
+  const globalCache = globalThis as typeof globalThis & SessionLoadCacheGlobal;
+  if (!globalCache.__YA_SESSION_LOAD_CACHE__) {
+    globalCache.__YA_SESSION_LOAD_CACHE__ = new Map();
+  }
+  return globalCache.__YA_SESSION_LOAD_CACHE__;
+}
+
+function getSessionLoadCacheKey(projectId: string, sessionId: string): string {
+  return `${projectId}:${sessionId}`;
+}
+
+function readSessionLoadCache(
+  projectId: string,
+  sessionId: string,
+): SessionLoadCacheEntry | undefined {
+  if (typeof window === "undefined") return undefined;
+  return getSessionLoadCache().get(getSessionLoadCacheKey(projectId, sessionId));
+}
+
+function writeSessionLoadCache(
+  projectId: string,
+  sessionId: string,
+  entry: SessionLoadCacheEntry,
+): void {
+  if (typeof window === "undefined") return;
+  getSessionLoadCache().set(
+    getSessionLoadCacheKey(projectId, sessionId),
+    cloneForCache(entry),
+  );
+}
+
 function isCodexProvider(provider?: string): boolean {
   return provider === "codex" || provider === "codex-oss";
 }
@@ -158,16 +211,25 @@ export function useSessionMessages(
   options: UseSessionMessagesOptions,
 ): UseSessionMessagesResult {
   const { projectId, sessionId, onLoadComplete, onLoadError } = options;
+  const cachedLoad = readSessionLoadCache(projectId, sessionId);
 
   // Core state
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [agentContent, setAgentContent] = useState<AgentContentMap>({});
-  const [toolUseToAgent, setToolUseToAgent] = useState<Map<string, string>>(
-    () => new Map(),
+  const [messages, setMessages] = useState<Message[]>(
+    () => cachedLoad?.messages ?? [],
   );
-  const [loading, setLoading] = useState(true);
-  const [session, setSession] = useState<SessionMetadata | null>(null);
-  const [pagination, setPagination] = useState<PaginationInfo | undefined>();
+  const [agentContent, setAgentContent] = useState<AgentContentMap>(
+    () => cachedLoad?.agentContent ?? {},
+  );
+  const [toolUseToAgent, setToolUseToAgent] = useState<Map<string, string>>(
+    () => new Map(cachedLoad?.toolUseToAgentEntries ?? []),
+  );
+  const [loading, setLoading] = useState(!cachedLoad);
+  const [session, setSession] = useState<SessionMetadata | null>(
+    () => cachedLoad?.session ?? null,
+  );
+  const [pagination, setPagination] = useState<PaginationInfo | undefined>(
+    () => cachedLoad?.pagination,
+  );
   const [loadingOlder, setLoadingOlder] = useState(false);
 
   // Buffering: queue stream messages until initial load completes
@@ -290,6 +352,7 @@ export function useSessionMessages(
 
   // Initial load
   useEffect(() => {
+    const warmLoad = readSessionLoadCache(projectId, sessionId);
     markReloadPerfPhase("session_initial_load_start", {
       projectId,
       sessionId,
@@ -297,12 +360,29 @@ export function useSessionMessages(
     });
     initialLoadCompleteRef.current = false;
     streamBufferRef.current = [];
-    maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
-    setLoading(true);
-    setAgentContent({});
+    if (warmLoad) {
+      maxPersistedTimestampMsRef.current = warmLoad.maxPersistedTimestampMs;
+      providerRef.current = warmLoad.session.provider;
+      lastMessageIdRef.current = warmLoad.lastMessageId;
+      setMessages(warmLoad.messages);
+      setAgentContent(warmLoad.agentContent);
+      setToolUseToAgent(new Map(warmLoad.toolUseToAgentEntries));
+      setSession(warmLoad.session);
+      setPagination(warmLoad.pagination);
+      setLoading(false);
+    } else {
+      maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
+      setLoading(true);
+      setAgentContent({});
+      setToolUseToAgent(new Map());
+      setSession(null);
+      setPagination(undefined);
+    }
 
     api
-      .getSession(projectId, sessionId, undefined, { tailCompactions: 2 })
+      .getSession(projectId, sessionId, lastMessageIdRef.current, {
+        tailCompactions: 2,
+      })
       .then((data) => {
         markReloadPerfPhase("session_initial_load_data_ready", {
           messages: data.messages.length,
@@ -320,10 +400,11 @@ export function useSessionMessages(
           _source: "jsonl" as const,
         }));
         updatePersistedTimestampWatermark(taggedMessages);
+        const loadedMessages = isCodexProvider(data.session.provider)
+          ? reconcileCodexLinearMessages(taggedMessages)
+          : taggedMessages;
         setMessages(
-          isCodexProvider(data.session.provider)
-            ? reconcileCodexLinearMessages(taggedMessages)
-            : taggedMessages,
+          loadedMessages,
         );
         markReloadPerfPhase("session_initial_messages_state_queued", {
           messages: taggedMessages.length,
@@ -346,6 +427,16 @@ export function useSessionMessages(
         setLoading(false);
         markReloadPerfPhase("session_initial_load_complete", {
           messages: taggedMessages.length,
+        });
+
+        writeSessionLoadCache(projectId, sessionId, {
+          messages: loadedMessages,
+          session: data.session,
+          pagination: data.pagination,
+          agentContent: {},
+          toolUseToAgentEntries: [],
+          lastMessageId: lastMessageIdRef.current,
+          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
         });
 
         // Notify parent
@@ -491,7 +582,11 @@ export function useSessionMessages(
     } catch {
       // Silent fail for incremental updates
     }
-  }, [projectId, sessionId, updatePersistedTimestampWatermark]);
+  }, [
+    projectId,
+    sessionId,
+    updatePersistedTimestampWatermark,
+  ]);
 
   // Load older messages (previous chunk before the current truncation point)
   const loadOlderMessages = useCallback(async () => {
@@ -521,7 +616,12 @@ export function useSessionMessages(
     } finally {
       setLoadingOlder(false);
     }
-  }, [projectId, sessionId, pagination, updatePersistedTimestampWatermark]);
+  }, [
+    projectId,
+    sessionId,
+    pagination,
+    updatePersistedTimestampWatermark,
+  ]);
 
   // Fetch session metadata only
   const fetchSessionMetadata = useCallback(async () => {

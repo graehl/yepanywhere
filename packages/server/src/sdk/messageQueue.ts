@@ -6,10 +6,19 @@ function escapeMarkdownLinkText(text: string): string {
 }
 
 function formatUploadedFileReference(
-  file: { originalName: string; size: number; mimeType: string; path: string },
+  file: {
+    originalName: string;
+    size: number;
+    mimeType: string;
+    path: string;
+    width?: number;
+    height?: number;
+  },
   formatSize: (bytes: number) => string,
 ): string {
-  return `- [${escapeMarkdownLinkText(file.originalName)}](<${file.path}>) (${formatSize(file.size)}, ${file.mimeType})`;
+  const dimensions =
+    file.width && file.height ? `, ${file.width}x${file.height}` : "";
+  return `- [${escapeMarkdownLinkText(file.originalName)}](<${file.path}>) (${formatSize(file.size)}, ${file.mimeType}${dimensions})`;
 }
 
 /**
@@ -151,11 +160,11 @@ export class MessageQueue {
    * Format file size in human-readable form.
    */
   private formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024) return `${bytes}\u202fb`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u202fkb`;
     if (bytes < 1024 * 1024 * 1024)
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+      return `${Math.round((bytes / (1024 * 1024)) * 10) / 10}\u202fmb`;
+    return `${Math.round((bytes / (1024 * 1024 * 1024)) * 10) / 10}\u202fgb`;
   }
 
   /**

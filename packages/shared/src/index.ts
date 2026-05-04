@@ -57,6 +57,14 @@ export {
 } from "./dag.js";
 
 export {
+  THUMBNAIL_HEIGHT_PX,
+  THUMBNAIL_MAX_ASPECT_RATIO,
+  THUMBNAIL_MIME_TYPE,
+  type ThumbnailPlan,
+  planThumbnail,
+} from "./attachment-thumbnail.js";
+
+export {
   type UrlProjectId,
   type DirProjectId,
   isUrlProjectId,

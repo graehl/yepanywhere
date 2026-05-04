@@ -12,8 +12,32 @@ export interface UploadedFileInfo {
   size: string;
   mimeType: string;
   path: string;
+  width?: number;
+  height?: number;
   /** Optional direct preview URL for inline provider attachments (e.g. data: URLs) */
   previewUrl?: string;
+}
+
+function normalizeSizeLabel(size: string): string {
+  const trimmed = size.trim();
+  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*([KMGT]?B)$/i);
+  if (!match) {
+    return trimmed;
+  }
+
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) {
+    return trimmed;
+  }
+
+  const unit = (match[2] ?? "").toUpperCase();
+  if (unit === "B") {
+    return `${Math.round(value)}\u202fb`;
+  }
+  if (unit === "KB") {
+    return `${Math.round(value)}\u202fkb`;
+  }
+  return `${Math.round(value * 10) / 10}\u202f${unit[0]?.toLowerCase() ?? ""}b`;
 }
 
 /**
@@ -70,8 +94,10 @@ function parseUploadedFiles(content: string): {
 
   // Parse each line:
   // - [name](path) (size, mimetype)
+  // - [name](path) (size, mimetype, WxH)
   // - filename (size, mimetype): path
-  const markdownRegex = /^- \[(.+?)\]\((?:<(.+?)>|(.+?))\) \(([^,]+), ([^)]+)\)$/;
+  const markdownRegex =
+    /^- \[(.+?)\]\((?:<(.+?)>|(.+?))\) \(([^,]+), ([^,()]+?)(?:, (\d+)x(\d+))?\)$/;
   const legacyRegex = /^- (.+?) \(([^,]+), ([^)]+)\): (.+)$/;
   for (const line of uploadSection.split("\n")) {
     const markdownMatch = line.match(markdownRegex);
@@ -79,8 +105,10 @@ function parseUploadedFiles(content: string): {
       uploadedFiles.push({
         originalName: markdownMatch[1] ?? "",
         path: markdownMatch[2] ?? markdownMatch[3] ?? "",
-        size: markdownMatch[4] ?? "",
+        size: normalizeSizeLabel(markdownMatch[4] ?? ""),
         mimeType: markdownMatch[5] ?? "",
+        width: markdownMatch[6] ? Number(markdownMatch[6]) : undefined,
+        height: markdownMatch[7] ? Number(markdownMatch[7]) : undefined,
       });
       continue;
     }
@@ -88,7 +116,7 @@ function parseUploadedFiles(content: string): {
     if (legacyMatch) {
       uploadedFiles.push({
         originalName: legacyMatch[1] ?? "",
-        size: legacyMatch[2] ?? "",
+        size: normalizeSizeLabel(legacyMatch[2] ?? ""),
         mimeType: legacyMatch[3] ?? "",
         path: legacyMatch[4] ?? "",
       });

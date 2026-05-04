@@ -178,11 +178,11 @@ function highResolutionNowMs(): number {
 }
 
 function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024) return `${bytes}\u202fb`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u202fkb`;
   if (bytes < 1024 * 1024 * 1024)
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    return `${Math.round((bytes / (1024 * 1024)) * 10) / 10}\u202fmb`;
+  return `${Math.round((bytes / (1024 * 1024 * 1024)) * 10) / 10}\u202fgb`;
 }
 
 /** Pending message waiting for server confirmation */
@@ -1160,10 +1160,13 @@ export const MessageList = memo(function MessageList({
                     {pending.attachments.map((file) => (
                       <AttachmentChip
                         key={file.id}
+                        attachmentId={file.id}
                         originalName={file.originalName}
                         path={file.path}
                         mimeType={file.mimeType}
                         sizeLabel={formatSize(file.size)}
+                        imageWidth={file.width}
+                        imageHeight={file.height}
                       />
                     ))}
                   </div>
@@ -1215,10 +1218,13 @@ export const MessageList = memo(function MessageList({
                     {deferred.attachments.map((file) => (
                       <AttachmentChip
                         key={file.id}
+                        attachmentId={file.id}
                         originalName={file.originalName}
                         path={file.path}
                         mimeType={file.mimeType}
                         sizeLabel={formatSize(file.size)}
+                        imageWidth={file.width}
+                        imageHeight={file.height}
                       />
                     ))}
                   </div>

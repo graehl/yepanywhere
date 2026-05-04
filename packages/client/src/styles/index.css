@@ -3691,7 +3691,7 @@ a.sidebar-nav-item {
   padding-right: var(--space-1);
   background: var(--bg-code);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
+  border-radius: 8px;
   font-size: var(--font-size-xs);
 }
 
@@ -3719,9 +3719,9 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 22px;
-  width: 22px;
-  height: 22px;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
   border-radius: 4px;
   overflow: hidden;
   background: var(--bg-elevated);
@@ -3744,7 +3744,9 @@ a.sidebar-nav-item {
 }
 
 .attachment-name {
-  max-width: 120px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 132px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

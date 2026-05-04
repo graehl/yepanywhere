@@ -667,6 +667,12 @@ export class RelayProtocol {
           filename: file.name,
           size: file.size,
           mimeType: file.type || "application/octet-stream",
+          ...(options?.imageDimensions?.width !== undefined
+            ? { width: options.imageDimensions.width }
+            : {}),
+          ...(options?.imageDimensions?.height !== undefined
+            ? { height: options.imageDimensions.height }
+            : {}),
         };
         this.transport.sendMessage(startMsg);
 

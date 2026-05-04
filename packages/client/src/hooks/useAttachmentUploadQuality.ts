@@ -3,7 +3,7 @@ import { UI_KEYS } from "../lib/storageKeys";
 
 export type AttachmentUploadQuality = "sd" | "hd";
 
-const DEFAULT_ATTACHMENT_UPLOAD_QUALITY: AttachmentUploadQuality = "hd";
+const DEFAULT_ATTACHMENT_UPLOAD_QUALITY: AttachmentUploadQuality = "sd";
 
 const QUALITY_LONG_EDGE_PX: Record<AttachmentUploadQuality, number> = {
   sd: 1024,

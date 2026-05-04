@@ -25,6 +25,11 @@ export interface UploadOptions {
   chunkSize?: number;
   /** Client-side send cap. 0 disables rate limiting. */
   maxBytesPerSecond?: number;
+  /** Actual uploaded image dimensions, if known */
+  imageDimensions?: {
+    width: number;
+    height: number;
+  };
 }
 
 /** Error thrown when upload fails */
@@ -118,7 +123,13 @@ function createUploadRateLimiter(maxBytesPerSecond: number | undefined): {
  */
 export async function uploadChunks(
   url: string,
-  metadata: { name: string; size: number; mimeType: string },
+  metadata: {
+    name: string;
+    size: number;
+    mimeType: string;
+    width?: number;
+    height?: number;
+  },
   chunks: AsyncIterable<Uint8Array>,
   options: UploadOptions = {},
   createWebSocket: WebSocketFactory = (u) => new WebSocket(u) as WebSocketLike,
@@ -226,6 +237,8 @@ export async function uploadChunks(
           name: metadata.name,
           size: metadata.size,
           mimeType: metadata.mimeType,
+          ...(metadata.width !== undefined ? { width: metadata.width } : {}),
+          ...(metadata.height !== undefined ? { height: metadata.height } : {}),
         };
         ws.send(JSON.stringify(startMsg));
 
@@ -336,6 +349,12 @@ export async function uploadFile(
     name: file.name,
     size: file.size,
     mimeType: file.type || "application/octet-stream",
+    ...(options.imageDimensions?.width !== undefined
+      ? { width: options.imageDimensions.width }
+      : {}),
+    ...(options.imageDimensions?.height !== undefined
+      ? { height: options.imageDimensions.height }
+      : {}),
   };
 
   const chunks = fileToChunks(file, chunkSize);

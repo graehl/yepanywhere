@@ -302,7 +302,7 @@ function ImageFileResult({ file }: { file: ImageFile }) {
             </>
           )}
           {hasDimensions && sizeKB > 0 && " "}
-          {sizeKB > 0 && <>({sizeKB}KB)</>}
+          {sizeKB > 0 && <>({sizeKB}\u202fkb)</>}
         </div>
       )}
       <img
@@ -348,7 +348,7 @@ function PdfFileResult({
         onClick={() => openPdfInNewTab(file.base64)}
       >
         {fileName}
-        {sizeKB > 0 && <span className="file-line-count">({sizeKB}KB)</span>}
+        {sizeKB > 0 && <span className="file-line-count">({sizeKB}\u202fkb)</span>}
         <span className="file-line-count">Open PDF</span>
       </button>
     </div>

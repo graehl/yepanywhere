@@ -70,7 +70,7 @@ import {
 } from "../lib/composerRecall";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
-import { resizeImageFile } from "../lib/imageAttachmentResize";
+import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import {
   getEstimatedServerOffsetMs,
@@ -1733,13 +1733,13 @@ function SessionPageContent({
 
         // Start upload and track promise for handleSend to await
         const uploadPromise = (async () => {
-          const uploadFile =
-            file.type.startsWith("image/")
-              ? await resizeImageFile(
-                  file,
-                  getAttachmentUploadLongEdgePx(attachmentQuality),
-                )
-              : file;
+          const preparedImage = file.type.startsWith("image/")
+            ? await prepareImageUpload(
+                file,
+                getAttachmentUploadLongEdgePx(attachmentQuality),
+              )
+            : { file };
+          const uploadFile = preparedImage.file;
           return connection.upload(projectId, sessionId, uploadFile, {
             onProgress: (bytesUploaded) => {
               setUploadProgress((prev) =>
@@ -1752,10 +1752,19 @@ function SessionPageContent({
                           (bytesUploaded / uploadFile.size) * 100,
                         ),
                       }
-                    : p,
+                      : p,
                 ),
               );
             },
+            ...(preparedImage.width !== undefined &&
+            preparedImage.height !== undefined
+              ? {
+                  imageDimensions: {
+                    width: preparedImage.width,
+                    height: preparedImage.height,
+                  },
+                }
+              : {}),
           });
         })()
           .then(

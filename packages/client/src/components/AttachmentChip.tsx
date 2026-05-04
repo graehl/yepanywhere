@@ -1,20 +1,57 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { toUrlProjectId } from "@yep-anywhere/shared";
+import { planThumbnail, toUrlProjectId } from "@yep-anywhere/shared";
 import { useRemoteImage } from "../hooks/useRemoteImage";
 import { loadCachedAttachmentPreview } from "../lib/attachmentPreviewCache";
 import { Modal } from "./ui/Modal";
 
 export interface AttachmentChipProps {
+  attachmentId?: string;
   originalName: string;
   path: string;
   mimeType: string;
   sizeLabel: string;
+  imageWidth?: number;
+  imageHeight?: number;
   previewUrl?: string;
   onRemove?: () => void;
 }
 
 function isImageMimeType(mimeType: string): boolean {
   return mimeType.startsWith("image/");
+}
+
+const ATTACHMENT_NAME_SOFT_LIMIT = 24;
+const ATTACHMENT_NAME_SEPARATOR_WINDOW = 8;
+
+function isNameSeparator(char: string | undefined): boolean {
+  return char === "-" || char === "_" || char === " ";
+}
+
+export function formatAttachmentName(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length <= ATTACHMENT_NAME_SOFT_LIMIT) {
+    return trimmed;
+  }
+
+  const overshootLimit =
+    ATTACHMENT_NAME_SOFT_LIMIT + ATTACHMENT_NAME_SEPARATOR_WINDOW;
+
+  for (let index = ATTACHMENT_NAME_SOFT_LIMIT; index < trimmed.length; index += 1) {
+    if (isNameSeparator(trimmed[index])) {
+      if (index <= overshootLimit) {
+        return `${trimmed.slice(0, index).replace(/[ -_]+$/u, "")}...`;
+      }
+      break;
+    }
+  }
+
+  for (let index = ATTACHMENT_NAME_SOFT_LIMIT - 1; index >= 0; index -= 1) {
+    if (isNameSeparator(trimmed[index])) {
+      return `${trimmed.slice(0, index).replace(/[ -_]+$/u, "")}...`;
+    }
+  }
+
+  return `${trimmed.slice(0, ATTACHMENT_NAME_SOFT_LIMIT).replace(/[ -_]+$/u, "")}...`;
 }
 
 function getUploadUrl(filePath: string): string | null {
@@ -39,16 +76,21 @@ function getUploadUrl(filePath: string): string | null {
 }
 
 function useCachedAttachmentImage(
+  attachmentId: string,
   path: string,
   previewUrl?: string,
 ): {
   previewUrl: string | null;
   fullUrl: string | null;
+  previewWidth: number | null;
+  previewHeight: number | null;
   loading: boolean;
   error: string | null;
 } {
   const [cachePreviewUrl, setCachePreviewUrl] = useState<string | null>(null);
   const [cacheFullUrl, setCacheFullUrl] = useState<string | null>(null);
+  const [cachePreviewWidth, setCachePreviewWidth] = useState<number | null>(null);
+  const [cachePreviewHeight, setCachePreviewHeight] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [remoteEnabled, setRemoteEnabled] = useState(false);
@@ -62,6 +104,8 @@ function useCachedAttachmentImage(
     setError(null);
     setCachePreviewUrl(null);
     setCacheFullUrl(null);
+    setCachePreviewWidth(null);
+    setCachePreviewHeight(null);
 
     if (previewUrl) {
       setLoading(false);
@@ -80,7 +124,7 @@ function useCachedAttachmentImage(
 
     setLoading(true);
     setRemoteEnabled(false);
-    loadCachedAttachmentPreview(path)
+    loadCachedAttachmentPreview(attachmentId, path)
       .then((entry) => {
         if (cancelled) return;
         if (!entry) {
@@ -96,6 +140,8 @@ function useCachedAttachmentImage(
         fullUrlRef.current = fullObjectUrl;
         setCachePreviewUrl(previewObjectUrl);
         setCacheFullUrl(fullObjectUrl);
+        setCachePreviewWidth(entry.thumbnailWidth ?? null);
+        setCachePreviewHeight(entry.thumbnailHeight ?? null);
         setLoading(false);
       })
       .catch((err) => {
@@ -115,30 +161,48 @@ function useCachedAttachmentImage(
         fullUrlRef.current = null;
       }
     };
-  }, [path, previewUrl]);
+  }, [attachmentId, path, previewUrl]);
 
   const remote = useRemoteImage(remotePath, remoteEnabled && !previewUrl);
 
   return {
     previewUrl: previewUrl ?? cachePreviewUrl ?? remote.url,
     fullUrl: previewUrl ?? cacheFullUrl ?? remote.url,
+    previewWidth: cachePreviewWidth,
+    previewHeight: cachePreviewHeight,
     loading: loading || remote.loading,
     error: error ?? remote.error,
   };
 }
 
 export function AttachmentChip({
+  attachmentId,
   originalName,
   path,
   mimeType,
   sizeLabel,
+  imageWidth,
+  imageHeight,
   previewUrl,
   onRemove,
 }: AttachmentChipProps) {
   const [showModal, setShowModal] = useState(false);
   const isImage = isImageMimeType(mimeType);
-  const { previewUrl: imagePreviewUrl, fullUrl, loading, error } =
-    useCachedAttachmentImage(path, previewUrl);
+  const cacheKey = attachmentId ?? path;
+  const { previewUrl: imagePreviewUrl, fullUrl, previewWidth, previewHeight, loading, error } =
+    useCachedAttachmentImage(cacheKey, path, previewUrl);
+  const previewPlan =
+    previewWidth && previewHeight
+      ? { width: previewWidth, height: previewHeight }
+      : imageWidth && imageHeight
+        ? planThumbnail(imageWidth, imageHeight)
+        : null;
+  const previewStyle = previewPlan
+    ? {
+        width: `${previewPlan.width}px`,
+        height: `${previewPlan.height}px`,
+      }
+    : undefined;
 
   if (!isImage) {
     return (
@@ -147,7 +211,7 @@ export function AttachmentChip({
           📎
         </span>
         <span className="attachment-name" title={path}>
-          {originalName}
+          {formatAttachmentName(originalName)}
         </span>
         <span className="attachment-size">{sizeLabel}</span>
         {onRemove && (
@@ -174,7 +238,7 @@ export function AttachmentChip({
           aria-label={`Open ${originalName}`}
           title={`${mimeType}, ${sizeLabel}`}
         >
-          <span className="attachment-preview" aria-hidden="true">
+          <span className="attachment-preview" aria-hidden="true" style={previewStyle}>
             {imagePreviewUrl ? (
               <img src={imagePreviewUrl} alt="" />
             ) : (
@@ -182,7 +246,7 @@ export function AttachmentChip({
             )}
           </span>
           <span className="attachment-name" title={path}>
-            {originalName}
+            {formatAttachmentName(originalName)}
           </span>
           <span className="attachment-size">{sizeLabel}</span>
         </button>

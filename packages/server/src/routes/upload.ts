@@ -162,6 +162,9 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
                   msg.size,
                   msg.mimeType,
                   projectPath ?? undefined,
+                  msg.width !== undefined && msg.height !== undefined
+                    ? { width: msg.width, height: msg.height }
+                    : undefined,
                 );
                 currentUploadId = uploadId;
                 lastProgressSent = 0;

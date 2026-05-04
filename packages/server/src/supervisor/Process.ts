@@ -840,11 +840,11 @@ export class Process {
    * Format file size for display.
    */
   private formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024) return `${bytes}\u202fb`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u202fkb`;
     if (bytes < 1024 * 1024 * 1024)
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+      return `${Math.round((bytes / (1024 * 1024)) * 10) / 10}\u202fmb`;
+    return `${Math.round((bytes / (1024 * 1024 * 1024)) * 10) / 10}\u202fgb`;
   }
 
   private formatUploadedFileReference(file: {
@@ -852,8 +852,12 @@ export class Process {
     size: number;
     mimeType: string;
     path: string;
+    width?: number;
+    height?: number;
   }): string {
-    return `- [${file.originalName.replaceAll("[", "\\[").replaceAll("]", "\\]")}](<${file.path}>) (${this.formatSize(file.size)}, ${file.mimeType})`;
+    const dimensions =
+      file.width && file.height ? `, ${file.width}x${file.height}` : "";
+    return `- [${file.originalName.replaceAll("[", "\\[").replaceAll("]", "\\]")}](<${file.path}>) (${this.formatSize(file.size)}, ${file.mimeType}${dimensions})`;
   }
 
   /**

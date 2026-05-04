@@ -38,7 +38,7 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
-import { resizeImageFile } from "../lib/imageAttachmentResize";
+import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import {
@@ -77,11 +77,11 @@ const NEW_SESSION_DRAFT_KEY = "draft-new-session";
 const QUICK_PROJECT_COUNT = 4;
 
 function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024) return `${bytes}\u202fb`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u202fkb`;
   if (bytes < 1024 * 1024 * 1024)
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    return `${Math.round((bytes / (1024 * 1024)) * 10) / 10}\u202fmb`;
+  return `${Math.round((bytes / (1024 * 1024 * 1024)) * 10) / 10}\u202fgb`;
 }
 
 function getPreferredModelId(
@@ -677,12 +677,13 @@ export function NewSessionForm({
         // Step 2: Upload files to the real session folder
         for (const pendingFile of pendingFiles) {
           try {
-            const uploadFile = pendingFile.file.type.startsWith("image/")
-              ? await resizeImageFile(
+            const preparedImage = pendingFile.file.type.startsWith("image/")
+              ? await prepareImageUpload(
                   pendingFile.file,
                   getAttachmentUploadLongEdgePx(attachmentQuality),
                 )
-              : pendingFile.file;
+              : { file: pendingFile.file };
+            const uploadFile = preparedImage.file;
             const uploadedFile = await connection.upload(
               activeProjectId,
               sessionId,
@@ -697,6 +698,15 @@ export function NewSessionForm({
                     },
                   }));
                 },
+                ...(preparedImage.width !== undefined &&
+                preparedImage.height !== undefined
+                  ? {
+                      imageDimensions: {
+                        width: preparedImage.width,
+                        height: preparedImage.height,
+                      },
+                    }
+                  : {}),
               },
             );
             uploadedFiles.push(uploadedFile);

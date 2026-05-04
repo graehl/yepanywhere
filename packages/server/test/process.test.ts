@@ -1591,7 +1591,7 @@ describe("Process", () => {
       expect(content).toContain("Here is a screenshot");
       expect(content).toContain("User uploaded files:");
       expect(content).toContain("screenshot.png");
-      expect(content).toContain("1.0 KB");
+      expect(content).toContain("1KB");
       expect(content).toContain("image/png");
       expect(content).toContain("/uploads/screenshot.png");
     });

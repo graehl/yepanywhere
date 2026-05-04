@@ -7,6 +7,14 @@ const RESIZABLE_IMAGE_MIME_TYPES = new Set([
 ]);
 const SD_JPEG_QUALITY = 0.9;
 
+function getBaseFileName(fileName: string): string {
+  const lastDot = fileName.lastIndexOf(".");
+  if (lastDot <= 0) {
+    return fileName;
+  }
+  return fileName.slice(0, lastDot);
+}
+
 function getOutputMimeType(mimeType: string): string {
   if (!RESIZABLE_IMAGE_MIME_TYPES.has(mimeType)) {
     return "image/jpeg";
@@ -19,6 +27,21 @@ function getOutputMimeType(mimeType: string): string {
     default:
       return mimeType;
   }
+}
+
+function getOutputExtension(mimeType: string): string {
+  switch (mimeType) {
+    case "image/png":
+      return "png";
+    case "image/webp":
+      return "webp";
+    default:
+      return "jpg";
+  }
+}
+
+function getResizedFileName(fileName: string, outputMimeType: string): string {
+  return `${getBaseFileName(fileName)}-sd.${getOutputExtension(outputMimeType)}`;
 }
 
 async function blobFromCanvas(
@@ -35,26 +58,36 @@ async function blobFromCanvas(
   });
 }
 
-export async function resizeImageFile(
+export interface PreparedImageUpload {
+  file: File;
+  width?: number;
+  height?: number;
+}
+
+export async function prepareImageUpload(
   file: File,
   maxLongEdgePx: number,
-): Promise<File> {
+): Promise<PreparedImageUpload> {
   if (typeof createImageBitmap !== "function") {
-    return file;
+    return { file };
   }
   if (!file.type.startsWith("image/")) {
-    return file;
+    return { file };
   }
   if (!RESIZABLE_IMAGE_MIME_TYPES.has(file.type)) {
-    return file;
+    return { file };
   }
 
   let bitmap: ImageBitmap | null = null;
   try {
     bitmap = await createImageBitmap(file);
+    const dimensions = {
+      width: bitmap.width,
+      height: bitmap.height,
+    };
     const longEdge = Math.max(bitmap.width, bitmap.height);
     if (!Number.isFinite(longEdge) || longEdge <= maxLongEdgePx) {
-      return file;
+      return { file, ...dimensions };
     }
 
     const scale = maxLongEdgePx / longEdge;
@@ -66,23 +99,36 @@ export async function resizeImageFile(
     canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) {
-      return file;
+      return { file };
     }
     // Use the browser's native canvas scaler for the downsample.
     ctx.drawImage(bitmap, 0, 0, width, height);
 
-    const blob = await blobFromCanvas(canvas, getOutputMimeType(file.type));
+    const outputMimeType = getOutputMimeType(file.type);
+    const blob = await blobFromCanvas(canvas, outputMimeType);
     if (!blob) {
-      return file;
+      return { file, ...dimensions };
     }
 
-    return new File([blob], file.name, {
-      type: blob.type || getOutputMimeType(file.type),
-      lastModified: file.lastModified,
-    });
+    const finalMimeType = blob.type || outputMimeType;
+    return {
+      file: new File([blob], getResizedFileName(file.name, finalMimeType), {
+        type: finalMimeType,
+        lastModified: file.lastModified,
+      }),
+      width,
+      height,
+    };
   } catch {
-    return file;
+    return { file };
   } finally {
     bitmap?.close();
   }
+}
+
+export async function resizeImageFile(
+  file: File,
+  maxLongEdgePx: number,
+): Promise<File> {
+  return (await prepareImageUpload(file, maxLongEdgePx)).file;
 }

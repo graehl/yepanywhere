@@ -21,6 +21,8 @@ export interface UploadState {
   expectedSize: number;
   bytesReceived: number;
   mimeType: string;
+  imageWidth?: number;
+  imageHeight?: number;
   writeStream: WriteStream | null;
   status: "pending" | "streaming" | "complete" | "error" | "cancelled";
 }
@@ -163,6 +165,21 @@ export interface UploadManagerOptions {
   maxUploadSizeBytes?: number;
 }
 
+function normalizeImageDimensions(input?: {
+  width?: number;
+  height?: number;
+}): { width: number; height: number } | undefined {
+  if (!input) return undefined;
+  const width = Number.isFinite(input.width) ? Math.floor(input.width ?? 0) : 0;
+  const height = Number.isFinite(input.height)
+    ? Math.floor(input.height ?? 0)
+    : 0;
+  if (width <= 0 || height <= 0) {
+    return undefined;
+  }
+  return { width, height };
+}
+
 /**
  * Manages file upload operations with streaming to disk.
  */
@@ -189,6 +206,10 @@ export class UploadManager {
     expectedSize: number,
     mimeType: string,
     projectPath?: string,
+    imageDimensions?: {
+      width?: number;
+      height?: number;
+    },
   ): Promise<{ uploadId: string; state: UploadState }> {
     // Check file size limit
     if (this.maxUploadSizeBytes > 0 && expectedSize > this.maxUploadSizeBytes) {
@@ -201,6 +222,7 @@ export class UploadManager {
       : await getUploadDir(encodedProjectPath, sessionId, this.uploadsDir);
     const { id, sanitized } = sanitizeFilename(originalName);
     const filePath = join(uploadDir, sanitized);
+    const normalizedDimensions = normalizeImageDimensions(imageDimensions);
 
     const state: UploadState = {
       id,
@@ -210,6 +232,12 @@ export class UploadManager {
       expectedSize,
       bytesReceived: 0,
       mimeType,
+      ...(normalizedDimensions
+        ? {
+            imageWidth: normalizedDimensions.width,
+            imageHeight: normalizedDimensions.height,
+          }
+        : {}),
       writeStream: null,
       status: "pending",
     };
@@ -311,6 +339,9 @@ export class UploadManager {
       path: state.filePath,
       size: stats.size,
       mimeType: state.mimeType,
+      ...(state.imageWidth !== undefined && state.imageHeight !== undefined
+        ? { width: state.imageWidth, height: state.imageHeight }
+        : {}),
     };
   }
 

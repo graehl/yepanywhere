@@ -688,6 +688,9 @@ async function startServer() {
     const proxy = frontendProxy;
     app.all("*", (c) => {
       const { incoming, outgoing } = c.env;
+      if (!incoming || !outgoing) {
+        return c.text("Not found", 404);
+      }
       proxy.web(incoming, outgoing);
       return RESPONSE_ALREADY_SENT;
     });

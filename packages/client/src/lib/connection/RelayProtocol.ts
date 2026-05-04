@@ -27,7 +27,11 @@ import { SubscriptionError } from "./types";
  */
 export interface RelayTransport {
   sendMessage(msg: RemoteClientMessage): void;
-  sendUploadChunk(uploadId: string, offset: number, chunk: Uint8Array): void;
+  sendUploadChunk(
+    uploadId: string,
+    offset: number,
+    chunk: Uint8Array,
+  ): void | Promise<void>;
   ensureConnected(): Promise<void>;
   isConnected(): boolean;
 }
@@ -679,7 +683,7 @@ export class RelayProtocol {
           const chunkEnd = Math.min(chunkOffset + chunkSize, value.length);
           const chunk = value.slice(chunkOffset, chunkEnd);
 
-          this.transport.sendUploadChunk(uploadId, offset, chunk);
+          await this.transport.sendUploadChunk(uploadId, offset, chunk);
 
           offset += chunk.length;
           chunkOffset = chunkEnd;

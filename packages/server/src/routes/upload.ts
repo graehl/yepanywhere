@@ -1,5 +1,6 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
+import { join } from "node:path";
 import {
   type UploadClientMessage,
   type UploadCompleteMessage,
@@ -14,9 +15,10 @@ import { stream } from "hono/streaming";
 import type { WSContext, WSEvents } from "hono/ws";
 import type { ProjectScanner } from "../projects/scanner.js";
 import {
-  UPLOADS_DIR,
   UploadManager,
+  getProjectAttachmentDir,
   resolveUploadStoragePath,
+  UPLOADS_DIR,
 } from "../uploads/index.js";
 
 /** Progress update interval in bytes (64KB) */
@@ -67,6 +69,7 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
       // This prevents race conditions where binary chunks arrive before
       // the async startUpload() completes
       let messageQueue: Promise<void> = Promise.resolve();
+      let projectPath: string | null = null;
 
       const validate = async (): Promise<boolean> => {
         // Validate projectId format
@@ -80,6 +83,7 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
         if (!project) {
           return false;
         }
+        projectPath = project.path;
 
         return true;
       };
@@ -157,6 +161,7 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
                   msg.name,
                   msg.size,
                   msg.mimeType,
+                  projectPath ?? undefined,
                 );
                 currentUploadId = uploadId;
                 lastProgressSent = 0;
@@ -307,47 +312,63 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
         return c.json({ error: "Invalid filename" }, 400);
       }
 
-      const filePath = resolveUploadStoragePath(
+      const project = await deps.scanner.getOrCreateProject(projectId);
+      if (!project) {
+        return c.json({ error: "Unknown project" }, 404);
+      }
+
+      const filePath = join(getProjectAttachmentDir(project.path, sessionId), filename);
+      const legacyFilePath = resolveUploadStoragePath(
         UPLOADS_DIR,
         projectId,
         sessionId,
         filename,
       );
-      if (!filePath) {
-        return c.json({ error: "Invalid path" }, 400);
-      }
 
       try {
-        const stats = await stat(filePath);
-        if (!stats.isFile()) {
-          return c.json({ error: "Not a file" }, 404);
+        const candidates = [filePath, legacyFilePath].filter(
+          (candidate): candidate is string => Boolean(candidate),
+        );
+
+        for (const candidate of candidates) {
+          const stats = await stat(candidate).catch((err) => {
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+              return null;
+            }
+            throw err;
+          });
+          if (!stats || !stats.isFile()) {
+            continue;
+          }
+
+          // Determine content type from filename extension
+          const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+          const mimeTypes: Record<string, string> = {
+            png: "image/png",
+            jpg: "image/jpeg",
+            jpeg: "image/jpeg",
+            gif: "image/gif",
+            webp: "image/webp",
+            svg: "image/svg+xml",
+            pdf: "application/pdf",
+            txt: "text/plain",
+            json: "application/json",
+          };
+          const contentType = mimeTypes[ext] ?? "application/octet-stream";
+
+          c.header("Content-Type", contentType);
+          c.header("Content-Length", stats.size.toString());
+          c.header("Cache-Control", "private, max-age=3600");
+
+          return stream(c, async (s) => {
+            const readable = createReadStream(candidate);
+            for await (const chunk of readable) {
+              await s.write(chunk);
+            }
+          });
         }
 
-        // Determine content type from filename extension
-        const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-        const mimeTypes: Record<string, string> = {
-          png: "image/png",
-          jpg: "image/jpeg",
-          jpeg: "image/jpeg",
-          gif: "image/gif",
-          webp: "image/webp",
-          svg: "image/svg+xml",
-          pdf: "application/pdf",
-          txt: "text/plain",
-          json: "application/json",
-        };
-        const contentType = mimeTypes[ext] ?? "application/octet-stream";
-
-        c.header("Content-Type", contentType);
-        c.header("Content-Length", stats.size.toString());
-        c.header("Cache-Control", "private, max-age=3600");
-
-        return stream(c, async (s) => {
-          const readable = createReadStream(filePath);
-          for await (const chunk of readable) {
-            await s.write(chunk);
-          }
-        });
+        return c.json({ error: "File not found" }, 404);
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") {
           return c.json({ error: "File not found" }, 404);

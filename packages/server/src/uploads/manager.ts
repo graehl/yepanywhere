@@ -5,8 +5,9 @@ import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { UploadedFile } from "@yep-anywhere/shared";
 import { getDataDir } from "../config.js";
 
-/** Root directory for uploads (uses dataDir from config for profile support) */
+/** Legacy root directory for uploads (kept for old files during transition). */
 export const UPLOADS_DIR = join(getDataDir(), "uploads");
+const ATTACHMENTS_DIR_NAME = ".attachments";
 
 /**
  * State machine for a single upload operation.
@@ -115,6 +116,13 @@ export function resolveUploadStoragePath(
   return resolved;
 }
 
+export function getProjectAttachmentDir(
+  projectPath: string,
+  sessionId: string,
+): string {
+  return join(projectPath, ATTACHMENTS_DIR_NAME, sessionId);
+}
+
 /**
  * Get the upload directory for a project+session.
  * Creates the directory if it doesn't exist.
@@ -136,6 +144,15 @@ export async function getUploadDir(
   if (!dir) {
     throw new Error("Invalid upload path segment");
   }
+  await mkdir(dir, { recursive: true });
+  return dir;
+}
+
+export async function getProjectAttachmentUploadDir(
+  projectPath: string,
+  sessionId: string,
+): Promise<string> {
+  const dir = getProjectAttachmentDir(projectPath, sessionId);
   await mkdir(dir, { recursive: true });
   return dir;
 }
@@ -171,6 +188,7 @@ export class UploadManager {
     originalName: string,
     expectedSize: number,
     mimeType: string,
+    projectPath?: string,
   ): Promise<{ uploadId: string; state: UploadState }> {
     // Check file size limit
     if (this.maxUploadSizeBytes > 0 && expectedSize > this.maxUploadSizeBytes) {
@@ -178,11 +196,9 @@ export class UploadManager {
       throw new Error(`File size exceeds maximum allowed size of ${maxMB}MB`);
     }
 
-    const uploadDir = await getUploadDir(
-      encodedProjectPath,
-      sessionId,
-      this.uploadsDir,
-    );
+    const uploadDir = projectPath
+      ? await getProjectAttachmentUploadDir(projectPath, sessionId)
+      : await getUploadDir(encodedProjectPath, sessionId, this.uploadsDir);
     const { id, sanitized } = sanitizeFilename(originalName);
     const filePath = join(uploadDir, sanitized);
 

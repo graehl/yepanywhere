@@ -35,8 +35,8 @@ export interface ParsedUserPrompt {
 export const getFilename = sharedGetFilename;
 
 /**
- * Parse the "User uploaded files:" section from message content.
- * Format: "- filename (size, mimetype): path"
+ * Parse the uploaded-files section from message content.
+ * Supports markdown link lines and the older plain path format.
  */
 function parseUploadedFiles(content: string): {
   textWithoutUploads: string;
@@ -44,27 +44,53 @@ function parseUploadedFiles(content: string): {
 } {
   const uploadedFiles: UploadedFileInfo[] = [];
 
-  // Match the "User uploaded files:" section
-  const uploadMarker = "\n\nUser uploaded files:\n";
-  const markerIndex = content.indexOf(uploadMarker);
+  // Match the uploaded-files section
+  const markers = [
+    "\n\nUser uploaded files in .attachments:\n",
+    "\n\nUser uploaded files:\n",
+  ];
+  const markerIndex = markers
+    .map((marker) => content.indexOf(marker))
+    .filter((index) => index !== -1)
+    .sort((a, b) => a - b)[0];
 
-  if (markerIndex === -1) {
+  if (markerIndex === undefined) {
+    return { textWithoutUploads: content, uploadedFiles: [] };
+  }
+
+  const uploadMarker = markers.find((marker) =>
+    content.startsWith(marker, markerIndex),
+  );
+  if (!uploadMarker) {
     return { textWithoutUploads: content, uploadedFiles: [] };
   }
 
   const textWithoutUploads = content.slice(0, markerIndex);
   const uploadSection = content.slice(markerIndex + uploadMarker.length);
 
-  // Parse each line: "- filename (size, mimetype): path"
-  const lineRegex = /^- (.+?) \(([^,]+), ([^)]+)\): (.+)$/;
+  // Parse each line:
+  // - [name](path) (size, mimetype)
+  // - filename (size, mimetype): path
+  const markdownRegex = /^- \[(.+?)\]\((?:<(.+?)>|(.+?))\) \(([^,]+), ([^)]+)\)$/;
+  const legacyRegex = /^- (.+?) \(([^,]+), ([^)]+)\): (.+)$/;
   for (const line of uploadSection.split("\n")) {
-    const match = line.match(lineRegex);
-    if (match) {
+    const markdownMatch = line.match(markdownRegex);
+    if (markdownMatch) {
       uploadedFiles.push({
-        originalName: match[1] ?? "",
-        size: match[2] ?? "",
-        mimeType: match[3] ?? "",
-        path: match[4] ?? "",
+        originalName: markdownMatch[1] ?? "",
+        path: markdownMatch[2] ?? markdownMatch[3] ?? "",
+        size: markdownMatch[4] ?? "",
+        mimeType: markdownMatch[5] ?? "",
+      });
+      continue;
+    }
+    const legacyMatch = line.match(legacyRegex);
+    if (legacyMatch) {
+      uploadedFiles.push({
+        originalName: legacyMatch[1] ?? "",
+        size: legacyMatch[2] ?? "",
+        mimeType: legacyMatch[3] ?? "",
+        path: legacyMatch[4] ?? "",
       });
     }
   }

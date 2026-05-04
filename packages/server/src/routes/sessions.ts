@@ -223,6 +223,14 @@ function truncateForRestart(text: string, maxChars: number): string {
   return `${text.slice(0, maxChars).trimEnd()}\n[truncated ${omitted} chars]`;
 }
 
+function formatRestartBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
 function stringifyForRestart(value: unknown, maxChars: number): string {
   if (typeof value === "string") {
     return truncateForRestart(value, maxChars);
@@ -449,25 +457,34 @@ function formatRestartQueuedMessage(
     tempId?: string;
     content: string;
     timestamp: string;
+    attachments?: UploadedFile[];
     attachmentCount?: number;
   },
   index: number,
 ): string {
-  const attachmentLine =
-    message.attachmentCount && message.attachmentCount > 0
-      ? `\nAttachments queued: ${message.attachmentCount}`
-      : "";
+  const attachmentLines =
+    message.attachments?.length && message.attachments.length > 0
+      ? `\n\nUser uploaded files in .attachments:\n${message.attachments
+          .map(
+            (file) =>
+              `- [${file.originalName.replaceAll("[", "\\[").replaceAll("]", "\\]")}](<${file.path}>) (${formatRestartBytes(file.size)}, ${file.mimeType})`,
+          )
+          .join("\n")}`
+      : message.attachmentCount && message.attachmentCount > 0
+        ? `\nAttachments queued: ${message.attachmentCount}`
+        : "";
   const tempIdLine = message.tempId ? `\nTemp ID: ${message.tempId}` : "";
   return `### queued user ${index + 1} ${message.timestamp}\n\n${truncateForRestart(
     message.content.trim() || "[empty queued turn]",
     RESTART_HANDOFF_QUEUED_MAX_CHARS,
-  )}${attachmentLine}${tempIdLine}`;
+  )}${attachmentLines}${tempIdLine}`;
 }
 
 type RestartQueuedMessage = {
   tempId?: string;
   content: string;
   timestamp: string;
+  attachments?: UploadedFile[];
   attachmentCount?: number;
 };
 

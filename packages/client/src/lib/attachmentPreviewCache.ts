@@ -7,8 +7,9 @@ import {
 } from "./diagnostics/idb";
 
 const DB_NAME = "yep-anywhere-attachment-previews";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "images";
+const MAX_CACHE_BYTES = 128 * 1024 * 1024;
 const MAX_THUMB_LONG_EDGE_PX = 96;
 
 interface CachedAttachmentPreview {
@@ -18,7 +19,9 @@ interface CachedAttachmentPreview {
   size: number;
   thumbnailBlob?: Blob;
   fullBlob: Blob;
+  totalBytes: number;
   createdAt: number;
+  lastAccessedAt: number;
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -29,9 +32,17 @@ function isImageMimeType(mimeType: string): boolean {
 
 function getDatabase(): Promise<IDBDatabase> {
   if (!dbPromise) {
-    dbPromise = openDatabase(DB_NAME, DB_VERSION, (db) => {
+    dbPromise = openDatabase(DB_NAME, DB_VERSION, (db, tx) => {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
+        const store = db.createObjectStore(STORE_NAME);
+        store.createIndex("byLastAccessedAt", "lastAccessedAt");
+      } else {
+        const store = tx.objectStore(
+          STORE_NAME,
+        );
+        if (!store.indexNames.contains("byLastAccessedAt")) {
+          store.createIndex("byLastAccessedAt", "lastAccessedAt");
+        }
       }
     });
   }
@@ -72,6 +83,52 @@ async function createThumbnailBlob(file: Blob): Promise<Blob | undefined> {
   }
 }
 
+async function calculateCacheSize(db: IDBDatabase): Promise<number> {
+  const tx = db.transaction(STORE_NAME, "readonly");
+  const store = tx.objectStore(STORE_NAME);
+  const request = store.getAll();
+  const entries = (await new Promise<CachedAttachmentPreview[]>((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result as CachedAttachmentPreview[]);
+    request.onerror = () => reject(request.error);
+  })) ?? [];
+  return entries.reduce((sum, entry) => sum + (entry.totalBytes ?? 0), 0);
+}
+
+async function evictOldestEntries(
+  db: IDBDatabase,
+  bytesToFree: number,
+): Promise<void> {
+  if (bytesToFree <= 0) return;
+
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  const store = tx.objectStore(STORE_NAME);
+  const index = store.index("byLastAccessedAt");
+  let freed = 0;
+
+  await new Promise<void>((resolve, reject) => {
+    const request = index.openCursor();
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor || freed >= bytesToFree) {
+        resolve();
+        return;
+      }
+
+      const value = cursor.value as CachedAttachmentPreview;
+      freed += value.totalBytes ?? 0;
+      cursor.delete();
+      cursor.continue();
+    };
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error("Transaction aborted"));
+  });
+}
+
 export async function storeUploadedAttachmentPreview(
   uploadedFile: UploadedFile,
   sourceFile: File,
@@ -82,6 +139,7 @@ export async function storeUploadedAttachmentPreview(
 
   const fullBlob = sourceFile.slice(0, sourceFile.size, sourceFile.type);
   const thumbnailBlob = await createThumbnailBlob(sourceFile);
+  const totalBytes = fullBlob.size + (thumbnailBlob?.size ?? 0);
 
   const db = await getDatabase();
   await putEntryWithKey<CachedAttachmentPreview>(db, STORE_NAME, uploadedFile.path, {
@@ -91,15 +149,30 @@ export async function storeUploadedAttachmentPreview(
     size: uploadedFile.size,
     thumbnailBlob,
     fullBlob,
+    totalBytes,
     createdAt: Date.now(),
+    lastAccessedAt: Date.now(),
   });
+
+  const cacheSize = await calculateCacheSize(db);
+  if (cacheSize > MAX_CACHE_BYTES) {
+    await evictOldestEntries(db, cacheSize - MAX_CACHE_BYTES);
+  }
 }
 
 export async function loadCachedAttachmentPreview(
   path: string,
 ): Promise<CachedAttachmentPreview | null> {
   const db = await getDatabase();
-  return getEntry<CachedAttachmentPreview>(db, STORE_NAME, path);
+  const entry = await getEntry<CachedAttachmentPreview>(db, STORE_NAME, path);
+  if (!entry) return null;
+
+  const updated = {
+    ...entry,
+    lastAccessedAt: Date.now(),
+  };
+  await putEntryWithKey<CachedAttachmentPreview>(db, STORE_NAME, path, updated);
+  return updated;
 }
 
 export async function deleteCachedAttachmentPreview(path: string): Promise<void> {
@@ -110,4 +183,3 @@ export async function deleteCachedAttachmentPreview(path: string): Promise<void>
 export function isCacheableAttachmentMimeType(mimeType: string): boolean {
   return isImageMimeType(mimeType);
 }
-

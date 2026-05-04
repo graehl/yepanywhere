@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toUrlProjectId } from "@yep-anywhere/shared";
 import { useRemoteImage } from "../hooks/useRemoteImage";
 import { loadCachedAttachmentPreview } from "../lib/attachmentPreviewCache";
 import { Modal } from "./ui/Modal";
@@ -22,12 +23,19 @@ function getUploadUrl(filePath: string): string | null {
 
   const filename = parts[parts.length - 1];
   const sessionId = parts[parts.length - 2];
-  const projectId = parts[parts.length - 3];
+  const projectSegment = parts[parts.length - 3];
 
-  if (!filename || !sessionId || !projectId) return null;
+  if (!filename || !sessionId || !projectSegment) return null;
+
+  if (projectSegment === ".attachments") {
+    const projectPath = parts.slice(0, -3).join("/");
+    if (!projectPath) return null;
+    const projectId = toUrlProjectId(projectPath);
+    return `/api/projects/${projectId}/sessions/${sessionId}/upload/${encodeURIComponent(filename)}`;
+  }
+
   if (!/^[0-9a-f-]{36}_/.test(filename)) return null;
-
-  return `/api/projects/${projectId}/sessions/${sessionId}/upload/${encodeURIComponent(filename)}`;
+  return `/api/projects/${projectSegment}/sessions/${sessionId}/upload/${encodeURIComponent(filename)}`;
 }
 
 function useCachedAttachmentImage(
@@ -112,10 +120,10 @@ function useCachedAttachmentImage(
   const remote = useRemoteImage(remotePath, remoteEnabled && !previewUrl);
 
   return {
-      previewUrl: previewUrl ?? cachePreviewUrl ?? remote.url,
-      fullUrl: previewUrl ?? cacheFullUrl ?? remote.url,
-      loading: loading || remote.loading,
-      error: error ?? remote.error,
+    previewUrl: previewUrl ?? cachePreviewUrl ?? remote.url,
+    fullUrl: previewUrl ?? cacheFullUrl ?? remote.url,
+    loading: loading || remote.loading,
+    error: error ?? remote.error,
   };
 }
 

@@ -2,7 +2,7 @@
  * Thin promisified IndexedDB helpers for the client log collector.
  */
 
-type OnUpgrade = (db: IDBDatabase) => void;
+type OnUpgrade = (db: IDBDatabase, tx: IDBTransaction) => void;
 
 function wrapRequest<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -26,7 +26,13 @@ export function openDatabase(
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(name, version);
-    request.onupgradeneeded = () => onUpgrade(request.result);
+    request.onupgradeneeded = () => {
+      const tx = request.transaction;
+      if (!tx) {
+        throw new Error("IndexedDB upgrade transaction unavailable");
+      }
+      onUpgrade(request.result, tx);
+    };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });

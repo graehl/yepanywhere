@@ -1,6 +1,17 @@
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { UserMessage } from "./types.js";
 
+function escapeMarkdownLinkText(text: string): string {
+  return text.replaceAll("[", "\\[").replaceAll("]", "\\]");
+}
+
+function formatUploadedFileReference(
+  file: { originalName: string; size: number; mimeType: string; path: string },
+  formatSize: (bytes: number) => string,
+): string {
+  return `- [${escapeMarkdownLinkText(file.originalName)}](<${file.path}>) (${formatSize(file.size)}, ${file.mimeType})`;
+}
+
 /**
  * Detect the media type from base64 image data.
  * Supports data URLs (data:image/png;base64,...) and raw base64 with magic byte detection.
@@ -155,11 +166,10 @@ export class MessageQueue {
 
     // Append attachment paths for agent to access via Read tool
     if (msg.attachments?.length) {
-      const lines = msg.attachments.map(
-        (f) =>
-          `- ${f.originalName} (${this.formatSize(f.size)}, ${f.mimeType}): ${f.path}`,
+      const lines = msg.attachments.map((f) =>
+        formatUploadedFileReference(f, this.formatSize.bind(this)),
       );
-      text += `\n\nUser uploaded files:\n${lines.join("\n")}`;
+      text += `\n\nUser uploaded files in .attachments:\n${lines.join("\n")}`;
     }
 
     // If message has images or documents, use array content format

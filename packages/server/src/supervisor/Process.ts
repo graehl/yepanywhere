@@ -843,6 +843,15 @@ export class Process {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   }
 
+  private formatUploadedFileReference(file: {
+    originalName: string;
+    size: number;
+    mimeType: string;
+    path: string;
+  }): string {
+    return `- [${file.originalName.replaceAll("[", "\\[").replaceAll("]", "\\]")}](<${file.path}>) (${this.formatSize(file.size)}, ${file.mimeType})`;
+  }
+
   /**
    * Build user message content that matches what MessageQueue sends to the SDK.
    * This ensures SSE/history messages can be deduplicated against JSONL.
@@ -852,11 +861,10 @@ export class Process {
 
     // Append attachment paths (same format as MessageQueue.toSDKMessage)
     if (message.attachments?.length) {
-      const lines = message.attachments.map(
-        (f) =>
-          `- ${f.originalName} (${this.formatSize(f.size)}, ${f.mimeType}): ${f.path}`,
+      const lines = message.attachments.map((file) =>
+        this.formatUploadedFileReference(file),
       );
-      text += `\n\nUser uploaded files:\n${lines.join("\n")}`;
+      text += `\n\nUser uploaded files in .attachments:\n${lines.join("\n")}`;
     }
 
     return text;
@@ -1158,6 +1166,7 @@ export class Process {
     tempId?: string;
     content: string;
     timestamp: string;
+    attachments?: UserMessage["attachments"];
     attachmentCount?: number;
     blockedByEdit?: boolean;
   }[] {
@@ -1171,6 +1180,9 @@ export class Process {
         tempId: entry.message.tempId,
         content: entry.message.text,
         timestamp: entry.timestamp,
+        ...(entry.message.attachments?.length
+          ? { attachments: entry.message.attachments }
+          : {}),
         ...(attachmentCount > 0 ? { attachmentCount } : {}),
         ...(this.deferredEditBarrier &&
         index >= this.deferredEditBarrier.index

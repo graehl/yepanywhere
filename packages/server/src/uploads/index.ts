@@ -1,6 +1,8 @@
 export {
   UploadManager,
   getUploadDir,
+  getProjectAttachmentDir,
+  getProjectAttachmentUploadDir,
   resolveUploadStoragePath,
   sanitizeFilename,
   UPLOADS_DIR,

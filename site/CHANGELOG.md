@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.32] - 2026-05-04
+
+### Fixed
+- Avoid eager image attachment fetches on session replay
+- Strip inline image blobs from Codex replay payloads before serialization
+
 ## [site-v1.5.31] - 2026-04-13
 
 ### Fixed

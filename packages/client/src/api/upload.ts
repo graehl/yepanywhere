@@ -5,9 +5,15 @@ import type {
   UploadStartMessage,
   UploadedFile,
 } from "@yep-anywhere/shared";
+import { connectionManager } from "../lib/connection/ConnectionManager";
 
 /** Default chunk size (64KB) - matches server progress interval */
 const DEFAULT_CHUNK_SIZE = 64 * 1024;
+const UPLOAD_BUFFER_HIGH_WATER_BYTES = 512 * 1024;
+const UPLOAD_BUFFER_LOW_WATER_BYTES = 256 * 1024;
+const UPLOAD_BUFFER_POLL_MS = 16;
+const DEFAULT_UPLOAD_MAX_BYTES_PER_SECOND = 2 * 1024 * 1024;
+const WS_OPEN = 1;
 
 /** Options for upload functions */
 export interface UploadOptions {
@@ -17,6 +23,8 @@ export interface UploadOptions {
   signal?: AbortSignal;
   /** Chunk size in bytes (default 64KB) */
   chunkSize?: number;
+  /** Client-side send cap. 0 disables rate limiting. */
+  maxBytesPerSecond?: number;
 }
 
 /** Error thrown when upload fails */
@@ -36,6 +44,7 @@ export class UploadError extends Error {
  */
 export interface WebSocketLike {
   readonly readyState: number;
+  readonly bufferedAmount?: number;
   send(data: string | ArrayBuffer | Uint8Array): void;
   close(code?: number, reason?: string): void;
   addEventListener<K extends keyof WebSocketEventMap>(
@@ -50,6 +59,51 @@ export interface WebSocketLike {
 
 /** WebSocket factory function - allows injection for testing */
 export type WebSocketFactory = (url: string) => WebSocketLike;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForUploadBackpressure(ws: WebSocketLike): Promise<void> {
+  if ((ws.bufferedAmount ?? 0) <= UPLOAD_BUFFER_HIGH_WATER_BYTES) return;
+
+  while (
+    ws.readyState === WS_OPEN &&
+    (ws.bufferedAmount ?? 0) > UPLOAD_BUFFER_LOW_WATER_BYTES
+  ) {
+    await wait(UPLOAD_BUFFER_POLL_MS);
+  }
+
+  if (ws.readyState !== WS_OPEN) {
+    throw new UploadError("WebSocket not connected", "WS_CLOSED");
+  }
+}
+
+function createUploadRateLimiter(maxBytesPerSecond: number | undefined): {
+  waitAfterSend(bytesSent: number): Promise<void>;
+} {
+  const rate =
+    maxBytesPerSecond === undefined
+      ? DEFAULT_UPLOAD_MAX_BYTES_PER_SECOND
+      : maxBytesPerSecond;
+  if (rate <= 0) {
+    return { waitAfterSend: async () => {} };
+  }
+
+  const startedAt = Date.now();
+  let totalSent = 0;
+  return {
+    async waitAfterSend(bytesSent: number): Promise<void> {
+      totalSent += bytesSent;
+      const expectedElapsedMs = (totalSent / rate) * 1000;
+      const actualElapsedMs = Date.now() - startedAt;
+      const delayMs = expectedElapsedMs - actualElapsedMs;
+      if (delayMs > 1) {
+        await wait(delayMs);
+      }
+    },
+  };
+}
 
 /**
  * Low-level upload function that sends chunks via WebSocket.
@@ -70,9 +124,11 @@ export async function uploadChunks(
   createWebSocket: WebSocketFactory = (u) => new WebSocket(u) as WebSocketLike,
 ): Promise<UploadedFile> {
   const { onProgress, signal } = options;
+  const rateLimiter = createUploadRateLimiter(options.maxBytesPerSecond);
   console.log("[Upload] Starting upload to:", url);
+  const endCriticalOperation = connectionManager.beginCriticalOperation("upload");
 
-  return new Promise((resolve, reject) => {
+  return new Promise<UploadedFile>((resolve, reject) => {
     // Early abort check
     if (signal?.aborted) {
       reject(new UploadError("Upload aborted", "ABORTED"));
@@ -84,10 +140,17 @@ export async function uploadChunks(
     let aborted = false;
     let resolved = false;
 
+    // Cleanup function
+    function cleanup() {
+      signal?.removeEventListener("abort", abortHandler);
+    }
+
     // Handle abort signal
     const abortHandler = () => {
       if (resolved) return;
+      resolved = true;
       aborted = true;
+      cleanup();
       const cancelMsg: UploadCancelMessage = { type: "cancel" };
       try {
         ws.send(JSON.stringify(cancelMsg));
@@ -99,11 +162,6 @@ export async function uploadChunks(
     };
 
     signal?.addEventListener("abort", abortHandler);
-
-    // Cleanup function
-    const cleanup = () => {
-      signal?.removeEventListener("abort", abortHandler);
-    };
 
     // Handle incoming messages
     const messageHandler = (event: MessageEvent) => {
@@ -175,6 +233,8 @@ export async function uploadChunks(
         for await (const chunk of chunks) {
           if (aborted) break;
           ws.send(chunk);
+          await waitForUploadBackpressure(ws);
+          await rateLimiter.waitAfterSend(chunk.length);
         }
 
         if (!aborted) {
@@ -202,7 +262,7 @@ export async function uploadChunks(
     ws.addEventListener("message", messageHandler);
     ws.addEventListener("error", errorHandler);
     ws.addEventListener("close", closeHandler);
-  });
+  }).finally(endCriticalOperation);
 }
 
 /**

@@ -254,9 +254,12 @@ function UploadedFileItem({ file }: { file: UploadedFileInfo }) {
   const isImage = isImageMimeType(file.mimeType);
   const apiPath = isImage ? getUploadUrl(file.path) : null;
   const directPreviewUrl = isImage ? (file.previewUrl ?? null) : null;
+  const shouldFetchPreview = showModal && !directPreviewUrl;
 
-  // Use the remote image hook to handle fetching via relay when needed
-  const { url: remoteImageUrl, loading, error } = useRemoteImage(apiPath);
+  // Keep attachment chips metadata-only; fetch bytes only for explicit preview.
+  const { url: remoteImageUrl, loading, error } = useRemoteImage(
+    shouldFetchPreview ? apiPath : null,
+  );
   const imageUrl = directPreviewUrl ?? remoteImageUrl;
 
   if (isImage && (apiPath || directPreviewUrl)) {

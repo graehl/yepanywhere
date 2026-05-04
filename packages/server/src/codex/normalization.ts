@@ -46,6 +46,9 @@ interface NormalizedCodexToolOutputWithExitCode
 }
 
 const SHELL_EXECUTABLES = new Set(["bash", "sh", "zsh", "dash"]);
+const INLINE_IMAGE_DATA_URL_PREFIX_RE = /^data:(image\/[a-z0-9.+-]+)(?:;[^,]*)?,/i;
+const INLINE_IMAGE_DATA_URL_GLOBAL_RE =
+  /data:image\/[a-z0-9.+-]+(?:;[a-z0-9=.+-]+)*,[A-Za-z0-9+/=_-]+/gi;
 
 export function parseCodexToolArguments(argumentsText?: string): unknown {
   if (!argumentsText) {
@@ -721,25 +724,44 @@ function normalizeCodexToolOutput(
     try {
       structured = JSON.parse(output);
       if (typeof structured === "string") {
-        content = structured;
-        exitCode = extractExitCodeFromText(structured);
+        const sanitized = sanitizeInlineImageData(structured);
+        content =
+          typeof sanitized.value === "string" ? sanitized.value : structured;
+        structured = sanitized.value;
+        exitCode = extractExitCodeFromText(content);
         if (exitCode !== undefined) {
           isError = exitCode !== 0;
         }
       } else if (isRecord(structured)) {
-        exitCode = extractExitCodeFromRecord(structured);
+        const sanitized = sanitizeInlineImageData(structured);
+        const record = isRecord(sanitized.value)
+          ? sanitized.value
+          : structured;
+        if (sanitized.changed) {
+          structured = record;
+          content = JSON.stringify(record, null, 2);
+        }
+        exitCode = extractExitCodeFromRecord(record);
         isError =
-          structured.is_error === true ||
+          record.is_error === true ||
           (exitCode !== undefined && exitCode !== 0) ||
-          hasFailedStatus(structured);
+          hasFailedStatus(record);
+      } else if (Array.isArray(structured)) {
+        const sanitized = sanitizeInlineImageData(structured);
+        if (sanitized.changed) {
+          structured = sanitized.value;
+          content = JSON.stringify(structured, null, 2);
+        }
       }
     } catch {
       structured = undefined;
-      exitCode = extractExitCodeFromText(output);
+      const sanitized = sanitizeInlineImageText(output);
+      content = sanitized.value;
+      exitCode = extractExitCodeFromText(content);
       if (exitCode !== undefined) {
         isError = exitCode !== 0;
       } else {
-        isError = /(?:^|\n)\s*(error|fatal|failed):/i.test(output);
+        isError = /(?:^|\n)\s*(error|fatal|failed):/i.test(content);
       }
     }
 
@@ -759,23 +781,117 @@ function normalizeCodexToolOutput(
   }
 
   if (Array.isArray(output) || isRecord(output)) {
-    const exitCode = isRecord(output)
-      ? extractExitCodeFromRecord(output)
+    const sanitized = sanitizeInlineImageData(output);
+    const structured = sanitized.value;
+    const exitCode = isRecord(structured)
+      ? extractExitCodeFromRecord(structured)
       : undefined;
     const isError =
-      isRecord(output) &&
-      (output.is_error === true ||
+      isRecord(structured) &&
+      (structured.is_error === true ||
         (exitCode ?? 0) !== 0 ||
-        hasFailedStatus(output));
+        hasFailedStatus(structured));
     return {
-      content: JSON.stringify(output, null, 2),
-      structured: output,
+      content: JSON.stringify(structured, null, 2),
+      structured,
       isError,
       exitCode,
     };
   }
 
   return { content: String(output), isError: false };
+}
+
+function sanitizeInlineImageData(value: unknown): {
+  value: unknown;
+  changed: boolean;
+} {
+  if (typeof value === "string") {
+    return sanitizeInlineImageText(value);
+  }
+
+  if (Array.isArray(value)) {
+    let changed = false;
+    const sanitized = value.map((item) => {
+      const result = sanitizeInlineImageData(item);
+      changed ||= result.changed;
+      return result.value;
+    });
+    return changed ? { value: sanitized, changed } : { value, changed };
+  }
+
+  if (!isRecord(value)) {
+    return { value, changed: false };
+  }
+
+  let changed = false;
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    const result = sanitizeInlineImageData(item);
+    changed ||= result.changed;
+    sanitized[key] = result.value;
+  }
+
+  return changed ? { value: sanitized, changed } : { value, changed };
+}
+
+function sanitizeInlineImageText(value: string): {
+  value: string;
+  changed: boolean;
+} {
+  if (!value.includes("data:image/")) {
+    return { value, changed: false };
+  }
+
+  if (value.startsWith("data:image/")) {
+    return { value: summarizeInlineImageDataUrl(value), changed: true };
+  }
+
+  const replaced = value.replace(INLINE_IMAGE_DATA_URL_GLOBAL_RE, (match) =>
+    summarizeInlineImageDataUrl(match),
+  );
+  return { value: replaced, changed: replaced !== value };
+}
+
+function summarizeInlineImageDataUrl(value: string): string {
+  const match = INLINE_IMAGE_DATA_URL_PREFIX_RE.exec(value);
+  const mimeType = match?.[1]?.toLowerCase() ?? "image/*";
+  const commaIndex = value.indexOf(",");
+  const payload = commaIndex >= 0 ? value.slice(commaIndex + 1) : "";
+  const bytes = estimateDataUrlPayloadBytes(value, payload);
+  return `[inline ${mimeType} data omitted${
+    bytes !== undefined ? `, ${formatByteSize(bytes)}` : ""
+  }]`;
+}
+
+function estimateDataUrlPayloadBytes(
+  dataUrl: string,
+  payload: string,
+): number | undefined {
+  if (!payload) return undefined;
+
+  const header = dataUrl.slice(0, Math.max(0, dataUrl.indexOf(",")));
+  if (!/;base64(?:;|$)/i.test(header)) {
+    try {
+      return decodeURIComponent(payload).length;
+    } catch {
+      return payload.length;
+    }
+  }
+
+  const sanitized = payload.replace(/\s+/g, "");
+  const padding = sanitized.endsWith("==")
+    ? 2
+    : sanitized.endsWith("=")
+      ? 1
+      : 0;
+  return Math.max(0, Math.floor((sanitized.length * 3) / 4) - padding);
+}
+
+function formatByteSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function extractCodexShellOutputContent(content: string): string {

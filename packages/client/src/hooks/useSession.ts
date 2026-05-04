@@ -96,6 +96,7 @@ export interface PendingMessage {
   timestamp: string;
   /** Display status text (e.g. "Uploading...", "Sending..."). Defaults to "Sending..." */
   status?: string;
+  attachments?: UploadedFile[];
 }
 
 /** Deferred message queued server-side, waiting for agent's turn to end */
@@ -776,7 +777,8 @@ export function useSession(
 
   // Add a message to the pending queue
   // Generates a tempId that will be sent to the server and echoed back in stream
-  const addPendingMessage = useCallback((content: string): string => {
+  const addPendingMessage = useCallback(
+    (content: string, attachments?: UploadedFile[]): string => {
     const tempId = `temp-${Date.now()}`;
     logSessionUiTrace("pending-add", {
       sessionId,
@@ -785,7 +787,12 @@ export function useSession(
     });
     setPendingMessages((prev) => [
       ...prev,
-      { tempId, content, timestamp: new Date().toISOString() },
+      {
+        tempId,
+        content,
+        timestamp: new Date().toISOString(),
+        ...(attachments?.length ? { attachments } : {}),
+      },
     ]);
     return tempId;
   }, [sessionId]);

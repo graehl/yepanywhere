@@ -23,7 +23,10 @@ interface RemoteImageResult {
  * @param apiPath - The API path for the image (e.g., "/api/projects/.../upload/image.png")
  * @returns Object with url, loading state, and error
  */
-export function useRemoteImage(apiPath: string | null): RemoteImageResult {
+export function useRemoteImage(
+  apiPath: string | null,
+  enabled = true,
+): RemoteImageResult {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +39,7 @@ export function useRemoteImage(apiPath: string | null): RemoteImageResult {
 
   // Fetch image via relay when in remote mode
   useEffect(() => {
-    if (!apiPath) {
+    if (!apiPath || !enabled) {
       // Cleanup previous blob URL
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
@@ -93,7 +96,7 @@ export function useRemoteImage(apiPath: string | null): RemoteImageResult {
         blobUrlRef.current = null;
       }
     };
-  }, [apiPath, remoteMode]);
+  }, [apiPath, remoteMode, enabled]);
 
   // In direct mode, return the path directly; in remote mode, return blob URL
   if (!apiPath) {
@@ -115,7 +118,10 @@ export function useRemoteImage(apiPath: string | null): RemoteImageResult {
  * ensuring auth headers/cookies are included (important for endpoints
  * that require authentication like /api/local-image).
  */
-export function useFetchedImage(apiPath: string | null): RemoteImageResult {
+export function useFetchedImage(
+  apiPath: string | null,
+  enabled = true,
+): RemoteImageResult {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +130,7 @@ export function useFetchedImage(apiPath: string | null): RemoteImageResult {
   const remoteMode = isRemoteMode();
 
   useEffect(() => {
-    if (!apiPath) {
+    if (!apiPath || !enabled) {
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
@@ -178,7 +184,7 @@ export function useFetchedImage(apiPath: string | null): RemoteImageResult {
         blobUrlRef.current = null;
       }
     };
-  }, [apiPath, remoteMode]);
+  }, [apiPath, remoteMode, enabled]);
 
   if (!apiPath) {
     return { url: null, loading: false, error: null };

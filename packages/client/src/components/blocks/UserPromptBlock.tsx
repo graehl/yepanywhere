@@ -1,12 +1,11 @@
 import { memo, useState } from "react";
-import { useRemoteImage } from "../../hooks/useRemoteImage";
 import {
   type UploadedFileInfo,
   getFilename,
   parseUserPrompt,
 } from "../../lib/parseUserPrompt";
 import type { ContentBlock } from "../../types";
-import { Modal } from "../ui/Modal";
+import { AttachmentChip } from "../AttachmentChip";
 
 const MAX_LINES = 12;
 const MAX_CHARS = MAX_LINES * 100;
@@ -74,34 +73,6 @@ function OpenedFilesMetadata({ files }: { files: string[] }) {
       ))}
     </div>
   );
-}
-
-/**
- * Check if a MIME type is an image type
- */
-function isImageMimeType(mimeType: string): boolean {
-  return mimeType.startsWith("image/");
-}
-
-/**
- * Extract URL components from an uploaded file path.
- * Path format: /.../.yep-anywhere/uploads/{projectId}/{sessionId}/{filename}
- */
-function getUploadUrl(filePath: string): string | null {
-  // Split path and get last 3 components: projectId, sessionId, filename
-  const parts = filePath.split("/");
-  if (parts.length < 3) return null;
-
-  const filename = parts[parts.length - 1];
-  const sessionId = parts[parts.length - 2];
-  const projectId = parts[parts.length - 3];
-
-  if (!filename || !sessionId || !projectId) return null;
-
-  // Validate filename has UUID prefix
-  if (!/^[0-9a-f-]{36}_/.test(filename)) return null;
-
-  return `/api/projects/${projectId}/sessions/${sessionId}/upload/${encodeURIComponent(filename)}`;
 }
 
 function isInputImageBlock(block: ContentBlock): block is InputImageBlock {
@@ -247,57 +218,6 @@ function mergeUploadedFiles(
 }
 
 /**
- * Single uploaded file attachment - clickable for images
- */
-function UploadedFileItem({ file }: { file: UploadedFileInfo }) {
-  const [showModal, setShowModal] = useState(false);
-  const isImage = isImageMimeType(file.mimeType);
-  const apiPath = isImage ? getUploadUrl(file.path) : null;
-  const directPreviewUrl = isImage ? (file.previewUrl ?? null) : null;
-  const shouldFetchPreview = showModal && !directPreviewUrl;
-
-  // Keep attachment chips metadata-only; fetch bytes only for explicit preview.
-  const { url: remoteImageUrl, loading, error } = useRemoteImage(
-    shouldFetchPreview ? apiPath : null,
-  );
-  const imageUrl = directPreviewUrl ?? remoteImageUrl;
-
-  if (isImage && (apiPath || directPreviewUrl)) {
-    return (
-      <>
-        <button
-          type="button"
-          className="uploaded-file uploaded-file-clickable"
-          title={`${file.mimeType}, ${file.size}`}
-          onClick={() => setShowModal(true)}
-        >
-          📎 {file.originalName}
-        </button>
-        {showModal && (
-          <Modal title={file.originalName} onClose={() => setShowModal(false)}>
-            <div className="uploaded-image-modal">
-              {apiPath && loading && (
-                <div className="image-loading">Loading...</div>
-              )}
-              {apiPath && error && (
-                <div className="image-error">Failed to load image</div>
-              )}
-              {imageUrl && <img src={imageUrl} alt={file.originalName} />}
-            </div>
-          </Modal>
-        )}
-      </>
-    );
-  }
-
-  return (
-    <span className="uploaded-file" title={`${file.mimeType}, ${file.size}`}>
-      📎 {file.originalName}
-    </span>
-  );
-}
-
-/**
  * Renders uploaded file attachments below the user prompt
  */
 function UploadedFilesMetadata({ files }: { files: UploadedFileInfo[] }) {
@@ -306,7 +226,14 @@ function UploadedFilesMetadata({ files }: { files: UploadedFileInfo[] }) {
   return (
     <div className="user-prompt-metadata">
       {files.map((file) => (
-        <UploadedFileItem key={file.path} file={file} />
+        <AttachmentChip
+          key={file.path}
+          originalName={file.originalName}
+          path={file.path}
+          mimeType={file.mimeType}
+          sizeLabel={file.size}
+          previewUrl={file.previewUrl}
+        />
       ))}
     </div>
   );

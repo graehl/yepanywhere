@@ -16,6 +16,7 @@ import { useI18n } from "../i18n";
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import type { ContextUsage, PermissionMode } from "../types";
+import { AttachmentChip } from "./AttachmentChip";
 import { MessageInputToolbar } from "./MessageInputToolbar";
 import type { VoiceInputButtonRef } from "./VoiceInputButton";
 
@@ -547,24 +548,18 @@ export function MessageInput({
           (attachments.length > 0 || uploadProgress.length > 0) && (
             <div className="attachment-list">
               {attachments.map((file) => (
-                <div key={file.id} className="attachment-chip">
-                  <span className="attachment-name" title={file.path}>
-                    {file.originalName}
-                  </span>
-                  <span className="attachment-size">
-                    {formatSize(file.size)}
-                  </span>
-                  <button
-                    type="button"
-                    className="attachment-remove"
-                    onClick={() => onRemoveAttachment?.(file.id)}
-                    aria-label={t("messageInputRemoveAttachment", {
-                      name: file.originalName,
-                    })}
-                  >
-                    x
-                  </button>
-                </div>
+                <AttachmentChip
+                  key={file.id}
+                  originalName={file.originalName}
+                  path={file.path}
+                  mimeType={file.mimeType}
+                  sizeLabel={formatSize(file.size)}
+                  onRemove={
+                    onRemoveAttachment
+                      ? () => onRemoveAttachment(file.id)
+                      : undefined
+                  }
+                />
               ))}
               {uploadProgress.map((progress) => (
                 <div

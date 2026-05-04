@@ -44,6 +44,41 @@ export async function putEntry(
   return key.result as number;
 }
 
+export async function putEntryWithKey<T>(
+  db: IDBDatabase,
+  store: string,
+  key: IDBValidKey,
+  entry: T,
+): Promise<void> {
+  const tx = db.transaction(store, "readwrite");
+  const objectStore = tx.objectStore(store);
+  objectStore.put(entry, key);
+  await wrapTransaction(tx);
+}
+
+export async function getEntry<T>(
+  db: IDBDatabase,
+  store: string,
+  key: IDBValidKey,
+): Promise<T | null> {
+  const tx = db.transaction(store, "readonly");
+  const objectStore = tx.objectStore(store);
+  const request = objectStore.get(key);
+  const result = await wrapRequest(request);
+  return (result ?? null) as T | null;
+}
+
+export async function deleteEntry(
+  db: IDBDatabase,
+  store: string,
+  key: IDBValidKey,
+): Promise<void> {
+  const tx = db.transaction(store, "readwrite");
+  const objectStore = tx.objectStore(store);
+  objectStore.delete(key);
+  await wrapTransaction(tx);
+}
+
 export async function getAllEntries<T>(
   db: IDBDatabase,
   store: string,

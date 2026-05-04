@@ -1,4 +1,4 @@
-import type { MarkdownAugment } from "@yep-anywhere/shared";
+import type { MarkdownAugment, UploadedFile } from "@yep-anywhere/shared";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -24,6 +24,7 @@ import type { ContentBlock } from "../types";
 import type { RenderItem } from "../types/renderItems";
 import { ProcessingIndicator } from "./ProcessingIndicator";
 import { MessageAge } from "./MessageAge";
+import { AttachmentChip } from "./AttachmentChip";
 import { RenderItemComponent } from "./RenderItemComponent";
 import {
   UserTurnNavigator,
@@ -176,12 +177,21 @@ function highResolutionNowMs(): number {
     : Date.now();
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
 /** Pending message waiting for server confirmation */
 interface PendingMessage {
   tempId: string;
   content: string;
   timestamp: string;
   status?: string;
+  attachments?: UploadedFile[];
 }
 
 /** Deferred message queued server-side */
@@ -190,6 +200,7 @@ interface DeferredMessage {
   content: string;
   timestamp: string;
   attachmentCount?: number;
+  attachments?: UploadedFile[];
   blockedByEdit?: boolean;
   deliveryState?: "queued" | "sending" | "recovered";
 }
@@ -1144,6 +1155,19 @@ export const MessageList = memo(function MessageList({
                 <div className="message-user-prompt pending-message-bubble">
                   {pending.content}
                 </div>
+                {pending.attachments?.length ? (
+                  <div className="attachment-list pending-message-attachments">
+                    {pending.attachments.map((file) => (
+                      <AttachmentChip
+                        key={file.id}
+                        originalName={file.originalName}
+                        path={file.path}
+                        mimeType={file.mimeType}
+                        sizeLabel={formatSize(file.size)}
+                      />
+                    ))}
+                  </div>
+                ) : null}
                 <div className="pending-message-status">
                   {pending.status || "Sending..."}
                 </div>
@@ -1186,6 +1210,45 @@ export const MessageList = memo(function MessageList({
                     {deferred.content}
                   </div>
                 )}
+                {deferred.attachments?.length ? (
+                  <div className="attachment-list deferred-message-attachments-list">
+                    {deferred.attachments.map((file) => (
+                      <AttachmentChip
+                        key={file.id}
+                        originalName={file.originalName}
+                        path={file.path}
+                        mimeType={file.mimeType}
+                        sizeLabel={formatSize(file.size)}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {deferred.attachmentCount && !deferred.attachments?.length ? (
+                  <span
+                    className="deferred-message-attachments"
+                    title={`${deferred.attachmentCount} attachment${
+                      deferred.attachmentCount === 1 ? "" : "s"
+                    } queued`}
+                    aria-label={`${deferred.attachmentCount} attachment${
+                      deferred.attachmentCount === 1 ? "" : "s"
+                    } queued`}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                    </svg>
+                    <span>{deferred.attachmentCount}</span>
+                  </span>
+                ) : null}
                 <div className="deferred-message-footer">
                   <span className="deferred-message-status">
                     {deferred.deliveryState === "sending"

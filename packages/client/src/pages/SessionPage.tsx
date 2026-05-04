@@ -58,6 +58,7 @@ import {
 import { useI18n } from "../i18n";
 import { useNavigationLayout } from "../layouts";
 import { buildCorrectionText } from "../lib/correctionText";
+import { storeUploadedAttachmentPreview } from "../lib/attachmentPreviewCache";
 import {
   getRecallSubmissionAfterQueuedCancel,
   type LastComposerSubmission,
@@ -849,6 +850,10 @@ function SessionPageContent({
       setAttachments([]);
     }
 
+    if (currentAttachments.length > 0) {
+      updatePendingMessage(tempId, { attachments: currentAttachments });
+    }
+
     try {
       const requestSentAtMs = Date.now();
       if (status.owner === "none") {
@@ -1063,6 +1068,10 @@ function SessionPageContent({
       updatePendingMessage(tempId, { status: undefined });
     } else {
       setAttachments([]);
+    }
+
+    if (currentAttachments.length > 0) {
+      updatePendingMessage(tempId, { attachments: currentAttachments });
     }
 
     try {
@@ -1734,6 +1743,16 @@ function SessionPageContent({
           })
           .then(
             (uploaded) => {
+              if (uploaded.mimeType.startsWith("image/")) {
+                void storeUploadedAttachmentPreview(uploaded, file).catch(
+                  (err) => {
+                    console.warn(
+                      "[SessionPage] Failed to cache attachment preview:",
+                      err,
+                    );
+                  },
+                );
+              }
               setAttachments((prev) => [...prev, uploaded]);
               return uploaded;
             },

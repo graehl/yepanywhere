@@ -6,3 +6,4 @@
 - Public read-only session shares
 - Approval and local access security hardening
 - Provider image sizing guidance
+- Attachment previews and same-browser cache

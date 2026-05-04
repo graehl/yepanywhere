@@ -165,6 +165,8 @@ interface StartSessionBody {
   model?: string;
   thinking?: ThinkingOption;
   provider?: ProviderName;
+  /** Browser-side timestamp for request latency tracking (epoch ms) */
+  clientTimestamp?: number;
   /** Client-generated temp ID for optimistic UI tracking */
   tempId?: string;
   /** Deferred queue reinsertion anchor for edited queued messages */
@@ -1738,6 +1740,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       mode: body.mode,
       tempId: body.tempId,
     };
+    const serverTimestamp = Date.now();
 
     // Convert thinking option to SDK config
     const { thinking, effort } = body.thinking
@@ -1780,7 +1783,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     // Check if request was queued
     if (isQueuedResponse(result)) {
-      return c.json(result, 202); // 202 Accepted - queued for processing
+      return c.json(
+        { ...result, serverTimestamp },
+        202,
+      ); // 202 Accepted - queued for processing
     }
 
     await persistLaunchMetadata(result.sessionId, body.provider, executor);
@@ -1791,6 +1797,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId: result.projectId,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+      serverTimestamp,
     });
   });
 
@@ -1857,7 +1864,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     // Check if request was queued
     if (isQueuedResponse(result)) {
-      return c.json(result, 202); // 202 Accepted - queued for processing
+      return c.json(
+        { ...result, serverTimestamp: Date.now() },
+        202,
+      ); // 202 Accepted - queued for processing
     }
 
     await persistLaunchMetadata(result.sessionId, body.provider, executor);
@@ -1868,6 +1878,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId: result.projectId,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+      serverTimestamp: Date.now(),
     });
   });
 
@@ -1899,6 +1910,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       mode: body.mode,
       tempId: body.tempId,
     };
+    const serverTimestamp = Date.now();
 
     const { thinking, effort } = body.thinking
       ? thinkingOptionToConfig(body.thinking)
@@ -1929,7 +1941,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     if (isQueuedResponse(result)) {
-      return c.json(result, 202);
+      return c.json(
+        { ...result, serverTimestamp: Date.now() },
+        202,
+      );
     }
 
     await persistLaunchMetadata(result.sessionId, body.provider, executor);
@@ -1940,6 +1955,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId: result.projectId,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+      serverTimestamp,
     });
   });
 
@@ -1988,7 +2004,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     if (isQueuedResponse(result)) {
-      return c.json(result, 202);
+      return c.json(
+        { ...result, serverTimestamp: Date.now() },
+        202,
+      );
     }
 
     await persistLaunchMetadata(result.sessionId, body.provider, executor);
@@ -1999,6 +2018,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId: result.projectId,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+      serverTimestamp: Date.now(),
     });
   });
 
@@ -2041,6 +2061,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       mode: body.mode,
       tempId: body.tempId,
     };
+    const serverTimestamp = Date.now();
 
     // Convert thinking option to SDK config
     const { thinking, effort } = body.thinking
@@ -2145,13 +2166,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     // Check if request was queued
     if (isQueuedResponse(result)) {
-      return c.json(result, 202); // 202 Accepted - queued for processing
+      return c.json(
+        { ...result, serverTimestamp: Date.now() },
+        202,
+      ); // 202 Accepted - queued for processing
     }
 
     return c.json({
       processId: result.id,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+      serverTimestamp,
     });
   });
 
@@ -2342,6 +2367,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       mode: body.mode,
       tempId: body.tempId,
     };
+    const serverTimestamp = Date.now();
 
     // Check if process is terminated
     if (process.isTerminated) {
@@ -2379,6 +2405,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         promoted: deferredResult.promoted,
         position: deferredResult.position,
         deferredMessages: process.getDeferredQueueSummary(),
+        serverTimestamp,
       });
     }
 
@@ -2446,6 +2473,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       queued: true,
       restarted: result.restarted,
       processId: result.process.id,
+      serverTimestamp,
     });
   });
 

@@ -41,6 +41,12 @@ import {
   getNewSessionPrefill,
 } from "../lib/newSessionPrefill";
 import {
+  getEstimatedServerOffsetMs,
+  getServerClockTimestamp,
+  measureServerLatencyMs,
+  recordServerClockSample,
+} from "../lib/serverClock";
+import {
   getBuiltinSpeechMethods,
   type SpeechMethodId,
 } from "../lib/speechProviders/methods";
@@ -584,6 +590,8 @@ export function NewSessionForm({
 
     const trimmedMessage = finalMessage.trim();
     const trimmedProjectInput = normalizeProjectInput(projectInput);
+    const actionAtMs = Date.now();
+    const clientTimestamp = getServerClockTimestamp(actionAtMs);
 
     setInterimTranscript("");
     setIsStarting(true);
@@ -626,14 +634,23 @@ export function NewSessionForm({
         executor: selectedExecutor ?? null,
         textLength: trimmedMessage.length,
         pendingFileCount: pendingFiles.length,
+        clientTimestamp,
+        serverOffsetMs: getEstimatedServerOffsetMs(),
       });
 
       if (pendingFiles.length > 0) {
         // Two-phase flow: create session first, then upload to real session folder
         // Step 1: Create the session without sending a message
+        const createRequestSentAtMs = Date.now();
         const createResult = resolvedProjectId
           ? await api.createSession(resolvedProjectId, sessionOptions)
           : await api.createDetachedSession(sessionOptions);
+        const createResponseReceivedAtMs = Date.now();
+        const createTiming = recordServerClockSample({
+          clientRequestStartMs: createRequestSentAtMs,
+          clientResponseEndMs: createResponseReceivedAtMs,
+          serverTimestamp: createResult.serverTimestamp,
+        });
         const activeProjectId = createResult.projectId;
         sessionId = createResult.sessionId;
         processId = createResult.processId;
@@ -644,6 +661,9 @@ export function NewSessionForm({
           projectId: resolvedProjectId,
           thinking,
           mode,
+          serverTimestamp: createResult.serverTimestamp,
+          requestRttMs: createTiming?.roundTripMs ?? null,
+          estimatedServerOffsetMs: createTiming?.serverOffsetMs ?? null,
         });
 
         // Step 2: Upload files to the real session folder
@@ -679,23 +699,59 @@ export function NewSessionForm({
         }
 
         // Step 3: Send the first message with attachments
-        await api.queueMessage(
+        const queueRequestSentAtMs = Date.now();
+        const queueResult = await api.queueMessage(
           sessionId,
           trimmedMessage,
           mode,
           uploadedFiles.length > 0 ? uploadedFiles : undefined,
           undefined, // tempId
           thinking, // Pass the captured thinking setting to avoid process restart
+          undefined,
+          undefined,
+          clientTimestamp,
         );
+        const queueResponseReceivedAtMs = Date.now();
+        const queueTiming = recordServerClockSample({
+          clientRequestStartMs: queueRequestSentAtMs,
+          clientResponseEndMs: queueResponseReceivedAtMs,
+          serverTimestamp: queueResult.serverTimestamp,
+        });
+        logSessionUiTrace("new-session-queued", {
+          sessionId,
+          processId,
+          projectId: resolvedProjectId,
+          clientTimestamp,
+          serverTimestamp: queueResult.serverTimestamp,
+          uploadWaitMs: queueRequestSentAtMs - actionAtMs,
+          requestRttMs: queueTiming?.roundTripMs ?? null,
+          estimatedServerOffsetMs: queueTiming?.serverOffsetMs ?? null,
+          clientToServerLatencyMs:
+            measureServerLatencyMs(clientTimestamp, queueResult.serverTimestamp),
+        });
       } else {
         // No files - use single-step flow for efficiency
+        const startRequestSentAtMs = Date.now();
         const result = resolvedProjectId
           ? await api.startSession(
               resolvedProjectId,
               trimmedMessage,
               sessionOptions,
+              undefined,
+              clientTimestamp,
             )
-          : await api.startDetachedSession(trimmedMessage, sessionOptions);
+          : await api.startDetachedSession(
+              trimmedMessage,
+              sessionOptions,
+              undefined,
+              clientTimestamp,
+            );
+        const startResponseReceivedAtMs = Date.now();
+        const startTiming = recordServerClockSample({
+          clientRequestStartMs: startRequestSentAtMs,
+          clientResponseEndMs: startResponseReceivedAtMs,
+          serverTimestamp: result.serverTimestamp,
+        });
         sessionId = result.sessionId;
         processId = result.processId;
         resolvedProjectId = result.projectId;
@@ -707,6 +763,12 @@ export function NewSessionForm({
           mode,
           provider: selectedProvider ?? null,
           model: selectedModel ?? null,
+          clientTimestamp,
+          serverTimestamp: result.serverTimestamp,
+          requestRttMs: startTiming?.roundTripMs ?? null,
+          estimatedServerOffsetMs: startTiming?.serverOffsetMs ?? null,
+          clientToServerLatencyMs:
+            measureServerLatencyMs(clientTimestamp, result.serverTimestamp),
         });
       }
 

@@ -461,6 +461,7 @@ export const api = {
     message: string,
     options?: SessionOptions,
     attachments?: UploadedFile[],
+    clientTimestamp?: number,
   ) =>
     fetchJSON<{
       sessionId: string;
@@ -470,6 +471,7 @@ export const api = {
       model?: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      serverTimestamp: number;
     }>(`/projects/${projectId}/sessions`, {
       method: "POST",
       body: JSON.stringify({
@@ -480,6 +482,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         attachments,
+        clientTimestamp,
       }),
     }),
 
@@ -494,6 +497,7 @@ export const api = {
       projectId: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      serverTimestamp: number;
     }>(`/projects/${projectId}/sessions/create`, {
       method: "POST",
       body: JSON.stringify({
@@ -509,6 +513,7 @@ export const api = {
     message: string,
     options?: SessionOptions,
     attachments?: UploadedFile[],
+    clientTimestamp?: number,
   ) =>
     fetchJSON<{
       sessionId: string;
@@ -516,6 +521,7 @@ export const api = {
       projectId: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      serverTimestamp: number;
     }>(`/sessions`, {
       method: "POST",
       body: JSON.stringify({
@@ -526,6 +532,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         attachments,
+        clientTimestamp,
       }),
     }),
 
@@ -536,6 +543,7 @@ export const api = {
       projectId: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      serverTimestamp: number;
     }>(`/sessions/create`, {
       method: "POST",
       body: JSON.stringify({
@@ -554,11 +562,13 @@ export const api = {
     options?: SessionOptions,
     attachments?: UploadedFile[],
     tempId?: string,
+    clientTimestamp?: number,
   ) =>
     fetchJSON<{
       processId: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      serverTimestamp: number;
     }>(`/projects/${projectId}/sessions/${sessionId}/resume`, {
       method: "POST",
       body: JSON.stringify({
@@ -570,6 +580,7 @@ export const api = {
         executor: options?.executor,
         attachments,
         tempId,
+        clientTimestamp,
       }),
     }),
 
@@ -612,6 +623,7 @@ export const api = {
     thinking?: ThinkingOption,
     deferred?: boolean,
     placement?: DeferredMessagePlacement,
+    clientTimestamp?: number,
   ) =>
     fetchJSON<{
       queued: boolean;
@@ -621,6 +633,7 @@ export const api = {
       promoted?: boolean;
       position?: number;
       deferredMessages?: DeferredQueueMessage[];
+      serverTimestamp: number;
     }>(`/sessions/${sessionId}/messages`, {
       method: "POST",
       body: JSON.stringify({
@@ -633,6 +646,7 @@ export const api = {
         insertBeforeTempId: placement?.beforeTempId,
         insertAfterTempId: placement?.afterTempId,
         replaceDeferredTempId: placement?.replaceTempId,
+        clientTimestamp,
       }),
     }),
 

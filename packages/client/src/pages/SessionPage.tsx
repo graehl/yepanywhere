@@ -67,6 +67,12 @@ import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import {
+  getEstimatedServerOffsetMs,
+  getServerClockTimestamp,
+  measureServerLatencyMs,
+  recordServerClockSample,
+} from "../lib/serverClock";
+import {
   CLIENT_SLASH_COMMANDS,
   resolveComposerSlashTurn,
 } from "../lib/slashCommands";
@@ -797,6 +803,8 @@ function SessionPageContent({
     const { outgoingText, slashCommand } = prepared;
     const thinking = prepared.thinking ?? getThinkingSetting();
     const queuedEditDraftAtSubmit = queuedEditDraft;
+    const actionAtMs = Date.now();
+    const clientTimestamp = getServerClockTimestamp(actionAtMs);
 
     // Add to pending queue and get tempId to pass to server
     const tempId = addPendingMessage(outgoingText);
@@ -815,6 +823,8 @@ function SessionPageContent({
       attachmentCount: attachments.length,
       hasCorrectionDraft: !!correctionDraft,
       hasQueuedEditDraft: !!queuedEditDraft,
+      clientTimestamp,
+      serverOffsetMs: getEstimatedServerOffsetMs(),
     });
 
     // Capture already-completed attachments
@@ -840,6 +850,7 @@ function SessionPageContent({
     }
 
     try {
+      const requestSentAtMs = Date.now();
       if (status.owner === "none") {
         // Resume the session with current permission mode and model settings
         // Use session's existing model if available (important for non-Claude providers),
@@ -860,12 +871,26 @@ function SessionPageContent({
           },
           currentAttachments.length > 0 ? currentAttachments : undefined,
           tempId,
+          clientTimestamp,
         );
+        const responseReceivedAtMs = Date.now();
+        const timing = recordServerClockSample({
+          clientRequestStartMs: requestSentAtMs,
+          clientResponseEndMs: responseReceivedAtMs,
+          serverTimestamp: result.serverTimestamp,
+        });
         // Update status to trigger SSE connection
         logSessionUiTrace("composer-send-resume-success", {
           sessionId,
           tempId,
           processId: result.processId,
+          clientTimestamp,
+          serverTimestamp: result.serverTimestamp,
+          uploadWaitMs: requestSentAtMs - actionAtMs,
+          requestRttMs: timing?.roundTripMs ?? null,
+          estimatedServerOffsetMs: timing?.serverOffsetMs ?? null,
+          clientToServerLatencyMs:
+            measureServerLatencyMs(clientTimestamp, result.serverTimestamp),
         });
         setStatus({ owner: "self", processId: result.processId });
       } else {
@@ -877,12 +902,28 @@ function SessionPageContent({
           currentAttachments.length > 0 ? currentAttachments : undefined,
           tempId,
           thinking,
+          undefined,
+          undefined,
+          clientTimestamp,
         );
+        const responseReceivedAtMs = Date.now();
+        const timing = recordServerClockSample({
+          clientRequestStartMs: requestSentAtMs,
+          clientResponseEndMs: responseReceivedAtMs,
+          serverTimestamp: result.serverTimestamp,
+        });
         logSessionUiTrace("composer-send-queue-success", {
           sessionId,
           tempId,
           restarted: !!result.restarted,
           processId: result.processId ?? null,
+          clientTimestamp,
+          serverTimestamp: result.serverTimestamp,
+          uploadWaitMs: requestSentAtMs - actionAtMs,
+          requestRttMs: timing?.roundTripMs ?? null,
+          estimatedServerOffsetMs: timing?.serverOffsetMs ?? null,
+          clientToServerLatencyMs:
+            measureServerLatencyMs(clientTimestamp, result.serverTimestamp),
         });
         // If process was restarted due to thinking mode change, reconnect stream
         if (result.restarted && result.processId) {
@@ -912,6 +953,7 @@ function SessionPageContent({
       if (is404) {
         try {
           const model = session?.model ?? getModelSetting();
+          const retryRequestSentAtMs = Date.now();
           const result = await api.resumeSession(
             projectId,
             sessionId,
@@ -925,11 +967,25 @@ function SessionPageContent({
             },
             currentAttachments.length > 0 ? currentAttachments : undefined,
             tempId,
+            clientTimestamp,
           );
+          const retryResponseReceivedAtMs = Date.now();
+          const retryTiming = recordServerClockSample({
+            clientRequestStartMs: retryRequestSentAtMs,
+            clientResponseEndMs: retryResponseReceivedAtMs,
+            serverTimestamp: result.serverTimestamp,
+          });
           logSessionUiTrace("composer-send-retry-resume-success", {
             sessionId,
             tempId,
             processId: result.processId,
+            clientTimestamp,
+            serverTimestamp: result.serverTimestamp,
+            uploadWaitMs: retryRequestSentAtMs - actionAtMs,
+            requestRttMs: retryTiming?.roundTripMs ?? null,
+            estimatedServerOffsetMs: retryTiming?.serverOffsetMs ?? null,
+            clientToServerLatencyMs:
+              measureServerLatencyMs(clientTimestamp, result.serverTimestamp),
           });
           setStatus({ owner: "self", processId: result.processId });
           rememberSentSubmission(text, tempId);
@@ -970,6 +1026,8 @@ function SessionPageContent({
     }
     const { outgoingText, slashCommand } = prepared;
     const thinking = prepared.thinking ?? getThinkingSetting();
+    const actionAtMs = Date.now();
+    const clientTimestamp = getServerClockTimestamp(actionAtMs);
 
     const tempId = addPendingMessage(outgoingText);
     setScrollTrigger((prev) => prev + 1);
@@ -984,6 +1042,8 @@ function SessionPageContent({
       textLength: outgoingText.length,
       attachmentCount: attachments.length,
       queuedEditOriginalTempId: queuedEditDraft?.originalTempId ?? null,
+      clientTimestamp,
+      serverOffsetMs: getEstimatedServerOffsetMs(),
     });
 
     // Capture already-completed attachments
@@ -1006,6 +1066,7 @@ function SessionPageContent({
     }
 
     try {
+      const requestSentAtMs = Date.now();
       const queuedEditDraftAtSubmit = queuedEditDraft;
       const queuedEditPlacement = queuedEditDraftAtSubmit
         ? {
@@ -1022,7 +1083,14 @@ function SessionPageContent({
         thinking,
         true, // deferred
         queuedEditPlacement,
+        clientTimestamp,
       );
+      const responseReceivedAtMs = Date.now();
+      const timing = recordServerClockSample({
+        clientRequestStartMs: requestSentAtMs,
+        clientResponseEndMs: responseReceivedAtMs,
+        serverTimestamp: result.serverTimestamp,
+      });
       logSessionUiTrace("composer-deferred-result", {
         sessionId,
         tempId,
@@ -1030,6 +1098,13 @@ function SessionPageContent({
         promoted: result.promoted ?? null,
         position: result.position ?? null,
         deferredCount: result.deferredMessages?.length ?? null,
+        clientTimestamp,
+        serverTimestamp: result.serverTimestamp,
+        uploadWaitMs: requestSentAtMs - actionAtMs,
+        requestRttMs: timing?.roundTripMs ?? null,
+        estimatedServerOffsetMs: timing?.serverOffsetMs ?? null,
+        clientToServerLatencyMs:
+          measureServerLatencyMs(clientTimestamp, result.serverTimestamp),
       });
       removePendingMessage(tempId);
       const localDeferredMessage = {

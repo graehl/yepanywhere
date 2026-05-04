@@ -1,6 +1,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ToolCallRow } from "../ToolCallRow";
+import {
+  DEFERRED_PREVIEW_HEIGHT,
+  ToolCallRow,
+  estimateDeferredPreviewHeightPx,
+} from "../ToolCallRow";
 
 vi.mock("../../../contexts/SchemaValidationContext", () => ({
   useSchemaValidationContext: () => ({
@@ -13,6 +17,7 @@ vi.mock("../../../contexts/SchemaValidationContext", () => ({
 describe("ToolCallRow", () => {
   afterEach(() => {
     cleanup();
+    Reflect.deleteProperty(window, "IntersectionObserver");
   });
 
   it("keeps pending Codex Bash rows collapsed without IN/OUT preview cards", () => {
@@ -115,5 +120,108 @@ describe("ToolCallRow", () => {
     );
 
     expect(container.querySelector(".expand-chevron")).not.toBeNull();
+  });
+
+  it("reserves a bounded deferred preview shell before near-viewport hydration", () => {
+    class DeferredIntersectionObserver {
+      observe = vi.fn();
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+    }
+    Object.defineProperty(window, "IntersectionObserver", {
+      configurable: true,
+      value: DeferredIntersectionObserver,
+    });
+
+    const { container } = render(
+      <ToolCallRow
+        id="tool-deferred-bash"
+        toolName="Bash"
+        toolInput={{ command: "pnpm test -- --runInBand" }}
+        toolResult={{
+          structured: {
+            stdout: ["# Result", "- **line one**", "- line two"].join("\n"),
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+          },
+          content: ["# Result", "- **line one**", "- line two"].join("\n"),
+          isError: false,
+        }}
+        status="complete"
+        sessionProvider="codex"
+      />,
+    );
+
+    const shell = container.querySelector<HTMLElement>(
+      ".tool-row-deferred-preview",
+    );
+    expect(shell).not.toBeNull();
+    expect(container.querySelector(".bash-collapsed-preview")).toBeNull();
+    expect(
+      shell?.style.getPropertyValue("--tool-row-deferred-preview-height"),
+    ).toMatch(/px$/);
+  });
+
+  it("estimates deferred Bash preview height from text, width, and max preview cap", () => {
+    const short = estimateDeferredPreviewHeightPx({
+      toolName: "Bash",
+      toolInput: { command: "echo ok" },
+      result: { stdout: "ok", stderr: "" },
+      status: "complete",
+      rowWidthPx: 900,
+    });
+    expect(short).toBe(
+      DEFERRED_PREVIEW_HEIGHT.commandRowPx +
+        DEFERRED_PREVIEW_HEIGHT.minOutputRowPx,
+    );
+
+    const longLine = "x".repeat(180);
+    const wide = estimateDeferredPreviewHeightPx({
+      toolName: "Bash",
+      toolInput: { command: "printf long" },
+      result: { stdout: longLine, stderr: "" },
+      status: "complete",
+      rowWidthPx: 1000,
+    });
+    const narrow = estimateDeferredPreviewHeightPx({
+      toolName: "Bash",
+      toolInput: { command: "printf long" },
+      result: { stdout: longLine, stderr: "" },
+      status: "complete",
+      rowWidthPx: 240,
+    });
+
+    expect(wide).not.toBeNull();
+    expect(narrow).not.toBeNull();
+    expect(narrow as number).toBeGreaterThan(wide as number);
+    expect(narrow as number).toBeLessThanOrEqual(
+      DEFERRED_PREVIEW_HEIGHT.maxPx,
+    );
+
+    const huge = estimateDeferredPreviewHeightPx({
+      toolName: "Bash",
+      toolInput: { command: "cat big.log" },
+      result: { stdout: `${"line\n".repeat(100)}`, stderr: "" },
+      status: "complete",
+      rowWidthPx: 900,
+    });
+    expect(huge).toBe(
+      DEFERRED_PREVIEW_HEIGHT.commandRowPx +
+        DEFERRED_PREVIEW_HEIGHT.outputRowChromePx +
+        DEFERRED_PREVIEW_HEIGHT.maxOutputPx,
+    );
+  });
+
+  it("does not reserve estimated preview height for rows without a cheap model", () => {
+    expect(
+      estimateDeferredPreviewHeightPx({
+        toolName: "Read",
+        toolInput: { file_path: "README.md" },
+        result: { content: "body" },
+        status: "complete",
+        rowWidthPx: 900,
+      }),
+    ).toBeNull();
   });
 });

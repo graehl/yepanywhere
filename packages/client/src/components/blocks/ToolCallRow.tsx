@@ -1,7 +1,9 @@
 import {
+  type CSSProperties,
   memo,
   type RefObject,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -27,6 +29,87 @@ interface Props {
 }
 
 const TOOL_ROW_HYDRATION_ROOT_MARGIN = "1600px 0px";
+export const DEFERRED_PREVIEW_HEIGHT = {
+  commandRowPx: 42,
+  outputRowChromePx: 12,
+  emptyOutputRowPx: 28,
+  minOutputRowPx: 35,
+  outputLineHeightPx: 18,
+  maxOutputPx: 80,
+  minPx: 32,
+  maxPx: 134,
+  defaultContentWidthPx: 720,
+  minCharsPerLine: 24,
+  maxCharsPerLine: 160,
+  averageCharWidthPx: 7.5,
+} as const;
+
+type DeferredPreviewStyle = CSSProperties & {
+  "--tool-row-deferred-preview-height"?: string;
+};
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function estimatePreviewCharsPerLine(rowWidthPx?: number | null): number {
+  const contentWidthPx =
+    typeof rowWidthPx === "number" && rowWidthPx > 0
+      ? Math.max(120, rowWidthPx - 112)
+      : DEFERRED_PREVIEW_HEIGHT.defaultContentWidthPx;
+  return clamp(
+    Math.floor(contentWidthPx / DEFERRED_PREVIEW_HEIGHT.averageCharWidthPx),
+    DEFERRED_PREVIEW_HEIGHT.minCharsPerLine,
+    DEFERRED_PREVIEW_HEIGHT.maxCharsPerLine,
+  );
+}
+
+function estimateWrappedLineCount(text: string, charsPerLine: number): number {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  let count = 0;
+  for (const line of lines) {
+    count += Math.max(1, Math.ceil(line.length / charsPerLine));
+  }
+  return count;
+}
+
+export function estimateDeferredPreviewHeightPx(params: {
+  toolName: string;
+  toolInput: unknown;
+  result: unknown;
+  status: ToolCallItem["status"];
+  rowWidthPx?: number | null;
+}): number | null {
+  if (!canDeferRichToolRow(params.status) || params.toolName !== "Bash") {
+    return null;
+  }
+
+  const command = getDisplayBashCommandFromInput(params.toolInput);
+  const output = getBashResultOutputForRichPreview(params.result).trimEnd();
+  if (!command && !output) {
+    return null;
+  }
+
+  const charsPerLine = estimatePreviewCharsPerLine(params.rowWidthPx);
+  const outputPx = output
+    ? Math.max(
+        DEFERRED_PREVIEW_HEIGHT.minOutputRowPx,
+        Math.min(
+          DEFERRED_PREVIEW_HEIGHT.maxOutputPx,
+          estimateWrappedLineCount(output, charsPerLine) *
+            DEFERRED_PREVIEW_HEIGHT.outputLineHeightPx,
+        ) + DEFERRED_PREVIEW_HEIGHT.outputRowChromePx,
+      )
+    : params.result
+      ? DEFERRED_PREVIEW_HEIGHT.emptyOutputRowPx
+      : 0;
+
+  return clamp(
+    DEFERRED_PREVIEW_HEIGHT.commandRowPx + outputPx,
+    DEFERRED_PREVIEW_HEIGHT.minPx,
+    DEFERRED_PREVIEW_HEIGHT.maxPx,
+  );
+}
 
 function canDeferRichToolRow(status: ToolCallItem["status"]): boolean {
   return status === "complete" || status === "error";
@@ -36,8 +119,10 @@ function useNearViewportHydration(status: ToolCallItem["status"]): {
   rowRef: RefObject<HTMLDivElement | null>;
   shouldHydrate: boolean;
   hydrateNow: () => void;
+  rowWidthPx: number | null;
 } {
   const rowRef = useRef<HTMLDivElement | null>(null);
+  const [rowWidthPx, setRowWidthPx] = useState<number | null>(null);
   const [shouldHydrate, setShouldHydrate] = useState(
     () =>
       !canDeferRichToolRow(status) ||
@@ -56,6 +141,20 @@ function useNearViewportHydration(status: ToolCallItem["status"]): {
     }
     setShouldHydrate(false);
   }, [status]);
+
+  useLayoutEffect(() => {
+    if (shouldHydrate || !canDeferRichToolRow(status)) {
+      return;
+    }
+    const node = rowRef.current;
+    if (!node) {
+      return;
+    }
+    const width = Math.round(node.getBoundingClientRect().width);
+    if (width > 0) {
+      setRowWidthPx((current) => (current === width ? current : width));
+    }
+  }, [shouldHydrate, status]);
 
   useEffect(() => {
     if (shouldHydrate || !canDeferRichToolRow(status)) {
@@ -85,6 +184,7 @@ function useNearViewportHydration(status: ToolCallItem["status"]): {
     rowRef,
     shouldHydrate,
     hydrateNow: () => setShouldHydrate(true),
+    rowWidthPx,
   };
 }
 
@@ -113,6 +213,7 @@ export const ToolCallRow = memo(function ToolCallRow({
     rowRef,
     shouldHydrate: shouldHydrateRichContent,
     hydrateNow,
+    rowWidthPx,
   } = useNearViewportHydration(status);
 
   // Check if this tool renders inline (bypasses entire tool-row structure)
@@ -123,6 +224,21 @@ export const ToolCallRow = memo(function ToolCallRow({
     structuredResult,
     sessionProvider,
     status,
+  );
+  const mayHaveCollapsedPreview =
+    toolRegistry.hasCollapsedPreview(toolName) && !suppressCollapsedPreview;
+  const mayHaveInteractiveSummary =
+    status === "complete" && toolRegistry.hasInteractiveSummary(toolName);
+  const deferredPreviewHeightPx = useMemo(
+    () =>
+      estimateDeferredPreviewHeightPx({
+        toolName,
+        toolInput,
+        result: structuredResult,
+        status,
+        rowWidthPx,
+      }),
+    [toolName, toolInput, structuredResult, status, rowWidthPx],
   );
 
   const interactiveSummaryContent = useMemo(() => {
@@ -176,13 +292,21 @@ export const ToolCallRow = memo(function ToolCallRow({
     collapsedPreviewContent !== null &&
     collapsedPreviewContent !== undefined &&
     collapsedPreviewContent !== false;
+  const hasDeferredPreviewShell =
+    !shouldHydrateRichContent &&
+    mayHaveCollapsedPreview &&
+    deferredPreviewHeightPx !== null;
+  const hasDeferredInteractiveShell =
+    !shouldHydrateRichContent &&
+    (mayHaveCollapsedPreview || mayHaveInteractiveSummary);
   const hideSummaryWhenPreviewVisible =
     toolName === "Bash" &&
     status === "pending" &&
     hasCollapsedPreview &&
     isCodexLikeBashInput(toolInput, sessionProvider);
   // Tools with collapsed preview or interactive summary don't expand
-  const isNonExpandable = hasInteractiveSummary || hasCollapsedPreview;
+  const isNonExpandable =
+    hasInteractiveSummary || hasCollapsedPreview || hasDeferredInteractiveShell;
 
   // Edit and TodoWrite tools are expanded by default
   const [expanded, setExpanded] = useState(
@@ -225,14 +349,33 @@ export const ToolCallRow = memo(function ToolCallRow({
     >
       <div
         className={`tool-row-header ${isNonExpandable ? "non-expandable" : ""}`}
-        onClick={isNonExpandable ? undefined : handleToggle}
+        onClick={
+          hasDeferredInteractiveShell
+            ? hydrateNow
+            : isNonExpandable
+              ? undefined
+              : handleToggle
+        }
         onKeyDown={
-          isNonExpandable
+          hasDeferredInteractiveShell
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  hydrateNow();
+                }
+              }
+            : isNonExpandable
             ? undefined
             : (e) => e.key === "Enter" && handleToggle()
         }
-        role={isNonExpandable ? "presentation" : "button"}
-        tabIndex={isNonExpandable ? undefined : 0}
+        role={
+          hasDeferredInteractiveShell
+            ? "button"
+            : isNonExpandable
+              ? "presentation"
+              : "button"
+        }
+        tabIndex={isNonExpandable && !hasDeferredInteractiveShell ? undefined : 0}
       >
         {status === "pending" && (
           <span className="tool-spinner" aria-label="Running">
@@ -284,6 +427,19 @@ export const ToolCallRow = memo(function ToolCallRow({
       {hasCollapsedPreview && (
         <div className="tool-row-collapsed-preview">
           {collapsedPreviewContent}
+        </div>
+      )}
+      {hasDeferredPreviewShell && (
+        <div
+          className="tool-row-collapsed-preview tool-row-deferred-preview"
+          style={
+            {
+              "--tool-row-deferred-preview-height": `${deferredPreviewHeightPx}px`,
+            } as DeferredPreviewStyle
+          }
+          aria-hidden="true"
+        >
+          <div className="tool-row-deferred-preview-box" />
         </div>
       )}
 

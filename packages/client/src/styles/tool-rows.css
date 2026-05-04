@@ -220,6 +220,27 @@
   cursor: pointer;
 }
 
+.tool-row-deferred-preview {
+  cursor: default;
+  pointer-events: none;
+}
+
+.tool-row-deferred-preview-box {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--tool-row-deferred-preview-height, 7rem);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  background:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--text-muted) 18%, transparent) 0 2.5rem,
+      transparent 2.5rem
+    ),
+    color-mix(in srgb, var(--bg-code) 72%, transparent);
+  opacity: 0.35;
+}
+
 /* Expanded content area */
 .tool-row-content {
   margin-left: 24px;

@@ -816,16 +816,20 @@ export class Process {
    * Used for real SDK sessions where the initial message is passed directly
    * to the SDK but needs to be in history for SSE replay to late-joining clients.
    *
-   * @param text - The message text
+   * @param message - The user message, including attachments for replay
    * @param uuid - The UUID to use (should match what was passed to SDK)
    * @param tempId - Optional client temp ID for optimistic UI tracking
    */
-  addInitialUserMessage(text: string, uuid: string, tempId?: string): void {
+  addInitialUserMessage(
+    message: UserMessage,
+    uuid: string,
+    tempId?: string,
+  ): void {
     const sdkMessage = this.withTimestamp({
       type: "user",
       uuid,
       tempId,
-      message: { role: "user", content: text },
+      message: { role: "user", content: this.buildUserMessageContent(message) },
     } as SDKMessage);
 
     this.currentBucket.push(sdkMessage);

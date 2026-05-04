@@ -5,6 +5,7 @@ const RESIZABLE_IMAGE_MIME_TYPES = new Set([
   "image/webp",
   "image/gif",
 ]);
+const SD_JPEG_QUALITY = 0.9;
 
 function getOutputMimeType(mimeType: string): string {
   if (!RESIZABLE_IMAGE_MIME_TYPES.has(mimeType)) {
@@ -25,7 +26,12 @@ async function blobFromCanvas(
   mimeType: string,
 ): Promise<Blob | null> {
   return await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), mimeType, 0.92);
+    const quality = mimeType === "image/png" ? undefined : SD_JPEG_QUALITY;
+    canvas.toBlob(
+      (blob) => resolve(blob),
+      mimeType,
+      quality,
+    );
   });
 }
 
@@ -62,6 +68,7 @@ export async function resizeImageFile(
     if (!ctx) {
       return file;
     }
+    // Use the browser's native canvas scaler for the downsample.
     ctx.drawImage(bitmap, 0, 0, width, height);
 
     const blob = await blobFromCanvas(canvas, getOutputMimeType(file.type));

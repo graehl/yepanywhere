@@ -49,33 +49,33 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
       const enabled = new Set(deps.enabledProviders);
       providers = providers.filter((p) => enabled.has(p.name));
     }
-    const providerInfos: ProviderInfo[] = [];
-
-    for (const provider of providers) {
-      const [authStatus, models] = await Promise.all([
-        provider.getAuthStatus(),
-        provider.getAvailableModels(),
-      ]);
-      deps.modelInfoService?.ingestModels(
-        provider.name as ProviderName,
-        models,
-      );
-      providerInfos.push({
-        name: provider.name,
-        displayName: provider.displayName,
-        installed: authStatus.installed,
-        authenticated: authStatus.authenticated,
-        enabled: authStatus.enabled,
-        expiresAt: authStatus.expiresAt?.toISOString(),
-        user: authStatus.user,
-        models,
-        imageSizing: getProviderImageSizing(provider.name),
-        supportsPermissionMode: provider.supportsPermissionMode,
-        supportsThinkingToggle: provider.supportsThinkingToggle,
-        supportsSlashCommands: provider.supportsSlashCommands,
-        supportsSteering: provider.supportsSteering,
-      });
-    }
+    const providerInfos: ProviderInfo[] = await Promise.all(
+      providers.map(async (provider) => {
+        const [authStatus, models] = await Promise.all([
+          provider.getAuthStatus(),
+          provider.getAvailableModels(),
+        ]);
+        deps.modelInfoService?.ingestModels(
+          provider.name as ProviderName,
+          models,
+        );
+        return {
+          name: provider.name,
+          displayName: provider.displayName,
+          installed: authStatus.installed,
+          authenticated: authStatus.authenticated,
+          enabled: authStatus.enabled,
+          expiresAt: authStatus.expiresAt?.toISOString(),
+          user: authStatus.user,
+          models,
+          imageSizing: getProviderImageSizing(provider.name),
+          supportsPermissionMode: provider.supportsPermissionMode,
+          supportsThinkingToggle: provider.supportsThinkingToggle,
+          supportsSlashCommands: provider.supportsSlashCommands,
+          supportsSteering: provider.supportsSteering,
+        } satisfies ProviderInfo;
+      }),
+    );
 
     return c.json({ providers: providerInfos });
   });

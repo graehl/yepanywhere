@@ -21,6 +21,15 @@ export interface SpeechBackendInfo {
   disabledReason?: string;
 }
 
+export interface TranscribeOptions {
+  /** MIME type of the audio buffer (e.g. "audio/webm;codecs=opus"). */
+  mimeType?: string;
+  /** Free-text context prompt for Whisper-compatible backends. */
+  prompt?: string;
+  /** Keyword boosts for Deepgram-style backends. */
+  keyterms?: string[];
+}
+
 export interface SpeechBackend {
   readonly id: string;
   readonly label: string;
@@ -30,4 +39,9 @@ export interface SpeechBackend {
    * in lazy initialization on first use.
    */
   validate(): Promise<{ ok: true } | { ok: false; reason: string }>;
+  /**
+   * Transcribe audio to text. Audio is a complete utterance (press-to-talk
+   * batch). Streaming partials are a follow-up.
+   */
+  transcribe(audio: Buffer, options?: TranscribeOptions): Promise<string>;
 }

@@ -105,6 +105,14 @@ export interface Config {
   voiceInputEnabled: boolean;
   /** Explicitly enabled server-routed voice backend ids. Empty = none. */
   voiceBackends: string[];
+  /** Deepgram API key for the ya-deepgram backend. */
+  deepgramApiKey?: string;
+  /** Whisper model name for ya-whisper backend (default: distil-large-v3). */
+  whisperModel?: string;
+  /** Whisper device for ya-whisper backend (default: cpu). */
+  whisperDevice?: string;
+  /** Whisper compute type for ya-whisper backend (default: int8). */
+  whisperComputeType?: string;
   /** Allowed directory prefixes for serving local images (e.g., ["/tmp"]). Empty = disabled. */
   allowedImagePaths: string[];
 
@@ -250,8 +258,12 @@ export function loadConfig(): Config {
       : [],
     // Voice input (default: true, set VOICE_INPUT=false to disable)
     voiceInputEnabled: process.env.VOICE_INPUT !== "false",
-    // Server-routed voice backends default off. Example: VOICE_BACKENDS=ya-dummy
+    // Server-routed voice backends default off. Example: VOICE_BACKENDS=ya-deepgram
     voiceBackends: parseCommaSeparatedList(process.env.VOICE_BACKENDS),
+    deepgramApiKey: process.env.DEEPGRAM_API_KEY || undefined,
+    whisperModel: process.env.WHISPER_MODEL || undefined,
+    whisperDevice: process.env.WHISPER_DEVICE || undefined,
+    whisperComputeType: process.env.WHISPER_COMPUTE_TYPE || undefined,
     // Always allow yep-managed uploads. ALLOWED_IMAGE_PATHS adds external paths
     // like /tmp; an empty value disables only those extras.
     allowedImagePaths: Array.from(

@@ -52,9 +52,11 @@ import {
   recordServerClockSample,
 } from "../lib/serverClock";
 import {
-  getBuiltinSpeechMethods,
+  getSpeechMethods,
+  isKnownSpeechMethodId,
   type SpeechMethodId,
 } from "../lib/speechProviders/methods";
+import { useVersion } from "../hooks/useVersion";
 import { shortenPath } from "../lib/text";
 import type { PermissionMode, Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
@@ -233,6 +235,9 @@ export function NewSessionForm({
 
   // Connection for uploads (uses WebSocket when enabled)
   const connection = useConnection();
+
+  // Server version for voiceBackends advertisement
+  const { version: versionInfo } = useVersion();
 
   // Toast for error messages
   const { showToast } = useToastContext();
@@ -425,20 +430,19 @@ export function NewSessionForm({
   }, []);
 
   // Build speech-method options for FilterDropdown.
-  // The catalog is intentionally static at the moment; server-routed
-  // methods will be filtered by capability advertisement in a later phase.
   const speechMethodOptions = useMemo((): FilterOption<SpeechMethodId>[] => {
-    return getBuiltinSpeechMethods().map((method) => ({
+    const serverBackends = versionInfo?.voiceBackends ?? [];
+    return getSpeechMethods(serverBackends).map((method) => ({
       value: method.id,
       label: method.label,
       description: method.description,
     }));
-  }, []);
+  }, [versionInfo?.voiceBackends]);
 
   const handleSpeechMethodSelect = useCallback(
     (selected: string[]) => {
       const next = selected[0];
-      if (next && (next === "browser-native" || next === "ya-dummy")) {
+      if (next && isKnownSpeechMethodId(next)) {
         setSpeechMethod(next);
       }
     },

@@ -1,13 +1,10 @@
 /**
  * Catalog of known speech-recognition methods exposed in the UI.
  *
- * Each entry is a stable `id` plus a static label and a check for whether
- * it is currently usable. The `browser-native` method is always known but
- * its availability depends on `window.SpeechRecognition`. Server-routed
- * methods (`ya-dummy`, `ya-deepgram`, `ya-whisper`, ...) are ultimately
- * gated on a server capability advertisement; the client-side registry
- * captures their existence and label so the UI is stable even before the
- * server reports its enabled set.
+ * The `browser-native` method is always known but gated on
+ * `window.SpeechRecognition`. Server-routed methods are only shown
+ * when the server advertises them via the `voiceBackends` capability
+ * field on the version response.
  */
 
 import {
@@ -25,21 +22,18 @@ export const DEFAULT_SPEECH_METHOD: SpeechMethodId = "browser-native";
 
 export interface SpeechMethodDescriptor {
   id: SpeechMethodId;
-  /** Static display label; UA-derived for `browser-native`. */
   label: string;
-  /** Optional sub-label for the dropdown row. */
   description?: string;
-  /** True if this method can run client-side today. Server methods need a server capability check. */
+  /** True if this method can run without a server-side backend. */
   clientSupported: boolean;
-  /** True if this method requires a server-side backend (vs running in the browser). */
+  /** True if this method requires a server-side backend. */
   serverRouted: boolean;
 }
 
 function browserNativeAvailable(): boolean {
   if (typeof window === "undefined") return false;
   return Boolean(
-    (window as unknown as { SpeechRecognition?: unknown })
-      .SpeechRecognition ??
+    (window as unknown as { SpeechRecognition?: unknown }).SpeechRecognition ??
       (window as unknown as { webkitSpeechRecognition?: unknown })
         .webkitSpeechRecognition,
   );
@@ -70,11 +64,55 @@ export function describeYaDummy(): SpeechMethodDescriptor {
   };
 }
 
+export function describeYaDeepgram(): SpeechMethodDescriptor {
+  return {
+    id: "ya-deepgram",
+    label: "Deepgram (cloud)",
+    description: "Server-routed cloud transcription with keyterm boosting.",
+    clientSupported: true,
+    serverRouted: true,
+  };
+}
+
+export function describeYaWhisper(): SpeechMethodDescriptor {
+  return {
+    id: "ya-whisper",
+    label: "Local Whisper (CPU)",
+    description: "Server-local faster-whisper model; no audio leaves the server.",
+    clientSupported: true,
+    serverRouted: true,
+  };
+}
+
 /**
- * Built-in catalog used for the selector. Server-side advertisement may
- * later remove or augment entries (e.g. add `ya-deepgram` only when a key
- * validated at startup).
+ * Build the speech method list from what the server advertises plus
+ * the local browser-native option. Only advertised server backends
+ * appear in the selector — no phantom options for unconfigured backends.
  */
+export function getSpeechMethods(
+  serverBackends: string[] = [],
+  userAgent?: string,
+): SpeechMethodDescriptor[] {
+  const methods: SpeechMethodDescriptor[] = [describeBrowserNative(userAgent)];
+
+  for (const id of serverBackends) {
+    switch (id) {
+      case "ya-dummy":
+        methods.push(describeYaDummy());
+        break;
+      case "ya-deepgram":
+        methods.push(describeYaDeepgram());
+        break;
+      case "ya-whisper":
+        methods.push(describeYaWhisper());
+        break;
+    }
+  }
+
+  return methods;
+}
+
+/** @deprecated Use getSpeechMethods(serverBackends) instead. */
 export function getBuiltinSpeechMethods(
   userAgent?: string,
 ): SpeechMethodDescriptor[] {

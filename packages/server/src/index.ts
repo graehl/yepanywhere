@@ -502,6 +502,10 @@ async function startServer() {
   const speechBackendRegistry = await initSpeechBackendRegistry({
     voiceInputEnabled: config.voiceInputEnabled,
     voiceBackends: config.voiceBackends,
+    deepgramApiKey: config.deepgramApiKey,
+    whisperModel: config.whisperModel,
+    whisperDevice: config.whisperDevice,
+    whisperComputeType: config.whisperComputeType,
   });
   const enabledSpeechBackends = speechBackendRegistry.enabledIds();
   if (enabledSpeechBackends.length > 0) {

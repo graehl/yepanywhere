@@ -24,6 +24,7 @@ import {
   VIDEO_EXTENSIONS,
   isLocalFilePath,
   localFileApiUrl,
+  localMediaApiUrl,
   renderSafeMarkdown,
   sanitizeUrl,
 } from "./safe-markdown.js";
@@ -259,12 +260,13 @@ function renderInlineFormatting(text: string): string {
   result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => {
     if (isLocalFilePath(href)) {
       const ext = (href.split(".").pop() ?? "").toLowerCase();
-      const apiUrl = escapeHtml(localFileApiUrl(href));
       if (MEDIA_EXTENSIONS.has(ext)) {
+        const apiUrl = escapeHtml(localMediaApiUrl(href));
         const mediaType = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
         const typeLabel = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
         return `<a href="${apiUrl}" class="local-media-link" data-media-type="${mediaType}">${label}<span class="local-media-type">(${typeLabel})</span></a>`;
       }
+      const apiUrl = escapeHtml(localFileApiUrl(href));
       return `<a href="${apiUrl}">${label}</a>`;
     }
     const safeHref = sanitizeUrl(href);

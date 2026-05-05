@@ -16,4 +16,8 @@ export class DummyBackend implements SpeechBackend {
   async validate(): Promise<{ ok: true }> {
     return { ok: true };
   }
+
+  async transcribe(_audio: Buffer): Promise<string> {
+    return DUMMY_TRANSCRIPT;
+  }
 }

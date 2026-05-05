@@ -87,3 +87,23 @@ describe("renderSafeMarkdown — math", () => {
     expect(html).not.toContain("$x^2$");
   });
 });
+
+describe("renderSafeMarkdown — local file links", () => {
+  it("routes local markdown links through the text file endpoint", () => {
+    const html = renderSafeMarkdown("[notes](/tmp/session-notes.md)");
+
+    expect(html).toContain(
+      'href="/api/local-file?path=%2Ftmp%2Fsession-notes.md"',
+    );
+    expect(html).not.toContain("/api/local-image");
+  });
+
+  it("keeps local media links on the media endpoint", () => {
+    const html = renderSafeMarkdown("[shot](/tmp/screenshot.png)");
+
+    expect(html).toContain(
+      'href="/api/local-image?path=%2Ftmp%2Fscreenshot.png"',
+    );
+    expect(html).toContain('class="local-media-link"');
+  });
+});

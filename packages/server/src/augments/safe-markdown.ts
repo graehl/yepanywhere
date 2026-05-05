@@ -53,10 +53,17 @@ function getFileName(path: string): string {
 }
 
 /**
- * Rewrite a local file path to the local-image API endpoint.
+ * Rewrite a local media path to the local-image API endpoint.
+ */
+function localMediaApiUrl(path: string): string {
+  return `/api/local-image?path=${encodeURIComponent(path.trim())}`;
+}
+
+/**
+ * Rewrite a local text file path to the local-file API endpoint.
  */
 function localFileApiUrl(path: string): string {
-  return `/api/local-image?path=${encodeURIComponent(path.trim())}`;
+  return `/api/local-file?path=${encodeURIComponent(path.trim())}`;
 }
 
 /**
@@ -68,7 +75,7 @@ function renderLocalMediaLink(
   label: string,
   ext: string,
 ): string {
-  const apiUrl = escapeHtml(localFileApiUrl(path));
+  const apiUrl = escapeHtml(localMediaApiUrl(path));
   const escapedLabel = escapeHtml(label || getFileName(path));
   const mediaType = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
   const typeLabel = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
@@ -332,4 +339,5 @@ export {
   VIDEO_EXTENSIONS,
   isLocalFilePath,
   localFileApiUrl,
+  localMediaApiUrl,
 };

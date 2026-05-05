@@ -66,8 +66,10 @@ import { createSettingsRoutes } from "./routes/settings.js";
 import { createSharingRoutes } from "./routes/sharing.js";
 import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 
+import { createLocalFileRoutes } from "./routes/local-file.js";
 import { createLocalImageRoutes } from "./routes/local-image.js";
 import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
+import { createSpeechRoutes } from "./routes/speech.js";
 import { createVersionRoutes } from "./routes/version.js";
 import { WS_INTERNAL_AUTHENTICATED } from "./middleware/internal-auth.js";
 import type {
@@ -899,12 +901,30 @@ export function createApp(options: AppOptions): AppResult {
     );
   }
 
+  // Speech audio WebSocket route
+  if (options.upgradeWebSocket && options.speechBackendRegistry) {
+    app.route(
+      "/api/speech",
+      createSpeechRoutes({
+        speechBackendRegistry: options.speechBackendRegistry,
+        upgradeWebSocket: options.upgradeWebSocket,
+      }),
+    );
+  }
+
   // Local image serving (opt-in, restricted to allowed paths)
   if (options.allowedImagePaths && options.allowedImagePaths.length > 0) {
     app.route(
       "/api/local-image",
       createLocalImageRoutes({
         allowedPaths: options.allowedImagePaths,
+      }),
+    );
+    app.route(
+      "/api/local-file",
+      createLocalFileRoutes({
+        allowedPaths: options.allowedImagePaths,
+        scanner,
       }),
     );
   }

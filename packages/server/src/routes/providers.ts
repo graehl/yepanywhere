@@ -73,6 +73,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
         supportsPermissionMode: provider.supportsPermissionMode,
         supportsThinkingToggle: provider.supportsThinkingToggle,
         supportsSlashCommands: provider.supportsSlashCommands,
+        supportsSteering: provider.supportsSteering,
       });
     }
 
@@ -107,6 +108,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
       supportsPermissionMode: provider.supportsPermissionMode,
       supportsThinkingToggle: provider.supportsThinkingToggle,
       supportsSlashCommands: provider.supportsSlashCommands,
+      supportsSteering: provider.supportsSteering,
     };
 
     return c.json({ provider: providerInfo });

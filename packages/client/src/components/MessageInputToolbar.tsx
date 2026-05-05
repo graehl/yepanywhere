@@ -1,4 +1,3 @@
-import type { UploadedFile } from "@yep-anywhere/shared";
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent, RefObject, TouchEvent } from "react";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
@@ -71,8 +70,6 @@ export interface MessageInputToolbarProps {
   onSend?: () => void;
   /** Queue a deferred message. Only provided when agent is running. */
   onQueue?: () => void;
-  /** Primary action queues instead of sending immediately. */
-  queueMode?: boolean;
   canSend?: boolean;
   disabled?: boolean;
 
@@ -114,7 +111,7 @@ export function MessageInputToolbar({
   isThinking,
   onStop,
   onSend,
-  queueMode = false,
+  onQueue,
   canSend,
   disabled,
   pendingApproval,
@@ -138,9 +135,11 @@ export function MessageInputToolbar({
       : renderMode?.state === "source"
         ? t("toolbarRenderModeSource")
         : t("toolbarRenderModeMixed");
-  const primaryActionLabel = queueMode
-    ? t("toolbarQueueLabel")
-    : t("toolbarSend");
+  const hasDualActions = !!(onSend && onQueue);
+  const sendTooltip = hasDualActions
+    ? t("toolbarSteerTooltip")
+    : t("toolbarSendTooltip");
+  const queueTooltip = t("toolbarQueueTooltip");
   const shortcutsPopoverOpen = shortcutsOpen || isearchScope !== null;
 
   useEffect(() => {
@@ -161,9 +160,9 @@ export function MessageInputToolbar({
         handleIsearchGuide,
       );
   }, []);
-  const primaryActionHelp = queueMode
-    ? t("toolbarQueueHelp")
-    : t("toolbarSendTitle");
+  const primaryActionHelp = hasDualActions
+    ? t("toolbarSteerTooltip")
+    : t("toolbarSendTooltip");
   const stopTitle = `${t("toolbarStop")} (Esc)`;
   const showStopButton = !!(isRunning && onStop && isThinking);
   const showSendButton = !!(onSend && (!showStopButton || canSend));
@@ -518,7 +517,7 @@ export function MessageInputToolbar({
                     <span className="session-shortcuts-keys">
                       <kbd>Enter</kbd>
                     </span>
-                    <span>Send / confirm search</span>
+                    <span>{hasDualActions ? "Steer current turn" : "Send"}</span>
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
@@ -586,16 +585,30 @@ export function MessageInputToolbar({
           </button>
         )}
         {showSendButton ? (
-          <button
-            type="button"
-            onClick={onSend}
-            disabled={disabled || !canSend}
-            className={`send-button send-button-with-help ${queueMode ? "queue-mode" : ""}`}
-            aria-label={primaryActionLabel}
-            data-tooltip={primaryActionHelp}
-          >
-            <span className="send-icon">↑</span>
-          </button>
+          <>
+            {hasDualActions && onQueue && (
+              <button
+                type="button"
+                onClick={onQueue}
+                disabled={disabled || !canSend}
+                className="send-button queue-button"
+                aria-label={t("toolbarQueueLabel")}
+                title={queueTooltip}
+              >
+                <span className="send-icon queue-icon">⏱</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onSend}
+              disabled={disabled || !canSend}
+              className="send-button send-button-with-help"
+              aria-label={hasDualActions ? t("toolbarSteerTooltip") : t("toolbarSend")}
+              title={sendTooltip}
+            >
+              <span className="send-icon">{hasDualActions ? "↗" : "↑"}</span>
+            </button>
+          </>
         ) : null}
       </div>
     </div>

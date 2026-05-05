@@ -83,6 +83,8 @@ interface Props {
   supportsPermissionMode?: boolean;
   /** Whether the provider supports thinking toggle (default: true) */
   supportsThinkingToggle?: boolean;
+  /** Whether the provider supports active turn steering (default: false) */
+  supportsSteering?: boolean;
   /** Available slash commands (without "/" prefix) */
   slashCommands?: string[];
   /** Callback for custom client-side commands (e.g., "model"). Return true if handled. */
@@ -134,6 +136,7 @@ export function MessageInput({
   uploadProgress = [],
   supportsPermissionMode = true,
   supportsThinkingToggle = true,
+  supportsSteering = false,
   slashCommands = [],
   onCustomCommand,
   modelIndicatorTone,
@@ -174,9 +177,11 @@ export function MessageInput({
   // Panel is collapsed if user collapsed it OR if externally collapsed (approval panel showing)
   const collapsed = userCollapsed || externalCollapsed;
   const canSubmit = !!(text.trim() || attachments.length > 0);
-  const primaryActionLabel = onQueue
-    ? t("toolbarQueueLabel")
-    : t("toolbarSend");
+  const primaryActionLabel = supportsSteering && onQueue
+    ? t("toolbarSteerTooltip")
+    : onQueue
+      ? t("toolbarQueueLabel")
+      : t("toolbarSend");
 
   const canAttach = !!(projectId && sessionId && onAttach);
 
@@ -234,7 +239,7 @@ export function MessageInput({
     }
   }, [text, disabled, controls, onQueue, attachments.length]);
 
-  const submitFromCollapsed = onQueue ? handleQueue : handleSubmit;
+  const submitFromCollapsed = handleSubmit;
 
   const recallLastSubmission = useCallback((allowExistingText = false) => {
     if (
@@ -524,11 +529,11 @@ export function MessageInput({
               type="button"
               onClick={submitFromCollapsed}
               disabled={disabled || !canSubmit}
-              className={`send-button message-input-collapsed-send ${onQueue ? "queue-mode" : ""}`}
+              className={`send-button message-input-collapsed-send`}
               aria-label={primaryActionLabel}
               title={primaryActionLabel}
             >
-              <span className="send-icon">↑</span>
+              <span className="send-icon">{supportsSteering ? "↗" : "↑"}</span>
             </button>
           </div>
         )}
@@ -627,7 +632,6 @@ export function MessageInput({
             onStop={onStop}
             onSend={handleSubmit}
             onQueue={onQueue ? handleQueue : undefined}
-            queueMode={!!onQueue}
             canSend={canSubmit}
             disabled={disabled}
           />

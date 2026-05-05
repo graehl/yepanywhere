@@ -118,6 +118,8 @@ export interface ProviderInfo {
   supportsThinkingToggle?: boolean;
   /** Whether this provider supports slash commands (default: false) */
   supportsSlashCommands?: boolean;
+  /** Whether this provider supports active turn steering (default: false) */
+  supportsSteering?: boolean;
 }
 
 /**

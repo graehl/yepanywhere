@@ -2920,6 +2920,11 @@ a.sidebar-nav-item {
   background: var(--attention-color);
 }
 
+.send-button.queue-button {
+  background: var(--attention-color);
+  color: white;
+}
+
 .send-button-with-help::after {
   content: attr(data-tooltip);
   position: absolute;

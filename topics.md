@@ -7,3 +7,5 @@
 - Approval and local access security hardening
 - Provider image sizing guidance
 - Attachment previews and same-browser cache
+- OpenCode ses_ session ID unification with YA session ID
+- MessageQueue batch delivery and steering UI

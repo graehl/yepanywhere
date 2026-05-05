@@ -295,6 +295,15 @@ describe("Process", () => {
           content: "see attached",
           timestamp: expect.any(String),
           attachmentCount: 1,
+          attachments: [
+            {
+              id: "file-1",
+              originalName: "screenshot.png",
+              size: 1024,
+              mimeType: "image/png",
+              path: "/uploads/screenshot.png",
+            },
+          ],
         },
       ]);
     });
@@ -822,6 +831,95 @@ describe("Process", () => {
 
       await expect(process.interrupt()).resolves.toBe(false);
       expect(interruptFn).toHaveBeenCalledTimes(1);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("drains all queued messages into a single packet after successful interrupt", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const interruptFn = vi.fn(async () => true);
+
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        interruptFn,
+      });
+
+      // Queue two messages while agent is "working"
+      queue.push({ text: "first" });
+      queue.push({ text: "second" });
+
+      expect(process.queueDepth).toBe(2);
+
+      // Interrupt should drain both into one combined message
+      const result = await process.interrupt();
+      expect(result).toBe(true);
+
+      // The two messages should have been drained and re-queued as a single packet
+      // The depth should be 1 (the combined message), not 2
+      expect(process.queueDepth).toBe(1);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("drains deferred messages into interrupt packet alongside direct queue", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const interruptFn = vi.fn(async () => true);
+
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        interruptFn,
+      });
+
+      // One direct queued message and one deferred
+      queue.push({ text: "direct" });
+      process.deferMessage({ text: "deferred", tempId: "temp-d" });
+
+      expect(process.queueDepth).toBe(1);
+      expect(process.getDeferredQueueSummary()).toHaveLength(1);
+
+      await process.interrupt();
+
+      // Deferred queue should be empty (drained into the interrupt packet)
+      expect(process.getDeferredQueueSummary()).toHaveLength(0);
+      // Direct queue should have exactly one combined message
+      expect(process.queueDepth).toBe(1);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("does not re-queue when interrupt drains an empty queue", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const interruptFn = vi.fn(async () => true);
+
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        interruptFn,
+      });
+
+      // No messages queued
+      expect(process.queueDepth).toBe(0);
+      await process.interrupt();
+
+      // Still empty — no phantom empty message was enqueued
+      expect(process.queueDepth).toBe(0);
 
       controller.finish();
       await process.abort();
@@ -1589,9 +1687,9 @@ describe("Process", () => {
       expect(userMessages).toHaveLength(1);
       const content = userMessages[0]?.message?.content as string;
       expect(content).toContain("Here is a screenshot");
-      expect(content).toContain("User uploaded files:");
+      expect(content).toContain("User uploaded files in .attachments:");
       expect(content).toContain("screenshot.png");
-      expect(content).toContain("1KB");
+      expect(content).toContain("1\u202fkb");
       expect(content).toContain("image/png");
       expect(content).toContain("/uploads/screenshot.png");
     });

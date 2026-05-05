@@ -147,6 +147,7 @@ export class ClaudeProvider implements AgentProvider {
   readonly supportsPermissionMode = true;
   readonly supportsThinkingToggle = true;
   readonly supportsSlashCommands = true;
+  readonly supportsSteering = false;
 
   /**
    * Check if Claude SDK is available.
@@ -552,7 +553,7 @@ export class ClaudeProvider implements AgentProvider {
     let sdkQuery: Query;
     try {
       sdkQuery = query({
-        prompt: queue.generator(),
+        prompt: queue,
         options: {
           cwd: effectiveCwd,
           resume: options.resumeSessionId,

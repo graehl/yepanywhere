@@ -11,6 +11,7 @@ import type {
 } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
 import { getProjectName } from "../projects/paths.js";
+import { concatUserMessages, INTERRUPT_PREAMBLE } from "../sdk/messageQueue.js";
 import type { MessageQueue } from "../sdk/messageQueue.js";
 import type {
   PermissionMode,
@@ -393,6 +394,24 @@ export class Process {
     );
 
     const interrupted = await this.interruptFn();
+
+    // After interrupt, drain all queued messages (direct + deferred) and deliver
+    // as a single concatenated batch with the interrupt preamble so the agent
+    // knows to treat prior work as resumable.
+    if (interrupted !== false && this.messageQueue) {
+      const directDrained = this.messageQueue.drain();
+      const deferredDrained = this.deferredQueue.map((e) => e.message);
+      this.deferredQueue = [];
+      this.deferredEditBarrier = null;
+      this.emitDeferredQueueChange("promoted");
+
+      const all = [...directDrained, ...deferredDrained];
+      if (all.length > 0) {
+        const combined = this.concatMessages(all, { interrupted: true });
+        this.queueMessage(combined, { allowSteer: false });
+      }
+    }
+
     return interrupted !== false;
   }
 
@@ -876,6 +895,20 @@ export class Process {
     }
 
     return text;
+  }
+
+  /**
+   * Concatenate multiple UserMessages into one, joined by `--------` separators.
+   * Used by interrupt to deliver all queued messages as a single batch.
+   */
+   private concatMessages(
+    messages: UserMessage[],
+    options?: { interrupted?: boolean },
+  ): UserMessage {
+    return concatUserMessages(
+      messages,
+      options?.interrupted ? INTERRUPT_PREAMBLE : undefined,
+    );
   }
 
   /**
@@ -1889,19 +1922,31 @@ export class Process {
 
   private transitionToIdle(): void {
     this.clearIdleTimer();
-    // Feed next deferred message before transitioning to idle
-    const promotion = this.promoteNextDeferredMessage({ allowSteer: false });
-    if (promotion === "promoted") {
-      return;
+
+    // Drain eligible deferred messages and push to the direct queue so
+    // the iterator can concatenate them into a single message.
+    // If an edit barrier is active, collection returns [] and nothing is cleared.
+    if (this.deferredQueue.length > 0 && this.messageQueue) {
+      const eligible = this.collectEligibleDeferred();
+      for (const msg of eligible) {
+        this.messageQueue.push(msg);
+      }
+      if (eligible.length > 0) {
+        this.deferredEditBarrier = null;
+        this.emitDeferredQueueChange("promoted");
+      }
     }
-    if (promotion === "failed") {
-      this.setState({ type: "idle", since: new Date() });
-      this.startIdleTimer();
-      return;
-    }
+
     this.setState({ type: "idle", since: new Date() });
     this.startIdleTimer();
     this.processNextInQueue();
+  }
+
+  /** Collect deferred messages that are eligible for promotion (respecting edit barrier). */
+  private collectEligibleDeferred(): UserMessage[] {
+    if (this.deferredEditBarrier) return [];
+    const eligible = this.deferredQueue.splice(0);
+    return eligible.map((e) => e.message);
   }
 
   private promoteNextDeferredMessage(options: {

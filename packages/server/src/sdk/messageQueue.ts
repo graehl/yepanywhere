@@ -1,5 +1,48 @@
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { UploadedFile } from "@yep-anywhere/shared";
 import type { UserMessage } from "./types.js";
+
+export const CONCAT_SEPARATOR = "--------";
+export const INTERRUPT_PREAMBLE = "interrupt resumable after:";
+
+/**
+ * Concatenate multiple UserMessages into one, joined by separator lines.
+ * Shared by MessageQueue and Process to avoid duplicating the merge logic.
+ */
+export function concatUserMessages(
+  messages: UserMessage[],
+  preamble?: typeof INTERRUPT_PREAMBLE,
+): UserMessage {
+  const first = messages[0]!;
+  const parts: string[] = [];
+  const allImages: string[] = [];
+  const allDocs: string[] = [];
+  const allAttachments: UploadedFile[] = [];
+
+  if (preamble) {
+    parts.push(preamble);
+    parts.push(CONCAT_SEPARATOR);
+  }
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]!;
+    if (i > 0) parts.push(CONCAT_SEPARATOR);
+    parts.push(msg.text);
+    if (msg.images?.length) allImages.push(...msg.images);
+    if (msg.documents?.length) allDocs.push(...msg.documents);
+    if (msg.attachments?.length) allAttachments.push(...msg.attachments);
+  }
+
+  const combined: UserMessage = {
+    text: parts.join("\n\n"),
+    uuid: first.uuid,
+    tempId: first.tempId,
+  };
+  if (allImages.length) combined.images = allImages;
+  if (allDocs.length) combined.documents = allDocs;
+  if (allAttachments.length) combined.attachments = allAttachments;
+  return combined;
+}
 
 function escapeMarkdownLinkText(text: string): string {
   return text.replaceAll("[", "\\[").replaceAll("]", "\\]");
@@ -26,20 +69,15 @@ function formatUploadedFileReference(
  * Supports data URLs (data:image/png;base64,...) and raw base64 with magic byte detection.
  */
 function detectImageMediaType(base64Data: string): string {
-  // Check for data URL format first
   const dataUrlMatch = base64Data.match(/^data:([^;]+);base64,/);
   if (dataUrlMatch?.[1]) {
     return dataUrlMatch[1];
   }
 
-  // For raw base64, decode first few bytes and check magic bytes
   try {
-    // Get the raw base64 portion (remove any data URL prefix if it wasn't matched above)
     const rawBase64 = base64Data.replace(/^data:[^;]+;base64,/, "");
-    // Decode first 16 bytes to check magic bytes
     const bytes = Buffer.from(rawBase64.slice(0, 24), "base64");
 
-    // PNG: 89 50 4E 47 0D 0A 1A 0A
     if (
       bytes[0] === 0x89 &&
       bytes[1] === 0x50 &&
@@ -48,13 +86,9 @@ function detectImageMediaType(base64Data: string): string {
     ) {
       return "image/png";
     }
-
-    // JPEG: FF D8 FF
     if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
       return "image/jpeg";
     }
-
-    // GIF: 47 49 46 38 (GIF8)
     if (
       bytes[0] === 0x47 &&
       bytes[1] === 0x49 &&
@@ -63,8 +97,6 @@ function detectImageMediaType(base64Data: string): string {
     ) {
       return "image/gif";
     }
-
-    // WebP: 52 49 46 46 ... 57 45 42 50 (RIFF...WEBP)
     if (
       bytes[0] === 0x52 &&
       bytes[1] === 0x49 &&
@@ -77,42 +109,46 @@ function detectImageMediaType(base64Data: string): string {
     ) {
       return "image/webp";
     }
-
-    // BMP: 42 4D (BM)
     if (bytes[0] === 0x42 && bytes[1] === 0x4d) {
       return "image/bmp";
     }
   } catch {
-    // If decoding fails, fall back to PNG
+    // Fall back to PNG
   }
 
-  // Default to PNG if detection fails
   return "image/png";
 }
 
 /**
- * MessageQueue provides an async generator pattern for queuing user messages
- * to be sent to the Claude SDK.
+ * MessageQueue holds user messages and exposes two interfaces:
  *
- * The SDK expects an AsyncGenerator that yields SDKUserMessage objects.
- * This queue allows messages to be pushed at any time, and the generator
- * will yield them as they become available (blocking when empty).
+ * 1. AsyncIterable — consumed by the SDK's `query()` loop. Each `.next()`
+ *    drains all accumulated messages, concatenates them, and yields one
+ *    combined SDKUserMessage. This ensures the provider never receives
+ *    queued messages serially.
+ *
+ * 2. concatDrain() — synchronous drain for stop/interrupt paths. Consumed
+ *    by Process to deliver queued messages with an interruption preamble.
  */
-export class MessageQueue {
+export class MessageQueue implements AsyncIterable<SDKUserMessage> {
   private queue: UserMessage[] = [];
-  private waiting: ((msg: UserMessage) => void) | null = null;
+  private waiting: (() => void) | null = null;
+  /** Set when concatDrain() is called to prevent generator from yielding stale data */
+  private drainedByExternal = false;
 
   /**
    * Push a message onto the queue.
-   * If the generator is waiting for a message, resolves immediately.
-   * Otherwise, adds to the queue.
+   * If the consumer is waiting, resolves immediately.
+   * Otherwise, adds to the buffer.
    *
    * @returns The new queue depth (0 if resolved immediately)
    */
   push(message: UserMessage): number {
     if (this.waiting) {
-      this.waiting(message);
+      const resolve = this.waiting;
       this.waiting = null;
+      this.queue.push(message);
+      resolve();
       return 0;
     }
     this.queue.push(message);
@@ -120,45 +156,93 @@ export class MessageQueue {
   }
 
   /**
-   * Remove and return messages that have been queued but not yet yielded to
-   * the provider.
+   * Synchronously drain and concatenate all queued messages into a single
+   * UserMessage. Used by Process for stop/interrupt delivery.
+   *
+   * @param options.interrupted - if true, prepend interrupt preamble
+   */
+   concatDrain(options?: { interrupted?: boolean }): UserMessage | null {
+    this.drainedByExternal = true;
+    const drained = this.queue.splice(0);
+    if (drained.length === 0) return null;
+
+    return concatUserMessages(
+      drained,
+      options?.interrupted ? INTERRUPT_PREAMBLE : undefined,
+    );
+  }
+
+  /**
+   * Remove and return messages that have been queued but not yet yielded.
    */
   drain(): UserMessage[] {
-    if (this.queue.length === 0) {
-      return [];
-    }
-    const drained = this.queue;
-    this.queue = [];
-    return drained;
+    return this.queue.splice(0);
   }
 
-  /**
-   * Async generator that yields SDK-formatted user messages.
-   * Blocks when the queue is empty, waiting for push() to be called.
-   */
-  async *generator(): AsyncGenerator<SDKUserMessage> {
-    while (true) {
-      const message = await this.next();
-      yield this.toSDKMessage(message);
-    }
+  /* ------------------------------------------------------------------ */
+  /* AsyncIterable interface (consumed by SDK query loop)               */
+  /* ------------------------------------------------------------------ */
+
+  [Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
+    return this.createIterator();
   }
 
-  /**
-   * Get the next message from the queue.
-   * If the queue is empty, returns a promise that resolves when push() is called.
-   */
-  private next(): Promise<UserMessage> {
-    const queued = this.queue.shift();
-    if (queued) return Promise.resolve(queued);
+  private createIterator(): AsyncIterator<SDKUserMessage> {
+    let closed = false;
+
+    const self = this;
+    return {
+      async next(): Promise<IteratorResult<SDKUserMessage>> {
+        if (closed) return { done: true, value: undefined };
+
+        // Wait until at least one message is available
+        await self.waitForMessage();
+
+        // Check if external drain stole our messages
+        if (self.drainedByExternal) {
+          self.drainedByExternal = false;
+          // Retry — wait for new messages
+          return this.next();
+        }
+
+        // Drain all accumulated and concatenate
+        const combined = self.concatDrainInternal();
+        if (!combined) {
+          // Empty drain — retry
+          return this.next();
+        }
+
+        return { done: false, value: self.toSDKMessage(combined) };
+      },
+
+      return(): Promise<IteratorResult<SDKUserMessage>> {
+        closed = true;
+        return Promise.resolve({ done: true, value: undefined });
+      },
+    };
+  }
+
+  /** Wait until at least one message is available */
+  private waitForMessage(): Promise<void> {
+    if (this.queue.length > 0) return Promise.resolve();
 
     return new Promise((resolve) => {
       this.waiting = resolve;
     });
   }
 
-  /**
-   * Format file size in human-readable form.
-   */
+  /** Internal drain without the drainedByExternal flag (used by iterator) */
+  private concatDrainInternal(): UserMessage | null {
+    const drained = this.queue.splice(0);
+    if (drained.length === 0) return null;
+
+    return concatUserMessages(drained);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Formatting                                                         */
+  /* ------------------------------------------------------------------ */
+
   private formatSize(bytes: number): string {
     if (bytes < 1024) return `${bytes}\u202fb`;
     if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u202fkb`;
@@ -167,13 +251,9 @@ export class MessageQueue {
     return `${Math.round((bytes / (1024 * 1024 * 1024)) * 10) / 10}\u202fgb`;
   }
 
-  /**
-   * Convert a UserMessage to the SDK's SDKUserMessage format.
-   */
   private toSDKMessage(msg: UserMessage): SDKUserMessage {
     let text = msg.text;
 
-    // Append attachment paths for agent to access via Read tool
     if (msg.attachments?.length) {
       const lines = msg.attachments.map((f) =>
         formatUploadedFileReference(f, this.formatSize.bind(this)),
@@ -181,7 +261,6 @@ export class MessageQueue {
       text += `\n\nUser uploaded files in .attachments:\n${lines.join("\n")}`;
     }
 
-    // If message has images or documents, use array content format
     if (msg.images?.length || msg.documents?.length) {
       const content: Array<
         | { type: "text"; text: string }
@@ -191,11 +270,8 @@ export class MessageQueue {
           }
       > = [{ type: "text", text }];
 
-      // Add images as base64 content blocks
       for (const image of msg.images ?? []) {
-        // Detect media type from the image data
         const mediaType = detectImageMediaType(image);
-        // Strip data URL prefix if present to get raw base64
         const rawBase64 = image.replace(/^data:[^;]+;base64,/, "");
         content.push({
           type: "image",
@@ -207,8 +283,6 @@ export class MessageQueue {
         });
       }
 
-      // Documents would need similar handling
-      // For now, we'll just include them in text
       if (msg.documents?.length) {
         content[0] = {
           type: "text",
@@ -218,7 +292,7 @@ export class MessageQueue {
 
       return {
         type: "user",
-        uuid: msg.uuid, // Pass UUID so SDK uses the same one we emitted via SSE
+        uuid: msg.uuid,
         message: {
           role: "user",
           content,
@@ -226,10 +300,9 @@ export class MessageQueue {
       } as SDKUserMessage;
     }
 
-    // Simple text message
     return {
       type: "user",
-      uuid: msg.uuid, // Pass UUID so SDK uses the same one we emitted via SSE
+      uuid: msg.uuid,
       message: {
         role: "user",
         content: text,
@@ -237,17 +310,18 @@ export class MessageQueue {
     } as SDKUserMessage;
   }
 
-  /**
-   * Current number of messages waiting in the queue.
-   */
+  /** Current number of messages waiting in the queue. */
   get depth(): number {
     return this.queue.length;
   }
 
-  /**
-   * Whether the generator is currently waiting for a message.
-   */
+  /** Whether the iterator is currently waiting for a message. */
   get isWaiting(): boolean {
     return this.waiting !== null;
+  }
+
+  /** Backward-compatible alias for the async iterator (used by existing callers). */
+  generator(): AsyncGenerator<SDKUserMessage> {
+    return this[Symbol.asyncIterator]() as any as AsyncGenerator<SDKUserMessage>;
   }
 }

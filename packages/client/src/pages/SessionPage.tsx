@@ -491,6 +491,8 @@ function SessionPageContent({
     currentProviderInfo?.supportsThinkingToggle ?? true;
   const supportsSlashCommands =
     currentProviderInfo?.supportsSlashCommands ?? false;
+  const supportsSteering =
+    currentProviderInfo?.supportsSteering ?? false;
   const currentOwnedProcessId =
     status.owner === "self" ? status.processId : undefined;
   const activityRenderItems = useMemo(() => preprocessMessages(messages), [
@@ -2578,9 +2580,15 @@ function SessionPageContent({
               !isAskUserQuestion
             ) && (
               <MessageInput
-                onSend={shouldDeferMessages ? handleQueue : handleSend}
+                onSend={
+                  shouldDeferMessages && supportsSteering
+                    ? handleSend
+                    : shouldDeferMessages
+                      ? handleQueue
+                      : handleSend
+                }
                 onQueue={
-                  shouldDeferMessages ? handleQueue : undefined
+                  shouldDeferMessages && supportsSteering ? handleQueue : undefined
                 }
                 placeholder={
                   status.owner === "external"
@@ -2597,6 +2605,7 @@ function SessionPageContent({
                 onHoldChange={holdModeEnabled ? setHold : undefined}
                 supportsPermissionMode={supportsPermissionMode}
                 supportsThinkingToggle={supportsThinkingToggle}
+                supportsSteering={supportsSteering}
                 isRunning={status.owner === "self"}
                 isThinking={canStopOwnedProcess}
                 onStop={handleAbort}

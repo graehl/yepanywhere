@@ -859,6 +859,7 @@ export class CodexProvider implements AgentProvider {
   readonly supportsPermissionMode = true;
   readonly supportsThinkingToggle = true;
   readonly supportsSlashCommands = false;
+  readonly supportsSteering = true;
 
   private readonly config: CodexProviderConfig;
   private modelCache: { models: ModelInfo[]; expiresAt: number } | null = null;
@@ -1549,7 +1550,7 @@ export class CodexProvider implements AgentProvider {
         yield logMessage(withCodexTimestamp(sessionConfigAck));
       }
 
-      const messageGen = queue.generator();
+      const messageGen = queue;
       const liveEventState = this.createLiveEventState();
       let isFirstMessage = !options.resumeSessionId;
 

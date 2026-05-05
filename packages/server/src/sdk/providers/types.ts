@@ -129,6 +129,8 @@ export interface AgentProvider {
   readonly supportsThinkingToggle: boolean;
   /** Whether this provider supports slash commands (default: false) */
   readonly supportsSlashCommands: boolean;
+  /** Whether this provider supports active turn steering (default: false) */
+  readonly supportsSteering: boolean;
 
   /**
    * Check if this provider is installed and available.

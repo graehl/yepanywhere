@@ -486,8 +486,10 @@ function SessionPageContent({
     currentProviderInfo?.supportsPermissionMode ?? true;
   const supportsThinkingToggle =
     currentProviderInfo?.supportsThinkingToggle ?? true;
-  const supportsSteering =
-    currentProviderInfo?.supportsSteering ?? false;
+  const generallySupportsSteering =
+    currentProviderInfo?.supportsSteering === true ||
+    session?.provider === "codex";
+  const supportsSteeringNow = currentProviderInfo?.supportsSteering === true;
   const currentOwnedProcessId =
     status.owner === "self" ? status.processId : undefined;
   const activityRenderItems = useMemo(() => preprocessMessages(messages), [
@@ -514,6 +516,14 @@ function SessionPageContent({
     sessionActivityUi.hasPendingToolCalls;
   const canStopOwnedProcess = sessionActivityUi.canStopOwnedProcess;
   const shouldDeferMessages = sessionActivityUi.shouldDeferMessages;
+  const primaryComposerAction =
+    shouldDeferMessages && generallySupportsSteering
+      ? supportsSteeringNow
+        ? "steer"
+        : "queue"
+      : shouldDeferMessages
+        ? "queue"
+        : "send";
 
   useEffect(() => {
     let cancelled = false;
@@ -2573,15 +2583,18 @@ function SessionPageContent({
             ) && (
               <MessageInput
                 onSend={
-                  shouldDeferMessages && supportsSteering
+                  primaryComposerAction === "steer"
                     ? handleSend
                     : shouldDeferMessages
                       ? handleQueue
                       : handleSend
                 }
                 onQueue={
-                  shouldDeferMessages && supportsSteering ? handleQueue : undefined
+                  shouldDeferMessages && generallySupportsSteering
+                    ? handleQueue
+                    : undefined
                 }
+                primaryActionKind={primaryComposerAction}
                 placeholder={
                   status.owner === "external"
                     ? t("sessionPlaceholderExternal")
@@ -2597,7 +2610,7 @@ function SessionPageContent({
                 onHoldChange={holdModeEnabled ? setHold : undefined}
                 supportsPermissionMode={supportsPermissionMode}
                 supportsThinkingToggle={supportsThinkingToggle}
-                supportsSteering={supportsSteering}
+                supportsSteering={generallySupportsSteering}
                 isRunning={status.owner === "self"}
                 isThinking={canStopOwnedProcess}
                 onStop={handleAbort}

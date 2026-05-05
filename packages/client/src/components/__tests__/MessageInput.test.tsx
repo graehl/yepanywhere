@@ -284,4 +284,36 @@ describe("MessageInput", () => {
 
     expect(onQueue).toHaveBeenCalledWith("collapsed queue");
   });
+
+  it("keeps queue available when the primary steer action downgrades", () => {
+    const onQueue = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      supportsSteering: true,
+      onQueue,
+      primaryActionKind: "queue",
+    });
+
+    fireEvent.change(textarea, { target: { value: "queue fallback" } });
+    fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
+
+    expect(screen.getAllByLabelText("toolbarQueueLabel")).toHaveLength(1);
+    expect(onQueue).toHaveBeenCalledWith("queue fallback");
+  });
+
+  it("routes the primary downgraded steer action to queue", () => {
+    const onQueue = vi.fn();
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      onSend,
+      supportsSteering: true,
+      onQueue,
+      primaryActionKind: "queue",
+    });
+
+    fireEvent.change(textarea, { target: { value: "queue from primary" } });
+    fireEvent.click(screen.getByLabelText("Queue from primary action"));
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(onQueue).toHaveBeenCalledWith("queue from primary");
+  });
 });

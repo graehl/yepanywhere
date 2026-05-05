@@ -66,6 +66,7 @@ export interface MessageInputToolbarProps {
   onSend?: () => void;
   /** Queue a deferred message. Only provided when agent is running. */
   onQueue?: () => void;
+  primaryActionKind?: "send" | "steer" | "queue";
   canSend?: boolean;
   disabled?: boolean;
 
@@ -106,6 +107,7 @@ export function MessageInputToolbar({
   onStop,
   onSend,
   onQueue,
+  primaryActionKind,
   canSend,
   disabled,
   pendingApproval,
@@ -130,10 +132,29 @@ export function MessageInputToolbar({
         ? t("toolbarRenderModeSource")
         : t("toolbarRenderModeMixed");
   const hasDualActions = !!(onSend && onQueue);
-  const sendTooltip = hasDualActions
-    ? t("toolbarSteerTooltip")
-    : t("toolbarSendTooltip");
+  const effectivePrimaryActionKind =
+    primaryActionKind ?? (hasDualActions ? "steer" : "send");
+  const sendTooltip =
+    effectivePrimaryActionKind === "steer"
+      ? t("toolbarSteerTooltip")
+      : effectivePrimaryActionKind === "queue"
+        ? t("toolbarQueueTooltip")
+        : t("toolbarSendTooltip");
   const queueTooltip = t("toolbarQueueTooltip");
+  const primaryActionIcon =
+    effectivePrimaryActionKind === "steer"
+      ? "↗"
+      : effectivePrimaryActionKind === "queue"
+        ? "⏱"
+        : "↑";
+  const primaryActionLabel =
+    effectivePrimaryActionKind === "steer"
+      ? t("toolbarSteerTooltip")
+      : effectivePrimaryActionKind === "queue"
+        ? hasDualActions
+          ? "Queue from primary action"
+          : t("toolbarQueueLabel")
+        : t("toolbarSend");
   const shortcutsPopoverOpen = shortcutsOpen || isearchScope !== null;
 
   useEffect(() => {
@@ -586,11 +607,14 @@ export function MessageInputToolbar({
               type="button"
               onClick={onSend}
               disabled={disabled || !canSend}
-              className="send-button send-button-with-help"
-              aria-label={hasDualActions ? t("toolbarSteerTooltip") : t("toolbarSend")}
+              className={`send-button send-button-with-help ${
+                effectivePrimaryActionKind === "queue" ? "queue-mode" : ""
+              }`}
+              aria-label={primaryActionLabel}
               title={sendTooltip}
+              data-tooltip={sendTooltip}
             >
-              <span className="send-icon">{hasDualActions ? "↗" : "↑"}</span>
+              <span className="send-icon">{primaryActionIcon}</span>
             </button>
           </>
         ) : null}

@@ -101,6 +101,8 @@ interface Props {
   supportsThinkingToggle?: boolean;
   /** Whether the provider supports active turn steering (default: false) */
   supportsSteering?: boolean;
+  /** Current behavior of the primary composer action. */
+  primaryActionKind?: "send" | "steer" | "queue";
   /** Available slash commands (without "/" prefix) */
   slashCommands?: string[];
   /** Callback for custom client-side commands (e.g., "model"). Return true if handled. */
@@ -151,6 +153,7 @@ export function MessageInput({
   supportsPermissionMode = true,
   supportsThinkingToggle = true,
   supportsSteering = false,
+  primaryActionKind,
   slashCommands = [],
   onCustomCommand,
   modelIndicatorTone,
@@ -191,9 +194,15 @@ export function MessageInput({
   // Panel is collapsed if user collapsed it OR if externally collapsed (approval panel showing)
   const collapsed = userCollapsed || externalCollapsed;
   const canSubmit = !!(text.trim() || attachments.length > 0);
-  const primaryActionLabel = supportsSteering && onQueue
+  const effectivePrimaryActionKind =
+    primaryActionKind ?? (supportsSteering && onQueue
+      ? "steer"
+      : onQueue
+        ? "queue"
+        : "send");
+  const primaryActionLabel = effectivePrimaryActionKind === "steer"
     ? t("toolbarSteerTooltip")
-    : onQueue
+    : effectivePrimaryActionKind === "queue"
       ? t("toolbarQueueLabel")
       : t("toolbarSend");
 
@@ -253,7 +262,8 @@ export function MessageInput({
     }
   }, [text, disabled, controls, onQueue, attachments.length]);
 
-  const submitFromCollapsed = handleSubmit;
+  const submitFromCollapsed =
+    effectivePrimaryActionKind === "queue" ? handleQueue : handleSubmit;
 
   const recallLastSubmission = useCallback((allowExistingText = false) => {
     if (
@@ -551,7 +561,13 @@ export function MessageInput({
               aria-label={primaryActionLabel}
               title={primaryActionLabel}
             >
-              <span className="send-icon">{supportsSteering ? "↗" : "↑"}</span>
+              <span className="send-icon">
+                {effectivePrimaryActionKind === "steer"
+                  ? "↗"
+                  : effectivePrimaryActionKind === "queue"
+                    ? "⏱"
+                    : "↑"}
+              </span>
             </button>
           </div>
         )}
@@ -646,8 +662,13 @@ export function MessageInput({
             isRunning={isRunning}
             isThinking={isThinking}
             onStop={onStop}
-            onSend={handleSubmit}
+            onSend={
+              effectivePrimaryActionKind === "queue"
+                ? handleQueue
+                : handleSubmit
+            }
             onQueue={onQueue ? handleQueue : undefined}
+            primaryActionKind={effectivePrimaryActionKind}
             canSend={canSubmit}
             disabled={disabled}
           />

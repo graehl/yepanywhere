@@ -219,6 +219,32 @@ describe("MessageInput", () => {
     expect(onCancelLatestDeferred).toHaveBeenCalledTimes(1);
   });
 
+  it("starts a /btw aside with Ctrl+B and clears accepted text", () => {
+    const onBtwShortcut = vi.fn(() => true);
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      onBtwShortcut,
+    });
+
+    fireEvent.change(textarea, { target: { value: "side question" } });
+    fireEvent.keyDown(textarea, { key: "b", ctrlKey: true });
+
+    expect(onBtwShortcut).toHaveBeenCalledWith("side question");
+    expect((textarea as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("keeps Ctrl+B text when /btw is not accepted", () => {
+    const onBtwShortcut = vi.fn(() => false);
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      onBtwShortcut,
+    });
+
+    fireEvent.change(textarea, { target: { value: "not supported" } });
+    fireEvent.keyDown(textarea, { key: "b", ctrlKey: true });
+
+    expect(onBtwShortcut).toHaveBeenCalledWith("not supported");
+    expect((textarea as HTMLTextAreaElement).value).toBe("not supported");
+  });
+
   it("clears the composer with Ctrl+G through the textarea undo stack", () => {
     const previousExecCommand = document.execCommand;
     const execCommand = vi.fn(() => true);

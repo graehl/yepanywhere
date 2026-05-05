@@ -107,6 +107,8 @@ interface Props {
   slashCommands?: string[];
   /** Callback for custom client-side commands (e.g., "model"). Return true if handled. */
   onCustomCommand?: (command: string) => boolean;
+  /** Start a /btw aside. When text is present, the caller may send it immediately. */
+  onBtwShortcut?: (text: string) => boolean;
   /** Live model/effort indicator shown on the slash button */
   modelIndicatorTone?: ModelIndicatorTone;
   modelIndicatorTitle?: string;
@@ -156,6 +158,7 @@ export function MessageInput({
   primaryActionKind,
   slashCommands = [],
   onCustomCommand,
+  onBtwShortcut,
   modelIndicatorTone,
   modelIndicatorTitle,
   heartbeatEnabled = false,
@@ -350,6 +353,30 @@ export function MessageInput({
         e.preventDefault();
         return;
       }
+    }
+
+    if (
+      e.key.toLowerCase() === "b" &&
+      e.ctrlKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      !e.altKey
+    ) {
+      e.preventDefault();
+      if (!disabled && onBtwShortcut) {
+        const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
+        let finalText = text.trimEnd();
+        if (pendingVoice) {
+          finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
+        }
+        const message = finalText.trim();
+        if (onBtwShortcut(message) && message) {
+          controls.clearInput();
+          setInterimTranscript("");
+        }
+        textareaRef.current?.focus();
+      }
+      return;
     }
 
     if (

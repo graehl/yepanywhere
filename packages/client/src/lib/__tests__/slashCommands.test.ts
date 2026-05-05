@@ -41,6 +41,24 @@ describe("slashCommands", () => {
     });
   });
 
+  it("parses /btw as a client-side aside command", () => {
+    expect(parseComposerSlashCommand("/b side lookup")).toEqual({
+      kind: "custom",
+      command: "btw",
+      argument: "side lookup",
+    });
+    expect(parseComposerSlashCommand("/btw side lookup")).toEqual({
+      kind: "custom",
+      command: "btw",
+      argument: "side lookup",
+    });
+    expect(resolveComposerSlashTurn("/btw side lookup")).toEqual({
+      kind: "custom",
+      command: "btw",
+      argument: "side lookup",
+    });
+  });
+
   it("renders whole command labels with shortcut parts split out", () => {
     expect(getSlashCommandMenuParts("fast")).toEqual({
       shortcut: "/f",
@@ -51,6 +69,11 @@ describe("slashCommands", () => {
       shortcut: "/r",
       rest: "un exactly",
       label: "/run exactly",
+    });
+    expect(getSlashCommandMenuParts("btw")).toEqual({
+      shortcut: "/b",
+      rest: "tw aside",
+      label: "/btw aside",
     });
     expect(getSlashCommandMenuParts("model")).toEqual({
       shortcut: "/m",

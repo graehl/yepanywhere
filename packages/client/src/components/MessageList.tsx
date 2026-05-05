@@ -205,6 +205,27 @@ interface DeferredMessage {
   deliveryState?: "queued" | "sending" | "recovered";
 }
 
+interface BtwAsideTimelineItem {
+  id: string;
+  request: string;
+  followUps: string[];
+  status:
+    | "draft"
+    | "starting"
+    | "running"
+    | "complete"
+    | "failed"
+    | "stopped";
+  createdAt: string;
+  updatedAt: string;
+  historyAt?: string;
+  preview?: string;
+  error?: string;
+  sessionHref?: string;
+  isFocused?: boolean;
+  canStop?: boolean;
+}
+
 interface Props {
   messages: Message[];
   provider?: string;
@@ -218,6 +239,14 @@ interface Props {
   pendingMessages?: PendingMessage[];
   /** Deferred messages queued server-side (shown as "Queued") */
   deferredMessages?: DeferredMessage[];
+  /** YA-owned /btw cards that have entered the scrollback timeline. */
+  btwAsides?: BtwAsideTimelineItem[];
+  /** Focus this /btw aside for follow-up turns. */
+  onFocusBtwAside?: (asideId: string) => void;
+  /** Exit focused /btw follow-up mode. */
+  onDoneBtwAside?: () => void;
+  /** Interrupt/abort a running /btw aside. */
+  onStopBtwAside?: (asideId: string) => void;
   /** Callback to cancel a deferred message */
   onCancelDeferred?: (tempId: string) => void;
   /** Callback to take a deferred message back into the composer */
@@ -274,6 +303,79 @@ function XIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+function BtwAsideTimelineCard({
+  aside,
+  onFocus,
+  onDone,
+  onStop,
+}: {
+  aside: BtwAsideTimelineItem;
+  onFocus?: (asideId: string) => void;
+  onDone?: () => void;
+  onStop?: (asideId: string) => void;
+}) {
+  return (
+    <div
+      className={`btw-aside-card btw-aside-card-history is-${aside.status} ${
+        aside.isFocused ? "is-focused" : ""
+      }`}
+      data-render-id={`btw-${aside.id}`}
+    >
+      <button
+        type="button"
+        className="btw-aside-main"
+        onClick={() => onFocus?.(aside.id)}
+      >
+        <span className="btw-aside-meta">/btw {aside.status}</span>
+        <span className="btw-aside-request">
+          {aside.request || "New aside"}
+        </span>
+        {aside.followUps.length > 0 && (
+          <span className="btw-aside-followups">
+            +{aside.followUps.length} follow-up
+            {aside.followUps.length === 1 ? "" : "s"}
+          </span>
+        )}
+        {aside.preview && (
+          <span className="btw-aside-preview">{aside.preview}</span>
+        )}
+        {aside.error && (
+          <span className="btw-aside-error">{aside.error}</span>
+        )}
+      </button>
+      <div className="btw-aside-actions">
+        {aside.sessionHref && (
+          <a className="btw-aside-action" href={aside.sessionHref}>
+            Open
+          </a>
+        )}
+        {aside.isFocused ? (
+          <button type="button" className="btw-aside-action" onClick={onDone}>
+            Done
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btw-aside-action"
+            onClick={() => onFocus?.(aside.id)}
+          >
+            Focus
+          </button>
+        )}
+        {aside.canStop && (
+          <button
+            type="button"
+            className="btw-aside-action btw-aside-action-stop"
+            onClick={() => onStop?.(aside.id)}
+          >
+            Stop
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export const MessageList = memo(function MessageList({
   messages,
   provider,
@@ -283,6 +385,10 @@ export const MessageList = memo(function MessageList({
   scrollTrigger = 0,
   pendingMessages = [],
   deferredMessages = [],
+  btwAsides = [],
+  onFocusBtwAside,
+  onDoneBtwAside,
+  onStopBtwAside,
   onCancelDeferred,
   onEditDeferred,
   onCorrectLatestUserMessage,
@@ -599,9 +705,12 @@ export const MessageList = memo(function MessageList({
     for (const deferred of deferredMessages) {
       includeTimestamp(parseTimestampMs(deferred.timestamp));
     }
+    for (const aside of btwAsides) {
+      includeTimestamp(parseTimestampMs(aside.historyAt ?? aside.updatedAt));
+    }
 
     return latest;
-  }, [renderItems, pendingMessages, deferredMessages]);
+  }, [renderItems, pendingMessages, deferredMessages, btwAsides]);
   const latestCorrectablePrompt = useMemo(() => {
     if (!onCorrectLatestUserMessage) return null;
 
@@ -633,14 +742,76 @@ export const MessageList = memo(function MessageList({
       const isVisible =
         userTurnSearch.scope === "all"
           ? group.items.some((item) => userTurnSearchMatchIds.has(item.id)) ||
-            (!!currentUserTurnId && userTurnSearchMatchIds.has(currentUserTurnId))
-          : !!currentUserTurnId && userTurnSearchMatchIds.has(currentUserTurnId);
+            (!!currentUserTurnId &&
+              userTurnSearchMatchIds.has(currentUserTurnId))
+          : !!currentUserTurnId &&
+            userTurnSearchMatchIds.has(currentUserTurnId);
       if (isVisible) {
         visibleGroups.push(group);
       }
     }
     return visibleGroups;
   }, [searchReady, turnGroups, userTurnSearch.scope, userTurnSearchMatchIds]);
+  const visibleTimelineEntries = useMemo(() => {
+    const entries: Array<
+      | {
+          kind: "turn";
+          key: string;
+          timestampMs: number | null;
+          ordinal: number;
+          group: (typeof visibleTurnGroups)[number];
+        }
+      | {
+          kind: "btw";
+          key: string;
+          timestampMs: number | null;
+          ordinal: number;
+          aside: BtwAsideTimelineItem;
+        }
+    > = [];
+
+    visibleTurnGroups.forEach((group, index) => {
+      let timestampMs: number | null = null;
+      for (const item of group.items) {
+        const itemTimestamp = getLatestMessageTimestampMs(item.sourceMessages);
+        if (itemTimestamp !== null) {
+          timestampMs =
+            timestampMs === null
+              ? itemTimestamp
+              : Math.max(timestampMs, itemTimestamp);
+        }
+      }
+      const firstItem = group.items[0];
+      entries.push({
+        kind: "turn",
+        key: firstItem ? `turn-${firstItem.id}` : `turn-${index}`,
+        timestampMs,
+        ordinal: index,
+        group,
+      });
+    });
+
+    btwAsides.forEach((aside, index) => {
+      entries.push({
+        kind: "btw",
+        key: `btw-${aside.id}`,
+        timestampMs: parseTimestampMs(aside.historyAt ?? aside.updatedAt),
+        ordinal: visibleTurnGroups.length + index,
+        aside,
+      });
+    });
+
+    return entries.sort((left, right) => {
+      if (left.timestampMs !== null && right.timestampMs !== null) {
+        return (
+          left.timestampMs - right.timestampMs || left.ordinal - right.ordinal
+        );
+      }
+      if (left.timestampMs !== null) return -1;
+      if (right.timestampMs !== null) return 1;
+      return left.ordinal - right.ordinal;
+    });
+  }, [btwAsides, visibleTurnGroups]);
 
   const toggleThinkingExpanded = useCallback(() => {
     setThinkingExpanded((prev) => !prev);
@@ -1087,7 +1258,20 @@ export const MessageList = memo(function MessageList({
             </button>
           </div>
         )}
-        {visibleTurnGroups.map((group) => {
+        {visibleTimelineEntries.map((entry) => {
+          if (entry.kind === "btw") {
+            return (
+              <BtwAsideTimelineCard
+                key={entry.key}
+                aside={entry.aside}
+                onFocus={onFocusBtwAside}
+                onDone={onDoneBtwAside}
+                onStop={onStopBtwAside}
+              />
+            );
+          }
+
+          const { group } = entry;
           if (group.isUserPrompt) {
             // User prompts render directly without timeline wrapper
             const item = group.items[0];
@@ -1118,7 +1302,7 @@ export const MessageList = memo(function MessageList({
           const firstItem = group.items[0];
           if (!firstItem) return null;
           return (
-            <div key={`turn-${firstItem.id}`} className="assistant-turn">
+            <div key={entry.key} className="assistant-turn">
               {group.items.map((item) => (
                 <RenderItemComponent
                   key={item.id}

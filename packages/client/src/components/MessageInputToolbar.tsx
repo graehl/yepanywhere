@@ -538,6 +538,12 @@ export function MessageInputToolbar({
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
+                      <kbd>Ctrl</kbd><kbd>B</kbd>
+                    </span>
+                    <span>Start /btw aside</span>
+                  </div>
+                  <div className="session-shortcuts-row">
+                    <span className="session-shortcuts-keys">
                       <kbd>Esc</kbd>
                     </span>
                     <span>Stop agent / cancel overlay</span>

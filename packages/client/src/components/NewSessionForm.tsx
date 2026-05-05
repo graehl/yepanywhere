@@ -219,7 +219,7 @@ export function NewSessionForm({
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
   const hasInitializedDefaultsRef = useRef(false);
   const hasUserCustomizedDefaultsRef = useRef(false);
-  const lastSyncedProjectIdRef = useRef<string | null>(projectId ?? null);
+  const lastSyncedProjectIdRef = useRef<string | null>(null);
 
   // Thinking toggle state
   const {
@@ -376,7 +376,7 @@ export function NewSessionForm({
     }
 
     lastSyncedProjectIdRef.current = nextProjectId;
-    setProjectInput(selectedProject?.path ?? "");
+    setProjectInput((prev) => prev || (selectedProject?.path ?? ""));
   }, [projectId, selectedProject]);
 
   // When provider changes, reset model based on user settings

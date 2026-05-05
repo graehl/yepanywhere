@@ -398,6 +398,8 @@ describe("NewSessionForm", () => {
         provider: "claude",
         model: "opus",
       }),
+      undefined,
+      expect.any(Number),
     );
   });
 
@@ -439,6 +441,13 @@ describe("NewSessionForm", () => {
     expect(screen.getAllByText("newSessionProjectDetached")).toHaveLength(2);
     expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Beta").length).toBeGreaterThan(0);
+  });
+
+  it("keeps attachment quality out of the bottom composer row", () => {
+    render(<NewSessionForm projects={[...chooserProjects]} />);
+
+    expect(screen.queryByRole("button", { name: "SD" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "HD" })).toBeNull();
   });
 
   it("keeps the drafted prompt when switching from detached to a project", async () => {
@@ -503,6 +512,8 @@ describe("NewSessionForm", () => {
         "project-added",
         "hello",
         expect.any(Object),
+        undefined,
+        expect.any(Number),
       );
     });
   });
@@ -519,6 +530,8 @@ describe("NewSessionForm", () => {
       expect(mockStartDetachedSession).toHaveBeenCalledWith(
         "hello",
         expect.any(Object),
+        undefined,
+        expect.any(Number),
       );
     });
 

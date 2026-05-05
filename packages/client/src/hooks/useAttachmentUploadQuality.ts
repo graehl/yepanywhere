@@ -11,7 +11,10 @@ const QUALITY_LONG_EDGE_PX: Record<AttachmentUploadQuality, number> = {
 };
 
 function readAttachmentUploadQuality(): AttachmentUploadQuality {
-  if (typeof localStorage === "undefined") {
+  if (
+    typeof localStorage === "undefined" ||
+    typeof localStorage.getItem !== "function"
+  ) {
     return DEFAULT_ATTACHMENT_UPLOAD_QUALITY;
   }
   const stored = localStorage.getItem(UI_KEYS.attachmentUploadQuality);
@@ -29,7 +32,10 @@ export function useAttachmentUploadQuality(): [
   );
 
   useEffect(() => {
-    if (typeof localStorage === "undefined") {
+    if (
+      typeof localStorage === "undefined" ||
+      typeof localStorage.setItem !== "function"
+    ) {
       return;
     }
     localStorage.setItem(UI_KEYS.attachmentUploadQuality, quality);
@@ -38,7 +44,10 @@ export function useAttachmentUploadQuality(): [
   const setAttachmentUploadQuality = useCallback(
     (nextQuality: AttachmentUploadQuality) => {
       setQuality(nextQuality);
-      if (typeof localStorage !== "undefined") {
+      if (
+        typeof localStorage !== "undefined" &&
+        typeof localStorage.setItem === "function"
+      ) {
         localStorage.setItem(UI_KEYS.attachmentUploadQuality, nextQuality);
       }
     },

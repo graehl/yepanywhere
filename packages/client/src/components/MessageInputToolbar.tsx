@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent, RefObject, TouchEvent } from "react";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
-import type { AttachmentUploadQuality } from "../hooks/useAttachmentUploadQuality";
 import { useModelSettings } from "../hooks/useModelSettings";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useI18n } from "../i18n";
@@ -16,7 +15,6 @@ import type { ContextUsage, PermissionMode } from "../types";
 import { MessageAge } from "./MessageAge";
 import { RenderModeGlyph } from "./ui/RenderModeGlyph";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
-import { AttachmentQualityToggle } from "./AttachmentQualityToggle";
 import { ModeSelector } from "./ModeSelector";
 import { SlashCommandButton } from "./SlashCommandButton";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
@@ -37,8 +35,6 @@ export interface MessageInputToolbarProps {
   canAttach?: boolean;
   attachmentCount?: number;
   onAttachClick?: () => void;
-  attachmentQuality?: AttachmentUploadQuality;
-  onAttachmentQualityChange?: (quality: AttachmentUploadQuality) => void;
 
   // Voice input
   voiceButtonRef?: RefObject<VoiceInputButtonRef | null>;
@@ -91,8 +87,6 @@ export function MessageInputToolbar({
   canAttach,
   attachmentCount = 0,
   onAttachClick,
-  attachmentQuality,
-  onAttachmentQualityChange,
   voiceButtonRef,
   onVoiceTranscript,
   onInterimTranscript,
@@ -160,9 +154,6 @@ export function MessageInputToolbar({
         handleIsearchGuide,
       );
   }, []);
-  const primaryActionHelp = hasDualActions
-    ? t("toolbarSteerTooltip")
-    : t("toolbarSendTooltip");
   const stopTitle = `${t("toolbarStop")} (Esc)`;
   const showStopButton = !!(isRunning && onStop && isThinking);
   const showSendButton = !!(onSend && (!showStopButton || canSend));
@@ -246,13 +237,6 @@ export function MessageInputToolbar({
             <span className="attach-count">{attachmentCount}</span>
           )}
         </button>
-        {canAttach && attachmentQuality && onAttachmentQualityChange && (
-          <AttachmentQualityToggle
-            quality={attachmentQuality}
-            onChange={onAttachmentQualityChange}
-            disabled={disabled}
-          />
-        )}
         {supportsThinkingToggle && (
           <button
             type="button"

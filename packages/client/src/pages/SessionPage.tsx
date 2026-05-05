@@ -332,7 +332,6 @@ function SessionPageContent({
     permissionMode,
     loading,
     error,
-    connected,
     sessionUpdatesConnected,
     lastStreamActivityAt,
     setStatus,
@@ -351,8 +350,6 @@ function SessionPageContent({
     removeDeferredMessage,
     slashCommands,
     setSessionModel,
-    sessionTools,
-    mcpServers,
     pagination,
     loadingOlder,
     loadOlderMessages,
@@ -489,8 +486,6 @@ function SessionPageContent({
     currentProviderInfo?.supportsPermissionMode ?? true;
   const supportsThinkingToggle =
     currentProviderInfo?.supportsThinkingToggle ?? true;
-  const supportsSlashCommands =
-    currentProviderInfo?.supportsSlashCommands ?? false;
   const supportsSteering =
     currentProviderInfo?.supportsSteering ?? false;
   const currentOwnedProcessId =
@@ -662,8 +657,7 @@ function SessionPageContent({
   // File attachment state
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
-  const [attachmentQuality, setAttachmentQuality] =
-    useAttachmentUploadQuality();
+  const [attachmentQuality] = useAttachmentUploadQuality();
   // Track in-flight upload promises so handleSend can wait for them
   const pendingUploadsRef = useRef<Map<string, Promise<UploadedFile | null>>>(
     new Map(),
@@ -1088,7 +1082,7 @@ function SessionPageContent({
       const queuedEditDraftAtSubmit = queuedEditDraft;
       const queuedEditPlacement = queuedEditDraftAtSubmit
         ? {
-            ...(queuedEditDraftAtSubmit.placement ?? {}),
+            ...queuedEditDraftAtSubmit.placement,
             replaceTempId: queuedEditDraftAtSubmit.originalTempId,
           }
         : undefined;
@@ -2548,8 +2542,6 @@ function SessionPageContent({
                     slashCommands={
                       status.owner === "self" ? allSlashCommands : []
                     }
-                    attachmentQuality={attachmentQuality}
-                    onAttachmentQualityChange={setAttachmentQuality}
                     onSelectSlashCommand={handleToolbarSlashCommand}
                     modelIndicatorTone={slashModelIndicatorTone}
                     modelIndicatorTitle={slashModelIndicatorTitle}
@@ -2628,8 +2620,6 @@ function SessionPageContent({
                 attachments={attachments}
                 onAttach={handleAttach}
                 onRemoveAttachment={handleRemoveAttachment}
-                attachmentQuality={attachmentQuality}
-                onAttachmentQualityChange={setAttachmentQuality}
                 uploadProgress={uploadProgress}
                 slashCommands={status.owner === "self" ? allSlashCommands : []}
                 onCustomCommand={handleCustomCommand}

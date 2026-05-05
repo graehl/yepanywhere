@@ -57,7 +57,6 @@ import {
 } from "../lib/speechProviders/methods";
 import { shortenPath } from "../lib/text";
 import type { PermissionMode, Project } from "../types";
-import { AttachmentQualityToggle } from "./AttachmentQualityToggle";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
@@ -204,8 +203,7 @@ export function NewSessionForm({
   const [uploadProgress, setUploadProgress] = useState<
     Record<string, { uploaded: number; total: number }>
   >({});
-  const [attachmentQuality, setAttachmentQuality] =
-    useAttachmentUploadQuality();
+  const [attachmentQuality] = useAttachmentUploadQuality();
   const [interimTranscript, setInterimTranscript] = useState("");
   const [isSavingDefaults, setIsSavingDefaults] = useState(false);
   const [isProjectChooserExpanded, setIsProjectChooserExpanded] =
@@ -1009,11 +1007,6 @@ export function NewSessionForm({
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           </button>
-          <AttachmentQualityToggle
-            quality={attachmentQuality}
-            onChange={setAttachmentQuality}
-            disabled={isStarting}
-          />
           <VoiceInputButton
             ref={voiceButtonRef}
             onTranscript={handleVoiceTranscript}

@@ -65,7 +65,7 @@ function getPreferredModelId(
     if (matchingPreferredModel) return matchingPreferredModel.id;
   }
 
-  return models.find((m) => m.id === "default")?.id ?? models[0]?.id ?? null;
+  return models[0]?.id ?? null;
 }
 
 function getRestartDefaultModel(params: {
@@ -97,15 +97,16 @@ function getRestartDefaultProvider(params: {
   const availableProviders = getAvailableProviders(params.providers);
   const availableProviderNames = new Set(availableProviders.map((p) => p.name));
 
+  // Prefer the session's own provider for handoff; saved defaults are a fallback
+  if (availableProviderNames.has(params.sourceProvider)) {
+    return params.sourceProvider;
+  }
+
   if (
     params.defaults?.provider &&
     availableProviderNames.has(params.defaults.provider)
   ) {
     return params.defaults.provider;
-  }
-
-  if (availableProviderNames.has(params.sourceProvider)) {
-    return params.sourceProvider;
   }
 
   return getDefaultProvider(params.providers)?.name ?? params.sourceProvider;

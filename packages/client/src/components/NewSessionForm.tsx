@@ -93,7 +93,7 @@ function getPreferredModelId(
     if (matchingPreferredModel) return matchingPreferredModel.id;
   }
 
-  return models.find((m) => m.id === "default")?.id ?? models[0]?.id ?? null;
+  return models[0]?.id ?? null;
 }
 
 function getPreferredProviderModelId(

@@ -1658,6 +1658,21 @@ a.sidebar-nav-item {
   color: var(--status-badge-external-text);
 }
 
+.recent-sessions-badge.btw,
+.session-badge-btw {
+  background: color-mix(in srgb, var(--provider-codex) 16%, transparent);
+  color: color-mix(in srgb, var(--provider-codex) 86%, var(--text-primary));
+  border: 1px solid
+    color-mix(in srgb, var(--provider-codex) 45%, var(--border-color));
+  font-family: var(--font-mono);
+}
+
+.recent-session-item.btw-aside-session .recent-session-title,
+.session-list-item.btw-aside-session .session-list-item__title,
+.session-list-item.btw-aside-session .session-list-item__title-text {
+  color: color-mix(in srgb, var(--provider-codex) 84%, var(--text-primary));
+}
+
 .session-messages {
   flex: 1;
   overflow-y: auto;
@@ -2045,6 +2060,8 @@ a.sidebar-nav-item {
 }
 
 .btw-aside-main {
+  grid-column: 1;
+  grid-row: 1;
   appearance: none;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -2098,11 +2115,50 @@ a.sidebar-nav-item {
   color: var(--error-color);
 }
 
+.btw-aside-transcript {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: min(32vh, 260px);
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+  overscroll-behavior: contain;
+}
+
+.btw-aside-turn {
+  max-width: 88%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.btw-aside-turn-user {
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--provider-codex) 11%, var(--bg-surface));
+}
+
+.btw-aside-turn-assistant {
+  align-self: flex-start;
+  background: var(--bg-surface);
+}
+
 .btw-aside-actions {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 3px;
 }
 
@@ -2187,6 +2243,8 @@ a.sidebar-nav-item {
   }
 
   .btw-aside-actions {
+    grid-column: 1;
+    grid-row: auto;
     flex-direction: row;
     justify-content: flex-end;
   }
@@ -3566,6 +3624,76 @@ a.sidebar-nav-item {
 
 .heartbeat-toolbar-button.active:hover {
   background: color-mix(in srgb, var(--app-yep-green) 26%, transparent);
+}
+
+.btw-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--composer-control-size);
+  min-width: 2.55rem;
+  padding: 0 0.45rem;
+  background: color-mix(in srgb, var(--provider-codex) 10%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--provider-codex) 42%, var(--border-color));
+  border-radius: var(--radius-md);
+  color: color-mix(in srgb, var(--provider-codex) 82%, var(--text-primary));
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.btw-toolbar-button:hover:not(:disabled),
+.btw-toolbar-button:focus-visible {
+  background: color-mix(in srgb, var(--provider-codex) 18%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--provider-codex) 65%,
+    var(--border-input)
+  );
+  color: var(--text-primary);
+  outline: none;
+}
+
+.btw-toolbar-button.active {
+  background: color-mix(in srgb, var(--provider-codex) 30%, var(--bg-input));
+  border-color: color-mix(
+    in srgb,
+    var(--provider-codex) 78%,
+    var(--border-input)
+  );
+  color: var(--text-primary);
+}
+
+.btw-toolbar-button.has-asides {
+  background: color-mix(in srgb, var(--provider-codex) 18%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--provider-codex) 58%,
+    var(--border-input)
+  );
+  color: color-mix(in srgb, var(--provider-codex) 92%, var(--text-primary));
+}
+
+.btw-toolbar-button.has-asides:hover:not(:disabled),
+.btw-toolbar-button.has-asides:focus-visible {
+  background: color-mix(in srgb, var(--provider-codex) 26%, var(--bg-input));
+  color: var(--text-primary);
+}
+
+.btw-toolbar-button.active:hover:not(:disabled),
+.btw-toolbar-button.active:focus-visible {
+  background: color-mix(in srgb, var(--provider-codex) 38%, var(--bg-input));
+}
+
+.btw-toolbar-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Voice input button */
@@ -8970,6 +9098,8 @@ a.sidebar-nav-item {
 
 /* Session badges (Ext, Appr, Q) */
 .session-badge {
+  display: inline-flex;
+  align-items: center;
   font-size: var(--font-size-xs);
   padding: 2px 6px;
   border-radius: var(--radius-sm);

@@ -245,6 +245,49 @@ describe("MessageInput", () => {
     expect((textarea as HTMLTextAreaElement).value).toBe("not supported");
   });
 
+  it("starts a /btw aside from the toolbar button", () => {
+    const onBtwShortcut = vi.fn(() => true);
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      onBtwShortcut,
+    });
+
+    fireEvent.change(textarea, { target: { value: "tap target" } });
+    fireEvent.click(screen.getByRole("button", { name: /Start \/btw aside/ }));
+
+    expect(onBtwShortcut).toHaveBeenCalledWith("tap target");
+    expect((textarea as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("marks the /btw toolbar button active for focused aside mode", () => {
+    const onBtwShortcut = vi.fn(() => false);
+    renderMessageInput(vi.fn(() => true), {
+      btwActive: true,
+      onBtwShortcut,
+    });
+
+    const button = screen.getByRole("button", {
+      name: /Composer is focused on a \/btw aside/,
+    });
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(button);
+
+    expect(onBtwShortcut).toHaveBeenCalledWith("");
+  });
+
+  it("marks the /btw toolbar button when an aside can be focused", () => {
+    renderMessageInput(vi.fn(() => true), {
+      btwHasAsides: true,
+      onBtwShortcut: vi.fn(() => false),
+    });
+
+    const button = screen.getByRole("button", {
+      name: /Focus existing \/btw aside/,
+    });
+
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("clears the composer with Ctrl+G through the textarea undo stack", () => {
     const previousExecCommand = document.execCommand;
     const execCommand = vi.fn(() => true);

@@ -94,6 +94,12 @@ const PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH = 700;
 const BTW_ASIDE_POLL_MS = 1500;
 const BTW_ASIDE_MAX_POLLS = 160;
 const BTW_ASIDE_PREVIEW_MAX_LENGTH = 700;
+const BTW_ASIDE_PROMPT_MARKER = "[YA /btw aside]";
+const BTW_ASIDE_FORK_PROVIDERS = new Set<ProviderName>([
+  "claude",
+  "codex",
+  "codex-oss",
+]);
 
 interface QueuedEditDraft {
   originalTempId: string;
@@ -117,15 +123,24 @@ type BtwAsideStatus =
 interface BtwAside {
   id: string;
   sessionId?: string;
+  baseMessageCount: number;
   request: string;
   followUps: string[];
   status: BtwAsideStatus;
   error?: string;
   preview?: string;
+  responses: string[];
   processId?: string;
   createdAt: string;
   updatedAt: string;
   historyAt?: string;
+  expanded?: boolean;
+}
+
+function providerSupportsBtwAsideFork(
+  provider: ProviderName | undefined,
+): boolean {
+  return provider ? BTW_ASIDE_FORK_PROVIDERS.has(provider) : false;
 }
 
 function getDeferredEditPlacement(
@@ -174,6 +189,47 @@ function messageContentToPlainText(content: unknown): string {
       if (value.type === "text" && typeof value.text === "string") {
         return value.text;
       }
+      if (value.type === "thinking" && typeof value.thinking === "string") {
+        return value.thinking;
+      }
+      return typeof value.content === "string" ? value.content : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function messageContentToBtwLiveText(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .map((block) => {
+      if (!block || typeof block !== "object") {
+        return "";
+      }
+      const value = block as AppContentBlock & Record<string, unknown>;
+      if (value.type === "text" && typeof value.text === "string") {
+        return value.text;
+      }
+      if (value.type === "thinking" && typeof value.thinking === "string") {
+        return `Thinking: ${truncateBtwPreview(value.thinking)}`;
+      }
+      if (value.type === "tool_use" && typeof value.name === "string") {
+        const input = value.input as Record<string, unknown> | undefined;
+        const detail =
+          (typeof input?.command === "string" && input.command) ||
+          (typeof input?.cmd === "string" && input.cmd) ||
+          (typeof input?.file_path === "string" && input.file_path) ||
+          (typeof input?.query === "string" && input.query) ||
+          (typeof input?.url === "string" && input.url) ||
+          "";
+        return detail
+          ? `Using ${value.name}: ${truncateBtwPreview(detail)}`
+          : `Using ${value.name}`;
+      }
       return typeof value.content === "string" ? value.content : "";
     })
     .filter(Boolean)
@@ -188,20 +244,29 @@ function truncateBtwPreview(text: string): string {
   return `${normalized.slice(0, BTW_ASIDE_PREVIEW_MAX_LENGTH - 3).trimEnd()}...`;
 }
 
+function getMessagePlainText(message: Message | undefined): string {
+  return (
+    messageContentToPlainText(message?.content) ||
+    messageContentToPlainText(message?.message?.content)
+  );
+}
+
+function isAssistantRole(message: Message | undefined): message is Message {
+  return (
+    message?.type === "assistant" ||
+    message?.role === "assistant" ||
+    message?.message?.role === "assistant"
+  );
+}
+
 function getLatestAssistantText(messages: Message[]): string | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (
-      message?.type !== "assistant" &&
-      message?.role !== "assistant" &&
-      message?.message?.role !== "assistant"
-    ) {
+    if (!isAssistantRole(message)) {
       continue;
     }
 
-    const text =
-      messageContentToPlainText(message.content) ||
-      messageContentToPlainText(message.message?.content);
+    const text = getMessagePlainText(message);
     if (text.trim()) {
       return truncateBtwPreview(text);
     }
@@ -209,9 +274,43 @@ function getLatestAssistantText(messages: Message[]): string | null {
   return null;
 }
 
+function findLatestBtwPromptIndex(messages: Message[]): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (
+      getMessagePlainText(messages[index] ?? {}).includes(
+        BTW_ASIDE_PROMPT_MARKER,
+      )
+    ) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function getBtwAssistantResponses(
+  messages: Message[],
+  baseMessageCount: number,
+): string[] {
+  const latestBtwPromptIndex = findLatestBtwPromptIndex(messages);
+  const startIndex =
+    latestBtwPromptIndex >= 0
+      ? latestBtwPromptIndex + 1
+      : Math.min(Math.max(0, baseMessageCount), messages.length);
+  return messages
+    .slice(startIndex)
+    .filter(isAssistantRole)
+    .map(
+      (message) =>
+        messageContentToBtwLiveText(message.content) ||
+        messageContentToBtwLiveText(message.message?.content),
+    )
+    .map((text) => text.trim())
+    .filter(Boolean);
+}
+
 function buildBtwAsidePrompt(prompt: string): string {
   return [
-    "[YA /btw aside]",
+    BTW_ASIDE_PROMPT_MARKER,
     "You are running in an isolated side session forked from the parent transcript.",
     "The parent session remains responsible for completing the main task.",
     "Do not continue, take over, or report on the parent task unless the side request explicitly asks for that.",
@@ -449,7 +548,7 @@ function SessionPageContent({
   // Effective provider/model for immediate display before session data loads
   const effectiveProvider = session?.provider ?? initialProvider;
   const effectiveModel = session?.model ?? initialModel;
-  const supportsBtwAsides = effectiveProvider === "codex";
+  const supportsBtwAsides = providerSupportsBtwAsideFork(effectiveProvider);
   const [liveModelConfig, setLiveModelConfig] = useState<{
     model?: string;
     thinking?: { type: string };
@@ -813,6 +912,14 @@ function SessionPageContent({
   ): PreparedComposerSubmission | null => {
     const slashTurn = resolveComposerSlashTurn(text);
     if (slashTurn.kind === "custom") {
+      if (slashTurn.command === "btw" && !supportsBtwAsides) {
+        draftControlsRef.current?.setDraft(text);
+        showToast(
+          "/btw asides are available only for providers with a wired fork path.",
+          "error",
+        );
+        return null;
+      }
       if (handleCustomCommand(slashTurn.command, slashTurn.argument)) {
         return null;
       }
@@ -1605,19 +1712,29 @@ function SessionPageContent({
         polls += 1;
         try {
           const result = await api.getSession(projectId, asideSessionId);
-          const preview = getLatestAssistantText(result.messages);
           const nextStatus: BtwAsideStatus =
             result.ownership.owner === "none" ? "complete" : "running";
-          updateBtwAside(asideId, (aside) => ({
-            ...aside,
-            status: nextStatus,
-            preview: preview ?? aside.preview,
-            historyAt:
-              nextStatus === "complete"
-                ? aside.historyAt ?? new Date().toISOString()
-                : aside.historyAt,
-            updatedAt: new Date().toISOString(),
-          }));
+          updateBtwAside(asideId, (aside) => {
+            const responses = getBtwAssistantResponses(
+              result.messages,
+              aside.baseMessageCount,
+            );
+            const preview =
+              responses.length > 0
+                ? truncateBtwPreview(responses[responses.length - 1] ?? "")
+                : getLatestAssistantText(result.messages);
+            return {
+              ...aside,
+              status: nextStatus,
+              preview: preview ?? aside.preview,
+              responses: responses.length > 0 ? responses : aside.responses,
+              historyAt:
+                nextStatus === "complete"
+                  ? aside.historyAt ?? new Date().toISOString()
+                  : aside.historyAt,
+              updatedAt: new Date().toISOString(),
+            };
+          });
           if (nextStatus === "complete" || polls >= BTW_ASIDE_MAX_POLLS) {
             return;
           }
@@ -1659,6 +1776,12 @@ function SessionPageContent({
       }));
 
       try {
+        const providerName = effectiveProvider;
+        if (!providerSupportsBtwAsideFork(providerName)) {
+          throw new Error(
+            "/btw asides are available only for providers with a wired fork path",
+          );
+        }
         let asideSessionId = sourceAside.sessionId;
         if (!asideSessionId) {
           const titlePreview = truncateBtwPreview(trimmed).slice(0, 80);
@@ -1666,12 +1789,13 @@ function SessionPageContent({
             projectId,
             actualSessionId,
             `/btw ${titlePreview}`,
-            "codex",
+            providerName,
           );
           asideSessionId = clone.sessionId;
           updateBtwAside(sourceAside.id, (aside) => ({
             ...aside,
             sessionId: asideSessionId,
+            baseMessageCount: clone.messageCount,
             status: "starting",
             updatedAt: new Date().toISOString(),
           }));
@@ -1687,7 +1811,7 @@ function SessionPageContent({
             model:
               liveModelConfig?.model ?? session?.model ?? getModelSetting(),
             thinking: getThinkingSetting(),
-            provider: "codex",
+            provider: providerName,
             executor: session?.executor,
           },
           undefined,
@@ -1717,6 +1841,7 @@ function SessionPageContent({
     },
     [
       actualSessionId,
+      effectiveProvider,
       liveModelConfig?.model,
       permissionMode,
       pollBtwAside,
@@ -1731,7 +1856,10 @@ function SessionPageContent({
   const startBtwAside = useCallback(
     (text: string): boolean => {
       if (!supportsBtwAsides) {
-        showToast("/btw asides are available for Codex sessions only.", "error");
+        showToast(
+          "/btw asides are available only for providers with a wired fork path.",
+          "error",
+        );
         return false;
       }
 
@@ -1739,11 +1867,14 @@ function SessionPageContent({
       const now = new Date().toISOString();
       const aside: BtwAside = {
         id: generateUUID(),
+        baseMessageCount: 0,
         request: trimmed,
         followUps: [],
         status: trimmed ? "starting" : "draft",
+        responses: [],
         createdAt: now,
         updatedAt: now,
+        expanded: false,
       };
 
       setBtwAsides((current) => [...current, aside]);
@@ -1777,6 +1908,14 @@ function SessionPageContent({
     materializeBtwAside(asideId);
     setFocusedBtwAsideId((current) => (current === asideId ? null : current));
   }, [materializeBtwAside]);
+
+  const toggleBtwAsideExpanded = useCallback((asideId: string) => {
+    updateBtwAside(asideId, (aside) => ({
+      ...aside,
+      expanded: !aside.expanded,
+      updatedAt: new Date().toISOString(),
+    }));
+  }, [updateBtwAside]);
 
   const handleStopBtwAside = useCallback(
     async (asideId: string) => {
@@ -1837,11 +1976,8 @@ function SessionPageContent({
           ...aside,
           isFocused: focusedBtwAsideId === aside.id,
           canStop: aside.status === "starting" || aside.status === "running",
-          sessionHref: aside.sessionId
-            ? `${basePath}/projects/${projectId}/sessions/${aside.sessionId}`
-            : undefined,
         })),
-    [basePath, btwAsides, focusedBtwAsideId, projectId],
+    [btwAsides, focusedBtwAsideId],
   );
 
   const handleCustomCommand = useCallback(
@@ -2852,6 +2988,7 @@ function SessionPageContent({
                   onFocusBtwAside={setFocusedBtwAsideId}
                   onDoneBtwAside={() => setFocusedBtwAsideId(null)}
                   onStopBtwAside={(asideId) => void handleStopBtwAside(asideId)}
+                  onToggleBtwAsideExpanded={toggleBtwAsideExpanded}
                   onCancelDeferred={handleCancelDeferred}
                   onEditDeferred={handleEditDeferred}
                   onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
@@ -2875,9 +3012,11 @@ function SessionPageContent({
               <div className="btw-aside-stack" aria-label="/btw asides">
                 {stickyBtwAsides.map((aside) => {
                   const isFocused = focusedBtwAsideId === aside.id;
-                  const asideUrl = aside.sessionId
-                    ? `${basePath}/projects/${projectId}/sessions/${aside.sessionId}`
-                    : null;
+                  const canExpand = Boolean(
+                    aside.request ||
+                      aside.followUps.length > 0 ||
+                      aside.responses.length > 0,
+                  );
                   return (
                     <div
                       key={aside.id}
@@ -2913,21 +3052,47 @@ function SessionPageContent({
                           </span>
                         )}
                       </button>
+                      {aside.expanded && canExpand && (
+                        <div className="btw-aside-transcript">
+                          {aside.request && (
+                            <div className="btw-aside-turn btw-aside-turn-user">
+                              {aside.request}
+                            </div>
+                          )}
+                          {aside.responses.map((response, index) => (
+                            <div
+                              key={`response-${index}`}
+                              className="btw-aside-turn btw-aside-turn-assistant"
+                            >
+                              {response}
+                            </div>
+                          ))}
+                          {aside.followUps.map((followUp, index) => (
+                            <div
+                              key={`followup-${index}`}
+                              className="btw-aside-turn btw-aside-turn-user"
+                            >
+                              {followUp}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div className="btw-aside-actions">
-                        {asideUrl && (
-                          <Link
-                            to={asideUrl}
+                        {canExpand && (
+                          <button
+                            type="button"
                             className="btw-aside-action"
-                            onClick={(event) => event.stopPropagation()}
+                            onClick={() => toggleBtwAsideExpanded(aside.id)}
                           >
-                            Open
-                          </Link>
+                            {aside.expanded ? "Less" : "Show"}
+                          </button>
                         )}
                         {isFocused && (
                           <button
                             type="button"
                             className="btw-aside-action"
                             onClick={() => hideBtwAside(aside.id)}
+                            title="Return the composer to the main session"
                           >
                             Done
                           </button>
@@ -2938,6 +3103,11 @@ function SessionPageContent({
                             type="button"
                             className="btw-aside-action btw-aside-action-stop"
                             onClick={() => void handleStopBtwAside(aside.id)}
+                            title={
+                              isFocused
+                                ? "Stop this /btw aside and return to the main session"
+                                : "Stop this /btw aside"
+                            }
                           >
                             Stop
                           </button>
@@ -3092,7 +3262,26 @@ function SessionPageContent({
                 uploadProgress={focusedBtwAside ? [] : uploadProgress}
                 slashCommands={status.owner === "self" ? allSlashCommands : []}
                 onCustomCommand={handleCustomCommand}
-                onBtwShortcut={startBtwAside}
+                onBtwShortcut={
+                  supportsBtwAsides
+                    ? focusedBtwAside
+                      ? () => {
+                          setFocusedBtwAsideId(null);
+                          return false;
+                        }
+                      : (text) => {
+                          if (!text.trim() && stickyBtwAsides.length > 0) {
+                            const latestAside =
+                              stickyBtwAsides[stickyBtwAsides.length - 1];
+                            setFocusedBtwAsideId(latestAside?.id ?? null);
+                            return false;
+                          }
+                          return startBtwAside(text);
+                        }
+                    : undefined
+                }
+                btwActive={!!focusedBtwAside}
+                btwHasAsides={stickyBtwAsides.length > 0}
                 modelIndicatorTone={slashModelIndicatorTone}
                 modelIndicatorTitle={slashModelIndicatorTitle}
                 heartbeatEnabled={heartbeatTurnsEnabled}

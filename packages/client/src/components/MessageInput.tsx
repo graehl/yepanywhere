@@ -109,6 +109,10 @@ interface Props {
   onCustomCommand?: (command: string) => boolean;
   /** Start a /btw aside. When text is present, the caller may send it immediately. */
   onBtwShortcut?: (text: string) => boolean;
+  /** Whether this composer is currently routing sends to a focused /btw aside. */
+  btwActive?: boolean;
+  /** Whether this session has an active /btw aside available to focus. */
+  btwHasAsides?: boolean;
   /** Live model/effort indicator shown on the slash button */
   modelIndicatorTone?: ModelIndicatorTone;
   modelIndicatorTitle?: string;
@@ -159,6 +163,8 @@ export function MessageInput({
   slashCommands = [],
   onCustomCommand,
   onBtwShortcut,
+  btwActive = false,
+  btwHasAsides = false,
   modelIndicatorTone,
   modelIndicatorTitle,
   heartbeatEnabled = false,
@@ -265,6 +271,21 @@ export function MessageInput({
     }
   }, [text, disabled, controls, onQueue, attachments.length]);
 
+  const handleBtwClick = useCallback(() => {
+    if (disabled || !onBtwShortcut) return;
+    const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
+    let finalText = text.trimEnd();
+    if (pendingVoice) {
+      finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
+    }
+    const message = finalText.trim();
+    if (onBtwShortcut(message) && message) {
+      controls.clearInput();
+      setInterimTranscript("");
+    }
+    textareaRef.current?.focus();
+  }, [controls, disabled, onBtwShortcut, text]);
+
   const submitFromCollapsed =
     effectivePrimaryActionKind === "queue" ? handleQueue : handleSubmit;
 
@@ -363,19 +384,7 @@ export function MessageInput({
       !e.altKey
     ) {
       e.preventDefault();
-      if (!disabled && onBtwShortcut) {
-        const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
-        let finalText = text.trimEnd();
-        if (pendingVoice) {
-          finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
-        }
-        const message = finalText.trim();
-        if (onBtwShortcut(message) && message) {
-          controls.clearInput();
-          setInterimTranscript("");
-        }
-        textareaRef.current?.focus();
-      }
+      handleBtwClick();
       return;
     }
 
@@ -679,6 +688,9 @@ export function MessageInput({
             voiceDisabled={disabled}
             slashCommands={slashCommands}
             onSelectSlashCommand={handleSlashCommand}
+            onBtwClick={onBtwShortcut ? handleBtwClick : undefined}
+            btwActive={btwActive}
+            btwHasAsides={btwHasAsides}
             modelIndicatorTone={modelIndicatorTone}
             modelIndicatorTitle={modelIndicatorTitle}
             heartbeatEnabled={heartbeatEnabled}

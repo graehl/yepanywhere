@@ -8,6 +8,10 @@ import type {
   ProviderName,
   SessionStatus,
 } from "../types";
+import {
+  getBtwAsideSessionDisplayTitle,
+  isBtwAsideSessionTitle,
+} from "../lib/btwAsideSessions";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { SessionMenu } from "./SessionMenu";
 import { SessionShareModal } from "./SessionShareModal";
@@ -153,6 +157,12 @@ export function SessionListItem({
     (messageCount === 0 || (messageCount == null && activity === "in-turn"));
   const displayTitle =
     localTitle ?? title ?? (isNewSession ? "New session" : "Untitled session");
+  const isBtwAsideSession =
+    isBtwAsideSessionTitle(displayTitle) || isBtwAsideSessionTitle(fullTitle);
+  const visibleTitle =
+    isBtwAsideSession
+      ? getBtwAsideSessionDisplayTitle(displayTitle)
+      : displayTitle;
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -314,6 +324,7 @@ export function SessionListItem({
     mode === "card" ? "session-list-item--card" : "session-list-item--compact",
     isCurrent && "current",
     hasUnread && "unread",
+    isBtwAsideSession && "btw-aside-session",
     isSelected && "selected",
     isArchived && "archived",
   ]
@@ -424,7 +435,15 @@ export function SessionListItem({
               <strong className="session-list-item__title">
                 {isStarred && <StarIcon filled size={12} />}
                 {isNewSession && <ThinkingIndicator />}
-                {displayTitle}
+                {isBtwAsideSession && (
+                  <span
+                    className="session-badge session-badge-btw"
+                    title="/btw aside session"
+                  >
+                    /btw
+                  </span>
+                )}
+                {visibleTitle}
                 {hasDraft && <span className="session-draft-badge">Draft</span>}
                 {isArchived && (
                   <span className="session-archived-badge">Archived</span>
@@ -470,7 +489,15 @@ export function SessionListItem({
                 {isStarred && <StarIcon filled />}
                 <span className="session-list-item__title-text">
                   {isNewSession && <ThinkingIndicator />}
-                  {displayTitle}
+                  {isBtwAsideSession && (
+                    <span
+                      className="session-badge session-badge-btw"
+                      title="/btw aside session"
+                    >
+                      /btw
+                    </span>
+                  )}
+                  {visibleTitle}
                 </span>
                 {hasDraft && <span className="session-draft-badge">Draft</span>}
               </span>

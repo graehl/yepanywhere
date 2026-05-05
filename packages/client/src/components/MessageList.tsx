@@ -221,7 +221,8 @@ interface BtwAsideTimelineItem {
   historyAt?: string;
   preview?: string;
   error?: string;
-  sessionHref?: string;
+  responses: string[];
+  expanded?: boolean;
   isFocused?: boolean;
   canStop?: boolean;
 }
@@ -247,6 +248,8 @@ interface Props {
   onDoneBtwAside?: () => void;
   /** Interrupt/abort a running /btw aside. */
   onStopBtwAside?: (asideId: string) => void;
+  /** Toggle the inline /btw transcript preview. */
+  onToggleBtwAsideExpanded?: (asideId: string) => void;
   /** Callback to cancel a deferred message */
   onCancelDeferred?: (tempId: string) => void;
   /** Callback to take a deferred message back into the composer */
@@ -308,12 +311,18 @@ function BtwAsideTimelineCard({
   onFocus,
   onDone,
   onStop,
+  onToggleExpanded,
 }: {
   aside: BtwAsideTimelineItem;
   onFocus?: (asideId: string) => void;
   onDone?: () => void;
   onStop?: (asideId: string) => void;
+  onToggleExpanded?: (asideId: string) => void;
 }) {
+  const canExpand = Boolean(
+    aside.request || aside.followUps.length > 0 || aside.responses.length > 0,
+  );
+
   return (
     <div
       className={`btw-aside-card btw-aside-card-history is-${aside.status} ${
@@ -343,14 +352,48 @@ function BtwAsideTimelineCard({
           <span className="btw-aside-error">{aside.error}</span>
         )}
       </button>
+      {aside.expanded && canExpand && (
+        <div className="btw-aside-transcript">
+          {aside.request && (
+            <div className="btw-aside-turn btw-aside-turn-user">
+              {aside.request}
+            </div>
+          )}
+          {aside.responses.map((response, index) => (
+            <div
+              key={`response-${index}`}
+              className="btw-aside-turn btw-aside-turn-assistant"
+            >
+              {response}
+            </div>
+          ))}
+          {aside.followUps.map((followUp, index) => (
+            <div
+              key={`followup-${index}`}
+              className="btw-aside-turn btw-aside-turn-user"
+            >
+              {followUp}
+            </div>
+          ))}
+        </div>
+      )}
       <div className="btw-aside-actions">
-        {aside.sessionHref && (
-          <a className="btw-aside-action" href={aside.sessionHref}>
-            Open
-          </a>
+        {canExpand && (
+          <button
+            type="button"
+            className="btw-aside-action"
+            onClick={() => onToggleExpanded?.(aside.id)}
+          >
+            {aside.expanded ? "Less" : "Show"}
+          </button>
         )}
         {aside.isFocused ? (
-          <button type="button" className="btw-aside-action" onClick={onDone}>
+          <button
+            type="button"
+            className="btw-aside-action"
+            onClick={onDone}
+            title="Return the composer to the main session"
+          >
             Done
           </button>
         ) : (
@@ -367,6 +410,11 @@ function BtwAsideTimelineCard({
             type="button"
             className="btw-aside-action btw-aside-action-stop"
             onClick={() => onStop?.(aside.id)}
+            title={
+              aside.isFocused
+                ? "Stop this /btw aside and return to the main session"
+                : "Stop this /btw aside"
+            }
           >
             Stop
           </button>
@@ -389,6 +437,7 @@ export const MessageList = memo(function MessageList({
   onFocusBtwAside,
   onDoneBtwAside,
   onStopBtwAside,
+  onToggleBtwAsideExpanded,
   onCancelDeferred,
   onEditDeferred,
   onCorrectLatestUserMessage,
@@ -1267,6 +1316,7 @@ export const MessageList = memo(function MessageList({
                 onFocus={onFocusBtwAside}
                 onDone={onDoneBtwAside}
                 onStop={onStopBtwAside}
+                onToggleExpanded={onToggleBtwAsideExpanded}
               />
             );
           }

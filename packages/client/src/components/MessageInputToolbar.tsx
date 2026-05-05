@@ -46,6 +46,9 @@ export interface MessageInputToolbarProps {
   // Slash commands
   slashCommands?: string[];
   onSelectSlashCommand?: (command: string) => void;
+  onBtwClick?: () => void;
+  btwActive?: boolean;
+  btwHasAsides?: boolean;
   modelIndicatorTone?: ModelIndicatorTone;
   modelIndicatorTitle?: string;
 
@@ -95,6 +98,9 @@ export function MessageInputToolbar({
   voiceDisabled,
   slashCommands = [],
   onSelectSlashCommand,
+  onBtwClick,
+  btwActive = false,
+  btwHasAsides = false,
   modelIndicatorTone,
   modelIndicatorTitle,
   heartbeatEnabled = false,
@@ -141,6 +147,11 @@ export function MessageInputToolbar({
         ? t("toolbarQueueTooltip")
         : t("toolbarSendTooltip");
   const queueTooltip = t("toolbarQueueTooltip");
+  const btwTitle = btwActive
+    ? "Composer is focused on a /btw aside; click to return to main (Ctrl+B)"
+    : btwHasAsides
+      ? "Focus existing /btw aside (Ctrl+B)"
+      : "Start /btw aside (Ctrl+B)";
   const primaryActionIcon =
     effectivePrimaryActionKind === "steer"
       ? "↗"
@@ -584,6 +595,21 @@ export function MessageInputToolbar({
           )}
         </div>
         <ContextUsageIndicator usage={contextUsage} size={16} />
+        {onBtwClick && (
+          <button
+            type="button"
+            className={`btw-toolbar-button ${btwActive ? "active" : ""} ${
+              btwHasAsides && !btwActive ? "has-asides" : ""
+            }`}
+            onClick={onBtwClick}
+            disabled={disabled || voiceDisabled}
+            aria-label={btwTitle}
+            aria-pressed={btwActive}
+            title={btwTitle}
+          >
+            /btw
+          </button>
+        )}
         {showStopButton && (
           <button
             type="button"

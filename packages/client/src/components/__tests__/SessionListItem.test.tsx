@@ -71,4 +71,22 @@ describe("SessionListItem links", () => {
       "noopener",
     );
   });
+
+  it("labels /btw aside sessions separately from their truncated title text", () => {
+    render(
+      <MemoryRouter>
+        <ul>
+          <SessionListItem
+            sessionId="aside-1"
+            projectId="project-1"
+            title="/btw check the side path"
+            mode="compact"
+          />
+        </ul>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("/btw")).toBeTruthy();
+    expect(screen.getByText("check the side path")).toBeTruthy();
+  });
 });

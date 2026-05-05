@@ -70,6 +70,7 @@ export class OpenCodeProvider implements AgentProvider {
   readonly supportsPermissionMode = false; // OpenCode has its own permission model
   readonly supportsThinkingToggle = false;
   readonly supportsSlashCommands = false;
+  readonly supportsSteering = false;
 
   private readonly opencodePath?: string;
   private readonly timeout: number;
@@ -137,6 +138,7 @@ export class OpenCodeProvider implements AgentProvider {
       const models: ModelInfo[] = [
         { id: "default", name: "Default" },
       ];
+
       for (const line of result.split("\n")) {
         const trimmed = line.trim();
         if (trimmed && !trimmed.startsWith("─")) {
@@ -159,13 +161,90 @@ export class OpenCodeProvider implements AgentProvider {
 
   /**
    * Start a new OpenCode session.
+   *
+   * This method is intentionally blocking: it spawns the opencode server,
+   * waits for it to be ready, and creates the session via HTTP before
+   * returning. This ensures the real ses_* session ID is known before the
+   * iterator is handed to the Supervisor, so waitForSessionId() resolves
+   * immediately on the first init yield rather than racing a 5-second timeout.
    */
   async startSession(options: StartSessionOptions): Promise<AgentSession> {
+    const log = getLogger();
+    const opencodePath = await this.findOpenCodePath();
+
+    if (!opencodePath) {
+      return this.errorSession("OpenCode CLI not found");
+    }
+
+    const port = getNextPort();
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    let serverProcess: ChildProcess;
+    try {
+      serverProcess = spawn(
+        opencodePath,
+        ["serve", "--port", String(port), "--print-logs"],
+        {
+          cwd: options.cwd,
+          stdio: ["pipe", "pipe", "pipe"],
+          env: { ...process.env },
+          shell: process.platform === "win32",
+        },
+      );
+
+      serverProcess.stdout?.on("data", (chunk: Buffer) => {
+        log.debug({ port, line: chunk.toString().trim() }, "OpenCode server stdout");
+      });
+      serverProcess.stderr?.on("data", (chunk: Buffer) => {
+        log.debug({ port, line: chunk.toString().trim() }, "OpenCode server stderr");
+      });
+    } catch (error) {
+      return this.errorSession(
+        `Failed to spawn OpenCode server: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    // Block until server is ready before returning to the Supervisor
+    const serverReady = await this.waitForServer(baseUrl, 10000);
+    if (!serverReady) {
+      serverProcess.kill("SIGTERM");
+      return this.errorSession("OpenCode server failed to start");
+    }
+
+    log.info({ port, cwd: options.cwd }, "OpenCode server ready");
+
+    // Resolve the opencode session ID synchronously (relative to Supervisor startup)
+    let opencodeSessionId: string;
+    if (options.resumeSessionId?.startsWith("ses_")) {
+      opencodeSessionId = options.resumeSessionId;
+      log.info({ opencodeSessionId }, "Resuming existing OpenCode session");
+    } else {
+      try {
+        const sessionResponse = await fetch(`${baseUrl}/session`, {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "Yep Anywhere Session" }),
+        });
+
+        if (!sessionResponse.ok) {
+          throw new Error(`Failed to create session: ${sessionResponse.status}`);
+        }
+
+        const sessionData = (await sessionResponse.json()) as { id: string };
+        opencodeSessionId = sessionData.id;
+        log.info({ opencodeSessionId, port }, "OpenCode session created");
+      } catch (error) {
+        serverProcess.kill("SIGTERM");
+        return this.errorSession(
+          `Failed to create OpenCode session: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
     const queue = new MessageQueue();
     const abortController = new AbortController();
-    const pidRef: { value?: number } = {};
+    const pidRef = { value: serverProcess.pid };
 
-    // Push initial message if provided
     if (options.initialMessage) {
       queue.push(options.initialMessage);
     }
@@ -175,7 +254,9 @@ export class OpenCodeProvider implements AgentProvider {
       queue,
       abortController.signal,
       options,
-      pidRef,
+      port,
+      serverProcess,
+      opencodeSessionId,
     );
 
     return {
@@ -189,54 +270,39 @@ export class OpenCodeProvider implements AgentProvider {
   }
 
   /**
+   * Return a minimal AgentSession whose iterator immediately yields one error message.
+   */
+  private errorSession(errorMsg: string): AgentSession {
+    const queue = new MessageQueue();
+    return {
+      iterator: (async function* () {
+        yield { type: "error", error: errorMsg } as SDKMessage;
+      })(),
+      queue,
+      abort: () => {},
+    };
+  }
+
+  /**
    * Main session loop.
-   * Spawns an OpenCode server and manages HTTP/SSE communication.
+   * Server is already started and opencodeSessionId is already known
+   * (resolved in startSession before the iterator was constructed).
+   * The first yield is always the init message, so waitForSessionId() in
+   * Process resolves immediately.
    */
   private async *runSession(
     cwd: string,
     queue: MessageQueue,
     signal: AbortSignal,
     options: StartSessionOptions,
-    pidRef: { value?: number },
+    port: number,
+    serverProcess: ChildProcess,
+    opencodeSessionId: string,
   ): AsyncIterableIterator<SDKMessage> {
     const log = getLogger();
-    const opencodePath = await this.findOpenCodePath();
-
-    if (!opencodePath) {
-      yield {
-        type: "error",
-        error: "OpenCode CLI not found",
-      } as SDKMessage;
-      return;
-    }
-
-    // Allocate a unique port for this session
-    const port = getNextPort();
     const baseUrl = `http://127.0.0.1:${port}`;
-
-    // Start the OpenCode server
-    let serverProcess: ChildProcess;
-    try {
-      serverProcess = spawn(
-        opencodePath,
-        ["serve", "--port", String(port), "--print-logs"],
-        {
-          cwd,
-          stdio: ["pipe", "pipe", "pipe"],
-          env: {
-            ...process.env,
-          },
-          shell: process.platform === "win32",
-        },
-      );
-      pidRef.value = serverProcess.pid;
-    } catch (error) {
-      yield {
-        type: "error",
-        error: `Failed to spawn OpenCode server: ${error instanceof Error ? error.message : String(error)}`,
-      } as SDKMessage;
-      return;
-    }
+    // opencode session ID is the YA session ID for opencode sessions
+    const sessionId = opencodeSessionId;
 
     // Handle abort
     const abortHandler = () => {
@@ -245,54 +311,7 @@ export class OpenCodeProvider implements AgentProvider {
     };
     signal.addEventListener("abort", abortHandler);
 
-    // Wait for server to be ready
-    const serverReady = await this.waitForServer(baseUrl, 10000);
-    if (!serverReady) {
-      serverProcess.kill("SIGTERM");
-      signal.removeEventListener("abort", abortHandler);
-      yield {
-        type: "error",
-        error: "OpenCode server failed to start",
-      } as SDKMessage;
-      return;
-    }
-
-    log.info({ port, cwd }, "OpenCode server ready");
-
-    // Create a session on the server
-    let opencodeSessionId: string;
-    try {
-      const sessionResponse = await fetch(`${baseUrl}/session`, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ title: "Yep Anywhere Session" }),
-      });
-
-      if (!sessionResponse.ok) {
-        throw new Error(`Failed to create session: ${sessionResponse.status}`);
-      }
-
-      const sessionData = (await sessionResponse.json()) as { id: string };
-      opencodeSessionId = sessionData.id;
-    } catch (error) {
-      serverProcess.kill("SIGTERM");
-      signal.removeEventListener("abort", abortHandler);
-      yield {
-        type: "error",
-        error: `Failed to create OpenCode session: ${error instanceof Error ? error.message : String(error)}`,
-      } as SDKMessage;
-      return;
-    }
-
-    // Generate our session ID (or use resume ID)
-    const sessionId =
-      options.resumeSessionId ??
-      `opencode-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-
-    // Emit init message
+    // Emit init message immediately — this is what resolves waitForSessionId()
     yield {
       type: "system",
       subtype: "init",
@@ -301,22 +320,17 @@ export class OpenCodeProvider implements AgentProvider {
     } as SDKMessage;
 
     try {
-      // Process messages from the queue
-      const messageGen = queue.generator();
       let isFirstNewMessage = true;
-      for await (const message of messageGen) {
+      for await (const message of queue) {
         if (signal.aborted) break;
 
-        // Extract text from the user message
         let userPrompt = this.extractTextFromMessage(message);
 
-        // Prepend global instructions to the first message of new sessions
         if (isFirstNewMessage && options.globalInstructions) {
           userPrompt = `[Global context]\n${options.globalInstructions}\n\n---\n\n${userPrompt}`;
         }
         isFirstNewMessage = false;
 
-        // Emit user message
         yield {
           type: "user",
           uuid: message.uuid,
@@ -327,7 +341,6 @@ export class OpenCodeProvider implements AgentProvider {
           },
         } as SDKMessage;
 
-        // Send message to OpenCode server and stream response
         yield* this.sendMessageAndStream(
           baseUrl,
           opencodeSessionId,
@@ -337,7 +350,6 @@ export class OpenCodeProvider implements AgentProvider {
         );
       }
     } finally {
-      // Clean up server
       log.info({ port, sessionId }, "Shutting down OpenCode server");
       signal.removeEventListener("abort", abortHandler);
 

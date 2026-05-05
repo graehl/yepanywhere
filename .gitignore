@@ -45,6 +45,7 @@ tasks/
 
 # Yep Anywhere local data
 .yep-anywhere/
+.attachments/
 /.codex
 /last-session.md
 /AGENTS.local.md

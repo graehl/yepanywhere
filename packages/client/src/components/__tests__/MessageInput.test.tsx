@@ -219,6 +219,33 @@ describe("MessageInput", () => {
     expect(onCancelLatestDeferred).toHaveBeenCalledTimes(1);
   });
 
+  it("clears the composer with Ctrl+G through the textarea undo stack", () => {
+    const previousExecCommand = document.execCommand;
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand,
+    });
+    const textarea = renderMessageInput();
+
+    try {
+      fireEvent.change(textarea, { target: { value: "undoable draft" } });
+      fireEvent.keyDown(textarea, { key: "g", ctrlKey: true });
+
+      expect(execCommand).toHaveBeenCalledWith("delete");
+      expect((textarea as HTMLTextAreaElement).value).toBe("");
+    } finally {
+      if (previousExecCommand) {
+        Object.defineProperty(document, "execCommand", {
+          configurable: true,
+          value: previousExecCommand,
+        });
+      } else {
+        Reflect.deleteProperty(document, "execCommand");
+      }
+    }
+  });
+
   it("shows stale last activity in the composer chrome", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-26T12:06:00.000Z"));

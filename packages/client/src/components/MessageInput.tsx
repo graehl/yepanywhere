@@ -39,6 +39,27 @@ function formatSize(bytes: number): string {
   return `${Math.round((bytes / (1024 * 1024 * 1024)) * 10) / 10}\u202fgb`;
 }
 
+function clearTextareaContentsUndoably(textarea: HTMLTextAreaElement): void {
+  const previousLength = textarea.value.length;
+  if (previousLength === 0) return;
+
+  textarea.focus();
+  textarea.setSelectionRange(0, previousLength);
+
+  // React state-only clears bypass native undo; this legacy edit command still
+  // participates in the browser textarea undo stack.
+  try {
+    if (document.execCommand?.("delete")) {
+      return;
+    }
+  } catch {
+    // Fall back to a direct textarea edit below.
+  }
+
+  textarea.setRangeText("", 0, previousLength, "start");
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 interface Props {
   onSend: (text: string) => void;
   /** Queue a deferred message (sent when agent's turn ends). Only provided when agent is running. */
@@ -337,8 +358,12 @@ export function MessageInput({
       e.preventDefault();
       if (!disabled) {
         voiceButtonRef.current?.stopAndFinalize();
-        controls.clearDraft();
+        if (textareaRef.current) {
+          clearTextareaContentsUndoably(textareaRef.current);
+        }
         setInterimTranscript("");
+        setText("");
+        controls.flushDraft();
         for (const attachment of attachments) {
           onRemoveAttachment?.(attachment.id);
         }

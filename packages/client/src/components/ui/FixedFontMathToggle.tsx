@@ -240,6 +240,12 @@ function tryMatchInlineMath(
     return null;
   }
 
+  // Reject patterns that look like shell variable spans ($VAR >>$OTHER).
+  // Real math has at least one of: \ ^ { } + or a digit.
+  if (!/[\\^{}+]/.test(tex) && !/\d/.test(tex)) {
+    return null;
+  }
+
   return {
     end: end + 1,
     html: renderKatexHtml(tex, false),

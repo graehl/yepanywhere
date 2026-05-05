@@ -133,8 +133,10 @@ export class OpenCodeProvider implements AgentProvider {
         timeout: 10000,
       });
 
-      // Parse model list output (one model per line: provider/model)
-      const models: ModelInfo[] = [];
+      // Synthetic "default" entry defers to whatever opencode.json configures
+      const models: ModelInfo[] = [
+        { id: "default", name: "Default" },
+      ];
       for (const line of result.split("\n")) {
         const trimmed = line.trim();
         if (trimmed && !trimmed.startsWith("─")) {

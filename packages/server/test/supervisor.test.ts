@@ -4,7 +4,10 @@ import { MockClaudeSDK, createMockScenario } from "../src/sdk/mock.js";
 import type { AgentProvider } from "../src/sdk/providers/types.js";
 import type { RealClaudeSDKInterface } from "../src/sdk/types.js";
 import { Supervisor } from "../src/supervisor/Supervisor.js";
-import type { SessionSummary } from "../src/supervisor/types.js";
+import {
+  type SessionSummary,
+  encodeProjectId,
+} from "../src/supervisor/types.js";
 import { type BusEvent, EventBus } from "../src/watcher/EventBus.js";
 
 describe("Supervisor", () => {
@@ -758,6 +761,186 @@ describe("Supervisor", () => {
         const abortPromise = supervisorWithHeartbeat.abortProcess(started.id);
         await vi.advanceTimersByTimeAsync(5000);
         await expect(abortPromise).resolves.toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("steers heartbeat turns into quiet doubtful active sessions", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
+      let aborted = false;
+      const steeredMessages: string[] = [];
+
+      try {
+        const provider: AgentProvider = {
+          name: "codex",
+          displayName: "Codex",
+          supportsPermissionMode: true,
+          supportsThinkingToggle: true,
+          supportsSlashCommands: false,
+          supportsSteering: true,
+          isInstalled: async () => true,
+          isAuthenticated: async () => true,
+          getAuthStatus: async () => ({
+            installed: true,
+            authenticated: true,
+            enabled: true,
+          }),
+          getAvailableModels: async () => [],
+          startSession: async () => {
+            async function* iterator() {
+              yield {
+                type: "system",
+                subtype: "init",
+                session_id: "heartbeat-active-session",
+              };
+
+              while (!aborted) {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+              }
+            }
+
+            return {
+              iterator: iterator(),
+              queue: new MessageQueue(),
+              abort: () => {
+                aborted = true;
+              },
+              isProcessAlive: () => !aborted,
+              steer: async (message) => {
+                steeredMessages.push(message.text);
+                return true;
+              },
+            };
+          },
+        };
+
+        const supervisorWithHeartbeat = new Supervisor({
+          provider,
+          idleTimeoutMs: 100,
+          getHeartbeatTurnSettings: () => ({
+            enabled: true,
+            afterMinutes: 1,
+            text: "heartbeat check",
+          }),
+        });
+
+        const started = await supervisorWithHeartbeat.startSession("/tmp/test", {
+          text: "start",
+        });
+        if (!("id" in started)) {
+          throw new Error("expected process");
+        }
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(started.state.type).toBe("in-turn");
+
+        await vi.advanceTimersByTimeAsync(60_000);
+        await vi.waitFor(() => {
+          expect(steeredMessages).toEqual(["heartbeat check"]);
+        });
+        expect(started.state.type).toBe("in-turn");
+
+        const abortPromise = supervisorWithHeartbeat.abortProcess(started.id);
+        await vi.advanceTimersByTimeAsync(5000);
+        await expect(abortPromise).resolves.toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("resumes unowned stale pending-tool sessions with heartbeat text", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
+      let aborted = false;
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          async function* iterator() {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id: options.resumeSessionId ?? "heartbeat-unowned-session",
+            };
+            yield {
+              type: "result",
+              session_id: options.resumeSessionId ?? "heartbeat-unowned-session",
+            };
+
+            while (!aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+
+          return {
+            iterator: iterator(),
+            queue: new MessageQueue(),
+            abort: () => {
+              aborted = true;
+            },
+            isProcessAlive: () => !aborted,
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "codex",
+        displayName: "Codex",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: false,
+        supportsSteering: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+      };
+
+      try {
+        const supervisorWithHeartbeat = new Supervisor({
+          provider,
+          idleTimeoutMs: 100,
+          getHeartbeatTurnSettings: () => ({
+            enabled: true,
+            afterMinutes: 1,
+            text: "heartbeat check",
+          }),
+          getHeartbeatTurnCandidates: () => [
+            {
+              sessionId: "heartbeat-unowned-session",
+              projectId: encodeProjectId("/tmp/test"),
+              projectPath: "/tmp/test",
+              provider: "codex",
+              model: "gpt-5.5",
+              updatedAt: "2026-05-06T00:00:00.000Z",
+              hasPendingToolCall: true,
+            },
+          ],
+        });
+
+        await vi.advanceTimersByTimeAsync(60_000);
+        await vi.waitFor(() => {
+          expect(startSession).toHaveBeenCalledTimes(1);
+        });
+        expect(startSession.mock.calls[0]?.[0]).toMatchObject({
+          resumeSessionId: "heartbeat-unowned-session",
+          initialMessage: { text: "heartbeat check" },
+          model: "gpt-5.5",
+        });
+
+        const started = supervisorWithHeartbeat.getProcessForSession(
+          "heartbeat-unowned-session",
+        );
+        expect(started).toBeDefined();
+        if (started) {
+          const abortPromise = supervisorWithHeartbeat.abortProcess(started.id);
+          await vi.advanceTimersByTimeAsync(5000);
+          await expect(abortPromise).resolves.toBe(true);
+        }
       } finally {
         vi.useRealTimers();
       }

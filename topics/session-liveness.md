@@ -4,6 +4,8 @@ This topic covers YA's provider/session liveness contract and the features
 that depend on it, especially heartbeat turns, deferred queue promotion, and
 patient queue intent.
 
+Related topic: [heartbeat ownership and timers](heartbeat.md).
+
 ## Contracts
 
 - Transport liveness, process liveness, provider progress, and user intent are
@@ -14,7 +16,9 @@ patient queue intent.
   evidence timestamps and a conservative derived status so clients can show
   uncertainty instead of inventing progress from silence.
 - `verified-idle` is the only liveness status that means YA may safely treat a
-  session as idle for automatic work such as synthetic heartbeat turns.
+  session as idle for automatic work. Synthetic heartbeat turns may also run as
+  explicit steering-capable doubt probes after their quiet period, but that is
+  a heartbeat-specific contract rather than a general idle claim.
 - Heartbeat turns are idle-timeout checks, not wall-clock ticks. Once a session
   is `verified-idle`, the timeout anchor is the latest real provider/session
   liveness signal, including verified idle/progress, normalized provider
@@ -92,7 +96,8 @@ patient queue intent.
 
 - Adding a provider-specific status probe or raw event cadence source.
 - Changing the reducer that derives `SessionLivenessSnapshot.derivedStatus`.
-- Changing heartbeat turn gating or deferred queue promotion boundaries.
+- Changing heartbeat turn gating, doubt-probe boundaries, or deferred queue
+  promotion boundaries.
 - Changing composer queue controls, patient/default queue mode, or queued text
   transformation.
 - Adding user-message timing or delivery-intent metadata.
@@ -110,7 +115,8 @@ patient queue intent.
   evidence, while an unrecognized present entry becomes probe error evidence.
 - OpenCode user text parts do not become assistant messages when
   `message.updated` identifies the message role as `user`.
-- Heartbeat turns do not queue unless the shared snapshot is `verified-idle`.
+- Heartbeat turns queue from `verified-idle`, or from the heartbeat topic's
+  explicit steering-capable doubtful-liveness path.
 - Heartbeat turns remain deferred until the configured quiet period has elapsed
   since the latest real liveness signal, not merely since the first idle
   boundary.

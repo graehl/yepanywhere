@@ -334,6 +334,10 @@ export class Process {
     return this.probeLivenessFn !== null;
   }
 
+  get canSteer(): boolean {
+    return this.steerFn !== null;
+  }
+
   get lastLivenessProbe(): LivenessProbeResult | null {
     return this._lastLivenessProbe;
   }

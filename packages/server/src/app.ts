@@ -1,6 +1,10 @@
 import type { HttpBindings } from "@hono/node-server";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
-import type { AppSession, UrlProjectId } from "@yep-anywhere/shared";
+import type {
+  AppContentBlock,
+  AppSession,
+  UrlProjectId,
+} from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { AuthService } from "./auth/AuthService.js";
 import { createAuthRoutes } from "./auth/routes.js";
@@ -91,11 +95,15 @@ import { CodexSessionReader } from "./sessions/codex-reader.js";
 import { GeminiSessionReader } from "./sessions/gemini-reader.js";
 import { OpenCodeSessionReader } from "./sessions/opencode-reader.js";
 import { findSessionSummaryAcrossProviders } from "./sessions/provider-resolution.js";
+import { normalizeSession } from "./sessions/normalization.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
 import type { ISessionReader } from "./sessions/types.js";
 import { ExternalSessionTracker } from "./supervisor/ExternalSessionTracker.js";
-import { Supervisor } from "./supervisor/Supervisor.js";
-import type { Project } from "./supervisor/types.js";
+import {
+  Supervisor,
+  type HeartbeatTurnCandidate,
+} from "./supervisor/Supervisor.js";
+import type { Message, Project } from "./supervisor/types.js";
 import type { EventBus } from "./watcher/index.js";
 import { LifecycleWebhookService } from "./webhooks/LifecycleWebhookService.js";
 
@@ -206,6 +214,30 @@ export interface AppResult {
   scanner: ProjectScanner;
   /** Session reader factory for debug API access */
   readerFactory: (project: Project) => ISessionReader;
+}
+
+function getMessageContentBlocks(message: Message): AppContentBlock[] {
+  const content = message.message?.content ?? message.content;
+  return Array.isArray(content) ? content : [];
+}
+
+function hasPendingToolCall(messages: Message[]): boolean {
+  const pendingToolUseIds = new Set<string>();
+
+  for (const message of messages) {
+    for (const block of getMessageContentBlocks(message)) {
+      if (block.type === "tool_use" && typeof block.id === "string") {
+        pendingToolUseIds.add(block.id);
+      } else if (
+        block.type === "tool_result" &&
+        typeof block.tool_use_id === "string"
+      ) {
+        pendingToolUseIds.delete(block.tool_use_id);
+      }
+    }
+  }
+
+  return pendingToolUseIds.size > 0;
 }
 
 export function createApp(options: AppOptions): AppResult {
@@ -386,7 +418,80 @@ export function createApp(options: AppOptions): AppResult {
     );
     return resolved?.summary ?? null;
   };
-  const supervisor = new Supervisor({
+  let supervisor: Supervisor;
+  const getHeartbeatTurnCandidates = async (): Promise<
+    HeartbeatTurnCandidate[]
+  > => {
+    const metadataBySession = options.sessionMetadataService?.getAllMetadata();
+    if (!metadataBySession) {
+      return [];
+    }
+
+    const heartbeatSessionIds = Object.entries(metadataBySession).filter(
+      ([, metadata]) => metadata.heartbeatTurnsEnabled,
+    );
+    if (heartbeatSessionIds.length === 0) {
+      return [];
+    }
+
+    const projects = await scanner.listProjects();
+    const candidates: HeartbeatTurnCandidate[] = [];
+    const providerResolutionDeps = {
+      readerFactory,
+      codexSessionsDir: CODEX_SESSIONS_DIR,
+      codexReaderFactory,
+      geminiSessionsDir: GEMINI_TMP_DIR,
+      geminiReaderFactory,
+      geminiHashToCwd: geminiScanner.getHashToCwd(),
+    };
+
+    for (const [sessionId, metadata] of heartbeatSessionIds) {
+      if (supervisor.getProcessForSession(sessionId)) {
+        continue;
+      }
+
+      for (const project of projects) {
+        const resolved = await findSessionSummaryAcrossProviders(
+          project,
+          sessionId,
+          project.id,
+          providerResolutionDeps,
+          metadata.provider,
+        );
+        if (!resolved) {
+          continue;
+        }
+
+        const loaded = await resolved.source.reader.getSession(
+          sessionId,
+          project.id,
+        );
+        if (!loaded) {
+          break;
+        }
+        const session = normalizeSession(loaded);
+        if (!hasPendingToolCall(session.messages)) {
+          break;
+        }
+
+        candidates.push({
+          sessionId,
+          projectId: project.id,
+          projectPath: project.path,
+          provider: resolved.summary.provider,
+          model: resolved.summary.model,
+          executor: metadata.executor,
+          updatedAt: resolved.summary.updatedAt,
+          hasPendingToolCall: true,
+        });
+        break;
+      }
+    }
+
+    return candidates;
+  };
+
+  supervisor = new Supervisor({
     sdk: options.sdk,
     realSdk: options.realSdk,
     idleTimeoutMs: options.idleTimeoutMs,
@@ -422,6 +527,8 @@ export function createApp(options: AppOptions): AppResult {
             };
           }
       : undefined,
+    getHeartbeatTurnCandidates:
+      options.sessionMetadataService ? getHeartbeatTurnCandidates : undefined,
   });
 
   // Create external session tracker if eventBus is available

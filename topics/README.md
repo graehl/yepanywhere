@@ -11,3 +11,4 @@
 - MessageQueue batch delivery and steering UI
 - Provider-agnostic /btw asides
 - Session liveness and queue intent
+- Heartbeat ownership and timers

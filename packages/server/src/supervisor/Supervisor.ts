@@ -66,6 +66,11 @@ const DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES = 5;
 const DEFAULT_INTERRUPT_TIMEOUT_MS = 2000;
 const HEARTBEAT_RESET_PROBE_STATUSES: ReadonlySet<SessionLivenessProbeStatus> =
   new Set(["active", "idle", "waiting-input"]);
+const ACTIVE_HEARTBEAT_DOUBT_STATUSES = new Set([
+  "verified-progressing",
+  "recently-active-unverified",
+  "long-silent-unverified",
+]);
 
 function getStaleInTurnThresholdMs(provider: ProviderName): number {
   return provider === "codex" || provider === "codex-oss"
@@ -101,6 +106,11 @@ function getHeartbeatResetAtMs(
     : fallbackMs;
 }
 
+function parseCandidateUpdatedAtMs(value: string | Date): number | null {
+  const ms = value instanceof Date ? value.getTime() : Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
 /**
  * Model and thinking settings for a session.
  */
@@ -133,6 +143,17 @@ export interface HeartbeatTurnSettings {
   enabled: boolean;
   afterMinutes: number;
   text: string;
+}
+
+export interface HeartbeatTurnCandidate {
+  sessionId: string;
+  projectId: UrlProjectId;
+  projectPath: string;
+  provider: ProviderName;
+  model?: string;
+  executor?: string;
+  updatedAt: string | Date;
+  hasPendingToolCall: boolean;
 }
 
 /** Optional callback to persist executor when session ID is received */
@@ -176,6 +197,10 @@ export interface SupervisorOptions {
   getHeartbeatTurnSettings?: (
     sessionId: string,
   ) => HeartbeatTurnSettings | undefined;
+  /** Callback to find heartbeat-enabled sessions with no owned process. */
+  getHeartbeatTurnCandidates?: () =>
+    | Promise<HeartbeatTurnCandidate[]>
+    | HeartbeatTurnCandidate[];
   /** Maximum time to wait for a graceful provider interrupt before hard abort. */
   interruptTimeoutMs?: number;
 }
@@ -200,6 +225,10 @@ export class Supervisor {
   private getHeartbeatTurnSettings?: (
     sessionId: string,
   ) => HeartbeatTurnSettings | undefined;
+  private getHeartbeatTurnCandidates?: () =>
+    | Promise<HeartbeatTurnCandidate[]>
+    | HeartbeatTurnCandidate[];
+  private heartbeatTurnInFlight = false;
   private heartbeatTurnTimer: ReturnType<typeof setInterval>;
   private livenessProbeTimer: ReturnType<typeof setInterval>;
   private interruptTimeoutMs: number;
@@ -221,6 +250,7 @@ export class Supervisor {
     this.onSessionExecutor = options.onSessionExecutor;
     this.onSessionSummary = options.onSessionSummary;
     this.getHeartbeatTurnSettings = options.getHeartbeatTurnSettings;
+    this.getHeartbeatTurnCandidates = options.getHeartbeatTurnCandidates;
     this.interruptTimeoutMs =
       options.interruptTimeoutMs ?? DEFAULT_INTERRUPT_TIMEOUT_MS;
     this.staleCheckTimer = setInterval(
@@ -229,7 +259,9 @@ export class Supervisor {
     );
     this.staleCheckTimer.unref(); // Don't keep process alive for cleanup
     this.heartbeatTurnTimer = setInterval(
-      () => this.queueHeartbeatTurns(),
+      () => {
+        void this.queueHeartbeatTurns();
+      },
       HEARTBEAT_TURN_CHECK_INTERVAL_MS,
     );
     this.heartbeatTurnTimer.unref();
@@ -242,6 +274,22 @@ export class Supervisor {
     if (!this.provider && !this.sdk && !this.realSdk) {
       throw new Error("Either provider, sdk, or realSdk must be provided");
     }
+  }
+
+  private resolveProvider(modelSettings?: ModelSettings): AgentProvider | null {
+    const providerName = modelSettings?.providerName
+      ? modelSettings.providerName
+      : modelSettings?.executor
+        ? "claude"
+        : undefined;
+
+    if (!providerName) {
+      return this.provider;
+    }
+    if (this.provider?.name === providerName) {
+      return this.provider;
+    }
+    return getProvider(providerName);
   }
 
   async startSession(
@@ -280,13 +328,7 @@ export class Supervisor {
       }
     }
 
-    // Resolve provider: use specified provider name, or fall back to default provider
-    // If executor is specified, we MUST use a provider (Claude) to enable remote execution
-    const provider = modelSettings?.providerName
-      ? getProvider(modelSettings.providerName)
-      : modelSettings?.executor
-        ? getProvider("claude") // Force Claude provider when executor is specified
-        : this.provider;
+    const provider = this.resolveProvider(modelSettings);
 
     // Use provider if available (preferred)
     if (provider) {
@@ -363,13 +405,7 @@ export class Supervisor {
       }
     }
 
-    // Resolve provider: use specified provider name, or fall back to default provider
-    // If executor is specified, we MUST use a provider (Claude) to enable remote execution
-    const provider = modelSettings?.providerName
-      ? getProvider(modelSettings.providerName)
-      : modelSettings?.executor
-        ? getProvider("claude") // Force Claude provider when executor is specified
-        : this.provider;
+    const provider = this.resolveProvider(modelSettings);
 
     // Use provider if available (preferred)
     if (provider) {
@@ -986,13 +1022,7 @@ export class Supervisor {
       }
     }
 
-    // Resolve provider: use specified provider name, or fall back to default provider
-    // If executor is specified, we MUST use a provider (Claude) to enable remote execution
-    const provider = modelSettings?.providerName
-      ? getProvider(modelSettings.providerName)
-      : modelSettings?.executor
-        ? getProvider("claude") // Force Claude provider when executor is specified
-        : this.provider;
+    const provider = this.resolveProvider(modelSettings);
 
     // Use provider if available (preferred)
     if (provider) {
@@ -1072,8 +1102,9 @@ export class Supervisor {
       return changed ? process : null;
     }
 
-    const provider = getProvider(process.provider);
-    const effectiveProvider = provider ?? this.provider;
+    const effectiveProvider = this.resolveProvider({
+      providerName: process.provider,
+    });
     if (!effectiveProvider) {
       return null;
     }
@@ -1089,22 +1120,12 @@ export class Supervisor {
     await process.abort();
     this.unregisterProcess(process);
 
-    if (effectiveProvider) {
-      return await this.createProviderSession(
-        process.projectPath,
-        process.projectId,
-        process.permissionMode,
-        mergedSettings,
-        effectiveProvider,
-        process.sessionId,
-      );
-    }
-
-    return await this.createRealSession(
+    return await this.createProviderSession(
       process.projectPath,
       process.projectId,
       process.permissionMode,
       mergedSettings,
+      effectiveProvider,
       process.sessionId,
     );
   }
@@ -1226,80 +1247,196 @@ export class Supervisor {
     return Array.from(this.processes.values());
   }
 
-  private queueHeartbeatTurns(): void {
+  private async queueHeartbeatTurns(): Promise<void> {
+    if (this.heartbeatTurnInFlight) {
+      return;
+    }
+    this.heartbeatTurnInFlight = true;
     const now = Date.now();
     const log = getLogger();
 
-    for (const process of this.processes.values()) {
-      const settings = this.getHeartbeatTurnSettings?.(process.sessionId);
-      if (!settings?.enabled) {
-        continue;
-      }
-      if (process.isTerminated || process.isHeld) {
-        continue;
-      }
-      if (process.state.type !== "idle") {
-        continue;
-      }
-      if (process.queueDepth > 0 || process.isProcessAlive === false) {
-        continue;
+    try {
+      for (const process of this.processes.values()) {
+        this.queueHeartbeatTurnForProcess(process, now, log);
       }
 
-      const liveness = process.getLivenessSnapshot(new Date(now));
-      if (liveness.derivedStatus !== "verified-idle") {
-        continue;
+      if (!this.getHeartbeatTurnCandidates) {
+        return;
       }
-
-      const afterMinutes = Number.isFinite(settings.afterMinutes)
-        ? Math.max(1, Math.min(settings.afterMinutes, 1440))
-        : DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES;
-      const idleThresholdMs = afterMinutes * 60 * 1000;
-      const text = settings.text.trim() || DEFAULT_HEARTBEAT_TURN_TEXT;
-
-      const heartbeatResetAtMs = getHeartbeatResetAtMs(
-        liveness,
-        process.state.since.getTime(),
-      );
-      if (!Number.isFinite(heartbeatResetAtMs)) {
-        continue;
+      const candidates = await this.getHeartbeatTurnCandidates();
+      for (const candidate of candidates) {
+        await this.queueHeartbeatTurnForCandidate(candidate, now, log);
       }
-      const idleMs = Math.max(0, now - heartbeatResetAtMs);
-      if (idleMs < idleThresholdMs) {
-        continue;
-      }
-      const heartbeatResetAt = new Date(heartbeatResetAtMs).toISOString();
-
-      const result = process.queueMessage({ text });
-      if (result.success) {
-        log.info(
-          {
-            event: "heartbeat_turn_queued",
-            sessionId: process.sessionId,
-            processId: process.id,
-            projectId: process.projectId,
-            idleMs,
-            heartbeatResetAt,
-            afterMinutes,
-            text,
-          },
-          `Queued heartbeat turn for idle session: ${process.sessionId}`,
-        );
-      } else {
-        log.warn(
-          {
-            event: "heartbeat_turn_failed",
-            sessionId: process.sessionId,
-            processId: process.id,
-            projectId: process.projectId,
-            idleMs,
-            heartbeatResetAt,
-            afterMinutes,
-            error: result.error,
-          },
-          `Failed to queue heartbeat turn for idle session: ${process.sessionId}`,
-        );
-      }
+    } finally {
+      this.heartbeatTurnInFlight = false;
     }
+  }
+
+  private queueHeartbeatTurnForProcess(
+    process: Process,
+    now: number,
+    log: ReturnType<typeof getLogger>,
+  ): void {
+    const settings = this.getHeartbeatTurnSettings?.(process.sessionId);
+    if (!settings?.enabled) {
+      return;
+    }
+    if (process.isTerminated || process.isHeld) {
+      return;
+    }
+    if (process.queueDepth > 0 || process.isProcessAlive === false) {
+      return;
+    }
+
+    const liveness = process.getLivenessSnapshot(new Date(now));
+    const isVerifiedIdle =
+      process.state.type === "idle" &&
+      liveness.derivedStatus === "verified-idle";
+    const isSteeringDoubt =
+      process.state.type === "in-turn" &&
+      process.canSteer &&
+      ACTIVE_HEARTBEAT_DOUBT_STATUSES.has(liveness.derivedStatus);
+    if (!isVerifiedIdle && !isSteeringDoubt) {
+      return;
+    }
+
+    const afterMinutes = Number.isFinite(settings.afterMinutes)
+      ? Math.max(1, Math.min(settings.afterMinutes, 1440))
+      : DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES;
+    const idleThresholdMs = afterMinutes * 60 * 1000;
+    const text = settings.text.trim() || DEFAULT_HEARTBEAT_TURN_TEXT;
+
+    const fallbackMs =
+      process.state.type === "idle"
+        ? process.state.since.getTime()
+        : parseFiniteIsoMs(liveness.lastStateChangeAt) ?? now;
+    const heartbeatResetAtMs = getHeartbeatResetAtMs(liveness, fallbackMs);
+    if (!Number.isFinite(heartbeatResetAtMs)) {
+      return;
+    }
+    const idleMs = Math.max(0, now - heartbeatResetAtMs);
+    if (idleMs < idleThresholdMs) {
+      return;
+    }
+    const heartbeatResetAt = new Date(heartbeatResetAtMs).toISOString();
+
+    const result = process.queueMessage({ text });
+    if (result.success) {
+      log.info(
+        {
+          event: "heartbeat_turn_queued",
+          sessionId: process.sessionId,
+          processId: process.id,
+          projectId: process.projectId,
+          idleMs,
+          heartbeatResetAt,
+          afterMinutes,
+          text,
+          heartbeatReason: isVerifiedIdle ? "verified-idle" : "steering-doubt",
+          livenessStatus: liveness.derivedStatus,
+        },
+        `Queued heartbeat turn for session: ${process.sessionId}`,
+      );
+    } else {
+      log.warn(
+        {
+          event: "heartbeat_turn_failed",
+          sessionId: process.sessionId,
+          processId: process.id,
+          projectId: process.projectId,
+          idleMs,
+          heartbeatResetAt,
+          afterMinutes,
+          error: result.error,
+          heartbeatReason: isVerifiedIdle ? "verified-idle" : "steering-doubt",
+          livenessStatus: liveness.derivedStatus,
+        },
+        `Failed to queue heartbeat turn for session: ${process.sessionId}`,
+      );
+    }
+  }
+
+  private async queueHeartbeatTurnForCandidate(
+    candidate: HeartbeatTurnCandidate,
+    now: number,
+    log: ReturnType<typeof getLogger>,
+  ): Promise<void> {
+    if (this.getProcessForSession(candidate.sessionId)) {
+      return;
+    }
+    if (!candidate.hasPendingToolCall) {
+      return;
+    }
+    const provider = this.resolveProvider({ providerName: candidate.provider });
+    if (!provider?.supportsSteering) {
+      return;
+    }
+    const settings = this.getHeartbeatTurnSettings?.(candidate.sessionId);
+    if (!settings?.enabled) {
+      return;
+    }
+
+    const heartbeatResetAtMs = parseCandidateUpdatedAtMs(candidate.updatedAt);
+    if (heartbeatResetAtMs === null) {
+      return;
+    }
+    const afterMinutes = Number.isFinite(settings.afterMinutes)
+      ? Math.max(1, Math.min(settings.afterMinutes, 1440))
+      : DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES;
+    const idleThresholdMs = afterMinutes * 60 * 1000;
+    const idleMs = Math.max(0, now - heartbeatResetAtMs);
+    if (idleMs < idleThresholdMs) {
+      return;
+    }
+
+    const text = settings.text.trim() || DEFAULT_HEARTBEAT_TURN_TEXT;
+    const heartbeatResetAt = new Date(heartbeatResetAtMs).toISOString();
+    const result = await this.resumeSession(
+      candidate.sessionId,
+      candidate.projectPath,
+      { text },
+      undefined,
+      {
+        providerName: candidate.provider,
+        model: candidate.model,
+        executor: candidate.executor,
+      },
+    );
+
+    if ("error" in result) {
+      log.warn(
+        {
+          event: "heartbeat_turn_failed",
+          sessionId: candidate.sessionId,
+          projectId: candidate.projectId,
+          idleMs,
+          heartbeatResetAt,
+          afterMinutes,
+          error: result.error,
+          heartbeatReason: "unowned-pending-tool",
+          livenessStatus: "pending-tool-unowned",
+        },
+        `Failed to resume heartbeat turn for session: ${candidate.sessionId}`,
+      );
+      return;
+    }
+
+    log.info(
+      {
+        event: "heartbeat_turn_queued",
+        sessionId: candidate.sessionId,
+        projectId: candidate.projectId,
+        idleMs,
+        heartbeatResetAt,
+        afterMinutes,
+        text,
+        heartbeatReason: "unowned-pending-tool",
+        livenessStatus: "pending-tool-unowned",
+        queued: "queued" in result ? result.queued : false,
+        processId: "id" in result ? result.id : undefined,
+      },
+      `Resumed heartbeat turn for session: ${candidate.sessionId}`,
+    );
   }
 
   private probeLongSilentProcesses(): void {
@@ -2226,11 +2363,7 @@ export class Supervisor {
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
   ): Promise<Process> {
-    const provider = modelSettings?.providerName
-      ? getProvider(modelSettings.providerName)
-      : modelSettings?.executor
-        ? getProvider("claude")
-        : this.provider;
+    const provider = this.resolveProvider(modelSettings);
 
     // Use provider if available (preferred)
     if (provider) {

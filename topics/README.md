@@ -10,3 +10,4 @@
 - OpenCode ses_ session ID unification with YA session ID
 - MessageQueue batch delivery and steering UI
 - Provider-agnostic /btw asides
+- Session liveness and queue intent

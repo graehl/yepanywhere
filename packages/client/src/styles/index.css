@@ -5069,21 +5069,22 @@ a.sidebar-nav-item {
 
 .toast-container {
   position: fixed;
-  bottom: 100px;
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  bottom: auto;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1000;
+  z-index: 9;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   pointer-events: none;
 }
 
-/* Desktop: position in top-right corner */
+/* Desktop: stay below the header; if space is tight, cover scroll content. */
 @media (min-width: 768px) {
   .toast-container {
     bottom: auto;
-    top: var(--space-4);
+    top: calc(var(--space-4) + 48px);
     left: auto;
     right: var(--space-4);
     transform: none;
@@ -5096,10 +5097,11 @@ a.sidebar-nav-item {
   font-size: var(--font-size-sm);
   cursor: pointer;
   pointer-events: auto;
-  animation: toast-slide-in 0.2s ease-out;
   max-width: 400px;
   text-align: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: toast-cosine-fade-out var(--toast-fade-duration, 3s) linear
+    forwards;
 }
 
 .toast-error {
@@ -5146,14 +5148,41 @@ a.sidebar-nav-item {
   background: rgba(255, 255, 255, 0.3);
 }
 
-@keyframes toast-slide-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
+@keyframes toast-cosine-fade-out {
+  0% {
     opacity: 1;
     transform: translateY(0);
+  }
+  10% {
+    opacity: 0.976;
+  }
+  20% {
+    opacity: 0.905;
+  }
+  30% {
+    opacity: 0.794;
+  }
+  40% {
+    opacity: 0.655;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  60% {
+    opacity: 0.345;
+  }
+  70% {
+    opacity: 0.206;
+  }
+  80% {
+    opacity: 0.095;
+  }
+  90% {
+    opacity: 0.024;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(4px);
   }
 }
 

@@ -173,7 +173,7 @@ function BashCopyButton({
       try {
         await navigator.clipboard.writeText(text);
         setCopied(true);
-        window.setTimeout(() => setCopied(false), 1200);
+        window.setTimeout(() => setCopied(false), 3000);
       } catch (error) {
         console.error("Failed to copy bash section:", error);
       }

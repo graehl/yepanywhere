@@ -72,7 +72,7 @@ export const TextBlock = memo(function TextBlock({
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 3000);
     } catch (err) {
       console.error("Failed to copy text:", err);
     }

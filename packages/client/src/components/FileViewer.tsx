@@ -164,7 +164,7 @@ export const FileViewer = memo(function FileViewer({
     try {
       await navigator.clipboard.writeText(fileData.content);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 3000);
     } catch (err) {
       console.error("Failed to copy:", err);
     }

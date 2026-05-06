@@ -20,14 +20,21 @@ import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type {
   ModelInfo,
   OpenCodeMessagePartUpdatedEvent,
+  OpenCodeMessageUpdatedEvent,
   OpenCodePart,
   OpenCodeSSEEvent,
+  OpenCodeSessionStatus,
+  OpenCodeSessionStatusEvent,
 } from "@yep-anywhere/shared";
 import { parseOpenCodeSSEEvent } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
-import type { SDKMessage } from "../types.js";
+import type {
+  ProviderActivitySnapshot,
+  ProviderLivenessProbeResult,
+  SDKMessage,
+} from "../types.js";
 import type {
   AgentProvider,
   AgentSession,
@@ -52,11 +59,89 @@ export interface OpenCodeProviderConfig {
 /** Port counter for unique port assignment */
 let nextPort = 14100;
 
+interface OpenCodeModelSelection {
+  providerID: string;
+  modelID: string;
+}
+
+interface OpenCodeRuntimeState {
+  baseUrl: string;
+  opencodeSessionId: string;
+  serverProcess: ChildProcess;
+  lastRawProviderEventAt: Date | null;
+  lastRawProviderEventSource: string | null;
+  lastSessionStatus: OpenCodeSessionStatus | null;
+  lastSessionStatusAt: Date | null;
+}
+
 /**
  * Get next available port for OpenCode server.
  */
 function getNextPort(): number {
   return nextPort++;
+}
+
+function parseOpenCodeModelSelection(
+  model: string | undefined,
+): OpenCodeModelSelection | undefined {
+  if (!model || model === "default" || model === "auto") {
+    return undefined;
+  }
+
+  const slashIndex = model.indexOf("/");
+  if (slashIndex <= 0 || slashIndex === model.length - 1) {
+    throw new Error(
+      `OpenCode model must use provider/model format, got "${model}"`,
+    );
+  }
+
+  return {
+    providerID: model.slice(0, slashIndex),
+    modelID: model.slice(slashIndex + 1),
+  };
+}
+
+function isProcessStillAlive(process: ChildProcess): boolean {
+  return (
+    !process.killed &&
+    process.exitCode === null &&
+    process.signalCode === null
+  );
+}
+
+function updateOpenCodeRuntimeEvent(
+  runtime: OpenCodeRuntimeState,
+  event: OpenCodeSSEEvent,
+): void {
+  const now = new Date();
+  runtime.lastRawProviderEventAt = now;
+  runtime.lastRawProviderEventSource = `opencode:sse:${event.type}`;
+
+  if (event.type === "session.status") {
+    const statusEvent = event as OpenCodeSessionStatusEvent;
+    runtime.lastSessionStatus = statusEvent.properties.status;
+    runtime.lastSessionStatusAt = now;
+  } else if (event.type === "session.idle") {
+    runtime.lastSessionStatus = { type: "idle" };
+    runtime.lastSessionStatusAt = now;
+  }
+}
+
+function getOpenCodeEventSessionId(event: OpenCodeSSEEvent): string | undefined {
+  switch (event.type) {
+    case "session.status":
+    case "session.idle":
+    case "session.diff":
+      return event.properties.sessionID;
+    case "session.updated":
+      return event.properties.info.id;
+    case "message.updated":
+      return event.properties.info.sessionID;
+    case "message.part.updated":
+      return event.properties.part.sessionID;
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -244,6 +329,15 @@ export class OpenCodeProvider implements AgentProvider {
     const queue = new MessageQueue();
     const abortController = new AbortController();
     const pidRef = { value: serverProcess.pid };
+    const runtime: OpenCodeRuntimeState = {
+      baseUrl,
+      opencodeSessionId,
+      serverProcess,
+      lastRawProviderEventAt: null,
+      lastRawProviderEventSource: null,
+      lastSessionStatus: null,
+      lastSessionStatusAt: null,
+    };
 
     if (options.initialMessage) {
       queue.push(options.initialMessage);
@@ -255,14 +349,16 @@ export class OpenCodeProvider implements AgentProvider {
       abortController.signal,
       options,
       port,
-      serverProcess,
-      opencodeSessionId,
+      runtime,
     );
 
     return {
       iterator,
       queue,
       abort: () => abortController.abort(),
+      isProcessAlive: () => isProcessStillAlive(serverProcess),
+      probeLiveness: () => this.probeLiveness(runtime),
+      getProviderActivity: () => this.getProviderActivity(runtime),
       get pid() {
         return pidRef.value;
       },
@@ -283,6 +379,151 @@ export class OpenCodeProvider implements AgentProvider {
     };
   }
 
+  private getProviderActivity(
+    runtime: OpenCodeRuntimeState,
+  ): ProviderActivitySnapshot {
+    return {
+      lastRawProviderEventAt: runtime.lastRawProviderEventAt,
+      lastRawProviderEventSource: runtime.lastRawProviderEventSource,
+    };
+  }
+
+  private async probeLiveness(
+    runtime: OpenCodeRuntimeState,
+  ): Promise<ProviderLivenessProbeResult> {
+    const checkedAt = new Date();
+    const source = "opencode:session/status";
+
+    if (!isProcessStillAlive(runtime.serverProcess)) {
+      return {
+        status: "unavailable",
+        source: "opencode:process",
+        detail: "OpenCode server process is not alive",
+        checkedAt,
+      };
+    }
+
+    try {
+      const response = await fetch(`${runtime.baseUrl}/session/status`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!response.ok) {
+        return {
+          status: "error",
+          source,
+          detail: `OpenCode status request failed with HTTP ${response.status}`,
+          checkedAt,
+        };
+      }
+
+      const statuses = await response.json();
+      if (
+        !statuses ||
+        typeof statuses !== "object" ||
+        Array.isArray(statuses)
+      ) {
+        return {
+          status: "error",
+          source,
+          detail: "OpenCode status response was not a session status map",
+          checkedAt,
+        };
+      }
+
+      const statusMap = statuses as Record<string, unknown>;
+      const hasStatus = Object.prototype.hasOwnProperty.call(
+        statusMap,
+        runtime.opencodeSessionId,
+      );
+      if (!hasStatus) {
+        return {
+          status: "idle",
+          source,
+          detail: "OpenCode status map has no active entry for this session",
+          checkedAt,
+        };
+      }
+
+      const status = this.parseSessionStatus(
+        statusMap[runtime.opencodeSessionId],
+      );
+
+      if (!status) {
+        return {
+          status: "error",
+          source,
+          detail: "OpenCode status entry for this session was not recognized",
+          checkedAt,
+        };
+      }
+
+      runtime.lastSessionStatus = status;
+      runtime.lastSessionStatusAt = checkedAt;
+
+      if (status.type === "busy") {
+        return {
+          status: "active",
+          source,
+          detail: "OpenCode reports the session is busy",
+          checkedAt,
+        };
+      }
+
+      if (status.type === "retry") {
+        return {
+          status: "active",
+          source,
+          detail: `OpenCode is retrying attempt ${status.attempt}: ${status.message}`,
+          checkedAt,
+        };
+      }
+
+      return {
+        status: "idle",
+        source,
+        detail: "OpenCode reports the session is idle",
+        checkedAt,
+      };
+    } catch (error) {
+      return {
+        status: "error",
+        source,
+        detail: error instanceof Error ? error.message : String(error),
+        checkedAt,
+      };
+    }
+  }
+
+  private parseSessionStatus(value: unknown): OpenCodeSessionStatus | null {
+    if (!value || typeof value !== "object" || !("type" in value)) {
+      return null;
+    }
+
+    const status = value as {
+      type?: unknown;
+      attempt?: unknown;
+      message?: unknown;
+      next?: unknown;
+    };
+    if (status.type === "busy" || status.type === "idle") {
+      return { type: status.type };
+    }
+    if (status.type === "retry") {
+      return {
+        type: "retry",
+        attempt: typeof status.attempt === "number" ? status.attempt : 0,
+        message:
+          typeof status.message === "string"
+            ? status.message
+            : "retrying request",
+        next: typeof status.next === "number" ? status.next : 0,
+      };
+    }
+    return null;
+  }
+
   /**
    * Main session loop.
    * Server is already started and opencodeSessionId is already known
@@ -296,18 +537,16 @@ export class OpenCodeProvider implements AgentProvider {
     signal: AbortSignal,
     options: StartSessionOptions,
     port: number,
-    serverProcess: ChildProcess,
-    opencodeSessionId: string,
+    runtime: OpenCodeRuntimeState,
   ): AsyncIterableIterator<SDKMessage> {
     const log = getLogger();
-    const baseUrl = `http://127.0.0.1:${port}`;
     // opencode session ID is the YA session ID for opencode sessions
-    const sessionId = opencodeSessionId;
+    const sessionId = runtime.opencodeSessionId;
 
     // Handle abort
     const abortHandler = () => {
       log.info({ port }, "Aborting OpenCode server");
-      serverProcess.kill("SIGTERM");
+      runtime.serverProcess.kill("SIGTERM");
     };
     signal.addEventListener("abort", abortHandler);
 
@@ -342,10 +581,10 @@ export class OpenCodeProvider implements AgentProvider {
         } as SDKMessage;
 
         yield* this.sendMessageAndStream(
-          baseUrl,
-          opencodeSessionId,
+          runtime,
           sessionId,
           userPrompt,
+          options.model,
           signal,
         );
       }
@@ -353,8 +592,8 @@ export class OpenCodeProvider implements AgentProvider {
       log.info({ port, sessionId }, "Shutting down OpenCode server");
       signal.removeEventListener("abort", abortHandler);
 
-      if (!serverProcess.killed) {
-        serverProcess.kill("SIGTERM");
+      if (!runtime.serverProcess.killed) {
+        runtime.serverProcess.kill("SIGTERM");
       }
     }
   }
@@ -363,15 +602,26 @@ export class OpenCodeProvider implements AgentProvider {
    * Send a message to OpenCode and stream the response via SSE.
    */
   private async *sendMessageAndStream(
-    baseUrl: string,
-    opencodeSessionId: string,
+    runtime: OpenCodeRuntimeState,
     sessionId: string,
     text: string,
+    model: string | undefined,
     signal: AbortSignal,
   ): AsyncIterableIterator<SDKMessage> {
     const log = getLogger();
+    let modelSelection: OpenCodeModelSelection | undefined;
+    try {
+      modelSelection = parseOpenCodeModelSelection(model);
+    } catch (error) {
+      yield {
+        type: "error",
+        session_id: sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      } as SDKMessage;
+      return;
+    }
 
-    const sseUrl = `${baseUrl}/event`;
+    const sseUrl = `${runtime.baseUrl}/event`;
     const sseController = new AbortController();
 
     // Event buffer and signaling for producer/consumer pattern
@@ -405,6 +655,7 @@ export class OpenCodeProvider implements AgentProvider {
         const decoder = new TextDecoder();
         let buffer = "";
         let currentAssistantMessageId: string | null = null;
+        const messageRolesById = new Map<string, "user" | "assistant">();
 
         while (!sseController.signal.aborted) {
           const { done, value } = await reader.read();
@@ -425,13 +676,21 @@ export class OpenCodeProvider implements AgentProvider {
 
             log.trace({ event }, "SSE event received");
 
-            // Filter to only events for our session
+            const eventSessionId = getOpenCodeEventSessionId(event);
             if (
-              "properties" in event &&
-              event.properties &&
-              "sessionID" in event.properties
+              eventSessionId !== undefined &&
+              eventSessionId !== runtime.opencodeSessionId
             ) {
-              if (event.properties.sessionID !== opencodeSessionId) continue;
+              continue;
+            }
+
+            updateOpenCodeRuntimeEvent(runtime, event);
+            if (event.type === "message.updated") {
+              const messageEvent = event as OpenCodeMessageUpdatedEvent;
+              messageRolesById.set(
+                messageEvent.properties.info.id,
+                messageEvent.properties.info.role,
+              );
             }
 
             // Convert to SDK message
@@ -439,6 +698,7 @@ export class OpenCodeProvider implements AgentProvider {
               event,
               sessionId,
               currentAssistantMessageId,
+              messageRolesById,
             );
 
             if (sdkMessage) {
@@ -457,7 +717,10 @@ export class OpenCodeProvider implements AgentProvider {
 
             // Stop on session.idle
             if (event.type === "session.idle") {
-              log.debug({ opencodeSessionId }, "Session idle, stopping SSE");
+              log.debug(
+                { opencodeSessionId: runtime.opencodeSessionId },
+                "Session idle, stopping SSE",
+              );
               return;
             }
           }
@@ -480,11 +743,15 @@ export class OpenCodeProvider implements AgentProvider {
     // Send the message
     try {
       log.debug(
-        { opencodeSessionId, textLength: text.length },
+        {
+          opencodeSessionId: runtime.opencodeSessionId,
+          textLength: text.length,
+          model: modelSelection,
+        },
         "Sending message to OpenCode",
       );
       const response = await fetch(
-        `${baseUrl}/session/${opencodeSessionId}/message`,
+        `${runtime.baseUrl}/session/${runtime.opencodeSessionId}/message`,
         {
           method: "POST",
           headers: {
@@ -492,6 +759,7 @@ export class OpenCodeProvider implements AgentProvider {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
+            ...(modelSelection ? { model: modelSelection } : {}),
             parts: [{ type: "text", text }],
           }),
           signal,
@@ -504,7 +772,10 @@ export class OpenCodeProvider implements AgentProvider {
           `Failed to send message: ${response.status} ${errorText}`,
         );
       }
-      log.debug({ opencodeSessionId }, "Message sent successfully");
+      log.debug(
+        { opencodeSessionId: runtime.opencodeSessionId },
+        "Message sent successfully",
+      );
     } catch (error) {
       sseController.abort();
       if (signal.aborted) {
@@ -566,6 +837,7 @@ export class OpenCodeProvider implements AgentProvider {
     event: OpenCodeSSEEvent,
     sessionId: string,
     currentMessageId: string | null,
+    messageRolesById: ReadonlyMap<string, "user" | "assistant">,
   ): SDKMessage | null {
     switch (event.type) {
       case "message.part.updated": {
@@ -578,6 +850,7 @@ export class OpenCodeProvider implements AgentProvider {
           sessionId,
           delta,
           currentMessageId,
+          messageRolesById.get(part.messageID),
         );
       }
 
@@ -603,9 +876,14 @@ export class OpenCodeProvider implements AgentProvider {
     sessionId: string,
     delta: string | undefined,
     currentMessageId: string | null,
+    messageRole: "user" | "assistant" | undefined,
   ): SDKMessage | null {
     switch (part.type) {
       case "text": {
+        if (messageRole === "user") {
+          return null;
+        }
+
         // Use delta if available (streaming), otherwise full text
         const text = delta ?? part.text ?? "";
         if (!text) return null;

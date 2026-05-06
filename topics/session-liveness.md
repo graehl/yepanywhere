@@ -38,6 +38,14 @@ patient queue intent.
 - Provider process/server liveness is weak evidence. It may explain why a
   session can still be recovered or queried, but it must not upgrade a silent
   active turn unless the provider exposes a real active-turn status signal.
+- OpenCode `/session/status` is a real active-turn status signal for that
+  provider. `busy` and `retry` entries are active evidence, `idle` and missing
+  entries mean no active OpenCode work is reported for that session, and
+  malformed present entries are probe errors rather than idle proof.
+- OpenCode `session.status` and `session.idle` SSE events are raw
+  provider-cadence/status evidence. They may reset idle quiet-period timers and
+  help explain a silent turn, but raw SSE cadence alone should not become
+  user-visible progress without a normalized message or active status probe.
 - Patient queue intent is message intent, not scheduling proof. `Queue when
   done` should keep the message in the parent session and make the patience
   marker visible in the queued text; it should not steer the active turn or
@@ -70,6 +78,13 @@ patient queue intent.
   emitting JSON-RPC traffic, but derived liveness still needs a normalized
   provider message, awaited tool lifecycle, or explicit active probe to claim
   progress.
+- An OpenCode status map with no entry for the current session is different
+  from a malformed entry for that session. Missing means no active entry;
+  malformed means the provider contract is not understood and the probe should
+  surface an error.
+- OpenCode text parts must be interpreted through the corresponding
+  `message.updated` role metadata when it is available. A user text part is not
+  assistant progress and should not be rendered as an assistant message.
 - User-message metadata should survive REST acceptance, optimistic/replayed
   user echoes, and deferred queue summaries without becoming hidden prompt text.
 
@@ -91,6 +106,10 @@ patient queue intent.
 - A stale active turn with only a recent raw provider event stays
   `long-silent-unverified`.
 - A stale active turn with no usable probe stays unverified.
+- OpenCode `busy` and `retry` `/session/status` entries become active probe
+  evidence, while an unrecognized present entry becomes probe error evidence.
+- OpenCode user text parts do not become assistant messages when
+  `message.updated` identifies the message role as `user`.
 - Heartbeat turns do not queue unless the shared snapshot is `verified-idle`.
 - Heartbeat turns remain deferred until the configured quiet period has elapsed
   since the latest real liveness signal, not merely since the first idle

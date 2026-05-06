@@ -19,6 +19,8 @@
   "sidebarSectionStarred": "Starred",
   "sidebarSectionLast24Hours": "Last 24 Hours",
   "sidebarSectionOlder": "Older",
+  "sidebarSectionExpand": "Expand",
+  "sidebarSectionCollapse": "Collapse",
   "sidebarLoadingSessions": "Loading sessions...",
   "sidebarNoSessions": "No sessions yet",
   "settingsAppearanceTitle": "Appearance",

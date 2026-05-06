@@ -19,6 +19,8 @@
   "sidebarSectionStarred": "Destacadas",
   "sidebarSectionLast24Hours": "Últimas 24 horas",
   "sidebarSectionOlder": "Anteriores",
+  "sidebarSectionExpand": "Expandir",
+  "sidebarSectionCollapse": "Contraer",
   "sidebarLoadingSessions": "Cargando sesiones...",
   "sidebarNoSessions": "Todavía no hay sesiones",
   "settingsAppearanceTitle": "Apariencia",

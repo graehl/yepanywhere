@@ -12,6 +12,7 @@ import {
   getDisplayBashCommandFromInput,
   isCodexLikeBashInput,
 } from "../../lib/bashCommand";
+import { PREDICTIVE_SCROLL_ROOT_MARGIN } from "../../lib/predictiveScroll";
 import { parseShellToolOutput } from "../../lib/shellToolOutput";
 import type { ToolCallItem, ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
@@ -28,7 +29,6 @@ interface Props {
   sessionProvider?: string;
 }
 
-const TOOL_ROW_HYDRATION_ROOT_MARGIN = "1600px 0px";
 export const DEFERRED_PREVIEW_HEIGHT = {
   commandRowPx: 42,
   outputRowChromePx: 12,
@@ -174,7 +174,7 @@ function useNearViewportHydration(status: ToolCallItem["status"]): {
           observer.disconnect();
         }
       },
-      { root: null, rootMargin: TOOL_ROW_HYDRATION_ROOT_MARGIN },
+      { root: null, rootMargin: PREDICTIVE_SCROLL_ROOT_MARGIN },
     );
     observer.observe(node);
     return () => observer.disconnect();

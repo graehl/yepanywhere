@@ -1216,7 +1216,7 @@ h2 {
 .sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-nav-label,
 .sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-nav-item svg,
 .sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-section-title,
-.sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-show-more,
+.sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-section-toggle,
 .sidebar-desktop:not(.sidebar-collapsed) .sidebar .sidebar-empty,
 .sidebar-desktop:not(.sidebar-collapsed)
   .sidebar
@@ -1263,7 +1263,7 @@ h2 {
   .sidebar-section-title,
 .sidebar-desktop:not(.sidebar-collapsed)
   .sidebar:not(:hover):not(:focus-within)
-  .sidebar-show-more,
+  .sidebar-section-toggle,
 .sidebar-desktop:not(.sidebar-collapsed)
   .sidebar:not(:hover):not(:focus-within)
   .sidebar-empty,
@@ -1319,13 +1319,51 @@ a.sidebar-nav-item {
   margin-bottom: 1rem;
 }
 
+.sidebar-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
 .sidebar-section-title {
   font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-dimmed);
   padding: 0 0.875rem;
-  margin-bottom: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.sidebar-section-header .sidebar-section-title {
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar-section-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dimmed);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  line-height: 1;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.sidebar-section-toggle:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+  color: var(--text-secondary);
 }
 
 .sidebar-session-list {
@@ -1360,23 +1398,6 @@ a.sidebar-nav-item {
 
 .sidebar-session-list li {
   position: relative;
-}
-
-.sidebar-show-more {
-  display: block;
-  width: 100%;
-  padding: 0.375rem 0.875rem;
-  background: none;
-  border: none;
-  color: var(--text-dimmed);
-  font-size: var(--font-size-xs);
-  text-align: left;
-  cursor: pointer;
-  transition: color 0.15s;
-}
-
-.sidebar-show-more:hover {
-  color: var(--text-secondary);
 }
 
 /* Sidebar Activity Badges */

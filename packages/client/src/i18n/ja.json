@@ -19,6 +19,8 @@
   "sidebarSectionStarred": "スター付き",
   "sidebarSectionLast24Hours": "過去 24 時間",
   "sidebarSectionOlder": "それ以前",
+  "sidebarSectionExpand": "展開",
+  "sidebarSectionCollapse": "折りたたむ",
   "sidebarLoadingSessions": "セッションを読み込み中...",
   "sidebarNoSessions": "まだセッションがありません",
   "settingsAppearanceTitle": "外観",

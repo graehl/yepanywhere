@@ -19,6 +19,8 @@
   "sidebarSectionStarred": "已收藏",
   "sidebarSectionLast24Hours": "最近 24 小时",
   "sidebarSectionOlder": "更早",
+  "sidebarSectionExpand": "展开",
+  "sidebarSectionCollapse": "收起",
   "sidebarLoadingSessions": "正在加载会话...",
   "sidebarNoSessions": "还没有会话",
   "settingsAppearanceTitle": "外观",

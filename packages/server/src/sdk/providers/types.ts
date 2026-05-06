@@ -5,7 +5,13 @@ import type {
   SlashCommand,
 } from "@yep-anywhere/shared";
 import type { MessageQueue } from "../messageQueue.js";
-import type { CanUseTool, SDKMessage, UserMessage } from "../types.js";
+import type {
+  CanUseTool,
+  ProviderActivitySnapshot,
+  ProviderLivenessProbeResult,
+  SDKMessage,
+  UserMessage,
+} from "../types.js";
 
 /**
  * Provider names - extensible for future providers.
@@ -78,6 +84,10 @@ export interface AgentSession {
   isProcessAlive?: () => boolean;
   /** OS PID of the spawned agent child process (undefined if not available) */
   pid?: number | (() => number | undefined);
+  /** Actively query provider/session status when passive progress evidence is stale. */
+  probeLiveness?: () => Promise<ProviderLivenessProbeResult>;
+  /** Passive raw provider/app-server event cadence, when available. */
+  getProviderActivity?: () => ProviderActivitySnapshot;
   /** Session ID if available immediately (some providers provide later via messages) */
   sessionId?: string;
   /**

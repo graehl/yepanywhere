@@ -1,5 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import type {
+  SessionLivenessSnapshot,
+  UrlProjectId,
+} from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   SessionStatusEvent,
@@ -29,6 +32,33 @@ let sessionStreamHandler:
   | null = null;
 
 const PROJECT_ID = "proj-1" as unknown as UrlProjectId;
+
+function mockLiveness(
+  overrides: Partial<SessionLivenessSnapshot> = {},
+): SessionLivenessSnapshot {
+  return {
+    checkedAt: "2026-04-24T00:06:00.000Z",
+    derivedStatus: "long-silent-unverified",
+    activeWorkKind: "agent-turn",
+    state: "in-turn",
+    evidence: ["provider-message-stale"],
+    lastProviderMessageAt: "2026-04-24T00:00:00.000Z",
+    lastRawProviderEventAt: null,
+    lastRawProviderEventSource: null,
+    lastStateChangeAt: "2026-04-23T23:59:00.000Z",
+    lastVerifiedProgressAt: "2026-04-24T00:00:00.000Z",
+    lastVerifiedIdleAt: null,
+    lastLivenessProbeAt: null,
+    lastLivenessProbeStatus: null,
+    lastLivenessProbeSource: null,
+    silenceMs: 360_000,
+    longSilenceThresholdMs: 300_000,
+    processAlive: true,
+    queueDepth: 0,
+    deferredQueueDepth: 0,
+    ...overrides,
+  };
+}
 
 function installLocalStorageMock(): void {
   const store = new Map<string, string>();
@@ -332,6 +362,53 @@ describe("useSession completion reconciliation", () => {
         deliveryState: "queued",
       },
     ]);
+  });
+
+  it("captures session liveness snapshots from stream status events", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "status",
+        state: "in-turn",
+        liveness: mockLiveness(),
+      });
+    });
+
+    expect(result.current.sessionLiveness).toMatchObject({
+      derivedStatus: "long-silent-unverified",
+      activeWorkKind: "agent-turn",
+    });
+  });
+
+  it("captures session liveness snapshots from stream heartbeats", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "heartbeat",
+        liveness: mockLiveness({
+          derivedStatus: "verified-progressing",
+          lastVerifiedProgressAt: "2026-04-24T00:06:00.000Z",
+          silenceMs: 0,
+        }),
+      });
+    });
+
+    expect(result.current.sessionLiveness).toMatchObject({
+      derivedStatus: "verified-progressing",
+      lastVerifiedProgressAt: "2026-04-24T00:06:00.000Z",
+    });
   });
 
   it("marks a promoted deferred queue chip as sending until the user echo arrives", () => {

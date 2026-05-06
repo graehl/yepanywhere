@@ -1037,7 +1037,7 @@ describe("preprocessMessages", () => {
       });
     });
 
-    it("keeps Codex background process handles pending despite orphan markers", () => {
+    it("keeps Codex background process handles incomplete when orphaned", () => {
       const messages: Message[] = [
         {
           id: "msg-1",
@@ -1074,7 +1074,7 @@ describe("preprocessMessages", () => {
       expect(items[0]).toMatchObject({
         type: "tool_call",
         id: "tool-1",
-        status: "pending",
+        status: "incomplete",
       });
     });
 

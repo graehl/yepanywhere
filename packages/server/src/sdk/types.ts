@@ -2,7 +2,12 @@
 
 // Re-export PermissionMode from shared
 export type { PermissionMode } from "@yep-anywhere/shared";
-import type { PermissionMode, UploadedFile } from "@yep-anywhere/shared";
+import type {
+  PermissionMode,
+  SessionLivenessProbeStatus,
+  UploadedFile,
+  UserMessageMetadata,
+} from "@yep-anywhere/shared";
 
 export interface ContentBlock {
   type: "text" | "tool_use" | "tool_result" | "image" | "thinking";
@@ -87,6 +92,8 @@ export interface UserMessage {
   uuid?: string;
   /** Client-generated temp ID for optimistic UI tracking. Echoed back in SSE. */
   tempId?: string;
+  /** YA-internal submission timing and delivery-intent metadata. */
+  metadata?: UserMessageMetadata;
 }
 
 export interface SDKSessionOptions {
@@ -120,6 +127,18 @@ export type CanUseTool = (
   options: { signal: AbortSignal },
 ) => Promise<ToolApprovalResult>;
 
+export interface ProviderLivenessProbeResult {
+  status: SessionLivenessProbeStatus;
+  source: string;
+  detail?: string;
+  checkedAt?: Date;
+}
+
+export interface ProviderActivitySnapshot {
+  lastRawProviderEventAt?: Date | null;
+  lastRawProviderEventSource?: string | null;
+}
+
 export interface StartSessionOptions {
   cwd: string;
   initialMessage?: UserMessage;
@@ -148,6 +167,10 @@ export interface StartSessionResult {
   isProcessAlive?: () => boolean;
   /** OS PID of the spawned agent child process (undefined if not available) */
   pid?: number | (() => number | undefined);
+  /** Actively query provider/session status when passive progress evidence is stale. */
+  probeLiveness?: () => Promise<ProviderLivenessProbeResult>;
+  /** Passive raw provider/app-server event cadence, when available. */
+  getProviderActivity?: () => ProviderActivitySnapshot;
   /**
    * Change max thinking tokens without restarting the session.
    * Pass null to disable thinking mode.

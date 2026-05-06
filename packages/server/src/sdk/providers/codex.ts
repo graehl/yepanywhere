@@ -24,10 +24,12 @@ import {
   parseCodexToolArguments,
 } from "../../codex/normalization.js";
 import { getLogger } from "../../logging/logger.js";
-import { findCodexCliPath, whichCommand } from "../cli-detection.js";
+import { findCodexCliPath } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
 import type {
+  ProviderActivitySnapshot,
+  ProviderLivenessProbeResult,
   SDKMessage,
   TimestampedSDKMessage,
   UserMessage,
@@ -42,7 +44,6 @@ import type {
   ItemCompletedNotification as CodexItemCompletedNotification,
   ItemStartedNotification as CodexItemStartedNotification,
   PlanDeltaNotification,
-  PermissionProfile,
   PermissionsRequestApprovalParams,
   PermissionsRequestApprovalResponse,
   RawResponseItemCompletedNotification,
@@ -154,7 +155,16 @@ const CODEX_POLICY_OVERRIDES: {
 interface CodexThreadPolicy {
   approvalPolicy: CodexAskForApproval;
   sandbox: CodexSandboxMode;
-  permissionProfile: PermissionProfile | null;
+}
+
+interface CodexThreadReadResponse {
+  thread?: {
+    id?: string;
+    status?: {
+      type?: string;
+      activeFlags?: unknown;
+    };
+  };
 }
 
 /**
@@ -487,6 +497,7 @@ type NormalizedThreadItem =
       type: "todo_list";
       items: Array<{ text: string; completed: boolean }>;
     }
+  | { id: string; type: "context_compaction" }
   | { id: string; type: "error"; message: string }
   | { id: string; type: "image_view"; path: string };
 
@@ -601,6 +612,8 @@ class CodexAppServerClient {
   private readonly notifications = new AsyncQueue<JsonRpcNotification>();
   private onServerRequest: AppServerRequestHandler | null = null;
   private closed = false;
+  private lastRawProviderEventAt: Date | null = null;
+  private lastRawProviderEventSource: string | null = null;
 
   constructor(
     private readonly command: string,
@@ -610,6 +623,13 @@ class CodexAppServerClient {
 
   setServerRequestHandler(handler: AppServerRequestHandler): void {
     this.onServerRequest = handler;
+  }
+
+  getProviderActivity(): ProviderActivitySnapshot {
+    return {
+      lastRawProviderEventAt: this.lastRawProviderEventAt,
+      lastRawProviderEventSource: this.lastRawProviderEventSource,
+    };
   }
 
   async connect(): Promise<void> {
@@ -688,6 +708,7 @@ class CodexAppServerClient {
     // Server request/notification
     if (method) {
       if (hasId) {
+        this.recordRawProviderEvent(`codex:request:${method}`);
         const request: JsonRpcServerRequest = {
           id: message.id as JsonRpcId,
           method,
@@ -697,6 +718,7 @@ class CodexAppServerClient {
         return;
       }
 
+      this.recordRawProviderEvent(`codex:notification:${method}`);
       this.notifications.push({ method, params: message.params });
       return;
     }
@@ -790,6 +812,15 @@ class CodexAppServerClient {
       method,
       ...(params === undefined ? {} : { params }),
     });
+  }
+
+  private recordRawProviderEvent(source: string): void {
+    this.lastRawProviderEventAt = new Date();
+    this.lastRawProviderEventSource = source;
+  }
+
+  injectNotification(notification: JsonRpcNotification): void {
+    this.notifications.push(notification);
   }
 
   async nextNotification(signal?: AbortSignal): Promise<JsonRpcNotification> {
@@ -1302,17 +1333,12 @@ export class CodexProvider implements AgentProvider {
       approvalPolicy:
         CODEX_POLICY_OVERRIDES.approvalPolicy ?? policy.approvalPolicy,
       sandbox: CODEX_POLICY_OVERRIDES.sandbox ?? policy.sandbox,
-      permissionProfile:
-        CODEX_POLICY_OVERRIDES.sandbox === null
-          ? policy.permissionProfile
-          : null,
     });
 
     if (permissionMode === "bypassPermissions") {
       return applyOverrides({
         approvalPolicy: "never",
         sandbox: "danger-full-access",
-        permissionProfile: this.createDangerFullAccessPermissionProfile(),
       });
     }
 
@@ -1320,23 +1346,13 @@ export class CodexProvider implements AgentProvider {
       return applyOverrides({
         approvalPolicy: "on-request",
         sandbox: "read-only",
-        permissionProfile: null,
       });
     }
 
     return applyOverrides({
       approvalPolicy: "on-request",
       sandbox: "workspace-write",
-      permissionProfile: null,
     });
-  }
-
-  private createDangerFullAccessPermissionProfile(): PermissionProfile {
-    return {
-      type: "managed",
-      network: { enabled: true },
-      fileSystem: { type: "unrestricted" },
-    };
   }
 
   /**
@@ -1376,9 +1392,16 @@ export class CodexProvider implements AgentProvider {
         activeClient?.close();
       },
       isProcessAlive: () => activeClient?.isAlive() ?? false,
+      getProviderActivity: () =>
+        activeClient?.getProviderActivity() ?? {
+          lastRawProviderEventAt: null,
+          lastRawProviderEventSource: null,
+        },
       get pid() {
         return activeClient?.pid;
       },
+      probeLiveness: async () =>
+        this.probeCodexLiveness(activeClient, runtimeState),
       steer: async (message) => {
         if (!activeClient) return false;
         if (!runtimeState.threadId || !runtimeState.activeTurnId) return false;
@@ -1423,6 +1446,120 @@ export class CodexProvider implements AgentProvider {
     };
   }
 
+  private async probeCodexLiveness(
+    activeClient: CodexAppServerClient | null,
+    runtimeState: CodexTurnRuntimeState,
+  ): Promise<ProviderLivenessProbeResult> {
+    const checkedAt = new Date();
+    const source = "codex:thread/read";
+
+    if (!activeClient?.isAlive()) {
+      return {
+        status: "unavailable",
+        source,
+        checkedAt,
+        detail: "Codex app-server is not alive",
+      };
+    }
+    if (!runtimeState.threadId) {
+      return {
+        status: "unavailable",
+        source,
+        checkedAt,
+        detail: "No Codex thread id is available",
+      };
+    }
+
+    try {
+      const response = await activeClient.request<CodexThreadReadResponse>(
+        "thread/read",
+        {
+          threadId: runtimeState.threadId,
+          includeTurns: false,
+        },
+      );
+      const status = response.thread?.status;
+      const statusType = status?.type;
+      const activeFlags = Array.isArray(status?.activeFlags)
+        ? status.activeFlags.filter(
+            (flag): flag is string => typeof flag === "string",
+          )
+        : [];
+      const mappedStatus = this.mapCodexThreadStatusToLiveness(
+        statusType,
+        activeFlags,
+      );
+
+      if (mappedStatus === "idle" && runtimeState.activeTurnId) {
+        activeClient.injectNotification({
+          method: "turn/completed",
+          params: {
+            threadId: runtimeState.threadId,
+            turn: {
+              id: runtimeState.activeTurnId,
+              items: [],
+              status: "completed",
+              error: null,
+              startedAt: null,
+              completedAt: null,
+              durationMs: null,
+            },
+          },
+        });
+      }
+
+      return {
+        status: mappedStatus,
+        source,
+        checkedAt,
+        detail: this.formatCodexThreadStatusProbeDetail(
+          statusType,
+          activeFlags,
+        ),
+      };
+    } catch (error) {
+      return {
+        status: "error",
+        source,
+        checkedAt,
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  private mapCodexThreadStatusToLiveness(
+    statusType: string | undefined,
+    activeFlags: string[],
+  ): ProviderLivenessProbeResult["status"] {
+    switch (statusType) {
+      case "active":
+        return activeFlags.includes("waitingOnApproval") ||
+          activeFlags.includes("waitingOnUserInput")
+          ? "waiting-input"
+          : "active";
+      case "idle":
+        return "idle";
+      case "notLoaded":
+        return "not-loaded";
+      case "systemError":
+        return "system-error";
+      default:
+        return "error";
+    }
+  }
+
+  private formatCodexThreadStatusProbeDetail(
+    statusType: string | undefined,
+    activeFlags: string[],
+  ): string {
+    if (!statusType) {
+      return "thread.status:missing";
+    }
+    return activeFlags.length > 0
+      ? `thread.status:${statusType} flags:${activeFlags.join(",")}`
+      : `thread.status:${statusType}`;
+  }
+
   /**
    * Main session loop using codex app-server.
    */
@@ -1464,7 +1601,7 @@ export class CodexProvider implements AgentProvider {
     try {
       await appServer.connect();
 
-      const experimentalApiEnabled = await this.initializeAppServer(appServer);
+      await this.initializeAppServer(appServer);
       appServer.notify("initialized");
 
       const policy = this.mapPermissionModeToThreadPolicy(
@@ -1475,47 +1612,24 @@ export class CodexProvider implements AgentProvider {
         options,
         sessionId,
         policy,
-        experimentalApiEnabled,
       );
-      const legacyThreadResumeParams = this.createThreadResumeParams(
-        options,
-        sessionId,
-        policy,
-        experimentalApiEnabled,
-        false,
-      );
-      const threadStartParams = this.createThreadStartParams(
-        options,
-        policy,
-        experimentalApiEnabled,
-      );
-      const legacyThreadStartParams = this.createThreadStartParams(
-        options,
-        policy,
-        experimentalApiEnabled,
-        false,
-      );
+      const threadStartParams = this.createThreadStartParams(options, policy);
       const threadResult = await this.startOrResumeThread(
         appServer,
         options,
         threadStartParams,
         threadResumeParams,
-        legacyThreadStartParams,
-        legacyThreadResumeParams,
-        experimentalApiEnabled,
       );
 
       sessionId = threadResult.thread.id;
       runtimeState.threadId = sessionId;
       failureTrace.sessionId = sessionId;
-      const supportsPermissionProfile = "permissionProfile" in threadResult;
       log.info(
         {
           sessionId,
           permissionMode: options.permissionMode ?? "default",
           approvalPolicy: policy.approvalPolicy,
           sandbox: policy.sandbox,
-          permissionProfile: policy.permissionProfile,
           policyOverrides: {
             approvalPolicy: CODEX_POLICY_OVERRIDES.approvalPolicy,
             sandbox: CODEX_POLICY_OVERRIDES.sandbox,
@@ -1603,7 +1717,6 @@ export class CodexProvider implements AgentProvider {
           userPrompt,
           options,
           turnPolicy,
-          supportsPermissionProfile,
         );
         const turnResult = await appServer.request<TurnStartResponse>(
           "turn/start",
@@ -1854,124 +1967,27 @@ export class CodexProvider implements AgentProvider {
     options: StartSessionOptions,
     threadStartParams: ThreadStartParams,
     threadResumeParams: ThreadResumeParams,
-    legacyThreadStartParams: ThreadStartParams,
-    legacyThreadResumeParams: ThreadResumeParams,
-    experimentalApiEnabled: boolean,
   ): Promise<ThreadStartResponse | ThreadResumeResponse> {
-    const requestThread = async (
-      startParams: ThreadStartParams,
-      resumeParams: ThreadResumeParams,
-    ): Promise<ThreadStartResponse | ThreadResumeResponse> =>
-      options.resumeSessionId
-        ? await appServer.request<ThreadResumeResponse>(
-            "thread/resume",
-            resumeParams,
-          )
-        : await appServer.request<ThreadStartResponse>(
-            "thread/start",
-            startParams,
-          );
-    const requestThreadWithExperimentalFallback = async (
-      startParams: ThreadStartParams,
-      resumeParams: ThreadResumeParams,
-    ): Promise<ThreadStartResponse | ThreadResumeResponse> => {
-      try {
-        return await requestThread(startParams, resumeParams);
-      } catch (error) {
-        if (
-          !experimentalApiEnabled ||
-          !this.isExperimentalCapabilityError(error)
-        ) {
-          throw error;
-        }
-
-        log.warn(
-          { error },
-          "Codex rejected experimental thread flags; retrying with stable startup params",
+    return options.resumeSessionId
+      ? await appServer.request<ThreadResumeResponse>(
+          "thread/resume",
+          threadResumeParams,
+        )
+      : await appServer.request<ThreadStartResponse>(
+          "thread/start",
+          threadStartParams,
         );
-        return await requestThread(
-          {
-            ...startParams,
-            experimentalRawEvents: false,
-            persistExtendedHistory: false,
-          },
-          {
-            ...resumeParams,
-            persistExtendedHistory: false,
-          },
-        );
-      }
-    };
-
-    try {
-      return await requestThreadWithExperimentalFallback(
-        threadStartParams,
-        threadResumeParams,
-      );
-    } catch (error) {
-      if (!this.isPermissionProfileCompatibilityError(error)) {
-        throw error;
-      }
-
-      log.warn(
-        { error },
-        "Codex rejected permissionProfile; retrying with legacy sandbox params",
-      );
-      return await requestThreadWithExperimentalFallback(
-        legacyThreadStartParams,
-        legacyThreadResumeParams,
-      );
-    }
-  }
-
-  private isExperimentalCapabilityError(error: unknown): boolean {
-    const message =
-      error instanceof Error
-        ? error.message
-        : typeof error === "string"
-          ? error
-          : "";
-    return (
-      /experimentalApi capability/i.test(message) ||
-      /unknown field .*experimentalRawEvents/i.test(message) ||
-      /unknown field .*persist(?:Full|Extended)History/i.test(message)
-    );
-  }
-
-  private isPermissionProfileCompatibilityError(error: unknown): boolean {
-    const message =
-      error instanceof Error
-        ? error.message
-        : typeof error === "string"
-          ? error
-          : "";
-    return (
-      /unknown field .*permissionProfile/i.test(message) ||
-      /permissionProfile.*unknown field/i.test(message) ||
-      /permissionProfile.*unsupported/i.test(message) ||
-      /permissionProfile.*invalid/i.test(message) ||
-      /unknown variant .*(managed|disabled|external|restricted|unrestricted)/i.test(
-        message,
-      ) ||
-      /unknown field .*type.*expected.*(network|fileSystem|entries|globScanMaxDepth)/i.test(
-        message,
-      )
-    );
   }
 
   private createThreadStartParams(
     options: StartSessionOptions,
     policy: CodexThreadPolicy,
-    experimentalApiEnabled: boolean,
-    usePermissionProfile = true,
   ): ThreadStartParams {
     return {
       model: options.model ?? null,
       cwd: options.cwd,
-      ...this.buildThreadPermissionParams(policy, usePermissionProfile),
+      ...this.buildThreadPermissionParams(policy),
       config: this.buildThreadConfigOverrides(options),
-      experimentalRawEvents: experimentalApiEnabled,
-      persistExtendedHistory: experimentalApiEnabled,
     };
   }
 
@@ -1979,33 +1995,20 @@ export class CodexProvider implements AgentProvider {
     options: StartSessionOptions,
     sessionId: string,
     policy: CodexThreadPolicy,
-    experimentalApiEnabled: boolean,
-    usePermissionProfile = true,
   ): ThreadResumeParams {
     return {
       threadId: options.resumeSessionId ?? sessionId,
       model: options.model ?? null,
       cwd: options.cwd,
-      ...this.buildThreadPermissionParams(policy, usePermissionProfile),
+      ...this.buildThreadPermissionParams(policy),
       config: this.buildThreadConfigOverrides(options),
       excludeTurns: true,
-      persistExtendedHistory: experimentalApiEnabled,
     };
   }
 
   private buildThreadPermissionParams(
     policy: CodexThreadPolicy,
-    usePermissionProfile: boolean,
-  ): Pick<
-    ThreadStartParams,
-    "approvalPolicy" | "sandbox" | "permissionProfile"
-  > {
-    if (usePermissionProfile && policy.permissionProfile) {
-      return {
-        approvalPolicy: policy.approvalPolicy,
-        permissionProfile: policy.permissionProfile,
-      };
-    }
+  ): Pick<ThreadStartParams, "approvalPolicy" | "sandbox"> {
     return {
       approvalPolicy: policy.approvalPolicy,
       sandbox: policy.sandbox,
@@ -2030,7 +2033,6 @@ export class CodexProvider implements AgentProvider {
     userPrompt: string,
     options: StartSessionOptions,
     turnPolicy: CodexThreadPolicy | null = null,
-    usePermissionProfile = false,
   ): TurnStartParams {
     return {
       threadId,
@@ -2038,21 +2040,14 @@ export class CodexProvider implements AgentProvider {
       input: [{ type: "text", text: userPrompt, text_elements: [] }],
       effort: this.mapEffortToReasoningEffort(options.effort, options.thinking),
       summary: "auto",
-      ...this.buildTurnPermissionParams(turnPolicy, usePermissionProfile),
+      ...this.buildTurnPermissionParams(turnPolicy),
     };
   }
 
   private buildTurnPermissionParams(
     policy: CodexThreadPolicy | null,
-    usePermissionProfile: boolean,
-  ): Pick<TurnStartParams, "approvalPolicy" | "permissionProfile"> {
+  ): Partial<Pick<TurnStartParams, "approvalPolicy">> {
     if (!policy) return {};
-    if (usePermissionProfile && policy.permissionProfile) {
-      return {
-        approvalPolicy: policy.approvalPolicy,
-        permissionProfile: policy.permissionProfile,
-      };
-    }
     return { approvalPolicy: policy.approvalPolicy };
   }
 
@@ -3253,6 +3248,9 @@ export class CodexProvider implements AgentProvider {
         };
       }
 
+      case "context_compaction":
+        return { id, type: "context_compaction" };
+
       case "image_view": {
         const imagePath = this.getOptionalString(itemRecord.path) ?? "";
         if (!imagePath) return null;
@@ -3957,6 +3955,27 @@ export class CodexProvider implements AgentProvider {
         return [message];
       }
 
+      case "compaction": {
+        const message = withCodexTimestamp(
+          {
+            type: "system",
+            subtype: "compact_boundary",
+            session_id: sessionId,
+            uuid: `codex-compaction-${params.turnId}`,
+            content: "Context compacted",
+          } as SDKMessage,
+          observedAt,
+        );
+        logSdkCorrelationDebug(sessionId, message, {
+          eventKind: "context_compaction",
+          turnId: params.turnId,
+          itemId: `codex-compaction-${params.turnId}`,
+          phase: "completed",
+          sourceEvent: "rawResponseItem/completed",
+        });
+        return [message];
+      }
+
       default:
         return [];
     }
@@ -4406,6 +4425,29 @@ export class CodexProvider implements AgentProvider {
         );
         logSdkCorrelationDebug(sessionId, message, {
           eventKind: "todo_list",
+          turnId,
+          itemId: item.id,
+          phase: isComplete ? "completed" : "started",
+          sourceEvent,
+        });
+        return [message];
+      }
+
+      case "context_compaction": {
+        const message = withCodexTimestamp(
+          {
+            type: "system",
+            subtype: isComplete ? "compact_boundary" : "status",
+            session_id: sessionId,
+            uuid,
+            ...(isComplete
+              ? { content: "Context compacted" }
+              : { status: "compacting", content: "Compacting context..." }),
+          } as SDKMessage,
+          observedAt,
+        );
+        logSdkCorrelationDebug(sessionId, message, {
+          eventKind: "context_compaction",
           turnId,
           itemId: item.id,
           phase: isComplete ? "completed" : "started",

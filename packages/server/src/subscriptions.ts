@@ -88,7 +88,10 @@ export function createSessionSubscription(
   const heartbeatInterval = setInterval(() => {
     try {
       if (!completed) {
-        emit("heartbeat", { timestamp: new Date().toISOString() });
+        emit("heartbeat", {
+          timestamp: new Date().toISOString(),
+          liveness: process.getLivenessSnapshot(),
+        });
       }
     } catch {
       clearInterval(heartbeatInterval);
@@ -150,11 +153,24 @@ export function createSessionSubscription(
         case "state-change":
           emit("status", {
             state: event.state.type,
+            liveness: process.getLivenessSnapshot(),
             ...(event.state.type === "waiting-input"
               ? { request: event.state.request }
               : {}),
           });
           break;
+
+        case "liveness-update": {
+          const currentState = process.state;
+          emit("status", {
+            state: currentState.type,
+            liveness: process.getLivenessSnapshot(),
+            ...(currentState.type === "waiting-input"
+              ? { request: currentState.request }
+              : {}),
+          });
+          break;
+        }
 
         case "mode-change":
           emit("mode-change", {
@@ -207,6 +223,7 @@ export function createSessionSubscription(
     modeVersion: process.modeVersion,
     provider: process.provider,
     model: process.resolvedModel,
+    liveness: process.getLivenessSnapshot(),
     ...(currentState.type === "waiting-input"
       ? { request: currentState.request }
       : {}),

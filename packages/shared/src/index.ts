@@ -50,6 +50,19 @@ export {
 
 export type { GitStatusInfo, GitFileChange } from "./git-status.js";
 
+export type {
+  SessionActiveWorkKind,
+  SessionLivenessDerivedStatus,
+  SessionLivenessProbeStatus,
+  SessionLivenessSnapshot,
+} from "./session-liveness.js";
+
+export type {
+  UserMessageCompositionMetadata,
+  UserMessageDeliveryIntent,
+  UserMessageMetadata,
+} from "./user-message-metadata.js";
+
 export {
   orderByParentChain,
   needsReorder,

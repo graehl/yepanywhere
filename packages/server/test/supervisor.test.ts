@@ -594,6 +594,249 @@ describe("Supervisor", () => {
     });
   });
 
+  describe("heartbeat turns", () => {
+    it("requires verified idle liveness before queueing a synthetic turn", async () => {
+      vi.useFakeTimers();
+      let aborted = false;
+
+      try {
+        const realSdk: RealClaudeSDKInterface = {
+          startSession: async () => {
+            async function* iterator() {
+              yield {
+                type: "system",
+                subtype: "init",
+                session_id: "heartbeat-session-1",
+              };
+              yield { type: "result", session_id: "heartbeat-session-1" };
+
+              while (!aborted) {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+              }
+            }
+
+            return {
+              iterator: iterator(),
+              queue: new MessageQueue(),
+              abort: () => {
+                aborted = true;
+              },
+              isProcessAlive: () => !aborted,
+            };
+          },
+        };
+
+        const supervisorWithHeartbeat = new Supervisor({
+          realSdk,
+          idleTimeoutMs: 100,
+          getHeartbeatTurnSettings: () => ({
+            enabled: true,
+            afterMinutes: 1,
+            text: "heartbeat check",
+          }),
+        });
+
+        const started = await supervisorWithHeartbeat.startSession("/tmp/test", {
+          text: "start",
+        });
+        if (!("id" in started)) {
+          throw new Error("expected process");
+        }
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(started.state.type).toBe("idle");
+
+        const originalSnapshot = started.getLivenessSnapshot.bind(started);
+        const livenessSpy = vi
+          .spyOn(started, "getLivenessSnapshot")
+          .mockImplementation((now?: Date) => ({
+            ...originalSnapshot(now),
+            derivedStatus: "long-silent-unverified",
+            activeWorkKind: "agent-turn",
+            lastVerifiedIdleAt: null,
+          }));
+
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(started.state.type).toBe("idle");
+        expect(started.queueDepth).toBe(0);
+
+        livenessSpy.mockImplementation((now?: Date) => originalSnapshot(now));
+
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(started.state.type).toBe("in-turn");
+        expect(started.queueDepth).toBe(1);
+
+        const abortPromise = supervisorWithHeartbeat.abortProcess(started.id);
+        await vi.advanceTimersByTimeAsync(5000);
+        await expect(abortPromise).resolves.toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("resets the heartbeat timeout on real liveness signals", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
+      let aborted = false;
+
+      try {
+        const realSdk: RealClaudeSDKInterface = {
+          startSession: async () => {
+            async function* iterator() {
+              yield {
+                type: "system",
+                subtype: "init",
+                session_id: "heartbeat-session-2",
+              };
+              yield { type: "result", session_id: "heartbeat-session-2" };
+
+              while (!aborted) {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+              }
+            }
+
+            return {
+              iterator: iterator(),
+              queue: new MessageQueue(),
+              abort: () => {
+                aborted = true;
+              },
+              isProcessAlive: () => !aborted,
+            };
+          },
+        };
+
+        const supervisorWithHeartbeat = new Supervisor({
+          realSdk,
+          idleTimeoutMs: 100,
+          getHeartbeatTurnSettings: () => ({
+            enabled: true,
+            afterMinutes: 1,
+            text: "heartbeat check",
+          }),
+        });
+
+        const started = await supervisorWithHeartbeat.startSession("/tmp/test", {
+          text: "start",
+        });
+        if (!("id" in started)) {
+          throw new Error("expected process");
+        }
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(started.state.type).toBe("idle");
+
+        const originalSnapshot = started.getLivenessSnapshot.bind(started);
+        const rawActivityAtMs = Date.parse("2026-05-06T00:00:45.000Z");
+        const rawActivityAt = new Date(rawActivityAtMs).toISOString();
+        vi.spyOn(started, "getLivenessSnapshot").mockImplementation(
+          (now?: Date) => {
+            const snapshot = originalSnapshot(now);
+            const checkedAtMs = now?.getTime() ?? Date.now();
+            return checkedAtMs >= rawActivityAtMs
+              ? {
+                  ...snapshot,
+                  lastRawProviderEventAt: rawActivityAt,
+                  lastRawProviderEventSource: "test:raw-provider",
+                }
+              : snapshot;
+          },
+        );
+
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(started.state.type).toBe("idle");
+        expect(started.queueDepth).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(started.state.type).toBe("idle");
+        expect(started.queueDepth).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(started.state.type).toBe("in-turn");
+        expect(started.queueDepth).toBe(1);
+
+        const abortPromise = supervisorWithHeartbeat.abortProcess(started.id);
+        await vi.advanceTimersByTimeAsync(5000);
+        await expect(abortPromise).resolves.toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("active liveness probes", () => {
+    it("probes provider status for long-silent active sessions", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
+      let aborted = false;
+      const probeLiveness = vi.fn(async () => ({
+        status: "active" as const,
+        source: "test:probe",
+        checkedAt: new Date(),
+      }));
+
+      try {
+        const realSdk: RealClaudeSDKInterface = {
+          startSession: async () => {
+            async function* iterator() {
+              yield {
+                type: "system",
+                subtype: "init",
+                session_id: "liveness-probe-session",
+              };
+
+              while (!aborted) {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+              }
+            }
+
+            return {
+              iterator: iterator(),
+              queue: new MessageQueue(),
+              abort: () => {
+                aborted = true;
+              },
+              isProcessAlive: () => !aborted,
+              probeLiveness,
+            };
+          },
+        };
+
+        const supervisorWithProbe = new Supervisor({
+          realSdk,
+          idleTimeoutMs: 100,
+        });
+
+        const started = await supervisorWithProbe.startSession("/tmp/test", {
+          text: "start",
+        });
+        if (!("id" in started)) {
+          throw new Error("expected process");
+        }
+
+        expect(probeLiveness).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 30 * 1000);
+        await vi.waitFor(() => {
+          expect(probeLiveness).toHaveBeenCalledTimes(1);
+        });
+        expect(started.lastLivenessProbe).toMatchObject({
+          status: "active",
+          source: "test:probe",
+        });
+        expect(started.getLivenessSnapshot().derivedStatus).toBe(
+          "verified-waiting-provider",
+        );
+
+        const abortPromise = supervisorWithProbe.abortProcess(started.id);
+        await vi.advanceTimersByTimeAsync(5000);
+        await expect(abortPromise).resolves.toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   describe("eventBus integration", () => {
     it("emits process-state-changed event when session starts", async () => {
       const eventBus = new EventBus();

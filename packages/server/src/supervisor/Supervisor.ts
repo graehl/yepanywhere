@@ -3,6 +3,8 @@ import {
   type EffortLevel,
   type PermissionRules,
   type ProviderName,
+  type SessionLivenessProbeStatus,
+  type SessionLivenessSnapshot,
   type ThinkingConfig,
   type UrlProjectId,
   truncateSessionTitle,
@@ -29,7 +31,6 @@ import type {
 } from "../watcher/EventBus.js";
 import { Process, type ProcessConstructorOptions } from "./Process.js";
 import {
-  type QueuedRequest,
   type QueuedRequestInfo,
   type QueuedResponse,
   WorkerQueue,
@@ -58,14 +59,46 @@ const DEFAULT_STALE_IN_TURN_THRESHOLD_MS = 5 * 60 * 1000;
 /** Codex sessions can be silent for long periods during backend retries/reconnects. */
 const CODEX_STALE_IN_TURN_THRESHOLD_MS = 60 * 60 * 1000;
 const HEARTBEAT_TURN_CHECK_INTERVAL_MS = 30 * 1000;
+const LIVENESS_PROBE_CHECK_INTERVAL_MS = 30 * 1000;
+const LIVENESS_PROBE_REFRESH_MS = 60 * 1000;
 const DEFAULT_HEARTBEAT_TURN_TEXT = "yepanywhere heartbeat";
 const DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES = 5;
 const DEFAULT_INTERRUPT_TIMEOUT_MS = 2000;
+const HEARTBEAT_RESET_PROBE_STATUSES: ReadonlySet<SessionLivenessProbeStatus> =
+  new Set(["active", "idle", "waiting-input"]);
 
 function getStaleInTurnThresholdMs(provider: ProviderName): number {
   return provider === "codex" || provider === "codex-oss"
     ? CODEX_STALE_IN_TURN_THRESHOLD_MS
     : DEFAULT_STALE_IN_TURN_THRESHOLD_MS;
+}
+
+function parseFiniteIsoMs(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function getHeartbeatResetAtMs(
+  liveness: SessionLivenessSnapshot,
+  fallbackMs: number,
+): number {
+  const candidateTimes = [
+    parseFiniteIsoMs(liveness.lastVerifiedIdleAt),
+    parseFiniteIsoMs(liveness.lastVerifiedProgressAt),
+    parseFiniteIsoMs(liveness.lastProviderMessageAt),
+    parseFiniteIsoMs(liveness.lastRawProviderEventAt),
+    liveness.lastLivenessProbeStatus &&
+    HEARTBEAT_RESET_PROBE_STATUSES.has(liveness.lastLivenessProbeStatus)
+      ? parseFiniteIsoMs(liveness.lastLivenessProbeAt)
+      : null,
+  ].filter((ms): ms is number => ms !== null);
+
+  return candidateTimes.length > 0
+    ? Math.max(...candidateTimes, fallbackMs)
+    : fallbackMs;
 }
 
 /**
@@ -168,6 +201,7 @@ export class Supervisor {
     sessionId: string,
   ) => HeartbeatTurnSettings | undefined;
   private heartbeatTurnTimer: ReturnType<typeof setInterval>;
+  private livenessProbeTimer: ReturnType<typeof setInterval>;
   private interruptTimeoutMs: number;
 
   constructor(options: SupervisorOptions) {
@@ -199,6 +233,11 @@ export class Supervisor {
       HEARTBEAT_TURN_CHECK_INTERVAL_MS,
     );
     this.heartbeatTurnTimer.unref();
+    this.livenessProbeTimer = setInterval(
+      () => this.probeLongSilentProcesses(),
+      LIVENESS_PROBE_CHECK_INTERVAL_MS,
+    );
+    this.livenessProbeTimer.unref();
 
     if (!this.provider && !this.sdk && !this.realSdk) {
       throw new Error("Either provider, sdk, or realSdk must be provided");
@@ -400,6 +439,8 @@ export class Supervisor {
       queue,
       abort,
       isProcessAlive,
+      probeLiveness,
+      getProviderActivity,
       setMaxThinkingTokens,
       interrupt,
       supportedModels,
@@ -416,6 +457,8 @@ export class Supervisor {
       queue,
       abortFn: abort,
       isProcessAlive,
+      probeLivenessFn: probeLiveness,
+      getProviderActivityFn: getProviderActivity,
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;
@@ -505,6 +548,8 @@ export class Supervisor {
       queue,
       abort,
       isProcessAlive,
+      probeLiveness,
+      getProviderActivity,
       setMaxThinkingTokens,
       interrupt,
       supportedModels,
@@ -520,6 +565,8 @@ export class Supervisor {
       queue,
       abortFn: abort,
       isProcessAlive,
+      probeLivenessFn: probeLiveness,
+      getProviderActivityFn: getProviderActivity,
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;
@@ -603,6 +650,8 @@ export class Supervisor {
       queue,
       abort,
       isProcessAlive,
+      probeLiveness,
+      getProviderActivity,
       setMaxThinkingTokens,
       interrupt,
       steer,
@@ -620,6 +669,8 @@ export class Supervisor {
       queue,
       abortFn: abort,
       isProcessAlive,
+      probeLivenessFn: probeLiveness,
+      getProviderActivityFn: getProviderActivity,
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;
@@ -706,6 +757,8 @@ export class Supervisor {
       queue,
       abort,
       isProcessAlive,
+      probeLiveness,
+      getProviderActivity,
       setMaxThinkingTokens,
       interrupt,
       steer,
@@ -722,6 +775,8 @@ export class Supervisor {
       queue,
       abortFn: abort,
       isProcessAlive,
+      probeLivenessFn: probeLiveness,
+      getProviderActivityFn: getProviderActivity,
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;
@@ -1190,16 +1245,29 @@ export class Supervisor {
         continue;
       }
 
+      const liveness = process.getLivenessSnapshot(new Date(now));
+      if (liveness.derivedStatus !== "verified-idle") {
+        continue;
+      }
+
       const afterMinutes = Number.isFinite(settings.afterMinutes)
         ? Math.max(1, Math.min(settings.afterMinutes, 1440))
         : DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES;
       const idleThresholdMs = afterMinutes * 60 * 1000;
       const text = settings.text.trim() || DEFAULT_HEARTBEAT_TURN_TEXT;
 
-      const idleMs = now - process.state.since.getTime();
+      const heartbeatResetAtMs = getHeartbeatResetAtMs(
+        liveness,
+        process.state.since.getTime(),
+      );
+      if (!Number.isFinite(heartbeatResetAtMs)) {
+        continue;
+      }
+      const idleMs = Math.max(0, now - heartbeatResetAtMs);
       if (idleMs < idleThresholdMs) {
         continue;
       }
+      const heartbeatResetAt = new Date(heartbeatResetAtMs).toISOString();
 
       const result = process.queueMessage({ text });
       if (result.success) {
@@ -1210,6 +1278,7 @@ export class Supervisor {
             processId: process.id,
             projectId: process.projectId,
             idleMs,
+            heartbeatResetAt,
             afterMinutes,
             text,
           },
@@ -1223,12 +1292,85 @@ export class Supervisor {
             processId: process.id,
             projectId: process.projectId,
             idleMs,
+            heartbeatResetAt,
             afterMinutes,
             error: result.error,
           },
           `Failed to queue heartbeat turn for idle session: ${process.sessionId}`,
         );
       }
+    }
+  }
+
+  private probeLongSilentProcesses(): void {
+    const now = new Date();
+    const log = getLogger();
+
+    for (const process of this.processes.values()) {
+      if (process.state.type !== "in-turn") {
+        continue;
+      }
+      if (process.isHeld || process.isTerminated || !process.canProbeLiveness) {
+        continue;
+      }
+
+      const liveness = process.getLivenessSnapshot(now);
+      if (
+        liveness.derivedStatus !== "long-silent-unverified" &&
+        liveness.derivedStatus !== "verified-waiting-provider"
+      ) {
+        continue;
+      }
+
+      const lastProbeAt = liveness.lastLivenessProbeAt
+        ? Date.parse(liveness.lastLivenessProbeAt)
+        : null;
+      if (
+        lastProbeAt !== null &&
+        Number.isFinite(lastProbeAt) &&
+        now.getTime() - lastProbeAt < LIVENESS_PROBE_REFRESH_MS
+      ) {
+        continue;
+      }
+
+      void process
+        .probeLiveness()
+        .then((probe) => {
+          if (!probe) {
+            return;
+          }
+          const event =
+            process.state.type === "in-turn" && probe.status !== "active"
+              ? "liveness_probe_attention"
+              : "liveness_probe_completed";
+          log.info(
+            {
+              event,
+              sessionId: process.sessionId,
+              processId: process.id,
+              projectId: process.projectId,
+              provider: process.provider,
+              status: probe.status,
+              source: probe.source,
+              detail: probe.detail,
+              checkedAt: probe.checkedAt.toISOString(),
+            },
+            "Completed active session liveness probe",
+          );
+        })
+        .catch((error) => {
+          log.warn(
+            {
+              event: "liveness_probe_failed",
+              sessionId: process.sessionId,
+              processId: process.id,
+              projectId: process.projectId,
+              provider: process.provider,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Active session liveness probe failed",
+          );
+        });
     }
   }
 

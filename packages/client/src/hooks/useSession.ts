@@ -2,7 +2,9 @@ import {
   ALL_PERMISSION_MODES,
   type MarkdownAugment,
   type ProviderName,
+  type SessionLivenessSnapshot,
   type UploadedFile,
+  type UserMessageMetadata,
   getModelContextWindow,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -104,6 +106,7 @@ export interface DeferredMessage {
   tempId?: string;
   content: string;
   timestamp: string;
+  metadata?: UserMessageMetadata;
   attachmentCount?: number;
   attachments?: UploadedFile[];
   mode?: PermissionMode;
@@ -580,6 +583,8 @@ export function useSession(
 
   // Compacting state - true when context is being compressed
   const [isCompacting, setIsCompacting] = useState(false);
+  const [sessionLiveness, setSessionLiveness] =
+    useState<SessionLivenessSnapshot | null>(null);
 
   // Markdown augments loaded from REST response (keyed by message ID)
   const [markdownAugments, setMarkdownAugments] = useState<
@@ -602,6 +607,7 @@ export function useSession(
   // biome-ignore lint/correctness/useExhaustiveDependencies: effect intentionally runs on session switches
   useEffect(() => {
     hasHandledConnectedEventRef.current = false;
+    setSessionLiveness(null);
   }, [sessionId]);
 
   // Slash commands available for this session (from init message)
@@ -1445,7 +1451,11 @@ export function useSession(
           eventType: string;
           state: string;
           request?: InputRequest;
+          liveness?: SessionLivenessSnapshot;
         };
+        if (statusData.liveness) {
+          setSessionLiveness(statusData.liveness);
+        }
         // Track process state (in-turn, idle, waiting-input, hold)
         if (
           statusData.state === "idle" ||
@@ -1476,6 +1486,14 @@ export function useSession(
           // Clear pending request when state changes away from waiting-input
           setPendingInputRequest(null);
         }
+      } else if (data.eventType === "heartbeat") {
+        const heartbeatData = data as {
+          eventType: string;
+          liveness?: SessionLivenessSnapshot;
+        };
+        if (heartbeatData.liveness) {
+          setSessionLiveness(heartbeatData.liveness);
+        }
       } else if (data.eventType === "deferred-queue") {
         const deferredData = data as {
           eventType: string;
@@ -1497,6 +1515,7 @@ export function useSession(
         logSessionUiTrace("stream-complete", { sessionId });
         setProcessState("idle");
         setStatus({ owner: "none" });
+        setSessionLiveness(null);
         setPendingInputRequest(null);
         throttledFetch();
       } else if (data.eventType === "connected") {
@@ -1511,7 +1530,9 @@ export function useSession(
           provider?: ProviderName;
           model?: string;
           deferredMessages?: DeferredMessage[];
+          liveness?: SessionLivenessSnapshot;
         };
+        setSessionLiveness(connectedData.liveness ?? null);
 
         // Update actual session ID if server reports a different one
         // This handles the temp→real ID transition when createSession returns
@@ -1780,6 +1801,7 @@ export function useSession(
     markdownAugments, // Pre-rendered markdown HTML from REST response (keyed by blockId)
     status,
     processState,
+    sessionLiveness,
     isCompacting, // True when context is being compressed
     isHeld: processState === "hold", // Derived from process state
     pendingInputRequest,

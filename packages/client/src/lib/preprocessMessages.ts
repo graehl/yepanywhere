@@ -634,7 +634,7 @@ function attachToolResult(
   if (isInterruptedProcessResult || item.status === "aborted") {
     status = "aborted";
   } else if (isBackgroundProcessResult) {
-    status = "pending";
+    status = item.status === "incomplete" ? "incomplete" : "pending";
   } else if (block.is_error) {
     status = "error";
   }

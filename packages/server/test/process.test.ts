@@ -308,6 +308,45 @@ describe("Process", () => {
       ]);
     });
 
+    it("includes user message metadata in deferred queue summaries", async () => {
+      const iterator = createMockIterator([
+        { type: "system", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+      const metadata = {
+        deliveryIntent: "patient" as const,
+        composition: {
+          typingStartedAt: "2026-04-25T00:00:10.000Z",
+          typingEndedAt: "2026-04-25T00:00:20.000Z",
+          lastEditedAt: "2026-04-25T00:00:19.000Z",
+          submittedAt: "2026-04-25T00:00:20.000Z",
+        },
+        clientTimestamp: 1770000000123,
+        serverReceivedAt: "2026-04-25T00:00:20.250Z",
+      };
+
+      process.deferMessage({
+        text: "later",
+        tempId: "temp-meta",
+        metadata,
+      });
+
+      expect(process.getDeferredQueueSummary()).toEqual([
+        {
+          tempId: "temp-meta",
+          content: "later",
+          timestamp: expect.any(String),
+          metadata,
+        },
+      ]);
+    });
+
     it("drains deferred messages for replacement process recovery", async () => {
       const iterator = createMockIterator([
         { type: "system", session_id: "sess-1" },

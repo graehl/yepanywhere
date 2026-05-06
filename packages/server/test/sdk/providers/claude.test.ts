@@ -1,0 +1,87 @@
+import { describe, expect, it, vi } from "vitest";
+import { probeClaudeControlLiveness } from "../../../src/sdk/providers/claude.js";
+import type { Query } from "@anthropic-ai/claude-agent-sdk";
+
+function control(
+  mcpServerStatus: () => Promise<unknown>,
+): Pick<Query, "mcpServerStatus"> {
+  return {
+    mcpServerStatus:
+      mcpServerStatus as unknown as Query["mcpServerStatus"],
+  };
+}
+
+describe("Claude provider liveness probe", () => {
+  it("reports active when the SDK control channel responds", async () => {
+    const checkedAt = new Date("2026-04-25T00:00:20.000Z");
+
+    const result = await probeClaudeControlLiveness(
+      control(async () => []),
+      { checkedAt },
+    );
+
+    expect(result).toEqual({
+      status: "active",
+      source: "claude:control/mcp_status",
+      checkedAt,
+      detail:
+        "Claude SDK control channel responded; direct turn status is not exposed",
+    });
+  });
+
+  it("does not upgrade a dead CLI process through the control channel", async () => {
+    const mcpServerStatus = vi.fn(async () => []);
+    const checkedAt = new Date("2026-04-25T00:00:20.000Z");
+
+    const result = await probeClaudeControlLiveness(
+      control(mcpServerStatus),
+      { checkedAt, isProcessAlive: () => false },
+    );
+
+    expect(result).toEqual({
+      status: "unavailable",
+      source: "claude:control/mcp_status",
+      checkedAt,
+      detail: "Claude CLI process is not alive",
+    });
+    expect(mcpServerStatus).not.toHaveBeenCalled();
+  });
+
+  it("reports an error when the control request fails", async () => {
+    const checkedAt = new Date("2026-04-25T00:00:20.000Z");
+
+    const result = await probeClaudeControlLiveness(
+      control(async () => {
+        throw new Error("control request failed");
+      }),
+      { checkedAt },
+    );
+
+    expect(result).toEqual({
+      status: "error",
+      source: "claude:control/mcp_status",
+      checkedAt,
+      detail: "control request failed",
+    });
+  });
+
+  it("times out control requests that do not answer", async () => {
+    vi.useFakeTimers();
+    const checkedAt = new Date("2026-04-25T00:00:20.000Z");
+    const resultPromise = probeClaudeControlLiveness(
+      control(() => new Promise(() => {})),
+      { checkedAt, timeoutMs: 5 },
+    );
+
+    await vi.advanceTimersByTimeAsync(5);
+    const result = await resultPromise;
+
+    expect(result).toEqual({
+      status: "error",
+      source: "claude:control/mcp_status",
+      checkedAt,
+      detail: "Claude SDK control liveness probe timed out after 5ms",
+    });
+    vi.useRealTimers();
+  });
+});

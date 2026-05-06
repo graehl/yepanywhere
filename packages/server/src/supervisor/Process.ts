@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import path from "node:path";
 import type {
   EffortLevel,
   ModelInfo,
   PermissionRules,
   ProviderName,
+  SessionLivenessSnapshot,
   SlashCommand,
   ThinkingConfig,
   UrlProjectId,
@@ -15,11 +15,18 @@ import { concatUserMessages, INTERRUPT_PREAMBLE } from "../sdk/messageQueue.js";
 import type { MessageQueue } from "../sdk/messageQueue.js";
 import type {
   PermissionMode,
+  ProviderActivitySnapshot,
+  ProviderLivenessProbeResult,
   SDKMessage,
   TimestampedSDKMessage,
   ToolApprovalResult,
   UserMessage,
 } from "../sdk/types.js";
+import {
+  buildSessionLivenessSnapshot,
+  type LivenessProbeResult,
+  type LivenessProcessState,
+} from "./liveness.js";
 import type {
   AgentActivity,
   InputRequest,
@@ -78,6 +85,10 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   abortFn?: () => void;
   /** Check if underlying CLI process is still alive (for stale detection) */
   isProcessAlive?: () => boolean;
+  /** Actively query provider/session status when passive evidence is stale. */
+  probeLivenessFn?: () => Promise<ProviderLivenessProbeResult>;
+  /** Passive raw provider/app-server event cadence, when available. */
+  getProviderActivityFn?: () => ProviderActivitySnapshot;
   /** Function to change max thinking tokens at runtime (SDK 0.2.7+) */
   setMaxThinkingTokensFn?: (tokens: number | null) => Promise<void>;
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
@@ -179,9 +190,21 @@ export class Process {
 
   /** Timestamp of last SDK message received (for staleness detection) */
   private _lastMessageTime: Date;
+  /** Timestamp of last real provider/SDK message; null until one arrives. */
+  private _lastProviderMessageTime: Date | null;
+  /** Timestamp of last Process state transition. */
+  private _lastStateChangeTime: Date;
 
   /** Check if underlying CLI process is still alive (undefined = not available, fall back to time heuristic) */
   private _isProcessAlive: (() => boolean) | null;
+  /** Provider-specific active liveness probe, when available. */
+  private probeLivenessFn:
+    | (() => Promise<ProviderLivenessProbeResult>)
+    | null;
+  private getProviderActivityFn: (() => ProviderActivitySnapshot) | null;
+  private _lastLivenessProbe: LivenessProbeResult | null = null;
+  private _livenessProbeInFlight: Promise<LivenessProbeResult | null> | null =
+    null;
 
   /** OS PID of the spawned agent child process (supports deferred resolution) */
   private _pidResolver: number | (() => number | undefined) | undefined;
@@ -234,7 +257,11 @@ export class Process {
     this._pidResolver = options.pid;
     this.setModelFn = options.setModelFn ?? null;
     this._isProcessAlive = options.isProcessAlive ?? null;
+    this.probeLivenessFn = options.probeLivenessFn ?? null;
+    this.getProviderActivityFn = options.getProviderActivityFn ?? null;
     this._lastMessageTime = new Date();
+    this._lastProviderMessageTime = null;
+    this._lastStateChangeTime = new Date();
 
     // Exit promise resolves when the CLI process fully terminates
     this._exitPromise = new Promise((resolve) => {
@@ -303,6 +330,18 @@ export class Process {
     return this._isProcessAlive?.();
   }
 
+  get canProbeLiveness(): boolean {
+    return this.probeLivenessFn !== null;
+  }
+
+  get lastLivenessProbe(): LivenessProbeResult | null {
+    return this._lastLivenessProbe;
+  }
+
+  get liveness(): SessionLivenessSnapshot {
+    return this.getLivenessSnapshot();
+  }
+
   /** OS PID of the spawned agent child process */
   get pid(): number | undefined {
     if (typeof this._pidResolver === "function") {
@@ -316,6 +355,91 @@ export class Process {
       return this.messageQueue.depth;
     }
     return this.legacyQueue.length;
+  }
+
+  private get deferredQueueDepth(): number {
+    return this.deferredQueue.length;
+  }
+
+  getLivenessSnapshot(now = new Date()): SessionLivenessSnapshot {
+    const providerActivity = this.getProviderActivityFn?.();
+    return buildSessionLivenessSnapshot({
+      provider: this.provider,
+      state: this.toLivenessState(),
+      startedAt: this.startedAt,
+      lastStateChangeAt: this._lastStateChangeTime,
+      lastProviderMessageAt: this._lastProviderMessageTime,
+      lastRawProviderEventAt:
+        providerActivity?.lastRawProviderEventAt ?? null,
+      lastRawProviderEventSource:
+        providerActivity?.lastRawProviderEventSource ?? null,
+      lastLivenessProbe: this._lastLivenessProbe,
+      processAlive: this.isProcessAlive,
+      queueDepth: this.queueDepth,
+      deferredQueueDepth: this.deferredQueueDepth,
+      now,
+    });
+  }
+
+  private toLivenessState(): LivenessProcessState {
+    switch (this._state.type) {
+      case "waiting-input":
+        return { type: "waiting-input" };
+      case "terminated":
+        return { type: "terminated", reason: this._state.reason };
+      default:
+        return this._state;
+    }
+  }
+
+  async probeLiveness(): Promise<LivenessProbeResult | null> {
+    if (!this.probeLivenessFn) {
+      return null;
+    }
+    if (this._livenessProbeInFlight) {
+      return await this._livenessProbeInFlight;
+    }
+
+    this._livenessProbeInFlight = this.runLivenessProbe();
+    try {
+      return await this._livenessProbeInFlight;
+    } finally {
+      this._livenessProbeInFlight = null;
+    }
+  }
+
+  private async runLivenessProbe(): Promise<LivenessProbeResult> {
+    const checkedAt = new Date();
+    let result: ProviderLivenessProbeResult;
+    try {
+      if (!this.probeLivenessFn) {
+        result = {
+          status: "unavailable",
+          source: "process",
+          detail: "No provider liveness probe is available",
+          checkedAt,
+        };
+      } else {
+        result = await this.probeLivenessFn();
+      }
+    } catch (error) {
+      result = {
+        status: "error",
+        source: `${this.provider}:probe`,
+        detail: error instanceof Error ? error.message : String(error),
+        checkedAt,
+      };
+    }
+
+    const record: LivenessProbeResult = {
+      checkedAt: result.checkedAt ?? checkedAt,
+      status: result.status,
+      source: result.source,
+      ...(result.detail ? { detail: result.detail } : {}),
+    };
+    this._lastLivenessProbe = record;
+    this.emit({ type: "liveness-update" });
+    return record;
   }
 
   get permissionMode(): PermissionMode {
@@ -752,6 +876,7 @@ export class Process {
       effort: this._effort,
       executor: this.executor,
       pid: this.pid,
+      liveness: this.getLivenessSnapshot(),
     };
 
     // Add idleSince if idle
@@ -848,6 +973,7 @@ export class Process {
       type: "user",
       uuid,
       tempId,
+      messageMetadata: message.metadata,
       message: { role: "user", content: this.buildUserMessageContent(message) },
     } as SDKMessage);
 
@@ -955,6 +1081,7 @@ export class Process {
       type: "user",
       uuid,
       tempId: message.tempId,
+      messageMetadata: message.metadata,
       message: { role: "user", content },
     } as SDKMessage);
 
@@ -1209,6 +1336,7 @@ export class Process {
     timestamp: string;
     attachments?: UserMessage["attachments"];
     attachmentCount?: number;
+    metadata?: UserMessage["metadata"];
     blockedByEdit?: boolean;
   }[] {
     return this.deferredQueue.map((entry, index) => {
@@ -1221,6 +1349,7 @@ export class Process {
         tempId: entry.message.tempId,
         content: entry.message.text,
         timestamp: entry.timestamp,
+        ...(entry.message.metadata ? { metadata: entry.message.metadata } : {}),
         ...(entry.message.attachments?.length
           ? { attachments: entry.message.attachments }
           : {}),
@@ -1739,7 +1868,9 @@ export class Process {
         }
 
         const message = this.withTimestamp(result.value);
-        this._lastMessageTime = new Date();
+        const receivedAt = new Date();
+        this._lastMessageTime = receivedAt;
+        this._lastProviderMessageTime = receivedAt;
 
         // Store message in history for replay to late-joining clients.
         // Exclude stream_event messages - they're transient streaming deltas that
@@ -2058,6 +2189,7 @@ export class Process {
 
   private setState(state: ProcessState): void {
     this._state = state;
+    this._lastStateChangeTime = new Date();
     this.emit({ type: "state-change", state });
   }
 

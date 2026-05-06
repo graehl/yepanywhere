@@ -27,7 +27,11 @@ import {
   translateHomePath,
 } from "../remote-spawn.js";
 import { getProjectDirFromCwd, syncSessionFile } from "../session-sync.js";
-import type { ContentBlock, SDKMessage } from "../types.js";
+import type {
+  ContentBlock,
+  ProviderLivenessProbeResult,
+  SDKMessage,
+} from "../types.js";
 import { filterEnvForChildProcess } from "./env-filter.js";
 import type {
   AgentProvider,
@@ -44,6 +48,8 @@ import type {
  * old time-only heuristic if the wrapper causes issues.
  */
 const USE_SPAWN_WRAPPER = true;
+const CLAUDE_LIVENESS_PROBE_TIMEOUT_MS = 5000;
+const CLAUDE_LIVENESS_PROBE_SOURCE = "claude:control/mcp_status";
 const execFileAsync = promisify(execFile);
 
 /** Static fallback list of Claude models (used if probe fails) */
@@ -132,6 +138,71 @@ let cachedModels: ModelInfo[] | null = null;
 
 /** Promise for in-flight probe (to avoid duplicate probes) */
 let probePromise: Promise<ModelInfo[]> | null = null;
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    timeout.unref?.();
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+export async function probeClaudeControlLiveness(
+  control: Pick<Query, "mcpServerStatus">,
+  options?: {
+    checkedAt?: Date;
+    timeoutMs?: number;
+    isProcessAlive?: () => boolean | undefined;
+  },
+): Promise<ProviderLivenessProbeResult> {
+  const checkedAt = options?.checkedAt ?? new Date();
+  const processAlive = options?.isProcessAlive?.();
+
+  if (processAlive === false) {
+    return {
+      status: "unavailable",
+      source: CLAUDE_LIVENESS_PROBE_SOURCE,
+      checkedAt,
+      detail: "Claude CLI process is not alive",
+    };
+  }
+
+  try {
+    await withTimeout(
+      control.mcpServerStatus(),
+      options?.timeoutMs ?? CLAUDE_LIVENESS_PROBE_TIMEOUT_MS,
+      "Claude SDK control liveness probe",
+    );
+    return {
+      status: "active",
+      source: CLAUDE_LIVENESS_PROBE_SOURCE,
+      checkedAt,
+      detail:
+        "Claude SDK control channel responded; direct turn status is not exposed",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      source: CLAUDE_LIVENESS_PROBE_SOURCE,
+      checkedAt,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
 
 /**
  * Claude provider implementation using @anthropic-ai/claude-agent-sdk.
@@ -359,11 +430,12 @@ export class ClaudeProvider implements AgentProvider {
     // while we query supportedModels() from the initialization handshake.
     // Resolves (rather than rejects) on abort to avoid unhandled rejections.
     async function* waitForever(): AsyncGenerator<never> {
-      await new Promise<never>((resolve) => {
+      await new Promise<void>((resolve) => {
         abortController.signal.addEventListener("abort", () =>
-          resolve(undefined as never),
+          resolve(),
         );
       });
+      yield* [];
     }
 
     try {
@@ -381,7 +453,7 @@ export class ClaudeProvider implements AgentProvider {
       // The SDK's internal readMessages loop must be running for
       // the initialize control_response to be processed. Start
       // consuming the async iterator in the background.
-      const drain = (async () => {
+      void (async () => {
         try {
           for await (const _ of sdkQuery) {
             // drain
@@ -608,18 +680,23 @@ export class ClaudeProvider implements AgentProvider {
       cwd: effectiveCwd,
       remoteEnv: options.remoteEnv,
     });
+    const isCapturedProcessAlive =
+      USE_SPAWN_WRAPPER && !options.executor
+        ? () =>
+            capturedProcess !== null &&
+            capturedProcess.exitCode === null &&
+            !capturedProcess.killed
+        : undefined;
 
     return {
       iterator: wrappedIterator,
       queue,
       abort: () => abortController.abort(),
-      isProcessAlive:
-        USE_SPAWN_WRAPPER && !options.executor
-          ? () =>
-              capturedProcess !== null &&
-              capturedProcess.exitCode === null &&
-              !capturedProcess.killed
-          : undefined,
+      isProcessAlive: isCapturedProcessAlive,
+      probeLiveness: () =>
+        probeClaudeControlLiveness(sdkQuery, {
+          isProcessAlive: isCapturedProcessAlive,
+        }),
       get pid() {
         return (capturedProcess as ChildProcess | null)?.pid;
       },

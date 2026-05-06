@@ -18,7 +18,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { preprocessMessages } from "../../../../client/src/lib/preprocessMessages.ts";
 import {
   CodexProvider,
@@ -98,6 +98,7 @@ describe("CodexProvider", () => {
       expect(session.iterator).toBeDefined();
       expect(typeof session.abort).toBe("function");
       expect(typeof session.interrupt).toBe("function");
+      expect(typeof session.probeLiveness).toBe("function");
       expect(session.queue).toBeDefined();
     });
 
@@ -237,6 +238,11 @@ describe("CodexProvider app-server lifecycle", () => {
       await waitForMessage(messages, (message) =>
         JSON.stringify(message).includes("call-active"),
       );
+      const activity = session.getProviderActivity?.();
+      expect(activity?.lastRawProviderEventAt).toBeInstanceOf(Date);
+      expect(activity?.lastRawProviderEventSource).toBe(
+        "codex:notification:rawResponseItem/completed",
+      );
 
       await expect(session.interrupt?.()).resolves.toBe(true);
       await consume;
@@ -307,6 +313,69 @@ describe("CodexProvider app-server lifecycle", () => {
       expect(interruptRequest?.params).toMatchObject({
         turnId: "turn-background",
       });
+    } finally {
+      session?.abort();
+      await consume?.catch(() => undefined);
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses thread/read probe to reconcile a missed Codex completion", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-probe-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = join(tempDir, "fake-codex-idle-probe.mjs");
+    writeFileSync(
+      codexPath,
+      buildFakeCodexAppServerWithIdleProbe(logPath),
+      "utf-8",
+    );
+    chmodSync(codexPath, 0o755);
+
+    let session:
+      | Awaited<ReturnType<CodexProvider["startSession"]>>
+      | undefined;
+    let consume: Promise<void> | undefined;
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+      session = await testProvider.startSession({
+        cwd: tempDir,
+        initialMessage: { text: "run a fake turn that misses completion" },
+        effort: "low",
+      });
+
+      const messages: Array<Record<string, unknown>> = [];
+      consume = (async () => {
+        for await (const message of session?.iterator ?? []) {
+          messages.push(message);
+          if (message.type === "result") {
+            break;
+          }
+        }
+      })();
+
+      await waitForFakeCodexRequest(logPath, "turn/start");
+      const probe = await session.probeLiveness?.();
+
+      expect(probe).toMatchObject({
+        status: "idle",
+        source: "codex:thread/read",
+        detail: "thread.status:idle",
+      });
+      await consume;
+
+      const requests = readFakeCodexRequests(logPath);
+      expect(
+        requests.some((request) => request.method === "thread/read"),
+      ).toBe(true);
+      expect(
+        messages.some(
+          (message) =>
+            message.type === "system" && message.subtype === "turn_complete",
+        ),
+      ).toBe(true);
+      expect(messages.some((message) => message.type === "result")).toBe(true);
+      expect(messages.some((message) => message.type === "error")).toBe(false);
     } finally {
       session?.abort();
       await consume?.catch(() => undefined);
@@ -467,7 +536,6 @@ function handleMessage(message) {
         thread: { id: "thread-1" },
         model: "gpt-5.4-mini",
         reasoningEffort: "low",
-        permissionProfile: null,
       });
       break;
     case "turn/start":
@@ -490,6 +558,80 @@ function handleMessage(message) {
           startedAt: null,
           completedAt: null,
           durationMs: null,
+        },
+      });
+      break;
+    default:
+      respond(message.id, {});
+      break;
+  }
+}
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString("utf-8");
+  const lines = buffer.split("\\n");
+  buffer = lines.pop() || "";
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    handleMessage(JSON.parse(line));
+  }
+});
+`;
+}
+
+function buildFakeCodexAppServerWithIdleProbe(logPath: string): string {
+  return `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+const logPath = ${JSON.stringify(logPath)};
+let buffer = "";
+
+function write(payload) {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...payload }) + "\\n");
+}
+
+function logRequest(message) {
+  appendFileSync(
+    logPath,
+    JSON.stringify({
+      id: message.id,
+      method: message.method,
+      params: message.params,
+    }) + "\\n",
+  );
+}
+
+function respond(id, result) {
+  write({ id, result });
+}
+
+function handleMessage(message) {
+  if (!message || typeof message !== "object") return;
+  logRequest(message);
+  if (message.id === undefined) return;
+
+  switch (message.method) {
+    case "initialize":
+      respond(message.id, { userAgent: "fake-codex" });
+      break;
+    case "thread/start":
+      respond(message.id, {
+        thread: { id: "thread-1" },
+        model: "gpt-5.4-mini",
+        reasoningEffort: "low",
+      });
+      break;
+    case "turn/start":
+      respond(message.id, {
+        turn: { id: "turn-missed-completion", status: "inProgress", error: null },
+      });
+      break;
+    case "thread/read":
+      respond(message.id, {
+        thread: {
+          id: "thread-1",
+          status: { type: "idle" },
+          turns: [],
         },
       });
       break;
@@ -555,7 +697,6 @@ function handleMessage(message) {
         thread: { id: "thread-1" },
         model: "gpt-5.4-mini",
         reasoningEffort: "low",
-        permissionProfile: null,
       });
       break;
     case "turn/start":
@@ -661,7 +802,6 @@ function handleMessage(message) {
         thread: { id: "thread-1" },
         model: "gpt-5.4-mini",
         reasoningEffort: "low",
-        permissionProfile: null,
       });
       break;
     case "turn/start":
@@ -1226,22 +1366,18 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
-  it("opts into experimental thread flags when experimental API is negotiated", () => {
+  it("builds stable thread policy params without removed protocol fields", () => {
     const provider = createTestProvider() as unknown as {
       mapPermissionModeToThreadPolicy: (permissionMode?: string) => {
         approvalPolicy: string;
         sandbox: string;
-        permissionProfile?: unknown;
       };
       createThreadStartParams: (
         options: { model?: string; cwd: string },
         policy: {
           approvalPolicy: string;
           sandbox: string;
-          permissionProfile?: unknown;
         },
-        experimentalApiEnabled: boolean,
-        usePermissionProfile?: boolean,
       ) => Record<string, unknown>;
     };
     const bypassPolicy =
@@ -1250,68 +1386,38 @@ describe("CodexProvider Event Normalization", () => {
     const start = provider.createThreadStartParams(
       { model: "gpt-5.2-codex", cwd: "/tmp" },
       { approvalPolicy: "on-request", sandbox: "workspace-write" },
-      true,
     );
     const bypassStart = provider.createThreadStartParams(
       { model: "gpt-5.5", cwd: "/tmp" },
       bypassPolicy,
-      true,
-    );
-    const legacyBypassStart = provider.createThreadStartParams(
-      { model: "gpt-5.5", cwd: "/tmp" },
-      bypassPolicy,
-      true,
-      false,
     );
 
     expect(start).toMatchObject({
-      experimentalRawEvents: true,
-      persistExtendedHistory: true,
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
     });
     expect(bypassStart).toMatchObject({
       approvalPolicy: "never",
-      permissionProfile: {
-        type: "managed",
-        network: { enabled: true },
-        fileSystem: { type: "unrestricted" },
-      },
-    });
-    expect(bypassStart.sandbox).toBeUndefined();
-    expect(legacyBypassStart).toMatchObject({
-      approvalPolicy: "never",
       sandbox: "danger-full-access",
     });
-    expect(legacyBypassStart.permissionProfile).toBeUndefined();
+    expect(start.experimentalRawEvents).toBeUndefined();
+    expect(start.persistExtendedHistory).toBeUndefined();
+    expect(start.permissionProfile).toBeUndefined();
+    expect(bypassStart.permissionProfile).toBeUndefined();
   });
 
-  it("keeps experimental thread flags disabled without negotiated experimental capability", () => {
+  it("builds stable resume params without removed protocol fields", () => {
     const provider = createTestProvider() as unknown as {
-      createThreadStartParams: (
-        options: { model?: string; cwd: string },
-        policy: {
-          approvalPolicy: string;
-          sandbox: string;
-          permissionProfile?: unknown;
-        },
-        experimentalApiEnabled: boolean,
-      ) => Record<string, unknown>;
       createThreadResumeParams: (
         options: { resumeSessionId?: string; model?: string; cwd: string },
         sessionId: string,
         policy: {
           approvalPolicy: string;
           sandbox: string;
-          permissionProfile?: unknown;
         },
-        experimentalApiEnabled: boolean,
       ) => Record<string, unknown>;
     };
 
-    const start = provider.createThreadStartParams(
-      { model: "gpt-5.2-codex", cwd: "/tmp" },
-      { approvalPolicy: "on-request", sandbox: "workspace-write" },
-      false,
-    );
     const resume = provider.createThreadResumeParams(
       {
         resumeSessionId: "thread-1",
@@ -1320,17 +1426,16 @@ describe("CodexProvider Event Normalization", () => {
       },
       "thread-1",
       { approvalPolicy: "on-request", sandbox: "workspace-write" },
-      false,
     );
 
-    expect(start).toMatchObject({
-      experimentalRawEvents: false,
-      persistExtendedHistory: false,
-    });
     expect(resume).toMatchObject({
+      threadId: "thread-1",
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
       excludeTurns: true,
-      persistExtendedHistory: false,
     });
+    expect(resume.persistExtendedHistory).toBeUndefined();
+    expect(resume.permissionProfile).toBeUndefined();
   });
 
   it("pins thread-scope reasoning effort via config when effort is requested", () => {
@@ -1345,9 +1450,7 @@ describe("CodexProvider Event Normalization", () => {
         policy: {
           approvalPolicy: string;
           sandbox: string;
-          permissionProfile?: unknown;
         },
-        experimentalApiEnabled: boolean,
       ) => Record<string, unknown>;
       createThreadResumeParams: (
         options: {
@@ -1361,9 +1464,7 @@ describe("CodexProvider Event Normalization", () => {
         policy: {
           approvalPolicy: string;
           sandbox: string;
-          permissionProfile?: unknown;
         },
-        experimentalApiEnabled: boolean,
       ) => Record<string, unknown>;
       createTurnStartParams: (
         threadId: string,
@@ -1380,7 +1481,6 @@ describe("CodexProvider Event Normalization", () => {
     const start = provider.createThreadStartParams(
       { model: "gpt-5.4-codex", cwd: "/tmp", effort: "max" },
       { approvalPolicy: "on-request", sandbox: "workspace-write" },
-      true,
     );
     const resume = provider.createThreadResumeParams(
       {
@@ -1391,12 +1491,10 @@ describe("CodexProvider Event Normalization", () => {
       },
       "thread-1",
       { approvalPolicy: "on-request", sandbox: "workspace-write" },
-      true,
     );
     const omitted = provider.createThreadStartParams(
       { model: "gpt-5.4-codex", cwd: "/tmp" },
       { approvalPolicy: "on-request", sandbox: "workspace-write" },
-      true,
     );
     const disabled = provider.createThreadStartParams(
       {
@@ -1406,7 +1504,6 @@ describe("CodexProvider Event Normalization", () => {
         thinking: { type: "disabled" },
       },
       { approvalPolicy: "on-request", sandbox: "workspace-write" },
-      true,
     );
     const turn = provider.createTurnStartParams("thread-1", "hello", {
       model: "gpt-5.4-codex",
@@ -1433,50 +1530,6 @@ describe("CodexProvider Event Normalization", () => {
     });
     expect(turn).toMatchObject({ effort: "low" });
     expect(disabledTurn).toMatchObject({ effort: "none" });
-  });
-
-  it("treats experimental thread field rejections as capability fallback errors", () => {
-    const provider = createTestProvider() as unknown as {
-      isExperimentalCapabilityError: (error: unknown) => boolean;
-    };
-
-    expect(
-      provider.isExperimentalCapabilityError(
-        new Error("thread/start.experimentalRawEvents requires experimentalApi capability"),
-      ),
-    ).toBe(true);
-    expect(
-      provider.isExperimentalCapabilityError(
-        new Error("unknown field `persistExtendedHistory`"),
-      ),
-    ).toBe(true);
-    expect(
-      provider.isExperimentalCapabilityError(
-        new Error("connection closed"),
-      ),
-    ).toBe(false);
-  });
-
-  it("treats old permission profile shape rejections as fallback errors", () => {
-    const provider = createTestProvider() as unknown as {
-      isPermissionProfileCompatibilityError: (error: unknown) => boolean;
-    };
-
-    expect(
-      provider.isPermissionProfileCompatibilityError(
-        new Error("unknown variant `managed`, expected struct PermissionProfile"),
-      ),
-    ).toBe(true);
-    expect(
-      provider.isPermissionProfileCompatibilityError(
-        new Error("unknown field `type`, expected `network` or `fileSystem`"),
-      ),
-    ).toBe(true);
-    expect(
-      provider.isPermissionProfileCompatibilityError(
-        new Error("connection closed"),
-      ),
-    ).toBe(false);
   });
 
   it("accumulates agent message deltas into a stable streaming assistant message", () => {
@@ -1539,6 +1592,102 @@ describe("CodexProvider Event Normalization", () => {
         role: "assistant",
         content: "Hello world",
       },
+    });
+  });
+
+  it("surfaces Codex context compaction thread items", () => {
+    const provider = createTestProvider() as unknown as {
+      convertNotificationToSDKMessages: (
+        notification: { method: string; params?: unknown },
+        sessionId: string,
+        usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const liveEventState = createLiveEventState();
+    const started = provider.convertNotificationToSDKMessages(
+      {
+        method: "item/started",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            id: "compact-1",
+            type: "contextCompaction",
+          },
+        },
+      },
+      "session-1",
+      new Map(),
+      liveEventState,
+    );
+    const completed = provider.convertNotificationToSDKMessages(
+      {
+        method: "item/completed",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            id: "compact-1",
+            type: "contextCompaction",
+          },
+        },
+      },
+      "session-1",
+      new Map(),
+      liveEventState,
+    );
+
+    expect(started[0]).toMatchObject({
+      type: "system",
+      subtype: "status",
+      session_id: "session-1",
+      uuid: "compact-1-turn-1",
+      status: "compacting",
+    });
+    expect(completed[0]).toMatchObject({
+      type: "system",
+      subtype: "compact_boundary",
+      session_id: "session-1",
+      uuid: "compact-1-turn-1",
+      content: "Context compacted",
+    });
+  });
+
+  it("surfaces raw Codex compaction response items as compact boundaries", () => {
+    const provider = createTestProvider() as unknown as {
+      convertNotificationToSDKMessages: (
+        notification: { method: string; params?: unknown },
+        sessionId: string,
+        usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const messages = provider.convertNotificationToSDKMessages(
+      {
+        method: "rawResponseItem/completed",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          item: {
+            type: "compaction",
+            encrypted_content: "opaque",
+          },
+        },
+      },
+      "session-1",
+      new Map(),
+      createLiveEventState(),
+    );
+
+    expect(messages[0]).toMatchObject({
+      type: "system",
+      subtype: "compact_boundary",
+      session_id: "session-1",
+      uuid: "codex-compaction-turn-1",
+      content: "Context compacted",
     });
   });
 
@@ -1624,7 +1773,7 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
-  it("marks live result-backed tools orphaned when a turn completes first", () => {
+  it("marks live result-backed tools incomplete when a turn completes first", () => {
     const provider = createTestProvider() as unknown as {
       convertNotificationToSDKMessages: (
         notification: { method: string; params?: unknown },
@@ -1687,11 +1836,11 @@ describe("CodexProvider Event Normalization", () => {
     expect(renderItems[0]).toMatchObject({
       type: "tool_call",
       id: "cmd-1",
-      status: "aborted",
+      status: "incomplete",
     });
   });
 
-  it("keeps Codex background process handles orphanable", () => {
+  it("keeps Codex background process handles from reviving orphaned work", () => {
     const provider = createTestProvider() as unknown as {
       convertNotificationToSDKMessages: (
         notification: { method: string; params?: unknown },
@@ -1792,7 +1941,7 @@ describe("CodexProvider Event Normalization", () => {
     expect(renderItems[0]).toMatchObject({
       type: "tool_call",
       id: "cmd-1",
-      status: "aborted",
+      status: "incomplete",
     });
   });
 

@@ -8,6 +8,7 @@ import type {
   ProviderName,
   ThinkingConfig,
   UrlProjectId,
+  SessionLivenessSnapshot,
 } from "@yep-anywhere/shared";
 import type { PermissionMode, SDKMessage } from "../sdk/types.js";
 
@@ -212,12 +213,15 @@ export interface ProcessInfo {
   executor?: string;
   /** OS PID of the spawned agent child process */
   pid?: number;
+  /** Provider/session progress evidence, separate from transport liveness. */
+  liveness?: SessionLivenessSnapshot;
 }
 
 // Process events for subscribers
 export type ProcessEvent =
   | { type: "message"; message: SDKMessage }
   | { type: "state-change"; state: ProcessState }
+  | { type: "liveness-update" }
   | { type: "mode-change"; mode: PermissionMode; version: number }
   | { type: "session-id-changed"; oldSessionId: string; newSessionId: string }
   | { type: "error"; error: Error }

@@ -126,9 +126,11 @@ export interface Message {
 // Type aliases for session types
 import type {
   AppSessionSummary,
+  SessionLivenessSnapshot,
   SessionOwnership as SessionOwnershipType,
 } from "@yep-anywhere/shared";
 
+export type { SessionLivenessSnapshot };
 export type SessionStatus = SessionOwnershipType;
 export type SessionSummary = AppSessionSummary;
 

@@ -68,6 +68,32 @@ vi.mock("../VoiceInputButton", async () => {
   };
 });
 
+function installMemoryLocalStorage() {
+  const store = new Map<string, string>();
+  const previous = Object.getOwnPropertyDescriptor(window, "localStorage");
+
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value),
+      removeItem: (key: string) => store.delete(key),
+      clear: () => store.clear(),
+    },
+  });
+
+  return {
+    store,
+    restore: () => {
+      if (previous) {
+        Object.defineProperty(window, "localStorage", previous);
+      } else {
+        Reflect.deleteProperty(window, "localStorage");
+      }
+    },
+  };
+}
+
 function renderMessageInput(
   onRecallLastSubmission = vi.fn(() => true),
   extraProps: Partial<ComponentProps<typeof MessageInput>> = {},
@@ -90,9 +116,28 @@ function renderMessageInput(
   );
 }
 
+function expectSubmission(
+  fn: { mock: { calls: unknown[][] } },
+  text: string,
+  deliveryIntent: string,
+) {
+  const call = fn.mock.calls.at(-1);
+  expect(call?.[0]).toBe(text);
+  expect(call?.[1]).toMatchObject({
+    deliveryIntent,
+    composition: {
+      typingStartedAt: expect.any(String),
+      typingEndedAt: expect.any(String),
+      lastEditedAt: expect.any(String),
+      submittedAt: expect.any(String),
+    },
+  });
+}
+
 describe("MessageInput", () => {
   afterEach(() => {
     cleanup();
+    window.localStorage?.removeItem?.("test-draft:patient-queue-mode");
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -326,6 +371,39 @@ describe("MessageInput", () => {
     expect(screen.getByText("Last activity 6m")).toBeTruthy();
   });
 
+  it("shows verified session liveness separately from activity age", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T12:06:00.000Z"));
+
+    renderMessageInput(vi.fn(() => true), {
+      lastActivityAt: "2026-04-26T12:00:00.000Z",
+      sessionLiveness: {
+        checkedAt: "2026-04-26T12:06:00.000Z",
+        derivedStatus: "long-silent-unverified",
+        activeWorkKind: "agent-turn",
+        state: "in-turn",
+        evidence: ["provider-message-stale"],
+        lastProviderMessageAt: "2026-04-26T12:00:00.000Z",
+        lastRawProviderEventAt: null,
+        lastRawProviderEventSource: null,
+        lastStateChangeAt: "2026-04-26T11:59:00.000Z",
+        lastVerifiedProgressAt: "2026-04-26T12:00:00.000Z",
+        lastVerifiedIdleAt: null,
+        lastLivenessProbeAt: null,
+        lastLivenessProbeStatus: null,
+        lastLivenessProbeSource: null,
+        silenceMs: 360_000,
+        longSilenceThresholdMs: 300_000,
+        processAlive: true,
+        queueDepth: 0,
+        deferredQueueDepth: 0,
+      },
+    });
+
+    expect(screen.getByText("Long silent 6m")).toBeTruthy();
+    expect(screen.getByText("Last activity 6m")).toBeTruthy();
+  });
+
   it("keeps a send affordance visible when the composer is collapsed", () => {
     const onSend = vi.fn();
     const textarea = renderMessageInput(vi.fn(() => true), {
@@ -337,7 +415,7 @@ describe("MessageInput", () => {
     fireEvent.change(textarea, { target: { value: "collapsed send" } });
     fireEvent.click(screen.getByLabelText("toolbarSend"));
 
-    expect(onSend).toHaveBeenCalledWith("collapsed send");
+    expectSubmission(onSend, "collapsed send", "direct");
   });
 
   it("keeps a queue affordance visible when the running composer is collapsed", () => {
@@ -351,7 +429,101 @@ describe("MessageInput", () => {
     fireEvent.change(textarea, { target: { value: "collapsed queue" } });
     fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
 
-    expect(onQueue).toHaveBeenCalledWith("collapsed queue");
+    expectSubmission(onQueue, "collapsed queue", "deferred");
+  });
+
+  it("defaults steering-capable queue to patient mode", () => {
+    const onQueue = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      supportsSteering: true,
+      onQueue,
+    });
+
+    const modeToggle = screen.getByRole("button", { name: "Queue when done" });
+    expect(modeToggle.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.change(textarea, { target: { value: "follow up later" } });
+    fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
+
+    expectSubmission(onQueue, "when done, follow up later", "patient");
+  });
+
+  it("does not double-prefix patient queued text", () => {
+    const onQueue = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      supportsSteering: true,
+      onQueue,
+    });
+
+    fireEvent.change(textarea, {
+      target: { value: "when done, already patient" },
+    });
+    fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
+
+    expectSubmission(onQueue, "when done, already patient", "patient");
+  });
+
+  it("can queue ASAP unchanged from a steering-capable composer", () => {
+    const onQueue = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      supportsSteering: true,
+      onQueue,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Queue when done" }));
+    expect(
+      screen.getByRole("button", { name: "Queue ASAP" }).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("false");
+
+    fireEvent.change(textarea, { target: { value: "run next" } });
+    fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
+
+    expectSubmission(onQueue, "run next", "deferred");
+  });
+
+  it("persists patient queue mode per draft", () => {
+    const storage = installMemoryLocalStorage();
+
+    try {
+      renderMessageInput(vi.fn(() => true), {
+        supportsSteering: true,
+        onQueue: vi.fn(),
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Queue when done" }));
+      expect(storage.store.get("test-draft:patient-queue-mode")).toBe("asap");
+
+      cleanup();
+
+      renderMessageInput(vi.fn(() => true), {
+        supportsSteering: true,
+        onQueue: vi.fn(),
+      });
+
+      expect(
+        screen.getByRole("button", { name: "Queue ASAP" }).getAttribute(
+          "aria-pressed",
+        ),
+      ).toBe("false");
+    } finally {
+      storage.restore();
+    }
+  });
+
+  it("keeps non-steering queue text unchanged", () => {
+    const onQueue = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), { onQueue });
+
+    expect(
+      screen.queryByRole("button", { name: "Queue when done" }),
+    ).toBeNull();
+
+    fireEvent.change(textarea, { target: { value: "plain queue" } });
+    fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
+
+    expectSubmission(onQueue, "plain queue", "deferred");
   });
 
   it("keeps queue available when the primary steer action downgrades", () => {
@@ -366,7 +538,7 @@ describe("MessageInput", () => {
     fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
 
     expect(screen.getAllByLabelText("toolbarQueueLabel")).toHaveLength(1);
-    expect(onQueue).toHaveBeenCalledWith("queue fallback");
+    expectSubmission(onQueue, "when done, queue fallback", "patient");
   });
 
   it("routes the primary downgraded steer action to queue", () => {
@@ -383,6 +555,6 @@ describe("MessageInput", () => {
     fireEvent.click(screen.getByLabelText("Queue from primary action"));
 
     expect(onSend).not.toHaveBeenCalled();
-    expect(onQueue).toHaveBeenCalledWith("queue from primary");
+    expectSubmission(onQueue, "when done, queue from primary", "patient");
   });
 });

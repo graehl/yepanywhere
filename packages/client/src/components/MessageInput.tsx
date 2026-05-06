@@ -1,4 +1,9 @@
-import type { UploadedFile } from "@yep-anywhere/shared";
+import type {
+  SessionLivenessSnapshot,
+  UploadedFile,
+  UserMessageCompositionMetadata,
+  UserMessageDeliveryIntent,
+} from "@yep-anywhere/shared";
 import {
   type ClipboardEvent,
   type KeyboardEvent,
@@ -27,6 +32,11 @@ export interface UploadProgress {
   bytesUploaded: number;
   totalBytes: number;
   percent: number;
+}
+
+export interface MessageSubmissionMetadata {
+  deliveryIntent: UserMessageDeliveryIntent;
+  composition: UserMessageCompositionMetadata;
 }
 
 /** Format file size in human-readable form */
@@ -59,10 +69,67 @@ function clearTextareaContentsUndoably(textarea: HTMLTextAreaElement): void {
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+const PATIENT_QUEUE_PREFIX = "when done, ";
+const PATIENT_QUEUE_STORAGE_SUFFIX = ":patient-queue-mode";
+const PATIENT_QUEUE_PREFIXES = [
+  PATIENT_QUEUE_PREFIX,
+  "when you are at a natural wrap-up point, ",
+  "as soon as previous requested requests are satisfied, ",
+  "as soon as prev. requested requests are satisfied, ",
+  "zzz:",
+  "zzz: ",
+];
+
+function patientQueueStorageKey(draftKey: string): string {
+  return `${draftKey}${PATIENT_QUEUE_STORAGE_SUFFIX}`;
+}
+
+function readPatientQueueMode(
+  draftKey: string,
+  defaultEnabled: boolean,
+): boolean {
+  if (!defaultEnabled) return false;
+
+  try {
+    const stored = globalThis.localStorage?.getItem(
+      patientQueueStorageKey(draftKey),
+    );
+    if (stored === "patient") return true;
+    if (stored === "asap") return false;
+  } catch {
+    // Local storage is a convenience, not part of queue delivery.
+  }
+
+  return defaultEnabled;
+}
+
+function writePatientQueueMode(draftKey: string, enabled: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(
+      patientQueueStorageKey(draftKey),
+      enabled ? "patient" : "asap",
+    );
+  } catch {
+    // Local storage is a convenience, not part of queue delivery.
+  }
+}
+
+function hasPatientQueuePrefix(message: string): boolean {
+  const normalized = message.trimStart().toLocaleLowerCase();
+  return PATIENT_QUEUE_PREFIXES.some((prefix) =>
+    normalized.startsWith(prefix.toLocaleLowerCase()),
+  );
+}
+
+function applyPatientQueuePrefix(message: string, enabled: boolean): string {
+  if (!enabled || !message || hasPatientQueuePrefix(message)) return message;
+  return `${PATIENT_QUEUE_PREFIX}${message}`;
+}
+
 interface Props {
-  onSend: (text: string) => void;
+  onSend: (text: string, metadata?: MessageSubmissionMetadata) => void;
   /** Queue a deferred message (sent when agent's turn ends). Only provided when agent is running. */
-  onQueue?: (text: string) => void;
+  onQueue?: (text: string, metadata?: MessageSubmissionMetadata) => void;
   disabled?: boolean;
   placeholder?: string;
   mode?: PermissionMode;
@@ -83,6 +150,8 @@ interface Props {
   contextUsage?: ContextUsage;
   /** Last session activity timestamp for stale composer liveness display. */
   lastActivityAt?: string | null;
+  /** Server-derived provider/session liveness evidence. */
+  sessionLiveness?: SessionLivenessSnapshot | null;
   /** Project ID for uploads (required to enable attach button) */
   projectId?: string;
   /** Session ID for uploads (required to enable attach button) */
@@ -150,6 +219,7 @@ export function MessageInput({
   onDraftControlsReady,
   contextUsage,
   lastActivityAt,
+  sessionLiveness,
   projectId,
   sessionId,
   attachments = [],
@@ -180,6 +250,8 @@ export function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
+  const typingStartedAtRef = useRef<string | null>(null);
+  const lastEditedAtRef = useRef<string | null>(null);
   // User-controlled collapse state (independent of external collapse from approval panel)
   const [userCollapsed, setUserCollapsed] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
@@ -209,6 +281,11 @@ export function MessageInput({
       : onQueue
         ? "queue"
         : "send");
+  const showPatientQueueMode = supportsSteering && !!onQueue;
+  const [patientQueueMode, setPatientQueueMode] = useState(() =>
+    readPatientQueueMode(draftKey, showPatientQueueMode),
+  );
+  const patientQueueEnabled = showPatientQueueMode && patientQueueMode;
   const primaryActionLabel = effectivePrimaryActionKind === "steer"
     ? t("toolbarSteerTooltip")
     : effectivePrimaryActionKind === "queue"
@@ -216,6 +293,43 @@ export function MessageInput({
       : t("toolbarSend");
 
   const canAttach = !!(projectId && sessionId && onAttach);
+
+  const noteComposerEdit = useCallback((nextText: string) => {
+    if (!nextText.trim()) {
+      typingStartedAtRef.current = null;
+      lastEditedAtRef.current = null;
+      return;
+    }
+
+    const now = new Date().toISOString();
+    if (!typingStartedAtRef.current) {
+      typingStartedAtRef.current = now;
+    }
+    lastEditedAtRef.current = now;
+  }, []);
+
+  const resetCompositionMetadata = useCallback(() => {
+    typingStartedAtRef.current = null;
+    lastEditedAtRef.current = null;
+  }, []);
+
+  const buildSubmissionMetadata = useCallback(
+    (deliveryIntent: UserMessageDeliveryIntent): MessageSubmissionMetadata => {
+      const submittedAt = new Date().toISOString();
+      const typingStartedAt = typingStartedAtRef.current ?? submittedAt;
+      const lastEditedAt = lastEditedAtRef.current ?? typingStartedAt;
+      return {
+        deliveryIntent,
+        composition: {
+          typingStartedAt,
+          typingEndedAt: submittedAt,
+          lastEditedAt,
+          submittedAt,
+        },
+      };
+    },
+    [],
+  );
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -230,6 +344,18 @@ export function MessageInput({
     onDraftControlsReady?.(controls);
   }, [controls, onDraftControlsReady]);
 
+  useEffect(() => {
+    setPatientQueueMode(readPatientQueueMode(draftKey, showPatientQueueMode));
+  }, [draftKey, showPatientQueueMode]);
+
+  const handlePatientQueueModeChange = useCallback(
+    (enabled: boolean) => {
+      setPatientQueueMode(enabled);
+      writePatientQueueMode(draftKey, enabled);
+    },
+    [draftKey],
+  );
+
   const handleSubmit = useCallback(() => {
     // Stop voice recording and get any pending interim text
     const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
@@ -243,14 +369,34 @@ export function MessageInput({
     const hasContent = finalText.trim() || attachments.length > 0;
     if (hasContent && !disabled) {
       const message = finalText.trim();
+      const deliveryIntent =
+        effectivePrimaryActionKind === "steer"
+          ? "steer"
+          : effectivePrimaryActionKind === "queue"
+            ? patientQueueEnabled
+              ? "patient"
+              : "deferred"
+            : "direct";
+      const metadata = buildSubmissionMetadata(deliveryIntent);
       // Clear input state but keep localStorage for failure recovery
       controls.clearInput();
+      resetCompositionMetadata();
       setInterimTranscript("");
-      onSend(message);
+      onSend(message, metadata);
       // Refocus the textarea so user can continue typing
       textareaRef.current?.focus();
     }
-  }, [text, disabled, controls, onSend, attachments.length]);
+  }, [
+    text,
+    disabled,
+    controls,
+    onSend,
+    attachments.length,
+    effectivePrimaryActionKind,
+    patientQueueEnabled,
+    buildSubmissionMetadata,
+    resetCompositionMetadata,
+  ]);
 
   const handleQueue = useCallback(() => {
     // Stop voice recording and get any pending interim text
@@ -263,13 +409,29 @@ export function MessageInput({
 
     const hasContent = finalText.trim() || attachments.length > 0;
     if (hasContent && !disabled && onQueue) {
-      const message = finalText.trim();
+      const message = applyPatientQueuePrefix(
+        finalText.trim(),
+        patientQueueEnabled,
+      );
+      const metadata = buildSubmissionMetadata(
+        patientQueueEnabled ? "patient" : "deferred",
+      );
       controls.clearInput();
+      resetCompositionMetadata();
       setInterimTranscript("");
-      onQueue(message);
+      onQueue(message, metadata);
       textareaRef.current?.focus();
     }
-  }, [text, disabled, controls, onQueue, attachments.length]);
+  }, [
+    text,
+    disabled,
+    controls,
+    onQueue,
+    attachments.length,
+    patientQueueEnabled,
+    buildSubmissionMetadata,
+    resetCompositionMetadata,
+  ]);
 
   const handleBtwClick = useCallback(() => {
     if (disabled || !onBtwShortcut) return;
@@ -281,12 +443,13 @@ export function MessageInput({
     const message = finalText.trim();
     if (onBtwShortcut(message) && message) {
       controls.clearInput();
+      resetCompositionMetadata();
       setInterimTranscript("");
     }
     textareaRef.current?.focus();
-  }, [controls, disabled, onBtwShortcut, text]);
+  }, [controls, disabled, onBtwShortcut, resetCompositionMetadata, text]);
 
-  const submitFromCollapsed =
+  const submitPrimaryAction =
     effectivePrimaryActionKind === "queue" ? handleQueue : handleSubmit;
 
   const recallLastSubmission = useCallback((allowExistingText = false) => {
@@ -402,6 +565,7 @@ export function MessageInput({
         }
         setInterimTranscript("");
         setText("");
+        resetCompositionMetadata();
         controls.flushDraft();
         for (const attachment of attachments) {
           onRemoveAttachment?.(attachment.id);
@@ -430,7 +594,7 @@ export function MessageInput({
       // If voice recording is active, Enter submits (on any device)
       if (voiceButtonRef.current?.isListening) {
         e.preventDefault();
-        handleSubmit();
+        submitPrimaryAction();
         return;
       }
 
@@ -447,12 +611,12 @@ export function MessageInput({
           return;
         }
         e.preventDefault();
-        handleSubmit();
+        submitPrimaryAction();
       } else {
         // Ctrl+Enter sends, Enter adds newline
         if (e.ctrlKey || e.shiftKey) {
           e.preventDefault();
-          handleSubmit();
+          submitPrimaryAction();
         }
       }
     }
@@ -492,8 +656,11 @@ export function MessageInput({
 
       const trimmedText = text.trimEnd();
       if (trimmedText) {
-        setText(`${trimmedText} ${trimmedTranscript}`);
+        const nextText = `${trimmedText} ${trimmedTranscript}`;
+        noteComposerEdit(nextText);
+        setText(nextText);
       } else {
+        noteComposerEdit(trimmedTranscript);
         setText(trimmedTranscript);
       }
       setInterimTranscript("");
@@ -506,7 +673,7 @@ export function MessageInput({
         }
       }, 0);
     },
-    [text, setText],
+    [noteComposerEdit, text, setText],
   );
 
   const handleInterimTranscript = useCallback((transcript: string) => {
@@ -525,14 +692,18 @@ export function MessageInput({
       // Otherwise, add a space before it
       const trimmed = text.trimEnd();
       if (trimmed) {
-        setText(`${trimmed} ${command} `);
+        const nextText = `${trimmed} ${command} `;
+        noteComposerEdit(nextText);
+        setText(nextText);
       } else {
-        setText(`${command} `);
+        const nextText = `${command} `;
+        noteComposerEdit(nextText);
+        setText(nextText);
       }
       // Focus the textarea so user can continue typing
       textareaRef.current?.focus();
     },
-    [text, setText, onCustomCommand],
+    [text, setText, onCustomCommand, noteComposerEdit],
   );
 
   return (
@@ -574,6 +745,7 @@ export function MessageInput({
             // If user edits while recording, only update committed text
             // This clears interim since they're now typing
             setInterimTranscript("");
+            noteComposerEdit(e.target.value);
             setText(e.target.value);
           }}
           onBlur={controls.flushDraft}
@@ -591,7 +763,7 @@ export function MessageInput({
           <div className="message-input-collapsed-actions">
             <button
               type="button"
-              onClick={submitFromCollapsed}
+              onClick={submitPrimaryAction}
               disabled={disabled || !canSubmit}
               className={`send-button message-input-collapsed-send`}
               aria-label={primaryActionLabel}
@@ -698,6 +870,10 @@ export function MessageInput({
             onConfigureHeartbeat={onConfigureHeartbeat}
             contextUsage={contextUsage}
             lastActivityAt={lastActivityAt}
+            sessionLiveness={sessionLiveness}
+            showPatientQueueMode={showPatientQueueMode}
+            patientQueueMode={patientQueueEnabled}
+            onPatientQueueModeChange={handlePatientQueueModeChange}
             isRunning={isRunning}
             isThinking={isThinking}
             onStop={onStop}

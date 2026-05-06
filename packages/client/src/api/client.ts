@@ -16,9 +16,11 @@ import type {
   PublicSessionShareSessionStatusResponse,
   PublicSessionShareViewerActionResponse,
   RevokePublicSessionSharesResponse,
+  SessionLivenessSnapshot,
   SlashCommand,
   ThinkingOption,
   UploadedFile,
+  UserMessageMetadata,
 } from "@yep-anywhere/shared";
 import { authEvents } from "../lib/authEvents";
 import { getGlobalConnection, isRemoteClient } from "../lib/connection";
@@ -107,6 +109,7 @@ export interface DeferredQueueMessage {
   tempId?: string;
   content: string;
   timestamp: string;
+  metadata?: UserMessageMetadata;
   attachmentCount?: number;
   blockedByEdit?: boolean;
 }
@@ -462,6 +465,7 @@ export const api = {
     options?: SessionOptions,
     attachments?: UploadedFile[],
     clientTimestamp?: number,
+    messageMetadata?: UserMessageMetadata,
   ) =>
     fetchJSON<{
       sessionId: string;
@@ -483,6 +487,7 @@ export const api = {
         executor: options?.executor,
         attachments,
         clientTimestamp,
+        messageMetadata,
       }),
     }),
 
@@ -514,6 +519,7 @@ export const api = {
     options?: SessionOptions,
     attachments?: UploadedFile[],
     clientTimestamp?: number,
+    messageMetadata?: UserMessageMetadata,
   ) =>
     fetchJSON<{
       sessionId: string;
@@ -533,6 +539,7 @@ export const api = {
         executor: options?.executor,
         attachments,
         clientTimestamp,
+        messageMetadata,
       }),
     }),
 
@@ -563,6 +570,7 @@ export const api = {
     attachments?: UploadedFile[],
     tempId?: string,
     clientTimestamp?: number,
+    messageMetadata?: UserMessageMetadata,
   ) =>
     fetchJSON<{
       processId: string;
@@ -581,6 +589,7 @@ export const api = {
         attachments,
         tempId,
         clientTimestamp,
+        messageMetadata,
       }),
     }),
 
@@ -624,6 +633,7 @@ export const api = {
     deferred?: boolean,
     placement?: DeferredMessagePlacement,
     clientTimestamp?: number,
+    messageMetadata?: UserMessageMetadata,
   ) =>
     fetchJSON<{
       queued: boolean;
@@ -647,6 +657,7 @@ export const api = {
         insertAfterTempId: placement?.afterTempId,
         replaceDeferredTempId: placement?.replaceTempId,
         clientTimestamp,
+        messageMetadata,
       }),
     }),
 
@@ -762,6 +773,7 @@ export const api = {
         thinking?: { type: string };
         effort?: string;
         model?: string;
+        liveness?: SessionLivenessSnapshot;
       } | null;
     }>(`/sessions/${sessionId}/process`),
 

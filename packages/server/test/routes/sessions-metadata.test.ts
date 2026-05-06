@@ -68,6 +68,16 @@ describe("Sessions metadata route", () => {
         tempId: "temp-queued",
         mode: "default",
         deferred: true,
+        clientTimestamp: 1770000000123,
+        messageMetadata: {
+          deliveryIntent: "patient",
+          composition: {
+            typingStartedAt: "2026-04-25T00:00:10.000Z",
+            typingEndedAt: "2026-04-25T00:00:20.000Z",
+            lastEditedAt: "2026-04-25T00:00:19.000Z",
+            submittedAt: "2026-04-25T00:00:20.000Z",
+          },
+        },
       }),
     });
 
@@ -77,6 +87,17 @@ describe("Sessions metadata route", () => {
         text: "queued text",
         tempId: "temp-queued",
         mode: "default",
+        metadata: expect.objectContaining({
+          deliveryIntent: "patient",
+          clientTimestamp: 1770000000123,
+          serverReceivedAt: expect.any(String),
+          composition: {
+            typingStartedAt: "2026-04-25T00:00:10.000Z",
+            typingEndedAt: "2026-04-25T00:00:20.000Z",
+            lastEditedAt: "2026-04-25T00:00:19.000Z",
+            submittedAt: "2026-04-25T00:00:20.000Z",
+          },
+        }),
       }),
       { promoteIfReady: true, placement: undefined },
     );

@@ -16,7 +16,11 @@ import {
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, type DeferredMessagePlacement } from "../api/client";
 import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
-import { MessageInput, type UploadProgress } from "../components/MessageInput";
+import {
+  MessageInput,
+  type MessageSubmissionMetadata,
+  type UploadProgress,
+} from "../components/MessageInput";
 import { MessageInputToolbar } from "../components/MessageInputToolbar";
 import { MessageList } from "../components/MessageList";
 import { ModelSwitchModal } from "../components/ModelSwitchModal";
@@ -513,6 +517,7 @@ function SessionPageContent({
     markdownAugments,
     status,
     processState,
+    sessionLiveness,
     isCompacting,
     pendingInputRequest,
     actualSessionId,
@@ -1016,7 +1021,10 @@ function SessionPageContent({
     enabled: status.owner !== "external",
   });
 
-  const handleSend = async (text: string) => {
+  const handleSend = async (
+    text: string,
+    metadata?: MessageSubmissionMetadata,
+  ) => {
     const prepared = prepareComposerSubmission(text);
     if (!prepared) {
       return;
@@ -1097,6 +1105,7 @@ function SessionPageContent({
           currentAttachments.length > 0 ? currentAttachments : undefined,
           tempId,
           clientTimestamp,
+          metadata,
         );
         const responseReceivedAtMs = Date.now();
         const timing = recordServerClockSample({
@@ -1130,6 +1139,7 @@ function SessionPageContent({
           undefined,
           undefined,
           clientTimestamp,
+          metadata,
         );
         const responseReceivedAtMs = Date.now();
         const timing = recordServerClockSample({
@@ -1193,6 +1203,7 @@ function SessionPageContent({
             currentAttachments.length > 0 ? currentAttachments : undefined,
             tempId,
             clientTimestamp,
+            metadata,
           );
           const retryResponseReceivedAtMs = Date.now();
           const retryTiming = recordServerClockSample({
@@ -1244,7 +1255,10 @@ function SessionPageContent({
     }
   };
 
-  const handleQueue = async (text: string) => {
+  const handleQueue = async (
+    text: string,
+    metadata?: MessageSubmissionMetadata,
+  ) => {
     const prepared = prepareComposerSubmission(text);
     if (!prepared) {
       return;
@@ -1313,6 +1327,7 @@ function SessionPageContent({
         true, // deferred
         queuedEditPlacement,
         clientTimestamp,
+        metadata,
       );
       const responseReceivedAtMs = Date.now();
       const timing = recordServerClockSample({
@@ -1347,6 +1362,7 @@ function SessionPageContent({
             }
           : {}),
         mode: permissionMode,
+        metadata,
         deliveryState: "queued" as const,
       };
       if (result.deferred === false || result.promoted) {
@@ -1435,6 +1451,8 @@ function SessionPageContent({
             },
             currentAttachments.length > 0 ? currentAttachments : undefined,
             tempId,
+            clientTimestamp,
+            metadata,
           );
           logSessionUiTrace("composer-deferred-retry-resume-success", {
             sessionId,
@@ -3287,6 +3305,7 @@ function SessionPageContent({
                     onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                     contextUsage={session?.contextUsage}
                     lastActivityAt={activityAt}
+                    sessionLiveness={sessionLiveness}
                     isRunning={status.owner === "self"}
                     isThinking={canStopOwnedProcess}
                     onStop={handleAbort}
@@ -3367,6 +3386,7 @@ function SessionPageContent({
                 }
                 contextUsage={session?.contextUsage}
                 lastActivityAt={activityAt}
+                sessionLiveness={sessionLiveness}
                 projectId={projectId}
                 sessionId={sessionId}
                 attachments={focusedBtwAside ? [] : attachments}

@@ -4,6 +4,8 @@ import {
   type ProviderName,
   type ThinkingOption,
   type UploadedFile,
+  type UserMessageDeliveryIntent,
+  type UserMessageMetadata,
   type UrlProjectId,
   getModelContextWindow,
   isUrlProjectId,
@@ -132,6 +134,61 @@ function parseDeferredPlacement(body: {
   };
 }
 
+const USER_MESSAGE_DELIVERY_INTENTS: ReadonlySet<UserMessageDeliveryIntent> =
+  new Set(["direct", "steer", "deferred", "patient"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseIsoTimestamp(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  return Number.isNaN(Date.parse(value)) ? undefined : value;
+}
+
+function parseDeliveryIntent(
+  value: unknown,
+): UserMessageDeliveryIntent | undefined {
+  return typeof value === "string" &&
+    USER_MESSAGE_DELIVERY_INTENTS.has(value as UserMessageDeliveryIntent)
+    ? (value as UserMessageDeliveryIntent)
+    : undefined;
+}
+
+function buildUserMessageMetadata(
+  body: StartSessionBody,
+  serverTimestamp: number,
+  fallbackIntent: UserMessageDeliveryIntent,
+): UserMessageMetadata {
+  const rawMetadata = isRecord(body.messageMetadata) ? body.messageMetadata : {};
+  const rawComposition = isRecord(rawMetadata.composition)
+    ? rawMetadata.composition
+    : {};
+  const composition = {
+    typingStartedAt: parseIsoTimestamp(rawComposition.typingStartedAt),
+    typingEndedAt: parseIsoTimestamp(rawComposition.typingEndedAt),
+    lastEditedAt: parseIsoTimestamp(rawComposition.lastEditedAt),
+    submittedAt: parseIsoTimestamp(rawComposition.submittedAt),
+  };
+  const cleanComposition = Object.fromEntries(
+    Object.entries(composition).filter(([, value]) => value !== undefined),
+  ) as NonNullable<UserMessageMetadata["composition"]>;
+  const clientTimestamp =
+    typeof body.clientTimestamp === "number" && Number.isFinite(body.clientTimestamp)
+      ? body.clientTimestamp
+      : undefined;
+
+  return {
+    deliveryIntent:
+      parseDeliveryIntent(rawMetadata.deliveryIntent) ?? fallbackIntent,
+    ...(Object.keys(cleanComposition).length > 0
+      ? { composition: cleanComposition }
+      : {}),
+    ...(clientTimestamp !== undefined ? { clientTimestamp } : {}),
+    serverReceivedAt: new Date(serverTimestamp).toISOString(),
+  };
+}
+
 export interface SessionsDeps {
   supervisor: Supervisor;
   scanner: ProjectScanner;
@@ -167,6 +224,8 @@ interface StartSessionBody {
   provider?: ProviderName;
   /** Browser-side timestamp for request latency tracking (epoch ms) */
   clientTimestamp?: number;
+  /** YA-internal submission timing and delivery-intent metadata. */
+  messageMetadata?: UserMessageMetadata;
   /** Client-generated temp ID for optimistic UI tracking */
   tempId?: string;
   /** Deferred queue reinsertion anchor for edited queued messages */
@@ -1753,6 +1812,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: executorError }, 400);
     }
 
+    const serverTimestamp = Date.now();
     const userMessage: UserMessage = {
       text: body.message,
       images: body.images,
@@ -1760,8 +1820,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       attachments: body.attachments,
       mode: body.mode,
       tempId: body.tempId,
+      metadata: buildUserMessageMetadata(body, serverTimestamp, "direct"),
     };
-    const serverTimestamp = Date.now();
 
     // Convert thinking option to SDK config
     const { thinking, effort } = body.thinking
@@ -1923,6 +1983,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     const projectPath = await ensureDetachedProjectPath(executor);
+    const serverTimestamp = Date.now();
     const userMessage: UserMessage = {
       text: body.message,
       images: body.images,
@@ -1930,8 +1991,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       attachments: body.attachments,
       mode: body.mode,
       tempId: body.tempId,
+      metadata: buildUserMessageMetadata(body, serverTimestamp, "direct"),
     };
-    const serverTimestamp = Date.now();
 
     const { thinking, effort } = body.thinking
       ? thinkingOptionToConfig(body.thinking)
@@ -2074,6 +2135,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: parsedBodyExecutor.error }, 400);
     }
 
+    const serverTimestamp = Date.now();
     const userMessage: UserMessage = {
       text: body.message,
       images: body.images,
@@ -2081,8 +2143,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       attachments: body.attachments,
       mode: body.mode,
       tempId: body.tempId,
+      metadata: buildUserMessageMetadata(body, serverTimestamp, "direct"),
     };
-    const serverTimestamp = Date.now();
 
     // Convert thinking option to SDK config
     const { thinking, effort } = body.thinking
@@ -2380,6 +2442,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Message is required" }, 400);
     }
 
+    const serverTimestamp = Date.now();
     const userMessage: UserMessage = {
       text: body.message,
       images: body.images,
@@ -2387,8 +2450,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       attachments: body.attachments,
       mode: body.mode,
       tempId: body.tempId,
+      metadata: buildUserMessageMetadata(
+        body,
+        serverTimestamp,
+        body.deferred ? "deferred" : "direct",
+      ),
     };
-    const serverTimestamp = Date.now();
 
     // Check if process is terminated
     if (process.isTerminated) {

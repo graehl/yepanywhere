@@ -1,3 +1,4 @@
+import type { SessionLivenessSnapshot } from "@yep-anywhere/shared";
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent, RefObject, TouchEvent } from "react";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
@@ -61,6 +62,14 @@ export interface MessageInputToolbarProps {
   contextUsage?: ContextUsage;
   /** Last session activity timestamp for stale composer liveness display. */
   lastActivityAt?: string | null;
+  /** Server-derived provider/session liveness evidence. */
+  sessionLiveness?: SessionLivenessSnapshot | null;
+  /** Show the patient-vs-ASAP queued-message mode toggle. */
+  showPatientQueueMode?: boolean;
+  /** Queue mode used when queueing through the deferred queue path. */
+  patientQueueMode?: boolean;
+  /** Toggle patient queued-message mode. */
+  onPatientQueueModeChange?: (enabled: boolean) => void;
 
   // Actions
   isRunning?: boolean;
@@ -78,6 +87,91 @@ export interface MessageInputToolbarProps {
     type: "tool-approval" | "user-question";
     onExpand: () => void;
   };
+}
+
+type LivenessTone = "ok" | "warn" | "danger" | "muted";
+
+interface LivenessDisplay {
+  prefix: string;
+  timestampMs: number | null;
+  tone: LivenessTone;
+  title: string;
+}
+
+function describeSessionLiveness(
+  snapshot: SessionLivenessSnapshot,
+): LivenessDisplay {
+  const checkedMs = parseTimestampMs(snapshot.checkedAt);
+  const stateMs = parseTimestampMs(snapshot.lastStateChangeAt);
+  const progressMs = parseTimestampMs(
+    snapshot.lastVerifiedProgressAt ?? snapshot.lastProviderMessageAt,
+  );
+  const idleMs = parseTimestampMs(snapshot.lastVerifiedIdleAt);
+  const title = [
+    `status: ${snapshot.derivedStatus}`,
+    `work: ${snapshot.activeWorkKind}`,
+    snapshot.lastRawProviderEventAt
+      ? `raw provider: ${snapshot.lastRawProviderEventSource ?? "unknown"} at ${snapshot.lastRawProviderEventAt}`
+      : null,
+    `evidence: ${snapshot.evidence.join(", ")}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  switch (snapshot.derivedStatus) {
+    case "verified-progressing":
+      return {
+        prefix: "Verified progress",
+        timestampMs: progressMs ?? checkedMs,
+        tone: "ok",
+        title,
+      };
+    case "recently-active-unverified":
+      return {
+        prefix: "Unverified turn",
+        timestampMs: stateMs ?? checkedMs,
+        tone: "warn",
+        title,
+      };
+    case "long-silent-unverified":
+      return {
+        prefix: "Long silent",
+        timestampMs: progressMs ?? stateMs ?? checkedMs,
+        tone: "danger",
+        title,
+      };
+    case "verified-waiting-provider":
+      return {
+        prefix: "Waiting on provider",
+        timestampMs: progressMs ?? stateMs ?? checkedMs,
+        tone: "warn",
+        title,
+      };
+    case "verified-idle":
+      return {
+        prefix: "Verified idle",
+        timestampMs: idleMs ?? stateMs ?? checkedMs,
+        tone: "muted",
+        title,
+      };
+    case "verified-held":
+      return {
+        prefix: "Held",
+        timestampMs: stateMs ?? checkedMs,
+        tone: "muted",
+        title,
+      };
+    case "needs-attention":
+      return {
+        prefix:
+          snapshot.activeWorkKind === "waiting-input"
+            ? "Needs input"
+            : "Needs attention",
+        timestampMs: stateMs ?? checkedMs,
+        tone: "danger",
+        title,
+      };
+  }
 }
 
 export function MessageInputToolbar({
@@ -108,6 +202,10 @@ export function MessageInputToolbar({
   onConfigureHeartbeat,
   contextUsage,
   lastActivityAt,
+  sessionLiveness,
+  showPatientQueueMode = false,
+  patientQueueMode = false,
+  onPatientQueueModeChange,
   isRunning,
   isThinking,
   onStop,
@@ -127,6 +225,9 @@ export function MessageInputToolbar({
     useState<SessionIsearchScope | null>(null);
   const lastActivityMs = parseTimestampMs(lastActivityAt);
   const showLastActivityAge = isStaleTimestamp(lastActivityMs, nowMs);
+  const livenessDisplay = sessionLiveness
+    ? describeSessionLiveness(sessionLiveness)
+    : null;
   const heartbeatLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -144,9 +245,16 @@ export function MessageInputToolbar({
     effectivePrimaryActionKind === "steer"
       ? t("toolbarSteerTooltip")
       : effectivePrimaryActionKind === "queue"
-        ? t("toolbarQueueTooltip")
+        ? patientQueueMode
+          ? 'Queue when done; queued text starts with "when done,"'
+          : "Queue ASAP; queued text is unchanged"
         : t("toolbarSendTooltip");
-  const queueTooltip = t("toolbarQueueTooltip");
+  const queueModeLabel = patientQueueMode ? "Queue when done" : "Queue ASAP";
+  const queueTooltip = showPatientQueueMode
+    ? patientQueueMode
+      ? 'Queue when done; queued text starts with "when done,"'
+      : "Queue ASAP; queued text is unchanged"
+    : t("toolbarQueueTooltip");
   const btwTitle = btwActive
     ? "Composer is focused on a /btw aside; click to return to main (Ctrl+B)"
     : btwHasAsides
@@ -408,17 +516,41 @@ export function MessageInputToolbar({
           />
         )}
       </div>
-      {showLastActivityAge && (
-        <div
-          className="composer-activity-age"
-          aria-label="Session last activity"
-        >
-          <MessageAge
-            timestampMs={lastActivityMs}
-            nowMs={nowMs}
-            className="composer-activity-age-time"
-            prefix="Last activity"
-          />
+      {(livenessDisplay || showLastActivityAge) && (
+        <div className="composer-status-ages">
+          {livenessDisplay && (
+            <div
+              className={`composer-status-chip composer-liveness-status is-${livenessDisplay.tone}`}
+              aria-label="Session verified liveness"
+              title={livenessDisplay.title}
+            >
+              {livenessDisplay.timestampMs !== null ? (
+                <MessageAge
+                  timestampMs={livenessDisplay.timestampMs}
+                  nowMs={nowMs}
+                  className="composer-liveness-time"
+                  prefix={livenessDisplay.prefix}
+                />
+              ) : (
+                <span className="composer-liveness-time">
+                  {livenessDisplay.prefix}
+                </span>
+              )}
+            </div>
+          )}
+          {showLastActivityAge && (
+            <div
+              className="composer-status-chip composer-activity-age"
+              aria-label="Session last activity"
+            >
+              <MessageAge
+                timestampMs={lastActivityMs}
+                nowMs={nowMs}
+                className="composer-activity-age-time"
+                prefix="Last activity"
+              />
+            </div>
+          )}
         </div>
       )}
       <div className="message-input-actions">
@@ -545,7 +677,11 @@ export function MessageInputToolbar({
                     <span className="session-shortcuts-keys">
                       <kbd>Ctrl</kbd><kbd>Enter</kbd>
                     </span>
-                    <span>Queue while agent runs</span>
+                    <span>
+                      {showPatientQueueMode
+                        ? `${queueModeLabel} while agent runs`
+                        : "Queue while agent runs"}
+                    </span>
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
@@ -623,6 +759,26 @@ export function MessageInputToolbar({
         )}
         {showSendButton ? (
           <>
+            {showPatientQueueMode && onQueue && (
+              <button
+                type="button"
+                onClick={() => onPatientQueueModeChange?.(!patientQueueMode)}
+                disabled={disabled}
+                className={`queue-mode-toggle ${
+                  patientQueueMode ? "patient" : "asap"
+                }`}
+                aria-label={queueModeLabel}
+                aria-pressed={patientQueueMode}
+                title={queueTooltip}
+              >
+                <span className="queue-mode-label queue-mode-label-long">
+                  {patientQueueMode ? "when done" : "ASAP"}
+                </span>
+                <span className="queue-mode-label queue-mode-label-short">
+                  {patientQueueMode ? "done" : "ASAP"}
+                </span>
+              </button>
+            )}
             {hasDualActions && onQueue && (
               <button
                 type="button"

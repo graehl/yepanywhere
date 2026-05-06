@@ -2706,9 +2706,16 @@ a.sidebar-nav-item {
   --composer-primary-control-size: 36px;
 }
 
-.composer-activity-age {
+.composer-status-ages {
   flex-shrink: 0;
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.composer-status-chip {
   color: color-mix(in srgb, var(--warning-color) 62%, var(--text-dimmed));
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
@@ -2718,8 +2725,25 @@ a.sidebar-nav-item {
   white-space: nowrap;
 }
 
-.composer-activity-age-time {
+.composer-activity-age-time,
+.composer-liveness-time {
   color: inherit;
+}
+
+.composer-liveness-status.is-ok {
+  color: color-mix(in srgb, var(--success-color) 72%, var(--text-dimmed));
+}
+
+.composer-liveness-status.is-warn {
+  color: color-mix(in srgb, var(--warning-color) 74%, var(--text-primary));
+}
+
+.composer-liveness-status.is-danger {
+  color: color-mix(in srgb, var(--error-color) 76%, var(--text-primary));
+}
+
+.composer-liveness-status.is-muted {
+  color: var(--text-muted);
 }
 
 .session-shortcuts-help {
@@ -3144,6 +3168,53 @@ a.sidebar-nav-item {
 .send-button.queue-button {
   background: var(--attention-color);
   color: white;
+}
+
+.queue-mode-toggle {
+  height: var(--composer-control-size);
+  min-width: 76px;
+  padding: 0 var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-sizing: border-box;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    opacity 0.15s;
+}
+
+.queue-mode-toggle.patient {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.55);
+  color: #f6c453;
+}
+
+.queue-mode-toggle.asap {
+  background: rgba(34, 197, 94, 0.13);
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #56d687;
+}
+
+.queue-mode-toggle:hover:not(:disabled) {
+  opacity: 0.86;
+}
+
+.queue-mode-toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.queue-mode-label-short {
+  display: none;
 }
 
 .send-button-with-help::after {
@@ -6278,17 +6349,29 @@ a.sidebar-nav-item {
     gap: 0.3rem;
   }
 
+  .queue-mode-toggle {
+    min-width: 68px;
+    padding: 0 0.45rem;
+  }
+
   .message-input-left {
     flex: 0 1 auto;
     overflow: hidden;
   }
 
-  .composer-activity-age {
+  .composer-status-ages {
     position: absolute;
     right: calc(var(--composer-primary-control-size) + 0.375rem);
     bottom: calc(100% + 0.375rem);
     z-index: 3;
     margin-left: 0;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-width: min(78vw, 420px);
+  }
+
+  .composer-status-chip {
     padding: 2px 6px;
     border: 1px solid color-mix(in srgb, var(--warning-color) 28%, transparent);
     border-radius: 999px;
@@ -6296,6 +6379,21 @@ a.sidebar-nav-item {
     color: color-mix(in srgb, var(--warning-color) 78%, var(--text-primary));
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.24);
     opacity: 0.96;
+  }
+
+  .composer-liveness-status.is-ok {
+    border-color: color-mix(in srgb, var(--success-color) 26%, transparent);
+    color: color-mix(in srgb, var(--success-color) 82%, var(--text-primary));
+  }
+
+  .composer-liveness-status.is-danger {
+    border-color: color-mix(in srgb, var(--error-color) 30%, transparent);
+    color: color-mix(in srgb, var(--error-color) 82%, var(--text-primary));
+  }
+
+  .composer-liveness-status.is-muted {
+    border-color: color-mix(in srgb, var(--border-color) 60%, transparent);
+    color: var(--text-muted);
   }
 
   .mode-button {
@@ -6332,6 +6430,18 @@ a.sidebar-nav-item {
 @media (max-width: 520px) {
   .session-shortcuts-help {
     display: none;
+  }
+
+  .queue-mode-toggle {
+    min-width: 46px;
+  }
+
+  .queue-mode-label-long {
+    display: none;
+  }
+
+  .queue-mode-label-short {
+    display: inline;
   }
 }
 

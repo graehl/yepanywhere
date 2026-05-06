@@ -291,6 +291,7 @@
   "sessionMenuUnstar": "Retirer des favoris",
   "sessionMenuStar": "Ajouter aux favoris",
   "sessionMenuRename": "Renommer",
+  "sessionMenuCopyPrompt": "Copier le prompt",
   "sessionMenuHeartbeat": "Heartbeat...",
   "sessionMenuRestoreWarnings": "Restaurer les avertissements",
   "sessionMenuCloning": "Clonage...",

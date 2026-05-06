@@ -572,7 +572,8 @@ export function Sidebar({
                     sessionId={session.id}
                     projectId={session.projectId}
                     title={getSessionDisplayTitle(session)}
-                    fullTitle={getSessionDisplayTitle(session)}
+                    fullTitle={session.fullTitle ?? getSessionDisplayTitle(session)}
+                    initialPrompt={session.initialPrompt}
                     provider={session.provider}
                     parentSessionId={session.parentSessionId}
                     status={session.ownership}
@@ -616,7 +617,10 @@ export function Sidebar({
                       sessionId={session.id}
                       projectId={session.projectId}
                       title={getSessionDisplayTitle(session)}
-                      fullTitle={getSessionDisplayTitle(session)}
+                      fullTitle={
+                        session.fullTitle ?? getSessionDisplayTitle(session)
+                      }
+                      initialPrompt={session.initialPrompt}
                       provider={session.provider}
                       parentSessionId={session.parentSessionId}
                       status={session.ownership}
@@ -658,7 +662,10 @@ export function Sidebar({
                       sessionId={session.id}
                       projectId={session.projectId}
                       title={getSessionDisplayTitle(session)}
-                      fullTitle={getSessionDisplayTitle(session)}
+                      fullTitle={
+                        session.fullTitle ?? getSessionDisplayTitle(session)
+                      }
+                      initialPrompt={session.initialPrompt}
                       provider={session.provider}
                       parentSessionId={session.parentSessionId}
                       status={session.ownership}

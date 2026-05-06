@@ -291,6 +291,7 @@
   "sessionMenuUnstar": "取消收藏",
   "sessionMenuStar": "收藏",
   "sessionMenuRename": "重命名",
+  "sessionMenuCopyPrompt": "复制提示词",
   "sessionMenuHeartbeat": "Heartbeat...",
   "sessionMenuRestoreWarnings": "恢复警告",
   "sessionMenuCloning": "克隆中...",

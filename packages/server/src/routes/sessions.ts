@@ -1166,6 +1166,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     sessionId: string,
     provider: ProviderName | undefined,
     executor: string | undefined,
+    initialPrompt?: string,
   ): Promise<void> => {
     if (!deps.sessionMetadataService) {
       return;
@@ -1175,6 +1176,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
     if (executor) {
       await deps.sessionMetadataService.setExecutor(sessionId, executor);
+    }
+    if (initialPrompt?.trim()) {
+      await deps.sessionMetadataService.setInitialPrompt(
+        sessionId,
+        initialPrompt,
+      );
     }
   };
 
@@ -1469,6 +1476,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         isStarred: metadata?.isStarred,
         parentSessionId:
           metadata?.parentSessionId ?? sessionSummary?.parentSessionId,
+        initialPrompt: metadata?.initialPrompt ?? sessionSummary?.fullTitle,
         heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
         heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
         heartbeatTurnText: metadata?.heartbeatTurnText,
@@ -1673,6 +1681,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             isArchived: metadata?.isArchived,
             isStarred: metadata?.isStarred,
             parentSessionId: metadata?.parentSessionId,
+            initialPrompt: metadata?.initialPrompt,
             heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
             heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
             heartbeatTurnText: metadata?.heartbeatTurnText,
@@ -1764,6 +1773,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         isArchived: metadata?.isArchived,
         isStarred: metadata?.isStarred,
         parentSessionId: metadata?.parentSessionId ?? session.parentSessionId,
+        initialPrompt: metadata?.initialPrompt ?? session.fullTitle,
         heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
         heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
         heartbeatTurnText: metadata?.heartbeatTurnText,
@@ -1870,7 +1880,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       ); // 202 Accepted - queued for processing
     }
 
-    await persistLaunchMetadata(result.sessionId, body.provider, executor);
+    await persistLaunchMetadata(
+      result.sessionId,
+      body.provider,
+      executor,
+      body.message,
+    );
 
     return c.json({
       sessionId: result.sessionId,
@@ -2029,7 +2044,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       );
     }
 
-    await persistLaunchMetadata(result.sessionId, body.provider, executor);
+    await persistLaunchMetadata(
+      result.sessionId,
+      body.provider,
+      executor,
+      body.message,
+    );
 
     return c.json({
       sessionId: result.sessionId,

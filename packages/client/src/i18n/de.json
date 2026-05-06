@@ -291,6 +291,7 @@
   "sessionMenuUnstar": "Markierung entfernen",
   "sessionMenuStar": "Markieren",
   "sessionMenuRename": "Umbenennen",
+  "sessionMenuCopyPrompt": "Prompt kopieren",
   "sessionMenuHeartbeat": "Heartbeat...",
   "sessionMenuRestoreWarnings": "Warnungen wiederherstellen",
   "sessionMenuCloning": "Wird geklont...",

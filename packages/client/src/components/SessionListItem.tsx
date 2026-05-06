@@ -27,6 +27,7 @@ interface SessionListItemProps {
 
   // Optional display data
   fullTitle?: string | null;
+  initialPrompt?: string | null;
   projectName?: string;
   updatedAt?: string;
   hasUnread?: boolean;
@@ -75,6 +76,23 @@ interface SessionListItemProps {
   messageCount?: number;
 }
 
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
 /**
  * Shared session list item component used by Sidebar (compact), SessionsPage (card),
  * RecentsPage, and InboxContent.
@@ -95,6 +113,7 @@ export function SessionListItem({
   title,
   // Optional display data
   fullTitle,
+  initialPrompt,
   projectName,
   updatedAt,
   hasUnread: hasUnreadProp,
@@ -169,6 +188,7 @@ export function SessionListItem({
     isBtwAsideSession
       ? getBtwAsideSessionDisplayTitle(displayTitle)
       : displayTitle;
+  const copyPromptText = (initialPrompt ?? fullTitle ?? "").trim();
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -226,6 +246,13 @@ export function SessionListItem({
       setLocalHasUnread(undefined); // Revert on error
     }
   };
+
+  const handleCopyPrompt = useCallback(() => {
+    if (!copyPromptText) return;
+    void copyTextToClipboard(copyPromptText).catch((err) => {
+      console.error("Failed to copy initial prompt:", err);
+    });
+  }, [copyPromptText]);
 
   const handleCancelEditing = () => {
     if (isSavingRef.current) return;
@@ -575,6 +602,7 @@ export function SessionListItem({
             setRenameValue(displayTitle);
             setIsEditing(true);
           }}
+          onCopyPrompt={copyPromptText ? handleCopyPrompt : undefined}
           onClone={(newSessionId) => {
             navigate(
               `${basePath}/projects/${projectId}/sessions/${newSessionId}`,

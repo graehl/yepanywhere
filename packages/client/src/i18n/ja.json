@@ -291,6 +291,7 @@
   "sessionMenuUnstar": "スターを外す",
   "sessionMenuStar": "スターを付ける",
   "sessionMenuRename": "名前を変更",
+  "sessionMenuCopyPrompt": "プロンプトをコピー",
   "sessionMenuHeartbeat": "Heartbeat...",
   "sessionMenuRestoreWarnings": "警告を再表示",
   "sessionMenuCloning": "複製中...",

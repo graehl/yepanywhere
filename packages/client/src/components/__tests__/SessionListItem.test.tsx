@@ -1,11 +1,19 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "../../i18n";
 import { SessionListItem } from "../SessionListItem";
 
 const mockWindowOpen = vi.fn();
+const originalClipboard = navigator.clipboard;
 
 function LocationProbe() {
   const location = useLocation();
@@ -25,6 +33,10 @@ describe("SessionListItem links", () => {
 
   afterEach(() => {
     cleanup();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: originalClipboard,
+    });
     vi.unstubAllGlobals();
   });
 
@@ -157,5 +169,39 @@ describe("SessionListItem links", () => {
       "_blank",
       "noopener",
     );
+  });
+
+  it("copies the initial prompt from the session menu", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="failed-1"
+              projectId="project-1"
+              title="Short title"
+              fullTitle="Full initial prompt that should be recoverable"
+              provider="claude"
+              mode="compact"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByLabelText("Session options"));
+    fireEvent.click(screen.getByRole("button", { name: "Copy prompt" }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(
+        "Full initial prompt that should be recoverable",
+      );
+    });
   });
 });

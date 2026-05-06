@@ -291,6 +291,7 @@
   "sessionMenuUnstar": "Quitar de destacados",
   "sessionMenuStar": "Destacar",
   "sessionMenuRename": "Renombrar",
+  "sessionMenuCopyPrompt": "Copiar prompt",
   "sessionMenuHeartbeat": "Heartbeat...",
   "sessionMenuRestoreWarnings": "Restaurar avisos",
   "sessionMenuCloning": "Clonando...",

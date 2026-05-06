@@ -24,6 +24,8 @@ export interface SessionMetadata {
   provider?: ProviderName;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
+  /** Initial prompt text accepted by YA for new-session recovery/copy. */
+  initialPrompt?: string;
   /** Whether this session is opted in to heartbeat turns */
   heartbeatTurnsEnabled?: boolean;
   /** Optional per-session idle threshold override in minutes */
@@ -202,6 +204,23 @@ export class SessionMetadataService {
   }
 
   /**
+   * Set the initial prompt accepted for a new session.
+   * Used as a durable recovery source if provider startup fails before JSONL
+   * persistence writes the user message.
+   */
+  async setInitialPrompt(
+    sessionId: string,
+    initialPrompt: string | undefined,
+  ): Promise<void> {
+    const prompt = initialPrompt?.trim() || undefined;
+    this.updateSessionMetadata(sessionId, (metadata) => ({
+      ...metadata,
+      initialPrompt: prompt,
+    }));
+    await this.save();
+  }
+
+  /**
    * Update metadata for a session (title, archived, starred).
    */
   async updateMetadata(
@@ -277,6 +296,7 @@ export class SessionMetadataService {
     if (updated.model) cleaned.model = updated.model;
     if (updated.provider) cleaned.provider = updated.provider;
     if (updated.executor) cleaned.executor = updated.executor;
+    if (updated.initialPrompt) cleaned.initialPrompt = updated.initialPrompt;
     if (updated.heartbeatTurnsEnabled) {
       cleaned.heartbeatTurnsEnabled = updated.heartbeatTurnsEnabled;
     }

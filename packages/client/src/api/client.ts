@@ -74,6 +74,7 @@ export interface InboxResponse {
 export interface GlobalSessionItem {
   id: string;
   title: string | null;
+  fullTitle: string | null;
   createdAt: string;
   updatedAt: string;
   messageCount: number;
@@ -89,6 +90,8 @@ export interface GlobalSessionItem {
   isStarred?: boolean;
   /** Parent session when this item is a YA-owned /btw aside. */
   parentSessionId?: string;
+  /** Initial prompt text accepted by YA for new-session recovery/copy. */
+  initialPrompt?: string;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
 }

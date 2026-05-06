@@ -91,6 +91,8 @@ export interface SessionSummary {
   isStarred?: boolean;
   /** Parent session when this session is a YA-owned fork/aside. */
   parentSessionId?: string;
+  /** Initial prompt text accepted by YA for new-session recovery/copy. */
+  initialPrompt?: string;
   /** Whether this session is opted in to heartbeat turns */
   heartbeatTurnsEnabled?: boolean;
   /** Optional per-session idle threshold override in minutes */

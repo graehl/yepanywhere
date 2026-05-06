@@ -301,6 +301,7 @@
   "sessionMenuUnstar": "Unstar",
   "sessionMenuStar": "Star",
   "sessionMenuRename": "Rename",
+  "sessionMenuCopyPrompt": "Copy prompt",
   "sessionMenuHeartbeat": "Heartbeat...",
   "sessionMenuRestoreWarnings": "Restore Warnings",
   "sessionMenuCloning": "Cloning...",

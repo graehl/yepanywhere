@@ -2053,6 +2053,7 @@ export class Supervisor {
       messageCount: optimistic.messageCount,
       ownership,
       provider: process.provider,
+      initialPrompt: optimistic.fullTitle ?? undefined,
     };
 
     const event: SessionCreatedEvent = {

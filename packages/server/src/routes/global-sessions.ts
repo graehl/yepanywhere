@@ -58,6 +58,7 @@ export interface GlobalSessionItem {
   // From cache (cheap)
   id: string;
   title: string | null;
+  fullTitle: string | null;
   createdAt: string;
   updatedAt: string;
   messageCount: number;
@@ -75,6 +76,8 @@ export interface GlobalSessionItem {
   isStarred?: boolean;
   /** Parent session when this item is a YA-owned /btw aside. */
   parentSessionId?: string;
+  /** Initial prompt text accepted by YA for new-session recovery/copy. */
+  initialPrompt?: string;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
 }
@@ -307,6 +310,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         const customTitle = metadata?.customTitle ?? session.customTitle;
         const parentSessionId =
           metadata?.parentSessionId ?? session.parentSessionId;
+        const initialPrompt = metadata?.initialPrompt ?? session.fullTitle;
         const executor = metadata?.executor;
 
         // Get unread status
@@ -362,8 +366,16 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           const projectNameMatch = project.name
             .toLowerCase()
             .includes(searchQuery);
+          const initialPromptMatch = initialPrompt
+            ?.toLowerCase()
+            .includes(searchQuery);
 
-          if (!titleMatch && !customTitleMatch && !projectNameMatch) {
+          if (
+            !titleMatch &&
+            !customTitleMatch &&
+            !projectNameMatch &&
+            !initialPromptMatch
+          ) {
             continue;
           }
         }
@@ -371,6 +383,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         allSessions.push({
           id: session.id,
           title: session.title,
+          fullTitle: session.fullTitle,
           createdAt: session.createdAt,
           updatedAt: session.updatedAt,
           messageCount: session.messageCount,
@@ -385,6 +398,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           isArchived,
           isStarred,
           parentSessionId,
+          initialPrompt: initialPrompt ?? undefined,
           executor,
         });
       }

@@ -278,6 +278,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
         const globalSession: GlobalSessionItem = {
           id: event.session.id,
           title: event.session.title,
+          fullTitle: event.session.fullTitle,
           createdAt: event.session.createdAt,
           updatedAt: event.session.updatedAt,
           messageCount: event.session.messageCount,
@@ -292,6 +293,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
           isArchived: event.session.isArchived,
           isStarred: event.session.isStarred,
           parentSessionId: event.session.parentSessionId,
+          initialPrompt: event.session.initialPrompt,
         };
 
         return [globalSession, ...prev];

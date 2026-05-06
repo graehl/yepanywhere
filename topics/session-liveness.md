@@ -58,6 +58,10 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
   They describe what the user did and intended, not whether the provider is
   alive, and provider adapters should forward them only through a real
   structured channel or through an explicit prompt-visible product decision.
+- New-session initial prompts accepted by YA should remain recoverable from
+  session history even if provider startup fails before transcript persistence.
+  Lists and details may use metadata or the first-message full title as the
+  copy source, but should not require the provider JSONL to exist first.
 
 ## Invariants
 
@@ -95,6 +99,8 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
   cadence alone is not a stronger liveness proof.
 - User-message metadata should survive REST acceptance, optimistic/replayed
   user echoes, and deferred queue summaries without becoming hidden prompt text.
+- Initial-prompt recovery metadata is a copy/retry affordance. It must not
+  replace transcript messages or be treated as provider progress evidence.
 
 ## Representative Change Types
 
@@ -128,5 +134,7 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
   the user's text.
 - Deferred queue summaries preserve accepted delivery intent and composition
   timestamps for reconnecting clients.
+- A failed or not-yet-persisted new session with an accepted initial prompt
+  exposes a copy action for that prompt in session history.
 - Claude control probes time out and surface errors rather than relying on
   process-alive as proof of progress.

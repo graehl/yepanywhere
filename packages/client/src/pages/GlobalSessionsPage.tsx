@@ -840,7 +840,10 @@ export function GlobalSessionsPage() {
                         sessionId={session.id}
                         projectId={session.projectId}
                         title={getSessionDisplayTitle(session)}
-                        fullTitle={getSessionDisplayTitle(session)}
+                        fullTitle={
+                          session.fullTitle ?? getSessionDisplayTitle(session)
+                        }
+                        initialPrompt={session.initialPrompt}
                         updatedAt={session.updatedAt}
                         hasUnread={session.hasUnread}
                         activity={session.activity}

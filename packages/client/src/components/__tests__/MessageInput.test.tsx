@@ -371,7 +371,7 @@ describe("MessageInput", () => {
     expect(screen.getByText("Last activity 6m")).toBeTruthy();
   });
 
-  it("shows verified session liveness separately from activity age", () => {
+  it("shows verified session liveness as a compact age-only chip", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-26T12:06:00.000Z"));
 
@@ -379,20 +379,20 @@ describe("MessageInput", () => {
       lastActivityAt: "2026-04-26T12:00:00.000Z",
       sessionLiveness: {
         checkedAt: "2026-04-26T12:06:00.000Z",
-        derivedStatus: "long-silent-unverified",
+        derivedStatus: "verified-progressing",
         activeWorkKind: "agent-turn",
         state: "in-turn",
-        evidence: ["provider-message-stale"],
-        lastProviderMessageAt: "2026-04-26T12:00:00.000Z",
+        evidence: ["provider-message"],
+        lastProviderMessageAt: "2026-04-26T12:01:00.000Z",
         lastRawProviderEventAt: null,
         lastRawProviderEventSource: null,
         lastStateChangeAt: "2026-04-26T11:59:00.000Z",
-        lastVerifiedProgressAt: "2026-04-26T12:00:00.000Z",
+        lastVerifiedProgressAt: "2026-04-26T12:01:00.000Z",
         lastVerifiedIdleAt: null,
         lastLivenessProbeAt: null,
         lastLivenessProbeStatus: null,
         lastLivenessProbeSource: null,
-        silenceMs: 360_000,
+        silenceMs: 300_000,
         longSilenceThresholdMs: 300_000,
         processAlive: true,
         queueDepth: 0,
@@ -400,7 +400,12 @@ describe("MessageInput", () => {
       },
     });
 
-    expect(screen.getByText("Long silent 6m")).toBeTruthy();
+    expect(
+      screen.getByLabelText(
+        "Session verified liveness: Verified progress 5m ago",
+      ).textContent,
+    ).toBe("5m ago");
+    expect(screen.queryByText("Verified progress 5m")).toBeNull();
     expect(screen.getByText("Last activity 6m")).toBeTruthy();
   });
 

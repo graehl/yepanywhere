@@ -5,7 +5,12 @@ import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
 import { useModelSettings } from "../hooks/useModelSettings";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useI18n } from "../i18n";
-import { isStaleTimestamp, parseTimestampMs } from "../lib/messageAge";
+import {
+  formatAbsoluteTimestamp,
+  formatCompactRelativeAge,
+  isStaleTimestamp,
+  parseTimestampMs,
+} from "../lib/messageAge";
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 import {
   SESSION_ISEARCH_GUIDE_EVENT,
@@ -174,6 +179,21 @@ function describeSessionLiveness(
   }
 }
 
+function formatLivenessAge(timestampMs: number, nowMs: number): string {
+  const label = formatCompactRelativeAge(timestampMs, nowMs);
+  return label === "now" ? label : `${label} ago`;
+}
+
+function describeLivenessSummary(
+  display: LivenessDisplay,
+  nowMs: number,
+): string {
+  if (display.timestampMs === null) {
+    return display.prefix;
+  }
+  return `${display.prefix} ${formatLivenessAge(display.timestampMs, nowMs)}`;
+}
+
 export function MessageInputToolbar({
   mode = "default",
   onModeChange,
@@ -227,6 +247,9 @@ export function MessageInputToolbar({
   const showLastActivityAge = isStaleTimestamp(lastActivityMs, nowMs);
   const livenessDisplay = sessionLiveness
     ? describeSessionLiveness(sessionLiveness)
+    : null;
+  const livenessSummary = livenessDisplay
+    ? describeLivenessSummary(livenessDisplay, nowMs)
     : null;
   const heartbeatLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -521,16 +544,17 @@ export function MessageInputToolbar({
           {livenessDisplay && (
             <div
               className={`composer-status-chip composer-liveness-status is-${livenessDisplay.tone}`}
-              aria-label="Session verified liveness"
+              aria-label={`Session verified liveness: ${livenessSummary}`}
               title={livenessDisplay.title}
             >
               {livenessDisplay.timestampMs !== null ? (
-                <MessageAge
-                  timestampMs={livenessDisplay.timestampMs}
-                  nowMs={nowMs}
+                <time
                   className="composer-liveness-time"
-                  prefix={livenessDisplay.prefix}
-                />
+                  dateTime={new Date(livenessDisplay.timestampMs).toISOString()}
+                  title={`${formatAbsoluteTimestamp(livenessDisplay.timestampMs)}\n${livenessDisplay.title}`}
+                >
+                  {formatLivenessAge(livenessDisplay.timestampMs, nowMs)}
+                </time>
               ) : (
                 <span className="composer-liveness-time">
                   {livenessDisplay.prefix}

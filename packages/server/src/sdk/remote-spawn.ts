@@ -364,15 +364,19 @@ export function createRemoteSpawn(
     let remoteCommand = command;
     let remoteArgs = args;
     const firstArg = args[0];
+    const isSdkNativeClaude =
+      command.includes("claude-agent-sdk") &&
+      /[/\\]claude(?:\.exe)?$/.test(command);
     if (
-      command === "node" &&
-      firstArg &&
-      firstArg.includes("claude-agent-sdk") &&
-      firstArg.endsWith("cli.js")
+      (command === "node" &&
+        firstArg &&
+        firstArg.includes("claude-agent-sdk") &&
+        firstArg.endsWith("cli.js")) ||
+      isSdkNativeClaude
     ) {
-      // Replace "node /path/to/cli.js --flags" with "claude --flags"
+      // Replace local SDK executables with the remote's installed CLI.
       remoteCommand = "claude";
-      remoteArgs = args.slice(1); // Skip the cli.js path
+      remoteArgs = isSdkNativeClaude ? args : args.slice(1);
       log.debug(
         {
           event: "remote_spawn_rewrite",

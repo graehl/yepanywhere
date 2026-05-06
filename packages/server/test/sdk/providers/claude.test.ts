@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { probeClaudeControlLiveness } from "../../../src/sdk/providers/claude.js";
+import {
+  probeClaudeControlLiveness,
+  resolveClaudeSdkNativeExecutable,
+} from "../../../src/sdk/providers/claude.js";
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
 
 function control(
@@ -83,5 +86,25 @@ describe("Claude provider liveness probe", () => {
       detail: "Claude SDK control liveness probe timed out after 5ms",
     });
     vi.useRealTimers();
+  });
+});
+
+describe("Claude SDK executable resolution", () => {
+  it("prefers the glibc native package on glibc Linux hosts", () => {
+    const executable = resolveClaudeSdkNativeExecutable();
+
+    expect(executable).toBeTruthy();
+    if (
+      process.platform === "linux" &&
+      process.arch === "x64" &&
+      (
+        process.report.getReport() as {
+          header?: { glibcVersionRuntime?: string };
+        }
+      ).header?.glibcVersionRuntime
+    ) {
+      expect(executable).toContain("claude-agent-sdk-linux-x64");
+      expect(executable).not.toContain("claude-agent-sdk-linux-x64-musl");
+    }
   });
 });

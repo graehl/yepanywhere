@@ -1,7 +1,8 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import {
   type SDKMessage as AgentSDKMessage,
@@ -51,6 +52,94 @@ const USE_SPAWN_WRAPPER = true;
 const CLAUDE_LIVENESS_PROBE_TIMEOUT_MS = 5000;
 const CLAUDE_LIVENESS_PROBE_SOURCE = "claude:control/mcp_status";
 const execFileAsync = promisify(execFile);
+const requireFromHere = createRequire(import.meta.url);
+const requireFromClaudeSdk = createRequire(
+  requireFromHere.resolve("@anthropic-ai/claude-agent-sdk"),
+);
+let cachedLocalClaudeCodeExecutable: string | null | undefined;
+
+function isExecutableFile(filePath: string | undefined): filePath is string {
+  if (!filePath) return false;
+  try {
+    accessSync(filePath, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolvePathExecutable(command: string): string | undefined {
+  if (!command.trim()) return undefined;
+
+  if (command.includes("/") || command.includes("\\")) {
+    return isExecutableFile(command) ? command : undefined;
+  }
+
+  const pathEnv = process.env.PATH ?? "";
+  for (const dir of pathEnv.split(delimiter)) {
+    const candidate = join(dir, command);
+    if (isExecutableFile(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function hasGlibcRuntime(): boolean {
+  if (typeof process.report?.getReport !== "function") {
+    return false;
+  }
+  const report = process.report.getReport() as {
+    header?: { glibcVersionRuntime?: string };
+  };
+  return Boolean(report.header?.glibcVersionRuntime);
+}
+
+function getClaudeSdkNativePackageNames(): string[] {
+  const binaryArch = process.arch;
+  if (process.platform === "linux") {
+    const glibcPackage = `@anthropic-ai/claude-agent-sdk-linux-${binaryArch}`;
+    const muslPackage = `${glibcPackage}-musl`;
+    return hasGlibcRuntime()
+      ? [glibcPackage, muslPackage]
+      : [muslPackage, glibcPackage];
+  }
+
+  return [`@anthropic-ai/claude-agent-sdk-${process.platform}-${binaryArch}`];
+}
+
+export function resolveClaudeSdkNativeExecutable(): string | undefined {
+  const binaryName = process.platform === "win32" ? "claude.exe" : "claude";
+  for (const packageName of getClaudeSdkNativePackageNames()) {
+    try {
+      const executable = requireFromClaudeSdk.resolve(
+        `${packageName}/${binaryName}`,
+      );
+      if (isExecutableFile(executable)) {
+        return executable;
+      }
+    } catch {
+      // Optional package not installed for this platform.
+    }
+  }
+  return undefined;
+}
+
+function resolveLocalClaudeCodeExecutable(): string | undefined {
+  if (cachedLocalClaudeCodeExecutable !== undefined) {
+    return cachedLocalClaudeCodeExecutable ?? undefined;
+  }
+
+  const envExecutable =
+    process.env.CLAUDE_CODE_EXECUTABLE ?? process.env.CLAUDE_CODE_PATH;
+  const executable =
+    resolvePathExecutable(envExecutable ?? "") ??
+    resolveClaudeSdkNativeExecutable() ??
+    resolvePathExecutable("claude");
+
+  cachedLocalClaudeCodeExecutable = executable ?? null;
+  return executable;
+}
 
 /** Static fallback list of Claude models (used if probe fails) */
 const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
@@ -446,6 +535,7 @@ export class ClaudeProvider implements AgentProvider {
           abortController,
           permissionMode: "default",
           persistSession: false,
+          pathToClaudeCodeExecutable: resolveLocalClaudeCodeExecutable(),
           env: this.getEnv(),
         },
       });
@@ -623,6 +713,9 @@ export class ClaudeProvider implements AgentProvider {
 
     // Create the SDK query with our message generator
     let sdkQuery: Query;
+    const pathToClaudeCodeExecutable = options.executor
+      ? undefined
+      : resolveLocalClaudeCodeExecutable();
     try {
       sdkQuery = query({
         prompt: queue,
@@ -646,6 +739,7 @@ export class ClaudeProvider implements AgentProvider {
           model: options.model,
           thinking: options.thinking,
           effort: options.effort,
+          pathToClaudeCodeExecutable,
           // Filter env to exclude npm_*, yep-anywhere specific, and other irrelevant vars
           env: this.getEnv(),
           // Remote execution via SSH

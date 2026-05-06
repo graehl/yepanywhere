@@ -89,6 +89,10 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
 - OpenCode text parts must be interpreted through the corresponding
   `message.updated` role metadata when it is available. A user text part is not
   assistant progress and should not be rendered as an assistant message.
+- OpenCode 1.14.39 may also emit `message.part.delta` SSE events. YA should
+  continue treating `message.part.updated` as the canonical text-part event
+  unless the adapter deliberately grows a separate delta-event path; raw delta
+  cadence alone is not a stronger liveness proof.
 - User-message metadata should survive REST acceptance, optimistic/replayed
   user echoes, and deferred queue summaries without becoming hidden prompt text.
 

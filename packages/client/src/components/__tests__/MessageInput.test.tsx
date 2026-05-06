@@ -94,6 +94,32 @@ function installMemoryLocalStorage() {
   };
 }
 
+function installDesktopMatchMedia() {
+  const previous = Object.getOwnPropertyDescriptor(window, "matchMedia");
+
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+
+  return () => {
+    if (previous) {
+      Object.defineProperty(window, "matchMedia", previous);
+    } else {
+      Reflect.deleteProperty(window, "matchMedia");
+    }
+  };
+}
+
 function renderMessageInput(
   onRecallLastSubmission = vi.fn(() => true),
   extraProps: Partial<ComponentProps<typeof MessageInput>> = {},
@@ -481,11 +507,48 @@ describe("MessageInput", () => {
         "aria-pressed",
       ),
     ).toBe("false");
+    expect(screen.getByLabelText("toolbarQueueLabel").getAttribute("title")).toBe(
+      "Queue ASAP",
+    );
 
     fireEvent.change(textarea, { target: { value: "run next" } });
     fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
 
     expectSubmission(onQueue, "run next", "deferred");
+  });
+
+  it("routes a queue-only primary button through onSend", () => {
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      onSend,
+      primaryActionKind: "queue",
+    });
+
+    const primaryButton = screen.getByLabelText("toolbarQueueLabel");
+    expect(primaryButton.getAttribute("title")).toBe("Queue ASAP");
+
+    fireEvent.change(textarea, { target: { value: "claude queue click" } });
+    fireEvent.click(primaryButton);
+
+    expectSubmission(onSend, "claude queue click", "deferred");
+  });
+
+  it("routes Enter through a queue-only primary action", () => {
+    const restoreMatchMedia = installDesktopMatchMedia();
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      onSend,
+      primaryActionKind: "queue",
+    });
+
+    try {
+      fireEvent.change(textarea, { target: { value: "claude queue enter" } });
+      fireEvent.keyDown(textarea, { key: "Enter" });
+
+      expectSubmission(onSend, "claude queue enter", "deferred");
+    } finally {
+      restoreMatchMedia();
+    }
   });
 
   it("persists patient queue mode per draft", () => {

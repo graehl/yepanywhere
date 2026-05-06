@@ -270,13 +270,13 @@ export function MessageInputToolbar({
       : effectivePrimaryActionKind === "queue"
         ? patientQueueMode
           ? 'Queue when done; queued text starts with "when done,"'
-          : "Queue ASAP; queued text is unchanged"
+          : "Queue ASAP"
         : t("toolbarSendTooltip");
   const queueModeLabel = patientQueueMode ? "Queue when done" : "Queue ASAP";
   const queueTooltip = showPatientQueueMode
     ? patientQueueMode
       ? 'Queue when done; queued text starts with "when done,"'
-      : "Queue ASAP; queued text is unchanged"
+      : "Queue ASAP"
     : t("toolbarQueueTooltip");
   const btwTitle = btwActive
     ? "Composer is focused on a /btw aside; click to return to main (Ctrl+B)"

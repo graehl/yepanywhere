@@ -399,6 +399,9 @@ export function MessageInput({
   ]);
 
   const handleQueue = useCallback(() => {
+    const queueHandler =
+      onQueue ?? (effectivePrimaryActionKind === "queue" ? onSend : undefined);
+
     // Stop voice recording and get any pending interim text
     const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
 
@@ -408,7 +411,7 @@ export function MessageInput({
     }
 
     const hasContent = finalText.trim() || attachments.length > 0;
-    if (hasContent && !disabled && onQueue) {
+    if (hasContent && !disabled && queueHandler) {
       const message = applyPatientQueuePrefix(
         finalText.trim(),
         patientQueueEnabled,
@@ -419,7 +422,7 @@ export function MessageInput({
       controls.clearInput();
       resetCompositionMetadata();
       setInterimTranscript("");
-      onQueue(message, metadata);
+      queueHandler(message, metadata);
       textareaRef.current?.focus();
     }
   }, [
@@ -427,6 +430,8 @@ export function MessageInput({
     disabled,
     controls,
     onQueue,
+    onSend,
+    effectivePrimaryActionKind,
     attachments.length,
     patientQueueEnabled,
     buildSubmissionMetadata,

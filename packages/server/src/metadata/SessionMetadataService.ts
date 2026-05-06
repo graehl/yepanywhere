@@ -16,6 +16,8 @@ export interface SessionMetadata {
   isArchived?: boolean;
   /** Whether the session is starred/favorited */
   isStarred?: boolean;
+  /** Parent session when this session is a YA-owned fork/aside. */
+  parentSessionId?: string;
   /** Model used for this session (resolved, not "default") */
   model?: string;
   /** Provider used for this session (for backward compatibility with sessions that don't have provider in JSONL) */
@@ -208,6 +210,7 @@ export class SessionMetadataService {
       title?: string;
       archived?: boolean;
       starred?: boolean;
+      parentSessionId?: string | null;
       heartbeatTurnsEnabled?: boolean;
       heartbeatTurnsAfterMinutes?: number | null;
       heartbeatTurnText?: string | null;
@@ -230,6 +233,11 @@ export class SessionMetadataService {
       // Handle starred
       if (updates.starred !== undefined) {
         result.isStarred = updates.starred || undefined;
+      }
+
+      if (updates.parentSessionId !== undefined) {
+        result.parentSessionId =
+          updates.parentSessionId?.trim() || undefined;
       }
 
       if (updates.heartbeatTurnsEnabled !== undefined) {
@@ -265,6 +273,7 @@ export class SessionMetadataService {
     if (updated.customTitle) cleaned.customTitle = updated.customTitle;
     if (updated.isArchived) cleaned.isArchived = updated.isArchived;
     if (updated.isStarred) cleaned.isStarred = updated.isStarred;
+    if (updated.parentSessionId) cleaned.parentSessionId = updated.parentSessionId;
     if (updated.model) cleaned.model = updated.model;
     if (updated.provider) cleaned.provider = updated.provider;
     if (updated.executor) cleaned.executor = updated.executor;

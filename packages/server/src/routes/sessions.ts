@@ -1408,6 +1408,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         customTitle: metadata?.customTitle,
         isArchived: metadata?.isArchived,
         isStarred: metadata?.isStarred,
+        parentSessionId:
+          metadata?.parentSessionId ?? sessionSummary?.parentSessionId,
         heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
         heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
         heartbeatTurnText: metadata?.heartbeatTurnText,
@@ -1611,6 +1613,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             customTitle: metadata?.customTitle,
             isArchived: metadata?.isArchived,
             isStarred: metadata?.isStarred,
+            parentSessionId: metadata?.parentSessionId,
             heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
             heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
             heartbeatTurnText: metadata?.heartbeatTurnText,
@@ -1701,6 +1704,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         customTitle: metadata?.customTitle,
         isArchived: metadata?.isArchived,
         isStarred: metadata?.isStarred,
+        parentSessionId: metadata?.parentSessionId ?? session.parentSessionId,
         heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
         heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
         heartbeatTurnText: metadata?.heartbeatTurnText,
@@ -2838,6 +2842,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       title?: string;
       archived?: boolean;
       starred?: boolean;
+      parentSessionId?: string | null;
       heartbeatTurnsEnabled?: boolean;
       heartbeatTurnsAfterMinutes?: number | null;
       heartbeatTurnText?: string | null;
@@ -2853,6 +2858,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.title === undefined &&
       body.archived === undefined &&
       body.starred === undefined &&
+      body.parentSessionId === undefined &&
       body.heartbeatTurnsEnabled === undefined &&
       body.heartbeatTurnsAfterMinutes === undefined &&
       body.heartbeatTurnText === undefined
@@ -2909,10 +2915,26 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "heartbeatTurnText must be a string or null" }, 400);
     }
 
+    if (
+      body.parentSessionId !== undefined &&
+      body.parentSessionId !== null &&
+      typeof body.parentSessionId !== "string"
+    ) {
+      return c.json({ error: "parentSessionId must be a string or null" }, 400);
+    }
+
+    const parentSessionId =
+      body.parentSessionId === undefined
+        ? undefined
+        : typeof body.parentSessionId === "string"
+          ? body.parentSessionId.trim() || null
+          : null;
+
     await deps.sessionMetadataService.updateMetadata(sessionId, {
       title: body.title,
       archived: body.archived,
       starred: body.starred,
+      parentSessionId,
       heartbeatTurnsEnabled: body.heartbeatTurnsEnabled,
       heartbeatTurnsAfterMinutes,
       heartbeatTurnText,
@@ -2926,6 +2948,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         title: body.title,
         archived: body.archived,
         starred: body.starred,
+        parentSessionId,
         heartbeatTurnsEnabled: body.heartbeatTurnsEnabled,
         heartbeatTurnsAfterMinutes,
         heartbeatTurnText,
@@ -2960,12 +2983,28 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       );
     }
 
-    let body: { title?: string; provider?: ProviderName } = {};
+    let body: {
+      title?: string;
+      provider?: ProviderName;
+      parentSessionId?: string | null;
+    } = {};
     try {
       body = await c.req.json();
     } catch {
       // Body is optional
     }
+
+    if (
+      body.parentSessionId !== undefined &&
+      body.parentSessionId !== null &&
+      typeof body.parentSessionId !== "string"
+    ) {
+      return c.json({ error: "parentSessionId must be a string or null" }, 400);
+    }
+    const parentSessionId =
+      typeof body.parentSessionId === "string"
+        ? body.parentSessionId.trim() || undefined
+        : undefined;
 
     try {
       // Get session directory from project
@@ -3027,10 +3066,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         }
       }
 
-      // Set the clone title
-      if (cloneTitle && deps.sessionMetadataService) {
+      // Set clone metadata. /btw asides pass parentSessionId so the child
+      // can jump back into the parent viewport.
+      if ((cloneTitle || parentSessionId) && deps.sessionMetadataService) {
         await deps.sessionMetadataService.updateMetadata(result.newSessionId, {
           title: cloneTitle,
+          parentSessionId,
         });
       }
 

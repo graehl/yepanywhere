@@ -28,10 +28,8 @@ import type {
   Message,
   PermissionMode,
   Project,
-  Session,
   SessionMetadata,
   SessionStatus,
-  SessionSummary,
 } from "../types";
 
 /** Pagination metadata for compact-boundary-based session loading */
@@ -87,6 +85,8 @@ export interface GlobalSessionItem {
   customTitle?: string;
   isArchived?: boolean;
   isStarred?: boolean;
+  /** Parent session when this item is a YA-owned /btw aside. */
+  parentSessionId?: string;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
 }
@@ -791,6 +791,7 @@ export const api = {
       title?: string;
       archived?: boolean;
       starred?: boolean;
+      parentSessionId?: string | null;
       heartbeatTurnsEnabled?: boolean;
       heartbeatTurnsAfterMinutes?: number | null;
       heartbeatTurnText?: string | null;
@@ -810,6 +811,7 @@ export const api = {
     sessionId: string,
     title?: string,
     provider?: string,
+    parentSessionId?: string,
   ) =>
     fetchJSON<{
       sessionId: string;
@@ -818,7 +820,7 @@ export const api = {
       provider: string;
     }>(`/projects/${projectId}/sessions/${sessionId}/clone`, {
       method: "POST",
-      body: JSON.stringify({ title, provider }),
+      body: JSON.stringify({ title, provider, parentSessionId }),
     }),
 
   // Push notification API

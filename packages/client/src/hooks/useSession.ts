@@ -590,7 +590,7 @@ export function useSession(
   const [localMode, setLocalMode] = useState<PermissionMode>(
     loadStickyPermissionMode,
   );
-  const [serverMode, setServerMode] = useState<PermissionMode>("default");
+  const [, setServerMode] = useState<PermissionMode>("default");
   const [modeVersion, setModeVersion] = useState<number>(0);
   const localModeRef = useRef<PermissionMode>(localMode);
   // Track whether we've already processed a stream "connected" event in this mount.
@@ -702,7 +702,6 @@ export function useSession(
     setToolUseToAgent,
     setMessages,
     fetchNewMessages,
-    fetchSessionMetadata,
     pagination,
     loadingOlder,
     loadOlderMessages,
@@ -1064,6 +1063,9 @@ export function useSession(
           ...(event.title !== undefined && { customTitle: event.title }),
           ...(event.archived !== undefined && { isArchived: event.archived }),
           ...(event.starred !== undefined && { isStarred: event.starred }),
+          ...(event.parentSessionId !== undefined && {
+            parentSessionId: event.parentSessionId ?? undefined,
+          }),
           ...(event.heartbeatTurnsEnabled !== undefined && {
             heartbeatTurnsEnabled: event.heartbeatTurnsEnabled,
           }),

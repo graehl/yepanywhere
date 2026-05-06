@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
 import type { AgentActivity } from "../hooks/useFileActivity";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import {
+  buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
   isBtwAsideSessionTitle,
 } from "../lib/btwAsideSessions";
@@ -89,6 +90,7 @@ export function RecentSessionsDropdown({
   basePath = "",
 }: RecentSessionsDropdownProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   // Fetch recent sessions across all projects
   const { sessions } = useGlobalSessions({
@@ -162,7 +164,18 @@ export function RecentSessionsDropdown({
         <div className="recent-sessions-list">
           {recentSessions.map((session) => {
             const title = getDisplayTitle(session);
-            const isBtwAside = isBtwAsideSessionTitle(title);
+            const isBtwAside =
+              !!session.parentSessionId || isBtwAsideSessionTitle(title);
+            const parentSessionId = session.parentSessionId;
+            const parentHref =
+              parentSessionId && isBtwAside
+                ? buildBtwAsideParentHref(
+                    basePath,
+                    session.projectId,
+                    parentSessionId,
+                    session.id,
+                  )
+                : null;
             return (
               <Link
                 key={session.id}
@@ -194,7 +207,39 @@ export function RecentSessionsDropdown({
                     {isBtwAside && (
                       <span
                         className="recent-sessions-badge btw"
-                        title="/btw aside session"
+                        title={
+                          parentHref
+                            ? "Open parent session with this /btw aside visible"
+                            : "/btw aside session"
+                        }
+                        role={parentHref ? "link" : undefined}
+                        tabIndex={parentHref ? 0 : undefined}
+                        onClick={(e) => {
+                          if (!parentHref || !parentSessionId) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                            window.open(parentHref, "_blank", "noopener");
+                            return;
+                          }
+                          navigate(parentHref);
+                          onNavigate(parentSessionId, session.projectId);
+                          onClose();
+                        }}
+                        onKeyDown={(e) => {
+                          if (
+                            !parentHref ||
+                            !parentSessionId ||
+                            (e.key !== "Enter" && e.key !== " ")
+                          ) {
+                            return;
+                          }
+                          e.preventDefault();
+                          e.stopPropagation();
+                          navigate(parentHref);
+                          onNavigate(parentSessionId, session.projectId);
+                          onClose();
+                        }}
                       >
                         /btw
                       </span>

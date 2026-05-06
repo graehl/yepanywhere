@@ -76,6 +76,7 @@ export interface SessionMetadataChangedEvent {
   title?: string;
   archived?: boolean;
   starred?: boolean;
+  parentSessionId?: string | null;
   heartbeatTurnsEnabled?: boolean;
   heartbeatTurnsAfterMinutes?: number | null;
   heartbeatTurnText?: string | null;

@@ -70,6 +70,10 @@ import {
 } from "../lib/composerRecall";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
+import {
+  buildBtwAsideParentHref,
+  getBtwAsideSessionDisplayTitle,
+} from "../lib/btwAsideSessions";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import {
@@ -306,6 +310,21 @@ function getBtwAssistantResponses(
     )
     .map((text) => text.trim())
     .filter(Boolean);
+}
+
+function getBtwRequestFromMessages(messages: Message[]): string | null {
+  const promptIndex = findLatestBtwPromptIndex(messages);
+  if (promptIndex < 0) {
+    return null;
+  }
+  const text = getMessagePlainText(messages[promptIndex] ?? {});
+  const requestMarker = "[Side request]";
+  const requestIndex = text.indexOf(requestMarker);
+  if (requestIndex < 0) {
+    return null;
+  }
+  const request = text.slice(requestIndex + requestMarker.length).trim();
+  return request || null;
 }
 
 function buildBtwAsidePrompt(prompt: string): string {
@@ -564,6 +583,8 @@ function SessionPageContent({
   const [focusedBtwAsideId, setFocusedBtwAsideId] = useState<string | null>(
     null,
   );
+  const btwAsidesRef = useRef<BtwAside[]>([]);
+  const hydratedBtwSessionIdsRef = useRef<Set<string>>(new Set());
   const [correctionDraft, setCorrectionDraft] = useState<{
     messageId: string;
     originalText: string;
@@ -851,7 +872,9 @@ function SessionPageContent({
     setCorrectionDraft(null);
     setQueuedEditDraft(null);
     setBtwAsides([]);
+    btwAsidesRef.current = [];
     setFocusedBtwAsideId(null);
+    hydratedBtwSessionIdsRef.current.clear();
     lastComposerSubmissionRef.current = null;
     lastSentComposerSubmissionRef.current = null;
   }, [sessionId]);
@@ -1683,6 +1706,23 @@ function SessionPageContent({
     focusedBtwAsideId ?
       btwAsides.find((aside) => aside.id === focusedBtwAsideId) ?? null
     : null;
+  const requestedBtwSessionId = useMemo(() => {
+    const value = new URLSearchParams(location.search).get("btw")?.trim();
+    return value || null;
+  }, [location.search]);
+  const childSessionParentHref =
+    session?.parentSessionId ?
+      buildBtwAsideParentHref(
+        basePath,
+        projectId,
+        session.parentSessionId,
+        sessionId,
+      )
+    : null;
+
+  useEffect(() => {
+    btwAsidesRef.current = btwAsides;
+  }, [btwAsides]);
 
   const updateBtwAside = useCallback(
     (id: string, updater: (aside: BtwAside) => BtwAside) => {
@@ -1790,6 +1830,7 @@ function SessionPageContent({
             actualSessionId,
             `/btw ${titlePreview}`,
             providerName,
+            actualSessionId,
           );
           asideSessionId = clone.sessionId;
           updateBtwAside(sourceAside.id, (aside) => ({
@@ -1888,6 +1929,80 @@ function SessionPageContent({
     },
     [runBtwAsideTurn, showToast, supportsBtwAsides],
   );
+
+  useEffect(() => {
+    if (!requestedBtwSessionId || requestedBtwSessionId === sessionId) {
+      return;
+    }
+
+    const existingAside = btwAsidesRef.current.find(
+      (aside) => aside.sessionId === requestedBtwSessionId,
+    );
+    if (existingAside) {
+      setFocusedBtwAsideId(existingAside.id);
+      return;
+    }
+
+    if (hydratedBtwSessionIdsRef.current.has(requestedBtwSessionId)) {
+      return;
+    }
+    hydratedBtwSessionIdsRef.current.add(requestedBtwSessionId);
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await api.getSession(projectId, requestedBtwSessionId);
+        if (cancelled) {
+          return;
+        }
+
+        const request =
+          getBtwRequestFromMessages(result.messages) ??
+          getBtwAsideSessionDisplayTitle(
+            result.session.customTitle ?? result.session.title ?? "Aside",
+          );
+        const responses = getBtwAssistantResponses(result.messages, 0);
+        const preview =
+          responses.length > 0
+            ? truncateBtwPreview(responses[responses.length - 1] ?? "")
+            : getLatestAssistantText(result.messages) ?? undefined;
+        const now = new Date().toISOString();
+        const asideId = generateUUID();
+        const hydratedAside: BtwAside = {
+          id: asideId,
+          sessionId: requestedBtwSessionId,
+          baseMessageCount: 0,
+          request,
+          followUps: [],
+          status: result.ownership.owner === "none" ? "complete" : "running",
+          preview,
+          responses,
+          processId:
+            result.ownership.owner === "self"
+              ? result.ownership.processId
+              : undefined,
+          createdAt: result.session.createdAt ?? now,
+          updatedAt: result.session.updatedAt ?? now,
+          expanded: true,
+        };
+
+        setBtwAsides((current) =>
+          current.some((aside) => aside.sessionId === requestedBtwSessionId)
+            ? current
+            : [...current, hydratedAside],
+        );
+        setFocusedBtwAsideId(asideId);
+      } catch (err) {
+        hydratedBtwSessionIdsRef.current.delete(requestedBtwSessionId);
+        const message = err instanceof Error ? err.message : String(err);
+        showToast(`Failed to load /btw aside: ${message}`, "error");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, requestedBtwSessionId, sessionId, showToast]);
 
   const handleFocusedBtwSend = useCallback(
     (text: string) => {
@@ -3263,7 +3378,12 @@ function SessionPageContent({
                 slashCommands={status.owner === "self" ? allSlashCommands : []}
                 onCustomCommand={handleCustomCommand}
                 onBtwShortcut={
-                  supportsBtwAsides
+                  childSessionParentHref
+                    ? () => {
+                        navigate(childSessionParentHref);
+                        return false;
+                      }
+                    : supportsBtwAsides
                     ? focusedBtwAside
                       ? () => {
                           setFocusedBtwAsideId(null);
@@ -3280,8 +3400,8 @@ function SessionPageContent({
                         }
                     : undefined
                 }
-                btwActive={!!focusedBtwAside}
-                btwHasAsides={stickyBtwAsides.length > 0}
+                btwActive={!!focusedBtwAside || !!childSessionParentHref}
+                btwHasAsides={stickyBtwAsides.length > 0 || !!childSessionParentHref}
                 modelIndicatorTone={slashModelIndicatorTone}
                 modelIndicatorTitle={slashModelIndicatorTitle}
                 heartbeatEnabled={heartbeatTurnsEnabled}

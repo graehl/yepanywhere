@@ -12,7 +12,7 @@
  */
 
 import { readdir, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import {
   type CodexEventMsgEntry,
   type CodexFunctionCallOutputPayload,
@@ -23,7 +23,6 @@ import {
   type CodexSessionEntry,
   type CodexSessionMetaEntry,
   type CodexTurnContextEntry,
-  type UnifiedSession,
   type UrlProjectId,
   getModelContextWindow,
   parseCodexSessionEntry,
@@ -34,7 +33,6 @@ import type {
   ContentBlock,
   ContextUsage,
   Message,
-  Session,
   SessionSummary,
 } from "../supervisor/types.js";
 import { readFirstLine, readJsonlLines } from "../utils/jsonl.js";
@@ -158,6 +156,10 @@ export class CodexSessionReader implements ISessionReader {
       const provider = this.determineProvider(metaEntry, model);
       const turnContext = this.extractTurnContext(entries);
       const contextUsage = this.extractContextUsage(entries, model, provider);
+      const parentSessionId =
+        typeof metaEntry.payload.forked_from_id === "string"
+          ? metaEntry.payload.forked_from_id
+          : undefined;
 
       // Skip sessions with no actual conversation messages
       if (messageCount === 0) return null;
@@ -174,6 +176,7 @@ export class CodexSessionReader implements ISessionReader {
         contextUsage,
         provider,
         model,
+        parentSessionId,
         originator: metaEntry.payload.originator,
         cliVersion: metaEntry.payload.cli_version,
         source: metaEntry.payload.source,

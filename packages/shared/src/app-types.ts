@@ -354,6 +354,8 @@ export interface AppSessionSummary {
   customTitle?: string;
   isArchived?: boolean;
   isStarred?: boolean;
+  /** Parent session when this session is a YA-owned fork/aside. */
+  parentSessionId?: string;
   contextUsage?: ContextUsage;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;

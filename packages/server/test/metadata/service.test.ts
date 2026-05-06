@@ -317,6 +317,24 @@ describe("SessionMetadataService", () => {
         heartbeatTurnsEnabled: true,
       });
     });
+
+    it("stores and clears a parent session link", async () => {
+      await service.initialize();
+
+      await service.updateMetadata("session-1", {
+        parentSessionId: "  parent-session  ",
+      });
+
+      expect(service.getMetadata("session-1")).toEqual({
+        parentSessionId: "parent-session",
+      });
+
+      await service.updateMetadata("session-1", {
+        parentSessionId: null,
+      });
+
+      expect(service.getMetadata("session-1")).toBeUndefined();
+    });
   });
 
   describe("clearSession", () => {

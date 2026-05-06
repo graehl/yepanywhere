@@ -211,6 +211,8 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       const customTitle = metadata?.customTitle;
       const isArchived = metadata?.isArchived;
       const isStarred = metadata?.isStarred;
+      const parentSessionId =
+        metadata?.parentSessionId ?? session.parentSessionId;
 
       return {
         ...session,
@@ -222,6 +224,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         customTitle,
         isArchived,
         isStarred,
+        parentSessionId,
       };
     });
   }

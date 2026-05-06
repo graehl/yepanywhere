@@ -9,6 +9,7 @@ import type {
   SessionStatus,
 } from "../types";
 import {
+  buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
   isBtwAsideSessionTitle,
 } from "../lib/btwAsideSessions";
@@ -36,6 +37,8 @@ interface SessionListItemProps {
   provider?: ProviderName;
   /** SSH host for remote execution (undefined = local) */
   executor?: string;
+  /** Parent session when this item is a YA-owned /btw aside. */
+  parentSessionId?: string;
 
   // Feature toggles
   mode: "card" | "compact";
@@ -101,6 +104,7 @@ export function SessionListItem({
   status,
   provider,
   executor,
+  parentSessionId,
   // Feature toggles
   mode,
   showProjectName = false,
@@ -158,7 +162,9 @@ export function SessionListItem({
   const displayTitle =
     localTitle ?? title ?? (isNewSession ? "New session" : "Untitled session");
   const isBtwAsideSession =
-    isBtwAsideSessionTitle(displayTitle) || isBtwAsideSessionTitle(fullTitle);
+    !!parentSessionId ||
+    isBtwAsideSessionTitle(displayTitle) ||
+    isBtwAsideSessionTitle(fullTitle);
   const visibleTitle =
     isBtwAsideSession
       ? getBtwAsideSessionDisplayTitle(displayTitle)
@@ -219,11 +225,6 @@ export function SessionListItem({
       console.error("Failed to update read status:", err);
       setLocalHasUnread(undefined); // Revert on error
     }
-  };
-
-  const handleRename = () => {
-    setRenameValue(displayTitle);
-    setIsEditing(true);
   };
 
   const handleCancelEditing = () => {
@@ -332,6 +333,36 @@ export function SessionListItem({
     .join(" ");
 
   const sessionHref = `${basePath}/projects/${projectId}/sessions/${sessionId}`;
+  const parentHref =
+    parentSessionId && isBtwAsideSession
+      ? buildBtwAsideParentHref(basePath, projectId, parentSessionId, sessionId)
+      : null;
+
+  const handleBtwBadgeClick = useCallback(
+    (e: React.MouseEvent<HTMLSpanElement>) => {
+      if (!parentHref) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.metaKey || e.ctrlKey || e.shiftKey) {
+        window.open(parentHref, "_blank", "noopener");
+        return;
+      }
+      navigate(parentHref);
+      onNavigate?.();
+    },
+    [navigate, onNavigate, parentHref],
+  );
+
+  const handleBtwBadgeKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLSpanElement>) => {
+      if (!parentHref || (e.key !== "Enter" && e.key !== " ")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      navigate(parentHref);
+      onNavigate?.();
+    },
+    [navigate, onNavigate, parentHref],
+  );
 
   const handleSessionClick = useCallback(
     (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -438,7 +469,15 @@ export function SessionListItem({
                 {isBtwAsideSession && (
                   <span
                     className="session-badge session-badge-btw"
-                    title="/btw aside session"
+                    title={
+                      parentHref
+                        ? "Open parent session with this /btw aside visible"
+                        : "/btw aside session"
+                    }
+                    role={parentHref ? "link" : undefined}
+                    tabIndex={parentHref ? 0 : undefined}
+                    onClick={handleBtwBadgeClick}
+                    onKeyDown={handleBtwBadgeKeyDown}
                   >
                     /btw
                   </span>
@@ -492,7 +531,15 @@ export function SessionListItem({
                   {isBtwAsideSession && (
                     <span
                       className="session-badge session-badge-btw"
-                      title="/btw aside session"
+                      title={
+                        parentHref
+                          ? "Open parent session with this /btw aside visible"
+                          : "/btw aside session"
+                      }
+                      role={parentHref ? "link" : undefined}
+                      tabIndex={parentHref ? 0 : undefined}
+                      onClick={handleBtwBadgeClick}
+                      onKeyDown={handleBtwBadgeKeyDown}
                     >
                       /btw
                     </span>

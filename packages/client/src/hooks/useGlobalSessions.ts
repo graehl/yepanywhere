@@ -291,6 +291,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
           customTitle: event.session.customTitle,
           isArchived: event.session.isArchived,
           isStarred: event.session.isStarred,
+          parentSessionId: event.session.parentSessionId,
         };
 
         return [globalSession, ...prev];
@@ -311,6 +312,9 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
             ...(event.title !== undefined && { customTitle: event.title }),
             ...(event.archived !== undefined && { isArchived: event.archived }),
             ...(event.starred !== undefined && { isStarred: event.starred }),
+            ...(event.parentSessionId !== undefined && {
+              parentSessionId: event.parentSessionId ?? undefined,
+            }),
           };
         });
 

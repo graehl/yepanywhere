@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import type { GlobalSessionItem } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useDrafts } from "../hooks/useDrafts";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
@@ -8,7 +7,7 @@ import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
-import { getSessionDisplayTitle, toUrlProjectId } from "../utils";
+import { getSessionDisplayTitle } from "../utils";
 import { AgentsNavItem } from "./AgentsNavItem";
 import { SessionListItem } from "./SessionListItem";
 import {
@@ -486,6 +485,7 @@ export function Sidebar({
                       title={getSessionDisplayTitle(session)}
                       fullTitle={getSessionDisplayTitle(session)}
                       provider={session.provider}
+                      parentSessionId={session.parentSessionId}
                       status={session.ownership}
                       pendingInputType={session.pendingInputType}
                       hasUnread={session.hasUnread}
@@ -540,6 +540,7 @@ export function Sidebar({
                       title={getSessionDisplayTitle(session)}
                       fullTitle={getSessionDisplayTitle(session)}
                       provider={session.provider}
+                      parentSessionId={session.parentSessionId}
                       status={session.ownership}
                       pendingInputType={session.pendingInputType}
                       hasUnread={session.hasUnread}
@@ -592,6 +593,7 @@ export function Sidebar({
                     title={getSessionDisplayTitle(session)}
                     fullTitle={getSessionDisplayTitle(session)}
                     provider={session.provider}
+                    parentSessionId={session.parentSessionId}
                     status={session.ownership}
                     pendingInputType={session.pendingInputType}
                     hasUnread={session.hasUnread}

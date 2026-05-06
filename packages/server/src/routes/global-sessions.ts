@@ -5,10 +5,7 @@
  * this returns a flat list suitable for navigation/sidebar use.
  */
 
-import {
-  type ProviderName,
-  getSessionDisplayTitle,
-} from "@yep-anywhere/shared";
+import type { ProviderName } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
 import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
@@ -76,6 +73,8 @@ export interface GlobalSessionItem {
   customTitle?: string;
   isArchived?: boolean;
   isStarred?: boolean;
+  /** Parent session when this item is a YA-owned /btw aside. */
+  parentSessionId?: string;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
 }
@@ -306,6 +305,8 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         const isArchived = metadata?.isArchived ?? session.isArchived ?? false;
         const isStarred = metadata?.isStarred ?? session.isStarred ?? false;
         const customTitle = metadata?.customTitle ?? session.customTitle;
+        const parentSessionId =
+          metadata?.parentSessionId ?? session.parentSessionId;
         const executor = metadata?.executor;
 
         // Get unread status
@@ -383,6 +384,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           customTitle,
           isArchived,
           isStarred,
+          parentSessionId,
           executor,
         });
       }

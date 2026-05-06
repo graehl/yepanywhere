@@ -1,11 +1,21 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionListItem } from "../SessionListItem";
 
 const mockWindowOpen = vi.fn();
+
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output aria-label="location">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
 
 describe("SessionListItem links", () => {
   beforeEach(() => {
@@ -88,5 +98,64 @@ describe("SessionListItem links", () => {
 
     expect(screen.getByText("/btw")).toBeTruthy();
     expect(screen.getByText("check the side path")).toBeTruthy();
+  });
+
+  it("opens the parent /btw view when the aside badge is clicked", () => {
+    const onNavigate = vi.fn();
+
+    render(
+      <MemoryRouter
+        initialEntries={["/remote/test/projects/project-1/sessions/aside-1"]}
+      >
+        <ul>
+          <SessionListItem
+            sessionId="aside-1"
+            projectId="project-1"
+            title="/btw check the side path"
+            parentSessionId="parent-1"
+            mode="compact"
+            onNavigate={onNavigate}
+            basePath="/remote/test"
+          />
+        </ul>
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText("/btw"));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("location").textContent).toBe(
+      "/remote/test/projects/project-1/sessions/parent-1?btw=aside-1",
+    );
+  });
+
+  it("opens the parent /btw view in a new window on modified badge clicks", () => {
+    const onNavigate = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <ul>
+          <SessionListItem
+            sessionId="aside-1"
+            projectId="project-1"
+            title="/btw check the side path"
+            parentSessionId="parent-1"
+            mode="compact"
+            onNavigate={onNavigate}
+            basePath="/remote/test"
+          />
+        </ul>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText("/btw"), { ctrlKey: true });
+
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(mockWindowOpen).toHaveBeenCalledWith(
+      "/remote/test/projects/project-1/sessions/parent-1?btw=aside-1",
+      "_blank",
+      "noopener",
+    );
   });
 });

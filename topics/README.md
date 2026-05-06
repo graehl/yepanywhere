@@ -12,3 +12,4 @@
 - Provider-agnostic /btw asides
 - Session liveness and queue intent
 - Heartbeat ownership and timers
+- Claude provider control

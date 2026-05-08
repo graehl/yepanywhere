@@ -14,6 +14,7 @@ import {
 } from "../lib/messageAge";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { parseUserPrompt } from "../lib/parseUserPrompt";
+import { copyMarkdownSelectionToClipboard } from "../lib/markdownSelectionCopy";
 import {
   dispatchSessionIsearchGuideState,
   type SessionIsearchScope,
@@ -738,6 +739,19 @@ export const MessageList = memo(function MessageList({
     },
     [],
   );
+  useEffect(() => {
+    const handleCopy = (event: ClipboardEvent) => {
+      const root = containerRef.current;
+      if (!root) {
+        return;
+      }
+
+      copyMarkdownSelectionToClipboard(event, root);
+    };
+
+    document.addEventListener("copy", handleCopy);
+    return () => document.removeEventListener("copy", handleCopy);
+  }, []);
   const latestVisibleTimestampMs = useMemo(() => {
     let latest: number | null = null;
     const includeTimestamp = (timestampMs: number | null) => {

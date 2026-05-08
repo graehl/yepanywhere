@@ -47,6 +47,21 @@ function systemMessage(uuid: string, content: string): Message {
   };
 }
 
+function dispatchCopyEvent() {
+  const setData = vi.fn();
+  const event = new Event("copy", {
+    bubbles: true,
+    cancelable: true,
+  }) as ClipboardEvent;
+  Object.defineProperty(event, "clipboardData", {
+    configurable: true,
+    value: { setData },
+  });
+
+  document.dispatchEvent(event);
+  return { event, setData };
+}
+
 describe("MessageList", () => {
   beforeEach(() => {
     class ResizeObserverMock {
@@ -200,6 +215,36 @@ describe("MessageList", () => {
     expect(row?.classList.contains("has-message-age")).toBe(true);
     expect(row?.classList.contains("is-message-age-visible")).toBe(true);
     expect(row?.querySelector(".message-age")?.textContent).toBe("10m");
+  });
+
+  it("copies rendered assistant selections as source markdown", () => {
+    render(
+      <MessageList
+        messages={[
+          assistantMessage("assistant-1", "1. First item\n1. Second item"),
+        ]}
+        markdownAugments={{
+          "assistant-1": {
+            html: "<ol><li>First item</li><li>Second item</li></ol>",
+          },
+        }}
+      />,
+    );
+
+    const secondItem = screen.getByText("Second item");
+    const textNode = secondItem.firstChild;
+    expect(textNode).toBeTruthy();
+    const range = document.createRange();
+    range.setStart(textNode as Node, 0);
+    range.setEnd(textNode as Node, secondItem.textContent?.length ?? 0);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    const { event, setData } = dispatchCopyEvent();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(setData).toHaveBeenCalledWith("text/plain", "1. Second item");
   });
 
   it("scrolls to current from a focused composer with Ctrl+End", () => {

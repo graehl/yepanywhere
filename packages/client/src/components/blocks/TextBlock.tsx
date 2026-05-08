@@ -1,7 +1,8 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
 import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
+import { registerMarkdownCopySource } from "../../lib/markdownSelectionCopy";
 import { LocalMediaModal, useLocalMediaClick } from "../LocalMediaModal";
 import { renderFixedFontMath } from "../ui/FixedFontMathToggle";
 import { RenderModeGlyph } from "../ui/RenderModeGlyph";
@@ -21,6 +22,7 @@ export const TextBlock = memo(function TextBlock({
   augmentHtml,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const copySourceRef = useRef<HTMLDivElement>(null);
   const localMathPreview = useMemo(
     () => (isStreaming ? EMPTY_LOCAL_MATH_PREVIEW : renderFixedFontMath(text)),
     [isStreaming, text],
@@ -78,6 +80,15 @@ export const TextBlock = memo(function TextBlock({
     }
   }, [text]);
 
+  useEffect(() => {
+    const element = copySourceRef.current;
+    if (!element) {
+      return;
+    }
+
+    return registerMarkdownCopySource(element, text);
+  }, [text]);
+
   const { modal, handleClick, closeModal } = useLocalMediaClick();
 
   const showStreamingContent = isStreaming && useStreamingContent;
@@ -93,6 +104,7 @@ export const TextBlock = memo(function TextBlock({
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: click handler intercepts local media links only
     <div
+      ref={copySourceRef}
       className={`text-block timeline-item${isStreaming ? " streaming" : ""}`}
       onClick={handleClick}
     >

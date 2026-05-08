@@ -51,6 +51,7 @@ interface Props {
  * RelayConnectionGate (relay mode) once connected.
  */
 export function ConnectedAppContent({ children }: { children: ReactNode }) {
+  const location = useLocation();
   useRemoteActivityBusConnection();
   const { currentRelayUsername } = useRemoteConnection();
   const { version: versionInfo } = useVersion();
@@ -66,6 +67,7 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
     unsafeToRestart,
     workerActivity,
   } = useReloadNotifications();
+  const isSessionDetailRoute = /\/sessions\/[^/]+/.test(location.pathname);
 
   const showRelayResumeWarning = useMemo(() => {
     if (dismissedRelayResumeWarning) return false;
@@ -121,7 +123,10 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
           onDismiss={() => dismiss("frontend")}
         />
       )}
-      <BottomOverscrollReload onReload={reloadFrontend} />
+      <BottomOverscrollReload
+        disabled={isSessionDetailRoute}
+        onReload={reloadFrontend}
+      />
       {children}
       <FloatingActionButton />
     </>

@@ -286,6 +286,42 @@ describe("MessageList", () => {
     editableTarget.remove();
   });
 
+  it("shows a mobile catch-up control when scrolled away from latest", async () => {
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+      />,
+    );
+    const scrollTo = vi.fn();
+
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 200,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    container.scrollTo = scrollTo as typeof container.scrollTo;
+
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    fireEvent.scroll(container);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Scroll to latest" }),
+    );
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 500, behavior: "smooth" });
+  });
+
   it("opens reverse user-turn search with Ctrl+R and hides nonmatches", async () => {
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,

@@ -443,6 +443,76 @@ describe("NewSessionForm", () => {
     expect(screen.getAllByText("Beta").length).toBeGreaterThan(0);
   });
 
+  it("uses visit recency and shows more than four project shortcuts", () => {
+    const manyProjects = [
+      ...chooserProjects,
+      {
+        id: "project-3",
+        name: "Gamma",
+        path: "/tmp/gamma",
+        sessionCount: 1,
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: "2026-04-21T10:00:00.000Z",
+      },
+      {
+        id: "project-4",
+        name: "Delta",
+        path: "/tmp/delta",
+        sessionCount: 1,
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: "2026-04-20T10:00:00.000Z",
+      },
+      {
+        id: "project-5",
+        name: "Epsilon",
+        path: "/tmp/epsilon",
+        sessionCount: 1,
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: "2026-04-19T10:00:00.000Z",
+      },
+      {
+        id: "project-6",
+        name: "Zeta",
+        path: "/tmp/zeta",
+        sessionCount: 1,
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: "2026-04-18T10:00:00.000Z",
+      },
+    ];
+
+    const { container } = render(
+      <NewSessionForm
+        projects={manyProjects}
+        recentProjectIds={["project-6", "project-5"]}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /newSessionProjectDetached/i }),
+    );
+
+    const shortcutNames = Array.from(
+      container.querySelectorAll(
+        ".new-session-project-suggestions .new-session-project-option-name",
+      ),
+      (element) => element.textContent,
+    );
+
+    expect(shortcutNames).toEqual([
+      "newSessionProjectDetached",
+      "Zeta",
+      "Epsilon",
+      "Alpha",
+      "Beta",
+      "Gamma",
+      "Delta",
+    ]);
+  });
+
   it("keeps attachment quality out of the bottom composer row", () => {
     render(<NewSessionForm projects={[...chooserProjects]} />);
 

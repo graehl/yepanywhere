@@ -75,7 +75,8 @@ const MODE_ORDER: PermissionMode[] = [
   "bypassPermissions",
 ];
 const NEW_SESSION_DRAFT_KEY = "draft-new-session";
-const QUICK_PROJECT_COUNT = 4;
+const QUICK_PROJECT_COUNT = 10;
+const PROJECT_SUGGESTION_COUNT = 10;
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}\u202fb`;
@@ -120,8 +121,19 @@ function getProjectSortValue(project: Project): number {
   return project.lastActivity ? new Date(project.lastActivity).getTime() : 0;
 }
 
-function sortProjectsForChooser(projects: readonly Project[]): Project[] {
+function sortProjectsForChooser(
+  projects: readonly Project[],
+  recentProjectIds: readonly string[] = [],
+): Project[] {
+  const recentRanks = new Map(
+    recentProjectIds.map((projectId, index) => [projectId, index]),
+  );
+
   return [...projects].sort((a, b) => {
+    const recentRankA = recentRanks.get(a.id) ?? Number.POSITIVE_INFINITY;
+    const recentRankB = recentRanks.get(b.id) ?? Number.POSITIVE_INFINITY;
+    if (recentRankA !== recentRankB) return recentRankA - recentRankB;
+
     const activityDiff = getProjectSortValue(b) - getProjectSortValue(a);
     if (activityDiff !== 0) return activityDiff;
     const nameDiff = a.name.localeCompare(b.name);
@@ -165,6 +177,7 @@ export interface NewSessionFormProps {
   projectId?: string;
   selectedProject?: Project | null;
   projects?: Project[];
+  recentProjectIds?: string[];
   projectsLoading?: boolean;
   onProjectChange?: (projectId: string | null) => void;
   /** Whether to focus the textarea on mount (default: true) */
@@ -181,6 +194,7 @@ export function NewSessionForm({
   projectId,
   selectedProject,
   projects = [],
+  recentProjectIds = [],
   projectsLoading = false,
   onProjectChange,
   autoFocus = true,
@@ -279,8 +293,8 @@ export function NewSessionForm({
   const supportsThinkingToggle =
     selectedProviderInfo?.supportsThinkingToggle ?? true;
   const sortedProjects = useMemo(
-    () => sortProjectsForChooser(projects),
-    [projects],
+    () => sortProjectsForChooser(projects, recentProjectIds),
+    [projects, recentProjectIds],
   );
   const quickProjects = useMemo(
     () => sortedProjects.slice(0, QUICK_PROJECT_COUNT),
@@ -306,7 +320,7 @@ export function NewSessionForm({
   }, [normalizedProjectInput, sortedProjects]);
   const projectSuggestions = useMemo(() => {
     const source = normalizedProjectInput ? projectMatches : quickProjects;
-    return source.slice(0, 6);
+    return source.slice(0, PROJECT_SUGGESTION_COUNT);
   }, [normalizedProjectInput, projectMatches, quickProjects]);
   const hasCustomProjectPath =
     Boolean(normalizedProjectInput) && exactProjectMatch === null;

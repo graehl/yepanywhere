@@ -4,6 +4,7 @@ import {
 } from "../hooks/useBottomOverscrollReload";
 
 interface BottomOverscrollReloadProps {
+  disabled?: boolean;
   onReload: () => void;
 }
 
@@ -12,9 +13,10 @@ function getLabel(status: BottomOverscrollReloadStatus): string {
 }
 
 export function BottomOverscrollReload({
+  disabled = false,
   onReload,
 }: BottomOverscrollReloadProps) {
-  const status = useBottomOverscrollReload(onReload);
+  const status = useBottomOverscrollReload(onReload, { disabled });
 
   if (status === "hidden") {
     return null;

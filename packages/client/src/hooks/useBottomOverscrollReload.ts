@@ -92,13 +92,18 @@ function createInitialGestureState(): GestureState {
 
 export function useBottomOverscrollReload(
   onReload: () => void,
+  options: { disabled?: boolean } = {},
 ): BottomOverscrollReloadStatus {
+  const { disabled = false } = options;
   const [status, setStatus] = useState<BottomOverscrollReloadStatus>("hidden");
   const gestureRef = useRef<GestureState>(createInitialGestureState());
   const statusRef = useRef<BottomOverscrollReloadStatus>("hidden");
 
   useEffect(() => {
-    if (!hasTouchCapability()) {
+    if (disabled || !hasTouchCapability()) {
+      setStatus("hidden");
+      statusRef.current = "hidden";
+      gestureRef.current = createInitialGestureState();
       return;
     }
 
@@ -184,7 +189,7 @@ export function useBottomOverscrollReload(
       document.removeEventListener("touchend", finishGesture);
       document.removeEventListener("touchcancel", finishGesture);
     };
-  }, [onReload]);
+  }, [disabled, onReload]);
 
   return status;
 }

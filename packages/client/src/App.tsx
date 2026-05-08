@@ -72,7 +72,10 @@ function AppContent({ children }: Props) {
           onDismiss={() => dismiss("frontend")}
         />
       )}
-      <BottomOverscrollReload onReload={reloadFrontend} />
+      <BottomOverscrollReload
+        disabled={isSessionDetailRoute}
+        onReload={reloadFrontend}
+      />
       {children}
       <FloatingActionButton />
     </>

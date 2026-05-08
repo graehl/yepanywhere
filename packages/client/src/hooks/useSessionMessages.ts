@@ -148,21 +148,6 @@ function isCodexProvider(provider?: string): boolean {
   return provider === "codex" || provider === "codex-oss";
 }
 
-function getMessageRole(message: Message): string {
-  const nestedRole = (message.message as { role?: unknown } | undefined)?.role;
-  if (nestedRole === "user" || nestedRole === "assistant") {
-    return nestedRole;
-  }
-  if (
-    message.role === "user" ||
-    message.role === "assistant" ||
-    message.role === "system"
-  ) {
-    return message.role;
-  }
-  return "unknown";
-}
-
 function isEmptyAssistantContent(message: Message): boolean {
   if (message.type !== "assistant") {
     return false;
@@ -350,7 +335,9 @@ export function useSessionMessages(
     }
   }, [processStreamMessage, processStreamSubagentMessage]);
 
-  // Initial load
+  // Initial load. When a warm in-tab cache exists, the REST request is an
+  // incremental refresh after the cached tail; merge that delta instead of
+  // replacing the cached transcript.
   useEffect(() => {
     const warmLoad = readSessionLoadCache(projectId, sessionId);
     markReloadPerfPhase("session_initial_load_start", {
@@ -372,6 +359,8 @@ export function useSessionMessages(
       setLoading(false);
     } else {
       maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
+      providerRef.current = undefined;
+      lastMessageIdRef.current = undefined;
       setLoading(true);
       setAgentContent({});
       setToolUseToAgent(new Map());
@@ -391,7 +380,6 @@ export function useSessionMessages(
           hasOlderMessages: data.pagination?.hasOlderMessages,
         });
         setSession(data.session);
-        setPagination(data.pagination);
         providerRef.current = data.session.provider;
 
         // Tag messages from JSONL as authoritative
@@ -400,14 +388,27 @@ export function useSessionMessages(
           _source: "jsonl" as const,
         }));
         updatePersistedTimestampWatermark(taggedMessages);
-        const loadedMessages = isCodexProvider(data.session.provider)
-          ? reconcileCodexLinearMessages(taggedMessages)
-          : taggedMessages;
-        setMessages(
-          loadedMessages,
-        );
+        const warmMessages = warmLoad?.messages;
+        const shouldMergeWarmDelta =
+          warmMessages !== undefined && Boolean(lastMessageIdRef.current);
+        const loadedMessages = shouldMergeWarmDelta
+          ? (() => {
+              const result = mergeJSONLMessages(warmMessages, taggedMessages, {
+                skipDagOrdering: !getProvider(data.session.provider)
+                  .capabilities.supportsDag,
+              });
+              return isCodexProvider(data.session.provider)
+                ? reconcileCodexLinearMessages(result.messages)
+                : result.messages;
+            })()
+          : isCodexProvider(data.session.provider)
+            ? reconcileCodexLinearMessages(taggedMessages)
+            : taggedMessages;
+        setMessages(loadedMessages);
+        setPagination(data.pagination ?? warmLoad?.pagination);
         markReloadPerfPhase("session_initial_messages_state_queued", {
           messages: taggedMessages.length,
+          totalMessages: loadedMessages.length,
           provider: data.session.provider,
         });
 
@@ -415,7 +416,7 @@ export function useSessionMessages(
         // stream "connected" event calls fetchNewMessages() immediately, but the
         // useEffect that normally updates lastMessageIdRef runs asynchronously.
         // Without this, fetchNewMessages() would use undefined and refetch everything.
-        const lastMessage = taggedMessages[taggedMessages.length - 1];
+        const lastMessage = loadedMessages[loadedMessages.length - 1];
         if (lastMessage) {
           lastMessageIdRef.current = getMessageId(lastMessage);
         }
@@ -432,7 +433,7 @@ export function useSessionMessages(
         writeSessionLoadCache(projectId, sessionId, {
           messages: loadedMessages,
           session: data.session,
-          pagination: data.pagination,
+          pagination: data.pagination ?? warmLoad?.pagination,
           agentContent: {},
           toolUseToAgentEntries: [],
           lastMessageId: lastMessageIdRef.current,

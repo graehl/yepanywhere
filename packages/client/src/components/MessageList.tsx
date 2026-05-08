@@ -170,12 +170,20 @@ interface UserTurnSearchSession {
 }
 
 const NAV_MOTION_CUE_CLEAR_MS = 760;
+const BOTTOM_SCROLL_THRESHOLD_PX = 100;
 
 function highResolutionNowMs(): number {
   return typeof performance !== "undefined" &&
     typeof performance.now === "function"
     ? performance.now()
     : Date.now();
+}
+
+function isNearScrollBottom(container: HTMLElement): boolean {
+  return (
+    container.scrollHeight - container.scrollTop - container.clientHeight <
+    BOTTOM_SCROLL_THRESHOLD_PX
+  );
 }
 
 function formatSize(bytes: number): string {
@@ -465,6 +473,7 @@ export const MessageList = memo(function MessageList({
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [navMotionCue, setNavMotionCue] =
     useState<UserTurnNavMotionCue | null>(null);
+  const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
   const [userTurnSearch, setUserTurnSearch] =
     useState<UserTurnSearchSession>({
       active: false,
@@ -486,6 +495,7 @@ export const MessageList = memo(function MessageList({
         container.scrollTo({ top, behavior });
       }
       lastHeightRef.current = container.scrollHeight;
+      setIsScrolledToBottom(true);
 
       // Clear programmatic flag after scroll events have fired
       requestAnimationFrame(() => {
@@ -510,6 +520,7 @@ export const MessageList = memo(function MessageList({
             container.scrollTo({ top: followUpTop, behavior });
           }
           lastHeightRef.current = container.scrollHeight;
+          setIsScrolledToBottom(true);
           requestAnimationFrame(() => {
             isProgrammaticScrollRef.current = false;
           });
@@ -926,6 +937,7 @@ export const MessageList = memo(function MessageList({
       const row = findRenderRow(messageList, id);
       if (!scrollContainer || !row) return;
       shouldAutoScrollRef.current = false;
+      setIsScrolledToBottom(false);
       const scrollRect = scrollContainer.getBoundingClientRect();
       const rowRect = row.getBoundingClientRect();
       const offset =
@@ -1160,10 +1172,9 @@ export const MessageList = memo(function MessageList({
     const container = containerRef.current?.parentElement;
     if (!container) return;
 
-    const threshold = 100; // pixels from bottom
-    const distanceFromBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight;
-    shouldAutoScrollRef.current = distanceFromBottom < threshold;
+    const atBottom = isNearScrollBottom(container);
+    shouldAutoScrollRef.current = atBottom;
+    setIsScrolledToBottom(atBottom);
   }, []);
 
   // Attach scroll listener to parent container
@@ -1296,9 +1307,34 @@ export const MessageList = memo(function MessageList({
         motionCue={navMotionCue}
         onNavigateStart={() => {
           shouldAutoScrollRef.current = false;
+          setIsScrolledToBottom(false);
         }}
         searchState={userTurnNavSearchState}
       />
+      {!isScrolledToBottom && (
+        <button
+          type="button"
+          className="scroll-to-current-button"
+          onClick={scrollToCurrent}
+          aria-label="Scroll to latest"
+          title="Scroll to latest"
+        >
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.25"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14" />
+            <path d="m19 12-7 7-7-7" />
+          </svg>
+        </button>
+      )}
       {searchPanelTarget && searchPanel
         ? createPortal(searchPanel, searchPanelTarget)
         : searchPanel}

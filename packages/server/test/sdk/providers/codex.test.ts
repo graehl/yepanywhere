@@ -1415,6 +1415,7 @@ describe("CodexProvider Event Normalization", () => {
           approvalPolicy: string;
           sandbox: string;
         },
+        experimentalApiEnabled?: boolean,
       ) => Record<string, unknown>;
     };
 
@@ -1432,10 +1433,40 @@ describe("CodexProvider Event Normalization", () => {
       threadId: "thread-1",
       approvalPolicy: "on-request",
       sandbox: "workspace-write",
-      excludeTurns: true,
     });
+    expect(resume.excludeTurns).toBeUndefined();
     expect(resume.persistExtendedHistory).toBeUndefined();
     expect(resume.permissionProfile).toBeUndefined();
+  });
+
+  it("uses experimental excludeTurns after Codex negotiation succeeds", () => {
+    const provider = createTestProvider() as unknown as {
+      createThreadResumeParams: (
+        options: { resumeSessionId?: string; model?: string; cwd: string },
+        sessionId: string,
+        policy: {
+          approvalPolicy: string;
+          sandbox: string;
+        },
+        experimentalApiEnabled?: boolean,
+      ) => Record<string, unknown>;
+    };
+
+    const resume = provider.createThreadResumeParams(
+      {
+        resumeSessionId: "thread-1",
+        model: "gpt-5.2-codex",
+        cwd: "/tmp",
+      },
+      "thread-1",
+      { approvalPolicy: "on-request", sandbox: "workspace-write" },
+      true,
+    );
+
+    expect(resume).toMatchObject({
+      threadId: "thread-1",
+      excludeTurns: true,
+    });
   });
 
   it("pins thread-scope reasoning effort via config when effort is requested", () => {
@@ -1451,6 +1482,7 @@ describe("CodexProvider Event Normalization", () => {
           approvalPolicy: string;
           sandbox: string;
         },
+        experimentalApiEnabled?: boolean,
       ) => Record<string, unknown>;
       createThreadResumeParams: (
         options: {

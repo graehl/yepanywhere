@@ -167,6 +167,14 @@ interface CodexThreadReadResponse {
   };
 }
 
+type CodexThreadResumeParamsForRequest = ThreadResumeParams & {
+  /**
+   * Experimental in Codex 0.129. YA opts into experimentalApi and uses this to
+   * avoid hydrating large turn histories that it does not consume.
+   */
+  excludeTurns?: boolean;
+};
+
 /**
  * When enabled, declare Codex session originator as "Codex Desktop"
  * when initializing app-server sessions.
@@ -1601,7 +1609,7 @@ export class CodexProvider implements AgentProvider {
     try {
       await appServer.connect();
 
-      await this.initializeAppServer(appServer);
+      const experimentalApiEnabled = await this.initializeAppServer(appServer);
       appServer.notify("initialized");
 
       const policy = this.mapPermissionModeToThreadPolicy(
@@ -1612,6 +1620,7 @@ export class CodexProvider implements AgentProvider {
         options,
         sessionId,
         policy,
+        experimentalApiEnabled,
       );
       const threadStartParams = this.createThreadStartParams(options, policy);
       const threadResult = await this.startOrResumeThread(
@@ -1966,7 +1975,7 @@ export class CodexProvider implements AgentProvider {
     appServer: CodexAppServerClient,
     options: StartSessionOptions,
     threadStartParams: ThreadStartParams,
-    threadResumeParams: ThreadResumeParams,
+    threadResumeParams: CodexThreadResumeParamsForRequest,
   ): Promise<ThreadStartResponse | ThreadResumeResponse> {
     return options.resumeSessionId
       ? await appServer.request<ThreadResumeResponse>(
@@ -1995,15 +2004,19 @@ export class CodexProvider implements AgentProvider {
     options: StartSessionOptions,
     sessionId: string,
     policy: CodexThreadPolicy,
-  ): ThreadResumeParams {
-    return {
+    experimentalApiEnabled = false,
+  ): CodexThreadResumeParamsForRequest {
+    const params: CodexThreadResumeParamsForRequest = {
       threadId: options.resumeSessionId ?? sessionId,
       model: options.model ?? null,
       cwd: options.cwd,
       ...this.buildThreadPermissionParams(policy),
       config: this.buildThreadConfigOverrides(options),
-      excludeTurns: true,
     };
+    if (experimentalApiEnabled) {
+      params.excludeTurns = true;
+    }
+    return params;
   }
 
   private buildThreadPermissionParams(

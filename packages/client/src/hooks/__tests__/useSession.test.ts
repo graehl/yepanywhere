@@ -16,6 +16,10 @@ const apiMocks = vi.hoisted(() => ({
   setPermissionMode: vi.fn(),
 }));
 
+const sessionMessagesMock = vi.hoisted(() => ({
+  messages: [] as Array<Record<string, unknown>>,
+}));
+
 const fetchNewMessages = vi.fn(async () => {});
 const fetchSessionMetadata = vi.fn(async () => {});
 
@@ -85,7 +89,7 @@ function installLocalStorageMock(): void {
 
 vi.mock("../useSessionMessages", () => ({
   useSessionMessages: vi.fn(() => ({
-    messages: [],
+    messages: sessionMessagesMock.messages,
     agentContent: {},
     toolUseToAgent: new Map(),
     loading: false,
@@ -154,6 +158,7 @@ describe("useSession completion reconciliation", () => {
     installLocalStorageMock();
     fileActivityOptions = undefined;
     sessionStreamHandler = null;
+    sessionMessagesMock.messages = [];
   });
 
   afterEach(() => {
@@ -443,6 +448,94 @@ describe("useSession completion reconciliation", () => {
         deliveryState: "sending",
       },
     ]);
+  });
+
+  it("clears a promoted deferred batch from a concatenated user echo", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      result.current.addDeferredMessage({
+        tempId: "temp-1",
+        content: "first queued",
+        timestamp: "2026-04-24T00:00:00.000Z",
+      });
+      result.current.addDeferredMessage({
+        tempId: "temp-2",
+        content: "second queued",
+        timestamp: "2026-04-24T00:00:01.000Z",
+      });
+    });
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "deferred-queue",
+        reason: "promoted",
+        messages: [],
+      });
+    });
+
+    expect(result.current.deferredMessages).toMatchObject([
+      { tempId: "temp-1", deliveryState: "sending" },
+      { tempId: "temp-2", deliveryState: "sending" },
+    ]);
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "user",
+        uuid: "uuid-combined",
+        tempId: "temp-1",
+        message: {
+          role: "user",
+          content: "first queued\n\n--------\n\nsecond queued",
+        },
+      });
+    });
+
+    expect(result.current.deferredMessages).toEqual([]);
+  });
+
+  it("prunes persisted deferred chips after loading a concatenated provider turn", () => {
+    window.localStorage.setItem(
+      "queued-message-sess-1",
+      JSON.stringify([
+        {
+          tempId: "temp-1",
+          content: "first queued",
+          timestamp: "2026-04-24T00:00:00.000Z",
+        },
+        {
+          tempId: "temp-2",
+          content: "second queued",
+          timestamp: "2026-04-24T00:00:01.000Z",
+        },
+      ]),
+    );
+    sessionMessagesMock.messages = [
+      {
+        type: "user",
+        uuid: "uuid-combined",
+        message: {
+          role: "user",
+          content: "first queued\n\n--------\n\nsecond queued",
+        },
+      },
+    ];
+
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    expect(result.current.deferredMessages).toEqual([]);
+    expect(window.localStorage.getItem("queued-message-sess-1")).toBeNull();
   });
 
   it("uses server queue order when a REST sync inserts an edited message", () => {

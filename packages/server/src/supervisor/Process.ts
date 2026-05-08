@@ -50,6 +50,8 @@ export interface TakenDeferredMessage {
   placement: DeferredMessagePlacement;
 }
 
+type DeferredQueueEntry = { message: UserMessage; timestamp: string };
+
 /**
  * IMPORTANT: Never filter out messages by type before emitting to SSE!
  *
@@ -215,7 +217,7 @@ export class Process {
   private _contextWindow: number | undefined;
 
   /** Deferred message queue — messages queued while agent is in-turn, auto-sent when turn ends */
-  private deferredQueue: { message: UserMessage; timestamp: string }[] = [];
+  private deferredQueue: DeferredQueueEntry[] = [];
 
   /** Whether the process is held (soft pause) */
   private _isHeld = false;
@@ -2058,18 +2060,12 @@ export class Process {
   private transitionToIdle(): void {
     this.clearIdleTimer();
 
-    // Drain eligible deferred messages and push to the direct queue so
-    // the iterator can concatenate them into a single message.
-    // If an edit barrier is active, collection returns [] and nothing is cleared.
-    if (this.deferredQueue.length > 0 && this.messageQueue) {
-      const eligible = this.collectEligibleDeferred();
-      for (const msg of eligible) {
-        this.messageQueue.push(msg);
-      }
-      if (eligible.length > 0) {
-        this.deferredEditBarrier = null;
-        this.emitDeferredQueueChange("promoted");
-      }
+    // Promote deferred messages through queueMessage so clients receive the
+    // same user-message echoes as direct sends. MessageQueue still concatenates
+    // the queued provider input before the SDK consumes it.
+    if (this.promoteEligibleDeferredAfterTurn()) {
+      this.setState({ type: "in-turn" });
+      return;
     }
 
     this.setState({ type: "idle", since: new Date() });
@@ -2077,11 +2073,45 @@ export class Process {
     this.processNextInQueue();
   }
 
-  /** Collect deferred messages that are eligible for promotion (respecting edit barrier). */
-  private collectEligibleDeferred(): UserMessage[] {
-    if (this.deferredEditBarrier) return [];
+  /**
+   * Promote all deferred messages that may run after the completed turn.
+   * Returns true when at least one message was accepted by the direct queue.
+   */
+  private promoteEligibleDeferredAfterTurn(): boolean {
+    if (
+      this.deferredQueue.length === 0 ||
+      !this.messageQueue ||
+      this.deferredEditBarrier
+    ) {
+      return false;
+    }
+
     const eligible = this.deferredQueue.splice(0);
-    return eligible.map((e) => e.message);
+    const remaining: DeferredQueueEntry[] = [];
+    let promoted = false;
+
+    for (let index = 0; index < eligible.length; index++) {
+      const entry = eligible[index]!;
+      const result = this.queueMessage(entry.message, { allowSteer: false });
+      if (!result.success) {
+        remaining.push(entry, ...eligible.slice(index + 1));
+        break;
+      }
+      promoted = true;
+    }
+
+    if (remaining.length > 0) {
+      this.deferredQueue.unshift(...remaining);
+    }
+
+    if (promoted) {
+      this.deferredEditBarrier = null;
+      this.emitDeferredQueueChange("promoted");
+    } else if (remaining.length > 0) {
+      this.emitDeferredQueueChange("queued", remaining[0]?.message.tempId);
+    }
+
+    return promoted;
   }
 
   private promoteNextDeferredMessage(options: {

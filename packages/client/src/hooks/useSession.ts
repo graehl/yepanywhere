@@ -33,7 +33,6 @@ import {
   useFileActivity,
 } from "./useFileActivity";
 import {
-  type AgentContentMap,
   type SessionLoadResult,
   useSessionMessages,
 } from "./useSessionMessages";
@@ -119,6 +118,8 @@ interface DeliveredUserEcho {
   content: string;
 }
 
+const CONCATENATED_USER_TURN_SEPARATOR = "\n\n--------\n\n";
+
 function extractUserMessageText(
   sdkMessage: Record<string, unknown>,
 ): string | null {
@@ -146,6 +147,34 @@ function extractUserMessageText(
   }
 
   return null;
+}
+
+function userTextContainsDeferredContent(
+  userText: string,
+  deferredContent: string,
+): boolean {
+  const normalizedUserText = userText.trim();
+  const normalizedDeferredContent = deferredContent.trim();
+  if (!normalizedUserText || !normalizedDeferredContent) {
+    return false;
+  }
+
+  if (
+    normalizedUserText === normalizedDeferredContent ||
+    normalizedUserText.startsWith(`${normalizedDeferredContent}\n\n`)
+  ) {
+    return true;
+  }
+
+  return normalizedUserText
+    .split(CONCATENATED_USER_TURN_SEPARATOR)
+    .some((part) => {
+      const normalizedPart = part.trim();
+      return (
+        normalizedPart === normalizedDeferredContent ||
+        normalizedPart.startsWith(`${normalizedDeferredContent}\n\n`)
+      );
+    });
 }
 
 const DEFERRED_DRAFT_KEY_PREFIX = "queued-message-";
@@ -243,25 +272,18 @@ function removeEchoedQueueMessage<T extends { tempId?: string; content: string }
   tempId?: string,
   incomingText?: string | null,
 ): T[] {
+  let next = messages;
   if (tempId) {
-    const filtered = messages.filter((message) => message.tempId !== tempId);
-    if (filtered.length !== messages.length) {
-      return filtered;
-    }
+    next = next.filter((message) => message.tempId !== tempId);
   }
 
   if (!incomingText) {
-    return messages;
+    return next;
   }
 
-  const idx = messages.findIndex(
-    (message) => message.content.trim() === incomingText,
+  return next.filter(
+    (message) => !userTextContainsDeferredContent(incomingText, message.content),
   );
-  if (idx === -1) {
-    return messages;
-  }
-
-  return messages.filter((_, i) => i !== idx);
 }
 
 function mergeDeferredMessages(
@@ -349,7 +371,10 @@ function mergeDeferredMessages(
     }
 
     const deliveryState =
-      meta?.reason === "promoted" && message.tempId === meta.tempId
+      meta?.reason === "promoted" &&
+      (meta.tempId
+        ? message.tempId === meta.tempId
+        : incoming.length === 0)
         ? "sending"
         : meta?.source === "connected"
           ? "recovered"
@@ -405,11 +430,7 @@ function userTurnMatchesDeferred(
   if (!text) {
     return false;
   }
-  const deferredText = deferred.content.trim();
-  if (!deferredText) {
-    return false;
-  }
-  return text === deferredText || text.startsWith(`${deferredText}\n\n`);
+  return userTextContainsDeferredContent(text, deferred.content);
 }
 
 function deliveredEchoMatchesDeferred(
@@ -420,11 +441,10 @@ function deliveredEchoMatchesDeferred(
     return true;
   }
   const echoText = echo.content.trim();
-  const deferredText = deferred.content.trim();
-  if (!echoText || !deferredText) {
+  if (!echoText) {
     return false;
   }
-  return echoText === deferredText || echoText.startsWith(`${deferredText}\n\n`);
+  return userTextContainsDeferredContent(echoText, deferred.content);
 }
 
 function removeDeliveredDeferredMessages(
@@ -722,6 +742,16 @@ export function useSession(
   useEffect(() => {
     deliveredUserEchoesRef.current = [];
   }, [sessionId]);
+
+  useEffect(() => {
+    setDeferredMessages((prev) =>
+      removeDeliveredDeferredMessages(
+        prev,
+        messages,
+        deliveredUserEchoesRef.current,
+      ),
+    );
+  }, [messages, setDeferredMessages]);
 
   // Update local mode (UI selection) and sync to server if process is active
   const setPermissionMode = useCallback(

@@ -99,6 +99,12 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
   cadence alone is not a stronger liveness proof.
 - User-message metadata should survive REST acceptance, optimistic/replayed
   user echoes, and deferred queue summaries without becoming hidden prompt text.
+- Deferred messages promoted at a natural turn boundary should produce the
+  same user-message echoes as direct queue acceptance, even when a
+  non-steering provider receives the promoted backlog as one concatenated
+  provider turn. Client recovery must reconcile each visible queued chip
+  against that concatenated turn rather than treating unmatched localStorage
+  state as still pending.
 - Initial-prompt recovery metadata is a copy/retry affordance. It must not
   replace transcript messages or be treated as provider progress evidence.
 

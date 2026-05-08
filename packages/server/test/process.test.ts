@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { MessageQueue } from "../src/sdk/messageQueue.js";
+import type { UrlProjectId } from "@yep-anywhere/shared";
+import {
+  CONCAT_SEPARATOR,
+  MessageQueue,
+} from "../src/sdk/messageQueue.js";
 import type { SDKMessage } from "../src/sdk/types.js";
 import { Process } from "../src/supervisor/Process.js";
 import type { ProcessEvent } from "../src/supervisor/types.js";
@@ -697,6 +701,61 @@ describe("Process", () => {
 
       controller.finish();
       await waitFor(() => expect(process.getDeferredQueueSummary()).toEqual([]));
+      await process.abort();
+    });
+
+    it("emits user messages when deferred turns promote after a non-steering turn", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+      });
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        events.push(event);
+      });
+
+      process.deferMessage({ text: "first queued", tempId: "temp-1" });
+      process.deferMessage({ text: "second queued", tempId: "temp-2" });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() => expect(process.getDeferredQueueSummary()).toEqual([]));
+
+      const userMessages = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message]
+          : [],
+      );
+      expect(userMessages).toMatchObject([
+        {
+          tempId: "temp-1",
+          message: { role: "user", content: "first queued" },
+        },
+        {
+          tempId: "temp-2",
+          message: { role: "user", content: "second queued" },
+        },
+      ]);
+      expect(queue.depth).toBe(2);
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe(
+        `first queued\n\n${CONCAT_SEPARATOR}\n\nsecond queued`,
+      );
+      expect(process.state.type).toBe("in-turn");
+      expect(events[events.length - 1]).toMatchObject({
+        type: "state-change",
+        state: { type: "in-turn" },
+      });
+
+      controller.finish();
       await process.abort();
     });
 

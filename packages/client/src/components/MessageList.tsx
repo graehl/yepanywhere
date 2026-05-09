@@ -211,7 +211,7 @@ interface DeferredMessage {
   attachmentCount?: number;
   attachments?: UploadedFile[];
   blockedByEdit?: boolean;
-  deliveryState?: "queued" | "sending" | "recovered";
+  deliveryState?: "queued" | "sending" | "recovered" | "verifying";
 }
 
 interface BtwAsideTimelineItem {
@@ -1545,6 +1545,8 @@ export const MessageList = memo(function MessageList({
                       ? "Sending queued message..."
                       : deferred.deliveryState === "recovered"
                         ? "Recovered draft (not queued)"
+                        : deferred.deliveryState === "verifying"
+                          ? "Queued (verifying)"
                         : deferred.blockedByEdit
                           ? "Queued (after edit)"
                           : index === 0

@@ -110,7 +110,7 @@ export interface DeferredMessage {
   attachments?: UploadedFile[];
   mode?: PermissionMode;
   blockedByEdit?: boolean;
-  deliveryState?: "queued" | "sending" | "recovered";
+  deliveryState?: "queued" | "sending" | "recovered" | "verifying";
 }
 
 interface DeliveredUserEcho {
@@ -212,6 +212,8 @@ function normalizeDeferredMessage(value: unknown): DeferredMessage | null {
   const deliveryState =
     record.deliveryState === "sending" || record.deliveryState === "recovered"
       ? record.deliveryState
+      : record.deliveryState === "verifying"
+        ? record.deliveryState
       : "queued";
 
   return {
@@ -370,6 +372,10 @@ function mergeDeferredMessages(
       continue;
     }
 
+    const fallbackState =
+      message.deliveryState === "recovered" || message.deliveryState === "sending"
+        ? message.deliveryState
+        : undefined;
     const deliveryState =
       meta?.reason === "promoted" &&
       (meta.tempId
@@ -377,7 +383,8 @@ function mergeDeferredMessages(
         : incoming.length === 0)
         ? "sending"
         : meta?.source === "connected"
-          ? "recovered"
+          ? fallbackState ??
+            (message.tempId ? "verifying" : "recovered")
           : message.deliveryState;
     merged.push({
       ...message,
@@ -1835,6 +1842,7 @@ export function useSession(
     isCompacting, // True when context is being compressed
     isHeld: processState === "hold", // Derived from process state
     pendingInputRequest,
+    setIsCompacting,
     actualSessionId, // Real session ID from server (may differ from URL during temp→real transition)
     permissionMode: localMode, // UI-selected mode (sent with next message)
     modeVersion,

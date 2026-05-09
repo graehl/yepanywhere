@@ -369,6 +369,39 @@ describe("useSession completion reconciliation", () => {
     ]);
   });
 
+  it("marks queue entries as verifying when connected snapshot omits them", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      result.current.addDeferredMessage({
+        tempId: "temp-verifying",
+        content: "needs verification",
+        timestamp: "2026-04-24T00:00:00.000Z",
+      });
+    });
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "connected",
+        state: "idle",
+        deferredMessages: [],
+      });
+    });
+
+    expect(result.current.deferredMessages).toMatchObject([
+      {
+        tempId: "temp-verifying",
+        content: "needs verification",
+        deliveryState: "verifying",
+      },
+    ]);
+  });
+
   it("captures session liveness snapshots from stream status events", () => {
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {

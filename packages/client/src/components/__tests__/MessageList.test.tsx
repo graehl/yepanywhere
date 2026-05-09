@@ -165,6 +165,24 @@ describe("MessageList", () => {
     expect(screen.getByText("Queued (after edit)")).toBeTruthy();
   });
 
+  it("marks queued messages as verifying when provider reconciliation is pending", () => {
+    render(
+      <MessageList
+        messages={[]}
+        deferredMessages={[
+          {
+            tempId: "temp-verifying",
+            content: "verifying text",
+            timestamp: "2026-04-25T00:00:00.000Z",
+            deliveryState: "verifying",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Queued (verifying)")).toBeTruthy();
+  });
+
   it("exposes explicit edit and cancel controls for queued messages", () => {
     const onEditDeferred = vi.fn();
     const onCancelDeferred = vi.fn();

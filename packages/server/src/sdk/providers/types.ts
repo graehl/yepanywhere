@@ -51,6 +51,11 @@ export interface StartSessionOptions {
   initialMessage?: UserMessage;
   /** Session ID to resume (optional) */
   resumeSessionId?: string;
+  /**
+   * Optional provider-visible client identity, used by providers that expose
+   * launcher identity in session metadata (currently Codex).
+   */
+  clientName?: string;
   /** Permission mode for tool approvals */
   permissionMode?: PermissionMode;
   /** Model to use (e.g., "sonnet", "opus", "haiku") */

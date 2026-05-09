@@ -181,6 +181,7 @@ type CodexThreadResumeParamsForRequest = ThreadResumeParams & {
  */
 const DECLARE_CODEX_ORIGINATOR = true;
 const DECLARED_CODEX_ORIGINATOR = "Codex Desktop";
+const YEP_ANYWHERE_ORIGINATOR = "yep-anywhere";
 
 const PREFERRED_MODEL_ORDER = [
   "gpt-5.5",
@@ -932,10 +933,17 @@ export class CodexProvider implements AgentProvider {
     return (await findCodexCliPath()) ?? "codex";
   }
 
-  private getCodexClientName(): string {
+  private getCodexClientName(overrideClientName?: string): string {
+    const normalizedClientName =
+      typeof overrideClientName === "string"
+        ? overrideClientName.trim()
+        : "";
+    if (normalizedClientName.length > 0) {
+      return normalizedClientName;
+    }
     return DECLARE_CODEX_ORIGINATOR
       ? DECLARED_CODEX_ORIGINATOR
-      : "yep-anywhere";
+      : YEP_ANYWHERE_ORIGINATOR;
   }
 
   /**
@@ -1609,7 +1617,10 @@ export class CodexProvider implements AgentProvider {
     try {
       await appServer.connect();
 
-      const experimentalApiEnabled = await this.initializeAppServer(appServer);
+      const experimentalApiEnabled = await this.initializeAppServer(
+        appServer,
+        options.clientName,
+      );
       appServer.notify("initialized");
 
       const policy = this.mapPermissionModeToThreadPolicy(
@@ -1933,13 +1944,16 @@ export class CodexProvider implements AgentProvider {
     }
   }
 
-  private createInitializeParams(experimentalApiEnabled: boolean): {
+  private createInitializeParams(
+    experimentalApiEnabled: boolean,
+    clientName?: string,
+  ): {
     clientInfo: { name: string; title: null; version: string };
     capabilities: { experimentalApi: boolean } | null;
   } {
     return {
       clientInfo: {
-        name: this.getCodexClientName(),
+        name: this.getCodexClientName(clientName),
         title: null,
         version: "dev",
       },
@@ -1951,11 +1965,12 @@ export class CodexProvider implements AgentProvider {
 
   private async initializeAppServer(
     appServer: CodexAppServerClient,
+    clientName?: string,
   ): Promise<boolean> {
     try {
       await appServer.request<{ userAgent: string }>(
         "initialize",
-        this.createInitializeParams(true),
+        this.createInitializeParams(true, clientName),
       );
       return true;
     } catch (error) {
@@ -1965,7 +1980,7 @@ export class CodexProvider implements AgentProvider {
       );
       await appServer.request<{ userAgent: string }>(
         "initialize",
-        this.createInitializeParams(false),
+        this.createInitializeParams(false, clientName),
       );
       return false;
     }

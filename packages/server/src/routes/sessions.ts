@@ -137,6 +137,17 @@ function parseDeferredPlacement(body: {
 const USER_MESSAGE_DELIVERY_INTENTS: ReadonlySet<UserMessageDeliveryIntent> =
   new Set(["direct", "steer", "deferred", "patient"]);
 
+const AUTO_COMPACT_CONTEXT_PERCENT_THRESHOLD = 82;
+const AUTO_COMPACT_MODEL_PREFIXES = ["gpt-5.3-codex-spark"] as const;
+const AUTO_COMPACT_TARGET_PROVIDERS: ReadonlySet<ProviderName> = new Set([
+  "codex",
+  "codex-oss",
+]);
+
+type AutoCompactQueueResult =
+  | { queued: false; reason: string; command?: undefined }
+  | { queued: true; command: string };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -399,6 +410,94 @@ function isRestartInternalCompactCommand(message: Message): boolean {
   }
   const content = renderRestartContent(messageContent(message)).trim();
   return /^\/(?:compact|compress)\b/i.test(content);
+}
+
+function isAutoCompactModel(model: string | undefined): boolean {
+  if (!model) {
+    return false;
+  }
+  const normalized = model.toLowerCase().trim();
+  return AUTO_COMPACT_MODEL_PREFIXES.some((prefix) =>
+    normalized.startsWith(prefix),
+  );
+}
+
+function isAutoCompactEligibleMessage(message: string): boolean {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  // Avoid surprise when user explicitly invokes slash commands.
+  if (trimmed.startsWith("/")) {
+    return false;
+  }
+
+  return true;
+}
+
+async function tryQueueTargetedAutoCompact(params: {
+  process: Process;
+  model: string | undefined;
+  message: string;
+  resolveContextWindow: (model: string | undefined, provider?: ProviderName) => number;
+}): Promise<AutoCompactQueueResult> {
+  if (params.process.state.type !== "idle") {
+    return { queued: false, reason: "process-not-idle" };
+  }
+
+  if (!AUTO_COMPACT_TARGET_PROVIDERS.has(params.process.provider)) {
+    return { queued: false, reason: "provider-not-targeted" };
+  }
+
+  if (!isAutoCompactModel(params.model)) {
+    return { queued: false, reason: "model-not-targeted" };
+  }
+
+  if (!isAutoCompactEligibleMessage(params.message)) {
+    return { queued: false, reason: "non-user-turn" };
+  }
+
+  if (!params.process.supportsDynamicCommands) {
+    return {
+      queued: false,
+      reason: "compact-command-advertising-unavailable",
+    };
+  }
+
+  const contextUsage = extractContextUsageFromSDKMessages(
+    params.process.getMessageHistory(),
+    params.model,
+    params.process.provider,
+    params.resolveContextWindow,
+  );
+  if (!contextUsage?.contextWindow || contextUsage.contextWindow <= 0) {
+    return { queued: false, reason: "context-window-unavailable" };
+  }
+  if (contextUsage.percentage < AUTO_COMPACT_CONTEXT_PERCENT_THRESHOLD) {
+    return { queued: false, reason: "below-threshold" };
+  }
+
+  const commands = await params.process.supportedCommands();
+  if (!commands) {
+    return { queued: false, reason: "compact-command-list-unavailable" };
+  }
+
+  const command = commands.find((candidate) => candidate.name === "compact")?.name ??
+    commands.find((candidate) => candidate.name === "compress")?.name;
+  if (!command) {
+    return { queued: false, reason: "compact-command-unavailable" };
+  }
+
+  const queued = params.process.queueMessage({ text: `/${command}` });
+  if (!queued.success) {
+    return {
+      queued: false,
+      reason: queued.error ?? "compact-not-queued",
+    };
+  }
+
+  return { queued: true, command };
 }
 
 function toolInputSummary(input: unknown): string {
@@ -2383,6 +2482,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         thinking,
         effort,
         providerName,
+        clientName: "yep-anywhere",
         executor,
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
@@ -2488,6 +2588,25 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       ); // 410 Gone
     }
 
+    const resolvedModel = body.model && body.model !== "default"
+      ? body.model
+      : process.resolvedModel ?? process.model;
+    const resolveContextWindow = deps.modelInfoService
+      ? (model: string | undefined, provider?: ProviderName) =>
+          deps.modelInfoService?.getContextWindow(model, provider)
+      : getModelContextWindow;
+
+    let compactQueued = false;
+    if (!body.deferred && !body.thinking && body.model === undefined) {
+      const compactAttempt = await tryQueueTargetedAutoCompact({
+        process,
+        model: resolvedModel,
+        message: body.message,
+        resolveContextWindow,
+      });
+      compactQueued = compactAttempt.queued;
+    }
+
     // Deferred messages stay server-side until Process reaches a safe delivery
     // boundary. If the process is already idle, Process can accept them now.
     if (body.deferred) {
@@ -2579,6 +2698,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     return c.json({
       queued: true,
+      compactQueued,
       restarted: result.restarted,
       processId: result.process.id,
       serverTimestamp,

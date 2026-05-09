@@ -4110,13 +4110,6 @@ a.sidebar-nav-item {
   white-space: nowrap;
 }
 
-.model-toolbar-icon {
-  display: none;
-  font-weight: 600;
-  font-size: var(--font-size-sm);
-  line-height: 1;
-}
-
 /* Attachment list */
 .attachment-list {
   display: flex;
@@ -6554,6 +6547,10 @@ a.sidebar-nav-item {
     right: 0.125rem;
     bottom: calc(100% + 0.25rem);
   }
+
+  .model-toolbar-button {
+    display: none;
+  }
 }
 
 @media (max-width: 520px) {
@@ -6571,23 +6568,6 @@ a.sidebar-nav-item {
 
   .queue-mode-label-short {
     display: inline;
-  }
-
-  .model-toolbar-label {
-    display: none;
-  }
-
-  .model-toolbar-icon {
-    display: inline;
-  }
-
-  .model-toolbar-button {
-    width: var(--composer-control-size);
-    max-width: var(--composer-control-size);
-    padding: 0;
-    justify-content: center;
-    flex-shrink: 0;
-    border-left-width: 1px;
   }
 }
 

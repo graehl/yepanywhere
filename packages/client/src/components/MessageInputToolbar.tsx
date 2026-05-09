@@ -539,12 +539,11 @@ export function MessageInputToolbar({
             <span className="model-toolbar-label">
               {modelIndicatorTitle ?? "model"}
             </span>
-            <span className="model-toolbar-icon" aria-hidden="true">/m</span>
           </button>
         )}
         {onSelectSlashCommand && (
           <SlashCommandButton
-            commands={slashCommands.filter((c) => c !== "model")}
+            commands={slashCommands}
             onSelectCommand={onSelectSlashCommand}
             disabled={voiceDisabled}
           />

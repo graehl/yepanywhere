@@ -2148,9 +2148,14 @@ function SessionPageContent({
         )
       : undefined;
   const liveBadgeModel = liveModelConfig?.model ?? effectiveModel;
+  // Strip "claude-{family}-" prefix since the header badge already shows the family
+  const stripBadgePrefix = (model: string) => {
+    const m = model.match(/^claude-\w+-(.+)$/);
+    return m ? m[1] : model;
+  };
   const slashModelIndicatorTitle =
     currentOwnedProcessId && liveBadgeModel
-      ? `${liveBadgeModel} · ${
+      ? `${stripBadgePrefix(liveBadgeModel)} · ${
           liveModelConfig?.thinking?.type === "disabled" || !liveModelConfig?.thinking
             ? "Thinking off"
             : liveModelConfig?.effort
@@ -2882,6 +2887,7 @@ function SessionPageContent({
                       supportsManualCompact ? handleCompactSession : undefined
                     }
                     onTerminate={handleTerminate}
+                    onReload={() => window.location.reload()}
                     onShare={handleShare}
                     useFixedPositioning
                     useEllipsisIcon

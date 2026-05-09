@@ -28,6 +28,8 @@ export interface SessionMenuProps {
   onHandoff?: () => void | Promise<void>;
   /** Called to terminate the session's process */
   onTerminate?: () => void | Promise<void>;
+  /** Reload the page (non-swipe alternative for mobile) */
+  onReload?: () => void;
   /** Called to configure session heartbeat settings */
   onConfigureHeartbeat?: () => void;
   /** Whether dismissed warnings can be restored */
@@ -63,6 +65,7 @@ export function SessionMenu({
   onCompact,
   onHandoff,
   onTerminate,
+  onReload,
   onConfigureHeartbeat,
   warningRestoreAvailable = false,
   onRestoreWarnings,
@@ -468,6 +471,23 @@ export function SessionMenu({
           {isTerminating
             ? t("sessionMenuTerminating")
             : t("sessionMenuTerminate")}
+        </button>
+      )}
+      {onReload && (
+        <button type="button" onClick={() => { setIsOpen(false); onReload(); }}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          Reload page
         </button>
       )}
     </div>

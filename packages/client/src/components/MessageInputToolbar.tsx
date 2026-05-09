@@ -400,6 +400,13 @@ export function MessageInputToolbar({
             <span className="attach-count">{attachmentCount}</span>
           )}
         </button>
+        {onSelectSlashCommand && (
+          <SlashCommandButton
+            commands={slashCommands}
+            onSelectCommand={onSelectSlashCommand}
+            disabled={voiceDisabled}
+          />
+        )}
         {supportsThinkingToggle && (
           <button
             type="button"
@@ -540,13 +547,6 @@ export function MessageInputToolbar({
               {modelIndicatorTitle ?? "model"}
             </span>
           </button>
-        )}
-        {onSelectSlashCommand && (
-          <SlashCommandButton
-            commands={slashCommands}
-            onSelectCommand={onSelectSlashCommand}
-            disabled={voiceDisabled}
-          />
         )}
       </div>
       {(livenessDisplay || showLastActivityAge) && (

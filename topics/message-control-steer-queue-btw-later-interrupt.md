@@ -74,6 +74,27 @@ Rationale:
 - `/btw` must remain distinct from queue modes and steering.
 - Parent session composer actions should be explicit; no implicit route sharing.
 
+## Deferred queue reconciliation note (known desync)
+
+Deferred rows should be treated as optimistic until the provider proves delivery.
+For both Claude and Codex, there are observed cases where local queue state drifts:
+
+- queued message remains visible after the provider has already consumed it,
+- message disappears from history while still rendered in local queued state,
+- message echoes are missing `tempId`, which delays removal from local scratch.
+
+When the next reconnect/`connected`/`deferred-queue` snapshot does not resolve
+the drift, preserve the row and expose recovery actions (`edit`, `cancel`, `retry`)
+rather than implying a firm `"sent"` or `"queued"` terminal state.
+
+Suggested reconciliation contract:
+
+- prefer `tempId` match to mark definitive delivery,
+- fallback to content match only when no identifier is available,
+- when neither path has confirmed, mark as `Queued (verifying)` in UI copy.
+- if a row remains unverified across compact/turn boundaries, trigger a snapshot
+  refresh before user-visible "stability" assumptions.
+
 ## Action matrix by readiness
 
 - `idle`

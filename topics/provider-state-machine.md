@@ -75,6 +75,26 @@ Action gating rules:
    completion assumptions.
 3. Keep liveness-derived states visible without turning them into hard action locks.
 
+## Queue-state consistency edge case (provider desync)
+
+Claude and Codex sessions can report queued message state that diverges from
+provider acceptance state.
+
+- a deferred/queued row can remain marked `Queued` after provider replay already
+  accepted it, or
+- a sent/accepted row can remain pending when local state still shows queued.
+
+The contract is: local queue indicators are advisory until reconciliation arrives.
+A message is considered sent only when one of these confirms:
+
+- user message echo with matching `tempId`,
+- deferred-queue refresh that omits that `tempId`,
+- reconnect/session snapshot showing the message in history and not in queued summary.
+
+When this mismatch is observed, UI should preserve the queued row for recovery
+actions (`cancel`, `edit`, `retry`) and mark the state as uncertain rather than
+forcing silent state transitions.[^claude-queued-bug][^codex-queued-bug]
+
 ## Provider-specific capability notes
 
 - Claude does not expose provider steering (`supportsSteering=false`), so active
@@ -103,3 +123,9 @@ compact progress as a terminal visual lockout for model-selector details.
 [^handoff]: Provider-driven handoff has not been independently proven as an
   end-to-end baseline in this codebase; prefer explicit provider handoff validation
   before replacing scripted handoff templates.
+[^codex-queued-bug]: Codex queue-state reconciliation gaps have been observed as
+  visual state drift; treat queued status text as advisory and keep recovery
+  actions available when stale.
+[^claude-queued-bug]: Claude queue-state reconciliation gaps have been observed as
+  visual state drift; treat queued status text as advisory and keep recovery
+  actions available when stale.

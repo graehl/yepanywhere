@@ -417,7 +417,7 @@ function processMessage(
           id: blockId,
           thinking,
           signature: undefined,
-          status: "complete",
+          status: msg._isStreaming ? "streaming" : "complete",
           sourceMessages: [msg],
           isSubagent: msg.isSubagent,
         });

@@ -1914,10 +1914,10 @@ details[open] .collapsible__icon {
 }
 
 .model-switch-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
   gap: 0.35rem;
-  max-height: min(28vh, 10rem);
+  max-height: min(55vh, 28rem);
   overflow-y: auto;
 }
 
@@ -2145,6 +2145,11 @@ details[open] .collapsible__icon {
   .model-switch-status-detail {
     margin-left: 0;
     width: 100%;
+  }
+
+  .model-switch-list {
+    grid-template-columns: 1fr;
+    max-height: min(28vh, 10rem);
   }
 }
 

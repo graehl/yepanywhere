@@ -487,6 +487,36 @@ describe("preprocessMessages", () => {
     expect(items[1]?.type).toBe("text");
   });
 
+  it("thinking blocks are 'streaming' when message is streaming, 'complete' otherwise", () => {
+    const thinkingContent = [
+      { type: "thinking" as const, thinking: "Let me think..." },
+      { type: "text" as const, text: "My response." },
+    ];
+
+    const streamingItems = preprocessMessages([
+      {
+        id: "msg-1",
+        role: "assistant",
+        content: thinkingContent,
+        timestamp: "2024-01-01T00:00:00Z",
+        _isStreaming: true,
+      } as Message,
+    ]);
+    const completeItems = preprocessMessages([
+      {
+        id: "msg-1",
+        role: "assistant",
+        content: thinkingContent,
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+    ]);
+
+    const streamingThinking = streamingItems[0];
+    const completeThinking = completeItems[0];
+    expect(streamingThinking?.type === "thinking" && streamingThinking.status).toBe("streaming");
+    expect(completeThinking?.type === "thinking" && completeThinking.status).toBe("complete");
+  });
+
   it("hides internal reasoning placeholders but keeps real text", () => {
     const messages: Message[] = [
       {

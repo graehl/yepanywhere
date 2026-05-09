@@ -527,15 +527,26 @@ export function MessageInputToolbar({
             disabled={voiceDisabled}
           />
         )}
+        {slashCommands.includes("model") && onSelectSlashCommand && (
+          <button
+            type="button"
+            className={`model-toolbar-button${modelIndicatorTone ? ` tone-${modelIndicatorTone}` : ""}`}
+            onClick={() => onSelectSlashCommand("/model")}
+            disabled={disabled || voiceDisabled}
+            title={modelIndicatorTitle ?? "Switch model (/model)"}
+            aria-label="Switch model"
+          >
+            <span className="model-toolbar-label">
+              {modelIndicatorTitle ?? "model"}
+            </span>
+            <span className="model-toolbar-icon" aria-hidden="true">/m</span>
+          </button>
+        )}
         {onSelectSlashCommand && (
           <SlashCommandButton
-            commands={slashCommands}
+            commands={slashCommands.filter((c) => c !== "model")}
             onSelectCommand={onSelectSlashCommand}
             disabled={voiceDisabled}
-            modelIndicatorTone={
-              slashCommands.includes("model") ? modelIndicatorTone : undefined
-            }
-            modelIndicatorTitle={modelIndicatorTitle}
           />
         )}
       </div>

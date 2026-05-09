@@ -26,6 +26,7 @@ import { MessageList } from "../components/MessageList";
 import { ModelSwitchModal } from "../components/ModelSwitchModal";
 import { ProcessInfoModal } from "../components/ProcessInfoModal";
 import { ProviderBadge } from "../components/ProviderBadge";
+import { ThinkingIndicator } from "../components/ThinkingIndicator";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { RecentSessionsDropdown } from "../components/RecentSessionsDropdown";
 import { RestartSessionModal } from "../components/RestartSessionModal";
@@ -2909,6 +2910,9 @@ function SessionPageContent({
                 }
                 onClick={handleShareIndicatorClick}
               />
+              {canStopOwnedProcess && (
+                <ThinkingIndicator variant="pill" className="session-header-thinking" />
+              )}
               {!loading && effectiveProvider && (
                 <button
                   type="button"

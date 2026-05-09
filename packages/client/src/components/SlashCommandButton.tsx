@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getSlashCommandMenuParts } from "../lib/slashCommands";
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
@@ -27,6 +28,7 @@ export function SlashCommandButton({
   modelIndicatorTitle,
 }: SlashCommandButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ bottom: number; left: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -64,6 +66,25 @@ export function SlashCommandButton({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
+  // Close on resize so stale position doesn't persist
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleResize = () => setIsOpen(false);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [isOpen]);
+
+  const handleToggle = useCallback(() => {
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setMenuPos({
+        bottom: window.innerHeight - rect.top + 4,
+        left: rect.left,
+      });
+    }
+    setIsOpen((prev) => !prev);
+  }, [isOpen]);
+
   const handleCommandClick = useCallback(
     (command: string) => {
       onSelectCommand(`/${command}`);
@@ -83,7 +104,7 @@ export function SlashCommandButton({
         ref={buttonRef}
         type="button"
         className={`slash-command-button ${isOpen ? "active" : ""}`}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggle}
         disabled={disabled}
         title={modelIndicatorTitle ?? "Slash commands"}
         aria-label="Show slash commands"
@@ -98,22 +119,26 @@ export function SlashCommandButton({
           />
         )}
       </button>
-      {isOpen && (
-        <div
-          ref={menuRef}
-          className="slash-command-menu"
-          role="menu"
-          aria-label="Slash commands"
-        >
-          {commands.map((command) => (
-            <SlashCommandMenuItem
-              key={command}
-              command={command}
-              onSelect={handleCommandClick}
-            />
-          ))}
-        </div>
-      )}
+      {isOpen &&
+        menuPos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="slash-command-menu"
+            style={{ position: "fixed", bottom: menuPos.bottom, left: menuPos.left }}
+            role="menu"
+            aria-label="Slash commands"
+          >
+            {commands.map((command) => (
+              <SlashCommandMenuItem
+                key={command}
+                command={command}
+                onSelect={handleCommandClick}
+              />
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

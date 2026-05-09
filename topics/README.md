@@ -9,7 +9,11 @@
 - Attachment previews and same-browser cache
 - OpenCode ses_ session ID unification with YA session ID
 - MessageQueue batch delivery and steering UI
+- Message-control and queue intent (`/btw`, queue intent, later-interrupt state contract)
 - Provider-agnostic /btw asides
 - Session liveness and queue intent
+- Provider process state machine
+- Compact-and-handoff guardrail (targeted provider/model policy)
 - Heartbeat ownership and timers
 - Claude provider control
+- Pixel-scale icon aesthetics

@@ -5,6 +5,7 @@ import { useSchemaValidationContext } from "../../../contexts/SchemaValidationCo
 import { makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
+import { FilePathDisplay } from "../../ui/FilePathDisplay";
 import { FixedFontMathToggle } from "../../ui/FixedFontMathToggle";
 import { Modal } from "../../ui/Modal";
 import type {
@@ -78,11 +79,10 @@ function renderReadMathPanel(html: string) {
  */
 function ReadToolUse({ input }: { input: ReadInput }) {
   const meta = useOptionalSessionMetadata();
-  const fileName = getFileName(input.file_path);
   const displayPath = makeDisplayPath(input.file_path, meta?.projectPath);
   return (
     <div className="read-tool-use">
-      <span className="file-path" title={displayPath}>{fileName}</span>
+      <span className="file-path"><FilePathDisplay displayPath={displayPath} /></span>
       {(input.offset !== undefined || input.limit !== undefined) && (
         <span className="read-range">
           {input.offset !== undefined && ` from line ${input.offset}`}
@@ -207,13 +207,12 @@ function FileModalContent({
  */
 function FileModalTitle({ file }: { file: TextFile }) {
   const meta = useOptionalSessionMetadata();
-  const fileName = getFileName(file.filePath);
   const displayPath = makeDisplayPath(file.filePath, meta?.projectPath);
   const showRange = file.startLine > 1 || file.numLines < file.totalLines;
 
   return (
-    <span className="file-path" title={displayPath}>
-      {fileName}
+    <span className="file-path">
+      <FilePathDisplay displayPath={displayPath} />
       {showRange && (
         <span className="file-range">
           {" "}
@@ -262,10 +261,9 @@ function TextFileResult({
         <button
           type="button"
           className="file-link-button"
-          title={displayPath}
           onClick={() => setShowModal(true)}
         >
-          {fileName}
+          <FilePathDisplay displayPath={displayPath} />
           {showRange && (
             <span className="file-range">
               {" "}
@@ -481,12 +479,14 @@ function ReadInteractiveSummary({
   const showValidationWarning =
     enabled && validationErrors && !isToolIgnored("Read");
 
+  const meta = useOptionalSessionMetadata();
+  const displayPath = makeDisplayPath(input.file_path, meta?.projectPath);
   const fileName = getFileName(input.file_path);
 
   if (isError) {
     return (
       <span>
-        {fileName}
+        <FilePathDisplay displayPath={displayPath} />
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Read" errors={validationErrors} />
         )}
@@ -495,7 +495,7 @@ function ReadInteractiveSummary({
   }
 
   if (!result?.file) {
-    return <span>{fileName}</span>;
+    return <span><FilePathDisplay displayPath={displayPath} /></span>;
   }
 
   if (result.type === "pdf") {
@@ -509,7 +509,7 @@ function ReadInteractiveSummary({
           openPdfInNewTab(pdfFile.base64);
         }}
       >
-        {fileName}
+        <FilePathDisplay displayPath={displayPath} />
         <span className="file-line-count-inline">(PDF)</span>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Read" errors={validationErrors} />
@@ -530,7 +530,7 @@ function ReadInteractiveSummary({
             setShowModal(true);
           }}
         >
-          {fileName}
+          <FilePathDisplay displayPath={displayPath} />
           <span className="file-line-count-inline">(image)</span>
           {showValidationWarning && validationErrors && (
             <SchemaWarning toolName="Read" errors={validationErrors} />
@@ -551,7 +551,7 @@ function ReadInteractiveSummary({
   if (isPtyHandoff) {
     return (
       <span>
-        {fileName}{" "}
+        <FilePathDisplay displayPath={displayPath} />{" "}
         <span className="file-line-count-inline">continues in Shell</span>
       </span>
     );
@@ -567,7 +567,7 @@ function ReadInteractiveSummary({
           setShowModal(true);
         }}
       >
-        {fileName}
+        <FilePathDisplay displayPath={displayPath} />
         <span className="file-line-count-inline">{file.numLines} lines</span>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Read" errors={validationErrors} />

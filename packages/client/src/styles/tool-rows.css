@@ -100,6 +100,31 @@
   opacity: 0.7;
 }
 
+/* Clickable overlay on the timeline dot - expand/collapse Read/Edit rows */
+.timeline-dot-btn {
+  position: absolute;
+  left: -18px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  z-index: 1;
+}
+
+.timeline-dot-btn:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 0 0 1px var(--border-color, #444);
+}
+
+.timeline-dot-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-border, #007acc);
+}
+
 /* ==========================================================================
    Tool Call Rows - VS Code Style
    ========================================================================== */

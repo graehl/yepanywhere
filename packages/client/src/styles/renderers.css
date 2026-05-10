@@ -235,6 +235,19 @@
 }
 
 /* ==========================================================================
+   File Path Display - dirname prefix dimmed, filename normal
+   ========================================================================== */
+
+.file-path-display {
+  display: inline;
+}
+
+.file-path-display-dir {
+  color: var(--text-dimmed, #666);
+  opacity: 0.85;
+}
+
+/* ==========================================================================
    ANSI terminal colors (SGR escape rendering)
 
    Palette is tuned against a mid-to-dark background. Overridable per

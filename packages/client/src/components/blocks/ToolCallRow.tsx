@@ -313,6 +313,23 @@ export const ToolCallRow = memo(function ToolCallRow({
     !isNonExpandable && (toolName === "Edit" || toolName === "TodoWrite"),
   );
 
+  // Dot-expanded: shows inline ToolResultExpanded for non-expandable rows
+  // that have an interactive summary (Read, completed Edit).
+  const [dotExpanded, setDotExpanded] = useState(false);
+
+  // Show dot button for expandable rows and rows with interactive summary
+  const showDotBtn = !isNonExpandable || hasInteractiveSummary;
+
+  const handleDotClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    hydrateNow();
+    if (!isNonExpandable) {
+      setExpanded((v) => !v);
+    } else if (hasInteractiveSummary && shouldHydrateRichContent) {
+      setDotExpanded((v) => !v);
+    }
+  };
+
   const summary = useMemo(() => {
     return getToolSummary(toolName, toolInput, toolResult, status);
   }, [toolName, toolInput, toolResult, status]);
@@ -347,6 +364,22 @@ export const ToolCallRow = memo(function ToolCallRow({
       onFocus={hydrateNow}
       className={`tool-row timeline-item ${expanded ? "expanded" : "collapsed"} status-${status} ${isNonExpandable ? "interactive" : ""} ${shouldHydrateRichContent ? "" : "rich-deferred"}`}
     >
+      {showDotBtn && (
+        <button
+          type="button"
+          className="timeline-dot-btn"
+          onClick={handleDotClick}
+          aria-label={
+            !isNonExpandable
+              ? expanded
+                ? "Collapse"
+                : "Expand"
+              : dotExpanded
+                ? "Collapse inline view"
+                : "Expand inline view"
+          }
+        />
+      )}
       <div
         className={`tool-row-header ${isNonExpandable ? "non-expandable" : ""}`}
         onClick={
@@ -440,6 +473,17 @@ export const ToolCallRow = memo(function ToolCallRow({
           aria-hidden="true"
         >
           <div className="tool-row-deferred-preview-box" />
+        </div>
+      )}
+
+      {dotExpanded && isNonExpandable && hasInteractiveSummary && (
+        <div className="tool-row-content">
+          <ToolResultExpanded
+            toolName={toolName}
+            toolInput={toolInput}
+            toolResult={toolResult}
+            context={renderContext}
+          />
         </div>
       )}
 

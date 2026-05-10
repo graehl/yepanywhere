@@ -50,6 +50,45 @@ export type { AgentContent, AgentContentMap } from "./useSessionMessages";
 
 const THROTTLE_MS = 500;
 const STREAM_ACTIVITY_TOKEN_UPDATE_MS = 500;
+const STREAM_LIVENESS_UPDATE_MS = 500;
+const FALLBACK_STREAM_LONG_SILENCE_THRESHOLD_MS = 300_000;
+
+function hasUserVisibleStreamProgress(streamEvent: Record<string, unknown>): boolean {
+  // "user-visible liveness": only content chunks that can render visible text/thinking
+  // count as actual progress for stale->live transition.
+  const eventType = streamEvent.type;
+  if (typeof eventType !== "string") {
+    return false;
+  }
+
+  if (eventType === "content_block_delta") {
+    const delta = streamEvent.delta;
+    if (!delta || typeof delta !== "object") {
+      return false;
+    }
+    const text = (delta as Record<string, unknown>).text;
+    const thinking = (delta as Record<string, unknown>).thinking;
+    return (
+      (typeof text === "string" && text.length > 0) ||
+      (typeof thinking === "string" && thinking.length > 0)
+    );
+  }
+
+  if (eventType === "content_block_start") {
+    const contentBlock = streamEvent.content_block;
+    if (!contentBlock || typeof contentBlock !== "object") {
+      return false;
+    }
+    const text = (contentBlock as Record<string, unknown>).text;
+    const thinking = (contentBlock as Record<string, unknown>).thinking;
+    return (
+      (typeof text === "string" && text.length > 0) ||
+      (typeof thinking === "string" && thinking.length > 0)
+    );
+  }
+
+  return false;
+}
 
 function isPermissionMode(value: unknown): value is PermissionMode {
   return (
@@ -561,6 +600,65 @@ export function useSession(
       }, STREAM_ACTIVITY_TOKEN_UPDATE_MS - elapsedMs);
     }
   }, []);
+
+  const buildStreamProgressLiveness = useCallback(
+    (nowMs: number, previous: SessionLivenessSnapshot | null) => {
+      const now = new Date(nowMs).toISOString();
+      const previousEvidence = previous?.evidence ?? [];
+      const evidence = Array.from(
+        new Set([...previousEvidence, "stream_event"]),
+      );
+
+      return {
+        checkedAt: now,
+        derivedStatus: "verified-progressing" as const,
+        activeWorkKind: previous?.activeWorkKind ?? "agent-turn",
+        state: previous?.state ?? "in-turn",
+        evidence,
+        lastProviderMessageAt: previous?.lastProviderMessageAt ?? null,
+        lastRawProviderEventAt: now,
+        lastRawProviderEventSource: "stream_event",
+        lastStateChangeAt: previous?.lastStateChangeAt ?? now,
+        lastVerifiedProgressAt: now,
+        lastVerifiedIdleAt: previous?.lastVerifiedIdleAt ?? null,
+        lastLivenessProbeAt: previous?.lastLivenessProbeAt ?? null,
+        lastLivenessProbeStatus: previous?.lastLivenessProbeStatus ?? null,
+        lastLivenessProbeSource: previous?.lastLivenessProbeSource ?? null,
+        ...(previous?.lastLivenessProbeDetail
+          ? { lastLivenessProbeDetail: previous.lastLivenessProbeDetail }
+          : {}),
+        silenceMs: 0,
+        longSilenceThresholdMs:
+          previous?.longSilenceThresholdMs ??
+          FALLBACK_STREAM_LONG_SILENCE_THRESHOLD_MS,
+        processAlive: previous?.processAlive ?? true,
+        queueDepth: previous?.queueDepth ?? 0,
+        deferredQueueDepth: previous?.deferredQueueDepth ?? 0,
+      };
+    },
+    [],
+  );
+
+  const noteStreamProgressLiveness = useCallback(() => {
+    const nowMs = Date.now();
+
+    setSessionLiveness((previous) => {
+      const nowVerifiedProgressMs = Date.parse(
+        previous?.lastVerifiedProgressAt ?? previous?.checkedAt ?? "",
+      );
+
+      if (
+        previous &&
+        previous.derivedStatus === "verified-progressing" &&
+        Number.isFinite(nowVerifiedProgressMs) &&
+        nowMs - nowVerifiedProgressMs < STREAM_LIVENESS_UPDATE_MS
+      ) {
+        return previous;
+      }
+
+      return buildStreamProgressLiveness(nowMs, previous);
+    });
+  }, [buildStreamProgressLiveness]);
 
   useEffect(() => {
     return () => {
@@ -1344,11 +1442,20 @@ export function useSession(
         const msgType =
           typeof sdkMessage.type === "string" ? sdkMessage.type : undefined;
         const msgRole = sdkMessage.role as Message["role"] | undefined;
+        const hasUserVisibleLiveness =
+          msgType === "stream_event" &&
+          hasUserVisibleStreamProgress(
+            (sdkMessage.event as Record<string, unknown>) ?? {},
+          );
 
         // Track stream activity for engagement/freshness UI. Queue state,
         // status, and full user/assistant messages stay immediate; only
         // token-level stream_event freshness is coalesced.
         noteStreamActivity(msgType !== "stream_event");
+
+        if (hasUserVisibleLiveness) {
+          noteStreamProgressLiveness();
+        }
 
         // Handle stream_event messages (partial content from streaming API)
         // Delegate to useStreamingContent hook

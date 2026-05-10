@@ -449,6 +449,98 @@ describe("useSession completion reconciliation", () => {
     });
   });
 
+  it("moves stale liveness to live on user-visible stream progress", () => {
+    const eventStart = new Date("2026-04-24T01:00:00.000Z");
+    vi.setSystemTime(eventStart);
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "status",
+        state: "in-turn",
+        liveness: mockLiveness({
+          checkedAt: "2026-04-24T00:00:00.000Z",
+          lastVerifiedProgressAt: "2026-04-24T00:00:00.000Z",
+          silenceMs: 3_600_000,
+          derivedStatus: "long-silent-unverified",
+        }),
+      });
+    });
+
+    expect(result.current.sessionLiveness?.derivedStatus).toBe(
+      "long-silent-unverified",
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: {
+            type: "text_delta",
+            text: "Hello",
+          },
+        },
+      });
+    });
+
+    expect(result.current.sessionLiveness).toMatchObject({
+      derivedStatus: "verified-progressing",
+      lastVerifiedProgressAt: eventStart.toISOString(),
+      evidence: expect.arrayContaining(["stream_event"]),
+      lastRawProviderEventSource: "stream_event",
+      silenceMs: 0,
+    });
+  });
+
+  it("keeps stale liveness when stream_event has no user-visible content", () => {
+    const eventStart = new Date("2026-04-24T01:00:00.000Z");
+    vi.setSystemTime(eventStart);
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "status",
+        state: "in-turn",
+        liveness: mockLiveness({
+          checkedAt: "2026-04-24T00:00:00.000Z",
+          lastVerifiedProgressAt: "2026-04-24T00:00:00.000Z",
+          silenceMs: 3_600_000,
+          derivedStatus: "long-silent-unverified",
+        }),
+      });
+    });
+
+    expect(result.current.sessionLiveness?.derivedStatus).toBe(
+      "long-silent-unverified",
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "stream_event",
+      });
+    });
+
+    expect(result.current.sessionLiveness).toMatchObject({
+      derivedStatus: "long-silent-unverified",
+      lastVerifiedProgressAt: "2026-04-24T00:00:00.000Z",
+      silenceMs: 3_600_000,
+    });
+  });
+
   it("marks a promoted deferred queue chip as sending until the user echo arrives", () => {
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {

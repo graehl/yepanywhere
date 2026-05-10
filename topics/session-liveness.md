@@ -31,6 +31,12 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
 - Raw provider/app-server events are cadence and debugging evidence, not proof
   of user-visible progress. They should be visible in snapshots/tooltips, but a
   recent raw event alone must not upgrade a stale active turn.
+- `stream_event` transport traffic alone is not user-visible progress. A stale
+  active turn should move to `verified-progressing` only when the stream event
+  carries user-visible content (for example text/thinking delta content), not
+  for envelopes that only describe connection state.
+- Use the explicit term **user-visible liveness** for this upgrade gate: only
+  content that is actually rendered to the user qualifies as progress.
 - Provider control-channel probes may verify that a provider runtime is still
   responsive while the active turn is silent. They should be labelled by source
   and detail, and should not be described as user-visible progress.
@@ -126,6 +132,8 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
   `verified-waiting-provider`, not `long-silent-unverified`.
 - A stale active turn with only a recent raw provider event stays
   `long-silent-unverified`.
+- A stale active turn with a stream_event envelope but no user-visible progress
+  stays `long-silent-unverified`.
 - A stale active turn with no usable probe stays unverified.
 - OpenCode `busy` and `retry` `/session/status` entries become active probe
   evidence, while an unrecognized present entry becomes probe error evidence.

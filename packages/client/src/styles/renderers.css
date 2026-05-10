@@ -1166,6 +1166,16 @@ details[open] .collapsible__icon {
   gap: 0.5rem;
 }
 
+.read-text-inline {
+  gap: 0.25rem;
+}
+
+.file-range-inline {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  padding: 0.1rem 0;
+}
+
 .file-link-button {
   display: inline-flex;
   align-items: center;

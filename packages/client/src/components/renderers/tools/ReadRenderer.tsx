@@ -241,52 +241,33 @@ function TextFileResult({
   isPtyHandoff?: boolean;
 }) {
   const meta = useOptionalSessionMetadata();
-  const [showModal, setShowModal] = useState(false);
-  const fileName = getFileName(file.filePath);
   const displayPath = makeDisplayPath(file.filePath, meta?.projectPath);
   const showRange = file.startLine > 1 || file.numLines < file.totalLines;
 
   if (isPtyHandoff) {
     return (
       <div className="read-text-result">
-        <span className="file-path" title={displayPath}>{fileName}</span>{" "}
+        <span className="file-path"><FilePathDisplay displayPath={displayPath} /></span>{" "}
         <span className="file-line-count">continues in Shell</span>
       </div>
     );
   }
 
   return (
-    <>
-      <div className="read-text-result">
-        <button
-          type="button"
-          className="file-link-button"
-          onClick={() => setShowModal(true)}
-        >
-          <FilePathDisplay displayPath={displayPath} />
-          {showRange && (
-            <span className="file-range">
-              {" "}
-              (lines {file.startLine}-{file.startLine + file.numLines - 1})
-            </span>
-          )}
-          <span className="file-line-count">{file.numLines} lines</span>
-        </button>
-      </div>
-      {showModal && (
-        <Modal
-          title={<FileModalTitle file={file} />}
-          onClose={() => setShowModal(false)}
-        >
-          <FileModalContent
-            file={file}
-            highlightedHtml={highlightedHtml}
-            highlightedTruncated={highlightedTruncated}
-            renderedMarkdownHtml={renderedMarkdownHtml}
-          />
-        </Modal>
+    <div className="read-text-result read-text-inline">
+      {showRange && (
+        <div className="file-range-inline">
+          lines {file.startLine}–{file.startLine + file.numLines - 1} of{" "}
+          {file.totalLines}
+        </div>
       )}
-    </>
+      <FileModalContent
+        file={file}
+        highlightedHtml={highlightedHtml}
+        highlightedTruncated={highlightedTruncated}
+        renderedMarkdownHtml={renderedMarkdownHtml}
+      />
+    </div>
   );
 }
 

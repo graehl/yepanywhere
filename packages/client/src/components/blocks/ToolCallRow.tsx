@@ -320,6 +320,11 @@ export const ToolCallRow = memo(function ToolCallRow({
   // Show dot button for expandable rows and rows with interactive summary
   const showDotBtn = !isNonExpandable || hasInteractiveSummary;
 
+  // Header toggles dotExpanded for non-expandable rows that have interactive
+  // summary (Read complete, Edit complete) — same pattern as thinking blocks.
+  const hasHeaderDotToggle =
+    isNonExpandable && hasInteractiveSummary && shouldHydrateRichContent;
+
   const handleDotClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     hydrateNow();
@@ -385,9 +390,11 @@ export const ToolCallRow = memo(function ToolCallRow({
         onClick={
           hasDeferredInteractiveShell
             ? hydrateNow
-            : isNonExpandable
-              ? undefined
-              : handleToggle
+            : hasHeaderDotToggle
+              ? () => setDotExpanded((v) => !v)
+              : isNonExpandable
+                ? undefined
+                : handleToggle
         }
         onKeyDown={
           hasDeferredInteractiveShell
@@ -397,18 +404,27 @@ export const ToolCallRow = memo(function ToolCallRow({
                   hydrateNow();
                 }
               }
-            : isNonExpandable
-            ? undefined
-            : (e) => e.key === "Enter" && handleToggle()
+            : hasHeaderDotToggle
+              ? (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setDotExpanded((v) => !v);
+                  }
+                }
+              : isNonExpandable
+                ? undefined
+                : (e) => e.key === "Enter" && handleToggle()
         }
         role={
-          hasDeferredInteractiveShell
+          hasDeferredInteractiveShell || hasHeaderDotToggle || !isNonExpandable
             ? "button"
-            : isNonExpandable
-              ? "presentation"
-              : "button"
+            : "presentation"
         }
-        tabIndex={isNonExpandable && !hasDeferredInteractiveShell ? undefined : 0}
+        tabIndex={
+          hasDeferredInteractiveShell || hasHeaderDotToggle || !isNonExpandable
+            ? 0
+            : undefined
+        }
       >
         {status === "pending" && (
           <span className="tool-spinner" aria-label="Running">
@@ -452,6 +468,11 @@ export const ToolCallRow = memo(function ToolCallRow({
         {!isNonExpandable && (
           <span className="expand-chevron" aria-hidden="true">
             {expanded ? "▾" : "▸"}
+          </span>
+        )}
+        {hasHeaderDotToggle && (
+          <span className="expand-chevron" aria-hidden="true">
+            {dotExpanded ? "▾" : "▸"}
           </span>
         )}
       </div>

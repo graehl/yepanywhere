@@ -243,6 +243,11 @@ export function MessageInputToolbar({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [isearchScope, setIsearchScope] =
     useState<SessionIsearchScope | null>(null);
+  const [isCompactStatusMode, setIsCompactStatusMode] = useState(() =>
+    typeof window === "undefined"
+      ? false
+      : window.matchMedia("(max-width: 600px)").matches,
+  );
   const lastActivityMs = parseTimestampMs(lastActivityAt);
   const showLastActivityAge = isStaleTimestamp(lastActivityMs, nowMs);
   const livenessDisplay = sessionLiveness
@@ -298,6 +303,19 @@ export function MessageInputToolbar({
           : t("toolbarQueueLabel")
         : t("toolbarSend");
   const shortcutsPopoverOpen = shortcutsOpen || isearchScope !== null;
+
+  useEffect(() => {
+    const compactStatusQuery = window.matchMedia("(max-width: 600px)");
+    const updateCompactStatusMode = () => {
+      setIsCompactStatusMode(compactStatusQuery.matches);
+    };
+    updateCompactStatusMode();
+    compactStatusQuery.addEventListener("change", updateCompactStatusMode);
+
+    return () => {
+      compactStatusQuery.removeEventListener("change", updateCompactStatusMode);
+    };
+  }, []);
 
   useEffect(() => {
     const handleIsearchGuide = (event: Event) => {
@@ -543,7 +561,8 @@ export function MessageInputToolbar({
       </div>
       {(livenessDisplay || showLastActivityAge) && (
         <div className="composer-status-ages">
-          {livenessDisplay && (
+          {livenessDisplay &&
+            !(isCompactStatusMode && showLastActivityAge) && (
             <div
               className={`composer-status-chip composer-liveness-status is-${livenessDisplay.tone}`}
               aria-label={`Session verified liveness: ${livenessSummary}`}
@@ -573,7 +592,7 @@ export function MessageInputToolbar({
                 timestampMs={lastActivityMs}
                 nowMs={nowMs}
                 className="composer-activity-age-time"
-                prefix="Last activity"
+                prefix={isCompactStatusMode ? undefined : "Last activity"}
               />
             </div>
           )}

@@ -42,6 +42,11 @@ describe("getModelIndicatorModelLabel", () => {
         "Cd ⚡",
       );
     });
+    it("gpt-5.4-codex-spark", () => {
+      expect(getModelIndicatorModelLabel("codex", "gpt-5.4-codex-spark")).toBe(
+        "Cd ⚡",
+      );
+    });
     it("gpt-5.3-codex-spark", () => {
       expect(getModelIndicatorModelLabel("codex", "gpt-5.3-codex-spark")).toBe(
         "Cd ⚡",
@@ -49,6 +54,16 @@ describe("getModelIndicatorModelLabel", () => {
     });
     it("gpt-5.4 generic", () => {
       expect(getModelIndicatorModelLabel("codex", "gpt-5.4")).toBe("Cd ◇ 5.4");
+    });
+    it("gpt-5.4-codex generic", () => {
+      expect(getModelIndicatorModelLabel("codex", "gpt-5.4-codex")).toBe(
+        "Cd ◇ 5.4",
+      );
+    });
+    it("gpt-5.5-codex generic", () => {
+      expect(getModelIndicatorModelLabel("codex", "gpt-5.5-codex")).toBe(
+        "Cd ◆ 5.5",
+      );
     });
     it("gpt-4", () => {
       expect(getModelIndicatorModelLabel("codex", "gpt-4")).toBe("Cd ⧉ 4");
@@ -133,6 +148,11 @@ describe("getModelIndicatorModelLabel", () => {
         getModelIndicatorModelLabel("codex-oss", "gpt-5.3-codex-spark"),
       ).toBe("Cd↓ ⚡");
     });
+    it("codex-oss maps 5.4-codex-spark to spark icon", () => {
+      expect(
+        getModelIndicatorModelLabel("codex-oss", "gpt-5.4-codex-spark"),
+      ).toBe("Cd↓ ⚡");
+    });
   });
 });
 
@@ -206,5 +226,16 @@ describe("getModelIndicatorTextVariants", () => {
     expect(variants.full).toBe("model");
     expect(variants.glyph).toBe("Cl ♪ 4.6");
     expect(variants.compact).toBe("Cl ♪ 4.6");
+  });
+
+  it("non-status codex title handles codex suffix variants", () => {
+    const variants = getModelIndicatorTextVariants(
+      "codex",
+      "gpt-5.4-codex-spark",
+      "gpt-5.4-codex-spark · Thinking auto",
+    );
+    expect(variants.compact).toBe("Cd ⚡ · Thinking auto");
+    expect(variants.full).toBe("gpt-5.4-codex-spark · Thinking auto");
+    expect(variants.glyph).toBe("Cd ⚡");
   });
 });

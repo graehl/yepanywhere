@@ -52,8 +52,16 @@ const modelGlyphRulesByProvider: Readonly<
     { patterns: ["haiku"], glyph: "✎" },
   ],
   codex: [
-    { patterns: ["gpt-5.4-spark"], glyph: "⚡" },
-    { patterns: ["gpt-5.3-codex-spark", "gpt-5.3-spark"], glyph: "⚡" },
+    {
+      patterns: [
+        "gpt-5.4-codex-spark",
+        "gpt-5.4-spark",
+        "gpt-5.3-codex-spark",
+        "gpt-5.3-spark",
+      ],
+      glyph: "⚡",
+      fixedSuffix: "",
+    },
     { patterns: ["gpt-5.5"], glyph: "◆" },
     { patterns: ["gpt-5.4-mini"], glyph: "◇" },
     { patterns: ["gpt-5.4-nano"], glyph: "◇" },
@@ -63,8 +71,16 @@ const modelGlyphRulesByProvider: Readonly<
     { patterns: ["gpt-4"], glyph: "⧉" },
   ],
   "codex-oss": [
-    { patterns: ["gpt-5.4-spark"], glyph: "⚡" },
-    { patterns: ["gpt-5.3-codex-spark", "gpt-5.3-spark"], glyph: "⚡" },
+    {
+      patterns: [
+        "gpt-5.4-codex-spark",
+        "gpt-5.4-spark",
+        "gpt-5.3-codex-spark",
+        "gpt-5.3-spark",
+      ],
+      glyph: "⚡",
+      fixedSuffix: "",
+    },
     { patterns: ["gpt-5.5"], glyph: "◆" },
     { patterns: ["gpt-5.4-mini"], glyph: "◇" },
     { patterns: ["gpt-5.4-nano"], glyph: "◇" },
@@ -102,6 +118,20 @@ export function normalizeForModelGlyphMatching(value: string): string {
   normalized = normalized.replace(/^opencode\//u, "");
   normalized = normalized.replace(/^gemini-/u, "");
   return normalized;
+}
+
+function normalizeForCodexModelAliasMatching(
+  normalizedModel: string,
+  providerKey: string,
+): string {
+  if (!["codex", "codex-oss"].includes(providerKey)) {
+    return normalizedModel;
+  }
+
+  // Some Codex model identifiers now include `-codex-` as a transport/alias
+  // marker; remove it so stable rendering rules can still map to the same icon
+  // buckets.
+  return normalizedModel.replace(/-codex(?=-|$)/gu, "");
 }
 
 function normalizeModelSuffixTail(raw: string): string {
@@ -177,10 +207,14 @@ export function getModelIndicatorModelLabel(
   const providerKey = normalizeProviderKey(provider);
   const providerGlyph = providerGlyphMap[providerKey] ?? DEFAULT_PROVIDER_GLYPH;
   const normalizedModel = normalizeForModelGlyphMatching(trimmedModel);
-  const match = deriveModelGlyphMatch(providerKey, normalizedModel);
+  const normalizedForMatching = normalizeForCodexModelAliasMatching(
+    normalizedModel,
+    providerKey,
+  );
+  const match = deriveModelGlyphMatch(providerKey, normalizedForMatching);
 
   if (!match) {
-    return `${providerGlyph} ${normalizedModel}`;
+    return `${providerGlyph} ${normalizedForMatching}`;
   }
 
   const suffix = match.suffix ? ` ${match.suffix}` : "";
@@ -227,8 +261,16 @@ export function getModelIndicatorTooltip(
   const modelPart = (() => {
     if (!trimmedModel) return "";
     const normalizedModel = normalizeForModelGlyphMatching(trimmedModel);
-    const match = deriveModelGlyphMatch(providerKey, normalizedModel);
-    const readable = getModelReadableName(providerKey, normalizedModel, match);
+    const normalizedForMatching = normalizeForCodexModelAliasMatching(
+      normalizedModel,
+      providerKey,
+    );
+    const match = deriveModelGlyphMatch(providerKey, normalizedForMatching);
+    const readable = getModelReadableName(
+      providerKey,
+      normalizedForMatching,
+      match,
+    );
     return `${providerGlyph} ${readable}`;
   })();
 

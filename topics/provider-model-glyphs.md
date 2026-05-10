@@ -64,6 +64,7 @@ Model sub-family abbreviations (appended after provider abbrev):
 | haiku        | `Hk`  | `Cl Hk3`                  |
 | (unknown)    | —     | `Cl 4.6` (version only)   |
 | gpt-5.4-spark | `⚡`   | `Cd ⚡`                    |
+| gpt-5.4-codex-spark | `⚡`   | `Cd ⚡`                |
 | gpt-5.3-codex-spark | `⚡`   | `Cd ⚡`                |
 | gpt-5.4-mini | `5.4m`| `Cd 5.4m`                 |
 | gpt-5.4      | `5.4` | `Cd 5.4`                  |

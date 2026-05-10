@@ -206,11 +206,13 @@ function FileModalContent({
  * Build modal title for file with optional range info
  */
 function FileModalTitle({ file }: { file: TextFile }) {
+  const meta = useOptionalSessionMetadata();
   const fileName = getFileName(file.filePath);
+  const displayPath = makeDisplayPath(file.filePath, meta?.projectPath);
   const showRange = file.startLine > 1 || file.numLines < file.totalLines;
 
   return (
-    <span className="file-path">
+    <span className="file-path" title={displayPath}>
       {fileName}
       {showRange && (
         <span className="file-range">
@@ -239,14 +241,16 @@ function TextFileResult({
   renderedMarkdownHtml?: string;
   isPtyHandoff?: boolean;
 }) {
+  const meta = useOptionalSessionMetadata();
   const [showModal, setShowModal] = useState(false);
   const fileName = getFileName(file.filePath);
+  const displayPath = makeDisplayPath(file.filePath, meta?.projectPath);
   const showRange = file.startLine > 1 || file.numLines < file.totalLines;
 
   if (isPtyHandoff) {
     return (
       <div className="read-text-result">
-        <span className="file-path">{fileName}</span>{" "}
+        <span className="file-path" title={displayPath}>{fileName}</span>{" "}
         <span className="file-line-count">continues in Shell</span>
       </div>
     );
@@ -258,6 +262,7 @@ function TextFileResult({
         <button
           type="button"
           className="file-link-button"
+          title={displayPath}
           onClick={() => setShowModal(true)}
         >
           {fileName}

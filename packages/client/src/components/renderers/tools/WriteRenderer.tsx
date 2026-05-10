@@ -168,6 +168,7 @@ function WriteToolResult({
   isError: boolean;
   input?: WriteInputWithAugment;
 }) {
+  const meta = useOptionalSessionMetadata();
   const [isExpanded, setIsExpanded] = useState(false);
   const { enabled, reportValidationError, isToolIgnored } =
     useSchemaValidationContext();
@@ -215,13 +216,14 @@ function WriteToolResult({
   const lines = file.content.split("\n");
   const needsCollapse = lines.length > MAX_LINES_COLLAPSED;
   const fileName = getFileName(file.filePath);
+  const displayPath = makeDisplayPath(file.filePath, meta?.projectPath);
 
   // Use highlighted HTML if available from input augment
   if (input?._highlightedContentHtml) {
     return (
       <div className="write-result">
         <div className="file-header">
-          <span className="file-path">{fileName}</span>
+          <span className="file-path" title={displayPath}>{fileName}</span>
           <span className="file-range">{file.numLines} lines written</span>
           {showValidationWarning && validationErrors && (
             <SchemaWarning toolName="Write" errors={validationErrors} />
@@ -250,7 +252,7 @@ function WriteToolResult({
   return (
     <div className="write-result">
       <div className="file-header">
-        <span className="file-path">{fileName}</span>
+        <span className="file-path" title={displayPath}>{fileName}</span>
         <span className="file-range">{file.numLines} lines written</span>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Write" errors={validationErrors} />
@@ -330,10 +332,13 @@ function WriteCollapsedPreview({
     setIsModalOpen(false);
   }, []);
 
+  const meta = useOptionalSessionMetadata();
+
   // Use result data if available, otherwise fall back to input
   const content = result?.file?.content ?? input.content;
   const filePath = result?.file?.filePath ?? input.file_path;
   const fileName = getFileName(filePath);
+  const displayPath = makeDisplayPath(filePath, meta?.projectPath);
   const lines = content.split("\n");
   const lineCount = result?.file?.numLines ?? lines.length;
   const isTruncated = lines.length > PREVIEW_LINES;
@@ -373,6 +378,7 @@ function WriteCollapsedPreview({
       <button
         type="button"
         className="write-collapsed-preview"
+        title={displayPath}
         onClick={handleClick}
       >
         <div className="write-preview-lines">
@@ -400,7 +406,7 @@ function WriteCollapsedPreview({
       </button>
       {isModalOpen && (
         <Modal
-          title={<span className="file-path">{fileName}</span>}
+          title={<span className="file-path" title={displayPath}>{fileName}</span>}
           onClose={handleClose}
         >
           <WriteModalContent

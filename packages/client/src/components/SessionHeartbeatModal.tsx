@@ -120,7 +120,7 @@ export function SessionHeartbeatModal({
 
   const isForcePresetSelected =
     !isForceOffSelected &&
-    Number.isFinite(normalizedForceMinutes) &&
+    normalizedForceMinutes !== null &&
     FORCE_PRESET_VALUES.has(normalizedForceMinutes);
 
   const isForceCustomSelected =

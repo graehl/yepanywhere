@@ -17,3 +17,4 @@
 - Heartbeat ownership and timers
 - Claude provider control
 - Pixel-scale icon aesthetics
+- UI testing and screenshot regression checks

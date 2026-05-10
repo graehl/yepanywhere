@@ -1583,6 +1583,16 @@ details[open] .collapsible__icon {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
+.modal:has(.session-heartbeat-modal) {
+  width: min(520px, calc(100vw - 28px));
+  max-width: min(520px, calc(100vw - 28px));
+  height: auto;
+}
+
+.modal:has(.session-heartbeat-modal) .modal-content {
+  padding: 0.75rem 0.75rem 0.875rem;
+}
+
 .modal--anchored {
   position: fixed;
   margin: 0;
@@ -1646,6 +1656,17 @@ details[open] .collapsible__icon {
     height: 100dvh;
     border-radius: 0;
     border: none;
+  }
+
+  .modal:has(.session-heartbeat-modal) {
+    width: min(520px, calc(100vw - 24px));
+    max-width: min(520px, calc(100vw - 24px));
+    height: auto;
+    border-radius: var(--radius-md);
+  }
+
+  .modal:has(.session-heartbeat-modal) .modal-content {
+    padding: 0.75rem 0.75rem 0.875rem;
   }
 
   .modal-header {

@@ -32,6 +32,8 @@ export interface SessionMetadata {
   heartbeatTurnsAfterMinutes?: number;
   /** Optional per-session heartbeat text override */
   heartbeatTurnText?: string;
+  /** Per-session grace minutes before forcing output; null = off */
+  heartbeatForceAfterMinutes?: number | null;
 }
 
 export interface SessionMetadataState {
@@ -233,6 +235,7 @@ export class SessionMetadataService {
       heartbeatTurnsEnabled?: boolean;
       heartbeatTurnsAfterMinutes?: number | null;
       heartbeatTurnText?: string | null;
+      heartbeatForceAfterMinutes?: number | null;
     },
   ): Promise<void> {
     this.updateSessionMetadata(sessionId, (metadata) => {
@@ -272,6 +275,10 @@ export class SessionMetadataService {
         result.heartbeatTurnText = updates.heartbeatTurnText?.trim() || undefined;
       }
 
+      if (updates.heartbeatForceAfterMinutes !== undefined) {
+        result.heartbeatForceAfterMinutes = updates.heartbeatForceAfterMinutes;
+      }
+
       return result;
     });
     await this.save();
@@ -305,6 +312,9 @@ export class SessionMetadataService {
     }
     if (updated.heartbeatTurnText) {
       cleaned.heartbeatTurnText = updated.heartbeatTurnText;
+    }
+    if (updated.heartbeatForceAfterMinutes !== undefined) {
+      cleaned.heartbeatForceAfterMinutes = updated.heartbeatForceAfterMinutes;
     }
 
     if (Object.keys(cleaned).length === 0) {

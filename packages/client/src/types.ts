@@ -138,6 +138,7 @@ export interface SessionMetadata extends SessionSummary {
   heartbeatTurnsEnabled?: boolean;
   heartbeatTurnsAfterMinutes?: number;
   heartbeatTurnText?: string;
+  heartbeatForceAfterMinutes?: number;
 }
 
 /**

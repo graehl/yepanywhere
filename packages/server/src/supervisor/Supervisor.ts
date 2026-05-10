@@ -64,6 +64,8 @@ const LIVENESS_PROBE_REFRESH_MS = 60 * 1000;
 const DEFAULT_HEARTBEAT_TURN_TEXT = "yepanywhere heartbeat";
 const DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES = 5;
 const DEFAULT_INTERRUPT_TIMEOUT_MS = 2000;
+const FORCED_HEARTBEAT_INTERRUPT_PREAMBLE =
+  "interrupted for heartbeat; resume interrupted command after responding:";
 const HEARTBEAT_RESET_PROBE_STATUSES: ReadonlySet<SessionLivenessProbeStatus> =
   new Set(["active", "idle", "waiting-input"]);
 const ACTIVE_HEARTBEAT_DOUBT_STATUSES = new Set([
@@ -71,6 +73,14 @@ const ACTIVE_HEARTBEAT_DOUBT_STATUSES = new Set([
   "recently-active-unverified",
   "long-silent-unverified",
 ]);
+
+interface ActiveHeartbeatMarker {
+  processId: string;
+  heartbeatResetAtMs: number;
+  heartbeatDueAtMs: number;
+  steered: boolean;
+  forced: boolean;
+}
 
 function getStaleInTurnThresholdMs(provider: ProviderName): number {
   return provider === "codex" || provider === "codex-oss"
@@ -111,6 +121,66 @@ function parseCandidateUpdatedAtMs(value: string | Date): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+function normalizeHeartbeatForceAfterMinutes(
+  value: number | null | undefined,
+): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  return Math.max(0, Math.min(value, 1440));
+}
+
+type HeartbeatAction =
+  | { type: "wait" }
+  | { type: "queue" }
+  | { type: "interrupt"; forceAfterMinutes: number; forceIdleMs: number };
+
+function getActiveHeartbeatAction(params: {
+  isVerifiedIdle: boolean;
+  isActiveDoubt: boolean;
+  process: Process;
+  settings: HeartbeatTurnSettings;
+  heartbeatResetAtMs: number;
+  idleMs: number;
+  now: number;
+}): HeartbeatAction {
+  const { isVerifiedIdle, process, settings, idleMs } = params;
+
+  if (isVerifiedIdle) {
+    return { type: "queue" };
+  }
+
+  // isActiveDoubt: in-turn session that may be hung
+  const afterMinutes = Number.isFinite(settings.afterMinutes)
+    ? Math.max(1, Math.min(settings.afterMinutes, 1440))
+    : DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES;
+  const forceAfterMinutes = normalizeHeartbeatForceAfterMinutes(
+    settings.forceAfterMinutes,
+  );
+
+  if (forceAfterMinutes !== null) {
+    const forceThresholdMs =
+      (afterMinutes + forceAfterMinutes) * 60 * 1000;
+    if (idleMs >= forceThresholdMs) {
+      return {
+        type: "interrupt",
+        forceAfterMinutes,
+        forceIdleMs: idleMs - afterMinutes * 60 * 1000,
+      };
+    }
+  }
+
+  // Only queue a steering message if the session supports steering;
+  // for non-steerable sessions we have no useful action until force threshold.
+  if (!process.canSteer) {
+    return { type: "wait" };
+  }
+  return { type: "queue" };
+}
+
 /**
  * Model and thinking settings for a session.
  */
@@ -148,6 +218,7 @@ export interface HeartbeatTurnSettings {
   enabled: boolean;
   afterMinutes: number;
   text: string;
+  forceAfterMinutes?: number | null;
 }
 
 export interface HeartbeatTurnCandidate {
@@ -233,6 +304,7 @@ export class Supervisor {
   private getHeartbeatTurnCandidates?: () =>
     | Promise<HeartbeatTurnCandidate[]>
     | HeartbeatTurnCandidate[];
+  private heartbeatActiveMarkers = new Map<string, ActiveHeartbeatMarker>();
   private heartbeatTurnInFlight = false;
   private heartbeatTurnTimer: ReturnType<typeof setInterval>;
   private livenessProbeTimer: ReturnType<typeof setInterval>;
@@ -1300,11 +1372,10 @@ export class Supervisor {
     const isVerifiedIdle =
       process.state.type === "idle" &&
       liveness.derivedStatus === "verified-idle";
-    const isSteeringDoubt =
+    const isActiveDoubt =
       process.state.type === "in-turn" &&
-      process.canSteer &&
       ACTIVE_HEARTBEAT_DOUBT_STATUSES.has(liveness.derivedStatus);
-    if (!isVerifiedIdle && !isSteeringDoubt) {
+    if (!isVerifiedIdle && !isActiveDoubt) {
       return;
     }
 
@@ -1327,6 +1398,33 @@ export class Supervisor {
       return;
     }
     const heartbeatResetAt = new Date(heartbeatResetAtMs).toISOString();
+    const action = getActiveHeartbeatAction({
+      isVerifiedIdle,
+      isActiveDoubt,
+      process,
+      settings,
+      heartbeatResetAtMs,
+      idleMs,
+      now,
+    });
+    if (action.type === "wait") {
+      return;
+    }
+
+    if (action.type === "interrupt") {
+      void this.interruptHeartbeatTurnForProcess(process, {
+        now,
+        log,
+        text,
+        idleMs,
+        heartbeatResetAt,
+        afterMinutes,
+        forceAfterMinutes: action.forceAfterMinutes,
+        forceIdleMs: action.forceIdleMs,
+        livenessStatus: liveness.derivedStatus,
+      });
+      return;
+    }
 
     const result = process.queueMessage({ text });
     if (result.success) {
@@ -1340,7 +1438,7 @@ export class Supervisor {
           heartbeatResetAt,
           afterMinutes,
           text,
-          heartbeatReason: isVerifiedIdle ? "verified-idle" : "steering-doubt",
+          heartbeatReason: isVerifiedIdle ? "verified-idle" : "active-doubt",
           livenessStatus: liveness.derivedStatus,
         },
         `Queued heartbeat turn for session: ${process.sessionId}`,
@@ -1356,12 +1454,98 @@ export class Supervisor {
           heartbeatResetAt,
           afterMinutes,
           error: result.error,
-          heartbeatReason: isVerifiedIdle ? "verified-idle" : "steering-doubt",
+          heartbeatReason: isVerifiedIdle ? "verified-idle" : "active-doubt",
           livenessStatus: liveness.derivedStatus,
         },
         `Failed to queue heartbeat turn for session: ${process.sessionId}`,
       );
     }
+  }
+
+  private async interruptHeartbeatTurnForProcess(
+    process: Process,
+    details: {
+      now: number;
+      log: ReturnType<typeof getLogger>;
+      text: string;
+      idleMs: number;
+      heartbeatResetAt: string;
+      afterMinutes: number;
+      forceAfterMinutes: number;
+      forceIdleMs: number;
+      livenessStatus: SessionLivenessSnapshot["derivedStatus"];
+    },
+  ): Promise<void> {
+    const { log } = details;
+    const { interrupted, timedOut } = await this.interruptProcessWithTimeout(
+      process,
+      {
+        extraMessages: [{ text: details.text }],
+        preamble: FORCED_HEARTBEAT_INTERRUPT_PREAMBLE,
+      },
+    );
+
+    if (interrupted) {
+      log.warn(
+        {
+          event: "heartbeat_turn_interrupted",
+          sessionId: process.sessionId,
+          processId: process.id,
+          projectId: process.projectId,
+          idleMs: details.idleMs,
+          heartbeatResetAt: details.heartbeatResetAt,
+          afterMinutes: details.afterMinutes,
+          forceAfterMinutes: details.forceAfterMinutes,
+          forceIdleMs: details.forceIdleMs,
+          text: details.text,
+          heartbeatReason: "force-after-active-doubt",
+          livenessStatus: details.livenessStatus,
+        },
+        `Interrupted active turn for heartbeat: ${process.sessionId}`,
+      );
+      return;
+    }
+
+    if (timedOut) {
+      log.warn(
+        {
+          event: "heartbeat_interrupt_timeout",
+          sessionId: process.sessionId,
+          processId: process.id,
+          projectId: process.projectId,
+          timeoutMs: this.interruptTimeoutMs,
+          forceAfterMinutes: details.forceAfterMinutes,
+          forceIdleMs: details.forceIdleMs,
+          livenessStatus: details.livenessStatus,
+        },
+        `Heartbeat interrupt timed out: ${process.sessionId}`,
+      );
+    }
+
+    const result = process.queueMessage({
+      text: `${FORCED_HEARTBEAT_INTERRUPT_PREAMBLE}\n\n${details.text}`,
+    });
+    log.warn(
+      {
+        event: result.success
+          ? "heartbeat_interrupt_fallback_queued"
+          : "heartbeat_interrupt_fallback_failed",
+        sessionId: process.sessionId,
+        processId: process.id,
+        projectId: process.projectId,
+        idleMs: details.idleMs,
+        heartbeatResetAt: details.heartbeatResetAt,
+        afterMinutes: details.afterMinutes,
+        forceAfterMinutes: details.forceAfterMinutes,
+        forceIdleMs: details.forceIdleMs,
+        error: result.error,
+        heartbeatReason: "force-after-active-doubt",
+        livenessStatus: details.livenessStatus,
+      },
+      result.success
+        ? `Queued heartbeat after failed interrupt: ${process.sessionId}`
+        : `Failed heartbeat interrupt fallback: ${process.sessionId}`,
+    );
   }
 
   private async queueHeartbeatTurnForCandidate(
@@ -1627,10 +1811,11 @@ export class Supervisor {
 
   private async interruptProcessWithTimeout(
     process: Process,
+    options?: { extraMessages?: UserMessage[]; preamble?: string },
   ): Promise<{ interrupted: boolean; timedOut: boolean }> {
     const log = getLogger();
     const interruptPromise = process
-      .interrupt()
+      .interrupt(options)
       .then((interrupted) => ({ interrupted, timedOut: false }))
       .catch((error) => {
         log.warn(

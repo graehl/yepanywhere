@@ -422,8 +422,8 @@ export function MessageInputToolbar({
             aria-label={t("newSessionThinkingMode", { mode: thinkingMode })}
           >
             <svg
-              width="16"
-              height="16"
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -505,23 +505,15 @@ export function MessageInputToolbar({
               stroke="currentColor"
               strokeWidth="2"
               strokeLinecap="round"
-              strokeLinejoin="round"
+              strokeLinejoin="miter"
               aria-hidden="true"
             >
-              <path d="M12 2v3" />
-              <path d="M12 19v3" />
-              <path d="m4.93 4.93 2.12 2.12" />
-              <path d="m16.95 16.95 2.12 2.12" />
-              <path d="M2 12h3" />
-              <path d="M19 12h3" />
-              <path d="m4.93 19.07 2.12-2.12" />
-              <path d="m16.95 7.05 2.12-2.12" />
-              <circle
-                cx="12"
-                cy="12"
-                r="3.5"
-                fill={heartbeatEnabled ? "currentColor" : "none"}
+              <path className="heartbeat-baseline" d="M0.75 15H7" />
+              <path
+                className="heartbeat-excursion"
+                d="M7 15l2-5 2 9 4-16 3 12"
               />
+              <path className="heartbeat-baseline" d="M18 15h5.25" />
             </svg>
           </button>
         )}

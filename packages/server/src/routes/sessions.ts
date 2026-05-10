@@ -1579,6 +1579,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
         heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
         heartbeatTurnText: metadata?.heartbeatTurnText,
+        heartbeatForceAfterMinutes: metadata?.heartbeatForceAfterMinutes,
         lastSeenAt,
         hasUnread,
       },
@@ -1784,6 +1785,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
             heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
             heartbeatTurnText: metadata?.heartbeatTurnText,
+            heartbeatForceAfterMinutes: metadata?.heartbeatForceAfterMinutes,
             lastSeenAt: lastSeenEntry?.timestamp,
             hasUnread,
             provider: process.provider,
@@ -1876,6 +1878,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         heartbeatTurnsEnabled: metadata?.heartbeatTurnsEnabled,
         heartbeatTurnsAfterMinutes: metadata?.heartbeatTurnsAfterMinutes,
         heartbeatTurnText: metadata?.heartbeatTurnText,
+        heartbeatForceAfterMinutes: metadata?.heartbeatForceAfterMinutes,
         // Model comes from the session reader (extracted from JSONL)
         model: session.model,
         lastSeenAt,
@@ -3053,6 +3056,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       heartbeatTurnsEnabled?: boolean;
       heartbeatTurnsAfterMinutes?: number | null;
       heartbeatTurnText?: string | null;
+      heartbeatForceAfterMinutes?: number | null;
     } = {};
     try {
       body = await c.req.json();
@@ -3068,7 +3072,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.parentSessionId === undefined &&
       body.heartbeatTurnsEnabled === undefined &&
       body.heartbeatTurnsAfterMinutes === undefined &&
-      body.heartbeatTurnText === undefined
+      body.heartbeatTurnText === undefined &&
+      body.heartbeatForceAfterMinutes === undefined
     ) {
       return c.json(
         {
@@ -3077,6 +3082,31 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         },
         400,
       );
+    }
+
+    let heartbeatForceAfterMinutes: number | null | undefined;
+    if (body.heartbeatForceAfterMinutes !== undefined) {
+      if (
+        body.heartbeatForceAfterMinutes === null ||
+        body.heartbeatForceAfterMinutes === 0
+      ) {
+        heartbeatForceAfterMinutes = null;
+      } else if (
+        typeof body.heartbeatForceAfterMinutes === "number" &&
+        Number.isInteger(body.heartbeatForceAfterMinutes) &&
+        body.heartbeatForceAfterMinutes >= 1 &&
+        body.heartbeatForceAfterMinutes <= 1440
+      ) {
+        heartbeatForceAfterMinutes = body.heartbeatForceAfterMinutes;
+      } else {
+        return c.json(
+          {
+            error:
+              "heartbeatForceAfterMinutes must be null or an integer between 1 and 1440",
+          },
+          400,
+        );
+      }
     }
 
     let heartbeatTurnsAfterMinutes: number | null | undefined;
@@ -3145,6 +3175,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       heartbeatTurnsEnabled: body.heartbeatTurnsEnabled,
       heartbeatTurnsAfterMinutes,
       heartbeatTurnText,
+      heartbeatForceAfterMinutes,
     });
 
     // Emit SSE event so sidebar and other clients can update
@@ -3159,6 +3190,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         heartbeatTurnsEnabled: body.heartbeatTurnsEnabled,
         heartbeatTurnsAfterMinutes,
         heartbeatTurnText,
+        heartbeatForceAfterMinutes,
         timestamp: new Date().toISOString(),
       });
     }

@@ -3719,6 +3719,26 @@ a.sidebar-nav-item {
   background: color-mix(in srgb, var(--app-yep-green) 26%, transparent);
 }
 
+.heartbeat-toolbar-button svg {
+  stroke-width: 2.7;
+}
+
+.heartbeat-toolbar-button .heartbeat-baseline {
+  opacity: 0.42;
+}
+
+.heartbeat-toolbar-button .heartbeat-excursion {
+  color: color-mix(in srgb, var(--text-muted) 78%, var(--app-yep-green));
+}
+
+.heartbeat-toolbar-button.active .heartbeat-baseline {
+  opacity: 0.58;
+}
+
+.heartbeat-toolbar-button.active .heartbeat-excursion {
+  color: var(--app-yep-green);
+}
+
 .btw-toolbar-button {
   display: inline-flex;
   align-items: center;
@@ -5769,17 +5789,195 @@ a.sidebar-nav-item {
 }
 
 .session-heartbeat-modal {
-  min-width: min(100%, 560px);
+  width: min(100%, calc(100vw - 28px));
+  max-width: 460px;
+  margin: 0 auto;
+  position: relative;
+  overflow: visible;
+  --heartbeat-force-outline-color: color-mix(
+    in srgb,
+    var(--error-color) 34%,
+    var(--border-color)
+  );
+  --heartbeat-force-wire-color: color-mix(
+    in srgb,
+    var(--error-color) 62%,
+    var(--text-muted)
+  );
+}
+
+.session-heartbeat-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.session-heartbeat-force-section {
+  margin-left: calc(var(--space-4) + 12px);
+  padding-left: calc(var(--space-2) + 4px);
+  overflow: visible;
+  position: relative;
+}
+
+.session-heartbeat-force-section--active {
+  background: color-mix(
+    in srgb,
+    var(--error-color) 14%,
+    var(--bg-code) 86%
+  );
+  border-color: var(--heartbeat-force-outline-color);
+  border-radius: var(--radius-md);
+}
+
+.session-heartbeat-force-section--active .session-heartbeat-item-title,
+.session-heartbeat-force-section--active .session-heartbeat-item-description {
+  color: var(--text-muted);
+}
+
+.session-heartbeat-force-section--active .session-heartbeat-hint {
+  color: color-mix(in srgb, var(--text-muted) 75%, transparent);
+}
+
+.session-heartbeat-force-section--active .session-heartbeat-preset-button.active {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--error-color) 38%, transparent);
+}
+
+.session-heartbeat-force-section .session-heartbeat-input-small {
+  width: min(120px, 100%);
+}
+
+.session-heartbeat-after-off-button--connected {
+  border-color: var(--heartbeat-force-outline-color);
+}
+
+.session-heartbeat-after-off-button--connected.session-heartbeat-preset-button.active {
+  border-color: var(--heartbeat-force-outline-color);
+}
+
+.session-heartbeat-after-off-button--connected.session-heartbeat-preset-button.active {
+  background: color-mix(in srgb, var(--error-color) 12%, var(--bg-secondary));
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--heartbeat-force-outline-color);
+}
+
+.session-heartbeat-item .session-heartbeat-presets-row {
+  justify-content: flex-start;
+}
+
+.session-heartbeat-item-title {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.session-heartbeat-item-description {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
 }
 
 .session-heartbeat-hint {
   margin: var(--space-2) 0 0;
+  max-width: 75ch;
 }
 
 .session-heartbeat-actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+.session-heartbeat-presets-row {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.session-heartbeat-preset-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+
+.session-heartbeat-preset-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.33rem 0.72rem;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.session-heartbeat-preset-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.session-heartbeat-preset-button.active {
+  background: color-mix(in srgb, var(--accent-color) 16%, var(--bg-secondary));
+  border-color: color-mix(in srgb, var(--accent-color) 78%, var(--border-color));
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--accent-color) 18%, transparent);
+}
+
+.session-heartbeat-preset-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.session-heartbeat-preset-input.active {
+  border-color: color-mix(in srgb, var(--accent-color) 78%, var(--border-color));
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--accent-color) 22%, transparent);
+}
+
+@media (max-width: 600px) {
+  .session-heartbeat-modal {
+    min-width: 0;
+  }
+
+  .session-heartbeat-item {
+    gap: var(--space-1);
+  }
+
+  .session-heartbeat-presets-row {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .session-heartbeat-preset-group {
+    width: 100%;
+    justify-content: flex-start;
+    row-gap: var(--space-1);
+  }
+
+  .session-heartbeat-input-small {
+    width: 100%;
+    max-width: none;
+  }
 }
 
 .settings-item-header {

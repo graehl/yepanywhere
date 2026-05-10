@@ -506,7 +506,10 @@ export class Process {
    *
    * @returns true if the interrupt was triggered, false if not supported
    */
-  async interrupt(): Promise<boolean> {
+  async interrupt(options?: {
+    extraMessages?: UserMessage[];
+    preamble?: string;
+  }): Promise<boolean> {
     if (!this.interruptFn) {
       return false;
     }
@@ -535,9 +538,16 @@ export class Process {
       this.deferredEditBarrier = null;
       this.emitDeferredQueueChange("promoted");
 
-      const all = [...directDrained, ...deferredDrained];
+      const all = [
+        ...directDrained,
+        ...deferredDrained,
+        ...(options?.extraMessages ?? []),
+      ];
       if (all.length > 0) {
-        const combined = this.concatMessages(all, { interrupted: true });
+        const combined = this.concatMessages(all, {
+          interrupted: true,
+          preamble: options?.preamble,
+        });
         this.queueMessage(combined, { allowSteer: false });
       }
     }
@@ -1033,13 +1043,14 @@ export class Process {
    * Concatenate multiple UserMessages into one, joined by `--------` separators.
    * Used by interrupt to deliver all queued messages as a single batch.
    */
-   private concatMessages(
+  private concatMessages(
     messages: UserMessage[],
-    options?: { interrupted?: boolean },
+    options?: { interrupted?: boolean; preamble?: string },
   ): UserMessage {
     return concatUserMessages(
       messages,
-      options?.interrupted ? INTERRUPT_PREAMBLE : undefined,
+      options?.preamble ??
+        (options?.interrupted ? INTERRUPT_PREAMBLE : undefined),
     );
   }
 

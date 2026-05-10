@@ -1119,6 +1119,10 @@ export function useSession(
           ...(event.heartbeatTurnText !== undefined && {
             heartbeatTurnText: event.heartbeatTurnText ?? undefined,
           }),
+          ...(event.heartbeatForceAfterMinutes !== undefined && {
+            heartbeatForceAfterMinutes:
+              event.heartbeatForceAfterMinutes ?? undefined,
+          }),
         };
       });
     },

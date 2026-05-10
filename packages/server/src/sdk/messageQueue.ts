@@ -11,7 +11,7 @@ export const INTERRUPT_PREAMBLE = "interrupt resumable after:";
  */
 export function concatUserMessages(
   messages: UserMessage[],
-  preamble?: typeof INTERRUPT_PREAMBLE,
+  preamble?: string,
 ): UserMessage {
   const first = messages[0]!;
   const parts: string[] = [];

@@ -150,6 +150,8 @@ export interface SessionMetadataChangedEvent {
   heartbeatTurnsAfterMinutes?: number | null;
   /** Updated per-session heartbeat text override (if changed) */
   heartbeatTurnText?: string | null;
+  /** Updated per-session heartbeat force timeout (if changed) */
+  heartbeatForceAfterMinutes?: number | null;
   timestamp: string;
 }
 

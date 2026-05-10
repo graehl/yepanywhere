@@ -520,6 +520,7 @@ function SessionPageContent({
     processState,
     sessionLiveness,
     isCompacting,
+    setIsCompacting,
     pendingInputRequest,
     actualSessionId,
     permissionMode,
@@ -822,6 +823,8 @@ function SessionPageContent({
   const [localHeartbeatTurnText, setLocalHeartbeatTurnText] = useState<
     string | undefined
   >(undefined);
+  const [localHeartbeatForceAfterMinutes, setLocalHeartbeatForceAfterMinutes] =
+    useState<number | undefined>(undefined);
   const [localHasUnread, setLocalHasUnread] = useState<boolean | undefined>(
     undefined,
   );
@@ -835,6 +838,7 @@ function SessionPageContent({
     setLocalHeartbeatTurnsEnabled(undefined);
     setLocalHeartbeatTurnsAfterMinutes(undefined);
     setLocalHeartbeatTurnText(undefined);
+    setLocalHeartbeatForceAfterMinutes(undefined);
     setLocalHasUnread(undefined);
   }, [sessionId]);
 
@@ -1161,6 +1165,9 @@ function SessionPageContent({
           clientToServerLatencyMs:
             measureServerLatencyMs(clientTimestamp, result.serverTimestamp),
         });
+        if (result.compactQueued) {
+          setIsCompacting(true);
+        }
         // If process was restarted due to thinking mode change, reconnect stream
         if (result.restarted && result.processId) {
           setStatus({ owner: "self", processId: result.processId });
@@ -2153,16 +2160,45 @@ function SessionPageContent({
     const m = model.match(/^claude-\w+-(.+)$/);
     return m ? m[1] : model;
   };
-  const slashModelIndicatorTitle =
-    currentOwnedProcessId && liveBadgeModel
+  const slashModelIndicatorTitle = useMemo(() => {
+    if (!currentOwnedProcessId) {
+      return "Slash commands";
+    }
+
+    if (isCompacting) {
+      return "Compacting";
+    }
+
+    if (processState === "in-turn") {
+      return "Thinking";
+    }
+
+    if (processState === "waiting-input") {
+      return "Waiting for input";
+    }
+
+    if (processState === "hold") {
+      return "On hold";
+    }
+
+    return liveBadgeModel
       ? `${stripBadgePrefix(liveBadgeModel)} · ${
-          liveModelConfig?.thinking?.type === "disabled" || !liveModelConfig?.thinking
+          liveModelConfig?.thinking?.type === "disabled" ||
+          !liveModelConfig?.thinking
             ? "Thinking off"
             : liveModelConfig?.effort
               ? `Effort ${liveModelConfig.effort === "xhigh" ? "max" : liveModelConfig.effort}`
               : "Thinking auto"
         }`
       : "Slash commands";
+  }, [
+    currentOwnedProcessId,
+    isCompacting,
+    processState,
+    liveBadgeModel,
+    liveModelConfig?.effort,
+    liveModelConfig?.thinking?.type,
+  ]);
 
   const handleAbort = async () => {
     if (status.owner === "self" && status.processId) {
@@ -2484,6 +2520,8 @@ function SessionPageContent({
     localHeartbeatTurnsAfterMinutes ?? session?.heartbeatTurnsAfterMinutes;
   const heartbeatTurnText =
     localHeartbeatTurnText ?? session?.heartbeatTurnText;
+  const heartbeatForceAfterMinutes =
+    localHeartbeatForceAfterMinutes ?? session?.heartbeatForceAfterMinutes;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2966,6 +3004,7 @@ function SessionPageContent({
             enabled={heartbeatTurnsEnabled}
             heartbeatTurnsAfterMinutes={heartbeatTurnsAfterMinutes}
             heartbeatTurnText={heartbeatTurnText}
+            heartbeatForceAfterMinutes={heartbeatForceAfterMinutes}
             onClose={() => setShowHeartbeatModal(false)}
             onSaved={(next) => {
               setLocalHeartbeatTurnsEnabled(next.enabled);
@@ -2973,6 +3012,9 @@ function SessionPageContent({
                 next.heartbeatTurnsAfterMinutes,
               );
               setLocalHeartbeatTurnText(next.heartbeatTurnText);
+              setLocalHeartbeatForceAfterMinutes(
+                next.heartbeatForceAfterMinutes,
+              );
               showToast(t("sessionHeartbeatSaved"), "success");
             }}
           />

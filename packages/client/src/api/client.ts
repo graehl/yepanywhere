@@ -640,6 +640,7 @@ export const api = {
   ) =>
     fetchJSON<{
       queued: boolean;
+      compactQueued?: boolean;
       restarted?: boolean;
       processId?: string;
       deferred?: boolean;
@@ -810,6 +811,7 @@ export const api = {
       heartbeatTurnsEnabled?: boolean;
       heartbeatTurnsAfterMinutes?: number | null;
       heartbeatTurnText?: string | null;
+      heartbeatForceAfterMinutes?: number | null;
     },
   ) =>
     fetchJSON<{ updated: boolean }>(`/sessions/${sessionId}/metadata`, {

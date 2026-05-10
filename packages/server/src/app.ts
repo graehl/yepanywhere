@@ -520,6 +520,8 @@ export function createApp(options: AppOptions): AppResult {
                   "heartbeatTurnsAfterMinutes",
                 ) ??
                 5,
+              forceAfterMinutes:
+                sessionHeartbeat?.heartbeatForceAfterMinutes ?? null,
               text:
                 sessionHeartbeat?.heartbeatTurnText ??
                 options.serverSettingsService?.getSetting("heartbeatTurnText") ??

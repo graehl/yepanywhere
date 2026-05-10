@@ -210,6 +210,16 @@ const MODEL_DENSITY_ORDER: readonly ModelToolbarDensity[] = [
   "hidden",
 ];
 
+const LAST_ACTIVITY_TEXT_PREFIX_THRESHOLD_MS = 30 * 60 * 1000;
+const COMPACT_STATUS_QUERY = "(max-width: 600px)";
+
+function getCompactStatusMatchMedia() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return null;
+  }
+  return window.matchMedia(COMPACT_STATUS_QUERY);
+}
+
 export function MessageInputToolbar({
   mode = "default",
   onModeChange,
@@ -268,7 +278,7 @@ export function MessageInputToolbar({
   const [isCompactStatusMode, setIsCompactStatusMode] = useState(() =>
     typeof window === "undefined"
       ? false
-      : window.matchMedia("(max-width: 600px)").matches,
+      : getCompactStatusMatchMedia()?.matches ?? false,
   );
   const hasModelIndicator = slashCommands.includes("model") && !!onSelectSlashCommand;
   const normalizedModelIndicatorProvider = useMemo(
@@ -295,6 +305,20 @@ export function MessageInputToolbar({
   }, [modelToolbarDensity, modelToolbarVariants]);
   const lastActivityMs = parseTimestampMs(lastActivityAt);
   const showLastActivityAge = isStaleTimestamp(lastActivityMs, nowMs);
+  const lastActivityAgeMs =
+    lastActivityMs === null ? null : nowMs - lastActivityMs;
+  const showLastActivityPrefix =
+    showLastActivityAge &&
+    !isCompactStatusMode &&
+    lastActivityAgeMs !== null &&
+    lastActivityAgeMs >= LAST_ACTIVITY_TEXT_PREFIX_THRESHOLD_MS;
+  const lastActivitySuffix =
+    showLastActivityAge &&
+    !showLastActivityPrefix &&
+    lastActivityMs !== null &&
+    formatCompactRelativeAge(lastActivityMs, nowMs) !== "now"
+      ? "ago"
+      : undefined;
   const livenessDisplay = sessionLiveness
     ? describeSessionLiveness(sessionLiveness)
     : null;
@@ -454,7 +478,10 @@ export function MessageInputToolbar({
   ]);
 
   useEffect(() => {
-    const compactStatusQuery = window.matchMedia("(max-width: 600px)");
+    const compactStatusQuery = getCompactStatusMatchMedia();
+    if (!compactStatusQuery) {
+      return;
+    }
     const updateCompactStatusMode = () => {
       setIsCompactStatusMode(compactStatusQuery.matches);
     };
@@ -735,14 +762,17 @@ export function MessageInputToolbar({
           )}
           {showLastActivityAge && (
             <div
-              className="composer-status-chip composer-activity-age"
+              className={`composer-status-chip composer-activity-age${
+                showLastActivityPrefix ? "" : " composer-activity-age--compact"
+              }`}
               aria-label="Session last activity"
             >
               <MessageAge
                 timestampMs={lastActivityMs}
                 nowMs={nowMs}
                 className="composer-activity-age-time"
-                prefix={isCompactStatusMode ? undefined : "Last activity"}
+                prefix={showLastActivityPrefix ? "Last activity" : undefined}
+                suffix={lastActivitySuffix}
               />
             </div>
           )}

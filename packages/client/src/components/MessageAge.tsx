@@ -8,9 +8,16 @@ interface Props {
   nowMs: number;
   className?: string;
   prefix?: string;
+  suffix?: string;
 }
 
-export function MessageAge({ timestampMs, nowMs, className, prefix }: Props) {
+export function MessageAge({
+  timestampMs,
+  nowMs,
+  className,
+  prefix,
+  suffix,
+}: Props) {
   if (timestampMs === null || timestampMs === undefined) {
     return null;
   }
@@ -18,6 +25,9 @@ export function MessageAge({ timestampMs, nowMs, className, prefix }: Props) {
   const date = new Date(timestampMs);
   const label = formatCompactRelativeAge(timestampMs, nowMs);
   const absolute = formatAbsoluteTimestamp(timestampMs);
+  const text = `${prefix ? `${prefix} ` : ""}${label}${
+    suffix ? ` ${suffix}` : ""
+  }`;
 
   return (
     <time
@@ -25,7 +35,7 @@ export function MessageAge({ timestampMs, nowMs, className, prefix }: Props) {
       dateTime={date.toISOString()}
       title={absolute}
     >
-      {prefix ? `${prefix} ${label}` : label}
+      {text}
     </time>
   );
 }

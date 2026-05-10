@@ -394,7 +394,30 @@ describe("MessageInput", () => {
       lastActivityAt: "2026-04-26T12:00:00.000Z",
     });
 
-    expect(screen.getByText("Last activity 6m")).toBeTruthy();
+    expect(screen.getByText("6m ago")).toBeTruthy();
+  });
+
+  it("uses compact last-activity wording before 30 minutes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T12:28:00.000Z"));
+
+    renderMessageInput(vi.fn(() => true), {
+      lastActivityAt: "2026-04-26T12:20:00.000Z",
+    });
+
+    expect(screen.getByText("8m ago")).toBeTruthy();
+    expect(screen.queryByText("Last activity 8m ago")).toBeNull();
+  });
+
+  it("keeps long-form last activity wording after 30 minutes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T12:35:00.000Z"));
+
+    renderMessageInput(vi.fn(() => true), {
+      lastActivityAt: "2026-04-26T12:00:00.000Z",
+    });
+
+    expect(screen.getByText("Last activity 35m")).toBeTruthy();
   });
 
   it("shows verified session liveness as a compact age-only chip", () => {
@@ -432,7 +455,7 @@ describe("MessageInput", () => {
       ).textContent,
     ).toBe("5m ago");
     expect(screen.queryByText("Verified progress 5m")).toBeNull();
-    expect(screen.getByText("Last activity 6m")).toBeTruthy();
+    expect(screen.getByText("6m ago")).toBeTruthy();
   });
 
   it("keeps a send affordance visible when the composer is collapsed", () => {

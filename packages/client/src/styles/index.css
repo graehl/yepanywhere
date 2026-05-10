@@ -2764,6 +2764,10 @@ a.sidebar-nav-item {
   white-space: nowrap;
 }
 
+.composer-activity-age--compact {
+  color: var(--text-muted);
+}
+
 .composer-activity-age-time,
 .composer-liveness-time {
   color: inherit;
@@ -6757,6 +6761,12 @@ a.sidebar-nav-item {
 
   .composer-liveness-status.is-muted {
     border-color: color-mix(in srgb, var(--border-color) 60%, transparent);
+    color: var(--text-muted);
+  }
+
+  .composer-activity-age--compact {
+    border-color: color-mix(in srgb, var(--border-color) 60%, transparent);
+    background: color-mix(in srgb, var(--bg-surface) 98%, transparent);
     color: var(--text-muted);
   }
 

@@ -106,6 +106,24 @@ describe("getModelIndicatorModelLabel", () => {
       expect(label.startsWith(abbrev)).toBe(true);
     });
   });
+
+  describe("variant provider model rules fall back to base provider", () => {
+    it("claude-ollama uses claude model rules", () => {
+      expect(getModelIndicatorModelLabel("claude-ollama", "claude-sonnet-4-6")).toBe(
+        "Cl↓ ♪ 4.6",
+      );
+    });
+    it("gemini-acp uses gemini model rules", () => {
+      expect(getModelIndicatorModelLabel("gemini-acp", "gemini-2.5-flash")).toBe(
+        "✦ ⚡",
+      );
+    });
+    it("codex-oss uses its own explicit rules (not codex fallback)", () => {
+      expect(getModelIndicatorModelLabel("codex-oss", "gpt-5.4-mini")).toBe(
+        "Cd↓ ◇ 5.4-mini",
+      );
+    });
+  });
 });
 
 describe("getModelIndicatorTooltip", () => {

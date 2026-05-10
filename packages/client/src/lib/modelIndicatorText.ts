@@ -90,13 +90,6 @@ const anyProviderModelRules: ReadonlyArray<ModelGlyphRule> = [
   { patterns: ["thinking"], glyph: "∴" },
 ];
 
-const MODEL_DENSITY_ORDER: readonly ModelToolbarDensity[] = [
-  "full",
-  "compact",
-  "glyph",
-  "hidden",
-];
-
 export function normalizeProviderKey(provider?: string): string {
   return provider?.trim().toLowerCase() ?? "unknown";
 }
@@ -126,7 +119,11 @@ function deriveModelGlyphMatch(
   providerKey: string,
   normalizedModel: string,
 ): ModelGlyphMatch | null {
-  const providerRules = modelGlyphRulesByProvider[providerKey] ?? [];
+  const baseProviderKey = providerKey.replace(/-(?:ollama|oss|acp)$/u, "");
+  const providerRules =
+    modelGlyphRulesByProvider[providerKey] ??
+    modelGlyphRulesByProvider[baseProviderKey] ??
+    [];
   const findMatch = (ruleList: ReadonlyArray<ModelGlyphRule>) => {
     for (const rule of ruleList) {
       const patterns = [...rule.patterns].sort((a, b) => b.length - a.length);
@@ -296,26 +293,3 @@ export function modelIndicatorFitsWithMode(
   return ctx.measureText(label).width <= widthBudget;
 }
 
-export function resolveModelToolbarDensity(
-  currentDensity: ModelToolbarDensity,
-  variants: ModelIndicatorTextVariants,
-  widthBudget: number,
-  canFit: (label: string) => boolean,
-): ModelToolbarDensity {
-  if (widthBudget <= 0) {
-    return currentDensity;
-  }
-
-  const candidateByDensity: Readonly<Record<ModelToolbarDensity, string>> = {
-    full: variants.full,
-    compact: variants.compact,
-    glyph: variants.glyph,
-    hidden: "",
-  };
-
-  return (
-    MODEL_DENSITY_ORDER.find(
-      (density) => density !== "hidden" && canFit(candidateByDensity[density] ?? ""),
-    ) ?? "hidden"
-  );
-}

@@ -847,6 +847,7 @@ h2 {
 .toolbar-button svg {
   width: 18px;
   height: 18px;
+  display: block;
 }
 
 .toolbar-button.active {
@@ -2729,6 +2730,7 @@ a.sidebar-nav-item {
 }
 
 .message-input-collapsed-send {
+  --composer-control-size: 30px;
   --composer-primary-control-size: 30px;
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.22);
 }
@@ -3169,8 +3171,8 @@ a.sidebar-nav-item {
 }
 
 .send-button {
-  width: var(--composer-primary-control-size);
-  height: var(--composer-primary-control-size);
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3300,9 +3302,14 @@ a.sidebar-nav-item {
 }
 
 .send-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 16px;
   font-weight: bold;
   line-height: 1;
+  width: 1em;
+  height: 1em;
 }
 
 .send-spinner {
@@ -3334,6 +3341,9 @@ a.sidebar-nav-item {
   height: 12px;
   background: white;
   border-radius: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .queue-button {
@@ -3493,6 +3503,10 @@ a.sidebar-nav-item {
   border-color: var(--border-input);
 }
 
+.attach-button > svg {
+  display: block;
+}
+
 .attach-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -3536,6 +3550,14 @@ a.sidebar-nav-item {
 .thinking-toggle-button:hover {
   background: var(--bg-hover);
   border-color: var(--border-input);
+}
+
+.thinking-toggle-button > svg {
+  display: block;
+}
+
+.thinking-toggle-button > svg > g > text {
+  dominant-baseline: middle;
 }
 
 /* Auto mode: muted amber */
@@ -7343,7 +7365,7 @@ a.sidebar-nav-item {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
+  padding: 2px 8px 1px;
   font-size: var(--font-size-xs);
   font-weight: 500;
   border: 1px solid;
@@ -7361,6 +7383,7 @@ a.sidebar-nav-item {
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: opacity 0.15s;
+  transform: translateY(-1px);
 }
 
 .provider-badge-button:hover {

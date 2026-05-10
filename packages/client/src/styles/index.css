@@ -5790,8 +5790,10 @@ a.sidebar-nav-item {
 
 .session-heartbeat-modal {
   width: min(100%, calc(100vw - 28px));
-  max-width: 460px;
+  max-width: 100%;
   margin: 0 auto;
+  container-name: session-heartbeat-modal;
+  container-type: inline-size;
   position: relative;
   overflow: visible;
   --heartbeat-force-outline-color: color-mix(
@@ -5843,10 +5845,6 @@ a.sidebar-nav-item {
     color-mix(in srgb, var(--error-color) 38%, transparent);
 }
 
-.session-heartbeat-force-section .session-heartbeat-input-small {
-  width: min(120px, 100%);
-}
-
 .session-heartbeat-after-off-button--connected {
   border-color: var(--heartbeat-force-outline-color);
 }
@@ -5894,8 +5892,9 @@ a.sidebar-nav-item {
   margin-top: var(--space-2);
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-width: 0;
   gap: var(--space-2);
   width: 100%;
 }
@@ -5904,8 +5903,15 @@ a.sidebar-nav-item {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: var(--space-2);
   max-width: 100%;
+}
+
+.session-heartbeat-input-small {
+  width: clamp(4.5rem, 20%, 7.5rem);
+  flex-shrink: 1;
 }
 
 .session-heartbeat-preset-button {
@@ -5952,7 +5958,7 @@ a.sidebar-nav-item {
     color-mix(in srgb, var(--accent-color) 22%, transparent);
 }
 
-@media (max-width: 600px) {
+@container session-heartbeat-modal (max-width: 32rem) {
   .session-heartbeat-modal {
     min-width: 0;
   }

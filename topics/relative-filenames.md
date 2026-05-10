@@ -30,16 +30,29 @@ attribute) so the user can identify the file without opening it.
 | Write | filename only | `makeDisplayPath`  | — |
 | Edit | — | — | `makeDisplayPath` in diff modal header |
 
-### Server-rendered file-link anchors
+### Fixed-font content (code blocks, diffs)
 
-`packages/shared/src/filePathDetection.ts` — `transformFilePathsToHtml()`
-generates `<a class="file-link">` tags. These carry `title` with the full
-absolute path (not project-relative), because the server does not have
-per-request project path context at augment time. <!-- assumed -->
+`packages/client/src/components/ui/FixedFontMathToggle.tsx` —
+`renderMarkdownFileLink()` handles `[label](href)` patterns inside
+fixed-font content. `resolveMarkdownFileLink()` normalizes the href and
+strips its leading `/` (a side-effect of `normalizeProjectPath`). The
+title reconstructs the absolute path with a `/` prefix, then applies
+`makeDisplayPath` with `options.projectPath` so the tooltip shows
+project-relative or `~/…` form. `projectPath` is threaded from
+`sessionMetadata` into `RenderOptions` at render time.
+
+### Normal markdown text (assistant messages)
 
 `packages/server/src/augments/safe-markdown.ts` — local-file markdown
 links (`[label](./path)`) get `title` set to the href (absolute path)
 when the markdown does not supply an explicit title.
+
+### `transformFilePathsToHtml` — dead code
+
+`packages/shared/src/filePathDetection.ts` exports this function and
+it is re-exported in `packages/client/src/lib/filePathDetection.ts`,
+but it is never called anywhere in the live codebase. The `.file-link`
+CSS class it would generate appears to be dead styling as well.
 
 ## projectPath availability
 

@@ -3,6 +3,7 @@ import katex from "katex";
 import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContext";
 import { profileRenderWork } from "../../lib/diagnostics/renderProfiler";
+import { makeDisplayPath } from "../../lib/text";
 import { FileViewerModal } from "../FilePathLink";
 import { RenderModeGlyph } from "./RenderModeGlyph";
 
@@ -29,6 +30,7 @@ interface RenderOptions {
   diffAware?: boolean;
   projectId?: string;
   baseFilePath?: string;
+  projectPath?: string;
 }
 
 const ANSI_ESCAPE_RE =
@@ -151,8 +153,12 @@ function renderMarkdownFileLink(
   }
 
   const rawUrl = `/projects/${encodeURIComponent(options.projectId)}/file?path=${encodeURIComponent(filePath)}`;
+  // normalizeProjectPath strips the leading / from absolute paths; restore it
+  // so makeDisplayPath can apply project-relative or ~/… shortening.
+  const absoluteFilePath = `/${filePath}`;
+  const titlePath = makeDisplayPath(absoluteFilePath, options.projectPath);
   return {
-    html: `<a class="fixed-font-file-link" href="${escapeHtmlAttribute(rawUrl)}" data-fixed-font-file-path="${escapeHtmlAttribute(filePath)}" title="${escapeHtmlAttribute(`${filePath}\nClick to view, middle-click to open in new tab`)}">${labelHtml}</a>`,
+    html: `<a class="fixed-font-file-link" href="${escapeHtmlAttribute(rawUrl)}" data-fixed-font-file-path="${escapeHtmlAttribute(filePath)}" title="${escapeHtmlAttribute(`${titlePath}\nClick to view, middle-click to open in new tab`)}">${labelHtml}</a>`,
     changed: true,
   };
 }
@@ -731,6 +737,7 @@ export function FixedFontMathToggle({
       renderFixedFontRichContent(sourceText, {
         diffAware,
         projectId: sessionMetadata?.projectId,
+        projectPath: sessionMetadata?.projectPath ?? undefined,
         baseFilePath,
       }),
     [
@@ -738,6 +745,7 @@ export function FixedFontMathToggle({
       sourceText,
       diffAware,
       sessionMetadata?.projectId,
+      sessionMetadata?.projectPath,
       baseFilePath,
     ],
   );

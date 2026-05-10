@@ -3351,6 +3351,8 @@ function SessionPageContent({
                     }
                     onSelectSlashCommand={handleToolbarSlashCommand}
                     modelIndicatorTone={slashModelIndicatorTone}
+                    modelIndicatorProvider={effectiveProvider}
+                    modelIndicatorModel={liveBadgeModel}
                     modelIndicatorTitle={slashModelIndicatorTitle}
                     heartbeatEnabled={heartbeatTurnsEnabled}
                     onToggleHeartbeat={handleToggleHeartbeat}
@@ -3475,6 +3477,8 @@ function SessionPageContent({
                 btwActive={!!focusedBtwAside || !!childSessionParentHref}
                 btwHasAsides={stickyBtwAsides.length > 0 || !!childSessionParentHref}
                 modelIndicatorTone={slashModelIndicatorTone}
+                modelIndicatorProvider={effectiveProvider}
+                modelIndicatorModel={liveBadgeModel}
                 modelIndicatorTitle={slashModelIndicatorTitle}
                 heartbeatEnabled={heartbeatTurnsEnabled}
                 onToggleHeartbeat={handleToggleHeartbeat}

@@ -184,6 +184,8 @@ interface Props {
   btwHasAsides?: boolean;
   /** Live model/effort indicator shown on the slash button */
   modelIndicatorTone?: ModelIndicatorTone;
+  modelIndicatorProvider?: string;
+  modelIndicatorModel?: string;
   modelIndicatorTitle?: string;
   /** Whether heartbeat turns are currently enabled for this session */
   heartbeatEnabled?: boolean;
@@ -236,6 +238,8 @@ export function MessageInput({
   btwActive = false,
   btwHasAsides = false,
   modelIndicatorTone,
+  modelIndicatorProvider,
+  modelIndicatorModel,
   modelIndicatorTitle,
   heartbeatEnabled = false,
   onToggleHeartbeat,
@@ -869,6 +873,8 @@ export function MessageInput({
             btwActive={btwActive}
             btwHasAsides={btwHasAsides}
             modelIndicatorTone={modelIndicatorTone}
+            modelIndicatorProvider={modelIndicatorProvider}
+            modelIndicatorModel={modelIndicatorModel}
             modelIndicatorTitle={modelIndicatorTitle}
             heartbeatEnabled={heartbeatEnabled}
             onToggleHeartbeat={onToggleHeartbeat}

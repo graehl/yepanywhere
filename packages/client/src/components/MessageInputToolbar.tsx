@@ -1,5 +1,5 @@
 import type { SessionLivenessSnapshot } from "@yep-anywhere/shared";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, RefObject, TouchEvent } from "react";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
 import { useModelSettings } from "../hooks/useModelSettings";
@@ -12,6 +12,12 @@ import {
   parseTimestampMs,
 } from "../lib/messageAge";
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
+import {
+  getModelIndicatorTextVariants,
+  modelIndicatorFitsWithMode,
+  normalizeProviderKey,
+  type ModelToolbarDensity,
+} from "../lib/modelIndicatorText";
 import {
   SESSION_ISEARCH_GUIDE_EVENT,
   type SessionIsearchGuideState,
@@ -55,6 +61,8 @@ export interface MessageInputToolbarProps {
   onBtwClick?: () => void;
   btwActive?: boolean;
   btwHasAsides?: boolean;
+  modelIndicatorProvider?: string;
+  modelIndicatorModel?: string;
   modelIndicatorTone?: ModelIndicatorTone;
   modelIndicatorTitle?: string;
 
@@ -194,6 +202,13 @@ function describeLivenessSummary(
   return `${display.prefix} ${formatLivenessAge(display.timestampMs, nowMs)}`;
 }
 
+const MODEL_DENSITY_ORDER: readonly ModelToolbarDensity[] = [
+  "full",
+  "compact",
+  "glyph",
+  "hidden",
+];
+
 export function MessageInputToolbar({
   mode = "default",
   onModeChange,
@@ -215,6 +230,8 @@ export function MessageInputToolbar({
   onBtwClick,
   btwActive = false,
   btwHasAsides = false,
+  modelIndicatorProvider,
+  modelIndicatorModel,
   modelIndicatorTone,
   modelIndicatorTitle,
   heartbeatEnabled = false,
@@ -243,11 +260,38 @@ export function MessageInputToolbar({
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [isearchScope, setIsearchScope] =
     useState<SessionIsearchScope | null>(null);
+  const modelToolbarButtonRef = useRef<HTMLButtonElement | null>(null);
+  const modelToolbarMeasureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const [modelToolbarDensity, setModelToolbarDensity] =
+    useState<ModelToolbarDensity>("full");
   const [isCompactStatusMode, setIsCompactStatusMode] = useState(() =>
     typeof window === "undefined"
       ? false
       : window.matchMedia("(max-width: 600px)").matches,
   );
+  const hasModelIndicator = slashCommands.includes("model") && !!onSelectSlashCommand;
+  const normalizedModelIndicatorProvider = useMemo(
+    () => normalizeProviderKey(modelIndicatorProvider),
+    [modelIndicatorProvider],
+  );
+  const modelToolbarVariants = useMemo(
+    () =>
+      getModelIndicatorTextVariants(
+        normalizedModelIndicatorProvider,
+        modelIndicatorModel ?? "",
+        modelIndicatorTitle,
+      ),
+    [modelIndicatorModel, modelIndicatorTitle, normalizedModelIndicatorProvider],
+  );
+  const modelToolbarLabel = useMemo(() => {
+    return modelToolbarDensity === "full"
+      ? modelToolbarVariants.full
+      : modelToolbarDensity === "compact"
+        ? modelToolbarVariants.compact
+        : modelToolbarDensity === "glyph"
+          ? modelToolbarVariants.glyph
+          : modelToolbarVariants.full;
+  }, [modelToolbarDensity, modelToolbarVariants]);
   const lastActivityMs = parseTimestampMs(lastActivityAt);
   const showLastActivityAge = isStaleTimestamp(lastActivityMs, nowMs);
   const livenessDisplay = sessionLiveness
@@ -303,6 +347,106 @@ export function MessageInputToolbar({
           : t("toolbarQueueLabel")
         : t("toolbarSend");
   const shortcutsPopoverOpen = shortcutsOpen || isearchScope !== null;
+  const modelIndicatorTooltip = modelIndicatorTitle ?? "Switch model (/model)";
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined" || !hasModelIndicator) {
+      setModelToolbarDensity("hidden");
+      return;
+    }
+
+    const button = modelToolbarButtonRef.current;
+    if (!button) {
+      setModelToolbarDensity("full");
+      return;
+    }
+
+    const candidateByDensity: Record<ModelToolbarDensity, string> = {
+      full: modelToolbarVariants.full,
+      compact: modelToolbarVariants.compact,
+      glyph: modelToolbarVariants.glyph,
+      hidden: "",
+    };
+
+    const pxOrZero = (value: string) => {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const getMeasureContext = () => {
+      if (modelToolbarMeasureCtxRef.current) {
+        return modelToolbarMeasureCtxRef.current;
+      }
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      modelToolbarMeasureCtxRef.current = context;
+      return context;
+    };
+
+    let raf = 0;
+    const updateDensity = () => {
+      const currentButton = modelToolbarButtonRef.current;
+      if (!currentButton) return;
+
+      const context = getMeasureContext();
+      if (!context) return;
+
+      const styles = getComputedStyle(currentButton);
+      const widthBudget =
+        currentButton.clientWidth -
+        pxOrZero(styles.paddingLeft) -
+        pxOrZero(styles.paddingRight);
+      if (widthBudget <= 0) {
+        setModelToolbarDensity((currentDensity) =>
+          currentDensity === "hidden" ? currentDensity : "hidden",
+        );
+        return;
+      }
+
+      const nextDensity =
+        MODEL_DENSITY_ORDER.find((density) =>
+          density === "hidden"
+            ? false
+            : modelIndicatorFitsWithMode(
+                context,
+                candidateByDensity[density],
+                currentButton,
+                widthBudget,
+              ),
+        ) ?? "hidden";
+      setModelToolbarDensity((currentDensity) =>
+        currentDensity === nextDensity ? currentDensity : nextDensity,
+      );
+    };
+
+    const scheduleDensityUpdate = () => {
+      window.cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(updateDensity);
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleDensityUpdate();
+    });
+    resizeObserver.observe(button);
+
+    const onWindowResize = () => {
+      scheduleDensityUpdate();
+    };
+    window.addEventListener("resize", onWindowResize);
+    scheduleDensityUpdate();
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", onWindowResize);
+      modelToolbarMeasureCtxRef.current = null;
+    };
+  }, [
+    hasModelIndicator,
+    modelToolbarVariants.full,
+    modelToolbarVariants.compact,
+    modelToolbarVariants.glyph,
+  ]);
 
   useEffect(() => {
     const compactStatusQuery = window.matchMedia("(max-width: 600px)");
@@ -544,17 +688,18 @@ export function MessageInputToolbar({
             disabled={voiceDisabled}
           />
         )}
-        {slashCommands.includes("model") && onSelectSlashCommand && (
+        {hasModelIndicator && modelToolbarDensity !== "hidden" && (
           <button
             type="button"
+            ref={modelToolbarButtonRef}
             className={`model-toolbar-button${modelIndicatorTone ? ` tone-${modelIndicatorTone}` : ""}`}
             onClick={() => onSelectSlashCommand("/model")}
             disabled={disabled || voiceDisabled}
-            title={modelIndicatorTitle ?? "Switch model (/model)"}
+            title={modelIndicatorTooltip}
             aria-label="Switch model"
           >
             <span className="model-toolbar-label">
-              {modelIndicatorTitle ?? "model"}
+              {modelToolbarLabel}
             </span>
           </button>
         )}

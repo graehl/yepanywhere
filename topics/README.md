@@ -18,3 +18,4 @@
 - Claude provider control
 - Pixel-scale icon aesthetics
 - UI testing and screenshot regression checks
+- Provider/model compact glyph vocabulary (top-right status)

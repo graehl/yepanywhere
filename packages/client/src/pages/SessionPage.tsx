@@ -75,6 +75,7 @@ import {
 } from "../lib/composerRecall";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
+import { getModelIndicatorModelLabel } from "../lib/modelIndicatorText";
 import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
@@ -2155,10 +2156,17 @@ function SessionPageContent({
         )
       : undefined;
   const liveBadgeModel = liveModelConfig?.model ?? effectiveModel;
-  // Strip "claude-{family}-" prefix since the header badge already shows the family
+  // Keep the status title compact while preserving model state for non-status
+  // states and avoid leaking verbose model suffixes.
   const stripBadgePrefix = (model: string) => {
-    const m = model.match(/^claude-\w+-(.+)$/);
-    return m ? m[1] : model;
+    const compactCodexLabel =
+      getModelIndicatorModelLabel(effectiveProvider, model);
+    const compactModel =
+      effectiveProvider === "codex" || effectiveProvider === "codex-oss"
+        ? compactCodexLabel || model
+        : model;
+    const claudeMatch = compactModel.match(/^claude-\w+-(.+)$/);
+    return claudeMatch ? claudeMatch[1] : compactModel;
   };
   const slashModelIndicatorTitle = useMemo(() => {
     if (!currentOwnedProcessId) {
@@ -2196,6 +2204,7 @@ function SessionPageContent({
     isCompacting,
     processState,
     liveBadgeModel,
+    effectiveProvider,
     liveModelConfig?.effort,
     liveModelConfig?.thinking?.type,
   ]);

@@ -39,7 +39,12 @@ describe("getModelIndicatorModelLabel", () => {
     });
     it("gpt-5.4-spark", () => {
       expect(getModelIndicatorModelLabel("codex", "gpt-5.4-spark")).toBe(
-        "Cd ⚡ 5.4-spark",
+        "Cd ⚡",
+      );
+    });
+    it("gpt-5.3-codex-spark", () => {
+      expect(getModelIndicatorModelLabel("codex", "gpt-5.3-codex-spark")).toBe(
+        "Cd ⚡",
       );
     });
     it("gpt-5.4 generic", () => {
@@ -122,6 +127,11 @@ describe("getModelIndicatorModelLabel", () => {
       expect(getModelIndicatorModelLabel("codex-oss", "gpt-5.4-mini")).toBe(
         "Cd↓ ◇ 5.4-mini",
       );
+    });
+    it("codex-oss maps 5.3-codex-spark to spark icon", () => {
+      expect(
+        getModelIndicatorModelLabel("codex-oss", "gpt-5.3-codex-spark"),
+      ).toBe("Cd↓ ⚡");
     });
   });
 });

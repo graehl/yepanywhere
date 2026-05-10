@@ -53,6 +53,7 @@ const modelGlyphRulesByProvider: Readonly<
   ],
   codex: [
     { patterns: ["gpt-5.4-spark"], glyph: "⚡" },
+    { patterns: ["gpt-5.3-codex-spark", "gpt-5.3-spark"], glyph: "⚡" },
     { patterns: ["gpt-5.5"], glyph: "◆" },
     { patterns: ["gpt-5.4-mini"], glyph: "◇" },
     { patterns: ["gpt-5.4-nano"], glyph: "◇" },
@@ -63,6 +64,7 @@ const modelGlyphRulesByProvider: Readonly<
   ],
   "codex-oss": [
     { patterns: ["gpt-5.4-spark"], glyph: "⚡" },
+    { patterns: ["gpt-5.3-codex-spark", "gpt-5.3-spark"], glyph: "⚡" },
     { patterns: ["gpt-5.5"], glyph: "◆" },
     { patterns: ["gpt-5.4-mini"], glyph: "◇" },
     { patterns: ["gpt-5.4-nano"], glyph: "◇" },
@@ -292,4 +294,3 @@ export function modelIndicatorFitsWithMode(
   ctx.font = getComputedStyle(button).font;
   return ctx.measureText(label).width <= widthBudget;
 }
-

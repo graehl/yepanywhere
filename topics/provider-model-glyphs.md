@@ -63,6 +63,8 @@ Model sub-family abbreviations (appended after provider abbrev):
 | opus         | `Op`  | `Cl Op4`                  |
 | haiku        | `Hk`  | `Cl Hk3`                  |
 | (unknown)    | —     | `Cl 4.6` (version only)   |
+| gpt-5.4-spark | `⚡`   | `Cd ⚡`                    |
+| gpt-5.3-codex-spark | `⚡`   | `Cd ⚡`                |
 | gpt-5.4-mini | `5.4m`| `Cd 5.4m`                 |
 | gpt-5.4      | `5.4` | `Cd 5.4`                  |
 | gpt-4        | `4`   | `Cd 4`                    |
@@ -103,7 +105,9 @@ scale with the provider color theming, and is not simpler than inline SVG.
 
 ## Implementation note
 
-The current `modelIndicatorText.ts` maps providers to unicode characters.
+The current `modelIndicatorText.ts` uses short provider abbreviations
+(`Cl`, `Cd`, `OC`) with selected symbolic model-family glyphs for certain
+cases (for example spark).
 Switching to text abbreviations is a pure data change in that file:
 replace `providerGlyphMap` values with strings like `"Cl"`, `"Cd"`, etc.
 The rest of the rendering pipeline (density negotiation, tooltip wiring)

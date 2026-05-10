@@ -55,14 +55,22 @@ changes — formatter passes, typo fixes, version bumps, trivial renames
 with no substantive user direction. The conventional one-line message
 alone is sufficient there.
 
-**Series threading**: when a commit is part of a related series, append
-a `Topic: <string>` trailer at the bottom of the body. The topic string
-is freeform (descriptive phrasing fine; not constrained to a short
+**Series threading**: when a commit is part of a related series, append one
+or more `Topic: <string>` trailers at the bottom of the body. The topic
+string is freeform (descriptive phrasing fine; not constrained to a short
 UPPERCASE codename). A series shares the exact same topic string across
-all commits — "first in wins": commit-1 sets the canonical text, later
-commits copy it verbatim so `git log --grep "Topic: ..."` finds the
-chain. Switch topic strings only when it's obviously time for a new
-one. Standalone commits with no expected follow-up: no trailer.
+its commits for each topic name you include; "first in wins": later
+commits copy their topic lines verbatim so `git log --grep "Topic: ..."`
+finds the chain. Use multiple `Topic:` lines when one commit touches
+multiple topics, and switch a given topic only when it's obviously time for a
+new one. Standalone commits with no expected follow-up: no trailer.
+
+Example:
+```
+... body text ...
+Topic: session-liveness
+Topic: provider-model-glyphs
+```
 
 To avoid accidentally reusing a topic for an unrelated series, keep a
 project-level `topics.md` log at the repo root and append each new

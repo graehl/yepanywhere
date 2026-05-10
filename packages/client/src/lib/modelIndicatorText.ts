@@ -9,13 +9,13 @@ export interface ModelIndicatorTextVariants {
 const DEFAULT_PROVIDER_GLYPH = "◌";
 
 const providerGlyphMap: Record<string, string> = {
-  claude: "◉",
-  "claude-ollama": "◎",
-  codex: "⌬",
-  "codex-oss": "◈",
+  claude: "Cl",
+  "claude-ollama": "Cl↓",
+  codex: "Cd",
+  "codex-oss": "Cd↓",
   gemini: "✦",
-  "gemini-acp": "✶",
-  opencode: "⧉",
+  "gemini-acp": "✦",
+  opencode: "OC",
 };
 
 const statusOnlyModelIndicatorTitles = new Set([

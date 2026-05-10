@@ -87,15 +87,15 @@ export function ProviderBadge({
   const glyphLabel =
     getModelIndicatorModelLabel(provider, effectiveModel) || label;
 
-  const fullTitle = effectiveModel ? `${label} · ${effectiveModel}` : label;
+  const fullTitle = effectiveModel ?? label;
 
   if (compact) {
     return (
       <span
         className={`provider-badge-stripe ${className}`}
         style={{ backgroundColor: color }}
-        title={effectiveModel ? `${label} · ${effectiveModel}` : label}
-        aria-label={`Provider: ${label}${effectiveModel ? ` · ${effectiveModel}` : ""}`}
+        title={fullTitle}
+        aria-label={fullTitle}
       />
     );
   }

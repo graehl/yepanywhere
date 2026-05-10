@@ -9,50 +9,48 @@ describe("getModelIndicatorModelLabel", () => {
   describe("claude models", () => {
     it("sonnet", () => {
       expect(getModelIndicatorModelLabel("claude", "claude-sonnet-4-6")).toBe(
-        "◉ ♪ 4.6",
+        "Cl ♪ 4.6",
       );
     });
     it("opus", () => {
       expect(getModelIndicatorModelLabel("claude", "claude-opus-4-1")).toBe(
-        "◉ ◐ 4.1",
+        "Cl ◐ 4.1",
       );
     });
     it("haiku", () => {
       expect(getModelIndicatorModelLabel("claude", "claude-haiku-3-5")).toBe(
-        "◉ ✎ 3.5",
+        "Cl ✎ 3.5",
       );
     });
     it("sonnet 1m extended context", () => {
-      // 1m suffix doesn't match 'sonnet[1m]' pattern (version separates them)
-      // so falls through to plain 'sonnet' rule; suffix preserved as-is
       const label = getModelIndicatorModelLabel(
         "claude",
         "claude-sonnet-4-6[1m]",
       );
-      expect(label).toMatch(/^◉ ♪/);
+      expect(label).toMatch(/^Cl ♪/);
     });
   });
 
   describe("codex models", () => {
     it("gpt-5.4-mini", () => {
       expect(getModelIndicatorModelLabel("codex", "gpt-5.4-mini")).toBe(
-        "⌬ ◇ 5.4-mini",
+        "Cd ◇ 5.4-mini",
       );
     });
     it("gpt-5.4-spark", () => {
       expect(getModelIndicatorModelLabel("codex", "gpt-5.4-spark")).toBe(
-        "⌬ ⚡ 5.4-spark",
+        "Cd ⚡ 5.4-spark",
       );
     });
     it("gpt-5.4 generic", () => {
-      expect(getModelIndicatorModelLabel("codex", "gpt-5.4")).toBe("⌬ ◇ 5.4");
+      expect(getModelIndicatorModelLabel("codex", "gpt-5.4")).toBe("Cd ◇ 5.4");
     });
     it("gpt-4", () => {
-      expect(getModelIndicatorModelLabel("codex", "gpt-4")).toBe("⌬ ⧉ 4");
+      expect(getModelIndicatorModelLabel("codex", "gpt-4")).toBe("Cd ⧉ 4");
     });
     it("openai/ prefix stripped", () => {
       expect(getModelIndicatorModelLabel("codex", "openai/gpt-5.4-mini")).toBe(
-        "⌬ ◇ 5.4-mini",
+        "Cd ◇ 5.4-mini",
       );
     });
   });
@@ -76,10 +74,10 @@ describe("getModelIndicatorModelLabel", () => {
   });
 
   describe("fallbacks", () => {
-    it("unknown model falls back to provider glyph + raw model", () => {
+    it("unknown model falls back to provider abbrev + raw model", () => {
       expect(
         getModelIndicatorModelLabel("claude", "some-novel-model-xyz"),
-      ).toBe("◉ some-novel-model-xyz");
+      ).toBe("Cl some-novel-model-xyz");
     });
     it("unknown provider uses fallback glyph", () => {
       expect(
@@ -94,18 +92,18 @@ describe("getModelIndicatorModelLabel", () => {
     });
   });
 
-  describe("provider glyphs", () => {
+  describe("provider abbreviations", () => {
     it.each([
-      ["claude", "◉"],
-      ["claude-ollama", "◎"],
-      ["codex", "⌬"],
-      ["codex-oss", "◈"],
+      ["claude", "Cl"],
+      ["claude-ollama", "Cl↓"],
+      ["codex", "Cd"],
+      ["codex-oss", "Cd↓"],
       ["gemini", "✦"],
-      ["gemini-acp", "✶"],
-      ["opencode", "⧉"],
-    ])("provider %s uses glyph %s", (provider, glyph) => {
+      ["gemini-acp", "✦"],
+      ["opencode", "OC"],
+    ])("provider %s uses abbrev %s", (provider, abbrev) => {
       const label = getModelIndicatorModelLabel(provider, "unknown-model-zzz");
-      expect(label.startsWith(glyph)).toBe(true);
+      expect(label.startsWith(abbrev)).toBe(true);
     });
   });
 });
@@ -114,20 +112,20 @@ describe("getModelIndicatorTooltip", () => {
   it("combines status and readable model", () => {
     expect(
       getModelIndicatorTooltip("claude", "claude-sonnet-4-6", "Thinking"),
-    ).toBe("Thinking - ◉ Sonnet 4.6");
+    ).toBe("Thinking - Cl Sonnet 4.6");
   });
   it("status-only without model", () => {
     expect(getModelIndicatorTooltip("claude", "", "Thinking")).toBe("Thinking");
   });
-  it("no status: just provider glyph + readable model", () => {
+  it("no status: just provider abbrev + readable model", () => {
     expect(
       getModelIndicatorTooltip("claude", "claude-opus-4-1", undefined),
-    ).toBe("◉ Opus 4.1");
+    ).toBe("Cl Opus 4.1");
   });
   it("codex model", () => {
     expect(
       getModelIndicatorTooltip("codex", "gpt-5.4-mini", "Thinking"),
-    ).toBe("Thinking - ⌬ 5.4-mini");
+    ).toBe("Thinking - Cd 5.4-mini");
   });
   it("gemini model", () => {
     expect(
@@ -137,7 +135,7 @@ describe("getModelIndicatorTooltip", () => {
   it("non-status title falls back to model label", () => {
     expect(
       getModelIndicatorTooltip("claude", "claude-haiku-3-5", "4-6 · Thinking off"),
-    ).toBe("◉ Haiku 3.5");
+    ).toBe("Cl Haiku 3.5");
   });
 });
 
@@ -149,8 +147,8 @@ describe("getModelIndicatorTextVariants", () => {
       "4-6 · Thinking off",
     );
     expect(variants.full).toBe("4-6 · Thinking off");
-    expect(variants.glyph).toBe("◉ ♪ 4.6");
-    expect(variants.compact).toBe("◉ ♪ 4.6 · Thinking off");
+    expect(variants.glyph).toBe("Cl ♪ 4.6");
+    expect(variants.compact).toBe("Cl ♪ 4.6 · Thinking off");
   });
 
   it("status-only titles pass through unchanged", () => {
@@ -178,7 +176,7 @@ describe("getModelIndicatorTextVariants", () => {
       "claude-sonnet-4-6",
     );
     expect(variants.full).toBe("model");
-    expect(variants.glyph).toBe("◉ ♪ 4.6");
-    expect(variants.compact).toBe("◉ ♪ 4.6");
+    expect(variants.glyph).toBe("Cl ♪ 4.6");
+    expect(variants.compact).toBe("Cl ♪ 4.6");
   });
 });

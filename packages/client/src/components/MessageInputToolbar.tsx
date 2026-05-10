@@ -14,6 +14,7 @@ import {
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 import {
   getModelIndicatorTextVariants,
+  getModelIndicatorTooltip,
   modelIndicatorFitsWithMode,
   normalizeProviderKey,
   type ModelToolbarDensity,
@@ -347,7 +348,11 @@ export function MessageInputToolbar({
           : t("toolbarQueueLabel")
         : t("toolbarSend");
   const shortcutsPopoverOpen = shortcutsOpen || isearchScope !== null;
-  const modelIndicatorTooltip = modelIndicatorTitle ?? "Switch model (/model)";
+  const modelIndicatorTooltip = getModelIndicatorTooltip(
+    modelIndicatorProvider,
+    modelIndicatorModel,
+    modelIndicatorTitle,
+  );
 
   useLayoutEffect(() => {
     if (typeof window === "undefined" || !hasModelIndicator) {

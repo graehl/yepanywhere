@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getModelIndicatorModelLabel,
   getModelIndicatorTextVariants,
+  getModelIndicatorTooltip,
 } from "../modelIndicatorText";
 
 describe("getModelIndicatorModelLabel", () => {
@@ -106,6 +107,37 @@ describe("getModelIndicatorModelLabel", () => {
       const label = getModelIndicatorModelLabel(provider, "unknown-model-zzz");
       expect(label.startsWith(glyph)).toBe(true);
     });
+  });
+});
+
+describe("getModelIndicatorTooltip", () => {
+  it("combines status and readable model", () => {
+    expect(
+      getModelIndicatorTooltip("claude", "claude-sonnet-4-6", "Thinking"),
+    ).toBe("Thinking - ◉ Sonnet 4.6");
+  });
+  it("status-only without model", () => {
+    expect(getModelIndicatorTooltip("claude", "", "Thinking")).toBe("Thinking");
+  });
+  it("no status: just provider glyph + readable model", () => {
+    expect(
+      getModelIndicatorTooltip("claude", "claude-opus-4-1", undefined),
+    ).toBe("◉ Opus 4.1");
+  });
+  it("codex model", () => {
+    expect(
+      getModelIndicatorTooltip("codex", "gpt-5.4-mini", "Thinking"),
+    ).toBe("Thinking - ⌬ 5.4-mini");
+  });
+  it("gemini model", () => {
+    expect(
+      getModelIndicatorTooltip("gemini", "gemini-2.5-flash", undefined),
+    ).toBe("✦ 2.5-flash");
+  });
+  it("non-status title falls back to model label", () => {
+    expect(
+      getModelIndicatorTooltip("claude", "claude-haiku-3-5", "4-6 · Thinking off"),
+    ).toBe("◉ Haiku 3.5");
   });
 });
 

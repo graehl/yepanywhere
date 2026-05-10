@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ZodError } from "zod";
+import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
 import { FixedFontMathToggle } from "../../ui/FixedFontMathToggle";
@@ -75,10 +77,12 @@ function renderReadMathPanel(html: string) {
  * Read tool use - shows file path being read
  */
 function ReadToolUse({ input }: { input: ReadInput }) {
+  const meta = useOptionalSessionMetadata();
   const fileName = getFileName(input.file_path);
+  const displayPath = makeDisplayPath(input.file_path, meta?.projectPath);
   return (
     <div className="read-tool-use">
-      <span className="file-path">{fileName}</span>
+      <span className="file-path" title={displayPath}>{fileName}</span>
       {(input.offset !== undefined || input.limit !== undefined) && (
         <span className="read-range">
           {input.offset !== undefined && ` from line ${input.offset}`}

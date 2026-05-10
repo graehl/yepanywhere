@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ZodError } from "zod";
+import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
 import { Modal } from "../../ui/Modal";
@@ -50,11 +52,13 @@ function truncateHighlightedHtml(html: string, maxLines: number): string {
  * Write tool use - shows file path being written
  */
 function WriteToolUse({ input }: { input: WriteInput }) {
+  const meta = useOptionalSessionMetadata();
   const fileName = getFileName(input.file_path);
+  const displayPath = makeDisplayPath(input.file_path, meta?.projectPath);
   const lineCount = input.content.split("\n").length;
   return (
     <div className="write-tool-use">
-      <span className="file-path">{fileName}</span>
+      <span className="file-path" title={displayPath}>{fileName}</span>
       <span className="write-info">{lineCount} lines</span>
     </div>
   );

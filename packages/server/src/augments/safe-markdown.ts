@@ -152,7 +152,7 @@ const renderer: RendererObject<string, string> = {
       }
       // Other local file — render as a link to the API
       const apiUrl = escapeHtml(localFileApiUrl(href));
-      const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+      const titleAttr = ` title="${escapeHtml(title ?? href)}"`;
       return `<a href="${apiUrl}"${titleAttr}>${renderedText}</a>`;
     }
 

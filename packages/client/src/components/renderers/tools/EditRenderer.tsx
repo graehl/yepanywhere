@@ -16,6 +16,7 @@ import {
   getErrorClassSuffix,
   isUserRejection,
 } from "../../../lib/classifyToolError";
+import { makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
 import { FixedFontMathToggle } from "../../ui/FixedFontMathToggle";
@@ -393,17 +394,6 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
   );
 }
 
-/**
- * Get relative file path by stripping project path prefix
- */
-function getRelativePath(filePath: string, projectPath: string | null): string {
-  if (projectPath && filePath.startsWith(projectPath)) {
-    // Strip project path and leading slash
-    const relative = filePath.slice(projectPath.length);
-    return relative.startsWith("/") ? relative.slice(1) : relative;
-  }
-  return filePath;
-}
 
 /**
  * Modal content for viewing complete diff with optional full file context.
@@ -471,7 +461,7 @@ function DiffModalContent({
       : structuredPatch;
 
   // Strip project path prefix for display
-  const displayPath = getRelativePath(filePath, projectPath);
+  const displayPath = makeDisplayPath(filePath, projectPath);
 
   return (
     <div className="diff-modal-content" ref={contentRef}>

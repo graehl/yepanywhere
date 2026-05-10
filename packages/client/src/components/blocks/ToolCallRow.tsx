@@ -313,24 +313,26 @@ export const ToolCallRow = memo(function ToolCallRow({
     !isNonExpandable && (toolName === "Edit" || toolName === "TodoWrite"),
   );
 
-  // Dot-expanded: shows inline ToolResultExpanded for non-expandable rows
-  // that have an interactive summary (Read, completed Edit).
-  const [dotExpanded, setDotExpanded] = useState(false);
+  // Dot-expanded: inline file content for Read rows (starts expanded by default).
+  // Not used for Edit — its interactive summary + modal is already the full view.
+  const [dotExpanded, setDotExpanded] = useState(toolName === "Read");
 
-  // Show dot button for expandable rows and rows with interactive summary
-  const showDotBtn = !isNonExpandable || hasInteractiveSummary;
+  // Dot button: expandable rows + Read rows with interactive summary.
+  const showDotBtn = !isNonExpandable || (hasInteractiveSummary && toolName === "Read");
 
-  // Header toggles dotExpanded for non-expandable rows that have interactive
-  // summary (Read complete, Edit complete) — same pattern as thinking blocks.
+  // Header toggles dotExpanded for Read rows — same pattern as thinking blocks.
   const hasHeaderDotToggle =
-    isNonExpandable && hasInteractiveSummary && shouldHydrateRichContent;
+    isNonExpandable &&
+    hasInteractiveSummary &&
+    shouldHydrateRichContent &&
+    toolName === "Read";
 
   const handleDotClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     hydrateNow();
     if (!isNonExpandable) {
       setExpanded((v) => !v);
-    } else if (hasInteractiveSummary && shouldHydrateRichContent) {
+    } else if (hasInteractiveSummary && toolName === "Read" && shouldHydrateRichContent) {
       setDotExpanded((v) => !v);
     }
   };
@@ -497,7 +499,7 @@ export const ToolCallRow = memo(function ToolCallRow({
         </div>
       )}
 
-      {dotExpanded && isNonExpandable && hasInteractiveSummary && (
+      {dotExpanded && isNonExpandable && hasInteractiveSummary && toolName === "Read" && (
         <div className="tool-row-content">
           <ToolResultExpanded
             toolName={toolName}

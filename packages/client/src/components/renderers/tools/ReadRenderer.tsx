@@ -8,6 +8,7 @@ import { SchemaWarning } from "../../SchemaWarning";
 import { FilePathDisplay } from "../../ui/FilePathDisplay";
 import { FixedFontMathToggle } from "../../ui/FixedFontMathToggle";
 import { Modal } from "../../ui/Modal";
+import { RenderModeGlyph } from "../../ui/RenderModeGlyph";
 import type {
   ImageFile,
   PdfFile,
@@ -107,77 +108,25 @@ function FileModalContent({
   highlightedTruncated?: boolean;
   renderedMarkdownHtml?: string;
 }) {
-  const [showPreview, setShowPreview] = useState(false);
-  const lines = (file.content ?? "").split("\n");
   const hasMarkdownPreview = !!renderedMarkdownHtml;
+  // Default to rendered preview for markdown files
+  const [showPreview, setShowPreview] = useState(hasMarkdownPreview);
+  const lines = (file.content ?? "").split("\n");
 
-  // Toggle button for markdown files
-  const toggleButton = hasMarkdownPreview && (
-    <div className="markdown-view-toggle">
-      <button
-        type="button"
-        className={`toggle-btn ${!showPreview ? "active" : ""}`}
-        onClick={() => setShowPreview(false)}
-      >
-        Source
-      </button>
-      <button
-        type="button"
-        className={`toggle-btn ${showPreview ? "active" : ""}`}
-        onClick={() => setShowPreview(true)}
-      >
-        Preview
-      </button>
-    </div>
-  );
-
-  // Show rendered markdown preview
-  if (showPreview && renderedMarkdownHtml) {
-    return (
-      <div className="file-content-modal">
-        {toggleButton}
-        <div className="markdown-preview">
-          <div
-            className="markdown-rendered"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-            dangerouslySetInnerHTML={{ __html: renderedMarkdownHtml }}
-          />
+  const sourceView = highlightedHtml ? (
+    <div className="file-viewer-code file-viewer-code-highlighted">
+      <div
+        className="shiki-container"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+        dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+      />
+      {highlightedTruncated && (
+        <div className="file-viewer-truncated">
+          Content truncated for highlighting (showing first 2000 lines)
         </div>
-      </div>
-    );
-  }
-
-  // Use highlighted HTML if available
-  if (highlightedHtml) {
-    const sourceView = (
-      <div className="file-viewer-code file-viewer-code-highlighted">
-        <div
-          className="shiki-container"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-        />
-        {highlightedTruncated && (
-          <div className="file-viewer-truncated">
-            Content truncated for highlighting (showing first 2000 lines)
-          </div>
-        )}
-      </div>
-    );
-
-    return (
-      <div className="file-content-modal">
-        {toggleButton}
-        <FixedFontMathToggle
-          sourceText={file.content}
-          sourceView={sourceView}
-          renderRenderedView={(html) => renderReadMathPanel(html)}
-        />
-      </div>
-    );
-  }
-
-  // Fallback: plain text with line numbers
-  const sourceView = (
+      )}
+    </div>
+  ) : (
     <div className="file-content-with-lines">
       <div className="line-numbers">
         {lines.map((_, i) => (
@@ -190,14 +139,40 @@ function FileModalContent({
     </div>
   );
 
-  return (
-    <div className="file-content-modal">
-      {toggleButton}
+  const content =
+    showPreview && renderedMarkdownHtml ? (
+      <div className="markdown-preview">
+        <div
+          className="markdown-rendered"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+          dangerouslySetInnerHTML={{ __html: renderedMarkdownHtml }}
+        />
+      </div>
+    ) : (
       <FixedFontMathToggle
         sourceText={file.content}
         sourceView={sourceView}
         renderRenderedView={(html) => renderReadMathPanel(html)}
       />
+    );
+
+  return (
+    <div className="file-content-modal">
+      <div className="fixed-font-render-toggle">
+        {content}
+        {hasMarkdownPreview && (
+          <button
+            type="button"
+            className={`fixed-font-render-toggle__button ${showPreview ? "is-rendered" : ""}`}
+            onClick={() => setShowPreview((v) => !v)}
+            aria-label={showPreview ? "Show source" : "Show rendered markdown"}
+            title={showPreview ? "Show source" : "Show rendered markdown"}
+            aria-pressed={showPreview}
+          >
+            <RenderModeGlyph />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

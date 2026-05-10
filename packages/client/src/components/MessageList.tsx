@@ -1227,6 +1227,64 @@ export const MessageList = memo(function MessageList({
     };
   }, [scrollToBottom]);
 
+  // Preserve relative scroll position when the viewport is resized.
+  useEffect(() => {
+    let pendingFrame = 0;
+    let anchorFromBottom = 0;
+    let preserveAutoScroll = true;
+
+    const handleResize = () => {
+      const container = containerRef.current?.parentElement;
+      if (!container || isProgrammaticScrollRef.current) return;
+
+      preserveAutoScroll = shouldAutoScrollRef.current;
+      anchorFromBottom = preserveAutoScroll
+        ? 0
+        : Math.max(
+            0,
+            container.scrollHeight - container.scrollTop - container.clientHeight,
+          );
+
+      if (pendingFrame !== 0) {
+        cancelAnimationFrame(pendingFrame);
+      }
+
+      pendingFrame = requestAnimationFrame(() => {
+        const resizeContainer = containerRef.current?.parentElement;
+        if (!resizeContainer) return;
+
+        if (preserveAutoScroll) {
+          scrollToBottom(resizeContainer);
+          return;
+        }
+
+        const targetScrollTop = Math.max(
+          0,
+          resizeContainer.scrollHeight -
+            resizeContainer.clientHeight -
+            anchorFromBottom,
+        );
+
+        isProgrammaticScrollRef.current = true;
+        resizeContainer.scrollTop = targetScrollTop;
+        lastHeightRef.current = resizeContainer.scrollHeight;
+        setIsScrolledToBottom(isNearScrollBottom(resizeContainer));
+
+        requestAnimationFrame(() => {
+          isProgrammaticScrollRef.current = false;
+        });
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      if (pendingFrame !== 0) {
+        cancelAnimationFrame(pendingFrame);
+      }
+    };
+  }, [scrollToBottom]);
+
   // Force scroll to bottom when scrollTrigger changes (user sent a message)
   useEffect(() => {
     if (scrollTrigger > 0) {

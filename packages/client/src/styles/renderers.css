@@ -37,8 +37,8 @@
 
 .fixed-font-render-toggle__button {
   position: absolute;
-  right: -0.35rem;
-  bottom: -0.35rem;
+  right: 0.4rem;
+  bottom: 0.25rem;
   width: 1.45rem;
   height: 1.45rem;
   border: 1px solid var(--border-color);
@@ -344,13 +344,50 @@
   position: relative;
 }
 
-.text-block-actions {
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: flex;
+.assistant-turn .text-block-assistant {
+  --text-block-flow-gutter: clamp(0.45rem, 1.6vw, 0.95rem);
+  display: flow-root;
+  padding-right: var(--text-block-flow-gutter);
+}
+
+.assistant-turn .text-block-actions {
+  float: right;
+  display: inline-flex;
+  justify-content: flex-end;
   gap: 0.35rem;
-  z-index: 10;
+  margin: 0 0 0.28rem var(--text-block-flow-gutter);
+  shape-outside: circle(50%);
+  shape-margin: 0.05rem;
+  width: auto;
+}
+
+@media (max-width: 700px) {
+  .assistant-turn .text-block-assistant {
+    --text-block-flow-gutter: 0.35rem;
+    display: grid;
+    grid-template-areas:
+      "content"
+      "actions";
+    row-gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .assistant-turn .text-block-actions {
+    grid-area: actions;
+    float: none;
+    display: inline-flex;
+    margin-left: auto;
+    margin-right: 0;
+  }
+
+  .assistant-turn .text-block-content {
+    grid-area: content;
+    min-width: 0;
+  }
+
+  .assistant-turn .text-block-assistant.streaming > .text-block-content::after {
+    width: 1.6px;
+  }
 }
 
 /* Copy button for text blocks */
@@ -364,7 +401,7 @@
   padding: 0;
   background: var(--bg-secondary, #252525);
   border: 1px solid var(--border-color, #333);
-  border-radius: var(--radius-sm, 4px);
+  border-radius: 999px;
   color: var(--text-muted, #888);
   cursor: pointer;
   transition: opacity 0.15s, background 0.15s, color 0.15s;
@@ -436,8 +473,8 @@
   margin-bottom: 0;
 }
 
-/* Streaming cursor animation - uses ::after on last child to stay inline */
-.text-block.streaming > :last-child::after {
+/* Streaming cursor animation - attach to text content so controls stay outside content flow */
+.assistant-turn .text-block-assistant.streaming > .text-block-content::after {
   content: "";
   display: inline-block;
   width: 2px;

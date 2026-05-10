@@ -313,9 +313,9 @@ export const ToolCallRow = memo(function ToolCallRow({
     !isNonExpandable && (toolName === "Edit" || toolName === "TodoWrite"),
   );
 
-  // Dot-expanded: inline file content for Read rows (starts expanded by default).
+  // Dot-expanded: inline file content for Read rows (starts collapsed).
   // Not used for Edit — its interactive summary + modal is already the full view.
-  const [dotExpanded, setDotExpanded] = useState(toolName === "Read");
+  const [dotExpanded, setDotExpanded] = useState(false);
 
   // Dot button: expandable rows + Read rows with interactive summary.
   const showDotBtn = !isNonExpandable || (hasInteractiveSummary && toolName === "Read");
@@ -501,6 +501,13 @@ export const ToolCallRow = memo(function ToolCallRow({
 
       {dotExpanded && isNonExpandable && hasInteractiveSummary && toolName === "Read" && (
         <div className="tool-row-content">
+          <button
+            type="button"
+            className="tool-row-collapse-strip"
+            onClick={() => setDotExpanded(false)}
+            aria-label="Collapse"
+            title="Collapse"
+          />
           <ToolResultExpanded
             toolName={toolName}
             toolInput={toolInput}
@@ -512,6 +519,13 @@ export const ToolCallRow = memo(function ToolCallRow({
 
       {expanded && !isNonExpandable && (
         <div className="tool-row-content">
+          <button
+            type="button"
+            className="tool-row-collapse-strip"
+            onClick={() => setExpanded(false)}
+            aria-label="Collapse"
+            title="Collapse"
+          />
           {status === "pending" ||
           status === "aborted" ||
           status === "incomplete" ? (

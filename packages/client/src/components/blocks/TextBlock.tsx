@@ -104,9 +104,7 @@ export const TextBlock = memo(function TextBlock({
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: click handler intercepts local media links only
     <div
-      ref={copySourceRef}
-      className={`text-block timeline-item${isStreaming ? " streaming" : ""}`}
-      onClick={handleClick}
+      className={`text-block text-block-assistant timeline-item${isStreaming ? " streaming" : ""}`}
     >
       <div className="text-block-actions">
         {canToggleMath && (
@@ -132,40 +130,40 @@ export const TextBlock = memo(function TextBlock({
         </button>
       </div>
 
-      {/* Always render streaming elements when streaming so refs are ready for augments */}
-      {renderStreamingContainer && (
-        <div
-          style={
-            showStreamingContent && showRendered ? undefined : { display: "none" }
-          }
-        >
+      <div ref={copySourceRef} className="text-block-content" onClick={handleClick}>
+        {/* Always render streaming elements when streaming so refs are ready for augments */}
+        {renderStreamingContainer && (
           <div
-            ref={streamingMarkdown.containerRef}
-            className="streaming-blocks"
-          />
-          <span
-            ref={streamingMarkdown.pendingRef}
-            className="streaming-pending"
-          />
-        </div>
-      )}
+            style={
+              showStreamingContent && showRendered ? undefined : { display: "none" }
+            }
+          >
+            <div
+              ref={streamingMarkdown.containerRef}
+              className="streaming-blocks"
+            />
+            <span ref={streamingMarkdown.pendingRef} className="streaming-pending" />
+          </div>
+        )}
 
-      {/* Show fallback content when not actively streaming */}
-      {!showStreamingContent &&
-        (showRendered && augmentHtml ? (
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-          <div dangerouslySetInnerHTML={{ __html: augmentHtml }} />
-        ) : showRendered && localMathPreview.changed ? (
-          <div
-            className="text-block-local-rendered"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is trusted HTML from local rendering
-            dangerouslySetInnerHTML={{ __html: localMathPreview.html }}
-          />
-        ) : (
-          <pre className="text-block-source">
-            <code>{text}</code>
-          </pre>
-        ))}
+        {/* Show fallback content when not actively streaming */}
+        {!showStreamingContent &&
+          (showRendered && augmentHtml ? (
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+            <div dangerouslySetInnerHTML={{ __html: augmentHtml }} />
+          ) : showRendered && localMathPreview.changed ? (
+            <div
+              className="text-block-local-rendered"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is trusted HTML from local rendering
+              dangerouslySetInnerHTML={{ __html: localMathPreview.html }}
+            />
+          ) : (
+            <pre className="text-block-source">
+              <code>{text}</code>
+            </pre>
+          ))}
+      </div>
+
       {modal && (
         <LocalMediaModal
           path={modal.path}

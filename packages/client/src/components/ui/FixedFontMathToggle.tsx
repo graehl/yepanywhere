@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { useScrollPreservingToggle } from "../../lib/scrollAnchor";
 import katex from "katex";
 import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContext";
@@ -753,6 +754,8 @@ export function FixedFontMathToggle({
     renderWhenDisabled: false,
     resetDependencies: [sourceText],
   });
+  const { btnRef: toggleBtnRef, handleClick: handleToggleClick } =
+    useScrollPreservingToggle(showRendered, toggleLocalMode);
 
   const handleRenderedClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -783,9 +786,10 @@ export function FixedFontMathToggle({
       )}
       {rendered.changed && (
         <button
+          ref={toggleBtnRef}
           type="button"
           className={`fixed-font-render-toggle__button ${showRendered ? "is-rendered" : ""}`}
-          onClick={toggleLocalMode}
+          onClick={handleToggleClick}
           aria-label={showRendered ? "Show source" : "Show rendered view"}
           title={showRendered ? "Show source" : "Show rendered view"}
           aria-pressed={showRendered}

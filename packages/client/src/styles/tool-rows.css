@@ -268,10 +268,36 @@
 
 /* Expanded content area */
 .tool-row-content {
+  position: relative;
   margin-left: 24px;
   padding: 8px;
   border-left: 1px solid var(--border-color, #333);
+  transition: border-left-color 0.1s;
   animation: slideDown 0.15s ease-out;
+}
+
+/* Invisible wide strip over border-left — click anywhere along it to collapse */
+.tool-row-collapse-strip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  transform: translateX(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  z-index: 1;
+  user-select: none;
+}
+
+.tool-row-collapse-strip:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+}
+
+.tool-row-content:has(.tool-row-collapse-strip:hover) {
+  border-left-color: var(--text-dimmed, #666);
 }
 
 @keyframes slideDown {

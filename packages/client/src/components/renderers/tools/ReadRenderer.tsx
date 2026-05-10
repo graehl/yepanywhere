@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useScrollPreservingToggle } from "../../../lib/scrollAnchor";
+import { renderFixedFontMath } from "../../ui/FixedFontMathToggle";
 import type { ZodError } from "zod";
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
@@ -85,7 +87,7 @@ function ReadToolUse({ input }: { input: ReadInput }) {
     <div className="read-tool-use">
       <span className="file-path"><FilePathDisplay displayPath={displayPath} /></span>
       {(input.offset !== undefined || input.limit !== undefined) && (
-        <span className="read-range">
+        <span className="read-range" title={`offset ${input.offset ?? 0}, limit ${input.limit ?? "∞"}`}>
           {input.offset !== undefined && ` from line ${input.offset}`}
           {input.limit !== undefined && ` (${input.limit} lines)`}
         </span>
@@ -111,6 +113,21 @@ function FileModalContent({
   const hasMarkdownPreview = !!renderedMarkdownHtml;
   // Default to rendered preview for markdown files
   const [showPreview, setShowPreview] = useState(hasMarkdownPreview);
+  const { btnRef: sigmaBtnRef, handleClick: handleMarkdownToggle } =
+    useScrollPreservingToggle(showPreview, () => setShowPreview((v) => !v));
+
+  // For Shiki-highlighted code files: offer KaTeX-only math rendering (default off).
+  // Uses renderFixedFontMath (not renderFixedFontRichContent) so markdown structural
+  // transforms (headings, lists, tables) are never applied to source code.
+  const mathRendered = useMemo(
+    () => (highlightedHtml ? renderFixedFontMath(file.content) : null),
+    [highlightedHtml, file.content],
+  );
+  const hasMathToggle = !!mathRendered?.changed;
+  const [showMath, setShowMath] = useState(false);
+  const { btnRef: mathBtnRef, handleClick: handleMathToggle } =
+    useScrollPreservingToggle(showMath, () => setShowMath((v) => !v));
+
   const lines = (file.content ?? "").split("\n");
 
   const sourceView = highlightedHtml ? (
@@ -148,7 +165,12 @@ function FileModalContent({
           dangerouslySetInnerHTML={{ __html: renderedMarkdownHtml }}
         />
       </div>
+    ) : highlightedHtml ? (
+      // Code file: show math-rendered plain text when toggled on, Shiki otherwise.
+      // Math mode loses syntax colouring intentionally — you asked for the formula.
+      showMath && mathRendered ? renderReadMathPanel(mathRendered.html) : sourceView
     ) : (
+      // Plain text / log / output: full ANSI + math + markdown table detection.
       <FixedFontMathToggle
         sourceText={file.content}
         sourceView={sourceView}
@@ -156,48 +178,39 @@ function FileModalContent({
       />
     );
 
+  // Sigma button is shared across all three cases but only one is active at a time.
+  const sigmaActive = hasMarkdownPreview ? showPreview : hasMathToggle ? showMath : false;
+  const sigmaRef = hasMarkdownPreview ? sigmaBtnRef : mathBtnRef;
+  const sigmaHandler = hasMarkdownPreview ? handleMarkdownToggle : handleMathToggle;
+  const sigmaLabel = hasMarkdownPreview
+    ? showPreview ? "Show source" : "Show rendered markdown"
+    : showMath ? "Show source" : "Render math (LaTeX)";
+  const showSigma = hasMarkdownPreview || hasMathToggle;
+
   return (
     <div className="file-content-modal">
-      <div className="fixed-font-render-toggle">
-        {content}
-        {hasMarkdownPreview && (
+      {showSigma ? (
+        <div className="fixed-font-render-toggle">
+          {content}
           <button
+            ref={sigmaRef}
             type="button"
-            className={`fixed-font-render-toggle__button ${showPreview ? "is-rendered" : ""}`}
-            onClick={() => setShowPreview((v) => !v)}
-            aria-label={showPreview ? "Show source" : "Show rendered markdown"}
-            title={showPreview ? "Show source" : "Show rendered markdown"}
-            aria-pressed={showPreview}
+            className={`fixed-font-render-toggle__button ${sigmaActive ? "is-rendered" : ""}`}
+            onClick={sigmaHandler}
+            aria-label={sigmaLabel}
+            title={sigmaLabel}
+            aria-pressed={sigmaActive}
           >
             <RenderModeGlyph />
           </button>
-        )}
-      </div>
+        </div>
+      ) : (
+        content
+      )}
     </div>
   );
 }
 
-/**
- * Build modal title for file with optional range info
- */
-function FileModalTitle({ file }: { file: TextFile }) {
-  const meta = useOptionalSessionMetadata();
-  const displayPath = makeDisplayPath(file.filePath, meta?.projectPath);
-  const showRange = file.startLine > 1 || file.numLines < file.totalLines;
-
-  return (
-    <span className="file-path">
-      <FilePathDisplay displayPath={displayPath} />
-      {showRange && (
-        <span className="file-range">
-          {" "}
-          (lines {file.startLine}-{file.startLine + file.numLines - 1} of{" "}
-          {file.totalLines})
-        </span>
-      )}
-    </span>
-  );
-}
 
 /**
  * Text file result - clickable filename that opens modal
@@ -514,35 +527,13 @@ function ReadInteractiveSummary({
   }
 
   return (
-    <>
-      <button
-        type="button"
-        className="file-link-inline"
-        onClick={(e) => {
-          e.stopPropagation();
-          setShowModal(true);
-        }}
-      >
-        <FilePathDisplay displayPath={displayPath} />
-        <span className="file-line-count-inline">{file.numLines} lines</span>
-        {showValidationWarning && validationErrors && (
-          <SchemaWarning toolName="Read" errors={validationErrors} />
-        )}
-      </button>
-      {showModal && (
-        <Modal
-          title={<FileModalTitle file={file} />}
-          onClose={() => setShowModal(false)}
-        >
-          <FileModalContent
-            file={file}
-            highlightedHtml={result._highlightedContentHtml}
-            highlightedTruncated={result._highlightedTruncated}
-            renderedMarkdownHtml={result._renderedMarkdownHtml}
-          />
-        </Modal>
+    <span>
+      <FilePathDisplay displayPath={displayPath} />
+      <span className="file-line-count-inline">{file.numLines} lines</span>
+      {showValidationWarning && validationErrors && (
+        <SchemaWarning toolName="Read" errors={validationErrors} />
       )}
-    </>
+    </span>
   );
 }
 

@@ -9,8 +9,8 @@ import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import { Modal } from "./ui/Modal";
 
-const DEFAULT_HEARTBEAT_TEXT = "yepanywhere heartbeat";
-const DEFAULT_HEARTBEAT_AFTER_MINUTES = 5;
+const DEFAULT_HEARTBEAT_TEXT = "heartbeat";
+const DEFAULT_HEARTBEAT_AFTER_MINUTES = 15;
 const HEARTBEAT_AFTER_PRESETS = [5, 15, 30, 60] as const;
 const HEARTBEAT_FORCE_PRESETS = [1, 5, 15] as const;
 
@@ -50,7 +50,10 @@ export function SessionHeartbeatModal({
   const [forceAfterMinutes, setForceAfterMinutes] = useState(
     heartbeatForceAfterMinutes ? String(heartbeatForceAfterMinutes) : "",
   );
-  const [text, setText] = useState(heartbeatTurnText ?? "");
+  const defaultAfterMinutes =
+    settings?.heartbeatTurnsAfterMinutes ?? DEFAULT_HEARTBEAT_AFTER_MINUTES;
+  const defaultText = settings?.heartbeatTurnText ?? DEFAULT_HEARTBEAT_TEXT;
+  const [text, setText] = useState(heartbeatTurnText ?? defaultText);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,17 +65,14 @@ export function SessionHeartbeatModal({
     setForceAfterMinutes(
       heartbeatForceAfterMinutes ? String(heartbeatForceAfterMinutes) : "",
     );
-    setText(heartbeatTurnText ?? "");
+    setText(heartbeatTurnText ?? defaultText);
   }, [
     enabled,
     heartbeatTurnText,
     heartbeatTurnsAfterMinutes,
     heartbeatForceAfterMinutes,
+    defaultText,
   ]);
-
-  const defaultAfterMinutes =
-    settings?.heartbeatTurnsAfterMinutes ?? DEFAULT_HEARTBEAT_AFTER_MINUTES;
-  const defaultText = settings?.heartbeatTurnText ?? DEFAULT_HEARTBEAT_TEXT;
 
   const afterMinutesParsed = Number.parseInt(afterMinutes, 10);
   const forceAfterMinutesNumber = Number.parseInt(forceAfterMinutes, 10);
@@ -150,13 +150,20 @@ export function SessionHeartbeatModal({
   const forceButtonConnectionClassName = isAfterOffSelected
     ? "session-heartbeat-preset-button session-heartbeat-after-off-button session-heartbeat-after-off-button--connected"
     : "session-heartbeat-preset-button session-heartbeat-after-off-button";
-  const enableAfterForForce = useCallback((nextForceValue: string) => {
-    const parsedForce = Number.parseInt(nextForceValue, 10);
-    if (Number.isFinite(parsedForce) && parsedForce > 0) {
-      setAfterMinutes(String(DEFAULT_HEARTBEAT_AFTER_MINUTES));
-      setIsEnabled(true);
-    }
-  }, []);
+  const enableAfterForForce = useCallback(
+    (nextForceValue: string) => {
+      const parsedForce = Number.parseInt(nextForceValue, 10);
+      if (
+        Number.isFinite(parsedForce) &&
+        parsedForce > 0 &&
+        !isEnabled
+      ) {
+        setAfterMinutes(String(defaultAfterMinutes));
+        setIsEnabled(true);
+      }
+    },
+    [defaultAfterMinutes, isEnabled],
+  );
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -172,9 +179,9 @@ export function SessionHeartbeatModal({
             : Number.NaN
         : null;
 
-      if (Number.isNaN(heartbeatTurnsAfterMinutesUpdate)) {
-        throw new Error(t("sessionHeartbeatSaveFailed"));
-      }
+    if (Number.isNaN(heartbeatTurnsAfterMinutesUpdate)) {
+      throw new Error(t("sessionHeartbeatSaveFailed"));
+    }
 
       const parsedForceAfterMinutes = Number.parseInt(forceAfterMinutes, 10);
       const heartbeatForceAfterMinutesUpdate =
@@ -189,10 +196,14 @@ export function SessionHeartbeatModal({
         throw new Error(t("sessionHeartbeatSaveFailed"));
       }
 
+      const effectiveText = text.trim();
+      const shouldPersistText =
+        effectiveText.length > 0 && effectiveText !== defaultText;
+
       await api.updateSessionMetadata(sessionId, {
         heartbeatTurnsEnabled: isEnabled,
         heartbeatTurnsAfterMinutes: heartbeatTurnsAfterMinutesUpdate,
-        heartbeatTurnText: trimmedText.length > 0 ? trimmedText : null,
+        heartbeatTurnText: shouldPersistText ? effectiveText : null,
         heartbeatForceAfterMinutes: heartbeatForceAfterMinutesUpdate,
       });
 
@@ -202,7 +213,7 @@ export function SessionHeartbeatModal({
           heartbeatTurnsAfterMinutesUpdate === null
             ? undefined
             : heartbeatTurnsAfterMinutesUpdate,
-        heartbeatTurnText: trimmedText || undefined,
+        heartbeatTurnText: shouldPersistText ? effectiveText : undefined,
         heartbeatForceAfterMinutes:
           heartbeatForceAfterMinutesUpdate === null
             ? undefined
@@ -326,11 +337,6 @@ export function SessionHeartbeatModal({
             className="session-heartbeat-input"
             placeholder={t("sessionHeartbeatTextPlaceholder")}
           />
-          <p className="settings-hint session-heartbeat-hint">
-            {t("sessionHeartbeatDefaultHint", {
-              text: defaultText,
-            })}
-          </p>
         </div>
 
         <div

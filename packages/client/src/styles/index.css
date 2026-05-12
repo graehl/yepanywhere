@@ -6923,6 +6923,7 @@ a.sidebar-nav-item {
 }
 
 .new-session-project-chooser {
+  position: relative;
   padding: 0.4rem;
   background: color-mix(in srgb, var(--bg-code) 82%, transparent);
   border: 1px solid color-mix(in srgb, var(--border-color) 94%, transparent);
@@ -7024,14 +7025,25 @@ a.sidebar-nav-item {
 }
 
 .new-session-project-panel {
+  position: absolute;
   margin-top: var(--space-2);
+  top: calc(100% + var(--space-2));
+  inset-inline: 0;
+  z-index: 5;
+  padding: var(--space-2);
+  background: color-mix(in srgb, var(--bg-code) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-color) 94%, transparent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.25);
+  max-height: min(28rem, 45vh);
+  overflow: hidden;
 }
 
 .new-session-project-suggestions {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  max-height: min(52vh, 34rem);
+  max-height: min(28rem, 39vh);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -7188,11 +7200,11 @@ a.sidebar-nav-item {
   }
 }
 
-@media (min-width: 900px) {
-  .main-content-constrained .page-content-inner.new-session-page-shell {
-    max-width: var(--content-max-width);
-  }
+.main-content-constrained .page-content-inner.new-session-page-shell {
+  max-width: var(--content-max-width);
+}
 
+@media (min-width: 900px) {
   .new-session-top-layout {
     grid-template-columns: minmax(0, 1fr) 280px;
     grid-template-areas:
@@ -7204,6 +7216,10 @@ a.sidebar-nav-item {
 
   .new-session-project-controls {
     grid-template-columns: 1fr;
+  }
+
+  .new-session-project-panel {
+    max-height: min(28rem, 45vh);
   }
 }
 

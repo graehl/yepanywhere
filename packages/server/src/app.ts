@@ -6,6 +6,7 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
+import { join } from "node:path";
 import type { AuthService } from "./auth/AuthService.js";
 import { createAuthRoutes } from "./auth/routes.js";
 import type { DeviceBridgeService } from "./device/DeviceBridgeService.js";
@@ -293,10 +294,14 @@ export function createApp(options: AppOptions): AppResult {
   // Create dependencies
   const codexScanner = new CodexSessionScanner();
   const geminiScanner = new GeminiSessionScanner();
+  const projectScanCachePath = options.dataDir
+    ? join(options.dataDir, "indexes", "project-scanner-cache.json")
+    : undefined;
   const scanner = new ProjectScanner({
     projectsDir: options.projectsDir,
     codexScanner,
     geminiScanner,
+    projectScanCachePath,
     projectMetadataService: options.projectMetadataService,
     eventBus: options.eventBus,
     cacheTtlMs: options.projectScanCacheTtlMs,

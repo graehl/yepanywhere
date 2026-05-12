@@ -322,6 +322,15 @@ export function NewSessionForm({
     const source = normalizedProjectInput ? projectMatches : quickProjects;
     return source.slice(0, PROJECT_SUGGESTION_COUNT);
   }, [normalizedProjectInput, projectMatches, quickProjects]);
+  const projectSuggestionOptions = useMemo(
+    () =>
+      projectSuggestions.map((project) => (
+        <option key={project.id} value={project.path}>
+          {project.name}
+        </option>
+      )),
+    [projectSuggestions],
+  );
   const hasCustomProjectPath =
     Boolean(normalizedProjectInput) && exactProjectMatch === null;
   const currentProjectSelection = exactProjectMatch ?? selectedProject ?? null;
@@ -336,6 +345,111 @@ export function NewSessionForm({
     hasCustomProjectPath || currentProjectSelection
       ? shortenPath(projectSummaryMeta)
       : projectSummaryMeta;
+
+  const handleProjectOptionSelect = useCallback(
+    (project: Project) => {
+      setProjectInput(project.path);
+      lastSyncedProjectIdRef.current = project.id;
+      onProjectChange?.(project.id);
+      setIsProjectChooserExpanded(false);
+    },
+    [onProjectChange],
+  );
+
+  const handleDetachedProject = useCallback(() => {
+    setProjectInput("");
+    lastSyncedProjectIdRef.current = null;
+    onProjectChange?.(null);
+    setIsProjectChooserExpanded(false);
+  }, [onProjectChange]);
+
+  const projectPanelRows = useMemo(() => {
+    if (!isProjectChooserExpanded) return null;
+
+    const rows: JSX.Element[] = [
+      <button
+        key="detached"
+        type="button"
+        className={`new-session-project-option ${!normalizedProjectInput ? "selected" : ""}`}
+        onClick={handleDetachedProject}
+      >
+        <span className="new-session-project-option-name">
+          {t("newSessionProjectDetached")}
+        </span>
+        <span className="new-session-project-option-path">
+          {t("newSessionProjectDetachedHint")}
+        </span>
+      </button>,
+    ];
+
+    if (hasCustomProjectPath) {
+      rows.push(
+        <button
+          key="custom"
+          type="button"
+          className="new-session-project-option new-session-project-option-custom"
+          onClick={() => setIsProjectChooserExpanded(false)}
+        >
+          <span className="new-session-project-option-name">
+            {t("newSessionProjectUseTypedPath")}
+          </span>
+          <span className="new-session-project-option-path">
+            {normalizedProjectInput}
+          </span>
+        </button>,
+      );
+    }
+
+    if (projectsLoading) {
+      rows.push(
+        <div key="loading" className="new-session-project-empty">
+          {t("newSessionLoading")}
+        </div>,
+      );
+      return rows;
+    }
+
+    if (projectSuggestions.length === 0) {
+      rows.push(
+        <div key="no-matches" className="new-session-project-empty">
+          {t("newSessionProjectNoMatches")}
+        </div>,
+      );
+      return rows;
+    }
+
+    rows.push(
+      ...projectSuggestions.map((project) => (
+        <button
+          key={project.id}
+          type="button"
+          className={`new-session-project-option ${currentProjectSelection?.id === project.id && !hasCustomProjectPath ? "selected" : ""}`}
+          onClick={() => handleProjectOptionSelect(project)}
+          title={project.path}
+        >
+          <span className="new-session-project-option-name">
+            {project.name}
+          </span>
+          <span className="new-session-project-option-path">
+            {shortenPath(project.path)}
+          </span>
+        </button>
+      )),
+    );
+
+    return rows;
+  }, [
+    currentProjectSelection?.id,
+    handleDetachedProject,
+    handleProjectOptionSelect,
+    hasCustomProjectPath,
+    isProjectChooserExpanded,
+    normalizedProjectInput,
+    projectSuggestions,
+    projectsLoading,
+    setIsProjectChooserExpanded,
+    t,
+  ]);
 
   // Initialize provider/model/mode from saved defaults once settings and providers load.
   useEffect(() => {
@@ -499,23 +613,6 @@ export function NewSessionForm({
       }
     }
   }, [setMessage]);
-
-  const handleProjectOptionSelect = useCallback(
-    (project: Project) => {
-      setProjectInput(project.path);
-      lastSyncedProjectIdRef.current = project.id;
-      onProjectChange?.(project.id);
-      setIsProjectChooserExpanded(false);
-    },
-    [onProjectChange],
-  );
-
-  const handleDetachedProject = useCallback(() => {
-    setProjectInput("");
-    lastSyncedProjectIdRef.current = null;
-    onProjectChange?.(null);
-    setIsProjectChooserExpanded(false);
-  }, [onProjectChange]);
 
   const handleProjectInputKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
@@ -1265,17 +1362,13 @@ export function NewSessionForm({
             spellCheck={false}
             list="new-session-project-options"
           />
-        </label>
+      </label>
         <datalist id="new-session-project-options">
-          {sortedProjects.map((project) => (
-            <option key={project.id} value={project.path}>
-              {project.name}
-            </option>
-          ))}
+          {projectSuggestionOptions}
         </datalist>
       </div>
 
-      {isProjectChooserExpanded && (
+      {isProjectChooserExpanded && projectPanelRows && (
         <div
           id="new-session-project-panel"
           className="new-session-project-panel"
@@ -1285,60 +1378,7 @@ export function NewSessionForm({
           </p>
 
           <div className="new-session-project-suggestions">
-            <button
-              type="button"
-              className={`new-session-project-option ${!normalizedProjectInput ? "selected" : ""}`}
-              onClick={handleDetachedProject}
-            >
-              <span className="new-session-project-option-name">
-                {t("newSessionProjectDetached")}
-              </span>
-              <span className="new-session-project-option-path">
-                {t("newSessionProjectDetachedHint")}
-              </span>
-            </button>
-
-            {hasCustomProjectPath && (
-              <button
-                type="button"
-                className="new-session-project-option new-session-project-option-custom"
-                onClick={() => setIsProjectChooserExpanded(false)}
-              >
-                <span className="new-session-project-option-name">
-                  {t("newSessionProjectUseTypedPath")}
-                </span>
-                <span className="new-session-project-option-path">
-                  {normalizedProjectInput}
-                </span>
-              </button>
-            )}
-
-            {projectsLoading ? (
-              <div className="new-session-project-empty">
-                {t("newSessionLoading")}
-              </div>
-            ) : projectSuggestions.length === 0 ? (
-              <div className="new-session-project-empty">
-                {t("newSessionProjectNoMatches")}
-              </div>
-            ) : (
-              projectSuggestions.map((project) => (
-                <button
-                  key={project.id}
-                  type="button"
-                  className={`new-session-project-option ${currentProjectSelection?.id === project.id && !hasCustomProjectPath ? "selected" : ""}`}
-                  onClick={() => handleProjectOptionSelect(project)}
-                  title={project.path}
-                >
-                  <span className="new-session-project-option-name">
-                    {project.name}
-                  </span>
-                  <span className="new-session-project-option-path">
-                    {shortenPath(project.path)}
-                  </span>
-                </button>
-              ))
-            )}
+            {projectPanelRows}
           </div>
         </div>
       )}
@@ -1388,6 +1428,66 @@ export function NewSessionForm({
         </div>
       </div>
     ) : null;
+  const modelSection =
+    selectedProvider && modelOptions.length > 0 ? (
+      <div className="new-session-model-section">
+        <h3>{t("newSessionModelTitle")}</h3>
+        <FilterDropdown
+          label={t("newSessionModelTitle")}
+          options={modelOptions}
+          selected={selectedModel ? [selectedModel] : []}
+          onChange={handleModelSelect}
+          multiSelect={false}
+          placeholder={t("newSessionModelPlaceholder")}
+        />
+      </div>
+    ) : null;
+  const permissionSection = supportsPermissionMode ? (
+    <div className="new-session-mode-section">
+      <h3>{t("newSessionModeTitle")}</h3>
+      <div className="mode-options">
+        {MODE_ORDER.map((m) => (
+          <button
+            key={m}
+            type="button"
+            className={`mode-option ${mode === m ? "selected" : ""}`}
+            onClick={() => handleModeSelect(m)}
+            disabled={isStarting}
+          >
+            <span className={`mode-option-dot mode-${m}`} />
+            <div className="mode-option-content">
+              <span className="mode-option-label">{modeLabels[m]}</span>
+              <span className="mode-option-desc">
+                {modeDescriptions[m]}
+              </span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="new-session-defaults-bar">
+        <p className="new-session-defaults-copy">
+          {t("newSessionDefaultsDescription")}
+        </p>
+        <button
+          type="button"
+          className="new-session-defaults-button"
+          onClick={handleSaveDefaults}
+          disabled={
+            isStarting ||
+            isSavingDefaults ||
+            settingsLoading ||
+            !selectedProvider ||
+            defaultsMatchCurrent
+          }
+        >
+          {isSavingDefaults
+            ? t("newSessionDefaultsSaving")
+            : t("newSessionDefaultsAction")}
+        </button>
+      </div>
+    </div>
+  ) : null;
 
   // Compact mode: just the input area, no header or mode selector
   if (compact) {
@@ -1414,25 +1514,14 @@ export function NewSessionForm({
           <div className="new-session-input-area">{inputArea}</div>
         </div>
         <aside className="new-session-project-slot">{projectChooser}</aside>
-        {providerSection && (
-          <div className="new-session-provider-slot">{providerSection}</div>
-        )}
-      </div>
-
-      {/* Model Selection */}
-      {selectedProvider && modelOptions.length > 0 && (
-        <div className="new-session-model-section">
-          <h3>{t("newSessionModelTitle")}</h3>
-          <FilterDropdown
-            label={t("newSessionModelTitle")}
-            options={modelOptions}
-            selected={selectedModel ? [selectedModel] : []}
-            onChange={handleModelSelect}
-            multiSelect={false}
-            placeholder={t("newSessionModelPlaceholder")}
-          />
+      {(providerSection || modelSection || permissionSection) && (
+        <div className="new-session-provider-slot">
+          {providerSection}
+          {modelSection}
+          {permissionSection}
         </div>
       )}
+      </div>
 
       {/* Voice transcription method */}
       {voiceInputEnabled && speechMethodOptions.length > 1 && (
@@ -1492,53 +1581,6 @@ export function NewSessionForm({
         </div>
       )}
 
-      {/* Permission Mode Selection - only for providers that support it */}
-      {supportsPermissionMode && (
-        <div className="new-session-mode-section">
-          <h3>{t("newSessionModeTitle")}</h3>
-          <div className="mode-options">
-            {MODE_ORDER.map((m) => (
-              <button
-                key={m}
-                type="button"
-                className={`mode-option ${mode === m ? "selected" : ""}`}
-                onClick={() => handleModeSelect(m)}
-                disabled={isStarting}
-              >
-                <span className={`mode-option-dot mode-${m}`} />
-                <div className="mode-option-content">
-                  <span className="mode-option-label">{modeLabels[m]}</span>
-                  <span className="mode-option-desc">
-                    {modeDescriptions[m]}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          <div className="new-session-defaults-bar">
-            <p className="new-session-defaults-copy">
-              {t("newSessionDefaultsDescription")}
-            </p>
-            <button
-              type="button"
-              className="new-session-defaults-button"
-              onClick={handleSaveDefaults}
-              disabled={
-                isStarting ||
-                isSavingDefaults ||
-                settingsLoading ||
-                !selectedProvider ||
-                defaultsMatchCurrent
-              }
-            >
-              {isSavingDefaults
-                ? t("newSessionDefaultsSaving")
-                : t("newSessionDefaultsAction")}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

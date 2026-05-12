@@ -136,6 +136,9 @@ const APP_SERVER_SHUTDOWN_GRACE_MS = 1500;
 const CODEX_CLI_GPT55_MIN_VERSION = "0.124.0";
 const CODEX_FAILURE_TRACE_LIMIT = 12;
 const CODEX_FAILURE_PREVIEW_CHARS = 240;
+const CODEX_THINKING_OFF_MIN_REASONING_EFFORT_PREFIXES = [
+  "gpt-5.3-codex-spark",
+] as const;
 
 /**
  * Local debug knobs for Codex app-server policy behavior.
@@ -1323,8 +1326,16 @@ export class CodexProvider implements AgentProvider {
   private mapEffortToReasoningEffort(
     effort?: import("@yep-anywhere/shared").EffortLevel,
     thinking?: import("@yep-anywhere/shared").ThinkingConfig,
+    model?: StartSessionOptions["model"],
   ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | undefined {
     if (thinking?.type === "disabled") {
+      const normalizedModel = model?.trim().toLowerCase();
+      const hasSparkModelPrefix = CODEX_THINKING_OFF_MIN_REASONING_EFFORT_PREFIXES.some(
+        (prefix) => normalizedModel?.startsWith(prefix),
+      );
+      if (hasSparkModelPrefix) {
+        return "low";
+      }
       return "none";
     }
     if (!effort) {
@@ -2049,6 +2060,7 @@ export class CodexProvider implements AgentProvider {
     const reasoningEffort = this.mapEffortToReasoningEffort(
       options.effort,
       options.thinking,
+      options.model,
     );
     if (!reasoningEffort) {
       return null;
@@ -2066,7 +2078,11 @@ export class CodexProvider implements AgentProvider {
       threadId,
       model: options.model ?? null,
       input: [{ type: "text", text: userPrompt, text_elements: [] }],
-      effort: this.mapEffortToReasoningEffort(options.effort, options.thinking),
+      effort: this.mapEffortToReasoningEffort(
+        options.effort,
+        options.thinking,
+        options.model,
+      ),
       summary: "auto",
       ...this.buildTurnPermissionParams(turnPolicy),
     };

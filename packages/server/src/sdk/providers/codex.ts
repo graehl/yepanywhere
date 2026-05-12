@@ -338,6 +338,7 @@ interface TokenUsageSnapshot {
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens: number;
+  contextWindow?: number;
 }
 
 interface CodexTurnRuntimeState {
@@ -2539,6 +2540,10 @@ export class CodexProvider implements AgentProvider {
         inputTokens: notification.tokenUsage.last.inputTokens,
         outputTokens: notification.tokenUsage.last.outputTokens,
         cachedInputTokens: notification.tokenUsage.last.cachedInputTokens,
+        contextWindow:
+          typeof notification.tokenUsage.modelContextWindow === "number"
+            ? notification.tokenUsage.modelContextWindow
+            : undefined,
       },
     };
   }
@@ -2894,6 +2899,37 @@ export class CodexProvider implements AgentProvider {
     liveEventState: CodexLiveEventState,
   ): SDKMessage[] {
     switch (notification.method) {
+      case "thread/tokenUsage/updated": {
+        const usage = this.extractTurnUsage(notification.params);
+        if (!usage) {
+          return [];
+        }
+
+        const message = withCodexTimestamp({
+          type: "system",
+          subtype: "token_usage",
+          session_id: sessionId,
+          turnId: usage.turnId,
+          isSynthetic: true,
+          usage: {
+            input_tokens: usage.snapshot.inputTokens,
+            output_tokens: usage.snapshot.outputTokens,
+            cached_input_tokens: usage.snapshot.cachedInputTokens,
+          },
+          ...(usage.snapshot.contextWindow &&
+          usage.snapshot.contextWindow > 0
+            ? { model_context_window: usage.snapshot.contextWindow }
+            : {}),
+        } as SDKMessage);
+        logSdkCorrelationDebug(sessionId, message, {
+          eventKind: "token_usage",
+          turnId: usage.turnId,
+          phase: "usage_updated",
+          sourceEvent: notification.method,
+        });
+        return [message];
+      }
+
       case "turn/completed": {
         const params = this.asTurnCompletedNotification(notification.params);
         const turnId = params?.turn.id ?? null;

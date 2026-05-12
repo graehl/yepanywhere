@@ -529,6 +529,7 @@ function ReadInteractiveSummary({
   return (
     <span>
       <FilePathDisplay displayPath={displayPath} />
+      {" "}
       <span className="file-line-count-inline">{file.numLines} lines</span>
       {showValidationWarning && validationErrors && (
         <SchemaWarning toolName="Read" errors={validationErrors} />

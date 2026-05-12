@@ -1,6 +1,7 @@
 import {
   ALL_PERMISSION_MODES,
   type MarkdownAugment,
+  type ContextUsage,
   type ProviderName,
   type SessionLivenessSnapshot,
   type UploadedFile,
@@ -104,6 +105,51 @@ function loadStickyPermissionMode(): PermissionMode {
   } catch {
     return "default";
   }
+}
+
+function getContextUsageFromTokenUsageMessage(
+  message: Record<string, unknown>,
+  fallbackModel?: string,
+  fallbackProvider?: ProviderName,
+): ContextUsage | undefined {
+  const usage =
+    message.usage && typeof message.usage === "object"
+      ? (message.usage as Record<string, unknown>)
+      : null;
+  const inputTokens =
+    usage && typeof usage.input_tokens === "number" ? usage.input_tokens : null;
+  if (inputTokens === null) {
+    return undefined;
+  }
+
+  const outputTokens =
+    usage && typeof usage.output_tokens === "number"
+      ? usage.output_tokens
+      : undefined;
+  const cacheReadTokens =
+    usage && typeof usage.cached_input_tokens === "number"
+      ? usage.cached_input_tokens
+      : undefined;
+
+  const contextWindowCandidate =
+    message.model_context_window &&
+    typeof message.model_context_window === "number" &&
+    Number.isFinite(message.model_context_window)
+      ? message.model_context_window
+      : getModelContextWindow(fallbackModel, fallbackProvider);
+  const contextWindow =
+    contextWindowCandidate > 0 ? contextWindowCandidate : undefined;
+
+  return {
+    inputTokens,
+    percentage:
+      contextWindow && contextWindow > 0
+        ? (inputTokens / contextWindow) * 100
+        : 0,
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
+  };
 }
 
 function saveStickyPermissionMode(mode: PermissionMode): void {
@@ -1526,6 +1572,23 @@ export function useSession(
           }
         }
 
+        // Handle synthetic token usage messages from provider-specific
+        // notifications so context usage reflects actual provider state.
+        if (msgType === "system" && sdkMessage.subtype === "token_usage") {
+          const usage = getContextUsageFromTokenUsageMessage(
+            sdkMessage,
+            session?.model,
+            session?.provider,
+          );
+          if (usage) {
+            setSession((prev) =>
+              prev ? { ...prev, contextUsage: usage } : prev,
+            );
+          }
+          // Token usage messages are telemetry, not transcript content.
+          return;
+        }
+
         // Handle status messages (compacting indicator)
         if (msgType === "system" && sdkMessage.subtype === "status") {
           const status = sdkMessage.status as "compacting" | null;
@@ -1879,6 +1942,7 @@ export function useSession(
       fetchNewMessages,
       throttledFetch,
       session?.provider,
+      session?.model,
     ],
   );
 

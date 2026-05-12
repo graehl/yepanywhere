@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type ClipboardEvent,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -366,7 +367,7 @@ export function NewSessionForm({
   const projectPanelRows = useMemo(() => {
     if (!isProjectChooserExpanded) return null;
 
-    const rows: JSX.Element[] = [
+    const rows: ReactNode[] = [
       <button
         key="detached"
         type="button"

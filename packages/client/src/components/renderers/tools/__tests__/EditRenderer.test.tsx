@@ -336,6 +336,59 @@ describe("EditRenderer collapsed preview fallback", () => {
     expect(summary).toBe("Foo.tsx");
   });
 
+  it("summarizes multi-file raw Codex patches without implying the previous read", () => {
+    const summary = editRenderer.getUseSummary?.([
+      "*** Begin Patch",
+      "*** Update File: RegressionTests/AwesomeAlign/regtest-awesome-chi.yml",
+      "@@",
+      "+# checked chi",
+      "*** Update File: RegressionTests/AwesomeAlign/regtest-xmt-awesomealign.yml",
+      "@@",
+      "+# checked align",
+      "*** End Patch",
+    ].join("\n") as never);
+
+    expect(summary).toBe("regtest-awesome-chi.yml +1 files");
+  });
+
+  it("summarizes Codex fileChange inputs from changed paths", () => {
+    const summary = editRenderer.getUseSummary?.({
+      changes: [
+        {
+          path: "/repo/src/a.ts",
+          kind: "update",
+          diff: "@@ -1 +1 @@\n-a\n+b\n",
+        },
+        {
+          path: "/repo/src/b.ts",
+          kind: "update",
+          diff: "@@ -1 +1 @@\n-c\n+d\n",
+        },
+      ],
+    } as never);
+
+    expect(summary).toBe("a.ts +1 files");
+  });
+
+  it("keeps completed apply_patch summaries specific before rich hydration", () => {
+    const summary = editRenderer.getResultSummary?.(
+      { ok: true } as never,
+      false,
+      [
+        "*** Begin Patch",
+        "*** Update File: src/a.ts",
+        "@@",
+        "+const a = 1;",
+        "*** Update File: src/b.ts",
+        "@@",
+        "+const b = 1;",
+        "*** End Patch",
+      ].join("\n") as never,
+    );
+
+    expect(summary).toBe("a.ts +1 files");
+  });
+
   it("shows raw patch filename in interactive summary when file_path is missing", () => {
     if (!editRenderer.renderInteractiveSummary) {
       throw new Error("Edit renderer must provide interactive summary");
@@ -371,5 +424,49 @@ describe("EditRenderer collapsed preview fallback", () => {
     );
 
     expect(screen.getByRole("button", { name: /Foo\.tsx/i })).toBeDefined();
+  });
+
+  it("puts all multi-file patch targets in the interactive summary title", () => {
+    if (!editRenderer.renderInteractiveSummary) {
+      throw new Error("Edit renderer must provide interactive summary");
+    }
+
+    render(
+      <SessionMetadataProvider
+        projectId="project-1"
+        projectPath="/repo"
+        sessionId="session-1"
+      >
+        {editRenderer.renderInteractiveSummary(
+          {
+            _rawPatch: [
+              "*** Begin Patch",
+              "*** Update File: /repo/src/a.ts",
+              "@@",
+              "+const a = 1;",
+              "*** Update File: /repo/src/b.ts",
+              "@@",
+              "+const b = 1;",
+              "*** End Patch",
+            ].join("\n"),
+            _structuredPatch: [
+              {
+                oldStart: 1,
+                oldLines: 0,
+                newStart: 1,
+                newLines: 1,
+                lines: ["+const a = 1;"],
+              },
+            ],
+          } as never,
+          undefined,
+          false,
+          renderContext,
+        )}
+      </SessionMetadataProvider>,
+    );
+
+    const button = screen.getByRole("button", { name: /a\.ts \+1 files/i });
+    expect(button.getAttribute("title")).toBe("src/a.ts\nsrc/b.ts");
   });
 });

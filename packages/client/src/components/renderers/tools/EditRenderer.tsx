@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
-import { useSessionMetadata } from "../../../contexts/SessionMetadataContext";
+import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useExpandedDiff } from "../../../hooks/useExpandedDiff";
 import {
   classifyToolError,
@@ -32,34 +32,101 @@ interface EditInputWithAugment extends EditInput {
   _rawPatch?: string;
 }
 
-function extractFilePathFromRawPatch(rawPatch?: string): string | undefined {
-  if (typeof rawPatch !== "string" || rawPatch.trim().length === 0) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extractRawPatchFromInput(input?: unknown): string | undefined {
+  if (typeof input === "string") {
+    return input;
+  }
+  if (!isRecord(input)) {
     return undefined;
   }
+  const rawPatch = input._rawPatch;
+  return typeof rawPatch === "string" ? rawPatch : undefined;
+}
 
+function extractFilePathsFromRawPatch(rawPatch?: string): string[] {
+  if (typeof rawPatch !== "string" || rawPatch.trim().length === 0) {
+    return [];
+  }
+
+  const paths: string[] = [];
+  const seen = new Set<string>();
   const lines = rawPatch.replace(/\r\n/g, "\n").split("\n");
   for (const line of lines) {
     const match = line.match(
       /^\*\*\*\s+(?:Update File|Add File|Delete File|Move to):\s+(.+?)\s*$/,
     );
     if (match?.[1]) {
-      return match[1].trim();
+      const path = match[1].trim();
+      if (path && !seen.has(path)) {
+        seen.add(path);
+        paths.push(path);
+      }
     }
   }
 
-  return undefined;
+  return paths;
+}
+
+function extractFilePathsFromChanges(input?: unknown): string[] {
+  if (!isRecord(input) || !Array.isArray(input.changes)) {
+    return [];
+  }
+
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  for (const change of input.changes) {
+    if (!isRecord(change) || typeof change.path !== "string") {
+      continue;
+    }
+    const path = change.path.trim();
+    if (path && !seen.has(path)) {
+      seen.add(path);
+      paths.push(path);
+    }
+  }
+  return paths;
+}
+
+function extractEditFilePaths(
+  input?: unknown,
+  result?: Partial<EditResult>,
+): string[] {
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  const addPath = (path: unknown) => {
+    if (typeof path !== "string") return;
+    const trimmed = path.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    paths.push(trimmed);
+  };
+
+  addPath(result?.filePath);
+  if (isRecord(input)) {
+    addPath(input.file_path);
+  }
+  for (const path of extractFilePathsFromRawPatch(extractRawPatchFromInput(input))) {
+    addPath(path);
+  }
+  for (const path of extractFilePathsFromChanges(input)) {
+    addPath(path);
+  }
+  return paths;
+}
+
+function extractFilePathFromRawPatch(rawPatch?: string): string | undefined {
+  return extractFilePathsFromRawPatch(rawPatch)[0];
 }
 
 function getEditFilePath(
-  input?: EditInputWithAugment,
+  input?: unknown,
   result?: Partial<EditResult>,
 ): string {
-  return (
-    result?.filePath ??
-    input?.file_path ??
-    extractFilePathFromRawPatch(input?._rawPatch) ??
-    ""
-  );
+  return extractEditFilePaths(input, result)[0] ?? "";
 }
 
 /**
@@ -72,6 +139,28 @@ function getFileName(filePath?: string): string {
   if (!trimmed) return "Patch";
   const segments = trimmed.split(/[\\/]/);
   return segments[segments.length - 1] || trimmed;
+}
+
+function getPatchTargetSummary(
+  input?: unknown,
+  result?: Partial<EditResult>,
+): string {
+  const filePaths = extractEditFilePaths(input, result);
+  const firstPath = filePaths[0];
+  if (!firstPath) return "Patch";
+  const firstFileName = getFileName(firstPath);
+  if (filePaths.length <= 1) return firstFileName;
+  return `${firstFileName} +${filePaths.length - 1} files`;
+}
+
+function getPatchTargetTitle(
+  input: unknown,
+  result: Partial<EditResult> | undefined,
+  projectPath: string | null,
+): string | undefined {
+  const filePaths = extractEditFilePaths(input, result);
+  if (filePaths.length === 0) return undefined;
+  return filePaths.map((path) => makeDisplayPath(path, projectPath)).join("\n");
 }
 
 /**
@@ -415,7 +504,7 @@ function DiffModalContent({
   /** Complete file content from SDK Edit result (never truncated). Null for file creation. */
   originalFile?: string | null;
 }) {
-  const { projectPath } = useSessionMetadata();
+  const projectPath = useOptionalSessionMetadata()?.projectPath ?? null;
   const [showFullContext, setShowFullContext] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -816,8 +905,10 @@ function EditInteractiveSummary({
   const showValidationWarning =
     enabled && validationErrors && !isToolIgnored("Edit");
 
+  const projectPath = useOptionalSessionMetadata()?.projectPath ?? null;
   const filePath = getEditFilePath(input, result);
-  const fileName = getFileName(filePath);
+  const fileName = getPatchTargetSummary(input, result);
+  const fileTitle = getPatchTargetTitle(input, result, projectPath);
   const oldString = result?.oldString ?? input.old_string;
   const newString = result?.newString ?? input.new_string;
   const originalFile = result?.originalFile;
@@ -849,6 +940,7 @@ function EditInteractiveSummary({
       <button
         type="button"
         className="file-link-inline"
+        title={fileTitle}
         onClick={(e) => {
           e.stopPropagation();
           setShowModal(true);
@@ -864,7 +956,11 @@ function EditInteractiveSummary({
       </button>
       {showModal && (
         <Modal
-          title={<span className="file-path">{fileName}</span>}
+          title={
+            <span className="file-path" title={fileTitle}>
+              {fileName}
+            </span>
+          }
           onClose={() => setShowModal(false)}
         >
           <DiffModalContent
@@ -1174,10 +1270,10 @@ export const editRenderer: ToolRenderer<EditInput, EditResult> = {
   },
 
   getUseSummary(input) {
-    return getFileName(getEditFilePath(input as EditInputWithAugment));
+    return getPatchTargetSummary(input);
   },
 
-  getResultSummary(result, isError) {
+  getResultSummary(result, isError, input) {
     if (isError) {
       // Extract error message for classification
       let errorMessage: string | null = null;
@@ -1196,7 +1292,7 @@ export const editRenderer: ToolRenderer<EditInput, EditResult> = {
       return "Error";
     }
     const r = result as EditResult;
-    return r?.filePath ? getFileName(r.filePath) : "file";
+    return getPatchTargetSummary(input, r);
   },
 
   renderCollapsedPreview(input, result, isError) {

@@ -292,6 +292,7 @@ export const ToolCallRow = memo(function ToolCallRow({
     collapsedPreviewContent !== null &&
     collapsedPreviewContent !== undefined &&
     collapsedPreviewContent !== false;
+  const hasBashPreviewToggle = toolName === "Bash" && hasCollapsedPreview;
   const hasDeferredPreviewShell =
     !shouldHydrateRichContent &&
     mayHaveCollapsedPreview &&
@@ -299,11 +300,9 @@ export const ToolCallRow = memo(function ToolCallRow({
   const hasDeferredInteractiveShell =
     !shouldHydrateRichContent &&
     (mayHaveCollapsedPreview || mayHaveInteractiveSummary);
+  const [bashPreviewExpanded, setBashPreviewExpanded] = useState(true);
   const hideSummaryWhenPreviewVisible =
-    toolName === "Bash" &&
-    status === "pending" &&
-    hasCollapsedPreview &&
-    isCodexLikeBashInput(toolInput, sessionProvider);
+    hasBashPreviewToggle && bashPreviewExpanded;
   // Tools with collapsed preview or interactive summary don't expand
   const isNonExpandable =
     hasInteractiveSummary || hasCollapsedPreview || hasDeferredInteractiveShell;
@@ -318,7 +317,10 @@ export const ToolCallRow = memo(function ToolCallRow({
   const [dotExpanded, setDotExpanded] = useState(false);
 
   // Dot button: expandable rows + Read rows with interactive summary.
-  const showDotBtn = !isNonExpandable || (hasInteractiveSummary && toolName === "Read");
+  const showDotBtn =
+    !isNonExpandable ||
+    (hasInteractiveSummary && toolName === "Read") ||
+    hasBashPreviewToggle;
 
   // Header toggles dotExpanded for Read rows — same pattern as thinking blocks.
   const hasHeaderDotToggle =
@@ -326,11 +328,14 @@ export const ToolCallRow = memo(function ToolCallRow({
     hasInteractiveSummary &&
     shouldHydrateRichContent &&
     toolName === "Read";
+  const hasBashHeaderToggle = hasBashPreviewToggle && shouldHydrateRichContent;
 
   const handleDotClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     hydrateNow();
-    if (!isNonExpandable) {
+    if (hasBashPreviewToggle) {
+      setBashPreviewExpanded((v) => !v);
+    } else if (!isNonExpandable) {
       setExpanded((v) => !v);
     } else if (hasInteractiveSummary && toolName === "Read" && shouldHydrateRichContent) {
       setDotExpanded((v) => !v);
@@ -347,6 +352,17 @@ export const ToolCallRow = memo(function ToolCallRow({
       setExpanded(!expanded);
     }
   };
+  const dotAriaLabel = !isNonExpandable
+    ? expanded
+      ? "Collapse"
+      : "Expand"
+    : hasBashPreviewToggle
+      ? bashPreviewExpanded
+        ? "Collapse preview"
+        : "Expand preview"
+      : dotExpanded
+        ? "Collapse inline view"
+        : "Expand inline view";
 
   // Inline renderers bypass the entire tool-row structure
   if (hasInlineRenderer) {
@@ -376,15 +392,7 @@ export const ToolCallRow = memo(function ToolCallRow({
           type="button"
           className="timeline-dot-btn"
           onClick={handleDotClick}
-          aria-label={
-            !isNonExpandable
-              ? expanded
-                ? "Collapse"
-                : "Expand"
-              : dotExpanded
-                ? "Collapse inline view"
-                : "Expand inline view"
-          }
+          aria-label={dotAriaLabel}
         />
       )}
       <div
@@ -392,11 +400,13 @@ export const ToolCallRow = memo(function ToolCallRow({
         onClick={
           hasDeferredInteractiveShell
             ? hydrateNow
-            : hasHeaderDotToggle
-              ? () => setDotExpanded((v) => !v)
-              : isNonExpandable
-                ? undefined
-                : handleToggle
+            : hasBashHeaderToggle
+              ? () => setBashPreviewExpanded((v) => !v)
+              : hasHeaderDotToggle
+                ? () => setDotExpanded((v) => !v)
+                : isNonExpandable
+                  ? undefined
+                  : handleToggle
         }
         onKeyDown={
           hasDeferredInteractiveShell
@@ -406,24 +416,37 @@ export const ToolCallRow = memo(function ToolCallRow({
                   hydrateNow();
                 }
               }
-            : hasHeaderDotToggle
+            : hasBashHeaderToggle
               ? (e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    setDotExpanded((v) => !v);
+                    setBashPreviewExpanded((v) => !v);
                   }
                 }
-              : isNonExpandable
-                ? undefined
-                : (e) => e.key === "Enter" && handleToggle()
+              : hasHeaderDotToggle
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setDotExpanded((v) => !v);
+                    }
+                  }
+                : isNonExpandable
+                  ? undefined
+                  : (e) => e.key === "Enter" && handleToggle()
         }
         role={
-          hasDeferredInteractiveShell || hasHeaderDotToggle || !isNonExpandable
+          hasDeferredInteractiveShell ||
+          hasBashHeaderToggle ||
+          hasHeaderDotToggle ||
+          !isNonExpandable
             ? "button"
             : "presentation"
         }
         tabIndex={
-          hasDeferredInteractiveShell || hasHeaderDotToggle || !isNonExpandable
+          hasDeferredInteractiveShell ||
+          hasBashHeaderToggle ||
+          hasHeaderDotToggle ||
+          !isNonExpandable
             ? 0
             : undefined
         }
@@ -480,7 +503,7 @@ export const ToolCallRow = memo(function ToolCallRow({
       </div>
 
       {/* Collapsed preview - shown when tool supports it (non-expandable) */}
-      {hasCollapsedPreview && (
+      {hasCollapsedPreview && bashPreviewExpanded && (
         <div className="tool-row-collapsed-preview">
           {collapsedPreviewContent}
         </div>

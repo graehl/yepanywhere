@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFERRED_PREVIEW_HEIGHT,
@@ -74,6 +74,15 @@ describe("ToolCallRow", () => {
       container.querySelector(".fixed-font-rendered__content code")?.textContent,
     ).toBe("dev");
     expect(container.querySelector(".expand-chevron")).toBeNull();
+    expect(screen.getAllByText("git diff -- notes.md")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse preview" }));
+
+    expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
+    expect(screen.getByText("git diff -- notes.md")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Expand preview" }),
+    ).toBeDefined();
   });
 
   it("shows PTY-backed read shell rows inline without requiring expansion", () => {

@@ -103,8 +103,8 @@
 /* Clickable overlay on the timeline dot - expand/collapse Read/Edit rows */
 .timeline-dot-btn {
   position: absolute;
-  left: -18px;
-  top: 2px;
+  left: -16px;
+  top: 3px;
   width: 16px;
   height: 16px;
   border: none;
@@ -122,6 +122,10 @@
 
 .timeline-dot-btn:focus {
   outline: none;
+  box-shadow: none;
+}
+
+.timeline-dot-btn:focus-visible {
   box-shadow: 0 0 0 2px var(--focus-border, #007acc);
 }
 

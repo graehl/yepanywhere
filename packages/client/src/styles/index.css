@@ -2789,6 +2789,54 @@ a.sidebar-nav-item {
   color: var(--text-muted);
 }
 
+.message-input-wrapper .message-input-toolbar.status-floats {
+  position: static;
+}
+
+.message-input-toolbar.status-floats .composer-status-ages {
+  position: absolute;
+  right: calc(var(--composer-primary-control-size) + 2rem);
+  bottom: calc(100% + 0.4375rem);
+  transform: translateY(1px);
+  z-index: 3;
+  margin-left: 0;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: min(78vw, 420px);
+}
+
+.message-input-toolbar.status-floats .composer-status-chip {
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--warning-color) 28%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-surface) 96%, transparent);
+  color: color-mix(in srgb, var(--warning-color) 78%, var(--text-primary));
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.24);
+  opacity: 0.96;
+}
+
+.message-input-toolbar.status-floats .composer-liveness-status.is-ok {
+  border-color: color-mix(in srgb, var(--success-color) 26%, transparent);
+  color: color-mix(in srgb, var(--success-color) 82%, var(--text-primary));
+}
+
+.message-input-toolbar.status-floats .composer-liveness-status.is-danger {
+  border-color: color-mix(in srgb, var(--error-color) 30%, transparent);
+  color: color-mix(in srgb, var(--error-color) 82%, var(--text-primary));
+}
+
+.message-input-toolbar.status-floats .composer-liveness-status.is-muted {
+  border-color: color-mix(in srgb, var(--border-color) 60%, transparent);
+  color: var(--text-muted);
+}
+
+.message-input-toolbar.status-floats .composer-activity-age--compact {
+  border-color: color-mix(in srgb, var(--border-color) 60%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) 98%, transparent);
+  color: var(--text-muted);
+}
+
 .session-shortcuts-help {
   position: relative;
   display: inline-flex;

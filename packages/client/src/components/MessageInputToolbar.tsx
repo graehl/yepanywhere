@@ -273,6 +273,10 @@ export function MessageInputToolbar({
     useState<SessionIsearchScope | null>(null);
   const modelToolbarButtonRef = useRef<HTMLButtonElement | null>(null);
   const modelToolbarMeasureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const toolbarLeftRef = useRef<HTMLDivElement | null>(null);
+  const toolbarStatusRef = useRef<HTMLDivElement | null>(null);
+  const toolbarActionsRef = useRef<HTMLDivElement | null>(null);
   const [modelToolbarDensity, setModelToolbarDensity] =
     useState<ModelToolbarDensity>("full");
   const [isCompactStatusMode, setIsCompactStatusMode] = useState(() =>
@@ -322,6 +326,14 @@ export function MessageInputToolbar({
   const livenessDisplay = sessionLiveness
     ? describeSessionLiveness(sessionLiveness)
     : null;
+  const showLivenessChip =
+    !!livenessDisplay &&
+    !(
+      showLastActivityAge &&
+      (isCompactStatusMode ||
+        livenessDisplay.tone === "ok" ||
+        livenessDisplay.tone === "muted")
+    );
   const livenessSummary = livenessDisplay
     ? describeLivenessSummary(livenessDisplay, nowMs)
     : null;
@@ -377,6 +389,9 @@ export function MessageInputToolbar({
     modelIndicatorModel,
     modelIndicatorTitle,
   );
+  const stopTitle = `${t("toolbarStop")} (Esc)`;
+  const showStopButton = !!(isRunning && onStop && isThinking);
+  const showSendButton = !!(onSend && (!showStopButton || canSend));
 
   useLayoutEffect(() => {
     if (typeof window === "undefined" || !hasModelIndicator) {
@@ -477,21 +492,84 @@ export function MessageInputToolbar({
     modelToolbarVariants.glyph,
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const compactStatusQuery = getCompactStatusMatchMedia();
-    if (!compactStatusQuery) {
+    const toolbar = toolbarRef.current;
+    const left = toolbarLeftRef.current;
+    const actions = toolbarActionsRef.current;
+
+    if (!toolbar || !left || !actions || typeof window === "undefined") {
+      setIsCompactStatusMode(compactStatusQuery?.matches ?? false);
       return;
     }
-    const updateCompactStatusMode = () => {
-      setIsCompactStatusMode(compactStatusQuery.matches);
+
+    let raf = 0;
+
+    const pxOrZero = (value: string) => {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 0;
     };
-    updateCompactStatusMode();
-    compactStatusQuery.addEventListener("change", updateCompactStatusMode);
+
+    const updateCompactStatusMode = () => {
+      const status = toolbarStatusRef.current;
+      const viewportCompact = compactStatusQuery?.matches ?? false;
+
+      if (!status) {
+        setIsCompactStatusMode(viewportCompact);
+        return;
+      }
+
+      const toolbarStyles = getComputedStyle(toolbar);
+      const gap = pxOrZero(toolbarStyles.columnGap || toolbarStyles.gap);
+      const requiredWidth =
+        left.scrollWidth + status.scrollWidth + actions.scrollWidth + gap * 2;
+      const nextCompact =
+        viewportCompact || requiredWidth > toolbar.clientWidth + 1;
+
+      setIsCompactStatusMode((current) =>
+        current === nextCompact ? current : nextCompact,
+      );
+    };
+
+    const scheduleCompactStatusUpdate = () => {
+      window.cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(updateCompactStatusMode);
+    };
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleCompactStatusUpdate);
+    resizeObserver?.observe(toolbar);
+    resizeObserver?.observe(left);
+    resizeObserver?.observe(actions);
+    if (toolbarStatusRef.current) {
+      resizeObserver?.observe(toolbarStatusRef.current);
+    }
+
+    window.addEventListener("resize", scheduleCompactStatusUpdate);
+    compactStatusQuery?.addEventListener("change", scheduleCompactStatusUpdate);
+    scheduleCompactStatusUpdate();
 
     return () => {
-      compactStatusQuery.removeEventListener("change", updateCompactStatusMode);
+      window.cancelAnimationFrame(raf);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleCompactStatusUpdate);
+      compactStatusQuery?.removeEventListener(
+        "change",
+        scheduleCompactStatusUpdate,
+      );
     };
-  }, []);
+  }, [
+    livenessDisplay?.prefix,
+    livenessDisplay?.timestampMs,
+    livenessDisplay?.tone,
+    nowMs,
+    showLastActivityAge,
+    showLivenessChip,
+    showStopButton,
+    showSendButton,
+  ]);
 
   useEffect(() => {
     const handleIsearchGuide = (event: Event) => {
@@ -511,9 +589,6 @@ export function MessageInputToolbar({
         handleIsearchGuide,
       );
   }, []);
-  const stopTitle = `${t("toolbarStop")} (Esc)`;
-  const showStopButton = !!(isRunning && onStop && isThinking);
-  const showSendButton = !!(onSend && (!showStopButton || canSend));
 
   const clearHeartbeatLongPress = () => {
     if (heartbeatLongPressTimerRef.current) {
@@ -559,8 +634,11 @@ export function MessageInputToolbar({
   const heartbeatTitle = t("sessionHeartbeatTitle");
 
   return (
-    <div className="message-input-toolbar">
-      <div className="message-input-left">
+    <div
+      ref={toolbarRef}
+      className={`message-input-toolbar${isCompactStatusMode ? " status-floats" : ""}`}
+    >
+      <div ref={toolbarLeftRef} className="message-input-left">
         {onModeChange && supportsPermissionMode && (
           <ModeSelector
             mode={mode}
@@ -736,10 +814,9 @@ export function MessageInputToolbar({
           </button>
         )}
       </div>
-      {(livenessDisplay || showLastActivityAge) && (
-        <div className="composer-status-ages">
-          {livenessDisplay &&
-            !(isCompactStatusMode && showLastActivityAge) && (
+      {(showLivenessChip || showLastActivityAge) && (
+        <div ref={toolbarStatusRef} className="composer-status-ages">
+          {showLivenessChip && (
             <div
               className={`composer-status-chip composer-liveness-status is-${livenessDisplay.tone}`}
               aria-label={`Session verified liveness: ${livenessSummary}`}
@@ -778,7 +855,7 @@ export function MessageInputToolbar({
           )}
         </div>
       )}
-      <div className="message-input-actions">
+      <div ref={toolbarActionsRef} className="message-input-actions">
         {/* Pending approval indicator */}
         {pendingApproval && (
           <button

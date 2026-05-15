@@ -420,7 +420,7 @@ describe("MessageInput", () => {
     expect(screen.getByText("Last activity 35m")).toBeTruthy();
   });
 
-  it("shows verified session liveness as a compact age-only chip", () => {
+  it("keeps ok liveness from duplicating stale last-activity age", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-26T12:06:00.000Z"));
 
@@ -450,10 +450,10 @@ describe("MessageInput", () => {
     });
 
     expect(
-      screen.getByLabelText(
+      screen.queryByLabelText(
         "Session verified liveness: Verified progress 5m ago",
-      ).textContent,
-    ).toBe("5m ago");
+      ),
+    ).toBeNull();
     expect(screen.queryByText("Verified progress 5m")).toBeNull();
     expect(screen.getByText("6m ago")).toBeTruthy();
   });

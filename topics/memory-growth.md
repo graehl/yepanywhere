@@ -1,5 +1,19 @@
 # Memory-growth notes
 
+## Browser-tab lifetime memory
+
+- Long-session pages must not do whole-transcript React work on idle timers.
+  Relative-age labels are useful UI, but historical rows should not receive a
+  changing clock prop every tick. The only transcript row that needs a live
+  stale-age clock by default is the latest visible timestamp row; older row
+  age labels can stay at their mount-time relative age until some real session
+  data changes.
+- Compact-tail REST loading is part of the memory contract for Codex sessions:
+  normal session-page loads should request a bounded recent tail such as the
+  last two compaction windows. Full direct session REST payloads can be tens of
+  megabytes and thousands of normalized renderable messages, so they are
+  diagnostic/debug surfaces rather than the default browser transcript load.
+
 ## 2026-05-12: heartbeat session `019e1ac6-c836-7e33-891e-2ba878d27ca5`
 
 - Confirmed metadata persisted for `019e1ac6-c836-7e33-891e-2ba878d27ca5` includes:

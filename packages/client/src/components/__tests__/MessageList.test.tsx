@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -233,6 +234,44 @@ describe("MessageList", () => {
     expect(row?.classList.contains("has-message-age")).toBe(true);
     expect(row?.classList.contains("is-message-age-visible")).toBe(true);
     expect(row?.querySelector(".message-age")?.textContent).toBe("10m");
+  });
+
+  it("does not refresh historical message ages on idle ticks", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T12:10:00.000Z"));
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage(
+            "user-1",
+            "older request",
+            "2026-04-26T12:00:00.000Z",
+          ),
+          assistantMessage(
+            "assistant-1",
+            "latest response",
+            "2026-04-26T12:04:45.000Z",
+          ),
+        ]}
+      />,
+    );
+
+    const olderAge = container.querySelector(
+      '[data-render-id="user-1"] .message-age',
+    );
+    const latestAge = container.querySelector(
+      '[data-render-id="assistant-1"] .message-age',
+    );
+
+    expect(olderAge?.textContent).toBe("10m");
+    expect(latestAge?.textContent).toBe("5m");
+
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+
+    expect(olderAge?.textContent).toBe("10m");
+    expect(latestAge?.textContent).toBe("6m");
   });
 
   it("copies rendered assistant selections as source markdown", () => {

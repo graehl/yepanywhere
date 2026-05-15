@@ -1311,6 +1311,14 @@ export const MessageList = memo(function MessageList({
     userTurnSearch.active && typeof document !== "undefined"
       ? document.querySelector<HTMLElement>(".session-input-inner")
       : null;
+  const getItemStaleNowMs = useCallback(
+    (item: RenderItem) =>
+      getLatestMessageTimestampMs(item.sourceMessages) ===
+      latestVisibleTimestampMs
+        ? nowMs
+        : undefined,
+    [latestVisibleTimestampMs, nowMs],
+  );
   const searchPanel = userTurnSearch.active ? (
     <div
       className="user-turn-search-panel"
@@ -1451,7 +1459,7 @@ export const MessageList = memo(function MessageList({
                         )
                     : undefined
                 }
-                nowMs={nowMs}
+                staleNowMs={getItemStaleNowMs(item)}
                 latestVisibleTimestampMs={latestVisibleTimestampMs}
               />
             );
@@ -1469,7 +1477,7 @@ export const MessageList = memo(function MessageList({
                   thinkingExpanded={thinkingExpanded}
                   toggleThinkingExpanded={toggleThinkingExpanded}
                   sessionProvider={provider}
-                  nowMs={nowMs}
+                  staleNowMs={getItemStaleNowMs(item)}
                   latestVisibleTimestampMs={latestVisibleTimestampMs}
                 />
               ))}

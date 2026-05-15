@@ -1,4 +1,4 @@
-import { memo, useCallback } from "react";
+import { memo, useCallback, useRef } from "react";
 import {
   MESSAGE_STALE_THRESHOLD_MS,
   getLatestMessageTimestampMs,
@@ -18,7 +18,7 @@ interface Props {
   toggleThinkingExpanded: () => void;
   sessionProvider?: string;
   onCorrectUserPrompt?: () => void;
-  nowMs?: number;
+  staleNowMs?: number;
   latestVisibleTimestampMs?: number | null;
 }
 
@@ -135,15 +135,21 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   toggleThinkingExpanded,
   sessionProvider,
   onCorrectUserPrompt,
-  nowMs = Date.now(),
+  staleNowMs,
   latestVisibleTimestampMs,
 }: Props) {
+  const staticAgeNowMsRef = useRef(Date.now());
   const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
   const hasTimestamp = timestampMs !== null;
+  const isLatestVisibleTimestamp =
+    hasTimestamp && latestVisibleTimestampMs === timestampMs;
+  const ageNowMs = isLatestVisibleTimestamp
+    ? (staleNowMs ?? Date.now())
+    : staticAgeNowMsRef.current;
   const showAgeByDefault =
-    hasTimestamp &&
-    latestVisibleTimestampMs === timestampMs &&
-    nowMs - timestampMs >= MESSAGE_STALE_THRESHOLD_MS;
+    isLatestVisibleTimestamp &&
+    ageNowMs !== null &&
+    ageNowMs - timestampMs >= MESSAGE_STALE_THRESHOLD_MS;
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -258,7 +264,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
       onClick={handleClick}
     >
       <div className="message-render-content">{renderContent()}</div>
-      <MessageAge timestampMs={timestampMs} nowMs={nowMs} />
+      <MessageAge timestampMs={timestampMs} nowMs={ageNowMs ?? Date.now()} />
     </div>
   );
 });

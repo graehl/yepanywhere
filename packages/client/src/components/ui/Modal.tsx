@@ -37,6 +37,7 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
   const { t } = useI18n();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const overlayPointerStartedOnOverlayRef = useRef(false);
   const isAnchored =
     !!anchorRect &&
     typeof window !== "undefined" &&
@@ -117,12 +118,17 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
   }, [anchorRect, isAnchored]);
 
   const handleOverlayClick = (e: React.MouseEvent) => {
-    // Only close if clicking directly on the overlay, not its children
-    if (e.target === e.currentTarget) {
+    // Only close if the whole click started and ended on the overlay.
+    // Text selection can start inside the dialog and release outside it.
+    if (
+      e.target === e.currentTarget &&
+      overlayPointerStartedOnOverlayRef.current
+    ) {
       e.preventDefault();
       e.stopPropagation();
       onClose();
     }
+    overlayPointerStartedOnOverlayRef.current = false;
   };
 
   const handleModalClick = (e: React.MouseEvent) => {
@@ -135,7 +141,11 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
     <div
       className={`modal-overlay${isAnchored ? " modal-overlay--anchored" : ""}`}
       onClick={handleOverlayClick}
-      onMouseDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => {
+        overlayPointerStartedOnOverlayRef.current =
+          e.target === e.currentTarget;
+        e.stopPropagation();
+      }}
     >
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: click only stops propagation, keyboard handled globally */}
       <div

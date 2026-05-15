@@ -261,10 +261,12 @@ function renderInlineFormatting(text: string): string {
     if (isLocalFilePath(href)) {
       const ext = (href.split(".").pop() ?? "").toLowerCase();
       if (MEDIA_EXTENSIONS.has(ext)) {
-        const apiUrl = escapeHtml(localMediaApiUrl(href));
+        const trimmedHref = href.trim();
+        const apiUrl = escapeHtml(localMediaApiUrl(trimmedHref));
+        const escapedPath = escapeHtml(trimmedHref);
         const mediaType = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
         const typeLabel = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
-        return `<a href="${apiUrl}" class="local-media-link" data-media-type="${mediaType}">${label}<span class="local-media-type">(${typeLabel})</span></a>`;
+        return `<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="true" aria-label="Collapse ${mediaType}" aria-expanded="true" title="Collapse inline preview">-</button><a href="${apiUrl}" class="local-media-link" data-media-type="${mediaType}">${label}<span class="local-media-type">(${typeLabel})</span></a></span><span class="local-media-inline-preview" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="true"></span>`;
       }
       const apiUrl = escapeHtml(localFileApiUrl(href));
       return `<a href="${apiUrl}">${label}</a>`;

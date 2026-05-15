@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const DEBOUNCE_MS = 500;
-
 export interface DraftControls {
   /** Replace input state and localStorage immediately */
   setDraft: (value: string) => void;
-  /** Flush any pending debounced draft write immediately */
+  /** Flush any pending draft write immediately */
   flushDraft: () => void;
   /** Clear input state only, keeping localStorage for failure recovery */
   clearInput: () => void;
@@ -34,7 +32,7 @@ function saveToStorage(key: string, value: string): void {
 }
 
 /**
- * Hook for persisting draft text to localStorage with debouncing.
+ * Hook for persisting draft text to localStorage.
  * Supports failure recovery by keeping localStorage until explicitly cleared.
  *
  * @param key - localStorage key for this draft (e.g., "draft-message-{sessionId}")
@@ -127,19 +125,17 @@ export function useDraftPersistence(
     };
   }, [flushPending]);
 
-  // Debounced save to localStorage
+  // Save each edit immediately. A debounce window can lose the newest typed
+  // text during HMR/reload paths that do not reliably fire page lifecycle
+  // events before React remounts and restores the previous storage value.
   const setValue = useCallback((newValue: string) => {
     setValueInternal(newValue);
-    pendingValueRef.current = newValue;
-
+    pendingValueRef.current = null;
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
-
-    timeoutRef.current = setTimeout(() => {
-      saveToStorage(keyRef.current, newValue);
-      pendingValueRef.current = null;
-    }, DEBOUNCE_MS);
+    saveToStorage(keyRef.current, newValue);
   }, []);
 
   // Replace the draft immediately. This is used when another UI action, such
@@ -161,7 +157,7 @@ export function useDraftPersistence(
     }
     setValueInternal("");
     pendingValueRef.current = null;
-    // Cancel pending debounce so we don't overwrite the recovery draft with ""
+    // Cancel pending write so we don't overwrite the recovery draft with ""
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;

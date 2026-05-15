@@ -105,5 +105,8 @@ describe("renderSafeMarkdown — local file links", () => {
       'href="/api/local-image?path=%2Ftmp%2Fscreenshot.png"',
     );
     expect(html).toContain('class="local-media-link"');
+    expect(html).toContain('class="local-media-inline-toggle"');
+    expect(html).toContain('class="local-media-inline-preview"');
+    expect(html).toContain('data-expanded="true"');
   });
 });

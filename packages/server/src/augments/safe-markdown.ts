@@ -75,11 +75,13 @@ function renderLocalMediaLink(
   label: string,
   ext: string,
 ): string {
-  const apiUrl = escapeHtml(localMediaApiUrl(path));
+  const trimmedPath = path.trim();
+  const apiUrl = escapeHtml(localMediaApiUrl(trimmedPath));
+  const escapedPath = escapeHtml(trimmedPath);
   const escapedLabel = escapeHtml(label || getFileName(path));
   const mediaType = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
   const typeLabel = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
-  return `<a href="${apiUrl}" class="local-media-link" data-media-type="${mediaType}">${escapedLabel}<span class="local-media-type">(${typeLabel})</span></a>`;
+  return `<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="true" aria-label="Collapse ${mediaType}" aria-expanded="true" title="Collapse inline preview">-</button><a href="${apiUrl}" class="local-media-link" data-media-type="${mediaType}">${escapedLabel}<span class="local-media-type">(${typeLabel})</span></a></span><span class="local-media-inline-preview" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="true"></span>`;
 }
 
 const MARKDOWN_SANITIZE_OPTIONS = {
@@ -87,6 +89,7 @@ const MARKDOWN_SANITIZE_OPTIONS = {
     "a",
     "blockquote",
     "br",
+    "button",
     "code",
     "del",
     "em",
@@ -115,11 +118,21 @@ const MARKDOWN_SANITIZE_OPTIONS = {
   ],
   allowedAttributes: {
     a: ["href", "title", "class", "data-media-type"],
+    button: [
+      "type",
+      "class",
+      "data-media-path",
+      "data-media-type",
+      "data-expanded",
+      "aria-label",
+      "aria-expanded",
+      "title",
+    ],
     code: ["class"],
     img: ["src", "alt", "title"],
     input: ["type", "checked", "disabled"],
     ol: ["start"],
-    span: ["class"],
+    span: ["class", "data-media-path", "data-media-type", "data-expanded"],
     td: ["align"],
     th: ["align"],
   },

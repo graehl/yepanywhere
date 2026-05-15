@@ -34,14 +34,14 @@ describe("useDraftPersistence", () => {
     store.clear();
   });
 
-  it("flushes a debounced draft on pagehide", () => {
+  it("persists each draft edit immediately", () => {
     const { result } = renderHook(() => useDraftPersistence("draft-test"));
 
     act(() => {
       result.current[1]("still typing");
     });
 
-    expect(window.localStorage.getItem("draft-test")).toBeNull();
+    expect(window.localStorage.getItem("draft-test")).toBe("still typing");
 
     act(() => {
       window.dispatchEvent(new Event("pagehide"));
@@ -50,14 +50,14 @@ describe("useDraftPersistence", () => {
     expect(window.localStorage.getItem("draft-test")).toBe("still typing");
   });
 
-  it("exposes an explicit flush control for blur handlers", () => {
+  it("keeps the explicit flush control harmless for blur handlers", () => {
     const { result } = renderHook(() => useDraftPersistence("draft-test"));
 
     act(() => {
       result.current[1]("blur save");
     });
 
-    expect(window.localStorage.getItem("draft-test")).toBeNull();
+    expect(window.localStorage.getItem("draft-test")).toBe("blur save");
 
     act(() => {
       result.current[2].flushDraft();

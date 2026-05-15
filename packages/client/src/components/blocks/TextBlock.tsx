@@ -3,7 +3,11 @@ import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
 import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
 import { registerMarkdownCopySource } from "../../lib/markdownSelectionCopy";
-import { LocalMediaModal, useLocalMediaClick } from "../LocalMediaModal";
+import {
+  LocalMediaModal,
+  useLocalMediaClick,
+  useLocalMediaInlinePreviews,
+} from "../LocalMediaModal";
 import { renderFixedFontMath } from "../ui/FixedFontMathToggle";
 import { RenderModeGlyph } from "../ui/RenderModeGlyph";
 
@@ -90,6 +94,7 @@ export const TextBlock = memo(function TextBlock({
   }, [text]);
 
   const { modal, handleClick, closeModal } = useLocalMediaClick();
+  useLocalMediaInlinePreviews(copySourceRef);
 
   const showStreamingContent = isStreaming && useStreamingContent;
   const canToggleMath = localMathPreview.changed;

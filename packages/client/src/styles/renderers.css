@@ -587,6 +587,32 @@
 }
 
 /* Local media links (clickable placeholders for images/videos in markdown) */
+.local-media-link-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+
+.local-media-inline-toggle {
+  width: 1.35em;
+  height: 1.35em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.local-media-inline-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
 .local-media-link {
   display: inline-flex;
   align-items: center;
@@ -597,6 +623,75 @@
 .local-media-type {
   font-size: 0.85em;
   opacity: 0.6;
+}
+
+.local-media-inline-preview {
+  display: block;
+  margin: var(--space-2) 0;
+}
+
+.local-media-inline-preview[data-expanded="false"] {
+  display: none;
+}
+
+.local-media-inline-frame {
+  position: relative;
+  display: inline-block;
+  max-width: min(100%, 900px);
+}
+
+.local-media-inline-image-button {
+  display: block;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: copy;
+}
+
+.local-media-inline-image-button:hover {
+  border-color: var(--text-secondary);
+}
+
+.local-media-inline-image {
+  display: block;
+  max-width: 100%;
+  max-height: min(72vh, 720px);
+  object-fit: contain;
+  border-radius: calc(var(--radius-md) - 1px);
+}
+
+.local-media-inline-player {
+  display: block;
+  max-width: 100%;
+  max-height: min(72vh, 720px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.local-media-inline-loading,
+.local-media-inline-error {
+  display: inline-block;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+}
+
+.local-media-inline-error {
+  color: var(--color-error);
+}
+
+.local-media-inline-copied {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  font-size: 12px;
 }
 
 /* Local media modal content */

@@ -1,10 +1,12 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TextBlock } from "../TextBlock";
 
 describe("TextBlock", () => {
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("defers local math rendering until streaming text completes", () => {
@@ -21,5 +23,32 @@ describe("TextBlock", () => {
     expect(container.querySelector(".text-block-toggle")).toBeTruthy();
     expect(container.querySelector(".text-block-local-rendered")).toBeTruthy();
     expect(container.querySelector(".katex")).toBeTruthy();
+  });
+
+  it("mounts local media previews inline beside rendered markdown links", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(new Blob(["png"], { type: "image/png" }))),
+    );
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:preview"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    const { container } = render(
+      <TextBlock
+        text="[trajectory](/tmp/trajectory.png)"
+        augmentHtml={
+          '<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true" aria-label="Collapse image" aria-expanded="true" title="Collapse inline preview">-</button><a href="/api/local-image?path=%2Ftmp%2Ftrajectory.png" class="local-media-link" data-media-type="image">trajectory<span class="local-media-type">(image)</span></a></span><span class="local-media-inline-preview" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true"></span>'
+        }
+      />,
+    );
+
+    expect(container.querySelector(".local-media-link")).toBeTruthy();
+    expect(await screen.findByAltText("trajectory.png")).toBeTruthy();
+    expect(
+      container.querySelector(".local-media-inline-image-button"),
+    ).toBeTruthy();
   });
 });

@@ -4,6 +4,8 @@ import { getGlobalConnection, isRemoteMode } from "../lib/connection";
 interface RemoteImageResult {
   /** URL to use for the image src (either direct path or blob URL) */
   url: string | null;
+  /** Fetched blob, when the hook loaded the image through XHR/relay */
+  blob?: Blob | null;
   /** Whether the image is currently loading */
   loading: boolean;
   /** Error message if loading failed */
@@ -123,6 +125,7 @@ export function useFetchedImage(
   enabled = true,
 ): RemoteImageResult {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [blob, setBlob] = useState<Blob | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const blobUrlRef = useRef<string | null>(null);
@@ -136,6 +139,7 @@ export function useFetchedImage(
         blobUrlRef.current = null;
       }
       setBlobUrl(null);
+      setBlob(null);
       setError(null);
       return;
     }
@@ -163,10 +167,11 @@ export function useFetchedImage(
         });
 
     fetchImage
-      .then((blob) => {
+      .then((nextBlob) => {
         if (cancelled) return;
-        const url = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(nextBlob);
         blobUrlRef.current = url;
+        setBlob(nextBlob);
         setBlobUrl(url);
         setLoading(false);
       })
@@ -187,10 +192,10 @@ export function useFetchedImage(
   }, [apiPath, remoteMode, enabled]);
 
   if (!apiPath) {
-    return { url: null, loading: false, error: null };
+    return { url: null, blob: null, loading: false, error: null };
   }
 
-  return { url: blobUrl, loading, error };
+  return { url: blobUrl, blob, loading, error };
 }
 
 /**

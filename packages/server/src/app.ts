@@ -1032,6 +1032,7 @@ export function createApp(options: AppOptions): AppResult {
       "/api/local-image",
       createLocalImageRoutes({
         allowedPaths: options.allowedImagePaths,
+        scanner,
       }),
     );
     app.route(

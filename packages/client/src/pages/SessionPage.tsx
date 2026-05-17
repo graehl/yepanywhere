@@ -105,6 +105,7 @@ const BTW_ASIDE_POLL_MS = 1500;
 const BTW_ASIDE_MAX_POLLS = 160;
 const BTW_ASIDE_PREVIEW_MAX_LENGTH = 700;
 const BTW_ASIDE_PROMPT_MARKER = "[YA /btw aside]";
+const DEFAULT_CLIENT_TAIL_TURNS = 20;
 const BTW_ASIDE_FORK_PROVIDERS = new Set<ProviderName>([
   "claude",
   "codex",
@@ -364,6 +365,12 @@ function normalizePublicShareInitialPrompt(value: string): string | null {
     : normalized;
 }
 
+function parsePositiveIntegerParam(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function getPublicShareInitialPrompt(messages: unknown[]): string | null {
   for (const message of messages) {
     if (!message || typeof message !== "object") {
@@ -492,6 +499,50 @@ function SessionPageContent({
   const initialTitle = navState?.initialTitle;
   const initialModel = navState?.initialModel;
   const initialProvider = navState?.initialProvider;
+  const clientTailParams = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return {
+      tailTurns: parsePositiveIntegerParam(params.get("tailTurns")),
+      tailFrom: params.get("tailFrom")?.trim() || undefined,
+    };
+  }, [location.search]);
+  const clientTailActive =
+    clientTailParams.tailTurns !== undefined ||
+    clientTailParams.tailFrom !== undefined;
+
+  const updateClientTailParams = useCallback(
+    (update: { tailTurns?: number; tailFrom?: string }) => {
+      const params = new URLSearchParams(location.search);
+      params.delete("tailTurns");
+      params.delete("tailFrom");
+      if (update.tailTurns !== undefined) {
+        params.set("tailTurns", String(update.tailTurns));
+      }
+      if (update.tailFrom) {
+        params.set("tailFrom", update.tailFrom);
+      }
+      const search = params.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: search ? `?${search}` : "",
+        },
+        { replace: false },
+      );
+    },
+    [location.pathname, location.search, navigate],
+  );
+
+  const trimClientToRecentTurns = useCallback(() => {
+    updateClientTailParams({ tailTurns: DEFAULT_CLIENT_TAIL_TURNS });
+  }, [updateClientTailParams]);
+
+  const trimClientFromUserMessage = useCallback(
+    (messageId: string) => {
+      updateClientTailParams({ tailFrom: messageId });
+    },
+    [updateClientTailParams],
+  );
 
   // Get streaming markdown context for server-rendered markdown streaming
   const streamingMarkdownContext = useStreamingMarkdownContext();
@@ -554,6 +605,7 @@ function SessionPageContent({
     sessionId,
     initialStatus,
     streamingMarkdownCallbacks,
+    clientTailParams,
   );
 
   // Developer mode settings
@@ -2933,6 +2985,8 @@ function SessionPageContent({
                     onCompact={
                       supportsManualCompact ? handleCompactSession : undefined
                     }
+                    onTrimToRecentTurns={trimClientToRecentTurns}
+                    clientTailActive={clientTailActive}
                     onTerminate={handleTerminate}
                     onReload={() => window.location.reload()}
                     onShare={handleShare}
@@ -3186,11 +3240,15 @@ function SessionPageContent({
                   onCancelDeferred={handleCancelDeferred}
                   onEditDeferred={handleEditDeferred}
                   onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
+                  onTrimBeforeUserMessage={trimClientFromUserMessage}
                   markdownAugments={markdownAugments}
                   activeToolApproval={activeToolApproval}
                   hasOlderMessages={pagination?.hasOlderMessages}
                   loadingOlder={loadingOlder}
                   onLoadOlderMessages={loadOlderMessages}
+                  clientTailActive={clientTailActive}
+                  clientTailTurns={clientTailParams.tailTurns}
+                  onTrimToRecentTurns={trimClientToRecentTurns}
                 />
               </AgentContentProvider>
             </SessionMetadataProvider>

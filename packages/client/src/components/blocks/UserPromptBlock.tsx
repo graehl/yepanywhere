@@ -13,6 +13,7 @@ const MAX_CHARS = MAX_LINES * 100;
 interface Props {
   content: string | ContentBlock[];
   onCorrect?: () => void;
+  onTrimBefore?: () => void;
 }
 
 interface InputImageBlock extends ContentBlock {
@@ -293,33 +294,70 @@ function CollapsibleText({ text }: { text: string }) {
   );
 }
 
-function CorrectionButton({ onCorrect }: { onCorrect?: () => void }) {
-  if (!onCorrect) return null;
+function UserPromptActionButtons({
+  onCorrect,
+  onTrimBefore,
+}: {
+  onCorrect?: () => void;
+  onTrimBefore?: () => void;
+}) {
+  if (!onCorrect && !onTrimBefore) return null;
 
   return (
-    <button
-      type="button"
-      className="user-prompt-correct"
-      onClick={onCorrect}
-      aria-label="Edit latest message"
-      title="Edit latest message"
-    >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M12 20h9" />
-        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-      </svg>
-      <span className="user-prompt-correct-label">Edit</span>
-    </button>
+    <div className="user-prompt-actions">
+      {onTrimBefore && (
+        <button
+          type="button"
+          className="user-prompt-action"
+          onClick={onTrimBefore}
+          aria-label="Load client transcript from this turn"
+          title="Load client transcript from this turn"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M4 7h16" />
+            <path d="M4 12h10" />
+            <path d="M4 17h6" />
+            <path d="m15 16 3 3 3-3" />
+            <path d="M18 5v14" />
+          </svg>
+        </button>
+      )}
+      {onCorrect && (
+        <button
+          type="button"
+          className="user-prompt-action"
+          onClick={onCorrect}
+          aria-label="Edit latest message"
+          title="Edit latest message"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+          <span className="user-prompt-correct-label">Edit</span>
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -345,6 +383,7 @@ function UserPromptText({ text }: { text: string }) {
 export const UserPromptBlock = memo(function UserPromptBlock({
   content,
   onCorrect,
+  onTrimBefore,
 }: Props) {
   if (typeof content === "string") {
     const { text, openedFiles, uploadedFiles } = parseUserPrompt(content);
@@ -370,7 +409,10 @@ export const UserPromptBlock = memo(function UserPromptBlock({
             <UploadedFilesMetadata files={uploadedFiles} />
           </div>
         </div>
-        <CorrectionButton onCorrect={onCorrect} />
+        <UserPromptActionButtons
+          onCorrect={onCorrect}
+          onTrimBefore={onTrimBefore}
+        />
         <OpenedFilesMetadata files={openedFiles} />
       </div>
     );
@@ -417,7 +459,10 @@ export const UserPromptBlock = memo(function UserPromptBlock({
           <UploadedFilesMetadata files={allUploadedFiles} />
         </div>
       </div>
-      <CorrectionButton onCorrect={onCorrect} />
+      <UserPromptActionButtons
+        onCorrect={onCorrect}
+        onTrimBefore={onTrimBefore}
+      />
       <OpenedFilesMetadata files={openedFiles} />
     </div>
   );

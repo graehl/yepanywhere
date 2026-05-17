@@ -24,6 +24,10 @@ export interface SessionMenuProps {
   onClone?: (newSessionId: string) => void | Promise<void>;
   /** Called to request compaction in the current session */
   onCompact?: () => void | Promise<void>;
+  /** Reload the client transcript with only the recent user-turn tail */
+  onTrimToRecentTurns?: () => void | Promise<void>;
+  /** Whether the client transcript is already using a tail cap */
+  clientTailActive?: boolean;
   /** Called to hand off the session into a fresh agent session */
   onHandoff?: () => void | Promise<void>;
   /** Called to terminate the session's process */
@@ -63,6 +67,8 @@ export function SessionMenu({
   onCopyPrompt,
   onClone,
   onCompact,
+  onTrimToRecentTurns,
+  clientTailActive = false,
   onHandoff,
   onTerminate,
   onReload,
@@ -368,6 +374,26 @@ export function SessionMenu({
             <path d="m20 4-7 7" />
           </svg>
           {t("sessionMenuCompact")}
+        </button>
+      )}
+      {onTrimToRecentTurns && (
+        <button type="button" onClick={() => handleAction(onTrimToRecentTurns)}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M4 7h16" />
+            <path d="M4 12h10" />
+            <path d="M4 17h6" />
+            <path d="m15 16 3 3 3-3" />
+            <path d="M18 5v14" />
+          </svg>
+          {clientTailActive ? "Recent tail active" : "Recent 20 turns"}
         </button>
       )}
       {onHandoff && (

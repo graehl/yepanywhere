@@ -2332,7 +2332,13 @@ a.sidebar-nav-item {
   border: 1px solid transparent;
 }
 
-.user-prompt-correct {
+.user-prompt-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.user-prompt-action {
   appearance: none;
   width: 34px;
   height: 34px;
@@ -2351,8 +2357,8 @@ a.sidebar-nav-item {
   touch-action: manipulation;
 }
 
-.user-prompt-correct:hover,
-.user-prompt-correct:focus-visible {
+.user-prompt-action:hover,
+.user-prompt-action:focus-visible {
   background: var(--bg-hover);
   border-color: var(--border-color);
   color: var(--text-primary);
@@ -2367,7 +2373,7 @@ a.sidebar-nav-item {
 }
 
 @media (hover: none), (pointer: coarse), (max-width: 600px) {
-  .user-prompt-correct {
+  .user-prompt-action {
     width: 34px;
     min-width: 34px;
     height: 34px;
@@ -2381,7 +2387,7 @@ a.sidebar-nav-item {
 }
 
 @media (max-width: 700px) {
-  .user-prompt-correct {
+  .user-prompt-action {
     width: 30px;
     min-width: 30px;
     height: 30px;

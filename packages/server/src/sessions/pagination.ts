@@ -20,6 +20,10 @@ export interface PaginationInfo {
   truncatedBeforeMessageId?: string;
   /** Total number of compact_boundary entries in the session */
   totalCompactions: number;
+  /** Total number of user turns in the full session, when turn slicing was used */
+  totalUserTurns?: number;
+  /** Whether this response came from the aggressive user-turn truncation path */
+  truncatedBy?: "compact_boundary" | "user_turn";
 }
 
 /** Result of slicing messages at compact boundaries */
@@ -72,6 +76,20 @@ export function sliceAfterMessageIdWithMatch(
 
 function isCompactBoundary(m: Message): boolean {
   return m.type === "system" && m.subtype === "compact_boundary";
+}
+
+function isUserTurn(m: Message): boolean {
+  const record = m as Message & {
+    role?: unknown;
+    message?: { role?: unknown };
+  };
+  const role =
+    typeof record.role === "string"
+      ? record.role
+      : typeof record.message?.role === "string"
+        ? record.message.role
+        : undefined;
+  return m.type === "user" || role === "user";
 }
 
 /**
@@ -143,6 +161,73 @@ export function sliceAtCompactBoundaries(
       returnedMessageCount: slicedMessages.length,
       truncatedBeforeMessageId: firstId,
       totalCompactions,
+    },
+  };
+}
+
+/**
+ * Slice messages to a recent user-turn window, or to a caller-chosen user turn.
+ *
+ * This is intentionally more aggressive than compact-boundary pagination: it is
+ * an opt-in browser memory workaround for very long transcripts where the user
+ * wants the client to avoid receiving older history at all.
+ */
+export function sliceAtUserTurnBoundary(
+  messages: Message[],
+  tailTurns: number,
+  fromMessageId?: string,
+): SliceResult {
+  const totalMessageCount = messages.length;
+  const userTurnIndices: number[] = [];
+  let totalCompactions = 0;
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message) continue;
+    if (isUserTurn(message)) {
+      userTurnIndices.push(index);
+    }
+    if (isCompactBoundary(message)) {
+      totalCompactions += 1;
+    }
+  }
+
+  const totalUserTurns = userTurnIndices.length;
+  let sliceFromIdx = 0;
+
+  if (fromMessageId) {
+    sliceFromIdx = messages.findIndex((m) => getMessageId(m) === fromMessageId);
+    if (sliceFromIdx < 0) {
+      return {
+        messages: [],
+        pagination: {
+          hasOlderMessages: false,
+          totalMessageCount,
+          returnedMessageCount: 0,
+          truncatedBeforeMessageId: undefined,
+          totalCompactions,
+          totalUserTurns,
+          truncatedBy: "user_turn",
+        },
+      };
+    }
+  } else if (totalUserTurns > tailTurns) {
+    sliceFromIdx = userTurnIndices[totalUserTurns - tailTurns] ?? 0;
+  }
+
+  const slicedMessages = messages.slice(sliceFromIdx);
+  const firstId = slicedMessages[0] ? getMessageId(slicedMessages[0]) : undefined;
+
+  return {
+    messages: slicedMessages,
+    pagination: {
+      hasOlderMessages: sliceFromIdx > 0,
+      totalMessageCount,
+      returnedMessageCount: slicedMessages.length,
+      truncatedBeforeMessageId: sliceFromIdx > 0 ? firstId : undefined,
+      totalCompactions,
+      totalUserTurns,
+      truncatedBy: "user_turn",
     },
   };
 }

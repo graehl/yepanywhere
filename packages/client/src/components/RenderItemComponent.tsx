@@ -18,6 +18,7 @@ interface Props {
   toggleThinkingExpanded: () => void;
   sessionProvider?: string;
   onCorrectUserPrompt?: () => void;
+  onTrimBeforeUserPrompt?: () => void;
   staleNowMs?: number;
   latestVisibleTimestampMs?: number | null;
 }
@@ -135,6 +136,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   toggleThinkingExpanded,
   sessionProvider,
   onCorrectUserPrompt,
+  onTrimBeforeUserPrompt,
   staleNowMs,
   latestVisibleTimestampMs,
 }: Props) {
@@ -214,6 +216,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
           <UserPromptBlock
             content={item.content}
             onCorrect={onCorrectUserPrompt}
+            onTrimBefore={onTrimBeforeUserPrompt}
           />
         );
 

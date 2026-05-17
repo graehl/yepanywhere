@@ -13,6 +13,11 @@
   last two compaction windows. Full direct session REST payloads can be tens of
   megabytes and thousands of normalized renderable messages, so they are
   diagnostic/debug surfaces rather than the default browser transcript load.
+- Aggressive client transcript truncation is URL opt-in, not the normal session
+  contract. `tailTurns=<n>` and `tailFrom=<message-id>` bound only the initial
+  non-incremental session detail response; streaming and `afterMessageId`
+  refreshes must append normally so the loaded tail can grow without repeated
+  recutting.
 
 ## 2026-05-12: heartbeat session `019e1ac6-c836-7e33-891e-2ba878d27ca5`
 

@@ -265,6 +265,8 @@ interface Props {
   onEditDeferred?: (tempId: string) => void;
   /** Callback to correct the latest actually-sent user message */
   onCorrectLatestUserMessage?: (messageId: string, content: string) => void;
+  /** Callback to aggressively reload the client transcript from a user turn */
+  onTrimBeforeUserMessage?: (messageId: string) => void;
   /** Pre-rendered markdown HTML from server (keyed by message ID) */
   markdownAugments?: Record<string, MarkdownAugment>;
   /** Active tool approval - prevents matching orphaned tool from showing as interrupted */
@@ -275,6 +277,12 @@ interface Props {
   loadingOlder?: boolean;
   /** Callback to load the next chunk of older messages */
   onLoadOlderMessages?: () => void;
+  /** Whether the client transcript is intentionally loaded from a recent tail */
+  clientTailActive?: boolean;
+  /** Active recent-turn tail size, when set by tailTurns */
+  clientTailTurns?: number;
+  /** Callback to reload with the default recent-turn tail */
+  onTrimToRecentTurns?: () => void;
 }
 
 function PencilIcon({ size = 14 }: { size?: number }) {
@@ -450,11 +458,15 @@ export const MessageList = memo(function MessageList({
   onCancelDeferred,
   onEditDeferred,
   onCorrectLatestUserMessage,
+  onTrimBeforeUserMessage,
   markdownAugments,
   activeToolApproval,
   hasOlderMessages = false,
   loadingOlder = false,
   onLoadOlderMessages,
+  clientTailActive = false,
+  clientTailTurns,
+  onTrimToRecentTurns,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -1405,22 +1417,35 @@ export const MessageList = memo(function MessageList({
         ? createPortal(searchPanel, searchPanelTarget)
         : searchPanel}
       <div className="message-list" ref={containerRef}>
-        {hasOlderMessages && (
+        {(hasOlderMessages || onTrimToRecentTurns) && (
           <div className="load-older-messages">
-            <button
-              type="button"
-              className="load-older-button"
-              onClick={handleLoadOlder}
-              disabled={loadingOlder}
-            >
-              {loadingOlder ? (
-                <>
-                  <span className="spinning">&#x21BB;</span> Loading...
-                </>
-              ) : (
-                "Load older messages"
-              )}
-            </button>
+            {onTrimToRecentTurns && (
+              <button
+                type="button"
+                className="load-older-button"
+                onClick={onTrimToRecentTurns}
+                disabled={clientTailActive && clientTailTurns === 20}
+                title="Reload this page with only the recent client transcript"
+              >
+                {clientTailActive ? "Client tail active" : "Recent 20 turns"}
+              </button>
+            )}
+            {hasOlderMessages && (
+              <button
+                type="button"
+                className="load-older-button"
+                onClick={handleLoadOlder}
+                disabled={loadingOlder}
+              >
+                {loadingOlder ? (
+                  <>
+                    <span className="spinning">&#x21BB;</span> Loading...
+                  </>
+                ) : (
+                  "Load older messages"
+                )}
+              </button>
+            )}
           </div>
         )}
         {visibleTimelineEntries.map((entry) => {
@@ -1459,6 +1484,11 @@ export const MessageList = memo(function MessageList({
                         )
                     : undefined
                 }
+                onTrimBeforeUserPrompt={
+                  onTrimBeforeUserMessage && !item.isSubagent
+                    ? () => onTrimBeforeUserMessage(item.id)
+                    : undefined
+                }
                 staleNowMs={getItemStaleNowMs(item)}
                 latestVisibleTimestampMs={latestVisibleTimestampMs}
               />
@@ -1477,6 +1507,13 @@ export const MessageList = memo(function MessageList({
                   thinkingExpanded={thinkingExpanded}
                   toggleThinkingExpanded={toggleThinkingExpanded}
                   sessionProvider={provider}
+                  onTrimBeforeUserPrompt={
+                    item.type === "user_prompt" &&
+                    onTrimBeforeUserMessage &&
+                    !item.isSubagent
+                      ? () => onTrimBeforeUserMessage(item.id)
+                      : undefined
+                  }
                   staleNowMs={getItemStaleNowMs(item)}
                   latestVisibleTimestampMs={latestVisibleTimestampMs}
                 />

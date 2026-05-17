@@ -41,6 +41,8 @@ export interface PaginationInfo {
   returnedMessageCount: number;
   truncatedBeforeMessageId?: string;
   totalCompactions: number;
+  totalUserTurns?: number;
+  truncatedBy?: "compact_boundary" | "user_turn";
 }
 
 /**
@@ -413,7 +415,12 @@ export const api = {
     projectId: string,
     sessionId: string,
     afterMessageId?: string,
-    options?: { tailCompactions?: number; beforeMessageId?: string },
+    options?: {
+      tailCompactions?: number;
+      beforeMessageId?: string;
+      tailTurns?: number;
+      tailFrom?: string;
+    },
   ) => {
     const params = new URLSearchParams();
     if (afterMessageId) params.set("afterMessageId", afterMessageId);
@@ -421,6 +428,9 @@ export const api = {
       params.set("tailCompactions", String(options.tailCompactions));
     if (options?.beforeMessageId)
       params.set("beforeMessageId", options.beforeMessageId);
+    if (options?.tailTurns !== undefined)
+      params.set("tailTurns", String(options.tailTurns));
+    if (options?.tailFrom) params.set("tailFrom", options.tailFrom);
     const qs = params.toString();
     return fetchJSON<{
       session: SessionMetadata;

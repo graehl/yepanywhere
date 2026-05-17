@@ -582,6 +582,7 @@ export function useSession(
   sessionId: string,
   initialStatus?: { owner: "self"; processId: string },
   streamingMarkdownCallbacks?: StreamingMarkdownCallbacks,
+  options?: { tailTurns?: number; tailFrom?: string },
 ) {
   // Use initial status if provided (from navigation state) to connect stream immediately
   const [status, setStatus] = useState<SessionStatus>(
@@ -885,6 +886,8 @@ export function useSession(
   } = useSessionMessages({
     projectId,
     sessionId,
+    tailTurns: options?.tailTurns,
+    tailFrom: options?.tailFrom,
     onLoadComplete: handleLoadComplete,
     onLoadError: handleLoadError,
   });

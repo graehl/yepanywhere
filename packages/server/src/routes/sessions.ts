@@ -35,6 +35,7 @@ import {
   type PaginationInfo,
   sliceAfterMessageIdWithMatch,
   sliceAtCompactBoundaries,
+  sliceAtUserTurnBoundary,
 } from "../sessions/pagination.js";
 import { augmentPersistedSessionMessages } from "../sessions/persisted-augments.js";
 import { findSessionSummaryAcrossProviders } from "../sessions/provider-resolution.js";
@@ -1594,6 +1595,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   //   ?afterMessageId=<id> - incremental forward-fetch (append new messages)
   //   ?tailCompactions=<n> - return only last N compact boundaries worth of messages
   //   ?beforeMessageId=<id> - cursor for loading older chunks (used with tailCompactions)
+  //   ?tailTurns=<n> - aggressive opt-in client memory cap by recent user turns
+  //   ?tailFrom=<id> - aggressive opt-in client memory cap from a user message id
   routes.get("/projects/:projectId/sessions/:sessionId", async (c) => {
     const projectId = c.req.param("projectId");
     const sessionId = c.req.param("sessionId");
@@ -1601,9 +1604,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const publicShare = c.req.query("publicShare") === "1";
     const tailCompactionsParam = c.req.query("tailCompactions");
     const beforeMessageId = c.req.query("beforeMessageId");
+    const tailTurnsParam = c.req.query("tailTurns");
+    const tailFrom = c.req.query("tailFrom");
     const tailCompactions =
       tailCompactionsParam !== undefined
         ? Number.parseInt(tailCompactionsParam, 10)
+        : undefined;
+    const tailTurns =
+      tailTurnsParam !== undefined
+        ? Number.parseInt(tailTurnsParam, 10)
         : undefined;
 
     // Validate projectId format at API boundary
@@ -1811,11 +1820,26 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       ? deps.notificationService.hasUnread(sessionId, session.updatedAt)
       : undefined;
 
-    // Apply compact-boundary pagination if requested (BEFORE expensive augmentation)
-    // tailCompactions slices to last N compact boundaries; skip when afterMessageId is
-    // present since that's a different use case (incremental forward-fetch)
+    // Apply pagination if requested (BEFORE expensive augmentation). tailTurns
+    // is an opt-in stronger client memory cap, so it wins over compact tails.
+    // Skip both when afterMessageId is present since that's an incremental
+    // forward-fetch use case.
     let paginationInfo: PaginationInfo | undefined;
     if (
+      !afterMessageId &&
+      (tailFrom ||
+        (tailTurns !== undefined && !Number.isNaN(tailTurns) && tailTurns > 0))
+    ) {
+      const sliced = sliceAtUserTurnBoundary(
+        session.messages,
+        tailTurns !== undefined && !Number.isNaN(tailTurns) && tailTurns > 0
+          ? tailTurns
+          : 20,
+        tailFrom,
+      );
+      session = { ...session, messages: sliced.messages };
+      paginationInfo = sliced.pagination;
+    } else if (
       tailCompactions !== undefined &&
       !Number.isNaN(tailCompactions) &&
       tailCompactions > 0 &&
@@ -2594,9 +2618,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const resolvedModel = body.model && body.model !== "default"
       ? body.model
       : process.resolvedModel ?? process.model;
-    const resolveContextWindow = deps.modelInfoService
+    const modelInfoService = deps.modelInfoService;
+    const resolveContextWindow = modelInfoService
       ? (model: string | undefined, provider?: ProviderName) =>
-          deps.modelInfoService?.getContextWindow(model, provider)
+          modelInfoService.getContextWindow(model, provider)
       : getModelContextWindow;
 
     let compactQueued = false;

@@ -4,6 +4,7 @@ import {
   sliceAfterMessageId,
   sliceAfterMessageIdWithMatch,
   sliceAtCompactBoundaries,
+  sliceAtUserTurnBoundary,
 } from "../../src/sessions/pagination.js";
 import type { Message } from "../../src/supervisor/types.js";
 
@@ -325,5 +326,66 @@ describe("sliceAtCompactBoundaries", () => {
     expect(result.messages[0]?.uuid).toBe("cb2");
     expect(result.pagination.totalCompactions).toBe(2);
     expect(result.pagination.hasOlderMessages).toBe(true);
+  });
+});
+
+describe("sliceAtUserTurnBoundary", () => {
+  it("returns only the requested recent user-turn tail", () => {
+    const messages = [
+      msg("user", "u1"),
+      msg("assistant", "a1"),
+      msg("user", "u2"),
+      msg("assistant", "a2"),
+      msg("user", "u3"),
+      msg("assistant", "a3"),
+    ];
+
+    const result = sliceAtUserTurnBoundary(messages, 2);
+
+    expect(result.messages).toEqual([
+      msg("user", "u2"),
+      msg("assistant", "a2"),
+      msg("user", "u3"),
+      msg("assistant", "a3"),
+    ]);
+    expect(result.pagination).toEqual({
+      hasOlderMessages: true,
+      totalMessageCount: 6,
+      returnedMessageCount: 4,
+      truncatedBeforeMessageId: "u2",
+      totalCompactions: 0,
+      totalUserTurns: 3,
+      truncatedBy: "user_turn",
+    } satisfies PaginationInfo);
+  });
+
+  it("can start at a clicked user turn id", () => {
+    const messages = [
+      msg("user", "u1"),
+      msg("assistant", "a1"),
+      msg("user", "u2"),
+      msg("assistant", "a2"),
+      msg("user", "u3"),
+    ];
+
+    const result = sliceAtUserTurnBoundary(messages, 20, "u2");
+
+    expect(result.messages).toEqual([
+      msg("user", "u2"),
+      msg("assistant", "a2"),
+      msg("user", "u3"),
+    ]);
+    expect(result.pagination.hasOlderMessages).toBe(true);
+    expect(result.pagination.truncatedBeforeMessageId).toBe("u2");
+  });
+
+  it("does not invent a tail when the clicked id is missing", () => {
+    const messages = [msg("user", "u1"), msg("assistant", "a1")];
+
+    const result = sliceAtUserTurnBoundary(messages, 20, "missing");
+
+    expect(result.messages).toEqual([]);
+    expect(result.pagination.hasOlderMessages).toBe(false);
+    expect(result.pagination.returnedMessageCount).toBe(0);
   });
 });

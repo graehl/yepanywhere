@@ -45,6 +45,8 @@ export interface SessionLoadResult {
 export interface UseSessionMessagesOptions {
   projectId: string;
   sessionId: string;
+  tailTurns?: number;
+  tailFrom?: string;
   /** Called when initial load completes with session data */
   onLoadComplete?: (result: SessionLoadResult) => void;
   /** Called on load error */
@@ -124,22 +126,45 @@ function getSessionLoadCacheKey(projectId: string, sessionId: string): string {
   return `${projectId}:${sessionId}`;
 }
 
+function getSessionLoadVariantKey(options: {
+  projectId: string;
+  sessionId: string;
+  tailTurns?: number;
+  tailFrom?: string;
+}): string {
+  const variant = [
+    options.tailTurns !== undefined ? `tailTurns=${options.tailTurns}` : "",
+    options.tailFrom ? `tailFrom=${options.tailFrom}` : "",
+  ]
+    .filter(Boolean)
+    .join("&");
+  return variant
+    ? `${options.projectId}:${options.sessionId}?${variant}`
+    : getSessionLoadCacheKey(options.projectId, options.sessionId);
+}
+
 function readSessionLoadCache(
   projectId: string,
   sessionId: string,
+  tailTurns?: number,
+  tailFrom?: string,
 ): SessionLoadCacheEntry | undefined {
   if (typeof window === "undefined") return undefined;
-  return getSessionLoadCache().get(getSessionLoadCacheKey(projectId, sessionId));
+  return getSessionLoadCache().get(
+    getSessionLoadVariantKey({ projectId, sessionId, tailTurns, tailFrom }),
+  );
 }
 
 function writeSessionLoadCache(
   projectId: string,
   sessionId: string,
   entry: SessionLoadCacheEntry,
+  tailTurns?: number,
+  tailFrom?: string,
 ): void {
   if (typeof window === "undefined") return;
   getSessionLoadCache().set(
-    getSessionLoadCacheKey(projectId, sessionId),
+    getSessionLoadVariantKey({ projectId, sessionId, tailTurns, tailFrom }),
     cloneForCache(entry),
   );
 }
@@ -195,8 +220,20 @@ function isEmptyAssistantContent(message: Message): boolean {
 export function useSessionMessages(
   options: UseSessionMessagesOptions,
 ): UseSessionMessagesResult {
-  const { projectId, sessionId, onLoadComplete, onLoadError } = options;
-  const cachedLoad = readSessionLoadCache(projectId, sessionId);
+  const {
+    projectId,
+    sessionId,
+    tailTurns,
+    tailFrom,
+    onLoadComplete,
+    onLoadError,
+  } = options;
+  const cachedLoad = readSessionLoadCache(
+    projectId,
+    sessionId,
+    tailTurns,
+    tailFrom,
+  );
 
   // Core state
   const [messages, setMessages] = useState<Message[]>(
@@ -339,11 +376,18 @@ export function useSessionMessages(
   // incremental refresh after the cached tail; merge that delta instead of
   // replacing the cached transcript.
   useEffect(() => {
-    const warmLoad = readSessionLoadCache(projectId, sessionId);
+    const warmLoad = readSessionLoadCache(
+      projectId,
+      sessionId,
+      tailTurns,
+      tailFrom,
+    );
     markReloadPerfPhase("session_initial_load_start", {
       projectId,
       sessionId,
       tailCompactions: 2,
+      tailTurns,
+      tailFrom,
     });
     initialLoadCompleteRef.current = false;
     streamBufferRef.current = [];
@@ -371,6 +415,8 @@ export function useSessionMessages(
     api
       .getSession(projectId, sessionId, lastMessageIdRef.current, {
         tailCompactions: 2,
+        tailTurns,
+        tailFrom,
       })
       .then((data) => {
         markReloadPerfPhase("session_initial_load_data_ready", {
@@ -430,15 +476,21 @@ export function useSessionMessages(
           messages: taggedMessages.length,
         });
 
-        writeSessionLoadCache(projectId, sessionId, {
-          messages: loadedMessages,
-          session: data.session,
-          pagination: data.pagination ?? warmLoad?.pagination,
-          agentContent: {},
-          toolUseToAgentEntries: [],
-          lastMessageId: lastMessageIdRef.current,
-          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
-        });
+        writeSessionLoadCache(
+          projectId,
+          sessionId,
+          {
+            messages: loadedMessages,
+            session: data.session,
+            pagination: data.pagination ?? warmLoad?.pagination,
+            agentContent: {},
+            toolUseToAgentEntries: [],
+            lastMessageId: lastMessageIdRef.current,
+            maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+          },
+          tailTurns,
+          tailFrom,
+        );
 
         // Notify parent
         onLoadComplete?.({
@@ -458,6 +510,8 @@ export function useSessionMessages(
   }, [
     projectId,
     sessionId,
+    tailTurns,
+    tailFrom,
     onLoadComplete,
     onLoadError,
     flushBuffer,

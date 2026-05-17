@@ -1817,8 +1817,8 @@ a.sidebar-nav-item {
 .user-turn-nav-marker-line {
   position: absolute;
   top: 9px;
-  right: 5px;
-  width: 11px;
+  right: 12px;
+  width: 8px;
   height: 3px;
   border-radius: 999px;
   background: currentColor;
@@ -1832,9 +1832,8 @@ a.sidebar-nav-item {
 .user-turn-nav-marker:hover .user-turn-nav-marker-line,
 .user-turn-nav-marker:focus-visible .user-turn-nav-marker-line,
 .user-turn-nav-marker.is-active .user-turn-nav-marker-line {
-  width: 18px;
+  width: 15px;
   opacity: 1;
-  transform: translateX(-3px);
 }
 
 .user-turn-nav-marker:focus-visible {
@@ -1859,14 +1858,14 @@ a.sidebar-nav-item {
 
 .user-turn-nav-marker.is-search-nonmatch .user-turn-nav-marker-line {
   opacity: 0.18;
-  width: 8px;
+  width: 5px;
 }
 
 .user-turn-nav-trim-marker {
   appearance: none;
   position: absolute;
-  right: 23px;
-  width: 22px;
+  right: 3px;
+  width: 10px;
   height: 22px;
   margin: -11px 0 0;
   padding: 0;
@@ -1881,10 +1880,10 @@ a.sidebar-nav-item {
 
 .user-turn-nav-trim-dot {
   position: absolute;
-  top: 7px;
-  right: 6px;
-  width: 8px;
-  height: 8px;
+  top: 8px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
   border-radius: 999px;
   border: 1px solid currentColor;
   background: color-mix(in srgb, var(--bg-primary) 88%, transparent);

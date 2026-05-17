@@ -227,8 +227,11 @@ export const ToolCallRow = memo(function ToolCallRow({
   );
   const mayHaveCollapsedPreview =
     toolRegistry.hasCollapsedPreview(toolName) && !suppressCollapsedPreview;
+  const isEditTool = toolRegistry.get(toolName).tool === "Edit";
+  const canRenderInteractiveSummary =
+    status === "complete" || (status === "pending" && isEditTool);
   const mayHaveInteractiveSummary =
-    status === "complete" && toolRegistry.hasInteractiveSummary(toolName);
+    canRenderInteractiveSummary && toolRegistry.hasInteractiveSummary(toolName);
   const deferredPreviewHeightPx = useMemo(
     () =>
       estimateDeferredPreviewHeightPx({
@@ -242,7 +245,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   );
 
   const interactiveSummaryContent = useMemo(() => {
-    if (status !== "complete" || !shouldHydrateRichContent) {
+    if (!canRenderInteractiveSummary || !shouldHydrateRichContent) {
       return null;
     }
     return toolRegistry.renderInteractiveSummary(
@@ -260,6 +263,7 @@ export const ToolCallRow = memo(function ToolCallRow({
     toolResult,
     renderContext,
     shouldHydrateRichContent,
+    canRenderInteractiveSummary,
   ]);
 
   const hasInteractiveSummary =
@@ -471,7 +475,7 @@ export const ToolCallRow = memo(function ToolCallRow({
           {toolRegistry.getDisplayName(toolName)}
         </span>
 
-        {hasInteractiveSummary && status === "complete" ? (
+        {hasInteractiveSummary && canRenderInteractiveSummary ? (
           <span className="tool-summary interactive-summary">
             {interactiveSummaryContent}
           </span>

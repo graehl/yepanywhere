@@ -19,6 +19,7 @@ import {
 import { makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
+import { FilePathDisplay } from "../../ui/FilePathDisplay";
 import { FixedFontMathToggle } from "../../ui/FixedFontMathToggle";
 import { Modal } from "../../ui/Modal";
 import type { EditInput, EditResult, PatchHunk, ToolRenderer } from "./types";
@@ -158,9 +159,18 @@ function getPatchTargetTitle(
   result: Partial<EditResult> | undefined,
   projectPath: string | null,
 ): string | undefined {
-  const filePaths = extractEditFilePaths(input, result);
-  if (filePaths.length === 0) return undefined;
-  return filePaths.map((path) => makeDisplayPath(path, projectPath)).join("\n");
+  const displayPaths = getPatchTargetDisplayPaths(input, result, projectPath);
+  return displayPaths.length > 0 ? displayPaths.join("\n") : undefined;
+}
+
+function getPatchTargetDisplayPaths(
+  input: unknown,
+  result: Partial<EditResult> | undefined,
+  projectPath: string | null,
+): string[] {
+  return extractEditFilePaths(input, result).map((path) =>
+    makeDisplayPath(path, projectPath),
+  );
 }
 
 /**
@@ -909,6 +919,7 @@ function EditInteractiveSummary({
   const filePath = getEditFilePath(input, result);
   const fileName = getPatchTargetSummary(input, result);
   const fileTitle = getPatchTargetTitle(input, result, projectPath);
+  const displayPaths = getPatchTargetDisplayPaths(input, result, projectPath);
   const oldString = result?.oldString ?? input.old_string;
   const newString = result?.newString ?? input.new_string;
   const originalFile = result?.originalFile;
@@ -921,7 +932,7 @@ function EditInteractiveSummary({
 
   if (isError) {
     return (
-      <span>
+      <span title={fileTitle}>
         {fileName}
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Edit" errors={validationErrors} />
@@ -932,7 +943,53 @@ function EditInteractiveSummary({
 
   // Show loading state if no patch yet
   if (structuredPatch.length === 0) {
-    return <span>{fileName}</span>;
+    return (
+      <>
+        <button
+          type="button"
+          className="file-link-inline"
+          title={fileTitle}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowModal(true);
+          }}
+        >
+          {fileName}
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Edit" errors={validationErrors} />
+          )}
+        </button>
+        {showModal && (
+          <Modal
+            title={
+              <span className="file-path" title={fileTitle}>
+                {fileName}
+              </span>
+            }
+            onClose={() => setShowModal(false)}
+          >
+            <div className="diff-modal-content">
+              <div className="diff-context-controls">
+                <span className="diff-context-path" title={fileTitle}>
+                  {displayPaths.length > 0 ? displayPaths[0] : fileName}
+                </span>
+              </div>
+              <div className="edit-target-paths">
+                {displayPaths.length > 0 ? (
+                  displayPaths.map((displayPath) => (
+                    <div className="edit-target-path" key={displayPath}>
+                      <FilePathDisplay displayPath={displayPath} />
+                    </div>
+                  ))
+                ) : (
+                  <div className="edit-target-path">Patch target unavailable</div>
+                )}
+              </div>
+            </div>
+          </Modal>
+        )}
+      </>
+    );
   }
 
   return (
@@ -1254,6 +1311,7 @@ function EditToolResult({
 
 export const editRenderer: ToolRenderer<EditInput, EditResult> = {
   tool: "Edit",
+  displayName: "Edit",
 
   renderToolUse(input) {
     return <EditToolUse input={input as EditInputWithAugment} />;

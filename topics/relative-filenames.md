@@ -28,7 +28,7 @@ attribute) so the user can identify the file without opening it.
 |------|---------------|-------------------|----------------|
 | Read | filename only | `makeDisplayPath`  | — |
 | Write | filename only | `makeDisplayPath`  | — |
-| Edit | — | — | `makeDisplayPath` in diff modal header |
+| Edit | filename or `filename +N files` | `makeDisplayPath` for every target, including pending multi-file edits | `makeDisplayPath` in diff modal header / pending target modal |
 
 ### Fixed-font content (code blocks, diffs)
 

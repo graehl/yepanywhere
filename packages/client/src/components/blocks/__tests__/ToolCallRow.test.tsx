@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
+import { I18nProvider } from "../../../i18n";
 import {
   DEFERRED_PREVIEW_HEIGHT,
   ToolCallRow,
@@ -35,6 +37,43 @@ describe("ToolCallRow", () => {
     expect(screen.getByText("npm run test:e2e:pipeline-v2")).toBeDefined();
     expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
     expect(container.querySelector(".tool-use-expanded")).toBeNull();
+  });
+
+  it("shows pending Edit targets as title-backed clickable summaries", () => {
+    render(
+      <SessionMetadataProvider
+        projectId="project-1"
+        projectPath="/repo"
+        sessionId="session-1"
+      >
+        <I18nProvider>
+          <ToolCallRow
+            id="tool-pending-edit"
+            toolName="apply_patch"
+            toolInput={[
+              "*** Begin Patch",
+              "*** Update File: /repo/src/a.ts",
+              "@@",
+              "+const a = 1;",
+              "*** Update File: /repo/src/b.ts",
+              "@@",
+              "+const b = 1;",
+              "*** End Patch",
+            ].join("\n")}
+            status="pending"
+            sessionProvider="codex"
+          />
+        </I18nProvider>
+      </SessionMetadataProvider>,
+    );
+
+    const button = screen.getByRole("button", { name: /a\.ts \+1 files/i });
+    expect(button.getAttribute("title")).toBe("src/a.ts\nsrc/b.ts");
+
+    fireEvent.click(button);
+
+    expect(screen.getAllByTitle("src/a.ts").length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle("src/b.ts").length).toBeGreaterThan(0);
   });
 
   it("shows completed Codex Bash markdown output as a renderable preview", () => {

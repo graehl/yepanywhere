@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
+import { I18nProvider } from "../../../../i18n";
 import { editRenderer } from "../EditRenderer";
 
 vi.mock("../../../../contexts/SchemaValidationContext", () => ({
@@ -468,5 +469,47 @@ describe("EditRenderer collapsed preview fallback", () => {
 
     const button = screen.getByRole("button", { name: /a\.ts \+1 files/i });
     expect(button.getAttribute("title")).toBe("src/a.ts\nsrc/b.ts");
+  });
+
+  it("keeps pending multi-file edit summaries title-backed and clickable", () => {
+    if (!editRenderer.renderInteractiveSummary) {
+      throw new Error("Edit renderer must provide interactive summary");
+    }
+
+    render(
+      <SessionMetadataProvider
+        projectId="project-1"
+        projectPath="/repo"
+        sessionId="session-1"
+      >
+        <I18nProvider>
+          {editRenderer.renderInteractiveSummary(
+            {
+              _rawPatch: [
+                "*** Begin Patch",
+                "*** Update File: /repo/src/a.ts",
+                "@@",
+                "+const a = 1;",
+                "*** Update File: /repo/src/b.ts",
+                "@@",
+                "+const b = 1;",
+                "*** End Patch",
+              ].join("\n"),
+            } as never,
+            undefined,
+            false,
+            renderContext,
+          )}
+        </I18nProvider>
+      </SessionMetadataProvider>,
+    );
+
+    const button = screen.getByRole("button", { name: /a\.ts \+1 files/i });
+    expect(button.getAttribute("title")).toBe("src/a.ts\nsrc/b.ts");
+
+    fireEvent.click(button);
+
+    expect(screen.getAllByTitle("src/a.ts").length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle("src/b.ts").length).toBeGreaterThan(0);
   });
 });

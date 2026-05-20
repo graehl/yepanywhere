@@ -227,6 +227,7 @@ interface PendingMessage {
   tempId: string;
   content: string;
   timestamp: string;
+  clientOrder?: number;
   status?: string;
   attachments?: UploadedFile[];
 }
@@ -236,10 +237,55 @@ interface DeferredMessage {
   tempId?: string;
   content: string;
   timestamp: string;
+  clientOrder?: number;
   attachmentCount?: number;
   attachments?: UploadedFile[];
   blockedByEdit?: boolean;
   deliveryState?: "queued" | "sending" | "recovered" | "verifying";
+}
+
+type ComposerTailItem =
+  | {
+      kind: "pending";
+      key: string;
+      message: PendingMessage;
+      sourceIndex: number;
+    }
+  | {
+      kind: "deferred";
+      key: string;
+      message: DeferredMessage;
+      deferredIndex: number;
+      sourceIndex: number;
+    };
+
+function compareComposerTailItems(
+  left: ComposerTailItem,
+  right: ComposerTailItem,
+): number {
+  const leftOrder = left.message.clientOrder;
+  const rightOrder = right.message.clientOrder;
+  if (
+    typeof leftOrder === "number" &&
+    Number.isFinite(leftOrder) &&
+    typeof rightOrder === "number" &&
+    Number.isFinite(rightOrder) &&
+    leftOrder !== rightOrder
+  ) {
+    return leftOrder - rightOrder;
+  }
+
+  const leftTimestamp = parseTimestampMs(left.message.timestamp);
+  const rightTimestamp = parseTimestampMs(right.message.timestamp);
+  if (
+    leftTimestamp !== null &&
+    rightTimestamp !== null &&
+    leftTimestamp !== rightTimestamp
+  ) {
+    return leftTimestamp - rightTimestamp;
+  }
+
+  return left.sourceIndex - right.sourceIndex;
 }
 
 interface BtwAsideTimelineItem {
@@ -900,6 +946,30 @@ export const MessageList = memo(function MessageList({
 
     return latest;
   }, [renderItems, pendingMessages, deferredMessages, btwAsides]);
+  const composerTailItems = useMemo(() => {
+    let sourceIndex = 0;
+    const items: ComposerTailItem[] = [];
+
+    for (const pending of pendingMessages) {
+      items.push({
+        kind: "pending",
+        key: pending.tempId,
+        message: pending,
+        sourceIndex: sourceIndex++,
+      });
+    }
+    deferredMessages.forEach((deferred, deferredIndex) => {
+      items.push({
+        kind: "deferred",
+        key: deferred.tempId ?? `deferred-${deferredIndex}`,
+        message: deferred,
+        deferredIndex,
+        sourceIndex: sourceIndex++,
+      });
+    });
+
+    return items.sort(compareComposerTailItems);
+  }, [pendingMessages, deferredMessages]);
   const latestCorrectablePrompt = useMemo(() => {
     if (!onCorrectLatestUserMessage) return null;
 
@@ -1730,9 +1800,8 @@ export const MessageList = memo(function MessageList({
             </div>
           );
         })}
-        {/* Pending messages - shown as "Uploading..." or "Sending..." until server confirms */}
-        {pendingMessages.map((pending) => {
-          const timestampMs = parseTimestampMs(pending.timestamp);
+        {composerTailItems.map((tailItem) => {
+          const timestampMs = parseTimestampMs(tailItem.message.timestamp);
           const showAgeByDefault =
             latestVisibleTimestampMs === timestampMs &&
             isStaleTimestamp(
@@ -1740,55 +1809,51 @@ export const MessageList = memo(function MessageList({
               nowMs,
               MESSAGE_STALE_THRESHOLD_MS,
             );
-          return (
-            <div
-              key={pending.tempId}
-              className={`pending-message message-render-row ${
-                timestampMs !== null ? "has-message-age" : ""
-              } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
-            >
-              <div className="message-render-content">
-                <div className="message-user-prompt pending-message-bubble">
-                  {pending.content}
-                </div>
-                {pending.attachments?.length ? (
-                  <div className="attachment-list pending-message-attachments">
-                    {pending.attachments.map((file) => (
-                      <AttachmentChip
-                        key={file.id}
-                        attachmentId={file.id}
-                        originalName={file.originalName}
-                        path={file.path}
-                        mimeType={file.mimeType}
-                        sizeLabel={formatSize(file.size)}
-                        imageWidth={file.width}
-                        imageHeight={file.height}
-                      />
-                    ))}
+
+          if (tailItem.kind === "pending") {
+            const pending = tailItem.message;
+            return (
+              <div
+                key={tailItem.key}
+                className={`pending-message message-render-row ${
+                  timestampMs !== null ? "has-message-age" : ""
+                } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
+              >
+                <div className="message-render-content">
+                  <div className="message-user-prompt pending-message-bubble">
+                    {pending.content}
                   </div>
-                ) : null}
-                <div className="pending-message-status">
-                  {pending.status || "Sending..."}
+                  {pending.attachments?.length ? (
+                    <div className="attachment-list pending-message-attachments">
+                      {pending.attachments.map((file) => (
+                        <AttachmentChip
+                          key={file.id}
+                          attachmentId={file.id}
+                          originalName={file.originalName}
+                          path={file.path}
+                          mimeType={file.mimeType}
+                          sizeLabel={formatSize(file.size)}
+                          imageWidth={file.width}
+                          imageHeight={file.height}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="pending-message-status">
+                    {pending.status || "Sending..."}
+                  </div>
                 </div>
+                <MessageAge timestampMs={timestampMs} nowMs={nowMs} />
               </div>
-              <MessageAge timestampMs={timestampMs} nowMs={nowMs} />
-            </div>
-          );
-        })}
-        {/* Deferred messages - queued server-side, waiting for agent turn to end */}
-        {deferredMessages.map((deferred, index) => {
-          const canEditDeferred = !!(deferred.tempId && onEditDeferred);
-          const timestampMs = parseTimestampMs(deferred.timestamp);
-          const showAgeByDefault =
-            latestVisibleTimestampMs === timestampMs &&
-            isStaleTimestamp(
-              timestampMs,
-              nowMs,
-              MESSAGE_STALE_THRESHOLD_MS,
             );
+          }
+
+          const deferred = tailItem.message;
+          const index = tailItem.deferredIndex;
+          const canEditDeferred = !!(deferred.tempId && onEditDeferred);
           return (
             <div
-              key={deferred.tempId ?? `deferred-${index}`}
+              key={tailItem.key}
               className={`deferred-message message-render-row ${
                 timestampMs !== null ? "has-message-age" : ""
               } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
@@ -1824,32 +1889,6 @@ export const MessageList = memo(function MessageList({
                       />
                     ))}
                   </div>
-                ) : null}
-                {deferred.attachmentCount && !deferred.attachments?.length ? (
-                  <span
-                    className="deferred-message-attachments"
-                    title={`${deferred.attachmentCount} attachment${
-                      deferred.attachmentCount === 1 ? "" : "s"
-                    } queued`}
-                    aria-label={`${deferred.attachmentCount} attachment${
-                      deferred.attachmentCount === 1 ? "" : "s"
-                    } queued`}
-                  >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                    </svg>
-                    <span>{deferred.attachmentCount}</span>
-                  </span>
                 ) : null}
                 <div className="deferred-message-footer">
                   <span className="deferred-message-status">

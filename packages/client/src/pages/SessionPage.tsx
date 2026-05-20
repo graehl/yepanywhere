@@ -1096,9 +1096,14 @@ function SessionPageContent({
     const queuedEditDraftAtSubmit = queuedEditDraft;
     const actionAtMs = Date.now();
     const clientTimestamp = getServerClockTimestamp(actionAtMs);
+    const clientTimestampIso = new Date(clientTimestamp).toISOString();
 
     // Add to pending queue and get tempId to pass to server
-    const tempId = addPendingMessage(outgoingText);
+    const { tempId } = addPendingMessage(
+      outgoingText,
+      undefined,
+      clientTimestampIso,
+    );
     setProcessState("in-turn"); // Optimistic: show processing indicator immediately
     setScrollTrigger((prev) => prev + 1); // Force scroll to bottom
     logSessionUiTrace("composer-send-start", {
@@ -1332,8 +1337,13 @@ function SessionPageContent({
     const thinking = prepared.thinking ?? getThinkingSetting();
     const actionAtMs = Date.now();
     const clientTimestamp = getServerClockTimestamp(actionAtMs);
+    const clientTimestampIso = new Date(clientTimestamp).toISOString();
 
-    const tempId = addPendingMessage(outgoingText);
+    const { tempId, clientOrder } = addPendingMessage(
+      outgoingText,
+      undefined,
+      clientTimestampIso,
+    );
     setScrollTrigger((prev) => prev + 1);
     logSessionUiTrace("composer-deferred-start", {
       sessionId,
@@ -1419,7 +1429,8 @@ function SessionPageContent({
       const localDeferredMessage = {
         tempId,
         content: outgoingText,
-        timestamp: new Date().toISOString(),
+        timestamp: clientTimestampIso,
+        clientOrder,
         ...(currentAttachments.length > 0
           ? {
               attachmentCount: currentAttachments.length,

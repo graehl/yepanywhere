@@ -180,6 +180,7 @@ export interface PendingMessage {
   tempId: string;
   content: string;
   timestamp: string;
+  clientOrder?: number;
   /** Display status text (e.g. "Uploading...", "Sending..."). Defaults to "Sending..." */
   status?: string;
   attachments?: UploadedFile[];
@@ -190,6 +191,7 @@ export interface DeferredMessage {
   tempId?: string;
   content: string;
   timestamp: string;
+  clientOrder?: number;
   metadata?: UserMessageMetadata;
   attachmentCount?: number;
   attachments?: UploadedFile[];
@@ -305,6 +307,10 @@ function normalizeDeferredMessage(value: unknown): DeferredMessage | null {
     tempId: typeof record.tempId === "string" ? record.tempId : undefined,
     content,
     timestamp,
+    ...(typeof record.clientOrder === "number" &&
+    Number.isFinite(record.clientOrder)
+      ? { clientOrder: record.clientOrder }
+      : {}),
     ...(attachmentCount ? { attachmentCount } : {}),
     ...(attachments ? { attachments } : {}),
     ...(mode ? { mode } : {}),
@@ -392,9 +398,11 @@ function mergeDeferredMessages(
       incomingMessage.attachmentCount ??
       previous?.attachmentCount ??
       attachments?.length;
+    const clientOrder = previous?.clientOrder ?? incomingMessage.clientOrder;
 
     return {
       ...incomingMessage,
+      ...(clientOrder !== undefined ? { clientOrder } : {}),
       ...(attachmentCount ? { attachmentCount } : {}),
       ...(attachments ? { attachments } : {}),
       ...(previous?.mode ? { mode: previous.mode } : {}),
@@ -892,9 +900,11 @@ export function useSession(
     onLoadError: handleLoadError,
   });
   const deliveredUserEchoesRef = useRef<DeliveredUserEcho[]>([]);
+  const nextClientOrderRef = useRef(0);
 
   useEffect(() => {
     deliveredUserEchoesRef.current = [];
+    nextClientOrderRef.current = 0;
   }, [sessionId]);
 
   useEffect(() => {
@@ -967,30 +977,42 @@ export function useSession(
   // Add a message to the pending queue
   // Generates a tempId that will be sent to the server and echoed back in stream
   const addPendingMessage = useCallback(
-    (content: string, attachments?: UploadedFile[]): string => {
-    const tempId = `temp-${Date.now()}`;
-    logSessionUiTrace("pending-add", {
-      sessionId,
-      tempId,
-      textLength: content.length,
-    });
-    setPendingMessages((prev) => [
-      ...prev,
-      {
+    (
+      content: string,
+      attachments?: UploadedFile[],
+      timestamp = new Date().toISOString(),
+    ): { tempId: string; clientOrder: number } => {
+      const clientOrder = nextClientOrderRef.current++;
+      const tempId = `temp-${Date.now()}-${clientOrder}`;
+      logSessionUiTrace("pending-add", {
+        sessionId,
         tempId,
-        content,
-        timestamp: new Date().toISOString(),
-        ...(attachments?.length ? { attachments } : {}),
-      },
-    ]);
-    return tempId;
-  }, [sessionId]);
+        clientOrder,
+        textLength: content.length,
+      });
+      setPendingMessages((prev) => [
+        ...prev,
+        {
+          tempId,
+          content,
+          timestamp,
+          clientOrder,
+          ...(attachments?.length ? { attachments } : {}),
+        },
+      ]);
+      return { tempId, clientOrder };
+    },
+    [sessionId],
+  );
 
   // Remove a pending message by tempId (used when server confirms or send fails)
-  const removePendingMessage = useCallback((tempId: string) => {
-    logSessionUiTrace("pending-remove", { sessionId, tempId });
-    setPendingMessages((prev) => prev.filter((p) => p.tempId !== tempId));
-  }, [sessionId]);
+  const removePendingMessage = useCallback(
+    (tempId: string) => {
+      logSessionUiTrace("pending-remove", { sessionId, tempId });
+      setPendingMessages((prev) => prev.filter((p) => p.tempId !== tempId));
+    },
+    [sessionId],
+  );
 
   // Update a pending message's fields (e.g. status text)
   const updatePendingMessage = useCallback(

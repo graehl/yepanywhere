@@ -300,6 +300,54 @@ describe("useSession completion reconciliation", () => {
     expect(result.current.deferredMessages).toEqual([]);
   });
 
+  it("clears all deferred chips contained in a merged provider user turn", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "deferred-queue",
+        messages: [
+          {
+            tempId: "temp-first",
+            content: "first queued",
+            timestamp: "2026-04-24T00:00:00.000Z",
+          },
+          {
+            tempId: "temp-second",
+            content: "second queued",
+            timestamp: "2026-04-24T00:00:01.000Z",
+          },
+          {
+            tempId: "temp-third",
+            content: "third queued",
+            timestamp: "2026-04-24T00:00:02.000Z",
+          },
+        ],
+      });
+    });
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "user",
+        uuid: "uuid-merged",
+        tempId: "temp-first",
+        message: {
+          role: "user",
+          content:
+            "first queued\n\n--------\n\nsecond queued\n\n--------\n\nthird queued",
+        },
+      });
+    });
+
+    expect(result.current.deferredMessages).toEqual([]);
+  });
+
   it("does not re-add a promoted queued chip after the user echo already arrived", () => {
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {

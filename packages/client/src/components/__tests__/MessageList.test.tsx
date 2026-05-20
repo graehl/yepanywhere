@@ -218,6 +218,35 @@ describe("MessageList", () => {
     expect(onCancelDeferred).toHaveBeenCalledWith("temp-queued");
   });
 
+  it("renders pending and queued composer-tail items by submit order", () => {
+    const { container } = render(
+      <MessageList
+        messages={[]}
+        pendingMessages={[
+          {
+            tempId: "temp-pending",
+            content: "second still posting",
+            timestamp: "2026-04-25T00:00:00.000Z",
+            clientOrder: 2,
+          },
+        ]}
+        deferredMessages={[
+          {
+            tempId: "temp-queued",
+            content: "first already queued",
+            timestamp: "2026-04-25T00:00:10.000Z",
+            clientOrder: 1,
+          },
+        ]}
+      />,
+    );
+
+    const prompts = Array.from(
+      container.querySelectorAll(".message-user-prompt"),
+    ).map((node) => node.textContent);
+    expect(prompts).toEqual(["first already queued", "second still posting"]);
+  });
+
   it("keeps the latest stale message age visible in the right rail", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-26T12:10:00.000Z"));

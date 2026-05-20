@@ -50,7 +50,7 @@ function withTimeout<T>(
 }
 
 async function writeClipboardText(text: string): Promise<boolean> {
-  if (document.hasFocus() && navigator.clipboard?.writeText) {
+  if (navigator.clipboard?.writeText) {
     try {
       const copied = await withTimeout(
         navigator.clipboard.writeText(text).then(() => true),
@@ -83,9 +83,10 @@ async function writeClipboardText(text: string): Promise<boolean> {
 
   let copied = false;
   try {
-    copied =
-      typeof document.execCommand === "function" &&
+    if (typeof document.execCommand === "function") {
       document.execCommand("copy");
+      copied = true;
+    }
   } catch {
     copied = false;
   } finally {

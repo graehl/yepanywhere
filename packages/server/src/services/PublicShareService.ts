@@ -111,7 +111,7 @@ function sanitizeSessionForPublicShare(session: AppSession): AppSession {
   return {
     ...rest,
     ownership: { owner: "none" },
-    messages: session.messages,
+    messages: Array.isArray(session.messages) ? session.messages : [],
   };
 }
 
@@ -397,7 +397,7 @@ export class PublicShareService {
         ...record,
         updatedAt: now,
         viewerSnapshots: {
-          ...(record.viewerSnapshots ?? {}),
+          ...record.viewerSnapshots,
           [viewerId]: {
             capturedAt: now,
             frozenSession,
@@ -472,6 +472,28 @@ export class PublicShareService {
         title: record.title,
         createdAt: record.createdAt,
         updatedAt: sanitizedSession.updatedAt,
+        activeViewerCount: this.getActiveViewerCount(record),
+        capturedAt: record.capturedAt,
+        source: {
+          ...record.source,
+          provider: sanitizedSession.provider,
+        },
+      },
+      session: sanitizedSession,
+    };
+  }
+
+  buildFrozenRepairResponse(
+    record: PublicShareRecord,
+    session: AppSession,
+  ): PublicSessionShareResponse {
+    const sanitizedSession = sanitizeSessionForPublicShare(session);
+    return {
+      share: {
+        mode: "frozen",
+        title: record.title,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
         activeViewerCount: this.getActiveViewerCount(record),
         capturedAt: record.capturedAt,
         source: {

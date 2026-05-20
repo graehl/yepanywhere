@@ -105,7 +105,6 @@ const BTW_ASIDE_POLL_MS = 1500;
 const BTW_ASIDE_MAX_POLLS = 160;
 const BTW_ASIDE_PREVIEW_MAX_LENGTH = 700;
 const BTW_ASIDE_PROMPT_MARKER = "[YA /btw aside]";
-const DEFAULT_CLIENT_TAIL_TURNS = 20;
 const BTW_ASIDE_FORK_PROVIDERS = new Set<ProviderName>([
   "claude",
   "codex",
@@ -532,10 +531,6 @@ function SessionPageContent({
     },
     [location.pathname, location.search, navigate],
   );
-
-  const trimClientToRecentTurns = useCallback(() => {
-    updateClientTailParams({ tailTurns: DEFAULT_CLIENT_TAIL_TURNS });
-  }, [updateClientTailParams]);
 
   const trimClientFromUserMessage = useCallback(
     (messageId: string) => {
@@ -2985,8 +2980,6 @@ function SessionPageContent({
                     onCompact={
                       supportsManualCompact ? handleCompactSession : undefined
                     }
-                    onTrimToRecentTurns={trimClientToRecentTurns}
-                    clientTailActive={clientTailActive}
                     onTerminate={handleTerminate}
                     onReload={() => window.location.reload()}
                     onShare={handleShare}
@@ -3247,8 +3240,6 @@ function SessionPageContent({
                   loadingOlder={loadingOlder}
                   onLoadOlderMessages={loadOlderMessages}
                   clientTailActive={clientTailActive}
-                  clientTailTurns={clientTailParams.tailTurns}
-                  onTrimToRecentTurns={trimClientToRecentTurns}
                 />
               </AgentContentProvider>
             </SessionMetadataProvider>

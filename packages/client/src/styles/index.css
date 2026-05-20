@@ -4639,6 +4639,11 @@ a.sidebar-nav-item {
   cursor: default;
 }
 
+.load-older-status {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
 /* ==========================================================================
    System Messages - Context compaction notifications
    ========================================================================== */

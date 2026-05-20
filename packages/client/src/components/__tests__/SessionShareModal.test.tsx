@@ -145,7 +145,7 @@ describe("SessionShareModal", () => {
     );
   });
 
-  it("does not surface raw focus errors when clipboard access is blocked", async () => {
+  it("falls back without surfacing raw focus errors", async () => {
     writeText.mockRejectedValueOnce(new Error("Document is not focused"));
     Object.defineProperty(document, "execCommand", {
       configurable: true,
@@ -168,11 +168,7 @@ describe("SessionShareModal", () => {
     );
 
     await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Read-only link created. Clipboard access was blocked; select the link above to copy it manually.",
-        ),
-      ).toBeTruthy();
+      expect(screen.getByText("Read-only link copied to clipboard.")).toBeTruthy();
     });
     expect(screen.queryByText("Document is not focused")).toBeNull();
     expect(
@@ -180,7 +176,7 @@ describe("SessionShareModal", () => {
     ).toBeTruthy();
   });
 
-  it("skips async clipboard when the document is not focused", async () => {
+  it("tries async clipboard even when document focus is unreliable", async () => {
     vi.spyOn(document, "hasFocus").mockReturnValue(false);
     Object.defineProperty(document, "execCommand", {
       configurable: true,
@@ -205,7 +201,9 @@ describe("SessionShareModal", () => {
     await waitFor(() => {
       expect(screen.getByText("Read-only link copied to clipboard.")).toBeTruthy();
     });
-    expect(writeText).not.toHaveBeenCalled();
+    expect(writeText).toHaveBeenCalledWith(
+      "https://ya.graehl.org/share/secret?h=test-host",
+    );
   });
 
   it("shows revoke all only when the session already has active shares", async () => {

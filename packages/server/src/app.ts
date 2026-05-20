@@ -906,8 +906,19 @@ export function createApp(options: AppOptions): AppResult {
       if (!response.ok) {
         return null;
       }
-      const body = (await response.json()) as { session?: AppSession };
-      return body.session ?? null;
+      const body = (await response.json()) as {
+        messages?: AppSession["messages"];
+        session?: AppSession;
+      };
+      if (!body.session) {
+        return null;
+      }
+      return {
+        ...body.session,
+        messages: Array.isArray(body.session.messages)
+          ? body.session.messages
+          : (body.messages ?? []),
+      };
     };
 
     const loadPublicShareSessionUpdatedAt = async (

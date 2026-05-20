@@ -146,6 +146,13 @@ function notFound(c: Context) {
   return c.json({ error: "Share not found" }, 404);
 }
 
+function needsFrozenShareRepair(response: PublicSessionShareResponse): boolean {
+  if (!Array.isArray(response.session.messages)) {
+    return true;
+  }
+  return response.session.messages.length === 0 && response.session.messageCount > 0;
+}
+
 function getSessionParams(c: Context):
   | { projectId: UrlProjectId; sessionId: string }
   | { error: Response } {
@@ -375,6 +382,15 @@ export function createPublicSharePublicRoutes(
 
     if (!response && record.mode === "frozen") {
       response = deps.publicShareService.getFrozenShareBySecret(secret);
+      if (response && needsFrozenShareRepair(response)) {
+        const session = await deps.loadSession(
+          record.source.projectId,
+          record.source.sessionId,
+        );
+        response = session
+          ? deps.publicShareService.buildFrozenRepairResponse(record, session)
+          : null;
+      }
     } else if (!response) {
       const session = await deps.loadSession(
         record.source.projectId,

@@ -288,10 +288,6 @@ interface Props {
   onLoadOlderMessages?: () => void;
   /** Whether the client transcript is intentionally loaded from a recent tail */
   clientTailActive?: boolean;
-  /** Active recent-turn tail size, when set by tailTurns */
-  clientTailTurns?: number;
-  /** Callback to reload with the default recent-turn tail */
-  onTrimToRecentTurns?: () => void;
 }
 
 function PencilIcon({ size = 14 }: { size?: number }) {
@@ -474,8 +470,6 @@ export const MessageList = memo(function MessageList({
   loadingOlder = false,
   onLoadOlderMessages,
   clientTailActive = false,
-  clientTailTurns,
-  onTrimToRecentTurns,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -1484,18 +1478,10 @@ export const MessageList = memo(function MessageList({
         ? createPortal(followButton, followButtonTarget)
         : followButton}
       <div className="message-list" ref={containerRef}>
-        {(hasOlderMessages || onTrimToRecentTurns) && (
+        {(hasOlderMessages || clientTailActive) && (
           <div className="load-older-messages">
-            {onTrimToRecentTurns && (
-              <button
-                type="button"
-                className="load-older-button"
-                onClick={onTrimToRecentTurns}
-                disabled={clientTailActive && clientTailTurns === 20}
-                title="Reload this page with only the recent client transcript"
-              >
-                {clientTailActive ? "Client tail active" : "Recent 20 turns"}
-              </button>
+            {clientTailActive && (
+              <span className="load-older-status">Recent transcript loaded</span>
             )}
             {hasOlderMessages && (
               <button

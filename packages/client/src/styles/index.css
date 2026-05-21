@@ -2353,6 +2353,8 @@ a.sidebar-nav-item {
   max-width: 88%;
   padding: 0.25rem 0.5rem;
   font-size: var(--font-size-base);
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .message-user-prompt .text-block {
@@ -2406,6 +2408,10 @@ a.sidebar-nav-item {
   color: var(--text-primary);
   opacity: 1;
   outline: none;
+}
+
+.user-prompt-action-copy.copied {
+  color: var(--success-color, #4a4);
 }
 
 .user-prompt-correct-label {
@@ -2468,10 +2474,18 @@ a.sidebar-nav-item {
   opacity: 0.7;
 }
 
+.pending-message-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
 .pending-message-status {
   font-size: var(--font-size-xs);
   color: var(--text-dimmed);
-  margin-top: var(--space-1);
+  margin-top: 0;
   font-style: italic;
 }
 
@@ -3506,10 +3520,12 @@ a.sidebar-nav-item {
   border-right: 0;
   border-bottom: 0;
   color: inherit;
-  cursor: pointer;
+  cursor: text;
   font: inherit;
   text-align: left;
   touch-action: manipulation;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .deferred-message-edit:hover,
@@ -3517,6 +3533,10 @@ a.sidebar-nav-item {
   opacity: 0.9;
   outline: 1px solid var(--attention-color);
   outline-offset: 2px;
+}
+
+.deferred-message-action-copy.copied {
+  color: var(--success-color, #4a4);
 }
 
 .deferred-message-footer {

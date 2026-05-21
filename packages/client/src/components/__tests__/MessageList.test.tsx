@@ -13,6 +13,8 @@ import { buildCorrectionText } from "../../lib/correctionText";
 import type { Message } from "../../types";
 import { MessageList } from "../MessageList";
 
+const originalClipboard = navigator.clipboard;
+
 function userMessage(
   uuid: string,
   content: string,
@@ -63,6 +65,15 @@ function dispatchCopyEvent() {
   return { event, setData };
 }
 
+function stubClipboardWriteText() {
+  const writeText = vi.fn(async () => undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+  return writeText;
+}
+
 describe("MessageList", () => {
   beforeEach(() => {
     class ResizeObserverMock {
@@ -81,6 +92,10 @@ describe("MessageList", () => {
       .querySelectorAll(".session-input-inner")
       .forEach((node) => node.remove());
     document.querySelectorAll("textarea").forEach((node) => node.remove());
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: originalClipboard,
+    });
     cleanup();
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -216,6 +231,77 @@ describe("MessageList", () => {
 
     expect(onEditDeferred).toHaveBeenCalledWith("temp-queued");
     expect(onCancelDeferred).toHaveBeenCalledWith("temp-queued");
+  });
+
+  it("copies sent user message text", async () => {
+    const writeText = stubClipboardWriteText();
+
+    render(<MessageList messages={[userMessage("user-1", "sent text")]} />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy message text" }),
+    );
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("sent text"));
+  });
+
+  it("copies queued message text", async () => {
+    const writeText = stubClipboardWriteText();
+
+    render(
+      <MessageList
+        messages={[]}
+        deferredMessages={[
+          {
+            tempId: "temp-queued",
+            content: "queued text",
+            timestamp: "2026-04-25T00:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy queued message" }),
+    );
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("queued text"));
+  });
+
+  it("keeps selected queued text from activating edit", () => {
+    const onEditDeferred = vi.fn();
+    const { container } = render(
+      <MessageList
+        messages={[]}
+        deferredMessages={[
+          {
+            tempId: "temp-queued",
+            content: "select me",
+            timestamp: "2026-04-25T00:00:00.000Z",
+          },
+        ]}
+        onEditDeferred={onEditDeferred}
+      />,
+    );
+
+    const queuedBubble = container.querySelector(".deferred-message-edit");
+    expect(queuedBubble).toBeTruthy();
+    const textNode = queuedBubble?.firstChild;
+    expect(textNode).toBeTruthy();
+    const range = document.createRange();
+    range.setStart(textNode as Node, 0);
+    range.setEnd(textNode as Node, "select".length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    fireEvent.click(queuedBubble as HTMLElement);
+
+    expect(onEditDeferred).not.toHaveBeenCalled();
+    selection?.removeAllRanges();
+
+    fireEvent.click(queuedBubble as HTMLElement);
+    expect(onEditDeferred).toHaveBeenCalledWith("temp-queued");
   });
 
   it("renders pending and queued composer-tail items by submit order", () => {

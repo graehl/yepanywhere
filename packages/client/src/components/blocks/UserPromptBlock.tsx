@@ -6,6 +6,7 @@ import {
 } from "../../lib/parseUserPrompt";
 import type { ContentBlock } from "../../types";
 import { AttachmentChip } from "../AttachmentChip";
+import { CopyTextButton } from "../ui/CopyTextButton";
 
 const MAX_LINES = 12;
 const MAX_CHARS = MAX_LINES * 100;
@@ -53,6 +54,17 @@ function parseCorrectionDisplay(text: string): CorrectionDisplay | null {
     correctedText,
     ...(change ? { change } : {}),
   };
+}
+
+function getUserPromptCopyText(text: string): string {
+  const correction = parseCorrectionDisplay(text);
+  if (!correction) {
+    return text;
+  }
+
+  return correction.change
+    ? `${correction.correctedText}\n\nChange: ${correction.change}`
+    : correction.correctedText;
 }
 
 /**
@@ -297,14 +309,23 @@ function CollapsibleText({ text }: { text: string }) {
 function UserPromptActionButtons({
   onCorrect,
   onTrimBefore,
+  copyText,
 }: {
   onCorrect?: () => void;
   onTrimBefore?: () => void;
+  copyText?: string;
 }) {
-  if (!onCorrect && !onTrimBefore) return null;
+  if (!onCorrect && !onTrimBefore && !copyText) return null;
 
   return (
     <div className="user-prompt-actions">
+      {copyText && (
+        <CopyTextButton
+          text={copyText}
+          label="Copy message text"
+          className="user-prompt-action user-prompt-action-copy"
+        />
+      )}
       {onTrimBefore && (
         <button
           type="button"
@@ -412,6 +433,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
         <UserPromptActionButtons
           onCorrect={onCorrect}
           onTrimBefore={onTrimBefore}
+          copyText={getUserPromptCopyText(text)}
         />
         <OpenedFilesMetadata files={openedFiles} />
       </div>
@@ -462,6 +484,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
       <UserPromptActionButtons
         onCorrect={onCorrect}
         onTrimBefore={onTrimBefore}
+        copyText={getUserPromptCopyText(text)}
       />
       <OpenedFilesMetadata files={openedFiles} />
     </div>

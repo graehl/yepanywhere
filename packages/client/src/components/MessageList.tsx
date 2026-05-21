@@ -1,5 +1,12 @@
 import type { MarkdownAugment, UploadedFile } from "@yep-anywhere/shared";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   type ActiveToolApproval,
@@ -33,6 +40,7 @@ import {
   type UserTurnNavMotionCue,
   type UserTurnNavSearchState,
 } from "./UserTurnNavigator";
+import { CopyTextButton } from "./ui/CopyTextButton";
 
 /**
  * Groups consecutive assistant items (text, thinking, tool_call) into turns.
@@ -429,6 +437,33 @@ function XIcon({ size = 14 }: { size?: number }) {
       <path d="m6 6 12 12" />
     </svg>
   );
+}
+
+function rangeIntersectsNode(range: Range, node: Node): boolean {
+  try {
+    return range.intersectsNode(node);
+  } catch {
+    return false;
+  }
+}
+
+function hasSelectedTextInside(element: HTMLElement): boolean {
+  const selection = element.ownerDocument.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return false;
+  }
+
+  if (selection.toString().length === 0) {
+    return false;
+  }
+
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    if (rangeIntersectsNode(selection.getRangeAt(index), element)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function BtwAsideTimelineCard({
@@ -1858,8 +1893,19 @@ export const MessageList = memo(function MessageList({
                       ))}
                     </div>
                   ) : null}
-                  <div className="pending-message-status">
-                    {pending.status || "Sending..."}
+                  <div className="pending-message-footer">
+                    <div className="pending-message-status">
+                      {pending.status || "Sending..."}
+                    </div>
+                    <div className="deferred-message-actions">
+                      <CopyTextButton
+                        text={pending.content}
+                        label="Copy message text"
+                        className="deferred-message-action deferred-message-action-copy"
+                        showTextLabel
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                    </div>
                   </div>
                 </div>
                 <MessageAge timestampMs={timestampMs} nowMs={nowMs} />
@@ -1879,15 +1925,28 @@ export const MessageList = memo(function MessageList({
             >
               <div className="message-render-content">
                 {canEditDeferred ? (
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     className="message-user-prompt deferred-message-bubble deferred-message-edit"
-                    onClick={() => onEditDeferred?.(deferred.tempId as string)}
-                    title="Edit queued message"
-                    aria-label="Edit queued message text"
+                    onClick={(event) => {
+                      if (hasSelectedTextInside(event.currentTarget)) {
+                        return;
+                      }
+                      onEditDeferred?.(deferred.tempId as string);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") {
+                        return;
+                      }
+                      event.preventDefault();
+                      onEditDeferred?.(deferred.tempId as string);
+                    }}
+                    title="Select text or press Enter to edit queued message"
+                    aria-label="Queued message text; press Enter to edit"
                   >
                     {deferred.content}
-                  </button>
+                  </div>
                 ) : (
                   <div className="message-user-prompt deferred-message-bubble">
                     {deferred.content}
@@ -1949,39 +2008,43 @@ export const MessageList = memo(function MessageList({
                       <span>{deferred.attachmentCount}</span>
                     </span>
                   ) : null}
-                  {(canEditDeferred ||
-                    (deferred.tempId && onCancelDeferred)) && (
-                    <div className="deferred-message-actions">
-                      {canEditDeferred && (
-                        <button
-                          type="button"
-                          className="deferred-message-action deferred-message-action-edit"
-                          onClick={() =>
-                            onEditDeferred?.(deferred.tempId as string)
-                          }
-                          aria-label="Edit queued message"
-                          title="Edit queued message"
-                        >
-                          <PencilIcon />
-                          <span>Edit</span>
-                        </button>
-                      )}
-                      {deferred.tempId && onCancelDeferred && (
-                        <button
-                          type="button"
-                          className="deferred-message-action deferred-message-action-cancel"
-                          onClick={() =>
-                            onCancelDeferred(deferred.tempId as string)
-                          }
-                          aria-label="Cancel queued message"
-                          title="Cancel queued message"
-                        >
-                          <XIcon />
-                          <span>Cancel</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
+                  <div className="deferred-message-actions">
+                    <CopyTextButton
+                      text={deferred.content}
+                      label="Copy queued message"
+                      className="deferred-message-action deferred-message-action-copy"
+                      showTextLabel
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                    {canEditDeferred && (
+                      <button
+                        type="button"
+                        className="deferred-message-action deferred-message-action-edit"
+                        onClick={() =>
+                          onEditDeferred?.(deferred.tempId as string)
+                        }
+                        aria-label="Edit queued message"
+                        title="Edit queued message"
+                      >
+                        <PencilIcon />
+                        <span>Edit</span>
+                      </button>
+                    )}
+                    {deferred.tempId && onCancelDeferred && (
+                      <button
+                        type="button"
+                        className="deferred-message-action deferred-message-action-cancel"
+                        onClick={() =>
+                          onCancelDeferred(deferred.tempId as string)
+                        }
+                        aria-label="Cancel queued message"
+                        title="Cancel queued message"
+                      >
+                        <XIcon />
+                        <span>Cancel</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               <MessageAge timestampMs={timestampMs} nowMs={nowMs} />

@@ -103,6 +103,44 @@ function normalizeSearchText(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function getSearchableUserTurnPreview(item: RenderItem): string | null {
+  if (item.type !== "user_prompt" || item.isSubagent) {
+    return null;
+  }
+  const preview = getUserTurnPreview(item.content);
+  return preview && !isSessionSetupText(preview) ? preview : null;
+}
+
+function isCtrlKeyShortcut(
+  event: KeyboardEvent,
+  key: string,
+  code: string,
+  options: { allowAlt?: boolean } = {},
+): boolean {
+  if (
+    !event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    (!options.allowAlt && event.altKey) ||
+    event.getModifierState("AltGraph")
+  ) {
+    return false;
+  }
+  return event.key.toLocaleLowerCase() === key || event.code === code;
+}
+
+function getSessionIsearchShortcutScope(
+  event: KeyboardEvent,
+): SessionIsearchScope | null {
+  if (isCtrlKeyShortcut(event, "s", "KeyS")) {
+    return "all";
+  }
+  if (isCtrlKeyShortcut(event, "r", "KeyR", { allowAlt: true })) {
+    return "user";
+  }
+  return null;
+}
+
 function findRenderRow(
   messageList: HTMLDivElement | null,
   id: string,
@@ -740,26 +778,15 @@ export const MessageList = memo(function MessageList({
       turnGroups: turnGroups.length,
     });
   }, [messages.length, renderItems.length, turnGroups.length]);
-  const userSearchableTurnCount = useMemo(() => {
-    let count = 0;
-    for (const item of renderItems) {
-      if (item.type === "user_prompt" && !item.isSubagent) {
-        count += 1;
-        if (count >= 2) {
-          break;
-        }
-      }
-    }
-    return count;
-  }, [renderItems]);
+  const hasUserSearchableTurn = useMemo(
+    () => renderItems.some((item) => getSearchableUserTurnPreview(item)),
+    [renderItems],
+  );
   const getUserTurnNavAnchors = useCallback((): UserTurnNavAnchor[] => {
     const anchors: UserTurnNavAnchor[] = [];
     for (const item of renderItems) {
-      if (item.type !== "user_prompt" || item.isSubagent) {
-        continue;
-      }
-      const preview = getUserTurnPreview(item.content);
-      if (!preview || isSessionSetupText(preview)) {
+      const preview = getSearchableUserTurnPreview(item);
+      if (!preview) {
         continue;
       }
       anchors.push({ id: item.id, preview });
@@ -1181,7 +1208,7 @@ export const MessageList = memo(function MessageList({
 
   const openUserTurnSearch = useCallback((scope: SessionIsearchScope) => {
     const canSearch =
-      scope === "all" ? renderItems.length >= 2 : userSearchableTurnCount >= 2;
+      scope === "all" ? renderItems.length > 0 : hasUserSearchableTurn;
     if (!canSearch) {
       return;
     }
@@ -1203,7 +1230,7 @@ export const MessageList = memo(function MessageList({
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
     });
-  }, [renderItems.length, userSearchableTurnCount]);
+  }, [hasUserSearchableTurn, renderItems.length]);
 
   const handleUserTurnSearchQueryChange = useCallback(
     (query: string) => {
@@ -1265,18 +1292,10 @@ export const MessageList = memo(function MessageList({
         scrollToCurrent();
         return;
       }
-      if (
-        event.ctrlKey &&
-        !event.metaKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        (event.key.toLocaleLowerCase() === "r" ||
-          event.key.toLocaleLowerCase() === "s")
-      ) {
+      const requestedScope = getSessionIsearchShortcutScope(event);
+      if (requestedScope) {
         event.preventDefault();
         event.stopPropagation();
-        const requestedScope: SessionIsearchScope =
-          event.key.toLocaleLowerCase() === "s" ? "all" : "user";
         if (userTurnSearch.active && userTurnSearch.scope === requestedScope) {
           cycleUserTurnSearch();
         } else {
@@ -1653,8 +1672,8 @@ export const MessageList = memo(function MessageList({
             : "0/0"}
       </span>
       <span className="user-turn-search-keys">
-        {userTurnSearch.scope === "all" ? "Ctrl+S" : "Ctrl+R"} prev / Enter jump
-        / Esc cancel
+        {userTurnSearch.scope === "all" ? "Ctrl+S" : "Ctrl+R/Ctrl+Alt+R"} prev
+        / Enter jump / Esc cancel
       </span>
     </div>
   ) : null;

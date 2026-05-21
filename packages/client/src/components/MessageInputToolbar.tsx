@@ -918,6 +918,12 @@ export function MessageInputToolbar({
                     <span className="session-shortcuts-keys">
                       <kbd>Ctrl</kbd>
                       <kbd>{isearchScope === "all" ? "S" : "R"}</kbd>
+                      {isearchScope === "user" && (
+                        <>
+                          <span>or</span>
+                          <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>R</kbd>
+                        </>
+                      )}
                     </span>
                     <span>Previous match</span>
                   </div>
@@ -943,6 +949,12 @@ export function MessageInputToolbar({
                     <span className="session-shortcuts-keys">
                       <kbd>Ctrl</kbd>
                       <kbd>{isearchScope === "all" ? "R" : "S"}</kbd>
+                      {isearchScope === "all" && (
+                        <>
+                          <span>or</span>
+                          <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>R</kbd>
+                        </>
+                      )}
                     </span>
                     <span>
                       {isearchScope === "all" ? "User turns" : "All turns"}
@@ -954,6 +966,8 @@ export function MessageInputToolbar({
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
                       <kbd>Ctrl</kbd><kbd>R</kbd>
+                      <span>or</span>
+                      <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>R</kbd>
                     </span>
                     <span>User-turn reverse search</span>
                   </div>

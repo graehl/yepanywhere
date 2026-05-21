@@ -236,6 +236,23 @@ describe("MessageInput", () => {
     ).toBe("false");
   });
 
+  it("shows the Chrome-safe user search fallback in shortcut help", async () => {
+    renderMessageInput();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Session keyboard shortcuts" }),
+    );
+
+    const row = screen
+      .getByText("User-turn reverse search")
+      .closest(".session-shortcuts-row");
+    const keys = Array.from(row?.querySelectorAll("kbd") ?? []).map(
+      (key) => key.textContent,
+    );
+
+    expect(keys).toEqual(["Ctrl", "R", "Ctrl", "Alt", "R"]);
+  });
+
   it("keeps stop available while a running composer has queued text", () => {
     const onStop = vi.fn();
     const textarea = renderMessageInput(vi.fn(() => true), {

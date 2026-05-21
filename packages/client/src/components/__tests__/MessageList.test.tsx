@@ -572,6 +572,27 @@ describe("MessageList", () => {
     composerTarget.remove();
   });
 
+  it("opens user-turn search with Ctrl+Alt+R fallback for one turn", async () => {
+    render(
+      <MessageList
+        messages={[userMessage("user-1", "inspect Chrome shortcut handling")]}
+      />,
+    );
+
+    fireEvent.keyDown(window, {
+      key: "R",
+      code: "KeyR",
+      ctrlKey: true,
+      altKey: true,
+    });
+
+    expect(
+      await screen.findByRole("textbox", {
+        name: "Reverse search user turns",
+      }),
+    ).toBeTruthy();
+  });
+
   it("closes reverse search when focus moves back to the composer", async () => {
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,

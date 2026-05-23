@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useSessionMessages } from "../useSessionMessages";
 
@@ -167,5 +167,74 @@ describe("useSessionMessages cache", () => {
     expect(second.result.current.pagination?.truncatedBeforeMessageId).toBe(
       "older-msg",
     );
+  });
+
+  it("coalesces concurrent incremental refreshes", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    apiMocks.getSession.mockClear();
+    let resolveRefresh!: (value: unknown) => void;
+    const refreshPromise = new Promise((resolve) => {
+      resolveRefresh = resolve;
+    });
+    apiMocks.getSession.mockReturnValueOnce(refreshPromise);
+
+    const first = result.current.fetchNewMessages();
+    const second = result.current.fetchNewMessages();
+
+    expect(second).toBe(first);
+    expect(apiMocks.getSession).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getSession).toHaveBeenCalledWith(
+      "proj-1",
+      "sess-1",
+      "msg-1",
+    );
+
+    await act(async () => {
+      resolveRefresh({
+        session: {
+          provider: "claude",
+          updatedAt: "2026-05-04T00:01:00.000Z",
+        },
+        messages: [],
+        ownership: { owner: "self" },
+        pendingInputRequest: null,
+        slashCommands: null,
+      });
+      await Promise.all([first, second]);
+    });
+
+    expect(apiMocks.getSession).toHaveBeenCalledTimes(1);
   });
 });

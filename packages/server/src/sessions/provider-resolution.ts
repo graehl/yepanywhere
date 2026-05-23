@@ -1,5 +1,8 @@
 import type { ProviderName, UrlProjectId } from "@yep-anywhere/shared";
-import type { ISessionIndexService } from "../indexes/types.js";
+import type {
+  ISessionIndexService,
+  SessionIndexListOptions,
+} from "../indexes/types.js";
 import { canonicalizeProjectPath } from "../projects/paths.js";
 import type { Project, SessionSummary } from "../supervisor/types.js";
 import { CodexSessionReader } from "./codex-reader.js";
@@ -197,19 +200,37 @@ function getSessionSources(
   return sources;
 }
 
+function filterActiveSessions(
+  sessions: SessionSummary[],
+  options?: SessionIndexListOptions,
+): SessionSummary[] {
+  const activeAfterMs = options?.activeAfterMs;
+  if (activeAfterMs === undefined) {
+    return sessions;
+  }
+  return sessions.filter(
+    (session) => Date.parse(session.updatedAt) >= activeAfterMs,
+  );
+}
+
 async function listSessionsForSource(
   project: Project,
   source: SessionSource,
   deps: ProviderResolutionDeps,
+  options?: SessionIndexListOptions,
 ): Promise<SessionSummary[]> {
   if (!deps.sessionIndexService) {
-    return source.reader.listSessions(project.id);
+    return filterActiveSessions(
+      await source.reader.listSessions(project.id),
+      options,
+    );
   }
 
   let sessions = await deps.sessionIndexService.getSessionsWithCache(
     source.sessionDir,
     project.id,
     source.reader,
+    options,
   );
 
   if (
@@ -222,6 +243,7 @@ async function listSessionsForSource(
         dir,
         project.id,
         mergedReader,
+        options,
       );
       sessions = [...sessions, ...merged];
     }
@@ -234,12 +256,18 @@ export async function listSessionsAcrossProviders(
   project: Project,
   deps: ProviderResolutionDeps,
   catalog?: ProviderProjectCatalog,
+  options?: SessionIndexListOptions,
 ): Promise<SessionSummary[]> {
   const sessions: SessionSummary[] = [];
   const seenSessionIds = new Set<string>();
 
   for (const source of getSessionSources(project, deps, undefined, catalog)) {
-    const sourceSessions = await listSessionsForSource(project, source, deps);
+    const sourceSessions = await listSessionsForSource(
+      project,
+      source,
+      deps,
+      options,
+    );
     for (const session of sourceSessions) {
       if (seenSessionIds.has(session.id)) continue;
       seenSessionIds.add(session.id);

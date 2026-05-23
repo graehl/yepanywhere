@@ -30,6 +30,7 @@ import type {
   SessionSummary,
 } from "../supervisor/types.js";
 import { buildProviderProjectCatalog } from "./provider-catalog.js";
+import { getActiveSessionIndexOptions } from "./session-list-options.js";
 
 export interface InboxDeps {
   scanner: ProjectScanner;
@@ -44,6 +45,7 @@ export interface InboxDeps {
   geminiScanner?: GeminiSessionScanner;
   geminiSessionsDir?: string;
   geminiReaderFactory?: (projectPath: string) => GeminiSessionReader;
+  sessionAutoArchiveDays?: number;
 }
 
 export interface InboxItem {
@@ -103,6 +105,9 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
       codexScanner: deps.codexScanner,
       geminiScanner: deps.geminiScanner,
     });
+    const listOptions = getActiveSessionIndexOptions(
+      deps.sessionAutoArchiveDays,
+    );
 
     // Fetch sessions from all projects in parallel
     const projectSessionResults = await Promise.all(
@@ -120,6 +125,7 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
               geminiHashToCwd: providerCatalog.geminiHashToCwd,
             },
             providerCatalog,
+            listOptions,
           );
           return { project, sessions };
         } catch (err) {

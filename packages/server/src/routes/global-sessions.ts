@@ -8,6 +8,7 @@
 import type { ProviderName } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
+import type { SessionIndexListOptions } from "../indexes/types.js";
 import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
@@ -29,6 +30,10 @@ import type {
 } from "../supervisor/types.js";
 import type { BusEvent, EventBus } from "../watcher/index.js";
 import { buildProviderProjectCatalog } from "./provider-catalog.js";
+import {
+  getActiveSessionIndexOptions,
+  isSessionAutoArchived,
+} from "./session-list-options.js";
 
 export interface GlobalSessionsDeps {
   scanner: ProjectScanner;
@@ -52,6 +57,8 @@ export interface GlobalSessionsDeps {
   geminiReaderFactory?: (projectPath: string) => GeminiSessionReader;
   /** Event bus for cache invalidation */
   eventBus?: EventBus;
+  /** Sessions older than this many days are hidden from default scans. 0 disables. */
+  sessionAutoArchiveDays?: number;
 }
 
 export interface GlobalSessionItem {
@@ -160,9 +167,13 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
     });
   }
 
+  const getDefaultListOptions = (): SessionIndexListOptions | undefined =>
+    getActiveSessionIndexOptions(deps.sessionAutoArchiveDays);
+
   const listSessionsForProject = async (
     project: Project,
     providerCatalog: Awaited<ReturnType<typeof buildProviderProjectCatalog>>,
+    options?: SessionIndexListOptions,
   ): Promise<SessionSummary[]> => {
     return listSessionsAcrossProviders(
       project,
@@ -176,6 +187,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         geminiHashToCwd: providerCatalog.geminiHashToCwd,
       },
       providerCatalog,
+      options,
     );
   };
 
@@ -188,11 +200,21 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       geminiScanner: deps.geminiScanner,
     });
 
+    const statsListOptions = getDefaultListOptions();
+    const statsAutoArchiveAfterMs = statsListOptions?.activeAfterMs;
+
     for (const project of projects) {
-      const sessions = await listSessionsForProject(project, providerCatalog);
+      const sessions = await listSessionsForProject(
+        project,
+        providerCatalog,
+        statsListOptions,
+      );
       for (const session of sessions) {
         const metadata = deps.sessionMetadataService?.getMetadata(session.id);
-        const isArchived = metadata?.isArchived ?? session.isArchived ?? false;
+        const isArchived =
+          metadata?.isArchived ??
+          session.isArchived ??
+          isSessionAutoArchived(session, statsAutoArchiveAfterMs);
         const isStarred = metadata?.isStarred ?? session.isStarred ?? false;
         const executor = metadata?.executor;
 
@@ -298,14 +320,25 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       geminiScanner: deps.geminiScanner,
     });
 
+    const defaultListOptions = getDefaultListOptions();
+    const listOptions = includeArchived ? undefined : defaultListOptions;
+    const autoArchiveAfterMs = defaultListOptions?.activeAfterMs;
+
     for (const project of projects) {
-      const sessions = await listSessionsForProject(project, providerCatalog);
+      const sessions = await listSessionsForProject(
+        project,
+        providerCatalog,
+        listOptions,
+      );
 
       // Enrich each session
       for (const session of sessions) {
         // Get session metadata
         const metadata = deps.sessionMetadataService?.getMetadata(session.id);
-        const isArchived = metadata?.isArchived ?? session.isArchived ?? false;
+        const isArchived =
+          metadata?.isArchived ??
+          session.isArchived ??
+          isSessionAutoArchived(session, autoArchiveAfterMs);
         const isStarred = metadata?.isStarred ?? session.isStarred ?? false;
         const customTitle = metadata?.customTitle ?? session.customTitle;
         const parentSessionId =

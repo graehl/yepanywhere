@@ -28,6 +28,7 @@ import type {
   SessionSummary,
 } from "../supervisor/types.js";
 import { buildProviderProjectCatalog } from "./provider-catalog.js";
+import { getActiveSessionIndexOptions } from "./session-list-options.js";
 
 export interface ProjectsDeps {
   scanner: ProjectScanner;
@@ -51,6 +52,8 @@ export interface ProjectsDeps {
   geminiSessionsDir?: string;
   /** Optional shared Gemini reader factory for cross-provider session lookups */
   geminiReaderFactory?: (projectPath: string) => GeminiSessionReader;
+  /** Sessions older than this many days are hidden from default scans. 0 disables. */
+  sessionAutoArchiveDays?: number;
 }
 
 interface ProjectActivityCounts {
@@ -367,6 +370,8 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
+    const includeArchived = c.req.query("includeArchived") === "true";
+
     // Use getOrCreateProject to support new projects without sessions yet
     const project = await deps.scanner.getOrCreateProject(projectId);
     if (!project) {
@@ -390,6 +395,9 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         geminiHashToCwd: providerCatalog.geminiHashToCwd,
       },
       providerCatalog,
+      includeArchived
+        ? undefined
+        : getActiveSessionIndexOptions(deps.sessionAutoArchiveDays),
     );
 
     // Add missing owned sessions (new sessions that don't have user/assistant messages yet)

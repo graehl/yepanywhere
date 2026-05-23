@@ -18,6 +18,7 @@ const apiMocks = vi.hoisted(() => ({
 
 const sessionMessagesMock = vi.hoisted(() => ({
   messages: [] as Array<Record<string, unknown>>,
+  provider: "codex",
 }));
 
 const fetchNewMessages = vi.fn(async () => {});
@@ -96,7 +97,7 @@ vi.mock("../useSessionMessages", () => ({
     session: {
       id: "sess-1",
       projectId: "proj-1",
-      provider: "codex",
+      provider: sessionMessagesMock.provider,
       model: "gpt-5.4",
       messages: [],
     },
@@ -159,6 +160,7 @@ describe("useSession completion reconciliation", () => {
     fileActivityOptions = undefined;
     sessionStreamHandler = null;
     sessionMessagesMock.messages = [];
+    sessionMessagesMock.provider = "codex";
   });
 
   afterEach(() => {
@@ -670,7 +672,49 @@ describe("useSession completion reconciliation", () => {
     });
   });
 
-  it("marks a promoted deferred queue chip as sending and fetches catch-up", () => {
+  it("marks a promoted deferred queue chip as sending without Codex catch-up", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      result.current.addDeferredMessage({
+        tempId: "temp-promoted",
+        content: "promote this",
+        timestamp: "2026-04-24T00:00:00.000Z",
+      });
+    });
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "deferred-queue",
+        reason: "promoted",
+        tempId: "temp-promoted",
+        messages: [],
+      });
+    });
+
+    expect(result.current.deferredMessages).toMatchObject([
+      {
+        tempId: "temp-promoted",
+        content: "promote this",
+        deliveryState: "sending",
+      },
+    ]);
+    expect(fetchNewMessages).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(fetchNewMessages).not.toHaveBeenCalled();
+  });
+
+  it("fetches catch-up for a Claude promoted deferred queue chip", () => {
+    sessionMessagesMock.provider = "claude";
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {
         owner: "self",

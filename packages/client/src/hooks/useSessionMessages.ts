@@ -607,36 +607,53 @@ export function useSessionMessages(
     [],
   );
 
+  const fetchNewMessagesInFlightRef = useRef<Promise<void> | null>(null);
+
   // Fetch new messages incrementally (for file change events)
-  const fetchNewMessages = useCallback(async () => {
-    try {
-      const data = await api.getSession(
-        projectId,
-        sessionId,
-        lastMessageIdRef.current,
-      );
-      if (data.messages.length > 0) {
-        updatePersistedTimestampWatermark(data.messages);
-        setMessages((prev) => {
-          const result = mergeJSONLMessages(prev, data.messages, {
-            skipDagOrdering: !getProvider(data.session.provider).capabilities
-              .supportsDag,
-          });
-          return isCodexProvider(data.session.provider)
-            ? reconcileCodexLinearMessages(result.messages)
-            : result.messages;
-        });
-      }
-      // Update session metadata (including title, model, contextUsage) which may have changed
-      // For new sessions, prev may be null if JSONL didn't exist on initial load
-      setSession((prev) =>
-        prev
-          ? { ...prev, ...data.session }
-          : data.session,
-      );
-    } catch {
-      // Silent fail for incremental updates
+  const fetchNewMessages = useCallback(() => {
+    if (fetchNewMessagesInFlightRef.current) {
+      return fetchNewMessagesInFlightRef.current;
     }
+
+    const request = (async () => {
+      try {
+        const data = await api.getSession(
+          projectId,
+          sessionId,
+          lastMessageIdRef.current,
+        );
+        if (data.messages.length > 0) {
+          updatePersistedTimestampWatermark(data.messages);
+          setMessages((prev) => {
+            const result = mergeJSONLMessages(prev, data.messages, {
+              skipDagOrdering: !getProvider(data.session.provider).capabilities
+                .supportsDag,
+            });
+            return isCodexProvider(data.session.provider)
+              ? reconcileCodexLinearMessages(result.messages)
+              : result.messages;
+          });
+        }
+        // Update session metadata (including title, model, contextUsage) which may have changed
+        // For new sessions, prev may be null if JSONL didn't exist on initial load
+        setSession((prev) =>
+          prev
+            ? { ...prev, ...data.session }
+            : data.session,
+        );
+      } catch {
+        // Silent fail for incremental updates
+      }
+    })();
+
+    fetchNewMessagesInFlightRef.current = request;
+    void request.finally(() => {
+      if (fetchNewMessagesInFlightRef.current === request) {
+        fetchNewMessagesInFlightRef.current = null;
+      }
+    });
+
+    return request;
   }, [
     projectId,
     sessionId,

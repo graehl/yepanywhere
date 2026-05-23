@@ -66,6 +66,19 @@ interface CodexSessionFile {
 }
 
 const CODEX_META_READ_MAX_BYTES = 1024 * 1024;
+const CODEX_SCAN_CACHE_TTL_MS = 5000;
+
+interface CodexScanOptions {
+  activeAfterMs?: number;
+}
+
+interface CodexSharedScanCacheEntry {
+  timestamp: number;
+  sessions: CodexSessionFile[];
+  inFlight?: Promise<CodexSessionFile[]>;
+}
+
+const codexSharedScanCache = new Map<string, CodexSharedScanCacheEntry>();
 
 interface CodexEntryCache {
   filePath: string;
@@ -110,8 +123,6 @@ export class CodexSessionReader implements ISessionReader {
   // Cache of session ID -> file path for quick lookups
   private sessionFileCache: Map<string, CodexSessionFile> = new Map();
   private entryCache: Map<string, CodexEntryCache> = new Map();
-  private cacheTimestamp = 0;
-  private readonly CACHE_TTL_MS = 5000; // 5 second cache
 
   constructor(options: CodexSessionReaderOptions) {
     this.sessionsDir = options.sessionsDir;
@@ -123,7 +134,11 @@ export class CodexSessionReader implements ISessionReader {
   invalidateCache(): void {
     this.sessionFileCache.clear();
     this.entryCache.clear();
-    this.cacheTimestamp = 0;
+    for (const cacheKey of codexSharedScanCache.keys()) {
+      if (cacheKey.startsWith(`${this.sessionsDir}::`)) {
+        codexSharedScanCache.delete(cacheKey);
+      }
+    }
   }
 
   async listSessions(projectId: UrlProjectId): Promise<SessionSummary[]> {
@@ -303,25 +318,71 @@ export class CodexSessionReader implements ISessionReader {
   /**
    * Scan the sessions directory and find all session files.
    */
-  private async scanSessions(): Promise<CodexSessionFile[]> {
-    // Check cache
-    if (Date.now() - this.cacheTimestamp < this.CACHE_TTL_MS) {
-      return Array.from(this.sessionFileCache.values());
+  private async scanSessions(
+    options?: CodexScanOptions,
+  ): Promise<CodexSessionFile[]> {
+    const cacheKey = this.getSharedScanCacheKey(options);
+    const cached = codexSharedScanCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && now - cached.timestamp < CODEX_SCAN_CACHE_TTL_MS) {
+      if (cached.inFlight) {
+        const sessions = await cached.inFlight;
+        this.hydrateSessionFileCache(sessions);
+        return sessions.filter((session) => !session.isSubagent);
+      }
+      this.hydrateSessionFileCache(cached.sessions);
+      return cached.sessions.filter((session) => !session.isSubagent);
     }
 
+    const inFlight = this.scanSessionsUncached(options);
+    codexSharedScanCache.set(cacheKey, {
+      timestamp: now,
+      sessions: [],
+      inFlight,
+    });
+
+    try {
+      const sessions = await inFlight;
+      codexSharedScanCache.set(cacheKey, {
+        timestamp: Date.now(),
+        sessions,
+      });
+      this.hydrateSessionFileCache(sessions);
+      return sessions.filter((session) => !session.isSubagent);
+    } catch (error) {
+      const entry = codexSharedScanCache.get(cacheKey);
+      if (entry?.inFlight === inFlight) {
+        codexSharedScanCache.delete(cacheKey);
+      }
+      throw error;
+    }
+  }
+
+  private getSharedScanCacheKey(options?: CodexScanOptions): string {
+    return `${this.sessionsDir}::activeAfter=${options?.activeAfterMs ?? "all"}`;
+  }
+
+  private hydrateSessionFileCache(sessions: CodexSessionFile[]): void {
+    for (const session of sessions) {
+      this.sessionFileCache.set(session.id, session);
+    }
+  }
+
+  private async scanSessionsUncached(
+    options?: CodexScanOptions,
+  ): Promise<CodexSessionFile[]> {
     const sessions: CodexSessionFile[] = [];
     const files = await this.findJsonlFiles(this.sessionsDir);
 
     for (const filePath of files) {
-      const session = await this.readSessionMeta(filePath);
+      const session = await this.readSessionMeta(filePath, options);
       if (session) {
         sessions.push(session);
-        this.sessionFileCache.set(session.id, session);
       }
     }
 
-    this.cacheTimestamp = Date.now();
-    return sessions.filter((session) => !session.isSubagent);
+    return sessions;
   }
 
   async getSessionFilePath(sessionId: string): Promise<string | null> {
@@ -335,14 +396,16 @@ export class CodexSessionReader implements ISessionReader {
 
   async listSessionFiles(
     _sessionDir: string,
+    options?: CodexScanOptions,
   ): Promise<{ sessionId: string; filePath: string }[]> {
-    const sessions = await this.scanSessions();
+    const sessions = await this.scanSessions(options);
 
     return sessions
-      .filter((session) =>
-        this.projectPath
-          ? canonicalizeProjectPath(session.cwd) === this.projectPath
-          : true,
+      .filter(
+        (session) =>
+          (!this.projectPath ||
+            canonicalizeProjectPath(session.cwd) === this.projectPath) &&
+          (!options?.activeAfterMs || session.mtime >= options.activeAfterMs),
       )
       .map((session) => ({
         sessionId: session.id,
@@ -469,12 +532,15 @@ export class CodexSessionReader implements ISessionReader {
    */
   private async readSessionMeta(
     filePath: string,
+    options?: CodexScanOptions,
   ): Promise<CodexSessionFile | null> {
     try {
-      const [stats, firstLine] = await Promise.all([
-        stat(filePath),
-        readFirstLine(filePath, CODEX_META_READ_MAX_BYTES),
-      ]);
+      const stats = await stat(filePath);
+      if (options?.activeAfterMs && stats.mtimeMs < options.activeAfterMs) {
+        return null;
+      }
+
+      const firstLine = await readFirstLine(filePath, CODEX_META_READ_MAX_BYTES);
 
       if (!firstLine) return null;
 

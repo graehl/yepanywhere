@@ -130,6 +130,8 @@ export interface AppOptions {
   sessionIndexService?: SessionIndexService;
   /** Project scanner cache TTL in ms (0 = rescan every request). */
   projectScanCacheTtlMs?: number;
+  /** Sessions older than this many days are hidden from default scans. 0 disables. */
+  sessionAutoArchiveDays?: number;
   /** Maximum concurrent workers. 0 = unlimited (default) */
   maxWorkers?: number;
   /** Idle threshold in milliseconds for preemption */
@@ -687,6 +689,7 @@ export function createApp(options: AppOptions): AppResult {
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
       geminiReaderFactory,
+      sessionAutoArchiveDays: options.sessionAutoArchiveDays,
     }),
   );
   app.route(
@@ -762,6 +765,7 @@ export function createApp(options: AppOptions): AppResult {
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
       geminiReaderFactory,
+      sessionAutoArchiveDays: options.sessionAutoArchiveDays,
     }),
   );
 
@@ -783,6 +787,7 @@ export function createApp(options: AppOptions): AppResult {
       geminiSessionsDir: GEMINI_TMP_DIR,
       geminiReaderFactory,
       eventBus: options.eventBus,
+      sessionAutoArchiveDays: options.sessionAutoArchiveDays,
     }),
   );
 

@@ -1804,9 +1804,14 @@ export function useSession(
           reason: deferredData.reason,
           tempId: deferredData.tempId,
         });
-        if (
+        const sessionProvider = session?.provider;
+        const needsDeferredPromotionCatchUp =
           deferredData.reason === "promoted" &&
-          (deferredData.messages?.length ?? 0) === 0
+          (deferredData.messages?.length ?? 0) === 0 &&
+          sessionProvider !== "codex" &&
+          sessionProvider !== "codex-oss";
+        if (
+          needsDeferredPromotionCatchUp
         ) {
           throttledFetch();
           // A second call asks the existing throttle for a trailing catch-up in

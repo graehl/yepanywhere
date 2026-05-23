@@ -475,6 +475,36 @@ describe("SessionIndexService", () => {
     });
   });
 
+  describe("active window", () => {
+    it("filters cached summaries by activeAfter without deleting archive entries", async () => {
+      await createSession("session-old", "Old session");
+      await createSession("session-new", "New session");
+
+      const oldTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      await utimes(join(sessionDir, "session-old.jsonl"), oldTime, oldTime);
+
+      const activeAfterMs = Date.now() - 14 * 24 * 60 * 60 * 1000;
+      const active = await service.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+        { activeAfterMs },
+      );
+
+      expect(active.map((session) => session.id)).toEqual(["session-new"]);
+
+      const archive = await service.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(archive.map((session) => session.id).sort()).toEqual([
+        "session-new",
+        "session-old",
+      ]);
+    });
+  });
+
   describe("sorting", () => {
     it("returns sessions sorted by updatedAt descending", async () => {
       // Create sessions with different timestamps

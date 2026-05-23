@@ -2,6 +2,14 @@ Read and follow `CLAUDE.md` for repo context and instructions, and `DEVELOPMENT.
 
 Before fielding a user request to improve **stability**, **performance**, or **security**, read `ARCHITECTURE.md` first. Check whether the issue is already addressed in the large-scope refactor proposals or the per-doc cleanup tables, and whether a relevant trigger condition has now been met. If the proposed work would touch a load-bearing piece named in `ARCHITECTURE.md` (fan-out, replay buffer, streaming throttle, transport framing, auth state), prefer reading the linked detailed doc and surfacing the existing trade-off to the user before writing code.
 
+## Architecture Mandates
+
+Before modifying background loops, watchers, polling, retry timers, heartbeat
+scheduling, session liveness, client stream/reconnect behavior, or server
+catch-up paths, read `topics/architecture-mandates.md`. In particular, an idle
+provider session and a closed client tab must never indefinitely consume server
+resources.
+
 ## Codex Version Bump Audit
 
 Treat `package.json` `yepAnywhere.codexCli.expectedVersion` as the repo's

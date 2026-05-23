@@ -568,6 +568,7 @@ async function startServer() {
     projectMetadataService,
     sessionIndexService,
     projectScanCacheTtlMs: config.projectScanCacheTtlMs,
+    sessionAutoArchiveDays: config.sessionAutoArchiveDays,
     maxWorkers: config.maxWorkers,
     idlePreemptThresholdMs: config.idlePreemptThresholdMs,
     pushService,

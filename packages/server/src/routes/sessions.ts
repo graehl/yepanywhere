@@ -13,8 +13,10 @@ import {
   truncateSessionTitle,
 } from "@yep-anywhere/shared";
 import { mkdir } from "node:fs/promises";
+import { performance } from "node:perf_hooks";
 import { Hono } from "hono";
 import { augmentTextBlocks } from "../augments/markdown-augments.js";
+import { getLogger } from "../logging/logger.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
@@ -56,6 +58,12 @@ import {
   normalizeSshHostAlias,
 } from "../utils/sshHostAlias.js";
 import type { EventBus } from "../watcher/index.js";
+
+const SESSION_DETAIL_SLOW_LOG_MS = 250;
+
+function roundedMs(value: number): number {
+  return Math.round(value * 10) / 10;
+}
 
 /**
  * Type guard to check if a result is a QueuedResponse
@@ -1598,6 +1606,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   //   ?tailTurns=<n> - aggressive opt-in client memory cap by recent user turns
   //   ?tailFrom=<id> - aggressive opt-in client memory cap from a user message id
   routes.get("/projects/:projectId/sessions/:sessionId", async (c) => {
+    const requestStartMs = performance.now();
     const projectId = c.req.param("projectId");
     const sessionId = c.req.param("sessionId");
     const afterMessageId = c.req.query("afterMessageId");
@@ -1625,6 +1634,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
+    const projectResolvedMs = performance.now();
 
     // Check if session is actively owned by a process
     const process = deps.supervisor.getProcessForSession(sessionId);
@@ -1701,8 +1711,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         );
       }
     }
+    const readEndMs = performance.now();
 
     let session = loadedSession ? normalizeSession(loadedSession) : null;
+    const normalizedMessageCount = session?.messages.length ?? 0;
+    const normalizeEndMs = performance.now();
     let incrementalAnchorFound = false;
     if (session && afterMessageId) {
       const sliced = sliceAfterMessageIdWithMatch(
@@ -1853,6 +1866,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       session = { ...session, messages: sliced.messages };
       paginationInfo = sliced.pagination;
     }
+    const sliceEndMs = performance.now();
 
     // Codex normalized IDs can drift between stream and JSONL. If an
     // incremental request misses its anchor, never return the full historical
@@ -1868,6 +1882,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (!publicShare) {
       await augmentPersistedSessionMessages(session.messages);
     }
+    const augmentEndMs = performance.now();
 
     // Override context usage with SDK-reported context window from live process
     // The reader uses hardcoded defaults; the process captures the real value at runtime
@@ -1888,6 +1903,39 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     const { messages: _messages, ...sessionMetadata } = session;
+    const totalMs = performance.now() - requestStartMs;
+    if (totalMs >= SESSION_DETAIL_SLOW_LOG_MS) {
+      getLogger().warn(
+        {
+          afterMessageId: afterMessageId ?? null,
+          beforeMessageId: beforeMessageId ?? null,
+          event: "session_detail_slow",
+          incrementalAnchorFound: afterMessageId
+            ? incrementalAnchorFound
+            : null,
+          normalizedMessageCount,
+          owned: Boolean(process),
+          processState: process?.state.type ?? null,
+          projectId,
+          provider: session.provider,
+          publicShare,
+          returnedMessageCount: session.messages.length,
+          sessionId,
+          tailCompactions: tailCompactions ?? null,
+          tailTurns: tailTurns ?? null,
+          timings: {
+            augmentMs: roundedMs(augmentEndMs - sliceEndMs),
+            normalizeMs: roundedMs(normalizeEndMs - readEndMs),
+            projectMs: roundedMs(projectResolvedMs - requestStartMs),
+            readMs: roundedMs(readEndMs - projectResolvedMs),
+            routeMs: roundedMs(sliceEndMs - normalizeEndMs),
+            totalMs: roundedMs(totalMs),
+          },
+          totalMessageCount: session.messageCount,
+        },
+        "SESSION_DETAIL: slow request",
+      );
+    }
 
     return c.json({
       session: {

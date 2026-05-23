@@ -53,6 +53,8 @@ export interface Config {
   sessionIndexWriteLockTimeoutMs: number;
   /** Session index lock staleness threshold (ms). */
   sessionIndexWriteLockStaleMs: number;
+  /** Default active session window in days. 0 disables auto-archiving. */
+  sessionAutoArchiveDays: number;
   /** Project scanner cache TTL (ms). 0 = rescan every request. */
   projectScanCacheTtlMs: number;
   /** Idle timeout in milliseconds before process cleanup */
@@ -184,6 +186,10 @@ export function loadConfig(): Config {
     0,
     parseIntOrDefault(process.env.PROJECT_SCAN_CACHE_TTL_MS, 5000),
   );
+  const sessionAutoArchiveDays = Math.max(
+    0,
+    parseIntOrDefault(process.env.SESSION_AUTO_ARCHIVE_DAYS, 14),
+  );
   const managedUploadsDir = path.join(dataDir, "uploads");
   const extraAllowedImagePaths =
     process.env.ALLOWED_IMAGE_PATHS !== undefined
@@ -200,6 +206,7 @@ export function loadConfig(): Config {
     sessionIndexFullValidationMs,
     sessionIndexWriteLockTimeoutMs,
     sessionIndexWriteLockStaleMs,
+    sessionAutoArchiveDays,
     projectScanCacheTtlMs,
     idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 5 * 60) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),

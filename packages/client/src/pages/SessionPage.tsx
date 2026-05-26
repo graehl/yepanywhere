@@ -692,14 +692,24 @@ function SessionPageContent({
   const { connectionState } = useActivityBusState();
   const hasSessionUpdateStream =
     status.owner === "self" || status.owner === "external";
-  const sessionConnectionStatus =
-    !showConnectionBars || !hasSessionUpdateStream
+
+  // Always compute the real connection state. We only hide the bar behind
+  // developer mode for connected/idle states; a disconnected state is
+  // always shown so users can see when the live pipe is broken (e.g. dropped
+  // SSH tunnel, relay issue, etc.).
+  const rawSessionConnectionStatus =
+    !hasSessionUpdateStream
       ? "idle"
       : sessionUpdatesConnected
         ? "connected"
         : connectionState === "reconnecting"
           ? "connecting"
           : "disconnected";
+
+  const sessionConnectionStatus =
+    showConnectionBars || rawSessionConnectionStatus === "disconnected"
+      ? rawSessionConnectionStatus
+      : "idle";
 
   // Effective provider/model for immediate display before session data loads
   const effectiveProvider = session?.provider ?? initialProvider;

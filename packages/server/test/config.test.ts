@@ -14,7 +14,9 @@ describe("loadConfig codex paths", () => {
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig();
 
-    expect(config.codexSessionsDir).toBe("/tmp/custom-codex-home/sessions");
+    expect(config.codexSessionsDir).toBe(
+      path.join("/tmp/custom-codex-home", "sessions"),
+    );
   });
 
   it("prefers CODEX_SESSIONS_DIR over CODEX_HOME", async () => {
@@ -36,6 +38,14 @@ describe("loadConfig codex paths", () => {
     );
   });
 
+  it("includes Windows temp directories in default local-image paths", async () => {
+    const { getDefaultAllowedImagePaths } = await import("../src/config.js");
+
+    expect(getDefaultAllowedImagePaths("win32", "C:\\Users\\me\\Temp")).toEqual(
+      ["/tmp", "C:\\tmp", "C:\\Users\\me\\Temp"],
+    );
+  });
+
   it("always allows the managed uploads directory for local-image", async () => {
     vi.stubEnv("YEP_ANYWHERE_DATA_DIR", "/tmp/yep-data");
     vi.stubEnv("ALLOWED_IMAGE_PATHS", "");
@@ -43,7 +53,9 @@ describe("loadConfig codex paths", () => {
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig();
 
-    expect(config.allowedImagePaths).toEqual(["/tmp/yep-data/uploads"]);
+    expect(config.allowedImagePaths).toEqual([
+      path.join("/tmp/yep-data", "uploads"),
+    ]);
   });
 
   it("merges managed uploads with configured local-image paths", async () => {
@@ -54,7 +66,7 @@ describe("loadConfig codex paths", () => {
     const config = loadConfig();
 
     expect(config.allowedImagePaths).toEqual([
-      "/tmp/yep-data/uploads",
+      path.join("/tmp/yep-data", "uploads"),
       "/tmp",
       "/var/tmp",
     ]);

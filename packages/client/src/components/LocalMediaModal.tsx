@@ -10,7 +10,7 @@ interface LocalMediaModalProps {
 }
 
 function getFileName(path: string): string {
-  return path.split("/").pop() ?? path;
+  return path.split(/[\\/]/).pop() ?? path;
 }
 
 function localMediaApiPath(path: string): string {

@@ -25,6 +25,7 @@ import * as fs from "node:fs";
 import * as http from "node:http";
 import * as inspector from "node:inspector";
 
+import { markDevReloadRequested } from "../dev-reload-signal.js";
 import {
   LOG_LEVELS,
   type LogLevel,
@@ -441,6 +442,7 @@ async function handleSetProxyDebug(
 /** POST /reload */
 function handleReload(res: http.ServerResponse): void {
   console.log("[Maintenance] Reload requested, exiting...");
+  markDevReloadRequested();
 
   sendJson(res, 200, {
     message: "Server restarting...",

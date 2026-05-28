@@ -108,6 +108,28 @@ forcing silent state transitions.[^claude-queued-bug][^codex-queued-bug]
   participates in the same process state machine and compaction non-interruptible
   UX path.[^codex][^handoff]
 
+## Optional Provider Detail Dictionary
+
+Providers may carry optional, provider-specific detail when it either maps cleanly
+to existing renderer semantics or preserves compact signal for a later provider
+UI. These fields are additive: generic session rendering must keep working when
+they are absent.
+
+| Field / capability | Source | Current YA mapping | UI status |
+|---|---|---|---|
+| `tool_use.input.kind` / `title` / `status` | Grok ACP `tool_call*` | Carried on Grok tool inputs; `title`/`kind` also choose the closest YA tool name. | Generic tool row status is rendered via existing result pairing; explicit metadata expansion is not landed. |
+| `tool_use.input.locations` | Grok ACP `locations[]` | Carried when present; first location can help derive `Read.file_path`. | First-class location/follow-along UI is not landed. |
+| `tool_use.input.rawInput` | Grok ACP `rawInput` | Carried when useful for future inspection; normalized fields are still populated for `Read`, `Bash`, `Grep`, `Edit`, `TodoWrite`, and `Write` when one-to-one enough. | Existing renderers use normalized fields; raw expansion is not landed. |
+| `tool_use.input.content` | Grok ACP update `content[]` | Carried for non-terminal tool update detail such as diff snippets or short status text. | Dedicated inline expansion is not landed. |
+| `toolUseResult` normalized from Grok `rawOutput` | Grok `ReadFile`, `Bash`, `GrepSearch`, `SearchReplace`, `Todo` | Mapped to existing YA result schemas for `Read`, `Bash`, `Grep`, `Edit`, and `TodoWrite` when fields line up. | Rendered by existing tool rows. |
+| Grok custom `rawOutput` fallback | Grok `rawOutput` types without a close YA schema, e.g. `ListDir` | Kept as compact provider result data rather than forcing a misleading generic tool schema. Per-update `_meta` is intentionally not carried. | Fallback JSON only; custom Grok UI is not landed. |
+| `message.content[].grokPlan.entries` | Grok ACP `plan` | Plan entries are carried on a thinking block while also rendering readable `status: content` text. | Thinking text renders; structured plan UI is not landed. |
+| dynamic command inventory | Grok `available_commands_update` | Recognized as a provider capability signal, but not replayed into transcript messages because it is high-churn and noisy. | Dynamic command UI from persisted Grok history is not landed. |
+
+When adding fields here, prefer the existing renderer schema if the semantic map
+is close enough. If not, keep the Grok-specific structure compact and explicit
+rather than widening a generic schema until the UI actually consumes it.
+
 ## Provider handoff verification status
 
 - Provider-native handoff behavior has not yet been independently verified as a

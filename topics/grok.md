@@ -99,6 +99,22 @@ The mandate from local rules and architecture docs is to prototype Grok-specific
 
 This structure guarantees that enabling or even crashing the Grok prototype (via `ENABLED_PROVIDERS=grok`) cannot affect Claude, Codex, Gemini, or OpenCode users or sessions.
 
+## History Replay Detail Policy
+
+Grok history replay reads `updates.jsonl` as the authoritative restore stream and
+normalizes only the transcript-bearing updates. High-churn
+`available_commands_update` records are treated as capability evidence, not
+message history.
+
+Replay should follow the provider optional-detail dictionary in
+[provider-state-machine.md](provider-state-machine.md): map `read_file`,
+terminal execution, `grep`, `search_replace`, and `todo_write` to existing YA
+`Read`, `Bash`, `Grep`, `Edit`, and `TodoWrite` schemas when the fields are
+one-to-one enough; otherwise keep compact Grok-specific detail rather than
+forcing misleading generic shapes. Per-update Grok `_meta` is noisy telemetry
+and should not be carried into replayed messages unless a future UI explicitly
+needs a stable subset.
+
 ## Open Questions & Epistemic Status
 
 - Exact ACP invocation flag for the `grok` binary (local test will resolve quickly).

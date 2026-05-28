@@ -123,7 +123,7 @@ export function normalizeSession(loaded: LoadedSession): Session {
     case "grok":
       return {
         ...summary,
-        messages: [],
+        messages: data.session.messages as Message[],
       };
     case "opencode":
       return {

@@ -44,9 +44,11 @@ function createSummary(): SessionSummary {
 async function createGrokRedirectFixture(): Promise<{
   tempDir: string;
   wrongProject: Project;
+  rightProject: Project;
   rightProjectId: UrlProjectId;
   sessionId: string;
   grokSessionsDir: string;
+  sessionDir: string;
 }> {
   const tempDir = await mkdtemp(join(tmpdir(), "ya-grok-redirect-"));
   const wrongProjectPath = join(tempDir, "wrong");
@@ -81,9 +83,17 @@ async function createGrokRedirectFixture(): Promise<{
       name: "wrong",
       sessionDir: join(wrongProjectPath, ".claude-sessions"),
     },
+    rightProject: {
+      ...createProject(),
+      id: toUrlProjectId(rightProjectPath),
+      path: rightProjectPath,
+      name: "right",
+      sessionDir: join(rightProjectPath, ".claude-sessions"),
+    },
     rightProjectId: toUrlProjectId(rightProjectPath),
     sessionId,
     grokSessionsDir,
+    sessionDir,
   };
 }
 
@@ -471,6 +481,211 @@ describe("Sessions metadata route", () => {
       undefined,
       { includeOrphans: true },
     );
+  });
+
+  it("replays Grok updates.jsonl into renderable messages", async () => {
+    const fixture = await createGrokRedirectFixture();
+    try {
+      const bytes = (value: string) => Array.from(Buffer.from(value, "utf-8"));
+      const readPath = join(fixture.rightProject.path, "README.md");
+      const updates = [
+        {
+          timestamp: 1779988150,
+          method: "session/update",
+          params: {
+            sessionId: fixture.sessionId,
+            update: {
+              sessionUpdate: "user_message_chunk",
+              content: { type: "text", text: "inspect this" },
+            },
+          },
+        },
+        {
+          timestamp: 1779988151,
+          method: "session/update",
+          params: {
+            sessionId: fixture.sessionId,
+            update: {
+              sessionUpdate: "agent_thought_chunk",
+              content: { type: "text", text: "checking files" },
+            },
+          },
+        },
+        {
+          timestamp: 1779988152,
+          method: "session/update",
+          params: {
+            sessionId: fixture.sessionId,
+            update: {
+              sessionUpdate: "tool_call",
+              toolCallId: "call-grep",
+              title: "grep",
+              rawInput: {
+                pattern: "needle",
+                path: "src",
+                output_mode: "files_with_matches",
+                head_limit: 2,
+              },
+            },
+          },
+        },
+        {
+          timestamp: 1779988153,
+          method: "session/update",
+          params: {
+            sessionId: fixture.sessionId,
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId: "call-grep",
+              status: "completed",
+              content: [
+                { type: "content", content: { type: "text", text: "found 1 match" } },
+              ],
+              rawOutput: {
+                type: "GrepSearch",
+                stdout: bytes(
+                  `<workspace_result workspace_path="${fixture.rightProject.path}">\nFound 1 files\n${fixture.rightProject.path}/src/file.ts\n</workspace_result>`,
+                ),
+                stderr: [],
+                exit_code: 0,
+                match_count: 1,
+                file_matches: [],
+              },
+            },
+          },
+        },
+        {
+          timestamp: 1779988154,
+          method: "session/update",
+          params: {
+            sessionId: fixture.sessionId,
+            update: {
+              sessionUpdate: "tool_call",
+              toolCallId: "call-read",
+              title: "read_file",
+              rawInput: { target_file: "README.md" },
+            },
+          },
+        },
+        {
+          timestamp: 1779988155,
+          method: "session/update",
+          params: {
+            sessionId: fixture.sessionId,
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId: "call-read",
+              status: "completed",
+              locations: [{ path: "README.md", line: 1 }],
+              rawOutput: {
+                type: "ReadFile",
+                FileContent: {
+                  content: "hello\n",
+                  absolute_path: readPath,
+                  total_lines: 1,
+                },
+              },
+            },
+          },
+        },
+        {
+          timestamp: 1779988156,
+          method: "session/update",
+          params: {
+            sessionId: fixture.sessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: "done" },
+            },
+          },
+        },
+      ];
+      await writeFile(
+        join(fixture.sessionDir, "updates.jsonl"),
+        `${updates.map((update) => JSON.stringify(update)).join("\n")}\n`,
+      );
+
+      const primaryReader = {
+        getSession: vi.fn(async () => null),
+      } as unknown as ISessionReader;
+      const routes = createSessionsRoutes({
+        supervisor: {
+          getProcessForSession: vi.fn(() => null),
+          wasEverOwned: vi.fn(() => true),
+        } as unknown as SessionsDeps["supervisor"],
+        scanner: {
+          getOrCreateProject: vi.fn(async () => fixture.rightProject),
+        } as unknown as SessionsDeps["scanner"],
+        readerFactory: vi.fn(() => primaryReader),
+        grokSessionsDir: fixture.grokSessionsDir,
+      });
+
+      const response = await routes.request(
+        `/projects/${fixture.rightProjectId}/sessions/${fixture.sessionId}`,
+      );
+      expect(response.status).toBe(200);
+
+      const json = (await response.json()) as {
+        session: { messageCount: number; provider?: string };
+        messages: Array<{
+          message?: { content?: unknown };
+          toolUseResult?: unknown;
+          type?: string;
+        }>;
+      };
+      expect(json.session.provider).toBe("grok");
+      expect(json.session.messageCount).toBe(7);
+
+      const blocks = json.messages.flatMap((message) => {
+        const content = message.message?.content;
+        return Array.isArray(content) ? (content as Record<string, unknown>[]) : [];
+      });
+      const toolUses = blocks.filter((block) => block.type === "tool_use");
+      expect(toolUses).toHaveLength(2);
+      expect(toolUses[0]).toMatchObject({
+        id: "call-grep",
+        name: "Grep",
+        input: {
+          pattern: "needle",
+          path: "src",
+          output_mode: "files_with_matches",
+          rawInput: { pattern: "needle" },
+        },
+      });
+      expect(toolUses[1]).toMatchObject({
+        id: "call-read",
+        name: "Read",
+        input: {
+          file_path: "README.md",
+          locations: [{ path: "README.md", line: 1 }],
+          rawInput: { target_file: "README.md" },
+        },
+      });
+
+      const resultFor = (toolUseId: string) =>
+        json.messages.find((message) => {
+          const content = message.message?.content;
+          const first = Array.isArray(content)
+            ? (content[0] as Record<string, unknown> | undefined)
+            : undefined;
+          return first?.type === "tool_result" && first.tool_use_id === toolUseId;
+        })?.toolUseResult;
+      expect(resultFor("call-grep")).toMatchObject({
+        mode: "files_with_matches",
+        filenames: [`${fixture.rightProject.path}/src/file.ts`],
+        numFiles: 1,
+      });
+      expect(resultFor("call-read")).toMatchObject({
+        type: "text",
+        file: {
+          filePath: readPath,
+          content: "hello\n",
+          totalLines: 1,
+        },
+      });
+    } finally {
+      await rm(fixture.tempDir, { recursive: true, force: true });
+    }
   });
 
   it("redirects stale Grok detail links to the native cwd project", async () => {

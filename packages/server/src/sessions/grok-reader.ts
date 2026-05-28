@@ -25,10 +25,7 @@
 
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type {
-  UnifiedSession,
-  UrlProjectId,
-} from "@yep-anywhere/shared";
+import type { UrlProjectId } from "@yep-anywhere/shared";
 import type {
   Message,
   SessionSummary,
@@ -269,9 +266,9 @@ export class GrokSessionReader implements ISessionReader {
     return {
       summary,
       data: {
-        id: sessionId,
-        messages: [],
-      } as unknown as UnifiedSession,
+        provider: "grok",
+        session: { messages: [] },
+      },
     };
   }
 

@@ -32,6 +32,7 @@ import type { ServerSettingsService } from "../services/ServerSettingsService.js
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession, cloneCodexSession } from "../sessions/fork.js";
 import { GeminiSessionReader } from "../sessions/gemini-reader.js";
+import { GrokSessionReader } from "../sessions/grok-reader.js";
 import { normalizeSession } from "../sessions/normalization.js";
 import {
   type PaginationInfo,
@@ -225,6 +226,10 @@ export interface SessionsDeps {
   geminiSessionsDir?: string;
   /** Optional shared Gemini reader factory for cross-provider session lookups */
   geminiReaderFactory?: (projectPath: string) => GeminiSessionReader;
+  /** Grok sessions directory (defaults to ~/.grok/sessions) */
+  grokSessionsDir?: string;
+  /** Optional shared Grok reader factory for cross-provider session lookups */
+  grokReaderFactory?: (projectPath: string) => GrokSessionReader;
   /** ServerSettingsService for reading global instructions */
   serverSettingsService?: ServerSettingsService;
   /** ModelInfoService for context window lookups */
@@ -1267,6 +1272,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         })
       : null);
 
+  const getGrokReader = (projectPath: string): GrokSessionReader | null =>
+    deps.grokReaderFactory?.(projectPath) ??
+    (deps.grokSessionsDir
+      ? new GrokSessionReader({
+          sessionsDir: deps.grokSessionsDir,
+          projectPath,
+        })
+      : null);
+
   const getGlobalInstructions = (): string | undefined =>
     deps.serverSettingsService?.getSetting("globalInstructions") || undefined;
 
@@ -1311,6 +1325,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         geminiSessionsDir: deps.geminiSessionsDir,
         geminiReaderFactory: deps.geminiReaderFactory,
         geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
+        grokSessionsDir: deps.grokSessionsDir,
+        grokReaderFactory: deps.grokReaderFactory,
       },
       preferredProvider,
     );
@@ -1540,6 +1556,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         geminiSessionsDir: deps.geminiSessionsDir,
         geminiReaderFactory: deps.geminiReaderFactory,
         geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
+        grokSessionsDir: deps.grokSessionsDir,
+        grokReaderFactory: deps.grokReaderFactory,
       },
       metadataProvider ?? process?.provider,
     );
@@ -1711,6 +1729,19 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         );
       }
     }
+
+    if (!loadedSession) {
+      const grokReader = getGrokReader(project.path);
+      if (grokReader) {
+        loadedSession = await grokReader.getSession(
+          sessionId,
+          project.id,
+          afterMessageId,
+          { includeOrphans: wasEverOwned && !process },
+        );
+      }
+    }
+
     const readEndMs = performance.now();
 
     let session = loadedSession ? normalizeSession(loadedSession) : null;
@@ -2406,6 +2437,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           geminiSessionsDir: deps.geminiSessionsDir,
           geminiReaderFactory: deps.geminiReaderFactory,
           geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
+          grokSessionsDir: deps.grokSessionsDir,
+          grokReaderFactory: deps.grokReaderFactory,
         },
         metadataProvider ?? body.provider,
       );

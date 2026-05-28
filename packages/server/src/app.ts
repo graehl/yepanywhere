@@ -472,6 +472,8 @@ export function createApp(options: AppOptions): AppResult {
       geminiSessionsDir: GEMINI_TMP_DIR,
       geminiReaderFactory,
       geminiHashToCwd: geminiScanner.getHashToCwd(),
+      grokSessionsDir: GROK_SESSIONS_DIR,
+      grokReaderFactory,
     };
 
     for (const [sessionId, metadata] of heartbeatSessionIds) {
@@ -711,6 +713,8 @@ export function createApp(options: AppOptions): AppResult {
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
       geminiReaderFactory,
+      grokSessionsDir: GROK_SESSIONS_DIR,
+      grokReaderFactory,
       sessionAutoArchiveDays: options.sessionAutoArchiveDays,
     }),
   );
@@ -730,6 +734,8 @@ export function createApp(options: AppOptions): AppResult {
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
       geminiReaderFactory,
+      grokSessionsDir: GROK_SESSIONS_DIR,
+      grokReaderFactory,
       serverSettingsService: options.serverSettingsService,
       modelInfoService: options.modelInfoService,
       dataDir: options.dataDir,
@@ -792,6 +798,8 @@ export function createApp(options: AppOptions): AppResult {
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
       geminiReaderFactory,
+      grokSessionsDir: GROK_SESSIONS_DIR,
+      grokReaderFactory,
       sessionAutoArchiveDays: options.sessionAutoArchiveDays,
     }),
   );
@@ -813,6 +821,8 @@ export function createApp(options: AppOptions): AppResult {
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
       geminiReaderFactory,
+      grokSessionsDir: GROK_SESSIONS_DIR,
+      grokReaderFactory,
       eventBus: options.eventBus,
       sessionAutoArchiveDays: options.sessionAutoArchiveDays,
     }),
@@ -839,6 +849,8 @@ export function createApp(options: AppOptions): AppResult {
         geminiScanner,
         geminiSessionsDir: GEMINI_TMP_DIR,
         geminiReaderFactory,
+        grokSessionsDir: GROK_SESSIONS_DIR,
+        grokReaderFactory,
       }),
     );
   }

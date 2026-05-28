@@ -285,6 +285,15 @@ Live steering smoke passed against the 0.2.3 CLI through YA's
    `~/.grok/sessions/<encoded-cwd>` directory, and sqlite `session_docs` row;
    a follow-up check found no `grok-steer-cwd` or `yepanywhere` Grok rows.
 
+YA server restart reattachment smoke also passed for the user-confirmed native
+Grok id `019e6d4a-ffa9-7651-ba4e-c4baf2d772b4` in project
+`/local/graehl/trtllm-speculative/draft` after `reyep` restarted the server.
+`/api/projects/<projectId>/sessions/<native-id>/metadata` and the detail route
+both resolved the session as provider `grok`, model `grok-build`, owner `none`,
+and title "Bearings Research Paper Reading Session Analysis". Detail still
+returns an empty `messages` array because full Grok `updates.jsonl` transcript
+replay remains Phase 2 history work.
+
 Near follow-up once the above is green:
 
 - Keep local docs as the authoritative source for future work:

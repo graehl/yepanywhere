@@ -264,6 +264,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
   let sessionCalls: any[] = [];
   let holdFirstPrompt = false;
   let releaseHeldPrompt: (() => void) | null = null;
+  let failResume = false;
 
   // Minimal fake ACPClient that records calls and allows controlling flow
   class FakeACPClient {
@@ -291,7 +292,10 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     }
     async resumeSession(id: string, cwd: string) {
       sessionCalls.push({ type: "resume", id, cwd });
-      return id; // success path
+      if (failResume) {
+        throw new Error("mock resume failed");
+      }
+      return id;
     }
     async prompt(_sessionId: string, _text: string) {
       promptCalls.push({ sessionId: _sessionId, text: _text });
@@ -321,6 +325,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     sessionCalls = [];
     holdFirstPrompt = false;
     releaseHeldPrompt = null;
+    failResume = false;
     acpClientMock = vi.fn(() => new FakeACPClient());
 
     // Mock fs for isInstalled / findGrokPath to always succeed in these tests
@@ -451,7 +456,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     expect(argsCustom).toContain("other-model");
   });
 
-  it("uses resumeSessionId path (calls resume, falls back only on error)", async () => {
+  it("uses resumeSessionId path", async () => {
     const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
 
     const session = await provider.startSession({
@@ -470,6 +475,33 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     expect(
       sessionCalls.some((c) => c.type === "resume" && c.id === "existing_ses_123"),
     ).toBe(true);
+  });
+
+  it("surfaces resume failures without creating a new native session", async () => {
+    failResume = true;
+    const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
+
+    const session = await provider.startSession({
+      cwd: "/tmp",
+      resumeSessionId: "missing-session",
+      initialMessage: { text: "hi" },
+    });
+
+    try {
+      const error = await session.iterator.next();
+      expect(error.value).toMatchObject({ type: "error" });
+      expect(String(error.value.error)).toContain(
+        "Failed to resume Grok session missing-session: mock resume failed",
+      );
+      expect(
+        sessionCalls.some(
+          (c) => c.type === "resume" && c.id === "missing-session",
+        ),
+      ).toBe(true);
+      expect(sessionCalls.some((c) => c.type === "new")).toBe(false);
+    } finally {
+      session.abort();
+    }
   });
 
   it("wires onToolApproval permission callback into ACP client", async () => {

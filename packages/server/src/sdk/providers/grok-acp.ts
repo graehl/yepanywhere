@@ -337,14 +337,14 @@ export class GrokACPProvider implements AgentProvider {
           );
           this.log.debug({ sessionId }, "Grok ACP session resumed");
         } catch (resumeErr) {
-          this.log.warn(
+          this.log.error(
             { err: resumeErr, resumeSessionId: options.resumeSessionId },
-            "Failed to resume Grok ACP session, creating new",
+            "Failed to resume Grok ACP session",
           );
-          sessionId = await client.newSession(options.cwd);
-          this.log.debug(
-            { sessionId, originalSessionId: options.resumeSessionId },
-            "Created new Grok ACP session (resume failed)",
+          const detail =
+            resumeErr instanceof Error ? resumeErr.message : String(resumeErr);
+          throw new Error(
+            `Failed to resume Grok session ${options.resumeSessionId}: ${detail}`,
           );
         }
       } else {

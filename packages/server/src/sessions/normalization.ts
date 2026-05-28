@@ -120,6 +120,11 @@ export function normalizeSession(loaded: LoadedSession): Session {
         ...summary,
         messages: convertGeminiMessages(data.session.messages),
       };
+    case "grok":
+      return {
+        ...summary,
+        messages: [],
+      };
     case "opencode":
       return {
         ...summary,

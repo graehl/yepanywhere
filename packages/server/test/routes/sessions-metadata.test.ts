@@ -5,6 +5,7 @@ import {
   createSessionsRoutes,
 } from "../../src/routes/sessions.js";
 import type { CodexSessionReader } from "../../src/sessions/codex-reader.js";
+import type { GrokSessionReader } from "../../src/sessions/grok-reader.js";
 import type { ISessionReader } from "../../src/sessions/types.js";
 import type { Project, SessionSummary } from "../../src/supervisor/types.js";
 
@@ -358,6 +359,68 @@ describe("Sessions metadata route", () => {
     expect(vi.mocked(codexReader.getSessionSummary)).toHaveBeenCalledWith(
       "sess-1",
       project.id,
+    );
+  });
+
+  it("loads Grok detail by native id after process loss", async () => {
+    const project = createProject();
+    const grokSummary: SessionSummary = {
+      ...createSummary(),
+      id: "grok-native-id",
+      provider: "grok",
+      model: "grok-build",
+      title: "Grok title",
+      fullTitle: "Grok title",
+    };
+    const primaryReader = {
+      getSession: vi.fn(async () => null),
+    } as unknown as ISessionReader;
+    const grokReader = {
+      getSession: vi.fn(async () => ({
+        summary: grokSummary,
+        data: {
+          provider: "grok",
+          session: { messages: [] },
+        },
+      })),
+    } as unknown as GrokSessionReader;
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => true),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => primaryReader),
+      grokSessionsDir: "/tmp/grok-sessions",
+      grokReaderFactory: vi.fn(() => grokReader),
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/grok-native-id`,
+    );
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    expect(json.session).toMatchObject({
+      id: "grok-native-id",
+      title: "Grok title",
+      provider: "grok",
+      model: "grok-build",
+    });
+    expect(vi.mocked(primaryReader.getSession)).toHaveBeenCalledWith(
+      "grok-native-id",
+      project.id,
+      undefined,
+      { includeOrphans: true },
+    );
+    expect(vi.mocked(grokReader.getSession)).toHaveBeenCalledWith(
+      "grok-native-id",
+      project.id,
+      undefined,
+      { includeOrphans: true },
     );
   });
 

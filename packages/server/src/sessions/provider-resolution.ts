@@ -76,16 +76,11 @@ function mayHaveGeminiSessions(
   return provider === "claude" || provider === "codex";
 }
 
-function mayHaveGrokSessions(project: Project): boolean {
-  const group = normalizeProviderGroup(project.provider);
-  // Grok sessions can appear for any project (cross-provider) or as primary
-  // when the project was started with the grok provider.
-  return (
-    group === "grok" ||
-    group === "claude" ||
-    group === "codex" ||
-    group === "gemini"
-  );
+function mayHaveGrokSessions(_project: Project): boolean {
+  // Grok sessions are keyed by cwd under ~/.grok/sessions, so the reader's
+  // project-path filter is the real membership test. Include it for every
+  // provider group so mixed-provider projects survive YA restarts.
+  return true;
 }
 
 function createClaudeSource(

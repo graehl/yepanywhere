@@ -11,6 +11,10 @@ export interface ClaudeSessionFile {
   messages: ClaudeSessionEntry[];
 }
 
+export interface GrokSessionContent {
+  messages: [];
+}
+
 // Codex sessions are a series of entries (lines)
 export interface CodexSessionContent {
   entries: CodexSessionEntry[];
@@ -22,4 +26,5 @@ export type UnifiedSession =
   | { provider: "codex"; session: CodexSessionContent }
   | { provider: "codex-oss"; session: CodexSessionContent }
   | { provider: "gemini"; session: GeminiSessionFile }
+  | { provider: "grok"; session: GrokSessionContent }
   | { provider: "opencode"; session: OpenCodeSessionContent };

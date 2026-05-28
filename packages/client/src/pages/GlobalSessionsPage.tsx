@@ -317,6 +317,47 @@ export function GlobalSessionsPage() {
   const longPressSessionRef = useRef<string | null>(null);
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
 
+  // Dup-title hiding for the heavier (card) list in GlobalSessionsPage (all sessions + per-project views).
+  // Cheap O(n) client-side grouping on the already-fetched + filtered page. Re-uses the same
+  // "prefer higher messageCount + recent activity" rule so we don't hide the substantive version of a dup title.
+  // Hidden dups are still reachable via the expander (and fully included for bulk selection).
+  const [showHiddenDups, setShowHiddenDups] = useState(false);
+
+  const { visibleSessions, hiddenDupSessions } = useMemo(() => {
+    if (isSelectionMode) {
+      // During multi-select, show everything so user can act on dups if desired.
+      return { visibleSessions: filteredSessions, hiddenDupSessions: [] as typeof filteredSessions };
+    }
+
+    const groups = new Map<string, typeof filteredSessions>();
+    for (const s of filteredSessions) {
+      const norm = (s.title || s.fullTitle || s.initialPrompt || "").trim().toLowerCase().slice(0, 120);
+      const key = `${s.provider || "unknown"}|${s.projectId}|${norm}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(s);
+    }
+
+    const visible: typeof filteredSessions = [];
+    const hidden: typeof filteredSessions = [];
+    for (const arr of groups.values()) {
+      if (arr.length <= 1) {
+        visible.push(...arr);
+      } else {
+        // Prefer the one with most messages or most recent activity — do not hide the "real" one.
+        arr.sort((a, b) => {
+          const mc = (b.messageCount || 0) - (a.messageCount || 0);
+          if (mc !== 0) return mc;
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        });
+        visible.push(arr[0]!); // arr is guaranteed non-empty in this branch (length >= 2)
+        hidden.push(...arr.slice(1));
+      }
+    }
+    visible.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    hidden.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return { visibleSessions: visible, hiddenDupSessions: hidden };
+  }, [filteredSessions, isSelectionMode]);
+
   // Selection handlers
   const handleSelect = useCallback((sessionId: string, selected: boolean) => {
     setSelectedIds((prev) => {
@@ -823,7 +864,7 @@ export function GlobalSessionsPage() {
                 <ul
                   className={`session-list ${isSelectionMode ? "session-list--selection-mode" : ""}`}
                 >
-                  {filteredSessions.map((session) => (
+                  {visibleSessions.map((session) => (
                     <div
                       key={session.id}
                       onTouchStart={(e) => handleLongPressStart(session.id, e)}
@@ -846,6 +887,7 @@ export function GlobalSessionsPage() {
                         }
                         initialPrompt={session.initialPrompt}
                         updatedAt={session.updatedAt}
+                        createdAt={session.createdAt}
                         hasUnread={session.hasUnread}
                         activity={session.activity}
                         pendingInputType={session.pendingInputType}
@@ -877,11 +919,75 @@ export function GlobalSessionsPage() {
                         projectName={session.projectName}
                         basePath={basePath}
                         messageCount={session.messageCount}
+                        // userTurnCount / systemTurnCount will be populated when
+                        // the index summaries cache them (see SessionIndexService)
                         hasDraft={drafts.has(session.id)}
                       />
                     </div>
                   ))}
                 </ul>
+
+                {/* Dup hidden expander for the heavier/thicker card list (all sessions or per-project).
+                    Cheap (runs on already-fetched filtered page). Matches the sidebar "(X hidden)" pattern
+                    but with thicker card items when expanded. */}
+                {hiddenDupSessions.length > 0 && (
+                  <div className="global-sessions-hidden-dups">
+                    <button
+                      type="button"
+                      className="global-sessions-hidden-dups-toggle"
+                      onClick={() => setShowHiddenDups((v) => !v)}
+                      aria-expanded={showHiddenDups}
+                    >
+                      {showHiddenDups ? "−" : "+"} {hiddenDupSessions.length} duplicate titles hidden
+                      (same name + provider + project)
+                    </button>
+                    {showHiddenDups && (
+                      <ul className="session-list global-sessions-hidden-sublist">
+                        {hiddenDupSessions.map((session) => (
+                          <div key={session.id} className="global-sessions-hidden-item">
+                            <SessionListItem
+                              sessionId={session.id}
+                              projectId={session.projectId}
+                              title={getSessionDisplayTitle(session)}
+                              fullTitle={
+                                session.fullTitle ?? getSessionDisplayTitle(session)
+                              }
+                              initialPrompt={session.initialPrompt}
+                              updatedAt={session.updatedAt}
+                              createdAt={session.createdAt}
+                              hasUnread={session.hasUnread}
+                              activity={session.activity}
+                              pendingInputType={session.pendingInputType}
+                              status={session.ownership}
+                              provider={session.provider}
+                              parentSessionId={session.parentSessionId}
+                              executor={session.executor}
+                              isStarred={session.isStarred}
+                              isArchived={session.isArchived}
+                              mode="card"
+                              showContextUsage={false}
+                              isSelected={selectedIds.has(session.id)}
+                              isSelectionMode={isSelectionMode && !isWideScreen}
+                              onNavigate={() => {
+                                if (isSelectionMode && !isWideScreen) {
+                                  handleSelect(session.id, !selectedIds.has(session.id));
+                                }
+                              }}
+                              onSelect={
+                                isWideScreen || isSelectionMode ? handleSelect : undefined
+                              }
+                              showProjectName={!projectFilter}
+                              projectName={session.projectName}
+                              basePath={basePath}
+                              messageCount={session.messageCount}
+                              hasDraft={drafts.has(session.id)}
+                            />
+                          </div>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
 
                 {hasMore && (
                   <div className="global-sessions-load-more">

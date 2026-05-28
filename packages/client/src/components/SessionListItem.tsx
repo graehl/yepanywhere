@@ -74,6 +74,13 @@ interface SessionListItemProps {
 
   /** Number of messages in session (0 indicates brand new session) */
   messageCount?: number;
+
+  /** Creation time for age display in detailed lists (brief d/h/m) */
+  createdAt?: string;
+
+  /** Cached user vs system/assistant turn counts (for heavier list views) */
+  userTurnCount?: number;
+  systemTurnCount?: number;
 }
 
 async function copyTextToClipboard(text: string): Promise<void> {
@@ -151,6 +158,9 @@ export function SessionListItem({
   basePath = "",
   // New session detection
   messageCount,
+  createdAt,
+  userTurnCount,
+  systemTurnCount,
 }: SessionListItemProps) {
   const navigate = useNavigate();
 
@@ -346,6 +356,19 @@ export function SessionListItem({
     return new Date(timestamp).toLocaleDateString();
   };
 
+  // Brief age since creation for detailed (card) lists: d / h / m
+  // (separate from the activity-based "Any age" filter which uses updatedAt)
+  const formatBriefAge = (timestamp: string): string => {
+    const diffMs = Date.now() - new Date(timestamp).getTime();
+    if (diffMs < 0) return "0m";
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h`;
+    const days = Math.floor(hours / 24);
+    return `${days}d`;
+  };
+
   // Build CSS classes
   const liClasses = [
     "session-list-item",
@@ -522,6 +545,22 @@ export function SessionListItem({
                   </span>
                 )}
                 {showTimestamp && updatedAt && formatRelativeTime(updatedAt)}
+                {createdAt && (
+                  <span
+                    className="session-list-item__age"
+                    title="Age since creation (wall time / file creation or first parse). Separate from the 'Any age' filter which is based on time since last message/activity (updatedAt)."
+                  >
+                    Created {formatBriefAge(createdAt)} ago
+                  </span>
+                )}
+                {(userTurnCount != null || systemTurnCount != null) && (
+                  <span
+                    className="session-list-item__turns"
+                    title="User / system (assistant) turns (cached)"
+                  >
+                    U:{userTurnCount ?? 0} S:{systemTurnCount ?? 0}
+                  </span>
+                )}
                 {executor && (
                   <span
                     className="session-badge session-badge-executor"

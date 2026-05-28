@@ -14,6 +14,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import pino, { type Logger } from "pino";
 import { WebSocketServer } from "ws";
+import { getClientIp, parseTrustedProxies } from "./client-ip.js";
 import type { RelayConfig } from "./config.js";
 import { ConnectionManager } from "./connections.js";
 import { createDb, createTestDb } from "./db.js";
@@ -25,7 +26,6 @@ import {
   DEFAULT_UNAUTHENTICATED_CONNECTION_LIMIT_PER_IP,
   DEFAULT_UNAUTHENTICATED_CONNECTION_TIMEOUT_MS,
   UnauthenticatedConnectionLimiter,
-  getConnectionIp,
   rejectUpgrade,
 } from "./unauthenticated-limiter.js";
 import { createWsHandler } from "./ws-handler.js";
@@ -59,6 +59,11 @@ export interface RelayServerOptions {
   unauthenticatedConnectionLimitPerIp?: number;
   /** Time allowed for a new WebSocket to send a valid relay protocol message. */
   unauthenticatedConnectionTimeoutMs?: number;
+  /**
+   * Comma-separated list of IPs/CIDRs whose `X-Forwarded-For` is trusted
+   * for client-IP resolution. Default: none.
+   */
+  trustedProxies?: string;
 }
 
 export interface RelayServer {
@@ -110,6 +115,7 @@ export async function createRelayServer(
     unauthenticatedConnectionTimeoutMs:
       options.unauthenticatedConnectionTimeoutMs ??
       DEFAULT_UNAUTHENTICATED_CONNECTION_TIMEOUT_MS,
+    trustedProxies: parseTrustedProxies(options.trustedProxies),
     logging: {
       logDir: "",
       logFile: "relay.log",
@@ -250,7 +256,7 @@ export async function createRelayServer(
 
   // Handle WebSocket connections
   wss.on("connection", (ws, request) => {
-    unauthenticatedLimiter.track(ws, getConnectionIp(request));
+    unauthenticatedLimiter.track(ws, getClientIp(request, config.trustedProxies));
     wsHandler.onOpen(ws);
 
     ws.on("message", (data, isBinary) => {
@@ -283,7 +289,7 @@ export async function createRelayServer(
     }
 
     // Upgrade to WebSocket
-    const ip = getConnectionIp(request);
+    const ip = getClientIp(request, config.trustedProxies);
     if (!unauthenticatedLimiter.canAccept(ip)) {
       logger.info({ ip }, "Rejected unauthenticated relay connection over cap");
       rejectUpgrade(socket);

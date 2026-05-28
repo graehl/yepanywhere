@@ -1,4 +1,3 @@
-import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { WebSocket } from "ws";
 
@@ -49,10 +48,6 @@ export class UnauthenticatedConnectionLimiter {
       this.countsByIp.delete(tracked.ip);
     }
   }
-}
-
-export function getConnectionIp(request: IncomingMessage): string {
-  return request.socket.remoteAddress ?? "unknown";
 }
 
 export function rejectUpgrade(socket: Duplex, status = 429): void {

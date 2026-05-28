@@ -4,6 +4,7 @@ import { getRequestListener } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { WebSocketServer } from "ws";
+import { getClientIp } from "./client-ip.js";
 import { loadConfig } from "./config.js";
 import { ConnectionManager } from "./connections.js";
 import { createDb } from "./db.js";
@@ -13,7 +14,6 @@ import { generateRelayStatsHtml } from "./stats.js";
 import { createRelayTelemetryRecorder } from "./telemetry.js";
 import {
   UnauthenticatedConnectionLimiter,
-  getConnectionIp,
   rejectUpgrade,
 } from "./unauthenticated-limiter.js";
 import { createWsHandler } from "./ws-handler.js";
@@ -131,7 +131,7 @@ const wss = new WebSocketServer({ noServer: true });
 
 // Handle WebSocket connections
 wss.on("connection", (ws, request) => {
-  unauthenticatedLimiter.track(ws, getConnectionIp(request));
+  unauthenticatedLimiter.track(ws, getClientIp(request, config.trustedProxies));
   wsHandler.onOpen(ws);
 
   ws.on("message", (data, isBinary) => {
@@ -168,7 +168,7 @@ server.on("upgrade", (request, socket, head) => {
   }
 
   // Upgrade to WebSocket
-  const ip = getConnectionIp(request);
+  const ip = getClientIp(request, config.trustedProxies);
   if (!unauthenticatedLimiter.canAccept(ip)) {
     logger.info({ ip }, "Rejected unauthenticated relay connection over cap");
     rejectUpgrade(socket);

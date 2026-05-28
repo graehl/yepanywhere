@@ -9,12 +9,26 @@ Related topics: [claude.md](claude.md), [provider-state-machine.md](provider-sta
 Grok Build is xAI's terminal-first coding agent (early beta, announced ~May 2026). It supports interactive TUI, headless (`grok -p "..."`), subagents, skills, AGENTS.md, hooks, MCP, rich sandbox + permission system (modes overlap YA's `plan`/`acceptEdits`/`bypassPermissions` etc.), and explicit ACP support for embedding in other apps/IDEs.
 
 Local evidence on this host (non-destructive inspection of the installed binary and state):
-- Version: `grok 0.1.220`
-- `grok models` (authoritative): default `grok-build`, plus
-  `grok-build-latest` available from the CLI.
-- `~/.grok/models_cache.json`: only model `"grok-build"`, name "Grok Build", description "Best for advanced coding tasks", `supports_reasoning_effort: false`, context 512k.
-- Top-level CLI flags (from `--help`): `-m/--model <MODEL>`, `--effort <LEVEL>` (values: low, medium, high, xhigh, max), `--reasoning-effort <EFFORT>`, `--permission-mode`, `-p/--single`, `grok models`, `grok sessions`, ACP integration path documented for "other apps".
-- Session storage: `~/.grok/sessions/<encoded-cwd>/<uuid>/` containing `chat_history.jsonl`, `events.jsonl`, `updates.jsonl`, `summary.json`, plus top-level `session_search.sqlite`. Multi-file per-session layout (more like Codex than Claude's single rich jsonl).
+- Version: `grok 0.2.3 (14d81fd87) [stable]`.
+- `grok models` (authoritative): default `grok-build`; no
+  `grok-build-latest` entry is advertised by this CLI version.
+- `~/.grok/models_cache.json`: `grok_version` `0.2.3`, only model
+  `"grok-build"`, name "Grok Build", description "Best for advanced coding
+  tasks", `supports_reasoning_effort: false`, context 512k.
+- Top-level CLI flags (from `--help`): `-m/--model <MODEL>`,
+  `--effort <LEVEL>` (values: low, medium, high, xhigh, max),
+  `--reasoning-effort <EFFORT>`, `--permission-mode`, `-p/--single`,
+  `grok models`, `grok sessions`, ACP integration path documented for "other
+  apps". `grok agent --help` also exposes `-m/--model` and
+  `--reasoning-effort`; `grok agent stdio` itself still takes no subcommand
+  flags, so YA's top-level `--effort ... agent stdio` argument shape remains
+  valid.
+- Session storage: `~/.grok/sessions/<encoded-cwd>/<uuid>/` containing
+  `summary.json`, `updates.jsonl`, `chat_history.jsonl`, `plan.json`,
+  `rewind_points.jsonl`, `signals.json`, `feedback.jsonl`,
+  `compaction_checkpoints/`, and `subagents/`, plus the top-level
+  `session_search.sqlite`. The refreshed 0.2.3 docs call `updates.jsonl` the
+  authoritative conversation log for `/load` and restore.
 
 ACP (via the already-vendored `@agentclientprotocol/sdk` and YA's `ACPClient`) is the highest-leverage integration surface. Protocol surfaces:
 - `agent_thought_chunk` (thinking/reasoning exposure)
@@ -201,10 +215,9 @@ Issues found during takeover:
   auth parsing treated any nonempty `auth.json` as authenticated, and mocked
   ACP tests expected connection side effects before advancing the async
   iterator.
-- `grok models` on this host now reports `grok 0.1.220`, logged in via
+- `grok models` on this host reported `grok 0.1.220`, logged in via
   grok.com, default `grok-build`, and available `grok-build` plus
-  `grok-build-latest`. The local `models_cache.json` still only lists
-  `grok-build`.
+  `grok-build-latest`. This changed in the 0.2.3 refresh below.
 - `grok agent stdio` accepts top-level `--effort`/`-m` before `agent`; putting
   `--effort` after `agent` is rejected by the CLI. Provider args should keep
   those flags before `agent`.
@@ -237,15 +250,43 @@ Known remaining gap:
   recovery/listing works, but full Grok transcript replay after server restart
   is still Phase 2 scanner/history work.
 
+## 0.2.3 Refresh and Steering Smoke (2026-05-28)
+
+The local Grok install was updated to `grok 0.2.3 (14d81fd87) [stable]`, and
+the local user-guide docs were refreshed at `2026-05-28 06:25 UTC`.
+
+Observed changes relevant to YA:
+
+- `grok models` and `models_cache.json` now agree on a single visible model:
+  `grok-build`. The earlier `grok-build-latest` CLI listing is gone, so YA's
+  single-model provider policy now matches the current CLI surface.
+- `grok agent stdio` remains the documented ACP transport. Top-level
+  `--effort` is still accepted by the main CLI; the `agent` command now also
+  documents `-m/--model` and `--reasoning-effort`, while the `stdio`
+  subcommand itself still takes no flags.
+- The keyboard docs still document `Ctrl+Enter` as an active-turn interject
+  that continues the current turn.
+- The sessions doc now describes more per-session files and calls
+  `updates.jsonl` the authoritative restore log. YA's current summary reader is
+  unaffected, but full transcript replay should use `updates.jsonl` first.
+
+Live steering smoke passed against the 0.2.3 CLI through YA's
+`GrokACPProvider` rather than a raw ACP toy client:
+
+1. Created a disposable cwd under `.artifacts/grok-steer-cwd-*`.
+2. Started a real `grok agent stdio` session with native Grok session id
+   `019e6d49-7bdf-7da2-acaf-20b980bfe0db`.
+3. Advanced YA's iterator until the first prompt was in flight, then called
+   `session.steer()` with a unique `STEER_*` token.
+4. `session.steer()` returned `true`, the drained assistant response contained
+   both the initial `START_*` token and the interjected `ACK_*` token, and the
+   turn ended with a `result` message.
+5. The smoke removed the disposable cwd, the matching
+   `~/.grok/sessions/<encoded-cwd>` directory, and sqlite `session_docs` row;
+   a follow-up check found no `grok-steer-cwd` or `yepanywhere` Grok rows.
+
 Near follow-up once the above is green:
 
-- Live-smoke active-turn steering against the installed Grok CLI. Mocked
-  coverage verifies the repeated ACP prompt path, but the beta CLI should still
-  be exercised manually because native interject behavior is agent-side.
-- Revisit model-list policy. `grok models` on 2026-05-26 reports
-  `grok-build` and `grok-build-latest`, while `models_cache.json` currently
-  only lists `grok-build`; YA should either expose only the stable default or
-  dynamically reflect the CLI list.
 - Keep local docs as the authoritative source for future work:
   `~/.grok/docs/user-guide/15-agent-mode.md`,
   `17-sessions.md`, `03-keyboard-shortcuts.md`, and related files.
@@ -264,8 +305,9 @@ gitignored umbrella task `tasks/015-verified-session-liveness.md`.
 - [x] Native Grok session ID used in new-session URL and recoverable through provider metadata/process lookup
 - [x] End-to-end live supervision test (visible read/bash/thought events in a desktop WebSocket subscription)
 - [x] Rich ACP event fidelity test: thoughts, tool kind/status, locations, execute output, and structured read/bash results
-- [x] Active-turn interject/steering via repeated ACP prompt (mocked coverage;
-  live smoke still useful)
+- [x] Active-turn interject/steering via repeated ACP prompt (mocked coverage
+  and 0.2.3 live smoke passed)
+- [x] 0.2.3 CLI/docs refresh audited and recorded
 - [ ] (Phase 2) `grok-scanner.ts` + minimal schema for session listing + history — summary reader exists; full scanner/history replay not done
 - [ ] Docs updates + version pinning note — topic and `CLAUDE.md` provider list updated; broader README/provider capability docs not done
 - [ ] Decision point: promote "grok" to default-enabled once ACP surface proves stable

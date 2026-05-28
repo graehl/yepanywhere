@@ -3157,12 +3157,71 @@ function SessionPageContent({
     }
   }, [actualSessionId, heartbeatTurnsEnabled, showToast, t]);
 
-  if (error)
+  if (error) {
+    const errorStatus =
+      typeof (error as { status?: unknown }).status === "number"
+        ? (error as { status?: number }).status
+        : undefined;
+    const isNotFound =
+      error.message?.includes("Session not found") ||
+      error.message?.includes("not found") ||
+      errorStatus === 404;
+
+    if (isNotFound && actualSessionId) {
+      return (
+        <div className="error" style={{ maxWidth: 520, margin: "40px auto" }}>
+          <h2 style={{ marginTop: 0 }}>Session not found</h2>
+          <p style={{ color: "#666" }}>
+            The backing data for this session on disk or in a live process is
+            gone. This commonly happens for Grok sessions after a YA server
+            restart or when native session directories were cleaned.
+          </p>
+          <div
+            style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}
+          >
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await api.updateSessionMetadata(actualSessionId, {
+                    archived: true,
+                  });
+                  showToast("Archived and hidden from lists.", "success");
+                  navigate(`${basePath}/sessions?project=${projectId}`, {
+                    replace: true,
+                  });
+                } catch (err) {
+                  const message = err instanceof Error ? err.message : String(err);
+                  showToast(`Failed to archive: ${message}`, "error");
+                }
+              }}
+              style={{ padding: "8px 14px", cursor: "pointer" }}
+            >
+              Archive / Hide from all lists
+            </button>
+            <button
+              type="button"
+              onClick={() => window.history.back()}
+              style={{ padding: "8px 14px", cursor: "pointer" }}
+            >
+              Go back
+            </button>
+          </div>
+          <p style={{ fontSize: "12px", color: "#888", marginTop: 20 }}>
+            Session ID: <code>{actualSessionId}</code>
+            <br />
+            Run <code>ya-clean</code> for bulk bad-state and duplicate cleanup.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="error">
         {t("sessionErrorPrefix")} {error.message}
       </div>
     );
+  }
 
   // Sidebar icon component
   const SidebarIcon = () => (

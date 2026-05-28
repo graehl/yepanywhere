@@ -22,7 +22,7 @@ describe("ToolCallRow", () => {
     Reflect.deleteProperty(window, "IntersectionObserver");
   });
 
-  it("keeps pending Codex Bash rows collapsed without IN/OUT preview cards", () => {
+  it("keeps pending Codex command rows collapsed without output preview cards", () => {
     const { container } = render(
       <ToolCallRow
         id="tool-1"
@@ -33,7 +33,7 @@ describe("ToolCallRow", () => {
       />,
     );
 
-    expect(screen.getByText("Bash")).toBeDefined();
+    expect(screen.getByText("Ran")).toBeDefined();
     expect(screen.getByText("npm run test:e2e:pipeline-v2")).toBeDefined();
     expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
     expect(container.querySelector(".tool-use-expanded")).toBeNull();
@@ -105,6 +105,7 @@ describe("ToolCallRow", () => {
       />,
     );
 
+    expect(screen.getByText("Ran")).toBeDefined();
     expect(container.querySelector(".tool-row-collapsed-preview")).not.toBeNull();
     expect(screen.getByText("New")).toBeDefined();
     expect(container.querySelector(".fixed-font-markdown-heading")).toBeTruthy();
@@ -431,8 +432,8 @@ describe("ToolCallRow", () => {
       rowWidthPx: 900,
     });
     expect(short).toBe(
-      DEFERRED_PREVIEW_HEIGHT.commandRowPx +
-        DEFERRED_PREVIEW_HEIGHT.minOutputRowPx,
+      DEFERRED_PREVIEW_HEIGHT.minOutputRowPx +
+        DEFERRED_PREVIEW_HEIGHT.previewBorderPx,
     );
 
     const longLine = "x".repeat(180);
@@ -466,9 +467,9 @@ describe("ToolCallRow", () => {
       rowWidthPx: 900,
     });
     expect(huge).toBe(
-      DEFERRED_PREVIEW_HEIGHT.commandRowPx +
-        DEFERRED_PREVIEW_HEIGHT.outputRowChromePx +
-        DEFERRED_PREVIEW_HEIGHT.maxOutputPx,
+      DEFERRED_PREVIEW_HEIGHT.outputRowChromePx +
+        DEFERRED_PREVIEW_HEIGHT.maxOutputPx +
+        DEFERRED_PREVIEW_HEIGHT.previewBorderPx,
     );
   });
 

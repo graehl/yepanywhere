@@ -21,6 +21,7 @@ interface Props {
   onTrimBeforeUserPrompt?: () => void;
   staleNowMs?: number;
   latestVisibleTimestampMs?: number | null;
+  thinkingDurationMs?: number;
 }
 
 function getMessageIdLike(message: Record<string, unknown>): string {
@@ -139,6 +140,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   onTrimBeforeUserPrompt,
   staleNowMs,
   latestVisibleTimestampMs,
+  thinkingDurationMs,
 }: Props) {
   const staticAgeNowMsRef = useRef(Date.now());
   const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
@@ -196,6 +198,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             status={item.status}
             isExpanded={thinkingExpanded}
             onToggle={toggleThinkingExpanded}
+            durationMs={thinkingDurationMs}
           />
         );
 

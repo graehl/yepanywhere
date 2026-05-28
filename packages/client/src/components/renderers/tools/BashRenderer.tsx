@@ -531,8 +531,8 @@ function truncateOutput(
 }
 
 /**
- * Collapsed preview showing IN (command) and OUT (first few lines)
- * Clicking opens a modal with the full output
+ * Collapsed preview showing command output; the command itself lives in the
+ * shared "Ran ..." row header.
  */
 function BashCollapsedPreview({
   input,
@@ -576,7 +576,6 @@ function BashCollapsedPreview({
     result?.stdout || result?.stderr || "",
     provider,
   );
-  const command = getBashCommand(input);
   const fullRichPreview = useMemo(
     () =>
       renderFixedFontRichContent(output, {
@@ -635,17 +634,13 @@ function BashCollapsedPreview({
         onClick={handleClick}
         onKeyDown={handleKeyDown}
       >
-        <div className="bash-preview-row">
-          <span className="bash-preview-label">IN</span>
-          <code className="bash-preview-command">{command}</code>
-          <BashCopyButton text={command} label="Copy command" />
-          {showValidationWarning && validationErrors && (
+        {showValidationWarning && validationErrors && (
+          <div className="bash-preview-row bash-preview-warning-row">
             <SchemaWarning toolName="Bash" errors={validationErrors} />
-          )}
-        </div>
+          </div>
+        )}
         {hasOutput && (
           <div className="bash-preview-row bash-preview-output-row">
-            <span className="bash-preview-label">OUT</span>
             <div
               className={`bash-preview-output ${truncated ? "bash-preview-truncated" : ""} ${isError || result?.stderr ? "bash-preview-error" : ""}`}
             >
@@ -677,13 +672,11 @@ function BashCollapsedPreview({
         )}
         {!hasOutput && result && !result.interrupted && (
           <div className="bash-preview-row">
-            <span className="bash-preview-label">OUT</span>
             <span className="bash-preview-empty">No output</span>
           </div>
         )}
         {result?.interrupted && (
           <div className="bash-preview-row">
-            <span className="bash-preview-label">OUT</span>
             <span className="bash-preview-interrupted">Interrupted</span>
           </div>
         )}
@@ -702,6 +695,7 @@ function BashCollapsedPreview({
 
 export const bashRenderer: ToolRenderer<BashInput, BashResult> = {
   tool: "Bash",
+  displayName: "Ran",
 
   renderToolUse(input, _context) {
     return <BashToolUse input={input as BashInput} />;

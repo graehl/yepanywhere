@@ -35,6 +35,10 @@ import { MessageAge } from "./MessageAge";
 import { AttachmentChip } from "./AttachmentChip";
 import { RenderItemComponent } from "./RenderItemComponent";
 import {
+  ExploredToolGroup,
+  buildAssistantRenderSegments,
+} from "./blocks/ExploredToolGroup";
+import {
   UserTurnNavigator,
   type UserTurnNavAnchor,
   type UserTurnNavMotionCue,
@@ -77,6 +81,79 @@ function groupItemsIntoTurns(
   }
 
   return groups;
+}
+
+function getEarliestMessageTimestampMs(
+  messages: readonly Message[],
+): number | null {
+  let earliest: number | null = null;
+  for (const message of messages) {
+    const timestampMs = parseTimestampMs(message.timestamp);
+    if (timestampMs === null) {
+      continue;
+    }
+    earliest = earliest === null ? timestampMs : Math.min(earliest, timestampMs);
+  }
+  return earliest;
+}
+
+function getLatestItemsTimestampMs(items: readonly RenderItem[]): number | null {
+  let latest: number | null = null;
+  for (const item of items) {
+    const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
+    if (timestampMs === null) {
+      continue;
+    }
+    latest = latest === null ? timestampMs : Math.max(latest, timestampMs);
+  }
+  return latest;
+}
+
+function getThinkingDurationMs(
+  item: RenderItem,
+  items: readonly RenderItem[],
+  index: number,
+  nowMs: number,
+): number | undefined {
+  if (item.type !== "thinking") {
+    return undefined;
+  }
+
+  const startMs =
+    getEarliestMessageTimestampMs(item.sourceMessages) ??
+    getLatestMessageTimestampMs(item.sourceMessages);
+  if (startMs === null) {
+    return undefined;
+  }
+
+  let endMs: number | null = item.status === "streaming" ? nowMs : null;
+  for (let nextIndex = index + 1; nextIndex < items.length; nextIndex += 1) {
+    const nextItem = items[nextIndex];
+    if (!nextItem) {
+      continue;
+    }
+    const nextTimestampMs =
+      getEarliestMessageTimestampMs(nextItem.sourceMessages) ??
+      getLatestMessageTimestampMs(nextItem.sourceMessages);
+    if (nextTimestampMs !== null && nextTimestampMs >= startMs) {
+      endMs = nextTimestampMs;
+      break;
+    }
+  }
+
+  if (endMs === null) {
+    const latestOwnMs = getLatestMessageTimestampMs(item.sourceMessages);
+    endMs = latestOwnMs !== null && latestOwnMs > startMs ? latestOwnMs : null;
+  }
+
+  if (endMs === null) {
+    return undefined;
+  }
+
+  const durationMs = endMs - startMs;
+  return durationMs >= 100 && durationMs < 24 * 60 * 60 * 1000
+    ? durationMs
+    : undefined;
 }
 
 const SESSION_SETUP_PREFIXES = [
@@ -1828,25 +1905,55 @@ export const MessageList = memo(function MessageList({
           if (!firstItem) return null;
           return (
             <div key={entry.key} className="assistant-turn">
-              {group.items.map((item) => (
-                <RenderItemComponent
-                  key={item.id}
-                  item={item}
-                  isStreaming={isStreaming}
-                  thinkingExpanded={thinkingExpanded}
-                  toggleThinkingExpanded={toggleThinkingExpanded}
-                  sessionProvider={provider}
-                  onTrimBeforeUserPrompt={
-                    item.type === "user_prompt" &&
-                    onTrimBeforeUserMessage &&
-                    !item.isSubagent
-                      ? () => onTrimBeforeUserMessage(item.id)
-                      : undefined
-                  }
-                  staleNowMs={getItemStaleNowMs(item)}
-                  latestVisibleTimestampMs={latestVisibleTimestampMs}
-                />
-              ))}
+              {buildAssistantRenderSegments(group.items).map((segment) => {
+                if (segment.kind === "explored") {
+                  const segmentTimestampMs = getLatestItemsTimestampMs(
+                    segment.items,
+                  );
+                  return (
+                    <ExploredToolGroup
+                      key={segment.id}
+                      id={segment.id}
+                      items={segment.items}
+                      sessionProvider={provider}
+                      staleNowMs={
+                        segmentTimestampMs === latestVisibleTimestampMs
+                          ? nowMs
+                          : undefined
+                      }
+                      latestVisibleTimestampMs={latestVisibleTimestampMs}
+                    />
+                  );
+                }
+
+                const { item } = segment;
+                const itemIndex = group.items.indexOf(item);
+                return (
+                  <RenderItemComponent
+                    key={item.id}
+                    item={item}
+                    isStreaming={isStreaming}
+                    thinkingExpanded={thinkingExpanded}
+                    toggleThinkingExpanded={toggleThinkingExpanded}
+                    sessionProvider={provider}
+                    onTrimBeforeUserPrompt={
+                      item.type === "user_prompt" &&
+                      onTrimBeforeUserMessage &&
+                      !item.isSubagent
+                        ? () => onTrimBeforeUserMessage(item.id)
+                        : undefined
+                    }
+                    staleNowMs={getItemStaleNowMs(item)}
+                    latestVisibleTimestampMs={latestVisibleTimestampMs}
+                    thinkingDurationMs={getThinkingDurationMs(
+                      item,
+                      group.items,
+                      itemIndex,
+                      nowMs,
+                    )}
+                  />
+                );
+              })}
             </div>
           );
         })}

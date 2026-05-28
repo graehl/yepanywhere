@@ -3,10 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { chromium, type Browser, type Page } from "@playwright/test";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  DEFERRED_PREVIEW_HEIGHT,
-  estimateDeferredPreviewHeightPx,
-} from "../ToolCallRow";
+import { estimateDeferredPreviewHeightPx } from "../ToolCallRow";
 
 let browser: Browser;
 let page: Page;
@@ -31,11 +28,9 @@ function copyButton(label: string): string {
 }
 
 async function measureHydratedPreviewHeightPx({
-  command,
   output,
   rowWidthPx,
 }: {
-  command: string;
   output: string;
   rowWidthPx: number;
 }): Promise<number> {
@@ -82,15 +77,9 @@ async function measureHydratedPreviewHeightPx({
       <div class="tool-row timeline-item status-complete" style="width: ${rowWidthPx}px">
         <div class="tool-row-collapsed-preview">
           <div class="bash-collapsed-preview" role="button" tabindex="0">
-            <div class="bash-preview-row">
-              <span class="bash-preview-label">IN</span>
-              <code class="bash-preview-command">${escapeHtml(command)}</code>
-              ${copyButton("Copy command")}
-            </div>
             ${
               output
                 ? `<div class="bash-preview-row bash-preview-output-row">
-                    <span class="bash-preview-label">OUT</span>
                     <div class="bash-preview-output">
                       <div class="fixed-font-render-toggle">
                         <pre>${escapeHtml(output)}</pre>
@@ -99,7 +88,6 @@ async function measureHydratedPreviewHeightPx({
                     ${copyButton("Copy output")}
                   </div>`
                 : `<div class="bash-preview-row">
-                    <span class="bash-preview-label">OUT</span>
                     <span class="bash-preview-empty">No output</span>
                   </div>`
             }

@@ -42,12 +42,13 @@ live.
 
 ## Placeholder height estimation — `estimateDeferredPreviewHeightPx`
 
-Before a Bash row hydrates, it shows a styled placeholder box
-(`.tool-row-deferred-preview-box`) whose height is estimated from the command
-and output text, preventing large layout shifts as rows hydrate while the user
-scrolls.
+Before a Bash-like row hydrates, it shows a styled placeholder box
+(`.tool-row-deferred-preview-box`) whose height is estimated from the output
+preview only. The command itself now lives in the shared row header, so it is not
+counted in the preview placeholder height. This prevents large layout shifts as
+rows hydrate while the user scrolls.
 
-**Algorithm** (only for Bash; other tools return `null`):
+**Algorithm** (only for Bash-like tools; other tools return `null`):
 
 1. **Content width**: measured from the row's `getBoundingClientRect` when
    available; falls back to 720px.
@@ -55,8 +56,9 @@ scrolls.
    average monospace character width.
 3. **Output line count**: counts logical lines in stdout+stderr, wrapping long
    lines using the chars-per-line estimate.
-4. **Output height**: `clamp(lineCount × 18, 35, 80)px + 12px` chrome.
-5. **Total**: `commandRow(42) + outputHeight`, clamped to `[32, 134]px`.
+4. **Output height**: `clamp(lineCount × 18, 35, 80)px + 12px` chrome, or a
+   28px empty-output row.
+5. **Total**: output height plus the 2px preview border, clamped to `[28, 94]px`.
 
 Constants live in `DEFERRED_PREVIEW_HEIGHT` (exported from `ToolCallRow.tsx`)
 so tests can reference them directly; see

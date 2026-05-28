@@ -56,7 +56,9 @@ describe("BashRenderer", () => {
     expect(container.textContent).not.toContain("Chunk ID:");
     expect(screen.getByText(/plain/)).toBeDefined();
 
-    expect(screen.getByRole("button", { name: "Copy command" })).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Copy command" }),
+    ).toBeNull();
     expect(screen.getByRole("button", { name: "Copy output" })).toBeDefined();
 
     fireEvent.click(
@@ -65,8 +67,8 @@ describe("BashRenderer", () => {
 
     expect(container.textContent).not.toContain("Chunk ID:");
     expect(container.querySelector(".ansi-fg-green")).not.toBeNull();
-    expect(screen.getAllByRole("button", { name: "Copy command" }).length).toBe(
-      2,
+    expect(screen.getAllByRole("button", { name: "Copy command" })).toHaveLength(
+      1,
     );
     expect(screen.getAllByRole("button", { name: "Copy output" }).length).toBe(
       2,

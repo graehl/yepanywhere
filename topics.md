@@ -1,1 +1,3 @@
 - grok - Grok Build ACP provider integration.
+- predictive-scroll - Tool row on-demand hydration and placeholder sizing.
+- session-liveness - Provider/session cache state, stale entries, and recovery.

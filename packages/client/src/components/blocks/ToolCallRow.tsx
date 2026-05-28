@@ -9,17 +9,13 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  getDisplayBashCommandFromInput,
-  isCodexLikeBashInput,
-} from "../../lib/bashCommand";
+import { getDisplayBashCommandFromInput } from "../../lib/bashCommand";
 import { PREDICTIVE_SCROLL_ROOT_MARGIN } from "../../lib/predictiveScroll";
 import { parseShellToolOutput } from "../../lib/shellToolOutput";
 import type { ToolCallItem, ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
 import type { RenderContext } from "../renderers/types";
 import { getToolSummary } from "../tools/summaries";
-import { mayHaveFixedFontRichContent } from "../ui/FixedFontMathToggle";
 
 interface Props {
   id: string;
@@ -31,14 +27,14 @@ interface Props {
 }
 
 export const DEFERRED_PREVIEW_HEIGHT = {
-  commandRowPx: 42,
   outputRowChromePx: 12,
+  previewBorderPx: 2,
   emptyOutputRowPx: 28,
   minOutputRowPx: 35,
   outputLineHeightPx: 18,
   maxOutputPx: 80,
-  minPx: 32,
-  maxPx: 134,
+  minPx: 28,
+  maxPx: 94,
   defaultContentWidthPx: 720,
   minCharsPerLine: 24,
   maxCharsPerLine: 160,
@@ -81,13 +77,15 @@ export function estimateDeferredPreviewHeightPx(params: {
   status: ToolCallItem["status"];
   rowWidthPx?: number | null;
 }): number | null {
-  if (!canDeferRichToolRow(params.status) || params.toolName !== "Bash") {
+  if (
+    !canDeferRichToolRow(params.status) ||
+    !isBashLikeToolName(params.toolName)
+  ) {
     return null;
   }
 
-  const command = getDisplayBashCommandFromInput(params.toolInput);
   const output = getBashResultOutputForRichPreview(params.result).trimEnd();
-  if (!command && !output) {
+  if (params.result === undefined && !output) {
     return null;
   }
 
@@ -106,9 +104,18 @@ export function estimateDeferredPreviewHeightPx(params: {
       : 0;
 
   return clamp(
-    DEFERRED_PREVIEW_HEIGHT.commandRowPx + outputPx,
+    outputPx + DEFERRED_PREVIEW_HEIGHT.previewBorderPx,
     DEFERRED_PREVIEW_HEIGHT.minPx,
     DEFERRED_PREVIEW_HEIGHT.maxPx,
+  );
+}
+
+function isBashLikeToolName(toolName: string): boolean {
+  const normalized = toolName.toLowerCase();
+  return (
+    normalized === "bash" ||
+    normalized === "exec_command" ||
+    normalized === "shell_command"
   );
 }
 
@@ -262,9 +269,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   const hasInlineRenderer = toolRegistry.hasInlineRenderer(toolName);
   const suppressCollapsedPreview = shouldSuppressBashCollapsedPreview(
     toolName,
-    toolInput,
     structuredResult,
-    sessionProvider,
     status,
   );
   const rendererToolName = toolRegistry.get(toolName).tool;
@@ -272,6 +277,7 @@ export const ToolCallRow = memo(function ToolCallRow({
     toolRegistry.hasCollapsedPreview(toolName) && !suppressCollapsedPreview;
   const isEditTool = rendererToolName === "Edit";
   const isReadTool = rendererToolName === "Read";
+  const isBashTool = rendererToolName === "Bash";
   const canRenderInteractiveSummary =
     status === "complete" || (status === "pending" && isEditTool);
   const mayHaveInteractiveSummary =
@@ -340,7 +346,7 @@ export const ToolCallRow = memo(function ToolCallRow({
     collapsedPreviewContent !== null &&
     collapsedPreviewContent !== undefined &&
     collapsedPreviewContent !== false;
-  const hasBashPreviewToggle = toolName === "Bash" && hasCollapsedPreview;
+  const hasBashPreviewToggle = isBashTool && hasCollapsedPreview;
   const hasDeferredPreviewShell =
     !shouldHydrateRichContent &&
     mayHaveCollapsedPreview &&
@@ -349,8 +355,6 @@ export const ToolCallRow = memo(function ToolCallRow({
     !shouldHydrateRichContent &&
     (mayHaveCollapsedPreview || mayHaveInteractiveSummary);
   const [bashPreviewExpanded, setBashPreviewExpanded] = useState(true);
-  const hideSummaryWhenPreviewVisible =
-    hasBashPreviewToggle && bashPreviewExpanded;
   // Tools with collapsed preview or interactive summary don't expand
   const isNonExpandable =
     hasInteractiveSummary || hasCollapsedPreview || hasDeferredInteractiveShell;
@@ -409,6 +413,9 @@ export const ToolCallRow = memo(function ToolCallRow({
   const summary = useMemo(() => {
     return getToolSummary(toolName, toolInput, toolResult, status);
   }, [toolName, toolInput, toolResult, status]);
+  const headerCommand = isBashTool
+    ? getDisplayBashCommandFromInput(toolInput)
+    : "";
 
   const handleToggle = () => {
     hydrateNow();
@@ -473,7 +480,7 @@ export const ToolCallRow = memo(function ToolCallRow({
       ref={rowRef}
       onPointerEnter={hydrateNow}
       onFocus={hydrateNow}
-      className={`tool-row timeline-item ${expanded ? "expanded" : "collapsed"} status-${status} ${isNonExpandable ? "interactive" : ""} ${shouldHydrateRichContent ? "" : "rich-deferred"}`}
+      className={`tool-row timeline-item ${expanded ? "expanded" : "collapsed"} status-${status} ${isNonExpandable ? "interactive" : ""} ${shouldHydrateRichContent ? "" : "rich-deferred"} ${isBashTool ? "ran-tool-row" : ""}`}
     >
       {showDotBtn && (
         <button
@@ -574,7 +581,7 @@ export const ToolCallRow = memo(function ToolCallRow({
           <span className="tool-summary interactive-summary">
             {interactiveSummaryContent}
           </span>
-        ) : !hideSummaryWhenPreviewVisible ? (
+        ) : (
           <span className="tool-summary">
             {summary}
             {status === "aborted" && (
@@ -587,7 +594,11 @@ export const ToolCallRow = memo(function ToolCallRow({
               </span>
             )}
           </span>
-        ) : null}
+        )}
+
+        {headerCommand && (
+          <ToolHeaderCopyButton text={headerCommand} label="Copy command" />
+        )}
 
         {!isNonExpandable && (
           <span className="expand-chevron" aria-hidden="true">
@@ -687,41 +698,18 @@ function ToolRowCollapseStrip({
 
 function shouldSuppressBashCollapsedPreview(
   toolName: string,
-  toolInput: unknown,
   result: unknown,
-  sessionProvider?: string,
   status?: ToolCallItem["status"],
 ): boolean {
-  if (toolName !== "Bash") {
+  if (!isBashLikeToolName(toolName)) {
     return false;
   }
 
-  if (!isCodexLikeBashInput(toolInput, sessionProvider)) {
-    return false;
-  }
-
-  // Keep Codex bash rows compact by default (header + expandable details) for
-  // ordinary commands, but surface markdown-like output so the render toggle is
-  // reachable from the row instead of requiring an expansion first.
   if (status === "pending") {
     return true;
   }
-  if (
-    status === "complete" ||
-    status === "error" ||
-    status === "aborted" ||
-    status === "incomplete"
-  ) {
-    const output = getBashResultOutputForRichPreview(result);
-    return !output || !mayHaveFixedFontRichContent(output);
-  }
 
-  const command = getDisplayBashCommandFromInput(toolInput);
-  if (!command) {
-    return false;
-  }
-
-  return /^(rg|grep|sed|nl|cat)\b/.test(command.trimStart());
+  return result === undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -819,5 +807,74 @@ function Spinner() {
         strokeDashoffset="8"
       />
     </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      aria-hidden="true"
+    >
+      <rect x="5" y="5" width="8" height="8" rx="1.5" />
+      <path d="M3 10.5H2.5A1.5 1.5 0 0 1 1 9V2.5A1.5 1.5 0 0 1 2.5 1H9a1.5 1.5 0 0 1 1.5 1.5V3" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 8.5 6.5 12 13 4" />
+    </svg>
+  );
+}
+
+function ToolHeaderCopyButton({
+  text,
+  label,
+}: {
+  text: string;
+  label: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <button
+      type="button"
+      className={`tool-header-copy ${copied ? "copied" : ""}`}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        navigator.clipboard
+          .writeText(text)
+          .then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 3000);
+          })
+          .catch((error) => {
+            console.error("Failed to copy tool header text:", error);
+          });
+      }}
+      aria-label={copied ? "Copied" : label}
+      title={copied ? "Copied" : label}
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </button>
   );
 }

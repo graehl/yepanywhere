@@ -179,3 +179,141 @@ long-term commitment.
 See `docs/project/relay-design.md` for the full protocol and crypto
 design. This README is the operator's view; the design doc is the
 contract.
+
+## Setting up a Cloudflare Tunnel (end-to-end)
+
+Cloudflare Tunnel (the `cloudflared` outbound-tunnel product) is a
+practical free alternative to opening inbound ports on a home or
+private-network box. The tunnel daemon dials outbound to Cloudflare;
+Cloudflare terminates TLS at its edge with a free cert, accepts
+public traffic on your hostname, and forwards it down the tunnel to
+the relay process. No router NAT rules, no Let's Encrypt renewals,
+and CGNAT-proof.
+
+The free Cloudflare Zero Trust tier covers this use case (up to 50
+users at the time of writing); confirm pricing on Cloudflare's site
+before committing.
+
+This walkthrough assumes the relay's box is on a private/home
+network with outbound internet. For a persistent Cloudflare hostname
+on a Free or Pro plan, expect to move the apex domain to Cloudflare's
+primary DNS setup. If the apex DNS must stay with another provider,
+skip to the Tailscale Funnel option below instead. Substitute
+`example.com` and `relay.example.com` with your own.
+
+### 1. Create a Cloudflare account
+
+Sign up at `dash.cloudflare.com/sign-up`. Email + password, verify
+the email, enable 2FA (TOTP or hardware key). No payment method is
+required for the Free plan or for Zero Trust Free.
+
+Signing in with Google works too; `cloudflared` does not touch
+Google directly — the CLI auth flow opens a browser, you log in to
+`dash.cloudflare.com` however you configured it, and the CLI
+receives a `cert.pem` used non-interactively afterward. The cost of
+SSO is that losing the Google account locks you out of Cloudflare;
+set account-recovery options either way.
+
+### 2. Add a domain to Cloudflare
+
+On Free and Pro, Cloudflare's primary (full) DNS setup is the
+available setup for a persistent custom hostname. Subdomain-only
+partial setups require a paid Business-or-higher path, and delegated
+subdomain setups are Enterprise-only. Two realistic free paths remain:
+
+**Option A: Move the apex (`example.com`) to Cloudflare DNS.** This is
+the Cloudflare Free path to a custom `relay.example.com` hostname.
+Use Cloudflare's domain onboarding flow to add `example.com` on the
+Free plan, then review the imported DNS records before changing the
+registrar's nameservers to the two Cloudflare nameservers assigned
+to the zone. Records currently served by a third party (GitHub
+Pages, Netlify, Vercel, mail providers) should usually stay DNS-only
+unless you have verified that proxying them is supported. After the
+nameserver change, Cloudflare is authoritative for all of
+`example.com`'s DNS.
+
+**Option B: Use Tailscale Funnel instead.** Different vendor, same
+shape: outbound tunnel from the relay box, free for personal use,
+no DNS changes anywhere. The public URL becomes
+`https://<machine>.<tailnet>.ts.net`. If you do not want to move
+your apex to Cloudflare, this is the simplest path; the rest of
+this section is Cloudflare-specific and does not apply.
+
+Cloudflare also offers ephemeral "TryCloudflare" tunnels at random
+`*.trycloudflare.com` URLs — useful for a one-off test, but the
+URL rotates every restart, so not suitable for a persistent relay.
+
+### 3. Enable Zero Trust (free)
+
+Open Cloudflare Zero Trust (also branded Cloudflare One in some
+flows) for the account. Pick an account-wide team name if prompted
+and choose the Free plan.
+
+### 4. Create the tunnel
+
+Create a remotely-managed Cloudflare Tunnel that uses `cloudflared`,
+then name it (for example, `home-relay`).
+
+The dashboard shows install commands tailored to the box's OS. On
+Linux, a typical sequence:
+
+```bash
+curl -fsSL \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+  -o /usr/local/bin/cloudflared
+chmod +x /usr/local/bin/cloudflared
+# One-time service-install command (with token) from the dashboard:
+sudo cloudflared service install <TOKEN>
+```
+
+Swap `-amd64` for `-arm64` on ARM hardware (Raspberry Pi 4/5,
+Apple-silicon Linux VMs, ARM cloud instances). Verify:
+
+```bash
+sudo systemctl status cloudflared
+```
+
+### 5. Map the public hostname to the local relay
+
+In the tunnel's public hostname/application route configuration, add
+a hostname-to-service route:
+
+- Subdomain: `relay`
+- Domain: `example.com` (the apex you moved to Cloudflare in step 2)
+- Path: (blank)
+- Service: `HTTP` → `localhost:4400`
+
+Save. Cloudflare publishes the routing record inside its zone for
+you; nothing else to touch in DNS.
+
+### 6. Smoke test
+
+```bash
+curl -sS https://relay.example.com/health
+# expect: {"status":"ok","uptime":...,"waiting":0,"pairs":0}
+```
+
+A successful JSON response means the tunnel is up and the edge
+cert is good. Point a yep-anywhere server at the new relay:
+
+```bash
+yepanywhere --setup-remote-access \
+  --username <name> --password <pw> \
+  --relay wss://relay.example.com/ws
+```
+
+### 7. Tighten the configuration
+
+With cloudflared in front, the relay always sees its peer as
+`127.0.0.1`. Set:
+
+```bash
+RELAY_TRUSTED_PROXIES=127.0.0.1,::1
+```
+
+so the per-IP cap counts the real client IP that cloudflared puts
+in `X-Forwarded-For`, not the single shared loopback address.
+
+If you do not want `/status` and `/stats` world-readable, put them
+behind a Cloudflare Access policy (free with Zero Trust) rather
+than at the relay process.

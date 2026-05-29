@@ -329,7 +329,7 @@ export function FilterDropdown<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
-        {displayContent}
+        <span className="filter-dropdown-button-label">{displayContent}</span>
         <svg
           className="filter-dropdown-chevron"
           width="12"

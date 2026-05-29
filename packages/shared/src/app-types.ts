@@ -229,7 +229,7 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
  *
  * Parses model IDs like:
  * - "claude-opus-4-5-20251101" → opus → 200K
- * - "claude-opus-4-6[1m]" → opus → 1M
+ * - "claude-opus-4-8[1m]" → opus → 1M
  * - "claude-sonnet-4-20250514" → sonnet → 200K
  * - "sonnet[1m]" → sonnet → 1M
  * - "claude-3-5-sonnet-20241022" → sonnet → 200K

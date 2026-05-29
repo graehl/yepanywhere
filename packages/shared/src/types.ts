@@ -187,10 +187,10 @@ export interface NewSessionDefaults {
  * - "best": Use Claude Code's best available model alias
  * - "sonnet": Claude Sonnet
  * - "sonnet[1m]": Claude Sonnet with 1M context when available
- * - "opus": Claude Opus
- * - "opus[1m]": Claude Opus with 1M context when available
+ * - "opus": Claude Opus 4.8 alias
+ * - "opus[1m]": Claude Opus 4.8 with 1M context when available
  * - "haiku": Claude Haiku
- * - "opusplan": Plan with Opus, execute with Sonnet
+ * - "opusplan": Plan with Opus 4.8, execute with Sonnet
  */
 export type ModelOption =
   | "default"
@@ -209,7 +209,7 @@ export const DEFAULT_MODEL: ModelOption = "default";
 
 /**
  * Resolve a saved model option to the explicit value sent to Claude Code.
- * Returning undefined means "use Claude Code's tier-dependent default".
+ * Returning undefined means "use Claude Code's saved default for new sessions".
  */
 export function resolveModel(
   model: ModelOption | undefined,

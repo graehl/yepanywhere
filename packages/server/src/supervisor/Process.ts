@@ -600,7 +600,7 @@ export class Process {
 
   /**
    * Change thinking mode at runtime via the deprecated setMaxThinkingTokens API.
-   * On Opus 4.6, 0 = disabled, any non-zero = adaptive.
+   * On Opus 4.6+, 0 = disabled, any non-zero = adaptive.
    * Only supported by Claude SDK 0.2.7+.
    *
    * @param tokens - Non-zero to enable adaptive thinking, undefined/0 to disable

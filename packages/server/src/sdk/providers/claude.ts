@@ -145,8 +145,9 @@ function resolveLocalClaudeCodeExecutable(): string | undefined {
 const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   {
     id: "default",
-    name: "Default (recommended)",
-    description: "Claude Code chooses the recommended model for your account",
+    name: "Default",
+    description:
+      "Uses Claude Code's saved default for new sessions, as set by /model",
     contextWindow: getModelContextWindow("default", "claude"),
   },
   {
@@ -169,14 +170,14 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   },
   {
     id: "opus",
-    name: "Opus",
-    description: "Standard-context Opus for the most demanding reasoning",
+    name: "Opus 4.8",
+    description: "Standard-context Opus 4.8 for the most demanding reasoning",
     contextWindow: getModelContextWindow("opus", "claude"),
   },
   {
     id: "opus[1m]",
-    name: "Opus 1M",
-    description: "Opus with 1M context for the largest working sets",
+    name: "Opus 4.8 1M",
+    description: "Opus 4.8 with 1M context for the largest working sets",
     contextWindow: getModelContextWindow("opus[1m]", "claude"),
   },
   {
@@ -187,8 +188,8 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   },
   {
     id: "opusplan",
-    name: "Opus Plan",
-    description: "Uses Opus for planning, then Sonnet for execution",
+    name: "Opus 4.8 Plan",
+    description: "Uses Opus 4.8 for planning, then Sonnet for execution",
     contextWindow: getModelContextWindow("opus", "claude"),
   },
 ];

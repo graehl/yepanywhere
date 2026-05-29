@@ -256,7 +256,7 @@ describe("NewSessionForm", () => {
         supportsThinkingToggle: true,
         models: [
           { id: "default", name: "Default" },
-          { id: "opus", name: "Opus" },
+          { id: "opus", name: "Opus 4.8" },
         ],
       },
       {
@@ -390,7 +390,7 @@ describe("NewSessionForm", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Claude" }));
-    fireEvent.click(screen.getByRole("button", { name: "Opus" }));
+    fireEvent.click(screen.getByRole("button", { name: "Opus 4.8" }));
     fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
       target: { value: "hello" },
     });

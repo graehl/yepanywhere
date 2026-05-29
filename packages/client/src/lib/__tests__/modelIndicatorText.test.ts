@@ -13,8 +13,23 @@ describe("getModelIndicatorModelLabel", () => {
       );
     });
     it("opus", () => {
-      expect(getModelIndicatorModelLabel("claude", "claude-opus-4-1")).toBe(
-        "Cl ◐ 4.1",
+      expect(getModelIndicatorModelLabel("claude", "claude-opus-4-8")).toBe(
+        "Cl ◐ 4.8",
+      );
+    });
+    it("opus alias", () => {
+      expect(getModelIndicatorModelLabel("claude", "opus")).toBe(
+        "Cl ◐ 4.8",
+      );
+    });
+    it("opus 1m alias", () => {
+      expect(getModelIndicatorModelLabel("claude", "opus[1m]")).toBe(
+        "Cl ◐ 4.8 1m",
+      );
+    });
+    it("opus plan alias", () => {
+      expect(getModelIndicatorModelLabel("claude", "opusplan")).toBe(
+        "Cl ◐ 4.8 Plan",
       );
     });
     it("haiku", () => {
@@ -167,8 +182,13 @@ describe("getModelIndicatorTooltip", () => {
   });
   it("no status: just provider abbrev + readable model", () => {
     expect(
-      getModelIndicatorTooltip("claude", "claude-opus-4-1", undefined),
-    ).toBe("Cl Opus 4.1");
+      getModelIndicatorTooltip("claude", "claude-opus-4-8", undefined),
+    ).toBe("Cl Opus 4.8");
+  });
+  it("opus alias tooltip includes current alias target", () => {
+    expect(getModelIndicatorTooltip("claude", "opus", undefined)).toBe(
+      "Cl Opus 4.8",
+    );
   });
   it("codex model", () => {
     expect(

@@ -36,13 +36,26 @@ type ModelGlyphRule = {
   patterns: string[];
   glyph: string;
   fixedSuffix?: string;
+  match?: "contains" | "exact";
 };
 
 const modelGlyphRulesByProvider: Readonly<
   Record<string, ReadonlyArray<ModelGlyphRule>>
 > = {
   claude: [
-    { patterns: ["opus[1m]", "opus-1m"], glyph: "◐", fixedSuffix: "1m" },
+    {
+      patterns: ["opus[1m]", "opus-1m"],
+      glyph: "◐",
+      fixedSuffix: "4.8 1m",
+      match: "exact",
+    },
+    {
+      patterns: ["opusplan"],
+      glyph: "◐",
+      fixedSuffix: "4.8 Plan",
+      match: "exact",
+    },
+    { patterns: ["opus"], glyph: "◐", fixedSuffix: "4.8", match: "exact" },
     {
       patterns: ["sonnet[1m]", "sonnet-1m"],
       glyph: "♪",
@@ -142,8 +155,12 @@ function normalizeModelSuffixTail(raw: string): string {
     return "";
   }
 
-  if (/^\d+(?:-\d+)+(?:\.\d+)?$/u.test(suffix)) {
-    return suffix.replace(/-/gu, ".");
+  const versionWithExtendedContext = suffix.match(
+    /^(\d+(?:-\d+)+(?:\.\d+)?)(\[1m\])?$/u,
+  );
+  if (versionWithExtendedContext) {
+    const version = versionWithExtendedContext[1]?.replace(/-/gu, ".");
+    return `${version}${versionWithExtendedContext[2] ? " 1m" : ""}`;
   }
 
   return suffix;
@@ -162,7 +179,12 @@ function deriveModelGlyphMatch(
     for (const rule of ruleList) {
       const patterns = [...rule.patterns].sort((a, b) => b.length - a.length);
       for (const pattern of patterns) {
-        const matchStart = normalizedModel.indexOf(pattern);
+        const matchStart =
+          rule.match === "exact"
+            ? normalizedModel === pattern
+              ? 0
+              : -1
+            : normalizedModel.indexOf(pattern);
         if (matchStart === -1) {
           continue;
         }
@@ -224,7 +246,7 @@ export function getModelIndicatorModelLabel(
 }
 
 // Returns human-readable model name for use in tooltips:
-// "Sonnet 4.6", "Opus 4.1", "5.4-mini", "2.5-flash"
+// "Sonnet 4.6", "Opus 4.8", "5.4-mini", "2.5-flash"
 function getModelReadableName(
   providerKey: string,
   normalizedModel: string,

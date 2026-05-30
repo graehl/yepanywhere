@@ -507,6 +507,21 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     expect(argsNone).toEqual(["agent", "stdio"]);
   });
 
+  it("strips xAI API-key env vars from the spawned grok child", async () => {
+    const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
+
+    await startAndReadInit(provider, {
+      cwd: "/tmp",
+      initialMessage: { text: "hi" },
+    });
+
+    expect(connectCalls.length).toBeGreaterThan(0);
+    // Keeps the user's grok.com subscription from being overridden by a YA xAI
+    // STT key that may share the process environment under XAI_API_KEY.
+    expect(connectCalls[0].excludeEnv).toContain("XAI_API_KEY");
+    expect(connectCalls[0].excludeEnv).toContain("GROK_CODE_XAI_API_KEY");
+  });
+
   it("passes -m model flag only for non-default models", async () => {
     const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
 

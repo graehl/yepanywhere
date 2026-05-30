@@ -70,6 +70,18 @@ import type {
 
 const execAsync = promisify(exec);
 
+/**
+ * Env vars the `grok` CLI honors for API-key auth. The auth docs state the key
+ * "takes precedence over browser credentials", so if either is present in the
+ * spawned process's environment, Grok Build silently switches from the user's
+ * grok.com subscription to metered pay-as-you-go API billing. We strip them
+ * from the child env so YA's own xAI usage (e.g. a Speech-to-Text key, kept
+ * under a YA-private name) can never flip the supervised coding agent's
+ * billing. Scoped to this new, not-yet-public provider so existing providers
+ * that rely on ambient env passthrough are unaffected.
+ */
+const GROK_BILLING_ENV_DENYLIST = ["XAI_API_KEY", "GROK_CODE_XAI_API_KEY"];
+
 /** Stable Grok Build model info from the local CLI (`grok models`). */
 const GROK_MODELS: ModelInfo[] = [
   {
@@ -323,6 +335,7 @@ export class GrokACPProvider implements AgentProvider {
         command: grokPath,
         args,
         cwd: options.cwd,
+        excludeEnv: GROK_BILLING_ENV_DENYLIST,
       });
       this.log.info(
         { durationMs: Date.now() - connectStart, args },

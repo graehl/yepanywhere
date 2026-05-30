@@ -4,10 +4,9 @@
  * YA to a transcription service (cloud API, local Whisper, dummy).
  *
  * Backends are validated at startup; only those that report `enabled`
- * are advertised to clients via the version capability list. The
- * actual audio plumbing is intentionally not represented here yet —
- * Phase 1 only needs registration + advertisement so the client UI
- * can be built and wired against a stable contract.
+ * are advertised to clients via the version capability list. Speech
+ * routes pass complete utterance audio buffers into this interface; live
+ * streaming partials remain outside this contract.
  */
 
 export interface SpeechBackendInfo {

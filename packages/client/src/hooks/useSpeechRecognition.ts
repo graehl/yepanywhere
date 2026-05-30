@@ -51,11 +51,7 @@ function createProvider(
   },
 ): SpeechProvider {
   if (speechMethod && speechMethod !== "browser-native") {
-    // Strip "ya-" prefix to get the backend id sent to the server
-    const backendId = speechMethod.startsWith("ya-")
-      ? speechMethod.slice(3)
-      : speechMethod;
-    return new YaServerProvider(backendId, basePath, events);
+    return new YaServerProvider(speechMethod, basePath, events);
   }
   return new BrowserNativeProvider({ lang: events.lang, ...events });
 }
@@ -147,7 +143,8 @@ export function useSpeechRecognition(
   const toggleListening = useCallback(() => {
     const provider = providerRef.current;
     if (!provider) return;
-    if (provider.getState().isListening) {
+    const providerState = provider.getState();
+    if (providerState.isListening || providerState.status === "starting") {
       provider.stop();
     } else {
       provider.start();

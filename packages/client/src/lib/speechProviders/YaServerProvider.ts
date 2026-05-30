@@ -1,3 +1,4 @@
+import { fetchJSON } from "../../api/client";
 import {
   INITIAL_SPEECH_STATE,
   type SpeechProvider,
@@ -6,17 +7,6 @@ import {
   type SpeechProviderSubscriber,
 } from "./SpeechProvider";
 
-type ServerMsg =
-  | { type: "ready" }
-  | { type: "interim"; text: string }
-  | { type: "final"; text: string }
-  | { type: "error"; message: string };
-
-function buildWsUrl(basePath: string): string {
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}${basePath}/api/speech/ws`;
-}
-
 function preferredMimeType(): string {
   const candidates = [
     "audio/webm;codecs=opus",
@@ -24,20 +14,42 @@ function preferredMimeType(): string {
     "audio/ogg;codecs=opus",
   ];
   for (const mime of candidates) {
-    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(mime)) {
+    if (
+      typeof MediaRecorder !== "undefined" &&
+      MediaRecorder.isTypeSupported(mime)
+    ) {
       return mime;
     }
   }
   return "audio/webm";
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  return bytesToBase64(new Uint8Array(buffer));
+}
+
+interface TranscribeResponse {
+  text: string;
+}
+
 /**
- * Speech provider that streams audio over a YA server WebSocket
- * and receives transcript responses (batch, on stop).
+ * Speech provider that records audio locally and transcribes it through YA.
  *
- * Audio is captured via MediaRecorder (Opus/WebM) and sent as binary
- * frames. On stop(), a JSON "stop" frame is sent; the server responds
- * with { type: "final", text } once transcription completes.
+ * The first usable server-mediated path is batch-on-stop: MediaRecorder
+ * captures Opus/WebM chunks, stop() posts the complete utterance to
+ * /api/speech/transcribe, and ordinary YA request transport carries it in
+ * both local and remote/SecureConnection modes.
  */
 export class YaServerProvider implements SpeechProvider {
   readonly id: string;
@@ -47,21 +59,28 @@ export class YaServerProvider implements SpeechProvider {
   private readonly subscribers = new Set<SpeechProviderSubscriber>();
   private readonly options: SpeechProviderOptions;
   private readonly backendId: string;
-  private readonly basePath: string;
 
-  private ws: WebSocket | null = null;
   private recorder: MediaRecorder | null = null;
   private stream: MediaStream | null = null;
+  private chunks: Blob[] = [];
+  private mimeType = "audio/webm";
+  private submitOnStop = false;
+  private startToken = 0;
+  private disposed = false;
 
-  constructor(backendId: string, basePath: string, options: SpeechProviderOptions = {}) {
+  constructor(
+    backendId: string,
+    _basePath: string,
+    options: SpeechProviderOptions = {},
+  ) {
     this.backendId = backendId;
-    this.basePath = basePath;
     this.id = `ya-server-${backendId}`;
     this.options = options;
     this.isSupported =
       typeof window !== "undefined" &&
       typeof MediaRecorder !== "undefined" &&
-      typeof WebSocket !== "undefined";
+      typeof navigator !== "undefined" &&
+      !!navigator.mediaDevices?.getUserMedia;
   }
 
   getState(): SpeechProviderState {
@@ -79,81 +98,50 @@ export class YaServerProvider implements SpeechProvider {
   }
 
   start(): void {
-    if (this.state.isListening) return;
+    if (this.disposed) return;
+    if (
+      this.state.isListening ||
+      this.state.status === "starting" ||
+      this.state.status === "receiving"
+    ) {
+      return;
+    }
+    const token = ++this.startToken;
     this.setState({ status: "starting", isListening: false, error: null });
-    this.doStart().catch((err: unknown) => {
+    this.doStart(token).catch((err: unknown) => {
+      if (this.disposed || token !== this.startToken) return;
+      this.cleanupMedia(false);
       const msg = err instanceof Error ? err.message : String(err);
       this.setState({ status: "error", isListening: false, error: msg });
       this.options.onError?.(msg);
     });
   }
 
-  private async doStart(): Promise<void> {
-    const ws = new WebSocket(buildWsUrl(this.basePath));
-    this.ws = ws;
-
-    // Wait for connection
-    await new Promise<void>((resolve, reject) => {
-      ws.onopen = () => resolve();
-      ws.onerror = () => reject(new Error("WebSocket connection failed"));
-      ws.onclose = () => reject(new Error("WebSocket closed unexpectedly"));
-    });
-
-    // Wait for server "ready" handshake
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("Server ready timeout")), 6_000);
-      ws.onmessage = (e: MessageEvent) => {
-        try {
-          const msg = JSON.parse(e.data as string) as ServerMsg;
-          if (msg.type === "ready") {
-            clearTimeout(t);
-            resolve();
-          } else if (msg.type === "error") {
-            clearTimeout(t);
-            reject(new Error(msg.message));
-          }
-        } catch {
-          /* ignore parse errors during handshake */
-        }
-      };
-    });
-
-    // Switch to ongoing message handler
-    ws.onmessage = (e: MessageEvent) => this.onServerMessage(e);
-    ws.onclose = () => {
-      if (this.state.isListening || this.state.status === "receiving") {
-        this.setState({ status: "error", isListening: false, error: "Connection closed" });
-        this.options.onError?.("Connection closed unexpectedly");
-        this.options.onEnd?.();
-      }
-    };
-
-    // Request microphone access
+  private async doStart(token: number): Promise<void> {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (this.disposed || token !== this.startToken) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
     this.stream = stream;
-
-    const mimeType = preferredMimeType();
-
-    // Tell server which backend + mime we'll use
-    ws.send(JSON.stringify({
-      type: "start",
-      backendId: this.backendId,
-      mimeType,
-    }));
+    this.mimeType = preferredMimeType();
+    this.chunks = [];
+    this.submitOnStop = true;
 
     const recorder = new MediaRecorder(stream, {
-      mimeType,
+      mimeType: this.mimeType,
       audioBitsPerSecond: 16_000,
     });
     this.recorder = recorder;
 
     recorder.ondataavailable = (e: BlobEvent) => {
-      if (e.data.size > 0 && this.ws?.readyState === WebSocket.OPEN) {
-        e.data.arrayBuffer().then((buf) => {
-          if (this.ws?.readyState === WebSocket.OPEN) {
-            this.ws.send(buf);
-          }
-        });
+      if (token === this.startToken && this.submitOnStop && e.data.size > 0) {
+        this.chunks.push(e.data);
+      }
+    };
+    recorder.onstop = () => {
+      if (token === this.startToken && this.submitOnStop) {
+        void this.transcribeRecording();
       }
     };
 
@@ -161,65 +149,92 @@ export class YaServerProvider implements SpeechProvider {
     this.setState({ status: "listening", isListening: true, error: null });
   }
 
-  private onServerMessage(e: MessageEvent): void {
-    let msg: ServerMsg;
-    try {
-      msg = JSON.parse(e.data as string) as ServerMsg;
-    } catch {
-      return;
-    }
+  private async transcribeRecording(): Promise<void> {
+    this.submitOnStop = false;
+    const audio = new Blob(this.chunks, { type: this.mimeType });
+    this.chunks = [];
+    this.stopTracks();
 
-    if (msg.type === "interim") {
-      this.setState({ status: "receiving", interimTranscript: msg.text });
-      this.options.onInterimResult?.(msg.text);
-    } else if (msg.type === "final") {
+    try {
+      const response =
+        audio.size > 0
+          ? await fetchJSON<TranscribeResponse>("/speech/transcribe", {
+              method: "POST",
+              body: JSON.stringify({
+                backendId: this.backendId,
+                mimeType: this.mimeType,
+                audioBase64: await blobToBase64(audio),
+              }),
+            })
+          : { text: "" };
+      if (this.disposed) return;
       this.setState({
         status: "idle",
         isListening: false,
         interimTranscript: "",
+        error: null,
       });
-      if (msg.text) this.options.onResult?.(msg.text);
+      if (response.text) this.options.onResult?.(response.text);
       this.options.onEnd?.();
-      this.cleanupMedia();
-    } else if (msg.type === "error") {
+    } catch (err: unknown) {
+      if (this.disposed) return;
+      const message = err instanceof Error ? err.message : String(err);
       this.setState({
         status: "error",
         isListening: false,
-        error: msg.message,
+        interimTranscript: "",
+        error: message,
       });
-      this.options.onError?.(msg.message);
+      this.options.onError?.(message);
       this.options.onEnd?.();
-      this.cleanupMedia();
     }
   }
 
   stop(): void {
+    if (this.disposed) return;
+    if (this.state.status === "starting") {
+      this.startToken += 1;
+      this.cleanupMedia(false);
+      this.setState({
+        status: "idle",
+        isListening: false,
+        interimTranscript: "",
+        error: null,
+      });
+      this.options.onEnd?.();
+      return;
+    }
     if (!this.state.isListening) return;
     this.setState({ status: "receiving", isListening: false });
 
     if (this.recorder?.state !== "inactive") {
       this.recorder?.stop();
+    } else {
+      void this.transcribeRecording();
     }
-
-    // Brief delay so the final ondataavailable fires before we send stop
-    setTimeout(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: "stop" }));
-      }
-    }, 150);
   }
 
-  private cleanupMedia(): void {
-    this.recorder?.stop();
-    this.recorder = null;
+  private stopTracks(): void {
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
   }
 
+  private cleanupMedia(submitOnStop: boolean): void {
+    this.submitOnStop = submitOnStop;
+    if (this.recorder && this.recorder.state !== "inactive") {
+      this.recorder.stop();
+    }
+    this.recorder = null;
+    if (!submitOnStop) {
+      this.chunks = [];
+      this.stopTracks();
+    }
+  }
+
   dispose(): void {
-    this.cleanupMedia();
-    this.ws?.close();
-    this.ws = null;
+    this.disposed = true;
+    this.startToken += 1;
+    this.cleanupMedia(false);
     this.setState({ ...INITIAL_SPEECH_STATE });
     this.subscribers.clear();
   }

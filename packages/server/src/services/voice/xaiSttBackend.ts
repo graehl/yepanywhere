@@ -41,6 +41,7 @@ export class XaiSttBackend implements SpeechBackend {
     const form = new FormData();
     // Inverse text normalization (spoken numbers/currency -> written form).
     form.append("format", "true");
+    form.append("language", "en");
     for (const term of options.keyterms ?? []) {
       form.append("keyterm", term);
     }
@@ -61,7 +62,9 @@ export class XaiSttBackend implements SpeechBackend {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`xAI STT transcription failed (HTTP ${res.status}): ${text}`);
+      throw new Error(
+        `xAI STT transcription failed (HTTP ${res.status}): ${text}`,
+      );
     }
 
     const data = (await res.json()) as XaiSttResponse;

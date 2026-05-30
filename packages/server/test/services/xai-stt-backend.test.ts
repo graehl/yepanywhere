@@ -49,6 +49,8 @@ describe("XaiSttBackend", () => {
     ).toBe("Bearer xai-key");
     expect(init.body).toBeInstanceOf(FormData);
     const form = init.body as FormData;
+    expect(form.get("format")).toBe("true");
+    expect(form.get("language")).toBe("en");
     expect(form.getAll("keyterm")).toContain("Kubernetes");
     expect(form.get("file")).toBeInstanceOf(Blob);
   });

@@ -123,6 +123,8 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     onResult: handleResult,
     onInterimResult: handleInterim,
   });
+  const isStarting = status === "starting";
+  const isActive = isListening || isStarting;
 
   const isAvailable = isSupported && voiceInputEnabled && serverVoiceEnabled;
 
@@ -135,18 +137,20 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     () => ({
       stopAndFinalize: () => {
         const pending = interimTranscript;
-        if (isListening) {
+        if (isListening || isStarting) {
           stopListening();
         }
         return pending;
       },
       toggle: toggleListening,
-      isListening,
+      isListening: isActive,
       isAvailable,
     }),
     [
       interimTranscript,
       isListening,
+      isStarting,
+      isActive,
       stopListening,
       toggleListening,
       isAvailable,
@@ -162,13 +166,13 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
 
   // Handle click - toggle listening and notify when starting
   const handleClick = useCallback(() => {
-    const wasListening = isListening;
+    const wasActive = isActive;
     toggleListening();
     // If we weren't listening, we're now starting - notify parent
-    if (!wasListening) {
+    if (!wasActive) {
       onListeningStart?.();
     }
-  }, [isListening, toggleListening, onListeningStart]);
+  }, [isActive, toggleListening, onListeningStart]);
 
   // Don't render if not supported or disabled in settings
   if (!isAvailable) {
@@ -192,24 +196,24 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   const button = (
     <button
       type="button"
-      className={`voice-input-button ${isListening ? "listening" : ""} ${className}`}
+      className={`voice-input-button ${isActive ? "listening" : ""} ${className}`}
       onClick={handleClick}
       disabled={disabled}
       title={
         error
           ? error
-          : isListening
+          : isActive
             ? t("voiceInputStop" as never)
             : t("voiceInputStart" as never)
       }
       aria-label={
-        isListening
+        isActive
           ? t("voiceInputStopLabel" as never)
           : t("voiceInputStartLabel" as never)
       }
-      aria-pressed={isListening}
+      aria-pressed={isActive}
     >
-      {isListening ? (
+      {isActive ? (
         // Recording indicator - animated bars
         <svg
           width="16"

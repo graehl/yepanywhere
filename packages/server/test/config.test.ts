@@ -79,4 +79,14 @@ describe("loadConfig codex paths", () => {
       "ya-dummy",
     ]);
   });
+
+  it("reads the xAI STT key from YA-private module env", async () => {
+    vi.stubEnv("YA_stt__XAI_API_KEY", "xai-key");
+
+    const { loadConfig } = await import("../src/config.js");
+    const config = loadConfig();
+
+    expect(config.xaiSttApiKey).toBe("xai-key");
+    expect(process.env.YA_stt__XAI_API_KEY).toBeUndefined();
+  });
 });

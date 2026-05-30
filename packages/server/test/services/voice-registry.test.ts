@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getLogger } from "../../src/logging/logger.js";
 import { initSpeechBackendRegistry } from "../../src/services/voice/registry.js";
 
 describe("initSpeechBackendRegistry", () => {
@@ -42,7 +43,7 @@ describe("initSpeechBackendRegistry", () => {
   });
 
   it("logs and skips unknown backend ids", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(getLogger(), "warn").mockImplementation(() => {});
 
     const registry = await initSpeechBackendRegistry({
       voiceInputEnabled: true,

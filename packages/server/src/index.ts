@@ -46,6 +46,7 @@ import {
   RemoteAccessService,
   RemoteSessionService,
 } from "./remote-access/index.js";
+import { createSpeechRoutes } from "./routes/speech.js";
 import { createUploadRoutes } from "./routes/upload.js";
 import { getServerCompatibilityInfo } from "./routes/version.js";
 import { createWsRelayRoutes } from "./routes/ws-relay.js";
@@ -643,6 +644,15 @@ async function startServer() {
   });
   app.route("/api", uploadRoutes);
   markStartup("upload routes mounted");
+
+  app.route(
+    "/api/speech",
+    createSpeechRoutes({
+      speechBackendRegistry,
+      upgradeWebSocket,
+    }),
+  );
+  markStartup("speech routes mounted");
 
   // Add WebSocket relay route for Phase 2b/2c/2d
   // This allows clients to make HTTP-like requests, subscriptions, and uploads over WebSocket

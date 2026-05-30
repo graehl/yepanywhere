@@ -64,14 +64,17 @@ export class SpeechBackendRegistry {
 export interface SpeechRegistryInitOptions {
   /** Master switch — when false, no backends are registered. */
   voiceInputEnabled?: boolean;
-  /** Explicitly requested backend ids. Empty means no server-routed speech. */
+  /** Explicit backend ids from YA_VOICE_BACKENDS (cloud keys auto-enable separately). */
   voiceBackends?: string[];
-  /** Deepgram API key (from YA_stt__DEEPGRAM_API_KEY) for ya-deepgram. */
+  /**
+   * Deepgram API key (from YA_stt__DEEPGRAM_API_KEY) for ya-deepgram. When set,
+   * the backend is auto-enabled — presence of the key is the opt-in signal.
+   */
   deepgramApiKey?: string;
   /**
-   * xAI key (from YA_stt__XAI_API_KEY) for ya-grok-stt. When set, the backend
-   * is auto-enabled even if not listed in voiceBackends — presence of the key
-   * is the opt-in signal.
+   * xAI key (from YA_stt__XAI_API_KEY) for ya-grok. When set, the backend is
+   * auto-enabled even if not listed in voiceBackends — presence of the key is
+   * the opt-in signal.
    */
   xaiSttApiKey?: string;
   /** Whisper model name (default: distil-large-v3). */
@@ -91,12 +94,16 @@ export async function initSpeechBackendRegistry(
     return registry;
   }
 
-  // Backends explicitly requested via VOICE_BACKENDS, plus any auto-enabled by
-  // credential presence (ya-grok-stt when its key is set). Set keeps insertion
-  // order and de-dupes when a key is also listed explicitly.
+  // Cloud STT backends auto-enable when their key is present — a provisioned
+  // key is the opt-in signal. Local/test backends (ya-whisper, ya-dummy) stay
+  // explicit via YA_VOICE_BACKENDS. Set keeps insertion order and de-dupes when
+  // a key is also listed explicitly.
   const requested = new Set(options.voiceBackends ?? []);
+  if (options.deepgramApiKey) {
+    requested.add("ya-deepgram");
+  }
   if (options.xaiSttApiKey) {
-    requested.add("ya-grok-stt");
+    requested.add("ya-grok");
   }
 
   for (const backendId of requested) {
@@ -117,11 +124,11 @@ export async function initSpeechBackendRegistry(
         break;
       }
 
-      case "ya-grok-stt": {
+      case "ya-grok": {
         const key = options.xaiSttApiKey ?? "";
         if (!key) {
           logger.warn(
-            "[Voice] ya-grok-stt requested but YA_stt__XAI_API_KEY is not set",
+            "[Voice] ya-grok requested but YA_stt__XAI_API_KEY is not set",
           );
         } else {
           await registry.register(new XaiSttBackend(key));

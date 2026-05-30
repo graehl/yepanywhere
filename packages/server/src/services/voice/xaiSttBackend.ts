@@ -19,7 +19,7 @@ interface XaiSttResponse {
  * topics/cost-efficiency.md.
  */
 export class XaiSttBackend implements SpeechBackend {
-  readonly id = "ya-grok-stt";
+  readonly id = "ya-grok";
   readonly label = "Grok (cloud)";
 
   constructor(private readonly apiKey: string) {}

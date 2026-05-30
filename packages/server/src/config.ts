@@ -110,7 +110,7 @@ export interface Config {
   voiceBackends: string[];
   /** Deepgram API key for the ya-deepgram backend (from YA_stt__DEEPGRAM_API_KEY). */
   deepgramApiKey?: string;
-  /** xAI key for the ya-grok-stt backend (from YA_stt__XAI_API_KEY). */
+  /** xAI key for the ya-grok backend (from YA_stt__XAI_API_KEY). */
   xaiSttApiKey?: string;
   /** Whisper model name for ya-whisper backend (default: distil-large-v3). */
   whisperModel?: string;
@@ -273,8 +273,9 @@ export function loadConfig(): Config {
       : [],
     // Voice input (default: true, set VOICE_INPUT=false to disable)
     voiceInputEnabled: process.env.VOICE_INPUT !== "false",
-    // Server-routed voice backends default off. Example: VOICE_BACKENDS=ya-deepgram
-    voiceBackends: parseCommaSeparatedList(process.env.VOICE_BACKENDS),
+    // Explicit local/test voice backends (cloud backends auto-enable on key
+    // presence). Example: YA_VOICE_BACKENDS=ya-whisper
+    voiceBackends: parseCommaSeparatedList(process.env.YA_VOICE_BACKENDS),
     deepgramApiKey: sttEnv.DEEPGRAM_API_KEY || undefined,
     xaiSttApiKey: sttEnv.XAI_API_KEY || undefined,
     whisperModel: process.env.WHISPER_MODEL || undefined,

@@ -68,7 +68,7 @@ describe("loadConfig codex paths", () => {
   });
 
   it("parses explicitly enabled server-routed voice backends", async () => {
-    vi.stubEnv("VOICE_BACKENDS", "ya-dummy, local-whisper,ya-dummy");
+    vi.stubEnv("YA_VOICE_BACKENDS", "ya-dummy, local-whisper,ya-dummy");
 
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig();

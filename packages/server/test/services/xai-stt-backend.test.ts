@@ -85,24 +85,37 @@ describe("YA_<module>__ env harvest", () => {
   });
 });
 
-describe("initSpeechBackendRegistry ya-grok-stt", () => {
+describe("initSpeechBackendRegistry cloud auto-enable", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("auto-enables ya-grok-stt when the key is present, without VOICE_BACKENDS", async () => {
+  it("auto-enables ya-grok when the key is present, without YA_VOICE_BACKENDS", async () => {
     const registry = await initSpeechBackendRegistry({
       voiceInputEnabled: true,
       xaiSttApiKey: "xai-key",
     });
-    expect(registry.enabledIds()).toContain("ya-grok-stt");
+    expect(registry.enabledIds()).toContain("ya-grok");
   });
 
-  it("does not enable ya-grok-stt when the key is absent", async () => {
+  it("auto-enables ya-deepgram when the key is present, without YA_VOICE_BACKENDS", async () => {
+    // Deepgram's validate() probes the network; stub it so the key is accepted.
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("{}", { status: 200 }),
+    );
     const registry = await initSpeechBackendRegistry({
       voiceInputEnabled: true,
-      voiceBackends: ["ya-grok-stt"],
+      deepgramApiKey: "dg-key",
     });
-    expect(registry.enabledIds()).not.toContain("ya-grok-stt");
+    expect(registry.enabledIds()).toContain("ya-deepgram");
+  });
+
+  it("does not enable cloud backends when their key is absent", async () => {
+    const registry = await initSpeechBackendRegistry({
+      voiceInputEnabled: true,
+      voiceBackends: ["ya-grok", "ya-deepgram"],
+    });
+    expect(registry.enabledIds()).not.toContain("ya-grok");
+    expect(registry.enabledIds()).not.toContain("ya-deepgram");
   });
 });

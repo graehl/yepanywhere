@@ -57,6 +57,27 @@ Action gating rules:
 - The compacting overlay never changes process-level controls; it only changes
   visible status copy.
 
+## Interrupt visibility and provenance
+
+Provider interrupts are active state transitions, not passive refresh artifacts.
+YA must not create a provider interrupt merely because a browser tab refreshed,
+reconnected, resubscribed, or re-read the session file. If an interrupt does
+happen through any path, the UI must show it with the same seriousness as the
+provider-native surface: an explicit interrupted boundary, a timestamp/provenance
+where available, and no stale spinner that implies the previous turn may still be
+working.
+
+A browser refresh caused by a YA server restart is a different class of event:
+the restart may kill or disconnect the provider-owning process. That owner-loss
+path may explain a real provider interrupt, but it does not relax the UI
+obligation to show the interrupt boundary and reconcile stale activity.
+
+The dangerous failure mode is a split-brain UI: Codex TUI shows a conversation
+interrupt while YA still shows ambiguous activity such as an old `Edit` spinner
+or generic thinking indicator. That is a severe UI correctness bug even if the
+root cause of the interrupt is outside YA, because the user cannot distinguish
+"agent still working" from "turn was interrupted and YA missed the boundary."
+
 ## UI surfaces that must agree
 
 - `SessionPage`: `slashModelIndicatorTitle`, status chip context, placeholder text,
@@ -74,6 +95,8 @@ Action gating rules:
 2. Use `verified-idle` as the only stable boundary for automation and
    completion assumptions.
 3. Keep liveness-derived states visible without turning them into hard action locks.
+4. Never hide or soften a known provider interruption behind generic running,
+   stale-spinner, or reconnect copy.
 
 ## Queue-state consistency edge case (provider desync)
 

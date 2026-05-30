@@ -42,6 +42,10 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
   and detail, and should not be described as user-visible progress.
 - `long-silent-unverified` and `needs-attention` are product-visible states.
   They should not be hidden behind calm queue wording or spinner animation.
+- A provider-reported interrupt is terminal liveness evidence for the affected
+  turn, not silence and not progress. YA must render it explicitly and reconcile
+  pending tool rows, queued-message state, and ownership rather than leaving an
+  old spinner to imply work may still be continuing.
 - Background or detached tool handles count as useful session context only
   when YA can tie them to a currently awaited foreground tool result. Detached
   jobs alone are not liveness evidence for the agent turn.
@@ -78,6 +82,13 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
   destructive recovery policy is considered.
 - Probe timeouts must resolve into liveness evidence. A hung probe must not
   leave YA silently believing verification is still underway forever.
+- Browser refresh, reconnect, resubscribe, or session-file refresh must not
+  generate a provider interrupt. If an interrupt is observed after one of those
+  paths, YA should treat the correlation as a high-priority causality bug while
+  still surfacing the interrupt boundary immediately.
+- Server restart or hot reload that tears down the provider owner is not passive
+  browser refresh. Treat it as owner-loss liveness evidence first, then decide
+  whether the process can be safely resumed or must be shown as interrupted.
 - Synthetic heartbeat turn scheduling must reset from the latest real
   provider/session signal while idle. It must not fire merely because the first
   idle timestamp is old when the provider/app-server has emitted newer

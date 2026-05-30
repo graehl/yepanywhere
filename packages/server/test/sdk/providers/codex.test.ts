@@ -190,7 +190,9 @@ describe("CodexProvider app-server lifecycle", () => {
       expect(
         messages.some(
           (message) =>
-            message.type === "system" && message.subtype === "turn_complete",
+            message.type === "system" &&
+            message.subtype === "turn_aborted" &&
+            message.codexTurnId === "turn-steered",
         ),
       ).toBe(true);
       expect(messages.some((message) => message.type === "error")).toBe(false);
@@ -1895,6 +1897,66 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
+  it("surfaces interrupted live Codex turns as visible system boundaries", () => {
+    const provider = createTestProvider() as unknown as {
+      convertNotificationToSDKMessages: (
+        notification: { method: string; params?: unknown },
+        sessionId: string,
+        usageByTurnId: Map<string, unknown>,
+        liveEventState: ReturnType<typeof createLiveEventState>,
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const messages = provider.convertNotificationToSDKMessages(
+      {
+        method: "turn/completed",
+        params: {
+          threadId: "thread-1",
+          turn: {
+            id: "turn-1",
+            items: [],
+            status: "interrupted",
+            error: null,
+            startedAt: null,
+            completedAt: 1_700_000_000,
+            durationMs: null,
+          },
+        },
+      },
+      "session-1",
+      new Map(),
+      createLiveEventState(),
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      type: "system",
+      subtype: "turn_aborted",
+      session_id: "session-1",
+      uuid: "codex-turn-interrupted-turn-1",
+      content: "Conversation interrupted",
+      reason: "interrupted",
+      sourceEvent: "turn/completed",
+      codexThreadId: "thread-1",
+      codexTurnId: "turn-1",
+      codexTurnStatus: "interrupted",
+      timestamp: "2023-11-14T22:13:20.000Z",
+    });
+
+    expect(
+      messages.some((message) => message.subtype === "turn_complete"),
+    ).toBe(false);
+    expect(
+      preprocessMessages(
+        messages as Parameters<typeof preprocessMessages>[0],
+      )[0],
+    ).toMatchObject({
+      type: "system",
+      subtype: "turn_aborted",
+      content: "Conversation interrupted",
+    });
+  });
+
   it("normalizes raw response function calls and outputs into tool messages", () => {
     const provider = createTestProvider() as unknown as {
       convertNotificationToSDKMessages: (
@@ -2032,6 +2094,12 @@ describe("CodexProvider Event Normalization", () => {
       subtype: "codex_tool_orphans",
       orphanedToolUseIds: ["cmd-1"],
     });
+    expect(turnMessages[1]).toMatchObject({
+      type: "system",
+      subtype: "turn_aborted",
+      content: "Conversation interrupted",
+      codexTurnId: "turn-1",
+    });
 
     const renderItems = preprocessMessages([
       ...toolMessages,
@@ -2042,6 +2110,14 @@ describe("CodexProvider Event Normalization", () => {
       id: "cmd-1",
       status: "incomplete",
     });
+    expect(
+      renderItems.some(
+        (item) =>
+          item.type === "system" &&
+          item.subtype === "turn_aborted" &&
+          item.content === "Conversation interrupted",
+      ),
+    ).toBe(true);
   });
 
   it("keeps Codex background process handles from reviving orphaned work", () => {

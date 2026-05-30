@@ -3221,7 +3221,15 @@ export class CodexProvider implements AgentProvider {
       case "turn/completed": {
         const params = this.asTurnCompletedNotification(notification.params);
         const turnId = params?.turn.id ?? null;
+        const turnStatus = params?.turn.status;
         const usage = turnId ? usageByTurnId.get(turnId) : undefined;
+        const usagePayload = usage
+          ? {
+              input_tokens: usage.inputTokens,
+              output_tokens: usage.outputTokens,
+              cached_input_tokens: usage.cachedInputTokens,
+            }
+          : undefined;
         const messages: SDKMessage[] = [];
         const orphanedToolUseIds = turnId
           ? this.consumeLiveResultBackedToolItems(liveEventState, turnId)
@@ -3244,17 +3252,45 @@ export class CodexProvider implements AgentProvider {
           messages.push(orphanMarker);
         }
 
+        if (params?.turn.status === "interrupted") {
+          const completedAt =
+            typeof params.turn.completedAt === "number" &&
+            Number.isFinite(params.turn.completedAt)
+              ? new Date(params.turn.completedAt * 1000).toISOString()
+              : undefined;
+          const message = withCodexTimestamp(
+            {
+              type: "system",
+              subtype: "turn_aborted",
+              session_id: sessionId,
+              uuid: `codex-turn-interrupted-${params.turn.id}`,
+              content: "Conversation interrupted",
+              reason: "interrupted",
+              isSynthetic: true,
+              sourceEvent: notification.method,
+              codexThreadId: params.threadId,
+              codexTurnId: turnId,
+              codexTurnStatus: params.turn.status,
+              usage: usagePayload,
+            } as SDKMessage,
+            completedAt,
+          );
+          logSdkCorrelationDebug(sessionId, message, {
+            eventKind: "turn_interrupted",
+            ...(turnId ? { turnId } : {}),
+            status: turnStatus,
+            phase: "completed",
+            sourceEvent: notification.method,
+          });
+          messages.push(message);
+          return messages;
+        }
+
         const message = withCodexTimestamp({
           type: "system",
           subtype: "turn_complete",
           session_id: sessionId,
-          usage: usage
-            ? {
-                input_tokens: usage.inputTokens,
-                output_tokens: usage.outputTokens,
-                cached_input_tokens: usage.cachedInputTokens,
-              }
-            : undefined,
+          usage: usagePayload,
         } as SDKMessage);
         logSdkCorrelationDebug(sessionId, message, {
           eventKind: "turn_complete",

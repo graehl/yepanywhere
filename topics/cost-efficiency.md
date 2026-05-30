@@ -27,8 +27,24 @@ var from YA's process. The first concrete case: Grok Build honors
 Speech-to-Text) wants an xAI key for a *non-provider* purpose, that key must
 never reach the Grok child process.
 
-**Mechanism (env masking).** `ACPClient.connect` builds the child env as
-`{ ...process.env, ...config.env }` and an overlay cannot delete an
+Two complementary layers enforce this — one for YA's own keys, one for
+vendor-named keys that may be in the env for other reasons.
+
+**Layer 1 — `YA_<module>__<NAME>` consume-and-strip (the primary guard for
+YA-owned keys).** A secret YA needs for a subsystem is provided under a
+`YA_<module>__<NAME>` name (e.g. `YA_stt__XAI_API_KEY`,
+`YA_stt__DEEPGRAM_API_KEY`). On server load, `harvestYaModuleEnv`
+(`packages/server/src/yaModuleEnv.ts`) moves every such var into a private
+in-process store and **deletes it from `process.env`**, so it can never ride
+the ambient environment into *any* spawned child — no per-provider masking
+required. The subsystem reads it via `getModuleEnv("stt")[NAME]`, never
+`process.env`. The `YA_` prefix means "consume and strip"; module and name
+split on the **first** `__`, so the name half may itself contain `__`.
+
+**Layer 2 — per-provider `excludeEnv` (for vendor-named keys).** A literal
+`XAI_API_KEY` could still be in the env from some *other* tool or by
+mistake. `ACPClient.connect` builds the child env as
+`{ ...process.env, ...config.env }`, and an overlay cannot delete an
 inherited key, so the config carries an optional `excludeEnv?: string[]`
 whose names are removed from the merged env just before `spawn`. The Grok
 provider passes `GROK_BILLING_ENV_DENYLIST =
@@ -53,10 +69,12 @@ itself configured a competing value for `X` this run ("requested creds").
 Server-routed speech backends (see
 [pluggable-speech-recognition.md](pluggable-speech-recognition.md)) span
 free-local and metered-cloud options. Local Whisper is free CPU/GPU time;
-Deepgram and (planned) xAI STT are metered. Backend selection is operator
-config (`VOICE_BACKENDS`), so the user picks the cost tier explicitly. xAI
-STT batch is ~$0.10/hr, realtime ~$0.20/hr — cheap, but still a metered
-path that should be opt-in, not a silent default.
+Deepgram and xAI STT (`ya-grok-stt`) are metered. Most backends are opt-in
+via `VOICE_BACKENDS`; `ya-grok-stt` is auto-enabled when its key
+(`YA_stt__XAI_API_KEY`) is present, since a single-user operator providing
+the key is itself the opt-in signal. xAI STT batch is ~$0.10/hr, realtime
+~$0.20/hr — cheap, but still a metered path, never a silent default for a
+user who has not provisioned a key.
 
 ## Model and effort selection
 

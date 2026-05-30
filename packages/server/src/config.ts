@@ -4,6 +4,7 @@ import * as path from "node:path";
 import type { Level as LogLevel } from "pino";
 import { getDefaultCodexSessionsDir } from "./projects/codex-scanner.js";
 import type { PermissionMode } from "./sdk/types.js";
+import { getModuleEnv, harvestYaModuleEnv } from "./yaModuleEnv.js";
 
 /**
  * Get the data directory for yep-anywhere state files.
@@ -107,8 +108,10 @@ export interface Config {
   voiceInputEnabled: boolean;
   /** Explicitly enabled server-routed voice backend ids. Empty = none. */
   voiceBackends: string[];
-  /** Deepgram API key for the ya-deepgram backend. */
+  /** Deepgram API key for the ya-deepgram backend (from YA_stt__DEEPGRAM_API_KEY). */
   deepgramApiKey?: string;
+  /** xAI key for the ya-grok-stt backend (from YA_stt__XAI_API_KEY). */
+  xaiSttApiKey?: string;
   /** Whisper model name for ya-whisper backend (default: distil-large-v3). */
   whisperModel?: string;
   /** Whisper device for ya-whisper backend (default: cpu). */
@@ -140,6 +143,11 @@ export interface Config {
  * Load configuration from environment variables with defaults.
  */
 export function loadConfig(): Config {
+  // Harvest YA_<module>__* secrets into the private store and strip them from
+  // process.env before anything can spawn a child that would inherit them.
+  harvestYaModuleEnv();
+  const sttEnv = getModuleEnv("stt");
+
   // SERVE_FRONTEND defaults to true (unified server mode)
   // Set SERVE_FRONTEND=false to disable frontend serving (API-only mode)
   const serveFrontend = process.env.SERVE_FRONTEND !== "false";
@@ -267,7 +275,8 @@ export function loadConfig(): Config {
     voiceInputEnabled: process.env.VOICE_INPUT !== "false",
     // Server-routed voice backends default off. Example: VOICE_BACKENDS=ya-deepgram
     voiceBackends: parseCommaSeparatedList(process.env.VOICE_BACKENDS),
-    deepgramApiKey: process.env.DEEPGRAM_API_KEY || undefined,
+    deepgramApiKey: sttEnv.DEEPGRAM_API_KEY || undefined,
+    xaiSttApiKey: sttEnv.XAI_API_KEY || undefined,
     whisperModel: process.env.WHISPER_MODEL || undefined,
     whisperDevice: process.env.WHISPER_DEVICE || undefined,
     whisperComputeType: process.env.WHISPER_COMPUTE_TYPE || undefined,

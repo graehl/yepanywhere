@@ -543,6 +543,7 @@ async function startServer() {
     voiceInputEnabled: config.voiceInputEnabled,
     voiceBackends: config.voiceBackends,
     deepgramApiKey: config.deepgramApiKey,
+    xaiSttApiKey: config.xaiSttApiKey,
     whisperModel: config.whisperModel,
     whisperDevice: config.whisperDevice,
     whisperComputeType: config.whisperComputeType,

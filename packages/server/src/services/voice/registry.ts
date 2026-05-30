@@ -3,6 +3,7 @@ import { DeepgramBackend } from "./deepgramBackend.js";
 import { DummyBackend } from "./dummyBackend.js";
 import { LocalWhisperBackend } from "./localWhisperBackend.js";
 import type { SpeechBackend, SpeechBackendInfo } from "./SpeechBackend.js";
+import { XaiSttBackend } from "./xaiSttBackend.js";
 
 const logger = getLogger();
 
@@ -11,7 +12,7 @@ const logger = getLogger();
  *
  * On startup, each candidate backend is validated; only those that pass are
  * advertised to clients via `voiceBackends` on the version response. The
- * registry also serves as the dispatch table for the audio WebSocket route.
+ * registry also serves as the dispatch table for speech transcription routes.
  */
 export class SpeechBackendRegistry {
   private readonly entries = new Map<
@@ -65,8 +66,14 @@ export interface SpeechRegistryInitOptions {
   voiceInputEnabled?: boolean;
   /** Explicitly requested backend ids. Empty means no server-routed speech. */
   voiceBackends?: string[];
-  /** DEEPGRAM_API_KEY env value. */
+  /** Deepgram API key (from YA_stt__DEEPGRAM_API_KEY) for ya-deepgram. */
   deepgramApiKey?: string;
+  /**
+   * xAI key (from YA_stt__XAI_API_KEY) for ya-grok-stt. When set, the backend
+   * is auto-enabled even if not listed in voiceBackends — presence of the key
+   * is the opt-in signal.
+   */
+  xaiSttApiKey?: string;
   /** Whisper model name (default: distil-large-v3). */
   whisperModel?: string;
   /** Whisper device (default: cpu). */
@@ -84,20 +91,40 @@ export async function initSpeechBackendRegistry(
     return registry;
   }
 
-  for (const backendId of options.voiceBackends ?? []) {
+  // Backends explicitly requested via VOICE_BACKENDS, plus any auto-enabled by
+  // credential presence (ya-grok-stt when its key is set). Set keeps insertion
+  // order and de-dupes when a key is also listed explicitly.
+  const requested = new Set(options.voiceBackends ?? []);
+  if (options.xaiSttApiKey) {
+    requested.add("ya-grok-stt");
+  }
+
+  for (const backendId of requested) {
     switch (backendId) {
       case "ya-dummy":
         await registry.register(new DummyBackend());
         break;
 
       case "ya-deepgram": {
-        const key = options.deepgramApiKey ?? process.env.DEEPGRAM_API_KEY ?? "";
+        const key = options.deepgramApiKey ?? "";
         if (!key) {
           logger.warn(
-            '[Voice] ya-deepgram requested but DEEPGRAM_API_KEY is not set',
+            "[Voice] ya-deepgram requested but YA_stt__DEEPGRAM_API_KEY is not set",
           );
         } else {
           await registry.register(new DeepgramBackend(key));
+        }
+        break;
+      }
+
+      case "ya-grok-stt": {
+        const key = options.xaiSttApiKey ?? "";
+        if (!key) {
+          logger.warn(
+            "[Voice] ya-grok-stt requested but YA_stt__XAI_API_KEY is not set",
+          );
+        } else {
+          await registry.register(new XaiSttBackend(key));
         }
         break;
       }

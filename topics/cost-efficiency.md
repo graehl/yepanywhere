@@ -69,12 +69,13 @@ itself configured a competing value for `X` this run ("requested creds").
 Server-routed speech backends (see
 [pluggable-speech-recognition.md](pluggable-speech-recognition.md)) span
 free-local and metered-cloud options. Local Whisper is free CPU/GPU time;
-Deepgram and xAI STT (`ya-grok-stt`) are metered. Most backends are opt-in
-via `VOICE_BACKENDS`; `ya-grok-stt` is auto-enabled when its key
-(`YA_stt__XAI_API_KEY`) is present, since a single-user operator providing
-the key is itself the opt-in signal. xAI STT batch is ~$0.10/hr, realtime
-~$0.20/hr — cheap, but still a metered path, never a silent default for a
-user who has not provisioned a key.
+Deepgram (`ya-deepgram`) and xAI STT (`ya-grok`) are metered. Cloud
+backends **auto-enable when their key is present** — a single-user
+operator providing the key is itself the opt-in signal — while local/test
+backends (`ya-whisper`, `ya-dummy`) stay explicit via `YA_VOICE_BACKENDS`
+(see [ya-env-vars.md](ya-env-vars.md)). xAI STT batch is ~$0.10/hr,
+realtime ~$0.20/hr — cheap, but still a metered path, never a silent
+default for a user who has not provisioned a key.
 
 ## Model and effort selection
 

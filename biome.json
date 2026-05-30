@@ -13,6 +13,11 @@
       "!**/dist",
       "!**/dist-*",
       "!**/*.d.ts",
+      "!**/.artifacts",
+      "!**/.tmp",
+      "!**/.handoff-recap.md",
+      "!**/*.running.md",
+      "!**/tasks",
       "!**/docs/tasks",
       "!**/branding",
       "!**/packages/desktop",
@@ -32,9 +37,25 @@
     "rules": {
       "recommended": true,
       "suspicious": {
-        "noExplicitAny": "warn"
+        "noArrayIndexKey": "warn",
+        "noAssignInExpressions": "warn",
+        "noControlCharactersInRegex": "warn",
+        "noDuplicateProperties": "warn",
+        "noExplicitAny": "warn",
+        "useIterableCallbackReturn": "warn"
+      },
+      "correctness": {
+        "noInvalidUseBeforeDeclaration": "warn",
+        "useExhaustiveDependencies": "warn"
       },
       "a11y": {
+        "noLabelWithoutControl": "warn",
+        "noStaticElementInteractions": "warn",
+        "useAriaPropsForRole": "warn",
+        "useAriaPropsSupportedByRole": "warn",
+        "useButtonType": "warn",
+        "useHtmlLang": "warn",
+        "useKeyWithClickEvents": "warn",
         "useSemanticElements": "off"
       }
     }

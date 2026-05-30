@@ -12,18 +12,21 @@
  * (e.g. allowing a BIOME_HOST_BINARY escape hatch for local source builds).
  */
 
-const { spawnSync } = require('child_process');
+const { existsSync } = require("node:fs");
+const { spawnSync } = require("node:child_process");
 
 const env = { ...process.env };
 
-if (process.platform === 'linux' && !env.BIOME_BINARY) {
+if (process.platform === "linux" && !env.BIOME_BINARY) {
   // Force the static musl build that has no glibc dependency.
   // The package is already an optionalDependency of @biomejs/biome.
-  env.BIOME_BINARY = '@biomejs/cli-linux-x64-musl/biome';
+  env.BIOME_BINARY = "@biomejs/cli-linux-x64-musl/biome";
 }
 
-const result = spawnSync('pnpm', ['exec', 'biome', ...process.argv.slice(2)], {
-  stdio: 'inherit',
+const biomeArgs = expandDotTargetsToTrackedFiles(process.argv.slice(2));
+
+const result = spawnSync("pnpm", ["exec", "biome", ...biomeArgs], {
+  stdio: "inherit",
   env,
   shell: false,
 });
@@ -34,3 +37,37 @@ if (result.error) {
 }
 
 process.exit(result.status ?? 0);
+
+function expandDotTargetsToTrackedFiles(args) {
+  if (!usesTrackedFileExpansion(args)) return args;
+
+  const trackedFiles = getTrackedFiles();
+  if (trackedFiles.length === 0) return args;
+
+  return args.flatMap((arg) => (arg === "." ? trackedFiles : [arg]));
+}
+
+function usesTrackedFileExpansion(args) {
+  if (!["check", "ci", "format", "lint"].includes(args[0])) return false;
+  if (args.includes("--help") || args.includes("-h")) return false;
+  return args.includes(".");
+}
+
+function getTrackedFiles() {
+  const result = spawnSync("git", ["ls-files", "-z"], {
+    encoding: "buffer",
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    process.stderr.write(result.stderr);
+    process.exit(result.status ?? 1);
+  }
+
+  return result.stdout
+    .toString("utf8")
+    .split("\0")
+    .filter((file) => file.length > 0 && existsSync(file));
+}

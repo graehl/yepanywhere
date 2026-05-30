@@ -195,6 +195,29 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   },
 ];
 
+const CLAUDE_GOAL_LOOP_ALIAS_COMMAND: SlashCommand = {
+  name: "goal",
+  description: "Keep working toward a verifiable end state until it is met",
+  argumentHint: "<verifiable end state>",
+  emulation: {
+    providerText: "/loop wish {{argument}}",
+  },
+};
+
+function normalizedSlashCommandName(command: SlashCommand): string {
+  return command.name.trim().replace(/^\/+/, "").toLowerCase();
+}
+
+export function withClaudeGoalAlias(
+  commands: SlashCommand[],
+): SlashCommand[] {
+  const normalizedNames = new Set(commands.map(normalizedSlashCommandName));
+  if (normalizedNames.has("goal") || !normalizedNames.has("loop")) {
+    return commands;
+  }
+  return [...commands, CLAUDE_GOAL_LOOP_ALIAS_COMMAND];
+}
+
 function enrichClaudeModel(model: ModelInfo): ModelInfo {
   return {
     ...model,
@@ -958,11 +981,13 @@ export class ClaudeProvider implements AgentProvider {
       supportedCommands: async (): Promise<SlashCommand[]> => {
         const commands = await sdkQuery.supportedCommands();
         // Map SDK SlashCommand to our SlashCommand (same fields, just normalize)
-        return commands.map((c) => ({
-          name: c.name,
-          description: c.description,
-          argumentHint: c.argumentHint || undefined,
-        }));
+        return withClaudeGoalAlias(
+          commands.map((c) => ({
+            name: c.name,
+            description: c.description,
+            argumentHint: c.argumentHint || undefined,
+          })),
+        );
       },
       setModel: (model?: string) => sdkQuery.setModel(model),
     };

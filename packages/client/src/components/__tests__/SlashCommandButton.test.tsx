@@ -12,7 +12,7 @@ describe("SlashCommandButton", () => {
   it("shows documented slash command words with bold shortcuts", () => {
     render(
       <SlashCommandButton
-        commands={["fast", "run", "compact", "model"]}
+        commands={["fast", "run", "goal", "compact", "model"]}
         onSelectCommand={vi.fn()}
       />,
     );
@@ -28,6 +28,9 @@ describe("SlashCommandButton", () => {
     expect(
       screen.getByRole("menuitem", { name: "/run exactly" }).textContent,
     ).toBe("/run exactly");
+    expect(screen.getByRole("menuitem", { name: "/goal" }).textContent).toBe(
+      "/goal",
+    );
     expect(screen.getByRole("menuitem", { name: "/compact" }).textContent).toBe(
       "/compact",
     );

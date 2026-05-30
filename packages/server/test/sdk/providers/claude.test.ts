@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   probeClaudeControlLiveness,
   resolveClaudeSdkNativeExecutable,
+  withClaudeGoalAlias,
 } from "../../../src/sdk/providers/claude.js";
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
 
@@ -86,6 +87,49 @@ describe("Claude provider liveness probe", () => {
       detail: "Claude SDK control liveness probe timed out after 5ms",
     });
     vi.useRealTimers();
+  });
+});
+
+describe("Claude provider slash commands", () => {
+  it("adds /goal as a /loop alias when /loop is advertised and /goal is not", () => {
+    const commands = withClaudeGoalAlias([
+      { name: "compact", description: "Compact conversation" },
+      { name: "loop", description: "Run a prompt on a recurring interval" },
+    ]);
+
+    expect(commands).toEqual([
+      { name: "compact", description: "Compact conversation" },
+      { name: "loop", description: "Run a prompt on a recurring interval" },
+      {
+        name: "goal",
+        description:
+          "Keep working toward a verifiable end state until it is met",
+        argumentHint: "<verifiable end state>",
+        emulation: { providerText: "/loop wish {{argument}}" },
+      },
+    ]);
+  });
+
+  it("does not add /goal when /loop is unavailable", () => {
+    const commands = withClaudeGoalAlias([
+      { name: "compact", description: "Compact conversation" },
+    ]);
+
+    expect(commands).toEqual([
+      { name: "compact", description: "Compact conversation" },
+    ]);
+  });
+
+  it("does not duplicate /goal when the SDK already reports it", () => {
+    const commands = withClaudeGoalAlias([
+      { name: "/GOAL", description: "Native goal alias" },
+      { name: "loop", description: "Run a prompt on a recurring interval" },
+    ]);
+
+    expect(commands).toEqual([
+      { name: "/GOAL", description: "Native goal alias" },
+      { name: "loop", description: "Run a prompt on a recurring interval" },
+    ]);
   });
 });
 

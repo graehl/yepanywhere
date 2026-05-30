@@ -93,6 +93,11 @@ describe("slashCommands", () => {
       rest: "un exactly",
       label: "/run exactly",
     });
+    expect(getSlashCommandMenuParts("goal")).toEqual({
+      shortcut: "",
+      rest: "/goal",
+      label: "/goal",
+    });
     expect(getSlashCommandMenuParts("btw")).toEqual({
       shortcut: "/b",
       rest: "tw aside",
@@ -149,6 +154,10 @@ describe("slashCommands", () => {
     expect(resolveComposerSlashTurn("/permissions")).toEqual({
       kind: "message",
       text: "/permissions",
+    });
+    expect(resolveComposerSlashTurn("/goal all tests pass")).toEqual({
+      kind: "message",
+      text: "/goal all tests pass",
     });
   });
 

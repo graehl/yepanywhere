@@ -4,7 +4,8 @@ This topic covers YA's Claude-specific control surface: which Claude
 sessions YA can actively configure, and which sessions it can only observe
 through provider transcript files.
 
-Related topic: [session liveness and queue intent](session-liveness.md).
+Related topics: [session liveness and queue intent](session-liveness.md),
+[emulated slash commands](emulated-slash-commands.md).
 
 ## Contracts
 
@@ -23,6 +24,19 @@ Related topic: [session liveness and queue intent](session-liveness.md).
 - Replacement-session model choice is separate from mid-session model
   switching. A handoff/restart flow may choose the model for the replacement
   process even when the source session was external or no longer owned by YA.
+- Claude `/goal` is exposed as a YA-side alias for `/loop wish ...`. YA injects
+  the `goal` entry into the visible slash-command inventory only when the SDK
+  inventory reports `/loop` and does not already report `/goal` itself. The
+  inserted entry carries `emulation.providerText = "/loop wish {{argument}}"`,
+  declaring that YA will substitute the user-supplied argument and send the
+  expanded provider-text — not the literal `/goal ...` — when the user submits.
+  If the SDK begins reporting `/goal` natively, the YA alias must step aside so
+  the native command (and its arguments) reach Claude unaltered.
+- Non-Claude providers should not get a YA-emulated `/goal` from this path.
+  They should show goal-like slash commands only when their provider command
+  inventory or another provider-native capability reports native support, or
+  when a provider-specific emulation rule (separate from the Claude/`loop`
+  alias here) is added.
 
 ## Invariants
 

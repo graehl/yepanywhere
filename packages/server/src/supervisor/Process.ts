@@ -71,6 +71,18 @@ type PendingRecapRequest = {
   sinceMs: number | null;
 };
 
+const CODEX_NATIVE_SLASH_COMMAND_NAMES = new Set(["goal"]);
+
+function getCodexSkillCommandPrefix(provider: ProviderName): string | undefined {
+  return provider === "codex" || provider === "codex-oss" ? "@" : undefined;
+}
+
+function getKnownNativeSlashCommands(
+  provider: ProviderName,
+): ReadonlySet<string> | undefined {
+  return provider === "codex" ? CODEX_NATIVE_SLASH_COMMAND_NAMES : undefined;
+}
+
 /**
  * IMPORTANT: Never filter out messages by type before emitting to SSE!
  *
@@ -1399,7 +1411,10 @@ export class Process {
   }
 
   private expandEmulatedSlashCommand(message: UserMessage): UserMessage {
-    return expandSlashCommandEmulation(message, this.supportedCommandsCache);
+    return expandSlashCommandEmulation(message, this.supportedCommandsCache, {
+      unknownCommandPrefix: getCodexSkillCommandPrefix(this.provider),
+      nativeCommandNames: getKnownNativeSlashCommands(this.provider),
+    });
   }
 
   /**

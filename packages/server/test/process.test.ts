@@ -333,6 +333,132 @@ describe("Process", () => {
       resolveIterator?.();
       await process.abort();
     });
+
+    it("expands hyphenated slash-command emulation before queueing", async () => {
+      let resolveIterator: () => void;
+      const iterator: AsyncIterator<SDKMessage> = {
+        next: () =>
+          new Promise((resolve) => {
+            resolveIterator = () => resolve({ done: true, value: undefined });
+          }),
+      };
+      const queue = new MessageQueue();
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        supportedCommandsFn: async () => [
+          {
+            name: "harsh-review",
+            description: "Strict review",
+            emulation: { providerText: "@harsh-review {{argument}}" },
+          },
+        ],
+      });
+
+      await process.supportedCommands();
+      const result = process.queueMessage({
+        text: "/harsh-review on last 3 commits",
+      });
+
+      expect(result.success).toBe(true);
+      expect(process.getMessageHistory()[0]?.message?.content).toBe(
+        "@harsh-review on last 3 commits",
+      );
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe(
+        "@harsh-review on last 3 commits",
+      );
+
+      resolveIterator?.();
+      await process.abort();
+    });
+
+    it("rewrites unknown Codex slash commands to skill mentions", async () => {
+      let resolveIterator: () => void;
+      const iterator: AsyncIterator<SDKMessage> = {
+        next: () =>
+          new Promise((resolve) => {
+            resolveIterator = () => resolve({ done: true, value: undefined });
+          }),
+      };
+      const queue = new MessageQueue();
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        provider: "codex",
+        supportedCommandsFn: async () => [
+          {
+            name: "goal",
+            description: "Keep working until done",
+          },
+        ],
+      });
+
+      await process.supportedCommands();
+      const result = process.queueMessage({
+        text: "/harsh-review on last 3 commits",
+      });
+
+      expect(result.success).toBe(true);
+      expect(process.getMessageHistory()[0]?.message?.content).toBe(
+        "@harsh-review on last 3 commits",
+      );
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe(
+        "@harsh-review on last 3 commits",
+      );
+
+      resolveIterator?.();
+      await process.abort();
+    });
+
+    it("keeps native Codex slash commands as slash commands", async () => {
+      let resolveIterator: () => void;
+      const iterator: AsyncIterator<SDKMessage> = {
+        next: () =>
+          new Promise((resolve) => {
+            resolveIterator = () => resolve({ done: true, value: undefined });
+          }),
+      };
+      const queue = new MessageQueue();
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        provider: "codex",
+        supportedCommandsFn: async () => [
+          {
+            name: "goal",
+            description: "Keep working until done",
+          },
+        ],
+      });
+
+      await process.supportedCommands();
+      const result = process.queueMessage({
+        text: "/goal Make tests pass",
+      });
+
+      expect(result.success).toBe(true);
+      expect(process.getMessageHistory()[0]?.message?.content).toBe(
+        "/goal Make tests pass",
+      );
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe(
+        "/goal Make tests pass",
+      );
+
+      resolveIterator?.();
+      await process.abort();
+    });
   });
 
   describe("recaps", () => {

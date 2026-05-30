@@ -7,7 +7,7 @@
 
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import type { ModelInfo } from "@yep-anywhere/shared";
+import type { ModelInfo, SlashCommand } from "@yep-anywhere/shared";
 import {
   isCodexCorrelationDebugEnabled,
   logCodexCorrelationDebug,
@@ -137,6 +137,13 @@ const APP_SERVER_SHUTDOWN_GRACE_MS = 1500;
 const CODEX_CLI_GPT55_MIN_VERSION = "0.124.0";
 const CODEX_FAILURE_TRACE_LIMIT = 12;
 const CODEX_FAILURE_PREVIEW_CHARS = 240;
+const CODEX_BUILTIN_COMMANDS: SlashCommand[] = [
+  {
+    name: "goal",
+    description: "Keep working toward a verifiable end state until it is met",
+    argumentHint: "<verifiable end state>",
+  },
+];
 const CODEX_THINKING_OFF_MIN_REASONING_EFFORT_PREFIXES = [
   "gpt-5.3-codex-spark",
 ] as const;
@@ -897,7 +904,7 @@ export class CodexProvider implements AgentProvider {
   readonly displayName = "Codex";
   readonly supportsPermissionMode = true;
   readonly supportsThinkingToggle = true;
-  readonly supportsSlashCommands = false;
+  readonly supportsSlashCommands = true;
   readonly supportsSteering = true;
 
   private readonly config: CodexProviderConfig;
@@ -1425,6 +1432,7 @@ export class CodexProvider implements AgentProvider {
       },
       probeLiveness: async () =>
         this.probeCodexLiveness(activeClient, runtimeState),
+      supportedCommands: async () => [...CODEX_BUILTIN_COMMANDS],
       steer: async (message) => {
         if (!activeClient) return false;
         if (!runtimeState.threadId || !runtimeState.activeTurnId) return false;

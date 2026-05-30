@@ -1215,15 +1215,15 @@ export class Supervisor {
       return null;
     }
 
-    const hasModelUpdate = Object.prototype.hasOwnProperty.call(
+    const hasModelUpdate = Object.hasOwn(
       updates,
       "model",
     );
-    const hasThinkingUpdate = Object.prototype.hasOwnProperty.call(
+    const hasThinkingUpdate = Object.hasOwn(
       updates,
       "thinking",
     );
-    const hasEffortUpdate = Object.prototype.hasOwnProperty.call(
+    const hasEffortUpdate = Object.hasOwn(
       updates,
       "effort",
     );

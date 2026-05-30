@@ -120,7 +120,6 @@ export const TextBlock = memo(function TextBlock({
   const renderStreamingContainer = isStreaming;
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: click handler intercepts local media links only
     <div
       className={`text-block text-block-assistant timeline-item${isStreaming ? " streaming" : ""}`}
     >

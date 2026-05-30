@@ -20,7 +20,7 @@
     </style>
     <script>
       // Apply theme before page renders to prevent flash
-      (function() {
+      (() => {
         var stored = localStorage.getItem('yep-anywhere-theme');
         var theme = stored || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'verydark');
         document.documentElement.setAttribute('data-theme', theme);

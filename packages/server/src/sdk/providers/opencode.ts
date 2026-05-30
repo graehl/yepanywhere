@@ -433,7 +433,7 @@ export class OpenCodeProvider implements AgentProvider {
       }
 
       const statusMap = statuses as Record<string, unknown>;
-      const hasStatus = Object.prototype.hasOwnProperty.call(
+      const hasStatus = Object.hasOwn(
         statusMap,
         runtime.opencodeSessionId,
       );

@@ -6,8 +6,13 @@
  */
 
 import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { homedir } from "node:os";
 import { promisify } from "node:util";
-import type { ModelInfo, SlashCommand } from "@yep-anywhere/shared";
+import {
+  HELPER_SIDE_MODEL_CHEAPEST,
+  type ModelInfo,
+  type SlashCommand,
+} from "@yep-anywhere/shared";
 import {
   isCodexCorrelationDebugEnabled,
   logCodexCorrelationDebug,
@@ -137,6 +142,13 @@ const APP_SERVER_SHUTDOWN_GRACE_MS = 1500;
 const CODEX_CLI_GPT55_MIN_VERSION = "0.124.0";
 const CODEX_FAILURE_TRACE_LIMIT = 12;
 const CODEX_FAILURE_PREVIEW_CHARS = 240;
+const CODEX_RECAP_TIMEOUT_MS = 20_000;
+const CODEX_RECAP_MAX_TOTAL_CHARS = 6000;
+const CODEX_RECAP_CHEAPEST_MODEL_PREFERENCES = [
+  "gpt-5.4-mini",
+  "gpt-5.1-codex-mini",
+  "gpt-5.3-codex-spark",
+] as const;
 const CODEX_BUILTIN_COMMANDS: SlashCommand[] = [
   {
     name: "goal",
@@ -906,6 +918,8 @@ export class CodexProvider implements AgentProvider {
   readonly supportsThinkingToggle = true;
   readonly supportsSlashCommands = true;
   readonly supportsSteering = true;
+  readonly supportsRecaps = true;
+  readonly supportsNativePromptSuggestions = false;
 
   private readonly config: CodexProviderConfig;
   private modelCache: { models: ModelInfo[]; expiresAt: number } | null = null;
@@ -2100,6 +2114,274 @@ export class CodexProvider implements AgentProvider {
   ): Partial<Pick<TurnStartParams, "approvalPolicy">> {
     if (!policy) return {};
     return { approvalPolicy: policy.approvalPolicy };
+  }
+
+  /**
+   * Synthesize a short on-return recap through a separate ephemeral Codex
+   * thread. This is intentionally separate from prompt suggestions: Codex does
+   * not natively emit prompt_suggestion messages, but it can still run the YA
+   * simulated recap helper without mutating the parent session transcript.
+   */
+  async generateRecap(
+    recentAssistantText: string[],
+    options?: { model?: string },
+  ): Promise<string> {
+    const userPrompt = this.createRecapPrompt(recentAssistantText);
+    const model = await this.resolveRecapHelperModel(options?.model);
+    const codexCommand = await this.resolveCodexCommand();
+    const abortController = new AbortController();
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      abortController.abort();
+    }, CODEX_RECAP_TIMEOUT_MS);
+    timeout.unref?.();
+
+    const appServer = new CodexAppServerClient(
+      codexCommand,
+      homedir(),
+      this.getCodexEnv(),
+    );
+    appServer.setServerRequestHandler(async (request) =>
+      this.handleRecapServerRequest(request),
+    );
+
+    try {
+      await appServer.connect();
+      await this.initializeAppServer(appServer);
+      appServer.notify("initialized");
+
+      const threadResult = await appServer.request<ThreadStartResponse>(
+        "thread/start",
+        {
+          model,
+          cwd: homedir(),
+          approvalPolicy: "untrusted",
+          sandbox: "read-only",
+          ephemeral: true,
+          experimentalRawEvents: false,
+          persistExtendedHistory: false,
+          developerInstructions:
+            "You are a recap helper. Reply with the recap text only, no preamble. Do not call tools.",
+        } satisfies ThreadStartParams,
+      );
+
+      const turnResult = await appServer.request<TurnStartResponse>(
+        "turn/start",
+        {
+          threadId: threadResult.thread.id,
+          model,
+          input: [{ type: "text", text: userPrompt, text_elements: [] }],
+          effort: "low",
+          summary: "auto",
+        } satisfies TurnStartParams,
+      );
+
+      const textByItemId = new Map<string, string>();
+      this.captureRecapTextFromTurnItems(turnResult.turn.items, textByItemId);
+
+      if (turnResult.turn.status === "failed") {
+        throw new Error(
+          turnResult.turn.error?.message ?? "Codex recap generation failed",
+        );
+      }
+
+      let turnComplete = turnResult.turn.status !== "inProgress";
+      while (!turnComplete && !abortController.signal.aborted) {
+        const notification = await appServer.nextNotification(
+          abortController.signal,
+        );
+        this.captureRecapTextFromNotification(notification, textByItemId);
+
+        if (notification.method !== "turn/completed") {
+          continue;
+        }
+        const completed = this.asTurnCompletedNotification(
+          notification.params,
+        );
+        if (completed?.turn.status === "failed") {
+          throw new Error(
+            completed.turn.error?.message ?? "Codex recap generation failed",
+          );
+        }
+        turnComplete = true;
+      }
+      if (abortController.signal.aborted) {
+        throw new Error("Timed out generating Codex recap");
+      }
+
+      const cleaned = [...textByItemId.values()]
+        .join("\n")
+        .replace(/\s*\(disable recaps in \/config\)\s*$/u, "")
+        .trim();
+      if (!cleaned) {
+        throw new Error("Recap generation returned empty text");
+      }
+      return cleaned;
+    } catch (error) {
+      if (timedOut) {
+        throw new Error("Timed out generating Codex recap");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      abortController.abort();
+      appServer.close();
+    }
+  }
+
+  private createRecapPrompt(recentAssistantText: string[]): string {
+    const trimmed = recentAssistantText
+      .map((text) => text.trim())
+      .filter((text) => text.length > 0);
+    if (trimmed.length === 0) {
+      throw new Error("No recent assistant text to summarize");
+    }
+
+    let total = 0;
+    const tail: string[] = [];
+    for (let i = trimmed.length - 1; i >= 0; i--) {
+      const entry = trimmed[i] ?? "";
+      if (total + entry.length > CODEX_RECAP_MAX_TOTAL_CHARS) {
+        break;
+      }
+      tail.unshift(entry);
+      total += entry.length;
+    }
+    if (tail.length === 0) {
+      const last = trimmed[trimmed.length - 1] ?? "";
+      tail.push(last.slice(-CODEX_RECAP_MAX_TOTAL_CHARS));
+    }
+
+    const transcript = tail
+      .map((text, index) => `--- Assistant turn ${index + 1} ---\n${text}`)
+      .join("\n\n");
+    return [
+      "The user stepped away and is coming back. Recap in under 40 words,",
+      "1-2 plain sentences, no markdown. Lead with the overall thrust of what",
+      "the assistant did or is doing; mention any pending next action.",
+      "Do not greet, do not ask a question, do not add a sign-off.",
+      "",
+      "Recent assistant output:",
+      transcript,
+    ].join("\n");
+  }
+
+  private async resolveRecapHelperModel(
+    requestedModel: string | undefined,
+  ): Promise<string | null> {
+    if (!requestedModel || requestedModel !== HELPER_SIDE_MODEL_CHEAPEST) {
+      return requestedModel ?? null;
+    }
+
+    const models = await this.getAvailableModels();
+    for (const preferred of CODEX_RECAP_CHEAPEST_MODEL_PREFERENCES) {
+      if (models.some((model) => model.id === preferred)) {
+        return preferred;
+      }
+    }
+    return (
+      models.find((model) => model.id.toLowerCase().includes("mini"))?.id ??
+      null
+    );
+  }
+
+  private handleRecapServerRequest(
+    request: JsonRpcServerRequest,
+  ): Promise<unknown> {
+    log.warn(
+      { method: request.method, requestId: request.id },
+      "Declining Codex recap helper server request",
+    );
+
+    switch (request.method) {
+      case "item/commandExecution/requestApproval":
+      case "item/fileChange/requestApproval":
+        return Promise.resolve({ decision: "decline" });
+      case "item/permissions/requestApproval":
+        return Promise.resolve(this.createDeclinedPermissionResponse());
+      case "item/tool/requestUserInput": {
+        const requestInput = this.asToolRequestUserInputParams(request.params);
+        const answers: ToolRequestUserInputResponse["answers"] = {};
+        for (const question of requestInput?.questions ?? []) {
+          answers[question.id] = { answers: [] };
+        }
+        return Promise.resolve(
+          { answers } satisfies ToolRequestUserInputResponse,
+        );
+      }
+      default:
+        return Promise.resolve({});
+    }
+  }
+
+  private captureRecapTextFromTurnItems(
+    items: CodexThreadItem[],
+    textByItemId: Map<string, string>,
+  ): void {
+    for (const item of items) {
+      const normalized = this.normalizeThreadItem(item);
+      if (normalized?.type === "agent_message" && normalized.text.trim()) {
+        textByItemId.set(normalized.id, normalized.text);
+      }
+    }
+  }
+
+  private captureRecapTextFromNotification(
+    notification: JsonRpcNotification,
+    textByItemId: Map<string, string>,
+  ): void {
+    if (notification.method === "item/agentMessage/delta") {
+      const params = this.asAgentMessageDeltaNotification(notification.params);
+      if (!params || !params.delta) return;
+      textByItemId.set(
+        params.itemId,
+        `${textByItemId.get(params.itemId) ?? ""}${params.delta}`,
+      );
+      return;
+    }
+
+    if (notification.method === "item/completed") {
+      const params = this.asItemCompletedNotification(notification.params);
+      if (!params || textByItemId.has(params.item.id)) return;
+      const normalized = this.normalizeThreadItem(params.item);
+      if (normalized?.type === "agent_message" && normalized.text.trim()) {
+        textByItemId.set(normalized.id, normalized.text);
+      }
+      return;
+    }
+
+    if (notification.method !== "rawResponseItem/completed") {
+      return;
+    }
+    const params = this.asRawResponseItemCompletedNotification(
+      notification.params,
+    );
+    const text = this.extractRawResponseMessageText(params?.item);
+    if (params && text) {
+      textByItemId.set(`raw-${params.turnId}-${textByItemId.size}`, text);
+    }
+  }
+
+  private extractRawResponseMessageText(item: unknown): string | null {
+    if (!item || typeof item !== "object") return null;
+    const record = item as Record<string, unknown>;
+    if (record.type !== "message" || record.role !== "assistant") {
+      return null;
+    }
+    if (!Array.isArray(record.content)) {
+      return null;
+    }
+    const parts = record.content
+      .map((contentItem) => {
+        if (!contentItem || typeof contentItem !== "object") return "";
+        const contentRecord = contentItem as Record<string, unknown>;
+        return contentRecord.type === "output_text"
+          ? this.getOptionalString(contentRecord.text) ?? ""
+          : "";
+      })
+      .filter((text) => text.length > 0);
+    return parts.length > 0 ? parts.join("\n") : null;
   }
 
   private createSessionConfigAckMessage(

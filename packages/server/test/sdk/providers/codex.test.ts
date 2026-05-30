@@ -419,6 +419,55 @@ describe("CodexProvider app-server lifecycle", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("generates simulated recaps through an ephemeral helper thread", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-recap-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = join(tempDir, "fake-codex-recap.mjs");
+    writeFileSync(codexPath, buildFakeCodexAppServerForRecap(logPath), "utf-8");
+    chmodSync(codexPath, 0o755);
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+
+      expect(testProvider.supportsRecaps).toBe(true);
+      expect(testProvider.supportsNativePromptSuggestions).toBe(false);
+
+      const recap = await testProvider.generateRecap(
+        ["Implemented the Codex helper recap path.", "Ran the focused tests."],
+        { model: "cheapest" },
+      );
+
+      expect(recap).toBe("Implemented the helper recap and ran focused tests.");
+
+      const requests = readFakeCodexRequests(logPath);
+      const threadStart = requests.find(
+        (request) => request.method === "thread/start",
+      );
+      const turnStart = requests.find(
+        (request) => request.method === "turn/start",
+      );
+
+      expect(
+        requests.some((request) => request.method === "model/list"),
+      ).toBe(true);
+      expect(threadStart?.params).toMatchObject({
+        ephemeral: true,
+        approvalPolicy: "untrusted",
+        sandbox: "read-only",
+        model: "gpt-5.4-mini",
+      });
+      expect(turnStart?.params).toMatchObject({
+        threadId: "thread-recap",
+        model: "gpt-5.4-mini",
+      });
+      expect(JSON.stringify(turnStart?.params)).toContain(
+        "Implemented the Codex helper recap path.",
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 const describeRealCodexContract =
@@ -854,6 +903,116 @@ function handleMessage(message) {
           durationMs: null,
         },
       });
+      break;
+    default:
+      respond(message.id, {});
+      break;
+  }
+}
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString("utf-8");
+  const lines = buffer.split("\\n");
+  buffer = lines.pop() || "";
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    handleMessage(JSON.parse(line));
+  }
+});
+`;
+}
+
+function buildFakeCodexAppServerForRecap(logPath: string): string {
+  return `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+const logPath = ${JSON.stringify(logPath)};
+let buffer = "";
+
+function write(payload) {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...payload }) + "\\n");
+}
+
+function logRequest(message) {
+  appendFileSync(
+    logPath,
+    JSON.stringify({
+      id: message.id,
+      method: message.method,
+      params: message.params,
+    }) + "\\n",
+  );
+}
+
+function respond(id, result) {
+  write({ id, result });
+}
+
+function notify(method, params) {
+  write({ method, params });
+}
+
+function handleMessage(message) {
+  if (!message || typeof message !== "object") return;
+  logRequest(message);
+  if (message.id === undefined) return;
+
+  switch (message.method) {
+    case "initialize":
+      respond(message.id, { userAgent: "fake-codex" });
+      break;
+    case "model/list":
+      respond(message.id, {
+        data: [
+          {
+            id: "gpt-5.4-mini",
+            model: "gpt-5.4-mini",
+            displayName: "GPT-5.4 Mini",
+          },
+        ],
+      });
+      break;
+    case "thread/start":
+      respond(message.id, {
+        thread: { id: "thread-recap", ephemeral: message.params.ephemeral === true },
+        model: message.params.model,
+        reasoningEffort: "low",
+      });
+      break;
+    case "turn/start":
+      respond(message.id, {
+        turn: {
+          id: "turn-recap",
+          items: [],
+          itemsView: "complete",
+          status: "inProgress",
+          error: null,
+          startedAt: null,
+          completedAt: null,
+          durationMs: null,
+        },
+      });
+      setTimeout(() => {
+        notify("item/agentMessage/delta", {
+          threadId: "thread-recap",
+          turnId: "turn-recap",
+          itemId: "message-recap",
+          delta: "Implemented the helper recap and ran focused tests.",
+        });
+        notify("turn/completed", {
+          threadId: "thread-recap",
+          turn: {
+            id: "turn-recap",
+            items: [],
+            itemsView: "complete",
+            status: "completed",
+            error: null,
+            startedAt: null,
+            completedAt: null,
+            durationMs: null,
+          },
+        });
+      }, 0);
       break;
     default:
       respond(message.id, {});

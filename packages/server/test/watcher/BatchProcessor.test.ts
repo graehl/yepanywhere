@@ -15,7 +15,7 @@ describe("BatchProcessor", () => {
       const results: string[] = [];
       const processor = new BatchProcessor<string>({
         batchMs: 100,
-        onResult: (key, result) => results.push(result),
+        onResult: (_key, result) => results.push(result),
       });
 
       processor.enqueue("a", async () => "result-a");
@@ -34,7 +34,7 @@ describe("BatchProcessor", () => {
       const results: string[] = [];
       const processor = new BatchProcessor<string>({
         batchMs: 100,
-        onResult: (key, result) => results.push(result),
+        onResult: (_key, result) => results.push(result),
       });
 
       processor.enqueue("same-key", async () => "first");
@@ -85,7 +85,7 @@ describe("BatchProcessor", () => {
 
       const processor = new BatchProcessor<string>({
         batchMs: 50,
-        onResult: (key, result) => results.push(result),
+        onResult: (_key, result) => results.push(result),
         onError: (key, error) => errors.push({ key, message: error.message }),
       });
 
@@ -106,7 +106,7 @@ describe("BatchProcessor", () => {
       const processor = new BatchProcessor<string>({
         batchMs: 50,
         concurrency: 1, // Sequential to test order
-        onResult: (key, result) => results.push(result),
+        onResult: (_key, result) => results.push(result),
         onError: () => {}, // Ignore errors
       });
 
@@ -128,7 +128,7 @@ describe("BatchProcessor", () => {
       const results: string[] = [];
       const processor = new BatchProcessor<string>({
         batchMs: 1000, // Long delay
-        onResult: (key, result) => results.push(result),
+        onResult: (_key, result) => results.push(result),
       });
 
       processor.enqueue("a", async () => "result-a");
@@ -146,7 +146,7 @@ describe("BatchProcessor", () => {
       const results: string[] = [];
       const processor = new BatchProcessor<string>({
         batchMs: 100,
-        onResult: (key, result) => results.push(result),
+        onResult: (_key, result) => results.push(result),
       });
 
       processor.enqueue("a", async () => "result-a");
@@ -166,7 +166,7 @@ describe("BatchProcessor", () => {
       const processor = new BatchProcessor<string>({
         batchMs: 50,
         concurrency: 1,
-        onResult: (key, result) => results.push(result),
+        onResult: (_key, result) => results.push(result),
       });
 
       // First batch

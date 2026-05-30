@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import type { GlobalSessionItem } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useDrafts } from "../hooks/useDrafts";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
@@ -362,68 +364,64 @@ export function Sidebar({
   const [showHiddenRecent, setShowHiddenRecent] = useState(false);
   const [showHiddenOlder, setShowHiddenOlder] = useState(false);
 
-  const { visibleRecent, hiddenRecent } = useMemo(() => {
-    const groups = new Map<string, any[]>();
-    for (const s of recentDaySessions) {
-      const normTitle = (s.title || s.fullTitle || s.initialPrompt || "").trim().toLowerCase().slice(0, 120);
-      const key = `${s.provider || "unknown"}|${s.projectId}|${normTitle}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(s);
-    }
-    const visible: any[] = [];
-    const hidden: any[] = [];
-    for (const arr of groups.values()) {
-      if (arr.length === 1) {
-        visible.push(arr[0]);
-      } else {
-        // Keep the best: highest messageCount wins (do not hide the one with more work).
-        // On tie (or no counts), prefer the one with more recent activity.
-        arr.sort((a, b) => {
-          const mcA = a.messageCount || 0;
-          const mcB = b.messageCount || 0;
-          if (mcB !== mcA) return mcB - mcA;
-          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-        });
-        visible.push(arr[0]);
-        hidden.push(...arr.slice(1));
+  const groupDuplicateSessions = useCallback(
+    (sessions: GlobalSessionItem[]) => {
+      const groups = new Map<string, GlobalSessionItem[]>();
+      for (const s of sessions) {
+        const normTitle = (s.title || s.fullTitle || s.initialPrompt || "")
+          .trim()
+          .toLowerCase()
+          .slice(0, 120);
+        const key = `${s.provider || "unknown"}|${s.projectId}|${normTitle}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)?.push(s);
       }
-    }
-    // stable sort visible by recency
-    visible.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    hidden.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+      const visible: GlobalSessionItem[] = [];
+      const hidden: GlobalSessionItem[] = [];
+      for (const arr of groups.values()) {
+        const first = arr[0];
+        if (!first) continue;
+        if (arr.length === 1) {
+          visible.push(first);
+        } else {
+          // Keep the best: highest messageCount wins (do not hide the one with more work).
+          // On tie (or no counts), prefer the one with more recent activity.
+          arr.sort((a, b) => {
+            const mcA = a.messageCount || 0;
+            const mcB = b.messageCount || 0;
+            if (mcB !== mcA) return mcB - mcA;
+            return (
+              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+            );
+          });
+          visible.push(first);
+          hidden.push(...arr.slice(1));
+        }
+      }
+
+      visible.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+      hidden.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+      return { visible, hidden };
+    },
+    [],
+  );
+
+  const { visibleRecent, hiddenRecent } = useMemo(() => {
+    const { visible, hidden } = groupDuplicateSessions(recentDaySessions);
     return { visibleRecent: visible, hiddenRecent: hidden };
-  }, [recentDaySessions]);
+  }, [groupDuplicateSessions, recentDaySessions]);
 
   const { visibleOlder, hiddenOlder } = useMemo(() => {
-    const groups = new Map<string, any[]>();
-    for (const s of olderSessions) {
-      const normTitle = (s.title || s.fullTitle || s.initialPrompt || "").trim().toLowerCase().slice(0, 120);
-      const key = `${s.provider || "unknown"}|${s.projectId}|${normTitle}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(s);
-    }
-    const visible: any[] = [];
-    const hidden: any[] = [];
-    for (const arr of groups.values()) {
-      if (arr.length === 1) {
-        visible.push(arr[0]);
-      } else {
-        // Keep the best: highest messageCount wins (do not hide the one with more work).
-        // On tie (or no counts), prefer the one with more recent activity.
-        arr.sort((a, b) => {
-          const mcA = a.messageCount || 0;
-          const mcB = b.messageCount || 0;
-          if (mcB !== mcA) return mcB - mcA;
-          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-        });
-        visible.push(arr[0]);
-        hidden.push(...arr.slice(1));
-      }
-    }
-    visible.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    hidden.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    const { visible, hidden } = groupDuplicateSessions(olderSessions);
     return { visibleOlder: visible, hiddenOlder: hidden };
-  }, [olderSessions]);
+  }, [groupDuplicateSessions, olderSessions]);
 
   // Track which sessions have unsent drafts in localStorage
   const drafts = useDrafts();
@@ -643,7 +641,9 @@ export function Sidebar({
                     sessionId={session.id}
                     projectId={session.projectId}
                     title={getSessionDisplayTitle(session)}
-                    fullTitle={session.fullTitle ?? getSessionDisplayTitle(session)}
+                    fullTitle={
+                      session.fullTitle ?? getSessionDisplayTitle(session)
+                    }
                     initialPrompt={session.initialPrompt}
                     provider={session.provider}
                     parentSessionId={session.parentSessionId}
@@ -718,8 +718,8 @@ export function Sidebar({
                         onClick={() => setShowHiddenRecent((v) => !v)}
                         aria-expanded={showHiddenRecent}
                       >
-                        {showHiddenRecent ? "−" : "+"}{" "}
-                        {hiddenRecent.length} hidden (duplicate titles)
+                        {showHiddenRecent ? "−" : "+"} {hiddenRecent.length}{" "}
+                        hidden (duplicate titles)
                       </button>
                       {showHiddenRecent && (
                         <ul className="sidebar-session-list sidebar-hidden-sublist">
@@ -730,7 +730,8 @@ export function Sidebar({
                               projectId={session.projectId}
                               title={getSessionDisplayTitle(session)}
                               fullTitle={
-                                session.fullTitle ?? getSessionDisplayTitle(session)
+                                session.fullTitle ??
+                                getSessionDisplayTitle(session)
                               }
                               initialPrompt={session.initialPrompt}
                               provider={session.provider}
@@ -808,8 +809,8 @@ export function Sidebar({
                         onClick={() => setShowHiddenOlder((v) => !v)}
                         aria-expanded={showHiddenOlder}
                       >
-                        {showHiddenOlder ? "−" : "+"}{" "}
-                        {hiddenOlder.length} hidden (duplicate titles)
+                        {showHiddenOlder ? "−" : "+"} {hiddenOlder.length}{" "}
+                        hidden (duplicate titles)
                       </button>
                       {showHiddenOlder && (
                         <ul className="sidebar-session-list sidebar-hidden-sublist">
@@ -820,7 +821,8 @@ export function Sidebar({
                               projectId={session.projectId}
                               title={getSessionDisplayTitle(session)}
                               fullTitle={
-                                session.fullTitle ?? getSessionDisplayTitle(session)
+                                session.fullTitle ??
+                                getSessionDisplayTitle(session)
                               }
                               initialPrompt={session.initialPrompt}
                               provider={session.provider}
@@ -869,6 +871,9 @@ export function Sidebar({
             role="separator"
             aria-orientation="vertical"
             aria-label={t("actionResizeSidebar")}
+            aria-valuemin={SIDEBAR_MIN_WIDTH}
+            aria-valuemax={SIDEBAR_MAX_WIDTH}
+            aria-valuenow={sidebarWidth ?? SIDEBAR_MIN_WIDTH}
             tabIndex={0}
           />
         )}

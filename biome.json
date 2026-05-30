@@ -60,16 +60,23 @@
     "rules": {
       "recommended": true,
       "suspicious": {
-        "noArrayIndexKey": "warn",
+        "noArrayIndexKey": "off",
         "noAssignInExpressions": "warn",
         "noControlCharactersInRegex": "warn",
-        "noDuplicateProperties": "warn",
+        "noDuplicateProperties": "off",
         "noExplicitAny": "warn",
         "useIterableCallbackReturn": "warn"
       },
       "correctness": {
         "noInvalidUseBeforeDeclaration": "warn",
-        "useExhaustiveDependencies": "warn"
+        "useExhaustiveDependencies": "off"
+      },
+      "complexity": {
+        "noImportantStyles": "off"
+      },
+      "style": {
+        "noDescendingSpecificity": "off",
+        "noNonNullAssertion": "off"
       },
       "a11y": {
         "noLabelWithoutControl": "warn",

@@ -118,7 +118,7 @@ export interface AgentSession {
    * The query will stop processing the current turn and return control.
    * Only supported by Claude SDK 0.2.7+.
    */
-  interrupt?: () => Promise<void | boolean>;
+  interrupt?: () => Promise<undefined | boolean>;
   /**
    * Get the list of available models from the SDK.
    * Only supported by Claude SDK 0.2.7+.

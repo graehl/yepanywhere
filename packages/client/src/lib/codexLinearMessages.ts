@@ -146,7 +146,7 @@ export function hasEquivalentJsonlMessage(
 
   for (let i = existing.length - 1; i >= startIndex; i -= 1) {
     const candidate = existing[i];
-    if (!candidate || candidate._source !== "jsonl") {
+    if (candidate?._source !== "jsonl") {
       continue;
     }
     if (getSemanticFingerprint(candidate) !== incomingFingerprint) {

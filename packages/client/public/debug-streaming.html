@@ -306,21 +306,21 @@
       <span id="chunk-size-value">5</span>
     </div>
 
-    <button id="stream-btn">Stream</button>
-    <button id="stop-btn" disabled>Stop</button>
-    <button id="reset-btn">Reset</button>
-    <button id="clear-log-btn">Clear Log</button>
+    <button type="button" id="stream-btn">Stream</button>
+    <button type="button" id="stop-btn" disabled>Stop</button>
+    <button type="button" id="reset-btn">Reset</button>
+    <button type="button" id="clear-log-btn">Clear Log</button>
   </div>
 
   <div class="presets">
     <span style="color: #666; font-size: 0.75rem; margin-right: 8px;">Presets:</span>
-    <button class="preset-btn" data-preset="simple">Simple paragraph</button>
-    <button class="preset-btn" data-preset="code">Code block (JS)</button>
-    <button class="preset-btn" data-preset="textThenCode">Text then code</button>
-    <button class="preset-btn" data-preset="textThenList">Text then list</button>
-    <button class="preset-btn" data-preset="mixed">Mixed content</button>
-    <button class="preset-btn" data-preset="rapid">Rapid small chunks</button>
-    <button class="preset-btn" data-preset="long">Long document</button>
+    <button type="button" class="preset-btn" data-preset="simple">Simple paragraph</button>
+    <button type="button" class="preset-btn" data-preset="code">Code block (JS)</button>
+    <button type="button" class="preset-btn" data-preset="textThenCode">Text then code</button>
+    <button type="button" class="preset-btn" data-preset="textThenList">Text then list</button>
+    <button type="button" class="preset-btn" data-preset="mixed">Mixed content</button>
+    <button type="button" class="preset-btn" data-preset="rapid">Rapid small chunks</button>
+    <button type="button" class="preset-btn" data-preset="long">Long document</button>
   </div>
 
   <textarea id="markdown-input" placeholder="Enter markdown here...">## Hello World
@@ -623,8 +623,8 @@ Thanks for reading! Now go build something amazing.`
     // Stream markdown via server endpoint
     async function streamMarkdown() {
       const markdown = markdownInput.value;
-      const delayMs = parseInt(speedSlider.value);
-      const chunkSize = parseInt(chunkSizeSlider.value);
+      const delayMs = parseInt(speedSlider.value, 10);
+      const chunkSize = parseInt(chunkSizeSlider.value, 10);
 
       if (!markdown.trim()) {
         log('ERROR: No markdown to stream', 'error');

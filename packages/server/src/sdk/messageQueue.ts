@@ -161,7 +161,7 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
    *
    * @param options.interrupted - if true, prepend interrupt preamble
    */
-   concatDrain(options?: { interrupted?: boolean }): UserMessage | null {
+  concatDrain(options?: { interrupted?: boolean }): UserMessage | null {
     this.drainedByExternal = true;
     const drained = this.queue.splice(0);
     if (drained.length === 0) return null;
@@ -183,43 +183,27 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
   /* AsyncIterable interface (consumed by SDK query loop)               */
   /* ------------------------------------------------------------------ */
 
-  [Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
+  [Symbol.asyncIterator](): AsyncGenerator<SDKUserMessage> {
     return this.createIterator();
   }
 
-  private createIterator(): AsyncIterator<SDKUserMessage> {
-    let closed = false;
+  private async *createIterator(): AsyncGenerator<SDKUserMessage> {
+    while (true) {
+      // Wait until at least one message is available.
+      await this.waitForMessage();
 
-    const self = this;
-    return {
-      async next(): Promise<IteratorResult<SDKUserMessage>> {
-        if (closed) return { done: true, value: undefined };
+      // Check if external drain stole our messages.
+      if (this.drainedByExternal) {
+        this.drainedByExternal = false;
+        continue;
+      }
 
-        // Wait until at least one message is available
-        await self.waitForMessage();
+      // Drain all accumulated and concatenate.
+      const combined = this.concatDrainInternal();
+      if (!combined) continue;
 
-        // Check if external drain stole our messages
-        if (self.drainedByExternal) {
-          self.drainedByExternal = false;
-          // Retry — wait for new messages
-          return this.next();
-        }
-
-        // Drain all accumulated and concatenate
-        const combined = self.concatDrainInternal();
-        if (!combined) {
-          // Empty drain — retry
-          return this.next();
-        }
-
-        return { done: false, value: self.toSDKMessage(combined) };
-      },
-
-      return(): Promise<IteratorResult<SDKUserMessage>> {
-        closed = true;
-        return Promise.resolve({ done: true, value: undefined });
-      },
-    };
+      yield this.toSDKMessage(combined);
+    }
   }
 
   /** Wait until at least one message is available */
@@ -322,6 +306,6 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
 
   /** Backward-compatible alias for the async iterator (used by existing callers). */
   generator(): AsyncGenerator<SDKUserMessage> {
-    return this[Symbol.asyncIterator]() as any as AsyncGenerator<SDKUserMessage>;
+    return this.createIterator();
   }
 }

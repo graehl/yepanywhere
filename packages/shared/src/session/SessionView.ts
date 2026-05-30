@@ -26,8 +26,11 @@ import { DEFAULT_PROVIDER, type ProviderName } from "../types.js";
 /** Maximum length for truncated titles */
 export const SESSION_TITLE_MAX_LENGTH = 120;
 
-const UNSAFE_TITLE_CHARACTERS =
-  /[\u0000-\u001f\u007f-\u009f\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/gu;
+// biome-ignore lint/complexity/useRegexLiterals: constructor form keeps deliberate control-character ranges explicit
+const UNSAFE_TITLE_CHARACTERS = new RegExp(
+  String.raw`[\u0000-\u001f\u007f-\u009f\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]`,
+  "gu",
+);
 
 /**
  * Sanitize text before it is reused as a session/browser title.

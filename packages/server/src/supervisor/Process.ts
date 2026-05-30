@@ -73,7 +73,9 @@ type PendingRecapRequest = {
 
 const CODEX_NATIVE_SLASH_COMMAND_NAMES = new Set(["goal"]);
 
-function getCodexSkillCommandPrefix(provider: ProviderName): string | undefined {
+function getCodexSkillCommandPrefix(
+  provider: ProviderName,
+): string | undefined {
   return provider === "codex" || provider === "codex-oss" ? "@" : undefined;
 }
 
@@ -168,7 +170,7 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   /** Function to change max thinking tokens at runtime (SDK 0.2.7+) */
   setMaxThinkingTokensFn?: (tokens: number | null) => Promise<void>;
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
-  interruptFn?: () => Promise<void | boolean>;
+  interruptFn?: () => Promise<undefined | boolean>;
   /**
    * Function to steer an active turn with additional user input.
    * Returns false when steering is unavailable and caller should enqueue.
@@ -203,8 +205,10 @@ export class Process {
 
   private legacyQueue: UserMessage[] = [];
   private messageQueue: MessageQueue | null;
-  private deferredEditBarrier: { originalTempId: string; index: number } | null =
-    null;
+  private deferredEditBarrier: {
+    originalTempId: string;
+    index: number;
+  } | null = null;
   private abortFn: (() => void) | null;
   private _state: ProcessState = { type: "in-turn" };
   private listeners: Set<Listener> = new Set();
@@ -274,7 +278,7 @@ export class Process {
     | null;
 
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
-  private interruptFn: (() => Promise<void | boolean>) | null;
+  private interruptFn: (() => Promise<undefined | boolean>) | null;
   /** Function to steer an active turn (provider-specific, currently Codex app-server) */
   private steerFn: ((message: UserMessage) => Promise<boolean>) | null;
 
@@ -305,9 +309,7 @@ export class Process {
   /** Check if underlying CLI process is still alive (undefined = not available, fall back to time heuristic) */
   private _isProcessAlive: (() => boolean) | null;
   /** Provider-specific active liveness probe, when available. */
-  private probeLivenessFn:
-    | (() => Promise<ProviderLivenessProbeResult>)
-    | null;
+  private probeLivenessFn: (() => Promise<ProviderLivenessProbeResult>) | null;
   private getProviderActivityFn: (() => ProviderActivitySnapshot) | null;
   private _lastLivenessProbe: LivenessProbeResult | null = null;
   private _livenessProbeInFlight: Promise<LivenessProbeResult | null> | null =
@@ -510,8 +512,7 @@ export class Process {
       startedAt: this.startedAt,
       lastStateChangeAt: this._lastStateChangeTime,
       lastProviderMessageAt: this._lastProviderMessageTime,
-      lastRawProviderEventAt:
-        providerActivity?.lastRawProviderEventAt ?? null,
+      lastRawProviderEventAt: providerActivity?.lastRawProviderEventAt ?? null,
       lastRawProviderEventSource:
         providerActivity?.lastRawProviderEventSource ?? null,
       lastLivenessProbe: this._lastLivenessProbe,
@@ -792,9 +793,7 @@ export class Process {
     return refresh;
   }
 
-  async primeSupportedCommandsForMessage(
-    message: UserMessage,
-  ): Promise<void> {
+  async primeSupportedCommandsForMessage(message: UserMessage): Promise<void> {
     if (!isSlashCommandSubmission(message.text)) {
       return;
     }
@@ -1138,8 +1137,7 @@ export class Process {
         : trimmed;
     this.recentAssistantRecapEntries.push({ completedAtMs, text: capped });
     while (
-      this.recentAssistantRecapEntries.length >
-      Process.RECENT_TEXT_MAX_ENTRIES
+      this.recentAssistantRecapEntries.length > Process.RECENT_TEXT_MAX_ENTRIES
     ) {
       this.recentAssistantRecapEntries.shift();
     }
@@ -1580,7 +1578,10 @@ export class Process {
       };
     }
     const deferredEditInsertionIndex = replacesDeferredEdit
-      ? Math.min(this.deferredEditBarrier?.index ?? 0, this.deferredQueue.length)
+      ? Math.min(
+          this.deferredEditBarrier?.index ?? 0,
+          this.deferredQueue.length,
+        )
       : null;
 
     if (options?.promoteIfReady && this.messageQueue) {
@@ -1736,8 +1737,7 @@ export class Process {
           ? { attachments: entry.message.attachments }
           : {}),
         ...(attachmentCount > 0 ? { attachmentCount } : {}),
-        ...(this.deferredEditBarrier &&
-        index >= this.deferredEditBarrier.index
+        ...(this.deferredEditBarrier && index >= this.deferredEditBarrier.index
           ? { blockedByEdit: true }
           : {}),
       };
@@ -1773,10 +1773,7 @@ export class Process {
     reason: "cancelled" | "promoted" = "promoted",
   ): UserMessage[] {
     const queuedMessages = this.messageQueue?.drain() ?? [];
-    return [
-      ...queuedMessages,
-      ...this.drainDeferredMessages(reason),
-    ];
+    return [...queuedMessages, ...this.drainDeferredMessages(reason)];
   }
 
   /**
@@ -2551,11 +2548,7 @@ export class Process {
   }
 
   private isCompletedToolResultMessage(message: SDKMessage): boolean {
-    if (
-      this._state.type !== "in-turn" ||
-      !this.messageQueue ||
-      !this.steerFn
-    ) {
+    if (this._state.type !== "in-turn" || !this.messageQueue || !this.steerFn) {
       return false;
     }
 

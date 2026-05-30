@@ -367,7 +367,9 @@ function normalizeSemver(raw: string | null | undefined): string | null {
   const match = raw.match(/(\d+)\.(\d+)\.(\d+)(?:-([\w.]+))?/);
   if (!match) return null;
   const [, major, minor, patch, pre] = match;
-  return pre ? `${major}.${minor}.${patch}-${pre}` : `${major}.${minor}.${patch}`;
+  return pre
+    ? `${major}.${minor}.${patch}-${pre}`
+    : `${major}.${minor}.${patch}`;
 }
 
 function compareSemver(a: string, b: string): number {
@@ -955,9 +957,7 @@ export class CodexProvider implements AgentProvider {
 
   private getCodexClientName(overrideClientName?: string): string {
     const normalizedClientName =
-      typeof overrideClientName === "string"
-        ? overrideClientName.trim()
-        : "";
+      typeof overrideClientName === "string" ? overrideClientName.trim() : "";
     if (normalizedClientName.length > 0) {
       return normalizedClientName;
     }
@@ -1302,10 +1302,7 @@ export class CodexProvider implements AgentProvider {
 
   private async getFallbackCodexModels(): Promise<ModelInfo[]> {
     const version = await this.getInstalledCodexCliVersion();
-    if (
-      version &&
-      compareSemver(version, CODEX_CLI_GPT55_MIN_VERSION) < 0
-    ) {
+    if (version && compareSemver(version, CODEX_CLI_GPT55_MIN_VERSION) < 0) {
       return LEGACY_FALLBACK_CODEX_MODELS;
     }
     return FALLBACK_CODEX_MODELS;
@@ -1347,9 +1344,10 @@ export class CodexProvider implements AgentProvider {
   ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | undefined {
     if (thinking?.type === "disabled") {
       const normalizedModel = model?.trim().toLowerCase();
-      const hasSparkModelPrefix = CODEX_THINKING_OFF_MIN_REASONING_EFFORT_PREFIXES.some(
-        (prefix) => normalizedModel?.startsWith(prefix),
-      );
+      const hasSparkModelPrefix =
+        CODEX_THINKING_OFF_MIN_REASONING_EFFORT_PREFIXES.some((prefix) =>
+          normalizedModel?.startsWith(prefix),
+        );
       if (hasSparkModelPrefix) {
         return "low";
       }
@@ -1819,9 +1817,8 @@ export class CodexProvider implements AgentProvider {
                     ...rawMsg,
                     codexFailureTrace:
                       this.snapshotCodexFailureTrace(failureTrace),
-                    codexFailureSummary: this.formatCodexFailureTrace(
-                      failureTrace,
-                    ),
+                    codexFailureSummary:
+                      this.formatCodexFailureTrace(failureTrace),
                   } as SDKMessage)
                 : rawMsg;
             failureTrace.lastEmittedMessage =
@@ -1881,8 +1878,7 @@ export class CodexProvider implements AgentProvider {
           session_id: sessionId,
           error: error instanceof Error ? error.message : String(error),
           codexFailureTrace,
-          codexFailureSummary:
-            this.formatCodexFailureTrace(codexFailureTrace),
+          codexFailureSummary: this.formatCodexFailureTrace(codexFailureTrace),
         } as SDKMessage);
       }
     } finally {
@@ -1926,10 +1922,7 @@ export class CodexProvider implements AgentProvider {
           ? (params.item as Record<string, unknown>)
           : null;
       const itemType = this.getOptionalString(item?.type);
-      if (
-        itemType === "function_call" ||
-        itemType === "custom_tool_call"
-      ) {
+      if (itemType === "function_call" || itemType === "custom_tool_call") {
         const callId = this.getOptionalString(item?.call_id);
         if (callId) {
           runtimeState.activeToolCallIds.add(callId);
@@ -1986,9 +1979,7 @@ export class CodexProvider implements AgentProvider {
         title: null,
         version: "dev",
       },
-      capabilities: experimentalApiEnabled
-        ? { experimentalApi: true }
-        : null,
+      capabilities: experimentalApiEnabled ? { experimentalApi: true } : null,
     };
   }
 
@@ -2196,9 +2187,7 @@ export class CodexProvider implements AgentProvider {
         if (notification.method !== "turn/completed") {
           continue;
         }
-        const completed = this.asTurnCompletedNotification(
-          notification.params,
-        );
+        const completed = this.asTurnCompletedNotification(notification.params);
         if (completed?.turn.status === "failed") {
           throw new Error(
             completed.turn.error?.message ?? "Codex recap generation failed",
@@ -2306,9 +2295,9 @@ export class CodexProvider implements AgentProvider {
         for (const question of requestInput?.questions ?? []) {
           answers[question.id] = { answers: [] };
         }
-        return Promise.resolve(
-          { answers } satisfies ToolRequestUserInputResponse,
-        );
+        return Promise.resolve({
+          answers,
+        } satisfies ToolRequestUserInputResponse);
       }
       default:
         return Promise.resolve({});
@@ -2333,7 +2322,7 @@ export class CodexProvider implements AgentProvider {
   ): void {
     if (notification.method === "item/agentMessage/delta") {
       const params = this.asAgentMessageDeltaNotification(notification.params);
-      if (!params || !params.delta) return;
+      if (!params?.delta) return;
       textByItemId.set(
         params.itemId,
         `${textByItemId.get(params.itemId) ?? ""}${params.delta}`,
@@ -2377,7 +2366,7 @@ export class CodexProvider implements AgentProvider {
         if (!contentItem || typeof contentItem !== "object") return "";
         const contentRecord = contentItem as Record<string, unknown>;
         return contentRecord.type === "output_text"
-          ? this.getOptionalString(contentRecord.text) ?? ""
+          ? (this.getOptionalString(contentRecord.text) ?? "")
           : "";
       })
       .filter((text) => text.length > 0);
@@ -2551,7 +2540,8 @@ export class CodexProvider implements AgentProvider {
             this.getOptionalString(item?.type),
           ),
           status: this.normalizeStatus(item?.status),
-          phase: notification.method === "item/completed" ? "completed" : "started",
+          phase:
+            notification.method === "item/completed" ? "completed" : "started",
           toolName: this.getTraceToolName(item) ?? undefined,
           command: this.previewTraceString(
             this.getOptionalString(item?.command) ??
@@ -2653,8 +2643,8 @@ export class CodexProvider implements AgentProvider {
             undefined,
           additionalDetails:
             params?.error.additionalDetails ??
-            (this.getOptionalString(fallbackError?.additionalDetails) ??
-              undefined),
+            this.getOptionalString(fallbackError?.additionalDetails) ??
+            undefined,
           openaiRequestId: this.extractOpenAIRequestId(
             notification.params,
             fallbackError,
@@ -2674,8 +2664,7 @@ export class CodexProvider implements AgentProvider {
     const event: CodexFailureTraceEvent = {
       at: new Date().toISOString(),
       sourceEvent: `sdk:${message.type}`,
-      phase:
-        typeof message.subtype === "string" ? message.subtype : undefined,
+      phase: typeof message.subtype === "string" ? message.subtype : undefined,
     };
 
     if (message.error !== undefined) {
@@ -2736,7 +2725,9 @@ export class CodexProvider implements AgentProvider {
     return type?.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
   }
 
-  private getTraceToolName(item: Record<string, unknown> | null): string | null {
+  private getTraceToolName(
+    item: Record<string, unknown> | null,
+  ): string | null {
     if (!item) return null;
     const type = this.normalizeCodexItemType(this.getOptionalString(item.type));
     if (type === "command_execution") return "Bash";
@@ -2778,7 +2769,8 @@ export class CodexProvider implements AgentProvider {
     for (const value of values) {
       const direct = this.findRequestIdInValue(value, 0);
       if (direct) return direct;
-      const text = typeof value === "string" ? value : stringifyTraceValue(value);
+      const text =
+        typeof value === "string" ? value : stringifyTraceValue(value);
       const match =
         /request\s*id[:\s]+([0-9a-f]{8}-[0-9a-f-]{20,})/i.exec(text) ??
         /request[_-]?id["'\s:=]+([0-9a-f]{8}-[0-9a-f-]{20,})/i.exec(text);
@@ -2806,7 +2798,9 @@ export class CodexProvider implements AgentProvider {
     return null;
   }
 
-  private previewTraceString(value: string | null | undefined): string | undefined {
+  private previewTraceString(
+    value: string | null | undefined,
+  ): string | undefined {
     if (!value) return undefined;
     const trimmed = value.replace(/\s+/g, " ").trim();
     if (trimmed.length <= CODEX_FAILURE_PREVIEW_CHARS) {
@@ -3204,8 +3198,7 @@ export class CodexProvider implements AgentProvider {
             output_tokens: usage.snapshot.outputTokens,
             cached_input_tokens: usage.snapshot.cachedInputTokens,
           },
-          ...(usage.snapshot.contextWindow &&
-          usage.snapshot.contextWindow > 0
+          ...(usage.snapshot.contextWindow && usage.snapshot.contextWindow > 0
             ? { model_context_window: usage.snapshot.contextWindow }
             : {}),
         } as SDKMessage);
@@ -3381,8 +3374,10 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "item/agentMessage/delta": {
-        const params = this.asAgentMessageDeltaNotification(notification.params);
-        if (!params || !params.delta) return [];
+        const params = this.asAgentMessageDeltaNotification(
+          notification.params,
+        );
+        if (!params?.delta) return [];
         return [
           this.buildStreamingAssistantMessage(
             sessionId,
@@ -3397,7 +3392,7 @@ export class CodexProvider implements AgentProvider {
 
       case "item/plan/delta": {
         const params = this.asPlanDeltaNotification(notification.params);
-        if (!params || !params.delta) return [];
+        if (!params?.delta) return [];
         return [
           this.buildStreamingAssistantMessage(
             sessionId,
@@ -3414,7 +3409,7 @@ export class CodexProvider implements AgentProvider {
         const params = this.asReasoningSummaryTextDeltaNotification(
           notification.params,
         );
-        if (!params || !params.delta) return [];
+        if (!params?.delta) return [];
         return [
           this.buildStreamingReasoningSummaryMessage(
             sessionId,
@@ -3431,7 +3426,7 @@ export class CodexProvider implements AgentProvider {
         const params = this.asCommandExecutionOutputDeltaNotification(
           notification.params,
         );
-        if (!params || !params.delta) return [];
+        if (!params?.delta) return [];
         return [
           this.buildStreamingToolResultMessage(
             sessionId,
@@ -3448,7 +3443,7 @@ export class CodexProvider implements AgentProvider {
         const params = this.asFileChangeOutputDeltaNotification(
           notification.params,
         );
-        if (!params || !params.delta) return [];
+        if (!params?.delta) return [];
         return [
           this.buildStreamingToolResultMessage(
             sessionId,
@@ -3611,9 +3606,7 @@ export class CodexProvider implements AgentProvider {
             ? itemRecord.contentItems
             : null,
           success:
-            typeof itemRecord.success === "boolean"
-              ? itemRecord.success
-              : null,
+            typeof itemRecord.success === "boolean" ? itemRecord.success : null,
         };
       }
 
@@ -3872,7 +3865,9 @@ export class CodexProvider implements AgentProvider {
     return params as AgentMessageDeltaNotification;
   }
 
-  private asPlanDeltaNotification(params: unknown): PlanDeltaNotification | null {
+  private asPlanDeltaNotification(
+    params: unknown,
+  ): PlanDeltaNotification | null {
     if (!params || typeof params !== "object") return null;
     const record = params as Record<string, unknown>;
     if (

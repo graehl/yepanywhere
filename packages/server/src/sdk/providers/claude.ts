@@ -208,9 +208,7 @@ function normalizedSlashCommandName(command: SlashCommand): string {
   return command.name.trim().replace(/^\/+/, "").toLowerCase();
 }
 
-export function withClaudeGoalAlias(
-  commands: SlashCommand[],
-): SlashCommand[] {
+export function withClaudeGoalAlias(commands: SlashCommand[]): SlashCommand[] {
   const normalizedNames = new Set(commands.map(normalizedSlashCommandName));
   if (normalizedNames.has("goal") || !normalizedNames.has("loop")) {
     return commands;
@@ -547,9 +545,7 @@ export class ClaudeProvider implements AgentProvider {
     // Resolves (rather than rejects) on abort to avoid unhandled rejections.
     async function* waitForever(): AsyncGenerator<never> {
       await new Promise<void>((resolve) => {
-        abortController.signal.addEventListener("abort", () =>
-          resolve(),
-        );
+        abortController.signal.addEventListener("abort", () => resolve());
       });
       yield* [];
     }
@@ -680,9 +676,7 @@ export class ClaudeProvider implements AgentProvider {
     }
 
     const helperModel =
-      options?.model === HELPER_SIDE_MODEL_CHEAPEST
-        ? "haiku"
-        : options?.model;
+      options?.model === HELPER_SIDE_MODEL_CHEAPEST ? "haiku" : options?.model;
 
     try {
       const sdkQuery = query({
@@ -963,7 +957,10 @@ export class ClaudeProvider implements AgentProvider {
       },
       setMaxThinkingTokens: (tokens: number | null) =>
         sdkQuery.setMaxThinkingTokens(tokens),
-      interrupt: () => sdkQuery.interrupt(),
+      interrupt: async () => {
+        await sdkQuery.interrupt();
+        return true;
+      },
       supportedModels: async (): Promise<ModelInfo[]> => {
         const models = await sdkQuery.supportedModels();
         // Map SDK ModelInfo (value, displayName, description) to our ModelInfo (id, name, description)

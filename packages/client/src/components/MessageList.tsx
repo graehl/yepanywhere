@@ -1,12 +1,5 @@
 import type { MarkdownAugment, UploadedFile } from "@yep-anywhere/shared";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   type ActiveToolApproval,
@@ -92,12 +85,15 @@ function getEarliestMessageTimestampMs(
     if (timestampMs === null) {
       continue;
     }
-    earliest = earliest === null ? timestampMs : Math.min(earliest, timestampMs);
+    earliest =
+      earliest === null ? timestampMs : Math.min(earliest, timestampMs);
   }
   return earliest;
 }
 
-function getLatestItemsTimestampMs(items: readonly RenderItem[]): number | null {
+function getLatestItemsTimestampMs(
+  items: readonly RenderItem[],
+): number | null {
   let latest: number | null = null;
   for (const item of items) {
     const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
@@ -419,13 +415,7 @@ interface BtwAsideTimelineItem {
   id: string;
   request: string;
   followUps: string[];
-  status:
-    | "draft"
-    | "starting"
-    | "running"
-    | "complete"
-    | "failed"
-    | "stopped";
+  status: "draft" | "starting" | "running" | "complete" | "failed" | "stopped";
   createdAt: string;
   updatedAt: string;
   historyAt?: string;
@@ -597,9 +587,7 @@ function BtwAsideTimelineCard({
         {aside.preview && (
           <span className="btw-aside-preview">{aside.preview}</span>
         )}
-        {aside.error && (
-          <span className="btw-aside-error">{aside.error}</span>
-        )}
+        {aside.error && <span className="btw-aside-error">{aside.error}</span>}
       </button>
       {aside.expanded && canExpand && (
         <BtwAsideTranscript
@@ -691,28 +679,29 @@ export const MessageList = memo(function MessageList({
   const forcedCurrentScrollTimersRef = useRef<ReturnType<typeof setTimeout>[]>(
     [],
   );
-  const programmaticScrollReleaseRef =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
+  const programmaticScrollReleaseRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const previousRenderItemsRef = useRef<RenderItem[]>([]);
   const navMotionCueTokenRef = useRef(0);
-  const navMotionCueClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const navMotionCueClearTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchRestoreFocusRef = useRef<HTMLElement | null>(null);
   const searchOriginalScrollTopRef = useRef<number | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
-  const [navMotionCue, setNavMotionCue] =
-    useState<UserTurnNavMotionCue | null>(null);
+  const [navMotionCue, setNavMotionCue] = useState<UserTurnNavMotionCue | null>(
+    null,
+  );
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
-  const [userTurnSearch, setUserTurnSearch] =
-    useState<UserTurnSearchSession>({
-      active: false,
-      scope: "user",
-      query: "",
-      selectedId: null,
-      originalScrollTop: null,
-    });
+  const [userTurnSearch, setUserTurnSearch] = useState<UserTurnSearchSession>({
+    active: false,
+    scope: "user",
+    query: "",
+    selectedId: null,
+    originalScrollTop: null,
+  });
   const nowMs = useRelativeNow();
 
   // Scroll to bottom, marking it as programmatic so scroll handler ignores it
@@ -837,47 +826,41 @@ export const MessageList = memo(function MessageList({
   );
 
   // Preprocess messages into render items and group into turns
-  const renderItems = useMemo(
-    () => {
-      const startedAt = highResolutionNowMs();
-      markReloadPerfPhase("message_list_preprocess_start", {
-        messages: messages.length,
-        markdownAugments: Object.keys(markdownAugments ?? {}).length,
-        hasActiveToolApproval: !!activeToolApproval,
-      });
-      const nextRenderItems = preprocessMessages(messages, {
-        markdown: markdownAugments,
-        activeToolApproval,
-      });
-      const stabilized = stabilizeRenderItems(
-        previousRenderItemsRef.current,
-        nextRenderItems,
-      );
-      markReloadPerfPhase("message_list_preprocess_end", {
-        messages: messages.length,
-        renderItems: stabilized.length,
-        durationMs: highResolutionNowMs() - startedAt,
-      });
-      return stabilized;
-    },
-    [messages, markdownAugments, activeToolApproval],
-  );
+  const renderItems = useMemo(() => {
+    const startedAt = highResolutionNowMs();
+    markReloadPerfPhase("message_list_preprocess_start", {
+      messages: messages.length,
+      markdownAugments: Object.keys(markdownAugments ?? {}).length,
+      hasActiveToolApproval: !!activeToolApproval,
+    });
+    const nextRenderItems = preprocessMessages(messages, {
+      markdown: markdownAugments,
+      activeToolApproval,
+    });
+    const stabilized = stabilizeRenderItems(
+      previousRenderItemsRef.current,
+      nextRenderItems,
+    );
+    markReloadPerfPhase("message_list_preprocess_end", {
+      messages: messages.length,
+      renderItems: stabilized.length,
+      durationMs: highResolutionNowMs() - startedAt,
+    });
+    return stabilized;
+  }, [messages, markdownAugments, activeToolApproval]);
   useEffect(() => {
     previousRenderItemsRef.current = renderItems;
   }, [renderItems]);
-  const turnGroups = useMemo(
-    () => {
-      const startedAt = highResolutionNowMs();
-      const grouped = groupItemsIntoTurns(renderItems);
-      markReloadPerfPhase("message_list_group_end", {
-        renderItems: renderItems.length,
-        turnGroups: grouped.length,
-        durationMs: highResolutionNowMs() - startedAt,
-      });
-      return grouped;
-    },
-    [renderItems],
-  );
+  const turnGroups = useMemo(() => {
+    const startedAt = highResolutionNowMs();
+    const grouped = groupItemsIntoTurns(renderItems);
+    markReloadPerfPhase("message_list_group_end", {
+      renderItems: renderItems.length,
+      turnGroups: grouped.length,
+      durationMs: highResolutionNowMs() - startedAt,
+    });
+    return grouped;
+  }, [renderItems]);
   useEffect(() => {
     markReloadPerfPhase("message_list_commit_effect", {
       messages: messages.length,
@@ -1109,7 +1092,7 @@ export const MessageList = memo(function MessageList({
 
     for (let index = renderItems.length - 1; index >= 0; index -= 1) {
       const item = renderItems[index];
-      if (!item || item.type !== "user_prompt" || item.isSubagent) {
+      if (item?.type !== "user_prompt" || item.isSubagent) {
         continue;
       }
       const content = getPromptTextForCorrection(item.content);
@@ -1214,9 +1197,10 @@ export const MessageList = memo(function MessageList({
     if (navMotionCueClearTimerRef.current !== null) {
       clearTimeout(navMotionCueClearTimerRef.current);
     }
+    navMotionCueTokenRef.current += 1;
     setNavMotionCue({
       direction,
-      token: (navMotionCueTokenRef.current += 1),
+      token: navMotionCueTokenRef.current,
     });
     navMotionCueClearTimerRef.current = setTimeout(() => {
       setNavMotionCue(null);
@@ -1313,42 +1297,42 @@ export const MessageList = memo(function MessageList({
     });
   }, []);
 
-  const openUserTurnSearch = useCallback((scope: SessionIsearchScope) => {
-    const canSearch =
-      scope === "all" ? renderItems.length > 0 : hasUserSearchableTurn;
-    if (!canSearch) {
-      return;
-    }
-    const activeElement = document.activeElement;
-    searchRestoreFocusRef.current =
-      activeElement instanceof HTMLElement && activeElement !== document.body
-        ? activeElement
-        : null;
-    const scrollContainer = containerRef.current?.parentElement;
-    searchOriginalScrollTopRef.current = scrollContainer?.scrollTop ?? null;
-    setUserTurnSearch({
-      active: true,
-      scope,
-      query: "",
-      selectedId: null,
-      originalScrollTop: searchOriginalScrollTopRef.current,
-    });
-    requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    });
-  }, [hasUserSearchableTurn, renderItems.length]);
-
-  const handleUserTurnSearchQueryChange = useCallback(
-    (query: string) => {
-      setUserTurnSearch((previous) => ({
-        ...previous,
-        query,
+  const openUserTurnSearch = useCallback(
+    (scope: SessionIsearchScope) => {
+      const canSearch =
+        scope === "all" ? renderItems.length > 0 : hasUserSearchableTurn;
+      if (!canSearch) {
+        return;
+      }
+      const activeElement = document.activeElement;
+      searchRestoreFocusRef.current =
+        activeElement instanceof HTMLElement && activeElement !== document.body
+          ? activeElement
+          : null;
+      const scrollContainer = containerRef.current?.parentElement;
+      searchOriginalScrollTopRef.current = scrollContainer?.scrollTop ?? null;
+      setUserTurnSearch({
+        active: true,
+        scope,
+        query: "",
         selectedId: null,
-      }));
+        originalScrollTop: searchOriginalScrollTopRef.current,
+      });
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      });
     },
-    [],
+    [hasUserSearchableTurn, renderItems.length],
   );
+
+  const handleUserTurnSearchQueryChange = useCallback((query: string) => {
+    setUserTurnSearch((previous) => ({
+      ...previous,
+      query,
+      selectedId: null,
+    }));
+  }, []);
 
   useEffect(() => {
     if (!userTurnSearch.active) {
@@ -1361,8 +1345,7 @@ export const MessageList = memo(function MessageList({
       let nextSelectedId: string | null = null;
       if (searchReady && userTurnSearchMatches.length > 0) {
         nextSelectedId =
-          previous.selectedId &&
-          userTurnSearchMatchIds.has(previous.selectedId)
+          previous.selectedId && userTurnSearchMatchIds.has(previous.selectedId)
             ? previous.selectedId
             : (userTurnSearchMatches[userTurnSearchMatches.length - 1]?.id ??
               null);
@@ -1643,7 +1626,11 @@ export const MessageList = memo(function MessageList({
         clearTimeout(navMotionCueClearTimerRef.current);
       }
     };
-  }, [clearFollowUpScrollTimer, clearForcedCurrentScrollTimers, scrollToBottom]);
+  }, [
+    clearFollowUpScrollTimer,
+    clearForcedCurrentScrollTimers,
+    scrollToBottom,
+  ]);
 
   // Preserve relative scroll position when the viewport is resized.
   useEffect(() => {
@@ -1660,7 +1647,9 @@ export const MessageList = memo(function MessageList({
         ? 0
         : Math.max(
             0,
-            container.scrollHeight - container.scrollTop - container.clientHeight,
+            container.scrollHeight -
+              container.scrollTop -
+              container.clientHeight,
           );
 
       if (pendingFrame !== 0) {
@@ -1779,8 +1768,8 @@ export const MessageList = memo(function MessageList({
             : "0/0"}
       </span>
       <span className="user-turn-search-keys">
-        {userTurnSearch.scope === "all" ? "Ctrl+S" : "Ctrl+R/Ctrl+Alt+R"} prev
-        / Enter jump / Esc cancel
+        {userTurnSearch.scope === "all" ? "Ctrl+S" : "Ctrl+R/Ctrl+Alt+R"} prev /
+        Enter jump / Esc cancel
       </span>
     </div>
   ) : null;
@@ -1833,7 +1822,9 @@ export const MessageList = memo(function MessageList({
         {(hasOlderMessages || clientTailActive) && (
           <div className="load-older-messages">
             {clientTailActive && (
-              <span className="load-older-status">Recent transcript loaded</span>
+              <span className="load-older-status">
+                Recent transcript loaded
+              </span>
             )}
             {hasOlderMessages && (
               <button
@@ -1961,11 +1952,7 @@ export const MessageList = memo(function MessageList({
           const timestampMs = parseTimestampMs(tailItem.message.timestamp);
           const showAgeByDefault =
             latestVisibleTimestampMs === timestampMs &&
-            isStaleTimestamp(
-              timestampMs,
-              nowMs,
-              MESSAGE_STALE_THRESHOLD_MS,
-            );
+            isStaleTimestamp(timestampMs, nowMs, MESSAGE_STALE_THRESHOLD_MS);
 
           if (tailItem.kind === "pending") {
             const pending = tailItem.message;
@@ -2079,11 +2066,11 @@ export const MessageList = memo(function MessageList({
                         ? "Recovered draft (not queued)"
                         : deferred.deliveryState === "verifying"
                           ? "Queued (verifying)"
-                        : deferred.blockedByEdit
-                          ? "Queued (after edit)"
-                          : index === 0
-                            ? "Queued (next)"
-                            : `Queued (#${index + 1})`}
+                          : deferred.blockedByEdit
+                            ? "Queued (after edit)"
+                            : index === 0
+                              ? "Queued (next)"
+                              : `Queued (#${index + 1})`}
                   </span>
                   {deferred.attachmentCount ? (
                     <span
@@ -2091,6 +2078,7 @@ export const MessageList = memo(function MessageList({
                       title={`${deferred.attachmentCount} attachment${
                         deferred.attachmentCount === 1 ? "" : "s"
                       } queued`}
+                      role="img"
                       aria-label={`${deferred.attachmentCount} attachment${
                         deferred.attachmentCount === 1 ? "" : "s"
                       } queued`}

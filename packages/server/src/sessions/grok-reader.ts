@@ -26,10 +26,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { UrlProjectId } from "@yep-anywhere/shared";
-import type {
-  Message,
-  SessionSummary,
-} from "../supervisor/types.js";
+import type { Message, SessionSummary } from "../supervisor/types.js";
 import type {
   GetSessionOptions,
   ISessionReader,
@@ -105,7 +102,10 @@ export class GrokSessionReader implements ISessionReader {
 
   private async scanSessions(): Promise<GrokSessionInfo[]> {
     const now = Date.now();
-    if (now - this.cacheTimestamp < this.CACHE_TTL_MS && this.sessionCache.size > 0) {
+    if (
+      now - this.cacheTimestamp < this.CACHE_TTL_MS &&
+      this.sessionCache.size > 0
+    ) {
       return Array.from(this.sessionCache.values());
     }
 
@@ -190,7 +190,10 @@ export class GrokSessionReader implements ISessionReader {
           projectId,
           ownership: { owner: "none" as const },
           createdAt: data.created_at ?? new Date(s.mtime).toISOString(),
-          updatedAt: data.updated_at ?? data.last_active_at ?? new Date(s.mtime).toISOString(),
+          updatedAt:
+            data.updated_at ??
+            data.last_active_at ??
+            new Date(s.mtime).toISOString(),
           title: data.generated_title ?? data.session_summary ?? null,
           fullTitle: data.session_summary ?? data.generated_title ?? null,
           messageCount: data.num_messages ?? data.num_chat_messages ?? 0,
@@ -229,7 +232,10 @@ export class GrokSessionReader implements ISessionReader {
         projectId,
         ownership: { owner: "none" as const },
         createdAt: data.created_at ?? new Date(info.mtime).toISOString(),
-        updatedAt: data.updated_at ?? data.last_active_at ?? new Date(info.mtime).toISOString(),
+        updatedAt:
+          data.updated_at ??
+          data.last_active_at ??
+          new Date(info.mtime).toISOString(),
         title: data.generated_title ?? data.session_summary ?? null,
         fullTitle: data.session_summary ?? data.generated_title ?? null,
         messageCount: data.num_messages ?? data.num_chat_messages ?? 0,
@@ -428,7 +434,10 @@ export class GrokSessionReader implements ISessionReader {
     return messages;
   }
 
-  private messagesAfter(messages: Message[], afterMessageId: string): Message[] {
+  private messagesAfter(
+    messages: Message[],
+    afterMessageId: string,
+  ): Message[] {
     const afterIndex = messages.findIndex((message) => {
       const nestedId = this.stringField(this.asRecord(message.message), "id");
       return (
@@ -501,7 +510,9 @@ export class GrokSessionReader implements ISessionReader {
       previous.input = input;
       previous.message.toolUse = { id: toolCallId, name, input };
       const content = previous.message.message?.content;
-      const block = Array.isArray(content) ? this.asRecord(content[0]) : undefined;
+      const block = Array.isArray(content)
+        ? this.asRecord(content[0])
+        : undefined;
       if (block) {
         block.name = name;
         block.input = input;
@@ -555,7 +566,8 @@ export class GrokSessionReader implements ISessionReader {
     const toolCallId = this.stringField(update, "toolCallId");
     if (!toolCallId || state?.resultEmitted) return;
 
-    const isError = this.stringField(update, "status") === "failed" ||
+    const isError =
+      this.stringField(update, "status") === "failed" ||
       this.stringField(update, "error") !== undefined;
     messages.push({
       type: "user",
@@ -677,7 +689,9 @@ export class GrokSessionReader implements ISessionReader {
 
     const rawOutput = this.asRecord(update.rawOutput);
     if (!rawOutput) {
-      return update.content ?? this.stringField(update, "status") ?? "completed";
+      return (
+        update.content ?? this.stringField(update, "status") ?? "completed"
+      );
     }
 
     switch (rawOutput.type) {
@@ -742,7 +756,8 @@ export class GrokSessionReader implements ISessionReader {
       "";
     const mode = this.grepMode(this.stringField(toolInput, "output_mode"));
     const filenames = this.grepFilenames(rawOutput, stdout);
-    const numFiles = this.numberField(rawOutput, "match_count") ?? filenames.length;
+    const numFiles =
+      this.numberField(rawOutput, "match_count") ?? filenames.length;
     const result: Record<string, unknown> = {
       mode,
       filenames,
@@ -750,14 +765,18 @@ export class GrokSessionReader implements ISessionReader {
     };
     if (mode === "content") {
       result.content = this.stripWorkspaceResultEnvelope(stdout);
-      result.numLines = String(result.content).split("\n").filter(Boolean).length;
+      result.numLines = String(result.content)
+        .split("\n")
+        .filter(Boolean).length;
     }
     const appliedLimit = this.numberField(toolInput, "head_limit");
     if (appliedLimit !== undefined) result.appliedLimit = appliedLimit;
     return result;
   }
 
-  private buildTodoResult(rawOutput: Record<string, unknown>): Record<string, unknown> {
+  private buildTodoResult(
+    rawOutput: Record<string, unknown>,
+  ): Record<string, unknown> {
     const todosUpdated = this.asRecord(rawOutput.TodosUpdated);
     return {
       oldTodos: [],
@@ -791,7 +810,12 @@ export class GrokSessionReader implements ISessionReader {
       originalFile: "",
       replaceAll: toolInput?.replace_all === true,
       userModified: false,
-      structuredPatch: this.structuredPatchFromUpdate(update, filePath, oldString, newString),
+      structuredPatch: this.structuredPatchFromUpdate(
+        update,
+        filePath,
+        oldString,
+        newString,
+      ),
     };
   }
 
@@ -804,31 +828,51 @@ export class GrokSessionReader implements ISessionReader {
 
     const rawOutput = this.asRecord(update.rawOutput);
     if (rawOutput?.type === "ReadFile") {
-      const filePath = this.stringField(toolInput, "file_path") ??
-        this.stringField(this.asRecord(rawOutput.FileContent), "absolute_path") ??
+      const filePath =
+        this.stringField(toolInput, "file_path") ??
+        this.stringField(
+          this.asRecord(rawOutput.FileContent),
+          "absolute_path",
+        ) ??
         "file";
       return `Read ${filePath}`;
     }
     if (rawOutput?.type === "SearchReplace") {
-      return this.stringField(this.asRecord(rawOutput.EditsApplied), "tool_output_for_prompt_concise") ??
-        this.stringField(this.asRecord(rawOutput.EditsApplied), "tool_output_for_prompt") ??
-        "File updated";
+      return (
+        this.stringField(
+          this.asRecord(rawOutput.EditsApplied),
+          "tool_output_for_prompt_concise",
+        ) ??
+        this.stringField(
+          this.asRecord(rawOutput.EditsApplied),
+          "tool_output_for_prompt",
+        ) ??
+        "File updated"
+      );
     }
     if (rawOutput?.type === "Todo") {
-      return this.stringField(this.asRecord(rawOutput.TodosUpdated), "summary_for_prompt") ??
-        "Todos updated";
+      return (
+        this.stringField(
+          this.asRecord(rawOutput.TodosUpdated),
+          "summary_for_prompt",
+        ) ?? "Todos updated"
+      );
     }
     if (rawOutput?.type === "GrepSearch") {
       return this.decodeByteArray(rawOutput.stdout) ?? "Search completed";
     }
     if (rawOutput?.type === "Bash") {
-      return this.decodeByteArray(rawOutput.output) ??
+      return (
+        this.decodeByteArray(rawOutput.output) ??
         this.stringField(rawOutput, "output_for_prompt") ??
-        "Command completed";
+        "Command completed"
+      );
     }
     if (rawOutput?.type === "ListDir") {
-      return this.stringField(this.asRecord(rawOutput.Content), "content") ??
-        "Directory listed";
+      return (
+        this.stringField(this.asRecord(rawOutput.Content), "content") ??
+        "Directory listed"
+      );
     }
 
     const content = this.resultContentText(update);
@@ -839,7 +883,11 @@ export class GrokSessionReader implements ISessionReader {
 
   private isTerminalToolUpdate(update: Record<string, unknown>): boolean {
     const status = this.stringField(update, "status");
-    return status === "completed" || status === "failed" || !!this.stringField(update, "error");
+    return (
+      status === "completed" ||
+      status === "failed" ||
+      !!this.stringField(update, "error")
+    );
   }
 
   private hasToolUseMetadata(update: Record<string, unknown>): boolean {
@@ -853,7 +901,9 @@ export class GrokSessionReader implements ISessionReader {
     );
   }
 
-  private timestampFromRecord(record: Record<string, unknown>): string | undefined {
+  private timestampFromRecord(
+    record: Record<string, unknown>,
+  ): string | undefined {
     const timestamp = record.timestamp;
     if (typeof timestamp === "number" && Number.isFinite(timestamp)) {
       return new Date(timestamp * 1000).toISOString();
@@ -874,7 +924,9 @@ export class GrokSessionReader implements ISessionReader {
     return this.stringField(update, "text");
   }
 
-  private resultContentText(update: Record<string, unknown>): string | undefined {
+  private resultContentText(
+    update: Record<string, unknown>,
+  ): string | undefined {
     const content = update.content;
     if (!Array.isArray(content)) return undefined;
     const parts: string[] = [];
@@ -888,7 +940,9 @@ export class GrokSessionReader implements ISessionReader {
     return parts.length > 0 ? parts.join("\n") : undefined;
   }
 
-  private planEntries(update: Record<string, unknown>): Array<Record<string, string>> {
+  private planEntries(
+    update: Record<string, unknown>,
+  ): Array<Record<string, string>> {
     const entries = update.entries;
     if (!Array.isArray(entries)) return [];
     return entries.flatMap((entry) => {
@@ -935,16 +989,22 @@ export class GrokSessionReader implements ISessionReader {
     field: string,
   ): number | undefined {
     const value = record?.[field];
-    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+    return typeof value === "number" && Number.isFinite(value)
+      ? value
+      : undefined;
   }
 
-  private locationsFromUpdate(update: Record<string, unknown>): GrokToolLocation[] | undefined {
+  private locationsFromUpdate(
+    update: Record<string, unknown>,
+  ): GrokToolLocation[] | undefined {
     return Array.isArray(update.locations)
       ? (update.locations as GrokToolLocation[])
       : undefined;
   }
 
-  private firstLocationPath(locations: GrokToolLocation[] | undefined): string | undefined {
+  private firstLocationPath(
+    locations: GrokToolLocation[] | undefined,
+  ): string | undefined {
     const first = locations?.[0];
     return typeof first?.path === "string" ? first.path : undefined;
   }
@@ -959,11 +1019,18 @@ export class GrokSessionReader implements ISessionReader {
     return new TextDecoder().decode(Uint8Array.from(value as number[]));
   }
 
-  private grepMode(value: string | undefined): "files_with_matches" | "content" | "count" {
-    return value === "content" || value === "count" ? value : "files_with_matches";
+  private grepMode(
+    value: string | undefined,
+  ): "files_with_matches" | "content" | "count" {
+    return value === "content" || value === "count"
+      ? value
+      : "files_with_matches";
   }
 
-  private grepFilenames(rawOutput: Record<string, unknown>, stdout: string): string[] {
+  private grepFilenames(
+    rawOutput: Record<string, unknown>,
+    stdout: string,
+  ): string[] {
     const fileMatches = rawOutput.file_matches;
     if (
       Array.isArray(fileMatches) &&
@@ -992,13 +1059,18 @@ export class GrokSessionReader implements ISessionReader {
       const content = this.stringField(record, "content");
       const status = this.stringField(record, "status");
       if (!content || !status) return [];
-      return [{ ...record, activeForm: this.stringField(record, "activeForm") ?? content }];
+      return [
+        {
+          ...record,
+          activeForm: this.stringField(record, "activeForm") ?? content,
+        },
+      ];
     });
   }
 
   private structuredPatchFromUpdate(
     update: Record<string, unknown>,
-    filePath: string,
+    _filePath: string,
     oldString: string,
     newString: string,
   ): Array<Record<string, unknown>> {
@@ -1023,7 +1095,9 @@ export class GrokSessionReader implements ISessionReader {
     return [this.makePatchHunk(oldString, newString, 1, 1)];
   }
 
-  private firstDiffDetail(diff: Record<string, unknown>): Record<string, unknown> | undefined {
+  private firstDiffDetail(
+    diff: Record<string, unknown>,
+  ): Record<string, unknown> | undefined {
     const meta = this.asRecord(diff._meta);
     const details = meta?.details;
     if (!Array.isArray(details)) return undefined;
@@ -1043,7 +1117,10 @@ export class GrokSessionReader implements ISessionReader {
       oldLines: oldLines.length,
       newStart,
       newLines: newLines.length,
-      lines: [...oldLines.map((line) => `-${line}`), ...newLines.map((line) => `+${line}`)],
+      lines: [
+        ...oldLines.map((line) => `-${line}`),
+        ...newLines.map((line) => `+${line}`),
+      ],
     };
   }
 

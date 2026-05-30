@@ -257,7 +257,6 @@ test.describe("Session Resumption", () => {
       return localStorage.getItem("yep-anywhere-remote-credentials");
     });
     expect(storedCreds).not.toBeNull();
-    // biome-ignore lint/style/noNonNullAssertion: We just asserted it's not null
     const parsed = JSON.parse(storedCreds!);
     expect(parsed.session).toBeDefined();
     expect(parsed.session.sessionId).toBeDefined();

@@ -86,7 +86,7 @@ export function copyMarkdownSelectionToClipboard(
       }
 
       const rangeText = getRangeTextWithinElement(range, element);
-      if (!rangeText || !rangeText.selectedText.trim()) {
+      if (!rangeText?.selectedText.trim()) {
         continue;
       }
 
@@ -293,10 +293,12 @@ function buildVisibleSourceMap(source: string): VisibleSourceMap {
     const visibleStart = visible.length;
     const lineMap = buildVisibleLineMap(sourceLine.text, sourceLine.start);
     visible += lineMap.visible;
-    charSources.push(...lineMap.charSources.map((sourceIndex) => ({
-      sourceIndex,
-      lineIndex,
-    })));
+    charSources.push(
+      ...lineMap.charSources.map((sourceIndex) => ({
+        sourceIndex,
+        lineIndex,
+      })),
+    );
     const visibleEnd = visible.length;
     lines.push({
       visibleStart,

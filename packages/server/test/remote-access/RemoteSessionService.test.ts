@@ -44,7 +44,6 @@ describe("RemoteSessionService", () => {
       const storedKey = service.getSessionKey(sessionId);
       expect(storedKey).not.toBeNull();
       // Compare as arrays since getSessionKey returns Buffer, not Uint8Array
-      // biome-ignore lint/style/noNonNullAssertion: We just asserted it's not null
       expect(Array.from(storedKey!)).toEqual(Array.from(sessionKey));
     });
 

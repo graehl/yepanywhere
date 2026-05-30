@@ -117,7 +117,7 @@ export function createWsHandler(
   }
 
   return {
-    onOpen(ws: WebSocket): void {
+    onOpen(_ws: WebSocket): void {
       logger.debug("WebSocket connection opened");
       // State is initialized lazily on first message
     },

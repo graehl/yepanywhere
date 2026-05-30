@@ -55,7 +55,6 @@ export function ToolApprovalPanel({
   const feedbackInputRef = useRef<HTMLInputElement>(null);
 
   // Reset armed state when request changes (new approval appears)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: request.id triggers reset on new request
   useEffect(() => {
     setArmed(false);
     const timer = setTimeout(() => setArmed(true), CLICK_PROTECTION_MS);

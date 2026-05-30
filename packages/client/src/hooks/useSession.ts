@@ -56,7 +56,9 @@ const FALLBACK_STREAM_LONG_SILENCE_THRESHOLD_MS = 300_000;
 const RECAP_AWAY_THRESHOLD_MS = 5 * 60 * 1000;
 const RECAP_REQUEST_COOLDOWN_MS = 30_000;
 
-function hasUserVisibleStreamProgress(streamEvent: Record<string, unknown>): boolean {
+function hasUserVisibleStreamProgress(
+  streamEvent: Record<string, unknown>,
+): boolean {
   // "user-visible liveness": only content chunks that can render visible text/thinking
   // count as actual progress for stale->live transition.
   const eventType = streamEvent.type;
@@ -102,7 +104,10 @@ function isPermissionMode(value: unknown): value is PermissionMode {
 
 function loadStickyPermissionMode(): PermissionMode {
   try {
-    const stored = getServerScoped("permissionMode", LEGACY_KEYS.permissionMode);
+    const stored = getServerScoped(
+      "permissionMode",
+      LEGACY_KEYS.permissionMode,
+    );
     return isPermissionMode(stored) ? stored : "default";
   } catch {
     return "default";
@@ -312,7 +317,7 @@ function normalizeDeferredMessage(value: unknown): DeferredMessage | null {
       ? record.deliveryState
       : record.deliveryState === "verifying"
         ? record.deliveryState
-      : "queued";
+        : "queued";
 
   return {
     tempId: typeof record.tempId === "string" ? record.tempId : undefined,
@@ -371,11 +376,9 @@ function saveDeferredMessages(
   }
 }
 
-function removeEchoedQueueMessage<T extends { tempId?: string; content: string }>(
-  messages: T[],
-  tempId?: string,
-  incomingText?: string | null,
-): T[] {
+function removeEchoedQueueMessage<
+  T extends { tempId?: string; content: string },
+>(messages: T[], tempId?: string, incomingText?: string | null): T[] {
   let next = messages;
   if (tempId) {
     next = next.filter((message) => message.tempId !== tempId);
@@ -386,7 +389,8 @@ function removeEchoedQueueMessage<T extends { tempId?: string; content: string }
   }
 
   return next.filter(
-    (message) => !userTextContainsDeferredContent(incomingText, message.content),
+    (message) =>
+      !userTextContainsDeferredContent(incomingText, message.content),
   );
 }
 
@@ -477,18 +481,16 @@ function mergeDeferredMessages(
     }
 
     const fallbackState =
-      message.deliveryState === "recovered" || message.deliveryState === "sending"
+      message.deliveryState === "recovered" ||
+      message.deliveryState === "sending"
         ? message.deliveryState
         : undefined;
     const deliveryState =
       meta?.reason === "promoted" &&
-      (meta.tempId
-        ? message.tempId === meta.tempId
-        : incoming.length === 0)
+      (meta.tempId ? message.tempId === meta.tempId : incoming.length === 0)
         ? "sending"
         : meta?.source === "connected"
-          ? fallbackState ??
-            (message.tempId ? "verifying" : "recovered")
+          ? (fallbackState ?? (message.tempId ? "verifying" : "recovered"))
           : message.deliveryState;
     merged.push({
       ...message,
@@ -843,7 +845,6 @@ export function useSession(
   const liveProcessId = status.owner === "self" ? status.processId : null;
 
   // Reset connected-event tracking when switching sessions.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: effect intentionally runs on session switches
   useEffect(() => {
     hasHandledConnectedEventRef.current = false;
     setSessionLiveness(null);
@@ -1416,9 +1417,7 @@ export function useSession(
         previousOwner: status.owner,
         nextOwner: event.ownership.owner,
         processId:
-          event.ownership.owner === "self"
-            ? event.ownership.processId
-            : null,
+          event.ownership.owner === "self" ? event.ownership.processId : null,
         permissionMode:
           event.ownership.owner === "self"
             ? event.ownership.permissionMode
@@ -1868,9 +1867,7 @@ export function useSession(
           (deferredData.messages?.length ?? 0) === 0 &&
           sessionProvider !== "codex" &&
           sessionProvider !== "codex-oss";
-        if (
-          needsDeferredPromotionCatchUp
-        ) {
+        if (needsDeferredPromotionCatchUp) {
           throttledFetch();
           // A second call asks the existing throttle for a trailing catch-up in
           // case the provider user echo lands just after the promotion event.

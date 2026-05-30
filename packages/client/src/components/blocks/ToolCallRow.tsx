@@ -375,9 +375,7 @@ export const ToolCallRow = memo(function ToolCallRow({
 
   // Dot button: expandable rows + preview-first rows with an inline result.
   const showDotBtn =
-    !isNonExpandable ||
-    canInlineExpandToolResult ||
-    hasBashPreviewToggle;
+    !isNonExpandable || canInlineExpandToolResult || hasBashPreviewToggle;
 
   // Header toggles dotExpanded for preview-first inline result rows.
   const hasHeaderDotToggle = canInlineExpandToolResult;
@@ -476,6 +474,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   }
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: pointer/focus events only hydrate deferred rich content
     <div
       ref={rowRef}
       onPointerEnter={hydrateNow}
@@ -490,6 +489,7 @@ export const ToolCallRow = memo(function ToolCallRow({
           aria-label={dotAriaLabel}
         />
       )}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: interactive header has role, tabIndex, and keyboard handlers when enabled */}
       <div
         className={`tool-row-header ${isNonExpandable ? "non-expandable" : ""}`}
         onClick={
@@ -524,18 +524,18 @@ export const ToolCallRow = memo(function ToolCallRow({
                     handleBashPreviewToggle();
                   }
                 }
-            : hasHeaderDotToggle
-              ? (e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setDotExpanded((v) => {
-                      if (!v) {
-                        shouldFocusExpandedTopRef.current = true;
-                      }
-                      return !v;
-                    });
+              : hasHeaderDotToggle
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setDotExpanded((v) => {
+                        if (!v) {
+                          shouldFocusExpandedTopRef.current = true;
+                        }
+                        return !v;
+                      });
+                    }
                   }
-                }
                 : isNonExpandable
                   ? undefined
                   : (e) => e.key === "Enter" && handleToggle()
@@ -558,17 +558,25 @@ export const ToolCallRow = memo(function ToolCallRow({
         }
       >
         {status === "pending" && (
-          <span className="tool-spinner" aria-label="Running">
+          <span className="tool-spinner" role="status" aria-label="Running">
             <Spinner />
           </span>
         )}
         {status === "aborted" && (
-          <span className="tool-aborted-icon" aria-label="Interrupted">
+          <span
+            className="tool-aborted-icon"
+            role="img"
+            aria-label="Interrupted"
+          >
             ⨯
           </span>
         )}
         {status === "incomplete" && (
-          <span className="tool-incomplete-icon" aria-label="Result unavailable">
+          <span
+            className="tool-incomplete-icon"
+            role="img"
+            aria-label="Result unavailable"
+          >
             ?
           </span>
         )}
@@ -613,17 +621,19 @@ export const ToolCallRow = memo(function ToolCallRow({
       </div>
 
       {/* Collapsed preview - shown when tool supports it (non-expandable) */}
-      {hasCollapsedPreview && bashPreviewExpanded && !(dotExpanded && isEditTool) && (
-        <div className="tool-row-collapsed-preview">
-          {hasBashPreviewToggle && (
-            <ToolRowCollapseStrip
-              onCollapse={() => setBashPreviewExpanded(false)}
-              ariaLabel="Collapse preview from left gutter"
-            />
-          )}
-          {collapsedPreviewContent}
-        </div>
-      )}
+      {hasCollapsedPreview &&
+        bashPreviewExpanded &&
+        !(dotExpanded && isEditTool) && (
+          <div className="tool-row-collapsed-preview">
+            {hasBashPreviewToggle && (
+              <ToolRowCollapseStrip
+                onCollapse={() => setBashPreviewExpanded(false)}
+                ariaLabel="Collapse preview from left gutter"
+              />
+            )}
+            {collapsedPreviewContent}
+          </div>
+        )}
       {hasDeferredPreviewShell && (
         <div
           className="tool-row-collapsed-preview tool-row-deferred-preview"

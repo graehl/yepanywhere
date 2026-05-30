@@ -183,7 +183,7 @@ self.addEventListener("fetch", (event) => {
  * Alternative: Remove skipWaiting() entirely for fully lazy updates, but this delays
  * all SW updates until all tabs close (could be days).
  */
-self.addEventListener("install", (event) => {
+self.addEventListener("install", (_event) => {
   self.skipWaiting();
 });
 

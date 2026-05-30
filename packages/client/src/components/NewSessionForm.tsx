@@ -103,7 +103,9 @@ function getPreferredModelId(
   preferredModelId?: string | null,
 ) {
   if (preferredModelId) {
-    const matchingPreferredModel = models.find((m) => m.id === preferredModelId);
+    const matchingPreferredModel = models.find(
+      (m) => m.id === preferredModelId,
+    );
     if (matchingPreferredModel) return matchingPreferredModel.id;
   }
 
@@ -130,10 +132,13 @@ function getPreferredProviderModelId(
 }
 
 function providerSupportsRecapMode(
-  provider: {
-    supportsRecaps?: boolean;
-    supportsNativeRecaps?: boolean;
-  } | null | undefined,
+  provider:
+    | {
+        supportsRecaps?: boolean;
+        supportsNativeRecaps?: boolean;
+      }
+    | null
+    | undefined,
   mode: RecapMode,
 ): boolean {
   if (mode === "off") return true;
@@ -142,10 +147,13 @@ function providerSupportsRecapMode(
 }
 
 function getDefaultRecapMode(
-  provider: {
-    supportsRecaps?: boolean;
-    supportsNativeRecaps?: boolean;
-  } | null | undefined,
+  provider:
+    | {
+        supportsRecaps?: boolean;
+        supportsNativeRecaps?: boolean;
+      }
+    | null
+    | undefined,
   defaults?: { recapMode?: RecapMode } | null,
 ): RecapMode {
   if (
@@ -244,7 +252,8 @@ function findProjectByInput(
   if (exactPathMatch) return exactPathMatch;
 
   const exactNameMatches = projects.filter(
-    (project) => project.name.toLowerCase() === normalizedCandidate.toLowerCase(),
+    (project) =>
+      project.name.toLowerCase() === normalizedCandidate.toLowerCase(),
   );
   if (exactNameMatches.length === 1) {
     return exactNameMatches[0] ?? null;
@@ -285,15 +294,15 @@ export function NewSessionForm({
   const { t } = useI18n();
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
-  const [message, setMessage, draftControls] =
-    useDraftPersistence(NEW_SESSION_DRAFT_KEY);
+  const [message, setMessage, draftControls] = useDraftPersistence(
+    NEW_SESSION_DRAFT_KEY,
+  );
   const [mode, setMode] = useState<PermissionMode>("default");
   const [selectedProvider, setSelectedProvider] = useState<ProviderName | null>(
     null,
   );
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
-  const [selectedRecapMode, setSelectedRecapMode] =
-    useState<RecapMode>("off");
+  const [selectedRecapMode, setSelectedRecapMode] = useState<RecapMode>("off");
   const [selectedPromptSuggestionMode, setSelectedPromptSuggestionMode] =
     useState<PromptSuggestionMode>("off");
   const [helperSideModel, setHelperSideModel] = useState<string>(
@@ -383,13 +392,11 @@ export function NewSessionForm({
     off: t("promptSuggestionModeOff"),
     native: t("promptSuggestionModeNative"),
   };
-  const promptSuggestionModeDescriptions: Record<
-    PromptSuggestionMode,
-    string
-  > = {
-    off: t("promptSuggestionModeOffDescription"),
-    native: t("promptSuggestionModeNativeDescription"),
-  };
+  const promptSuggestionModeDescriptions: Record<PromptSuggestionMode, string> =
+    {
+      off: t("promptSuggestionModeOffDescription"),
+      native: t("promptSuggestionModeNativeDescription"),
+    };
 
   // Get models and capabilities for the currently selected provider
   const selectedProviderInfo = providers.find(
@@ -485,7 +492,7 @@ export function NewSessionForm({
     currentProjectSelection?.name ?? t("newSessionProjectDetached");
   const projectSummaryMeta = hasCustomProjectPath
     ? normalizedProjectInput
-    : currentProjectSelection?.path ?? t("newSessionProjectDetachedHint");
+    : (currentProjectSelection?.path ?? t("newSessionProjectDetachedHint"));
   const displayedProjectSummaryMeta =
     hasCustomProjectPath || currentProjectSelection
       ? shortenPath(projectSummaryMeta)
@@ -903,12 +910,11 @@ export function NewSessionForm({
     setIsStarting(true);
 
     try {
-      let resolvedProjectId =
-        trimmedProjectInput
-          ? currentProjectSelection?.path === trimmedProjectInput
-            ? currentProjectSelection.id
-            : findProjectByInput(projects, trimmedProjectInput)?.id
-          : null;
+      let resolvedProjectId = trimmedProjectInput
+        ? currentProjectSelection?.path === trimmedProjectInput
+          ? currentProjectSelection.id
+          : findProjectByInput(projects, trimmedProjectInput)?.id
+        : null;
 
       if (trimmedProjectInput && !resolvedProjectId) {
         const addProjectResult = await api.addProject(trimmedProjectInput);
@@ -1054,8 +1060,10 @@ export function NewSessionForm({
           uploadWaitMs: queueRequestSentAtMs - actionAtMs,
           requestRttMs: queueTiming?.roundTripMs ?? null,
           estimatedServerOffsetMs: queueTiming?.serverOffsetMs ?? null,
-          clientToServerLatencyMs:
-            measureServerLatencyMs(clientTimestamp, queueResult.serverTimestamp),
+          clientToServerLatencyMs: measureServerLatencyMs(
+            clientTimestamp,
+            queueResult.serverTimestamp,
+          ),
         });
       } else {
         // No files - use single-step flow for efficiency
@@ -1095,8 +1103,10 @@ export function NewSessionForm({
           serverTimestamp: result.serverTimestamp,
           requestRttMs: startTiming?.roundTripMs ?? null,
           estimatedServerOffsetMs: startTiming?.serverOffsetMs ?? null,
-          clientToServerLatencyMs:
-            measureServerLatencyMs(clientTimestamp, result.serverTimestamp),
+          clientToServerLatencyMs: measureServerLatencyMs(
+            clientTimestamp,
+            result.serverTimestamp,
+          ),
         });
       }
 
@@ -1397,6 +1407,7 @@ export function NewSessionForm({
               {thinkingMode === "on" && (
                 <div
                   className="new-session-effort-selector"
+                  role="group"
                   aria-label={t("modelSettingsEffortTitle")}
                 >
                   {EFFORT_LEVEL_OPTIONS.map((option) => (
@@ -1571,7 +1582,7 @@ export function NewSessionForm({
             spellCheck={false}
             list="new-session-project-options"
           />
-      </label>
+        </label>
         <datalist id="new-session-project-options">
           {projectSuggestionOptions}
         </datalist>
@@ -1741,9 +1752,7 @@ export function NewSessionForm({
             <span className={`mode-option-dot mode-${m}`} />
             <div className="mode-option-content">
               <span className="mode-option-label">{modeLabels[m]}</span>
-              <span className="mode-option-desc">
-                {modeDescriptions[m]}
-              </span>
+              <span className="mode-option-desc">{modeDescriptions[m]}</span>
             </div>
           </button>
         ))}
@@ -1879,7 +1888,6 @@ export function NewSessionForm({
           </div>
         </div>
       )}
-
     </div>
   );
 }

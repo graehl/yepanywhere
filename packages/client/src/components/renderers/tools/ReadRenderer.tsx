@@ -50,7 +50,7 @@ function getReadSessionId(result: unknown): string | number | undefined {
 function isPtyHandoffTextRead(
   result: ReadResultWithAugment | undefined,
 ): boolean {
-  if (!result || result.type !== "text") {
+  if (result?.type !== "text") {
     return false;
   }
   const sessionId = getReadSessionId(result);
@@ -88,9 +88,14 @@ function ReadToolUse({ input }: { input: ReadInput }) {
   const displayPath = makeDisplayPath(input.file_path, meta?.projectPath);
   return (
     <div className="read-tool-use">
-      <span className="file-path"><FilePathDisplay displayPath={displayPath} /></span>
+      <span className="file-path">
+        <FilePathDisplay displayPath={displayPath} />
+      </span>
       {(input.offset !== undefined || input.limit !== undefined) && (
-        <span className="read-range" title={`offset ${input.offset ?? 0}, limit ${input.limit ?? "∞"}`}>
+        <span
+          className="read-range"
+          title={`offset ${input.offset ?? 0}, limit ${input.limit ?? "∞"}`}
+        >
           {input.offset !== undefined && ` from line ${input.offset}`}
           {input.limit !== undefined && ` (${input.limit} lines)`}
         </span>
@@ -178,7 +183,11 @@ function FileModalContent({
     ) : highlightedHtml ? (
       // Code file: show math-rendered plain text when toggled on, Shiki otherwise.
       // Math mode loses syntax colouring intentionally — you asked for the formula.
-      showMath && mathRendered ? renderReadMathPanel(mathRendered.html) : sourceView
+      showMath && mathRendered ? (
+        renderReadMathPanel(mathRendered.html)
+      ) : (
+        sourceView
+      )
     ) : (
       // Plain text / log / output: full ANSI + math + markdown table detection.
       <FixedFontMathToggle
@@ -233,7 +242,6 @@ function FileModalContent({
   );
 }
 
-
 /**
  * Text file result - clickable filename that opens modal
  */
@@ -257,7 +265,9 @@ function TextFileResult({
   if (isPtyHandoff) {
     return (
       <div className="read-text-result">
-        <span className="file-path"><FilePathDisplay displayPath={displayPath} /></span>{" "}
+        <span className="file-path">
+          <FilePathDisplay displayPath={displayPath} />
+        </span>{" "}
         <span className="file-line-count">continues in Shell</span>
       </div>
     );
@@ -334,7 +344,10 @@ function openPdfInNewTab(base64Data: string) {
 function PdfFileResult({
   file,
   filePath,
-}: { file: PdfFile; filePath?: string }) {
+}: {
+  file: PdfFile;
+  filePath?: string;
+}) {
   const sizeKB = file.originalSize ? Math.round(file.originalSize / 1024) : 0;
   const fileName = filePath ? getFileName(filePath) : "document.pdf";
 
@@ -346,7 +359,9 @@ function PdfFileResult({
         onClick={() => openPdfInNewTab(file.base64)}
       >
         {fileName}
-        {sizeKB > 0 && <span className="file-line-count">({sizeKB}\u202fkb)</span>}
+        {sizeKB > 0 && (
+          <span className="file-line-count">({sizeKB}\u202fkb)</span>
+        )}
         <span className="file-line-count">Open PDF</span>
       </button>
     </div>
@@ -486,7 +501,11 @@ function ReadInteractiveSummary({
   }
 
   if (!result?.file) {
-    return <span><FilePathDisplay displayPath={displayPath} /></span>;
+    return (
+      <span>
+        <FilePathDisplay displayPath={displayPath} />
+      </span>
+    );
   }
 
   if (result.type === "pdf") {

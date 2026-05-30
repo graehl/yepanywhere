@@ -41,7 +41,6 @@ export function useSessionStatuses(
   // re-running and potentially missing events during the brief unsubscribe/
   // resubscribe window (especially with WebSocket transport where events
   // arrive quickly on a single connection).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally using sorted key for stability
   const sessionIdSet = useMemo(
     () => new Set(sessionIds),
     [sessionIds.slice().sort().join(",")],

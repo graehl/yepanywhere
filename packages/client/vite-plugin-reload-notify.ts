@@ -24,7 +24,7 @@ export function reloadNotify(options: ReloadNotifyOptions = {}): Plugin {
       server = _server;
     },
 
-    handleHotUpdate({ file, modules }) {
+    handleHotUpdate({ file }) {
       if (!enabled || !server) {
         // Let Vite handle normally (HMR)
         return;

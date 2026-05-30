@@ -256,7 +256,10 @@ export function FilterDropdown<T extends string>({
               )}
 
               {option.icon && (
-                <span className="filter-dropdown-option-icon" aria-hidden="true">
+                <span
+                  className="filter-dropdown-option-icon"
+                  aria-hidden="true"
+                >
                   {option.icon}
                 </span>
               )}
@@ -283,6 +286,7 @@ export function FilterDropdown<T extends string>({
   const mobileSheet =
     isOpen && !isDesktop
       ? createPortal(
+          // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click closes the sheet; Escape is handled globally
           // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled globally
           <div
             className="filter-dropdown-overlay"
@@ -292,6 +296,7 @@ export function FilterDropdown<T extends string>({
             <div
               ref={sheetRef}
               className="filter-dropdown-sheet"
+              role="dialog"
               tabIndex={-1}
               aria-label={t("filterByLabel", { label })}
             >
@@ -310,6 +315,7 @@ export function FilterDropdown<T extends string>({
       <div
         ref={sheetRef}
         className={`filter-dropdown-dropdown ${align === "right" ? "align-right" : ""}`}
+        role="dialog"
         tabIndex={-1}
         aria-label={t("filterByLabel", { label })}
       >

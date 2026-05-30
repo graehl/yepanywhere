@@ -320,7 +320,10 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
         return c.json({ error: "Unknown project" }, 404);
       }
 
-      const filePath = join(getProjectAttachmentDir(project.path, sessionId), filename);
+      const filePath = join(
+        getProjectAttachmentDir(project.path, sessionId),
+        filename,
+      );
       const legacyFilePath = resolveUploadStoragePath(
         UPLOADS_DIR,
         projectId,
@@ -340,7 +343,7 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
             }
             throw err;
           });
-          if (!stats || !stats.isFile()) {
+          if (!stats?.isFile()) {
             continue;
           }
 

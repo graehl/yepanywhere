@@ -673,7 +673,7 @@ export class CodexOSSProvider implements AgentProvider {
    */
   private parseEvent(line: string): CodexEvent | null {
     const trimmed = line.trim();
-    if (!trimmed || !trimmed.startsWith("{")) {
+    if (!trimmed?.startsWith("{")) {
       return null;
     }
 

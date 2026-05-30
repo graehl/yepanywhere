@@ -43,7 +43,7 @@ export class SourceWatcher {
       this.watcher = fs.watch(
         this.watchDir,
         { recursive: true },
-        (eventType, filename) => {
+        (_eventType, filename) => {
           if (filename && this.isSourceFile(filename)) {
             this.handleFileEvent(filename);
           }

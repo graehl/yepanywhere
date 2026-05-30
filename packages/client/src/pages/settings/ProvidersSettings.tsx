@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import {
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
@@ -100,10 +100,7 @@ function mergeModelOptions(
     selectedModel &&
     !discoveredModels.some((model) => model.id === selectedModel)
   ) {
-    return [
-      { id: selectedModel, name: selectedModel },
-      ...discoveredModels,
-    ];
+    return [{ id: selectedModel, name: selectedModel }, ...discoveredModels];
   }
   return [...discoveredModels];
 }
@@ -123,6 +120,7 @@ function HelperTargetsSettings({
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const modelFieldId = useId();
 
   const resetDraft = useCallback(() => {
     setDraft(DEFAULT_HELPER_TARGET_DRAFT);
@@ -135,7 +133,9 @@ function HelperTargetsSettings({
   const beginEdit = useCallback((target: HelperTargetConfig) => {
     setDraft(draftFromTarget(target));
     setEditingId(target.id);
-    setDiscoveredModels(target.model ? [{ id: target.model, name: target.model }] : []);
+    setDiscoveredModels(
+      target.model ? [{ id: target.model, name: target.model }] : [],
+    );
     setMessage(null);
     setError(null);
   }, []);
@@ -153,7 +153,9 @@ function HelperTargetsSettings({
           resetDraft();
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : t("helperTargetsSaveError"));
+        setError(
+          err instanceof Error ? err.message : t("helperTargetsSaveError"),
+        );
       } finally {
         setIsSaving(false);
       }
@@ -191,9 +193,7 @@ function HelperTargetsSettings({
 
     const nextTarget = targetFromDraft(draft, targets);
     const nextTargets = editingId
-      ? targets.map((target) =>
-          target.id === editingId ? nextTarget : target,
-        )
+      ? targets.map((target) => (target.id === editingId ? nextTarget : target))
       : [...targets, nextTarget];
 
     setIsSaving(true);
@@ -202,7 +202,9 @@ function HelperTargetsSettings({
       await updateSetting("helperTargets", nextTargets);
       resetDraft();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("helperTargetsSaveError"));
+      setError(
+        err instanceof Error ? err.message : t("helperTargetsSaveError"),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -229,8 +231,7 @@ function HelperTargetsSettings({
                   <strong>{target.name}</strong>
                   <span>{helperTargetDescription(target)}</span>
                   <code>
-                    {t("helperTargetsIdPrefix")}{" "}
-                    {helperTargetValue(target)}
+                    {t("helperTargetsIdPrefix")} {helperTargetValue(target)}
                   </code>
                 </div>
                 <div className="helper-target-row-actions">
@@ -280,10 +281,11 @@ function HelperTargetsSettings({
               }
             />
           </label>
-          <label>
+          <label htmlFor={modelFieldId}>
             <span>{t("helperTargetsModelLabel")}</span>
             {modelOptions.length > 0 ? (
               <select
+                id={modelFieldId}
                 className="settings-select"
                 value={draft.model}
                 onChange={(event) =>
@@ -302,6 +304,7 @@ function HelperTargetsSettings({
               </select>
             ) : (
               <input
+                id={modelFieldId}
                 type="text"
                 className="settings-input"
                 value={draft.model}
@@ -535,7 +538,7 @@ function CodexUpdatePanel() {
     [showToast],
   );
 
-  if (!status || !status.installed || !status.latest) {
+  if (!status?.installed || !status.latest) {
     return null;
   }
 
@@ -602,9 +605,7 @@ function CodexUpdatePanel() {
               {isInstalling ? "Installing…" : "Update now"}
             </button>
           ) : (
-            <span className="settings-hint">
-              Update with your installer:
-            </span>
+            <span className="settings-hint">Update with your installer:</span>
           )}
           {status.manualInstallCommand && (
             <>
@@ -677,9 +678,7 @@ function CodexUpdatePanel() {
                 cursor: disabled ? "not-allowed" : "pointer",
               }}
               title={
-                disabled
-                  ? "Auto requires an npm-global install"
-                  : undefined
+                disabled ? "Auto requires an npm-global install" : undefined
               }
             >
               <input
@@ -688,9 +687,7 @@ function CodexUpdatePanel() {
                 value={value}
                 checked={policy === value}
                 disabled={disabled}
-                onChange={() =>
-                  void updateSetting("codexUpdatePolicy", value)
-                }
+                onChange={() => void updateSetting("codexUpdatePolicy", value)}
               />
               <span>
                 {value === "auto"
@@ -780,7 +777,8 @@ export function ProvidersSettings() {
   };
   const isRecapModeAvailable = (mode: RecapMode) => {
     if (mode === "off") return true;
-    if (mode === "native") return defaultProviderInfo?.supportsNativeRecaps === true;
+    if (mode === "native")
+      return defaultProviderInfo?.supportsNativeRecaps === true;
     return defaultProviderInfo?.supportsRecaps === true;
   };
   const isPromptSuggestionModeAvailable = (mode: PromptSuggestionMode) => {
@@ -821,7 +819,9 @@ export function ProvidersSettings() {
                 type="button"
                 className={`font-size-option ${defaultRecapMode === mode ? "active" : ""}`}
                 disabled={providersLoading || !isRecapModeAvailable(mode)}
-                onClick={() => void updateNewSessionDefaults({ recapMode: mode })}
+                onClick={() =>
+                  void updateNewSessionDefaults({ recapMode: mode })
+                }
               >
                 {recapModeLabels[mode]}
               </button>

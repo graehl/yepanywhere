@@ -385,7 +385,7 @@ export class SecureConnection implements Connection {
    * Start the full SRP handshake (when session resume fails or no stored session).
    */
   private async startFullSrpHandshake(
-    authRejectHandler: (err: Error) => void,
+    _authRejectHandler: (err: Error) => void,
   ): Promise<void> {
     if (!this.password) {
       throw new Error("Password required for SRP authentication");
@@ -851,7 +851,7 @@ export class SecureConnection implements Connection {
    */
   private async handleSrpChallenge(
     data: string,
-    resolve: () => void,
+    _resolve: () => void,
     reject: (err: Error) => void,
   ): Promise<void> {
     try {

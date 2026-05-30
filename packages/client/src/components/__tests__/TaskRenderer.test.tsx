@@ -219,7 +219,7 @@ describe("Task rendering", () => {
     const [item] = preprocessMessages(messages);
 
     expect(item?.type).toBe("tool_call");
-    if (!item || item.type !== "tool_call") {
+    if (item?.type !== "tool_call") {
       throw new Error("Expected a tool_call render item");
     }
     const itemWithoutAgentLookup = {

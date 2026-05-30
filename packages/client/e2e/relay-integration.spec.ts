@@ -34,7 +34,7 @@ async function goToRelayLogin(page: import("@playwright/test").Page) {
 }
 
 test.describe("Full Relay Integration", () => {
-  test.beforeEach(async ({ baseURL, relayWsURL, page }) => {
+  test.beforeEach(async ({ baseURL, relayWsURL }) => {
     // Configure remote access with test credentials
     // This configures relay (with username as SRP identity) and sets the password
     await configureRemoteAccess(baseURL, {

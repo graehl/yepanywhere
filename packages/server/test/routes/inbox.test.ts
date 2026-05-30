@@ -112,7 +112,7 @@ describe("Inbox Routes", () => {
     mockSessionIndexService = {
       getSessionsWithCache: vi.fn(
         async (
-          sessionDir: string,
+          _sessionDir: string,
           _projectId: string,
           reader: ISessionReader,
         ) => {

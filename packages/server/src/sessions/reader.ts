@@ -710,19 +710,6 @@ export class ClaudeSessionReader implements ISessionReader {
     return truncateSessionTitle(content) || null;
   }
 
-  private extractContent(
-    content: string | Array<{ type: string; text?: string }>,
-  ): string {
-    if (typeof content === "string") return content;
-    return content
-      .filter(
-        (block): block is { type: string; text: string } =>
-          block.type === "text" && typeof block.text === "string",
-      )
-      .map((block) => block.text)
-      .join("\n");
-  }
-
   /**
    * Extract content for title generation, skipping IDE metadata blocks.
    * This ensures session titles show the actual user message, not IDE metadata

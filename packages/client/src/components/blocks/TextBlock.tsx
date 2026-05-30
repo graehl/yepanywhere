@@ -111,9 +111,16 @@ export const TextBlock = memo(function TextBlock({
 
   const showStreamingContent = isStreaming && useStreamingContent;
   const canToggleRendered = serverMarkdownChanged || localMathPreview.changed;
-  const { showRendered, toggleLocalMode } = useRenderModeToggle(canToggleRendered, {
-    resetDependencies: [isStreaming, isStreaming ? "" : text, augmentHtml ?? ""],
-  });
+  const { showRendered, toggleLocalMode } = useRenderModeToggle(
+    canToggleRendered,
+    {
+      resetDependencies: [
+        isStreaming,
+        isStreaming ? "" : text,
+        augmentHtml ?? "",
+      ],
+    },
+  );
 
   // Always render streaming container when isStreaming so refs are attached
   // before first augment arrives. Hidden until useStreamingContent becomes true.
@@ -147,19 +154,30 @@ export const TextBlock = memo(function TextBlock({
         </button>
       </div>
 
-      <div ref={copySourceRef} className="text-block-content" onClick={handleClick}>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: click is delegated to media/link elements inside rendered markdown */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation remains on the descendant links/controls */}
+      <div
+        ref={copySourceRef}
+        className="text-block-content"
+        onClick={handleClick}
+      >
         {/* Always render streaming elements when streaming so refs are ready for augments */}
         {renderStreamingContainer && (
           <div
             style={
-              showStreamingContent && showRendered ? undefined : { display: "none" }
+              showStreamingContent && showRendered
+                ? undefined
+                : { display: "none" }
             }
           >
             <div
               ref={streamingMarkdown.containerRef}
               className="streaming-blocks"
             />
-            <span ref={streamingMarkdown.pendingRef} className="streaming-pending" />
+            <span
+              ref={streamingMarkdown.pendingRef}
+              className="streaming-pending"
+            />
           </div>
         )}
 

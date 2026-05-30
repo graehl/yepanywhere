@@ -34,8 +34,11 @@ interface RenderOptions {
   projectPath?: string;
 }
 
-const ANSI_ESCAPE_RE =
-  /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[@-Z\\-_])/g;
+// biome-ignore lint/complexity/useRegexLiterals: constructor form avoids noControlCharactersInRegex noise for deliberate ANSI control escapes
+const ANSI_ESCAPE_RE = new RegExp(
+  String.raw`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[@-Z\\-_])`,
+  "g",
+);
 
 function escapeHtml(text: string): string {
   return text
@@ -274,7 +277,9 @@ function renderFixedFontMathInner(sourceText: string): RenderedMathResult {
 
   while (cursor < sourceText.length) {
     const blockMatch = tryMatchBlockMath(sourceText, cursor);
-    const inlineMatch = blockMatch ? null : tryMatchInlineMath(sourceText, cursor);
+    const inlineMatch = blockMatch
+      ? null
+      : tryMatchInlineMath(sourceText, cursor);
     const match = blockMatch ?? inlineMatch;
 
     if (!match) {
@@ -349,7 +354,10 @@ function isMarkdownTableRow(content: string): boolean {
 
 function getMarkdownTableCells(content: string): string[] {
   const trimmed = content.trim();
-  return trimmed.slice(1, -1).split("|").map((cell) => cell.trim());
+  return trimmed
+    .slice(1, -1)
+    .split("|")
+    .map((cell) => cell.trim());
 }
 
 function isMarkdownTableSeparator(content: string): boolean {
@@ -467,7 +475,8 @@ function diffClass(prefix: DiffAwareLine["prefix"]): string {
 }
 
 function renderDiffGutter(prefix: DiffAwareLine["prefix"]): string {
-  const visible = prefix === "" || prefix === " " ? "&nbsp;" : escapeHtml(prefix);
+  const visible =
+    prefix === "" || prefix === " " ? "&nbsp;" : escapeHtml(prefix);
   return `<span class="fixed-font-diff-gutter">${visible}</span>`;
 }
 
@@ -750,10 +759,13 @@ export function FixedFontMathToggle({
       baseFilePath,
     ],
   );
-  const { showRendered, toggleLocalMode } = useRenderModeToggle(rendered.changed, {
-    renderWhenDisabled: false,
-    resetDependencies: [sourceText],
-  });
+  const { showRendered, toggleLocalMode } = useRenderModeToggle(
+    rendered.changed,
+    {
+      renderWhenDisabled: false,
+      resetDependencies: [sourceText],
+    },
+  );
   const { btnRef: toggleBtnRef, handleClick: handleToggleClick } =
     useScrollPreservingToggle(showRendered, toggleLocalMode);
 
@@ -765,7 +777,12 @@ export function FixedFontMathToggle({
       if (!link) {
         return;
       }
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) {
+      if (
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey
+      ) {
         return;
       }
       event.preventDefault();
@@ -778,6 +795,8 @@ export function FixedFontMathToggle({
   return (
     <div className="fixed-font-render-toggle">
       {showRendered && rendered.changed ? (
+        // biome-ignore lint/a11y/noStaticElementInteractions: click is delegated to rendered file links inside the HTML
+        // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation remains on descendant links
         <div onClick={handleRenderedClick}>
           {renderRenderedView(rendered.html)}
         </div>

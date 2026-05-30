@@ -120,7 +120,9 @@ export class YaServerProvider implements SpeechProvider {
   private async doStart(token: number): Promise<void> {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     if (this.disposed || token !== this.startToken) {
-      stream.getTracks().forEach((track) => track.stop());
+      stream.getTracks().forEach((track) => {
+        track.stop();
+      });
       return;
     }
     this.stream = stream;
@@ -215,7 +217,9 @@ export class YaServerProvider implements SpeechProvider {
   }
 
   private stopTracks(): void {
-    this.stream?.getTracks().forEach((t) => t.stop());
+    this.stream?.getTracks().forEach((track) => {
+      track.stop();
+    });
     this.stream = null;
   }
 

@@ -110,7 +110,9 @@ function extractEditFilePaths(
   if (isRecord(input)) {
     addPath(input.file_path);
   }
-  for (const path of extractFilePathsFromRawPatch(extractRawPatchFromInput(input))) {
+  for (const path of extractFilePathsFromRawPatch(
+    extractRawPatchFromInput(input),
+  )) {
     addPath(path);
   }
   for (const path of extractFilePathsFromChanges(input)) {
@@ -253,13 +255,16 @@ function renderFixedFontMathPanel(html: string, className: string) {
 function DiffCopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = useCallback(async (event: React.MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
-  }, [text]);
+  const handleCopy = useCallback(
+    async (event: React.MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    },
+    [text],
+  );
 
   return (
     <button
@@ -290,7 +295,8 @@ function DiffMathView({
   baseFilePath?: string;
   copyText?: string;
 }) {
-  const effectiveCopyText = copyText ?? (diffAware ? diffTextToNewSide(sourceText) : sourceText);
+  const effectiveCopyText =
+    copyText ?? (diffAware ? diffTextToNewSide(sourceText) : sourceText);
   return (
     <FixedFontMathToggle
       sourceText={sourceText}
@@ -483,7 +489,9 @@ function RawPatchModalContent({
             <code>{rawPatch}</code>
           </pre>
         }
-        renderRenderedView={(html) => renderFixedFontMathPanel(html, "code-block")}
+        renderRenderedView={(html) =>
+          renderFixedFontMathPanel(html, "code-block")
+        }
       />
     </div>
   );
@@ -541,7 +549,6 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
     </div>
   );
 }
-
 
 /**
  * Modal content for viewing complete diff with optional full file context.
@@ -1031,7 +1038,9 @@ function EditInteractiveSummary({
                     </div>
                   ))
                 ) : (
-                  <div className="edit-target-path">Patch target unavailable</div>
+                  <div className="edit-target-path">
+                    Patch target unavailable
+                  </div>
                 )}
               </div>
             </div>
@@ -1317,13 +1326,9 @@ function EditToolResult({
             .join("\n")}
           baseFilePath={result.filePath}
           truncated={isTruncated}
-          sourceView={
-            <>
-              {result.structuredPatch.map((hunk, i) => (
-                <DiffHunk key={`hunk-${hunk.oldStart}-${i}`} hunk={hunk} />
-              ))}
-            </>
-          }
+          sourceView={result.structuredPatch.map((hunk, i) => (
+            <DiffHunk key={`hunk-${hunk.oldStart}-${i}`} hunk={hunk} />
+          ))}
         />
         {isTruncated && (
           <button

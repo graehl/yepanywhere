@@ -81,7 +81,8 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
       if (!modal) return;
 
       const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
-      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const viewportHeight =
+        window.visualViewport?.height ?? window.innerHeight;
       const modalWidth = Math.min(
         modal.offsetWidth,
         viewportWidth - ANCHORED_MODAL_MARGIN_PX * 2,
@@ -113,7 +114,10 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
     window.visualViewport?.addEventListener("resize", updateAnchorPosition);
     return () => {
       window.removeEventListener("resize", updateAnchorPosition);
-      window.visualViewport?.removeEventListener("resize", updateAnchorPosition);
+      window.visualViewport?.removeEventListener(
+        "resize",
+        updateAnchorPosition,
+      );
     };
   }, [anchorRect, isAnchored]);
 
@@ -137,6 +141,7 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
   };
 
   const modalContent = (
+    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click dismisses the modal; Escape is handled globally
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled globally, click is for overlay dismiss
     <div
       className={`modal-overlay${isAnchored ? " modal-overlay--anchored" : ""}`}
@@ -155,9 +160,7 @@ export function Modal({ title, children, onClose, anchorRect }: ModalProps) {
         aria-modal="true"
         onClick={handleModalClick}
         style={
-          isAnchored
-            ? (anchorStyle ?? { visibility: "hidden" })
-            : undefined
+          isAnchored ? (anchorStyle ?? { visibility: "hidden" }) : undefined
         }
       >
         <div className="modal-header">

@@ -211,17 +211,17 @@ export function ModeSelector({
     </>
   );
 
-  const dropdown =
-    isOpen ? (
-      <div
-        ref={sheetRef}
-        className="mode-selector-dropdown"
-        tabIndex={-1}
-        aria-label={t("modeSelectLabel" as never)}
-      >
-        <div className="mode-selector-options">{optionsContent}</div>
-      </div>
-    ) : null;
+  const dropdown = isOpen ? (
+    <div
+      ref={sheetRef}
+      className="mode-selector-dropdown"
+      role="dialog"
+      tabIndex={-1}
+      aria-label={t("modeSelectLabel" as never)}
+    >
+      <div className="mode-selector-options">{optionsContent}</div>
+    </div>
+  ) : null;
 
   return (
     <div className="mode-selector-container">

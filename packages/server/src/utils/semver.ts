@@ -3,7 +3,7 @@ export function isNewerSemver(current: string, latest: string): boolean {
 
   const parseVersion = (value: string) => {
     const match = value.match(/^(\d+)\.(\d+)\.(\d+)/);
-    if (!match || !match[1] || !match[2] || !match[3]) return null;
+    if (!match?.[1] || !match[2] || !match[3]) return null;
     return {
       major: Number.parseInt(match[1], 10),
       minor: Number.parseInt(match[2], 10),

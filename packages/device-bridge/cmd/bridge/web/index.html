@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -20,14 +20,14 @@
 </head>
 <body>
     <div id="status">Disconnected</div>
-    <button id="connect-btn" onclick="connect()">Connect</button>
+    <button type="button" id="connect-btn" onclick="connect()">Connect</button>
     <div id="video-container">
         <video id="video" autoplay playsinline muted></video>
     </div>
     <div class="nav">
-        <button ontouchstart="sendKey('GoBack')" onclick="sendKey('GoBack')">Back</button>
-        <button ontouchstart="sendKey('GoHome')" onclick="sendKey('GoHome')">Home</button>
-        <button ontouchstart="sendKey('AppSwitch')" onclick="sendKey('AppSwitch')">Recents</button>
+        <button type="button" ontouchstart="sendKey('GoBack')" onclick="sendKey('GoBack')">Back</button>
+        <button type="button" ontouchstart="sendKey('GoHome')" onclick="sendKey('GoHome')">Home</button>
+        <button type="button" ontouchstart="sendKey('AppSwitch')" onclick="sendKey('AppSwitch')">Recents</button>
     </div>
 
     <script>
@@ -101,7 +101,7 @@
 
             setStatus('Waiting for video...');
         } catch (err) {
-            setStatus('Error: ' + err.message);
+            setStatus(`Error: ${err.message}`);
             connectBtn.classList.remove('hidden');
         }
     }

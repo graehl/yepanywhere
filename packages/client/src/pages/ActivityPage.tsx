@@ -128,7 +128,6 @@ export function ActivityPage() {
   };
 
   // Auto-scroll to bottom when new events arrive (if already at bottom)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally trigger on events change
   useLayoutEffect(() => {
     const container = scrollContainerRef.current;
     if (container && isAtBottomRef.current) {

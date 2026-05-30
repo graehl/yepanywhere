@@ -253,7 +253,7 @@ interface CssRule {
  */
 function findRuleForClass(
   lines: string[],
-  className: string,
+  _className: string,
   lineNum: number,
 ): CssRule | null {
   // lineNum is 1-indexed from ClassInfo, convert to 0-indexed

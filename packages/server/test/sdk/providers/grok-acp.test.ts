@@ -19,13 +19,29 @@
  * for opt-in smoke conventions.
  */
 
+import type { ChildProcess, ExecException } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   GrokACPProvider,
   type GrokACPProviderConfig,
 } from "../../../src/sdk/providers/grok-acp.js";
+import type {
+  ACPClientConfig,
+  PermissionRequestCallback,
+  SessionUpdateCallback,
+} from "../../../src/sdk/providers/acp/client.js";
+import type { SDKMessage } from "../../../src/sdk/types.js";
 
 describe("GrokACPProvider", () => {
   let provider: GrokACPProvider;
@@ -149,8 +165,8 @@ describe("GrokACPProvider", () => {
         messages.some(
           (m: unknown) =>
             (m as { type?: string }).type === "error" ||
-            (m as { type?: string }).type === "result"
-        )
+            (m as { type?: string }).type === "result",
+        ),
       ).toBe(true);
     });
   });
@@ -197,7 +213,7 @@ describe("GrokACPProvider Auth File Parsing", () => {
 
     writeFileSync(
       join(authDir, "auth.json"),
-      JSON.stringify({ access_token: "fake" })
+      JSON.stringify({ access_token: "fake" }),
     );
 
     const testProvider = new GrokACPProvider();
@@ -244,7 +260,7 @@ describe("GrokACPProvider Auth File Parsing", () => {
     } catch {}
     writeFileSync(
       join(authDir, "auth.json"),
-      JSON.stringify({ refresh_token: "rt_123" })
+      JSON.stringify({ refresh_token: "rt_123" }),
     );
 
     const testProvider = new GrokACPProvider();
@@ -262,10 +278,13 @@ describe("GrokACPProvider Auth File Parsing", () => {
  * Pattern adapted from opencode.test.ts (heavy module mocking before import).
  */
 describe("GrokACPProvider — ACP integration (mocked)", () => {
-  let acpClientMock: any;
-  let connectCalls: any[] = [];
+  let acpClientMock: unknown;
+  let connectCalls: ACPClientConfig[] = [];
   let promptCalls: Array<{ sessionId: string; text: string }> = [];
-  let sessionCalls: any[] = [];
+  let sessionCalls: Array<
+    | { type: "new"; cwd: string; id: string }
+    | { type: "resume"; cwd: string; id: string }
+  > = [];
   let holdFirstPrompt = false;
   let releaseHeldPrompt: (() => void) | null = null;
   let failResume = false;
@@ -273,8 +292,7 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
   // Minimal fake ACPClient that records calls and allows controlling flow
   class FakeACPClient {
     pid = 4242;
-    private updateCb: ((u: any) => void) | null = null;
-    private permCb: ((r: any) => Promise<any>) | null = null;
+    private updateCb: SessionUpdateCallback | null = null;
 
     private emitCommandInventory(sessionId: string) {
       this.updateCb?.({
@@ -284,7 +302,8 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
           availableCommands: [
             {
               name: "compact",
-              description: "Compress conversation history to save context window",
+              description:
+                "Compress conversation history to save context window",
               input: { hint: "optional context about what to preserve" },
             },
             {
@@ -302,21 +321,21 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
       });
     }
 
-    setSessionUpdateCallback(cb: (u: any) => void) {
+    setSessionUpdateCallback(cb: SessionUpdateCallback) {
       this.updateCb = cb;
     }
-    setPermissionRequestCallback(cb: (r: any) => Promise<any>) {
-      this.permCb = cb;
+    setPermissionRequestCallback(_cb: PermissionRequestCallback) {
+      return;
     }
-    async connect(config: any) {
+    async connect(config: ACPClientConfig) {
       connectCalls.push(config);
       return;
     }
-    async initialize(_: any) {
+    async initialize(_: Record<string, boolean>) {
       return { protocolVersion: "v1" };
     }
     async newSession(cwd: string) {
-      const id = "grok_ses_new_" + Math.random().toString(36).slice(2, 8);
+      const id = `grok_ses_new_${Math.random().toString(36).slice(2, 8)}`;
       sessionCalls.push({ type: "new", cwd, id });
       this.emitCommandInventory(id);
       return id;
@@ -378,16 +397,21 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
 
     // Also mock child_process exec used by findGrokPath whichCommand fallback
     vi.doMock("node:child_process", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("node:child_process")>();
+      const actual =
+        await importOriginal<typeof import("node:child_process")>();
       return {
         ...actual,
         exec: (
           _cmd: string,
-          _opts: any,
-          cb?: (err: any, stdout: string) => void,
+          _opts: unknown,
+          cb?: (
+            err: ExecException | null,
+            stdout: string,
+            stderr: string,
+          ) => void,
         ) => {
-          if (cb) cb(null, "/fake/grok\n");
-          return {} as any;
+          if (cb) cb(null, "/fake/grok\n", "");
+          return {} as ChildProcess;
         },
       };
     });
@@ -562,7 +586,9 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
     });
 
     expect(
-      sessionCalls.some((c) => c.type === "resume" && c.id === "existing_ses_123"),
+      sessionCalls.some(
+        (c) => c.type === "resume" && c.id === "existing_ses_123",
+      ),
     ).toBe(true);
   });
 
@@ -595,7 +621,9 @@ describe("GrokACPProvider — ACP integration (mocked)", () => {
 
   it("wires onToolApproval permission callback into ACP client", async () => {
     const provider = await loadFreshGrokProvider({ grokPath: "/fake/grok" });
-    const approvalFn = vi.fn().mockResolvedValue({ behavior: "allow" as const });
+    const approvalFn = vi
+      .fn()
+      .mockResolvedValue({ behavior: "allow" as const });
 
     await startAndReadInit(provider, {
       cwd: "/tmp",
@@ -697,70 +725,75 @@ describe("GrokACPProvider Real Binary Smoke (opt-in)", () => {
     }
   });
 
-  it(
-    "starts a real session and receives init + at least one assistant/result when grok present",
-    async () => {
-      if (!ENABLED) return;
+  it("starts a real session and receives init + at least one assistant/result when grok present", async () => {
+    if (!ENABLED) return;
 
-      const { GrokACPProvider: RealGrok } = await import(
-        "../../../src/sdk/providers/grok-acp.js"
+    const { GrokACPProvider: RealGrok } = await import(
+      "../../../src/sdk/providers/grok-acp.js"
+    );
+    const provider = new RealGrok();
+
+    const installed = await provider.isInstalled();
+    if (!installed) {
+      console.log(
+        "Skipping Grok smoke - `grok` binary not detected by provider",
       );
-      const provider = new RealGrok();
+      return;
+    }
+    const auth = await provider.getAuthStatus();
+    if (!auth.authenticated) {
+      console.log(
+        "Skipping Grok smoke - not authenticated (no valid ~/.grok/auth.json)",
+      );
+      return;
+    }
 
-      const installed = await provider.isInstalled();
-      if (!installed) {
-        console.log("Skipping Grok smoke - `grok` binary not detected by provider");
-        return;
-      }
-      const auth = await provider.getAuthStatus();
-      if (!auth.authenticated) {
-        console.log("Skipping Grok smoke - not authenticated (no valid ~/.grok/auth.json)");
-        return;
-      }
+    const tmp = mkdtempSync(
+      join(require("node:os").tmpdir(), "grok-real-smoke-"),
+    );
+    // minimal project file
+    try {
+      writeFileSync(join(tmp, "README.md"), "# grok smoke test\n");
+    } catch {}
 
-      const tmp = mkdtempSync(join(require("node:os").tmpdir(), "grok-real-smoke-"));
-      // minimal project file
-      try {
-        writeFileSync(join(tmp, "README.md"), "# grok smoke test\n");
-      } catch {}
+    log("Using real grok at detected path; starting session...");
 
-      log("Using real grok at detected path; starting session...");
+    const session = await provider.startSession({
+      cwd: tmp,
+      initialMessage: {
+        text: 'Reply with exactly "grok-smoke-ok" and nothing else.',
+      },
+      permissionMode: "bypassPermissions",
+    });
 
-      const session = await provider.startSession({
-        cwd: tmp,
-        initialMessage: { text: 'Reply with exactly "grok-smoke-ok" and nothing else.' },
-        permissionMode: "bypassPermissions",
-      });
+    const messages: SDKMessage[] = [];
+    const timeout = setTimeout(() => {
+      log("timeout abort");
+      session.abort();
+    }, 45000);
 
-      const messages: unknown[] = [];
-      const timeout = setTimeout(() => {
-        log("timeout abort");
-        session.abort();
-      }, 45000);
-
-      try {
-        for await (const msg of session.iterator) {
-          messages.push(msg);
-          if (FOREGROUND) {
-            const m = msg as any;
-            log(m.type, m.subtype || m.error || "");
-          }
-          if (msg.type === "result" || msg.type === "error") break;
+    try {
+      for await (const msg of session.iterator) {
+        messages.push(msg);
+        if (FOREGROUND) {
+          const detail =
+            "subtype" in msg ? msg.subtype : "error" in msg ? msg.error : "";
+          log(msg.type, detail || "");
         }
-      } finally {
-        clearTimeout(timeout);
-        try {
-          rmSync(tmp, { recursive: true, force: true });
-        } catch {}
+        if (msg.type === "result" || msg.type === "error") break;
       }
+    } finally {
+      clearTimeout(timeout);
+      try {
+        rmSync(tmp, { recursive: true, force: true });
+      } catch {}
+    }
 
-      expect(messages.length).toBeGreaterThanOrEqual(2);
-      expect(messages[0]).toMatchObject({ type: "system", subtype: "init" });
-      const hasResultOrAssistant = messages.some(
-        (m: any) => m.type === "result" || m.type === "assistant",
-      );
-      expect(hasResultOrAssistant).toBe(true);
-    },
-    60000,
-  );
+    expect(messages.length).toBeGreaterThanOrEqual(2);
+    expect(messages[0]).toMatchObject({ type: "system", subtype: "init" });
+    const hasResultOrAssistant = messages.some(
+      (m) => m.type === "result" || m.type === "assistant",
+    );
+    expect(hasResultOrAssistant).toBe(true);
+  }, 60000);
 });

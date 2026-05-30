@@ -405,7 +405,7 @@ export class ExternalSessionTracker {
 
     // Find the .jsonl file
     const filename = parts[parts.length - 1];
-    if (!filename || !filename.endsWith(".jsonl")) return null;
+    if (!filename?.endsWith(".jsonl")) return null;
 
     // Extract sessionId (filename without .jsonl)
     const sessionId = filename.slice(0, -6); // Remove '.jsonl'
@@ -457,7 +457,7 @@ export class ExternalSessionTracker {
 
   private extractCodexSessionId(relativePath: string): string | null {
     const filename = relativePath.split(path.sep).pop();
-    if (!filename || !filename.endsWith(".jsonl")) return null;
+    if (!filename?.endsWith(".jsonl")) return null;
     const base = filename.slice(0, -6);
     const match = base.match(/([0-9a-fA-F-]{36})$/);
     return match?.[1] ?? null;

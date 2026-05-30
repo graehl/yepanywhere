@@ -194,10 +194,9 @@ export function SessionListItem({
     !!parentSessionId ||
     isBtwAsideSessionTitle(displayTitle) ||
     isBtwAsideSessionTitle(fullTitle);
-  const visibleTitle =
-    isBtwAsideSession
-      ? getBtwAsideSessionDisplayTitle(displayTitle)
-      : displayTitle;
+  const visibleTitle = isBtwAsideSession
+    ? getBtwAsideSessionDisplayTitle(displayTitle)
+    : displayTitle;
   const copyPromptText = (initialPrompt ?? fullTitle ?? "").trim();
 
   // Focus input when entering edit mode
@@ -461,7 +460,10 @@ export function SessionListItem({
   const StarIcon = ({
     filled,
     size = 10,
-  }: { filled: boolean; size?: number }) => (
+  }: {
+    filled: boolean;
+    size?: number;
+  }) => (
     <svg
       className="session-star-icon"
       width={size}
@@ -517,6 +519,7 @@ export function SessionListItem({
                 {isStarred && <StarIcon filled size={12} />}
                 {isNewSession && <ThinkingIndicator />}
                 {isBtwAsideSession && (
+                  // biome-ignore lint/a11y/noStaticElementInteractions: clickable variant has link role and keyboard handling; inert variant only shows the badge
                   <span
                     className="session-badge session-badge-btw"
                     title={
@@ -595,6 +598,7 @@ export function SessionListItem({
                 <span className="session-list-item__title-text">
                   {isNewSession && <ThinkingIndicator />}
                   {isBtwAsideSession && (
+                    // biome-ignore lint/a11y/noStaticElementInteractions: clickable variant has link role and keyboard handling; inert variant only shows the badge
                     <span
                       className="session-badge session-badge-btw"
                       title={

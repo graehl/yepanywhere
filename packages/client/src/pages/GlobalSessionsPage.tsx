@@ -127,9 +127,7 @@ export function GlobalSessionsPage() {
   const statusFilters = useMemo(() => {
     const param = searchParams.get("status");
     if (!param) return [];
-    return param
-      .split(",")
-      .filter(isStatusFilter);
+    return param.split(",").filter(isStatusFilter);
   }, [searchParams]);
 
   const providerFilters = useMemo(() => {
@@ -406,12 +404,18 @@ export function GlobalSessionsPage() {
   const { visibleSessions, hiddenDupSessions } = useMemo(() => {
     if (isSelectionMode) {
       // During multi-select, show everything so user can act on dups if desired.
-      return { visibleSessions: filteredSessions, hiddenDupSessions: [] as typeof filteredSessions };
+      return {
+        visibleSessions: filteredSessions,
+        hiddenDupSessions: [] as typeof filteredSessions,
+      };
     }
 
     const groups = new Map<string, typeof filteredSessions>();
     for (const s of filteredSessions) {
-      const norm = (s.title || s.fullTitle || s.initialPrompt || "").trim().toLowerCase().slice(0, 120);
+      const norm = (s.title || s.fullTitle || s.initialPrompt || "")
+        .trim()
+        .toLowerCase()
+        .slice(0, 120);
       const key = `${s.provider || "unknown"}|${s.projectId}|${norm}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(s);
@@ -427,14 +431,22 @@ export function GlobalSessionsPage() {
         arr.sort((a, b) => {
           const mc = (b.messageCount || 0) - (a.messageCount || 0);
           if (mc !== 0) return mc;
-          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+          return (
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          );
         });
         visible.push(arr[0]!); // arr is guaranteed non-empty in this branch (length >= 2)
         hidden.push(...arr.slice(1));
       }
     }
-    visible.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    hidden.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    visible.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+    hidden.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
     return { visibleSessions: visible, hiddenDupSessions: hidden };
   }, [filteredSessions, isSelectionMode]);
 
@@ -948,6 +960,7 @@ export function GlobalSessionsPage() {
                   className={`session-list ${isSelectionMode ? "session-list--selection-mode" : ""}`}
                 >
                   {visibleSessions.map((session) => (
+                    // biome-ignore lint/a11y/noStaticElementInteractions: wrapper handles mobile long-press selection while the nested link remains the accessible control
                     <div
                       key={session.id}
                       onTouchStart={(e) => handleLongPressStart(session.id, e)}
@@ -1021,19 +1034,23 @@ export function GlobalSessionsPage() {
                       onClick={() => setShowHiddenDups((v) => !v)}
                       aria-expanded={showHiddenDups}
                     >
-                      {showHiddenDups ? "−" : "+"} {hiddenDupSessions.length} duplicate titles hidden
-                      (same name + provider + project)
+                      {showHiddenDups ? "−" : "+"} {hiddenDupSessions.length}{" "}
+                      duplicate titles hidden (same name + provider + project)
                     </button>
                     {showHiddenDups && (
                       <ul className="session-list global-sessions-hidden-sublist">
                         {hiddenDupSessions.map((session) => (
-                          <div key={session.id} className="global-sessions-hidden-item">
+                          <div
+                            key={session.id}
+                            className="global-sessions-hidden-item"
+                          >
                             <SessionListItem
                               sessionId={session.id}
                               projectId={session.projectId}
                               title={getSessionDisplayTitle(session)}
                               fullTitle={
-                                session.fullTitle ?? getSessionDisplayTitle(session)
+                                session.fullTitle ??
+                                getSessionDisplayTitle(session)
                               }
                               initialPrompt={session.initialPrompt}
                               updatedAt={session.updatedAt}
@@ -1053,11 +1070,16 @@ export function GlobalSessionsPage() {
                               isSelectionMode={isSelectionMode && !isWideScreen}
                               onNavigate={() => {
                                 if (isSelectionMode && !isWideScreen) {
-                                  handleSelect(session.id, !selectedIds.has(session.id));
+                                  handleSelect(
+                                    session.id,
+                                    !selectedIds.has(session.id),
+                                  );
                                 }
                               }}
                               onSelect={
-                                isWideScreen || isSelectionMode ? handleSelect : undefined
+                                isWideScreen || isSelectionMode
+                                  ? handleSelect
+                                  : undefined
                               }
                               showProjectName={!projectFilter}
                               projectName={session.projectName}

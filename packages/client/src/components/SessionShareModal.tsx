@@ -202,13 +202,18 @@ export function SessionShareModal({
     setError(null);
     setResult(null);
     try {
-      const response = await api.revokePublicSessionShares(projectId, sessionId);
+      const response = await api.revokePublicSessionShares(
+        projectId,
+        sessionId,
+      );
       setStatus(response);
       onStatusChange?.(response);
       setUrl(null);
       setResult(t("sessionShareRevoked", { count: response.revokedCount }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("sessionShareRevokeFailed"));
+      setError(
+        err instanceof Error ? err.message : t("sessionShareRevokeFailed"),
+      );
     } finally {
       setIsWorking(null);
     }
@@ -231,7 +236,9 @@ export function SessionShareModal({
         }),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("sessionShareFreezeFailed"));
+      setError(
+        err instanceof Error ? err.message : t("sessionShareFreezeFailed"),
+      );
     } finally {
       setIsWorking(null);
     }
@@ -251,7 +258,9 @@ export function SessionShareModal({
       onStatusChange?.(response);
       setResult(t("sessionShareViewerFrozen", { token: viewer.shortId }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("sessionShareFreezeFailed"));
+      setError(
+        err instanceof Error ? err.message : t("sessionShareFreezeFailed"),
+      );
     } finally {
       setIsWorking(null);
     }
@@ -273,7 +282,9 @@ export function SessionShareModal({
       onStatusChange?.(response);
       setResult(t("sessionShareViewerDisconnected", { token: viewer.shortId }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("sessionShareRevokeFailed"));
+      setError(
+        err instanceof Error ? err.message : t("sessionShareRevokeFailed"),
+      );
     } finally {
       setIsWorking(null);
     }
@@ -348,110 +359,111 @@ export function SessionShareModal({
         {result && <div className="session-share-status">{result}</div>}
 
         {hasActiveShares && (
-          <>
-            <div className="session-share-management">
-              <div className="session-share-management-header">
-                <ViewerCountIndicator
-                  className="session-share-viewer-count"
-                  count={activeViewerCount}
-                  label={viewerSummary}
-                />
-                <div className="session-share-global-controls">
-                  <button
-                    type="button"
-                    className="session-share-small-button"
-                    onClick={() => void freezeAllLive()}
-                    disabled={isWorking !== null || (status?.liveCount ?? 0) === 0}
-                    title={t("sessionShareFreezeLiveTitle")}
-                  >
-                    {isWorking === "freeze-all"
-                      ? t("sessionShareFreezing")
-                      : t("sessionShareFreezeLive")}
-                  </button>
-                  <button
-                    type="button"
-                    className="session-share-revoke-button"
-                    onClick={() => void revokeAll()}
-                    disabled={isWorking !== null}
-                    title={t("sessionShareRevokeAllTitle")}
-                  >
-                    {isWorking === "revoke"
-                      ? t("sessionShareRevoking")
-                      : t("sessionShareRevokeAll")}
-                  </button>
-                </div>
-              </div>
-              {viewers.length > 0 && (
-                <div
-                  className="session-share-viewer-list"
-                  aria-label={t("sessionShareViewerList")}
+          <div className="session-share-management">
+            <div className="session-share-management-header">
+              <ViewerCountIndicator
+                className="session-share-viewer-count"
+                count={activeViewerCount}
+                label={viewerSummary}
+              />
+              <div className="session-share-global-controls">
+                <button
+                  type="button"
+                  className="session-share-small-button"
+                  onClick={() => void freezeAllLive()}
+                  disabled={
+                    isWorking !== null || (status?.liveCount ?? 0) === 0
+                  }
+                  title={t("sessionShareFreezeLiveTitle")}
                 >
-                  {viewers.map((viewer) => (
-                    <div
-                      className="session-share-viewer-row"
-                      key={viewer.viewerId}
-                    >
-                      <div className="session-share-viewer-main">
-                        <span className="session-share-viewer-token">
-                          {viewer.shortId}
-                        </span>
-                        <span className="session-share-viewer-meta">
-                          {t("sessionShareViewerMeta", {
-                            count: viewer.accessCount,
-                            time: new Date(viewer.lastSeenAt).toLocaleString(),
-                          })}
-                        </span>
-                      </div>
-                      <div className="session-share-viewer-state">
-                        {viewer.disconnected
-                          ? t("sessionShareViewerDisconnectedState")
-                          : viewer.frozen
-                            ? t("sessionShareViewerFrozenState")
-                            : viewer.active
-                              ? t("sessionShareViewerActiveState")
-                              : t("sessionShareViewerInactiveState")}
-                      </div>
-                      <div className="session-share-viewer-actions">
-                        <button
-                          type="button"
-                          className="session-share-icon-button"
-                          onClick={() => void freezeViewerToken(viewer)}
-                          disabled={
-                            isWorking !== null ||
-                            viewer.disconnected ||
-                            viewer.frozen ||
-                            (status?.liveCount ?? 0) === 0
-                          }
-                          title={t("sessionShareFreezeViewerTitle", {
-                            token: viewer.shortId,
-                          })}
-                          aria-label={t("sessionShareFreezeViewerTitle", {
-                            token: viewer.shortId,
-                          })}
-                        >
-                          |||
-                        </button>
-                        <button
-                          type="button"
-                          className="session-share-icon-button session-share-icon-button-danger"
-                          onClick={() => void disconnectViewerToken(viewer)}
-                          disabled={isWorking !== null || viewer.disconnected}
-                          title={t("sessionShareDisconnectViewerTitle", {
-                            token: viewer.shortId,
-                          })}
-                          aria-label={t("sessionShareDisconnectViewerTitle", {
-                            token: viewer.shortId,
-                          })}
-                        >
-                          x
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                  {isWorking === "freeze-all"
+                    ? t("sessionShareFreezing")
+                    : t("sessionShareFreezeLive")}
+                </button>
+                <button
+                  type="button"
+                  className="session-share-revoke-button"
+                  onClick={() => void revokeAll()}
+                  disabled={isWorking !== null}
+                  title={t("sessionShareRevokeAllTitle")}
+                >
+                  {isWorking === "revoke"
+                    ? t("sessionShareRevoking")
+                    : t("sessionShareRevokeAll")}
+                </button>
+              </div>
             </div>
-          </>
+            {viewers.length > 0 && (
+              <div
+                className="session-share-viewer-list"
+                role="list"
+                aria-label={t("sessionShareViewerList")}
+              >
+                {viewers.map((viewer) => (
+                  <div
+                    className="session-share-viewer-row"
+                    key={viewer.viewerId}
+                  >
+                    <div className="session-share-viewer-main">
+                      <span className="session-share-viewer-token">
+                        {viewer.shortId}
+                      </span>
+                      <span className="session-share-viewer-meta">
+                        {t("sessionShareViewerMeta", {
+                          count: viewer.accessCount,
+                          time: new Date(viewer.lastSeenAt).toLocaleString(),
+                        })}
+                      </span>
+                    </div>
+                    <div className="session-share-viewer-state">
+                      {viewer.disconnected
+                        ? t("sessionShareViewerDisconnectedState")
+                        : viewer.frozen
+                          ? t("sessionShareViewerFrozenState")
+                          : viewer.active
+                            ? t("sessionShareViewerActiveState")
+                            : t("sessionShareViewerInactiveState")}
+                    </div>
+                    <div className="session-share-viewer-actions">
+                      <button
+                        type="button"
+                        className="session-share-icon-button"
+                        onClick={() => void freezeViewerToken(viewer)}
+                        disabled={
+                          isWorking !== null ||
+                          viewer.disconnected ||
+                          viewer.frozen ||
+                          (status?.liveCount ?? 0) === 0
+                        }
+                        title={t("sessionShareFreezeViewerTitle", {
+                          token: viewer.shortId,
+                        })}
+                        aria-label={t("sessionShareFreezeViewerTitle", {
+                          token: viewer.shortId,
+                        })}
+                      >
+                        |||
+                      </button>
+                      <button
+                        type="button"
+                        className="session-share-icon-button session-share-icon-button-danger"
+                        onClick={() => void disconnectViewerToken(viewer)}
+                        disabled={isWorking !== null || viewer.disconnected}
+                        title={t("sessionShareDisconnectViewerTitle", {
+                          token: viewer.shortId,
+                        })}
+                        aria-label={t("sessionShareDisconnectViewerTitle", {
+                          token: viewer.shortId,
+                        })}
+                      >
+                        x
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </Modal>

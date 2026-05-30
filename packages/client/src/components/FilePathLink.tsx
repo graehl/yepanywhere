@@ -139,6 +139,7 @@ export function FileViewerModal({
   }, []);
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click dismisses the modal; Escape is handled globally
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled in useEffect, click is for overlay dismiss
     <div
       className="modal-overlay"

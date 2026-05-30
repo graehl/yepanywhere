@@ -97,6 +97,7 @@ export function ProviderBadge({
         className={`provider-badge-stripe ${className}`}
         style={{ backgroundColor: color }}
         title={fullTitle}
+        role="img"
         aria-label={fullTitle}
       />
     );
@@ -114,12 +115,16 @@ export function ProviderBadge({
       className={`provider-badge ${className}`}
       style={{ borderColor: color, color }}
       title={fullTitle}
+      role="img"
       aria-label={fullTitle}
     >
       <span className={dotClass} style={dotStyle} />
       <span className="provider-badge-label">{glyphLabel}</span>
       {effortLabel && effortTone && (
-        <span className="provider-badge-effort" title={`Effort: ${effortLabel}`}>
+        <span
+          className="provider-badge-effort"
+          title={`Effort: ${effortLabel}`}
+        >
           <span
             className={`provider-badge-effort-dot tone-${effortTone}`}
             aria-hidden="true"

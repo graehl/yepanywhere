@@ -130,7 +130,7 @@ function AskUserQuestionToolResult({
     );
   }
 
-  if (!result || !result.questions) {
+  if (!result?.questions) {
     return (
       <div className="question-empty">
         {showValidationWarning && validationErrors && (

@@ -18,8 +18,8 @@
     const p = params.get('p');
     const r = params.get('r') || '';
     if (u && p) {
-      const hash = 'u=' + encodeURIComponent(u) + '&p=' + encodeURIComponent(p) + (r ? '&r=' + encodeURIComponent(r) : '');
-      window.location.href = '/remote/login/relay#' + hash;
+      const hash = `u=${encodeURIComponent(u)}&p=${encodeURIComponent(p)}${r ? `&r=${encodeURIComponent(r)}` : ''}`;
+      window.location.href = `/remote/login/relay#${hash}`;
     }
   </script>
 </head>

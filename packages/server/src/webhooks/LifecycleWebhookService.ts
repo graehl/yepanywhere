@@ -75,7 +75,7 @@ export class LifecycleWebhookService {
     const process = this.options.supervisor.getProcessForSession(
       event.sessionId,
     );
-    if (!process || process.state.type !== "idle") {
+    if (process?.state.type !== "idle") {
       // Ignore the synthetic idle emitted during unregister; we only want
       // the live transition when the process is still resumable in-memory.
       return;

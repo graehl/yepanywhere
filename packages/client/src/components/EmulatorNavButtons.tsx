@@ -22,11 +22,11 @@ export function EmulatorNavButtons({
   }
 
   const sendKey = (key: string) => {
-    if (!dataChannel || dataChannel.readyState !== "open") return;
+    if (dataChannel?.readyState !== "open") return;
     dataChannel.send(JSON.stringify({ type: "key", key }));
   };
 
-  const disabled = !dataChannel || dataChannel.readyState !== "open";
+  const disabled = dataChannel?.readyState !== "open";
 
   return (
     <div className="emulator-nav-buttons">

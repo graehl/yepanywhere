@@ -41,12 +41,12 @@ test.describe("Secure WebSocket Transport E2E", () => {
 
     // Perform SRP handshake in browser context using WebCrypto
     const result = await page.evaluate(
-      async ({ wsURL, username, password }) => {
+      async ({ wsURL, username }) => {
         // We'll implement a minimal SRP client for testing
         // This tests that the browser's WebCrypto APIs work correctly
 
         return new Promise<{ success: boolean; error?: string }>(
-          (resolve, reject) => {
+          (resolve, _reject) => {
             const ws = new WebSocket(wsURL);
             const timeout = setTimeout(() => {
               ws.close();
@@ -106,7 +106,7 @@ test.describe("Secure WebSocket Transport E2E", () => {
               }
             };
 
-            ws.onerror = (event) => {
+            ws.onerror = (_event) => {
               clearTimeout(timeout);
               resolve({ success: false, error: "WebSocket error" });
             };
@@ -120,7 +120,7 @@ test.describe("Secure WebSocket Transport E2E", () => {
           },
         );
       },
-      { wsURL, username: TEST_USERNAME, password: TEST_PASSWORD },
+      { wsURL, username: TEST_USERNAME },
     );
 
     expect(result.success).toBe(true);
@@ -174,7 +174,6 @@ test.describe("Secure WebSocket Transport E2E", () => {
 
   test("full SRP handshake and encrypted request", async ({
     page,
-    wsURL,
     baseURL,
   }) => {
     await page.goto("about:blank");
@@ -213,7 +212,6 @@ test.describe("Secure WebSocket Transport E2E", () => {
 
   test("can perform full encrypted communication", async ({
     page,
-    wsURL,
     baseURL,
   }) => {
     // This test uses the SecureConnection from the client library

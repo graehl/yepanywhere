@@ -99,10 +99,7 @@ import {
   CLIENT_SLASH_COMMANDS,
   resolveComposerSlashTurn,
 } from "../lib/slashCommands";
-import {
-  getBtwSplitRouting,
-  getBtwToolbarMode,
-} from "../lib/btwAsideRouting";
+import { getBtwSplitRouting, getBtwToolbarMode } from "../lib/btwAsideRouting";
 import { getSessionActivityUiState } from "../lib/sessionActivityUi";
 import { generateUUID } from "../lib/uuid";
 import type { Message } from "../types";
@@ -165,7 +162,10 @@ function providerSupportsBtwAsideFork(
   return provider ? BTW_ASIDE_FORK_PROVIDERS.has(provider) : false;
 }
 
-function appendComposerTransferDraft(currentDraft: string, text: string): string {
+function appendComposerTransferDraft(
+  currentDraft: string,
+  text: string,
+): string {
   const current = currentDraft.trimEnd();
   const addition = text.trim();
   if (!current) {
@@ -485,11 +485,7 @@ function parseCodexConfigAck(
   thinking?: { type: string };
   effort?: string;
 } | null {
-  if (
-    !message ||
-    message.type !== "system" ||
-    message.subtype !== "config_ack"
-  ) {
+  if (message?.type !== "system" || message.subtype !== "config_ack") {
     return null;
   }
 
@@ -701,14 +697,13 @@ function SessionPageContent({
   // developer mode for connected/idle states; a disconnected state is
   // always shown so users can see when the live pipe is broken (e.g. dropped
   // SSH tunnel, relay issue, etc.).
-  const rawSessionConnectionStatus =
-    !hasSessionUpdateStream
-      ? "idle"
-      : sessionUpdatesConnected
-        ? "connected"
-        : connectionState === "reconnecting"
-          ? "connecting"
-          : "disconnected";
+  const rawSessionConnectionStatus = !hasSessionUpdateStream
+    ? "idle"
+    : sessionUpdatesConnected
+      ? "connected"
+      : connectionState === "reconnecting"
+        ? "connecting"
+        : "disconnected";
 
   const sessionConnectionStatus =
     showConnectionBars || rawSessionConnectionStatus === "disconnected"
@@ -730,8 +725,9 @@ function SessionPageContent({
   const draftControlsRef = useRef<DraftControls | null>(null);
   const pendingMotherComposerTransferRef = useRef<string | null>(null);
   const lastComposerSubmissionRef = useRef<LastComposerSubmission | null>(null);
-  const lastSentComposerSubmissionRef =
-    useRef<SentComposerSubmission | null>(null);
+  const lastSentComposerSubmissionRef = useRef<SentComposerSubmission | null>(
+    null,
+  );
   const [btwAsides, setBtwAsides] = useState<BtwAside[]>([]);
   const [focusedBtwAsideId, setFocusedBtwAsideId] = useState<string | null>(
     null,
@@ -852,9 +848,10 @@ function SessionPageContent({
   const supportsSteeringNow = currentProviderInfo?.supportsSteering === true;
   const currentOwnedProcessId =
     status.owner === "self" ? status.processId : undefined;
-  const activityRenderItems = useMemo(() => preprocessMessages(messages), [
-    messages,
-  ]);
+  const activityRenderItems = useMemo(
+    () => preprocessMessages(messages),
+    [messages],
+  );
   const sessionActivityUi = useMemo(
     () =>
       getSessionActivityUiState({
@@ -872,8 +869,7 @@ function SessionPageContent({
       status.owner,
     ],
   );
-  const hasPendingRenderedToolCalls =
-    sessionActivityUi.hasPendingToolCalls;
+  const hasPendingRenderedToolCalls = sessionActivityUi.hasPendingToolCalls;
   const canStopOwnedProcess = sessionActivityUi.canStopOwnedProcess;
   const shouldDeferMessages = sessionActivityUi.shouldDeferMessages;
   const primaryComposerAction =
@@ -998,7 +994,6 @@ function SessionPageContent({
   );
 
   // Reset local metadata state when sessionId changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally reset on sessionId change
   useEffect(() => {
     setLocalCustomTitle(undefined);
     setLocalIsArchived(undefined);
@@ -1335,8 +1330,10 @@ function SessionPageContent({
           uploadWaitMs: requestSentAtMs - actionAtMs,
           requestRttMs: timing?.roundTripMs ?? null,
           estimatedServerOffsetMs: timing?.serverOffsetMs ?? null,
-          clientToServerLatencyMs:
-            measureServerLatencyMs(clientTimestamp, result.serverTimestamp),
+          clientToServerLatencyMs: measureServerLatencyMs(
+            clientTimestamp,
+            result.serverTimestamp,
+          ),
         });
         setStatus({ owner: "self", processId: result.processId });
       } else {
@@ -1369,8 +1366,10 @@ function SessionPageContent({
           uploadWaitMs: requestSentAtMs - actionAtMs,
           requestRttMs: timing?.roundTripMs ?? null,
           estimatedServerOffsetMs: timing?.serverOffsetMs ?? null,
-          clientToServerLatencyMs:
-            measureServerLatencyMs(clientTimestamp, result.serverTimestamp),
+          clientToServerLatencyMs: measureServerLatencyMs(
+            clientTimestamp,
+            result.serverTimestamp,
+          ),
         });
         if (result.compactQueued) {
           setIsCompacting(true);
@@ -1435,8 +1434,10 @@ function SessionPageContent({
             uploadWaitMs: retryRequestSentAtMs - actionAtMs,
             requestRttMs: retryTiming?.roundTripMs ?? null,
             estimatedServerOffsetMs: retryTiming?.serverOffsetMs ?? null,
-            clientToServerLatencyMs:
-              measureServerLatencyMs(clientTimestamp, result.serverTimestamp),
+            clientToServerLatencyMs: measureServerLatencyMs(
+              clientTimestamp,
+              result.serverTimestamp,
+            ),
           });
           setStatus({ owner: "self", processId: result.processId });
           rememberSentSubmission(text, tempId);
@@ -1567,8 +1568,10 @@ function SessionPageContent({
         uploadWaitMs: requestSentAtMs - actionAtMs,
         requestRttMs: timing?.roundTripMs ?? null,
         estimatedServerOffsetMs: timing?.serverOffsetMs ?? null,
-        clientToServerLatencyMs:
-          measureServerLatencyMs(clientTimestamp, result.serverTimestamp),
+        clientToServerLatencyMs: measureServerLatencyMs(
+          clientTimestamp,
+          result.serverTimestamp,
+        ),
       });
       removePendingMessage(tempId);
       const localDeferredMessage = {
@@ -1712,13 +1715,12 @@ function SessionPageContent({
         (message) => message.tempId === tempId,
       );
       const previousLastSubmission = lastComposerSubmissionRef.current;
-      lastComposerSubmissionRef.current =
-        getRecallSubmissionAfterQueuedCancel(
-          lastComposerSubmissionRef.current,
-          lastSentComposerSubmissionRef.current,
-          deferredMessages,
-          tempId,
-        );
+      lastComposerSubmissionRef.current = getRecallSubmissionAfterQueuedCancel(
+        lastComposerSubmissionRef.current,
+        lastSentComposerSubmissionRef.current,
+        deferredMessages,
+        tempId,
+      );
       removeDeferredMessage(tempId);
       if (localMessage?.deliveryState === "recovered") {
         return;
@@ -1736,7 +1738,10 @@ function SessionPageContent({
         lastComposerSubmissionRef.current = previousLastSubmission;
         console.error("Failed to cancel deferred message:", err);
         const errorMsg = err instanceof Error ? err.message : String(err);
-        showToast(t("sessionDeferredCancelFailed", { message: errorMsg }), "error");
+        showToast(
+          t("sessionDeferredCancelFailed", { message: errorMsg }),
+          "error",
+        );
       }
     },
     [
@@ -1844,7 +1849,10 @@ function SessionPageContent({
 
         console.error("Failed to edit deferred message:", err);
         const errorMsg = err instanceof Error ? err.message : String(err);
-        showToast(t("sessionDeferredEditFailed", { message: errorMsg }), "error");
+        showToast(
+          t("sessionDeferredEditFailed", { message: errorMsg }),
+          "error",
+        );
       }
     },
     [
@@ -1942,17 +1950,15 @@ function SessionPageContent({
     t,
   ]);
 
-  const focusedBtwAside =
-    focusedBtwAsideId ?
-      btwAsides.find((aside) => aside.id === focusedBtwAsideId) ?? null
+  const focusedBtwAside = focusedBtwAsideId
+    ? (btwAsides.find((aside) => aside.id === focusedBtwAsideId) ?? null)
     : null;
   const requestedBtwSessionId = useMemo(() => {
     const value = new URLSearchParams(location.search).get("btw")?.trim();
     return value || null;
   }, [location.search]);
-  const childSessionParentHref =
-    session?.parentSessionId ?
-      buildBtwAsideParentHref(
+  const childSessionParentHref = session?.parentSessionId
+    ? buildBtwAsideParentHref(
         basePath,
         projectId,
         session.parentSessionId,
@@ -2014,7 +2020,7 @@ function SessionPageContent({
               turns: turns.length > 0 ? turns : aside.turns,
               historyAt:
                 nextStatus === "complete"
-                  ? aside.historyAt ?? new Date().toISOString()
+                  ? (aside.historyAt ?? new Date().toISOString())
                   : aside.historyAt,
               updatedAt: new Date().toISOString(),
             };
@@ -2052,8 +2058,9 @@ function SessionPageContent({
       updateBtwAside(sourceAside.id, (aside) => ({
         ...aside,
         request: isInitialTurn && !aside.request ? trimmed : aside.request,
-        followUps:
-          isInitialTurn ? aside.followUps : [...aside.followUps, trimmed],
+        followUps: isInitialTurn
+          ? aside.followUps
+          : [...aside.followUps, trimmed],
         turns: isInitialTurn
           ? aside.turns?.length
             ? aside.turns
@@ -2242,7 +2249,7 @@ function SessionPageContent({
         const preview =
           responses.length > 0
             ? truncateBtwPreview(responses[responses.length - 1] ?? "")
-            : getLatestAssistantText(result.messages) ?? undefined;
+            : (getLatestAssistantText(result.messages) ?? undefined);
         const now = new Date().toISOString();
         const asideId = generateUUID();
         const hydratedAside: BtwAside = {
@@ -2297,18 +2304,24 @@ function SessionPageContent({
     [focusedBtwAside, handleSend, runBtwAsideTurn],
   );
 
-  const hideBtwAside = useCallback((asideId: string) => {
-    materializeBtwAside(asideId);
-    setFocusedBtwAsideId((current) => (current === asideId ? null : current));
-  }, [materializeBtwAside]);
+  const hideBtwAside = useCallback(
+    (asideId: string) => {
+      materializeBtwAside(asideId);
+      setFocusedBtwAsideId((current) => (current === asideId ? null : current));
+    },
+    [materializeBtwAside],
+  );
 
-  const toggleBtwAsideExpanded = useCallback((asideId: string) => {
-    updateBtwAside(asideId, (aside) => ({
-      ...aside,
-      expanded: !aside.expanded,
-      updatedAt: new Date().toISOString(),
-    }));
-  }, [updateBtwAside]);
+  const toggleBtwAsideExpanded = useCallback(
+    (asideId: string) => {
+      updateBtwAside(asideId, (aside) => ({
+        ...aside,
+        expanded: !aside.expanded,
+        updatedAt: new Date().toISOString(),
+      }));
+    },
+    [updateBtwAside],
+  );
 
   // Reset wide-screen split-pane collapse whenever the focus moves between
   // asides or back to Mother — explicit collapse only persists for one focus.
@@ -2569,8 +2582,10 @@ function SessionPageContent({
   // Keep the status title compact while preserving model state for non-status
   // states and avoid leaking verbose model suffixes.
   const stripBadgePrefix = (model: string) => {
-    const compactCodexLabel =
-      getModelIndicatorModelLabel(effectiveProvider, model);
+    const compactCodexLabel = getModelIndicatorModelLabel(
+      effectiveProvider,
+      model,
+    );
     const compactModel =
       effectiveProvider === "codex" || effectiveProvider === "codex-oss"
         ? compactCodexLabel || model
@@ -2840,7 +2855,7 @@ function SessionPageContent({
                           (bytesUploaded / uploadFile.size) * 100,
                         ),
                       }
-                      : p,
+                    : p,
                 ),
               );
             },
@@ -2907,8 +2922,7 @@ function SessionPageContent({
   // Suppress current-turn orphan markers only while the latest turn still
   // appears active. Terminal assistant text should win over stale process state
   // or stale pending tool rows so old activity cannot orphan the bottom spinner.
-  const activeToolApproval =
-    sessionActivityUi.shouldSuppressCurrentTurnOrphans;
+  const activeToolApproval = sessionActivityUi.shouldSuppressCurrentTurnOrphans;
 
   // Detect if session has pending tool calls without results
   // This can happen when the session is unowned but was active in another process (VS Code, CLI)
@@ -3185,7 +3199,12 @@ function SessionPageContent({
             restart or when native session directories were cleaned.
           </p>
           <div
-            style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}
+            style={{
+              display: "flex",
+              gap: 12,
+              marginTop: 16,
+              flexWrap: "wrap",
+            }}
           >
             <button
               type="button"
@@ -3199,7 +3218,8 @@ function SessionPageContent({
                     replace: true,
                   });
                 } catch (err) {
-                  const message = err instanceof Error ? err.message : String(err);
+                  const message =
+                    err instanceof Error ? err.message : String(err);
                   showToast(`Failed to archive: ${message}`, "error");
                 }
               }}
@@ -3292,11 +3312,9 @@ function SessionPageContent({
                   title={project.name}
                   aria-label={project.name}
                 >
-                  {project.name.length > 12 ? (
-                    `${project.name.slice(0, 12)}...`
-                  ) : (
-                    project.name
-                  )}
+                  {project.name.length > 12
+                    ? `${project.name.slice(0, 12)}...`
+                    : project.name}
                 </Link>
               )}
               <div className="session-title-row">
@@ -3438,7 +3456,10 @@ function SessionPageContent({
                 onClick={handleShareIndicatorClick}
               />
               {canStopOwnedProcess && (
-                <ThinkingIndicator variant="pill" className="session-header-thinking" />
+                <ThinkingIndicator
+                  variant="pill"
+                  className="session-header-thinking"
+                />
               )}
               {!loading && effectiveProvider && (
                 <button
@@ -3668,9 +3689,7 @@ function SessionPageContent({
                   <MessageList
                     messages={messages}
                     provider={session?.provider}
-                    isProcessing={
-                      sessionActivityUi.showProcessingIndicator
-                    }
+                    isProcessing={sessionActivityUi.showProcessingIndicator}
                     isCompacting={isCompacting}
                     scrollTrigger={scrollTrigger}
                     pendingMessages={pendingMessages}
@@ -3678,7 +3697,9 @@ function SessionPageContent({
                     btwAsides={historyBtwAsides}
                     onFocusBtwAside={setFocusedBtwAsideId}
                     onDoneBtwAside={() => setFocusedBtwAsideId(null)}
-                    onStopBtwAside={(asideId) => void handleStopBtwAside(asideId)}
+                    onStopBtwAside={(asideId) =>
+                      void handleStopBtwAside(asideId)
+                    }
                     onToggleBtwAsideExpanded={toggleBtwAsideExpanded}
                     onTransferBtwAsideTurn={transferBtwTurnToMotherComposer}
                     onCancelDeferred={handleCancelDeferred}
@@ -3727,270 +3748,284 @@ function SessionPageContent({
             />
             <div className="session-input-inner">
               {composerStickyBtwAsides.length > 0 && (
-                <div className="btw-aside-stack" aria-label="/btw asides">
+                <div
+                  className="btw-aside-stack"
+                  role="region"
+                  aria-label="/btw asides"
+                >
                   {composerStickyBtwAsides.map((aside) => {
-                  const isFocused = focusedBtwAsideId === aside.id;
-                  const canExpand = Boolean(
-                    aside.request ||
-                      aside.followUps.length > 0 ||
-                      aside.responses.length > 0 ||
-                      (aside.turns?.length ?? 0) > 0,
-                  );
-                  return (
-                    <div
-                      key={aside.id}
-                      className={`btw-aside-card is-${aside.status} ${
-                        isFocused ? "is-focused" : ""
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="btw-aside-main"
-                        onClick={() => setFocusedBtwAsideId(aside.id)}
+                    const isFocused = focusedBtwAsideId === aside.id;
+                    const canExpand = Boolean(
+                      aside.request ||
+                        aside.followUps.length > 0 ||
+                        aside.responses.length > 0 ||
+                        (aside.turns?.length ?? 0) > 0,
+                    );
+                    return (
+                      <div
+                        key={aside.id}
+                        className={`btw-aside-card is-${aside.status} ${
+                          isFocused ? "is-focused" : ""
+                        }`}
                       >
-                        <span className="btw-aside-meta">
-                          /btw {aside.status}
-                        </span>
-                        <span className="btw-aside-request">
-                          {aside.request || "New aside"}
-                        </span>
-                        {aside.followUps.length > 0 && (
-                          <span className="btw-aside-followups">
-                            +{aside.followUps.length} follow-up
-                            {aside.followUps.length === 1 ? "" : "s"}
+                        <button
+                          type="button"
+                          className="btw-aside-main"
+                          onClick={() => setFocusedBtwAsideId(aside.id)}
+                        >
+                          <span className="btw-aside-meta">
+                            /btw {aside.status}
                           </span>
-                        )}
-                        {aside.preview && (
-                          <span className="btw-aside-preview">
-                            {aside.preview}
+                          <span className="btw-aside-request">
+                            {aside.request || "New aside"}
                           </span>
+                          {aside.followUps.length > 0 && (
+                            <span className="btw-aside-followups">
+                              +{aside.followUps.length} follow-up
+                              {aside.followUps.length === 1 ? "" : "s"}
+                            </span>
+                          )}
+                          {aside.preview && (
+                            <span className="btw-aside-preview">
+                              {aside.preview}
+                            </span>
+                          )}
+                          {aside.error && (
+                            <span className="btw-aside-error">
+                              {aside.error}
+                            </span>
+                          )}
+                        </button>
+                        {aside.expanded && canExpand && (
+                          <BtwAsideTranscript
+                            aside={aside}
+                            autoScrollLatest
+                            onTransferToComposer={
+                              transferBtwTurnToMotherComposer
+                            }
+                          />
                         )}
-                        {aside.error && (
-                          <span className="btw-aside-error">
-                            {aside.error}
-                          </span>
-                        )}
-                      </button>
-                      {aside.expanded && canExpand && (
-                        <BtwAsideTranscript
-                          aside={aside}
-                          autoScrollLatest
-                          onTransferToComposer={transferBtwTurnToMotherComposer}
-                        />
-                      )}
-                      <div className="btw-aside-actions">
-                        {canExpand && (
-                          <button
-                            type="button"
-                            className="btw-aside-action"
-                            onClick={() => toggleBtwAsideExpanded(aside.id)}
-                          >
-                            {aside.expanded ? "Less" : "Show"}
-                          </button>
-                        )}
-                        {isFocused && (
+                        <div className="btw-aside-actions">
+                          {canExpand && (
+                            <button
+                              type="button"
+                              className="btw-aside-action"
+                              onClick={() => toggleBtwAsideExpanded(aside.id)}
+                            >
+                              {aside.expanded ? "Less" : "Show"}
+                            </button>
+                          )}
+                          {isFocused && (
+                            <button
+                              type="button"
+                              className="btw-aside-action"
+                              onClick={() => hideBtwAside(aside.id)}
+                              title="Return the composer to the main session"
+                            >
+                              Done
+                            </button>
+                          )}
+                          {(aside.status === "starting" ||
+                            aside.status === "running") && (
+                            <button
+                              type="button"
+                              className="btw-aside-action btw-aside-action-stop"
+                              onClick={() => void handleStopBtwAside(aside.id)}
+                              title={
+                                isFocused
+                                  ? "Stop this /btw aside and return to the main session"
+                                  : "Stop this /btw aside"
+                              }
+                            >
+                              Stop
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="btw-aside-action"
                             onClick={() => hideBtwAside(aside.id)}
-                            title="Return the composer to the main session"
+                            title="Move this aside into session history"
                           >
-                            Done
+                            Hide
                           </button>
-                        )}
-                        {(aside.status === "starting" ||
-                          aside.status === "running") && (
-                          <button
-                            type="button"
-                            className="btw-aside-action btw-aside-action-stop"
-                            onClick={() => void handleStopBtwAside(aside.id)}
-                            title={
-                              isFocused
-                                ? "Stop this /btw aside and return to the main session"
-                                : "Stop this /btw aside"
-                            }
-                          >
-                            Stop
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="btw-aside-action"
-                          onClick={() => hideBtwAside(aside.id)}
-                          title="Move this aside into session history"
-                        >
-                          Hide
-                        </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* User question panel */}
-            {pendingInputRequest &&
-              pendingInputRequest.sessionId === actualSessionId &&
-              isAskUserQuestion && (
-                <QuestionAnswerPanel
-                  request={pendingInputRequest}
-                  sessionId={actualSessionId}
-                  onSubmit={handleQuestionSubmit}
-                  onDeny={handleDeny}
-                />
+                    );
+                  })}
+                </div>
               )}
 
-            {/* Tool approval: show panel + always-visible toolbar */}
-            {pendingInputRequest &&
-              pendingInputRequest.sessionId === actualSessionId &&
-              !isAskUserQuestion && (
-                <>
-                  <ToolApprovalPanel
+              {/* User question panel */}
+              {pendingInputRequest &&
+                pendingInputRequest.sessionId === actualSessionId &&
+                isAskUserQuestion && (
+                  <QuestionAnswerPanel
                     request={pendingInputRequest}
                     sessionId={actualSessionId}
-                    onApprove={handleApprove}
+                    onSubmit={handleQuestionSubmit}
                     onDeny={handleDeny}
-                    onApproveAcceptEdits={handleApproveAcceptEdits}
-                    onDenyWithFeedback={handleDenyWithFeedback}
-                    collapsed={approvalCollapsed}
-                    onCollapsedChange={setApprovalCollapsed}
                   />
-                  <MessageInputToolbar
-                    mode={permissionMode}
-                    onModeChange={setPermissionMode}
-                    isHeld={holdModeEnabled ? isHeld : undefined}
-                    onHoldChange={holdModeEnabled ? setHold : undefined}
-                    supportsPermissionMode={supportsPermissionMode}
-                    supportsThinkingToggle={supportsThinkingToggle}
-                    slashCommands={
-                      status.owner === "self" ? allSlashCommands : []
-                    }
-                    onSelectSlashCommand={handleToolbarSlashCommand}
-                    modelIndicatorTone={slashModelIndicatorTone}
-                    modelIndicatorProvider={effectiveProvider}
-                    modelIndicatorModel={liveBadgeModel}
-                    modelIndicatorTitle={slashModelIndicatorTitle}
-                    heartbeatEnabled={heartbeatTurnsEnabled}
-                    onToggleHeartbeat={handleToggleHeartbeat}
-                    onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
-                    contextUsage={session?.contextUsage}
-                    lastActivityAt={activityAt}
-                    sessionLiveness={sessionLiveness}
-                    isRunning={status.owner === "self"}
-                    isThinking={canStopOwnedProcess}
-                    onStop={handleAbort}
-                    pendingApproval={
-                      approvalCollapsed
-                        ? {
-                            type: "tool-approval",
-                            onExpand: () => setApprovalCollapsed(false),
-                          }
-                        : undefined
-                    }
-                  />
-                </>
-              )}
+                )}
 
-            {/* No pending approval: show full message input */}
-            {!(
-              pendingInputRequest &&
-              pendingInputRequest.sessionId === actualSessionId &&
-              !isAskUserQuestion
-            ) && (
-              <MessageInput
-                onSend={
-                  mainComposerForAside
-                    ? handleFocusedBtwSend
-                    : primaryComposerAction === "steer"
-                    ? handleSend
-                    : shouldDeferMessages
+              {/* Tool approval: show panel + always-visible toolbar */}
+              {pendingInputRequest &&
+                pendingInputRequest.sessionId === actualSessionId &&
+                !isAskUserQuestion && (
+                  <>
+                    <ToolApprovalPanel
+                      request={pendingInputRequest}
+                      sessionId={actualSessionId}
+                      onApprove={handleApprove}
+                      onDeny={handleDeny}
+                      onApproveAcceptEdits={handleApproveAcceptEdits}
+                      onDenyWithFeedback={handleDenyWithFeedback}
+                      collapsed={approvalCollapsed}
+                      onCollapsedChange={setApprovalCollapsed}
+                    />
+                    <MessageInputToolbar
+                      mode={permissionMode}
+                      onModeChange={setPermissionMode}
+                      isHeld={holdModeEnabled ? isHeld : undefined}
+                      onHoldChange={holdModeEnabled ? setHold : undefined}
+                      supportsPermissionMode={supportsPermissionMode}
+                      supportsThinkingToggle={supportsThinkingToggle}
+                      slashCommands={
+                        status.owner === "self" ? allSlashCommands : []
+                      }
+                      onSelectSlashCommand={handleToolbarSlashCommand}
+                      modelIndicatorTone={slashModelIndicatorTone}
+                      modelIndicatorProvider={effectiveProvider}
+                      modelIndicatorModel={liveBadgeModel}
+                      modelIndicatorTitle={slashModelIndicatorTitle}
+                      heartbeatEnabled={heartbeatTurnsEnabled}
+                      onToggleHeartbeat={handleToggleHeartbeat}
+                      onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
+                      contextUsage={session?.contextUsage}
+                      lastActivityAt={activityAt}
+                      sessionLiveness={sessionLiveness}
+                      isRunning={status.owner === "self"}
+                      isThinking={canStopOwnedProcess}
+                      onStop={handleAbort}
+                      pendingApproval={
+                        approvalCollapsed
+                          ? {
+                              type: "tool-approval",
+                              onExpand: () => setApprovalCollapsed(false),
+                            }
+                          : undefined
+                      }
+                    />
+                  </>
+                )}
+
+              {/* No pending approval: show full message input */}
+              {!(
+                pendingInputRequest &&
+                pendingInputRequest.sessionId === actualSessionId &&
+                !isAskUserQuestion
+              ) && (
+                <MessageInput
+                  onSend={
+                    mainComposerForAside
+                      ? handleFocusedBtwSend
+                      : primaryComposerAction === "steer"
+                        ? handleSend
+                        : shouldDeferMessages
+                          ? handleQueue
+                          : handleSend
+                  }
+                  onQueue={
+                    !mainComposerForAside &&
+                    shouldDeferMessages &&
+                    generallySupportsSteering
                       ? handleQueue
-                      : handleSend
-                }
-                onQueue={
-                  !mainComposerForAside &&
-                  shouldDeferMessages &&
-                  generallySupportsSteering
-                    ? handleQueue
-                    : undefined
-                }
-                primaryActionKind={
-                  mainComposerForAside ? "send" : primaryComposerAction
-                }
-                placeholder={
-                  mainComposerForAside
-                    ? "/btw follow-up"
-                    : status.owner === "external"
-                    ? t("sessionPlaceholderExternal")
-                    : processState === "idle"
-                      ? shouldDeferMessages
-                        ? t("sessionPlaceholderQueue")
-                        : t("sessionPlaceholderResume")
-                      : t("sessionPlaceholderQueue")
-                }
-                mode={permissionMode}
-                onModeChange={setPermissionMode}
-                isHeld={holdModeEnabled ? isHeld : undefined}
-                onHoldChange={holdModeEnabled ? setHold : undefined}
-                supportsPermissionMode={supportsPermissionMode}
-                supportsThinkingToggle={supportsThinkingToggle}
-                supportsSteering={generallySupportsSteering}
-                isRunning={status.owner === "self"}
-                isThinking={canStopOwnedProcess}
-                onStop={handleAbort}
-                draftKey={
-                  mainComposerForAside && focusedBtwAside
-                    ? `draft-btw-${focusedBtwAside.sessionId ?? focusedBtwAside.id}`
-                    : `draft-message-${sessionId}`
-                }
-                onDraftControlsReady={handleDraftControlsReady}
-                correctionActive={
-                  !mainComposerForAside && correctionDraft !== null
-                }
-                onCancelCorrection={
-                  mainComposerForAside ? undefined : handleCancelCorrection
-                }
-                onRecallLastSubmission={handleRecallLastSubmission}
-                onCancelLatestDeferred={handleCancelLatestDeferred}
-                collapsed={
-                  !!(
-                    pendingInputRequest &&
-                    pendingInputRequest.sessionId === actualSessionId
-                  )
-                }
-                contextUsage={session?.contextUsage}
-                lastActivityAt={activityAt}
-                sessionLiveness={sessionLiveness}
-                projectId={projectId}
-                sessionId={sessionId}
-                attachments={mainComposerForAside ? [] : attachments}
-                onAttach={mainComposerForAside ? undefined : handleAttach}
-                onRemoveAttachment={
-                  mainComposerForAside ? undefined : handleRemoveAttachment
-                }
-                uploadProgress={mainComposerForAside ? [] : uploadProgress}
-                slashCommands={status.owner === "self" ? allSlashCommands : []}
-                onCustomCommand={handleCustomCommand}
-                onBtwShortcut={
-                  childSessionParentHref || supportsBtwAsides
-                    ? handleBtwShortcut
-                    : undefined
-                }
-                btwActive={!!mainComposerForAside || !!childSessionParentHref}
-                btwHasAsides={
-                  stickyBtwAsides.length > 0 || !!childSessionParentHref
-                }
-                btwToolbarMode={btwToolbarMode}
-                modelIndicatorTone={slashModelIndicatorTone}
-                modelIndicatorProvider={effectiveProvider}
-                modelIndicatorModel={liveBadgeModel}
-                modelIndicatorTitle={slashModelIndicatorTitle}
-                heartbeatEnabled={heartbeatTurnsEnabled}
-                onToggleHeartbeat={handleToggleHeartbeat}
-                onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
-                promptSuggestion={mainComposerForAside ? undefined : promptSuggestion ?? undefined}
-                onDismissPromptSuggestion={mainComposerForAside ? undefined : dismissPromptSuggestion}
-              />
+                      : undefined
+                  }
+                  primaryActionKind={
+                    mainComposerForAside ? "send" : primaryComposerAction
+                  }
+                  placeholder={
+                    mainComposerForAside
+                      ? "/btw follow-up"
+                      : status.owner === "external"
+                        ? t("sessionPlaceholderExternal")
+                        : processState === "idle"
+                          ? shouldDeferMessages
+                            ? t("sessionPlaceholderQueue")
+                            : t("sessionPlaceholderResume")
+                          : t("sessionPlaceholderQueue")
+                  }
+                  mode={permissionMode}
+                  onModeChange={setPermissionMode}
+                  isHeld={holdModeEnabled ? isHeld : undefined}
+                  onHoldChange={holdModeEnabled ? setHold : undefined}
+                  supportsPermissionMode={supportsPermissionMode}
+                  supportsThinkingToggle={supportsThinkingToggle}
+                  supportsSteering={generallySupportsSteering}
+                  isRunning={status.owner === "self"}
+                  isThinking={canStopOwnedProcess}
+                  onStop={handleAbort}
+                  draftKey={
+                    mainComposerForAside && focusedBtwAside
+                      ? `draft-btw-${focusedBtwAside.sessionId ?? focusedBtwAside.id}`
+                      : `draft-message-${sessionId}`
+                  }
+                  onDraftControlsReady={handleDraftControlsReady}
+                  correctionActive={
+                    !mainComposerForAside && correctionDraft !== null
+                  }
+                  onCancelCorrection={
+                    mainComposerForAside ? undefined : handleCancelCorrection
+                  }
+                  onRecallLastSubmission={handleRecallLastSubmission}
+                  onCancelLatestDeferred={handleCancelLatestDeferred}
+                  collapsed={
+                    !!(
+                      pendingInputRequest &&
+                      pendingInputRequest.sessionId === actualSessionId
+                    )
+                  }
+                  contextUsage={session?.contextUsage}
+                  lastActivityAt={activityAt}
+                  sessionLiveness={sessionLiveness}
+                  projectId={projectId}
+                  sessionId={sessionId}
+                  attachments={mainComposerForAside ? [] : attachments}
+                  onAttach={mainComposerForAside ? undefined : handleAttach}
+                  onRemoveAttachment={
+                    mainComposerForAside ? undefined : handleRemoveAttachment
+                  }
+                  uploadProgress={mainComposerForAside ? [] : uploadProgress}
+                  slashCommands={
+                    status.owner === "self" ? allSlashCommands : []
+                  }
+                  onCustomCommand={handleCustomCommand}
+                  onBtwShortcut={
+                    childSessionParentHref || supportsBtwAsides
+                      ? handleBtwShortcut
+                      : undefined
+                  }
+                  btwActive={!!mainComposerForAside || !!childSessionParentHref}
+                  btwHasAsides={
+                    stickyBtwAsides.length > 0 || !!childSessionParentHref
+                  }
+                  btwToolbarMode={btwToolbarMode}
+                  modelIndicatorTone={slashModelIndicatorTone}
+                  modelIndicatorProvider={effectiveProvider}
+                  modelIndicatorModel={liveBadgeModel}
+                  modelIndicatorTitle={slashModelIndicatorTitle}
+                  heartbeatEnabled={heartbeatTurnsEnabled}
+                  onToggleHeartbeat={handleToggleHeartbeat}
+                  onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
+                  promptSuggestion={
+                    mainComposerForAside
+                      ? undefined
+                      : (promptSuggestion ?? undefined)
+                  }
+                  onDismissPromptSuggestion={
+                    mainComposerForAside ? undefined : dismissPromptSuggestion
+                  }
+                />
               )}
             </div>
           </footer>

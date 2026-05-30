@@ -254,7 +254,10 @@ const LAST_ACTIVITY_TEXT_PREFIX_THRESHOLD_MS = 30 * 60 * 1000;
 const COMPACT_STATUS_QUERY = "(max-width: 600px)";
 
 function getCompactStatusMatchMedia() {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
     return null;
   }
   return window.matchMedia(COMPACT_STATUS_QUERY);
@@ -319,10 +322,13 @@ export function MessageInputToolbar({
   const renderMode = useOptionalRenderModeContext();
   const nowMs = useRelativeNow();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [isearchScope, setIsearchScope] =
-    useState<SessionIsearchScope | null>(null);
+  const [isearchScope, setIsearchScope] = useState<SessionIsearchScope | null>(
+    null,
+  );
   const modelToolbarButtonRef = useRef<HTMLButtonElement | null>(null);
-  const modelToolbarMeasureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const modelToolbarMeasureCtxRef = useRef<CanvasRenderingContext2D | null>(
+    null,
+  );
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const toolbarLeftRef = useRef<HTMLDivElement | null>(null);
   const toolbarStatusRef = useRef<HTMLDivElement | null>(null);
@@ -332,9 +338,10 @@ export function MessageInputToolbar({
   const [isCompactStatusMode, setIsCompactStatusMode] = useState(() =>
     typeof window === "undefined"
       ? false
-      : getCompactStatusMatchMedia()?.matches ?? false,
+      : (getCompactStatusMatchMedia()?.matches ?? false),
   );
-  const hasModelIndicator = slashCommands.includes("model") && !!onSelectSlashCommand;
+  const hasModelIndicator =
+    slashCommands.includes("model") && !!onSelectSlashCommand;
   const normalizedModelIndicatorProvider = useMemo(
     () => normalizeProviderKey(modelIndicatorProvider),
     [modelIndicatorProvider],
@@ -346,7 +353,11 @@ export function MessageInputToolbar({
         modelIndicatorModel ?? "",
         modelIndicatorTitle,
       ),
-    [modelIndicatorModel, modelIndicatorTitle, normalizedModelIndicatorProvider],
+    [
+      modelIndicatorModel,
+      modelIndicatorTitle,
+      normalizedModelIndicatorProvider,
+    ],
   );
   const modelToolbarLabel = useMemo(() => {
     return modelToolbarDensity === "full"
@@ -387,9 +398,9 @@ export function MessageInputToolbar({
   const livenessSummary = livenessDisplay
     ? describeLivenessSummary(livenessDisplay, nowMs)
     : null;
-  const heartbeatLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const heartbeatLongPressTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const suppressHeartbeatClickRef = useRef(false);
   const renderModeTitle =
     renderMode?.state === "rendered"
@@ -900,9 +911,7 @@ export function MessageInputToolbar({
             title={modelIndicatorTooltip}
             aria-label="Switch model"
           >
-            <span className="model-toolbar-label">
-              {modelToolbarLabel}
-            </span>
+            <span className="model-toolbar-label">{modelToolbarLabel}</span>
           </button>
         )}
       </div>
@@ -911,6 +920,7 @@ export function MessageInputToolbar({
           {showLivenessChip && (
             <div
               className={`composer-status-chip composer-liveness-status is-${livenessDisplay.tone}`}
+              role="status"
               aria-label={`Session verified liveness: ${livenessSummary}`}
               title={livenessDisplay.title}
             >
@@ -934,6 +944,7 @@ export function MessageInputToolbar({
               className={`composer-status-chip composer-activity-age${
                 showLastActivityPrefix ? "" : " composer-activity-age--compact"
               }`}
+              role="status"
               aria-label="Session last activity"
             >
               <MessageAge
@@ -968,6 +979,7 @@ export function MessageInputToolbar({
             </span>
           </button>
         )}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer leave only hides the adjacent shortcuts popover */}
         <div
           className="session-shortcuts-help"
           onMouseLeave={() => {
@@ -1013,7 +1025,9 @@ export function MessageInputToolbar({
                       {isearchScope === "user" && (
                         <>
                           <span>or</span>
-                          <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>R</kbd>
+                          <kbd>Ctrl</kbd>
+                          <kbd>Alt</kbd>
+                          <kbd>R</kbd>
                         </>
                       )}
                     </span>
@@ -1033,7 +1047,8 @@ export function MessageInputToolbar({
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd><kbd>End</kbd>
+                      <kbd>Ctrl</kbd>
+                      <kbd>End</kbd>
                     </span>
                     <span>Scroll to current</span>
                   </div>
@@ -1044,7 +1059,9 @@ export function MessageInputToolbar({
                       {isearchScope === "all" && (
                         <>
                           <span>or</span>
-                          <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>R</kbd>
+                          <kbd>Ctrl</kbd>
+                          <kbd>Alt</kbd>
+                          <kbd>R</kbd>
                         </>
                       )}
                     </span>
@@ -1057,15 +1074,19 @@ export function MessageInputToolbar({
                 <>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd><kbd>R</kbd>
+                      <kbd>Ctrl</kbd>
+                      <kbd>R</kbd>
                       <span>or</span>
-                      <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>R</kbd>
+                      <kbd>Ctrl</kbd>
+                      <kbd>Alt</kbd>
+                      <kbd>R</kbd>
                     </span>
                     <span>User-turn reverse search</span>
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd><kbd>S</kbd>
+                      <kbd>Ctrl</kbd>
+                      <kbd>S</kbd>
                     </span>
                     <span>All-turn reverse search</span>
                   </div>
@@ -1073,17 +1094,21 @@ export function MessageInputToolbar({
                     <span className="session-shortcuts-keys">
                       <kbd>Enter</kbd>
                     </span>
-                    <span>{hasDualActions ? "Steer current turn" : "Send"}</span>
+                    <span>
+                      {hasDualActions ? "Steer current turn" : "Send"}
+                    </span>
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
-                      <kbd>Shift</kbd><kbd>Enter</kbd>
+                      <kbd>Shift</kbd>
+                      <kbd>Enter</kbd>
                     </span>
                     <span>New line</span>
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd><kbd>Enter</kbd>
+                      <kbd>Ctrl</kbd>
+                      <kbd>Enter</kbd>
                     </span>
                     <span>
                       {showPatientQueueMode
@@ -1093,7 +1118,8 @@ export function MessageInputToolbar({
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd><kbd>B</kbd>
+                      <kbd>Ctrl</kbd>
+                      <kbd>B</kbd>
                     </span>
                     <span>Start /btw aside</span>
                   </div>
@@ -1105,31 +1131,37 @@ export function MessageInputToolbar({
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd><kbd>P</kbd>
+                      <kbd>Ctrl</kbd>
+                      <kbd>P</kbd>
                     </span>
                     <span>Recall last sent text</span>
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd><kbd>K</kbd>
+                      <kbd>Ctrl</kbd>
+                      <kbd>K</kbd>
                     </span>
                     <span>Cancel latest queued message</span>
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd><kbd>End</kbd>
+                      <kbd>Ctrl</kbd>
+                      <kbd>End</kbd>
                     </span>
                     <span>Scroll to current</span>
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd><kbd>G</kbd>
+                      <kbd>Ctrl</kbd>
+                      <kbd>G</kbd>
                     </span>
                     <span>Clear composer</span>
                   </div>
                   <div className="session-shortcuts-row">
                     <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>M</kbd>
+                      <kbd>Ctrl</kbd>
+                      <kbd>Shift</kbd>
+                      <kbd>M</kbd>
                     </span>
                     <span>Rendered/source mode</span>
                   </div>

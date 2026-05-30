@@ -405,7 +405,7 @@ function TaskInline({
         {input.model && <span className="badge task-model">{input.model}</span>}
         {isRunning && (
           <>
-            <span className="task-spinner" aria-label="Running">
+            <span className="task-spinner" role="status" aria-label="Running">
               <Spinner />
             </span>
             {liveContent?.contextUsage && (

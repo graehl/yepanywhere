@@ -115,7 +115,9 @@ function sanitizeSessionForPublicShare(session: AppSession): AppSession {
   };
 }
 
-function toPublicResponse(record: PublicShareRecord): PublicSessionShareResponse {
+function toPublicResponse(
+  record: PublicShareRecord,
+): PublicSessionShareResponse {
   if (!record.frozenSession) {
     throw new Error("Frozen share is missing its captured session");
   }
@@ -141,7 +143,8 @@ function matchesSession(
   sessionId: string,
 ): boolean {
   return (
-    record.source.projectId === projectId && record.source.sessionId === sessionId
+    record.source.projectId === projectId &&
+    record.source.sessionId === sessionId
   );
 }
 
@@ -277,7 +280,7 @@ export class PublicShareService {
 
   getFrozenShareBySecret(secret: string): PublicSessionShareResponse | null {
     const record = this.getRecordBySecret(secret);
-    if (!record || record.mode !== "frozen") {
+    if (record?.mode !== "frozen") {
       return null;
     }
     return toPublicResponse(record);
@@ -345,7 +348,10 @@ export class PublicShareService {
     const frozenSession = sanitizeSessionForPublicShare(session);
     let convertedCount = 0;
     const shares = this.state.shares.map((record) => {
-      if (!matchesSession(record, projectId, sessionId) || record.mode !== "live") {
+      if (
+        !matchesSession(record, projectId, sessionId) ||
+        record.mode !== "live"
+      ) {
         return record;
       }
       convertedCount += 1;
@@ -386,7 +392,10 @@ export class PublicShareService {
     const frozenSession = sanitizeSessionForPublicShare(session);
     let convertedCount = 0;
     const shares = this.state.shares.map((record) => {
-      if (!matchesSession(record, projectId, sessionId) || record.mode !== "live") {
+      if (
+        !matchesSession(record, projectId, sessionId) ||
+        record.mode !== "live"
+      ) {
         return record;
       }
       if (this.isViewerDisconnected(record, viewerId)) {
@@ -626,7 +635,8 @@ export class PublicShareService {
             maxIso(existing?.lastSeenAt, access?.lastSeenAt) ??
             access?.lastSeenAt ??
             new Date(0).toISOString(),
-          accessCount: (existing?.accessCount ?? 0) + (access?.accessCount ?? 0),
+          accessCount:
+            (existing?.accessCount ?? 0) + (access?.accessCount ?? 0),
           active: (existing?.active ?? false) || active,
           disconnected:
             (existing?.disconnected ?? false) ||

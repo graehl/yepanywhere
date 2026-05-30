@@ -67,7 +67,8 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
 
     // Patch module-level imports
     vi.doMock("node:child_process", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("node:child_process")>();
+      const actual =
+        await importOriginal<typeof import("node:child_process")>();
       return {
         ...actual,
         spawn: spawnMock,
@@ -99,7 +100,7 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
 
     // GET /session (waitForServer poll) → OK
     // POST /session (session creation) → { id: "ses_abc123testid" }
-    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+    fetchMock.mockImplementation((_url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         return Promise.resolve(jsonResponse({ id: expectedSessionId }));
       }
@@ -146,7 +147,8 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
 
     // Also make exec (which command) fail
     vi.doMock("node:child_process", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("node:child_process")>();
+      const actual =
+        await importOriginal<typeof import("node:child_process")>();
       return {
         ...actual,
         spawn: spawnMock,
@@ -214,7 +216,9 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
     const first = await session.iterator.next();
     expect(first.done).toBe(false);
     expect(first.value).toMatchObject({ type: "error" });
-    expect((first.value as { error: string }).error).toMatch(/failed to start/i);
+    expect((first.value as { error: string }).error).toMatch(
+      /failed to start/i,
+    );
   });
 
   it("uses ses_ resumeSessionId directly without creating a new session", async () => {

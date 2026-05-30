@@ -231,9 +231,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
           return (
             <div className="system-message-recap">
               <span className="system-message-recap-mark">※</span>
-              <span className="system-message-recap-body">
-                {item.content}
-              </span>
+              <span className="system-message-recap-body">{item.content}</span>
             </div>
           );
         }
@@ -266,6 +264,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   };
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: debug shift-click uses row-level event metadata
     // biome-ignore lint/a11y/useKeyWithClickEvents: debug feature, shift+click only
     <div
       className={[

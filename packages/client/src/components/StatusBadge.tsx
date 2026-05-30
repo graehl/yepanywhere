@@ -54,7 +54,6 @@ export function NotificationBadge({ variant, label }: NotificationBadgeProps) {
 export function SessionStatusBadge({
   status,
   pendingInputType,
-  hasUnread,
   activity,
 }: SessionStatusBadgeProps) {
   // External sessions always show the external badge

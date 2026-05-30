@@ -10,8 +10,7 @@ import type {
 } from "../types/renderItems";
 import { getMessageId } from "./mergeMessages";
 
-const AWAY_SUMMARY_HINT_SUFFIX_RE =
-  /\s*\(disable recaps in \/config\)\s*$/u;
+const AWAY_SUMMARY_HINT_SUFFIX_RE = /\s*\(disable recaps in \/config\)\s*$/u;
 
 export function stripAwaySummaryHintSuffix(content: string): string {
   return content.replace(AWAY_SUMMARY_HINT_SUFFIX_RE, "");
@@ -172,7 +171,7 @@ function collapseSessionSetupRuns(items: RenderItem[]): RenderItem[] {
 
   while (index < items.length) {
     const item = items[index];
-    if (!item || item.type !== "user_prompt" || !isSessionSetupPrompt(item)) {
+    if (item?.type !== "user_prompt" || !isSessionSetupPrompt(item)) {
       result.push(item as RenderItem);
       index += 1;
       continue;
@@ -182,11 +181,7 @@ function collapseSessionSetupRuns(items: RenderItem[]): RenderItem[] {
     let runIndex = index;
     while (runIndex < items.length) {
       const runItem = items[runIndex];
-      if (
-        !runItem ||
-        runItem.type !== "user_prompt" ||
-        !isSessionSetupPrompt(runItem)
-      ) {
+      if (runItem?.type !== "user_prompt" || !isSessionSetupPrompt(runItem)) {
         break;
       }
       setupItems.push(runItem);
@@ -614,7 +609,7 @@ function attachToolResult(
   }
 
   const item = items[index];
-  if (!item || item.type !== "tool_call") return;
+  if (item?.type !== "tool_call") return;
 
   // Attach result to existing tool call
   // Handle both camelCase (toolUseResult) and snake_case (tool_use_result) from SDK

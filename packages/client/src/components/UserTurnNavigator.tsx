@@ -428,7 +428,9 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
         );
       }
       const nextLayout = updateScrollPosition(previous, scrollContainer);
-      return previous.signature === nextLayout.signature ? previous : nextLayout;
+      return previous.signature === nextLayout.signature
+        ? previous
+        : nextLayout;
     });
   }, [messageListRef, minAnchorCount, shouldMeasure]);
 
@@ -551,9 +553,10 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     if (motionCueClearTimerRef.current !== null) {
       clearTimeout(motionCueClearTimerRef.current);
     }
+    motionCueTokenRef.current += 1;
     setInternalMotionCue({
       direction,
-      token: (motionCueTokenRef.current += 1),
+      token: motionCueTokenRef.current,
     });
     motionCueClearTimerRef.current = setTimeout(() => {
       setInternalMotionCue(null);
@@ -580,7 +583,12 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
       scrollContainer.scrollTo({ top: nextTop, behavior: "auto" });
       scheduleLayoutUpdate("scroll");
     },
-    [messageListRef, onNavigateStart, scheduleLayoutUpdate, showInternalMotionCue],
+    [
+      messageListRef,
+      onNavigateStart,
+      scheduleLayoutUpdate,
+      showInternalMotionCue,
+    ],
   );
 
   const previewLabels = useMemo<UserTurnPreviewLabel[]>(() => {

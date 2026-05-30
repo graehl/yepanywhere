@@ -41,11 +41,11 @@ export function StatusIndicator({
     <div
       className="status-indicator"
       title={statusText}
+      role="status"
       aria-label={statusText}
     >
       <span
         className={`status-dot status-${status.owner} process-${processState}${!connected ? " disconnected" : ""}`}
-        role="status"
       />
     </div>
   );

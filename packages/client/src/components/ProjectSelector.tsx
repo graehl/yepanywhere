@@ -163,6 +163,7 @@ export function ProjectSelector({
   const mobileSheet =
     isOpen && !isDesktop
       ? createPortal(
+          // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click closes the sheet; Escape is handled globally
           // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled globally
           <div
             className="project-selector-overlay"
@@ -172,6 +173,7 @@ export function ProjectSelector({
             <div
               ref={sheetRef}
               className="project-selector-sheet"
+              role="dialog"
               tabIndex={-1}
               aria-label={t("projectSelectorSelectProject")}
             >
@@ -192,6 +194,7 @@ export function ProjectSelector({
       <div
         ref={sheetRef}
         className="project-selector-dropdown"
+        role="dialog"
         tabIndex={-1}
         aria-label={t("projectSelectorSelectProject")}
       >

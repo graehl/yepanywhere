@@ -145,9 +145,7 @@ export function UnauthenticatedGate() {
   const loginParams = new URLSearchParams(location.search);
   const returnTo = loginParams.get("returnTo");
   const safeReturnTo =
-    returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")
-      ? returnTo
-      : null;
+    returnTo?.startsWith("/") && !returnTo.startsWith("//") ? returnTo : null;
 
   // If connected and user didn't intentionally disconnect, redirect to app
   if (connection && !isIntentionalDisconnect) {

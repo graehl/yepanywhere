@@ -45,11 +45,7 @@ export function ViewerCountIndicator({
   }
 
   return (
-    <span
-      className={classes}
-      title={label}
-      aria-label={label}
-    >
+    <span className={classes} title={label} role="status" aria-label={label}>
       {content}
     </span>
   );

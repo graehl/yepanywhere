@@ -264,7 +264,7 @@ test("emits adaptive profile downshift/upshift events via APK transport override
 
   await expect(async () => {
     const transitions = await adaptiveProfileTransitionsFromClient(page);
-    const downIndex = transitions.findIndex((d) => d === "downshift");
+    const downIndex = transitions.indexOf("downshift");
     const upIndex =
       downIndex >= 0
         ? transitions.findIndex((d, idx) => idx > downIndex && d === "upshift")

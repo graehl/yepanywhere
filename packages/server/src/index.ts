@@ -625,7 +625,7 @@ async function startServer() {
       // Find the project by scanning - projectPath is the absolute path
       const projects = await scanner.listProjects();
       const project = projects.find((p) => p.path === projectPath);
-      if (!project || project.provider !== "claude") return null;
+      if (project?.provider !== "claude") return null;
       return new ClaudeSessionReader({ sessionDir: project.sessionDir });
     },
   });

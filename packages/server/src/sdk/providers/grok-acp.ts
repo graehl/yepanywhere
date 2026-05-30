@@ -211,7 +211,9 @@ export class GrokACPProvider implements AgentProvider {
         "refresh_token",
       ]);
       const expiredWithoutRefresh =
-        expiresAt !== undefined && expiresAt.getTime() <= Date.now() && !hasRefreshToken;
+        expiresAt !== undefined &&
+        expiresAt.getTime() <= Date.now() &&
+        !hasRefreshToken;
       const authenticated = !expiredWithoutRefresh;
 
       return {
@@ -274,7 +276,12 @@ export class GrokACPProvider implements AgentProvider {
         return client.pid;
       },
       steer: (message) =>
-        this.steerActivePrompt(client, runtime, message, abortController.signal),
+        this.steerActivePrompt(
+          client,
+          runtime,
+          message,
+          abortController.signal,
+        ),
       supportedCommands: async () => [...commandInventory.commands],
     };
   }
@@ -381,7 +388,9 @@ export class GrokACPProvider implements AgentProvider {
         subtype: "init",
         session_id: sessionId,
         cwd: options.cwd,
-        slash_commands: commandInventory.commands.map((command) => command.name),
+        slash_commands: commandInventory.commands.map(
+          (command) => command.name,
+        ),
       } as SDKMessage;
 
       // Process messages from the queue (identical pattern to gemini-acp)
@@ -696,7 +705,7 @@ export class GrokACPProvider implements AgentProvider {
             sessionUpdate.sessionUpdate === "agent_thought_chunk") &&
           "content" in sessionUpdate
         ) {
-          const content = (sessionUpdate as any).content;
+          const content = sessionUpdate.content;
           if (
             content &&
             typeof content === "object" &&
@@ -828,7 +837,11 @@ export class GrokACPProvider implements AgentProvider {
     message: unknown,
     signal: AbortSignal,
   ): Promise<boolean> {
-    if (signal.aborted || !runtime.sessionId || runtime.activePromptCount <= 0) {
+    if (
+      signal.aborted ||
+      !runtime.sessionId ||
+      runtime.activePromptCount <= 0
+    ) {
       return false;
     }
 
@@ -867,7 +880,7 @@ export class GrokACPProvider implements AgentProvider {
         // Streaming text chunks are primarily buffered + emitted from yieldUpdates.
         // This path is a fallback for non-buffered cases.
         if ("content" in update) {
-          const contentBlock = (update as any).content;
+          const contentBlock = update.content;
           if (
             contentBlock &&
             typeof contentBlock === "object" &&
@@ -967,7 +980,9 @@ export class GrokACPProvider implements AgentProvider {
           type: "system",
           subtype: "init",
           session_id: sessionId,
-          slash_commands: commandInventory.commands.map((command) => command.name),
+          slash_commands: commandInventory.commands.map(
+            (command) => command.name,
+          ),
         } as SDKMessage;
 
       default:
@@ -1213,8 +1228,10 @@ export class GrokACPProvider implements AgentProvider {
     }
 
     if ("kind" in toolUpdate && toolUpdate.kind) input.kind = toolUpdate.kind;
-    if ("title" in toolUpdate && toolUpdate.title) input.title = toolUpdate.title;
-    if ("status" in toolUpdate && toolUpdate.status) input.status = toolUpdate.status;
+    if ("title" in toolUpdate && toolUpdate.title)
+      input.title = toolUpdate.title;
+    if ("status" in toolUpdate && toolUpdate.status)
+      input.status = toolUpdate.status;
     if (locations) input.locations = locations;
     if ("rawInput" in toolUpdate && toolUpdate.rawInput !== undefined) {
       input.rawInput = toolUpdate.rawInput;
@@ -1227,7 +1244,9 @@ export class GrokACPProvider implements AgentProvider {
 
   private isTerminalToolUpdate(update: ToolCallUpdate & { error?: string }) {
     return (
-      update.status === "completed" || update.status === "failed" || !!update.error
+      update.status === "completed" ||
+      update.status === "failed" ||
+      !!update.error
     );
   }
 

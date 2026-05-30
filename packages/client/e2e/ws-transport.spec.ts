@@ -57,7 +57,7 @@ test.describe("WebSocket Transport E2E", () => {
             ws.send(JSON.stringify(request));
           };
 
-          ws.onerror = (event) => {
+          ws.onerror = (_event) => {
             clearTimeout(timeout);
             reject(new Error("WebSocket error"));
           };

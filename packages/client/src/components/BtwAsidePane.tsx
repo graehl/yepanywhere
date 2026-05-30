@@ -114,7 +114,7 @@ export function BtwAsideTranscript({
   }
 
   return (
-    <div className="btw-aside-transcript" aria-label="/btw transcript">
+    <section className="btw-aside-transcript" aria-label="/btw transcript">
       {turns.map((turn) => {
         const isLatestAssistant = turn.id === latestAssistantTurn?.id;
         return (
@@ -161,7 +161,7 @@ export function BtwAsideTranscript({
           </article>
         );
       })}
-    </div>
+    </section>
   );
 }
 

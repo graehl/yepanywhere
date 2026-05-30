@@ -36,7 +36,7 @@ export function extractMessageIdFromStart(
   if (message.type !== "stream_event") return null;
 
   const event = message.event as Record<string, unknown> | undefined;
-  if (!event || event.type !== "message_start") return null;
+  if (event?.type !== "message_start") return null;
 
   const msg = event.message as Record<string, unknown> | undefined;
   if (msg && typeof msg.id === "string") {

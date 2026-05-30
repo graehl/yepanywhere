@@ -132,7 +132,7 @@ describe("Global Sessions Routes", () => {
     mockSessionIndexService = {
       getSessionsWithCache: vi.fn(
         async (
-          sessionDir: string,
+          _sessionDir: string,
           _projectId: string,
           reader: ISessionReader,
         ) => {
@@ -238,7 +238,6 @@ describe("Global Sessions Routes", () => {
       expect(withStats.stats.providerCounts.claude).toBe(1);
     });
 
-
     it("hides auto-archived sessions from default lists and shows them in archive browsing", async () => {
       const project = createProject("proj1", "project-one", "/sessions/proj1");
       const recent = createSession("recent", "proj1", hoursAgo(1));
@@ -257,8 +256,9 @@ describe("Global Sessions Routes", () => {
         "recent",
         "old",
       ]);
-      expect(archived.sessions.find((session) => session.id === "old"))
-        .toMatchObject({ isArchived: true });
+      expect(
+        archived.sessions.find((session) => session.id === "old"),
+      ).toMatchObject({ isArchived: true });
     });
 
     it("includes project context on each session", async () => {

@@ -205,6 +205,7 @@ export function RecentSessionsDropdown({
                       </svg>
                     )}
                     {isBtwAside && (
+                      // biome-ignore lint/a11y/noStaticElementInteractions: clickable variant has link role and keyboard handling; inert variant only shows the badge
                       <span
                         className="recent-sessions-badge btw"
                         title={

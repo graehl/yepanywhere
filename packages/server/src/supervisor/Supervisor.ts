@@ -76,14 +76,6 @@ const ACTIVE_HEARTBEAT_DOUBT_STATUSES = new Set([
   "long-silent-unverified",
 ]);
 
-interface ActiveHeartbeatMarker {
-  processId: string;
-  heartbeatResetAtMs: number;
-  heartbeatDueAtMs: number;
-  steered: boolean;
-  forced: boolean;
-}
-
 function getStaleInTurnThresholdMs(provider: ProviderName): number {
   return provider === "codex" || provider === "codex-oss"
     ? CODEX_STALE_IN_TURN_THRESHOLD_MS
@@ -164,8 +156,7 @@ function getActiveHeartbeatAction(params: {
   );
 
   if (forceAfterMinutes !== null) {
-    const forceThresholdMs =
-      (afterMinutes + forceAfterMinutes) * 60 * 1000;
+    const forceThresholdMs = (afterMinutes + forceAfterMinutes) * 60 * 1000;
     if (idleMs >= forceThresholdMs) {
       return {
         type: "interrupt",
@@ -313,7 +304,6 @@ export class Supervisor {
   private getHeartbeatTurnCandidates?: () =>
     | Promise<HeartbeatTurnCandidate[]>
     | HeartbeatTurnCandidate[];
-  private heartbeatActiveMarkers = new Map<string, ActiveHeartbeatMarker>();
   private heartbeatTurnInFlight = false;
   private heartbeatTurnTimer: ReturnType<typeof setInterval>;
   private livenessProbeTimer: ReturnType<typeof setInterval>;
@@ -344,12 +334,9 @@ export class Supervisor {
       STALE_CHECK_INTERVAL_MS,
     );
     this.staleCheckTimer.unref(); // Don't keep process alive for cleanup
-    this.heartbeatTurnTimer = setInterval(
-      () => {
-        void this.queueHeartbeatTurns();
-      },
-      HEARTBEAT_TURN_CHECK_INTERVAL_MS,
-    );
+    this.heartbeatTurnTimer = setInterval(() => {
+      void this.queueHeartbeatTurns();
+    }, HEARTBEAT_TURN_CHECK_INTERVAL_MS);
     this.heartbeatTurnTimer.unref();
     this.livenessProbeTimer = setInterval(
       () => this.probeLongSilentProcesses(),
@@ -1215,21 +1202,14 @@ export class Supervisor {
       return null;
     }
 
-    const hasModelUpdate = Object.hasOwn(
-      updates,
-      "model",
-    );
-    const hasThinkingUpdate = Object.hasOwn(
-      updates,
-      "thinking",
-    );
-    const hasEffortUpdate = Object.hasOwn(
-      updates,
-      "effort",
-    );
+    const hasModelUpdate = Object.hasOwn(updates, "model");
+    const hasThinkingUpdate = Object.hasOwn(updates, "thinking");
+    const hasEffortUpdate = Object.hasOwn(updates, "effort");
 
     const nextModel = hasModelUpdate ? updates.model : process.resolvedModel;
-    const nextThinking = hasThinkingUpdate ? updates.thinking : process.thinking;
+    const nextThinking = hasThinkingUpdate
+      ? updates.thinking
+      : process.thinking;
     const nextEffort = hasEffortUpdate ? updates.effort : process.effort;
 
     const modelChanged = nextModel !== process.resolvedModel;
@@ -1349,10 +1329,7 @@ export class Supervisor {
           tokens === 0 ? undefined : tokens,
         );
         if (changed) {
-          process.updateThinkingConfig(
-            requestedThinking,
-            requestedEffort,
-          );
+          process.updateThinkingConfig(requestedThinking, requestedEffort);
         } else {
           const log = getLogger();
           log.warn(
@@ -1485,7 +1462,7 @@ export class Supervisor {
     const fallbackMs =
       process.state.type === "idle"
         ? process.state.since.getTime()
-        : parseFiniteIsoMs(liveness.lastStateChangeAt) ?? now;
+        : (parseFiniteIsoMs(liveness.lastStateChangeAt) ?? now);
     const heartbeatResetAtMs = getHeartbeatResetAtMs(liveness, fallbackMs);
     if (!Number.isFinite(heartbeatResetAtMs)) {
       return;

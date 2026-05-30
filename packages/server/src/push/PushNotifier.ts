@@ -76,7 +76,7 @@ export class PushNotifier {
 
     // Get the process to access the InputRequest details
     const process = this.supervisor.getProcessForSession(event.sessionId);
-    if (!process || process.state.type !== "waiting-input") {
+    if (process?.state.type !== "waiting-input") {
       return;
     }
 

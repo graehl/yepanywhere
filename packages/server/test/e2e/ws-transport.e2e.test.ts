@@ -160,7 +160,7 @@ describe("WebSocket Transport E2E", () => {
     count: number,
     timeoutMs = 5000,
   ): Promise<RelayEvent[]> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       const events: RelayEvent[] = [];
       const timeout = setTimeout(() => {
         ws.off("message", handler);

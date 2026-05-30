@@ -49,7 +49,6 @@ export function AgentContentProvider({
   setAgentContent,
   toolUseToAgent,
   projectId,
-  sessionId,
 }: AgentContentProviderProps) {
   const [loadingAgents, setLoadingAgents] = useState<Set<string>>(new Set());
   // Track which agents have had their JSONL loaded (separate from SSE content)

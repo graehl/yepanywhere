@@ -11,6 +11,12 @@ const repoRoot = path.resolve(
 const i18nDir = path.join(repoRoot, "packages", "client", "src", "i18n");
 const clientSrcDir = path.join(repoRoot, "packages", "client", "src");
 const englishLocale = "en";
+const knownDynamicEnglishKeys = new Set([
+  "hostPickerStatusOnline",
+  "hostPickerStatusOffline",
+  "hostPickerStatusChecking",
+  "hostPickerStatusUnknown",
+]);
 
 function usage() {
   console.log(`Usage: node scripts/prune-i18n-placeholders.mjs --check|--write|--health
@@ -112,7 +118,7 @@ async function findCandidateUnusedEnglishKeys(englishMessages) {
   ).join("\n");
 
   return Object.keys(englishMessages).filter(
-    (key) => !sourceText.includes(key),
+    (key) => !knownDynamicEnglishKeys.has(key) && !sourceText.includes(key),
   );
 }
 

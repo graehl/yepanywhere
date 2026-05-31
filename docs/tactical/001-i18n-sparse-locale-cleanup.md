@@ -20,6 +20,9 @@ Progress:
 - [x] 2026-05-31: Added `i18n:health` for extra locale keys and advisory
   candidate-unused English keys; removed the stale non-English-only
   `toolbarSendTitle` entries.
+- [x] 2026-05-31: Audited advisory candidate-unused English keys, kept the
+  dynamic host picker status labels, and removed 29 confirmed-dead English keys
+  plus any remaining locale overlays for those keys.
 
 ## Context
 
@@ -138,7 +141,7 @@ distinguish deliberate locale grammar from accidental placeholder loss.
   - if dead, remove it from every non-English locale;
   - if live intent remains, add the correct English key and wire the UI to it.
 - Add checks for English keys that are not referenced by the client, while
-  allowing known dynamic or externally referenced keys if any exist.
+  allowing known dynamic references such as host picker status labels.
 - Add placeholder-token validation that warns when translated strings drop or
   add `{name}` tokens, with an escape hatch for intentional grammar differences
   such as Chinese plural suffix omission.

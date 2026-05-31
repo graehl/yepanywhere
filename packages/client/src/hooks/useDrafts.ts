@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 const DRAFT_KEY_PREFIX = "draft-message-";
+const NEW_SESSION_DRAFT_KEY = "draft-new-session";
 const NEW_SESSION_DRAFT_KEY_PREFIX = "draft-new-session-";
 
 /**
@@ -76,10 +77,10 @@ export function useDrafts(): Set<string> {
 }
 
 /**
- * Hook to track whether the new session form has a draft for a specific project.
+ * Hook to track whether the new session form has a draft.
  * Listens for storage events and polls for same-tab changes.
  */
-export function useNewSessionDraft(projectId: string | undefined): boolean {
+export function useNewSessionDraft(projectId?: string): boolean {
   const [hasDraft, setHasDraft] = useState(() =>
     checkNewSessionDraft(projectId),
   );
@@ -95,10 +96,8 @@ export function useNewSessionDraft(projectId: string | undefined): boolean {
 
   // Listen for storage events (changes from other tabs)
   useEffect(() => {
-    if (!projectId) return;
-
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === `${NEW_SESSION_DRAFT_KEY_PREFIX}${projectId}`) {
+      if (getNewSessionDraftKeys(projectId).includes(e.key ?? "")) {
         check();
       }
     };
@@ -117,14 +116,20 @@ export function useNewSessionDraft(projectId: string | undefined): boolean {
 }
 
 function checkNewSessionDraft(projectId: string | undefined): boolean {
-  if (!projectId) return false;
   try {
-    const key = `${NEW_SESSION_DRAFT_KEY_PREFIX}${projectId}`;
-    const value = localStorage.getItem(key);
-    return !!value?.trim();
+    return getNewSessionDraftKeys(projectId).some((key) => {
+      const value = localStorage.getItem(key);
+      return !!value?.trim();
+    });
   } catch {
     return false;
   }
+}
+
+function getNewSessionDraftKeys(projectId: string | undefined): string[] {
+  return projectId
+    ? [NEW_SESSION_DRAFT_KEY, `${NEW_SESSION_DRAFT_KEY_PREFIX}${projectId}`]
+    : [NEW_SESSION_DRAFT_KEY];
 }
 
 // Tool prompt draft storage keys

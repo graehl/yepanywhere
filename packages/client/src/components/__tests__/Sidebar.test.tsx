@@ -18,6 +18,7 @@ const {
   mockStarredLoadMore,
   mockToggleExpanded,
   mockWindowOpen,
+  newSessionDraftState,
   starredSessionsState,
 } = vi.hoisted(() => ({
   globalSessionsState: {
@@ -36,6 +37,9 @@ const {
   mockStarredLoadMore: vi.fn(),
   mockToggleExpanded: vi.fn(),
   mockWindowOpen: vi.fn(),
+  newSessionDraftState: {
+    hasDraft: false,
+  },
 }));
 
 vi.mock("../../contexts/RemoteConnectionContext", () => ({
@@ -44,6 +48,7 @@ vi.mock("../../contexts/RemoteConnectionContext", () => ({
 
 vi.mock("../../hooks/useDrafts", () => ({
   useDrafts: () => new Set<string>(),
+  useNewSessionDraft: () => newSessionDraftState.hasDraft,
 }));
 
 vi.mock("../../hooks/useGlobalSessions", () => ({
@@ -57,6 +62,20 @@ vi.mock("../../hooks/useNeedsAttentionBadge", () => ({
 
 vi.mock("../../hooks/useRemoteBasePath", () => ({
   useRemoteBasePath: () => "/remote/test",
+}));
+
+vi.mock("../../hooks/usePublicShareStatus", () => ({
+  usePublicShareStatus: () => ({
+    status: null,
+  }),
+}));
+
+vi.mock("../../hooks/useServerSettings", () => ({
+  useServerSettings: () => ({
+    settings: {
+      publicSharesEnabled: false,
+    },
+  }),
 }));
 
 vi.mock("../../hooks/useVersion", () => ({
@@ -138,6 +157,7 @@ describe("Sidebar collapsed toggle", () => {
     starredSessionsState.loading = false;
     starredSessionsState.hasMore = false;
     starredSessionsState.loadMore = mockStarredLoadMore;
+    newSessionDraftState.hasDraft = false;
     vi.stubGlobal("open", mockWindowOpen);
   });
 
@@ -213,6 +233,26 @@ describe("Sidebar collapsed toggle", () => {
 
     expect(screen.getByText("Session 13")).toBeDefined();
     expect(screen.queryByText("Show more")).toBeNull();
+  });
+
+  it("shows a draft badge on the new session action", () => {
+    newSessionDraftState.hasDraft = true;
+
+    render(
+      <MemoryRouter>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: /New Session Draft/i }),
+    ).toBeDefined();
   });
 
   it("collapses and expands the last-24-hours bucket", () => {

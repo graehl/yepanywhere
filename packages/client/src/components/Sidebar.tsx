@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
-import { useDrafts } from "../hooks/useDrafts";
+import { useDrafts, useNewSessionDraft } from "../hooks/useDrafts";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
@@ -201,6 +201,7 @@ export function Sidebar({
   });
 
   const sessionsLoading = globalLoading || starredLoading;
+  const hasNewSessionDraft = useNewSessionDraft();
 
   // Server capabilities for feature gating
   const { version: versionInfo } = useVersion();
@@ -630,6 +631,7 @@ export function Sidebar({
             label={t("sidebarNewSession")}
             onClick={onNavigate}
             basePath={basePath}
+            hasDraft={hasNewSessionDraft && !isCollapsed}
           />
         </div>
 

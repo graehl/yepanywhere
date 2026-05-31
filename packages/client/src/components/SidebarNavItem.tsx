@@ -217,7 +217,7 @@ export function SidebarNavItem({
     >
       {icon}
       <span className="sidebar-nav-text">{label}</span>
-      {hasDraft && <span className="session-draft-badge">(draft)</span>}
+      {hasDraft && <span className="session-draft-badge">Draft</span>}
       {hasActivityIndicator && <ThinkingIndicator />}
       {badge !== undefined && badge > 0 && (
         <span className="sidebar-nav-badge">{badge}</span>

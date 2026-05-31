@@ -18,7 +18,12 @@ export function DevelopmentSettings() {
   } = useReloadNotifications();
   const { settings: validationSettings, setEnabled: setValidationEnabled } =
     useSchemaValidation();
-  const { holdModeEnabled, setHoldModeEnabled } = useDeveloperMode();
+  const {
+    holdModeEnabled,
+    setHoldModeEnabled,
+    remoteLogCollectionEnabled,
+    setRemoteLogCollectionEnabled,
+  } = useDeveloperMode();
   const { ignoredTools, clearIgnoredTools } = useSchemaValidationContext();
   const { settings: serverSettings, updateSetting: updateServerSetting } =
     useServerSettings();
@@ -92,6 +97,20 @@ export function DevelopmentSettings() {
               type="checkbox"
               checked={holdModeEnabled}
               onChange={(e) => setHoldModeEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("developmentDiagnosticsTitle")}</strong>
+            <p>{t("developmentDiagnosticsDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={remoteLogCollectionEnabled}
+              onChange={(e) => setRemoteLogCollectionEnabled(e.target.checked)}
             />
             <span className="toggle-slider" />
           </label>

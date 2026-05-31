@@ -795,6 +795,8 @@
   "developmentClearIgnored": "Clear Ignored",
   "developmentHoldModeTitle": "Hold Mode",
   "developmentHoldModeDescription": "Show hold/resume option in the mode selector. Pauses execution at the next yield point (experimental).",
+  "developmentDiagnosticsTitle": "Browser Diagnostics",
+  "developmentDiagnosticsDescription": "Capture browser logs, uncaught errors, and lightweight telemetry for debugging.",
   "developmentServiceWorkerTitle": "Service Worker",
   "developmentServiceWorkerDescription": "Enable service worker for push notifications. Disabling can help with page reload issues during development. Requires restart.",
   "developmentPersistRemoteTitle": "Persist Remote Sessions to Disk",

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import {
-  disableClientLogCollectionForTab,
+  disableClientLogCollection,
   useClientLogCollectionStatus,
 } from "../lib/diagnostics";
 
@@ -11,13 +11,7 @@ const RECORDING_FAVICON =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#b91c1c"/><text x="32" y="44" text-anchor="middle" font-family="Georgia,serif" font-size="42" font-weight="700" fill="#fff">Y</text></svg>`,
   );
 
-function getTooltip(status: ReturnType<typeof useClientLogCollectionStatus>) {
-  if (status.reason === "client+server") {
-    return "Browser-tab diagnostics are recording because this browser and the server requested log collection. Click to stop collection for this tab.";
-  }
-  if (status.reason === "server") {
-    return "Browser-tab diagnostics are recording because the connected server requested telemetry and log collection. Click to stop collection for this tab.";
-  }
+function getTooltip() {
   return "Browser-tab diagnostics are recording because Remote Log Collection is enabled in Developer Mode. Click to stop collection for this tab.";
 }
 
@@ -57,7 +51,7 @@ export function ClientLogRecordingBadge({
     return null;
   }
 
-  const tooltip = getTooltip(status);
+  const tooltip = getTooltip();
 
   return (
     <button
@@ -65,7 +59,7 @@ export function ClientLogRecordingBadge({
       className={`client-log-recording-badge${inline ? " client-log-recording-badge--inline" : ""}`}
       title={tooltip}
       aria-label={tooltip}
-      onClick={disableClientLogCollectionForTab}
+      onClick={disableClientLogCollection}
     >
       <span className="client-log-recording-badge-dot" aria-hidden="true" />
       <span>REC</span>

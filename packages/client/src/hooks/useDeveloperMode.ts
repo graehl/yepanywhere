@@ -67,6 +67,10 @@ function updateSettings(newSettings: DeveloperModeSettings) {
   }
 }
 
+export function setRemoteLogCollectionEnabledValue(enabled: boolean): void {
+  updateSettings({ ...currentSettings, remoteLogCollectionEnabled: enabled });
+}
+
 /**
  * Hook to manage developer mode settings.
  * Settings are persisted to localStorage and synced across components.
@@ -82,9 +86,10 @@ export function useDeveloperMode() {
     updateSettings({ ...currentSettings, relayDebugEnabled: enabled });
   }, []);
 
-  const setRemoteLogCollectionEnabled = useCallback((enabled: boolean) => {
-    updateSettings({ ...currentSettings, remoteLogCollectionEnabled: enabled });
-  }, []);
+  const setRemoteLogCollectionEnabled = useCallback(
+    setRemoteLogCollectionEnabledValue,
+    [],
+  );
 
   const setShowConnectionBars = useCallback((enabled: boolean) => {
     updateSettings({ ...currentSettings, showConnectionBars: enabled });

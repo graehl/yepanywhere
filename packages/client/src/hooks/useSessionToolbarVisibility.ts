@@ -29,7 +29,7 @@ export const DEFAULT_SESSION_TOOLBAR_VISIBILITY: SessionToolbarVisibility = {
   microphone: true,
   shortcutsHelp: true,
   contextUsage: true,
-  btw: true,
+  btw: false,
   nudge: true,
   queueControls: true,
   sessionStatus: true,

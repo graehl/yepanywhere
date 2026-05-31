@@ -10,6 +10,7 @@ import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
+import { UI_KEYS } from "../lib/storageKeys";
 import { getSessionDisplayTitle } from "../utils";
 import { AgentsNavItem } from "./AgentsNavItem";
 import { SessionListItem } from "./SessionListItem";
@@ -23,6 +24,71 @@ import { YepAnywhereLogo } from "./YepAnywhereLogo";
 const SWIPE_THRESHOLD = 50; // Minimum distance to trigger close
 const SWIPE_ENGAGE_THRESHOLD = 15; // Minimum horizontal distance before swipe engages
 const SIDEBAR_SESSION_PAGE_SIZE = 50;
+
+const DEFAULT_SECTION_EXPANSION = {
+  starred: true,
+  recentDay: true,
+  older: true,
+};
+
+type SidebarSectionKey = keyof typeof DEFAULT_SECTION_EXPANSION;
+type SidebarSectionExpansion = Record<SidebarSectionKey, boolean>;
+
+function getLocalStorage(): Storage | null {
+  return typeof window !== "undefined" && window.localStorage
+    ? window.localStorage
+    : null;
+}
+
+function loadSidebarSectionExpansion(): SidebarSectionExpansion {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return DEFAULT_SECTION_EXPANSION;
+  }
+
+  try {
+    const raw = storage.getItem(UI_KEYS.sidebarSectionExpansion);
+    if (!raw) {
+      return DEFAULT_SECTION_EXPANSION;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return DEFAULT_SECTION_EXPANSION;
+    }
+    const value = parsed as Partial<Record<SidebarSectionKey, unknown>>;
+    return {
+      starred:
+        typeof value.starred === "boolean"
+          ? value.starred
+          : DEFAULT_SECTION_EXPANSION.starred,
+      recentDay:
+        typeof value.recentDay === "boolean"
+          ? value.recentDay
+          : DEFAULT_SECTION_EXPANSION.recentDay,
+      older:
+        typeof value.older === "boolean"
+          ? value.older
+          : DEFAULT_SECTION_EXPANSION.older,
+    };
+  } catch {
+    return DEFAULT_SECTION_EXPANSION;
+  }
+}
+
+function saveSidebarSectionExpansion(
+  expansion: SidebarSectionExpansion,
+): void {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+
+  try {
+    storage.setItem(UI_KEYS.sidebarSectionExpansion, JSON.stringify(expansion));
+  } catch {
+    // localStorage is a UI convenience; in-memory state still applies.
+  }
+}
 
 interface SidebarSectionHeaderProps {
   title: string;
@@ -149,10 +215,30 @@ export function Sidebar({
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartX = useRef<number | null>(null);
   const resizeStartWidth = useRef<number | null>(null);
-  const [recentDayExpanded, setRecentDayExpanded] = useState(true);
-  const [olderExpanded, setOlderExpanded] = useState(true);
+  const [sectionExpansion, setSectionExpansion] = useState(
+    loadSidebarSectionExpansion,
+  );
+  const starredExpanded = sectionExpansion.starred;
+  const recentDayExpanded = sectionExpansion.recentDay;
+  const olderExpanded = sectionExpansion.older;
   const loadingMoreGlobalSessionsRef = useRef(false);
   const loadingMoreStarredSessionsRef = useRef(false);
+
+  const setSidebarSectionExpanded = useCallback(
+    (
+      section: SidebarSectionKey,
+      update: boolean | ((current: boolean) => boolean),
+    ) => {
+      setSectionExpansion((current) => {
+        const nextValue =
+          typeof update === "function" ? update(current[section]) : update;
+        const next = { ...current, [section]: nextValue };
+        saveSidebarSectionExpansion(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   const maybeLoadMoreGlobalSessions = useCallback(async () => {
     if (!hasMoreGlobalSessions || loadingMoreGlobalSessionsRef.current) {
@@ -193,6 +279,7 @@ export function Sidebar({
     maybeLoadMoreSidebarSessions,
     starredSessions.length,
     globalSessions.length,
+    starredExpanded,
     recentDayExpanded,
     olderExpanded,
   ]);
@@ -631,39 +718,48 @@ export function Sidebar({
           {/* Global sessions list */}
           {filteredStarredSessions.length > 0 && (
             <div className="sidebar-section">
-              <h3 className="sidebar-section-title">
-                {t("sidebarSectionStarred")}
-              </h3>
-              <ul className="sidebar-session-list">
-                {filteredStarredSessions.map((session) => (
-                  <SessionListItem
-                    key={session.id}
-                    sessionId={session.id}
-                    projectId={session.projectId}
-                    title={getSessionDisplayTitle(session)}
-                    fullTitle={
-                      session.fullTitle ?? getSessionDisplayTitle(session)
-                    }
-                    initialPrompt={session.initialPrompt}
-                    provider={session.provider}
-                    parentSessionId={session.parentSessionId}
-                    status={session.ownership}
-                    pendingInputType={session.pendingInputType}
-                    hasUnread={session.hasUnread}
-                    isStarred={session.isStarred}
-                    isArchived={session.isArchived}
-                    mode="compact"
-                    isCurrent={session.id === currentSessionId}
-                    activity={session.activity}
-                    onNavigate={onNavigate}
-                    showProjectName
-                    projectName={session.projectName}
-                    basePath={basePath}
-                    messageCount={session.messageCount}
-                    hasDraft={drafts.has(session.id)}
-                  />
-                ))}
-              </ul>
+              <SidebarSectionHeader
+                title={t("sidebarSectionStarred")}
+                expanded={starredExpanded}
+                onToggle={() =>
+                  setSidebarSectionExpanded("starred", (prev) => !prev)
+                }
+                controlsId="sidebar-starred-list"
+                expandLabel={t("sidebarSectionExpand")}
+                collapseLabel={t("sidebarSectionCollapse")}
+              />
+              {starredExpanded && (
+                <ul id="sidebar-starred-list" className="sidebar-session-list">
+                  {filteredStarredSessions.map((session) => (
+                    <SessionListItem
+                      key={session.id}
+                      sessionId={session.id}
+                      projectId={session.projectId}
+                      title={getSessionDisplayTitle(session)}
+                      fullTitle={
+                        session.fullTitle ?? getSessionDisplayTitle(session)
+                      }
+                      initialPrompt={session.initialPrompt}
+                      provider={session.provider}
+                      parentSessionId={session.parentSessionId}
+                      status={session.ownership}
+                      pendingInputType={session.pendingInputType}
+                      hasUnread={session.hasUnread}
+                      isStarred={session.isStarred}
+                      isArchived={session.isArchived}
+                      mode="compact"
+                      isCurrent={session.id === currentSessionId}
+                      activity={session.activity}
+                      onNavigate={onNavigate}
+                      showProjectName
+                      projectName={session.projectName}
+                      basePath={basePath}
+                      messageCount={session.messageCount}
+                      hasDraft={drafts.has(session.id)}
+                    />
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
@@ -672,7 +768,9 @@ export function Sidebar({
               <SidebarSectionHeader
                 title={t("sidebarSectionLast24Hours")}
                 expanded={recentDayExpanded}
-                onToggle={() => setRecentDayExpanded((prev) => !prev)}
+                onToggle={() =>
+                  setSidebarSectionExpanded("recentDay", (prev) => !prev)
+                }
                 controlsId="sidebar-last-24-hours-list"
                 expandLabel={t("sidebarSectionExpand")}
                 collapseLabel={t("sidebarSectionCollapse")}
@@ -766,7 +864,9 @@ export function Sidebar({
               <SidebarSectionHeader
                 title={t("sidebarSectionOlder")}
                 expanded={olderExpanded}
-                onToggle={() => setOlderExpanded((prev) => !prev)}
+                onToggle={() =>
+                  setSidebarSectionExpanded("older", (prev) => !prev)
+                }
                 controlsId="sidebar-older-list"
                 expandLabel={t("sidebarSectionExpand")}
                 collapseLabel={t("sidebarSectionCollapse")}

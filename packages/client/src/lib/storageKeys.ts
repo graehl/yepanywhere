@@ -49,6 +49,7 @@ export const UI_KEYS = {
   contentMaxWidth: "yep-anywhere-content-max-width",
   sidebarWidth: "yep-anywhere-sidebar-width",
   sidebarExpanded: "yep-anywhere-sidebar-expanded",
+  sidebarSectionExpansion: "yep-anywhere-sidebar-section-expansion",
   funPhrases: "yep-anywhere-fun-phrases-enabled",
   streamingEnabled: "yep-anywhere-streaming-enabled",
   developerMode: "yep-anywhere-developer-mode",

@@ -1,8 +1,7 @@
 # Claude Provider Control
 
-This topic covers YA's Claude-specific control surface: which Claude
-sessions YA can actively configure, and which sessions it can only observe
-through provider transcript files.
+> YA's Claude-specific control surface distinguishes sessions YA can actively
+> configure from sessions it can only observe through provider transcript files.
 
 Related topics: [session liveness and queue intent](session-liveness.md),
 [emulated slash commands](emulated-slash-commands.md).
@@ -24,6 +23,11 @@ Related topics: [session liveness and queue intent](session-liveness.md),
 - Replacement-session model choice is separate from mid-session model
   switching. A handoff/restart flow may choose the model for the replacement
   process even when the source session was external or no longer owned by YA.
+- Claude SDK API-error assistant rows are transcript artifacts, not confirmed
+  Anthropic `/v1/messages` responses. If the latest assistant response on the
+  active branch is an SDK API-error row, YA must not normal-resume that Claude
+  session; use the handoff/restart path so the next provider turn starts from a
+  bounded prompt instead of a potentially synthetic `previous_message_id`.
 - Claude `/goal` is exposed as a YA-side alias for `/loop wish ...`. YA injects
   the `goal` entry into the visible slash-command inventory only when the SDK
   inventory reports `/loop` and does not already report `/goal` itself. The
@@ -65,3 +69,6 @@ Related topics: [session liveness and queue intent](session-liveness.md),
   to infer control from the session transcript.
 - After YA resumes or restarts a Claude session into a YA-owned process, model
   controls are evaluated from that new process's advertised capabilities.
+- A Claude session whose active-branch tail is an SDK API-error assistant row
+  returns handoff-required from normal resume instead of passing the transcript
+  back to the Claude SDK.

@@ -119,6 +119,8 @@ const BTW_ASIDE_POLL_MS = 1500;
 const BTW_ASIDE_MAX_POLLS = 160;
 const BTW_ASIDE_PREVIEW_MAX_LENGTH = 700;
 const BTW_ASIDE_PROMPT_MARKER = "[YA /btw aside]";
+const CLAUDE_HANDOFF_REQUIRED_MESSAGE =
+  "Claude session cannot be safely resumed because the Claude SDK recorded an API-error response as the latest assistant message. Start a handoff session instead.";
 const BTW_ASIDE_FORK_PROVIDERS = new Set<ProviderName>([
   "claude",
   "codex",
@@ -210,6 +212,23 @@ function isMissingDeferredQueueEntryError(error: unknown): boolean {
   return (
     message.includes("No active process") ||
     message.includes("Deferred message not found")
+  );
+}
+
+function requiresHandoffAfterClaudeResumeError(
+  error: unknown,
+  provider: ProviderName | undefined,
+): boolean {
+  if ((error as { status?: number } | null)?.status !== 409) {
+    return false;
+  }
+  if (provider !== "claude" && provider !== "claude-ollama") {
+    return false;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("Start a handoff session") ||
+    message.includes("API error: 409")
   );
 }
 
@@ -1400,6 +1419,7 @@ function SessionPageContent({
       releaseQueuedEditBarrier(queuedEditDraftAtSubmit, "send-edited-queue");
     } catch (err) {
       console.error("Failed to send:", err);
+      let finalError: unknown = err;
       logSessionUiTrace("composer-send-error", {
         sessionId,
         tempId,
@@ -1463,6 +1483,7 @@ function SessionPageContent({
           return;
         } catch (retryErr) {
           console.error("Failed to resume session:", retryErr);
+          finalError = retryErr;
           logSessionUiTrace("composer-send-retry-resume-error", {
             sessionId,
             tempId,
@@ -1478,8 +1499,19 @@ function SessionPageContent({
       draftControlsRef.current?.restoreFromStorage();
       setAttachments(currentAttachments); // Restore attachments on error
       setProcessState("idle");
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      showToast(t("sessionSendFailed", { message: errorMsg }), "error");
+      const errorMsg =
+        finalError instanceof Error ? finalError.message : String(finalError);
+      if (requiresHandoffAfterClaudeResumeError(finalError, effectiveProvider)) {
+        setShowHandoffModal(true);
+        showToast(
+          errorMsg.includes("API error: 409")
+            ? CLAUDE_HANDOFF_REQUIRED_MESSAGE
+            : errorMsg,
+          "error",
+        );
+      } else {
+        showToast(t("sessionSendFailed", { message: errorMsg }), "error");
+      }
     }
   };
 
@@ -1659,6 +1691,7 @@ function SessionPageContent({
       setQueuedEditDraft(null);
     } catch (err) {
       console.error("Failed to queue deferred message:", err);
+      let finalError: unknown = err;
       logSessionUiTrace("composer-deferred-error", {
         sessionId,
         tempId,
@@ -1704,6 +1737,7 @@ function SessionPageContent({
           return;
         } catch (retryErr) {
           console.error("Failed to resume session:", retryErr);
+          finalError = retryErr;
           logSessionUiTrace("composer-deferred-retry-resume-error", {
             sessionId,
             tempId,
@@ -1716,8 +1750,19 @@ function SessionPageContent({
       removePendingMessage(tempId);
       draftControlsRef.current?.restoreFromStorage();
       setAttachments(currentAttachments);
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      showToast(t("sessionQueueFailed", { message: errorMsg }), "error");
+      const errorMsg =
+        finalError instanceof Error ? finalError.message : String(finalError);
+      if (requiresHandoffAfterClaudeResumeError(finalError, effectiveProvider)) {
+        setShowHandoffModal(true);
+        showToast(
+          errorMsg.includes("API error: 409")
+            ? CLAUDE_HANDOFF_REQUIRED_MESSAGE
+            : errorMsg,
+          "error",
+        );
+      } else {
+        showToast(t("sessionQueueFailed", { message: errorMsg }), "error");
+      }
     }
   };
 

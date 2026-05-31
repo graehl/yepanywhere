@@ -7,6 +7,7 @@ import {
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   RECAP_MODES,
+  type ClaudeSessionEntry,
   type RecapMode,
   type ThinkingOption,
   type UploadedFile,
@@ -38,6 +39,7 @@ import type { ServerSettingsService } from "../services/ServerSettingsService.js
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession, cloneCodexSession } from "../sessions/fork.js";
 import { GeminiSessionReader } from "../sessions/gemini-reader.js";
+import { buildDag } from "../sessions/dag.js";
 import { GrokSessionReader } from "../sessions/grok-reader.js";
 import { normalizeSession } from "../sessions/normalization.js";
 import {
@@ -67,9 +69,18 @@ import {
 import type { EventBus } from "../watcher/index.js";
 
 const SESSION_DETAIL_SLOW_LOG_MS = 250;
+const CLAUDE_RESUME_API_ERROR_RECOVERY = "handoff-required";
+const CLAUDE_RESUME_API_ERROR_MESSAGE =
+  "Claude session cannot be safely resumed because the Claude SDK recorded an API-error response as the latest assistant message. Start a handoff session instead.";
 
 function roundedMs(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+function isClaudeSdkProviderName(
+  provider: ProviderName | undefined,
+): provider is "claude" | "claude-ollama" {
+  return provider === "claude" || provider === "claude-ollama";
 }
 
 /**
@@ -88,6 +99,60 @@ function isQueueFullResponse(
   result: Process | QueuedResponse | QueueFullResponse,
 ): result is QueueFullResponse {
   return "error" in result && result.error === "queue_full";
+}
+
+interface ClaudeResumeApiErrorBlocker {
+  error: string;
+  recovery: typeof CLAUDE_RESUME_API_ERROR_RECOVERY;
+  messageId?: string;
+  apiErrorStatus?: unknown;
+}
+
+function getClaudeResumeApiErrorBlocker(
+  messages: ClaudeSessionEntry[],
+): ClaudeResumeApiErrorBlocker | null {
+  const { activeBranch } = buildDag(messages);
+
+  for (let i = activeBranch.length - 1; i >= 0; i--) {
+    const raw = activeBranch[i]?.raw;
+    if (!raw || raw.type !== "assistant") {
+      continue;
+    }
+
+    if (raw.isApiErrorMessage !== true) {
+      return null;
+    }
+
+    const apiError = raw as ClaudeSessionEntry & {
+      apiErrorStatus?: unknown;
+    };
+    return {
+      error: CLAUDE_RESUME_API_ERROR_MESSAGE,
+      recovery: CLAUDE_RESUME_API_ERROR_RECOVERY,
+      messageId: raw.message.id,
+      apiErrorStatus: apiError.apiErrorStatus,
+    };
+  }
+
+  return null;
+}
+
+async function getClaudeResumeBlockerFromReader(
+  reader: ISessionReader,
+  sessionId: string,
+  projectId: UrlProjectId,
+): Promise<ClaudeResumeApiErrorBlocker | null> {
+  const session = await reader.getSession(sessionId, projectId);
+  if (!session) {
+    return null;
+  }
+  if (
+    session.data.provider !== "claude" &&
+    session.data.provider !== "claude-ollama"
+  ) {
+    return null;
+  }
+  return getClaudeResumeApiErrorBlocker(session.data.session.messages);
 }
 
 function parseOptionalExecutor(rawExecutor: unknown): {
@@ -2709,6 +2774,49 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         metadataProvider ??
         body.provider ??
         project.provider;
+    }
+
+    if (isClaudeSdkProviderName(providerName)) {
+      let blocker: ClaudeResumeApiErrorBlocker | null = null;
+      try {
+        blocker = await getClaudeResumeBlockerFromReader(
+          deps.readerFactory(project),
+          sessionId,
+          projectId,
+        );
+      } catch (error) {
+        getLogger().warn(
+          {
+            event: "claude_resume_api_error_check_failed",
+            sessionId,
+            projectId,
+            providerName,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Failed to check Claude session for resume-blocking API error",
+        );
+      }
+
+      if (blocker) {
+        getLogger().warn(
+          {
+            event: "claude_resume_blocked_after_api_error",
+            sessionId,
+            projectId,
+            providerName,
+            messageId: blocker.messageId,
+            apiErrorStatus: blocker.apiErrorStatus,
+          },
+          "Blocked Claude provider resume after SDK API-error message",
+        );
+        return c.json(
+          {
+            error: blocker.error,
+            recovery: blocker.recovery,
+          },
+          409,
+        );
+      }
     }
 
     const result = await deps.supervisor.resumeSession(

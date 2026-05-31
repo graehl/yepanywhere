@@ -869,6 +869,97 @@ describe("Sessions metadata route", () => {
     );
   });
 
+  it("blocks Claude resume when the latest assistant is an SDK API error", async () => {
+    const project = createProject();
+    const resumeSession = vi.fn(async () => ({
+      id: "proc-1",
+      sessionId: "sess-1",
+      permissionMode: "default",
+      modeVersion: 0,
+    }));
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        resumeSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSession: vi.fn(async () => ({
+              summary: {
+                ...createSummary(),
+                provider: "claude",
+                model: "claude-sonnet-4-5-20250929",
+              },
+              data: {
+                provider: "claude",
+                session: {
+                  messages: [
+                    {
+                      type: "assistant",
+                      isSidechain: false,
+                      userType: "external",
+                      cwd: project.path,
+                      sessionId: "sess-1",
+                      version: "1.0.0",
+                      uuid: "11111111-1111-4111-8111-111111111111",
+                      timestamp: "2026-05-31T00:00:00.000Z",
+                      parentUuid: null,
+                      isApiErrorMessage: true,
+                      apiErrorStatus: 400,
+                      message: {
+                        id: "c7bff7ca-1111-4111-8111-111111111111",
+                        type: "message",
+                        role: "assistant",
+                        model: "<synthetic>",
+                        content: [
+                          {
+                            type: "text",
+                            text: "API Error: 400 diagnostics.previous_message_id",
+                          },
+                        ],
+                        stop_reason: null,
+                        stop_sequence: null,
+                        usage: {
+                          input_tokens: 0,
+                          output_tokens: 0,
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            })),
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "claude"),
+        getExecutor: vi.fn(() => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/resume`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "continue",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    expect(resumeSession).not.toHaveBeenCalled();
+    const json = await response.json();
+    expect(json.recovery).toBe("handoff-required");
+    expect(json.error).toContain("Start a handoff session");
+  });
+
   it("preserves persisted provider and model when queueing a restartable message", async () => {
     const project = createProject();
     const queueMessageToSession = vi.fn(async () => ({

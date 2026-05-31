@@ -43,10 +43,6 @@ export interface PublicSessionShareViewerActionResponse
   convertedCount?: number;
 }
 
-export interface PublicSessionShareViewerHeartbeatResponse {
-  activeViewerCount: number;
-}
-
 export interface PublicSessionShareViewerSummary {
   viewerId: string;
   shortId: string;

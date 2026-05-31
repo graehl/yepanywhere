@@ -6,7 +6,6 @@ import {
   type PublicSessionShareResponse,
   type PublicSessionShareSessionStatusResponse,
   type PublicSessionShareViewerActionResponse,
-  type PublicSessionShareViewerHeartbeatResponse,
   type RevokePublicSessionSharesResponse,
   type UrlProjectId,
   isUrlProjectId,
@@ -339,24 +338,6 @@ export function createPublicSharePublicRoutes(
   deps: PublicShareRoutesDeps,
 ): Hono {
   const app = new Hono();
-
-  app.post("/:secret/viewers/:viewerId", (c) => {
-    const secret = c.req.param("secret");
-    const viewerId = c.req.param("viewerId");
-    const record = deps.publicShareService.getRecordBySecret(secret);
-    if (!record || deps.publicShareService.isViewerDisconnected(record, viewerId)) {
-      return notFound(c);
-    }
-
-    const response: PublicSessionShareViewerHeartbeatResponse = {
-      activeViewerCount: deps.publicShareService.recordViewerHeartbeat(
-        record,
-        viewerId,
-      ),
-    };
-    c.header("Cache-Control", "no-store");
-    return c.json(response);
-  });
 
   app.get("/:secret", async (c) => {
     const secret = c.req.param("secret");

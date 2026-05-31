@@ -92,4 +92,31 @@ describe("public share public routes", () => {
     expect(body.session.messages).toHaveLength(2);
     expect(body.session.ownership).toEqual({ owner: "none" });
   });
+
+  it("does not expose a public viewer heartbeat mutation route", async () => {
+    const { secret } = await service.createShare({
+      mode: "frozen",
+      title: "Snapshot",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+      snapshot: makeSession(),
+    });
+    const app = createPublicSharePublicRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+    });
+
+    const response = await app.request(`/${secret}/viewers/viewer-one`, {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(404);
+    expect(
+      service.getActiveViewerCount(service.getRecordBySecret(secret)!),
+    ).toBe(0);
+  });
 });

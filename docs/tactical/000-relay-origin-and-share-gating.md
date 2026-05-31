@@ -9,6 +9,9 @@ Progress:
 - [x] 2026-05-31: Enforced the relay allowed-origin policy for HTTP CORS and
   `/ws` upgrades. Disallowed browser websocket origins now receive 403 before
   `handleUpgrade`; disallowed HTTP origins receive no CORS allow-origin header.
+- [x] 2026-05-31: Removed the unused public viewer-heartbeat POST route. Public
+  viewer state is updated by the existing secret-link GET route instead, so the
+  public surface now stays read-only.
 
 ## Context
 

@@ -19,6 +19,7 @@ regeneration rules.
 | `grok` | xAI Grok Build provider integration, isolated behind provider-specific files and feature gates while ACP supervision matures. | [grok](topics/grok.md) |
 | `hard-development-rules` | Binding upstream-facing constraints that protect user trust, explicit configuration, and operator intent across YA changes. | [hard-development-rules](topics/hard-development-rules.md) |
 | `heartbeat` | YA's heartbeat-shaped mechanisms, separating transport/status frames from provider liveness evidence and user-visible state. | [heartbeat](topics/heartbeat.md) |
+| `kzahel-disabled` | YA UI or behavior experiments that upstream disables or removes, but that may still be worth preserving behind explicit user configuration. | [kzahel-disabled](topics/kzahel-disabled.md) |
 | `memory-growth` | Browser and server memory constraints for long-lived YA sessions, especially avoiding whole-transcript work on idle UI timers. | [memory-growth](topics/memory-growth.md) |
 | `message-control-steer-queue-btw-later-interrupt` | UI-visible message-control contract for direct sends, steering, queueing, `/btw`, and deferred or later intent while a session is busy. | [message-control-steer-queue-btw-later-interrupt](topics/message-control-steer-queue-btw-later-interrupt.md) |
 | `pixel-aesthetic` | Native-size pixel judgment for tiny UI glyphs, including their real toolbar, device-pixel-ratio, theme, and button context. | [pixel-aesthetic](topics/pixel-aesthetic.md) |
@@ -31,6 +32,7 @@ regeneration rules.
 | `relative-filenames` | Shortest-unambiguous file path display policy: project-relative, home-relative, then absolute as fallback. | [relative-filenames](topics/relative-filenames.md) |
 | `rich-text-rendering` | Rendering pipeline for agent action panels, including command output, file reads, diffs, edits, and their always-on or toggleable transforms. | [rich-text-rendering](topics/rich-text-rendering.md) |
 | `session-liveness` | Provider/session liveness contract and dependent behaviors such as heartbeat turns, deferred queue promotion, and patient queue intent. | [session-liveness](topics/session-liveness.md) |
+| `session-ui-customization` | User control over which session controls are visible or enabled while keyboard access to advanced actions is preserved. | [session-ui-customization](topics/session-ui-customization.md) |
 | `side-session-config` | Shared opt-in, model-selection, and lifecycle contract for YA-simulated helper features that run outside the parent provider turn. | [side-session-config](topics/side-session-config.md) |
 | `ui-control-alignment` | Shared baseline and metric policy for aligning compact control rows without per-control visual nudges. | [ui-control-alignment](topics/ui-control-alignment.md) |
 | `ui-testing` | Browser-first visual QA protocol for layout-sensitive client control changes. | [ui-testing](topics/ui-testing.md) |

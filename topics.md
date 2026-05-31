@@ -9,3 +9,5 @@
 - pluggable-speech-recognition - YA server-routed speech backends and browser-native fallback.
 - cost-efficiency - Preferring subscription/local over metered APIs; billing footgun masking.
 - ya-env-vars - Catalog of YA env vars and the YA_/YA_module__ naming conventions.
+- kzahel-disabled - Upstream-disabled feature decisions to revisit as configurable defaults.
+- session-ui-customization - User-selectable visibility/enabling of advanced session controls.

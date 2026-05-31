@@ -6,6 +6,8 @@
 - Public read-only session shares
 - Approval and local access security hardening
 - Hard development rules for upstream-facing defaults
+- Kzahel-disabled feature decisions
+- Session UI customization
 - Provider image sizing guidance
 - Attachment previews and same-browser cache
 - OpenCode ses_ session ID unification with YA session ID

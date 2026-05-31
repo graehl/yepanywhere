@@ -11,6 +11,7 @@ import type { MouseEvent, RefObject, TouchEvent } from "react";
 import { useOptionalRenderModeContext } from "../contexts/RenderModeContext";
 import { useModelSettings } from "../hooks/useModelSettings";
 import { useRelativeNow } from "../hooks/useRelativeNow";
+import { useSessionToolbarVisibility } from "../hooks/useSessionToolbarVisibility";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import {
@@ -319,6 +320,7 @@ export function MessageInputToolbar({
     setSpeechMethod,
   } = useModelSettings();
   const { version: versionInfo } = useVersion();
+  const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
   const renderMode = useOptionalRenderModeContext();
   const nowMs = useRelativeNow();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -341,7 +343,9 @@ export function MessageInputToolbar({
       : (getCompactStatusMatchMedia()?.matches ?? false),
   );
   const hasModelIndicator =
-    slashCommands.includes("model") && !!onSelectSlashCommand;
+    toolbarVisibility.modelIndicator &&
+    slashCommands.includes("model") &&
+    !!onSelectSlashCommand;
   const normalizedModelIndicatorProvider = useMemo(
     () => normalizeProviderKey(modelIndicatorProvider),
     [modelIndicatorProvider],
@@ -388,6 +392,7 @@ export function MessageInputToolbar({
     ? describeSessionLiveness(sessionLiveness)
     : null;
   const showLivenessChip =
+    toolbarVisibility.sessionStatus &&
     !!livenessDisplay &&
     !(
       showLastActivityAge &&
@@ -482,7 +487,13 @@ export function MessageInputToolbar({
     [setSpeechMethod],
   );
   const showSpeechMethodSelector =
-    voiceInputEnabled && serverVoiceEnabled && speechMethodOptions.length > 1;
+    toolbarVisibility.microphone &&
+    voiceInputEnabled &&
+    serverVoiceEnabled &&
+    speechMethodOptions.length > 1;
+  const showLastActivityChip =
+    toolbarVisibility.sessionStatus && showLastActivityAge;
+  const showToolbarStatus = showLivenessChip || showLastActivityChip;
 
   useLayoutEffect(() => {
     if (typeof window === "undefined" || !hasModelIndicator) {
@@ -657,7 +668,9 @@ export function MessageInputToolbar({
     livenessDisplay?.tone,
     nowMs,
     showLastActivityAge,
+    showLastActivityChip,
     showLivenessChip,
+    showToolbarStatus,
     showStopButton,
     showSendButton,
   ]);
@@ -763,7 +776,7 @@ export function MessageInputToolbar({
             <span className="attach-count">{attachmentCount}</span>
           )}
         </button>
-        {onSelectSlashCommand && (
+        {toolbarVisibility.slashMenu && onSelectSlashCommand && (
           <SlashCommandButton
             commands={slashCommands}
             onSelectCommand={onSelectSlashCommand}
@@ -846,7 +859,7 @@ export function MessageInputToolbar({
             <RenderModeGlyph />
           </button>
         )}
-        {onToggleHeartbeat && (
+        {toolbarVisibility.nudge && onToggleHeartbeat && (
           <button
             type="button"
             className={`heartbeat-toolbar-button ${heartbeatEnabled ? "active" : ""}`}
@@ -891,16 +904,19 @@ export function MessageInputToolbar({
             className="filter-dropdown--speech-toolbar"
           />
         )}
-        {voiceButtonRef && onVoiceTranscript && onInterimTranscript && (
-          <VoiceInputButton
-            ref={voiceButtonRef}
-            onTranscript={onVoiceTranscript}
-            onInterimTranscript={onInterimTranscript}
-            onListeningStart={onListeningStart}
-            disabled={voiceDisabled}
-            speechMethod={selectedSpeechMethod}
-          />
-        )}
+        {toolbarVisibility.microphone &&
+          voiceButtonRef &&
+          onVoiceTranscript &&
+          onInterimTranscript && (
+            <VoiceInputButton
+              ref={voiceButtonRef}
+              onTranscript={onVoiceTranscript}
+              onInterimTranscript={onInterimTranscript}
+              onListeningStart={onListeningStart}
+              disabled={voiceDisabled}
+              speechMethod={selectedSpeechMethod}
+            />
+          )}
         {hasModelIndicator && modelToolbarDensity !== "hidden" && (
           <button
             type="button"
@@ -915,7 +931,7 @@ export function MessageInputToolbar({
           </button>
         )}
       </div>
-      {(showLivenessChip || showLastActivityAge) && (
+      {showToolbarStatus && (
         <div ref={toolbarStatusRef} className="composer-status-ages">
           {showLivenessChip && (
             <div
@@ -939,7 +955,7 @@ export function MessageInputToolbar({
               )}
             </div>
           )}
-          {showLastActivityAge && (
+          {showLastActivityChip && (
             <div
               className={`composer-status-chip composer-activity-age${
                 showLastActivityPrefix ? "" : " composer-activity-age--compact"
@@ -1170,8 +1186,10 @@ export function MessageInputToolbar({
             </div>
           )}
         </div>
-        <ContextUsageIndicator usage={contextUsage} size={16} />
-        {onBtwClick && (
+        {toolbarVisibility.contextUsage && (
+          <ContextUsageIndicator usage={contextUsage} size={16} />
+        )}
+        {toolbarVisibility.btw && onBtwClick && (
           <button
             type="button"
             className={`btw-toolbar-button ${btwPressed ? "active" : ""} ${
@@ -1199,27 +1217,29 @@ export function MessageInputToolbar({
         )}
         {showSendButton ? (
           <>
-            {showPatientQueueMode && onQueue && (
-              <button
-                type="button"
-                onClick={() => onPatientQueueModeChange?.(!patientQueueMode)}
-                disabled={disabled}
-                className={`queue-mode-toggle ${
-                  patientQueueMode ? "patient" : "asap"
-                }`}
-                aria-label={queueModeLabel}
-                aria-pressed={patientQueueMode}
-                title={queueTooltip}
-              >
-                <span className="queue-mode-label queue-mode-label-long">
-                  {patientQueueMode ? "when done" : "ASAP"}
-                </span>
-                <span className="queue-mode-label queue-mode-label-short">
-                  {patientQueueMode ? "done" : "ASAP"}
-                </span>
-              </button>
-            )}
-            {hasDualActions && onQueue && (
+            {toolbarVisibility.queueControls &&
+              showPatientQueueMode &&
+              onQueue && (
+                <button
+                  type="button"
+                  onClick={() => onPatientQueueModeChange?.(!patientQueueMode)}
+                  disabled={disabled}
+                  className={`queue-mode-toggle ${
+                    patientQueueMode ? "patient" : "asap"
+                  }`}
+                  aria-label={queueModeLabel}
+                  aria-pressed={patientQueueMode}
+                  title={queueTooltip}
+                >
+                  <span className="queue-mode-label queue-mode-label-long">
+                    {patientQueueMode ? "when done" : "ASAP"}
+                  </span>
+                  <span className="queue-mode-label queue-mode-label-short">
+                    {patientQueueMode ? "done" : "ASAP"}
+                  </span>
+                </button>
+              )}
+            {toolbarVisibility.queueControls && hasDualActions && onQueue && (
               <button
                 type="button"
                 onClick={onQueue}

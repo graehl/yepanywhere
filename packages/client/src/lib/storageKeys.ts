@@ -53,6 +53,7 @@ export const UI_KEYS = {
   funPhrases: "yep-anywhere-fun-phrases-enabled",
   streamingEnabled: "yep-anywhere-streaming-enabled",
   developerMode: "yep-anywhere-developer-mode",
+  sessionToolbarVisibility: "yep-anywhere-session-toolbar-visibility",
   schemaValidation: "yep-anywhere-schema-validation",
   emulatorMaxFps: "yep-anywhere-emulator-max-fps",
   emulatorMaxWidth: "yep-anywhere-emulator-max-width",

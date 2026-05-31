@@ -205,6 +205,12 @@ Quick reference:
 scripts/release-website.sh 1.5.3
 ```
 
+## Deploying to Staging
+
+The staging deploy runbook is host-specific and intentionally kept out of this public
+repo. It lives in the private dotfiles repo: `~/code/dotfiles/machines/pi/README.md`. If
+asked to deploy to staging, read the steps there.
+
 ## Server Logs
 
 Server logs are written to `{dataDir}/logs/` (default: `~/.yep-anywhere/logs/`):

@@ -105,12 +105,6 @@ export interface MessageInputToolbarProps {
   lastActivityAt?: string | null;
   /** Server-derived provider/session liveness evidence. */
   sessionLiveness?: SessionLivenessSnapshot | null;
-  /** Show the patient-vs-ASAP queued-message mode toggle. */
-  showPatientQueueMode?: boolean;
-  /** Queue mode used when queueing through the deferred queue path. */
-  patientQueueMode?: boolean;
-  /** Toggle patient queued-message mode. */
-  onPatientQueueModeChange?: (enabled: boolean) => void;
 
   // Actions
   isRunning?: boolean;
@@ -375,8 +369,6 @@ interface ToolbarShortcutsControl {
   isearchScope: SessionIsearchScope | null;
   setOpen: Dispatch<SetStateAction<boolean>>;
   hasDualActions: boolean;
-  showPatientQueueMode: boolean;
-  queueModeLabel: string;
 }
 
 interface ToolbarBtwControl {
@@ -388,11 +380,7 @@ interface ToolbarBtwControl {
 
 interface ToolbarQueueControl {
   onQueue?: () => void;
-  showPatientQueueMode: boolean;
-  patientQueueMode: boolean;
-  onPatientQueueModeChange?: (enabled: boolean) => void;
   hasDualActions: boolean;
-  queueModeLabel: string;
   queueTooltip: string;
 }
 
@@ -924,11 +912,7 @@ export function MessageInputToolbarView({
                         <kbd>Ctrl</kbd>
                         <kbd>Enter</kbd>
                       </span>
-                      <span>
-                        {shortcutsControl.showPatientQueueMode
-                          ? `${shortcutsControl.queueModeLabel} while agent runs`
-                          : "Queue while agent runs"}
-                      </span>
+                      <span>Queue while agent runs</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
@@ -1020,38 +1004,6 @@ export function MessageInputToolbarView({
         {showSendButton && actionsControl.send ? (
           <>
             {visibility.queueControls &&
-              actionsControl.send.queue?.showPatientQueueMode &&
-              actionsControl.send.queue.onQueue && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    actionsControl.send?.queue?.onPatientQueueModeChange?.(
-                      !actionsControl.send.queue.patientQueueMode,
-                    )
-                  }
-                  disabled={actionsControl.disabled}
-                  className={`queue-mode-toggle ${
-                    actionsControl.send.queue.patientQueueMode
-                      ? "patient"
-                      : "asap"
-                  }`}
-                  aria-label={actionsControl.send.queue.queueModeLabel}
-                  aria-pressed={actionsControl.send.queue.patientQueueMode}
-                  title={actionsControl.send.queue.queueTooltip}
-                >
-                  <span className="queue-mode-label queue-mode-label-long">
-                    {actionsControl.send.queue.patientQueueMode
-                      ? "when done"
-                      : "ASAP"}
-                  </span>
-                  <span className="queue-mode-label queue-mode-label-short">
-                    {actionsControl.send.queue.patientQueueMode
-                      ? "done"
-                      : "ASAP"}
-                  </span>
-                </button>
-              )}
-            {visibility.queueControls &&
               actionsControl.send.queue?.hasDualActions &&
               actionsControl.send.queue.onQueue && (
                 <button
@@ -1121,9 +1073,6 @@ export function MessageInputToolbar({
   contextUsage,
   lastActivityAt,
   sessionLiveness,
-  showPatientQueueMode = false,
-  patientQueueMode = false,
-  onPatientQueueModeChange,
   isRunning,
   isThinking,
   onStop,
@@ -1245,16 +1194,9 @@ export function MessageInputToolbar({
     effectivePrimaryActionKind === "steer"
       ? t("toolbarSteerTooltip")
       : effectivePrimaryActionKind === "queue"
-        ? patientQueueMode
-          ? 'Queue when done; queued text starts with "when done,"'
-          : "Queue ASAP"
+        ? t("toolbarQueueTooltip")
         : t("toolbarSendTooltip");
-  const queueModeLabel = patientQueueMode ? "Queue when done" : "Queue ASAP";
-  const queueTooltip = showPatientQueueMode
-    ? patientQueueMode
-      ? 'Queue when done; queued text starts with "when done,"'
-      : "Queue ASAP"
-    : t("toolbarQueueTooltip");
+  const queueTooltip = t("toolbarQueueTooltip");
   const effectiveBtwToolbarMode =
     btwToolbarMode ??
     (btwActive ? "focused-footer" : btwHasAsides ? "focus-existing" : "start");
@@ -1679,8 +1621,6 @@ export function MessageInputToolbar({
         isearchScope,
         setOpen: setShortcutsOpen,
         hasDualActions,
-        showPatientQueueMode,
-        queueModeLabel,
       }}
       actionsControl={{
         disabled,
@@ -1710,11 +1650,7 @@ export function MessageInputToolbar({
               icon: primaryActionIcon,
               queue: {
                 onQueue,
-                showPatientQueueMode,
-                patientQueueMode,
-                onPatientQueueModeChange,
                 hasDualActions,
-                queueModeLabel,
                 queueTooltip,
               },
             }

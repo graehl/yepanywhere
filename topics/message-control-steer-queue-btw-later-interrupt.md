@@ -18,7 +18,7 @@ for both client behavior and provider-specific control adapters.
   - `verified-waiting-provider` and lower-priority statuses are non-final and do
     not authorize model edits.
 - `status.owner` for action permissions (`self`, `external`, `none`).
-- message `deliveryIntent`: `direct`, `steer`, `deferred`, `patient`.
+- message `deliveryIntent`: `direct`, `steer`, `deferred`.
 
 ## Model/indicator text contract (important)
 
@@ -46,16 +46,16 @@ Rationale:
 |
 | `in-turn`, provider has steering | Primary action | `steer` (best effort) | User asks for immediate interrupt-style continuation; fallbacks to queue if steer unsupported at time of send. |
 | `in-turn`, provider has no steering | Queue action | `deferred` | Keep immediate turn ownership untouched; append to deferred queue. |
-| Any busy non-steering path where queue exists | Queue action | `deferred` or `patient` | `patient` only when user has selected the patience mode. |
-| Any queue path | Route | `deferred`/`patient` | Messages are inserted through YA-managed deferred delivery, not as direct steering. |
+| Any busy non-steering path where queue exists | Queue action | `deferred` | Keep the active turn untouched; append to the deferred queue. |
+| Any queue path | Route | `deferred` | Messages are inserted through YA-managed deferred delivery, not as direct steering. |
 | `/btw` explicit route | Aside control | separate aside session | Not a queue path and not `steer`. |
 
-### Patient queue ("when done") rule
+### Queue text rule
 
-- Patient mode is an intent marker on a deferred message only.
-- Prefix is applied at queue time (`when done, `), not at draft-entry time.
-- It does not make scheduling guarantees beyond keeping the message in-session and
-  avoiding immediate active-turn injection.
+- Queueing never rewrites the user's text.
+- If the user wants softer wording such as `when done,`, they type it explicitly.
+- Queueing does not make scheduling guarantees beyond keeping the message
+  in-session and avoiding immediate active-turn injection.
 
 ## Compact-aware state transitions
 

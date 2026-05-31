@@ -259,7 +259,7 @@ function parseDeferredPlacement(body: {
 }
 
 const USER_MESSAGE_DELIVERY_INTENTS: ReadonlySet<UserMessageDeliveryIntent> =
-  new Set(["direct", "steer", "deferred", "patient"]);
+  new Set(["direct", "steer", "deferred"]);
 
 const AUTO_COMPACT_CONTEXT_PERCENT_THRESHOLD = 85;
 const AUTO_COMPACT_MODEL_PREFIXES = ["gpt-5.3-codex-spark"] as const;

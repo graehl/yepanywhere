@@ -1,8 +1,7 @@
 export type UserMessageDeliveryIntent =
   | "direct"
   | "steer"
-  | "deferred"
-  | "patient";
+  | "deferred";
 
 export interface UserMessageCompositionMetadata {
   typingStartedAt?: string;

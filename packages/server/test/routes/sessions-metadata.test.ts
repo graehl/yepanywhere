@@ -132,7 +132,7 @@ describe("Sessions metadata route", () => {
         deferred: true,
         clientTimestamp: 1770000000123,
         messageMetadata: {
-          deliveryIntent: "patient",
+          deliveryIntent: "deferred",
           composition: {
             typingStartedAt: "2026-04-25T00:00:10.000Z",
             typingEndedAt: "2026-04-25T00:00:20.000Z",
@@ -156,7 +156,7 @@ describe("Sessions metadata route", () => {
         tempId: "temp-queued",
         mode: "default",
         metadata: expect.objectContaining({
-          deliveryIntent: "patient",
+          deliveryIntent: "deferred",
           clientTimestamp: 1770000000123,
           serverReceivedAt: expect.any(String),
           composition: {

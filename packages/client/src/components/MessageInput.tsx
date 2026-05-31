@@ -70,63 +70,6 @@ function clearTextareaContentsUndoably(textarea: HTMLTextAreaElement): void {
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-const PATIENT_QUEUE_PREFIX = "when done, ";
-const PATIENT_QUEUE_STORAGE_SUFFIX = ":patient-queue-mode";
-const PATIENT_QUEUE_PREFIXES = [
-  PATIENT_QUEUE_PREFIX,
-  "when you are at a natural wrap-up point, ",
-  "as soon as previous requested requests are satisfied, ",
-  "as soon as prev. requested requests are satisfied, ",
-  "zzz:",
-  "zzz: ",
-];
-
-function patientQueueStorageKey(draftKey: string): string {
-  return `${draftKey}${PATIENT_QUEUE_STORAGE_SUFFIX}`;
-}
-
-function readPatientQueueMode(
-  draftKey: string,
-  defaultEnabled: boolean,
-): boolean {
-  if (!defaultEnabled) return false;
-
-  try {
-    const stored = globalThis.localStorage?.getItem(
-      patientQueueStorageKey(draftKey),
-    );
-    if (stored === "patient") return true;
-    if (stored === "asap") return false;
-  } catch {
-    // Local storage is a convenience, not part of queue delivery.
-  }
-
-  return defaultEnabled;
-}
-
-function writePatientQueueMode(draftKey: string, enabled: boolean): void {
-  try {
-    globalThis.localStorage?.setItem(
-      patientQueueStorageKey(draftKey),
-      enabled ? "patient" : "asap",
-    );
-  } catch {
-    // Local storage is a convenience, not part of queue delivery.
-  }
-}
-
-function hasPatientQueuePrefix(message: string): boolean {
-  const normalized = message.trimStart().toLocaleLowerCase();
-  return PATIENT_QUEUE_PREFIXES.some((prefix) =>
-    normalized.startsWith(prefix.toLocaleLowerCase()),
-  );
-}
-
-function applyPatientQueuePrefix(message: string, enabled: boolean): string {
-  if (!enabled || !message || hasPatientQueuePrefix(message)) return message;
-  return `${PATIENT_QUEUE_PREFIX}${message}`;
-}
-
 interface Props {
   onSend: (text: string, metadata?: MessageSubmissionMetadata) => void;
   /** Queue a deferred message (sent when agent's turn ends). Only provided when agent is running. */
@@ -295,11 +238,6 @@ export function MessageInput({
       : onQueue
         ? "queue"
         : "send");
-  const showPatientQueueMode = supportsSteering && !!onQueue;
-  const [patientQueueMode, setPatientQueueMode] = useState(() =>
-    readPatientQueueMode(draftKey, showPatientQueueMode),
-  );
-  const patientQueueEnabled = showPatientQueueMode && patientQueueMode;
   const primaryActionLabel = effectivePrimaryActionKind === "steer"
     ? t("toolbarSteerTooltip")
     : effectivePrimaryActionKind === "queue"
@@ -358,18 +296,6 @@ export function MessageInput({
     onDraftControlsReady?.(controls);
   }, [controls, onDraftControlsReady]);
 
-  useEffect(() => {
-    setPatientQueueMode(readPatientQueueMode(draftKey, showPatientQueueMode));
-  }, [draftKey, showPatientQueueMode]);
-
-  const handlePatientQueueModeChange = useCallback(
-    (enabled: boolean) => {
-      setPatientQueueMode(enabled);
-      writePatientQueueMode(draftKey, enabled);
-    },
-    [draftKey],
-  );
-
   const handleSubmit = useCallback(() => {
     // Stop voice recording and get any pending interim text
     const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
@@ -387,9 +313,7 @@ export function MessageInput({
         effectivePrimaryActionKind === "steer"
           ? "steer"
           : effectivePrimaryActionKind === "queue"
-            ? patientQueueEnabled
-              ? "patient"
-              : "deferred"
+            ? "deferred"
             : "direct";
       const metadata = buildSubmissionMetadata(deliveryIntent);
       // Clear input state but keep localStorage for failure recovery
@@ -407,7 +331,6 @@ export function MessageInput({
     onSend,
     attachments.length,
     effectivePrimaryActionKind,
-    patientQueueEnabled,
     buildSubmissionMetadata,
     resetCompositionMetadata,
   ]);
@@ -426,13 +349,8 @@ export function MessageInput({
 
     const hasContent = finalText.trim() || attachments.length > 0;
     if (hasContent && !disabled && queueHandler) {
-      const message = applyPatientQueuePrefix(
-        finalText.trim(),
-        patientQueueEnabled,
-      );
-      const metadata = buildSubmissionMetadata(
-        patientQueueEnabled ? "patient" : "deferred",
-      );
+      const message = finalText.trim();
+      const metadata = buildSubmissionMetadata("deferred");
       controls.clearInput();
       resetCompositionMetadata();
       setInterimTranscript("");
@@ -447,7 +365,6 @@ export function MessageInput({
     onSend,
     effectivePrimaryActionKind,
     attachments.length,
-    patientQueueEnabled,
     buildSubmissionMetadata,
     resetCompositionMetadata,
   ]);
@@ -937,9 +854,6 @@ export function MessageInput({
             contextUsage={contextUsage}
             lastActivityAt={lastActivityAt}
             sessionLiveness={sessionLiveness}
-            showPatientQueueMode={showPatientQueueMode}
-            patientQueueMode={patientQueueEnabled}
-            onPatientQueueModeChange={handlePatientQueueModeChange}
             isRunning={isRunning}
             isThinking={isThinking}
             onStop={onStop}

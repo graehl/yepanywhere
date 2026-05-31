@@ -147,8 +147,6 @@ export function SessionToolbarPreview() {
           isearchScope: null,
           setOpen: setShortcutsOpen,
           hasDualActions: true,
-          showPatientQueueMode: true,
-          queueModeLabel: "Queue ASAP",
         }}
         actionsControl={{
           contextUsage: PREVIEW_CONTEXT_USAGE,
@@ -167,12 +165,8 @@ export function SessionToolbarPreview() {
             icon: "↗",
             queue: {
               onQueue: noop,
-              showPatientQueueMode: true,
-              patientQueueMode: false,
-              onPatientQueueModeChange: noop,
               hasDualActions: true,
-              queueModeLabel: "Queue ASAP",
-              queueTooltip: "Queue ASAP",
+              queueTooltip: t("toolbarQueueTooltip"),
             },
           },
         }}

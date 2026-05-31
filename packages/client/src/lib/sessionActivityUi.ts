@@ -85,16 +85,16 @@ export function getSessionActivityUiState({
   const ownsTurn = owner === "self";
   const staleStreamMayHideCurrentTurn =
     hasSessionUpdateStream && !sessionUpdatesConnected;
-  const latestTurnMayStillBeActive =
-    ownsTurn &&
+  const processStateIsActive = processState !== "idle";
+  const latestTurnFallbackActive =
     !latestTurnSettled &&
-    (processState !== "idle" ||
-      hasPendingToolCallsInLatestTurn ||
-      staleStreamMayHideCurrentTurn);
+    (hasPendingToolCallsInLatestTurn || staleStreamMayHideCurrentTurn);
+  const latestTurnMayStillBeActive =
+    ownsTurn && (processStateIsActive || latestTurnFallbackActive);
   const canStopOwnedProcess =
     ownsTurn &&
-    !latestTurnSettled &&
-    (processState === "in-turn" || hasPendingToolCallsInLatestTurn);
+    (processState === "in-turn" ||
+      (!latestTurnSettled && hasPendingToolCallsInLatestTurn));
 
   return {
     hasPendingToolCalls,
@@ -107,7 +107,6 @@ export function getSessionActivityUiState({
       latestTurnMayStillBeActive &&
       (processState === "in-turn" ||
         processState === "waiting-input" ||
-        hasPendingToolCallsInLatestTurn ||
-        staleStreamMayHideCurrentTurn),
+        latestTurnFallbackActive),
   };
 }

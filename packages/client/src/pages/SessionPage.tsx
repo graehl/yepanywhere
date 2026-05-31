@@ -2927,9 +2927,9 @@ function SessionPageContent({
   // Check if pending request is an AskUserQuestion
   const isAskUserQuestion = pendingInputRequest?.toolName === "AskUserQuestion";
 
-  // Suppress current-turn orphan markers only while the latest turn still
-  // appears active. Terminal assistant text should win over stale process state
-  // or stale pending tool rows so old activity cannot orphan the bottom spinner.
+  // Suppress current-turn orphan markers while owned process state says the
+  // turn is active. Completed assistant text only settles stale fallback
+  // evidence, such as old pending tool rows after the process goes idle.
   const activeToolApproval = sessionActivityUi.shouldSuppressCurrentTurnOrphans;
 
   // Detect if session has pending tool calls without results

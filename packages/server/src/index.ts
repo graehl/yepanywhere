@@ -650,6 +650,8 @@ async function startServer() {
     createSpeechRoutes({
       speechBackendRegistry,
       upgradeWebSocket,
+      dataDir: config.dataDir,
+      serverSettingsService,
     }),
   );
   markStartup("speech routes mounted");

@@ -44,6 +44,14 @@ describe("speech provider method selection", () => {
     );
   });
 
+  it("uses explicit labels for known STT backends", () => {
+    expect(
+      getSpeechMethods(["ya-deepgram", "ya-grok"])
+        .slice(0, 2)
+        .map((method) => method.label),
+    ).toEqual(["Grok STT", "Deepgram STT"]);
+  });
+
   it("prefers Grok over Deepgram when no explicit user method is stored", () => {
     expect(getPreferredSpeechMethod(["ya-deepgram", "ya-grok"])).toBe("ya-grok");
     expect(

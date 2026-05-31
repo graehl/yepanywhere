@@ -1077,6 +1077,8 @@ export function createApp(options: AppOptions): AppResult {
       createSpeechRoutes({
         speechBackendRegistry: options.speechBackendRegistry,
         upgradeWebSocket: options.upgradeWebSocket,
+        dataDir: options.dataDir,
+        serverSettingsService: options.serverSettingsService,
       }),
     );
   }

@@ -69,6 +69,7 @@ export type {
   UserMessageCompositionMetadata,
   UserMessageDeliveryIntent,
   UserMessageMetadata,
+  UserMessageSpeechMetadata,
 } from "./user-message-metadata.js";
 
 export {

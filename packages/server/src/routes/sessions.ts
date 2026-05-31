@@ -290,6 +290,21 @@ function parseDeliveryIntent(
     : undefined;
 }
 
+function parseShortString(value: unknown, maxLength: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
+
+function parseStringList(value: unknown, maxItems: number, maxLength: number) {
+  if (!Array.isArray(value)) return undefined;
+  const parsed = value
+    .map((entry) => parseShortString(entry, maxLength))
+    .filter((entry): entry is string => entry !== undefined)
+    .slice(0, maxItems);
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 function buildUserMessageMetadata(
   body: StartSessionBody,
   serverTimestamp: number,
@@ -312,6 +327,24 @@ function buildUserMessageMetadata(
     typeof body.clientTimestamp === "number" && Number.isFinite(body.clientTimestamp)
       ? body.clientTimestamp
       : undefined;
+  const rawSpeech = isRecord(rawMetadata.speech) ? rawMetadata.speech : {};
+  const speechClientTurnId = parseShortString(rawSpeech.clientTurnId, 120);
+  const speechTranscriptionIds = parseStringList(
+    rawSpeech.transcriptionIds,
+    20,
+    120,
+  );
+  const speech =
+    speechClientTurnId || speechTranscriptionIds
+      ? {
+          ...(speechClientTurnId
+            ? { clientTurnId: speechClientTurnId }
+            : {}),
+          ...(speechTranscriptionIds
+            ? { transcriptionIds: speechTranscriptionIds }
+            : {}),
+        }
+      : undefined;
 
   return {
     deliveryIntent:
@@ -319,6 +352,7 @@ function buildUserMessageMetadata(
     ...(Object.keys(cleanComposition).length > 0
       ? { composition: cleanComposition }
       : {}),
+    ...(speech ? { speech } : {}),
     ...(clientTimestamp !== undefined ? { clientTimestamp } : {}),
     serverReceivedAt: new Date(serverTimestamp).toISOString(),
   };

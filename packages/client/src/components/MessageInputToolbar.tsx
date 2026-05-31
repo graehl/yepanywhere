@@ -38,6 +38,10 @@ import {
   resolveSpeechMethod,
   type SpeechMethodId,
 } from "../lib/speechProviders/methods";
+import type {
+  SpeechTranscriptionContext,
+  SpeechTranscriptionResultMetadata,
+} from "../lib/speechProviders/SpeechProvider";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import type { ContextUsage, PermissionMode } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
@@ -67,10 +71,14 @@ export interface MessageInputToolbarProps {
 
   // Voice input
   voiceButtonRef?: RefObject<VoiceInputButtonRef | null>;
-  onVoiceTranscript?: (transcript: string) => void;
+  onVoiceTranscript?: (
+    transcript: string,
+    metadata?: SpeechTranscriptionResultMetadata,
+  ) => void;
   onInterimTranscript?: (transcript: string) => void;
   onListeningStart?: () => void;
   voiceDisabled?: boolean;
+  getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
 
   // Slash commands
   slashCommands?: string[];
@@ -279,6 +287,7 @@ export function MessageInputToolbar({
   onInterimTranscript,
   onListeningStart,
   voiceDisabled,
+  getTranscriptionContext,
   slashCommands = [],
   onSelectSlashCommand,
   onBtwClick,
@@ -899,6 +908,7 @@ export function MessageInputToolbar({
             onListeningStart={onListeningStart}
             disabled={voiceDisabled}
             speechMethod={selectedSpeechMethod}
+            getTranscriptionContext={getTranscriptionContext}
           />
         )}
         {hasModelIndicator && modelToolbarDensity !== "hidden" && (

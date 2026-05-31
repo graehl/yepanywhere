@@ -6,6 +6,8 @@ import {
   type SpeechProvider,
   type SpeechProviderState,
   type SpeechProviderStatus,
+  type SpeechTranscriptionContext,
+  type SpeechTranscriptionResultMetadata,
 } from "../lib/speechProviders/SpeechProvider";
 
 export interface UseSpeechRecognitionOptions {
@@ -15,8 +17,13 @@ export interface UseSpeechRecognitionOptions {
   speechMethod?: string;
   /** Base path for relay/remote connections (used by YaServerProvider). */
   basePath?: string;
+  /** Context attached to YA-server transcription requests. */
+  getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
   /** Callback when final transcript is available. */
-  onResult?: (transcript: string) => void;
+  onResult?: (
+    transcript: string,
+    metadata?: SpeechTranscriptionResultMetadata,
+  ) => void;
   /** Callback for interim results (live transcription). */
   onInterimResult?: (transcript: string) => void;
   /** Callback when recognition ends. */
@@ -44,7 +51,11 @@ function createProvider(
   basePath: string,
   events: {
     lang?: string;
-    onResult?: (t: string) => void;
+    getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
+    onResult?: (
+      t: string,
+      metadata?: SpeechTranscriptionResultMetadata,
+    ) => void;
     onInterimResult?: (t: string) => void;
     onEnd?: () => void;
     onError?: (e: string) => void;
@@ -66,32 +77,47 @@ function createProvider(
 export function useSpeechRecognition(
   options: UseSpeechRecognitionOptions = {},
 ): UseSpeechRecognitionReturn {
-  const { lang, speechMethod, basePath = "", onResult, onInterimResult, onEnd, onError } =
-    options;
+  const {
+    lang,
+    speechMethod,
+    basePath = "",
+    getTranscriptionContext,
+    onResult,
+    onInterimResult,
+    onEnd,
+    onError,
+  } = options;
 
   const onResultRef = useRef(onResult);
   const onInterimResultRef = useRef(onInterimResult);
   const onEndRef = useRef(onEnd);
   const onErrorRef = useRef(onError);
+  const getTranscriptionContextRef = useRef(getTranscriptionContext);
   useEffect(() => {
     onResultRef.current = onResult;
     onInterimResultRef.current = onInterimResult;
     onEndRef.current = onEnd;
     onErrorRef.current = onError;
-  }, [onResult, onInterimResult, onEnd, onError]);
+    getTranscriptionContextRef.current = getTranscriptionContext;
+  }, [onResult, onInterimResult, onEnd, onError, getTranscriptionContext]);
 
   const speechMethodRef = useRef(speechMethod);
   const basePathRef = useRef(basePath);
 
   const providerRef = useRef<SpeechProvider | null>(null);
   if (providerRef.current === null) {
-    providerRef.current = createProvider(speechMethodRef.current, basePathRef.current, {
-      lang,
-      onResult: (t) => onResultRef.current?.(t),
-      onInterimResult: (t) => onInterimResultRef.current?.(t),
-      onEnd: () => onEndRef.current?.(),
-      onError: (e) => onErrorRef.current?.(e),
-    });
+    providerRef.current = createProvider(
+      speechMethodRef.current,
+      basePathRef.current,
+      {
+        lang,
+        getTranscriptionContext: () => getTranscriptionContextRef.current?.(),
+        onResult: (t, metadata) => onResultRef.current?.(t, metadata),
+        onInterimResult: (t) => onInterimResultRef.current?.(t),
+        onEnd: () => onEndRef.current?.(),
+        onError: (e) => onErrorRef.current?.(e),
+      },
+    );
   }
 
   const [state, setState] = useState<SpeechProviderState>(() =>
@@ -115,7 +141,8 @@ export function useSpeechRecognition(
 
     const next = createProvider(speechMethod, basePath, {
       lang,
-      onResult: (t) => onResultRef.current?.(t),
+      getTranscriptionContext: () => getTranscriptionContextRef.current?.(),
+      onResult: (t, metadata) => onResultRef.current?.(t, metadata),
       onInterimResult: (t) => onInterimResultRef.current?.(t),
       onEnd: () => onEndRef.current?.(),
       onError: (e) => onErrorRef.current?.(e),

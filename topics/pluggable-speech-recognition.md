@@ -30,6 +30,17 @@ Topic: pluggable-speech-recognition
   native cannot: server-side keys, backend choice, project/session biasing,
   retry/buffering under YA's transport, or direct audio input to an
   audio-capable agent provider.
+- YA-server recognition keeps an audit trail by default. Captured speech audio
+  is retained for eight weeks or 400 MB, whichever limit prunes it first, using
+  a speech-appropriate compressed browser recording such as Opus/WebM. Each
+  retained utterance has sidecar metadata that includes backend id, MIME type,
+  byte size, timing, transcript text, and the best available session plus
+  client-turn pointer. This is intentionally useful for local speech-model
+  fine-tuning, transcription-quality audits, and debugging backend selection.
+- Ordinary server logs should identify the selected speech backend, request
+  source, audio size, MIME type, session/turn pointer, duration, transcript
+  character count, and retention result. Logs must not include the transcript
+  text itself; retained metadata is the place where transcript text belongs.
 
 ## Intended Architecture
 
@@ -126,6 +137,10 @@ client through `fetchJSON("/speech/transcribe", ...)`.
 - The current UI setting is a global default, not a true per-session speech
   method. The original plan's per-new-session override is not persisted as
   session metadata or passed through message submission.
+- Audio retention settings exist conceptually as a global option: enable/disable
+  saving, age limit, and size limit. The UI for changing those limits is a
+  follow-up, but the runtime default is enabled with the eight-week / 400 MB
+  retention contract above.
 - Backend biasing is not wired. There is no `buildBiasingContext()` helper
   feeding Whisper `initial_prompt` or Deepgram `keyterm` values from project
   and session context.
@@ -141,15 +156,17 @@ client through `fetchJSON("/speech/transcribe", ...)`.
 2. Decide whether speech method is global-only for the first usable release or
    truly per-session. If per-session, persist it with session metadata and pass
    the session context into speech requests.
-3. Add `buildBiasingContext(session, project)` and thread its output into
+3. Add UI for global speech-audio retention settings. The first implementation
+   may use the default eight-week / 400 MB contract without exposing controls.
+4. Add `buildBiasingContext(session, project)` and thread its output into
    Deepgram keyterms and Whisper initial prompts.
-4. After batch transcription works, add backend-specific streaming partials
+5. After batch transcription works, add backend-specific streaming partials
    where the backend supports them. Deepgram is the first candidate; local
    Whisper needs chunking or VAD and should remain a follow-up.
-5. Decide whether future streaming audio should use the existing direct
+6. Decide whether future streaming audio should use the existing direct
    `/api/speech/ws` endpoint only for local clients or gain an explicit secure
    remote substream.
-6. Re-check current provider audio-input support before implementing
+7. Re-check current provider audio-input support before implementing
    audio-as-modality. Providers that accept audio should get the original
    audio content, while text-only providers keep the transcript-first path.
 
@@ -174,6 +191,12 @@ client through `fetchJSON("/speech/transcribe", ...)`.
   error from xAI.
 - With both `ya-grok` and `ya-deepgram` advertised and no explicit stored
   speech method, the client selects `ya-grok` as the effective mic backend.
+- A successful server-routed transcription emits positive-path logs naming the
+  backend and audio metadata without logging transcript text.
+- A successful server-routed transcription writes retained audio plus metadata
+  under the configured data directory by default, and the metadata contains the
+  returned transcript plus session/client-turn pointers when the client has
+  supplied them.
 - With an advertised backend id not hardcoded in the client, the selector still
   displays that id generically and sends it unchanged as `backendId`.
 - With `YA_VOICE_BACKENDS=ya-whisper` and `faster_whisper` importable, startup

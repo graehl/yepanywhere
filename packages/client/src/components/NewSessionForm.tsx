@@ -64,6 +64,7 @@ import {
   resolveSpeechMethod,
   type SpeechMethodId,
 } from "../lib/speechProviders/methods";
+import type { SpeechTranscriptionContext } from "../lib/speechProviders/SpeechProvider";
 import { useVersion } from "../hooks/useVersion";
 import { shortenPath } from "../lib/text";
 import type { PermissionMode, Project } from "../types";
@@ -96,6 +97,11 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024)
     return `${Math.round((bytes / (1024 * 1024)) * 10) / 10}\u202fmb`;
   return `${Math.round((bytes / (1024 * 1024 * 1024)) * 10) / 10}\u202fgb`;
+}
+
+function createClientSpeechTurnId(): string {
+  return globalThis.crypto?.randomUUID?.() ??
+    `speech-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function getPreferredModelId(
@@ -327,6 +333,7 @@ export function NewSessionForm({
   const projectInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
+  const speechTurnIdRef = useRef<string | null>(null);
   const hasInitializedDefaultsRef = useRef(false);
   const hasUserCustomizedDefaultsRef = useRef(false);
   const lastSyncedProjectIdRef = useRef<string | null>(null);
@@ -762,6 +769,8 @@ export function NewSessionForm({
     },
     [setSpeechMethod],
   );
+  const showSpeechMethodSelector =
+    voiceInputEnabled && speechMethodOptions.length > 1;
 
   // Combined display text: committed text + interim transcript
   const displayText = interimTranscript
@@ -1271,6 +1280,17 @@ export function NewSessionForm({
 
   const hasContent = message.trim() || pendingFiles.length > 0;
   const canStart = Boolean(hasContent);
+  const getTranscriptionContext =
+    useCallback((): SpeechTranscriptionContext => {
+      if (!speechTurnIdRef.current) {
+        speechTurnIdRef.current = createClientSpeechTurnId();
+      }
+      return {
+        projectId,
+        draftKey: NEW_SESSION_DRAFT_KEY,
+        clientTurnId: speechTurnIdRef.current,
+      };
+    }, [projectId]);
   const savedDefaults = settings?.newSessionDefaults;
   const defaultRecapMode = getDefaultRecapMode(
     selectedProviderInfo,
@@ -1348,6 +1368,7 @@ export function NewSessionForm({
             disabled={isStarting}
             className="toolbar-button"
             speechMethod={selectedSpeechMethod}
+            getTranscriptionContext={getTranscriptionContext}
           />
           {supportsThinkingToggle && (
             <>
@@ -1648,9 +1669,9 @@ export function NewSessionForm({
         </div>
       </div>
     ) : null;
-  const modelSection =
+  const modelField =
     selectedProvider && modelOptions.length > 0 ? (
-      <div className="new-session-model-section">
+      <div className="new-session-model-field">
         <h3>{t("newSessionModelTitle")}</h3>
         <FilterDropdown
           label={t("newSessionModelTitle")}
@@ -1660,6 +1681,30 @@ export function NewSessionForm({
           multiSelect={false}
           placeholder={t("newSessionModelPlaceholder")}
         />
+      </div>
+    ) : null;
+  const speechField = showSpeechMethodSelector ? (
+    <div className="new-session-speech-field">
+      <h3>{t("newSessionSpeechTitle")}</h3>
+      <FilterDropdown
+        label={t("newSessionSpeechTitle")}
+        options={speechMethodOptions}
+        selected={[selectedSpeechMethod]}
+        onChange={handleSpeechMethodSelect}
+        multiSelect={false}
+        placeholder={t("newSessionSpeechPlaceholder")}
+      />
+    </div>
+  ) : null;
+  const modelSection =
+    modelField || speechField ? (
+      <div
+        className={`new-session-model-section ${
+          speechField ? "has-speech" : ""
+        }`}
+      >
+        {modelField}
+        {speechField}
       </div>
     ) : null;
   const recapSection = selectedProvider ? (
@@ -1830,21 +1875,6 @@ export function NewSessionForm({
           </div>
         )}
       </div>
-
-      {/* Voice transcription method */}
-      {voiceInputEnabled && speechMethodOptions.length > 1 && (
-        <div className="new-session-speech-section">
-          <h3>{t("newSessionSpeechTitle")}</h3>
-          <FilterDropdown
-            label={t("newSessionSpeechTitle")}
-            options={speechMethodOptions}
-            selected={[selectedSpeechMethod]}
-            onChange={handleSpeechMethodSelect}
-            multiSelect={false}
-            placeholder={t("newSessionSpeechPlaceholder")}
-          />
-        </div>
-      )}
 
       {/* Executor Selection - only show if remote executors are configured */}
       {!executorsLoading && remoteExecutors.length > 0 && (

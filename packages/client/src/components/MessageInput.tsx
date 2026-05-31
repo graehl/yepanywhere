@@ -3,6 +3,7 @@ import type {
   UploadedFile,
   UserMessageCompositionMetadata,
   UserMessageDeliveryIntent,
+  UserMessageSpeechMetadata,
 } from "@yep-anywhere/shared";
 import {
   type ClipboardEvent,
@@ -21,6 +22,10 @@ import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 import { hasCoarsePointer } from "../lib/deviceDetection";
+import type {
+  SpeechTranscriptionContext,
+  SpeechTranscriptionResultMetadata,
+} from "../lib/speechProviders/SpeechProvider";
 import type { ContextUsage, PermissionMode } from "../types";
 import { AttachmentChip } from "./AttachmentChip";
 import { MessageInputToolbar } from "./MessageInputToolbar";
@@ -38,6 +43,7 @@ export interface UploadProgress {
 export interface MessageSubmissionMetadata {
   deliveryIntent: UserMessageDeliveryIntent;
   composition: UserMessageCompositionMetadata;
+  speech?: UserMessageSpeechMetadata;
 }
 
 /** Format file size in human-readable form */
@@ -68,6 +74,11 @@ function clearTextareaContentsUndoably(textarea: HTMLTextAreaElement): void {
 
   textarea.setRangeText("", 0, previousLength, "start");
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function createClientSpeechTurnId(): string {
+  return globalThis.crypto?.randomUUID?.() ??
+    `speech-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 const PATIENT_QUEUE_PREFIX = "when done, ";
@@ -266,6 +277,8 @@ export function MessageInput({
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
   const typingStartedAtRef = useRef<string | null>(null);
   const lastEditedAtRef = useRef<string | null>(null);
+  const speechTurnIdRef = useRef<string | null>(null);
+  const speechTranscriptionIdsRef = useRef<string[]>([]);
   // User-controlled collapse state (independent of external collapse from approval panel)
   const [userCollapsed, setUserCollapsed] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
@@ -325,13 +338,42 @@ export function MessageInput({
   const resetCompositionMetadata = useCallback(() => {
     typingStartedAtRef.current = null;
     lastEditedAtRef.current = null;
+    speechTurnIdRef.current = null;
+    speechTranscriptionIdsRef.current = [];
   }, []);
+
+  const ensureSpeechTurnId = useCallback(() => {
+    if (!speechTurnIdRef.current) {
+      speechTurnIdRef.current = createClientSpeechTurnId();
+    }
+    return speechTurnIdRef.current;
+  }, []);
+
+  const getTranscriptionContext =
+    useCallback((): SpeechTranscriptionContext => {
+      return {
+        projectId,
+        sessionId,
+        draftKey,
+        clientTurnId: ensureSpeechTurnId(),
+      };
+    }, [draftKey, ensureSpeechTurnId, projectId, sessionId]);
 
   const buildSubmissionMetadata = useCallback(
     (deliveryIntent: UserMessageDeliveryIntent): MessageSubmissionMetadata => {
       const submittedAt = new Date().toISOString();
       const typingStartedAt = typingStartedAtRef.current ?? submittedAt;
       const lastEditedAt = lastEditedAtRef.current ?? typingStartedAt;
+      const speech: UserMessageSpeechMetadata | undefined =
+        speechTurnIdRef.current || speechTranscriptionIdsRef.current.length > 0
+          ? {
+              clientTurnId: speechTurnIdRef.current ?? undefined,
+              transcriptionIds:
+                speechTranscriptionIdsRef.current.length > 0
+                  ? [...speechTranscriptionIdsRef.current]
+                  : undefined,
+            }
+          : undefined;
       return {
         deliveryIntent,
         composition: {
@@ -340,6 +382,7 @@ export function MessageInput({
           lastEditedAt,
           submittedAt,
         },
+        ...(speech ? { speech } : {}),
       };
     },
     [],
@@ -684,11 +727,20 @@ export function MessageInput({
 
   // Voice input handlers
   const handleVoiceTranscript = useCallback(
-    (transcript: string) => {
+    (
+      transcript: string,
+      metadata?: SpeechTranscriptionResultMetadata,
+    ) => {
       // Append transcript to existing text with space separator
       // Trim the transcript since mobile speech API includes leading/trailing spaces
       const trimmedTranscript = transcript.trim();
       if (!trimmedTranscript) return;
+      if (metadata?.transcriptionId) {
+        speechTranscriptionIdsRef.current = [
+          ...speechTranscriptionIdsRef.current,
+          metadata.transcriptionId,
+        ];
+      }
 
       const trimmedText = text.trimEnd();
       if (trimmedText) {
@@ -921,6 +973,7 @@ export function MessageInput({
             onInterimTranscript={handleInterimTranscript}
             onListeningStart={() => textareaRef.current?.focus()}
             voiceDisabled={disabled}
+            getTranscriptionContext={getTranscriptionContext}
             slashCommands={slashCommands}
             onSelectSlashCommand={handleSlashCommand}
             onBtwClick={onBtwShortcut ? handleBtwClick : undefined}

@@ -10,6 +10,17 @@ import * as path from "node:path";
 import type { HelperTargetConfig, NewSessionDefaults } from "@yep-anywhere/shared";
 
 const CURRENT_VERSION = 1;
+export const DEFAULT_SPEECH_AUDIO_RETENTION_MAX_AGE_DAYS = 56;
+export const DEFAULT_SPEECH_AUDIO_RETENTION_MAX_BYTES = 400 * 1024 * 1024;
+
+export interface SpeechAudioRetentionSettings {
+  /** Whether YA persists server-routed speech audio and sidecar metadata. */
+  enabled: boolean;
+  /** Prune retained speech audio older than this many days. */
+  maxAgeDays: number;
+  /** Prune oldest retained speech audio when the store exceeds this many bytes. */
+  maxBytes: number;
+}
 
 /** Server-wide settings */
 export interface ServerSettings {
@@ -41,6 +52,8 @@ export interface ServerSettings {
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */
   newSessionDefaults?: NewSessionDefaults;
+  /** Server-routed speech audio retention policy. */
+  speechAudioRetention: SpeechAudioRetentionSettings;
   /** OpenAI-compatible helper endpoints for side-session helper work */
   helperTargets?: HelperTargetConfig[];
   /** Whether lifecycle webhook delivery is enabled */
@@ -71,6 +84,11 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   clientLogCollectionRequested: false,
   heartbeatTurnsAfterMinutes: 15,
   heartbeatTurnText: "heartbeat",
+  speechAudioRetention: {
+    enabled: true,
+    maxAgeDays: DEFAULT_SPEECH_AUDIO_RETENTION_MAX_AGE_DAYS,
+    maxBytes: DEFAULT_SPEECH_AUDIO_RETENTION_MAX_BYTES,
+  },
   lifecycleWebhooksEnabled: false,
   lifecycleWebhookDryRun: true,
   codexUpdatePolicy: "notify",

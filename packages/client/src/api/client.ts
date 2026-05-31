@@ -1383,6 +1383,12 @@ export interface ServerSettings {
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */
   newSessionDefaults?: NewSessionDefaults;
+  /** Server-routed speech audio retention policy */
+  speechAudioRetention?: {
+    enabled: boolean;
+    maxAgeDays: number;
+    maxBytes: number;
+  };
   /** OpenAI-compatible helper endpoints for side-session helper work */
   helperTargets?: HelperTargetConfig[];
   /** Whether lifecycle webhook delivery is enabled */

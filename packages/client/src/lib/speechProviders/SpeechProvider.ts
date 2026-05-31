@@ -30,10 +30,24 @@ export interface SpeechProviderState {
   error: string | null;
 }
 
+export interface SpeechTranscriptionContext {
+  projectId?: string;
+  sessionId?: string;
+  clientTurnId?: string;
+  draftKey?: string;
+}
+
+export interface SpeechTranscriptionResultMetadata {
+  transcriptionId?: string;
+}
+
 /** Events emitted by a provider during a listening session. */
 export interface SpeechProviderEvents {
   /** Final transcript delta (only the new text since the last final). */
-  onResult?: (transcript: string) => void;
+  onResult?: (
+    transcript: string,
+    metadata?: SpeechTranscriptionResultMetadata,
+  ) => void;
   /** Interim (live) transcript. May fire many times per utterance. */
   onInterimResult?: (transcript: string) => void;
   /** Listening session ended (manual stop, error, or natural end). */
@@ -46,6 +60,8 @@ export interface SpeechProviderEvents {
 export interface SpeechProviderOptions extends SpeechProviderEvents {
   /** Language tag, e.g. "en-US". Provider may ignore if not applicable. */
   lang?: string;
+  /** Context attached to YA-server transcription requests. */
+  getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
 }
 
 /** Subscriber callback receiving the latest state snapshot. */

@@ -4,6 +4,7 @@ import type {
   ServerSettings,
   ServerSettingsService,
 } from "../../src/services/ServerSettingsService.js";
+import { DEFAULT_SERVER_SETTINGS } from "../../src/services/ServerSettingsService.js";
 
 describe("Settings Routes", () => {
   let settings: ServerSettings;
@@ -14,6 +15,7 @@ describe("Settings Routes", () => {
       serviceWorkerEnabled: true,
       persistRemoteSessionsToDisk: false,
       clientLogCollectionRequested: false,
+      speechAudioRetention: DEFAULT_SERVER_SETTINGS.speechAudioRetention,
     };
 
     mockServerSettingsService = {
@@ -199,6 +201,54 @@ describe("Settings Routes", () => {
       expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
         clientLogCollectionRequested: true,
       });
+    });
+
+    it("accepts speech audio retention settings", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          speechAudioRetention: {
+            enabled: true,
+            maxAgeDays: 56,
+            maxBytes: 400 * 1024 * 1024,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        speechAudioRetention: {
+          enabled: true,
+          maxAgeDays: 56,
+          maxBytes: 400 * 1024 * 1024,
+        },
+      });
+    });
+
+    it("rejects invalid speech audio retention settings", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          speechAudioRetention: {
+            enabled: true,
+            maxAgeDays: 0,
+            maxBytes: 400 * 1024 * 1024,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
 
     it("accepts and normalizes helper target settings", async () => {

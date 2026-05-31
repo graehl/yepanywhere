@@ -17,6 +17,28 @@ export const DEFAULT_SPEECH_METHOD: SpeechMethodId = "browser-native";
 
 const SERVER_BACKEND_PREFERENCE = ["ya-grok", "ya-deepgram"] as const;
 
+const SERVER_BACKEND_LABELS: Record<
+  string,
+  { label: string; description: string }
+> = {
+  "ya-grok": {
+    label: "Grok STT",
+    description: "xAI speech-to-text through YA.",
+  },
+  "ya-deepgram": {
+    label: "Deepgram STT",
+    description: "Deepgram speech-to-text through YA.",
+  },
+  "ya-whisper": {
+    label: "Whisper STT",
+    description: "Local Whisper speech-to-text through YA.",
+  },
+  "ya-dummy": {
+    label: "Dummy STT",
+    description: "Test speech backend through YA.",
+  },
+};
+
 export interface SpeechMethodDescriptor {
   id: SpeechMethodId;
   label: string;
@@ -71,10 +93,12 @@ function formatServerBackendLabel(id: string): string {
 }
 
 export function describeServerBackend(id: string): SpeechMethodDescriptor {
+  const knownBackend = SERVER_BACKEND_LABELS[id];
   return {
     id,
-    label: formatServerBackendLabel(id),
-    description: "Server-routed transcription through YA.",
+    label: knownBackend?.label ?? formatServerBackendLabel(id),
+    description:
+      knownBackend?.description ?? "Server-routed transcription through YA.",
     clientSupported: true,
     serverRouted: true,
   };

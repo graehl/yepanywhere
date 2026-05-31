@@ -23,10 +23,13 @@ import type {
   CodexUpdatePolicy,
   ServerSettings,
   ServerSettingsService,
+  SpeechAudioRetentionSettings,
 } from "../services/ServerSettingsService.js";
 import {
   CODEX_UPDATE_POLICIES,
   DEFAULT_SERVER_SETTINGS,
+  DEFAULT_SPEECH_AUDIO_RETENTION_MAX_AGE_DAYS,
+  DEFAULT_SPEECH_AUDIO_RETENTION_MAX_BYTES,
 } from "../services/ServerSettingsService.js";
 import {
   isValidSshHostAlias,
@@ -324,6 +327,47 @@ function parseNewSessionDefaults(
   return Object.keys(parsed).length > 0 ? parsed : undefined;
 }
 
+function parseSpeechAudioRetention(
+  raw: unknown,
+): SpeechAudioRetentionSettings | null {
+  if (raw === undefined || raw === null) {
+    return DEFAULT_SERVER_SETTINGS.speechAudioRetention;
+  }
+  if (!isRecord(raw)) return null;
+
+  const enabled =
+    typeof raw.enabled === "boolean"
+      ? raw.enabled
+      : DEFAULT_SERVER_SETTINGS.speechAudioRetention.enabled;
+  const maxAgeDays =
+    raw.maxAgeDays === undefined || raw.maxAgeDays === null
+      ? DEFAULT_SPEECH_AUDIO_RETENTION_MAX_AGE_DAYS
+      : raw.maxAgeDays;
+  const maxBytes =
+    raw.maxBytes === undefined || raw.maxBytes === null
+      ? DEFAULT_SPEECH_AUDIO_RETENTION_MAX_BYTES
+      : raw.maxBytes;
+
+  if (
+    typeof maxAgeDays !== "number" ||
+    !Number.isInteger(maxAgeDays) ||
+    maxAgeDays < 1 ||
+    maxAgeDays > 3650
+  ) {
+    return null;
+  }
+  if (
+    typeof maxBytes !== "number" ||
+    !Number.isInteger(maxBytes) ||
+    maxBytes < 1024 * 1024 ||
+    maxBytes > 100 * 1024 * 1024 * 1024
+  ) {
+    return null;
+  }
+
+  return { enabled, maxAgeDays, maxBytes };
+}
+
 export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
   const app = new Hono();
   const {
@@ -490,6 +534,16 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         return c.json({ error: "Invalid newSessionDefaults setting" }, 400);
       }
       updates.newSessionDefaults = parsedDefaults;
+    }
+
+    if ("speechAudioRetention" in body) {
+      const parsedRetention = parseSpeechAudioRetention(
+        body.speechAudioRetention,
+      );
+      if (parsedRetention === null) {
+        return c.json({ error: "Invalid speechAudioRetention setting" }, 400);
+      }
+      updates.speechAudioRetention = parsedRetention;
     }
 
     if ("helperTargets" in body) {

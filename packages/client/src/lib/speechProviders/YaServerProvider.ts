@@ -41,6 +41,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 
 interface TranscribeResponse {
   text: string;
+  transcriptionId?: string;
 }
 
 /**
@@ -132,7 +133,7 @@ export class YaServerProvider implements SpeechProvider {
 
     const recorder = new MediaRecorder(stream, {
       mimeType: this.mimeType,
-      audioBitsPerSecond: 16_000,
+      audioBitsPerSecond: 32_000,
     });
     this.recorder = recorder;
 
@@ -166,6 +167,7 @@ export class YaServerProvider implements SpeechProvider {
                 backendId: this.backendId,
                 mimeType: this.mimeType,
                 audioBase64: await blobToBase64(audio),
+                context: this.options.getTranscriptionContext?.(),
               }),
             })
           : { text: "" };
@@ -176,7 +178,11 @@ export class YaServerProvider implements SpeechProvider {
         interimTranscript: "",
         error: null,
       });
-      if (response.text) this.options.onResult?.(response.text);
+      if (response.text) {
+        this.options.onResult?.(response.text, {
+          transcriptionId: response.transcriptionId,
+        });
+      }
       this.options.onEnd?.();
     } catch (err: unknown) {
       if (this.disposed) return;

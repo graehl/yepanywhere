@@ -20,6 +20,10 @@ import {
   resolveSpeechMethod,
   type SpeechMethodId,
 } from "../lib/speechProviders/methods";
+import type {
+  SpeechTranscriptionContext,
+  SpeechTranscriptionResultMetadata,
+} from "../lib/speechProviders/SpeechProvider";
 
 export interface VoiceInputButtonRef {
   /** Stop listening and return any pending interim text */
@@ -34,7 +38,10 @@ export interface VoiceInputButtonRef {
 
 interface VoiceInputButtonProps {
   /** Callback when final transcript is received - appends to input */
-  onTranscript: (text: string) => void;
+  onTranscript: (
+    text: string,
+    metadata?: SpeechTranscriptionResultMetadata,
+  ) => void;
   /** Callback for interim results - shows live preview */
   onInterimTranscript?: (text: string) => void;
   /** Callback when listening starts - useful for focusing input */
@@ -45,6 +52,8 @@ interface VoiceInputButtonProps {
   className?: string;
   /** Speech method selected by an enclosing in-session selector. */
   speechMethod?: SpeechMethodId;
+  /** Context attached to YA-server transcription requests. */
+  getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
 }
 
 /**
@@ -61,6 +70,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     disabled,
     className = "",
     speechMethod: selectedSpeechMethod,
+    getTranscriptionContext,
   }: VoiceInputButtonProps,
   ref: ForwardedRef<VoiceInputButtonRef>,
 ) {
@@ -96,8 +106,8 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     !hasCoarsePointer() && viewportWidth >= 600 && voiceInputEnabled;
 
   const handleResult = useCallback(
-    (transcript: string) => {
-      onTranscript(transcript);
+    (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
+      onTranscript(transcript, metadata);
     },
     [onTranscript],
   );
@@ -120,6 +130,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   } = useSpeechRecognition({
     speechMethod,
     basePath,
+    getTranscriptionContext,
     onResult: handleResult,
     onInterimResult: handleInterim,
   });

@@ -247,13 +247,13 @@ describe("MessageInput", () => {
 
     renderMessageInput();
 
-    expect(screen.getByText("YA Grok")).toBeDefined();
+    expect(screen.getByText("Grok STT")).toBeDefined();
     expect(screen.getByRole("button", { name: "voice" }).dataset.speechMethod).toBe(
       "ya-grok",
     );
 
-    fireEvent.click(screen.getByText("YA Grok").closest("button")!);
-    fireEvent.click(screen.getByText("YA Deepgram").closest("button")!);
+    fireEvent.click(screen.getByText("Grok STT").closest("button")!);
+    fireEvent.click(screen.getByText("Deepgram STT").closest("button")!);
 
     expect(mockSetSpeechMethod).toHaveBeenCalledWith("ya-deepgram");
   });

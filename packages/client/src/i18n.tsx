@@ -23,9 +23,10 @@ const DEFAULT_LOCALE: Locale = "en";
 
 const defaultMessages = enMessages;
 type Messages = typeof defaultMessages;
+type LocaleMessages = Partial<Messages>;
 type MessageKey = keyof Messages;
 
-const localeLoaders: Record<Locale, () => Promise<Messages>> = {
+const localeLoaders: Record<Locale, () => Promise<LocaleMessages>> = {
   en: async () => defaultMessages,
   "zh-CN": async () => (await import("./i18n/zh-CN.json")).default,
   es: async () => (await import("./i18n/es.json")).default,
@@ -63,7 +64,9 @@ function detectLocale(): Locale {
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(detectLocale);
-  const [messages, setMessages] = useState<Partial<Record<Locale, Messages>>>({
+  const [messages, setMessages] = useState<
+    Partial<Record<Locale, LocaleMessages>>
+  >({
     en: defaultMessages,
   });
 

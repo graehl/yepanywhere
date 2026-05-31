@@ -10,3 +10,4 @@
 - cost-efficiency - Preferring subscription/local over metered APIs; billing footgun masking.
 - ya-env-vars - Catalog of YA env vars and the YA_/YA_module__ naming conventions.
 - relay-origin-and-share-gating - Public relay origin allowlist and public share opt-in/privacy gating.
+- i18n-sparse-locale-cleanup - Sparse non-English locale overlays and translation key health checks.

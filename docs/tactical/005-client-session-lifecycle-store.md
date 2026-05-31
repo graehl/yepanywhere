@@ -6,6 +6,8 @@ Progress:
 
 - [x] 2026-05-31: Captured the design direction for the first concrete
   client-state slice around activity stream consistency.
+- [x] 2026-05-31: Added the first pure reducer/selector module with focused
+  tests for lifecycle semantics, snapshot/event races, and strict idle.
 
 ## Context
 
@@ -179,6 +181,14 @@ Provide small selectors that encode UI semantics once:
 List components can still render their existing row data, but activity badges
 should use the lifecycle selector result as an overlay.
 
+The global lifecycle store should not model the session-detail-only
+"settling" affordance used by the bottom processing message. A session detail
+view may briefly keep a local "Thinking..." / fun-phrase indicator while the
+latest visible turn settles after an idle boundary. Global selectors should
+remain stricter: `isWorking` is true only for canonical `in-turn` lifecycle
+state, and an idle event clears sidebar/dropdown/tab-title activity
+immediately.
+
 ## Related Sidebar Collection Staleness
 
 The lifecycle store is intentionally an overlay, not the canonical owner of
@@ -216,8 +226,9 @@ product surface, not just a local projection of `/api/sessions`.
 
 Keep the first implementation narrow:
 
-1. Add the lifecycle store and pure reducer tests.
-2. Subscribe it to `activityBus` events.
+1. Add the lifecycle reducer/selectors and pure tests. Done in the first
+   slice as `packages/client/src/lib/sessionLifecycleStore.ts`.
+2. Add the external-store shell and subscribe it to `activityBus` events.
 3. Add snapshot reporter functions, but wire only the existing
    `useGlobalSessions`, `InboxContext`, and `useProcesses` fetch paths first.
 4. Move compact sidebar/global-session activity indicators to the lifecycle

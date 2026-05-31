@@ -13,3 +13,4 @@
 - session-toolbar-customization - Browser-local session composer toolbar visibility controls.
 - i18n-sparse-locale-cleanup - Sparse non-English locale overlays and translation key health checks.
 - session-activity-tab-title - Browser-local tab title activity indicator.
+- client-session-lifecycle-store - Shared client lifecycle reducer/store for session activity indicators.

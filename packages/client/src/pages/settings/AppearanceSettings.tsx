@@ -6,9 +6,15 @@ import {
   useContentMaxWidth,
 } from "../../hooks/useContentMaxWidth";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
+import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionButtonEnabled";
 import { FONT_SIZES, useFontSize } from "../../hooks/useFontSize";
 import { useFunPhrases } from "../../hooks/useFunPhrases";
+import {
+  type SessionToolbarVisibilityKey,
+  useSessionToolbarVisibility,
+} from "../../hooks/useSessionToolbarVisibility";
 import { useStreamingEnabled } from "../../hooks/useStreamingEnabled";
+import { useTabTitleActivityPreference } from "../../hooks/useTabTitleActivityPreference";
 import { TAB_SIZES, useTabSize } from "../../hooks/useTabSize";
 import { THEMES, useTheme } from "../../hooks/useTheme";
 import { SUPPORTED_LOCALES, useI18n } from "../../i18n";
@@ -18,6 +24,7 @@ import {
   getTabSizeLabel,
   getThemeLabel,
 } from "../../i18n-settings";
+import { SessionToolbarPreview } from "../../components/SessionToolbarPreview";
 
 export function AppearanceSettings() {
   const { locale, setLocale, t } = useI18n();
@@ -30,8 +37,88 @@ export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
+  const { floatingActionButtonEnabled, setFloatingActionButtonEnabled } =
+    useFloatingActionButtonEnabled();
+  const { tabTitleActivityEnabled, setTabTitleActivityEnabled } =
+    useTabTitleActivityPreference();
   const { showConnectionBars, setShowConnectionBars } = useDeveloperMode();
+  const {
+    visibility: toolbarVisibility,
+    setControlVisible,
+    resetVisibility,
+  } = useSessionToolbarVisibility();
   const translate = (key: string) => t(key as never);
+  const toolbarControls: Array<{
+    key: SessionToolbarVisibilityKey;
+    title: string;
+    description: string;
+  }> = [
+    {
+      key: "modeSelector",
+      title: t("appearanceToolbarModeTitle"),
+      description: t("appearanceToolbarModeDescription"),
+    },
+    {
+      key: "attachments",
+      title: t("appearanceToolbarAttachmentsTitle"),
+      description: t("appearanceToolbarAttachmentsDescription"),
+    },
+    {
+      key: "slashMenu",
+      title: t("appearanceToolbarSlashTitle"),
+      description: t("appearanceToolbarSlashDescription"),
+    },
+    {
+      key: "thinkingToggle",
+      title: t("appearanceToolbarThinkingTitle"),
+      description: t("appearanceToolbarThinkingDescription"),
+    },
+    {
+      key: "renderMode",
+      title: t("appearanceToolbarRenderModeTitle"),
+      description: t("appearanceToolbarRenderModeDescription"),
+    },
+    {
+      key: "nudge",
+      title: t("appearanceToolbarNudgeTitle"),
+      description: t("appearanceToolbarNudgeDescription"),
+    },
+    {
+      key: "microphone",
+      title: t("appearanceToolbarMicrophoneTitle"),
+      description: t("appearanceToolbarMicrophoneDescription"),
+    },
+    {
+      key: "modelIndicator",
+      title: t("appearanceToolbarModelTitle"),
+      description: t("appearanceToolbarModelDescription"),
+    },
+    {
+      key: "sessionStatus",
+      title: t("appearanceToolbarStatusTitle"),
+      description: t("appearanceToolbarStatusDescription"),
+    },
+    {
+      key: "shortcutsHelp",
+      title: t("appearanceToolbarShortcutsTitle"),
+      description: t("appearanceToolbarShortcutsDescription"),
+    },
+    {
+      key: "contextUsage",
+      title: t("appearanceToolbarContextTitle"),
+      description: t("appearanceToolbarContextDescription"),
+    },
+    {
+      key: "btw",
+      title: t("appearanceToolbarBtwTitle"),
+      description: t("appearanceToolbarBtwDescription"),
+    },
+    {
+      key: "queueControls",
+      title: t("appearanceToolbarQueueTitle"),
+      description: t("appearanceToolbarQueueDescription"),
+    },
+  ];
 
   useEffect(() => {
     setContentMaxWidthDraft(String(contentMaxWidth));
@@ -187,6 +274,38 @@ export function AppearanceSettings() {
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
+            <strong>{t("appearanceFloatingActionButtonTitle")}</strong>
+            <p>{t("appearanceFloatingActionButtonDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={floatingActionButtonEnabled}
+              onChange={(e) => setFloatingActionButtonEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceTabTitleActivityTitle")}</strong>
+            <p>{t("appearanceTabTitleActivityDescription")}</p>
+          </div>
+          <div className="settings-item-actions">
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={tabTitleActivityEnabled}
+                onChange={(e) =>
+                  setTabTitleActivityEnabled(e.target.checked)
+                }
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
             <strong>{t("appearanceConnectionBarsTitle")}</strong>
             <p>{t("appearanceConnectionBarsDescription")}</p>
           </div>
@@ -198,6 +317,45 @@ export function AppearanceSettings() {
             />
             <span className="toggle-slider" />
           </label>
+        </div>
+        <div className="settings-item session-toolbar-settings">
+          <div className="settings-item-info">
+            <strong>{t("appearanceSessionToolbarTitle")}</strong>
+            <p>{t("appearanceSessionToolbarDescription")}</p>
+          </div>
+
+          <SessionToolbarPreview />
+
+          <div className="session-toolbar-control-list">
+            {toolbarControls.map((control) => (
+              <label className="session-toolbar-control" key={control.key}>
+                <span className="session-toolbar-control-copy">
+                  <strong>{control.title}</strong>
+                  <span>{control.description}</span>
+                </span>
+                <span className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={toolbarVisibility[control.key]}
+                    onChange={(e) =>
+                      setControlVisible(control.key, e.target.checked)
+                    }
+                  />
+                  <span className="toggle-slider" />
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <div className="settings-item-actions">
+            <button
+              type="button"
+              className="settings-button settings-button-secondary"
+              onClick={resetVisibility}
+            >
+              {t("appearanceSessionToolbarReset")}
+            </button>
+          </div>
         </div>
       </div>
     </section>

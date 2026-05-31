@@ -2,6 +2,8 @@ import { useCallback, useSyncExternalStore } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
 
 interface DeveloperModeSettings {
+  /** Enables default-off experimental UI features that may be upstream-sensitive */
+  experimentalFeaturesEnabled: boolean;
   holdModeEnabled: boolean;
   /** Log relay requests/responses to console for debugging */
   relayDebugEnabled: boolean;
@@ -12,6 +14,7 @@ interface DeveloperModeSettings {
 }
 
 const DEFAULT_SETTINGS: DeveloperModeSettings = {
+  experimentalFeaturesEnabled: false,
   holdModeEnabled: false,
   relayDebugEnabled: false,
   remoteLogCollectionEnabled: false,
@@ -67,12 +70,20 @@ function updateSettings(newSettings: DeveloperModeSettings) {
   }
 }
 
+export function setRemoteLogCollectionEnabledValue(enabled: boolean): void {
+  updateSettings({ ...currentSettings, remoteLogCollectionEnabled: enabled });
+}
+
 /**
  * Hook to manage developer mode settings.
  * Settings are persisted to localStorage and synced across components.
  */
 export function useDeveloperMode() {
   const settings = useSyncExternalStore(subscribe, getSnapshot);
+
+  const setExperimentalFeaturesEnabled = useCallback((enabled: boolean) => {
+    updateSettings({ ...currentSettings, experimentalFeaturesEnabled: enabled });
+  }, []);
 
   const setHoldModeEnabled = useCallback((enabled: boolean) => {
     updateSettings({ ...currentSettings, holdModeEnabled: enabled });
@@ -82,15 +93,18 @@ export function useDeveloperMode() {
     updateSettings({ ...currentSettings, relayDebugEnabled: enabled });
   }, []);
 
-  const setRemoteLogCollectionEnabled = useCallback((enabled: boolean) => {
-    updateSettings({ ...currentSettings, remoteLogCollectionEnabled: enabled });
-  }, []);
+  const setRemoteLogCollectionEnabled = useCallback(
+    setRemoteLogCollectionEnabledValue,
+    [],
+  );
 
   const setShowConnectionBars = useCallback((enabled: boolean) => {
     updateSettings({ ...currentSettings, showConnectionBars: enabled });
   }, []);
 
   return {
+    experimentalFeaturesEnabled: settings.experimentalFeaturesEnabled,
+    setExperimentalFeaturesEnabled,
     holdModeEnabled: settings.holdModeEnabled,
     setHoldModeEnabled,
     relayDebugEnabled: settings.relayDebugEnabled,

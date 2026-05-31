@@ -3,7 +3,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPublicSharePublicRoutes } from "../../src/routes/public-shares.js";
+import {
+  createPublicSharePublicRoutes,
+  createPublicShareRoutes,
+} from "../../src/routes/public-shares.js";
 import { PublicShareService } from "../../src/services/PublicShareService.js";
 
 const projectId = "cHJvamVjdA" as UrlProjectId;
@@ -44,6 +47,7 @@ describe("public share public routes", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
@@ -81,6 +85,7 @@ describe("public share public routes", () => {
     const app = createPublicSharePublicRoutes({
       publicShareService: service,
       loadSession,
+      getPublicSharesEnabled: () => true,
     });
 
     const response = await app.request(`/${secret}`);
@@ -91,5 +96,300 @@ describe("public share public routes", () => {
     expect(body.share.mode).toBe("frozen");
     expect(body.session.messages).toHaveLength(2);
     expect(body.session.ownership).toEqual({ owner: "none" });
+  });
+
+  it("does not expose a public viewer heartbeat mutation route", async () => {
+    const { secret } = await service.createShare({
+      mode: "frozen",
+      title: "Snapshot",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+      snapshot: makeSession(),
+    });
+    const app = createPublicSharePublicRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getPublicSharesEnabled: () => true,
+    });
+
+    const response = await app.request(`/${secret}/viewers/viewer-one`, {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(404);
+    expect(
+      service.getActiveViewerCount(service.getRecordBySecret(secret)!),
+    ).toBe(0);
+  });
+
+  it("does not resolve secret links when the feature is disabled", async () => {
+    const { secret } = await service.createShare({
+      mode: "frozen",
+      title: "Snapshot",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+      snapshot: makeSession(),
+    });
+    const app = createPublicSharePublicRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getPublicSharesEnabled: () => false,
+    });
+
+    const response = await app.request(`/${secret}`);
+
+    expect(response.status).toBe(404);
+  });
+});
+
+describe("public share owner routes", () => {
+  let service: PublicShareService;
+  let testDir: string;
+
+  beforeEach(async () => {
+    testDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "public-share-owner-routes-test-"),
+    );
+    service = new PublicShareService({ dataDir: testDir });
+    await service.initialize();
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    await fs.rm(testDir, { recursive: true, force: true });
+  });
+
+  it("blocks new share creation when the feature is disabled", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => false,
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(
+      service.getSessionShareStatus(projectId, "session-1").activeCount,
+    ).toBe(0);
+  });
+
+  it("reports effective share creation readiness", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => true,
+      getRelayStatus: () => "connecting",
+    });
+
+    const response = await app.request("/status");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      enabled: true,
+      configured: true,
+      remoteAccessEnabled: true,
+      relayStatus: "connecting",
+      canCreate: true,
+    });
+  });
+
+  it("creates new shares when the feature is enabled", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => true,
+      getRelayStatus: () => "waiting",
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.url).toContain("https://yepanywhere.com/remote/share/");
+    expect(body.url).toContain("?h=host-one");
+    expect(
+      service.getSessionShareStatus(projectId, "session-1").activeCount,
+    ).toBe(1);
+  });
+
+  it("creates new shares with a configured custom viewer base URL", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => true,
+      getRelayStatus: () => "waiting",
+      getPublicShareViewerBaseUrl: () => "https://shares.example/ya/share",
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.url).toContain("https://shares.example/ya/share/");
+    expect(body.url).toContain("?h=host-one");
+  });
+
+  it("keeps legacy public share origin env compatibility", async () => {
+    vi.stubEnv("YEP_PUBLIC_SHARE_ORIGIN", "https://ya.graehl.org");
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => true,
+      getRelayStatus: () => "waiting",
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.url).toContain("https://ya.graehl.org/share/");
+  });
+
+  it("blocks new share creation when remote access is disabled", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => false,
+      getRelayStatus: () => "waiting",
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(
+      service.getSessionShareStatus(projectId, "session-1").activeCount,
+    ).toBe(0);
+  });
+
+  it("creates new shares while the relay is reconnecting", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => true,
+      getRelayStatus: () => "connecting",
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(
+      service.getSessionShareStatus(projectId, "session-1").activeCount,
+    ).toBe(1);
+  });
+
+  it("revokes all shares when requested by the settings kill switch", async () => {
+    await service.createShare({
+      mode: "frozen",
+      title: "Snapshot",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+      snapshot: makeSession(),
+    });
+    expect(
+      service.getSessionShareStatus(projectId, "session-1").activeCount,
+    ).toBe(1);
+
+    const revokedCount = await service.revokeAllShares();
+
+    expect(revokedCount).toBe(1);
+    expect(
+      service.getSessionShareStatus(projectId, "session-1").activeCount,
+    ).toBe(0);
   });
 });

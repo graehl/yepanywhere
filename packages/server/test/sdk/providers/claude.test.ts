@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  mergeClaudeModels,
   probeClaudeControlLiveness,
   resolveClaudeSdkNativeExecutable,
   withClaudeGoalAlias,
@@ -14,6 +15,30 @@ function control(
       mcpServerStatus as unknown as Query["mcpServerStatus"],
   };
 }
+
+describe("ClaudeProvider model list", () => {
+  it("keeps the default option generic when SDK returns a concrete-looking label", () => {
+    const models = mergeClaudeModels([
+      {
+        id: "default",
+        name: "Sonnet 4.6",
+        description: "SDK-reported default",
+      },
+      {
+        id: "claude-sonnet-4-6",
+        name: "Sonnet 4.6",
+        description: "Latest Sonnet",
+      },
+    ]);
+
+    expect(models[0]).toMatchObject({
+      id: "default",
+      name: "Default (recommended)",
+      description: "Claude Code chooses the recommended model for your account",
+    });
+    expect(models.map((model) => model.id)).toContain("claude-sonnet-4-6");
+  });
+});
 
 describe("Claude provider liveness probe", () => {
   it("reports active when the SDK control channel responds", async () => {

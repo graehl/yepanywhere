@@ -8,6 +8,7 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import { useFabVisibility } from "../hooks/useFabVisibility";
+import { useFloatingActionButtonEnabled } from "../hooks/useFloatingActionButtonEnabled";
 import { setRecentProjectId } from "../hooks/useRecentProject";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
@@ -27,6 +28,7 @@ export function FloatingActionButton() {
   const location = useLocation();
   const basePath = useRemoteBasePath();
   const fabVisibility = useFabVisibility();
+  const { floatingActionButtonEnabled } = useFloatingActionButtonEnabled();
   const [isExpanded, setIsExpanded] = useState(false);
   const [message, setMessage, draftControls] =
     useDraftPersistence(FAB_DRAFT_KEY);
@@ -135,6 +137,7 @@ export function FloatingActionButton() {
   // This preserves expanded state and draft across navigation
   const isSessionPage = /\/sessions\/[^/]+/.test(location.pathname);
   const isHidden =
+    !floatingActionButtonEnabled ||
     !fabVisibility ||
     location.pathname.endsWith("/new-session") ||
     isSessionPage;

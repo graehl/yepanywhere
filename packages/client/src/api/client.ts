@@ -769,7 +769,7 @@ export const api = {
 
   getProcessModels: (processId: string) =>
     fetchJSON<{
-      models: Array<{ id: string; name: string; description?: string }>;
+      models: ModelInfo[];
     }>(`/processes/${processId}/models`),
 
   setProcessModel: (processId: string, model?: string) =>
@@ -841,7 +841,7 @@ export const api = {
         holdSince?: string;
         terminationReason?: string;
         terminatedAt?: string;
-        provider: string;
+        provider: ProviderName;
         thinking?: { type: string };
         effort?: string;
         model?: string;
@@ -1252,9 +1252,7 @@ export const api = {
     }),
 
   getPublicShareStatus: () =>
-    fetchJSON<{ configured: boolean; requiresRelay: boolean }>(
-      "/public-shares/status",
-    ),
+    fetchJSON<PublicShareStatusResponse>("/public-shares/status"),
 
   getPublicSessionShareStatus: (projectId: string, sessionId: string) =>
     fetchJSON<PublicSessionShareSessionStatusResponse>(
@@ -1366,6 +1364,10 @@ export interface ServerSettings {
   persistRemoteSessionsToDisk: boolean;
   /** Whether the server is requesting browser clients to upload diagnostic logs */
   clientLogCollectionRequested?: boolean;
+  /** Whether users may create public read-only share links */
+  publicSharesEnabled?: boolean;
+  /** Base URL for the hosted public share viewer */
+  publicShareViewerBaseUrl?: string;
   /** SSH host aliases for remote executors */
   remoteExecutors?: string[];
   /** SSH host aliases for ChromeOS device bridge targets */
@@ -1406,6 +1408,25 @@ export interface ServerSettings {
   lifecycleWebhookDryRun?: boolean;
   /** How the server handles Codex CLI updates */
   codexUpdatePolicy?: "auto" | "notify" | "off";
+}
+
+export type RelayClientStatus =
+  | "disconnected"
+  | "connecting"
+  | "registering"
+  | "waiting"
+  | "rejected";
+
+export interface PublicShareStatusResponse {
+  enabled: boolean;
+  configured: boolean;
+  requiresRelay: boolean;
+  remoteAccessEnabled: boolean;
+  relayStatus: RelayClientStatus | null;
+  canCreate: boolean;
+  viewerBaseUrl: string | null;
+  defaultViewerBaseUrl: string;
+  viewerBaseUrlError?: string;
 }
 
 /** Status from the server's Codex CLI update checker */

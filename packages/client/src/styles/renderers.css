@@ -52,7 +52,20 @@
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
   z-index: 2;
+}
+
+.fixed-font-render-toggle:hover .fixed-font-render-toggle__button,
+.fixed-font-render-toggle:focus-within .fixed-font-render-toggle__button,
+.fixed-font-render-toggle__button:focus {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .fixed-font-render-toggle__button:hover {
@@ -412,12 +425,22 @@
 }
 
 .text-block-toggle {
-  opacity: 1;
+  opacity: 0;
+}
+
+.text-block-copy,
+.text-block-toggle {
+  pointer-events: none;
 }
 
 .text-block:hover .text-block-copy,
-.text-block-copy:focus {
+.text-block:focus-within .text-block-copy,
+.text-block:hover .text-block-toggle,
+.text-block:focus-within .text-block-toggle,
+.text-block-copy:focus,
+.text-block-toggle:focus {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .text-block-copy:hover,
@@ -440,11 +463,11 @@
 .text-block-copy.copied {
   color: #4a4;
   opacity: 1;
+  pointer-events: auto;
 }
 
 .text-block-toggle.is-rendered {
   color: var(--text-primary, #ccc);
-  opacity: 1;
   border-color: color-mix(in srgb, var(--app-yep-green) 45%, var(--border-color, #333));
   background: color-mix(in srgb, var(--app-yep-green) 14%, var(--bg-secondary, #252525));
 }
@@ -1098,6 +1121,26 @@ details[open] .collapsible__icon {
   background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
   color: var(--text-muted);
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.bash-inline-section-header:hover .bash-section-copy,
+.bash-inline-section-header:focus-within .bash-section-copy,
+.bash-expanded-section:hover > .bash-inline-section-header .bash-section-copy,
+.bash-expanded-section:focus-within > .bash-inline-section-header .bash-section-copy,
+.bash-modal-section:hover .bash-section-copy,
+.bash-modal-section:focus-within .bash-section-copy,
+.bash-preview-row:hover .bash-section-copy,
+.bash-preview-row:focus-within .bash-section-copy,
+.bash-section-copy:focus,
+.bash-section-copy.copied {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .bash-section-copy:hover {
@@ -2282,8 +2325,12 @@ details[open] .collapsible__icon {
   background: #ea580c;
 }
 
-.model-switch-indicator-dot.tone-max {
+.model-switch-indicator-dot.tone-xhigh {
   background: #dc2626;
+}
+
+.model-switch-indicator-dot.tone-max {
+  background: #991b1b;
 }
 
 .model-switch-actions {

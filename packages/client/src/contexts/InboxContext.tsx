@@ -18,6 +18,7 @@ import { type InboxItem, type InboxResponse, api } from "../api/client";
 import { useFileActivity } from "../hooks/useFileActivity";
 import { authEvents } from "../lib/authEvents";
 import { isRemoteClient } from "../lib/connection";
+import { reportInboxLifecycleSnapshots } from "../lib/sessionLifecycleApiSnapshots";
 import { useOptionalRemoteConnection } from "./RemoteConnectionContext";
 
 // Re-export types for consumers
@@ -211,7 +212,9 @@ export function InboxProvider({
       }
 
       try {
+        const requestStartedAt = Date.now();
         const data = await api.getInbox();
+        reportInboxLifecycleSnapshots(data, requestStartedAt);
 
         if (!hasInitialLoadRef.current || forceFullSort) {
           // Initial load or explicit refresh: use server's sort order

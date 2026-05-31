@@ -8,7 +8,7 @@ import { useEmulatorSettings } from "../hooks/useEmulatorSettings";
 import { useEmulatorStream } from "../hooks/useEmulatorStream";
 import { useEmulators } from "../hooks/useEmulators";
 import { useVersion } from "../hooks/useVersion";
-import { useNavigationLayout } from "../layouts";
+import { MainContent, useNavigationLayout } from "../layouts";
 
 const DEVICE_TYPE_ORDER: DeviceInfo["type"][] = [
   "emulator",
@@ -178,7 +178,10 @@ function DeviceList({
 function StreamView({
   device,
   onBack,
-}: { device: DeviceInfo; onBack: () => void }) {
+}: {
+  device: DeviceInfo;
+  onBack: () => void;
+}) {
   const {
     remoteStream,
     dataChannel,
@@ -474,59 +477,55 @@ export function EmulatorPage() {
 
   if (activeDevice) {
     return (
-      <div className="main-content-wrapper">
-        <div className="main-content-constrained">
-          <StreamView
-            device={activeDevice}
-            onBack={() => setActiveDevice(null)}
-          />
-        </div>
-      </div>
+      <MainContent isWideScreen={isWideScreen}>
+        <StreamView
+          device={activeDevice}
+          onBack={() => setActiveDevice(null)}
+        />
+      </MainContent>
     );
   }
 
   return (
-    <div className="main-content-wrapper">
-      <div className="main-content-constrained">
-        <PageHeader
-          title="Devices"
-          onOpenSidebar={openSidebar}
-          onToggleSidebar={toggleSidebar}
-          isWideScreen={isWideScreen}
-          isSidebarCollapsed={isSidebarCollapsed}
-        />
-        <main className="page-scroll-container">
-          <div className="page-content-inner">
-            {bridgeRuntimeMode ? (
-              <BridgeRuntimePrompt
-                mode={bridgeRuntimeMode}
-                installedVersion={versionInfo?.deviceBridgeVersion}
-                latestVersion={versionInfo?.latestDeviceBridgeVersion}
-                onDownloaded={refetchVersion}
-              />
-            ) : (
-              <>
-                {loading && <div className="emulator-loading">Loading...</div>}
-                {error && <div className="emulator-error">{error}</div>}
-                {!loading && emulators.length === 0 && (
-                  <div className="emulator-empty">
-                    No devices detected. Connect an Android emulator/device or
-                    add a ChromeOS SSH host alias in Settings.
-                  </div>
-                )}
-                {emulators.length > 0 && (
-                  <DeviceList
-                    devices={emulators}
-                    onConnect={setActiveDevice}
-                    onStart={startEmulator}
-                    onStop={stopEmulator}
-                  />
-                )}
-              </>
-            )}
-          </div>
-        </main>
-      </div>
-    </div>
+    <MainContent isWideScreen={isWideScreen}>
+      <PageHeader
+        title="Devices"
+        onOpenSidebar={openSidebar}
+        onToggleSidebar={toggleSidebar}
+        isWideScreen={isWideScreen}
+        isSidebarCollapsed={isSidebarCollapsed}
+      />
+      <main className="page-scroll-container">
+        <div className="page-content-inner">
+          {bridgeRuntimeMode ? (
+            <BridgeRuntimePrompt
+              mode={bridgeRuntimeMode}
+              installedVersion={versionInfo?.deviceBridgeVersion}
+              latestVersion={versionInfo?.latestDeviceBridgeVersion}
+              onDownloaded={refetchVersion}
+            />
+          ) : (
+            <>
+              {loading && <div className="emulator-loading">Loading...</div>}
+              {error && <div className="emulator-error">{error}</div>}
+              {!loading && emulators.length === 0 && (
+                <div className="emulator-empty">
+                  No devices detected. Connect an Android emulator/device or add
+                  a ChromeOS SSH host alias in Settings.
+                </div>
+              )}
+              {emulators.length > 0 && (
+                <DeviceList
+                  devices={emulators}
+                  onConnect={setActiveDevice}
+                  onStart={startEmulator}
+                  onStop={stopEmulator}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </main>
+    </MainContent>
   );
 }

@@ -31,6 +31,8 @@ import {
   DEFAULT_SPEECH_AUDIO_RETENTION_MAX_AGE_DAYS,
   DEFAULT_SPEECH_AUDIO_RETENTION_MAX_BYTES,
 } from "../services/ServerSettingsService.js";
+import type { PublicShareService } from "../services/PublicShareService.js";
+import { normalizePublicShareViewerBaseUrl } from "../utils/publicShareViewerUrl.js";
 import {
   isValidSshHostAlias,
   normalizeSshHostAlias,
@@ -54,6 +56,8 @@ export interface SettingsRoutesDeps {
   onOllamaSystemPromptChanged?: (prompt: string | undefined) => void;
   /** Callback to apply Ollama full system prompt toggle at runtime */
   onOllamaUseFullSystemPromptChanged?: (enabled: boolean) => void;
+  /** Public share storage, used to revoke existing shares when disabled */
+  publicShareService?: PublicShareService;
 }
 
 function parseHostAliasList(rawHosts: unknown[]): {
@@ -377,6 +381,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     onOllamaUrlChanged,
     onOllamaSystemPromptChanged,
     onOllamaUseFullSystemPromptChanged,
+    publicShareService,
   } = deps;
 
   /**
@@ -406,6 +411,40 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     }
     if (typeof body.clientLogCollectionRequested === "boolean") {
       updates.clientLogCollectionRequested = body.clientLogCollectionRequested;
+    }
+    if (typeof body.publicSharesEnabled === "boolean") {
+      updates.publicSharesEnabled = body.publicSharesEnabled;
+    }
+
+    if ("publicShareViewerBaseUrl" in body) {
+      if (
+        body.publicShareViewerBaseUrl === undefined ||
+        body.publicShareViewerBaseUrl === null ||
+        body.publicShareViewerBaseUrl === ""
+      ) {
+        updates.publicShareViewerBaseUrl = undefined;
+      } else if (typeof body.publicShareViewerBaseUrl === "string") {
+        try {
+          updates.publicShareViewerBaseUrl = normalizePublicShareViewerBaseUrl(
+            body.publicShareViewerBaseUrl,
+          );
+        } catch (error) {
+          return c.json(
+            {
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Invalid public share viewer URL",
+            },
+            400,
+          );
+        }
+      } else {
+        return c.json(
+          { error: "publicShareViewerBaseUrl must be a string URL" },
+          400,
+        );
+      }
     }
 
     // Handle remoteExecutors array
@@ -474,7 +513,10 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         updates.heartbeatTurnsAfterMinutes = body.heartbeatTurnsAfterMinutes;
       } else {
         return c.json(
-          { error: "heartbeatTurnsAfterMinutes must be an integer between 1 and 1440" },
+          {
+            error:
+              "heartbeatTurnsAfterMinutes must be an integer between 1 and 1440",
+          },
           400,
         );
       }
@@ -591,8 +633,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         body.codexUpdatePolicy === undefined ||
         body.codexUpdatePolicy === null
       ) {
-        updates.codexUpdatePolicy =
-          DEFAULT_SERVER_SETTINGS.codexUpdatePolicy;
+        updates.codexUpdatePolicy = DEFAULT_SERVER_SETTINGS.codexUpdatePolicy;
       } else if (
         typeof body.codexUpdatePolicy === "string" &&
         CODEX_UPDATE_POLICIES.includes(
@@ -639,6 +680,9 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       onOllamaUseFullSystemPromptChanged(
         settings.ollamaUseFullSystemPrompt ?? false,
       );
+    }
+    if (updates.publicSharesEnabled === false && publicShareService) {
+      await publicShareService.revokeAllShares();
     }
 
     return c.json({ settings });

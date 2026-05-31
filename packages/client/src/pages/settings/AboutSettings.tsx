@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, fetchJSON } from "../../api/client";
 import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
-import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import { usePwaInstall } from "../../hooks/usePwaInstall";
 import { useVersion } from "../../hooks/useVersion";
@@ -19,8 +18,6 @@ export function AboutSettings() {
   } = useVersion({ freshOnMount: true });
   const remoteConnection = useOptionalRemoteConnection();
   const { resetOnboarding } = useOnboarding();
-  const { remoteLogCollectionEnabled, setRemoteLogCollectionEnabled } =
-    useDeveloperMode();
   const isRelayConnection = !!remoteConnection?.currentRelayUsername;
   const hasResumeProtocolSupport =
     (versionInfo?.resumeProtocolVersion ?? 1) >= 2;
@@ -187,20 +184,6 @@ export function AboutSettings() {
           >
             {t("aboutLaunchWizard")}
           </button>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("aboutDiagnosticsTitle")}</strong>
-            <p>{t("aboutDiagnosticsDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={remoteLogCollectionEnabled}
-              onChange={(e) => setRemoteLogCollectionEnabled(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
         </div>
       </div>
     </section>

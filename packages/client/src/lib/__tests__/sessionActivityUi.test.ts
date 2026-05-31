@@ -48,7 +48,7 @@ describe("getSessionActivityUiState", () => {
     expect(state.showProcessingIndicator).toBe(true);
   });
 
-  it("does not keep the turn active after a completed assistant answer", () => {
+  it("keeps an owned in-turn process active after an assistant item completes", () => {
     const state = getSessionActivityUiState({
       owner: "self",
       processState: "in-turn",
@@ -56,22 +56,25 @@ describe("getSessionActivityUiState", () => {
     });
 
     expect(state.latestTurnSettled).toBe(true);
-    expect(state.shouldDeferMessages).toBe(false);
-    expect(state.canStopOwnedProcess).toBe(false);
-    expect(state.showProcessingIndicator).toBe(false);
+    expect(state.shouldDeferMessages).toBe(true);
+    expect(state.canStopOwnedProcess).toBe(true);
+    expect(state.showProcessingIndicator).toBe(true);
+    expect(state.shouldSuppressCurrentTurnOrphans).toBe(true);
   });
 
-  it("does not let older pending tool rows orphan the bottom spinner", () => {
+  it("does not let older pending tool rows orphan the bottom spinner after idle", () => {
     const state = getSessionActivityUiState({
       owner: "self",
-      processState: "in-turn",
+      processState: "idle",
       items: [user("u1"), tool("t1", "pending"), text("a1")],
     });
 
     expect(state.hasPendingToolCalls).toBe(true);
     expect(state.latestTurnSettled).toBe(true);
     expect(state.shouldDeferMessages).toBe(false);
+    expect(state.canStopOwnedProcess).toBe(false);
     expect(state.showProcessingIndicator).toBe(false);
+    expect(state.shouldSuppressCurrentTurnOrphans).toBe(false);
   });
 
   it("keeps the fallback active for a latest pending tool with stale idle state", () => {

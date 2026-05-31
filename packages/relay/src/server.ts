@@ -19,6 +19,11 @@ import type { RelayConfig } from "./config.js";
 import { ConnectionManager } from "./connections.js";
 import { createDb, createTestDb } from "./db.js";
 import type { LogLevel } from "./logger.js";
+import {
+  getRelayCorsAllowOrigin,
+  isRelayOriginAllowed,
+  parseRelayAllowedOrigins,
+} from "./origin-policy.js";
 import { UsernameRegistry } from "./registry.js";
 import { generateRelayStatsHtml } from "./stats.js";
 import { createRelayTelemetryRecorder } from "./telemetry.js";
@@ -64,6 +69,8 @@ export interface RelayServerOptions {
    * for client-IP resolution. Default: none.
    */
   trustedProxies?: string;
+  /** Comma-separated browser Origin allowlist for relay HTTP/WS access. */
+  allowedOrigins?: string;
 }
 
 export interface RelayServer {
@@ -116,6 +123,7 @@ export async function createRelayServer(
       options.unauthenticatedConnectionTimeoutMs ??
       DEFAULT_UNAUTHENTICATED_CONNECTION_TIMEOUT_MS,
     trustedProxies: parseTrustedProxies(options.trustedProxies),
+    allowedOrigins: parseRelayAllowedOrigins(options.allowedOrigins),
     logging: {
       logDir: "",
       logFile: "relay.log",
@@ -151,6 +159,12 @@ export async function createRelayServer(
           },
         }),
   });
+  if (config.allowedOrigins.invalidEntries.length > 0) {
+    logger.warn(
+      { invalidAllowedOrigins: config.allowedOrigins.invalidEntries },
+      "Ignoring invalid relay allowed-origin entries",
+    );
+  }
 
   // Initialize database
   const db = options.inMemoryDb ? createTestDb() : createDb(config.dataDir);
@@ -185,7 +199,8 @@ export async function createRelayServer(
   app.use(
     "*",
     cors({
-      origin: "*",
+      origin: (origin) =>
+        getRelayCorsAllowOrigin(origin, config.allowedOrigins),
       allowMethods: ["GET", "POST", "OPTIONS"],
       allowHeaders: ["Content-Type"],
     }),
@@ -256,7 +271,10 @@ export async function createRelayServer(
 
   // Handle WebSocket connections
   wss.on("connection", (ws, request) => {
-    unauthenticatedLimiter.track(ws, getClientIp(request, config.trustedProxies));
+    unauthenticatedLimiter.track(
+      ws,
+      getClientIp(request, config.trustedProxies),
+    );
     wsHandler.onOpen(ws);
 
     ws.on("message", (data, isBinary) => {
@@ -284,6 +302,16 @@ export async function createRelayServer(
     // Only handle /ws path
     if (!urlPath.startsWith("/ws")) {
       socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    const origin = request.headers.origin;
+    if (!isRelayOriginAllowed(origin, config.allowedOrigins)) {
+      logger.info(
+        { origin: origin ?? null, urlPath },
+        "Rejected relay websocket origin",
+      );
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
     }

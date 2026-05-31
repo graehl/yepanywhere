@@ -4,7 +4,7 @@ import { InboxContent } from "../components/InboxContent";
 import { PageHeader } from "../components/PageHeader";
 import { useProjects } from "../hooks/useProjects";
 import { useI18n } from "../i18n";
-import { useNavigationLayout } from "../layouts";
+import { MainContent, useNavigationLayout } from "../layouts";
 
 /**
  * Global inbox page with project filter dropdown.
@@ -36,31 +36,21 @@ export function InboxPage() {
   }, [projectId, projects]);
 
   return (
-    <div
-      className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
-    >
-      <div
-        className={
-          isWideScreen
-            ? "main-content-constrained"
-            : "main-content-mobile-inner"
+    <MainContent isWideScreen={isWideScreen}>
+      <PageHeader
+        title={
+          projectName
+            ? t("inboxTitleWithProject", { project: projectName })
+            : t("inboxTitle")
         }
-      >
-        <PageHeader
-          title={
-            projectName
-              ? t("inboxTitleWithProject", { project: projectName })
-              : t("inboxTitle")
-          }
-          onOpenSidebar={openSidebar}
-        />
+        onOpenSidebar={openSidebar}
+      />
 
-        <InboxContent
-          projectId={projectId}
-          projects={projects}
-          onProjectChange={handleProjectChange}
-        />
-      </div>
-    </div>
+      <InboxContent
+        projectId={projectId}
+        projects={projects}
+        onProjectChange={handleProjectChange}
+      />
+    </MainContent>
   );
 }

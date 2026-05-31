@@ -1,8 +1,11 @@
 # Session Liveness And Queue Intent
 
+> Session liveness is the provider/session contract for bounded recovery,
+> user-visible progress, heartbeat turns, and queue promotion decisions.
+
 This topic covers YA's provider/session liveness contract and the features
 that depend on it, especially heartbeat turns, deferred queue promotion, and
-patient queue intent.
+experimental patient queue intent.
 
 Related topic: [heartbeat ownership and timers](heartbeat.md).
 
@@ -60,10 +63,12 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
   provider-cadence/status evidence. They may reset idle quiet-period timers and
   help explain a silent turn, but raw SSE cadence alone should not become
   user-visible progress without a normalized message or active status probe.
-- Patient queue intent is message intent, not scheduling proof. `Queue when
-  done` should keep the message in the parent session and make the patience
-  marker visible in the queued text; it should not steer the active turn or
-  route through `/btw`.
+- Queue intent is message intent, not scheduling proof. Queued messages stay in
+  the parent session; they should not steer the active turn or route through
+  `/btw`.
+- Patient queue intent is experimental, user-enabled message intent. It may
+  carry softer "when done" wording and `deliveryIntent: "patient"`, but it is
+  still not liveness evidence or a scheduling guarantee.
 - User-message composition timing and delivery intent are YA-owned metadata.
   They describe what the user did and intended, not whether the provider is
   alive, and provider adapters should forward them only through a real
@@ -97,8 +102,8 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
   active turn, the adapter should reconcile through the normal provider event
   path whenever possible. That keeps transcript, queue promotion, and client
   status semantics aligned.
-- Patient queue prefixing is applied at queue time. Sending, steering, and
-  non-patient queue paths must not silently inherit the patience marker.
+- Queueing, sending, and steering must preserve the user's text unless the user
+  explicitly typed a prefix or enabled the experimental patient queue mode.
 - A raw event timestamp may explain that the provider transport is still
   emitting JSON-RPC traffic, but derived liveness still needs a normalized
   provider message, awaited tool lifecycle, or explicit active probe to claim
@@ -131,8 +136,7 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
 - Changing the reducer that derives `SessionLivenessSnapshot.derivedStatus`.
 - Changing heartbeat turn gating, doubt-probe boundaries, or deferred queue
   promotion boundaries.
-- Changing composer queue controls, patient/default queue mode, or queued text
-  transformation.
+- Changing composer queue controls or queued text transformation.
 - Adding user-message timing or delivery-intent metadata.
 
 ## Tests That Should Fail On Contract Regressions
@@ -155,8 +159,7 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
 - Heartbeat turns remain deferred until the configured quiet period has elapsed
   since the latest real liveness signal, not merely since the first idle
   boundary.
-- Patient queue prefixes exactly once, while ASAP queue and steering preserve
-  the user's text.
+- Queueing and steering preserve the user's text.
 - Deferred queue summaries preserve accepted delivery intent and composition
   timestamps for reconnecting clients.
 - A failed or not-yet-persisted new session with an accepted initial prompt

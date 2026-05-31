@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import { FilterDropdown } from "../../components/FilterDropdown";
 import { useOptionalAuth } from "../../contexts/AuthContext";
@@ -47,7 +47,11 @@ export function LocalAccessSettings() {
 
   // Initialize form from binding, auth, and settings state when it loads
   const [formInitialized, setFormInitialized] = useState(false);
-  if (binding && auth && serverSettings && !formInitialized) {
+  useEffect(() => {
+    if (!binding || !auth || !serverSettings || formInitialized) {
+      return;
+    }
+
     setLocalhostPort(String(binding.localhost.port));
     setNetworkEnabled(binding.network.enabled);
     setSelectedInterface(binding.network.host ?? "");
@@ -63,7 +67,7 @@ export function LocalAccessSettings() {
       setAllowedHostsText(ah ?? "");
     }
     setFormInitialized(true);
-  }
+  }, [auth, binding, formInitialized, serverSettings]);
 
   // Compute the effective allowedHosts value for comparison/saving
   const getAllowedHostsValue = (
@@ -420,7 +424,7 @@ export function LocalAccessSettings() {
           {networkEnabled &&
             !binding?.network.overriddenByCli &&
             selectedInterface === "custom" && (
-              <div className="settings-item">
+              <div className="settings-item settings-item-inline-field">
                 <div className="settings-item-info">
                   <strong>{t("localAccessCustomIpTitle")}</strong>
                   <p>{t("localAccessCustomIpDescription")}</p>
@@ -454,7 +458,7 @@ export function LocalAccessSettings() {
             </label>
           </div>
           {!allowAllHostsToggle && (
-            <div className="settings-item">
+            <div className="settings-item settings-item-inline-field">
               <div className="settings-item-info">
                 <strong>{t("localAccessAllowedHostsTitle")}</strong>
                 <p>{t("localAccessAllowedHostsDescription")}</p>
@@ -509,7 +513,7 @@ export function LocalAccessSettings() {
                 }}
                 tabIndex={-1}
               />
-              <div className="settings-item">
+              <div className="settings-item settings-item-inline-field">
                 <div className="settings-item-info">
                   <strong>{t("localAccessPasswordTitle")}</strong>
                   <p>
@@ -535,7 +539,7 @@ export function LocalAccessSettings() {
                 />
               </div>
               {authPassword.length > 0 && (
-                <div className="settings-item">
+                <div className="settings-item settings-item-inline-field">
                   <div className="settings-item-info">
                     <strong>{t("localAccessConfirmPasswordTitle")}</strong>
                   </div>

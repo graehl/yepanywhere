@@ -5,6 +5,7 @@ import type {
   ServerSettingsService,
 } from "../../src/services/ServerSettingsService.js";
 import { DEFAULT_SERVER_SETTINGS } from "../../src/services/ServerSettingsService.js";
+import type { PublicShareService } from "../../src/services/PublicShareService.js";
 
 describe("Settings Routes", () => {
   let settings: ServerSettings;
@@ -16,6 +17,7 @@ describe("Settings Routes", () => {
       persistRemoteSessionsToDisk: false,
       clientLogCollectionRequested: false,
       speechAudioRetention: DEFAULT_SERVER_SETTINGS.speechAudioRetention,
+      publicSharesEnabled: false,
     };
 
     mockServerSettingsService = {
@@ -251,6 +253,104 @@ describe("Settings Routes", () => {
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
 
+    it("accepts public share feature gating", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicSharesEnabled: true,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        publicSharesEnabled: true,
+      });
+    });
+
+    it("accepts and normalizes public share viewer base URL", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicShareViewerBaseUrl: "https://example.com/remote/share/",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        publicShareViewerBaseUrl: "https://example.com/remote/share",
+      });
+    });
+
+    it("clears public share viewer base URL for default hosted viewer", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicShareViewerBaseUrl: null,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        publicShareViewerBaseUrl: undefined,
+      });
+    });
+
+    it("rejects public share viewer URLs with query strings", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicShareViewerBaseUrl: "https://example.com/share?x=1",
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
+    it("revokes stored public shares when disabling the feature", async () => {
+      const revokeAllShares = vi.fn(async () => 2);
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+        publicShareService: {
+          revokeAllShares,
+        } as unknown as PublicShareService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicSharesEnabled: false,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        publicSharesEnabled: false,
+      });
+      expect(revokeAllShares).toHaveBeenCalled();
+    });
+
     it("accepts and normalizes helper target settings", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
@@ -326,21 +426,22 @@ describe("Settings Routes", () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
       });
-      const fetchMock = vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            data: [
-              {
-                id: "Qwen/Qwen3.6-27B",
-                max_model_len: 161072,
-              },
-            ],
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: "Qwen/Qwen3.6-27B",
+                  max_model_len: 161072,
+                },
+              ],
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
       );
       vi.stubGlobal("fetch", fetchMock);
 

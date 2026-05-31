@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { UI_KEYS } from "../../lib/storageKeys";
 import { Sidebar } from "../Sidebar";
 
 const {
@@ -17,6 +18,7 @@ const {
   mockStarredLoadMore,
   mockToggleExpanded,
   mockWindowOpen,
+  newSessionDraftState,
   starredSessionsState,
 } = vi.hoisted(() => ({
   globalSessionsState: {
@@ -35,14 +37,24 @@ const {
   mockStarredLoadMore: vi.fn(),
   mockToggleExpanded: vi.fn(),
   mockWindowOpen: vi.fn(),
+  newSessionDraftState: {
+    hasDraft: false,
+  },
 }));
 
 vi.mock("../../contexts/RemoteConnectionContext", () => ({
   useOptionalRemoteConnection: () => null,
 }));
 
+vi.mock("../../contexts/InboxContext", () => ({
+  useInboxContext: () => ({
+    totalNeedsAttention: 0,
+  }),
+}));
+
 vi.mock("../../hooks/useDrafts", () => ({
   useDrafts: () => new Set<string>(),
+  useNewSessionDraft: () => newSessionDraftState.hasDraft,
 }));
 
 vi.mock("../../hooks/useGlobalSessions", () => ({
@@ -50,12 +62,22 @@ vi.mock("../../hooks/useGlobalSessions", () => ({
     options?.starred ? starredSessionsState : globalSessionsState,
 }));
 
-vi.mock("../../hooks/useNeedsAttentionBadge", () => ({
-  useNeedsAttentionBadge: () => 0,
-}));
-
 vi.mock("../../hooks/useRemoteBasePath", () => ({
   useRemoteBasePath: () => "/remote/test",
+}));
+
+vi.mock("../../hooks/usePublicShareStatus", () => ({
+  usePublicShareStatus: () => ({
+    status: null,
+  }),
+}));
+
+vi.mock("../../hooks/useServerSettings", () => ({
+  useServerSettings: () => ({
+    settings: {
+      publicSharesEnabled: false,
+    },
+  }),
 }));
 
 vi.mock("../../hooks/useVersion", () => ({
@@ -126,6 +148,16 @@ function makeSession(
 
 describe("Sidebar collapsed toggle", () => {
   beforeEach(() => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        storage.set(key, value);
+      },
+      removeItem: (key: string) => {
+        storage.delete(key);
+      },
+    });
     mockToggleExpanded.mockReset();
     mockWindowOpen.mockReset();
     mockGlobalLoadMore.mockReset();
@@ -138,6 +170,7 @@ describe("Sidebar collapsed toggle", () => {
     starredSessionsState.loading = false;
     starredSessionsState.hasMore = false;
     starredSessionsState.loadMore = mockStarredLoadMore;
+    newSessionDraftState.hasDraft = false;
     vi.stubGlobal("open", mockWindowOpen);
   });
 
@@ -247,6 +280,26 @@ describe("Sidebar collapsed toggle", () => {
     expect(screen.queryByTestId("session-thin")).toBeNull();
   });
 
+  it("shows a draft badge on the new session action", () => {
+    newSessionDraftState.hasDraft = true;
+
+    render(
+      <MemoryRouter>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: /New Session Draft/i }),
+    ).toBeDefined();
+  });
+
   it("collapses and expands the last-24-hours bucket", () => {
     globalSessionsState.sessions = [
       makeSession("recent", new Date().toISOString()),
@@ -273,6 +326,78 @@ describe("Sidebar collapsed toggle", () => {
       screen.getByRole("button", { name: "Expand: Last 24 Hours" }),
     );
     expect(screen.getByText("Session recent")).toBeDefined();
+  });
+
+  it("collapses and expands the starred bucket", () => {
+    starredSessionsState.sessions = [
+      makeSession("starred", new Date().toISOString()),
+    ];
+
+    render(
+      <MemoryRouter>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse: Starred" }));
+    expect(screen.queryByText("Session starred")).toBeNull();
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(UI_KEYS.sidebarSectionExpansion) ?? "{}",
+      ).starred,
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand: Starred" }));
+    expect(screen.getByText("Session starred")).toBeDefined();
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(UI_KEYS.sidebarSectionExpansion) ?? "{}",
+      ).starred,
+    ).toBe(true);
+  });
+
+  it("initializes sidebar section collapse state from localStorage", () => {
+    const now = Date.now();
+    starredSessionsState.sessions = [
+      makeSession("starred", new Date(now).toISOString()),
+    ];
+    globalSessionsState.sessions = [
+      makeSession("recent", new Date(now).toISOString()),
+      makeSession("older", new Date(now - 48 * 60 * 60 * 1000).toISOString()),
+    ];
+    window.localStorage.setItem(
+      UI_KEYS.sidebarSectionExpansion,
+      JSON.stringify({ starred: false, recentDay: false, older: false }),
+    );
+
+    render(
+      <MemoryRouter>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Expand: Starred" }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Expand: Last 24 Hours" }),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Expand: Older" })).toBeDefined();
+    expect(screen.queryByText("Session starred")).toBeNull();
+    expect(screen.queryByText("Session recent")).toBeNull();
+    expect(screen.queryByText("Session older")).toBeNull();
   });
 
   it("predictively loads the next page near the sidebar scroll end", async () => {

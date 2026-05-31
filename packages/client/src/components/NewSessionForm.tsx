@@ -26,7 +26,6 @@ import { useToastContext } from "../contexts/ToastContext";
 import { useConnection } from "../hooks/useConnection";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import {
-  EFFORT_LEVEL_OPTIONS,
   getModelSetting,
   getThinkingSetting,
   useModelSettings,
@@ -44,6 +43,11 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
+import {
+  getEffortLevelLabel,
+  getEffortLevelOptions,
+  resolveSupportedEffortLevel,
+} from "../lib/effortLevels";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
@@ -350,7 +354,6 @@ export function NewSessionForm({
     setEffortLevel,
     thinkingMode,
     cycleThinkingMode,
-    thinkingLevel,
     voiceInputEnabled,
     speechMethod,
     hasStoredSpeechMethod,
@@ -450,6 +453,25 @@ export function NewSessionForm({
     selectedProviderInfo?.supportsPermissionMode ?? true;
   const supportsThinkingToggle =
     selectedProviderInfo?.supportsThinkingToggle ?? true;
+  const selectedModelInfo = availableModels.find(
+    (model) => model.id === selectedModel,
+  );
+  const effortOptions = useMemo(
+    () =>
+      getEffortLevelOptions({
+        provider: selectedProviderInfo,
+        model: selectedModelInfo,
+      }),
+    [selectedModelInfo, selectedProviderInfo],
+  );
+  const effectiveEffortLevel = resolveSupportedEffortLevel(
+    effortLevel,
+    effortOptions,
+  );
+  const effectiveEffortLabel = getEffortLevelLabel(
+    effectiveEffortLevel,
+    selectedProviderInfo,
+  );
   const selectedProviderDisplayName =
     selectedProviderInfo?.displayName ?? selectedProvider ?? "";
   const availableRecapModes = RECAP_MODE_ORDER.filter((modeValue) =>
@@ -957,7 +979,7 @@ export function NewSessionForm({
       const uploadedFiles: UploadedFile[] = [];
 
       // Get model and thinking settings
-      const thinking = getThinkingSetting();
+      const thinking = getThinkingSetting(effectiveEffortLevel);
       const sessionOptions = {
         mode,
         model: selectedModel ?? undefined,
@@ -1429,7 +1451,9 @@ export function NewSessionForm({
                     ? t("newSessionThinkingOff")
                     : thinkingMode === "auto"
                       ? t("newSessionThinkingAuto")
-                      : t("newSessionThinkingOn", { level: thinkingLevel })
+                      : t("newSessionThinkingOn", {
+                          level: effectiveEffortLabel,
+                        })
                 }
                 aria-label={t("newSessionThinkingMode", { mode: thinkingMode })}
               >
@@ -1478,12 +1502,12 @@ export function NewSessionForm({
                   role="group"
                   aria-label={t("modelSettingsEffortTitle")}
                 >
-                  {EFFORT_LEVEL_OPTIONS.map((option) => (
+                  {effortOptions.map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       className={`new-session-effort-option ${
-                        effortLevel === option.value ? "active" : ""
+                        effectiveEffortLevel === option.value ? "active" : ""
                       }`}
                       onClick={() => setEffortLevel(option.value)}
                       disabled={isStarting}

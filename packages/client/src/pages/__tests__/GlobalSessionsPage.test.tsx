@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GlobalSessionsPage } from "../GlobalSessionsPage";
@@ -87,6 +88,17 @@ vi.mock("../../hooks/useRemoteBasePath", () => ({
   useRemoteBasePath: () => "",
 }));
 
+vi.mock("../../hooks/useServerSettings", () => ({
+  useServerSettings: () => ({
+    settings: { publicSharesEnabled: false },
+    isLoading: false,
+    error: null,
+    updateSettings: vi.fn(),
+    updateSetting: vi.fn(),
+    refetch: vi.fn(),
+  }),
+}));
+
 vi.mock("../../i18n", () => ({
   useI18n: () => ({
     t: (key: string, vars?: Record<string, string | number>) => {
@@ -130,6 +142,9 @@ vi.mock("../../i18n", () => ({
 }));
 
 vi.mock("../../layouts", () => ({
+  MainContent: ({ children }: { children: ReactNode }) => (
+    <main>{children}</main>
+  ),
   useNavigationLayout: () => ({
     openSidebar: vi.fn(),
     isWideScreen: true,

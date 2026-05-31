@@ -555,13 +555,16 @@ export function createApp(options: AppOptions): AppResult {
                 sessionHeartbeat?.heartbeatForceAfterMinutes ?? null,
               text:
                 sessionHeartbeat?.heartbeatTurnText ??
-                options.serverSettingsService?.getSetting("heartbeatTurnText") ??
+                options.serverSettingsService?.getSetting(
+                  "heartbeatTurnText",
+                ) ??
                 "yepanywhere heartbeat",
             };
           }
+        : undefined,
+    getHeartbeatTurnCandidates: options.sessionMetadataService
+      ? getHeartbeatTurnCandidates
       : undefined,
-    getHeartbeatTurnCandidates:
-      options.sessionMetadataService ? getHeartbeatTurnCandidates : undefined,
   });
 
   // Create external session tracker if eventBus is available
@@ -886,6 +889,7 @@ export function createApp(options: AppOptions): AppResult {
         onOllamaUseFullSystemPromptChanged: (enabled) => {
           ClaudeOllamaProvider.setUseFullSystemPrompt(enabled);
         },
+        publicShareService: options.publicShareService,
       }),
     );
   }
@@ -990,9 +994,10 @@ export function createApp(options: AppOptions): AppResult {
     const loadPublicShareSessionSummary = async (
       projectId: UrlProjectId,
       sessionId: string,
-    ): Promise<
-      Pick<AppSession, "customTitle" | "provider" | "title" | "updatedAt"> | null
-    > => {
+    ): Promise<Pick<
+      AppSession,
+      "customTitle" | "provider" | "title" | "updatedAt"
+    > | null> => {
       const response = await app.fetch(
         new Request(
           `http://127.0.0.1/api/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/metadata`,
@@ -1017,7 +1022,17 @@ export function createApp(options: AppOptions): AppResult {
       loadSession: loadPublicShareSession,
       loadSessionUpdatedAt: loadPublicShareSessionUpdatedAt,
       loadSessionSummary: loadPublicShareSessionSummary,
-      getRelayConfig: () => options.remoteAccessService?.getRelayConfig() ?? null,
+      getRelayConfig: () =>
+        options.remoteAccessService?.getRelayConfig() ?? null,
+      getPublicSharesEnabled: () =>
+        options.serverSettingsService?.getSetting("publicSharesEnabled") ??
+        false,
+      getRemoteAccessEnabled: () =>
+        options.remoteAccessService?.isEnabled() ?? false,
+      getRelayStatus: () =>
+        options.relayClientService?.getState().status ?? null,
+      getPublicShareViewerBaseUrl: () =>
+        options.serverSettingsService?.getSetting("publicShareViewerBaseUrl"),
     };
 
     app.route("/api/public-shares", createPublicShareRoutes(publicShareDeps));

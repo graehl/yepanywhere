@@ -218,7 +218,6 @@ export type {
   PublicSessionShareMode,
   PublicSessionShareSessionStatusResponse,
   PublicSessionShareViewerActionResponse,
-  PublicSessionShareViewerHeartbeatResponse,
   PublicSessionShareViewerSummary,
   PublicSessionShareResponse,
   RevokePublicSessionSharesResponse,

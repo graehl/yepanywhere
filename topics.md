@@ -11,3 +11,8 @@
 - ya-env-vars - Catalog of YA env vars and the YA_/YA_module__ naming conventions.
 - kzahel-disabled - Upstream-disabled feature decisions to revisit as configurable defaults.
 - session-ui-customization - User-selectable visibility/enabling of advanced session controls.
+- relay-origin-and-share-gating - Public relay origin allowlist and public share opt-in/privacy gating.
+- session-toolbar-customization - Browser-local session composer toolbar visibility controls.
+- i18n-sparse-locale-cleanup - Sparse non-English locale overlays and translation key health checks.
+- session-activity-tab-title - Browser-local tab title activity indicator.
+- client-session-lifecycle-store - Shared client lifecycle reducer/store for session activity indicators.

@@ -18,6 +18,7 @@ import {
   type DraftControls,
   useDraftPersistence,
 } from "../hooks/useDraftPersistence";
+import { useDeveloperMode } from "../hooks/useDeveloperMode";
 import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
@@ -272,6 +273,7 @@ export function MessageInput({
   onDismissPromptSuggestion,
 }: Props) {
   const { t } = useI18n();
+  const { experimentalFeaturesEnabled } = useDeveloperMode();
   const [text, setText, controls] = useDraftPersistence(draftKey);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -309,7 +311,8 @@ export function MessageInput({
       : onQueue
         ? "queue"
         : "send");
-  const showPatientQueueMode = supportsSteering && !!onQueue;
+  const showPatientQueueMode =
+    experimentalFeaturesEnabled && supportsSteering && !!onQueue;
   const [patientQueueMode, setPatientQueueMode] = useState(() =>
     readPatientQueueMode(draftKey, showPatientQueueMode),
   );

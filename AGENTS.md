@@ -94,9 +94,3 @@ topic string to it when the series begins. The log is appended to
 whether or not it's tracked in git. Format is freeform (not a
 traditional ChangeLog) — typically a bulleted list with optional
 one-line notes. Scan `topics.md` before opening a new series.
-
-## Landing the Plane (Session Completion)
-
-After completing your session, offer proactively, briefly, a suggestion
-to the user for what the next logical step in the plan might be, to remind
-them of the overall context if this session was a part of a larger implementation plan

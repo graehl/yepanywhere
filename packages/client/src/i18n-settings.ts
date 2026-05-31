@@ -125,6 +125,12 @@ export function getSettingsCategories(
       description: t("settingsRemoteExecutorsDescription"),
     },
     {
+      id: "advanced",
+      label: t("settingsAdvancedTitle"),
+      icon: "⚗️",
+      description: t("settingsAdvancedDescription"),
+    },
+    {
       id: "about",
       label: t("settingsAboutTitle"),
       icon: "ℹ️",

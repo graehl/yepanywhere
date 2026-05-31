@@ -6,7 +6,6 @@ import {
   type PublicSessionShareResponse,
   type PublicSessionShareSessionStatusResponse,
   type PublicSessionShareViewerActionResponse,
-  type PublicSessionShareViewerHeartbeatResponse,
   type RevokePublicSessionSharesResponse,
   type UrlProjectId,
   isUrlProjectId,
@@ -14,9 +13,14 @@ import {
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { decodeProjectId, getProjectName } from "../projects/paths.js";
+import type { RelayClientStatus } from "../services/RelayClientService.js";
 import type { PublicShareService } from "../services/PublicShareService.js";
+import {
+  buildPublicShareViewerUrl,
+  getDefaultPublicShareViewerBaseUrl,
+  resolvePublicShareViewerBaseUrl,
+} from "../utils/publicShareViewerUrl.js";
 
-const DEFAULT_PUBLIC_SHARE_ORIGIN = "https://ya.graehl.org";
 const DEFAULT_RELAY_URL = "wss://relay.yepanywhere.com/ws";
 
 export interface RelayConfigForPublicShare {
@@ -38,11 +42,38 @@ export interface PublicShareRoutesDeps {
   loadSessionSummary?: (
     projectId: UrlProjectId,
     sessionId: string,
-  ) => Promise<
-    Pick<AppSession, "customTitle" | "provider" | "title" | "updatedAt"> | null
-  >;
+  ) => Promise<Pick<
+    AppSession,
+    "customTitle" | "provider" | "title" | "updatedAt"
+  > | null>;
   getRelayConfig?: () => RelayConfigForPublicShare | null;
-  publicShareOrigin?: string;
+  getPublicSharesEnabled?: () => boolean;
+  getRemoteAccessEnabled?: () => boolean;
+  getRelayStatus?: () => RelayClientStatus | null;
+  getPublicShareViewerBaseUrl?: () => string | null | undefined;
+}
+
+function getPublicShareReadiness(deps: PublicShareRoutesDeps): {
+  enabled: boolean;
+  relayConfig: RelayConfigForPublicShare | null;
+  configured: boolean;
+  remoteAccessEnabled: boolean;
+  relayStatus: RelayClientStatus | null;
+  canCreate: boolean;
+} {
+  const enabled = deps.getPublicSharesEnabled?.() ?? false;
+  const relayConfig = deps.getRelayConfig?.() ?? null;
+  const configured = !!relayConfig?.url && !!relayConfig.username;
+  const remoteAccessEnabled = deps.getRemoteAccessEnabled?.() ?? false;
+  const relayStatus = deps.getRelayStatus?.() ?? null;
+  return {
+    enabled,
+    relayConfig,
+    configured,
+    remoteAccessEnabled,
+    relayStatus,
+    canCreate: enabled && configured && remoteAccessEnabled,
+  };
 }
 
 function buildPublicShareUrl(
@@ -55,13 +86,9 @@ function buildPublicShareUrl(
     projectName: string;
     title: string | null;
   },
-  publicShareOrigin?: string,
+  viewerBaseUrl: string,
 ): string {
-  const origin =
-    publicShareOrigin ??
-    process.env.YEP_PUBLIC_SHARE_ORIGIN ??
-    DEFAULT_PUBLIC_SHARE_ORIGIN;
-  const url = new URL(`/share/${secret}`, origin);
+  const url = new URL(buildPublicShareViewerUrl(secret, viewerBaseUrl));
   url.searchParams.set("h", relayConfig.username);
   if (relayConfig.url !== DEFAULT_RELAY_URL) {
     url.searchParams.set("r", relayConfig.url);
@@ -94,7 +121,11 @@ function contentToPlainText(content: unknown): string {
       if (!block || typeof block !== "object") {
         return "";
       }
-      const value = block as { content?: unknown; text?: unknown; type?: unknown };
+      const value = block as {
+        content?: unknown;
+        text?: unknown;
+        type?: unknown;
+      };
       if (value.type === "text" && typeof value.text === "string") {
         return value.text;
       }
@@ -150,12 +181,14 @@ function needsFrozenShareRepair(response: PublicSessionShareResponse): boolean {
   if (!Array.isArray(response.session.messages)) {
     return true;
   }
-  return response.session.messages.length === 0 && response.session.messageCount > 0;
+  return (
+    response.session.messages.length === 0 && response.session.messageCount > 0
+  );
 }
 
-function getSessionParams(c: Context):
-  | { projectId: UrlProjectId; sessionId: string }
-  | { error: Response } {
+function getSessionParams(
+  c: Context,
+): { projectId: UrlProjectId; sessionId: string } | { error: Response } {
   const projectId = c.req.param("projectId");
   const sessionId = c.req.param("sessionId");
   if (typeof projectId !== "string" || !isUrlProjectId(projectId)) {
@@ -171,10 +204,27 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
   const app = new Hono();
 
   app.get("/status", (c) => {
-    const relayConfig = deps.getRelayConfig?.() ?? null;
+    const readiness = getPublicShareReadiness(deps);
+    let viewerBaseUrl: string | null = null;
+    let viewerBaseUrlError: string | undefined;
+    try {
+      viewerBaseUrl = resolvePublicShareViewerBaseUrl(
+        deps.getPublicShareViewerBaseUrl?.(),
+      );
+    } catch (error) {
+      viewerBaseUrlError =
+        error instanceof Error ? error.message : "Invalid viewer URL";
+    }
     return c.json({
-      configured: !!relayConfig?.username,
+      enabled: readiness.enabled,
+      configured: readiness.configured,
       requiresRelay: true,
+      remoteAccessEnabled: readiness.remoteAccessEnabled,
+      relayStatus: readiness.relayStatus,
+      canCreate: readiness.canCreate,
+      viewerBaseUrl,
+      defaultViewerBaseUrl: getDefaultPublicShareViewerBaseUrl(),
+      ...(viewerBaseUrlError ? { viewerBaseUrlError } : {}),
     });
   });
 
@@ -220,23 +270,29 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     return c.json(response);
   });
 
-  app.post("/sessions/:projectId/:sessionId/viewers/:viewerId/freeze", async (c) => {
-    const params = getSessionParams(c);
-    if ("error" in params) return params.error;
-    const viewerId = c.req.param("viewerId");
-    const session = await deps.loadSession(params.projectId, params.sessionId);
-    if (!session) {
-      return c.json({ error: "Session not found" }, 404);
-    }
-    const response: PublicSessionShareViewerActionResponse =
-      await deps.publicShareService.freezeSessionViewerToken(
+  app.post(
+    "/sessions/:projectId/:sessionId/viewers/:viewerId/freeze",
+    async (c) => {
+      const params = getSessionParams(c);
+      if ("error" in params) return params.error;
+      const viewerId = c.req.param("viewerId");
+      const session = await deps.loadSession(
         params.projectId,
         params.sessionId,
-        viewerId,
-        session,
       );
-    return c.json(response);
-  });
+      if (!session) {
+        return c.json({ error: "Session not found" }, 404);
+      }
+      const response: PublicSessionShareViewerActionResponse =
+        await deps.publicShareService.freezeSessionViewerToken(
+          params.projectId,
+          params.sessionId,
+          viewerId,
+          session,
+        );
+      return c.json(response);
+    },
+  );
 
   app.delete("/sessions/:projectId/:sessionId/viewers/:viewerId", async (c) => {
     const params = getSessionParams(c);
@@ -268,8 +324,18 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     if (body.mode !== "frozen" && body.mode !== "live") {
       return c.json({ error: "mode must be frozen or live" }, 400);
     }
+    const readiness = getPublicShareReadiness(deps);
+    if (!readiness.enabled) {
+      return c.json(
+        {
+          error:
+            "Public Read-Only Share must be enabled in Advanced settings before creating links",
+        },
+        403,
+      );
+    }
 
-    const relayConfig = deps.getRelayConfig?.() ?? null;
+    const relayConfig = readiness.relayConfig;
     if (!relayConfig?.url || !relayConfig.username) {
       return c.json(
         {
@@ -279,22 +345,53 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
         400,
       );
     }
+    if (!readiness.remoteAccessEnabled) {
+      return c.json(
+        {
+          error:
+            "Remote Access must be enabled before creating public share links",
+        },
+        400,
+      );
+    }
+
+    let viewerBaseUrl: string;
+    try {
+      viewerBaseUrl = resolvePublicShareViewerBaseUrl(
+        deps.getPublicShareViewerBaseUrl?.(),
+      );
+    } catch (error) {
+      return c.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Invalid public share viewer URL",
+        },
+        400,
+      );
+    }
 
     let session: AppSession | null = null;
-    let sessionSummary:
-      | Pick<AppSession, "customTitle" | "provider" | "title" | "updatedAt">
-      | null = null;
+    let sessionSummary: Pick<
+      AppSession,
+      "customTitle" | "provider" | "title" | "updatedAt"
+    > | null = null;
     if (body.mode === "frozen" || !deps.loadSessionSummary) {
       session = await deps.loadSession(body.projectId, body.sessionId);
       sessionSummary = session;
     } else {
-      sessionSummary = await deps.loadSessionSummary(body.projectId, body.sessionId);
+      sessionSummary = await deps.loadSessionSummary(
+        body.projectId,
+        body.sessionId,
+      );
     }
     if (!sessionSummary) {
       return c.json({ error: "Session not found" }, 404);
     }
 
-    const title = body.title ?? sessionSummary.customTitle ?? sessionSummary.title;
+    const title =
+      body.title ?? sessionSummary.customTitle ?? sessionSummary.title;
     const projectName = getProjectName(decodeProjectId(body.projectId));
     const initialPrompt =
       normalizePromptPreview(body.initialPrompt ?? "") ??
@@ -323,7 +420,7 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
           projectName,
           title,
         },
-        deps.publicShareOrigin,
+        viewerBaseUrl,
       ),
       mode: record.mode,
       createdAt: record.createdAt,
@@ -340,25 +437,10 @@ export function createPublicSharePublicRoutes(
 ): Hono {
   const app = new Hono();
 
-  app.post("/:secret/viewers/:viewerId", (c) => {
-    const secret = c.req.param("secret");
-    const viewerId = c.req.param("viewerId");
-    const record = deps.publicShareService.getRecordBySecret(secret);
-    if (!record || deps.publicShareService.isViewerDisconnected(record, viewerId)) {
+  app.get("/:secret", async (c) => {
+    if (!(deps.getPublicSharesEnabled?.() ?? false)) {
       return notFound(c);
     }
-
-    const response: PublicSessionShareViewerHeartbeatResponse = {
-      activeViewerCount: deps.publicShareService.recordViewerHeartbeat(
-        record,
-        viewerId,
-      ),
-    };
-    c.header("Cache-Control", "no-store");
-    return c.json(response);
-  });
-
-  app.get("/:secret", async (c) => {
     const secret = c.req.param("secret");
     const viewerId = c.req.query("viewerId");
     const afterMessageId = c.req.query("afterMessageId");
@@ -366,7 +448,10 @@ export function createPublicSharePublicRoutes(
     if (!record) {
       return notFound(c);
     }
-    if (viewerId && deps.publicShareService.isViewerDisconnected(record, viewerId)) {
+    if (
+      viewerId &&
+      deps.publicShareService.isViewerDisconnected(record, viewerId)
+    ) {
       return notFound(c);
     }
 

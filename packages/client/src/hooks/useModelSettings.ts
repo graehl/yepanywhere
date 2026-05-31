@@ -19,6 +19,7 @@ import {
   getServerScoped,
   setServerScoped,
 } from "../lib/storageKeys";
+import { EFFORT_LEVEL_OPTIONS, isEffortLevel } from "../lib/effortLevels";
 
 /**
  * Re-export shared types for convenience.
@@ -30,22 +31,13 @@ export const MODEL_OPTIONS: { value: ModelOption; label: string }[] = [
   { value: "best", label: "Best" },
   { value: "sonnet", label: "Sonnet" },
   { value: "sonnet[1m]", label: "Sonnet 1M" },
-  { value: "opus", label: "Opus 4.8" },
-  { value: "opus[1m]", label: "Opus 4.8 1M" },
+  { value: "opus", label: "Opus" },
+  { value: "opus[1m]", label: "Opus 1M" },
   { value: "haiku", label: "Haiku" },
-  { value: "opusplan", label: "Opus 4.8 Plan" },
+  { value: "opusplan", label: "Opus Plan" },
 ];
 
-export const EFFORT_LEVEL_OPTIONS: {
-  value: EffortLevel;
-  label: string;
-  description: string;
-}[] = [
-  { value: "low", label: "Low", description: "Fastest responses" },
-  { value: "medium", label: "Medium", description: "Moderate thinking" },
-  { value: "high", label: "High", description: "Deep reasoning" },
-  { value: "max", label: "Max", description: "Maximum effort" },
-];
+export { EFFORT_LEVEL_OPTIONS };
 
 function loadModel(): ModelOption {
   const stored = getServerScoped("model", LEGACY_KEYS.model);
@@ -70,8 +62,8 @@ function loadEffortLevel(): EffortLevel {
   const stored = getServerScoped("thinkingLevel", LEGACY_KEYS.thinkingLevel);
   if (stored) {
     // Check for new effort level values
-    if (["low", "medium", "high", "max"].includes(stored)) {
-      return stored as EffortLevel;
+    if (isEffortLevel(stored)) {
+      return stored;
     }
     // Migrate old thinking level values
     const migrated = LEGACY_LEVEL_MAP[stored];
@@ -289,11 +281,13 @@ export function getModelSetting(): ModelOption {
  * - "auto" for adaptive (model decides when to think)
  * - "on:level" for forced-on thinking at that effort level
  */
-export function getThinkingSetting(): ThinkingOption {
+export function getThinkingSetting(
+  effortOverride?: EffortLevel,
+): ThinkingOption {
   const mode = loadThinkingMode();
   if (mode === "off") return "off";
   if (mode === "auto") return "auto";
-  return `on:${loadEffortLevel()}`;
+  return `on:${effortOverride ?? loadEffortLevel()}`;
 }
 
 /**

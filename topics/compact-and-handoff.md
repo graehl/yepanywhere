@@ -3,8 +3,8 @@
 This topic records an intentional, temporary mitigation for one specific
 provider/model pairing observed to fail while compacting near context limits.
 
-For the broader action/state contract used by composer controls (`direct`, `steer`,
-`deferred`, `patient`), and for how compacting should drive the shared
+For the broader action/state contract used by composer controls (`direct`,
+`steer`, `deferred`), and for how compacting should drive the shared
 model-selector replacement text, see
 [`message-control-steer-queue-btw-later-interrupt.md`](./message-control-steer-queue-btw-later-interrupt.md).
 

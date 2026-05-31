@@ -9,7 +9,7 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useGitStatus } from "../hooks/useGitStatus";
 import { useProject, useProjects } from "../hooks/useProjects";
 import { useI18n } from "../i18n";
-import { useNavigationLayout } from "../layouts";
+import { MainContent, useNavigationLayout } from "../layouts";
 
 interface PatchHunk {
   oldStart: number;
@@ -47,54 +47,45 @@ export function GitStatusPage() {
     return <div className="error">{t("gitStatusNoProjects")}</div>;
   }
 
-  const wrapperClass = isWideScreen
-    ? "main-content-wrapper"
-    : "main-content-mobile";
-  const innerClass = isWideScreen
-    ? "main-content-constrained"
-    : "main-content-mobile-inner";
-
   return (
-    <div className={wrapperClass}>
-      <div className={innerClass}>
-        <PageHeader
-          title={project?.name ?? t("gitStatusTitle")}
-          titleElement={
-            effectiveProjectId ? (
-              <ProjectSelector
-                currentProjectId={effectiveProjectId}
-                currentProjectName={project?.name}
-                onProjectChange={(p) => handleProjectChange(p.id)}
-              />
-            ) : undefined
-          }
-          onOpenSidebar={openSidebar}
-          onToggleSidebar={toggleSidebar}
-          isWideScreen={isWideScreen}
-          isSidebarCollapsed={isSidebarCollapsed}
-        />
+    <MainContent isWideScreen={isWideScreen}>
+      <PageHeader
+        title={project?.name ?? t("gitStatusTitle")}
+        titleElement={
+          effectiveProjectId ? (
+            <ProjectSelector
+              currentProjectId={effectiveProjectId}
+              currentProjectName={project?.name}
+              onProjectChange={(p) => handleProjectChange(p.id)}
+            />
+          ) : undefined
+        }
+        onOpenSidebar={openSidebar}
+        onToggleSidebar={toggleSidebar}
+        isWideScreen={isWideScreen}
+        isSidebarCollapsed={isSidebarCollapsed}
+      />
 
-        <main className="page-scroll-container">
-          <div className="page-content-inner">
-            {loading || projectsLoading ? (
-              <div className="loading">{t("gitStatusLoading")}</div>
-            ) : error ? (
-              <div className="error">
-                {t("gitStatusErrorPrefix")} {error.message}
-              </div>
-            ) : gitStatus && !gitStatus.isGitRepo ? (
-              <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
-            ) : gitStatus && effectiveProjectId ? (
-              <GitStatusContent
-                status={gitStatus}
-                projectId={effectiveProjectId}
-                t={t as never}
-              />
-            ) : null}
-          </div>
-        </main>
-      </div>
-    </div>
+      <main className="page-scroll-container">
+        <div className="page-content-inner">
+          {loading || projectsLoading ? (
+            <div className="loading">{t("gitStatusLoading")}</div>
+          ) : error ? (
+            <div className="error">
+              {t("gitStatusErrorPrefix")} {error.message}
+            </div>
+          ) : gitStatus && !gitStatus.isGitRepo ? (
+            <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
+          ) : gitStatus && effectiveProjectId ? (
+            <GitStatusContent
+              status={gitStatus}
+              projectId={effectiveProjectId}
+              t={t as never}
+            />
+          ) : null}
+        </div>
+      </main>
+    </MainContent>
   );
 }
 

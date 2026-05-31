@@ -724,7 +724,7 @@ describe("Process", () => {
         idleTimeoutMs: 100,
       });
       const metadata = {
-        deliveryIntent: "patient" as const,
+        deliveryIntent: "deferred" as const,
         composition: {
           typingStartedAt: "2026-04-25T00:00:10.000Z",
           typingEndedAt: "2026-04-25T00:00:20.000Z",

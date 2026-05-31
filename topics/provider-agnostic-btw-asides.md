@@ -2,7 +2,7 @@
 
 This topic covers YA-owned `/btw` side sessions: short side requests that
 should run beside a parent session without being treated as active-turn
-steering, patient queueing, or provider-native slash-command pass-through.
+steering, deferred queueing, or provider-native slash-command pass-through.
 
 Related topic: [side session configuration](side-session-config.md) for
 silent helper queries and lightweight fallback side-query envelopes.
@@ -26,8 +26,8 @@ silent helper queries and lightweight fallback side-query envelopes.
 
 ## Invariants
 
-- `/btw` must not be a synonym for `turn/steer`, deferred queue, or patient
-  queue. Those are separate delivery intents.
+- `/btw` must not be a synonym for `turn/steer` or deferred queue. Those are
+  separate delivery intents.
 - A child aside must persist a parent link, and parent views must be able to
   hydrate visible child-aside state after reload.
 - UI affordances should show routing state before submission. If the composer
@@ -53,7 +53,7 @@ silent helper queries and lightweight fallback side-query envelopes.
 - A focused aside routes composer sends to the child until explicitly exited.
 - Parent-result injection requires an explicit user action.
 - Reloading the parent session restores visible linked aside state.
-- Patient queue and `/btw` launch paths remain distinct.
+- Deferred queue and `/btw` launch paths remain distinct.
 
 ## Next Step: Normal Turn Renderer Adapter
 

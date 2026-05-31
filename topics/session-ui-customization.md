@@ -19,6 +19,11 @@ but too busy, speculative, or maintainer-contested for the default UI. Examples
 include composer delivery choices such as ASAP versus deferred/"when idle"
 send, secondary search/edit controls, and other advanced per-session actions.
 
+Until the full mockup exists, a first-level `Experimental features` setting may
+serve as a coarse gate for restored default-off controls. Each gated feature
+should still point at its most relevant topic doc so the user can inspect the
+behavior and the reason it is not part of the default UI.
+
 ## Contract
 
 - Defaults may stay conservative, but optional controls should have a path to

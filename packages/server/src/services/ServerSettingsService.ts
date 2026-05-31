@@ -7,7 +7,10 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { HelperTargetConfig, NewSessionDefaults } from "@yep-anywhere/shared";
+import type {
+  HelperTargetConfig,
+  NewSessionDefaults,
+} from "@yep-anywhere/shared";
 
 const CURRENT_VERSION = 1;
 export const DEFAULT_SPEECH_AUDIO_RETENTION_MAX_AGE_DAYS = 56;
@@ -30,6 +33,10 @@ export interface ServerSettings {
   persistRemoteSessionsToDisk: boolean;
   /** Whether the server is requesting browser clients to upload diagnostic logs */
   clientLogCollectionRequested: boolean;
+  /** Whether users may create public read-only share links */
+  publicSharesEnabled: boolean;
+  /** Base URL for the hosted public share viewer; secret is appended as a path segment */
+  publicShareViewerBaseUrl?: string;
   /** SSH host aliases for remote executors (from ~/.ssh/config) */
   remoteExecutors?: string[];
   /** SSH host aliases for ChromeOS device-bridge targets */
@@ -82,6 +89,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   serviceWorkerEnabled: true,
   persistRemoteSessionsToDisk: false,
   clientLogCollectionRequested: false,
+  publicSharesEnabled: false,
   heartbeatTurnsAfterMinutes: 15,
   heartbeatTurnText: "heartbeat",
   speechAudioRetention: {

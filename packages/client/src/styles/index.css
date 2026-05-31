@@ -2243,6 +2243,7 @@ a.sidebar-nav-item {
 
 .btw-aside-turn .text-block-copy {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .btw-aside-turn-extra-actions {

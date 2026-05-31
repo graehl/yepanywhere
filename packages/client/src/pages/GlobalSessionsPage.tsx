@@ -12,6 +12,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SessionListItem } from "../components/SessionListItem";
 import { useDrafts } from "../hooks/useDrafts";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
+import { useServerSettings } from "../hooks/useServerSettings";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
@@ -115,6 +116,9 @@ export function GlobalSessionsPage() {
   const basePath = useRemoteBasePath();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { settings: serverSettings } = useServerSettings();
+  const publicShareControlsVisible =
+    serverSettings?.publicSharesEnabled ?? false;
 
   // Get filter params from URL
   const searchQuery = searchParams.get("q") || "";
@@ -1018,6 +1022,7 @@ export function GlobalSessionsPage() {
                         // userTurnCount / systemTurnCount will be populated when
                         // the index summaries cache them (see SessionIndexService)
                         hasDraft={drafts.has(session.id)}
+                        publicShareControlsVisible={publicShareControlsVisible}
                       />
                     </div>
                   ))}
@@ -1056,6 +1061,9 @@ export function GlobalSessionsPage() {
                               updatedAt={session.updatedAt}
                               createdAt={session.createdAt}
                               hasUnread={session.hasUnread}
+                              publicShareControlsVisible={
+                                publicShareControlsVisible
+                              }
                               activity={session.activity}
                               pendingInputType={session.pendingInputType}
                               status={session.ownership}

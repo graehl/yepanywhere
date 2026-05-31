@@ -363,6 +363,9 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     if (typeof body.clientLogCollectionRequested === "boolean") {
       updates.clientLogCollectionRequested = body.clientLogCollectionRequested;
     }
+    if (typeof body.publicSharesEnabled === "boolean") {
+      updates.publicSharesEnabled = body.publicSharesEnabled;
+    }
 
     // Handle remoteExecutors array
     if (Array.isArray(body.remoteExecutors)) {
@@ -430,7 +433,10 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         updates.heartbeatTurnsAfterMinutes = body.heartbeatTurnsAfterMinutes;
       } else {
         return c.json(
-          { error: "heartbeatTurnsAfterMinutes must be an integer between 1 and 1440" },
+          {
+            error:
+              "heartbeatTurnsAfterMinutes must be an integer between 1 and 1440",
+          },
           400,
         );
       }
@@ -537,8 +543,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         body.codexUpdatePolicy === undefined ||
         body.codexUpdatePolicy === null
       ) {
-        updates.codexUpdatePolicy =
-          DEFAULT_SERVER_SETTINGS.codexUpdatePolicy;
+        updates.codexUpdatePolicy = DEFAULT_SERVER_SETTINGS.codexUpdatePolicy;
       } else if (
         typeof body.codexUpdatePolicy === "string" &&
         CODEX_UPDATE_POLICIES.includes(

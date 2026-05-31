@@ -66,6 +66,7 @@ import { useProject } from "../hooks/useProjects";
 import { useProviders } from "../hooks/useProviders";
 import { recordSessionVisit } from "../hooks/useRecentSessions";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useServerSettings } from "../hooks/useServerSettings";
 import {
   type DeferredMessage,
   type StreamingMarkdownCallbacks,
@@ -687,6 +688,8 @@ function SessionPageContent({
 
   // Developer mode settings
   const { holdModeEnabled, showConnectionBars } = useDeveloperMode();
+  const { settings: serverSettings } = useServerSettings();
+  const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
 
   // Session connection bar state for active session update streams
   const { connectionState } = useActivityBusState();
@@ -1186,6 +1189,8 @@ function SessionPageContent({
     useState<ModalAnchorRect | null>(null);
   const [publicShareStatus, setPublicShareStatus] =
     useState<PublicSessionShareSessionStatusResponse | null>(null);
+  const hasActivePublicShares = (publicShareStatus?.activeCount ?? 0) > 0;
+  const showPublicShareControls = publicSharesEnabled || hasActivePublicShares;
   const [pendingElsewhereDismissed, setPendingElsewhereDismissed] =
     useState(false);
 
@@ -3427,7 +3432,7 @@ function SessionPageContent({
                     }
                     onTerminate={handleTerminate}
                     onReload={() => window.location.reload()}
-                    onShare={handleShare}
+                    onShare={showPublicShareControls ? handleShare : undefined}
                     useFixedPositioning
                     useEllipsisIcon
                   />
@@ -3436,25 +3441,27 @@ function SessionPageContent({
             </div>
             <div className="session-header-right">
               <ClientLogRecordingBadge inline />
-              <ViewerCountIndicator
-                className="session-header-viewer-count"
-                count={
-                  publicShareStatus && publicShareStatus.liveCount > 0
-                    ? publicShareStatus.activeViewerCount
-                    : null
-                }
-                label={
-                  publicShareStatus
-                    ? t("sessionShareViewerSummary", {
-                        active: publicShareStatus.activeViewerCount,
-                        total: publicShareStatus.viewers.length,
-                        live: publicShareStatus.liveCount,
-                        frozen: publicShareStatus.frozenCount,
-                      })
-                    : t("sessionShareOpenTitle")
-                }
-                onClick={handleShareIndicatorClick}
-              />
+              {showPublicShareControls && (
+                <ViewerCountIndicator
+                  className="session-header-viewer-count"
+                  count={
+                    publicShareStatus && publicShareStatus.liveCount > 0
+                      ? publicShareStatus.activeViewerCount
+                      : null
+                  }
+                  label={
+                    publicShareStatus
+                      ? t("sessionShareViewerSummary", {
+                          active: publicShareStatus.activeViewerCount,
+                          total: publicShareStatus.viewers.length,
+                          live: publicShareStatus.liveCount,
+                          frozen: publicShareStatus.frozenCount,
+                        })
+                      : t("sessionShareOpenTitle")
+                  }
+                  onClick={handleShareIndicatorClick}
+                />
+              )}
               {canStopOwnedProcess && (
                 <ThinkingIndicator
                   variant="pill"
@@ -3544,6 +3551,7 @@ function SessionPageContent({
             sessionId={actualSessionId}
             initialPrompt={publicShareInitialPrompt}
             title={displayTitle}
+            canCreateShares={publicSharesEnabled}
             onStatusChange={setPublicShareStatus}
             onClose={() => {
               setShowShareModal(false);

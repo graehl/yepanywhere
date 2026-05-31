@@ -2,6 +2,7 @@ import { useState } from "react";
 import { type InboxItem, useInboxContext } from "../contexts/InboxContext";
 import { useDrafts } from "../hooks/useDrafts";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import type { Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
@@ -70,6 +71,8 @@ interface InboxSectionProps {
   basePath?: string;
   /** Set of session IDs that have unsent drafts */
   drafts: Set<string>;
+  /** Whether public share creation controls should be exposed */
+  publicShareControlsVisible: boolean;
 }
 
 function InboxSection({
@@ -78,6 +81,7 @@ function InboxSection({
   hideProjectName,
   basePath = "",
   drafts,
+  publicShareControlsVisible,
 }: InboxSectionProps) {
   const { t } = useI18n();
   const isEmpty = items.length === 0;
@@ -117,6 +121,7 @@ function InboxSection({
                 }
                 basePath={basePath}
                 hasDraft={drafts.has(item.sessionId)}
+                publicShareControlsVisible={publicShareControlsVisible}
               />
             );
           })}
@@ -158,6 +163,9 @@ export function InboxContent({
 }: InboxContentProps) {
   const { t } = useI18n();
   const basePath = useRemoteBasePath();
+  const { settings: serverSettings } = useServerSettings();
+  const publicShareControlsVisible =
+    serverSettings?.publicSharesEnabled ?? false;
   const {
     needsAttention: allNeedsAttention,
     active: allActive,
@@ -301,6 +309,7 @@ export function InboxContent({
                 hideProjectName={!!projectId}
                 basePath={basePath}
                 drafts={drafts}
+                publicShareControlsVisible={publicShareControlsVisible}
               />
             ))}
           </div>

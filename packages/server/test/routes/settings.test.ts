@@ -14,6 +14,7 @@ describe("Settings Routes", () => {
       serviceWorkerEnabled: true,
       persistRemoteSessionsToDisk: false,
       clientLogCollectionRequested: false,
+      publicSharesEnabled: false,
     };
 
     mockServerSettingsService = {
@@ -201,6 +202,25 @@ describe("Settings Routes", () => {
       });
     });
 
+    it("accepts public share feature gating", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicSharesEnabled: true,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        publicSharesEnabled: true,
+      });
+    });
+
     it("accepts and normalizes helper target settings", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
@@ -276,21 +296,22 @@ describe("Settings Routes", () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,
       });
-      const fetchMock = vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            data: [
-              {
-                id: "Qwen/Qwen3.6-27B",
-                max_model_len: 161072,
-              },
-            ],
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
+      const fetchMock = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: "Qwen/Qwen3.6-27B",
+                  max_model_len: 161072,
+                },
+              ],
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
       );
       vi.stubGlobal("fetch", fetchMock);
 

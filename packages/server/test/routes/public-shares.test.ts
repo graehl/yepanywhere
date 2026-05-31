@@ -3,7 +3,10 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPublicSharePublicRoutes } from "../../src/routes/public-shares.js";
+import {
+  createPublicSharePublicRoutes,
+  createPublicShareRoutes,
+} from "../../src/routes/public-shares.js";
 import { PublicShareService } from "../../src/services/PublicShareService.js";
 
 const projectId = "cHJvamVjdA" as UrlProjectId;
@@ -118,5 +121,116 @@ describe("public share public routes", () => {
     expect(
       service.getActiveViewerCount(service.getRecordBySecret(secret)!),
     ).toBe(0);
+  });
+});
+
+describe("public share owner routes", () => {
+  let service: PublicShareService;
+  let testDir: string;
+
+  beforeEach(async () => {
+    testDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "public-share-owner-routes-test-"),
+    );
+    service = new PublicShareService({ dataDir: testDir });
+    await service.initialize();
+  });
+
+  afterEach(async () => {
+    await fs.rm(testDir, { recursive: true, force: true });
+  });
+
+  it("blocks new share creation when the feature is disabled", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => false,
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(
+      service.getSessionShareStatus(projectId, "session-1").activeCount,
+    ).toBe(0);
+  });
+
+  it("creates new shares when the feature is enabled", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.url).toContain("https://ya.graehl.org/share/");
+    expect(
+      service.getSessionShareStatus(projectId, "session-1").activeCount,
+    ).toBe(1);
+  });
+
+  it("keeps authenticated management available when creation is disabled", async () => {
+    await service.createShare({
+      mode: "frozen",
+      title: "Snapshot",
+      source: {
+        projectId,
+        sessionId: "session-1",
+        projectName: "project",
+        provider: "codex",
+      },
+      snapshot: makeSession(),
+    });
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => false,
+    });
+
+    const statusResponse = await app.request(
+      `/sessions/${projectId}/session-1`,
+    );
+    const status = await statusResponse.json();
+    const revokeResponse = await app.request(
+      `/sessions/${projectId}/session-1`,
+      { method: "DELETE" },
+    );
+    const revoke = await revokeResponse.json();
+
+    expect(statusResponse.status).toBe(200);
+    expect(status.activeCount).toBe(1);
+    expect(revokeResponse.status).toBe(200);
+    expect(revoke.revokedCount).toBe(1);
   });
 });

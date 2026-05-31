@@ -37,10 +37,12 @@ export interface PublicShareRoutesDeps {
   loadSessionSummary?: (
     projectId: UrlProjectId,
     sessionId: string,
-  ) => Promise<
-    Pick<AppSession, "customTitle" | "provider" | "title" | "updatedAt"> | null
-  >;
+  ) => Promise<Pick<
+    AppSession,
+    "customTitle" | "provider" | "title" | "updatedAt"
+  > | null>;
   getRelayConfig?: () => RelayConfigForPublicShare | null;
+  getPublicSharesEnabled?: () => boolean;
   publicShareOrigin?: string;
 }
 
@@ -93,7 +95,11 @@ function contentToPlainText(content: unknown): string {
       if (!block || typeof block !== "object") {
         return "";
       }
-      const value = block as { content?: unknown; text?: unknown; type?: unknown };
+      const value = block as {
+        content?: unknown;
+        text?: unknown;
+        type?: unknown;
+      };
       if (value.type === "text" && typeof value.text === "string") {
         return value.text;
       }
@@ -149,12 +155,14 @@ function needsFrozenShareRepair(response: PublicSessionShareResponse): boolean {
   if (!Array.isArray(response.session.messages)) {
     return true;
   }
-  return response.session.messages.length === 0 && response.session.messageCount > 0;
+  return (
+    response.session.messages.length === 0 && response.session.messageCount > 0
+  );
 }
 
-function getSessionParams(c: Context):
-  | { projectId: UrlProjectId; sessionId: string }
-  | { error: Response } {
+function getSessionParams(
+  c: Context,
+): { projectId: UrlProjectId; sessionId: string } | { error: Response } {
   const projectId = c.req.param("projectId");
   const sessionId = c.req.param("sessionId");
   if (typeof projectId !== "string" || !isUrlProjectId(projectId)) {
@@ -172,6 +180,7 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
   app.get("/status", (c) => {
     const relayConfig = deps.getRelayConfig?.() ?? null;
     return c.json({
+      enabled: deps.getPublicSharesEnabled?.() ?? false,
       configured: !!relayConfig?.username,
       requiresRelay: true,
     });
@@ -219,23 +228,29 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     return c.json(response);
   });
 
-  app.post("/sessions/:projectId/:sessionId/viewers/:viewerId/freeze", async (c) => {
-    const params = getSessionParams(c);
-    if ("error" in params) return params.error;
-    const viewerId = c.req.param("viewerId");
-    const session = await deps.loadSession(params.projectId, params.sessionId);
-    if (!session) {
-      return c.json({ error: "Session not found" }, 404);
-    }
-    const response: PublicSessionShareViewerActionResponse =
-      await deps.publicShareService.freezeSessionViewerToken(
+  app.post(
+    "/sessions/:projectId/:sessionId/viewers/:viewerId/freeze",
+    async (c) => {
+      const params = getSessionParams(c);
+      if ("error" in params) return params.error;
+      const viewerId = c.req.param("viewerId");
+      const session = await deps.loadSession(
         params.projectId,
         params.sessionId,
-        viewerId,
-        session,
       );
-    return c.json(response);
-  });
+      if (!session) {
+        return c.json({ error: "Session not found" }, 404);
+      }
+      const response: PublicSessionShareViewerActionResponse =
+        await deps.publicShareService.freezeSessionViewerToken(
+          params.projectId,
+          params.sessionId,
+          viewerId,
+          session,
+        );
+      return c.json(response);
+    },
+  );
 
   app.delete("/sessions/:projectId/:sessionId/viewers/:viewerId", async (c) => {
     const params = getSessionParams(c);
@@ -267,6 +282,15 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     if (body.mode !== "frozen" && body.mode !== "live") {
       return c.json({ error: "mode must be frozen or live" }, 400);
     }
+    if (!(deps.getPublicSharesEnabled?.() ?? false)) {
+      return c.json(
+        {
+          error:
+            "Public Read-Only Share must be enabled in Advanced settings before creating links",
+        },
+        403,
+      );
+    }
 
     const relayConfig = deps.getRelayConfig?.() ?? null;
     if (!relayConfig?.url || !relayConfig.username) {
@@ -280,20 +304,25 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     }
 
     let session: AppSession | null = null;
-    let sessionSummary:
-      | Pick<AppSession, "customTitle" | "provider" | "title" | "updatedAt">
-      | null = null;
+    let sessionSummary: Pick<
+      AppSession,
+      "customTitle" | "provider" | "title" | "updatedAt"
+    > | null = null;
     if (body.mode === "frozen" || !deps.loadSessionSummary) {
       session = await deps.loadSession(body.projectId, body.sessionId);
       sessionSummary = session;
     } else {
-      sessionSummary = await deps.loadSessionSummary(body.projectId, body.sessionId);
+      sessionSummary = await deps.loadSessionSummary(
+        body.projectId,
+        body.sessionId,
+      );
     }
     if (!sessionSummary) {
       return c.json({ error: "Session not found" }, 404);
     }
 
-    const title = body.title ?? sessionSummary.customTitle ?? sessionSummary.title;
+    const title =
+      body.title ?? sessionSummary.customTitle ?? sessionSummary.title;
     const projectName = getProjectName(decodeProjectId(body.projectId));
     const initialPrompt =
       normalizePromptPreview(body.initialPrompt ?? "") ??
@@ -347,7 +376,10 @@ export function createPublicSharePublicRoutes(
     if (!record) {
       return notFound(c);
     }
-    if (viewerId && deps.publicShareService.isViewerDisconnected(record, viewerId)) {
+    if (
+      viewerId &&
+      deps.publicShareService.isViewerDisconnected(record, viewerId)
+    ) {
       return notFound(c);
     }
 

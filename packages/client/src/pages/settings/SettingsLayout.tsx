@@ -11,6 +11,7 @@ import {
 } from "../../i18n-settings";
 import { useNavigationLayout } from "../../layouts";
 import { AboutSettings } from "./AboutSettings";
+import { AdvancedSettings } from "./AdvancedSettings";
 import { AgentContextSettings } from "./AgentContextSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { DevelopmentSettings } from "./DevelopmentSettings";
@@ -37,6 +38,7 @@ const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   remote: RemoteAccessSettings,
   providers: ProvidersSettings,
   "remote-executors": RemoteExecutorsSettings,
+  advanced: AdvancedSettings,
   emulator: EmulatorSettings,
   about: AboutSettings,
   development: DevelopmentSettings,

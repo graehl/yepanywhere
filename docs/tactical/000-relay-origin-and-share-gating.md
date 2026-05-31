@@ -12,6 +12,11 @@ Progress:
 - [x] 2026-05-31: Removed the unused public viewer-heartbeat POST route. Public
   viewer state is updated by the existing secret-link GET route instead, so the
   public surface now stays read-only.
+- [x] 2026-05-31: Added a default-off `publicSharesEnabled` server setting,
+  enforced it for new share creation, and added an Advanced settings opt-in.
+  Existing public links and authenticated owner management routes remain usable
+  so links can still be frozen, disconnected, or revoked after disabling
+  creation.
 
 ## Context
 
@@ -167,8 +172,9 @@ long-term contract for production routing.
 
 ## Open Questions
 
-- When `publicSharesEnabled` is turned off, should existing public share links
-  stop resolving immediately, or should only new share creation be blocked?
+- Decision: when `publicSharesEnabled` is turned off, only new share creation is
+  blocked. Existing public links keep resolving until revoked, and owner
+  management remains available so users can clean them up.
 - Should live public shares require a separate opt-in from frozen snapshot
   shares?
 - Should `ya.graehl.org` remain in the production relay origin allowlist after
@@ -187,10 +193,9 @@ long-term contract for production routing.
 
 1. [x] Add and test relay origin parsing/matching.
 2. [x] Enforce relay HTTP CORS and WebSocket upgrade origin checks.
-3. Add server-side public-share settings and API enforcement.
-4. Add Advanced / Experimental settings UI for public share opt-in and viewer
-   origin.
-5. Gate share controls and status polling in session UI.
+3. [x] Add server-side `publicSharesEnabled` setting and creation enforcement.
+4. Add Advanced / Experimental settings UI for viewer origin configuration.
+5. [x] Gate share creation controls in session/list UI.
 6. Gate heartbeat/nudge controls behind the same advanced visibility model.
 7. Update docs and user-facing copy.
 

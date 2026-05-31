@@ -1247,9 +1247,11 @@ export const api = {
     }),
 
   getPublicShareStatus: () =>
-    fetchJSON<{ configured: boolean; requiresRelay: boolean }>(
-      "/public-shares/status",
-    ),
+    fetchJSON<{
+      enabled: boolean;
+      configured: boolean;
+      requiresRelay: boolean;
+    }>("/public-shares/status"),
 
   getPublicSessionShareStatus: (projectId: string, sessionId: string) =>
     fetchJSON<PublicSessionShareSessionStatusResponse>(
@@ -1361,6 +1363,8 @@ export interface ServerSettings {
   persistRemoteSessionsToDisk: boolean;
   /** Whether the server is requesting browser clients to upload diagnostic logs */
   clientLogCollectionRequested?: boolean;
+  /** Whether users may create public read-only share links */
+  publicSharesEnabled?: boolean;
   /** SSH host aliases for remote executors */
   remoteExecutors?: string[];
   /** SSH host aliases for ChromeOS device bridge targets */

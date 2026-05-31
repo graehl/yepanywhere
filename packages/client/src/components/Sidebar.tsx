@@ -6,6 +6,7 @@ import { useDrafts } from "../hooks/useDrafts";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useServerSettings } from "../hooks/useServerSettings";
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
@@ -75,9 +76,7 @@ function loadSidebarSectionExpansion(): SidebarSectionExpansion {
   }
 }
 
-function saveSidebarSectionExpansion(
-  expansion: SidebarSectionExpansion,
-): void {
+function saveSidebarSectionExpansion(expansion: SidebarSectionExpansion): void {
   const storage = getLocalStorage();
   if (!storage) {
     return;
@@ -170,6 +169,9 @@ export function Sidebar({
   const basePath = useRemoteBasePath();
   const navigate = useNavigate();
   const remoteConnection = useOptionalRemoteConnection();
+  const { settings: serverSettings } = useServerSettings();
+  const publicShareControlsVisible =
+    serverSettings?.publicSharesEnabled ?? false;
 
   // Fetch global sessions for sidebar (non-starred only for recent/older sections)
   const {
@@ -756,6 +758,7 @@ export function Sidebar({
                       basePath={basePath}
                       messageCount={session.messageCount}
                       hasDraft={drafts.has(session.id)}
+                      publicShareControlsVisible={publicShareControlsVisible}
                     />
                   ))}
                 </ul>
@@ -806,6 +809,7 @@ export function Sidebar({
                       basePath={basePath}
                       messageCount={session.messageCount}
                       hasDraft={drafts.has(session.id)}
+                      publicShareControlsVisible={publicShareControlsVisible}
                     />
                   ))}
                   {hiddenRecent.length > 0 && (
@@ -837,6 +841,9 @@ export function Sidebar({
                               status={session.ownership}
                               pendingInputType={session.pendingInputType}
                               hasUnread={session.hasUnread}
+                              publicShareControlsVisible={
+                                publicShareControlsVisible
+                              }
                               isStarred={session.isStarred}
                               isArchived={session.isArchived}
                               mode="compact"
@@ -899,6 +906,7 @@ export function Sidebar({
                       basePath={basePath}
                       messageCount={session.messageCount}
                       hasDraft={drafts.has(session.id)}
+                      publicShareControlsVisible={publicShareControlsVisible}
                     />
                   ))}
                   {hiddenOlder.length > 0 && (
@@ -941,6 +949,9 @@ export function Sidebar({
                               basePath={basePath}
                               messageCount={session.messageCount}
                               hasDraft={drafts.has(session.id)}
+                              publicShareControlsVisible={
+                                publicShareControlsVisible
+                              }
                             />
                           ))}
                         </ul>

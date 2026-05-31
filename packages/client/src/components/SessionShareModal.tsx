@@ -16,6 +16,7 @@ interface SessionShareModalProps {
   projectId: string;
   sessionId: string;
   title?: string | null;
+  canCreateShares?: boolean;
   onStatusChange?: (status: PublicSessionShareSessionStatusResponse) => void;
   onClose: () => void;
 }
@@ -103,6 +104,7 @@ export function SessionShareModal({
   projectId,
   sessionId,
   title,
+  canCreateShares = true,
   onStatusChange,
   onClose,
 }: SessionShareModalProps) {
@@ -310,38 +312,44 @@ export function SessionShareModal({
         <p className="session-share-readonly-note">
           {t("sessionShareReadOnlyNote")}
         </p>
-        <div className="session-share-actions">
-          <button
-            type="button"
-            className="session-share-action"
-            onClick={() => void createAndCopyShare("frozen")}
-            disabled={isWorking !== null}
-          >
-            <span className="session-share-option-title">
-              {isWorking === "frozen"
-                ? t("sessionShareCopying")
-                : t("sessionShareCopyFrozenReadOnly")}
-            </span>
-            <span className="session-share-option-description">
-              {t("sessionShareFrozenDescription")}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="session-share-action"
-            onClick={() => void createAndCopyShare("live")}
-            disabled={isWorking !== null}
-          >
-            <span className="session-share-option-title">
-              {isWorking === "live"
-                ? t("sessionShareCopying")
-                : t("sessionShareCopyLiveReadOnly")}
-            </span>
-            <span className="session-share-option-description">
-              {t("sessionShareLiveDescription")}
-            </span>
-          </button>
-        </div>
+        {canCreateShares ? (
+          <div className="session-share-actions">
+            <button
+              type="button"
+              className="session-share-action"
+              onClick={() => void createAndCopyShare("frozen")}
+              disabled={isWorking !== null}
+            >
+              <span className="session-share-option-title">
+                {isWorking === "frozen"
+                  ? t("sessionShareCopying")
+                  : t("sessionShareCopyFrozenReadOnly")}
+              </span>
+              <span className="session-share-option-description">
+                {t("sessionShareFrozenDescription")}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="session-share-action"
+              onClick={() => void createAndCopyShare("live")}
+              disabled={isWorking !== null}
+            >
+              <span className="session-share-option-title">
+                {isWorking === "live"
+                  ? t("sessionShareCopying")
+                  : t("sessionShareCopyLiveReadOnly")}
+              </span>
+              <span className="session-share-option-description">
+                {t("sessionShareLiveDescription")}
+              </span>
+            </button>
+          </div>
+        ) : (
+          <p className="session-share-readonly-note">
+            {t("sessionShareDisabledInSettings")}
+          </p>
+        )}
 
         {url && (
           <label className="session-share-url-field">

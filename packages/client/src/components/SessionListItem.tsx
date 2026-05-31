@@ -81,6 +81,8 @@ interface SessionListItemProps {
   /** Cached user vs system/assistant turn counts (for heavier list views) */
   userTurnCount?: number;
   systemTurnCount?: number;
+  /** Whether public share creation controls should be exposed from list menus */
+  publicShareControlsVisible?: boolean;
 }
 
 async function copyTextToClipboard(text: string): Promise<void> {
@@ -161,6 +163,7 @@ export function SessionListItem({
   createdAt,
   userTurnCount,
   systemTurnCount,
+  publicShareControlsVisible = false,
 }: SessionListItemProps) {
   const navigate = useNavigate();
 
@@ -651,7 +654,11 @@ export function SessionListItem({
               `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
             );
           }}
-          onShare={() => setShowShareModal(true)}
+          onShare={
+            publicShareControlsVisible
+              ? () => setShowShareModal(true)
+              : undefined
+          }
           useEllipsisIcon
           useFixedPositioning
           className="session-list-item__menu"
@@ -663,6 +670,7 @@ export function SessionListItem({
           projectId={projectId}
           sessionId={sessionId}
           title={displayTitle}
+          canCreateShares={publicShareControlsVisible}
           onClose={() => setShowShareModal(false)}
         />
       )}

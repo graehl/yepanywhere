@@ -10,6 +10,14 @@ catch-up paths, read `topics/architecture-mandates.md`. In particular, an idle
 provider session and a closed client tab must never indefinitely consume server
 resources.
 
+## Hard Development Rules
+
+Follow `topics/hard-development-rules.md` for binding upstream-facing
+development rules. Read it before changing deployment-sensitive defaults,
+configuration precedence, relay or endpoint selection, provider/model settings,
+hosted-client endpoint selection, migrations, or maintainer-specific deploy
+configuration.
+
 ## Codex Version Bump Audit
 
 Treat `package.json` `yepAnywhere.codexCli.expectedVersion` as the repo's

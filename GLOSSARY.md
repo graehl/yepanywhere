@@ -17,6 +17,7 @@ regeneration rules.
 | `emulated-slash-commands` | YA-advertised commands whose submitted text is rewritten or routed by YA when the provider has no native command for that behavior. | [emulated-slash-commands](topics/emulated-slash-commands.md) |
 | `glossary` | The root project vocabulary table: topic-linked definitions come from topic-doc ledes and curated vernacular rows preserve local naming decisions. | [glossary](topics/glossary.md) |
 | `grok` | xAI Grok Build provider integration, isolated behind provider-specific files and feature gates while ACP supervision matures. | [grok](topics/grok.md) |
+| `hard-development-rules` | Binding upstream-facing constraints that protect user trust, explicit configuration, and operator intent across YA changes. | [hard-development-rules](topics/hard-development-rules.md) |
 | `heartbeat` | YA's heartbeat-shaped mechanisms, separating transport/status frames from provider liveness evidence and user-visible state. | [heartbeat](topics/heartbeat.md) |
 | `memory-growth` | Browser and server memory constraints for long-lived YA sessions, especially avoiding whole-transcript work on idle UI timers. | [memory-growth](topics/memory-growth.md) |
 | `message-control-steer-queue-btw-later-interrupt` | UI-visible message-control contract for direct sends, steering, queueing, `/btw`, and deferred or later intent while a session is busy. | [message-control-steer-queue-btw-later-interrupt](topics/message-control-steer-queue-btw-later-interrupt.md) |

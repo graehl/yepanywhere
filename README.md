@@ -100,7 +100,9 @@ broader environment variable table, see [topics/ya-env-vars.md](topics/ya-env-va
 
 ## Remote Access
 
-**Easiest:** Use our free public relay — configure it in Settings, or via CLI for headless setups:
+**Easiest:** Use our free public relay when you want passworded,
+end-to-end encrypted access from any browser. Configure it in Settings, or via
+CLI for headless setups:
 
 ```bash
 yepanywhere --setup-remote-access --username myserver --password "secretpass123"
@@ -110,7 +112,14 @@ Then connect from anywhere at [yepanywhere.com/remote](https://yepanywhere.com/r
 
 All traffic is end-to-end encrypted and we can't see your data. No accounts required.
 
-**Self-hosted:** Prefer to run your own infrastructure? Use Tailscale, Caddy, or any reverse proxy with SSL termination. See the [remote access docs](docs/project/remote-access.md) for details.
+**Private network:** If you only need to reach a solo install from your phone,
+a VPN such as Tailscale is usually simpler than deploying your own relay: put
+the phone and dev machine on the same private network, then open the Yep
+Anywhere server from the phone.
+
+**Self-hosted web access:** Prefer to run your own public infrastructure? Use
+Caddy or any reverse proxy with SSL termination. See the
+[remote access docs](docs/project/remote-access.md) for details.
 
 ## Why not just use the terminal?
 

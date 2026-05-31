@@ -5890,14 +5890,18 @@ a.sidebar-nav-item {
   display: block;
   padding: var(--space-2);
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
+}
+
+.session-toolbar-preview-content {
+  min-width: 760px;
   pointer-events: none;
 }
 
 .session-toolbar-preview .message-input-toolbar {
-  min-width: 760px;
   width: 100%;
 }
 
@@ -5941,6 +5945,46 @@ a.sidebar-nav-item {
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   line-height: 1.3;
+}
+
+@media (max-width: 600px) {
+  .session-toolbar-preview {
+    overflow-x: visible;
+  }
+
+  .session-toolbar-preview-content {
+    min-width: 0;
+  }
+
+  .session-toolbar-preview .message-input-toolbar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: var(--space-1);
+  }
+
+  .session-toolbar-preview .message-input-left {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    row-gap: var(--space-1);
+    overflow: visible;
+  }
+
+  .session-toolbar-preview .composer-status-ages {
+    position: static;
+    flex: 1 1 auto;
+    margin-left: 0;
+    max-width: none;
+    transform: none;
+    justify-content: flex-start;
+  }
+
+  .session-toolbar-preview .message-input-actions {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-left: auto;
+  }
 }
 
 .settings-item-info {

@@ -5,9 +5,7 @@ import {
   getModelIndicatorTextVariants,
   getModelIndicatorTooltip,
 } from "../lib/modelIndicatorText";
-import type { SpeechMethodId } from "../lib/speechProviders/methods";
 import type { ContextUsage } from "../types";
-import type { FilterOption } from "./FilterDropdown";
 import {
   type LivenessDisplay,
   MessageInputToolbarView,
@@ -18,19 +16,6 @@ const PREVIEW_CONTEXT_USAGE: ContextUsage = {
   percentage: 84,
   contextWindow: 200_000,
 };
-
-const PREVIEW_SPEECH_METHODS: FilterOption<SpeechMethodId>[] = [
-  {
-    value: "browser-native",
-    label: "Browser",
-    description: "Runs in the browser.",
-  },
-  {
-    value: "server-preview",
-    label: "Server",
-    description: "Server-routed transcription.",
-  },
-];
 
 const noop = () => {};
 
@@ -80,97 +65,99 @@ export function SessionToolbarPreview() {
   }, []);
 
   return (
-    <div ref={inertRef} className="session-toolbar-preview" aria-hidden="true">
-      <MessageInputToolbarView
-        t={t}
-        visibility={visibility}
-        modeControl={{
-          mode: "bypassPermissions",
-          onModeChange: noop,
-        }}
-        attachmentControl={{
-          canAttach: true,
-          attachmentCount: 1,
-          onAttachClick: noop,
-        }}
-        slashControl={{
-          commands: ["model", "btw", "compact", "done"],
-          onSelectCommand: noop,
-        }}
-        thinkingControl={{
-          mode: "auto",
-          level: "max",
-          onCycle: noop,
-        }}
-        renderModeControl={{
-          state: "mixed",
-          title: t("toolbarRenderModeMixed"),
-          onToggle: noop,
-        }}
-        nudgeControl={{
-          enabled: true,
-          title: t("sessionHeartbeatTitle"),
-          onClick: noop,
-          onContextMenu: (event) => event.preventDefault(),
-          onTouchStart: noop,
-          onTouchEnd: (event) => event.preventDefault(),
-          onClearTouch: noop,
-        }}
-        speechControl={{
-          showMethodSelector: true,
-          methodOptions: PREVIEW_SPEECH_METHODS,
-          selectedMethod: "browser-native",
-          onMethodChange: noop,
-          voiceButton: {
-            kind: "preview",
-          },
-        }}
-        modelControl={{
-          density: "compact",
-          label: modelLabel,
-          tone: "max",
-          tooltip: modelTooltip,
-          onClick: noop,
-        }}
-        statusControl={{
-          showToolbarStatus: visibility.sessionStatus,
-          showLivenessChip: visibility.sessionStatus,
-          livenessDisplay,
-          livenessSummary: "Verified idle 4m ago",
-          nowMs: previewNowMs,
-          showLastActivityChip: false,
-          showLastActivityPrefix: false,
-          lastActivityMs: null,
-        }}
-        shortcutsControl={{
-          open: shortcutsOpen,
-          isearchScope: null,
-          setOpen: setShortcutsOpen,
-          hasDualActions: true,
-        }}
-        actionsControl={{
-          contextUsage: PREVIEW_CONTEXT_USAGE,
-          btw: {
+    <div className="session-toolbar-preview" aria-hidden="true">
+      <div ref={inertRef} className="session-toolbar-preview-content">
+        <MessageInputToolbarView
+          t={t}
+          visibility={visibility}
+          modeControl={{
+            mode: "bypassPermissions",
+            onModeChange: noop,
+          }}
+          attachmentControl={{
+            canAttach: true,
+            attachmentCount: 1,
+            onAttachClick: noop,
+          }}
+          slashControl={{
+            commands: ["model", "btw", "compact", "done"],
+            onSelectCommand: noop,
+          }}
+          thinkingControl={{
+            mode: "auto",
+            level: "max",
+            onCycle: noop,
+          }}
+          renderModeControl={{
+            state: "mixed",
+            title: t("toolbarRenderModeMixed"),
+            onToggle: noop,
+          }}
+          nudgeControl={{
+            enabled: true,
+            title: t("sessionHeartbeatTitle"),
             onClick: noop,
-            pressed: false,
-            mode: "start",
-            title: "Start /btw aside (Ctrl+B)",
-          },
-          send: {
-            onSend: noop,
-            canSend: true,
-            primaryActionKind: "steer",
-            primaryActionLabel: t("toolbarSteerTooltip"),
-            tooltip: t("toolbarSteerTooltip"),
-            icon: "↗",
-            queue: {
-              onQueue: noop,
-              hasDualActions: true,
-              queueTooltip: t("toolbarQueueTooltip"),
+            onContextMenu: (event) => event.preventDefault(),
+            onTouchStart: noop,
+            onTouchEnd: (event) => event.preventDefault(),
+            onClearTouch: noop,
+          }}
+          speechControl={{
+            showMethodSelector: false,
+            methodOptions: [],
+            selectedMethod: "browser-native",
+            onMethodChange: noop,
+            voiceButton: {
+              kind: "preview",
             },
-          },
-        }}
-      />
+          }}
+          modelControl={{
+            density: "compact",
+            label: modelLabel,
+            tone: "max",
+            tooltip: modelTooltip,
+            onClick: noop,
+          }}
+          statusControl={{
+            showToolbarStatus: visibility.sessionStatus,
+            showLivenessChip: visibility.sessionStatus,
+            livenessDisplay,
+            livenessSummary: "Verified idle 4m ago",
+            nowMs: previewNowMs,
+            showLastActivityChip: false,
+            showLastActivityPrefix: false,
+            lastActivityMs: null,
+          }}
+          shortcutsControl={{
+            open: shortcutsOpen,
+            isearchScope: null,
+            setOpen: setShortcutsOpen,
+            hasDualActions: true,
+          }}
+          actionsControl={{
+            contextUsage: PREVIEW_CONTEXT_USAGE,
+            btw: {
+              onClick: noop,
+              pressed: false,
+              mode: "start",
+              title: "Start /btw aside (Ctrl+B)",
+            },
+            send: {
+              onSend: noop,
+              canSend: true,
+              primaryActionKind: "steer",
+              primaryActionLabel: t("toolbarSteerTooltip"),
+              tooltip: t("toolbarSteerTooltip"),
+              icon: "↗",
+              queue: {
+                onQueue: noop,
+                hasDualActions: true,
+                queueTooltip: t("toolbarQueueTooltip"),
+              },
+            },
+          }}
+        />
+      </div>
     </div>
   );
 }

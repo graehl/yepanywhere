@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
 
-export const DEFAULT_CONTENT_MAX_WIDTH_PX = 4000;
+export const DEFAULT_CONTENT_MAX_WIDTH_PX = 830;
 export const MIN_CONTENT_MAX_WIDTH_PX = 480;
 export const MAX_CONTENT_MAX_WIDTH_PX = 4000;
 

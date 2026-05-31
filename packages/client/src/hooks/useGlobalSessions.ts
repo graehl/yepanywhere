@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  api,
   type GlobalSessionItem,
   type GlobalSessionStats,
   type ProjectOption,
-  api,
 } from "../api/client";
 import {
   type ProcessStateEvent,
@@ -35,6 +35,45 @@ const DEFAULT_STATS: GlobalSessionStats = {
   providerCounts: {},
   executorCounts: {},
 };
+
+export function reconcileGlobalSessionsProcessState(
+  sessions: GlobalSessionItem[],
+  event: ProcessStateEvent,
+): { sessions: GlobalSessionItem[]; matched: boolean } {
+  let matched = false;
+
+  const activity =
+    event.activity === "in-turn" || event.activity === "waiting-input"
+      ? event.activity
+      : undefined;
+  const pendingInputType =
+    event.activity === "waiting-input" ? event.pendingInputType : undefined;
+
+  const reconciled = sessions.map((session) => {
+    if (session.id !== event.sessionId) {
+      return session;
+    }
+
+    matched = true;
+    return {
+      ...session,
+      activity,
+      pendingInputType,
+    };
+  });
+
+  return {
+    sessions: reconciled,
+    matched,
+  };
+}
+
+export function shouldRefetchGlobalSessionsAfterProcessState(
+  event: ProcessStateEvent,
+  matched: boolean,
+): boolean {
+  return !matched || event.activity !== "in-turn";
+}
 
 export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
   const {
@@ -226,26 +265,25 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
   }, []);
 
   // Handle process state changes
-  const handleProcessStateChange = useCallback((event: ProcessStateEvent) => {
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === event.sessionId
-          ? { ...session, activity: event.activity }
-          : session,
-      ),
-    );
-
-    // When state changes to "in-turn", clear pendingInputType
-    if (event.activity === "in-turn") {
-      setSessions((prev) =>
-        prev.map((session) =>
-          session.id === event.sessionId
-            ? { ...session, pendingInputType: undefined }
-            : session,
-        ),
+  const handleProcessStateChange = useCallback(
+    (event: ProcessStateEvent) => {
+      const currentlyMatched = sessionsRef.current.some(
+        (session) => session.id === event.sessionId,
       );
-    }
-  }, []);
+
+      setSessions((prev) => {
+        const result = reconcileGlobalSessionsProcessState(prev, event);
+        return result.sessions;
+      });
+
+      if (
+        shouldRefetchGlobalSessionsAfterProcessState(event, currentlyMatched)
+      ) {
+        debouncedRefetch();
+      }
+    },
+    [debouncedRefetch],
+  );
 
   // Handle new session created
   const handleSessionCreated = useCallback(

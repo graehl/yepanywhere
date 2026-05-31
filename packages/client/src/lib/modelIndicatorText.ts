@@ -46,16 +46,16 @@ const modelGlyphRulesByProvider: Readonly<
     {
       patterns: ["opus[1m]", "opus-1m"],
       glyph: "◐",
-      fixedSuffix: "4.8 1m",
+      fixedSuffix: "1m",
       match: "exact",
     },
     {
       patterns: ["opusplan"],
       glyph: "◐",
-      fixedSuffix: "4.8 Plan",
+      fixedSuffix: "Plan",
       match: "exact",
     },
-    { patterns: ["opus"], glyph: "◐", fixedSuffix: "4.8", match: "exact" },
+    { patterns: ["opus"], glyph: "◐", fixedSuffix: "", match: "exact" },
     {
       patterns: ["sonnet[1m]", "sonnet-1m"],
       glyph: "♪",
@@ -246,7 +246,7 @@ export function getModelIndicatorModelLabel(
 }
 
 // Returns human-readable model name for use in tooltips:
-// "Sonnet 4.6", "Opus 4.8", "5.4-mini", "2.5-flash"
+// "Sonnet 4.x", "Opus 4.x", "5.4-mini", "2.5-flash"
 function getModelReadableName(
   providerKey: string,
   normalizedModel: string,

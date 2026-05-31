@@ -27,10 +27,10 @@ export const MODEL_OPTIONS: { value: ModelOption; label: string }[] = [
   { value: "best", label: "Best" },
   { value: "sonnet", label: "Sonnet" },
   { value: "sonnet[1m]", label: "Sonnet 1M" },
-  { value: "opus", label: "Opus 4.8" },
-  { value: "opus[1m]", label: "Opus 4.8 1M" },
+  { value: "opus", label: "Opus" },
+  { value: "opus[1m]", label: "Opus 1M" },
   { value: "haiku", label: "Haiku" },
-  { value: "opusplan", label: "Opus 4.8 Plan" },
+  { value: "opusplan", label: "Opus Plan" },
 ];
 
 export { EFFORT_LEVEL_OPTIONS };

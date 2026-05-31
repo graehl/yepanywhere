@@ -154,9 +154,8 @@ function resolveLocalClaudeCodeExecutable(): string | undefined {
 const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   {
     id: "default",
-    name: "Default",
-    description:
-      "Uses Claude Code's saved default for new sessions, as set by /model",
+    name: "Default (recommended)",
+    description: "Claude Code chooses the recommended model for your account",
     contextWindow: getModelContextWindow("default", "claude"),
   },
   {
@@ -179,14 +178,14 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   },
   {
     id: "opus",
-    name: "Opus 4.8",
-    description: "Standard-context Opus 4.8 for the most demanding reasoning",
+    name: "Opus",
+    description: "Standard-context Opus for the most demanding reasoning",
     contextWindow: getModelContextWindow("opus", "claude"),
   },
   {
     id: "opus[1m]",
-    name: "Opus 4.8 1M",
-    description: "Opus 4.8 with 1M context for the largest working sets",
+    name: "Opus 1M",
+    description: "Opus with 1M context for the largest working sets",
     contextWindow: getModelContextWindow("opus[1m]", "claude"),
   },
   {
@@ -197,8 +196,8 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   },
   {
     id: "opusplan",
-    name: "Opus 4.8 Plan",
-    description: "Uses Opus 4.8 for planning, then Sonnet for execution",
+    name: "Opus Plan",
+    description: "Uses Opus for planning, then Sonnet for execution",
     contextWindow: getModelContextWindow("opus", "claude"),
   },
 ];
@@ -249,7 +248,7 @@ function enrichClaudeModel(model: ModelInfo): ModelInfo {
   };
 }
 
-function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
+export function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
   const byId = new Map<string, ModelInfo>();
 
   for (const model of CLAUDE_MODELS_FALLBACK) {
@@ -257,6 +256,9 @@ function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
   }
 
   for (const model of models) {
+    if (model.id === "default") {
+      continue;
+    }
     byId.set(model.id, enrichClaudeModel(model));
   }
 

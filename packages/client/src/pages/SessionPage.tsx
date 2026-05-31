@@ -64,6 +64,7 @@ import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
 import { useProject } from "../hooks/useProjects";
 import { useProviders } from "../hooks/useProviders";
+import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { recordSessionVisit } from "../hooks/useRecentSessions";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
@@ -690,6 +691,9 @@ function SessionPageContent({
   const { holdModeEnabled, showConnectionBars } = useDeveloperMode();
   const { settings: serverSettings } = useServerSettings();
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
+  const { status: publicShareGlobalStatus } = usePublicShareStatus({
+    poll: publicSharesEnabled,
+  });
 
   // Session connection bar state for active session update streams
   const { connectionState } = useActivityBusState();
@@ -1189,7 +1193,7 @@ function SessionPageContent({
     useState<ModalAnchorRect | null>(null);
   const [publicShareStatus, setPublicShareStatus] =
     useState<PublicSessionShareSessionStatusResponse | null>(null);
-  const showPublicShareControls = publicSharesEnabled;
+  const showPublicShareControls = publicShareGlobalStatus?.canCreate ?? false;
   const [pendingElsewhereDismissed, setPendingElsewhereDismissed] =
     useState(false);
 
@@ -3133,7 +3137,7 @@ function SessionPageContent({
     let timer: ReturnType<typeof setTimeout> | null = null;
     setPublicShareStatus(null);
 
-    if (!publicSharesEnabled) {
+    if (!showPublicShareControls) {
       return () => {
         cancelled = true;
       };
@@ -3170,7 +3174,7 @@ function SessionPageContent({
         clearTimeout(timer);
       }
     };
-  }, [actualSessionId, projectId, publicSharesEnabled]);
+  }, [actualSessionId, projectId, showPublicShareControls]);
 
   const handleToggleHeartbeat = useCallback(async () => {
     const previousEnabled = heartbeatTurnsEnabled;
@@ -3556,7 +3560,7 @@ function SessionPageContent({
             sessionId={actualSessionId}
             initialPrompt={publicShareInitialPrompt}
             title={displayTitle}
-            canCreateShares={publicSharesEnabled}
+            canCreateShares={showPublicShareControls}
             onStatusChange={setPublicShareStatus}
             onClose={() => {
               setShowShareModal(false);

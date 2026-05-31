@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { type InboxItem, useInboxContext } from "../contexts/InboxContext";
 import { useDrafts } from "../hooks/useDrafts";
+import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
@@ -164,8 +165,11 @@ export function InboxContent({
   const { t } = useI18n();
   const basePath = useRemoteBasePath();
   const { settings: serverSettings } = useServerSettings();
-  const publicShareControlsVisible =
-    serverSettings?.publicSharesEnabled ?? false;
+  const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
+  const { status: publicShareStatus } = usePublicShareStatus({
+    poll: publicSharesEnabled,
+  });
+  const publicShareControlsVisible = publicShareStatus?.canCreate ?? false;
   const {
     needsAttention: allNeedsAttention,
     active: allActive,

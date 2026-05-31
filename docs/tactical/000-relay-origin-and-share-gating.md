@@ -20,6 +20,10 @@ Progress:
 - [x] 2026-05-31: Added a Public Share Viewer setting with default/custom
   options. The default link base is `https://yepanywhere.com/remote/share`;
   custom values are validated HTTP(S) base URLs with no query or hash.
+- [x] 2026-05-31: Made public-share creation depend on the effective Remote
+  Access configuration: the feature must be enabled, relay credentials must be
+  configured, and Remote Access must be enabled. The relay's transient
+  connection status is exposed for warnings but does not block creating links.
 
 ## Context
 
@@ -59,6 +63,9 @@ long-term contract for production routing.
 - Gate Public Read-Only Share behind a persisted user setting that defaults off.
 - Default Public Read-Only Share to the same relay configuration the user
   already configured for Remote Access.
+- Require Remote Access to be enabled before new public share links can be
+  created. Do not require the relay client to currently be connected; temporary
+  network reconnects should not disable share creation.
 - Keep the frontend share viewer URL configurable. It is currently GH Pages
   hosted via `ya.graehl.org`, but the expected steady state is under
   `yepanywhere.com` / `staging.yepanywhere.com`, likely either
@@ -130,6 +137,8 @@ long-term contract for production routing.
 - Update API responses so the client can distinguish:
   - feature disabled;
   - relay not configured;
+  - Remote Access disabled;
+  - current relay status for non-blocking warnings;
   - relay configured and shares enabled.
 - Add tests for disabled-by-default behavior and configured behavior.
 
@@ -144,12 +153,13 @@ long-term contract for production routing.
   - live shares keep serving updates through the configured relay;
   - the share path is read-only but is not the same encrypted remote-login
     session.
-- Hide session menu Share controls until the feature is enabled.
-- Avoid running public-share status polling from the session page unless the
-  feature is enabled or the session already has active shares that need
-  management.
-- Keep share management and revocation discoverable for sessions with existing
-  shares, even if new share creation is disabled.
+- Hide session menu Share controls until the feature is enabled and the
+  effective Remote Access relay configuration is present.
+- Avoid running session-level public-share status polling unless share controls
+  are available.
+- When the Public Read-Only Share setting is disabled, hide share controls and
+  invalidate existing links instead of keeping disabled-feature management UI
+  around.
 - Show the effective share frontend origin in settings and in the share modal.
 - Show a default/custom dropdown for the effective share viewer base URL in
   Advanced settings. Selecting default clears the saved override.
@@ -210,8 +220,10 @@ long-term contract for production routing.
 4. [x] Add Advanced / Experimental settings UI for viewer origin
    configuration.
 5. [x] Gate share controls and status polling in session/list UI.
-6. Gate heartbeat/nudge controls behind the same advanced visibility model.
-7. Update docs and user-facing copy.
+6. [x] Gate creation/UI on effective Remote Access enablement while treating
+   relay liveness as a warning only.
+7. Gate heartbeat/nudge controls behind the same advanced visibility model.
+8. Update docs and user-facing copy.
 
 ## Verification Checklist
 
@@ -227,6 +239,9 @@ long-term contract for production routing.
 - Share controls are hidden until the user enables the feature.
 - Enabling Public Read-Only Share uses the existing Remote Access relay config
   by default.
+- Public share creation remains available while the configured relay is
+  temporarily reconnecting.
 - Share viewer setting defaults to `https://yepanywhere.com/remote/share` and
   a custom base URL produces links under that custom prefix.
-- Existing active shares remain manageable and revocable.
+- Existing active shares remain manageable and revocable while share controls
+  are available.

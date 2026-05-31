@@ -5,6 +5,7 @@ import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext
 import { useDrafts } from "../hooks/useDrafts";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
+import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
@@ -170,8 +171,11 @@ export function Sidebar({
   const navigate = useNavigate();
   const remoteConnection = useOptionalRemoteConnection();
   const { settings: serverSettings } = useServerSettings();
-  const publicShareControlsVisible =
-    serverSettings?.publicSharesEnabled ?? false;
+  const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
+  const { status: publicShareStatus } = usePublicShareStatus({
+    poll: publicSharesEnabled,
+  });
+  const publicShareControlsVisible = publicShareStatus?.canCreate ?? false;
 
   // Fetch global sessions for sidebar (non-starred only for recent/older sections)
   const {

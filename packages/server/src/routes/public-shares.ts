@@ -13,6 +13,7 @@ import {
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { decodeProjectId, getProjectName } from "../projects/paths.js";
+import type { RelayClientStatus } from "../services/RelayClientService.js";
 import type { PublicShareService } from "../services/PublicShareService.js";
 import {
   buildPublicShareViewerUrl,
@@ -47,7 +48,32 @@ export interface PublicShareRoutesDeps {
   > | null>;
   getRelayConfig?: () => RelayConfigForPublicShare | null;
   getPublicSharesEnabled?: () => boolean;
+  getRemoteAccessEnabled?: () => boolean;
+  getRelayStatus?: () => RelayClientStatus | null;
   getPublicShareViewerBaseUrl?: () => string | null | undefined;
+}
+
+function getPublicShareReadiness(deps: PublicShareRoutesDeps): {
+  enabled: boolean;
+  relayConfig: RelayConfigForPublicShare | null;
+  configured: boolean;
+  remoteAccessEnabled: boolean;
+  relayStatus: RelayClientStatus | null;
+  canCreate: boolean;
+} {
+  const enabled = deps.getPublicSharesEnabled?.() ?? false;
+  const relayConfig = deps.getRelayConfig?.() ?? null;
+  const configured = !!relayConfig?.url && !!relayConfig.username;
+  const remoteAccessEnabled = deps.getRemoteAccessEnabled?.() ?? false;
+  const relayStatus = deps.getRelayStatus?.() ?? null;
+  return {
+    enabled,
+    relayConfig,
+    configured,
+    remoteAccessEnabled,
+    relayStatus,
+    canCreate: enabled && configured && remoteAccessEnabled,
+  };
 }
 
 function buildPublicShareUrl(
@@ -178,7 +204,7 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
   const app = new Hono();
 
   app.get("/status", (c) => {
-    const relayConfig = deps.getRelayConfig?.() ?? null;
+    const readiness = getPublicShareReadiness(deps);
     let viewerBaseUrl: string | null = null;
     let viewerBaseUrlError: string | undefined;
     try {
@@ -190,9 +216,12 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
         error instanceof Error ? error.message : "Invalid viewer URL";
     }
     return c.json({
-      enabled: deps.getPublicSharesEnabled?.() ?? false,
-      configured: !!relayConfig?.username,
+      enabled: readiness.enabled,
+      configured: readiness.configured,
       requiresRelay: true,
+      remoteAccessEnabled: readiness.remoteAccessEnabled,
+      relayStatus: readiness.relayStatus,
+      canCreate: readiness.canCreate,
       viewerBaseUrl,
       defaultViewerBaseUrl: getDefaultPublicShareViewerBaseUrl(),
       ...(viewerBaseUrlError ? { viewerBaseUrlError } : {}),
@@ -295,7 +324,8 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     if (body.mode !== "frozen" && body.mode !== "live") {
       return c.json({ error: "mode must be frozen or live" }, 400);
     }
-    if (!(deps.getPublicSharesEnabled?.() ?? false)) {
+    const readiness = getPublicShareReadiness(deps);
+    if (!readiness.enabled) {
       return c.json(
         {
           error:
@@ -305,12 +335,21 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
       );
     }
 
-    const relayConfig = deps.getRelayConfig?.() ?? null;
+    const relayConfig = readiness.relayConfig;
     if (!relayConfig?.url || !relayConfig.username) {
       return c.json(
         {
           error:
             "Remote relay must be configured before creating public share links",
+        },
+        400,
+      );
+    }
+    if (!readiness.remoteAccessEnabled) {
+      return c.json(
+        {
+          error:
+            "Remote Access must be enabled before creating public share links",
         },
         400,
       );

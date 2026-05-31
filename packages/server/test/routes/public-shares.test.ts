@@ -163,6 +163,7 @@ describe("public share owner routes", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
@@ -193,6 +194,32 @@ describe("public share owner routes", () => {
     ).toBe(0);
   });
 
+  it("reports effective share creation readiness", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => true,
+      getRelayStatus: () => "connecting",
+    });
+
+    const response = await app.request("/status");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      enabled: true,
+      configured: true,
+      remoteAccessEnabled: true,
+      relayStatus: "connecting",
+      canCreate: true,
+    });
+  });
+
   it("creates new shares when the feature is enabled", async () => {
     const app = createPublicShareRoutes({
       publicShareService: service,
@@ -202,6 +229,8 @@ describe("public share owner routes", () => {
         username: "host-one",
       }),
       getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => true,
+      getRelayStatus: () => "waiting",
     });
 
     const response = await app.request("/", {
@@ -232,6 +261,8 @@ describe("public share owner routes", () => {
         username: "host-one",
       }),
       getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => true,
+      getRelayStatus: () => "waiting",
       getPublicShareViewerBaseUrl: () => "https://shares.example/ya/share",
     });
 
@@ -261,6 +292,8 @@ describe("public share owner routes", () => {
         username: "host-one",
       }),
       getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => true,
+      getRelayStatus: () => "waiting",
     });
 
     const response = await app.request("/", {
@@ -276,6 +309,64 @@ describe("public share owner routes", () => {
 
     expect(response.status).toBe(200);
     expect(body.url).toContain("https://ya.graehl.org/share/");
+  });
+
+  it("blocks new share creation when remote access is disabled", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => false,
+      getRelayStatus: () => "waiting",
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(
+      service.getSessionShareStatus(projectId, "session-1").activeCount,
+    ).toBe(0);
+  });
+
+  it("creates new shares while the relay is reconnecting", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+      getRemoteAccessEnabled: () => true,
+      getRelayStatus: () => "connecting",
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(
+      service.getSessionShareStatus(projectId, "session-1").activeCount,
+    ).toBe(1);
   });
 
   it("revokes all shares when requested by the settings kill switch", async () => {

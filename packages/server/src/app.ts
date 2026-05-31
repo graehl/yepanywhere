@@ -1025,6 +1025,10 @@ export function createApp(options: AppOptions): AppResult {
       getPublicSharesEnabled: () =>
         options.serverSettingsService?.getSetting("publicSharesEnabled") ??
         false,
+      getRemoteAccessEnabled: () =>
+        options.remoteAccessService?.isEnabled() ?? false,
+      getRelayStatus: () =>
+        options.relayClientService?.getState().status ?? null,
       getPublicShareViewerBaseUrl: () =>
         options.serverSettingsService?.getSetting("publicShareViewerBaseUrl"),
     };

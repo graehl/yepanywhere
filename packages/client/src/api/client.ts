@@ -1247,14 +1247,7 @@ export const api = {
     }),
 
   getPublicShareStatus: () =>
-    fetchJSON<{
-      enabled: boolean;
-      configured: boolean;
-      requiresRelay: boolean;
-      viewerBaseUrl: string | null;
-      defaultViewerBaseUrl: string;
-      viewerBaseUrlError?: string;
-    }>("/public-shares/status"),
+    fetchJSON<PublicShareStatusResponse>("/public-shares/status"),
 
   getPublicSessionShareStatus: (projectId: string, sessionId: string) =>
     fetchJSON<PublicSessionShareSessionStatusResponse>(
@@ -1404,6 +1397,25 @@ export interface ServerSettings {
   lifecycleWebhookDryRun?: boolean;
   /** How the server handles Codex CLI updates */
   codexUpdatePolicy?: "auto" | "notify" | "off";
+}
+
+export type RelayClientStatus =
+  | "disconnected"
+  | "connecting"
+  | "registering"
+  | "waiting"
+  | "rejected";
+
+export interface PublicShareStatusResponse {
+  enabled: boolean;
+  configured: boolean;
+  requiresRelay: boolean;
+  remoteAccessEnabled: boolean;
+  relayStatus: RelayClientStatus | null;
+  canCreate: boolean;
+  viewerBaseUrl: string | null;
+  defaultViewerBaseUrl: string;
+  viewerBaseUrlError?: string;
 }
 
 /** Status from the server's Codex CLI update checker */

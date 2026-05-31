@@ -12,6 +12,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SessionListItem } from "../components/SessionListItem";
 import { useDrafts } from "../hooks/useDrafts";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
+import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
@@ -117,8 +118,11 @@ export function GlobalSessionsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { settings: serverSettings } = useServerSettings();
-  const publicShareControlsVisible =
-    serverSettings?.publicSharesEnabled ?? false;
+  const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
+  const { status: publicShareStatus } = usePublicShareStatus({
+    poll: publicSharesEnabled,
+  });
+  const publicShareControlsVisible = publicShareStatus?.canCreate ?? false;
 
   // Get filter params from URL
   const searchQuery = searchParams.get("q") || "";

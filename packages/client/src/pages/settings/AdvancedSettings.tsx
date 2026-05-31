@@ -1,53 +1,26 @@
 import { useEffect, useState } from "react";
-import { api } from "../../api/client";
+import type { PublicShareStatusResponse } from "../../api/client";
+import { usePublicShareStatus } from "../../hooks/usePublicShareStatus";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
 
 const DEFAULT_PUBLIC_SHARE_VIEWER_BASE_URL =
   "https://yepanywhere.com/remote/share";
 
-interface PublicShareStatus {
-  enabled: boolean;
-  configured: boolean;
-  requiresRelay: boolean;
-  viewerBaseUrl: string | null;
-  defaultViewerBaseUrl: string;
-  viewerBaseUrlError?: string;
-}
-
 type PublicShareViewerOption = "default" | "custom";
 
 export function AdvancedSettings() {
   const { t } = useI18n();
   const { settings, isLoading, error, updateSetting } = useServerSettings();
-  const [publicShareStatus, setPublicShareStatus] =
-    useState<PublicShareStatus | null>(null);
+  const publicSharesEnabled = settings?.publicSharesEnabled ?? false;
+  const { status: publicShareStatus } = usePublicShareStatus({
+    poll: publicSharesEnabled,
+  });
   const [viewerOption, setViewerOption] =
     useState<PublicShareViewerOption>("default");
   const [customViewerBaseUrl, setCustomViewerBaseUrl] = useState("");
   const [viewerSaveError, setViewerSaveError] = useState<string | null>(null);
   const [isSavingViewerUrl, setIsSavingViewerUrl] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void api
-      .getPublicShareStatus()
-      .then((status) => {
-        if (!cancelled) {
-          setPublicShareStatus(status);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setPublicShareStatus(null);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (!settings) return;
@@ -65,8 +38,6 @@ export function AdvancedSettings() {
     settings?.publicShareViewerBaseUrl,
   ]);
 
-  const publicSharesEnabled = settings?.publicSharesEnabled ?? false;
-  const relayConfigured = publicShareStatus?.configured ?? false;
   const defaultViewerBaseUrl =
     publicShareStatus?.defaultViewerBaseUrl ??
     DEFAULT_PUBLIC_SHARE_VIEWER_BASE_URL;
@@ -76,6 +47,38 @@ export function AdvancedSettings() {
     defaultViewerBaseUrl;
   const customViewerHasChanges =
     customViewerBaseUrl.trim() !== (settings?.publicShareViewerBaseUrl ?? "");
+
+  const getShareReadinessMessage = (
+    status: PublicShareStatusResponse | null,
+  ): { className: string; text: string } | null => {
+    if (!status) return null;
+    if (!status.configured) {
+      return {
+        className: "settings-warning",
+        text: t("advancedPublicShareRelayMissing"),
+      };
+    }
+    if (!status.remoteAccessEnabled) {
+      return {
+        className: "settings-warning",
+        text: t("advancedPublicShareRemoteAccessDisabled"),
+      };
+    }
+    if (status.relayStatus !== "waiting") {
+      return {
+        className: "settings-warning",
+        text: t("advancedPublicShareRelayTemporarilyUnavailable", {
+          status: status.relayStatus ?? "unknown",
+        }),
+      };
+    }
+    return {
+      className: "settings-hint",
+      text: t("advancedPublicShareReady"),
+    };
+  };
+
+  const shareReadinessMessage = getShareReadinessMessage(publicShareStatus);
 
   const handleViewerOptionChange = (option: PublicShareViewerOption) => {
     setViewerOption(option);
@@ -120,15 +123,9 @@ export function AdvancedSettings() {
             <p>{t("advancedPublicShareDescription")}</p>
             <p>{t("advancedPublicSharePrivacyWarning")}</p>
             <p>{t("advancedPublicShareExistingManagement")}</p>
-            {publicShareStatus && (
-              <p
-                className={
-                  relayConfigured ? "settings-hint" : "settings-warning"
-                }
-              >
-                {relayConfigured
-                  ? t("advancedPublicShareRelayConfigured")
-                  : t("advancedPublicShareRelayMissing")}
+            {shareReadinessMessage && (
+              <p className={shareReadinessMessage.className}>
+                {shareReadinessMessage.text}
               </p>
             )}
           </div>

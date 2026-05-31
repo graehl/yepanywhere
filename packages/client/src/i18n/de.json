@@ -61,6 +61,8 @@
   "appearanceStreamingDescription": "Zeigt Antworten während der Generierung Token für Token an. Für bessere Leistung auf langsameren Geräten deaktivieren.",
   "appearanceFunPhrasesTitle": "Lockerere Formulierungen",
   "appearanceFunPhrasesDescription": "Zeigt spielerische Statusmeldungen an, während auf Antworten gewartet wird. Deaktivieren, um nur \"Thinking...\" anzuzeigen.",
+  "appearanceFloatingActionButtonTitle": "Schwebende Neue-Sitzung-Schaltflaeche",
+  "appearanceFloatingActionButtonDescription": "Zeigt die schnelle Neue-Sitzung-Schaltflaeche auf breiten Bildschirmen an.",
   "appearanceConnectionBarsTitle": "Verbindungsbalken",
   "appearanceConnectionBarsDescription": "Zeigt farbige Statusbalken für Relay- und Sitzungsverbindungen an (grün/orange/rot).",
   "themeAuto": "Automatisch",

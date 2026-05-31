@@ -66,6 +66,8 @@
   "appearanceStreamingDescription": "Show responses as they are generated, token by token. Disable for better performance on slower devices.",
   "appearanceFunPhrasesTitle": "Fun Phrases",
   "appearanceFunPhrasesDescription": "Show playful status messages while waiting for responses. Disable to show only \"Thinking...\"",
+  "appearanceFloatingActionButtonTitle": "Floating New Session Button",
+  "appearanceFloatingActionButtonDescription": "Show the quick new-session button on wide screens.",
   "appearanceTabTitleActivityTitle": "Show Session Activity in Tab Title",
   "appearanceTabTitleActivityDescription": "Animate the browser tab title while sessions are working.",
   "appearanceTabTitleActivityScopeLabel": "Session activity tab title scope",

@@ -52,6 +52,7 @@ export const UI_KEYS = {
   sidebarSectionExpansion: "yep-anywhere-sidebar-section-expansion",
   funPhrases: "yep-anywhere-fun-phrases-enabled",
   streamingEnabled: "yep-anywhere-streaming-enabled",
+  floatingActionButtonEnabled: "yep-anywhere-floating-action-button-enabled",
   developerMode: "yep-anywhere-developer-mode",
   sessionToolbarVisibility: "yep-anywhere-session-toolbar-visibility",
   schemaValidation: "yep-anywhere-schema-validation",

@@ -62,6 +62,8 @@
   "appearanceStreamingDescription": "Muestra las respuestas a medida que se generan, token por token. Desactívalo para mejorar el rendimiento en dispositivos más lentos.",
   "appearanceFunPhrasesTitle": "Frases divertidas",
   "appearanceFunPhrasesDescription": "Muestra mensajes de estado más juguetones mientras esperas respuestas. Desactívalo para mostrar solo \"Pensando...\"",
+  "appearanceFloatingActionButtonTitle": "Botón flotante de nueva sesión",
+  "appearanceFloatingActionButtonDescription": "Muestra el botón rápido de nueva sesión en pantallas anchas.",
   "appearanceConnectionBarsTitle": "Barras de conexión",
   "appearanceConnectionBarsDescription": "Muestra barras de estado de colores para las conexiones del relay y de la sesión (verde/naranja/rojo).",
   "themeAuto": "Automático",

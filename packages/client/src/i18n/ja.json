@@ -62,6 +62,8 @@
   "appearanceStreamingDescription": "応答を生成しながらトークン単位で表示します。低速な端末では無効にするとパフォーマンスが向上します。",
   "appearanceFunPhrasesTitle": "遊び心のあるフレーズ",
   "appearanceFunPhrasesDescription": "応答待ちの間に遊び心のあるステータスメッセージを表示します。無効にすると \"Thinking...\" のみを表示します。",
+  "appearanceFloatingActionButtonTitle": "新しいセッションのフローティングボタン",
+  "appearanceFloatingActionButtonDescription": "ワイド画面で新しいセッション用のクイックボタンを表示します。",
   "appearanceConnectionBarsTitle": "接続バー",
   "appearanceConnectionBarsDescription": "リレー接続とセッション接続の状態を色付きバーで表示します（緑/オレンジ/赤）。",
   "themeAuto": "自動",

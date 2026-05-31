@@ -6,6 +6,7 @@ import {
   useContentMaxWidth,
 } from "../../hooks/useContentMaxWidth";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
+import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionButtonEnabled";
 import { FONT_SIZES, useFontSize } from "../../hooks/useFontSize";
 import { useFunPhrases } from "../../hooks/useFunPhrases";
 import {
@@ -36,6 +37,8 @@ export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
+  const { floatingActionButtonEnabled, setFloatingActionButtonEnabled } =
+    useFloatingActionButtonEnabled();
   const {
     tabTitleActivityEnabled,
     tabTitleActivityScope,
@@ -269,6 +272,20 @@ export function AppearanceSettings() {
               type="checkbox"
               checked={funPhrasesEnabled}
               onChange={(e) => setFunPhrasesEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceFloatingActionButtonTitle")}</strong>
+            <p>{t("appearanceFloatingActionButtonDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={floatingActionButtonEnabled}
+              onChange={(e) => setFloatingActionButtonEnabled(e.target.checked)}
             />
             <span className="toggle-slider" />
           </label>

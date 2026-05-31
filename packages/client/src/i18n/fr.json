@@ -61,6 +61,8 @@
   "appearanceStreamingDescription": "Affichez les réponses au fur et à mesure qu'elles sont générées, jeton par jeton. Désactivez cette option pour de meilleures performances sur les appareils plus lents.",
   "appearanceFunPhrasesTitle": "Phrases amusantes",
   "appearanceFunPhrasesDescription": "Affiche des messages d'état plus ludiques pendant l'attente des réponses. Désactivez pour n'afficher que \"Thinking...\"",
+  "appearanceFloatingActionButtonTitle": "Bouton flottant Nouvelle session",
+  "appearanceFloatingActionButtonDescription": "Affiche le bouton rapide de nouvelle session sur les écrans larges.",
   "appearanceConnectionBarsTitle": "Barres de connexion",
   "appearanceConnectionBarsDescription": "Affiche des barres d'état colorées pour les connexions du relais et de la session (vert/orange/rouge).",
   "themeLight": "Clair",

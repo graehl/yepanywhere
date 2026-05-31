@@ -14,6 +14,8 @@ Progress:
   all-session scope.
 - [x] 2026-05-31: Wired all-session scope into the existing tab-title badge
   hook using `InboxContext.totalActive`, with animation and focused tests.
+- [x] 2026-05-31: Switched activity frames to same-family circle glyphs
+  and made the animation cadence an explicit 1500 ms constant.
 
 ## Context
 
@@ -42,11 +44,11 @@ The requested settings are:
   - `waiting-input`;
   - `hold`;
   - pending approvals or questions.
-- Use a quiet two-frame ASCII indicator:
-  - `(*) Project - Session`
-  - `( ) Project - Session`
+- Use a quiet two-frame indicator with same-family circle glyphs:
+  - `(●) Project - Session`
+  - `(○) Project - Session`
 - Prefer the existing needs-attention count first, then the activity indicator:
-  - `(2) (*) Project - Session`
+  - `(2) (●) Project - Session`
 - Compose tab-title prefixes from one place instead of adding another
   independent `document.title` mutator.
 - For focused-session scope, use the currently open session detail route. If a
@@ -150,9 +152,9 @@ The requested settings are:
   - the app shell is mounted.
 - Clear the interval when activity stops, the setting is disabled, the scope
   changes, or the component unmounts.
-- Use a 1000 ms cadence.
+- Use a 1500 ms cadence.
 - Reset to the non-activity composed title immediately when activity stops.
-- Keep the two frames ASCII-only: `(*)` and `( )`.
+- Keep the two frames to the same visible shape family: `(●)` and `(○)`.
 
 ### 7. Tests
 
@@ -164,7 +166,7 @@ The requested settings are:
   - stripping stale prefixes before recomposing.
 - Add a hook/component test for animation lifecycle with fake timers:
   - interval starts only while enabled and active;
-  - frame flips after 1000 ms;
+  - frame flips after 1500 ms;
   - interval is cleared when disabled or inactive.
 - Add preference tests:
   - defaults are off/focused;
@@ -201,13 +203,13 @@ The requested settings are:
 ## Verification Checklist
 
 - Fresh browser profiles do not show activity in the tab title.
-- Enabling the setting starts showing `(*)` / `( )` only during active work.
+- Enabling the setting starts showing `(●)` / `(○)` only during active work.
 - Focused-session mode ignores activity in other sessions.
 - All-sessions mode shows activity when any active session is working.
 - Pending approvals/questions still use the existing needs-attention badge and
   do not trigger the activity spinner by themselves.
 - Existing needs-attention title counts still work and compose with the new
-  activity indicator as `(N) (*) Title`.
+  activity indicator as `(N) (●) Title`.
 - Timers are cleaned up after disabling the feature, navigating away from a
   session, or unmounting the app.
 - Remote client routes behave consistently with local routes.

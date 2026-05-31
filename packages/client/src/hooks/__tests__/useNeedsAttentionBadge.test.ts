@@ -3,8 +3,10 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getTabTitleActivityFrame,
   composeTabTitle,
   stripTabTitlePrefixes,
+  TAB_TITLE_ACTIVITY_CADENCE_MS,
   useNeedsAttentionBadge,
 } from "../useNeedsAttentionBadge";
 
@@ -42,12 +44,24 @@ describe("tab title indicators", () => {
   });
 
   it("composes attention and activity prefixes in stable order", () => {
-    expect(composeTabTitle("Project", 2, "(*)")).toBe("(2) (*) Project");
+    expect(composeTabTitle("Project", 2, "(●)")).toBe("(2) (●) Project");
   });
 
   it("strips known prefixes before recomposing", () => {
+    expect(stripTabTitlePrefixes("(2) (●) Project")).toBe("Project");
+    expect(stripTabTitlePrefixes("(○) (3) Project")).toBe("Project");
     expect(stripTabTitlePrefixes("(2) (*) Project")).toBe("Project");
     expect(stripTabTitlePrefixes("( ) (3) Project")).toBe("Project");
+  });
+
+  it("derives activity frames from the configured cadence", () => {
+    expect(getTabTitleActivityFrame(1000, 1000)).toBe("(●)");
+    expect(
+      getTabTitleActivityFrame(1000, 1000 + TAB_TITLE_ACTIVITY_CADENCE_MS),
+    ).toBe("(○)");
+    expect(
+      getTabTitleActivityFrame(1000, 1000 + TAB_TITLE_ACTIVITY_CADENCE_MS * 2),
+    ).toBe("(●)");
   });
 
   it("shows all-session activity when enabled and sessions are active", () => {
@@ -57,10 +71,10 @@ describe("tab title indicators", () => {
 
     renderHook(() => useNeedsAttentionBadge());
 
-    expect(document.title).toBe("(*) Project - Session");
+    expect(document.title).toBe("(●) Project - Session");
   });
 
-  it("animates all-session activity every second", () => {
+  it("animates all-session activity on the configured cadence", () => {
     vi.useFakeTimers();
     inboxState.totalActive = 1;
     preferenceState.tabTitleActivityEnabled = true;
@@ -68,13 +82,13 @@ describe("tab title indicators", () => {
 
     renderHook(() => useNeedsAttentionBadge());
 
-    expect(document.title).toBe("(*) Project - Session");
+    expect(document.title).toBe("(●) Project - Session");
 
     act(() => {
-      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(TAB_TITLE_ACTIVITY_CADENCE_MS);
     });
 
-    expect(document.title).toBe("( ) Project - Session");
+    expect(document.title).toBe("(○) Project - Session");
   });
 
   it("does not show activity for focused scope yet", () => {

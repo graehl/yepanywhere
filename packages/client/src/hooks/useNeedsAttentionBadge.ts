@@ -1,11 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useInboxContext } from "../contexts/InboxContext";
 import { useTabTitleActivityPreference } from "./useTabTitleActivityPreference";
 
 // Regex to match and strip existing badge prefix like "(3) "
 const BADGE_PREFIX_REGEX = /^\(\d+\)\s*/;
-const ACTIVITY_PREFIX_REGEX = /^\((?:\*| )\)\s*/;
-const ACTIVITY_FRAMES = ["(*)", "( )"] as const;
+const ACTIVITY_PREFIX_REGEX = /^\((?:●|○|\*| )\)\s*/u;
+const ACTIVITY_FRAMES = ["(●)", "(○)"] as const;
+export const TAB_TITLE_ACTIVITY_CADENCE_MS = 1500;
 
 export function stripTabTitlePrefixes(title: string): string {
   let next = title;
@@ -35,9 +36,20 @@ export function composeTabTitle(
   return prefixes.length > 0 ? `${prefixes.join(" ")} ${baseTitle}` : baseTitle;
 }
 
+export function getTabTitleActivityFrame(
+  activityStartedAtMs: number,
+  nowMs = Date.now(),
+): string {
+  const elapsedMs = Math.max(0, nowMs - activityStartedAtMs);
+  const frameIndex =
+    Math.floor(elapsedMs / TAB_TITLE_ACTIVITY_CADENCE_MS) %
+    ACTIVITY_FRAMES.length;
+  return ACTIVITY_FRAMES[frameIndex] ?? ACTIVITY_FRAMES[0];
+}
+
 /**
  * Hook that monitors the global inbox "needs attention" count and updates
- * the browser tab title with indicator prefixes like "(3)" and "(*)".
+ * the browser tab title with indicator prefixes like "(3)" and "(●)".
  *
  * This hook works independently of useDocumentTitle - it observes title changes
  * and prepends/updates indicators as needed.
@@ -45,6 +57,7 @@ export function composeTabTitle(
  * Uses InboxContext for data - no independent fetching.
  */
 export function useNeedsAttentionBadge() {
+  const activityStartedAtRef = useRef<number | null>(null);
   const { totalNeedsAttention: count, totalActive } = useInboxContext();
   const { tabTitleActivityEnabled, tabTitleActivityScope } =
     useTabTitleActivityPreference();
@@ -53,20 +66,33 @@ export function useNeedsAttentionBadge() {
     tabTitleActivityScope === "all" &&
     totalActive > 0;
 
+  useEffect(() => {
+    return () => {
+      document.title = stripTabTitlePrefixes(document.title);
+    };
+  }, []);
+
   // Update document title when count or configured activity changes.
   useEffect(() => {
+    if (showAllSessionActivity && activityStartedAtRef.current === null) {
+      activityStartedAtRef.current = Date.now();
+    } else if (!showAllSessionActivity) {
+      activityStartedAtRef.current = null;
+    }
+
     // Track if we're currently updating to avoid observer loop
     let isUpdating = false;
-    let activityFrameIndex = 0;
     let activityTimer: ReturnType<typeof setInterval> | null = null;
 
     const updateTitle = () => {
       isUpdating = true;
       // Strip existing indicator prefixes before composing the next title.
       const baseTitle = stripTabTitlePrefixes(document.title);
-      const activityFrame = showAllSessionActivity
-        ? ACTIVITY_FRAMES[activityFrameIndex]
-        : undefined;
+      const activityStartedAt = activityStartedAtRef.current;
+      const activityFrame =
+        showAllSessionActivity && activityStartedAt !== null
+          ? getTabTitleActivityFrame(activityStartedAt)
+          : undefined;
 
       document.title = composeTabTitle(baseTitle, count, activityFrame);
       // Use setTimeout to reset flag after current mutation cycle completes
@@ -79,9 +105,8 @@ export function useNeedsAttentionBadge() {
 
     if (showAllSessionActivity) {
       activityTimer = setInterval(() => {
-        activityFrameIndex = (activityFrameIndex + 1) % ACTIVITY_FRAMES.length;
         updateTitle();
-      }, 1000);
+      }, TAB_TITLE_ACTIVITY_CADENCE_MS);
     }
 
     // Also observe title changes from useDocumentTitle and re-apply indicators
@@ -92,9 +117,11 @@ export function useNeedsAttentionBadge() {
       // Check if the indicators need to be (re)applied
       const currentTitle = document.title;
       const baseTitle = stripTabTitlePrefixes(currentTitle);
-      const activityFrame = showAllSessionActivity
-        ? ACTIVITY_FRAMES[activityFrameIndex]
-        : undefined;
+      const activityStartedAt = activityStartedAtRef.current;
+      const activityFrame =
+        showAllSessionActivity && activityStartedAt !== null
+          ? getTabTitleActivityFrame(activityStartedAt)
+          : undefined;
       const expectedTitle = composeTabTitle(baseTitle, count, activityFrame);
 
       if (currentTitle !== expectedTitle) {
@@ -116,8 +143,6 @@ export function useNeedsAttentionBadge() {
       if (activityTimer) {
         clearInterval(activityTimer);
       }
-      // Clean up title indicators on unmount.
-      document.title = stripTabTitlePrefixes(document.title);
     };
   }, [count, showAllSessionActivity]);
 

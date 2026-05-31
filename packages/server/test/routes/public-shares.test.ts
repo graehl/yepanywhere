@@ -47,6 +47,7 @@ describe("public share public routes", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
@@ -215,10 +216,66 @@ describe("public share owner routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.url).toContain("https://ya.graehl.org/share/");
+    expect(body.url).toContain("https://yepanywhere.com/remote/share/");
+    expect(body.url).toContain("?h=host-one");
     expect(
       service.getSessionShareStatus(projectId, "session-1").activeCount,
     ).toBe(1);
+  });
+
+  it("creates new shares with a configured custom viewer base URL", async () => {
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+      getPublicShareViewerBaseUrl: () => "https://shares.example/ya/share",
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.url).toContain("https://shares.example/ya/share/");
+    expect(body.url).toContain("?h=host-one");
+  });
+
+  it("keeps legacy public share origin env compatibility", async () => {
+    vi.stubEnv("YEP_PUBLIC_SHARE_ORIGIN", "https://ya.graehl.org");
+    const app = createPublicShareRoutes({
+      publicShareService: service,
+      loadSession: vi.fn(async () => makeSession()),
+      getRelayConfig: () => ({
+        url: "wss://relay.example/ws",
+        username: "host-one",
+      }),
+      getPublicSharesEnabled: () => true,
+    });
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        sessionId: "session-1",
+        mode: "frozen",
+      }),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.url).toContain("https://ya.graehl.org/share/");
   });
 
   it("revokes all shares when requested by the settings kill switch", async () => {

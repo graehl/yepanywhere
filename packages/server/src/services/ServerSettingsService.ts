@@ -24,6 +24,8 @@ export interface ServerSettings {
   clientLogCollectionRequested: boolean;
   /** Whether users may create public read-only share links */
   publicSharesEnabled: boolean;
+  /** Base URL for the hosted public share viewer; secret is appended as a path segment */
+  publicShareViewerBaseUrl?: string;
   /** SSH host aliases for remote executors (from ~/.ssh/config) */
   remoteExecutors?: string[];
   /** SSH host aliases for ChromeOS device-bridge targets */

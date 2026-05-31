@@ -1025,6 +1025,8 @@ export function createApp(options: AppOptions): AppResult {
       getPublicSharesEnabled: () =>
         options.serverSettingsService?.getSetting("publicSharesEnabled") ??
         false,
+      getPublicShareViewerBaseUrl: () =>
+        options.serverSettingsService?.getSetting("publicShareViewerBaseUrl"),
     };
 
     app.route("/api/public-shares", createPublicShareRoutes(publicShareDeps));

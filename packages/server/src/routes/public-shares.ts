@@ -14,8 +14,12 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { decodeProjectId, getProjectName } from "../projects/paths.js";
 import type { PublicShareService } from "../services/PublicShareService.js";
+import {
+  buildPublicShareViewerUrl,
+  getDefaultPublicShareViewerBaseUrl,
+  resolvePublicShareViewerBaseUrl,
+} from "../utils/publicShareViewerUrl.js";
 
-const DEFAULT_PUBLIC_SHARE_ORIGIN = "https://ya.graehl.org";
 const DEFAULT_RELAY_URL = "wss://relay.yepanywhere.com/ws";
 
 export interface RelayConfigForPublicShare {
@@ -43,7 +47,7 @@ export interface PublicShareRoutesDeps {
   > | null>;
   getRelayConfig?: () => RelayConfigForPublicShare | null;
   getPublicSharesEnabled?: () => boolean;
-  publicShareOrigin?: string;
+  getPublicShareViewerBaseUrl?: () => string | null | undefined;
 }
 
 function buildPublicShareUrl(
@@ -56,13 +60,9 @@ function buildPublicShareUrl(
     projectName: string;
     title: string | null;
   },
-  publicShareOrigin?: string,
+  viewerBaseUrl: string,
 ): string {
-  const origin =
-    publicShareOrigin ??
-    process.env.YEP_PUBLIC_SHARE_ORIGIN ??
-    DEFAULT_PUBLIC_SHARE_ORIGIN;
-  const url = new URL(`/share/${secret}`, origin);
+  const url = new URL(buildPublicShareViewerUrl(secret, viewerBaseUrl));
   url.searchParams.set("h", relayConfig.username);
   if (relayConfig.url !== DEFAULT_RELAY_URL) {
     url.searchParams.set("r", relayConfig.url);
@@ -179,10 +179,23 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
 
   app.get("/status", (c) => {
     const relayConfig = deps.getRelayConfig?.() ?? null;
+    let viewerBaseUrl: string | null = null;
+    let viewerBaseUrlError: string | undefined;
+    try {
+      viewerBaseUrl = resolvePublicShareViewerBaseUrl(
+        deps.getPublicShareViewerBaseUrl?.(),
+      );
+    } catch (error) {
+      viewerBaseUrlError =
+        error instanceof Error ? error.message : "Invalid viewer URL";
+    }
     return c.json({
       enabled: deps.getPublicSharesEnabled?.() ?? false,
       configured: !!relayConfig?.username,
       requiresRelay: true,
+      viewerBaseUrl,
+      defaultViewerBaseUrl: getDefaultPublicShareViewerBaseUrl(),
+      ...(viewerBaseUrlError ? { viewerBaseUrlError } : {}),
     });
   });
 
@@ -303,6 +316,23 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
       );
     }
 
+    let viewerBaseUrl: string;
+    try {
+      viewerBaseUrl = resolvePublicShareViewerBaseUrl(
+        deps.getPublicShareViewerBaseUrl?.(),
+      );
+    } catch (error) {
+      return c.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Invalid public share viewer URL",
+        },
+        400,
+      );
+    }
+
     let session: AppSession | null = null;
     let sessionSummary: Pick<
       AppSession,
@@ -351,7 +381,7 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
           projectName,
           title,
         },
-        deps.publicShareOrigin,
+        viewerBaseUrl,
       ),
       mode: record.mode,
       createdAt: record.createdAt,

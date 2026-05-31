@@ -1251,6 +1251,9 @@ export const api = {
       enabled: boolean;
       configured: boolean;
       requiresRelay: boolean;
+      viewerBaseUrl: string | null;
+      defaultViewerBaseUrl: string;
+      viewerBaseUrlError?: string;
     }>("/public-shares/status"),
 
   getPublicSessionShareStatus: (projectId: string, sessionId: string) =>
@@ -1365,6 +1368,8 @@ export interface ServerSettings {
   clientLogCollectionRequested?: boolean;
   /** Whether users may create public read-only share links */
   publicSharesEnabled?: boolean;
+  /** Base URL for the hosted public share viewer */
+  publicShareViewerBaseUrl?: string;
   /** SSH host aliases for remote executors */
   remoteExecutors?: string[];
   /** SSH host aliases for ChromeOS device bridge targets */

@@ -17,6 +17,9 @@ Progress:
 - [x] 2026-05-31: Tightened the setting into a kill switch. When disabled,
   public share controls are hidden, public secret links return not found, and
   stored shares are revoked when the setting is turned off.
+- [x] 2026-05-31: Added a Public Share Viewer setting with default/custom
+  options. The default link base is `https://yepanywhere.com/remote/share`;
+  custom values are validated HTTP(S) base URLs with no query or hash.
 
 ## Context
 
@@ -60,6 +63,12 @@ long-term contract for production routing.
   hosted via `ya.graehl.org`, but the expected steady state is under
   `yepanywhere.com` / `staging.yepanywhere.com`, likely either
   `/share/:secret` or `/remote/share/:secret`.
+- Treat the share viewer setting as a URL prefix that already includes the
+  share route. The server appends the secret path segment, then adds relay
+  routing query params such as `h=<relayUsername>` and optional `r=<relayUrl>`.
+- Default new public share links to
+  `https://yepanywhere.com/remote/share/:secret`. Custom hosts may use their
+  own equivalent route prefix.
 
 ## Non-Goals
 
@@ -110,6 +119,9 @@ long-term contract for production routing.
 - Continue honoring `YEP_PUBLIC_SHARE_ORIGIN` as an environment override or
   bootstrap fallback for compatibility, but make the precedence explicit and
   consider renaming it to a base-URL variable.
+  Implementation now treats saved `publicShareViewerBaseUrl` first, then
+  `YEP_PUBLIC_SHARE_VIEWER_BASE_URL`, then legacy `YEP_PUBLIC_SHARE_ORIGIN`,
+  then the hosted default.
 - Enforce `publicSharesEnabled` server-side:
   - block `POST /api/public-shares`;
   - return not found for public reads when the setting is off;
@@ -139,6 +151,8 @@ long-term contract for production routing.
 - Keep share management and revocation discoverable for sessions with existing
   shares, even if new share creation is disabled.
 - Show the effective share frontend origin in settings and in the share modal.
+- Show a default/custom dropdown for the effective share viewer base URL in
+  Advanced settings. Selecting default clears the saved override.
 - Avoid relying on GH Pages root `404.html` as the long-term direct-navigation
   mechanism for share links. The production route should return a normal 200
   response for the share viewer entry point once it is hosted under
@@ -193,7 +207,8 @@ long-term contract for production routing.
 1. [x] Add and test relay origin parsing/matching.
 2. [x] Enforce relay HTTP CORS and WebSocket upgrade origin checks.
 3. [x] Add server-side `publicSharesEnabled` setting and creation enforcement.
-4. Add Advanced / Experimental settings UI for viewer origin configuration.
+4. [x] Add Advanced / Experimental settings UI for viewer origin
+   configuration.
 5. [x] Gate share controls and status polling in session/list UI.
 6. Gate heartbeat/nudge controls behind the same advanced visibility model.
 7. Update docs and user-facing copy.
@@ -212,4 +227,6 @@ long-term contract for production routing.
 - Share controls are hidden until the user enables the feature.
 - Enabling Public Read-Only Share uses the existing Remote Access relay config
   by default.
+- Share viewer setting defaults to `https://yepanywhere.com/remote/share` and
+  a custom base URL produces links under that custom prefix.
 - Existing active shares remain manageable and revocable.

@@ -29,6 +29,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
 } from "../services/ServerSettingsService.js";
 import type { PublicShareService } from "../services/PublicShareService.js";
+import { normalizePublicShareViewerBaseUrl } from "../utils/publicShareViewerUrl.js";
 import {
   isValidSshHostAlias,
   normalizeSshHostAlias,
@@ -369,6 +370,37 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     }
     if (typeof body.publicSharesEnabled === "boolean") {
       updates.publicSharesEnabled = body.publicSharesEnabled;
+    }
+
+    if ("publicShareViewerBaseUrl" in body) {
+      if (
+        body.publicShareViewerBaseUrl === undefined ||
+        body.publicShareViewerBaseUrl === null ||
+        body.publicShareViewerBaseUrl === ""
+      ) {
+        updates.publicShareViewerBaseUrl = undefined;
+      } else if (typeof body.publicShareViewerBaseUrl === "string") {
+        try {
+          updates.publicShareViewerBaseUrl = normalizePublicShareViewerBaseUrl(
+            body.publicShareViewerBaseUrl,
+          );
+        } catch (error) {
+          return c.json(
+            {
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Invalid public share viewer URL",
+            },
+            400,
+          );
+        }
+      } else {
+        return c.json(
+          { error: "publicShareViewerBaseUrl must be a string URL" },
+          400,
+        );
+      }
     }
 
     // Handle remoteExecutors array

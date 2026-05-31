@@ -222,6 +222,61 @@ describe("Settings Routes", () => {
       });
     });
 
+    it("accepts and normalizes public share viewer base URL", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicShareViewerBaseUrl: "https://example.com/remote/share/",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        publicShareViewerBaseUrl: "https://example.com/remote/share",
+      });
+    });
+
+    it("clears public share viewer base URL for default hosted viewer", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicShareViewerBaseUrl: null,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        publicShareViewerBaseUrl: undefined,
+      });
+    });
+
+    it("rejects public share viewer URLs with query strings", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          publicShareViewerBaseUrl: "https://example.com/share?x=1",
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("revokes stored public shares when disabling the feature", async () => {
       const revokeAllShares = vi.fn(async () => 2);
       const routes = createSettingsRoutes({

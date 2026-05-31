@@ -14,6 +14,7 @@ import {
   type SessionUpdatedEvent,
   useFileActivity,
 } from "./useFileActivity";
+import { reportGlobalSessionLifecycleSnapshots } from "../lib/sessionLifecycleApiSnapshots";
 
 const REFETCH_DEBOUNCE_MS = 500;
 
@@ -108,6 +109,8 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
   }>({});
 
   const fetch = useCallback(async () => {
+    const requestStartedAt = Date.now();
+
     // Reset initial load flag when options change
     const optionsChanged =
       lastFetchOptionsRef.current.projectId !== projectId ||
@@ -151,6 +154,11 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
         sessionsPromise,
         statsPromise,
       ]);
+
+      reportGlobalSessionLifecycleSnapshots(
+        data.sessions,
+        requestStartedAt,
+      );
 
       if (!hasInitialLoadRef.current || optionsChanged) {
         setSessions(data.sessions);
@@ -197,6 +205,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
     if (!lastSession) return;
 
     try {
+      const requestStartedAt = Date.now();
       const data = await api.getGlobalSessions({
         project: projectId ?? undefined,
         q: searchQuery || undefined,
@@ -206,6 +215,11 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
         starred,
         includeStats: false,
       });
+
+      reportGlobalSessionLifecycleSnapshots(
+        data.sessions,
+        requestStartedAt,
+      );
 
       setSessions((prev) => {
         // Deduplicate when appending

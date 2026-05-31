@@ -11,6 +11,9 @@ Progress:
 - [x] 2026-05-31: Added a lazy `useSyncExternalStore` shell that subscribes
   to activityBus events, exposes lifecycle selector hooks, and accepts API
   snapshot reports without wiring UI consumers yet.
+- [x] 2026-05-31: Wired existing `/api/sessions`, `/api/inbox`, and
+  `/api/processes` fetch paths to report lifecycle snapshots into the store
+  as shadow state. No visible UI consumers have moved yet.
 
 ## Context
 
@@ -148,6 +151,18 @@ Existing hooks should report snapshots into the store as they already fetch:
 This avoids new polling loops. The store learns from requests the app already
 performs.
 
+The first wiring should stay conservative:
+
+- `/api/sessions` rows are authoritative for the rows they return because
+  they include ownership and current process activity.
+- `/api/inbox` should report positive attention/active tier activity and
+  unread/title hints, but should not use passive tiers as a broad idle
+  authority. The inbox response is ranked and capped per tier, so absence from
+  a tier is not a complete session inventory signal.
+- `/api/processes` should report the active process inventory, including idle
+  owned processes, but should not treat the recently terminated process list as
+  current ownership for this slice.
+
 ## Race Policy
 
 The store should make race handling explicit instead of leaving it to every
@@ -235,12 +250,13 @@ Keep the first implementation narrow:
    Done as `packages/client/src/lib/sessionLifecycleExternalStore.ts`.
 3. Wire snapshot reporter functions into the existing
    `useGlobalSessions`, `InboxContext`, and `useProcesses` fetch paths first.
+   Done via `packages/client/src/lib/sessionLifecycleApiSnapshots.ts`.
 4. Move compact sidebar/global-session activity indicators to the lifecycle
    selectors.
 5. Move tab-title activity to `useAnySessionWorking()` instead of directly
    depending on inbox active count.
-6. Feed Agents page snapshots into the store, but keep the Agents page itself
-   using `/api/processes` as its source of process inventory.
+6. Keep the Agents page itself using `/api/processes` as its source of process
+   inventory.
 7. Do not solve starred/recent/sidebar membership in this slice, except where
    lifecycle selectors can make existing rows display correct activity.
 

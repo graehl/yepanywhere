@@ -4,6 +4,7 @@ import { UI_KEYS } from "../lib/storageKeys";
 interface DeveloperModeSettings {
   /** Enables default-off experimental UI features that may be upstream-sensitive */
   experimentalFeaturesEnabled: boolean;
+  experimentalFeatures: ExperimentalFeatureSettings;
   holdModeEnabled: boolean;
   /** Log relay requests/responses to console for debugging */
   relayDebugEnabled: boolean;
@@ -13,13 +14,39 @@ interface DeveloperModeSettings {
   showConnectionBars: boolean;
 }
 
+export type ExperimentalFeatureId = "patientQueueMode";
+
+export interface ExperimentalFeatureSettings {
+  patientQueueMode: boolean;
+}
+
+const DEFAULT_EXPERIMENTAL_FEATURES: ExperimentalFeatureSettings = {
+  patientQueueMode: true,
+};
+
 const DEFAULT_SETTINGS: DeveloperModeSettings = {
   experimentalFeaturesEnabled: false,
+  experimentalFeatures: DEFAULT_EXPERIMENTAL_FEATURES,
   holdModeEnabled: false,
   relayDebugEnabled: false,
   remoteLogCollectionEnabled: false,
   showConnectionBars: false,
 };
+
+function normalizeSettings(raw: unknown): DeveloperModeSettings {
+  if (!raw || typeof raw !== "object") {
+    return DEFAULT_SETTINGS;
+  }
+  const parsed = raw as Partial<DeveloperModeSettings>;
+  return {
+    ...DEFAULT_SETTINGS,
+    ...parsed,
+    experimentalFeatures: {
+      ...DEFAULT_EXPERIMENTAL_FEATURES,
+      ...parsed.experimentalFeatures,
+    },
+  };
+}
 
 function loadSettings(): DeveloperModeSettings {
   // Guard for SSR/test environments where localStorage may not be fully available
@@ -32,7 +59,7 @@ function loadSettings(): DeveloperModeSettings {
   const stored = localStorage.getItem(UI_KEYS.developerMode);
   if (!stored) return DEFAULT_SETTINGS;
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+    return normalizeSettings(JSON.parse(stored));
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -85,6 +112,19 @@ export function useDeveloperMode() {
     updateSettings({ ...currentSettings, experimentalFeaturesEnabled: enabled });
   }, []);
 
+  const setExperimentalFeatureEnabled = useCallback(
+    (feature: ExperimentalFeatureId, enabled: boolean) => {
+      updateSettings({
+        ...currentSettings,
+        experimentalFeatures: {
+          ...currentSettings.experimentalFeatures,
+          [feature]: enabled,
+        },
+      });
+    },
+    [],
+  );
+
   const setHoldModeEnabled = useCallback((enabled: boolean) => {
     updateSettings({ ...currentSettings, holdModeEnabled: enabled });
   }, []);
@@ -105,6 +145,8 @@ export function useDeveloperMode() {
   return {
     experimentalFeaturesEnabled: settings.experimentalFeaturesEnabled,
     setExperimentalFeaturesEnabled,
+    experimentalFeatures: settings.experimentalFeatures,
+    setExperimentalFeatureEnabled,
     holdModeEnabled: settings.holdModeEnabled,
     setHoldModeEnabled,
     relayDebugEnabled: settings.relayDebugEnabled,

@@ -24,6 +24,11 @@ serve as a coarse gate for restored default-off controls. Each gated feature
 should still point at its most relevant topic doc so the user can inspect the
 behavior and the reason it is not part of the default UI.
 
+The current first concrete entry is Patient queued messages, which links to
+[`message-control-steer-queue-btw-later-interrupt.md`](message-control-steer-queue-btw-later-interrupt.md)
+and lets the user opt the patient/ASAP queue-mode toggle in or out after the
+master experimental gate is enabled.
+
 ## Contract
 
 - Defaults may stay conservative, but optional controls should have a path to

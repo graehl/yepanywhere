@@ -273,7 +273,8 @@ export function MessageInput({
   onDismissPromptSuggestion,
 }: Props) {
   const { t } = useI18n();
-  const { experimentalFeaturesEnabled } = useDeveloperMode();
+  const { experimentalFeaturesEnabled, experimentalFeatures } =
+    useDeveloperMode();
   const [text, setText, controls] = useDraftPersistence(draftKey);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -312,7 +313,10 @@ export function MessageInput({
         ? "queue"
         : "send");
   const showPatientQueueMode =
-    experimentalFeaturesEnabled && supportsSteering && !!onQueue;
+    experimentalFeaturesEnabled &&
+    experimentalFeatures.patientQueueMode &&
+    supportsSteering &&
+    !!onQueue;
   const [patientQueueMode, setPatientQueueMode] = useState(() =>
     readPatientQueueMode(draftKey, showPatientQueueMode),
   );

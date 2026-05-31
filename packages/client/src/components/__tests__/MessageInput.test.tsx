@@ -36,6 +36,9 @@ const {
     },
     developerModeState: {
       experimentalFeaturesEnabled: false,
+      experimentalFeatures: {
+        patientQueueMode: true,
+      },
     },
     mockSetSpeechMethod: vi.fn(),
     mockSetExperimentalFeaturesEnabled: vi.fn(),
@@ -90,7 +93,9 @@ vi.mock("../../hooks/useModelSettings", () => ({
 vi.mock("../../hooks/useDeveloperMode", () => ({
   useDeveloperMode: () => ({
     experimentalFeaturesEnabled: developerModeState.experimentalFeaturesEnabled,
+    experimentalFeatures: developerModeState.experimentalFeatures,
     setExperimentalFeaturesEnabled: mockSetExperimentalFeaturesEnabled,
+    setExperimentalFeatureEnabled: vi.fn(),
   }),
 }));
 
@@ -233,6 +238,7 @@ describe("MessageInput", () => {
     modelSettingsState.speechMethod = "browser-native";
     modelSettingsState.hasStoredSpeechMethod = false;
     developerModeState.experimentalFeaturesEnabled = false;
+    developerModeState.experimentalFeatures.patientQueueMode = true;
     mockSetSpeechMethod.mockReset();
     mockSetExperimentalFeaturesEnabled.mockReset();
     window.localStorage.clear();
@@ -677,6 +683,7 @@ describe("MessageInput", () => {
 
   it("restores patient queue mode only when experimental features are enabled", () => {
     developerModeState.experimentalFeaturesEnabled = true;
+    developerModeState.experimentalFeatures.patientQueueMode = true;
     const onQueue = vi.fn();
     const textarea = renderMessageInput(vi.fn(() => true), {
       supportsSteering: true,
@@ -693,6 +700,7 @@ describe("MessageInput", () => {
 
   it("lets experimental patient queue mode toggle back to ASAP", () => {
     developerModeState.experimentalFeaturesEnabled = true;
+    developerModeState.experimentalFeatures.patientQueueMode = true;
     const onQueue = vi.fn();
     const textarea = renderMessageInput(vi.fn(() => true), {
       supportsSteering: true,
@@ -706,6 +714,25 @@ describe("MessageInput", () => {
     fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
 
     expectSubmission(onQueue, "ship immediately", "deferred");
+  });
+
+  it("hides patient queue mode when the specific experimental feature is off", () => {
+    developerModeState.experimentalFeaturesEnabled = true;
+    developerModeState.experimentalFeatures.patientQueueMode = false;
+    const onQueue = vi.fn();
+    const textarea = renderMessageInput(vi.fn(() => true), {
+      supportsSteering: true,
+      onQueue,
+    });
+
+    expect(
+      screen.queryByRole("button", { name: "Queue when done" }),
+    ).toBeNull();
+
+    fireEvent.change(textarea, { target: { value: "follow up later" } });
+    fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
+
+    expectSubmission(onQueue, "follow up later", "deferred");
   });
 
   it("routes a queue-only primary button through onSend", () => {

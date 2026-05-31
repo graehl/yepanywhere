@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { PublicShareStatusResponse } from "../../api/client";
+import type { ExperimentalFeatureId } from "../../hooks/useDeveloperMode";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { usePublicShareStatus } from "../../hooks/usePublicShareStatus";
 import { useServerSettings } from "../../hooks/useServerSettings";
@@ -10,11 +11,30 @@ const DEFAULT_PUBLIC_SHARE_VIEWER_BASE_URL =
 
 type PublicShareViewerOption = "default" | "custom";
 
+interface ExperimentalFeatureOption {
+  id: ExperimentalFeatureId;
+  titleKey: string;
+  descriptionKey: string;
+  topicHref: string;
+}
+
+const EXPERIMENTAL_FEATURE_OPTIONS: ExperimentalFeatureOption[] = [
+  {
+    id: "patientQueueMode",
+    titleKey: "advancedExperimentalPatientQueueTitle",
+    descriptionKey: "advancedExperimentalPatientQueueDescription",
+    topicHref:
+      "https://github.com/kzahel/yepanywhere/blob/main/topics/message-control-steer-queue-btw-later-interrupt.md",
+  },
+];
+
 export function AdvancedSettings() {
   const { t } = useI18n();
   const {
     experimentalFeaturesEnabled,
+    experimentalFeatures,
     setExperimentalFeaturesEnabled,
+    setExperimentalFeatureEnabled,
   } = useDeveloperMode();
   const { settings, isLoading, error, updateSetting } = useServerSettings();
   const publicSharesEnabled = settings?.publicSharesEnabled ?? false;
@@ -122,30 +142,62 @@ export function AdvancedSettings() {
       </p>
 
       <div className="settings-group">
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("advancedExperimentalFeaturesTitle")}</strong>
-            <p>{t("advancedExperimentalFeaturesDescription")}</p>
-            <p className="settings-hint">
-              <a
-                href="https://github.com/kzahel/yepanywhere/blob/main/topics/kzahel-disabled.md"
-                target="_blank"
-                rel="noreferrer"
-              >
-                {t("advancedExperimentalFeaturesTopicLink")}
-              </a>
-            </p>
+        <div className="settings-item experimental-features-settings">
+          <div className="settings-item-header">
+            <div className="settings-item-info">
+              <strong>{t("advancedExperimentalFeaturesTitle")}</strong>
+              <p>{t("advancedExperimentalFeaturesDescription")}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                aria-label={t("advancedExperimentalFeaturesTitle")}
+                checked={experimentalFeaturesEnabled}
+                onChange={(e) =>
+                  setExperimentalFeaturesEnabled(e.target.checked)
+                }
+              />
+              <span className="toggle-slider" />
+            </label>
           </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={experimentalFeaturesEnabled}
-              onChange={(e) =>
-                setExperimentalFeaturesEnabled(e.target.checked)
-              }
-            />
-            <span className="toggle-slider" />
-          </label>
+          {experimentalFeaturesEnabled && (
+            <div
+              className="experimental-feature-list"
+              aria-label={t("advancedExperimentalFeatureListLabel")}
+            >
+              {EXPERIMENTAL_FEATURE_OPTIONS.map((feature) => (
+                <div className="experimental-feature-option" key={feature.id}>
+                  <div className="settings-item-info">
+                    <strong>{t(feature.titleKey as never)}</strong>
+                    <p>{t(feature.descriptionKey as never)}</p>
+                    <p className="settings-hint">
+                      <a
+                        href={feature.topicHref}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {t("advancedExperimentalFeatureTopicLink")}
+                      </a>
+                    </p>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      aria-label={t(feature.titleKey as never)}
+                      checked={experimentalFeatures[feature.id]}
+                      onChange={(e) =>
+                        setExperimentalFeatureEnabled(
+                          feature.id,
+                          e.target.checked,
+                        )
+                      }
+                    />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="settings-item">

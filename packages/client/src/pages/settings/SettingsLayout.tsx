@@ -9,7 +9,7 @@ import {
   getEmulatorCategory,
   getSettingsCategories,
 } from "../../i18n-settings";
-import { useNavigationLayout } from "../../layouts";
+import { MainContent, useNavigationLayout } from "../../layouts";
 import { AboutSettings } from "./AboutSettings";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { AgentContextSettings } from "./AgentContextSettings";
@@ -127,86 +127,80 @@ export function SettingsLayout() {
     if (!category) {
       // Show category list
       return (
-        <div className="main-content-mobile">
-          <div className="main-content-mobile-inner">
-            <PageHeader
-              title={t("pageTitleSettings")}
-              onOpenSidebar={openSidebar}
-              onToggleSidebar={toggleSidebar}
-              isWideScreen={isWideScreen}
-              isSidebarCollapsed={isSidebarCollapsed}
-            />
-            <main className="page-scroll-container">
-              <div className="page-content-inner">
-                <div className="settings-category-list">
-                  {categories.map((cat) => (
-                    <SettingsCategoryItem
-                      key={cat.id}
-                      category={cat}
-                      isActive={false}
-                      onClick={() => handleCategoryClick(cat.id)}
-                    />
-                  ))}
-                </div>
+        <MainContent isWideScreen={isWideScreen}>
+          <PageHeader
+            title={t("pageTitleSettings")}
+            onOpenSidebar={openSidebar}
+            onToggleSidebar={toggleSidebar}
+            isWideScreen={isWideScreen}
+            isSidebarCollapsed={isSidebarCollapsed}
+          />
+          <main className="page-scroll-container">
+            <div className="page-content-inner">
+              <div className="settings-category-list">
+                {categories.map((cat) => (
+                  <SettingsCategoryItem
+                    key={cat.id}
+                    category={cat}
+                    isActive={false}
+                    onClick={() => handleCategoryClick(cat.id)}
+                  />
+                ))}
               </div>
-            </main>
-          </div>
-        </div>
+            </div>
+          </main>
+        </MainContent>
       );
     }
 
     // Show category detail with back button
     const currentCategory = categories.find((c) => c.id === category);
     return (
-      <div className="main-content-mobile">
-        <div className="main-content-mobile-inner">
-          <PageHeader
-            title={currentCategory?.label || t("pageTitleSettings")}
-            onOpenSidebar={openSidebar}
-            showBack
-            onBack={handleBack}
-          />
-          <main className="page-scroll-container">
-            <div className="page-content-inner">
-              {CategoryComponent && <CategoryComponent />}
-            </div>
-          </main>
-        </div>
-      </div>
+      <MainContent isWideScreen={isWideScreen}>
+        <PageHeader
+          title={currentCategory?.label || t("pageTitleSettings")}
+          onOpenSidebar={openSidebar}
+          showBack
+          onBack={handleBack}
+        />
+        <main className="page-scroll-container">
+          <div className="page-content-inner">
+            {CategoryComponent && <CategoryComponent />}
+          </div>
+        </main>
+      </MainContent>
     );
   }
 
   // Desktop: two-column layout with category list on left, content on right
   return (
-    <div className="main-content-wrapper">
-      <div className="main-content-constrained">
-        <PageHeader
-          title={t("pageTitleSettings")}
-          onOpenSidebar={openSidebar}
-          onToggleSidebar={toggleSidebar}
-          isWideScreen={isWideScreen}
-          isSidebarCollapsed={isSidebarCollapsed}
-        />
-        <main className="page-scroll-container">
-          <div className="settings-two-column">
-            <nav className="settings-category-nav">
-              <div className="settings-category-list">
-                {categories.map((cat) => (
-                  <SettingsCategoryItem
-                    key={cat.id}
-                    category={cat}
-                    isActive={effectiveCategory === cat.id}
-                    onClick={() => handleCategoryClick(cat.id)}
-                  />
-                ))}
-              </div>
-            </nav>
-            <div className="settings-content-panel">
-              {CategoryComponent && <CategoryComponent />}
+    <MainContent isWideScreen={isWideScreen}>
+      <PageHeader
+        title={t("pageTitleSettings")}
+        onOpenSidebar={openSidebar}
+        onToggleSidebar={toggleSidebar}
+        isWideScreen={isWideScreen}
+        isSidebarCollapsed={isSidebarCollapsed}
+      />
+      <main className="page-scroll-container">
+        <div className="settings-two-column">
+          <nav className="settings-category-nav">
+            <div className="settings-category-list">
+              {categories.map((cat) => (
+                <SettingsCategoryItem
+                  key={cat.id}
+                  category={cat}
+                  isActive={effectiveCategory === cat.id}
+                  onClick={() => handleCategoryClick(cat.id)}
+                />
+              ))}
             </div>
+          </nav>
+          <div className="settings-content-panel">
+            {CategoryComponent && <CategoryComponent />}
           </div>
-        </main>
-      </div>
-    </div>
+        </div>
+      </main>
+    </MainContent>
   );
 }

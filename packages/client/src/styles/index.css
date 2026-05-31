@@ -8689,23 +8689,6 @@ a.sidebar-nav-item {
     width: 100%;
   }
 
-  /* When the desktop sidebar is collapsed, widen and left-align the session
-     pane so it doesn't lose usable width or split the breadcrumb from chat. */
-  .main-content-constrained.session-pane-collapsed-sidebar .session-header-inner,
-  .main-content-constrained.session-pane-collapsed-sidebar .session-messages .message-list,
-  .main-content-constrained.session-pane-collapsed-sidebar .session-input-inner {
-    max-width: min(var(--content-max-width), 100%);
-    margin-left: 0;
-    margin-right: auto;
-  }
-
-  .main-content-constrained.session-pane-collapsed-sidebar .session-header-inner {
-    width: 100%;
-    box-sizing: border-box;
-    padding-left: 1rem;
-    padding-right: 1rem;
-  }
-
   /* Show sidebar toggle on desktop for collapse/expand functionality */
   .desktop-layout .sidebar-toggle {
     display: flex;

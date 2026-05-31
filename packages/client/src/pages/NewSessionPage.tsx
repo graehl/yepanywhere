@@ -11,7 +11,7 @@ import {
 } from "../hooks/useRecentProject";
 import { useRecentSessions } from "../hooks/useRecentSessions";
 import { useI18n } from "../i18n";
-import { useNavigationLayout } from "../layouts";
+import { MainContent, useNavigationLayout } from "../layouts";
 
 const RECENT_PROJECT_SESSION_LIMIT = 30;
 const DETACHED_PROJECT_PARAM = "detached";
@@ -30,11 +30,7 @@ export function NewSessionPage() {
     useRecentSessions({
       limit: RECENT_PROJECT_SESSION_LIMIT,
     });
-  const {
-    project,
-    loading: projectLoading,
-    error,
-  } = useProject(projectId);
+  const { project, loading: projectLoading, error } = useProject(projectId);
   const selectedProject =
     (projectId
       ? projects.find((candidate) => candidate.id === projectId)
@@ -115,52 +111,7 @@ export function NewSessionPage() {
   // Render loading/error states
   if (loading || renderError) {
     return (
-      <div
-        className={
-          isWideScreen ? "main-content-wrapper" : "main-content-mobile"
-        }
-      >
-        <div
-          className={
-            isWideScreen
-              ? "main-content-constrained"
-              : "main-content-mobile-inner"
-          }
-        >
-          <PageHeader
-            title={t("newSessionTitle")}
-            onOpenSidebar={openSidebar}
-            onToggleSidebar={toggleSidebar}
-            isWideScreen={isWideScreen}
-            isSidebarCollapsed={isSidebarCollapsed}
-          />
-          <main className="page-scroll-container">
-            <div className="page-content-inner">
-              {loading ? (
-                <div className="loading">{t("newSessionLoading")}</div>
-              ) : (
-                <div className="error">
-                  {t("newSessionErrorPrefix")} {renderError?.message}
-                </div>
-              )}
-            </div>
-          </main>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
-    >
-      <div
-        className={
-          isWideScreen
-            ? "main-content-constrained"
-            : "main-content-mobile-inner"
-        }
-      >
+      <MainContent isWideScreen={isWideScreen}>
         <PageHeader
           title={t("newSessionTitle")}
           onOpenSidebar={openSidebar}
@@ -168,20 +119,43 @@ export function NewSessionPage() {
           isWideScreen={isWideScreen}
           isSidebarCollapsed={isSidebarCollapsed}
         />
-
         <main className="page-scroll-container">
-          <div className="page-content-inner new-session-page-shell">
-            <NewSessionForm
-              projectId={projectId}
-              selectedProject={selectedProject}
-              projects={projects}
-              recentProjectIds={recentProjectIds}
-              projectsLoading={projectsLoading}
-              onProjectChange={handleProjectChange}
-            />
+          <div className="page-content-inner">
+            {loading ? (
+              <div className="loading">{t("newSessionLoading")}</div>
+            ) : (
+              <div className="error">
+                {t("newSessionErrorPrefix")} {renderError?.message}
+              </div>
+            )}
           </div>
         </main>
-      </div>
-    </div>
+      </MainContent>
+    );
+  }
+
+  return (
+    <MainContent isWideScreen={isWideScreen}>
+      <PageHeader
+        title={t("newSessionTitle")}
+        onOpenSidebar={openSidebar}
+        onToggleSidebar={toggleSidebar}
+        isWideScreen={isWideScreen}
+        isSidebarCollapsed={isSidebarCollapsed}
+      />
+
+      <main className="page-scroll-container">
+        <div className="page-content-inner new-session-page-shell">
+          <NewSessionForm
+            projectId={projectId}
+            selectedProject={selectedProject}
+            projects={projects}
+            recentProjectIds={recentProjectIds}
+            projectsLoading={projectsLoading}
+            onProjectChange={handleProjectChange}
+          />
+        </div>
+      </main>
+    </MainContent>
   );
 }

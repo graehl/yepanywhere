@@ -7,7 +7,7 @@ import { useInboxContext } from "../contexts/InboxContext";
 import { useProjects } from "../hooks/useProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
-import { useNavigationLayout } from "../layouts";
+import { MainContent, useNavigationLayout } from "../layouts";
 import type { Project } from "../types";
 
 export function ProjectsPage() {
@@ -118,126 +118,114 @@ export function ProjectsPage() {
   const isEmpty = projects.length === 0;
 
   return (
-    <div
-      className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
-    >
-      <div
-        className={
-          isWideScreen
-            ? "main-content-constrained"
-            : "main-content-mobile-inner"
-        }
-      >
-        <PageHeader
-          title={t("pageTitleProjects")}
-          onOpenSidebar={openSidebar}
-          onToggleSidebar={toggleSidebar}
-          isWideScreen={isWideScreen}
-          isSidebarCollapsed={isSidebarCollapsed}
-        />
+    <MainContent isWideScreen={isWideScreen}>
+      <PageHeader
+        title={t("pageTitleProjects")}
+        onOpenSidebar={openSidebar}
+        onToggleSidebar={toggleSidebar}
+        isWideScreen={isWideScreen}
+        isSidebarCollapsed={isSidebarCollapsed}
+      />
 
-        <main className="page-scroll-container">
-          <div className="page-content-inner">
-            {/* Toolbar with Add Project button */}
-            <div className="inbox-toolbar">
-              {!showAddForm ? (
-                <button
-                  type="button"
-                  className="inbox-refresh-button"
-                  onClick={() => setShowAddForm(true)}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  {t("projectsAdd")}
-                </button>
-              ) : (
-                <form onSubmit={handleAddProject} className="add-project-form">
-                  <input
-                    type="text"
-                    value={newProjectPath}
-                    onChange={(e) => setNewProjectPath(e.target.value)}
-                    placeholder={t("projectsAddPlaceholder")}
-                    disabled={adding}
-                  />
-                  <div className="add-project-actions">
-                    <button
-                      type="submit"
-                      disabled={adding || !newProjectPath.trim()}
-                    >
-                      {adding ? t("projectsAdding") : t("projectsAddConfirm")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAddForm(false);
-                        setNewProjectPath("");
-                        setAddError(null);
-                      }}
-                      disabled={adding}
-                    >
-                      {t("projectsCancel")}
-                    </button>
-                  </div>
-                  {addError && (
-                    <div className="add-project-error">{addError}</div>
-                  )}
-                </form>
-              )}
-            </div>
-            {deleteError && (
-              <div className="add-project-error">{deleteError}</div>
-            )}
-
-            {isEmpty ? (
-              <div className="inbox-empty">
+      <main className="page-scroll-container">
+        <div className="page-content-inner">
+          {/* Toolbar with Add Project button */}
+          <div className="inbox-toolbar">
+            {!showAddForm ? (
+              <button
+                type="button"
+                className="inbox-refresh-button"
+                onClick={() => setShowAddForm(true)}
+              >
                 <svg
-                  width="48"
-                  height="48"
+                  width="16"
+                  height="16"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="1.5"
+                  strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden="true"
                 >
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                <h3>{t("projectsEmptyTitle")}</h3>
-                <p>{t("projectsEmptyDescription")}</p>
-              </div>
+                {t("projectsAdd")}
+              </button>
             ) : (
-              <ul className="project-list-cards">
-                {sortedProjects.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    needsAttentionCount={
-                      attentionByProject.get(project.id) ?? 0
-                    }
-                    thinkingCount={thinkingByProject.get(project.id) ?? 0}
-                    basePath={basePath}
-                    onDeleteProject={handleDeleteProject}
-                    isDeleting={deletingProjectId === project.id}
-                  />
-                ))}
-              </ul>
+              <form onSubmit={handleAddProject} className="add-project-form">
+                <input
+                  type="text"
+                  value={newProjectPath}
+                  onChange={(e) => setNewProjectPath(e.target.value)}
+                  placeholder={t("projectsAddPlaceholder")}
+                  disabled={adding}
+                />
+                <div className="add-project-actions">
+                  <button
+                    type="submit"
+                    disabled={adding || !newProjectPath.trim()}
+                  >
+                    {adding ? t("projectsAdding") : t("projectsAddConfirm")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddForm(false);
+                      setNewProjectPath("");
+                      setAddError(null);
+                    }}
+                    disabled={adding}
+                  >
+                    {t("projectsCancel")}
+                  </button>
+                </div>
+                {addError && (
+                  <div className="add-project-error">{addError}</div>
+                )}
+              </form>
             )}
           </div>
-        </main>
-      </div>
-    </div>
+          {deleteError && (
+            <div className="add-project-error">{deleteError}</div>
+          )}
+
+          {isEmpty ? (
+            <div className="inbox-empty">
+              <svg
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              <h3>{t("projectsEmptyTitle")}</h3>
+              <p>{t("projectsEmptyDescription")}</p>
+            </div>
+          ) : (
+            <ul className="project-list-cards">
+              {sortedProjects.map((project) => (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  needsAttentionCount={attentionByProject.get(project.id) ?? 0}
+                  thinkingCount={thinkingByProject.get(project.id) ?? 0}
+                  basePath={basePath}
+                  onDeleteProject={handleDeleteProject}
+                  isDeleting={deletingProjectId === project.id}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      </main>
+    </MainContent>
   );
 }

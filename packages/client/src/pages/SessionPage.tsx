@@ -7,10 +7,10 @@ import type {
   UploadedFile,
 } from "@yep-anywhere/shared";
 import {
+  type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
   useMemo,
-  type MouseEvent as ReactMouseEvent,
   useRef,
   useState,
 } from "react";
@@ -32,7 +32,6 @@ import { MessageList } from "../components/MessageList";
 import { ModelSwitchModal } from "../components/ModelSwitchModal";
 import { ProcessInfoModal } from "../components/ProcessInfoModal";
 import { ProviderBadge } from "../components/ProviderBadge";
-import { ThinkingIndicator } from "../components/ThinkingIndicator";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { RecentSessionsDropdown } from "../components/RecentSessionsDropdown";
 import { RestartSessionModal } from "../components/RestartSessionModal";
@@ -40,6 +39,7 @@ import { SessionHeartbeatModal } from "../components/SessionHeartbeatModal";
 import { SessionMenu } from "../components/SessionMenu";
 import { SessionRecapModal } from "../components/SessionRecapModal";
 import { SessionShareModal } from "../components/SessionShareModal";
+import { ThinkingIndicator } from "../components/ThinkingIndicator";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import type { ModalAnchorRect } from "../components/ui/Modal";
 import { ViewerCountIndicator } from "../components/ViewerCountIndicator";
@@ -74,22 +74,23 @@ import {
   useSession,
 } from "../hooks/useSession";
 import { useI18n } from "../i18n";
-import { useNavigationLayout } from "../layouts";
-import { buildCorrectionText } from "../lib/correctionText";
+import { MainContent, useNavigationLayout } from "../layouts";
 import { storeUploadedAttachmentPreview } from "../lib/attachmentPreviewCache";
+import { getBtwSplitRouting, getBtwToolbarMode } from "../lib/btwAsideRouting";
+import {
+  buildBtwAsideParentHref,
+  getBtwAsideSessionDisplayTitle,
+} from "../lib/btwAsideSessions";
 import {
   getRecallSubmissionAfterQueuedCancel,
   type LastComposerSubmission,
   type SentComposerSubmission,
 } from "../lib/composerRecall";
+import { buildCorrectionText } from "../lib/correctionText";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
+import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
 import { getModelIndicatorModelLabel } from "../lib/modelIndicatorText";
-import {
-  buildBtwAsideParentHref,
-  getBtwAsideSessionDisplayTitle,
-} from "../lib/btwAsideSessions";
-import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import {
   getEstimatedServerOffsetMs,
@@ -97,12 +98,11 @@ import {
   measureServerLatencyMs,
   recordServerClockSample,
 } from "../lib/serverClock";
+import { getSessionActivityUiState } from "../lib/sessionActivityUi";
 import {
   CLIENT_SLASH_COMMANDS,
   resolveComposerSlashTurn,
 } from "../lib/slashCommands";
-import { getBtwSplitRouting, getBtwToolbarMode } from "../lib/btwAsideRouting";
-import { getSessionActivityUiState } from "../lib/sessionActivityUi";
 import { generateUUID } from "../lib/uuid";
 import type { Message } from "../types";
 import { getSessionDisplayTitle } from "../utils";
@@ -3284,770 +3284,746 @@ function SessionPageContent({
   );
 
   return (
-    <div
-      className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
-    >
-      <div
-        className={
-          isWideScreen
-            ? `main-content-constrained${isSidebarCollapsed ? " session-pane-collapsed-sidebar" : ""}`
-            : "main-content-mobile-inner"
-        }
-      >
-        <header className="session-header">
-          <div className="session-header-inner">
-            <div className="session-header-left">
-              {/* Sidebar toggle - on mobile: opens sidebar, on desktop: collapses/expands */}
-              {/* Hide on desktop when collapsed (sidebar has its own toggle) */}
-              {!(isWideScreen && isSidebarCollapsed) && (
-                <button
-                  type="button"
-                  className="sidebar-toggle"
-                  onClick={isWideScreen ? toggleSidebar : openSidebar}
-                  title={
-                    isWideScreen
-                      ? t("sessionToggleSidebar")
-                      : t("sessionOpenSidebar")
-                  }
-                  aria-label={
-                    isWideScreen
-                      ? t("sessionToggleSidebar")
-                      : t("sessionOpenSidebar")
-                  }
+    <MainContent isWideScreen={isWideScreen}>
+      <header className="session-header">
+        <div className="session-header-inner">
+          <div className="session-header-left">
+            {/* Sidebar toggle - on mobile: opens sidebar, on desktop: collapses/expands */}
+            {/* Hide on desktop when collapsed (sidebar has its own toggle) */}
+            {!(isWideScreen && isSidebarCollapsed) && (
+              <button
+                type="button"
+                className="sidebar-toggle"
+                onClick={isWideScreen ? toggleSidebar : openSidebar}
+                title={
+                  isWideScreen
+                    ? t("sessionToggleSidebar")
+                    : t("sessionOpenSidebar")
+                }
+                aria-label={
+                  isWideScreen
+                    ? t("sessionToggleSidebar")
+                    : t("sessionOpenSidebar")
+                }
+              >
+                <SidebarIcon />
+              </button>
+            )}
+            {/* Project breadcrumb */}
+            {project?.name && (
+              <Link
+                to={`${basePath}/sessions?project=${projectId}`}
+                className="project-breadcrumb"
+                title={project.name}
+                aria-label={project.name}
+              >
+                {project.name.length > 12
+                  ? `${project.name.slice(0, 12)}...`
+                  : project.name}
+              </Link>
+            )}
+            <div className="session-title-row">
+              {isStarred && (
+                <svg
+                  className="star-indicator-inline"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  role="img"
+                  aria-label={t("sessionStarredLabel")}
                 >
-                  <SidebarIcon />
-                </button>
+                  <title>{t("sessionStarredLabel")}</title>
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
               )}
-              {/* Project breadcrumb */}
-              {project?.name && (
-                <Link
-                  to={`${basePath}/sessions?project=${projectId}`}
-                  className="project-breadcrumb"
-                  title={project.name}
-                  aria-label={project.name}
-                >
-                  {project.name.length > 12
-                    ? `${project.name.slice(0, 12)}...`
-                    : project.name}
-                </Link>
-              )}
-              <div className="session-title-row">
-                {isStarred && (
-                  <svg
-                    className="star-indicator-inline"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    role="img"
-                    aria-label={t("sessionStarredLabel")}
+              {loading ? (
+                <span className="session-title-skeleton" />
+              ) : isEditingTitle ? (
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  className="session-title-input"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={handleTitleKeyDown}
+                  onBlur={handleTitleBlur}
+                  disabled={isRenaming}
+                />
+              ) : (
+                <>
+                  <button
+                    ref={titleButtonRef}
+                    type="button"
+                    className="session-title session-title-dropdown-trigger"
+                    onClick={() => setShowRecentSessions(!showRecentSessions)}
+                    title={session?.fullTitle ?? displayTitle}
                   >
-                    <title>{t("sessionStarredLabel")}</title>
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                  </svg>
-                )}
-                {loading ? (
-                  <span className="session-title-skeleton" />
-                ) : isEditingTitle ? (
-                  <input
-                    ref={renameInputRef}
-                    type="text"
-                    className="session-title-input"
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onKeyDown={handleTitleKeyDown}
-                    onBlur={handleTitleBlur}
-                    disabled={isRenaming}
-                  />
-                ) : (
-                  <>
-                    <button
-                      ref={titleButtonRef}
-                      type="button"
-                      className="session-title session-title-dropdown-trigger"
-                      onClick={() => setShowRecentSessions(!showRecentSessions)}
-                      title={session?.fullTitle ?? displayTitle}
+                    <span className="session-title-text">{displayTitle}</span>
+                    <svg
+                      className="session-title-chevron"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
                     >
-                      <span className="session-title-text">{displayTitle}</span>
-                      <svg
-                        className="session-title-chevron"
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                    </button>
-                    <RecentSessionsDropdown
-                      currentSessionId={sessionId}
-                      isOpen={showRecentSessions}
-                      onClose={() => setShowRecentSessions(false)}
-                      onNavigate={() => setShowRecentSessions(false)}
-                      triggerRef={titleButtonRef}
-                      basePath={basePath}
-                    />
-                  </>
-                )}
-                {!loading && isArchived && (
-                  <span className="archived-badge">
-                    {t("sessionArchivedBadge")}
-                  </span>
-                )}
-                {!loading && (
-                  <SessionMenu
-                    sessionId={sessionId}
-                    projectId={projectId}
-                    isStarred={isStarred}
-                    isArchived={isArchived}
-                    hasUnread={hasUnread}
-                    provider={session?.provider}
-                    processId={
-                      status.owner === "self" ? status.processId : undefined
-                    }
-                    onToggleStar={handleToggleStar}
-                    onToggleArchive={handleToggleArchive}
-                    onToggleRead={handleToggleRead}
-                    onRename={handleStartEditingTitle}
-                    onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
-                    onConfigureRecaps={
-                      status.owner === "self"
-                        ? () => setShowRecapModal(true)
-                        : undefined
-                    }
-                    warningRestoreAvailable={
-                      hasPendingToolCalls && pendingElsewhereDismissed
-                    }
-                    onRestoreWarnings={handleRestorePendingElsewhereWarning}
-                    onClone={(newSessionId) => {
-                      navigate(
-                        `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
-                      );
-                    }}
-                    onHandoff={
-                      effectiveProvider
-                        ? () => setShowHandoffModal(true)
-                        : undefined
-                    }
-                    onCompact={
-                      supportsManualCompact ? handleCompactSession : undefined
-                    }
-                    onTerminate={handleTerminate}
-                    onReload={() => window.location.reload()}
-                    onShare={showPublicShareControls ? handleShare : undefined}
-                    useFixedPositioning
-                    useEllipsisIcon
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                  <RecentSessionsDropdown
+                    currentSessionId={sessionId}
+                    isOpen={showRecentSessions}
+                    onClose={() => setShowRecentSessions(false)}
+                    onNavigate={() => setShowRecentSessions(false)}
+                    triggerRef={titleButtonRef}
+                    basePath={basePath}
                   />
-                )}
-              </div>
-            </div>
-            <div className="session-header-right">
-              <ClientLogRecordingBadge inline />
-              {showPublicShareControls && (
-                <ViewerCountIndicator
-                  className="session-header-viewer-count"
-                  count={
-                    publicShareStatus && publicShareStatus.liveCount > 0
-                      ? publicShareStatus.activeViewerCount
-                      : null
-                  }
-                  label={
-                    publicShareStatus
-                      ? t("sessionShareViewerSummary", {
-                          active: publicShareStatus.activeViewerCount,
-                          total: publicShareStatus.viewers.length,
-                          live: publicShareStatus.liveCount,
-                          frozen: publicShareStatus.frozenCount,
-                        })
-                      : t("sessionShareOpenTitle")
-                  }
-                  onClick={handleShareIndicatorClick}
-                />
+                </>
               )}
-              {canStopOwnedProcess && (
-                <ThinkingIndicator
-                  variant="pill"
-                  className="session-header-thinking"
-                />
+              {!loading && isArchived && (
+                <span className="archived-badge">
+                  {t("sessionArchivedBadge")}
+                </span>
               )}
-              {!loading && effectiveProvider && (
-                <button
-                  type="button"
-                  className="provider-badge-button"
-                  onClick={() => setShowProcessInfoModal(true)}
-                  title={t("sessionViewInfo")}
-                >
-                  <ProviderBadge
-                    provider={effectiveProvider}
-                    model={liveBadgeModel}
-                    thinking={liveModelConfig?.thinking}
-                    effort={liveModelConfig?.effort}
-                    isThinking={canStopOwnedProcess}
-                  />
-                </button>
+              {!loading && (
+                <SessionMenu
+                  sessionId={sessionId}
+                  projectId={projectId}
+                  isStarred={isStarred}
+                  isArchived={isArchived}
+                  hasUnread={hasUnread}
+                  provider={session?.provider}
+                  processId={
+                    status.owner === "self" ? status.processId : undefined
+                  }
+                  onToggleStar={handleToggleStar}
+                  onToggleArchive={handleToggleArchive}
+                  onToggleRead={handleToggleRead}
+                  onRename={handleStartEditingTitle}
+                  onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
+                  onConfigureRecaps={
+                    status.owner === "self"
+                      ? () => setShowRecapModal(true)
+                      : undefined
+                  }
+                  warningRestoreAvailable={
+                    hasPendingToolCalls && pendingElsewhereDismissed
+                  }
+                  onRestoreWarnings={handleRestorePendingElsewhereWarning}
+                  onClone={(newSessionId) => {
+                    navigate(
+                      `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
+                    );
+                  }}
+                  onHandoff={
+                    effectiveProvider
+                      ? () => setShowHandoffModal(true)
+                      : undefined
+                  }
+                  onCompact={
+                    supportsManualCompact ? handleCompactSession : undefined
+                  }
+                  onTerminate={handleTerminate}
+                  onReload={() => window.location.reload()}
+                  onShare={showPublicShareControls ? handleShare : undefined}
+                  useFixedPositioning
+                  useEllipsisIcon
+                />
               )}
             </div>
           </div>
-        </header>
+          <div className="session-header-right">
+            <ClientLogRecordingBadge inline />
+            {showPublicShareControls && (
+              <ViewerCountIndicator
+                className="session-header-viewer-count"
+                count={
+                  publicShareStatus && publicShareStatus.liveCount > 0
+                    ? publicShareStatus.activeViewerCount
+                    : null
+                }
+                label={
+                  publicShareStatus
+                    ? t("sessionShareViewerSummary", {
+                        active: publicShareStatus.activeViewerCount,
+                        total: publicShareStatus.viewers.length,
+                        live: publicShareStatus.liveCount,
+                        frozen: publicShareStatus.frozenCount,
+                      })
+                    : t("sessionShareOpenTitle")
+                }
+                onClick={handleShareIndicatorClick}
+              />
+            )}
+            {canStopOwnedProcess && (
+              <ThinkingIndicator
+                variant="pill"
+                className="session-header-thinking"
+              />
+            )}
+            {!loading && effectiveProvider && (
+              <button
+                type="button"
+                className="provider-badge-button"
+                onClick={() => setShowProcessInfoModal(true)}
+                title={t("sessionViewInfo")}
+              >
+                <ProviderBadge
+                  provider={effectiveProvider}
+                  model={liveBadgeModel}
+                  thinking={liveModelConfig?.thinking}
+                  effort={liveModelConfig?.effort}
+                  isThinking={canStopOwnedProcess}
+                />
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
 
-        {/* Process Info Modal */}
-        {showProcessInfoModal && session && (
-          <ProcessInfoModal
-            sessionId={actualSessionId}
-            provider={session.provider}
-            model={session.model}
-            status={status}
-            processState={processState}
-            contextUsage={session.contextUsage}
-            originator={session.originator}
-            cliVersion={session.cliVersion}
-            sessionSource={session.source}
-            approvalPolicy={session.approvalPolicy}
-            sandboxPolicy={session.sandboxPolicy}
-            createdAt={session.createdAt}
-            sessionStreamConnected={sessionUpdatesConnected}
-            lastSessionEventAt={lastStreamActivityAt}
-            onClose={() => setShowProcessInfoModal(false)}
-          />
-        )}
+      {/* Process Info Modal */}
+      {showProcessInfoModal && session && (
+        <ProcessInfoModal
+          sessionId={actualSessionId}
+          provider={session.provider}
+          model={session.model}
+          status={status}
+          processState={processState}
+          contextUsage={session.contextUsage}
+          originator={session.originator}
+          cliVersion={session.cliVersion}
+          sessionSource={session.source}
+          approvalPolicy={session.approvalPolicy}
+          sandboxPolicy={session.sandboxPolicy}
+          createdAt={session.createdAt}
+          sessionStreamConnected={sessionUpdatesConnected}
+          lastSessionEventAt={lastStreamActivityAt}
+          onClose={() => setShowProcessInfoModal(false)}
+        />
+      )}
 
-        {showHeartbeatModal && (
-          <SessionHeartbeatModal
-            sessionId={actualSessionId}
-            enabled={heartbeatTurnsEnabled}
-            heartbeatTurnsAfterMinutes={heartbeatTurnsAfterMinutes}
-            heartbeatTurnText={heartbeatTurnText}
-            heartbeatForceAfterMinutes={heartbeatForceAfterMinutes}
-            onClose={() => setShowHeartbeatModal(false)}
-            onSaved={(next) => {
-              setLocalHeartbeatTurnsEnabled(next.enabled);
-              setLocalHeartbeatTurnsAfterMinutes(
-                next.heartbeatTurnsAfterMinutes,
-              );
-              setLocalHeartbeatTurnText(next.heartbeatTurnText);
-              setLocalHeartbeatForceAfterMinutes(
-                next.heartbeatForceAfterMinutes,
-              );
-              showToast(t("sessionHeartbeatSaved"), "success");
-            }}
-          />
-        )}
+      {showHeartbeatModal && (
+        <SessionHeartbeatModal
+          sessionId={actualSessionId}
+          enabled={heartbeatTurnsEnabled}
+          heartbeatTurnsAfterMinutes={heartbeatTurnsAfterMinutes}
+          heartbeatTurnText={heartbeatTurnText}
+          heartbeatForceAfterMinutes={heartbeatForceAfterMinutes}
+          onClose={() => setShowHeartbeatModal(false)}
+          onSaved={(next) => {
+            setLocalHeartbeatTurnsEnabled(next.enabled);
+            setLocalHeartbeatTurnsAfterMinutes(next.heartbeatTurnsAfterMinutes);
+            setLocalHeartbeatTurnText(next.heartbeatTurnText);
+            setLocalHeartbeatForceAfterMinutes(next.heartbeatForceAfterMinutes);
+            showToast(t("sessionHeartbeatSaved"), "success");
+          }}
+        />
+      )}
 
-        {showRecapModal && status.owner === "self" && (
-          <SessionRecapModal
-            sessionId={actualSessionId}
-            processId={status.processId}
-            provider={effectiveProvider}
-            currentModel={liveBadgeModel}
-            onClose={() => setShowRecapModal(false)}
-            onSaved={() => {
-              showToast(t("sessionRecapSaved"), "success");
-            }}
-          />
-        )}
+      {showRecapModal && status.owner === "self" && (
+        <SessionRecapModal
+          sessionId={actualSessionId}
+          processId={status.processId}
+          provider={effectiveProvider}
+          currentModel={liveBadgeModel}
+          onClose={() => setShowRecapModal(false)}
+          onSaved={() => {
+            showToast(t("sessionRecapSaved"), "success");
+          }}
+        />
+      )}
 
-        {showShareModal && (
-          <SessionShareModal
-            anchorRect={shareModalAnchor}
-            projectId={projectId}
-            sessionId={actualSessionId}
-            initialPrompt={publicShareInitialPrompt}
-            title={displayTitle}
-            canCreateShares={showPublicShareControls}
-            onStatusChange={setPublicShareStatus}
-            onClose={() => {
-              setShowShareModal(false);
-              setShareModalAnchor(null);
-            }}
-          />
-        )}
+      {showShareModal && (
+        <SessionShareModal
+          anchorRect={shareModalAnchor}
+          projectId={projectId}
+          sessionId={actualSessionId}
+          initialPrompt={publicShareInitialPrompt}
+          title={displayTitle}
+          canCreateShares={showPublicShareControls}
+          onStatusChange={setPublicShareStatus}
+          onClose={() => {
+            setShowShareModal(false);
+            setShareModalAnchor(null);
+          }}
+        />
+      )}
 
-        {/* Model Switch Modal */}
-        {showModelSwitchModal &&
-          status.owner === "self" &&
-          status.processId && (
-            <ModelSwitchModal
-              processId={status.processId}
-              sessionId={actualSessionId}
-              currentModel={session?.model}
-              onModelChanged={handleModelChanged}
-              onClose={() => setShowModelSwitchModal(false)}
-            />
-          )}
+      {/* Model Switch Modal */}
+      {showModelSwitchModal && status.owner === "self" && status.processId && (
+        <ModelSwitchModal
+          processId={status.processId}
+          sessionId={actualSessionId}
+          currentModel={session?.model}
+          onModelChanged={handleModelChanged}
+          onClose={() => setShowModelSwitchModal(false)}
+        />
+      )}
 
-        {showHandoffModal && effectiveProvider && (
-          <RestartSessionModal
-            projectId={projectId}
-            sessionId={actualSessionId}
-            provider={effectiveProvider}
-            providerDisplayName={currentProviderInfo?.displayName}
-            providers={providers}
-            models={currentProviderInfo?.models}
-            currentModel={liveBadgeModel}
-            mode={permissionMode}
-            thinking={getThinkingSetting()}
-            promptSuggestionMode={liveModelConfig?.promptSuggestionMode}
-            executor={session?.executor}
-            onRestarted={(result, options) => {
-              setShowHandoffModal(false);
-              showToast(t("sessionHandoffStarted"), "success");
-              const handoffUrl = `${basePath}/projects/${projectId}/sessions/${result.sessionId}`;
-              if (options?.targetWindow && !options.targetWindow.closed) {
-                options.targetWindow.location.href = handoffUrl;
-                return;
-              }
-              if (options?.openInNewWindow) {
-                window.open(handoffUrl, "_blank", "noopener");
-                return;
-              }
-              navigate(handoffUrl, {
-                state: {
-                  initialStatus: {
-                    owner: "self",
-                    processId: result.processId,
-                  },
-                  initialTitle: result.title,
-                  initialModel: result.model ?? liveBadgeModel,
-                  initialProvider: result.provider ?? effectiveProvider,
+      {showHandoffModal && effectiveProvider && (
+        <RestartSessionModal
+          projectId={projectId}
+          sessionId={actualSessionId}
+          provider={effectiveProvider}
+          providerDisplayName={currentProviderInfo?.displayName}
+          providers={providers}
+          models={currentProviderInfo?.models}
+          currentModel={liveBadgeModel}
+          mode={permissionMode}
+          thinking={getThinkingSetting()}
+          promptSuggestionMode={liveModelConfig?.promptSuggestionMode}
+          executor={session?.executor}
+          onRestarted={(result, options) => {
+            setShowHandoffModal(false);
+            showToast(t("sessionHandoffStarted"), "success");
+            const handoffUrl = `${basePath}/projects/${projectId}/sessions/${result.sessionId}`;
+            if (options?.targetWindow && !options.targetWindow.closed) {
+              options.targetWindow.location.href = handoffUrl;
+              return;
+            }
+            if (options?.openInNewWindow) {
+              window.open(handoffUrl, "_blank", "noopener");
+              return;
+            }
+            navigate(handoffUrl, {
+              state: {
+                initialStatus: {
+                  owner: "self",
+                  processId: result.processId,
                 },
-              });
-            }}
-            onClose={() => setShowHandoffModal(false)}
-          />
-        )}
+                initialTitle: result.title,
+                initialModel: result.model ?? liveBadgeModel,
+                initialProvider: result.provider ?? effectiveProvider,
+              },
+            });
+          }}
+          onClose={() => setShowHandoffModal(false)}
+        />
+      )}
 
-        {status.owner === "external" && (
-          <div className="external-session-warning">
-            {t("sessionExternalWarning")}
-          </div>
-        )}
+      {status.owner === "external" && (
+        <div className="external-session-warning">
+          {t("sessionExternalWarning")}
+        </div>
+      )}
 
-        {hasPendingToolCalls && !pendingElsewhereDismissed && (
-          <div
-            className="external-session-warning pending-tool-warning"
-            role="status"
-          >
-            <div className="pending-tool-warning-copy">
-              <svg
-                className="pending-tool-warning-icon"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 8v4" />
-                <path d="M12 16h.01" />
-              </svg>
-              <span>{t("sessionPendingElsewhereWarning")}</span>
-            </div>
-            <button
-              type="button"
-              className="pending-tool-warning-close"
-              onClick={handleDismissPendingElsewhereWarning}
-              aria-label={t("sessionPendingElsewhereDismiss")}
-              title={t("sessionPendingElsewhereDismiss")}
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M18 6 6 18" />
-                <path d="m6 6 12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
-
+      {hasPendingToolCalls && !pendingElsewhereDismissed && (
         <div
-          className={`session-split${
-            wantBtwSplitLayout ? " session-split-with-aside" : ""
-          }${
-            wantBtwSplitLayout && btwSidePaneCollapsed
-              ? " session-split-aside-collapsed"
-              : ""
-          }`}
+          className="external-session-warning pending-tool-warning"
+          role="status"
         >
-          <main className="session-messages">
-            {loading ? (
-              <div className="loading">{t("sessionLoading")}</div>
-            ) : (
-              <SessionMetadataProvider
+          <div className="pending-tool-warning-copy">
+            <svg
+              className="pending-tool-warning-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 8v4" />
+              <path d="M12 16h.01" />
+            </svg>
+            <span>{t("sessionPendingElsewhereWarning")}</span>
+          </div>
+          <button
+            type="button"
+            className="pending-tool-warning-close"
+            onClick={handleDismissPendingElsewhereWarning}
+            aria-label={t("sessionPendingElsewhereDismiss")}
+            title={t("sessionPendingElsewhereDismiss")}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      <div
+        className={`session-split${
+          wantBtwSplitLayout ? " session-split-with-aside" : ""
+        }${
+          wantBtwSplitLayout && btwSidePaneCollapsed
+            ? " session-split-aside-collapsed"
+            : ""
+        }`}
+      >
+        <main className="session-messages">
+          {loading ? (
+            <div className="loading">{t("sessionLoading")}</div>
+          ) : (
+            <SessionMetadataProvider
+              projectId={projectId}
+              projectPath={project?.path ?? null}
+              sessionId={sessionId}
+            >
+              <AgentContentProvider
+                agentContent={agentContent}
+                setAgentContent={setAgentContent}
+                toolUseToAgent={toolUseToAgent}
                 projectId={projectId}
-                projectPath={project?.path ?? null}
                 sessionId={sessionId}
               >
-                <AgentContentProvider
-                  agentContent={agentContent}
-                  setAgentContent={setAgentContent}
-                  toolUseToAgent={toolUseToAgent}
-                  projectId={projectId}
-                  sessionId={sessionId}
-                >
-                  <MessageList
-                    messages={messages}
-                    provider={session?.provider}
-                    isProcessing={sessionActivityUi.showProcessingIndicator}
-                    isCompacting={isCompacting}
-                    scrollTrigger={scrollTrigger}
-                    pendingMessages={pendingMessages}
-                    deferredMessages={deferredMessages}
-                    btwAsides={historyBtwAsides}
-                    onFocusBtwAside={setFocusedBtwAsideId}
-                    onDoneBtwAside={() => setFocusedBtwAsideId(null)}
-                    onStopBtwAside={(asideId) =>
-                      void handleStopBtwAside(asideId)
-                    }
-                    onToggleBtwAsideExpanded={toggleBtwAsideExpanded}
-                    onTransferBtwAsideTurn={transferBtwTurnToMotherComposer}
-                    onCancelDeferred={handleCancelDeferred}
-                    onEditDeferred={handleEditDeferred}
-                    onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
-                    onTrimBeforeUserMessage={trimClientFromUserMessage}
-                    markdownAugments={markdownAugments}
-                    activeToolApproval={activeToolApproval}
-                    hasOlderMessages={pagination?.hasOlderMessages}
-                    loadingOlder={loadingOlder}
-                    onLoadOlderMessages={loadOlderMessages}
-                    clientTailActive={clientTailActive}
-                  />
-                </AgentContentProvider>
-              </SessionMetadataProvider>
-            )}
-          </main>
-          {showBtwSidePane && focusedBtwAside && (
-            <BtwAsidePane
-              aside={focusedBtwAside}
-              draft={asideDraft}
-              composerRef={asideComposerRef}
-              onDraftChange={setAsideDraft}
-              onSendFollowup={handleFocusedBtwSend}
-              onHide={() => setBtwSidePaneCollapsed(true)}
-              onDone={(argument) => handleCustomCommand("done", argument)}
-              onStop={() => void handleStopBtwAside(focusedBtwAside.id)}
-              onTransferToComposer={transferBtwTurnToMotherComposer}
-            />
+                <MessageList
+                  messages={messages}
+                  provider={session?.provider}
+                  isProcessing={sessionActivityUi.showProcessingIndicator}
+                  isCompacting={isCompacting}
+                  scrollTrigger={scrollTrigger}
+                  pendingMessages={pendingMessages}
+                  deferredMessages={deferredMessages}
+                  btwAsides={historyBtwAsides}
+                  onFocusBtwAside={setFocusedBtwAsideId}
+                  onDoneBtwAside={() => setFocusedBtwAsideId(null)}
+                  onStopBtwAside={(asideId) => void handleStopBtwAside(asideId)}
+                  onToggleBtwAsideExpanded={toggleBtwAsideExpanded}
+                  onTransferBtwAsideTurn={transferBtwTurnToMotherComposer}
+                  onCancelDeferred={handleCancelDeferred}
+                  onEditDeferred={handleEditDeferred}
+                  onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
+                  onTrimBeforeUserMessage={trimClientFromUserMessage}
+                  markdownAugments={markdownAugments}
+                  activeToolApproval={activeToolApproval}
+                  hasOlderMessages={pagination?.hasOlderMessages}
+                  loadingOlder={loadingOlder}
+                  onLoadOlderMessages={loadOlderMessages}
+                  clientTailActive={clientTailActive}
+                />
+              </AgentContentProvider>
+            </SessionMetadataProvider>
           )}
-          {wantBtwSplitLayout && btwSidePaneCollapsed && (
-            <button
-              type="button"
-              className="session-btw-pane-handle"
-              onClick={() => setBtwSidePaneCollapsed(false)}
-              title="Maximize /btw aside pane"
-              aria-label="Maximize /btw aside pane"
-            >
-              /btw
-            </button>
-          )}
+        </main>
+        {showBtwSidePane && focusedBtwAside && (
+          <BtwAsidePane
+            aside={focusedBtwAside}
+            draft={asideDraft}
+            composerRef={asideComposerRef}
+            onDraftChange={setAsideDraft}
+            onSendFollowup={handleFocusedBtwSend}
+            onHide={() => setBtwSidePaneCollapsed(true)}
+            onDone={(argument) => handleCustomCommand("done", argument)}
+            onStop={() => void handleStopBtwAside(focusedBtwAside.id)}
+            onTransferToComposer={transferBtwTurnToMotherComposer}
+          />
+        )}
+        {wantBtwSplitLayout && btwSidePaneCollapsed && (
+          <button
+            type="button"
+            className="session-btw-pane-handle"
+            onClick={() => setBtwSidePaneCollapsed(false)}
+            title="Maximize /btw aside pane"
+            aria-label="Maximize /btw aside pane"
+          >
+            /btw
+          </button>
+        )}
 
-          <footer className="session-input">
-            <div
-              className={`session-connection-bar session-connection-${sessionConnectionStatus}`}
-            />
-            <div className="session-input-inner">
-              {composerStickyBtwAsides.length > 0 && (
-                <div
-                  className="btw-aside-stack"
-                  role="region"
-                  aria-label="/btw asides"
-                >
-                  {composerStickyBtwAsides.map((aside) => {
-                    const isFocused = focusedBtwAsideId === aside.id;
-                    const canExpand = Boolean(
-                      aside.request ||
-                        aside.followUps.length > 0 ||
-                        aside.responses.length > 0 ||
-                        (aside.turns?.length ?? 0) > 0,
-                    );
-                    return (
-                      <div
-                        key={aside.id}
-                        className={`btw-aside-card is-${aside.status} ${
-                          isFocused ? "is-focused" : ""
-                        }`}
+        <footer className="session-input">
+          <div
+            className={`session-connection-bar session-connection-${sessionConnectionStatus}`}
+          />
+          <div className="session-input-inner">
+            {composerStickyBtwAsides.length > 0 && (
+              <div
+                className="btw-aside-stack"
+                role="region"
+                aria-label="/btw asides"
+              >
+                {composerStickyBtwAsides.map((aside) => {
+                  const isFocused = focusedBtwAsideId === aside.id;
+                  const canExpand = Boolean(
+                    aside.request ||
+                      aside.followUps.length > 0 ||
+                      aside.responses.length > 0 ||
+                      (aside.turns?.length ?? 0) > 0,
+                  );
+                  return (
+                    <div
+                      key={aside.id}
+                      className={`btw-aside-card is-${aside.status} ${
+                        isFocused ? "is-focused" : ""
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        className="btw-aside-main"
+                        onClick={() => setFocusedBtwAsideId(aside.id)}
                       >
-                        <button
-                          type="button"
-                          className="btw-aside-main"
-                          onClick={() => setFocusedBtwAsideId(aside.id)}
-                        >
-                          <span className="btw-aside-meta">
-                            /btw {aside.status}
+                        <span className="btw-aside-meta">
+                          /btw {aside.status}
+                        </span>
+                        <span className="btw-aside-request">
+                          {aside.request || "New aside"}
+                        </span>
+                        {aside.followUps.length > 0 && (
+                          <span className="btw-aside-followups">
+                            +{aside.followUps.length} follow-up
+                            {aside.followUps.length === 1 ? "" : "s"}
                           </span>
-                          <span className="btw-aside-request">
-                            {aside.request || "New aside"}
-                          </span>
-                          {aside.followUps.length > 0 && (
-                            <span className="btw-aside-followups">
-                              +{aside.followUps.length} follow-up
-                              {aside.followUps.length === 1 ? "" : "s"}
-                            </span>
-                          )}
-                          {aside.preview && (
-                            <span className="btw-aside-preview">
-                              {aside.preview}
-                            </span>
-                          )}
-                          {aside.error && (
-                            <span className="btw-aside-error">
-                              {aside.error}
-                            </span>
-                          )}
-                        </button>
-                        {aside.expanded && canExpand && (
-                          <BtwAsideTranscript
-                            aside={aside}
-                            autoScrollLatest
-                            onTransferToComposer={
-                              transferBtwTurnToMotherComposer
-                            }
-                          />
                         )}
-                        <div className="btw-aside-actions">
-                          {canExpand && (
-                            <button
-                              type="button"
-                              className="btw-aside-action"
-                              onClick={() => toggleBtwAsideExpanded(aside.id)}
-                            >
-                              {aside.expanded ? "Less" : "Show"}
-                            </button>
-                          )}
-                          {isFocused && (
-                            <button
-                              type="button"
-                              className="btw-aside-action"
-                              onClick={() => hideBtwAside(aside.id)}
-                              title="Return the composer to the main session"
-                            >
-                              Done
-                            </button>
-                          )}
-                          {(aside.status === "starting" ||
-                            aside.status === "running") && (
-                            <button
-                              type="button"
-                              className="btw-aside-action btw-aside-action-stop"
-                              onClick={() => void handleStopBtwAside(aside.id)}
-                              title={
-                                isFocused
-                                  ? "Stop this /btw aside and return to the main session"
-                                  : "Stop this /btw aside"
-                              }
-                            >
-                              Stop
-                            </button>
-                          )}
+                        {aside.preview && (
+                          <span className="btw-aside-preview">
+                            {aside.preview}
+                          </span>
+                        )}
+                        {aside.error && (
+                          <span className="btw-aside-error">{aside.error}</span>
+                        )}
+                      </button>
+                      {aside.expanded && canExpand && (
+                        <BtwAsideTranscript
+                          aside={aside}
+                          autoScrollLatest
+                          onTransferToComposer={transferBtwTurnToMotherComposer}
+                        />
+                      )}
+                      <div className="btw-aside-actions">
+                        {canExpand && (
+                          <button
+                            type="button"
+                            className="btw-aside-action"
+                            onClick={() => toggleBtwAsideExpanded(aside.id)}
+                          >
+                            {aside.expanded ? "Less" : "Show"}
+                          </button>
+                        )}
+                        {isFocused && (
                           <button
                             type="button"
                             className="btw-aside-action"
                             onClick={() => hideBtwAside(aside.id)}
-                            title="Move this aside into session history"
+                            title="Return the composer to the main session"
                           >
-                            Hide
+                            Done
                           </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* User question panel */}
-              {pendingInputRequest &&
-                pendingInputRequest.sessionId === actualSessionId &&
-                isAskUserQuestion && (
-                  <QuestionAnswerPanel
-                    request={pendingInputRequest}
-                    sessionId={actualSessionId}
-                    onSubmit={handleQuestionSubmit}
-                    onDeny={handleDeny}
-                  />
-                )}
-
-              {/* Tool approval: show panel + always-visible toolbar */}
-              {pendingInputRequest &&
-                pendingInputRequest.sessionId === actualSessionId &&
-                !isAskUserQuestion && (
-                  <>
-                    <ToolApprovalPanel
-                      request={pendingInputRequest}
-                      sessionId={actualSessionId}
-                      onApprove={handleApprove}
-                      onDeny={handleDeny}
-                      onApproveAcceptEdits={handleApproveAcceptEdits}
-                      onDenyWithFeedback={handleDenyWithFeedback}
-                      collapsed={approvalCollapsed}
-                      onCollapsedChange={setApprovalCollapsed}
-                    />
-                    <MessageInputToolbar
-                      mode={permissionMode}
-                      onModeChange={setPermissionMode}
-                      isHeld={holdModeEnabled ? isHeld : undefined}
-                      onHoldChange={holdModeEnabled ? setHold : undefined}
-                      supportsPermissionMode={supportsPermissionMode}
-                      supportsThinkingToggle={supportsThinkingToggle}
-                      slashCommands={
-                        status.owner === "self" ? allSlashCommands : []
-                      }
-                      onSelectSlashCommand={handleToolbarSlashCommand}
-                      modelIndicatorTone={slashModelIndicatorTone}
-                      modelIndicatorProvider={effectiveProvider}
-                      modelIndicatorModel={liveBadgeModel}
-                      modelIndicatorTitle={slashModelIndicatorTitle}
-                      heartbeatEnabled={heartbeatTurnsEnabled}
-                      onToggleHeartbeat={handleToggleHeartbeat}
-                      onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
-                      contextUsage={session?.contextUsage}
-                      lastActivityAt={activityAt}
-                      sessionLiveness={sessionLiveness}
-                      isRunning={status.owner === "self"}
-                      isThinking={canStopOwnedProcess}
-                      onStop={handleAbort}
-                      pendingApproval={
-                        approvalCollapsed
-                          ? {
-                              type: "tool-approval",
-                              onExpand: () => setApprovalCollapsed(false),
+                        )}
+                        {(aside.status === "starting" ||
+                          aside.status === "running") && (
+                          <button
+                            type="button"
+                            className="btw-aside-action btw-aside-action-stop"
+                            onClick={() => void handleStopBtwAside(aside.id)}
+                            title={
+                              isFocused
+                                ? "Stop this /btw aside and return to the main session"
+                                : "Stop this /btw aside"
                             }
-                          : undefined
-                      }
-                    />
-                  </>
-                )}
+                          >
+                            Stop
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btw-aside-action"
+                          onClick={() => hideBtwAside(aside.id)}
+                          title="Move this aside into session history"
+                        >
+                          Hide
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
-              {/* No pending approval: show full message input */}
-              {!(
-                pendingInputRequest &&
-                pendingInputRequest.sessionId === actualSessionId &&
-                !isAskUserQuestion
-              ) && (
-                <MessageInput
-                  onSend={
-                    mainComposerForAside
-                      ? handleFocusedBtwSend
-                      : primaryComposerAction === "steer"
-                        ? handleSend
-                        : shouldDeferMessages
-                          ? handleQueue
-                          : handleSend
-                  }
-                  onQueue={
-                    !mainComposerForAside &&
-                    shouldDeferMessages &&
-                    generallySupportsSteering
-                      ? handleQueue
-                      : undefined
-                  }
-                  primaryActionKind={
-                    mainComposerForAside ? "send" : primaryComposerAction
-                  }
-                  placeholder={
-                    mainComposerForAside
-                      ? "/btw follow-up"
-                      : status.owner === "external"
-                        ? t("sessionPlaceholderExternal")
-                        : processState === "idle"
-                          ? shouldDeferMessages
-                            ? t("sessionPlaceholderQueue")
-                            : t("sessionPlaceholderResume")
-                          : t("sessionPlaceholderQueue")
-                  }
-                  mode={permissionMode}
-                  onModeChange={setPermissionMode}
-                  isHeld={holdModeEnabled ? isHeld : undefined}
-                  onHoldChange={holdModeEnabled ? setHold : undefined}
-                  supportsPermissionMode={supportsPermissionMode}
-                  supportsThinkingToggle={supportsThinkingToggle}
-                  supportsSteering={generallySupportsSteering}
-                  isRunning={status.owner === "self"}
-                  isThinking={canStopOwnedProcess}
-                  onStop={handleAbort}
-                  draftKey={
-                    mainComposerForAside && focusedBtwAside
-                      ? `draft-btw-${focusedBtwAside.sessionId ?? focusedBtwAside.id}`
-                      : `draft-message-${sessionId}`
-                  }
-                  onDraftControlsReady={handleDraftControlsReady}
-                  correctionActive={
-                    !mainComposerForAside && correctionDraft !== null
-                  }
-                  onCancelCorrection={
-                    mainComposerForAside ? undefined : handleCancelCorrection
-                  }
-                  onRecallLastSubmission={handleRecallLastSubmission}
-                  onCancelLatestDeferred={handleCancelLatestDeferred}
-                  collapsed={
-                    !!(
-                      pendingInputRequest &&
-                      pendingInputRequest.sessionId === actualSessionId
-                    )
-                  }
-                  contextUsage={session?.contextUsage}
-                  lastActivityAt={activityAt}
-                  sessionLiveness={sessionLiveness}
-                  projectId={projectId}
-                  sessionId={sessionId}
-                  attachments={mainComposerForAside ? [] : attachments}
-                  onAttach={mainComposerForAside ? undefined : handleAttach}
-                  onRemoveAttachment={
-                    mainComposerForAside ? undefined : handleRemoveAttachment
-                  }
-                  uploadProgress={mainComposerForAside ? [] : uploadProgress}
-                  slashCommands={
-                    status.owner === "self" ? allSlashCommands : []
-                  }
-                  onCustomCommand={handleCustomCommand}
-                  onBtwShortcut={
-                    childSessionParentHref || supportsBtwAsides
-                      ? handleBtwShortcut
-                      : undefined
-                  }
-                  btwActive={!!mainComposerForAside || !!childSessionParentHref}
-                  btwHasAsides={
-                    stickyBtwAsides.length > 0 || !!childSessionParentHref
-                  }
-                  btwToolbarMode={btwToolbarMode}
-                  modelIndicatorTone={slashModelIndicatorTone}
-                  modelIndicatorProvider={effectiveProvider}
-                  modelIndicatorModel={liveBadgeModel}
-                  modelIndicatorTitle={slashModelIndicatorTitle}
-                  heartbeatEnabled={heartbeatTurnsEnabled}
-                  onToggleHeartbeat={handleToggleHeartbeat}
-                  onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
-                  promptSuggestion={
-                    mainComposerForAside
-                      ? undefined
-                      : (promptSuggestion ?? undefined)
-                  }
-                  onDismissPromptSuggestion={
-                    mainComposerForAside ? undefined : dismissPromptSuggestion
-                  }
+            {/* User question panel */}
+            {pendingInputRequest &&
+              pendingInputRequest.sessionId === actualSessionId &&
+              isAskUserQuestion && (
+                <QuestionAnswerPanel
+                  request={pendingInputRequest}
+                  sessionId={actualSessionId}
+                  onSubmit={handleQuestionSubmit}
+                  onDeny={handleDeny}
                 />
               )}
-            </div>
-          </footer>
-        </div>
+
+            {/* Tool approval: show panel + always-visible toolbar */}
+            {pendingInputRequest &&
+              pendingInputRequest.sessionId === actualSessionId &&
+              !isAskUserQuestion && (
+                <>
+                  <ToolApprovalPanel
+                    request={pendingInputRequest}
+                    sessionId={actualSessionId}
+                    onApprove={handleApprove}
+                    onDeny={handleDeny}
+                    onApproveAcceptEdits={handleApproveAcceptEdits}
+                    onDenyWithFeedback={handleDenyWithFeedback}
+                    collapsed={approvalCollapsed}
+                    onCollapsedChange={setApprovalCollapsed}
+                  />
+                  <MessageInputToolbar
+                    mode={permissionMode}
+                    onModeChange={setPermissionMode}
+                    isHeld={holdModeEnabled ? isHeld : undefined}
+                    onHoldChange={holdModeEnabled ? setHold : undefined}
+                    supportsPermissionMode={supportsPermissionMode}
+                    supportsThinkingToggle={supportsThinkingToggle}
+                    slashCommands={
+                      status.owner === "self" ? allSlashCommands : []
+                    }
+                    onSelectSlashCommand={handleToolbarSlashCommand}
+                    modelIndicatorTone={slashModelIndicatorTone}
+                    modelIndicatorProvider={effectiveProvider}
+                    modelIndicatorModel={liveBadgeModel}
+                    modelIndicatorTitle={slashModelIndicatorTitle}
+                    heartbeatEnabled={heartbeatTurnsEnabled}
+                    onToggleHeartbeat={handleToggleHeartbeat}
+                    onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
+                    contextUsage={session?.contextUsage}
+                    lastActivityAt={activityAt}
+                    sessionLiveness={sessionLiveness}
+                    isRunning={status.owner === "self"}
+                    isThinking={canStopOwnedProcess}
+                    onStop={handleAbort}
+                    pendingApproval={
+                      approvalCollapsed
+                        ? {
+                            type: "tool-approval",
+                            onExpand: () => setApprovalCollapsed(false),
+                          }
+                        : undefined
+                    }
+                  />
+                </>
+              )}
+
+            {/* No pending approval: show full message input */}
+            {!(
+              pendingInputRequest &&
+              pendingInputRequest.sessionId === actualSessionId &&
+              !isAskUserQuestion
+            ) && (
+              <MessageInput
+                onSend={
+                  mainComposerForAside
+                    ? handleFocusedBtwSend
+                    : primaryComposerAction === "steer"
+                      ? handleSend
+                      : shouldDeferMessages
+                        ? handleQueue
+                        : handleSend
+                }
+                onQueue={
+                  !mainComposerForAside &&
+                  shouldDeferMessages &&
+                  generallySupportsSteering
+                    ? handleQueue
+                    : undefined
+                }
+                primaryActionKind={
+                  mainComposerForAside ? "send" : primaryComposerAction
+                }
+                placeholder={
+                  mainComposerForAside
+                    ? "/btw follow-up"
+                    : status.owner === "external"
+                      ? t("sessionPlaceholderExternal")
+                      : processState === "idle"
+                        ? shouldDeferMessages
+                          ? t("sessionPlaceholderQueue")
+                          : t("sessionPlaceholderResume")
+                        : t("sessionPlaceholderQueue")
+                }
+                mode={permissionMode}
+                onModeChange={setPermissionMode}
+                isHeld={holdModeEnabled ? isHeld : undefined}
+                onHoldChange={holdModeEnabled ? setHold : undefined}
+                supportsPermissionMode={supportsPermissionMode}
+                supportsThinkingToggle={supportsThinkingToggle}
+                supportsSteering={generallySupportsSteering}
+                isRunning={status.owner === "self"}
+                isThinking={canStopOwnedProcess}
+                onStop={handleAbort}
+                draftKey={
+                  mainComposerForAside && focusedBtwAside
+                    ? `draft-btw-${focusedBtwAside.sessionId ?? focusedBtwAside.id}`
+                    : `draft-message-${sessionId}`
+                }
+                onDraftControlsReady={handleDraftControlsReady}
+                correctionActive={
+                  !mainComposerForAside && correctionDraft !== null
+                }
+                onCancelCorrection={
+                  mainComposerForAside ? undefined : handleCancelCorrection
+                }
+                onRecallLastSubmission={handleRecallLastSubmission}
+                onCancelLatestDeferred={handleCancelLatestDeferred}
+                collapsed={
+                  !!(
+                    pendingInputRequest &&
+                    pendingInputRequest.sessionId === actualSessionId
+                  )
+                }
+                contextUsage={session?.contextUsage}
+                lastActivityAt={activityAt}
+                sessionLiveness={sessionLiveness}
+                projectId={projectId}
+                sessionId={sessionId}
+                attachments={mainComposerForAside ? [] : attachments}
+                onAttach={mainComposerForAside ? undefined : handleAttach}
+                onRemoveAttachment={
+                  mainComposerForAside ? undefined : handleRemoveAttachment
+                }
+                uploadProgress={mainComposerForAside ? [] : uploadProgress}
+                slashCommands={status.owner === "self" ? allSlashCommands : []}
+                onCustomCommand={handleCustomCommand}
+                onBtwShortcut={
+                  childSessionParentHref || supportsBtwAsides
+                    ? handleBtwShortcut
+                    : undefined
+                }
+                btwActive={!!mainComposerForAside || !!childSessionParentHref}
+                btwHasAsides={
+                  stickyBtwAsides.length > 0 || !!childSessionParentHref
+                }
+                btwToolbarMode={btwToolbarMode}
+                modelIndicatorTone={slashModelIndicatorTone}
+                modelIndicatorProvider={effectiveProvider}
+                modelIndicatorModel={liveBadgeModel}
+                modelIndicatorTitle={slashModelIndicatorTitle}
+                heartbeatEnabled={heartbeatTurnsEnabled}
+                onToggleHeartbeat={handleToggleHeartbeat}
+                onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
+                promptSuggestion={
+                  mainComposerForAside
+                    ? undefined
+                    : (promptSuggestion ?? undefined)
+                }
+                onDismissPromptSuggestion={
+                  mainComposerForAside ? undefined : dismissPromptSuggestion
+                }
+              />
+            )}
+          </div>
+        </footer>
       </div>
-    </div>
+    </MainContent>
   );
 }

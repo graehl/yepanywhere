@@ -13,11 +13,11 @@ import { SessionListItem } from "../components/SessionListItem";
 import { useDrafts } from "../hooks/useDrafts";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
-import { useServerSettings } from "../hooks/useServerSettings";
-import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
-import { useNavigationLayout } from "../layouts";
+import { MainContent, useNavigationLayout } from "../layouts";
+import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { getSessionDisplayTitle } from "../utils";
 
 // Long-press threshold for entering selection mode on mobile
@@ -744,410 +744,400 @@ export function GlobalSessionsPage() {
     ageFilter;
 
   return (
-    <div
-      className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
-    >
-      <div
-        className={
-          isWideScreen
-            ? "main-content-constrained"
-            : "main-content-mobile-inner"
-        }
-      >
-        <PageHeader
-          title={t("globalSessionsTitle")}
-          onOpenSidebar={openSidebar}
-          onToggleSidebar={toggleSidebar}
-          isWideScreen={isWideScreen}
-          isSidebarCollapsed={isSidebarCollapsed}
-        />
+    <MainContent isWideScreen={isWideScreen}>
+      <PageHeader
+        title={t("globalSessionsTitle")}
+        onOpenSidebar={openSidebar}
+        onToggleSidebar={toggleSidebar}
+        isWideScreen={isWideScreen}
+        isSidebarCollapsed={isSidebarCollapsed}
+      />
 
-        <main className="page-scroll-container">
-          <div className="page-content-inner">
-            {/* Filter bar */}
-            <div className="filter-bar">
-              <form onSubmit={handleSearch} className="filter-search-form">
-                <input
-                  type="text"
-                  className="filter-search"
-                  placeholder={t("globalSessionsSearchPlaceholder")}
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                />
-                <button type="submit" className="filter-search-button">
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <circle cx="11" cy="11" r="8" />
-                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                </button>
-              </form>
-              <div className="filter-dropdowns">
-                {projectOptions.length > 0 && (
-                  <FilterDropdown
-                    label={t("inboxFilterProject")}
-                    options={projectOptions}
-                    selected={projectFilter ? [projectFilter] : []}
-                    onChange={handleProjectFilter}
-                    multiSelect={false}
-                    placeholder={t("globalSessionsFilterProjectPlaceholder")}
-                  />
-                )}
-                <FilterDropdown
-                  label={t("globalSessionsFilterStatus")}
-                  options={statusOptions}
-                  selected={statusFilters}
-                  onChange={setStatusFilters}
-                  placeholder={t("globalSessionsStatusAll")}
-                  placeholderContent={statusPlaceholder}
-                  className="filter-dropdown--status"
-                />
-                {providerOptions.length > 1 && (
-                  <FilterDropdown
-                    label={t("globalSessionsFilterProvider")}
-                    options={providerOptions}
-                    selected={providerFilters}
-                    onChange={setProviderFilters}
-                    placeholder={t("globalSessionsProviderAll")}
-                    className="filter-dropdown--provider"
-                  />
-                )}
-                {executorOptions.length > 1 && (
-                  <FilterDropdown
-                    label={t("globalSessionsFilterExecutor")}
-                    options={executorOptions}
-                    selected={executorFilters}
-                    onChange={setExecutorFilters}
-                    placeholder={t("globalSessionsFilterMachinePlaceholder")}
-                  />
-                )}
-                <FilterDropdown
-                  label={t("globalSessionsFilterAge")}
-                  options={ageOptions}
-                  selected={ageFilter ? [ageFilter] : []}
-                  onChange={setAgeFilter}
-                  multiSelect={false}
-                  placeholder={t("globalSessionsFilterAgePlaceholder")}
-                />
-              </div>
-              {hasFilters && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="filter-clear-button"
-                >
-                  {t("globalSessionsClearFilters")}
-                </button>
-              )}
-            </div>
-
-            {showProjectNewSessionCta && activeProject && (
-              <div className="global-sessions-project-cta">
-                <div className="global-sessions-project-cta__copy">
-                  <strong>
-                    {t("sidebarNewSession")}{" "}
-                    <code className="global-sessions-project-cta__token">
-                      {activeProject.name}
-                    </code>
-                  </strong>
-                  {projectScopedSearchText && (
-                    <span>
-                      {t("globalSessionsProjectCtaPromptLabel")}{" "}
-                      <code className="global-sessions-project-cta__token">
-                        {projectScopedSearchText}
-                      </code>
-                    </span>
-                  )}
-                  {!projectScopedSearchText && (
-                    <span>
-                      {t("globalSessionsProjectCtaHint")}{" "}
-                      <code className="global-sessions-project-cta__token">
-                        {activeProject.name}
-                      </code>
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="inbox-refresh-button global-sessions-project-cta__button"
-                  onClick={handleStartProjectSession}
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  {t("sidebarNewSession")}
-                </button>
-              </div>
-            )}
-
-            {loading && sessions.length === 0 && (
-              <p className="loading">{t("sidebarLoadingSessions")}</p>
-            )}
-
-            {error && (
-              <p className="error">
-                {t("projectsErrorPrefix")} {error.message}
-              </p>
-            )}
-
-            {!loading && !error && isEmpty && (
-              <div className="inbox-empty">
+      <main className="page-scroll-container">
+        <div className="page-content-inner">
+          {/* Filter bar */}
+          <div className="filter-bar">
+            <form onSubmit={handleSearch} className="filter-search-form">
+              <input
+                type="text"
+                className="filter-search"
+                placeholder={t("globalSessionsSearchPlaceholder")}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+              />
+              <button type="submit" className="filter-search-button">
                 <svg
-                  width="48"
-                  height="48"
+                  width="16"
+                  height="16"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="1.5"
+                  strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden="true"
                 >
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <h3>{t("globalSessionsNoResultsTitle")}</h3>
-                <p>
-                  {hasFilters
-                    ? t("globalSessionsNoResultsFiltered")
-                    : t("globalSessionsNoResultsEmpty")}
-                </p>
-              </div>
+              </button>
+            </form>
+            <div className="filter-dropdowns">
+              {projectOptions.length > 0 && (
+                <FilterDropdown
+                  label={t("inboxFilterProject")}
+                  options={projectOptions}
+                  selected={projectFilter ? [projectFilter] : []}
+                  onChange={handleProjectFilter}
+                  multiSelect={false}
+                  placeholder={t("globalSessionsFilterProjectPlaceholder")}
+                />
+              )}
+              <FilterDropdown
+                label={t("globalSessionsFilterStatus")}
+                options={statusOptions}
+                selected={statusFilters}
+                onChange={setStatusFilters}
+                placeholder={t("globalSessionsStatusAll")}
+                placeholderContent={statusPlaceholder}
+                className="filter-dropdown--status"
+              />
+              {providerOptions.length > 1 && (
+                <FilterDropdown
+                  label={t("globalSessionsFilterProvider")}
+                  options={providerOptions}
+                  selected={providerFilters}
+                  onChange={setProviderFilters}
+                  placeholder={t("globalSessionsProviderAll")}
+                  className="filter-dropdown--provider"
+                />
+              )}
+              {executorOptions.length > 1 && (
+                <FilterDropdown
+                  label={t("globalSessionsFilterExecutor")}
+                  options={executorOptions}
+                  selected={executorFilters}
+                  onChange={setExecutorFilters}
+                  placeholder={t("globalSessionsFilterMachinePlaceholder")}
+                />
+              )}
+              <FilterDropdown
+                label={t("globalSessionsFilterAge")}
+                options={ageOptions}
+                selected={ageFilter ? [ageFilter] : []}
+                onChange={setAgeFilter}
+                multiSelect={false}
+                placeholder={t("globalSessionsFilterAgePlaceholder")}
+              />
+            </div>
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="filter-clear-button"
+              >
+                {t("globalSessionsClearFilters")}
+              </button>
             )}
+          </div>
 
-            {!error && !isEmpty && (
-              <>
-                {/* Select all header (desktop or when in selection mode) */}
-                {(isWideScreen || isSelectionMode) &&
-                  filteredSessions.length > 0 && (
-                    <div className="session-list-header">
-                      <label className="session-list-header__select-all">
-                        <input
-                          type="checkbox"
-                          checked={
-                            selectedIds.size === filteredSessions.length &&
-                            filteredSessions.length > 0
-                          }
-                          onChange={(e) =>
-                            e.target.checked
-                              ? handleSelectAll()
-                              : handleClearSelection()
-                          }
-                        />
-                        <span>
-                          {selectedIds.size > 0
-                            ? t("bulkSelectedCount", {
-                                count: selectedIds.size,
-                              })
-                            : t("globalSessionsSelectAll")}
-                        </span>
-                      </label>
-                    </div>
-                  )}
-
-                <ul
-                  className={`session-list ${isSelectionMode ? "session-list--selection-mode" : ""}`}
+          {showProjectNewSessionCta && activeProject && (
+            <div className="global-sessions-project-cta">
+              <div className="global-sessions-project-cta__copy">
+                <strong>
+                  {t("sidebarNewSession")}{" "}
+                  <code className="global-sessions-project-cta__token">
+                    {activeProject.name}
+                  </code>
+                </strong>
+                {projectScopedSearchText && (
+                  <span>
+                    {t("globalSessionsProjectCtaPromptLabel")}{" "}
+                    <code className="global-sessions-project-cta__token">
+                      {projectScopedSearchText}
+                    </code>
+                  </span>
+                )}
+                {!projectScopedSearchText && (
+                  <span>
+                    {t("globalSessionsProjectCtaHint")}{" "}
+                    <code className="global-sessions-project-cta__token">
+                      {activeProject.name}
+                    </code>
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="inbox-refresh-button global-sessions-project-cta__button"
+                onClick={handleStartProjectSession}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
                 >
-                  {visibleSessions.map((session) => (
-                    // biome-ignore lint/a11y/noStaticElementInteractions: wrapper handles mobile long-press selection while the nested link remains the accessible control
-                    <div
-                      key={session.id}
-                      onTouchStart={(e) => handleLongPressStart(session.id, e)}
-                      onTouchMove={handleTouchMove}
-                      onTouchEnd={handleLongPressEnd}
-                      onTouchCancel={handleLongPressEnd}
-                      onMouseDown={(e) =>
-                        !isWideScreen && handleLongPressStart(session.id, e)
-                      }
-                      onMouseUp={handleLongPressEnd}
-                      onMouseLeave={handleLongPressEnd}
-                      onContextMenu={handleContextMenu}
-                    >
-                      <SessionListItem
-                        sessionId={session.id}
-                        projectId={session.projectId}
-                        title={getSessionDisplayTitle(session)}
-                        fullTitle={
-                          session.fullTitle ?? getSessionDisplayTitle(session)
-                        }
-                        initialPrompt={session.initialPrompt}
-                        updatedAt={session.updatedAt}
-                        createdAt={session.createdAt}
-                        hasUnread={session.hasUnread}
-                        activity={session.activity}
-                        pendingInputType={session.pendingInputType}
-                        status={session.ownership}
-                        provider={session.provider}
-                        parentSessionId={session.parentSessionId}
-                        executor={session.executor}
-                        isStarred={session.isStarred}
-                        isArchived={session.isArchived}
-                        mode="card"
-                        showContextUsage={false}
-                        isSelected={selectedIds.has(session.id)}
-                        isSelectionMode={isSelectionMode && !isWideScreen}
-                        onNavigate={() => {
-                          // In selection mode on mobile, tap toggles selection
-                          if (isSelectionMode && !isWideScreen) {
-                            handleSelect(
-                              session.id,
-                              !selectedIds.has(session.id),
-                            );
-                          }
-                        }}
-                        onSelect={
-                          isWideScreen || isSelectionMode
-                            ? handleSelect
-                            : undefined
-                        }
-                        showProjectName={!projectFilter}
-                        projectName={session.projectName}
-                        basePath={basePath}
-                        messageCount={session.messageCount}
-                        // userTurnCount / systemTurnCount will be populated when
-                        // the index summaries cache them (see SessionIndexService)
-                        hasDraft={drafts.has(session.id)}
-                        publicShareControlsVisible={publicShareControlsVisible}
-                      />
-                    </div>
-                  ))}
-                </ul>
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                {t("sidebarNewSession")}
+              </button>
+            </div>
+          )}
 
-                {/* Dup hidden expander for the heavier/thicker card list (all sessions or per-project).
+          {loading && sessions.length === 0 && (
+            <p className="loading">{t("sidebarLoadingSessions")}</p>
+          )}
+
+          {error && (
+            <p className="error">
+              {t("projectsErrorPrefix")} {error.message}
+            </p>
+          )}
+
+          {!loading && !error && isEmpty && (
+            <div className="inbox-empty">
+              <svg
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              <h3>{t("globalSessionsNoResultsTitle")}</h3>
+              <p>
+                {hasFilters
+                  ? t("globalSessionsNoResultsFiltered")
+                  : t("globalSessionsNoResultsEmpty")}
+              </p>
+            </div>
+          )}
+
+          {!error && !isEmpty && (
+            <>
+              {/* Select all header (desktop or when in selection mode) */}
+              {(isWideScreen || isSelectionMode) &&
+                filteredSessions.length > 0 && (
+                  <div className="session-list-header">
+                    <label className="session-list-header__select-all">
+                      <input
+                        type="checkbox"
+                        checked={
+                          selectedIds.size === filteredSessions.length &&
+                          filteredSessions.length > 0
+                        }
+                        onChange={(e) =>
+                          e.target.checked
+                            ? handleSelectAll()
+                            : handleClearSelection()
+                        }
+                      />
+                      <span>
+                        {selectedIds.size > 0
+                          ? t("bulkSelectedCount", {
+                              count: selectedIds.size,
+                            })
+                          : t("globalSessionsSelectAll")}
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+              <ul
+                className={`session-list ${isSelectionMode ? "session-list--selection-mode" : ""}`}
+              >
+                {visibleSessions.map((session) => (
+                  // biome-ignore lint/a11y/noStaticElementInteractions: wrapper handles mobile long-press selection while the nested link remains the accessible control
+                  <div
+                    key={session.id}
+                    onTouchStart={(e) => handleLongPressStart(session.id, e)}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleLongPressEnd}
+                    onTouchCancel={handleLongPressEnd}
+                    onMouseDown={(e) =>
+                      !isWideScreen && handleLongPressStart(session.id, e)
+                    }
+                    onMouseUp={handleLongPressEnd}
+                    onMouseLeave={handleLongPressEnd}
+                    onContextMenu={handleContextMenu}
+                  >
+                    <SessionListItem
+                      sessionId={session.id}
+                      projectId={session.projectId}
+                      title={getSessionDisplayTitle(session)}
+                      fullTitle={
+                        session.fullTitle ?? getSessionDisplayTitle(session)
+                      }
+                      initialPrompt={session.initialPrompt}
+                      updatedAt={session.updatedAt}
+                      createdAt={session.createdAt}
+                      hasUnread={session.hasUnread}
+                      activity={session.activity}
+                      pendingInputType={session.pendingInputType}
+                      status={session.ownership}
+                      provider={session.provider}
+                      parentSessionId={session.parentSessionId}
+                      executor={session.executor}
+                      isStarred={session.isStarred}
+                      isArchived={session.isArchived}
+                      mode="card"
+                      showContextUsage={false}
+                      isSelected={selectedIds.has(session.id)}
+                      isSelectionMode={isSelectionMode && !isWideScreen}
+                      onNavigate={() => {
+                        // In selection mode on mobile, tap toggles selection
+                        if (isSelectionMode && !isWideScreen) {
+                          handleSelect(
+                            session.id,
+                            !selectedIds.has(session.id),
+                          );
+                        }
+                      }}
+                      onSelect={
+                        isWideScreen || isSelectionMode
+                          ? handleSelect
+                          : undefined
+                      }
+                      showProjectName={!projectFilter}
+                      projectName={session.projectName}
+                      basePath={basePath}
+                      messageCount={session.messageCount}
+                      // userTurnCount / systemTurnCount will be populated when
+                      // the index summaries cache them (see SessionIndexService)
+                      hasDraft={drafts.has(session.id)}
+                      publicShareControlsVisible={publicShareControlsVisible}
+                    />
+                  </div>
+                ))}
+              </ul>
+
+              {/* Dup hidden expander for the heavier/thicker card list (all sessions or per-project).
                     Cheap (runs on already-fetched filtered page). Matches the sidebar "(X hidden)" pattern
                     but with thicker card items when expanded. */}
-                {hiddenDupSessions.length > 0 && (
-                  <div className="global-sessions-hidden-dups">
-                    <button
-                      type="button"
-                      className="global-sessions-hidden-dups-toggle"
-                      onClick={() => setShowHiddenDups((v) => !v)}
-                      aria-expanded={showHiddenDups}
-                    >
-                      {showHiddenDups ? "−" : "+"} {hiddenDupSessions.length}{" "}
-                      duplicate titles hidden (same name + provider + project)
-                    </button>
-                    {showHiddenDups && (
-                      <ul className="session-list global-sessions-hidden-sublist">
-                        {hiddenDupSessions.map((session) => (
-                          <div
-                            key={session.id}
-                            className="global-sessions-hidden-item"
-                          >
-                            <SessionListItem
-                              sessionId={session.id}
-                              projectId={session.projectId}
-                              title={getSessionDisplayTitle(session)}
-                              fullTitle={
-                                session.fullTitle ??
-                                getSessionDisplayTitle(session)
+              {hiddenDupSessions.length > 0 && (
+                <div className="global-sessions-hidden-dups">
+                  <button
+                    type="button"
+                    className="global-sessions-hidden-dups-toggle"
+                    onClick={() => setShowHiddenDups((v) => !v)}
+                    aria-expanded={showHiddenDups}
+                  >
+                    {showHiddenDups ? "−" : "+"} {hiddenDupSessions.length}{" "}
+                    duplicate titles hidden (same name + provider + project)
+                  </button>
+                  {showHiddenDups && (
+                    <ul className="session-list global-sessions-hidden-sublist">
+                      {hiddenDupSessions.map((session) => (
+                        <div
+                          key={session.id}
+                          className="global-sessions-hidden-item"
+                        >
+                          <SessionListItem
+                            sessionId={session.id}
+                            projectId={session.projectId}
+                            title={getSessionDisplayTitle(session)}
+                            fullTitle={
+                              session.fullTitle ??
+                              getSessionDisplayTitle(session)
+                            }
+                            initialPrompt={session.initialPrompt}
+                            updatedAt={session.updatedAt}
+                            createdAt={session.createdAt}
+                            hasUnread={session.hasUnread}
+                            publicShareControlsVisible={
+                              publicShareControlsVisible
+                            }
+                            activity={session.activity}
+                            pendingInputType={session.pendingInputType}
+                            status={session.ownership}
+                            provider={session.provider}
+                            parentSessionId={session.parentSessionId}
+                            executor={session.executor}
+                            isStarred={session.isStarred}
+                            isArchived={session.isArchived}
+                            mode="card"
+                            showContextUsage={false}
+                            isSelected={selectedIds.has(session.id)}
+                            isSelectionMode={isSelectionMode && !isWideScreen}
+                            onNavigate={() => {
+                              if (isSelectionMode && !isWideScreen) {
+                                handleSelect(
+                                  session.id,
+                                  !selectedIds.has(session.id),
+                                );
                               }
-                              initialPrompt={session.initialPrompt}
-                              updatedAt={session.updatedAt}
-                              createdAt={session.createdAt}
-                              hasUnread={session.hasUnread}
-                              publicShareControlsVisible={
-                                publicShareControlsVisible
-                              }
-                              activity={session.activity}
-                              pendingInputType={session.pendingInputType}
-                              status={session.ownership}
-                              provider={session.provider}
-                              parentSessionId={session.parentSessionId}
-                              executor={session.executor}
-                              isStarred={session.isStarred}
-                              isArchived={session.isArchived}
-                              mode="card"
-                              showContextUsage={false}
-                              isSelected={selectedIds.has(session.id)}
-                              isSelectionMode={isSelectionMode && !isWideScreen}
-                              onNavigate={() => {
-                                if (isSelectionMode && !isWideScreen) {
-                                  handleSelect(
-                                    session.id,
-                                    !selectedIds.has(session.id),
-                                  );
-                                }
-                              }}
-                              onSelect={
-                                isWideScreen || isSelectionMode
-                                  ? handleSelect
-                                  : undefined
-                              }
-                              showProjectName={!projectFilter}
-                              projectName={session.projectName}
-                              basePath={basePath}
-                              messageCount={session.messageCount}
-                              hasDraft={drafts.has(session.id)}
-                            />
-                          </div>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
+                            }}
+                            onSelect={
+                              isWideScreen || isSelectionMode
+                                ? handleSelect
+                                : undefined
+                            }
+                            showProjectName={!projectFilter}
+                            projectName={session.projectName}
+                            basePath={basePath}
+                            messageCount={session.messageCount}
+                            hasDraft={drafts.has(session.id)}
+                          />
+                        </div>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
 
-                {hasMore && (
-                  <div className="global-sessions-load-more">
-                    <button
-                      type="button"
-                      onClick={loadMore}
-                      className="global-sessions-load-more-button"
-                      disabled={loading}
-                    >
-                      {loading
-                        ? t("gitStatusLoading")
-                        : t("globalSessionsLoadMore")}
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
+              {hasMore && (
+                <div className="global-sessions-load-more">
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    className="global-sessions-load-more-button"
+                    disabled={loading}
+                  >
+                    {loading
+                      ? t("gitStatusLoading")
+                      : t("globalSessionsLoadMore")}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
 
-            {/* Bulk action bar */}
-            <BulkActionBar
-              selectedCount={selectedIds.size}
-              onArchive={handleBulkArchive}
-              onUnarchive={handleBulkUnarchive}
-              onStar={handleBulkStar}
-              onUnstar={handleBulkUnstar}
-              onMarkRead={handleBulkMarkRead}
-              onMarkUnread={handleBulkMarkUnread}
-              onClearSelection={handleClearSelection}
-              isPending={isBulkActionPending}
-              canArchive={bulkActionState.canArchive}
-              canUnarchive={bulkActionState.canUnarchive}
-              canStar={bulkActionState.canStar}
-              canUnstar={bulkActionState.canUnstar}
-              canMarkRead={bulkActionState.canMarkRead}
-              canMarkUnread={bulkActionState.canMarkUnread}
-              onArchiveAllFiltered={
-                hasFilters ? handleArchiveAllFiltered : undefined
-              }
-              archivableFilteredCount={archivableFilteredCount}
-            />
-          </div>
-        </main>
-      </div>
-    </div>
+          {/* Bulk action bar */}
+          <BulkActionBar
+            selectedCount={selectedIds.size}
+            onArchive={handleBulkArchive}
+            onUnarchive={handleBulkUnarchive}
+            onStar={handleBulkStar}
+            onUnstar={handleBulkUnstar}
+            onMarkRead={handleBulkMarkRead}
+            onMarkUnread={handleBulkMarkUnread}
+            onClearSelection={handleClearSelection}
+            isPending={isBulkActionPending}
+            canArchive={bulkActionState.canArchive}
+            canUnarchive={bulkActionState.canUnarchive}
+            canStar={bulkActionState.canStar}
+            canUnstar={bulkActionState.canUnstar}
+            canMarkRead={bulkActionState.canMarkRead}
+            canMarkUnread={bulkActionState.canMarkUnread}
+            onArchiveAllFiltered={
+              hasFilters ? handleArchiveAllFiltered : undefined
+            }
+            archivableFilteredCount={archivableFilteredCount}
+          />
+        </div>
+      </main>
+    </MainContent>
   );
 }

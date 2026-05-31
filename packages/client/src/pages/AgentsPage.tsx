@@ -4,7 +4,7 @@ import { PageHeader } from "../components/PageHeader";
 import { ThinkingIndicator } from "../components/ThinkingIndicator";
 import { type ProcessInfo, useProcesses } from "../hooks/useProcesses";
 import { useI18n } from "../i18n";
-import { useNavigationLayout } from "../layouts";
+import { MainContent, useNavigationLayout } from "../layouts";
 
 /**
  * Format uptime duration from start time to now.
@@ -213,88 +213,76 @@ export function AgentsPage() {
   const idleProcesses = processes.filter((p) => p.state === "idle");
 
   return (
-    <div
-      className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
-    >
-      <div
-        className={
-          isWideScreen
-            ? "main-content-constrained"
-            : "main-content-mobile-inner"
-        }
-      >
-        <PageHeader
-          title={t("agentsTitle" as never)}
-          onOpenSidebar={openSidebar}
-        />
+    <MainContent isWideScreen={isWideScreen}>
+      <PageHeader
+        title={t("agentsTitle" as never)}
+        onOpenSidebar={openSidebar}
+      />
 
-        <main className="page-scroll-container">
-          <div className="page-content-inner">
-            {loading && (
-              <p className="loading">{t("agentsLoading" as never)}</p>
-            )}
+      <main className="page-scroll-container">
+        <div className="page-content-inner">
+          {loading && <p className="loading">{t("agentsLoading" as never)}</p>}
 
-            {error && (
-              <p className="error">
-                {t("agentsError" as never, { message: error.message })}
-              </p>
-            )}
+          {error && (
+            <p className="error">
+              {t("agentsError" as never, { message: error.message })}
+            </p>
+          )}
 
-            {!loading && !error && (
-              <>
-                <section className="agents-section">
-                  <h2>{t("agentsSectionActive" as never)}</h2>
-                  {activeProcesses.length === 0 ? (
-                    <p className="agents-empty">
-                      {t("agentsEmptyActive" as never)}
-                    </p>
-                  ) : (
-                    <div className="agents-list">
-                      {activeProcesses.map((process) => (
-                        <ProcessCard key={process.id} process={process} />
-                      ))}
-                    </div>
-                  )}
-                </section>
+          {!loading && !error && (
+            <>
+              <section className="agents-section">
+                <h2>{t("agentsSectionActive" as never)}</h2>
+                {activeProcesses.length === 0 ? (
+                  <p className="agents-empty">
+                    {t("agentsEmptyActive" as never)}
+                  </p>
+                ) : (
+                  <div className="agents-list">
+                    {activeProcesses.map((process) => (
+                      <ProcessCard key={process.id} process={process} />
+                    ))}
+                  </div>
+                )}
+              </section>
 
-                <section className="agents-section">
-                  <h2>{t("agentsSectionIdle" as never)}</h2>
-                  {idleProcesses.length === 0 ? (
-                    <p className="agents-empty">
-                      {t("agentsEmptyIdle" as never)}
-                    </p>
-                  ) : (
-                    <div className="agents-list">
-                      {idleProcesses.map((process) => (
-                        <ProcessCard key={process.id} process={process} />
-                      ))}
-                    </div>
-                  )}
-                </section>
+              <section className="agents-section">
+                <h2>{t("agentsSectionIdle" as never)}</h2>
+                {idleProcesses.length === 0 ? (
+                  <p className="agents-empty">
+                    {t("agentsEmptyIdle" as never)}
+                  </p>
+                ) : (
+                  <div className="agents-list">
+                    {idleProcesses.map((process) => (
+                      <ProcessCard key={process.id} process={process} />
+                    ))}
+                  </div>
+                )}
+              </section>
 
-                <section className="agents-section">
-                  <h2>{t("agentsSectionStopped" as never)}</h2>
-                  {terminatedProcesses.length === 0 ? (
-                    <p className="agents-empty">
-                      {t("agentsEmptyStopped" as never)}
-                    </p>
-                  ) : (
-                    <div className="agents-list">
-                      {terminatedProcesses.map((process) => (
-                        <ProcessCard
-                          key={process.id}
-                          process={process}
-                          isTerminated
-                        />
-                      ))}
-                    </div>
-                  )}
-                </section>
-              </>
-            )}
-          </div>
-        </main>
-      </div>
-    </div>
+              <section className="agents-section">
+                <h2>{t("agentsSectionStopped" as never)}</h2>
+                {terminatedProcesses.length === 0 ? (
+                  <p className="agents-empty">
+                    {t("agentsEmptyStopped" as never)}
+                  </p>
+                ) : (
+                  <div className="agents-list">
+                    {terminatedProcesses.map((process) => (
+                      <ProcessCard
+                        key={process.id}
+                        process={process}
+                        isTerminated
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+        </div>
+      </main>
+    </MainContent>
   );
 }

@@ -38,6 +38,9 @@ jobs:
       - name: Run type checking
         run: pnpm typecheck
 
+      - name: Install Playwright browser
+        run: pnpm -F @yep-anywhere/client exec playwright install chromium
+
       - name: Run tests
         run: pnpm test
 

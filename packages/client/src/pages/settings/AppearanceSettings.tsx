@@ -48,9 +48,39 @@ export function AppearanceSettings() {
     description: string;
   }> = [
     {
+      key: "modeSelector",
+      title: t("appearanceToolbarModeTitle"),
+      description: t("appearanceToolbarModeDescription"),
+    },
+    {
+      key: "attachments",
+      title: t("appearanceToolbarAttachmentsTitle"),
+      description: t("appearanceToolbarAttachmentsDescription"),
+    },
+    {
       key: "slashMenu",
       title: t("appearanceToolbarSlashTitle"),
       description: t("appearanceToolbarSlashDescription"),
+    },
+    {
+      key: "thinkingToggle",
+      title: t("appearanceToolbarThinkingTitle"),
+      description: t("appearanceToolbarThinkingDescription"),
+    },
+    {
+      key: "renderMode",
+      title: t("appearanceToolbarRenderModeTitle"),
+      description: t("appearanceToolbarRenderModeDescription"),
+    },
+    {
+      key: "nudge",
+      title: t("appearanceToolbarNudgeTitle"),
+      description: t("appearanceToolbarNudgeDescription"),
+    },
+    {
+      key: "microphone",
+      title: t("appearanceToolbarMicrophoneTitle"),
+      description: t("appearanceToolbarMicrophoneDescription"),
     },
     {
       key: "modelIndicator",
@@ -58,9 +88,14 @@ export function AppearanceSettings() {
       description: t("appearanceToolbarModelDescription"),
     },
     {
-      key: "microphone",
-      title: t("appearanceToolbarMicrophoneTitle"),
-      description: t("appearanceToolbarMicrophoneDescription"),
+      key: "sessionStatus",
+      title: t("appearanceToolbarStatusTitle"),
+      description: t("appearanceToolbarStatusDescription"),
+    },
+    {
+      key: "shortcutsHelp",
+      title: t("appearanceToolbarShortcutsTitle"),
+      description: t("appearanceToolbarShortcutsDescription"),
     },
     {
       key: "contextUsage",
@@ -73,19 +108,9 @@ export function AppearanceSettings() {
       description: t("appearanceToolbarBtwDescription"),
     },
     {
-      key: "nudge",
-      title: t("appearanceToolbarNudgeTitle"),
-      description: t("appearanceToolbarNudgeDescription"),
-    },
-    {
       key: "queueControls",
       title: t("appearanceToolbarQueueTitle"),
       description: t("appearanceToolbarQueueDescription"),
-    },
-    {
-      key: "sessionStatus",
-      title: t("appearanceToolbarStatusTitle"),
-      description: t("appearanceToolbarStatusDescription"),
     },
   ];
 

@@ -21,14 +21,14 @@ const PREVIEW_CONTEXT_USAGE: ContextUsage = {
 
 const PREVIEW_SPEECH_METHODS: FilterOption<SpeechMethodId>[] = [
   {
-    value: "ya-deepgram",
-    label: "YA Deepgram",
-    description: "Server-routed transcription through YA.",
-  },
-  {
     value: "browser-native",
     label: "Browser",
     description: "Runs in the browser.",
+  },
+  {
+    value: "server-preview",
+    label: "Server",
+    description: "Server-routed transcription.",
   },
 ];
 
@@ -119,7 +119,7 @@ export function SessionToolbarPreview() {
         speechControl={{
           showMethodSelector: true,
           methodOptions: PREVIEW_SPEECH_METHODS,
-          selectedMethod: "ya-deepgram",
+          selectedMethod: "browser-native",
           onMethodChange: noop,
           voiceButton: {
             kind: "preview",

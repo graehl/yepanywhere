@@ -480,13 +480,19 @@ export function MessageInputToolbarView({
 }: MessageInputToolbarViewProps) {
   const shortcutsPopoverOpen =
     shortcutsControl.open || shortcutsControl.isearchScope !== null;
-  const showToolbarStatus = statusControl?.showToolbarStatus ?? false;
+  const showToolbarStatus =
+    visibility.sessionStatus && (statusControl?.showToolbarStatus ?? false);
   const showLivenessChip = statusControl?.showLivenessChip ?? false;
   const livenessDisplay = statusControl?.livenessDisplay ?? null;
   const showLastActivityChip = statusControl?.showLastActivityChip ?? false;
   const showSendButton = !!actionsControl.send?.onSend;
   const showStopButton = !!actionsControl.stop;
-  const showSpeechMethodSelector = !!speechControl?.showMethodSelector;
+  const showSpeechMethodSelector =
+    visibility.microphone && !!speechControl?.showMethodSelector;
+  const showModelIndicator =
+    visibility.modelIndicator &&
+    !!modelControl &&
+    modelControl.density !== "hidden";
   const selectedSpeechMethod = speechControl?.selectedMethod;
 
   return (
@@ -495,7 +501,7 @@ export function MessageInputToolbarView({
       className={`message-input-toolbar${isCompactStatusMode ? " status-floats" : ""}`}
     >
       <div ref={refs?.left} className="message-input-left">
-        {modeControl && (
+        {visibility.modeSelector && modeControl && (
           <ModeSelector
             mode={modeControl.mode}
             onModeChange={modeControl.onModeChange}
@@ -504,34 +510,36 @@ export function MessageInputToolbarView({
             onHoldChange={modeControl.onHoldChange}
           />
         )}
-        <button
-          type="button"
-          className="attach-button"
-          onClick={attachmentControl.onAttachClick}
-          disabled={!attachmentControl.canAttach}
-          title={
-            attachmentControl.canAttach
-              ? t("toolbarAttachFiles")
-              : t("toolbarAttachDisabled")
-          }
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            aria-hidden="true"
+        {visibility.attachments && (
+          <button
+            type="button"
+            className="attach-button"
+            onClick={attachmentControl.onAttachClick}
+            disabled={!attachmentControl.canAttach}
+            title={
+              attachmentControl.canAttach
+                ? t("toolbarAttachFiles")
+                : t("toolbarAttachDisabled")
+            }
           >
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-          </svg>
-          {attachmentControl.attachmentCount > 0 && (
-            <span className="attach-count">
-              {attachmentControl.attachmentCount}
-            </span>
-          )}
-        </button>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+            {attachmentControl.attachmentCount > 0 && (
+              <span className="attach-count">
+                {attachmentControl.attachmentCount}
+              </span>
+            )}
+          </button>
+        )}
         {visibility.slashMenu && slashControl && (
           <SlashCommandButton
             commands={slashControl.commands}
@@ -539,7 +547,7 @@ export function MessageInputToolbarView({
             disabled={slashControl.disabled}
           />
         )}
-        {thinkingControl && (
+        {visibility.thinkingToggle && thinkingControl && (
           <button
             type="button"
             className={`thinking-toggle-button ${thinkingControl.mode !== "off" ? `active ${thinkingControl.mode}` : ""}`}
@@ -595,7 +603,7 @@ export function MessageInputToolbarView({
             </svg>
           </button>
         )}
-        {renderModeControl && (
+        {visibility.renderMode && renderModeControl && (
           <button
             type="button"
             className={`render-mode-toolbar-button ${
@@ -688,7 +696,7 @@ export function MessageInputToolbarView({
               speechMethod={speechControl.voiceButton.speechMethod}
             />
           )}
-        {modelControl && modelControl.density !== "hidden" && (
+        {showModelIndicator && (
           <button
             type="button"
             ref={refs?.modelButton}
@@ -774,205 +782,209 @@ export function MessageInputToolbarView({
             </span>
           </button>
         )}
-        {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer leave only hides the adjacent shortcuts popover */}
-        <div
-          className="session-shortcuts-help"
-          onMouseLeave={() => {
-            if (shortcutsControl.isearchScope === null) {
-              shortcutsControl.setOpen(false);
-            }
-          }}
-        >
-          <button
-            type="button"
-            className="session-shortcuts-help-button"
-            aria-label="Session keyboard shortcuts"
-            aria-expanded={shortcutsPopoverOpen}
-            onClick={() => shortcutsControl.setOpen((open) => !open)}
-            onFocus={() => shortcutsControl.setOpen(true)}
-            onBlur={(event) => {
-              if (
-                shortcutsControl.isearchScope === null &&
-                !event.currentTarget.parentElement?.contains(
-                  event.relatedTarget as Node | null,
-                )
-              ) {
+        {visibility.shortcutsHelp && (
+          // biome-ignore lint/a11y/noStaticElementInteractions: pointer leave only hides the adjacent shortcuts popover
+          <div
+            className="session-shortcuts-help"
+            onMouseLeave={() => {
+              if (shortcutsControl.isearchScope === null) {
                 shortcutsControl.setOpen(false);
               }
             }}
-            onMouseEnter={() => shortcutsControl.setOpen(true)}
           >
-            ?
-          </button>
-          {shortcutsPopoverOpen && (
-            <div
-              className={`session-shortcuts-popover ${
-                shortcutsControl.isearchScope !== null ? "is-isearch-guide" : ""
-              }`}
-              role="tooltip"
+            <button
+              type="button"
+              className="session-shortcuts-help-button"
+              aria-label="Session keyboard shortcuts"
+              aria-expanded={shortcutsPopoverOpen}
+              onClick={() => shortcutsControl.setOpen((open) => !open)}
+              onFocus={() => shortcutsControl.setOpen(true)}
+              onBlur={(event) => {
+                if (
+                  shortcutsControl.isearchScope === null &&
+                  !event.currentTarget.parentElement?.contains(
+                    event.relatedTarget as Node | null,
+                  )
+                ) {
+                  shortcutsControl.setOpen(false);
+                }
+              }}
+              onMouseEnter={() => shortcutsControl.setOpen(true)}
             >
-              {shortcutsControl.isearchScope !== null ? (
-                <>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>
-                        {shortcutsControl.isearchScope === "all" ? "S" : "R"}
-                      </kbd>
-                      {shortcutsControl.isearchScope === "user" && (
-                        <>
-                          <span>or</span>
-                          <kbd>Ctrl</kbd>
-                          <kbd>Alt</kbd>
-                          <kbd>R</kbd>
-                        </>
-                      )}
-                    </span>
-                    <span>Previous match</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Enter</kbd>
-                    </span>
-                    <span>Jump</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Esc</kbd>
-                    </span>
-                    <span>Cancel / restore focus</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>End</kbd>
-                    </span>
-                    <span>Scroll to current</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>
-                        {shortcutsControl.isearchScope === "all" ? "R" : "S"}
-                      </kbd>
-                      {shortcutsControl.isearchScope === "all" && (
-                        <>
-                          <span>or</span>
-                          <kbd>Ctrl</kbd>
-                          <kbd>Alt</kbd>
-                          <kbd>R</kbd>
-                        </>
-                      )}
-                    </span>
-                    <span>
-                      {shortcutsControl.isearchScope === "all"
-                        ? "User turns"
-                        : "All turns"}
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>R</kbd>
-                      <span>or</span>
-                      <kbd>Ctrl</kbd>
-                      <kbd>Alt</kbd>
-                      <kbd>R</kbd>
-                    </span>
-                    <span>User-turn reverse search</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>S</kbd>
-                    </span>
-                    <span>All-turn reverse search</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Enter</kbd>
-                    </span>
-                    <span>
-                      {shortcutsControl.hasDualActions
-                        ? "Steer current turn"
-                        : "Send"}
-                    </span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Shift</kbd>
-                      <kbd>Enter</kbd>
-                    </span>
-                    <span>New line</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>Enter</kbd>
-                    </span>
-                    <span>
-                      {shortcutsControl.showPatientQueueMode
-                        ? `${shortcutsControl.queueModeLabel} while agent runs`
-                        : "Queue while agent runs"}
-                    </span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>B</kbd>
-                    </span>
-                    <span>Start /btw aside</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Esc</kbd>
-                    </span>
-                    <span>Stop agent / cancel overlay</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>P</kbd>
-                    </span>
-                    <span>Recall last sent text</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>K</kbd>
-                    </span>
-                    <span>Cancel latest queued message</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>End</kbd>
-                    </span>
-                    <span>Scroll to current</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>G</kbd>
-                    </span>
-                    <span>Clear composer</span>
-                  </div>
-                  <div className="session-shortcuts-row">
-                    <span className="session-shortcuts-keys">
-                      <kbd>Ctrl</kbd>
-                      <kbd>Shift</kbd>
-                      <kbd>M</kbd>
-                    </span>
-                    <span>Rendered/source mode</span>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
+              ?
+            </button>
+            {shortcutsPopoverOpen && (
+              <div
+                className={`session-shortcuts-popover ${
+                  shortcutsControl.isearchScope !== null
+                    ? "is-isearch-guide"
+                    : ""
+                }`}
+                role="tooltip"
+              >
+                {shortcutsControl.isearchScope !== null ? (
+                  <>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>
+                          {shortcutsControl.isearchScope === "all" ? "S" : "R"}
+                        </kbd>
+                        {shortcutsControl.isearchScope === "user" && (
+                          <>
+                            <span>or</span>
+                            <kbd>Ctrl</kbd>
+                            <kbd>Alt</kbd>
+                            <kbd>R</kbd>
+                          </>
+                        )}
+                      </span>
+                      <span>Previous match</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Enter</kbd>
+                      </span>
+                      <span>Jump</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Esc</kbd>
+                      </span>
+                      <span>Cancel / restore focus</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>End</kbd>
+                      </span>
+                      <span>Scroll to current</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>
+                          {shortcutsControl.isearchScope === "all" ? "R" : "S"}
+                        </kbd>
+                        {shortcutsControl.isearchScope === "all" && (
+                          <>
+                            <span>or</span>
+                            <kbd>Ctrl</kbd>
+                            <kbd>Alt</kbd>
+                            <kbd>R</kbd>
+                          </>
+                        )}
+                      </span>
+                      <span>
+                        {shortcutsControl.isearchScope === "all"
+                          ? "User turns"
+                          : "All turns"}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>R</kbd>
+                        <span>or</span>
+                        <kbd>Ctrl</kbd>
+                        <kbd>Alt</kbd>
+                        <kbd>R</kbd>
+                      </span>
+                      <span>User-turn reverse search</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>S</kbd>
+                      </span>
+                      <span>All-turn reverse search</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Enter</kbd>
+                      </span>
+                      <span>
+                        {shortcutsControl.hasDualActions
+                          ? "Steer current turn"
+                          : "Send"}
+                      </span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Shift</kbd>
+                        <kbd>Enter</kbd>
+                      </span>
+                      <span>New line</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>Enter</kbd>
+                      </span>
+                      <span>
+                        {shortcutsControl.showPatientQueueMode
+                          ? `${shortcutsControl.queueModeLabel} while agent runs`
+                          : "Queue while agent runs"}
+                      </span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>B</kbd>
+                      </span>
+                      <span>Start /btw aside</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Esc</kbd>
+                      </span>
+                      <span>Stop agent / cancel overlay</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>P</kbd>
+                      </span>
+                      <span>Recall last sent text</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>K</kbd>
+                      </span>
+                      <span>Cancel latest queued message</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>End</kbd>
+                      </span>
+                      <span>Scroll to current</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>G</kbd>
+                      </span>
+                      <span>Clear composer</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>Shift</kbd>
+                        <kbd>M</kbd>
+                      </span>
+                      <span>Rendered/source mode</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         {visibility.contextUsage && (
           <ContextUsageIndicator
             usage={actionsControl.contextUsage}

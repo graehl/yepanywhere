@@ -16,6 +16,9 @@ Progress:
 - [x] 2026-05-31: Refactored the session toolbar into a smart wrapper plus
   `MessageInputToolbarView`, then replaced the hand-rolled Appearance preview
   with an inert `SessionToolbarPreview` using mock toolbar data.
+- [x] 2026-05-31: Expanded visibility to the remaining optional toolbar
+  controls: mode selector, attachments, thinking toggle, render/source toggle,
+  and shortcuts help.
 
 ## Context
 
@@ -54,14 +57,19 @@ underlying capability.
 
 ## Planned Toolbar Visibility Keys
 
+- Mode selector.
+- Attachments.
 - Slash menu.
-- Model indicator.
+- Thinking toggle.
+- Render/source mode toggle.
+- Nudge toolbar button.
 - Microphone and speech-method selector.
+- Model indicator.
+- Session status/liveness chips.
+- Shortcuts help.
 - Context usage.
 - `/btw` toolbar button.
-- Nudge toolbar button.
 - Queue buttons and queue-mode toggle.
-- Session status/liveness chips.
 
 ## Non-Goals
 
@@ -103,13 +111,18 @@ underlying capability.
 - Read the visibility hook inside `MessageInputToolbar` so both the normal
   composer toolbar and approval toolbar use the same preference.
 - Hide low-risk chrome based on the visibility model:
+  - mode selector;
+  - attachments;
   - slash menu;
-  - model indicator;
+  - thinking toggle;
+  - render/source mode toggle;
+  - nudge button;
   - microphone and speech-method selector;
+  - model indicator;
+  - session status/liveness chips;
+  - shortcuts help;
   - context usage;
   - `/btw` button;
-  - nudge button;
-  - session status/liveness chips;
   - secondary queue buttons/toggle.
 - Keep primary send/steer/queue behavior intact.
 
@@ -167,6 +180,9 @@ Current state:
   callbacks inside an inert preview wrapper.
 - The preview intentionally uses a microphone button shell instead of mounting
   `VoiceInputButton`, so it does not initialize speech-recognition hooks.
+- The preview uses neutral speech mock labels. Product/backend names such as
+  Deepgram should only appear when they come from actual configured capability
+  data, not from hard-coded preview fixtures.
 
 ### 5. Follow-On Behavior Choices
 
@@ -203,3 +219,6 @@ Latest verification:
   confirmed the preview renders `.message-input-toolbar` with the expected
   control order, and that toggling Slash Menu hides/restores the preview slash
   button.
+- 2026-05-31 follow-up: Playwright smoke check confirmed disabling all
+  optional visibility keys leaves only the primary action in the preview, and
+  the default preview no longer hard-codes `YA Deepgram`.

@@ -2,9 +2,14 @@ import { useCallback, useSyncExternalStore } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
 
 export interface SessionToolbarVisibility {
+  modeSelector: boolean;
+  attachments: boolean;
   slashMenu: boolean;
+  thinkingToggle: boolean;
+  renderMode: boolean;
   modelIndicator: boolean;
   microphone: boolean;
+  shortcutsHelp: boolean;
   contextUsage: boolean;
   btw: boolean;
   nudge: boolean;
@@ -15,9 +20,14 @@ export interface SessionToolbarVisibility {
 export type SessionToolbarVisibilityKey = keyof SessionToolbarVisibility;
 
 export const DEFAULT_SESSION_TOOLBAR_VISIBILITY: SessionToolbarVisibility = {
+  modeSelector: true,
+  attachments: true,
   slashMenu: true,
+  thinkingToggle: true,
+  renderMode: true,
   modelIndicator: true,
   microphone: true,
+  shortcutsHelp: true,
   contextUsage: true,
   btw: true,
   nudge: true,

@@ -77,6 +77,28 @@ vi.mock("../../hooks/useModelSettings", () => ({
   }),
 }));
 
+vi.mock("../../hooks/useSessionToolbarVisibility", () => ({
+  useSessionToolbarVisibility: () => ({
+    visibility: {
+      modeSelector: true,
+      attachments: true,
+      slashMenu: true,
+      thinkingToggle: true,
+      renderMode: true,
+      modelIndicator: true,
+      microphone: true,
+      shortcutsHelp: true,
+      contextUsage: true,
+      btw: true,
+      nudge: true,
+      queueControls: true,
+      sessionStatus: true,
+    },
+    setControlVisible: vi.fn(),
+    resetVisibility: vi.fn(),
+  }),
+}));
+
 vi.mock("../../hooks/useVersion", () => ({
   useVersion: () => ({
     version: versionState.version,

@@ -174,6 +174,7 @@ export default async function globalSetup() {
           RELAY_PORT: "0", // Auto-assign port
           RELAY_PORT_FILE: RELAY_PORT_FILE,
           RELAY_DATA_DIR: relayDataDir,
+          RELAY_ALLOWED_ORIGINS: "*",
           RELAY_LOG_LEVEL: "warn", // Reduce noise, port comes from file
           RELAY_LOG_TO_FILE: "false",
         },

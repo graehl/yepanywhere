@@ -429,7 +429,6 @@ export const UserPromptBlock = memo(function UserPromptBlock({
       <div className="user-prompt-container">
         <div
           className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}`}
-          tabIndex={0}
         >
           <div className="message-content">
             <UserPromptText text={text} />
@@ -482,7 +481,6 @@ export const UserPromptBlock = memo(function UserPromptBlock({
     <div className="user-prompt-container">
       <div
         className={`message message-user-prompt ${onCorrect ? "user-prompt-correctable" : ""}`}
-        tabIndex={0}
       >
         <div className="message-content">
           <UserPromptText text={text} />

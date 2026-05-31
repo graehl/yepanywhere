@@ -2890,10 +2890,6 @@ a.sidebar-nav-item {
   position: relative;
 }
 
-.message-render-row.has-message-age {
-  padding-bottom: 1rem;
-}
-
 .message-render-content {
   min-width: 0;
 }
@@ -2917,26 +2913,17 @@ a.sidebar-nav-item {
   white-space: nowrap;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .message-render-row.has-message-age:hover .message-age,
-  .message-render-row.has-message-age:focus-within .message-age {
-    opacity: 0.78;
-  }
+.message-render-row.has-message-age:not(.is-message-age-visible) .message-age {
+  display: none;
+}
+
+.message-render-row.is-message-age-visible {
+  padding-bottom: 1rem;
 }
 
 .message-render-row.is-message-age-visible .message-age {
   color: color-mix(in srgb, var(--warning-color) 70%, var(--text-dimmed));
   opacity: 0.9;
-}
-
-@media (hover: none), (pointer: coarse) {
-  .message-render-row.has-message-age:not(.is-message-age-visible) {
-    padding-bottom: 0;
-  }
-
-  .message-render-row.has-message-age:not(.is-message-age-visible) .message-age {
-    display: none;
-  }
 }
 
 .message-content {

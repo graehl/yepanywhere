@@ -1021,11 +1021,34 @@ export function createApp(options: AppOptions): AppResult {
       return body.session ?? null;
     };
 
+    const fetchPublicShareProjectFile = async (
+      projectId: UrlProjectId,
+      filePath: string,
+      fileOptions: { download?: boolean; highlight?: boolean; raw?: boolean },
+    ): Promise<Response> => {
+      const searchParams = new URLSearchParams({ path: filePath });
+      if (fileOptions.highlight) {
+        searchParams.set("highlight", "true");
+      }
+      if (fileOptions.download) {
+        searchParams.set("download", "true");
+      }
+      const route = fileOptions.raw ? "files/raw" : "files";
+      return await app.fetch(
+        new Request(
+          `http://127.0.0.1/api/projects/${projectId}/${route}?${searchParams}`,
+          { headers: { "X-Yep-Anywhere": "true" } },
+        ),
+        { [WS_INTERNAL_AUTHENTICATED]: true },
+      );
+    };
+
     const publicShareDeps = {
       publicShareService: options.publicShareService,
       loadSession: loadPublicShareSession,
       loadSessionUpdatedAt: loadPublicShareSessionUpdatedAt,
       loadSessionSummary: loadPublicShareSessionSummary,
+      fetchProjectFile: fetchPublicShareProjectFile,
       getRelayConfig: () =>
         options.remoteAccessService?.getRelayConfig() ?? null,
       getPublicSharesEnabled: () =>

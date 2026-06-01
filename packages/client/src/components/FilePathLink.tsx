@@ -1,6 +1,10 @@
 import { fromUrlProjectId, isUrlProjectId } from "@yep-anywhere/shared";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+  buildPublicShareFileHref,
+  usePublicShareContext,
+} from "../contexts/PublicShareContext";
 import { FileViewer } from "./FileViewer";
 
 interface FilePathLinkProps {
@@ -79,25 +83,34 @@ export const FilePathLink = memo(function FilePathLink({
   displayText,
   showFullPath = false,
 }: FilePathLinkProps) {
+  const publicShareContext = usePublicShareContext();
   const [showModal, setShowModal] = useState(false);
   const viewerFilePath = useMemo(
     () => getProjectViewerFilePath(projectId, filePath),
     [projectId, filePath],
   );
-  const fileViewUrl = getProjectFileViewUrl(
-    projectId,
-    viewerFilePath,
-    lineNumber,
-  );
+  const publicShareFileViewUrl = publicShareContext
+    ? buildPublicShareFileHref(publicShareContext, {
+        columnNumber,
+        filePath: viewerFilePath,
+        lineNumber,
+      })
+    : null;
+  const fileViewUrl =
+    publicShareFileViewUrl ??
+    getProjectFileViewUrl(projectId, viewerFilePath, lineNumber);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
+    if (publicShareFileViewUrl) {
+      return;
+    }
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
       return;
     }
     e.preventDefault();
     e.stopPropagation();
     setShowModal(true);
-  }, []);
+  }, [publicShareFileViewUrl]);
 
   const handleClose = useCallback(() => {
     setShowModal(false);

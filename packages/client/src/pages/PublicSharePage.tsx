@@ -3,7 +3,6 @@ import {
   sanitizeSessionTitle,
   type PublicSessionShareMode,
   type PublicSessionShareResponse,
-  type RelayResponse,
   normalizeRelayUrl,
 } from "@yep-anywhere/shared";
 import {
@@ -13,17 +12,23 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { BrandWordmark } from "../components/BrandWordmark";
 import { MessageList } from "../components/MessageList";
 import { ViewerCountIndicator } from "../components/ViewerCountIndicator";
+import {
+  PublicShareProvider,
+  rewritePublicShareLocalAppHref,
+  rewritePublicShareLocalAppLinks,
+  type PublicShareContextValue,
+} from "../contexts/PublicShareContext";
 import { SchemaValidationProvider } from "../contexts/SchemaValidationContext";
 import { SessionMetadataProvider } from "../contexts/SessionMetadataContext";
 import { StreamingMarkdownProvider } from "../contexts/StreamingMarkdownContext";
 import { ToastProvider } from "../contexts/ToastContext";
 import { useI18n } from "../i18n";
+import { fetchPublicShareViaRelay } from "../lib/publicShareRelay";
 import type { Message } from "../types";
 
 const LIVE_POLL_MS = 2000;
@@ -38,13 +43,6 @@ interface PublicShareHints {
   mode: PublicSessionShareMode | null;
   projectName: string | null;
   title: string | null;
-}
-
-function generateRequestId(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function generateViewerId(): string {
@@ -73,108 +71,6 @@ function getPublicShareViewerId(): string {
   } catch {
     return generateViewerId();
   }
-}
-
-async function decodeWebSocketData(data: MessageEvent["data"]): Promise<string> {
-  if (typeof data === "string") {
-    return data;
-  }
-  if (data instanceof Blob) {
-    return await data.text();
-  }
-  if (data instanceof ArrayBuffer) {
-    return new TextDecoder().decode(data);
-  }
-  return String(data);
-}
-
-async function fetchPublicShareViaRelay(options: {
-  afterMessageId?: string;
-  relayUrl: string;
-  relayUsername: string;
-  secret: string;
-  viewerId: string;
-}): Promise<PublicSessionShareResponse> {
-  const { afterMessageId, relayUrl, relayUsername, secret, viewerId } = options;
-  const ws = new WebSocket(relayUrl);
-  const requestId = generateRequestId();
-
-  return await new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      ws.close();
-      reject(new Error("Share request timed out"));
-    }, 30000);
-
-    const cleanup = () => {
-      window.clearTimeout(timeout);
-      ws.onopen = null;
-      ws.onmessage = null;
-      ws.onerror = null;
-      ws.onclose = null;
-    };
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "client_connect", username: relayUsername }));
-    };
-
-    ws.onerror = () => {
-      cleanup();
-      reject(new Error("Relay connection failed"));
-    };
-
-    ws.onclose = () => {
-      cleanup();
-      reject(new Error("Relay connection closed"));
-    };
-
-    ws.onmessage = (event) => {
-      void (async () => {
-        let message: unknown;
-        try {
-          message = JSON.parse(await decodeWebSocketData(event.data));
-        } catch {
-          return;
-        }
-
-        if (
-          message &&
-          typeof message === "object" &&
-          (message as { type?: unknown }).type === "client_connected"
-        ) {
-          const shareParams = new URLSearchParams({ viewerId });
-          if (afterMessageId) {
-            shareParams.set("afterMessageId", afterMessageId);
-          }
-          ws.send(
-            JSON.stringify({
-              type: "request",
-              id: requestId,
-              method: "GET",
-              path: `/public-api/shares/${encodeURIComponent(secret)}?${shareParams.toString()}`,
-              headers: {},
-            }),
-          );
-          return;
-        }
-
-        if (
-          message &&
-          typeof message === "object" &&
-          (message as RelayResponse).type === "response" &&
-          (message as RelayResponse).id === requestId
-        ) {
-          const response = message as RelayResponse;
-          cleanup();
-          ws.close();
-          if (response.status >= 400) {
-            reject(new Error("Share not found"));
-            return;
-          }
-          resolve(response.body as PublicSessionShareResponse);
-        }
-      })();
-    };
-  });
 }
 
 function parseShareHints(hash: string): PublicShareHints {
@@ -360,6 +256,17 @@ export function PublicSharePage() {
     }
   }, [searchParams]);
   const hints = useMemo(() => parseShareHints(window.location.hash), []);
+  const publicShareContext = useMemo<PublicShareContextValue | null>(() => {
+    if (!secret || !relayUsername) {
+      return null;
+    }
+    return {
+      projectId: share?.share.source.projectId ?? null,
+      relayUrl: relayConfig.url,
+      relayUsername,
+      secret,
+    };
+  }, [relayConfig.url, relayUsername, secret, share?.share.source.projectId]);
 
   const title = useMemo(
     () =>
@@ -469,20 +376,52 @@ export function PublicSharePage() {
     wasNearBottomRef.current = isNearScrollBottom(scrollElement);
   }, []);
 
-  const handlePublicShareLinkActivation = useCallback(
-    (event: ReactMouseEvent<HTMLElement>) => {
+  useEffect(() => {
+    if (!publicShareContext) {
+      return;
+    }
+
+    const rewriteLinks = () => {
+      rewritePublicShareLocalAppLinks(document.body, publicShareContext);
+    };
+    const handleActivation = (event: MouseEvent) => {
       const anchor = getAnchorFromEventTarget(event.target);
+      if (!anchor) {
+        return;
+      }
       const href = anchor?.getAttribute("href");
-      if (!href || !isPublicShareLocalAppHref(href)) {
+      if (!href) {
+        return;
+      }
+      const rewritten = rewritePublicShareLocalAppHref(
+        href,
+        publicShareContext,
+      );
+      if (rewritten) {
+        anchor.setAttribute("href", rewritten);
+        anchor.setAttribute("data-public-share-file-link", "true");
+        return;
+      }
+      if (!isPublicShareLocalAppHref(href)) {
         return;
       }
 
       event.preventDefault();
       event.stopPropagation();
       setLinkNotice(t("publicShareLocalFileLinksUnavailable"));
-    },
-    [t],
-  );
+    };
+
+    rewriteLinks();
+    const observer = new MutationObserver(rewriteLinks);
+    observer.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener("click", handleActivation, true);
+    document.addEventListener("auxclick", handleActivation, true);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("click", handleActivation, true);
+      document.removeEventListener("auxclick", handleActivation, true);
+    };
+  }, [publicShareContext, t]);
 
   useLayoutEffect(() => {
     const scrollElement = scrollRef.current;
@@ -499,18 +438,21 @@ export function PublicSharePage() {
     }
   }, [share]);
 
-  const messageContent = share ? (
-    <SessionMetadataProvider
-      projectId={share.share.source.projectId}
-      projectPath={null}
-      sessionId={share.share.source.sessionId}
-    >
-      <MessageList
-        messages={share.session.messages as Message[]}
-        provider={share.session.provider}
-      />
-    </SessionMetadataProvider>
-  ) : null;
+  const messageContent =
+    share && publicShareContext ? (
+      <PublicShareProvider value={publicShareContext}>
+        <SessionMetadataProvider
+          projectId={share.share.source.projectId}
+          projectPath={null}
+          sessionId={share.share.source.sessionId}
+        >
+          <MessageList
+            messages={share.session.messages as Message[]}
+            provider={share.session.provider}
+          />
+        </SessionMetadataProvider>
+      </PublicShareProvider>
+    ) : null;
 
   return (
     <main className="public-share-page">
@@ -552,8 +494,6 @@ export function PublicSharePage() {
         className="public-share-scroll"
         ref={scrollRef}
         onScroll={handleScroll}
-        onClickCapture={handlePublicShareLinkActivation}
-        onAuxClickCapture={handlePublicShareLinkActivation}
       >
         <ToastProvider>
           <SchemaValidationProvider>

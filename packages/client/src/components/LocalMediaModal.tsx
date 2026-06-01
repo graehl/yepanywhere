@@ -226,14 +226,14 @@ export function useLocalMediaClick() {
     ) as HTMLAnchorElement | null;
     if (!target) return;
 
-    e.preventDefault();
-    e.stopPropagation();
-
     const href = target.getAttribute("href");
     if (!href) return;
 
     const path = extractPathFromApiUrl(href);
     if (!path) return;
+
+    e.preventDefault();
+    e.stopPropagation();
 
     const mediaType =
       (target.getAttribute("data-media-type") as "image" | "video") ?? "image";

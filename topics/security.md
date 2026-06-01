@@ -20,18 +20,25 @@ YA has several surfaces with different security expectations:
 
 ## Public Share File Access
 
-If public read-only shares gain file or rich-document viewing, that viewer must
-use a share-scoped artifact model instead of accepting arbitrary local paths.
-The public share path must not directly reuse `/api/local-file`,
-`/api/local-image`, or project-file endpoints that are meant for
-local/authenticated YA clients.
+Public read-only shares may open project files through a share-scoped public
+route when the requested path is visible from the shared session content. The
+viewer must not navigate into `/api/local-file`, `/api/local-image`, or
+`/projects/.../file` directly, because those routes are authenticated/local app
+surfaces and cause public viewers to fall into Remote Access login.
 
-A safe public-share file viewer should expose only files that are visible from
-the shared session content:
+The current lightweight route serves only project files whose relative or
+project-root-absolute path is present in the shared transcript. Public clients
+rewrite rendered local/project file links to `/share/:secret/file`, which fetches
+`/public-api/shares/:secret/files` through the same relay and secret used for
+the public session body.
+
+A stronger public-share file viewer should eventually expose only manifest
+entries and render assets captured from shared content:
 
 - A frozen snapshot share should persist an immutable manifest of linked files
   and required render assets at capture time, so later filesystem changes do not
-  change what the link exposes.
+  change what the link exposes. The current route still reads the live project
+  file after checking transcript visibility.
 - A live share may refresh its manifest only from transcript-visible links or
   other deliberate share content, not from arbitrary project paths supplied by
   the public viewer.
@@ -45,8 +52,9 @@ The design point is intentionally narrower than "the user could ask the agent to
 cat that file." That argument applies to the authenticated operator, not to an
 unauthenticated public share recipient.
 
-Until that share-scoped artifact model exists, public-share viewers must not
-follow local/authenticated file links into the normal app. Blocking the click
+Until a full manifest exists, public-share viewers must not follow
+local/authenticated file links into the normal app. A share-scoped relay request
+is acceptable for transcript-visible project files; otherwise blocking the click
 with an explicit notice is preferable to falling through to Remote Access login,
 which incorrectly suggests the public viewer should authenticate to read a
 secret-link snapshot.

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SessionToolbarPreview } from "../../components/SessionToolbarPreview";
 import {
   DEFAULT_CONTENT_MAX_WIDTH_PX,
   MAX_CONTENT_MAX_WIDTH_PX,
@@ -13,9 +14,10 @@ import {
   type SessionToolbarVisibilityKey,
   useSessionToolbarVisibility,
 } from "../../hooks/useSessionToolbarVisibility";
+import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewRendering";
 import { useStreamingEnabled } from "../../hooks/useStreamingEnabled";
-import { useTabTitleActivityPreference } from "../../hooks/useTabTitleActivityPreference";
 import { TAB_SIZES, useTabSize } from "../../hooks/useTabSize";
+import { useTabTitleActivityPreference } from "../../hooks/useTabTitleActivityPreference";
 import { THEMES, useTheme } from "../../hooks/useTheme";
 import { SUPPORTED_LOCALES, useI18n } from "../../i18n";
 import {
@@ -24,7 +26,6 @@ import {
   getTabSizeLabel,
   getThemeLabel,
 } from "../../i18n-settings";
-import { SessionToolbarPreview } from "../../components/SessionToolbarPreview";
 
 export function AppearanceSettings() {
   const { locale, setLocale, t } = useI18n();
@@ -36,6 +37,8 @@ export function AppearanceSettings() {
   );
   const { theme, setTheme } = useTheme();
   const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
+  const { stableToolPreviewRendering, setStableToolPreviewRendering } =
+    useStableToolPreviewRendering();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
   const { floatingActionButtonEnabled, setFloatingActionButtonEnabled } =
     useFloatingActionButtonEnabled();
@@ -260,6 +263,20 @@ export function AppearanceSettings() {
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
+            <strong>{t("appearanceStableToolPreviewTitle")}</strong>
+            <p>{t("appearanceStableToolPreviewDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={stableToolPreviewRendering}
+              onChange={(e) => setStableToolPreviewRendering(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
             <strong>{t("appearanceFunPhrasesTitle")}</strong>
             <p>{t("appearanceFunPhrasesDescription")}</p>
           </div>
@@ -296,9 +313,7 @@ export function AppearanceSettings() {
               <input
                 type="checkbox"
                 checked={tabTitleActivityEnabled}
-                onChange={(e) =>
-                  setTabTitleActivityEnabled(e.target.checked)
-                }
+                onChange={(e) => setTabTitleActivityEnabled(e.target.checked)}
               />
               <span className="toggle-slider" />
             </label>

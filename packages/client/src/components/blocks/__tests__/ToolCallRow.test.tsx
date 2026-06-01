@@ -1,11 +1,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
+import { setStableToolPreviewRenderingPreference } from "../../../hooks/useStableToolPreviewRendering";
 import { I18nProvider } from "../../../i18n";
+import { UI_KEYS } from "../../../lib/storageKeys";
 import {
   DEFERRED_PREVIEW_HEIGHT,
-  ToolCallRow,
   estimateDeferredPreviewHeightPx,
+  ToolCallRow,
 } from "../ToolCallRow";
 
 vi.mock("../../../contexts/SchemaValidationContext", () => ({
@@ -20,6 +22,8 @@ describe("ToolCallRow", () => {
   afterEach(() => {
     cleanup();
     Reflect.deleteProperty(window, "IntersectionObserver");
+    setStableToolPreviewRenderingPreference(false);
+    window.localStorage.removeItem(UI_KEYS.stableToolPreviewRendering);
   });
 
   it("keeps pending Codex command rows collapsed without output preview cards", () => {
@@ -106,12 +110,17 @@ describe("ToolCallRow", () => {
     );
 
     expect(screen.getByText("Ran")).toBeDefined();
-    expect(container.querySelector(".tool-row-collapsed-preview")).not.toBeNull();
+    expect(
+      container.querySelector(".tool-row-collapsed-preview"),
+    ).not.toBeNull();
     expect(screen.getByText("New")).toBeDefined();
-    expect(container.querySelector(".fixed-font-markdown-heading")).toBeTruthy();
+    expect(
+      container.querySelector(".fixed-font-markdown-heading"),
+    ).toBeTruthy();
     expect(container.querySelector("strong")?.textContent).toBe("done");
     expect(
-      container.querySelector(".fixed-font-rendered__content code")?.textContent,
+      container.querySelector(".fixed-font-rendered__content code")
+        ?.textContent,
     ).toBe("dev");
     expect(container.querySelector(".expand-chevron")).toBeNull();
     expect(screen.getAllByText("git diff -- notes.md")).toHaveLength(1);
@@ -127,7 +136,9 @@ describe("ToolCallRow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Expand preview" }));
 
-    expect(container.querySelector(".tool-row-collapsed-preview")).not.toBeNull();
+    expect(
+      container.querySelector(".tool-row-collapsed-preview"),
+    ).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse preview" }));
 
@@ -243,9 +254,7 @@ describe("ToolCallRow", () => {
 
     expect(container.querySelector(".read-text-inline")).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand inline view" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Expand inline view" }));
 
     expect(container.querySelector(".read-text-inline")).not.toBeNull();
 
@@ -297,9 +306,7 @@ describe("ToolCallRow", () => {
     expect(container.querySelector(".edit-collapsed-preview")).not.toBeNull();
     expect(container.querySelector(".edit-result")).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand inline view" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Expand inline view" }));
 
     expect(container.querySelector(".edit-collapsed-preview")).toBeNull();
     expect(container.querySelector(".edit-result")).not.toBeNull();
@@ -375,9 +382,7 @@ describe("ToolCallRow", () => {
         }) as DOMRect;
     }
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand inline view" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Expand inline view" }));
 
     expect(scrollTop).toBe(148);
   });
@@ -423,6 +428,105 @@ describe("ToolCallRow", () => {
     ).toMatch(/px$/);
   });
 
+  it("defers completed Edit previews by default before near-viewport hydration", () => {
+    class DeferredIntersectionObserver {
+      observe = vi.fn();
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+    }
+    Object.defineProperty(window, "IntersectionObserver", {
+      configurable: true,
+      value: DeferredIntersectionObserver,
+    });
+
+    const { container } = render(
+      <ToolCallRow
+        id="tool-deferred-edit"
+        toolName="Edit"
+        toolInput={{
+          file_path: "packages/client/src/file.ts",
+          old_string: "const value = 1;",
+          new_string: "const value = 2;",
+        }}
+        toolResult={{
+          structured: {
+            filePath: "packages/client/src/file.ts",
+            oldString: "const value = 1;",
+            newString: "const value = 2;",
+            originalFile: "const value = 1;\n",
+            replaceAll: false,
+            userModified: false,
+            structuredPatch: [
+              {
+                oldStart: 1,
+                oldLines: 1,
+                newStart: 1,
+                newLines: 1,
+                lines: ["-const value = 1;", "+const value = 2;"],
+              },
+            ],
+          },
+          content: "const value = 2;",
+          isError: false,
+        }}
+        status="complete"
+      />,
+    );
+
+    expect(container.querySelector(".edit-collapsed-preview")).toBeNull();
+    expect(container.querySelector(".tool-row-deferred-preview")).toBeNull();
+  });
+
+  it("renders completed Edit previews immediately when stable preview rendering is enabled", () => {
+    class DeferredIntersectionObserver {
+      observe = vi.fn();
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+    }
+    Object.defineProperty(window, "IntersectionObserver", {
+      configurable: true,
+      value: DeferredIntersectionObserver,
+    });
+    setStableToolPreviewRenderingPreference(true);
+
+    const { container } = render(
+      <ToolCallRow
+        id="tool-stable-edit"
+        toolName="Edit"
+        toolInput={{
+          file_path: "packages/client/src/file.ts",
+          old_string: "const value = 1;",
+          new_string: "const value = 2;",
+        }}
+        toolResult={{
+          structured: {
+            filePath: "packages/client/src/file.ts",
+            oldString: "const value = 1;",
+            newString: "const value = 2;",
+            originalFile: "const value = 1;\n",
+            replaceAll: false,
+            userModified: false,
+            structuredPatch: [
+              {
+                oldStart: 1,
+                oldLines: 1,
+                newStart: 1,
+                newLines: 1,
+                lines: ["-const value = 1;", "+const value = 2;"],
+              },
+            ],
+          },
+          content: "const value = 2;",
+          isError: false,
+        }}
+        status="complete"
+      />,
+    );
+
+    expect(container.querySelector(".tool-row-deferred-preview")).toBeNull();
+    expect(container.querySelector(".edit-collapsed-preview")).not.toBeNull();
+  });
+
   it("estimates deferred Bash preview height from text, width, and max preview cap", () => {
     const short = estimateDeferredPreviewHeightPx({
       toolName: "Bash",
@@ -455,9 +559,7 @@ describe("ToolCallRow", () => {
     expect(wide).not.toBeNull();
     expect(narrow).not.toBeNull();
     expect(narrow as number).toBeGreaterThan(wide as number);
-    expect(narrow as number).toBeLessThanOrEqual(
-      DEFERRED_PREVIEW_HEIGHT.maxPx,
-    );
+    expect(narrow as number).toBeLessThanOrEqual(DEFERRED_PREVIEW_HEIGHT.maxPx);
 
     const huge = estimateDeferredPreviewHeightPx({
       toolName: "Bash",

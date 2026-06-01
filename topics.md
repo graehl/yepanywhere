@@ -1,5 +1,6 @@
 - grok - Grok Build ACP provider integration.
 - predictive-scroll - Tool row on-demand hydration and placeholder sizing.
+- stable-tool-preview-rendering - Browser preference to pre-render tool previews for stable session scrolling.
 - recaps - Away-summary recap UX and simulated-helper configuration.
 - emulated-slash-commands - Provider command aliases and skill-backed fallbacks.
 - glossary - Project vocabulary lookup and regeneration contract.

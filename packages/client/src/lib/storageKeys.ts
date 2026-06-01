@@ -55,6 +55,8 @@ export const UI_KEYS = {
   floatingActionButtonEnabled: "yep-anywhere-floating-action-button-enabled",
   developerMode: "yep-anywhere-developer-mode",
   sessionToolbarVisibility: "yep-anywhere-session-toolbar-visibility",
+  stableToolPreviewRendering:
+    "yep-anywhere-stable-tool-preview-rendering-enabled",
   schemaValidation: "yep-anywhere-schema-validation",
   emulatorMaxFps: "yep-anywhere-emulator-max-fps",
   emulatorMaxWidth: "yep-anywhere-emulator-max-width",

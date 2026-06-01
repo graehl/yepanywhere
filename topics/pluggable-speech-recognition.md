@@ -113,8 +113,10 @@ Backends should implement a common `SpeechBackend` contract:
   server-routed STT over browser-native, with `ya-grok` ranked before
   `ya-deepgram`; browser-native remains the explicit local escape hatch.
 - Server config parses `VOICE_INPUT`, `YA_VOICE_BACKENDS`,
-  `YA_stt__DEEPGRAM_API_KEY`, `YA_stt__XAI_API_KEY`, `WHISPER_MODEL`,
-  `WHISPER_DEVICE`, and `WHISPER_COMPUTE_TYPE`.
+  `YA_stt__DEEPGRAM_API_KEY`, `YA_stt__XAI_API_KEY`, `XAI_API_KEY`,
+  `WHISPER_MODEL`, `WHISPER_DEVICE`, and `WHISPER_COMPUTE_TYPE`.
+  `YA_stt__XAI_API_KEY` takes precedence for `ya-grok`; `XAI_API_KEY` is a
+  convenience fallback that is scrubbed from `process.env` after config load.
 - `SpeechBackendRegistry` supports `ya-dummy`, `ya-deepgram`,
   `ya-grok`, and `ya-whisper`; it validates configured backends and
   exposes enabled ids plus capability metadata to `/api/version`.
@@ -122,10 +124,11 @@ Backends should implement a common `SpeechBackend` contract:
   endpoint and implements xAI's `wss://api.x.ai/v1/stt` streaming endpoint.
   In streaming mode it can enable Smart Turn and pass through xAI word
   timestamps so the client can recognize optional paused end commands.
-  Both cloud backends auto-enable when their YA-scoped key is present
-  (`YA_stt__XAI_API_KEY` for `ya-grok`, `YA_stt__DEEPGRAM_API_KEY` for
-  `ya-deepgram`) because providing a metered key is the operator's explicit
-  opt-in. `ya-grok` is currently the only backend advertising streaming.
+  Both cloud backends auto-enable when their key is present
+  (`YA_stt__XAI_API_KEY` or scrubbed `XAI_API_KEY` for `ya-grok`,
+  `YA_stt__DEEPGRAM_API_KEY` for `ya-deepgram`) because providing a metered key
+  is the operator's explicit opt-in. `ya-grok` is currently the only backend
+  advertising streaming.
 - Deepgram and local faster-whisper backend implementations exist. The local
   Whisper path uses a warm Python worker subprocess around `faster_whisper`.
 - The normal `index.ts` runtime mounts `/api/speech` after

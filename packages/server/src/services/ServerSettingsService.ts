@@ -55,6 +55,8 @@ export interface ServerSettings {
   ollamaSystemPrompt?: string;
   /** Whether to use the full Claude system prompt for Ollama (for large-context models like Qwen3) */
   ollamaUseFullSystemPrompt?: boolean;
+  /** Whether Grok Build may receive the scrubbed ambient XAI_API_KEY. */
+  grokBuildUseXaiApiKey?: boolean;
   /** Whether the device bridge (emulator/device streaming) feature is enabled */
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */
@@ -99,6 +101,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   },
   lifecycleWebhooksEnabled: false,
   lifecycleWebhookDryRun: true,
+  grokBuildUseXaiApiKey: false,
   codexUpdatePolicy: "notify",
 };
 

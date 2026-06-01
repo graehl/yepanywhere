@@ -56,6 +56,8 @@ export interface SettingsRoutesDeps {
   onOllamaSystemPromptChanged?: (prompt: string | undefined) => void;
   /** Callback to apply Ollama full system prompt toggle at runtime */
   onOllamaUseFullSystemPromptChanged?: (enabled: boolean) => void;
+  /** Callback to apply Grok Build XAI_API_KEY opt-in at runtime */
+  onGrokBuildUseXaiApiKeyChanged?: (enabled: boolean) => void;
   /** Public share storage, used to revoke existing shares when disabled */
   publicShareService?: PublicShareService;
 }
@@ -381,6 +383,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     onOllamaUrlChanged,
     onOllamaSystemPromptChanged,
     onOllamaUseFullSystemPromptChanged,
+    onGrokBuildUseXaiApiKeyChanged,
     publicShareService,
   } = deps;
 
@@ -565,6 +568,10 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       updates.ollamaUseFullSystemPrompt = body.ollamaUseFullSystemPrompt;
     }
 
+    if (typeof body.grokBuildUseXaiApiKey === "boolean") {
+      updates.grokBuildUseXaiApiKey = body.grokBuildUseXaiApiKey;
+    }
+
     // Handle deviceBridgeEnabled boolean
     if (typeof body.deviceBridgeEnabled === "boolean") {
       updates.deviceBridgeEnabled = body.deviceBridgeEnabled;
@@ -680,6 +687,12 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       onOllamaUseFullSystemPromptChanged(
         settings.ollamaUseFullSystemPrompt ?? false,
       );
+    }
+    if (
+      "grokBuildUseXaiApiKey" in updates &&
+      onGrokBuildUseXaiApiKeyChanged
+    ) {
+      onGrokBuildUseXaiApiKeyChanged(settings.grokBuildUseXaiApiKey ?? false);
     }
     if (updates.publicSharesEnabled === false && publicShareService) {
       await publicShareService.revokeAllShares();

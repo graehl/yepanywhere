@@ -71,6 +71,7 @@ import { createSessionsRoutes } from "./routes/sessions.js";
 import { createSettingsRoutes } from "./routes/settings.js";
 import { createSharingRoutes } from "./routes/sharing.js";
 import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
+import { grokACPProvider } from "./sdk/providers/grok-acp.js";
 
 import { createLocalFileRoutes } from "./routes/local-file.js";
 import { createLocalImageRoutes } from "./routes/local-image.js";
@@ -888,6 +889,9 @@ export function createApp(options: AppOptions): AppResult {
         },
         onOllamaUseFullSystemPromptChanged: (enabled) => {
           ClaudeOllamaProvider.setUseFullSystemPrompt(enabled);
+        },
+        onGrokBuildUseXaiApiKeyChanged: (enabled) => {
+          grokACPProvider.setUseAmbientXaiApiKey(enabled);
         },
         publicShareService: options.publicShareService,
       }),

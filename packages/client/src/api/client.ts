@@ -1386,6 +1386,8 @@ export interface ServerSettings {
   ollamaSystemPrompt?: string;
   /** Whether to use the full Claude system prompt for Ollama */
   ollamaUseFullSystemPrompt?: boolean;
+  /** Whether Grok Build may receive the server's XAI_API_KEY */
+  grokBuildUseXaiApiKey?: boolean;
   /** Whether the device bridge (emulator/device streaming) feature is enabled */
   deviceBridgeEnabled?: boolean;
   /** Defaults applied when opening the new session form */

@@ -804,6 +804,8 @@
   "providersUseFullPrompt": "Use full Claude system prompt",
   "providersUseFullPromptHint": "For large-context models (Qwen3, etc.)",
   "providersOllamaPromptHint": "System prompt for Ollama models. Leave empty for default.",
+  "providersGrokUseXaiApiKey": "Allow XAI_API_KEY for Grok Build",
+  "providersGrokUseXaiApiKeyHint": "Default off. When enabled, Grok Build can use the XAI_API_KEY captured at server startup, which may switch it to metered API billing.",
   "developmentSectionTitle": "Development",
   "developmentSchemaTitle": "Schema Validation",
   "developmentSchemaDescription": "Validate tool results against expected schemas. Shows toast notifications and logs errors to console.",

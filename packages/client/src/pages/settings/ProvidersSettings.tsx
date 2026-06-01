@@ -505,6 +505,39 @@ function OllamaSystemPromptInput() {
   );
 }
 
+function GrokBuildApiKeySettings() {
+  const { t } = useI18n();
+  const { settings, updateSetting } = useServerSettings();
+  const enabled = settings?.grokBuildUseXaiApiKey ?? false;
+
+  return (
+    <label
+      style={{
+        display: "flex",
+        gap: "var(--space-2)",
+        alignItems: "flex-start",
+        marginTop: "var(--space-2)",
+        cursor: "pointer",
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={enabled}
+        onChange={(event) =>
+          updateSetting("grokBuildUseXaiApiKey", event.target.checked)
+        }
+        style={{ marginTop: "0.2rem" }}
+      />
+      <span>
+        <span>{t("providersGrokUseXaiApiKey")}</span>
+        <span className="settings-hint" style={{ display: "block" }}>
+          {t("providersGrokUseXaiApiKeyHint")}
+        </span>
+      </span>
+    </label>
+  );
+}
+
 function CodexUpdatePanel() {
   const { showToast } = useToastContext();
   const { settings, updateSetting } = useServerSettings();
@@ -794,6 +827,7 @@ export function ProvidersSettings() {
                   </div>
                 )}
               {provider.id === "claude-ollama" && <OllamaSettings />}
+              {provider.id === "grok" && <GrokBuildApiKeySettings />}
               {provider.id === "codex" && provider.installed && (
                 <CodexUpdatePanel />
               )}

@@ -143,6 +143,13 @@ interface PreparedComposerSubmission {
   slashCommand?: "fast" | "run";
 }
 
+interface LiveModelConfig {
+  model?: string;
+  thinking?: { type: string };
+  effort?: string;
+  promptSuggestionMode?: PromptSuggestionMode;
+}
+
 type BtwAsideStatus =
   | "draft"
   | "starting"
@@ -550,6 +557,19 @@ function parseCodexConfigAck(
   return ack.model || ack.thinking || ack.effort ? ack : null;
 }
 
+function isSameLiveModelConfig(
+  current: LiveModelConfig | null,
+  next: LiveModelConfig,
+): boolean {
+  return (
+    current !== null &&
+    current.model === next.model &&
+    current.thinking?.type === next.thinking?.type &&
+    current.effort === next.effort &&
+    current.promptSuggestionMode === next.promptSuggestionMode
+  );
+}
+
 export function SessionPage() {
   const { projectId, sessionId } = useParams<{
     projectId: string;
@@ -744,12 +764,8 @@ function SessionPageContent({
   const effectiveProvider = session?.provider ?? initialProvider;
   const effectiveModel = session?.model ?? initialModel;
   const supportsBtwAsides = providerSupportsBtwAsideFork(effectiveProvider);
-  const [liveModelConfig, setLiveModelConfig] = useState<{
-    model?: string;
-    thinking?: { type: string };
-    effort?: string;
-    promptSuggestionMode?: PromptSuggestionMode;
-  } | null>(null);
+  const [liveModelConfig, setLiveModelConfig] =
+    useState<LiveModelConfig | null>(null);
 
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
@@ -975,18 +991,26 @@ function SessionPageContent({
     if (!latestCodexConfigAck) return;
 
     setLiveModelConfig((prev) => {
-      if (currentOwnedProcessId && prev) {
-        return {
-          model: prev.model ?? latestCodexConfigAck.model,
-          thinking: prev.thinking ?? latestCodexConfigAck.thinking,
-          effort: prev.effort ?? latestCodexConfigAck.effort,
-        };
+      const next: LiveModelConfig =
+        currentOwnedProcessId && prev
+          ? {
+              ...prev,
+              model: prev.model ?? latestCodexConfigAck.model,
+              thinking: prev.thinking ?? latestCodexConfigAck.thinking,
+              effort: prev.effort ?? latestCodexConfigAck.effort,
+            }
+          : {
+              ...(prev ?? {}),
+              model: latestCodexConfigAck.model ?? prev?.model,
+              thinking: latestCodexConfigAck.thinking ?? prev?.thinking,
+              effort: latestCodexConfigAck.effort ?? prev?.effort,
+            };
+
+      if (isSameLiveModelConfig(prev, next)) {
+        return prev;
       }
-      return {
-        model: latestCodexConfigAck.model ?? prev?.model,
-        thinking: latestCodexConfigAck.thinking ?? prev?.thinking,
-        effort: latestCodexConfigAck.effort ?? prev?.effort,
-      };
+
+      return next;
     });
   }, [currentOwnedProcessId, latestCodexConfigAck]);
 

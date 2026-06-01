@@ -10,6 +10,8 @@ Progress:
 - [x] 2026-06-01: Added the pure notice engine, browser-local dismissal hook,
   remote notice banner, and replacement for the old relay resume modal.
 - [x] 2026-06-01: Verified the focused notice tests and client typecheck.
+- [x] 2026-06-01: Added host update guidance with visible versions, npm/source
+  commands, and explicit server install-source metadata.
 
 ## Context
 
@@ -45,6 +47,7 @@ The server already exposes enough metadata for a first slice through
 - `updateAvailable`
 - `resumeProtocolVersion`
 - `capabilities`
+- `installSource`
 
 The relay registration path also reports optional compatibility metadata for
 observability:
@@ -215,6 +218,18 @@ Use versions for release-specific guidance:
 Do not treat dev/git versions as older unless they can be safely compared. For
 `git describe`-style versions such as `0.4.0-3-gabcdef`, compare them as newer
 than their base tag and still avoid npm-specific update actions.
+
+Prefer explicit `installSource` metadata for update instructions:
+
+- `npm-global`: tell the user to run `npm update -g yepanywhere`, then restart.
+- `source`: tell the user to merge `origin/main`, run `pnpm install` and
+  `pnpm build`, then restart.
+- `release-package` or `unknown`: avoid claiming the package manager; show the
+  npm command only as an npm-global example.
+
+Older servers do not report `installSource`. Treat the missing field as
+`unknown`, except that existing `git describe` versions such as
+`0.4.28-6-g1ccc58f4` are a reliable source-checkout fallback.
 
 ## Dismissal
 

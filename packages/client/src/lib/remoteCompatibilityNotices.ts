@@ -7,6 +7,7 @@ export type RemoteNoticeSeverity =
 export interface RemoteCompatibilityNoticeAction {
   label: string;
   command?: string;
+  commandPreview?: string;
   href?: string;
 }
 
@@ -15,14 +16,23 @@ export interface RemoteCompatibilityNotice {
   severity: RemoteNoticeSeverity;
   title: string;
   body: string;
+  guidance?: string;
+  versionSummary?: string;
   action?: RemoteCompatibilityNoticeAction;
   dismissKey: string;
 }
+
+export type RemoteInstallSource =
+  | "npm-global"
+  | "source"
+  | "release-package"
+  | "unknown";
 
 export interface RemoteCompatibilityInput {
   currentVersion: string | null;
   latestVersion: string | null;
   updateAvailable: boolean;
+  installSource?: RemoteInstallSource;
   resumeProtocolVersion?: number;
   capabilities?: string[];
   relayUsername?: string | null;
@@ -34,7 +44,15 @@ export const RELAY_RESUME_SECURITY_MIN_VERSION = "0.4.0";
 export const RELAY_RESUME_SECURITY_MIN_PROTOCOL = 2;
 export const REMOTE_BACKEND_API_RECOMMENDED_VERSION = "0.4.29";
 
-const UPDATE_COMMAND = "npm update -g yepanywhere";
+const NPM_UPDATE_COMMAND = "npm update -g yepanywhere";
+const SOURCE_UPDATE_COMMAND = [
+  "git fetch origin",
+  "git merge origin/main",
+  "pnpm install",
+  "pnpm build",
+].join("\n");
+const SOURCE_UPDATE_PREVIEW =
+  "git fetch origin && git merge origin/main && pnpm install && pnpm build";
 
 const SEVERITY_RANK: Record<RemoteNoticeSeverity, number> = {
   blocking: 0,
@@ -62,12 +80,6 @@ export function getRemoteCompatibilityNotices(
 
   const notices: RemoteCompatibilityNotice[] = [];
   const current = parseSemver(input.currentVersion);
-  const canSuggestNpmUpdate = isStableReleaseVersion(input.currentVersion);
-
-  const addAction = (): RemoteCompatibilityNoticeAction | undefined =>
-    canSuggestNpmUpdate
-      ? { label: "Copy update command", command: UPDATE_COMMAND }
-      : undefined;
 
   const oldResumeProtocol =
     input.resumeProtocolVersion !== undefined &&
@@ -77,12 +89,19 @@ export function getRemoteCompatibilityNotices(
     isVersionLessThan(input.currentVersion, RELAY_RESUME_SECURITY_MIN_VERSION);
 
   if (oldResumeProtocol || oldResumeVersion) {
+    const target = chooseTargetVersion(
+      input.latestVersion,
+      RELAY_RESUME_SECURITY_MIN_VERSION,
+    );
+    const guidance = buildUpdateGuidance(input, target.label);
     notices.push({
       id: "relay-resume-security",
       severity: "security",
       title: "Server update recommended",
       body: "This server predates relay session-resume hardening. New login still works, but refresh and reconnect behavior is less reliable until the server is updated.",
-      action: addAction(),
+      guidance: guidance.text,
+      versionSummary: buildVersionSummary(input.currentVersion, target.label),
+      action: guidance.action,
       dismissKey: buildDismissKey(
         input,
         "relay-resume-security",
@@ -98,12 +117,16 @@ export function getRemoteCompatibilityNotices(
     input.recommendedBaselineVersion ?? REMOTE_BACKEND_API_RECOMMENDED_VERSION;
   if (isVersionLessThan(input.currentVersion, baseline)) {
     const id = `backend-api-compat-${baseline}`;
+    const target = chooseTargetVersion(input.latestVersion, baseline);
+    const guidance = buildUpdateGuidance(input, target.label);
     notices.push({
       id,
       severity: "recommended",
       title: "Update recommended",
       body: "This hosted client includes backend/API compatibility changes. Basic remote use should still work, but updating the local server is recommended for this release.",
-      action: addAction(),
+      guidance: guidance.text,
+      versionSummary: buildVersionSummary(input.currentVersion, target.label),
+      action: guidance.action,
       dismissKey: buildDismissKey(
         input,
         id,
@@ -122,12 +145,20 @@ export function getRemoteCompatibilityNotices(
     input.updateAvailable &&
     input.latestVersion
   ) {
+    const target = formatVersion(input.latestVersion);
+    const guidance = buildUpdateGuidance(input, target);
     notices.push({
       id: "remote-update-available",
       severity: "recommended",
       title: "Update available",
-      body: `Yep Anywhere ${input.latestVersion} is available for this server.`,
-      action: addAction(),
+      body: `Yep Anywhere ${target} is available for this server.`,
+      guidance: guidance.text,
+      versionSummary: buildVersionSummary(
+        input.currentVersion,
+        target,
+        "latest",
+      ),
+      action: guidance.action,
       dismissKey: buildDismissKey(
         input,
         "remote-update-available",
@@ -142,6 +173,78 @@ export function getRemoteCompatibilityNotices(
     const severity = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
     return severity !== 0 ? severity : a.id.localeCompare(b.id);
   });
+}
+
+function chooseTargetVersion(
+  latestVersion: string | null,
+  minimumVersion: string,
+): { label: string; version: string } {
+  const latestComparison = compareSemver(latestVersion, minimumVersion);
+  if (latestVersion && latestComparison !== null && latestComparison >= 0) {
+    return { label: formatVersion(latestVersion), version: latestVersion };
+  }
+  return {
+    label: `${formatVersion(minimumVersion)}+`,
+    version: minimumVersion,
+  };
+}
+
+function buildVersionSummary(
+  currentVersion: string | null,
+  targetVersion: string,
+  targetLabel: "recommended" | "latest" = "recommended",
+): string {
+  const current = currentVersion ? formatVersion(currentVersion) : "unknown";
+  return `Server ${current}; ${targetLabel} ${targetVersion}`;
+}
+
+function buildUpdateGuidance(
+  input: RemoteCompatibilityInput,
+  targetVersion: string,
+): { text: string; action?: RemoteCompatibilityNoticeAction } {
+  const installSource = getEffectiveInstallSource(input);
+  if (installSource === "source") {
+    return {
+      text: `Source checkout detected. Merge origin/main, run pnpm install and pnpm build, then restart the server to update to ${targetVersion}.`,
+      action: {
+        label: "Copy source steps",
+        command: SOURCE_UPDATE_COMMAND,
+        commandPreview: SOURCE_UPDATE_PREVIEW,
+      },
+    };
+  }
+
+  if (installSource === "npm-global") {
+    return {
+      text: `Run ${NPM_UPDATE_COMMAND} on the host, then restart the server to update to ${targetVersion}.`,
+      action: {
+        label: "Copy npm command",
+        command: NPM_UPDATE_COMMAND,
+        commandPreview: NPM_UPDATE_COMMAND,
+      },
+    };
+  }
+
+  return {
+    text: `Update the host install, then restart the server to update to ${targetVersion}. If this host was installed with npm, run ${NPM_UPDATE_COMMAND}.`,
+    action: {
+      label: "Copy npm command",
+      command: NPM_UPDATE_COMMAND,
+      commandPreview: NPM_UPDATE_COMMAND,
+    },
+  };
+}
+
+export function getEffectiveInstallSource(
+  input: Pick<RemoteCompatibilityInput, "currentVersion" | "installSource">,
+): RemoteInstallSource {
+  if (input.installSource) return input.installSource;
+  if (parseSemver(input.currentVersion)?.sourceBuild) return "source";
+  return "unknown";
+}
+
+function formatVersion(version: string): string {
+  return version.startsWith("v") ? version : `v${version}`;
 }
 
 export function isVersionLessThan(

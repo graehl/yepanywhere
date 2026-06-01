@@ -24,6 +24,7 @@ export function RemoteCompatibilityNotices({
         currentVersion: versionInfo?.current ?? null,
         latestVersion: versionInfo?.latest ?? null,
         updateAvailable: versionInfo?.updateAvailable ?? false,
+        installSource: versionInfo?.installSource,
         resumeProtocolVersion: versionInfo?.resumeProtocolVersion,
         capabilities: versionInfo?.capabilities,
         relayUsername,
@@ -59,14 +60,31 @@ export function RemoteCompatibilityNotices({
       data-testid="remote-compatibility-notice"
     >
       <div className="remote-compatibility-notice__content">
-        <strong className="remote-compatibility-notice__title">
-          {notice.title}
-        </strong>
+        <div className="remote-compatibility-notice__headline">
+          <strong className="remote-compatibility-notice__title">
+            {notice.title}
+          </strong>
+          {notice.versionSummary && (
+            <span className="remote-compatibility-notice__meta">
+              {notice.versionSummary}
+            </span>
+          )}
+          {visibleNotices.length > 1 && (
+            <span className="remote-compatibility-notice__count">
+              {visibleNotices.length} notices
+            </span>
+          )}
+        </div>
         <span className="remote-compatibility-notice__body">{notice.body}</span>
-        {visibleNotices.length > 1 && (
-          <span className="remote-compatibility-notice__count">
-            {visibleNotices.length} notices
+        {notice.guidance && (
+          <span className="remote-compatibility-notice__guidance">
+            {notice.guidance}
           </span>
+        )}
+        {notice.action?.commandPreview && (
+          <code className="remote-compatibility-notice__command">
+            {notice.action.commandPreview}
+          </code>
         )}
       </div>
       <div className="remote-compatibility-notice__actions">

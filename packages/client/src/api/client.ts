@@ -296,6 +296,8 @@ export interface VersionInfo {
   current: string;
   latest: string | null;
   updateAvailable: boolean;
+  /** Best-effort install source for update guidance. Undefined on older servers. */
+  installSource?: "npm-global" | "source" | "release-package" | "unknown";
   /** Session resume protocol version supported by server (undefined on older servers). */
   resumeProtocolVersion?: number;
   /** Feature capabilities supported by the server. Undefined on older servers. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   compareSemver,
+  getEffectiveInstallSource,
   getRemoteCompatibilityNotices,
   isStableReleaseVersion,
   isVersionLessThan,
@@ -99,10 +100,16 @@ describe("remoteCompatibilityNotices", () => {
     expect(notices.map((notice) => notice.id)).toEqual([
       "backend-api-compat-0.4.29",
     ]);
+    expect(notices[0]?.versionSummary).toBe(
+      "Server v0.4.28; recommended v0.4.29",
+    );
+    expect(notices[0]?.guidance).toContain(
+      "If this host was installed with npm",
+    );
     expect(notices[0]?.action?.command).toBe("npm update -g yepanywhere");
   });
 
-  it("does not suggest npm update commands for source checkout versions", () => {
+  it("suggests source update steps for git-describe checkout versions", () => {
     const notices = getRemoteCompatibilityNotices({
       currentVersion: "0.4.28-3-gabcdef",
       latestVersion: "0.4.29",
@@ -115,7 +122,41 @@ describe("remoteCompatibilityNotices", () => {
     expect(notices.map((notice) => notice.id)).toEqual([
       "backend-api-compat-0.4.29",
     ]);
-    expect(notices[0]?.action).toBeUndefined();
+    expect(notices[0]?.guidance).toContain("Source checkout detected");
+    expect(notices[0]?.action?.label).toBe("Copy source steps");
+    expect(notices[0]?.action?.command).toContain("git merge origin/main");
+  });
+
+  it("uses explicit source metadata even when the version is exactly tagged", () => {
+    const notices = getRemoteCompatibilityNotices({
+      currentVersion: "0.4.28",
+      latestVersion: "0.4.29",
+      updateAvailable: true,
+      installSource: "source",
+      resumeProtocolVersion: 2,
+      relayUsername: "dev-box",
+      recommendedBaselineVersion: "0.4.29",
+    });
+
+    expect(notices[0]?.guidance).toContain("Source checkout detected");
+    expect(notices[0]?.action?.label).toBe("Copy source steps");
+  });
+
+  it("uses npm-global metadata for direct npm guidance", () => {
+    const notices = getRemoteCompatibilityNotices({
+      currentVersion: "0.4.28",
+      latestVersion: "0.4.29",
+      updateAvailable: true,
+      installSource: "npm-global",
+      resumeProtocolVersion: 2,
+      relayUsername: "dev-box",
+      recommendedBaselineVersion: "0.4.29",
+    });
+
+    expect(notices[0]?.guidance).toContain(
+      "Run npm update -g yepanywhere on the host",
+    );
+    expect(notices[0]?.action?.label).toBe("Copy npm command");
   });
 
   it("uses a generic update notice when no specific notice applies", () => {
@@ -131,6 +172,22 @@ describe("remoteCompatibilityNotices", () => {
     expect(notices.map((notice) => notice.id)).toEqual([
       "remote-update-available",
     ]);
+    expect(notices[0]?.versionSummary).toBe("Server v0.4.29; latest v0.4.30");
+  });
+
+  it("shows the bundled baseline when latest is not published yet", () => {
+    const notices = getRemoteCompatibilityNotices({
+      currentVersion: "0.4.28",
+      latestVersion: "0.4.28",
+      updateAvailable: false,
+      resumeProtocolVersion: 2,
+      relayUsername: "dev-box",
+      recommendedBaselineVersion: "0.4.29",
+    });
+
+    expect(notices[0]?.versionSummary).toBe(
+      "Server v0.4.28; recommended v0.4.29+",
+    );
   });
 });
 
@@ -152,5 +209,22 @@ describe("remote compatibility semver helpers", () => {
     expect(isVersionLessThan("0.4.0-3-gabcdef", "0.4.0")).toBe(false);
     expect(isStableReleaseVersion("0.4.28-3-gabcdef")).toBe(false);
     expect(isStableReleaseVersion("0.4.28")).toBe(true);
+  });
+
+  it("uses installSource first and git-describe versions as a fallback", () => {
+    expect(
+      getEffectiveInstallSource({
+        currentVersion: "0.4.28",
+        installSource: "source",
+      }),
+    ).toBe("source");
+    expect(
+      getEffectiveInstallSource({
+        currentVersion: "0.4.28-6-g1ccc58f4",
+      }),
+    ).toBe("source");
+    expect(getEffectiveInstallSource({ currentVersion: "0.4.28" })).toBe(
+      "unknown",
+    );
   });
 });

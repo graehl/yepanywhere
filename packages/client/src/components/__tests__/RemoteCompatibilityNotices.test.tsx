@@ -73,13 +73,17 @@ describe("RemoteCompatibilityNotices", () => {
           current: "0.4.28",
           latest: "0.4.29",
           updateAvailable: true,
+          installSource: "npm-global",
         })}
       />,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Copy update command" }),
-    );
+    expect(
+      screen.getByText("Server v0.4.28; recommended v0.4.29"),
+    ).toBeTruthy();
+    expect(screen.getByText("npm update -g yepanywhere")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy npm command" }));
 
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith("npm update -g yepanywhere"),
@@ -87,7 +91,7 @@ describe("RemoteCompatibilityNotices", () => {
     expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
-  it("does not expose an npm command for source checkout versions", () => {
+  it("exposes source checkout steps for git-describe versions", async () => {
     render(
       <RemoteCompatibilityNotices
         relayUsername="dev-box"
@@ -100,9 +104,20 @@ describe("RemoteCompatibilityNotices", () => {
     );
 
     expect(screen.getByText("Update recommended")).toBeTruthy();
+    expect(screen.getByText(/Source checkout detected/i)).toBeTruthy();
     expect(
-      screen.queryByRole("button", { name: "Copy update command" }),
-    ).toBeNull();
+      screen.getByText(
+        "git fetch origin && git merge origin/main && pnpm install && pnpm build",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy source steps" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        "git fetch origin\ngit merge origin/main\npnpm install\npnpm build",
+      ),
+    );
   });
 
   it("stays hidden after remount when the same notice was dismissed", () => {

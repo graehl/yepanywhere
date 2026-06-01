@@ -46,6 +46,9 @@ describe("GET /version", () => {
     expect(res.status).toBe(200);
     expect(json.latest).toBe("99.0.0");
     expect(json.current).toBeDefined();
+    expect(["npm-global", "source", "release-package", "unknown"]).toContain(
+      json.installSource,
+    );
   });
 
   it("treats 204 as up-to-date", async () => {

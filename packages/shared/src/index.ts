@@ -168,6 +168,8 @@ export type {
   SessionSandboxPolicy,
   AppSessionSummary,
   AppSession,
+  SessionMetadataPayload,
+  SessionMetadataResponse,
   // Agent session types
   AgentStatus,
   AgentSession,

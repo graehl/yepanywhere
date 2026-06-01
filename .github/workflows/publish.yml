@@ -20,14 +20,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '24'
+          node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -39,6 +40,7 @@ jobs:
         run: pnpm typecheck
 
       - name: Install Playwright browser
+        timeout-minutes: 10
         run: pnpm -F @yep-anywhere/client exec playwright install chromium
 
       - name: Run tests

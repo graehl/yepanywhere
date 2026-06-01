@@ -65,6 +65,13 @@ jobs:
         env:
           NPM_VERSION: ${{ steps.version.outputs.VERSION }}
 
+      # Trusted publishing needs npm 11; keep Playwright/test validation on Node 20.
+      - name: Setup Node.js for npm publishing
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
       - name: Verify package contents
         run: |
           cd dist/npm-package

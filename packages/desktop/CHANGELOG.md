@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.3] - 2026-06-01
+
+### Fixed
+- Allow unsigned macOS desktop builds when Developer ID signing secrets are not configured.
+
 ## [0.0.2] - 2026-06-01
 
 ### Added

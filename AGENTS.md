@@ -10,6 +10,16 @@ catch-up paths, read `topics/architecture-mandates.md`. In particular, an idle
 provider session and a closed client tab must never indefinitely consume server
 resources.
 
+## Provider Session Identity
+
+YA URL session ids are the canonical user-facing session ids. Provider-native
+ids such as OpenCode `ses_*`, Codex thread ids, or other backend resume handles
+may be stored and passed back to the provider for resume, export, or debugging,
+but they must not silently replace the YA-visible session id in URLs, persisted
+YA metadata, REST/WebSocket payloads, or UI copy. If a provider truly requires
+using its own id as a public/session id, document that exception in the
+provider contract and make the mapping explicit in the UI/debug surfaces.
+
 ## Hard Development Rules
 
 Follow `topics/hard-development-rules.md` for binding upstream-facing

@@ -35,7 +35,7 @@ export interface SessionSource {
   provider: ProviderName;
   reader: ISessionReader;
   sessionDir: string;
-  kind: "primary" | "codex" | "gemini" | "grok";
+  kind: "primary" | "codex" | "gemini" | "opencode" | "grok";
 }
 
 export interface ResolvedSessionSummary {
@@ -157,6 +157,18 @@ function createGrokSource(
   };
 }
 
+function createOpenCodeSource(
+  project: Project,
+  deps: ProviderResolutionDeps,
+): SessionSource {
+  return {
+    provider: "opencode",
+    reader: deps.readerFactory({ ...project, provider: "opencode" }),
+    sessionDir: project.sessionDir,
+    kind: "opencode",
+  };
+}
+
 function buildCandidateGroups(
   project: Project,
   preferredProvider: ProviderName | string | undefined,
@@ -195,8 +207,9 @@ function getSourceForGroup(
 ): SessionSource | null {
   switch (group) {
     case "claude":
-    case "opencode":
       return createClaudeSource(project, deps);
+    case "opencode":
+      return createOpenCodeSource(project, deps);
     case "codex":
       return createCodexSource(project, deps);
     case "gemini":

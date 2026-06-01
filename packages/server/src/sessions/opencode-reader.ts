@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +30,16 @@ export const OPENCODE_STORAGE_DIR = join(
   "storage",
 );
 
+const OPENCODE_DATA_DIR =
+  process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share");
+export const OPENCODE_DB_PATH = join(
+  OPENCODE_DATA_DIR,
+  "opencode",
+  "opencode.db",
+);
+const OPENCODE_CLI_TIMEOUT_MS = 10_000;
+const OPENCODE_CLI_MAX_SESSIONS = 200;
+
 /**
  * OpenCode storage directory structure:
  * ~/.local/share/opencode/storage/
@@ -41,6 +52,10 @@ export const OPENCODE_STORAGE_DIR = join(
 export interface OpenCodeSessionReaderOptions {
   /** Base storage directory (e.g., ~/.local/share/opencode/storage) */
   storageDir?: string;
+  /** OpenCode SQLite database path, used only as an index stat anchor. */
+  databasePath?: string;
+  /** OpenCode executable used for 1.15+ CLI export/list fallbacks. */
+  opencodePath?: string;
   /** Project path (used to look up the OpenCode project ID) */
   projectPath: string;
 }
@@ -73,6 +88,38 @@ interface OpenCodeSessionJson {
     deletions?: number;
     files?: number;
   };
+}
+
+interface OpenCodeCliListSession {
+  id?: unknown;
+  title?: unknown;
+  directory?: unknown;
+  created?: unknown;
+  updated?: unknown;
+  projectId?: unknown;
+  projectID?: unknown;
+}
+
+interface OpenCodeExportSessionInfo {
+  id?: unknown;
+  directory?: unknown;
+  title?: unknown;
+  projectID?: unknown;
+  model?: unknown;
+  time?: {
+    created?: unknown;
+    updated?: unknown;
+  };
+}
+
+interface OpenCodeExportMessage {
+  info?: unknown;
+  parts?: unknown;
+}
+
+interface OpenCodeExport {
+  info?: OpenCodeExportSessionInfo;
+  messages?: OpenCodeExportMessage[];
 }
 
 // Use OpenCodeMessage and OpenCodeStoredPart types from shared
@@ -128,11 +175,15 @@ export async function findOpenCodeProjectId(
  */
 export class OpenCodeSessionReader implements ISessionReader {
   private storageDir: string;
+  private databasePath: string;
+  private opencodePath: string;
   private projectPath: string;
   private openCodeProjectIdCache: string | null | undefined = undefined;
 
   constructor(options: OpenCodeSessionReaderOptions) {
     this.storageDir = options.storageDir ?? OPENCODE_STORAGE_DIR;
+    this.databasePath = options.databasePath ?? OPENCODE_DB_PATH;
+    this.opencodePath = options.opencodePath ?? "opencode";
     this.projectPath = options.projectPath;
   }
 
@@ -152,6 +203,134 @@ export class OpenCodeSessionReader implements ISessionReader {
   }
 
   async listSessions(projectId: UrlProjectId): Promise<SessionSummary[]> {
+    const summaries: SessionSummary[] = [];
+    const seen = new Set<string>();
+
+    for (const summary of await this.listFileSessions(projectId)) {
+      summaries.push(summary);
+      seen.add(summary.id);
+    }
+
+    for (const summary of await this.listCliSessions(projectId)) {
+      if (seen.has(summary.id)) continue;
+      summaries.push(summary);
+      seen.add(summary.id);
+    }
+
+    // Sort by updatedAt descending
+    summaries.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+
+    return summaries;
+  }
+
+  async getSessionSummary(
+    sessionId: string,
+    projectId: UrlProjectId,
+  ): Promise<SessionSummary | null> {
+    return (
+      (await this.getFileSessionSummary(sessionId, projectId)) ??
+      (await this.getCliSessionSummary(sessionId, projectId))
+    );
+  }
+
+  async getSession(
+    sessionId: string,
+    projectId: UrlProjectId,
+    afterMessageId?: string,
+    _options?: GetSessionOptions,
+  ): Promise<LoadedSession | null> {
+    const fileSummary = await this.getFileSessionSummary(sessionId, projectId);
+    if (fileSummary) {
+      const messages = await this.loadSessionMessages(sessionId, afterMessageId);
+      return {
+        summary: fileSummary,
+        data: {
+          provider: "opencode",
+          session: {
+            messages,
+          },
+        },
+      };
+    }
+
+    const exported = await this.loadCliExport(sessionId);
+    if (!exported || !this.exportBelongsToProject(exported)) return null;
+    const entries = this.exportMessagesToEntries(exported, afterMessageId);
+    if (entries.length === 0) return null;
+    const summary = this.summaryFromExport(exported, entries, projectId);
+    if (!summary) return null;
+
+    return {
+      summary,
+      data: {
+        provider: "opencode",
+        session: {
+          messages: entries,
+        },
+      },
+    };
+  }
+
+  async getSessionSummaryIfChanged(
+    sessionId: string,
+    projectId: UrlProjectId,
+    cachedMtime: number,
+    cachedSize: number,
+  ): Promise<{ summary: SessionSummary; mtime: number; size: number } | null> {
+    const fileChanged = await this.getFileSessionSummaryIfChanged(
+      sessionId,
+      projectId,
+      cachedMtime,
+      cachedSize,
+    );
+    if (fileChanged) {
+      return fileChanged;
+    }
+
+    const summary = await this.getCliSessionSummary(sessionId, projectId);
+    if (!summary) return null;
+
+    const mtime = Date.parse(summary.updatedAt);
+    const size = summary.messageCount;
+    if (mtime === cachedMtime && size === cachedSize) {
+      return null;
+    }
+
+    return { summary, mtime, size };
+  }
+
+  async getSessionFilePath(_sessionId: string): Promise<string | null> {
+    return this.databasePath;
+  }
+
+  async listSessionFiles(
+    _sessionDir: string,
+    options?: { activeAfterMs?: number },
+  ): Promise<{ sessionId: string; filePath: string }[]> {
+    const sessions = await this.loadCliSessionList();
+    return sessions
+      .filter((session) => {
+        if (!this.cliListSessionBelongsToProject(session)) return false;
+        if (options?.activeAfterMs === undefined) return true;
+        const updatedAt = this.numberField(session.updated);
+        return updatedAt === undefined || updatedAt >= options.activeAfterMs;
+      })
+      .map((session) => ({
+        sessionId: String(session.id),
+        filePath: this.databasePath,
+      }));
+  }
+
+  getIndexScopeKey(_sessionDir: string): string {
+    return `opencode::${this.projectPath}`;
+  }
+
+  private async listFileSessions(
+    projectId: UrlProjectId,
+  ): Promise<SessionSummary[]> {
     const openCodeProjectId = await this.getOpenCodeProjectId();
     if (!openCodeProjectId) {
       return [];
@@ -166,7 +345,7 @@ export class OpenCodeSessionReader implements ISessionReader {
 
       for (const file of jsonFiles) {
         const sessionId = file.replace(".json", "");
-        const summary = await this.getSessionSummary(sessionId, projectId);
+        const summary = await this.getFileSessionSummary(sessionId, projectId);
         if (summary) {
           summaries.push(summary);
         }
@@ -185,7 +364,7 @@ export class OpenCodeSessionReader implements ISessionReader {
     return summaries;
   }
 
-  async getSessionSummary(
+  private async getFileSessionSummary(
     sessionId: string,
     projectId: UrlProjectId,
   ): Promise<SessionSummary | null> {
@@ -282,29 +461,7 @@ export class OpenCodeSessionReader implements ISessionReader {
     }
   }
 
-  async getSession(
-    sessionId: string,
-    projectId: UrlProjectId,
-    afterMessageId?: string,
-    _options?: GetSessionOptions,
-  ): Promise<LoadedSession | null> {
-    const summary = await this.getSessionSummary(sessionId, projectId);
-    if (!summary) return null;
-
-    const messages = await this.loadSessionMessages(sessionId, afterMessageId);
-
-    return {
-      summary,
-      data: {
-        provider: "opencode",
-        session: {
-          messages,
-        },
-      },
-    };
-  }
-
-  async getSessionSummaryIfChanged(
+  private async getFileSessionSummaryIfChanged(
     sessionId: string,
     projectId: UrlProjectId,
     cachedMtime: number,
@@ -333,13 +490,353 @@ export class OpenCodeSessionReader implements ISessionReader {
       }
 
       // Otherwise parse the file and return { summary, mtime, size }
-      const summary = await this.getSessionSummary(sessionId, projectId);
+      const summary = await this.getFileSessionSummary(sessionId, projectId);
       if (!summary) return null;
 
       return { summary, mtime, size };
     } catch {
       return null;
     }
+  }
+
+  private async listCliSessions(
+    projectId: UrlProjectId,
+  ): Promise<SessionSummary[]> {
+    const sessions = await this.loadCliSessionList();
+    const summaries: SessionSummary[] = [];
+
+    for (const session of sessions) {
+      if (!this.cliListSessionBelongsToProject(session)) continue;
+      const summary = this.summaryFromCliListSession(session, projectId);
+      if (summary) summaries.push(summary);
+    }
+
+    return summaries;
+  }
+
+  private async getCliSessionSummary(
+    sessionId: string,
+    projectId: UrlProjectId,
+  ): Promise<SessionSummary | null> {
+    const exported = await this.loadCliExport(sessionId);
+    if (!exported || !this.exportBelongsToProject(exported)) return null;
+
+    const entries = this.exportMessagesToEntries(exported);
+    if (entries.length === 0) return null;
+
+    return this.summaryFromExport(exported, entries, projectId);
+  }
+
+  private async loadCliSessionList(): Promise<OpenCodeCliListSession[]> {
+    const output = await this.runOpenCodeCli([
+      "session",
+      "list",
+      "--format",
+      "json",
+      "--max-count",
+      String(OPENCODE_CLI_MAX_SESSIONS),
+    ]);
+    if (!output) return [];
+
+    const parsed = this.parseJsonOutput(output);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter((value): value is OpenCodeCliListSession => {
+      if (!value || typeof value !== "object") return false;
+      return Boolean(this.stringField((value as OpenCodeCliListSession).id));
+    });
+  }
+
+  private async loadCliExport(sessionId: string): Promise<OpenCodeExport | null> {
+    const output = await this.runOpenCodeCli(["export", sessionId]);
+    if (!output) return null;
+
+    const parsed = this.parseJsonOutput(output);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+
+    return parsed as OpenCodeExport;
+  }
+
+  private async runOpenCodeCli(args: string[]): Promise<string | null> {
+    return new Promise<string | null>((resolve) => {
+      execFile(
+        this.opencodePath,
+        args,
+        {
+          cwd: this.projectPath,
+          encoding: "utf8",
+          maxBuffer: 16 * 1024 * 1024,
+          timeout: OPENCODE_CLI_TIMEOUT_MS,
+          windowsHide: true,
+        },
+        (error, stdout) => {
+          if (error) {
+            resolve(null);
+            return;
+          }
+          resolve(String(stdout));
+        },
+      );
+    }).catch(() => null);
+  }
+
+  private parseJsonOutput(output: string): unknown {
+    const trimmed = output.trim();
+    const objectStart = trimmed.indexOf("{");
+    const arrayStart = trimmed.indexOf("[");
+    const starts = [objectStart, arrayStart].filter((index) => index >= 0);
+    if (starts.length === 0) return null;
+    const jsonStart = Math.min(...starts);
+
+    try {
+      return JSON.parse(trimmed.slice(jsonStart));
+    } catch {
+      return null;
+    }
+  }
+
+  private cliListSessionBelongsToProject(
+    session: OpenCodeCliListSession,
+  ): boolean {
+    const directory = this.stringField(session.directory);
+    return !directory || directory === this.projectPath;
+  }
+
+  private exportBelongsToProject(exported: OpenCodeExport): boolean {
+    const directory = this.stringField(exported.info?.directory);
+    return !directory || directory === this.projectPath;
+  }
+
+  private exportMessagesToEntries(
+    exported: OpenCodeExport,
+    afterMessageId?: string,
+  ): OpenCodeSessionEntry[] {
+    const messages = Array.isArray(exported.messages)
+      ? exported.messages
+      : [];
+    const entries: OpenCodeSessionEntry[] = [];
+    let foundAfterMessage = !afterMessageId;
+
+    for (const exportedMessage of messages) {
+      const message = this.asOpenCodeMessage(exportedMessage.info);
+      if (!message) continue;
+
+      if (!foundAfterMessage) {
+        if (message.id === afterMessageId) {
+          foundAfterMessage = true;
+        }
+        continue;
+      }
+
+      const parts = Array.isArray(exportedMessage.parts)
+        ? exportedMessage.parts
+            .map((part) => this.asOpenCodeStoredPart(part))
+            .filter((part): part is OpenCodeStoredPart => Boolean(part))
+        : [];
+      entries.push({ message, parts });
+    }
+
+    return entries;
+  }
+
+  private asOpenCodeMessage(value: unknown): OpenCodeMessage | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    const raw = value as Record<string, unknown>;
+    const id = this.stringField(raw.id);
+    const role = this.stringField(raw.role);
+    if (!id || (role !== "user" && role !== "assistant")) {
+      return null;
+    }
+    const sessionID =
+      this.stringField(raw.sessionID) ??
+      this.stringField(raw.sessionId) ??
+      this.stringField(raw.session_id) ??
+      "";
+
+    return {
+      ...raw,
+      id,
+      sessionID,
+      role,
+    } as OpenCodeMessage;
+  }
+
+  private asOpenCodeStoredPart(value: unknown): OpenCodeStoredPart | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    const raw = value as Record<string, unknown>;
+    const type = this.stringField(raw.type);
+    if (!type) return null;
+    return raw as OpenCodeStoredPart;
+  }
+
+  private summaryFromCliListSession(
+    session: OpenCodeCliListSession,
+    projectId: UrlProjectId,
+  ): SessionSummary | null {
+    const id = this.stringField(session.id);
+    if (!id) return null;
+
+    const title = this.stringField(session.title)?.trim() || null;
+    const updatedAt = this.dateFromMillis(
+      this.numberField(session.updated) ?? this.numberField(session.created),
+    );
+    const createdAt = this.dateFromMillis(
+      this.numberField(session.created) ?? this.numberField(session.updated),
+    );
+
+    return {
+      id,
+      projectId,
+      title: this.truncateTitle(title),
+      fullTitle: title,
+      createdAt,
+      updatedAt,
+      messageCount: 1,
+      ownership: { owner: "none" },
+      provider: "opencode",
+    };
+  }
+
+  private summaryFromExport(
+    exported: OpenCodeExport,
+    entries: OpenCodeSessionEntry[],
+    projectId: UrlProjectId,
+  ): SessionSummary | null {
+    const id =
+      this.stringField(exported.info?.id) ??
+      entries.find((entry) => entry.message.sessionID)?.message.sessionID;
+    if (!id) return null;
+
+    const exportTitle = this.stringField(exported.info?.title)?.trim() || null;
+    const firstUserText = this.firstUserText(entries);
+    const fullTitle =
+      exportTitle && exportTitle !== "Yep Anywhere Session"
+        ? exportTitle
+        : (firstUserText ?? exportTitle);
+    const model = this.modelFromExport(exported, entries);
+    const createdAt = this.dateFromMillis(
+      this.numberField(exported.info?.time?.created) ??
+        entries[0]?.message.time?.created,
+    );
+    const lastMessage = entries[entries.length - 1]?.message;
+    const updatedAt = this.dateFromMillis(
+      this.numberField(exported.info?.time?.updated) ??
+        lastMessage?.time?.completed ??
+        lastMessage?.time?.created,
+    );
+
+    return {
+      id,
+      projectId,
+      title: this.truncateTitle(fullTitle),
+      fullTitle,
+      createdAt,
+      updatedAt,
+      messageCount: entries.length,
+      ownership: { owner: "none" },
+      contextUsage: this.extractContextUsageFromEntries(entries, model),
+      provider: "opencode",
+      model,
+    };
+  }
+
+  private firstUserText(entries: OpenCodeSessionEntry[]): string | null {
+    for (const entry of entries) {
+      if (entry.message.role !== "user") continue;
+      for (const part of entry.parts) {
+        if (part.type === "text" && part.text?.trim()) {
+          return part.text.trim();
+        }
+      }
+    }
+    return null;
+  }
+
+  private modelFromExport(
+    exported: OpenCodeExport,
+    entries: OpenCodeSessionEntry[],
+  ): string | undefined {
+    const model = exported.info?.model;
+    if (typeof model === "string" && model.trim()) {
+      return model.trim();
+    }
+    if (model && typeof model === "object" && !Array.isArray(model)) {
+      const raw = model as Record<string, unknown>;
+      const id = this.stringField(raw.id) ?? this.stringField(raw.modelID);
+      if (id) return id;
+    }
+
+    for (const entry of entries) {
+      if (entry.message.role !== "assistant") continue;
+      const modelId =
+        entry.message.modelID ??
+        (entry.message.model &&
+        typeof entry.message.model === "object" &&
+        !Array.isArray(entry.message.model)
+          ? this.stringField(
+              (entry.message.model as Record<string, unknown>).modelID,
+            )
+          : undefined);
+      if (modelId) return modelId;
+    }
+
+    return undefined;
+  }
+
+  private extractContextUsageFromEntries(
+    entries: OpenCodeSessionEntry[],
+    model: string | undefined,
+  ): ContextUsage | undefined {
+    const contextWindowSize = getModelContextWindow(model);
+
+    for (const entry of [...entries].reverse()) {
+      const msg = entry.message;
+      if (msg.role !== "assistant" || !msg.tokens) continue;
+      const inputTokens =
+        (msg.tokens.input ?? 0) + (msg.tokens.cache?.read ?? 0);
+      if (inputTokens === 0) continue;
+
+      const result: ContextUsage = {
+        inputTokens,
+        percentage: Math.round((inputTokens / contextWindowSize) * 100),
+        contextWindow: contextWindowSize,
+      };
+      if (msg.tokens.output !== undefined && msg.tokens.output > 0) {
+        result.outputTokens = msg.tokens.output;
+      }
+      if (msg.tokens.cache?.read !== undefined && msg.tokens.cache.read > 0) {
+        result.cacheReadTokens = msg.tokens.cache.read;
+      }
+      return result;
+    }
+
+    return undefined;
+  }
+
+  private stringField(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim() ? value : undefined;
+  }
+
+  private numberField(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value)
+      ? value
+      : undefined;
+  }
+
+  private dateFromMillis(value: number | undefined): string {
+    if (value !== undefined) {
+      const date = new Date(value);
+      if (Number.isFinite(date.getTime())) {
+        return date.toISOString();
+      }
+    }
+    return new Date(0).toISOString();
   }
 
   /**

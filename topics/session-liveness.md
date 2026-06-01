@@ -55,6 +55,10 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
 - Provider process/server liveness is weak evidence. It may explain why a
   session can still be recovered or queried, but it must not upgrade a silent
   active turn unless the provider exposes a real active-turn status signal.
+- Provider-native transcript storage can change independently of YA process
+  liveness. A valid native session that survives a YA restart must be readable
+  through the provider's current durable export/list surface, not only through
+  an older on-disk layout that happened to exist when the adapter was written.
 - OpenCode `/session/status` is a real active-turn status signal for that
   provider. `busy` and `retry` entries are active evidence, `idle` and missing
   entries mean no active OpenCode work is reported for that session, and

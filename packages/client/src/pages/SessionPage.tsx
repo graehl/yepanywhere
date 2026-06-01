@@ -3286,8 +3286,9 @@ function SessionPageContent({
           <h2 style={{ marginTop: 0 }}>Session not found</h2>
           <p style={{ color: "#666" }}>
             The backing data for this session on disk or in a live process is
-            gone. This commonly happens for Grok sessions after a YA server
-            restart or when native session directories were cleaned.
+            not currently readable. This can happen after a YA server restart,
+            a provider storage upgrade, or native session directories being
+            cleaned.
           </p>
           <div
             style={{

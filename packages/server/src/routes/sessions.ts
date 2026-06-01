@@ -1962,6 +1962,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Check if we've ever owned this session (for orphan detection)
     // Only mark tools as "aborted" if we owned the session and know it terminated
     const wasEverOwned = deps.supervisor.wasEverOwned(sessionId);
+    const metadataProvider = deps.sessionMetadataService?.getProvider(
+      sessionId,
+    ) as ProviderName | undefined;
 
     // Always try to read from disk first (even for owned sessions)
     const reader = deps.readerFactory(project);
@@ -2027,6 +2030,21 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           { includeOrphans: wasEverOwned && !process },
         );
       }
+    }
+
+    // For mixed-provider projects, a restarted YA process may need session
+    // metadata to rediscover an OpenCode-native ses_* transcript.
+    if (!loadedSession && metadataProvider === "opencode") {
+      const opencodeReader = deps.readerFactory({
+        ...project,
+        provider: "opencode",
+      });
+      loadedSession = await opencodeReader.getSession(
+        sessionId,
+        project.id,
+        afterMessageId,
+        { includeOrphans: wasEverOwned && !process },
+      );
     }
 
     if (!loadedSession) {

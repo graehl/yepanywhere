@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.1] - 2026-06-01
+
+### Added
+- Disposable desktop release for validating CI artifacts, signing fallback, and release publishing.
+
 ## [0.1.0] - Unreleased
 
 ### Added

@@ -198,7 +198,7 @@ jobs:
             ${{ matrix.args }}
             ${{ runner.os == 'Linux' && '--bundles deb,rpm' || '' }}
             ${{ env.HAS_UPDATER_KEY == 'true' && '--config ''{"bundle":{"createUpdaterArtifacts":"v2"}}''' || '' }}
-            ${{ matrix.platform == 'windows-latest' && secrets.AZURE_CLIENT_SECRET != '' && '--config ''{"bundle":{"windows":{"signCommand":"trusted-signing-cli -e https://eus.codesigning.azure.net -a kylegraehl -c yep-profile %1"}}}''' || '' }}
+            ${{ matrix.platform == 'windows-latest' && secrets.AZURE_CLIENT_SECRET != '' && '--config ''{"bundle":{"windows":{"signCommand":"trusted-signing-cli -e https://eus.codesigning.azure.net -a kylegraehl -c jstorrent-profile %1"}}}''' || '' }}
 
       # --- Diagnose flaky DMG bundling ---
       - name: Check for flaky DMG bundling failure
@@ -269,6 +269,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/desktop-v')
     needs: build-tauri
     runs-on: ubuntu-latest
+    env:
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -281,6 +283,30 @@ jobs:
             echo "Deleting $name"
             gh release delete-asset "$TAG" "$name" --yes
           done
+
+      - name: Validate latest.json updater artifact
+        if: env.HAS_UPDATER_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release download "$TAG" -p "latest.json" -D /tmp/ || {
+            echo "::error::latest.json not found in release — auto-updates will not work for this version!"
+            exit 1
+          }
+          python3 -c "
+          import json
+          data = json.load(open('/tmp/latest.json'))
+          assert 'version' in data, 'missing version field'
+          assert 'platforms' in data, 'missing platforms field'
+          platforms = data['platforms']
+          assert len(platforms) > 0, 'no platforms in latest.json'
+          for key, p in platforms.items():
+              assert 'url' in p, f'{key}: missing url'
+              assert 'signature' in p, f'{key}: missing signature'
+              assert len(p['signature']) > 10, f'{key}: signature suspiciously short'
+          print(f'latest.json valid: v{data[\"version\"]} with {len(platforms)} platform(s): {list(platforms.keys())}')
+          "
 
       - name: Update release body with download table
         env:

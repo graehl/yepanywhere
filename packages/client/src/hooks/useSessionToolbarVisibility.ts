@@ -24,16 +24,44 @@ export const DEFAULT_SESSION_TOOLBAR_VISIBILITY: SessionToolbarVisibility = {
   attachments: true,
   slashMenu: true,
   thinkingToggle: true,
-  renderMode: true,
+  renderMode: false,
   modelIndicator: true,
   microphone: true,
   shortcutsHelp: true,
   contextUsage: true,
   btw: false,
-  nudge: true,
+  nudge: false,
   queueControls: true,
   sessionStatus: true,
 };
+
+const MOBILE_SESSION_TOOLBAR_VISIBILITY_DEFAULTS: Partial<SessionToolbarVisibility> =
+  {
+    modelIndicator: false,
+    microphone: false,
+    shortcutsHelp: false,
+    sessionStatus: false,
+  };
+
+const SESSION_TOOLBAR_MOBILE_QUERY = "(max-width: 600px)";
+
+function isMobileToolbarLayout(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(SESSION_TOOLBAR_MOBILE_QUERY).matches
+  );
+}
+
+function getDefaultSessionToolbarVisibility(): SessionToolbarVisibility {
+  if (!isMobileToolbarLayout()) {
+    return DEFAULT_SESSION_TOOLBAR_VISIBILITY;
+  }
+  return {
+    ...DEFAULT_SESSION_TOOLBAR_VISIBILITY,
+    ...MOBILE_SESSION_TOOLBAR_VISIBILITY_DEFAULTS,
+  };
+}
 
 const SESSION_TOOLBAR_VISIBILITY_KEYS = Object.keys(
   DEFAULT_SESSION_TOOLBAR_VISIBILITY,
@@ -49,10 +77,10 @@ function hasLocalStorage(): boolean {
 
 function normalizeVisibility(value: unknown): SessionToolbarVisibility {
   if (!value || typeof value !== "object") {
-    return DEFAULT_SESSION_TOOLBAR_VISIBILITY;
+    return getDefaultSessionToolbarVisibility();
   }
   const input = value as Partial<Record<SessionToolbarVisibilityKey, unknown>>;
-  const normalized = { ...DEFAULT_SESSION_TOOLBAR_VISIBILITY };
+  const normalized = { ...getDefaultSessionToolbarVisibility() };
   for (const key of SESSION_TOOLBAR_VISIBILITY_KEYS) {
     if (typeof input[key] === "boolean") {
       normalized[key] = input[key];
@@ -63,16 +91,16 @@ function normalizeVisibility(value: unknown): SessionToolbarVisibility {
 
 function loadVisibility(): SessionToolbarVisibility {
   if (!hasLocalStorage()) {
-    return DEFAULT_SESSION_TOOLBAR_VISIBILITY;
+    return getDefaultSessionToolbarVisibility();
   }
   const stored = localStorage.getItem(UI_KEYS.sessionToolbarVisibility);
   if (!stored) {
-    return DEFAULT_SESSION_TOOLBAR_VISIBILITY;
+    return getDefaultSessionToolbarVisibility();
   }
   try {
     return normalizeVisibility(JSON.parse(stored));
   } catch {
-    return DEFAULT_SESSION_TOOLBAR_VISIBILITY;
+    return getDefaultSessionToolbarVisibility();
   }
 }
 
@@ -117,7 +145,7 @@ export function useSessionToolbarVisibility() {
   );
 
   const resetVisibility = useCallback(() => {
-    updateVisibility(DEFAULT_SESSION_TOOLBAR_VISIBILITY);
+    updateVisibility(getDefaultSessionToolbarVisibility());
   }, []);
 
   return {

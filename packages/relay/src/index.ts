@@ -106,7 +106,7 @@ app.get("/status", (c) => {
   });
 });
 
-app.get("/stats", (c) => {
+app.get("/stats", async (c) => {
   const telemetryStatus = telemetry.getStatus();
   if (!telemetryStatus.enabled || !telemetryStatus.eventsDir) {
     return c.html(
@@ -114,7 +114,7 @@ app.get("/stats", (c) => {
     );
   }
 
-  return c.html(generateRelayStatsHtml(telemetryStatus.eventsDir), 200, {
+  return c.html(await generateRelayStatsHtml(telemetryStatus.eventsDir), 200, {
     "Cache-Control": "no-cache, no-store, must-revalidate",
   });
 });

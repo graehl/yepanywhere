@@ -12,4 +12,9 @@ export default defineConfig({
     port: 3000,
     host: true,
   },
+  vite: {
+    server: {
+      allowedHosts: ["localhost", ".yepanywhere.com"],
+    },
+  },
 });

@@ -1,3 +1,4 @@
+import { LocalMediaModal, useLocalMediaClick } from "../../LocalMediaModal";
 import type { ContentBlock, ContentRenderer } from "../types";
 
 interface TextBlock extends ContentBlock {
@@ -11,14 +12,25 @@ interface TextBlock extends ContentBlock {
  * Text renderer - displays text content with markdown rendering
  */
 function TextRendererComponent({ block }: { block: TextBlock }) {
+  const { modal, handleClick, closeModal } = useLocalMediaClick();
+
   // Prefer server-rendered HTML if available
   if (block._renderedHtml) {
     return (
-      <div
-        className="text-block"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered markdown
-        dangerouslySetInnerHTML={{ __html: block._renderedHtml }}
-      />
+      // biome-ignore lint/a11y/useKeyWithClickEvents: click handler intercepts local media links only
+      <div className="text-block" onClick={handleClick}>
+        <div
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered markdown
+          dangerouslySetInnerHTML={{ __html: block._renderedHtml }}
+        />
+        {modal && (
+          <LocalMediaModal
+            path={modal.path}
+            mediaType={modal.mediaType}
+            onClose={closeModal}
+          />
+        )}
+      </div>
     );
   }
 

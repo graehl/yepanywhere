@@ -117,7 +117,7 @@ function getClaudeResumeApiErrorBlocker(
 
   for (let i = activeBranch.length - 1; i >= 0; i--) {
     const raw = activeBranch[i]?.raw;
-    if (!raw || raw.type !== "assistant") {
+    if (raw?.type !== "assistant") {
       continue;
     }
 
@@ -3307,29 +3307,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     return c.json({
       permissionMode: process.permissionMode,
       modeVersion: process.modeVersion,
-    });
-  });
-
-  // PUT /api/sessions/:sessionId/hold - Set hold (soft pause) mode
-  routes.put("/sessions/:sessionId/hold", async (c) => {
-    const sessionId = c.req.param("sessionId");
-    const body = await c.req.json<{ hold: boolean }>();
-
-    if (typeof body.hold !== "boolean") {
-      return c.json({ error: "hold is required (boolean)" }, 400);
-    }
-
-    const process = deps.supervisor.getProcessForSession(sessionId);
-    if (!process) {
-      return c.json({ error: "No active process for session" }, 404);
-    }
-
-    process.setHold(body.hold);
-
-    return c.json({
-      isHeld: process.isHeld,
-      holdSince: process.holdSince?.toISOString() ?? null,
-      state: process.state.type,
     });
   });
 

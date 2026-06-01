@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { renderSafeMarkdown } from "../../src/augments/safe-markdown.js";
+import {
+  isLocalFilePath,
+  localMediaApiUrl,
+  renderSafeMarkdown,
+} from "../../src/augments/safe-markdown.js";
 
 describe("renderSafeMarkdown — math", () => {
   it("renders inline $…$ through katex", () => {
@@ -166,5 +170,26 @@ describe("renderSafeMarkdown — local file links", () => {
       '<img src="/api/local-image?path=%2Fworkspace%2Fproject%2Fdocs%2Fassets%2Fdiagram.svg" alt="diagram"',
     );
     expect(html).not.toContain("local-media-inline-preview");
+  });
+
+  it("rewrites Windows drive paths with forward slashes to local media links", () => {
+    const html = renderSafeMarkdown(
+      "[Sample image](C:/tmp/playbox-autocollider-provider-fit.png)",
+    );
+
+    expect(html).toContain('class="local-media-link"');
+    expect(html).toContain('data-media-type="image"');
+    expect(html).toContain(
+      "path=C%3A%2Ftmp%2Fplaybox-autocollider-provider-fit.png",
+    );
+  });
+
+  it("recognizes Windows drive paths with backslashes", () => {
+    const filePath = String.raw`C:\tmp\playbox-autocollider-provider-fit.png`;
+
+    expect(isLocalFilePath(filePath)).toBe(true);
+    expect(localMediaApiUrl(filePath)).toBe(
+      "/api/local-image?path=C%3A%5Ctmp%5Cplaybox-autocollider-provider-fit.png",
+    );
   });
 });

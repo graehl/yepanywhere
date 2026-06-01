@@ -27,10 +27,21 @@ async function getGitVersion(): Promise<string | null> {
   }
 }
 
+export type InstallSource =
+  | "npm-global"
+  | "source"
+  | "release-package"
+  | "unknown";
+
+export interface CurrentVersionInfo {
+  version: string;
+  installSource: InstallSource;
+}
+
 /**
- * Read the current package version from package.json
+ * Read the current package version and best-effort install source.
  */
-async function getCurrentVersion(): Promise<string> {
+async function getCurrentVersionInfo(): Promise<CurrentVersionInfo> {
   try {
     // In production (npm package), package.json is in the parent of dist/
     // In development, it's in packages/server/
@@ -40,13 +51,61 @@ async function getCurrentVersion(): Promise<string> {
 
     // 0.0.1 is the workspace version - we're in dev mode, use git instead
     if (version === "0.0.1") {
-      return (await getGitVersion()) || "dev";
+      return {
+        version: (await getGitVersion()) || "dev",
+        installSource: "source",
+      };
     }
 
-    return version;
+    return {
+      version,
+      installSource: await detectReleaseInstallSource(packageJsonPath),
+    };
   } catch {
-    return "unknown";
+    return { version: "unknown", installSource: "unknown" };
   }
+}
+
+async function detectReleaseInstallSource(
+  packageJsonPath: string,
+): Promise<InstallSource> {
+  const packageRoot = await realpathOrResolve(path.dirname(packageJsonPath));
+  const npmGlobalRoot = await getNpmGlobalRoot();
+  if (npmGlobalRoot && isPathInside(packageRoot, npmGlobalRoot)) {
+    return "npm-global";
+  }
+  return "release-package";
+}
+
+async function getNpmGlobalRoot(): Promise<string | null> {
+  try {
+    const { stdout } = await execAsync("npm root -g", {
+      encoding: "utf-8",
+    });
+    const npmGlobalRoot = stdout.trim();
+    if (!npmGlobalRoot) return null;
+    return realpathOrResolve(npmGlobalRoot);
+  } catch {
+    return null;
+  }
+}
+
+async function realpathOrResolve(value: string): Promise<string> {
+  try {
+    return await fs.promises.realpath(value);
+  } catch {
+    return path.resolve(value);
+  }
+}
+
+function isPathInside(candidate: string, parent: string): boolean {
+  const relative = path.relative(parent, candidate);
+  return (
+    relative !== "" &&
+    !relative.startsWith(`..${path.sep}`) &&
+    relative !== ".." &&
+    !path.isAbsolute(relative)
+  );
 }
 
 const UPDATE_SERVER_URL = "https://updates.yepanywhere.com/version";
@@ -119,6 +178,8 @@ export interface VersionInfo {
   current: string;
   latest: string | null;
   updateAvailable: boolean;
+  /** Best-effort install source for update guidance. Absent on older servers. */
+  installSource?: InstallSource;
   /** Session resume protocol version supported by this server. */
   resumeProtocolVersion: number;
   /** Feature capabilities supported by this server. Used by clients to show/hide UI. */
@@ -180,6 +241,7 @@ export interface VersionRouteOptions {
 
 export interface ServerCompatibilityInfo {
   appVersion: string;
+  installSource: InstallSource;
   resumeProtocolVersion: number;
   renderProtocolVersion?: number;
   capabilities: string[];
@@ -244,8 +306,9 @@ export function getVoiceBackendCapabilities(
 export function getServerCompatibilityInfo(
   options?: VersionRouteOptions,
 ): Promise<ServerCompatibilityInfo> {
-  return getCurrentVersion().then((appVersion) => ({
-    appVersion,
+  return getCurrentVersionInfo().then((versionInfo) => ({
+    appVersion: versionInfo.version,
+    installSource: versionInfo.installSource,
     resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
     capabilities: getServerCapabilities(options),
   }));
@@ -255,7 +318,8 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
   const routes = new Hono();
 
   routes.get("/", async (c) => {
-    const current = await getCurrentVersion();
+    const currentVersionInfo = await getCurrentVersionInfo();
+    const current = currentVersionInfo.version;
     const fresh =
       c.req.query("fresh") === "1" || c.req.query("fresh") === "true";
     const deviceBridgeStatus = options?.getDeviceBridgeStatus
@@ -282,6 +346,7 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
       current,
       latest,
       updateAvailable,
+      installSource: currentVersionInfo.installSource,
       resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
       capabilities,
       voiceBackends,

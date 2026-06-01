@@ -16,7 +16,7 @@
  * Both ConnectionGate and RelayConnectionGate render ConnectedAppContent when connected.
  */
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { BottomOverscrollReload } from "./components/BottomOverscrollReload";
 import { ClientLogRecordingBadge } from "./components/ClientLogRecordingBadge";
@@ -24,7 +24,7 @@ import { ConnectionBar } from "./components/ConnectionBar";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { HostOfflineModal } from "./components/HostOfflineModal";
 import { ReloadBanner } from "./components/ReloadBanner";
-import { Modal } from "./components/ui/Modal";
+import { RemoteCompatibilityNotices } from "./components/RemoteCompatibilityNotices";
 import { InboxProvider } from "./contexts/InboxContext";
 import {
   RemoteConnectionProvider,
@@ -55,8 +55,6 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
   useRemoteActivityBusConnection();
   const { currentRelayUsername } = useRemoteConnection();
   const { version: versionInfo } = useVersion();
-  const [dismissedRelayResumeWarning, setDismissedRelayResumeWarning] =
-    useState(false);
 
   const {
     isManualReloadMode,
@@ -69,44 +67,12 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
   } = useReloadNotifications();
   const isSessionDetailRoute = /\/sessions\/[^/]+/.test(location.pathname);
 
-  const showRelayResumeWarning = useMemo(() => {
-    if (dismissedRelayResumeWarning) return false;
-    if (!currentRelayUsername) return false;
-    if (!versionInfo) return false;
-    return (versionInfo.resumeProtocolVersion ?? 1) < 2;
-  }, [dismissedRelayResumeWarning, currentRelayUsername, versionInfo]);
-
   return (
     <>
-      {showRelayResumeWarning && (
-        <Modal
-          title="Server Update Required"
-          onClose={() => setDismissedRelayResumeWarning(true)}
-        >
-          <div className="host-offline-modal-content">
-            <p className="host-offline-message">
-              The server on <strong>{currentRelayUsername}</strong> needs to be
-              updated for improved session resume security. Until then, you'll
-              need to log in again after refreshing or reconnecting.
-            </p>
-            <p className="host-offline-detail">
-              <code>npm update -g yepanywhere</code>
-            </p>
-            <p className="host-offline-hint">
-              Then restart the server and reconnect.
-            </p>
-            <div className="host-offline-actions">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => setDismissedRelayResumeWarning(true)}
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      <RemoteCompatibilityNotices
+        versionInfo={versionInfo}
+        relayUsername={currentRelayUsername}
+      />
       {isManualReloadMode && pendingReloads.backend && (
         <ReloadBanner
           target="backend"

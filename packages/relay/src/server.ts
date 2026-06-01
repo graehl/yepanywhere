@@ -231,7 +231,7 @@ export async function createRelayServer(
     });
   });
 
-  app.get("/stats", (c) => {
+  app.get("/stats", async (c) => {
     const telemetryStatus = telemetry.getStatus();
     if (!telemetryStatus.enabled || !telemetryStatus.eventsDir) {
       return c.html(
@@ -239,7 +239,7 @@ export async function createRelayServer(
       );
     }
 
-    return c.html(generateRelayStatsHtml(telemetryStatus.eventsDir), 200, {
+    return c.html(await generateRelayStatsHtml(telemetryStatus.eventsDir), 200, {
       "Cache-Control": "no-cache, no-store, must-revalidate",
     });
   });

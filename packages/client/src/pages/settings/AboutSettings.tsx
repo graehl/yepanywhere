@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
-import { api, fetchJSON } from "../../api/client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api, fetchJSON, type VersionInfo } from "../../api/client";
+import { RemoteCompatibilityNoticeCard } from "../../components/RemoteCompatibilityNotices";
 import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
+import { useRemoteCompatibilityNoticeDismissals } from "../../hooks/useRemoteCompatibilityNoticeDismissals";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import { usePwaInstall } from "../../hooks/usePwaInstall";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import { activityBus } from "../../lib/activityBus";
+import { getRemoteCompatibilityNotices } from "../../lib/remoteCompatibilityNotices";
 
 export function AboutSettings() {
   const { t } = useI18n();
@@ -18,11 +21,34 @@ export function AboutSettings() {
   } = useVersion({ freshOnMount: true });
   const remoteConnection = useOptionalRemoteConnection();
   const { resetOnboarding } = useOnboarding();
-  const isRelayConnection = !!remoteConnection?.currentRelayUsername;
-  const hasResumeProtocolSupport =
-    (versionInfo?.resumeProtocolVersion ?? 1) >= 2;
-  const showRelayResumeUpdateWarning =
-    isRelayConnection && !!versionInfo && !hasResumeProtocolSupport;
+  const currentRelayUsername = remoteConnection?.currentRelayUsername ?? null;
+  const getNoticesForVersion = useCallback(
+    (candidate: VersionInfo | null) =>
+      getRemoteCompatibilityNotices({
+        currentVersion: candidate?.current ?? null,
+        latestVersion: candidate?.latest ?? null,
+        updateAvailable: candidate?.updateAvailable ?? false,
+        installSource: candidate?.installSource,
+        resumeProtocolVersion: candidate?.resumeProtocolVersion,
+        capabilities: candidate?.capabilities,
+        relayUsername: currentRelayUsername,
+      }),
+    [currentRelayUsername],
+  );
+  const remoteCompatibilityNotices = useMemo(
+    () => getNoticesForVersion(versionInfo),
+    [getNoticesForVersion, versionInfo],
+  );
+  const remoteCompatibilityNotice = remoteCompatibilityNotices[0];
+  const {
+    dismissedNotices: dismissedRemoteCompatibilityNotices,
+    restoreNotices: restoreRemoteCompatibilityNotices,
+    visibleNotices: visibleRemoteCompatibilityNotices,
+  } = useRemoteCompatibilityNoticeDismissals(remoteCompatibilityNotices);
+  const inlineRemoteCompatibilityNotice =
+    visibleRemoteCompatibilityNotices.length === 0
+      ? dismissedRemoteCompatibilityNotices[0]
+      : null;
 
   // Server restart state
   const [restarting, setRestarting] = useState(false);
@@ -54,6 +80,22 @@ export function AboutSettings() {
     }
   }, []);
 
+  const handleShowRemoteCompatibilityBanner = useCallback(() => {
+    restoreRemoteCompatibilityNotices(remoteCompatibilityNotices);
+  }, [remoteCompatibilityNotices, restoreRemoteCompatibilityNotices]);
+
+  const handleCheckUpdates = useCallback(async () => {
+    const freshVersion = await refetchVersionFresh();
+    restoreRemoteCompatibilityNotices(
+      getNoticesForVersion(freshVersion ?? versionInfo),
+    );
+  }, [
+    getNoticesForVersion,
+    refetchVersionFresh,
+    restoreRemoteCompatibilityNotices,
+    versionInfo,
+  ]);
+
   return (
     <section className="settings-section">
       <h2>{t("aboutTitle")}</h2>
@@ -84,53 +126,62 @@ export function AboutSettings() {
             )}
           </div>
         )}
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("aboutVersionTitle")}</strong>
-            <p>
-              {t("aboutServerVersion")}{" "}
-              {versionInfo ? (
-                <>
-                  v{versionInfo.current}
-                  {versionInfo.updateAvailable && versionInfo.latest ? (
-                    <span className="settings-update-available">
-                      {" "}
-                      {t("aboutVersionAvailable", {
-                        version: versionInfo.latest,
-                      })}
-                    </span>
-                  ) : versionInfo.latest ? (
-                    <span className="settings-up-to-date">
-                      {" "}
-                      {t("aboutUpToDate")}
-                    </span>
-                  ) : null}
-                </>
-              ) : (
-                t("loginLoading")
+        <div className="settings-item settings-version-item">
+          <div className="settings-version-item__row">
+            <div className="settings-item-info">
+              <strong>{t("aboutVersionTitle")}</strong>
+              <p>
+                {t("aboutServerVersion")}{" "}
+                {versionInfo ? (
+                  <>
+                    v{versionInfo.current}
+                    {versionInfo.updateAvailable && versionInfo.latest ? (
+                      <span className="settings-update-available">
+                        {" "}
+                        {t("aboutVersionAvailable", {
+                          version: versionInfo.latest,
+                        })}
+                      </span>
+                    ) : versionInfo.latest ? (
+                      <span className="settings-up-to-date">
+                        {" "}
+                        {t("aboutUpToDate")}
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  t("loginLoading")
+                )}
+              </p>
+              <p>
+                {t("aboutClientVersion")} v{__APP_VERSION__}
+              </p>
+              {versionError && (
+                <p className="settings-warning">{t("aboutUnableRefresh")}</p>
               )}
-            </p>
-            <p>
-              {t("aboutClientVersion")} v{__APP_VERSION__}
-            </p>
-            {versionError && (
-              <p className="settings-warning">{t("aboutUnableRefresh")}</p>
-            )}
-            {showRelayResumeUpdateWarning && (
-              <p className="settings-warning">{t("aboutRelayResumeWarning")}</p>
-            )}
-            {versionInfo?.updateAvailable && (
-              <p className="settings-update-hint">{t("aboutUpdateHint")}</p>
-            )}
+              {versionInfo?.updateAvailable && !remoteCompatibilityNotice && (
+                <p className="settings-update-hint">{t("aboutUpdateHint")}</p>
+              )}
+            </div>
+            <div className="settings-item-actions">
+              <button
+                type="button"
+                className="settings-button"
+                onClick={() => void handleCheckUpdates()}
+                disabled={versionLoading}
+              >
+                {versionLoading ? t("aboutChecking") : t("aboutCheckUpdates")}
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            className="settings-button"
-            onClick={() => void refetchVersionFresh()}
-            disabled={versionLoading}
-          >
-            {versionLoading ? t("aboutChecking") : t("aboutCheckUpdates")}
-          </button>
+          {inlineRemoteCompatibilityNotice && (
+            <RemoteCompatibilityNoticeCard
+              notice={inlineRemoteCompatibilityNotice}
+              noticeCount={remoteCompatibilityNotices.length}
+              placement="inline"
+              onRestore={handleShowRemoteCompatibilityBanner}
+            />
+          )}
         </div>
         <div className="settings-item">
           <div className="settings-item-info">

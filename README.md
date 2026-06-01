@@ -80,6 +80,27 @@ pnpm start
 
 Open http://localhost:3400 in your browser. The app auto-detects installed CLI agents.
 
+## Updating
+
+For the npm-global install:
+
+```bash
+npm update -g yepanywhere
+```
+
+Then restart `yepanywhere`.
+
+For a source checkout:
+
+```bash
+git fetch origin
+git merge origin/main
+pnpm install
+pnpm build
+```
+
+Then restart the server with `pnpm start`.
+
 ## Voice Input and STT Keys
 
 Browser-native voice input works without extra configuration. To use

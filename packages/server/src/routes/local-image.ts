@@ -1,5 +1,6 @@
 import { createReadStream } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
+import * as path from "node:path";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import type { ProjectScanner } from "../projects/scanner.js";
@@ -84,7 +85,7 @@ export function createLocalImageRoutes(deps: LocalImageDeps) {
     }
 
     // Must be an absolute path
-    if (!filePath.startsWith("/")) {
+    if (!path.isAbsolute(filePath)) {
       return c.json({ error: "Path must be absolute" }, 400);
     }
 
@@ -106,7 +107,7 @@ export function createLocalImageRoutes(deps: LocalImageDeps) {
     // Check resolved path against resolved allowed prefixes
     const allowed = await getAllowedPaths();
     const isAllowed = allowed.some((prefix) =>
-      resolvedPath.startsWith(`${prefix}/`),
+      isPathInsideDirectory(resolvedPath, prefix),
     );
     if (!isAllowed) {
       return c.json({ error: "Path not in allowed directories" }, 403);
@@ -138,4 +139,14 @@ export function createLocalImageRoutes(deps: LocalImageDeps) {
   });
 
   return routes;
+}
+
+function isPathInsideDirectory(filePath: string, directory: string): boolean {
+  const relative = path.relative(directory, filePath);
+  return (
+    relative !== "" &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
 }

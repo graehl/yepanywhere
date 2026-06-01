@@ -296,6 +296,8 @@ export interface VersionInfo {
   current: string;
   latest: string | null;
   updateAvailable: boolean;
+  /** Best-effort install source for update guidance. Undefined on older servers. */
+  installSource?: "npm-global" | "source" | "release-package" | "unknown";
   /** Session resume protocol version supported by server (undefined on older servers). */
   resumeProtocolVersion?: number;
   /** Feature capabilities supported by the server. Undefined on older servers. */
@@ -827,12 +829,6 @@ export const api = {
       { method: "PUT", body: JSON.stringify({ mode }) },
     ),
 
-  setHold: (sessionId: string, hold: boolean) =>
-    fetchJSON<{ isHeld: boolean; holdSince: string | null; state: string }>(
-      `/sessions/${sessionId}/hold`,
-      { method: "PUT", body: JSON.stringify({ hold }) },
-    ),
-
   getProcessInfo: (sessionId: string) =>
     fetchJSON<{
       process: {
@@ -846,7 +842,6 @@ export const api = {
         startedAt: string;
         queueDepth: number;
         idleSince?: string;
-        holdSince?: string;
         terminationReason?: string;
         terminatedAt?: string;
         provider: ProviderName;

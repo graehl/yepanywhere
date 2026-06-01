@@ -209,7 +209,7 @@ export function loadConfig(): Config {
   const extraAllowedImagePaths =
     process.env.ALLOWED_IMAGE_PATHS !== undefined
       ? parseCommaSeparatedList(process.env.ALLOWED_IMAGE_PATHS)
-      : ["/tmp"];
+      : getDefaultAllowedImagePaths();
 
   return {
     dataDir,
@@ -322,6 +322,17 @@ function parseCommaSeparatedList(value: string | undefined): string[] {
         .map((s) => s.trim())
         .filter(Boolean)
     : [];
+}
+
+export function getDefaultAllowedImagePaths(
+  platform: NodeJS.Platform = process.platform,
+  tmpDir: string = os.tmpdir(),
+): string[] {
+  const paths = ["/tmp"];
+  if (platform === "win32") {
+    paths.push("C:\\tmp", tmpDir);
+  }
+  return Array.from(new Set(paths));
 }
 
 /**

@@ -1,0 +1,127 @@
+// @vitest-environment jsdom
+
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { VersionInfo } from "../../api/client";
+import { RemoteCompatibilityNotices } from "../RemoteCompatibilityNotices";
+
+function version(overrides: Partial<VersionInfo> = {}): VersionInfo {
+  return {
+    current: "0.4.29",
+    latest: "0.4.29",
+    updateAvailable: false,
+    resumeProtocolVersion: 2,
+    capabilities: [],
+    ...overrides,
+  };
+}
+
+describe("RemoteCompatibilityNotices", () => {
+  const writeText = vi.fn();
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    writeText.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it("renders and dismisses the relay resume security notice", () => {
+    render(
+      <RemoteCompatibilityNotices
+        relayUsername="dev-box"
+        versionInfo={version({ resumeProtocolVersion: 1 })}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Server update recommended",
+    );
+    expect(screen.getByText(/session-resume hardening/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    expect(screen.queryByTestId("remote-compatibility-notice")).toBeNull();
+    const keys = Array.from(
+      { length: window.localStorage.length },
+      (_value, index) => window.localStorage.key(index) ?? "",
+    );
+    expect(keys.some((key) => key.includes("relay-resume-security"))).toBe(
+      true,
+    );
+  });
+
+  it("copies the update command for stable release installs", async () => {
+    render(
+      <RemoteCompatibilityNotices
+        relayUsername="dev-box"
+        versionInfo={version({
+          current: "0.4.28",
+          latest: "0.4.29",
+          updateAvailable: true,
+        })}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy update command" }),
+    );
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("npm update -g yepanywhere"),
+    );
+    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+  });
+
+  it("does not expose an npm command for source checkout versions", () => {
+    render(
+      <RemoteCompatibilityNotices
+        relayUsername="dev-box"
+        versionInfo={version({
+          current: "0.4.28-3-gabcdef",
+          latest: "0.4.29",
+          updateAvailable: true,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Update recommended")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Copy update command" }),
+    ).toBeNull();
+  });
+
+  it("stays hidden after remount when the same notice was dismissed", () => {
+    const props = {
+      relayUsername: "dev-box",
+      versionInfo: version({
+        current: "0.4.28",
+        latest: "0.4.29",
+        updateAvailable: true,
+      }),
+    };
+    const view = render(<RemoteCompatibilityNotices {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByTestId("remote-compatibility-notice")).toBeNull();
+
+    view.unmount();
+    render(<RemoteCompatibilityNotices {...props} />);
+
+    expect(screen.queryByTestId("remote-compatibility-notice")).toBeNull();
+  });
+});

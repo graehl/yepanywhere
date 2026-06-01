@@ -1181,7 +1181,7 @@ export function NewSessionForm({
         `${basePath}/projects/${resolvedProjectId}/sessions/${sessionId}`,
         {
           state: {
-            initialStatus: { state: "owned", processId },
+            initialStatus: { owner: "self", processId },
             initialTitle: trimmedMessage,
             initialModel: selectedModel,
             initialProvider: selectedProvider,

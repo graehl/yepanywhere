@@ -96,6 +96,7 @@ import {
 import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
 import { getModelIndicatorModelLabel } from "../lib/modelIndicatorText";
 import { preprocessMessages } from "../lib/preprocessMessages";
+import { resolveSessionProviderCapabilities } from "../lib/providerCapabilities";
 import {
   getEstimatedServerOffsetMs,
   getServerClockTimestamp,
@@ -863,19 +864,22 @@ function SessionPageContent({
 
   // Get provider capabilities based on session's provider
   const { providers } = useProviders();
-  const currentProviderInfo = useMemo(() => {
-    if (!session?.provider) return null;
-    return providers.find((p) => p.name === session.provider) ?? null;
-  }, [providers, session?.provider]);
+  const providerCapabilities = useMemo(
+    () =>
+      resolveSessionProviderCapabilities({
+        providers,
+        providerName: effectiveProvider,
+      }),
+    [effectiveProvider, providers],
+  );
+  const currentProviderInfo = providerCapabilities.providerInfo;
   // Default to true for backwards compatibility (except slash commands)
   const supportsPermissionMode =
     currentProviderInfo?.supportsPermissionMode ?? true;
   const supportsThinkingToggle =
     currentProviderInfo?.supportsThinkingToggle ?? true;
-  const generallySupportsSteering =
-    currentProviderInfo?.supportsSteering === true ||
-    session?.provider === "codex";
-  const supportsSteeringNow = currentProviderInfo?.supportsSteering === true;
+  const { generallySupportsSteering, supportsSteeringNow } =
+    providerCapabilities;
   const currentOwnedProcessId =
     status.owner === "self" ? status.processId : undefined;
   const activityRenderItems = useMemo(

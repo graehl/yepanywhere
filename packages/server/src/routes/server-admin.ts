@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { markDevReloadRequested } from "../dev-reload-signal.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 
@@ -19,6 +20,7 @@ export function createServerAdminRoutes(deps: ServerAdminDeps): Hono {
     console.log("[ServerAdmin] Restart requested via API");
 
     await deps.notificationService?.flush();
+    markDevReloadRequested();
 
     // Respond before exiting
     const response = c.json({

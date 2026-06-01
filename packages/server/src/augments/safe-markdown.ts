@@ -80,13 +80,17 @@ function formatLocalPathReference(reference: LocalPathReference): string {
 
 /**
  * Check if a string looks like an absolute local file path.
- * Must start with / (but not //) and contain a file extension.
+ * Must be a POSIX or Windows absolute path and contain a file extension.
  */
 function isLocalFilePath(href: string): boolean {
   const trimmed = parseLocalPathReference(href).filePath;
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return false;
-  // Must have a file extension after the last /
-  const basename = trimmed.split("/").pop() ?? "";
+  const isPosixAbsolute =
+    trimmed.startsWith("/") && !trimmed.startsWith("//");
+  const isWindowsDriveAbsolute = /^[A-Za-z]:[\\/]/.test(trimmed);
+  if (!isPosixAbsolute && !isWindowsDriveAbsolute) return false;
+
+  // Must have a file extension after the last path separator.
+  const basename = trimmed.split(/[\\/]/).pop() ?? "";
   return basename.includes(".");
 }
 
@@ -102,7 +106,7 @@ function getExtension(path: string): string {
  * Get the filename from a path.
  */
 function getFileName(path: string): string {
-  return parseLocalPathReference(path).filePath.split("/").pop() ?? path;
+  return parseLocalPathReference(path).filePath.split(/[\\/]/).pop() ?? path;
 }
 
 function isMarkdownExtension(ext: string): boolean {

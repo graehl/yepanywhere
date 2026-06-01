@@ -15,7 +15,8 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { exitIfUnsafeHome } from "./safe-home.js";
@@ -123,6 +124,10 @@ const basePort = process.env.PORT
 const vitePort = process.env.VITE_PORT
   ? Number.parseInt(process.env.VITE_PORT, 10)
   : basePort + 2;
+const reloadSignalFile = join(
+  tmpdir(),
+  `yep-anywhere-dev-reload-${process.pid}-${basePort}.json`,
+);
 const protocol = process.env.HTTPS_SELF_SIGNED === "true" ? "https" : "http";
 const configuredHost = process.env.HOST?.trim();
 const displayHost =
@@ -149,9 +154,32 @@ const env = {
   // When not using --watch, enable manual reload mode (shows banner on file changes)
   NO_BACKEND_RELOAD: backendWatch ? "" : "true",
   NO_FRONTEND_RELOAD: noFrontendReload ? "true" : "",
+  // Explicit one-shot marker written by the server before a requested restart.
+  // Windows .cmd/shell layers do not always preserve the inner process exit
+  // shape, so the wrapper should not rely only on code === 0.
+  YEP_DEV_RELOAD_SIGNAL_FILE: backendWatch ? "" : reloadSignalFile,
   // Pass vite port to both server and client for consistency
   VITE_PORT: String(vitePort),
 };
+
+function clearReloadSignalFile() {
+  if (!existsSync(reloadSignalFile)) return false;
+
+  try {
+    unlinkSync(reloadSignalFile);
+    return true;
+  } catch (err) {
+    console.warn(
+      `Could not clear reload signal file ${reloadSignalFile}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return false;
+  }
+}
+
+// Ignore a stale marker left behind by an earlier wrapper process.
+clearReloadSignalFile();
 
 // Track child processes for cleanup
 const children = [];
@@ -195,9 +223,14 @@ function startServer() {
     const idx = children.indexOf(server);
     if (idx !== -1) children.splice(idx, 1);
 
+    const reloadRequested = !backendWatch && clearReloadSignalFile();
+
     // If server exited cleanly (code 0) and we're in manual reload mode,
     // it was a reload request - restart it
-    if (!backendWatch && code === 0 && signal === null) {
+    if (
+      !backendWatch &&
+      (reloadRequested || (code === 0 && signal === null))
+    ) {
       console.log("\nRestarting server...");
       startServer();
     } else if (code !== null && code !== 0) {

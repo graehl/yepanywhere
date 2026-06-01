@@ -18,6 +18,7 @@ export class OpenCodeProvider implements Provider {
       "Multi-provider agent with tool streaming via SSE. Supports various LLM backends.",
     limitations: [
       "Tool approval flow still under investigation",
+      "Transcript rendering WIP: 22/48 sampled export parts map to visible blocks",
       "Experimental integration",
     ],
     website: "https://opencode.ai",

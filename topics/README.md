@@ -11,6 +11,7 @@
 - Session UI customization
 - Provider image sizing guidance
 - Attachment previews and same-browser cache
+- OpenCode backend capability and rendering parity
 - OpenCode ses_ session ID unification with YA session ID
 - MessageQueue batch delivery and steering UI
 - Message-control and queue intent (`/btw`, queue intent, later-interrupt state contract)

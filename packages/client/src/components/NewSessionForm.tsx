@@ -202,7 +202,7 @@ function getDefaultPromptSuggestionMode(
   ) {
     return defaults.promptSuggestionMode;
   }
-  return provider?.supportsNativePromptSuggestions ? "native" : "off";
+  return "off";
 }
 
 function getDefaultHelperSideModel(

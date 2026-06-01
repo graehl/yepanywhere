@@ -47,11 +47,14 @@ export function MainLayout() {
 
     let cancelled = false;
     const poll = async () => {
-      // Wait for HTTP server to be ready
+      // Wait for HTTP server to be ready. The Tauri webview starts on
+      // tauri://localhost, so reading the response would require server CORS.
+      // We only need to know that localhost accepted the request before
+      // navigating into the same-origin app.
       while (!cancelled) {
         try {
-          const res = await fetch(`http://localhost:${port}/health`);
-          if (res.ok) break;
+          await fetch(`http://localhost:${port}/health`, { mode: "no-cors" });
+          break;
         } catch {
           // Server not ready yet
         }
@@ -88,6 +91,8 @@ export function MainLayout() {
     >
       {serverStatus === "error"
         ? "Server error. Use tray menu to restart."
+        : serverStatus === "stopped"
+          ? "Server stopped. Use tray menu to restart."
         : "Starting server..."}
     </div>
   );

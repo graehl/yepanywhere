@@ -1,9 +1,16 @@
-import * as fs from "node:fs";
+import { createReadStream } from "node:fs";
+import { readdir } from "node:fs/promises";
 import * as path from "node:path";
+import { createInterface } from "node:readline";
 import type { RelayTelemetryEvent } from "./telemetry.js";
 
 interface DailyVersionStats {
   installsByVersion: Record<string, string[]>;
+  clientConnectSuccesses: number;
+}
+
+interface DailyVersionStatsAccumulator {
+  installsByVersion: Map<string, Set<string>>;
   clientConnectSuccesses: number;
 }
 
@@ -13,76 +20,100 @@ interface SamplePoint {
   pairs: number;
 }
 
-function parseEventsFile(filePath: string): RelayTelemetryEvent[] {
+interface RelayStatsSummary {
+  dailyStats: Record<string, DailyVersionStats>;
+  recentSamples: SamplePoint[];
+}
+
+function createDayStats(): DailyVersionStatsAccumulator {
+  return {
+    installsByVersion: new Map(),
+    clientConnectSuccesses: 0,
+  };
+}
+
+function getDayStats(
+  days: Map<string, DailyVersionStatsAccumulator>,
+  day: string,
+): DailyVersionStatsAccumulator {
+  let dayStats = days.get(day);
+  if (!dayStats) {
+    dayStats = createDayStats();
+    days.set(day, dayStats);
+  }
+  return dayStats;
+}
+
+function recordEvent(
+  days: Map<string, DailyVersionStatsAccumulator>,
+  recentSamples: SamplePoint[],
+  event: RelayTelemetryEvent,
+  recentCutoffMs: number,
+): void {
+  if (typeof event.timestamp !== "string") {
+    return;
+  }
+
+  const dayStats = getDayStats(days, event.timestamp.slice(0, 10));
+
+  if (event.event === "server_register") {
+    const version = event.appVersion ?? "unknown";
+    const installId = event.installId ?? event.username;
+    let installs = dayStats.installsByVersion.get(version);
+    if (!installs) {
+      installs = new Set();
+      dayStats.installsByVersion.set(version, installs);
+    }
+    installs.add(installId);
+  }
+
+  if (event.event === "client_connect_success") {
+    dayStats.clientConnectSuccesses += 1;
+  }
+
+  if (event.event !== "connection_sample") {
+    return;
+  }
+
+  const eventTime = new Date(event.timestamp).getTime();
+  if (eventTime < recentCutoffMs) {
+    return;
+  }
+
+  recentSamples.push({
+    timestamp: event.timestamp,
+    waiting: event.waiting,
+    pairs: event.pairs,
+  });
+}
+
+async function parseEventsFile(
+  filePath: string,
+  onEvent: (event: RelayTelemetryEvent) => void,
+): Promise<void> {
   try {
-    const content = fs.readFileSync(filePath, "utf8");
-    const events: RelayTelemetryEvent[] = [];
-    for (const line of content.split("\n")) {
+    const stream = createReadStream(filePath, { encoding: "utf8" });
+    const lines = createInterface({
+      input: stream,
+      crlfDelay: Infinity,
+    });
+
+    for await (const line of lines) {
       if (!line.trim()) continue;
       try {
-        events.push(JSON.parse(line) as RelayTelemetryEvent);
+        onEvent(JSON.parse(line) as RelayTelemetryEvent);
       } catch {
         // Ignore malformed lines.
       }
     }
-    return events;
   } catch {
-    return [];
+    // Ignore files that disappear or cannot be opened while stats are read.
   }
 }
 
-function loadEvents(eventsDir: string): RelayTelemetryEvent[] {
-  let files: string[];
-  try {
-    files = fs
-      .readdirSync(eventsDir)
-      .filter((file) => file.endsWith(".ndjson"))
-      .sort();
-  } catch {
-    return [];
-  }
-
-  return files.flatMap((file) => parseEventsFile(path.join(eventsDir, file)));
-}
-
-function aggregateDailyVersionStats(
-  events: RelayTelemetryEvent[],
+function finalizeDailyStats(
+  days: Map<string, DailyVersionStatsAccumulator>,
 ): Record<string, DailyVersionStats> {
-  const days = new Map<
-    string,
-    {
-      installsByVersion: Map<string, Set<string>>;
-      clientConnectSuccesses: number;
-    }
-  >();
-
-  for (const event of events) {
-    const day = event.timestamp.slice(0, 10);
-    let dayStats = days.get(day);
-    if (!dayStats) {
-      dayStats = {
-        installsByVersion: new Map(),
-        clientConnectSuccesses: 0,
-      };
-      days.set(day, dayStats);
-    }
-
-    if (event.event === "server_register") {
-      const version = event.appVersion ?? "unknown";
-      const installId = event.installId ?? event.username;
-      let installs = dayStats.installsByVersion.get(version);
-      if (!installs) {
-        installs = new Set();
-        dayStats.installsByVersion.set(version, installs);
-      }
-      installs.add(installId);
-    }
-
-    if (event.event === "client_connect_success") {
-      dayStats.clientConnectSuccesses += 1;
-    }
-  }
-
   return Object.fromEntries(
     Array.from(days.entries()).map(([day, stats]) => [
       day,
@@ -98,28 +129,32 @@ function aggregateDailyVersionStats(
   );
 }
 
-function getRecentSamples(
-  events: RelayTelemetryEvent[],
-  hours: number,
-): SamplePoint[] {
-  const cutoff = Date.now() - hours * 60 * 60 * 1000;
-  return events
-    .filter(
-      (
-        event,
-      ): event is Extract<
-        RelayTelemetryEvent,
-        { event: "connection_sample" }
-      > =>
-        event.event === "connection_sample" &&
-        new Date(event.timestamp).getTime() >= cutoff,
-    )
-    .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-    .map((event) => ({
-      timestamp: event.timestamp,
-      waiting: event.waiting,
-      pairs: event.pairs,
-    }));
+async function loadStats(eventsDir: string): Promise<RelayStatsSummary> {
+  const days = new Map<string, DailyVersionStatsAccumulator>();
+  const recentSamples: SamplePoint[] = [];
+  const recentCutoffMs = Date.now() - 24 * 60 * 60 * 1000;
+
+  let files: string[];
+  try {
+    files = (await readdir(eventsDir))
+      .filter((file) => file.endsWith(".ndjson"))
+      .sort();
+  } catch {
+    return { dailyStats: {}, recentSamples };
+  }
+
+  for (const file of files) {
+    await parseEventsFile(path.join(eventsDir, file), (event) => {
+      recordEvent(days, recentSamples, event, recentCutoffMs);
+    });
+  }
+
+  recentSamples.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+  return {
+    dailyStats: finalizeDailyStats(days),
+    recentSamples,
+  };
 }
 
 function sortVersions(versions: string[]): string[] {
@@ -150,9 +185,9 @@ const VERSION_COLORS = [
 
 function buildStatsHtml(
   eventsDir: string,
-  events: RelayTelemetryEvent[],
+  summary: RelayStatsSummary,
 ): string {
-  const dailyStats = aggregateDailyVersionStats(events);
+  const { dailyStats, recentSamples } = summary;
   const dates = Object.keys(dailyStats).sort();
   const versionSet = new Set<string>();
   for (const dayStats of Object.values(dailyStats)) {
@@ -194,7 +229,6 @@ function buildStatsHtml(
     fill: false,
   });
 
-  const recentSamples = getRecentSamples(events, 24);
   const sampleLabels = recentSamples.map((sample) =>
     sample.timestamp.slice(11, 16),
   );
@@ -345,7 +379,9 @@ ${
 </html>`;
 }
 
-export function generateRelayStatsHtml(eventsDir: string): string {
-  const events = loadEvents(eventsDir);
-  return buildStatsHtml(eventsDir, events);
+export async function generateRelayStatsHtml(
+  eventsDir: string,
+): Promise<string> {
+  const summary = await loadStats(eventsDir);
+  return buildStatsHtml(eventsDir, summary);
 }

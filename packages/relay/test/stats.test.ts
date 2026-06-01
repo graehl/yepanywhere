@@ -13,7 +13,7 @@ describe("relay stats", () => {
     }
   });
 
-  it("renders version and traffic charts from daily telemetry files", () => {
+  it("renders version and traffic charts from daily telemetry files", async () => {
     const dir = mkdtempSync(join(tmpdir(), "relay-stats-"));
     tempDirs.push(dir);
 
@@ -55,12 +55,54 @@ describe("relay stats", () => {
       "utf8",
     );
 
-    const html = generateRelayStatsHtml(dir);
+    const html = await generateRelayStatsHtml(dir);
 
     expect(html).toContain("Remote-active installs by version");
     expect(html).toContain("Relay traffic, last 24 hours");
     expect(html).toContain("1.2.3");
     expect(html).toContain("waiting");
     expect(html).toContain("pairs");
+  });
+
+  it("deduplicates installs and ignores malformed lines", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "relay-stats-"));
+    tempDirs.push(dir);
+
+    writeFileSync(
+      join(dir, "2026-03-09.ndjson"),
+      [
+        JSON.stringify({
+          timestamp: "2026-03-09T10:00:00.000Z",
+          relayNodeId: "relay-a",
+          event: "server_register",
+          username: "alice",
+          installId: "install-1",
+          appVersion: "1.2.3",
+        }),
+        "{not json",
+        JSON.stringify({
+          timestamp: "2026-03-09T10:01:00.000Z",
+          relayNodeId: "relay-a",
+          event: "server_register",
+          username: "alice",
+          installId: "install-1",
+          appVersion: "1.2.3",
+        }),
+        JSON.stringify({
+          timestamp: "2026-03-09T10:05:00.000Z",
+          relayNodeId: "relay-a",
+          event: "server_register",
+          username: "bob",
+          installId: "install-2",
+          appVersion: "1.2.3",
+        }),
+      ].join("\n"),
+      "utf8",
+    );
+
+    const html = await generateRelayStatsHtml(dir);
+
+    expect(html).toContain("1.2.3");
+    expect(html).toContain('"data":[2]');
   });
 });

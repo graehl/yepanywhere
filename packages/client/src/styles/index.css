@@ -3539,8 +3539,8 @@ a.sidebar-nav-item {
 
 .queue-button,
 .stop-button {
-  width: var(--composer-control-size);
-  height: var(--composer-control-size);
+  width: var(--composer-primary-control-size);
+  height: var(--composer-primary-control-size);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3553,8 +3553,8 @@ a.sidebar-nav-item {
 }
 
 .send-button {
-  width: var(--composer-control-size);
-  height: var(--composer-control-size);
+  width: var(--composer-primary-control-size);
+  height: var(--composer-primary-control-size);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3592,7 +3592,7 @@ a.sidebar-nav-item {
 }
 
 .queue-mode-toggle {
-  height: var(--composer-control-size);
+  height: var(--composer-primary-control-size);
   min-width: 76px;
   padding: 0 var(--space-2);
   display: inline-flex;
@@ -7799,7 +7799,7 @@ a.sidebar-nav-item {
   .message-input-toolbar {
     gap: 0.3rem;
     --composer-control-size: 30px;
-    --composer-primary-control-size: 34px;
+    --composer-primary-control-size: 36px;
   }
 
   .message-input-wrapper .message-input-toolbar {
@@ -7924,7 +7924,7 @@ a.sidebar-nav-item {
 @media (max-width: 480px) {
   .message-input-toolbar {
     --composer-control-size: 28px;
-    --composer-primary-control-size: 32px;
+    --composer-primary-control-size: 36px;
   }
 
   .context-usage-pie {

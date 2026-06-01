@@ -180,6 +180,18 @@ function parseOptionalExecutor(rawExecutor: unknown): {
   return { executor };
 }
 
+function normalizeOptionalServiceTier(
+  rawServiceTier: unknown,
+): string | undefined {
+  if (typeof rawServiceTier !== "string") {
+    return undefined;
+  }
+  const serviceTier = rawServiceTier.trim();
+  return /^[A-Za-z0-9_-]{1,64}$/.test(serviceTier)
+    ? serviceTier
+    : undefined;
+}
+
 function parseOptionalRecapMode(rawMode: unknown): {
   recapMode: RecapMode | undefined;
   error?: string;
@@ -458,6 +470,7 @@ interface StartSessionBody {
   attachments?: UploadedFile[];
   mode?: PermissionMode;
   model?: string;
+  serviceTier?: string;
   thinking?: ThinkingOption;
   provider?: ProviderName;
   /** Browser-side timestamp for request latency tracking (epoch ms) */
@@ -487,6 +500,7 @@ interface StartSessionBody {
 interface CreateSessionBody {
   mode?: PermissionMode;
   model?: string;
+  serviceTier?: string;
   thinking?: ThinkingOption;
   provider?: ProviderName;
   /** SSH host alias for remote execution (undefined = local) */
@@ -2344,12 +2358,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Convert model option (undefined or "default" means use CLI default)
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
+    const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
 
     // Debug: log what we received
     console.log("[startSession] Request body:", {
       provider: body.provider,
       executor,
       model: body.model,
+      serviceTier,
     });
 
     const result = await deps.supervisor.startSession(
@@ -2358,6 +2374,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
       {
         model,
+        serviceTier,
         thinking,
         effort,
         providerName: body.provider,
@@ -2445,12 +2462,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Convert model option (undefined or "default" means use CLI default)
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
+    const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
 
     const result = await deps.supervisor.createSession(
       project.path,
       body.mode,
       {
         model,
+        serviceTier,
         thinking,
         effort,
         providerName: body.provider,
@@ -2531,6 +2550,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       : { thinking: undefined, effort: undefined };
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
+    const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
 
     const result = await deps.supervisor.startSession(
       projectPath,
@@ -2538,6 +2558,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
       {
         model,
+        serviceTier,
         thinking,
         effort,
         providerName: body.provider,
@@ -2607,12 +2628,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       : { thinking: undefined, effort: undefined };
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
+    const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
 
     const result = await deps.supervisor.createSession(
       projectPath,
       body.mode,
       {
         model,
+        serviceTier,
         thinking,
         effort,
         providerName: body.provider,
@@ -2705,6 +2728,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Convert model option (undefined or "default" means use CLI default)
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
+    const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
 
     // Use client-provided executor, falling back to saved executor from metadata.
     let executor = parsedBodyExecutor.executor;
@@ -2826,6 +2850,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
       {
         model,
+        serviceTier,
         thinking,
         effort,
         providerName,
@@ -2953,6 +2978,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       : { thinking: undefined, effort: undefined };
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
+    const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
 
     const result = await deps.supervisor.startSession(
       project.path,
@@ -2963,6 +2989,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
       {
         model,
+        serviceTier,
         thinking,
         effort,
         providerName,
@@ -3150,6 +3177,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.model && body.model !== "default"
         ? body.model
         : (process.resolvedModel ?? process.model);
+    const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
 
     // Use queueMessageToSession which handles thinking mode changes
     // If thinking mode changed, it will restart the process automatically
@@ -3162,6 +3190,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
       {
         model,
+        serviceTier,
         thinking,
         effort,
         providerName: metadataProvider ?? body.provider ?? process.provider,

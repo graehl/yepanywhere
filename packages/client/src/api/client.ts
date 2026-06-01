@@ -151,6 +151,8 @@ export interface SessionOptions {
   mode?: PermissionMode;
   /** Model ID (e.g., "sonnet", "opus", "qwen2.5-coder:0.5b") */
   model?: string;
+  /** Provider-visible service tier. Omit for provider/default behavior. */
+  serviceTier?: string;
   thinking?: ThinkingOption;
   provider?: ProviderName;
   /** SSH host alias for remote execution (undefined = local) */
@@ -510,6 +512,7 @@ export const api = {
         message,
         mode: options?.mode,
         model: options?.model,
+        serviceTier: options?.serviceTier,
         thinking: options?.thinking,
         provider: options?.provider,
         executor: options?.executor,
@@ -539,6 +542,7 @@ export const api = {
       body: JSON.stringify({
         mode: options?.mode,
         model: options?.model,
+        serviceTier: options?.serviceTier,
         thinking: options?.thinking,
         provider: options?.provider,
         executor: options?.executor,
@@ -568,6 +572,7 @@ export const api = {
         message,
         mode: options?.mode,
         model: options?.model,
+        serviceTier: options?.serviceTier,
         thinking: options?.thinking,
         provider: options?.provider,
         executor: options?.executor,
@@ -593,6 +598,7 @@ export const api = {
       body: JSON.stringify({
         mode: options?.mode,
         model: options?.model,
+        serviceTier: options?.serviceTier,
         thinking: options?.thinking,
         provider: options?.provider,
         executor: options?.executor,
@@ -623,6 +629,7 @@ export const api = {
         message,
         mode: options?.mode,
         model: options?.model,
+        serviceTier: options?.serviceTier,
         thinking: options?.thinking,
         provider: options?.provider,
         executor: options?.executor,
@@ -659,6 +666,7 @@ export const api = {
       body: JSON.stringify({
         mode: options?.mode,
         model: options?.model,
+        serviceTier: options?.serviceTier,
         thinking: options?.thinking,
         provider: options?.provider,
         executor: options?.executor,
@@ -680,6 +688,7 @@ export const api = {
     placement?: DeferredMessagePlacement,
     clientTimestamp?: number,
     messageMetadata?: UserMessageMetadata,
+    serviceTier?: string,
   ) =>
     fetchJSON<{
       queued: boolean;
@@ -699,6 +708,7 @@ export const api = {
         attachments,
         tempId,
         thinking,
+        serviceTier,
         deferred,
         insertBeforeTempId: placement?.beforeTempId,
         insertAfterTempId: placement?.afterTempId,

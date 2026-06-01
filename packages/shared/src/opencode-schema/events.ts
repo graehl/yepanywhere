@@ -8,6 +8,7 @@
  * - session.idle: Session finished processing
  * - message.updated: Message metadata updated
  * - message.part.updated: Message content streaming (with delta)
+ * - message.part.delta: Incremental field delta for an existing part
  * - session.diff: File diff information
  */
 
@@ -245,6 +246,24 @@ export type OpenCodeMessagePartUpdatedEvent = z.infer<
 >;
 
 /**
+ * Message part delta event (incremental content).
+ */
+export const OpenCodeMessagePartDeltaEventSchema = z.object({
+  type: z.literal("message.part.delta"),
+  properties: z.object({
+    sessionID: z.string(),
+    messageID: z.string().optional(),
+    partID: z.string(),
+    field: z.string(),
+    delta: z.string(),
+  }),
+});
+
+export type OpenCodeMessagePartDeltaEvent = z.infer<
+  typeof OpenCodeMessagePartDeltaEventSchema
+>;
+
+/**
  * Union of all OpenCode SSE event types.
  */
 export const OpenCodeSSEEventSchema = z.discriminatedUnion("type", [
@@ -255,6 +274,7 @@ export const OpenCodeSSEEventSchema = z.discriminatedUnion("type", [
   OpenCodeSessionDiffEventSchema,
   OpenCodeMessageUpdatedEventSchema,
   OpenCodeMessagePartUpdatedEventSchema,
+  OpenCodeMessagePartDeltaEventSchema,
 ]);
 
 export type OpenCodeSSEEvent = z.infer<typeof OpenCodeSSEEventSchema>;

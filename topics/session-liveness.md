@@ -115,10 +115,15 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
 - OpenCode text parts must be interpreted through the corresponding
   `message.updated` role metadata when it is available. A user text part is not
   assistant progress and should not be rendered as an assistant message.
-- OpenCode 1.14.39 may also emit `message.part.delta` SSE events. YA should
-  continue treating `message.part.updated` as the canonical text-part event
-  unless the adapter deliberately grows a separate delta-event path; raw delta
-  cadence alone is not a stronger liveness proof.
+- OpenCode 1.14.x may emit `message.part.delta` SSE events. When the
+  adapter has already learned the part's message role and type, text deltas
+  may become normalized assistant progress, but raw delta cadence alone is
+  not a stronger liveness proof.
+- OpenCode may return the completed assistant message in the
+  `POST /session/:id/message` body even when `/event` closes before carrying
+  assistant content. YA may use that body as a final-response fallback only
+  after no assistant content has streamed, and must not duplicate later SSE
+  text after taking the fallback.
 - User-message metadata should survive REST acceptance, optimistic/replayed
   user echoes, and deferred queue summaries without becoming hidden prompt text.
 - Deferred messages promoted at a natural turn boundary should produce the
@@ -154,6 +159,10 @@ Related topic: [heartbeat ownership and timers](heartbeat.md).
   evidence, while an unrecognized present entry becomes probe error evidence.
 - OpenCode user text parts do not become assistant messages when
   `message.updated` identifies the message role as `user`.
+- OpenCode `message.part.delta` text streams incrementally without duplicating
+  the final `message.part.updated` content.
+- OpenCode completed message POST-body fallback renders assistant text when
+  SSE closes without assistant content.
 - Heartbeat turns queue from `verified-idle`, or from the heartbeat topic's
   explicit steering-capable doubtful-liveness path.
 - Heartbeat turns remain deferred until the configured quiet period has elapsed

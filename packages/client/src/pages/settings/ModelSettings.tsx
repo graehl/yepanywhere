@@ -67,7 +67,12 @@ function getPreferredModel(
     const matchingModel = models.find((m) => m.id === preferredModel);
     if (matchingModel) return matchingModel.id;
   }
-  return models.find((m) => m.id === "default")?.id ?? models[0]?.id ?? null;
+  return (
+    models.find((m) => m.isDefault)?.id ??
+    models.find((m) => m.id === "default")?.id ??
+    models[0]?.id ??
+    null
+  );
 }
 
 function getPreferredProviderModel(

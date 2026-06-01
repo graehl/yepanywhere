@@ -19,6 +19,7 @@ import { promisify } from "node:util";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type {
   ModelInfo,
+  OpenCodeMessagePartDeltaEvent,
   OpenCodeMessagePartUpdatedEvent,
   OpenCodeMessageUpdatedEvent,
   OpenCodePart,
@@ -31,6 +32,7 @@ import { getLogger } from "../../logging/logger.js";
 import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
 import type {
+  ContentBlock,
   ProviderActivitySnapshot,
   ProviderLivenessProbeResult,
   SDKMessage,
@@ -42,7 +44,22 @@ import type {
   StartSessionOptions,
 } from "./types.js";
 const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
+
+function execFileUtf8(
+  file: string,
+  args: string[],
+  options: { encoding: BufferEncoding; timeout: number },
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, options, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve({ stdout: String(stdout), stderr: String(stderr) });
+    });
+  });
+}
 
 /**
  * Configuration for OpenCode provider.
@@ -66,12 +83,64 @@ interface OpenCodeModelSelection {
 
 interface OpenCodeRuntimeState {
   baseUrl: string;
+  cwd: string;
   opencodeSessionId: string;
   serverProcess: ChildProcess;
   lastRawProviderEventAt: Date | null;
   lastRawProviderEventSource: string | null;
   lastSessionStatus: OpenCodeSessionStatus | null;
   lastSessionStatusAt: Date | null;
+}
+
+interface OpenCodeStreamState {
+  currentAssistantMessageId: string | null;
+  messageRolesById: Map<string, "user" | "assistant">;
+  partMessageIdsById: Map<string, string>;
+  partTypesById: Map<string, string>;
+  partTextById: Map<string, string>;
+  partSentLengthsById: Map<string, number>;
+  sawAssistantContent: boolean;
+  usedPostBodyFallback: boolean;
+}
+
+interface OpenCodeMessageResponse {
+  info?: {
+    id?: string;
+    sessionID?: string;
+    role?: "user" | "assistant";
+    modelID?: string;
+    providerID?: string;
+  };
+  message?: {
+    id?: string;
+    sessionID?: string;
+    role?: "user" | "assistant";
+    modelID?: string;
+    providerID?: string;
+  };
+  parts?: OpenCodePart[];
+}
+
+const LOCAL_GLM_MODEL_PREFIX = "local-glm/";
+
+function getLocalGlmModelDescription(modelId: string): string {
+  const servedModelName = modelId.slice(LOCAL_GLM_MODEL_PREFIX.length);
+  const vllmModelArg =
+    servedModelName === "Qwen/Qwen3.6-27B"
+      ? "Qwen/Qwen3.6-27B-FP8"
+      : servedModelName;
+  const command = [
+    "pixi run vllm serve",
+    vllmModelArg,
+    "--served-model-name",
+    servedModelName,
+    "--tool-call-parser qwen3_coder",
+    "--reasoning-parser qwen3",
+    "--enable-auto-tool-choice",
+    "--port 8001",
+  ].join(" ");
+
+  return `Start matching vLLM server: ${command}`;
 }
 
 /**
@@ -139,6 +208,8 @@ function getOpenCodeEventSessionId(event: OpenCodeSSEEvent): string | undefined 
       return event.properties.info.sessionID;
     case "message.part.updated":
       return event.properties.part.sessionID;
+    case "message.part.delta":
+      return event.properties.sessionID;
     default:
       return undefined;
   }
@@ -214,27 +285,42 @@ export class OpenCodeProvider implements AgentProvider {
     }
 
     try {
-      const { stdout: result } = await execFileAsync(opencodePath, ["models"], {
+      const { stdout: result } = await execFileUtf8(opencodePath, ["models"], {
         encoding: "utf-8",
         timeout: 10000,
       });
 
-      // Synthetic "default" entry defers to whatever opencode.json configures
-      const models: ModelInfo[] = [
-        { id: "default", name: "Default" },
-      ];
+      const discoveredModels: ModelInfo[] = [];
 
       for (const line of result.split("\n")) {
         const trimmed = line.trim();
         if (trimmed && !trimmed.startsWith("─")) {
-          models.push({
+          discoveredModels.push({
             id: trimmed,
             name: trimmed,
           });
         }
       }
 
-      return models;
+      const localGlmModels = discoveredModels
+        .filter((model) => model.id.startsWith(LOCAL_GLM_MODEL_PREFIX))
+        .map((model, index) => ({
+          ...model,
+          description: getLocalGlmModelDescription(model.id),
+          isDefault: index === 0,
+        }));
+      const otherModels = discoveredModels.filter(
+        (model) => !model.id.startsWith(LOCAL_GLM_MODEL_PREFIX),
+      );
+      const defaultModel: ModelInfo = {
+        id: "default",
+        name: "Default",
+        description: "Use the default configured in opencode.json",
+      };
+
+      return localGlmModels.length > 0
+        ? [...localGlmModels, defaultModel, ...otherModels]
+        : [defaultModel, ...otherModels];
     } catch {
       // Return default models if command fails
       return [
@@ -331,6 +417,7 @@ export class OpenCodeProvider implements AgentProvider {
     const pidRef = { value: serverProcess.pid };
     const runtime: OpenCodeRuntimeState = {
       baseUrl,
+      cwd: options.cwd,
       opencodeSessionId,
       serverProcess,
       lastRawProviderEventAt: null,
@@ -621,8 +708,18 @@ export class OpenCodeProvider implements AgentProvider {
       return;
     }
 
-    const sseUrl = `${runtime.baseUrl}/event`;
+    const sseUrl = `${runtime.baseUrl}/event?directory=${encodeURIComponent(runtime.cwd)}`;
     const sseController = new AbortController();
+    const streamState: OpenCodeStreamState = {
+      currentAssistantMessageId: null,
+      messageRolesById: new Map(),
+      partMessageIdsById: new Map(),
+      partTypesById: new Map(),
+      partTextById: new Map(),
+      partSentLengthsById: new Map(),
+      sawAssistantContent: false,
+      usedPostBodyFallback: false,
+    };
 
     // Event buffer and signaling for producer/consumer pattern
     // Using an object to avoid TypeScript control flow issues across async boundaries
@@ -654,8 +751,6 @@ export class OpenCodeProvider implements AgentProvider {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        let currentAssistantMessageId: string | null = null;
-        const messageRolesById = new Map<string, "user" | "assistant">();
 
         while (!sseController.signal.aborted) {
           const { done, value } = await reader.read();
@@ -687,7 +782,7 @@ export class OpenCodeProvider implements AgentProvider {
             updateOpenCodeRuntimeEvent(runtime, event);
             if (event.type === "message.updated") {
               const messageEvent = event as OpenCodeMessageUpdatedEvent;
-              messageRolesById.set(
+              streamState.messageRolesById.set(
                 messageEvent.properties.info.id,
                 messageEvent.properties.info.role,
               );
@@ -697,18 +792,19 @@ export class OpenCodeProvider implements AgentProvider {
             const sdkMessage = this.convertSSEEventToSDKMessage(
               event,
               sessionId,
-              currentAssistantMessageId,
-              messageRolesById,
+              streamState,
             );
 
             if (sdkMessage) {
-              // Track assistant message ID for consistent streaming
-              if (
-                sdkMessage.type === "assistant" &&
-                "uuid" in sdkMessage &&
-                sdkMessage.uuid
-              ) {
-                currentAssistantMessageId = sdkMessage.uuid as string;
+              if (sdkMessage.type === "assistant") {
+                if (streamState.usedPostBodyFallback) {
+                  continue;
+                }
+                if ("uuid" in sdkMessage && sdkMessage.uuid) {
+                  streamState.currentAssistantMessageId =
+                    sdkMessage.uuid as string;
+                }
+                streamState.sawAssistantContent = true;
               }
               state.eventBuffer.push(sdkMessage);
               // Wake up consumer if waiting
@@ -771,6 +867,21 @@ export class OpenCodeProvider implements AgentProvider {
         throw new Error(
           `Failed to send message: ${response.status} ${errorText}`,
         );
+      }
+      const responsePayload = (await response.json().catch(() => null)) as
+        | OpenCodeMessageResponse
+        | null;
+      if (!streamState.sawAssistantContent) {
+        const fallbackMessages = this.convertOpenCodeMessageResponseToSDKMessages(
+          responsePayload,
+          sessionId,
+        );
+        if (fallbackMessages.length > 0) {
+          streamState.sawAssistantContent = true;
+          streamState.usedPostBodyFallback = true;
+          state.eventBuffer.push(...fallbackMessages);
+          state.resolveWaiting?.();
+        }
       }
       log.debug(
         { opencodeSessionId: runtime.opencodeSessionId },
@@ -836,21 +947,48 @@ export class OpenCodeProvider implements AgentProvider {
   private convertSSEEventToSDKMessage(
     event: OpenCodeSSEEvent,
     sessionId: string,
-    currentMessageId: string | null,
-    messageRolesById: ReadonlyMap<string, "user" | "assistant">,
+    streamState: OpenCodeStreamState,
   ): SDKMessage | null {
     switch (event.type) {
       case "message.part.updated": {
         const partEvent = event as OpenCodeMessagePartUpdatedEvent;
         const part = partEvent.properties.part;
         const delta = partEvent.properties.delta;
+        streamState.partMessageIdsById.set(part.id, part.messageID);
+        streamState.partTypesById.set(part.id, part.type);
 
         return this.convertPartToSDKMessage(
           part,
           sessionId,
           delta,
-          currentMessageId,
-          messageRolesById.get(part.messageID),
+          streamState,
+          streamState.messageRolesById.get(part.messageID),
+        );
+      }
+
+      case "message.part.delta": {
+        const deltaEvent = event as OpenCodeMessagePartDeltaEvent;
+        const messageId =
+          deltaEvent.properties.messageID ??
+          streamState.partMessageIdsById.get(deltaEvent.properties.partID);
+        const partType = streamState.partTypesById.get(
+          deltaEvent.properties.partID,
+        );
+
+        if (!messageId || !partType || deltaEvent.properties.field !== "text") {
+          return null;
+        }
+
+        return this.convertTextLikePartToSDKMessage(
+          {
+            partId: deltaEvent.properties.partID,
+            messageId,
+            partType,
+            delta: deltaEvent.properties.delta,
+          },
+          sessionId,
+          streamState,
+          streamState.messageRolesById.get(messageId),
         );
       }
 
@@ -868,6 +1006,92 @@ export class OpenCodeProvider implements AgentProvider {
     }
   }
 
+  private convertTextLikePartToSDKMessage(
+    part: {
+      partId: string;
+      messageId: string;
+      partType: string;
+      fullText?: string;
+      delta?: string;
+    },
+    sessionId: string,
+    streamState: OpenCodeStreamState,
+    messageRole: "user" | "assistant" | undefined,
+  ): SDKMessage | null {
+    if (messageRole === "user") {
+      return null;
+    }
+
+    const previousText = streamState.partTextById.get(part.partId) ?? "";
+    const nextText =
+      part.delta !== undefined
+        ? previousText + part.delta
+        : (part.fullText ?? previousText);
+    streamState.partTextById.set(part.partId, nextText);
+
+    const sentLength = streamState.partSentLengthsById.get(part.partId) ?? 0;
+    const text = nextText.slice(sentLength);
+    if (!text) return null;
+    streamState.partSentLengthsById.set(part.partId, nextText.length);
+
+    const content =
+      part.partType === "reasoning"
+        ? ([{ type: "thinking", thinking: text }] satisfies ContentBlock[])
+        : text;
+
+    return {
+      type: "assistant",
+      session_id: sessionId,
+      uuid: streamState.currentAssistantMessageId ?? part.messageId,
+      message: {
+        role: "assistant",
+        content,
+      },
+    } as SDKMessage;
+  }
+
+  private convertOpenCodeMessageResponseToSDKMessages(
+    response: OpenCodeMessageResponse | null,
+    sessionId: string,
+  ): SDKMessage[] {
+    const info = response?.info ?? response?.message;
+    if (!info || info.role !== "assistant" || !Array.isArray(response?.parts)) {
+      return [];
+    }
+
+    const contentBlocks: ContentBlock[] = [];
+    for (const part of response.parts) {
+      if (part.type === "reasoning" && part.text) {
+        contentBlocks.push({ type: "thinking", thinking: part.text });
+      } else if (part.type === "text" && part.text) {
+        contentBlocks.push({ type: "text", text: part.text });
+      }
+    }
+
+    if (contentBlocks.length === 0) return [];
+
+    const content =
+      contentBlocks.length === 1 && contentBlocks[0]?.type === "text"
+        ? (contentBlocks[0].text ?? "")
+        : contentBlocks;
+
+    return [
+      {
+        type: "assistant",
+        session_id: sessionId,
+        uuid: info.id,
+        message: {
+          role: "assistant",
+          model:
+            info.providerID && info.modelID
+              ? `${info.providerID}/${info.modelID}`
+              : info.modelID,
+          content,
+        },
+      } as SDKMessage,
+    ];
+  }
+
   /**
    * Convert an OpenCode part to an SDK message.
    */
@@ -875,29 +1099,24 @@ export class OpenCodeProvider implements AgentProvider {
     part: OpenCodePart,
     sessionId: string,
     delta: string | undefined,
-    currentMessageId: string | null,
+    streamState: OpenCodeStreamState,
     messageRole: "user" | "assistant" | undefined,
   ): SDKMessage | null {
     switch (part.type) {
-      case "text": {
-        if (messageRole === "user") {
-          return null;
-        }
-
-        // Use delta if available (streaming), otherwise full text
-        const text = delta ?? part.text ?? "";
-        if (!text) return null;
-
-        return {
-          type: "assistant",
-          session_id: sessionId,
-          uuid: currentMessageId ?? part.messageID,
-          message: {
-            role: "assistant",
-            content: text,
+      case "text":
+      case "reasoning":
+        return this.convertTextLikePartToSDKMessage(
+          {
+            partId: part.id,
+            messageId: part.messageID,
+            partType: part.type,
+            fullText: part.text,
+            delta,
           },
-        } as SDKMessage;
-      }
+          sessionId,
+          streamState,
+          messageRole,
+        );
 
       case "step-start":
         // Start of a processing step - no content to emit

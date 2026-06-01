@@ -333,6 +333,7 @@ export type {
   OpenCodeSessionIdleEvent,
   OpenCodeSessionDiffEvent,
   OpenCodeMessageUpdatedEvent,
+  OpenCodeMessagePartDeltaEvent,
   OpenCodeMessagePartUpdatedEvent,
   OpenCodeSSEEvent,
   // Session storage types

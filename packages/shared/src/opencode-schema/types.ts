@@ -17,6 +17,7 @@ export type {
   OpenCodeSessionIdleEvent,
   OpenCodeSessionDiffEvent,
   OpenCodeMessageUpdatedEvent,
+  OpenCodeMessagePartDeltaEvent,
   OpenCodeMessagePartUpdatedEvent,
   OpenCodeSSEEvent,
 } from "./events.js";

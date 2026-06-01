@@ -57,12 +57,21 @@ function sseResponse(events: unknown[]): Response {
 
 describe("OpenCodeProvider.startSession — blocking session ID", () => {
   let spawnMock: ReturnType<typeof vi.fn>;
+  let execFileMock: ReturnType<typeof vi.fn>;
   let fetchMock: ReturnType<typeof vi.fn>;
   let fakeProcess: ChildProcess;
 
   beforeEach(async () => {
     fakeProcess = makeFakeProcess();
     spawnMock = vi.fn(() => fakeProcess);
+    execFileMock = vi.fn(
+      (
+        _file: string,
+        _args: string[],
+        _options: unknown,
+        callback: (error: Error | null, stdout?: string, stderr?: string) => void,
+      ) => callback(new Error("execFile not mocked")),
+    );
     fetchMock = vi.fn();
 
     // Patch module-level imports
@@ -73,7 +82,7 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
         ...actual,
         spawn: spawnMock,
         exec: actual.exec,
-        execFile: actual.execFile,
+        execFile: execFileMock,
       };
     });
 
@@ -256,7 +265,7 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
   it("sends explicit provider/model selection in the message body", async () => {
     const sessionId = "ses_model_selection";
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-      if (url.endsWith("/event")) {
+      if (url.includes("/event")) {
         return Promise.resolve(
           sseResponse([
             {
@@ -309,10 +318,52 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
     session.abort();
   });
 
+  it("lists local-glm OpenCode models first and marks the first as default", async () => {
+    execFileMock.mockImplementation(
+      (
+        _file: string,
+        _args: string[],
+        _options: unknown,
+        callback: (error: Error | null, stdout?: string, stderr?: string) => void,
+      ) =>
+        callback(
+          null,
+          [
+            "opencode/big-pickle",
+            "github-copilot/gpt-5-mini",
+            "local-glm/Qwen/Qwen3.6-27B",
+          ].join("\n"),
+          "",
+        ),
+    );
+
+    const { OpenCodeProvider } = await import(
+      "../../../src/sdk/providers/opencode.js"
+    );
+    const provider = new OpenCodeProvider({ opencodePath: "/fake/opencode" });
+
+    await expect(provider.getAvailableModels()).resolves.toEqual([
+      {
+        id: "local-glm/Qwen/Qwen3.6-27B",
+        name: "local-glm/Qwen/Qwen3.6-27B",
+        description:
+          "Start matching vLLM server: pixi run vllm serve Qwen/Qwen3.6-27B-FP8 --served-model-name Qwen/Qwen3.6-27B --tool-call-parser qwen3_coder --reasoning-parser qwen3 --enable-auto-tool-choice --port 8001",
+        isDefault: true,
+      },
+      {
+        id: "default",
+        name: "Default",
+        description: "Use the default configured in opencode.json",
+      },
+      { id: "opencode/big-pickle", name: "opencode/big-pickle" },
+      { id: "github-copilot/gpt-5-mini", name: "github-copilot/gpt-5-mini" },
+    ]);
+  });
+
   it("does not render OpenCode user text parts as assistant messages", async () => {
     const sessionId = "ses_user_part_filter";
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-      if (url.endsWith("/event")) {
+      if (url.includes("/event")) {
         return Promise.resolve(
           sseResponse([
             {
@@ -393,6 +444,180 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
       .filter((message) => message.type === "assistant")
       .map((message) => message.message?.content);
     expect(assistantTexts).toEqual(["assistant reply"]);
+
+    session.abort();
+  });
+
+  it("uses the OpenCode message POST body when SSE closes before content", async () => {
+    const sessionId = "ses_post_body_fallback";
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/event")) {
+        return Promise.resolve(
+          sseResponse([{ type: "server.connected", properties: {} }]),
+        );
+      }
+      if (url.endsWith(`/session/${sessionId}/message`)) {
+        return Promise.resolve(
+          jsonResponse({
+            info: {
+              id: "msg_assistant",
+              sessionID: sessionId,
+              role: "assistant",
+              providerID: "local-glm",
+              modelID: "Qwen/Qwen3.6-27B",
+            },
+            parts: [
+              {
+                id: "part_reasoning",
+                sessionID: sessionId,
+                messageID: "msg_assistant",
+                type: "reasoning",
+                text: "thinking it through",
+              },
+              {
+                id: "part_text",
+                sessionID: sessionId,
+                messageID: "msg_assistant",
+                type: "text",
+                text: "assistant reply",
+              },
+            ],
+          }),
+        );
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ id: sessionId }));
+      }
+      return Promise.resolve(jsonResponse({ sessions: [] }));
+    });
+
+    const { OpenCodeProvider } = await import(
+      "../../../src/sdk/providers/opencode.js"
+    );
+    const provider = new OpenCodeProvider({ opencodePath: "/fake/opencode" });
+    const session = await provider.startSession({
+      cwd: "/tmp/test",
+      initialMessage: { text: "hello" },
+    });
+
+    const messages = [];
+    for (let i = 0; i < 5; i += 1) {
+      const next = await session.iterator.next();
+      if (next.done) break;
+      messages.push(next.value);
+      if (next.value.type === "result") break;
+    }
+
+    const assistant = messages.find((message) => message.type === "assistant");
+    expect(assistant).toMatchObject({
+      uuid: "msg_assistant",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "thinking it through" },
+          { type: "text", text: "assistant reply" },
+        ],
+      },
+    });
+
+    session.abort();
+  });
+
+  it("streams OpenCode message.part.delta text without duplicating final updates", async () => {
+    const sessionId = "ses_delta_stream";
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/event")) {
+        return Promise.resolve(
+          sseResponse([
+            {
+              type: "message.updated",
+              properties: {
+                info: {
+                  id: "msg_assistant",
+                  sessionID: sessionId,
+                  role: "assistant",
+                },
+              },
+            },
+            {
+              type: "message.part.updated",
+              properties: {
+                part: {
+                  id: "part_text",
+                  sessionID: sessionId,
+                  messageID: "msg_assistant",
+                  type: "text",
+                  text: "",
+                },
+              },
+            },
+            {
+              type: "message.part.delta",
+              properties: {
+                sessionID: sessionId,
+                messageID: "msg_assistant",
+                partID: "part_text",
+                field: "text",
+                delta: "hello ",
+              },
+            },
+            {
+              type: "message.part.delta",
+              properties: {
+                sessionID: sessionId,
+                messageID: "msg_assistant",
+                partID: "part_text",
+                field: "text",
+                delta: "world",
+              },
+            },
+            {
+              type: "message.part.updated",
+              properties: {
+                part: {
+                  id: "part_text",
+                  sessionID: sessionId,
+                  messageID: "msg_assistant",
+                  type: "text",
+                  text: "hello world",
+                  time: { end: 123 },
+                },
+              },
+            },
+            { type: "session.idle", properties: { sessionID: sessionId } },
+          ]),
+        );
+      }
+      if (url.endsWith(`/session/${sessionId}/message`)) {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ id: sessionId }));
+      }
+      return Promise.resolve(jsonResponse({ sessions: [] }));
+    });
+
+    const { OpenCodeProvider } = await import(
+      "../../../src/sdk/providers/opencode.js"
+    );
+    const provider = new OpenCodeProvider({ opencodePath: "/fake/opencode" });
+    const session = await provider.startSession({
+      cwd: "/tmp/test",
+      initialMessage: { text: "hello" },
+    });
+
+    const messages = [];
+    for (let i = 0; i < 6; i += 1) {
+      const next = await session.iterator.next();
+      if (next.done) break;
+      messages.push(next.value);
+      if (next.value.type === "result") break;
+    }
+
+    const assistantTexts = messages
+      .filter((message) => message.type === "assistant")
+      .map((message) => message.message?.content);
+    expect(assistantTexts).toEqual(["hello ", "world"]);
 
     session.abort();
   });

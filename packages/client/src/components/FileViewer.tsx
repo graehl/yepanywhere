@@ -18,6 +18,7 @@ import {
   useLocalMediaInlinePreviews,
   useLocalResourceClick,
 } from "./LocalMediaModal";
+import { Modal } from "./ui/Modal";
 
 interface FileViewerProps {
   projectId: string;
@@ -129,9 +130,11 @@ export const FileViewer = memo(function FileViewer({
   const {
     modal: localMediaModal,
     localFileModal,
+    projectFileModal,
     handleClick: handleLocalResourceClick,
     closeModal: closeLocalMediaModal,
     closeLocalFileModal,
+    closeProjectFileModal,
   } = useLocalResourceClick();
   const handleLocalResourceKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -544,6 +547,20 @@ export const FileViewer = memo(function FileViewer({
           resource={localFileModal}
           onClose={closeLocalFileModal}
         />
+      ) : null}
+      {projectFileModal ? (
+        <Modal
+          title={getFileName(projectFileModal.filePath)}
+          onClose={closeProjectFileModal}
+        >
+          <FileViewer
+            projectId={projectFileModal.projectId}
+            filePath={projectFileModal.filePath}
+            lineNumber={projectFileModal.lineNumber}
+            lineEnd={projectFileModal.lineEnd}
+            onClose={closeProjectFileModal}
+          />
+        </Modal>
       ) : null}
     </div>
   );

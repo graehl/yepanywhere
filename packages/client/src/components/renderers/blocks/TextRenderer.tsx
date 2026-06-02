@@ -1,3 +1,4 @@
+import { FileViewerModal } from "../../FilePathLink";
 import {
   LocalFileModal,
   LocalMediaModal,
@@ -19,9 +20,11 @@ function TextRendererComponent({ block }: { block: TextBlock }) {
   const {
     modal,
     localFileModal,
+    projectFileModal,
     handleClick,
     closeModal,
     closeLocalFileModal,
+    closeProjectFileModal,
   } = useLocalResourceClick();
 
   // Prefer server-rendered HTML if available
@@ -45,6 +48,15 @@ function TextRendererComponent({ block }: { block: TextBlock }) {
           <LocalFileModal
             resource={localFileModal}
             onClose={closeLocalFileModal}
+          />
+        )}
+        {projectFileModal && (
+          <FileViewerModal
+            projectId={projectFileModal.projectId}
+            filePath={projectFileModal.filePath}
+            lineNumber={projectFileModal.lineNumber}
+            lineEnd={projectFileModal.lineEnd}
+            onClose={closeProjectFileModal}
           />
         )}
       </div>

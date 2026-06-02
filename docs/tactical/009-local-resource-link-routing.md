@@ -28,6 +28,10 @@ Progress:
   local-file and local-image routes. Direct route tests now cover allowed-path
   containment, symlink escapes, platform-aware Windows drive path recognition,
   and secure relay request forwarding for `/api/local-file`.
+- [x] 2026-06-02: Normalized rendered local-file links that fall under the active
+  project root into project-file viewer targets at click time. Preserved the
+  agent's original Markdown and rendered fallback `href`; this is a contextual
+  frontend interpretation, not a message rewrite.
 
 ## Context
 
@@ -353,9 +357,26 @@ Current implementation state:
 - Local-file and local-image routes now share server-side path classification,
   approved-folder resolution, symlink containment, regular-file checks, and
   local resource content-type maps.
+- Absolute local-file links inside the active project root now open the project
+  `FileViewer` from rendered message contexts. The original agent Markdown and
+  rendered fallback `href` are preserved.
 - The next implementation branch should review public-share compatibility and
   any remaining raw local-resource navigation paths that intentionally stay
   narrower than authenticated direct/remote behavior.
+
+Current project-prefix normalization rule:
+
+- Keep agent-authored Markdown unchanged.
+- During the generic rendered-link click handler, compare `local-file` paths
+  against the current session's `projectPath`.
+- If a path is exactly under that project root, convert it in memory to a
+  project-file target using the current `projectId` and the project-relative
+  path, preserving line and column hints where the viewer supports them.
+- Open the existing project `FileViewer` instead of `LocalFileModal` for that
+  normalized target.
+- If project context is missing or the path is outside the project root, keep
+  the existing local-file behavior and let server-side local-file policy decide
+  whether the path can be served.
 
 ### 4. Server Route Cleanup
 

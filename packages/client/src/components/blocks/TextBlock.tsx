@@ -3,6 +3,7 @@ import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
 import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
 import { registerMarkdownCopySource } from "../../lib/markdownSelectionCopy";
+import { FileViewerModal } from "../FilePathLink";
 import {
   LocalFileModal,
   LocalMediaModal,
@@ -110,9 +111,11 @@ export const TextBlock = memo(function TextBlock({
   const {
     modal,
     localFileModal,
+    projectFileModal,
     handleClick,
     closeModal,
     closeLocalFileModal,
+    closeProjectFileModal,
   } = useLocalResourceClick();
   useLocalMediaInlinePreviews(copySourceRef);
 
@@ -218,6 +221,16 @@ export const TextBlock = memo(function TextBlock({
         <LocalFileModal
           resource={localFileModal}
           onClose={closeLocalFileModal}
+        />
+      )}
+
+      {projectFileModal && (
+        <FileViewerModal
+          projectId={projectFileModal.projectId}
+          filePath={projectFileModal.filePath}
+          lineNumber={projectFileModal.lineNumber}
+          lineEnd={projectFileModal.lineEnd}
+          onClose={closeProjectFileModal}
         />
       )}
     </div>

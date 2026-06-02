@@ -1,8 +1,17 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../../i18n";
 import { type Connection, setGlobalConnection } from "../../../lib/connection";
 import { TextBlock } from "../TextBlock";
+
+const apiMocks = vi.hoisted(() => ({
+  getFile: vi.fn(),
+}));
+
+vi.mock("../../../api/client", () => ({
+  api: apiMocks,
+}));
 
 function mockRemoteConnection(
   fetchBlob = vi.fn(
@@ -20,6 +29,7 @@ describe("TextBlock", () => {
   afterEach(() => {
     cleanup();
     setGlobalConnection(null);
+    apiMocks.getFile.mockReset();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -152,6 +162,52 @@ describe("TextBlock", () => {
     );
     expect(screen.getByRole("dialog").textContent).toContain("probe.json");
     expect(await screen.findByText(/"ok": true/)).toBeTruthy();
+  });
+
+  it("opens absolute local-file links under the active project in FileViewer", async () => {
+    apiMocks.getFile.mockResolvedValueOnce({
+      content: "# Project doc\n\nRendered through FileViewer.",
+      metadata: {
+        isText: true,
+        mimeType: "text/markdown",
+        path: "docs/status.md",
+        size: 36,
+      },
+      rawUrl: "/api/projects/project-1/files/raw?path=docs%2Fstatus.md",
+      renderedMarkdownHtml: "<h1>Project doc</h1>",
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <I18nProvider>
+        <SessionMetadataProvider
+          projectId="project-1"
+          projectPath="/Users/kgraehl/code/yepanywhere"
+          sessionId="session-1"
+        >
+          <TextBlock
+            text="[status](/Users/kgraehl/code/yepanywhere/docs/status.md)"
+            augmentHtml={
+              '<p><a href="/api/local-file?path=%2FUsers%2Fkgraehl%2Fcode%2Fyepanywhere%2Fdocs%2Fstatus.md" data-ya-resource="local-file" data-ya-path="/Users/kgraehl/code/yepanywhere/docs/status.md" data-ya-render-markdown="true">status</a></p>'
+            }
+          />
+        </SessionMetadataProvider>
+      </I18nProvider>,
+    );
+
+    const clickAllowed = fireEvent.click(
+      screen.getByRole("link", { name: "status" }),
+    );
+
+    expect(clickAllowed).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(apiMocks.getFile).toHaveBeenCalledWith(
+      "project-1",
+      "docs/status.md",
+      true,
+    );
+    expect(await screen.findByText("Project doc")).toBeTruthy();
   });
 
   it("preserves direct browser gestures for local-file links", () => {

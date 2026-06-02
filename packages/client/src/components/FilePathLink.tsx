@@ -106,17 +106,20 @@ export const FilePathLink = memo(function FilePathLink({
       getProjectFileViewUrl(projectId, viewerFilePath, lineNumber, basePath),
     );
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    if (publicShareFileViewUrl) {
-      return;
-    }
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-    setShowModal(true);
-  }, [publicShareFileViewUrl]);
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (publicShareFileViewUrl) {
+        return;
+      }
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      setShowModal(true);
+    },
+    [publicShareFileViewUrl],
+  );
 
   const handleClose = useCallback(() => {
     setShowModal(false);
@@ -167,11 +170,13 @@ export function FileViewerModal({
   projectId,
   filePath,
   lineNumber,
+  lineEnd,
   onClose,
 }: {
   projectId: string;
   filePath: string;
   lineNumber?: number;
+  lineEnd?: number;
   onClose: () => void;
 }) {
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -219,6 +224,7 @@ export function FileViewerModal({
           projectId={projectId}
           filePath={filePath}
           lineNumber={lineNumber}
+          lineEnd={lineEnd}
           onClose={onClose}
         />
       </dialog>

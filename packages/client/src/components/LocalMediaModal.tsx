@@ -5,6 +5,7 @@ import {
   parseLocalResourceLink,
 } from "@yep-anywhere/shared";
 import { type MouseEvent, type RefObject, useEffect, useState } from "react";
+import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
 import { useFetchedImage } from "../hooks/useRemoteImage";
 import { getGlobalConnection, isRemoteMode } from "../lib/connection";
 import { Modal } from "./ui/Modal";
@@ -18,6 +19,42 @@ interface LocalMediaModalProps {
 interface LocalFileModalProps {
   resource: LocalResourceRef;
   onClose: () => void;
+}
+
+export interface ProjectFileModalTarget {
+  projectId: string;
+  filePath: string;
+  lineNumber?: number;
+  lineEnd?: number;
+}
+
+interface ProjectContext {
+  projectId: string;
+  projectPath: string | null;
+}
+
+interface NormalizedPath {
+  display: string;
+  isWindowsDrive: boolean;
+}
+
+type PathComparisonMode = "case-sensitive" | "case-insensitive";
+
+interface UseLocalResourceClickOptions {
+  projectContext?: ProjectContext | null;
+}
+
+interface UseLocalResourceClickResult {
+  modal: {
+    path: string;
+    mediaType: LocalResourceMediaType;
+  } | null;
+  localFileModal: LocalResourceRef | null;
+  projectFileModal: ProjectFileModalTarget | null;
+  closeModal: () => void;
+  closeLocalFileModal: () => void;
+  closeProjectFileModal: () => void;
+  handleClick: (e: MouseEvent) => void;
 }
 
 type LocalFileViewState =
@@ -40,6 +77,80 @@ type LocalFileViewState =
 
 function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
+}
+
+function normalizePathForProjectComparison(path: string): NormalizedPath {
+  const display = path.replaceAll("\\", "/").replace(/\/+$/, "");
+  return {
+    display,
+    isWindowsDrive: /^[A-Za-z]:\//.test(display),
+  };
+}
+
+function getComparisonPath(
+  path: NormalizedPath,
+  mode: PathComparisonMode,
+): string {
+  return mode === "case-insensitive"
+    ? path.display.toLowerCase()
+    : path.display;
+}
+
+function getPathComparisonMode(
+  filePath: NormalizedPath,
+  projectPath: NormalizedPath,
+): PathComparisonMode {
+  return filePath.isWindowsDrive || projectPath.isWindowsDrive
+    ? "case-insensitive"
+    : "case-sensitive";
+}
+
+function getProjectRelativePath(
+  filePath: string,
+  projectPath: string | null,
+): string | null {
+  if (!projectPath) {
+    return null;
+  }
+
+  const file = normalizePathForProjectComparison(filePath);
+  const project = normalizePathForProjectComparison(projectPath);
+  if (!file.display || !project.display) {
+    return null;
+  }
+
+  const mode = getPathComparisonMode(file, project);
+  const normalizedFile = getComparisonPath(file, mode);
+  const normalizedProject = getComparisonPath(project, mode);
+  if (!normalizedFile.startsWith(`${normalizedProject}/`)) {
+    return null;
+  }
+
+  return file.display.slice(project.display.length + 1);
+}
+
+function normalizeResourceForProjectContext(
+  resource: LocalResourceRef,
+  projectContext: ProjectContext | null | undefined,
+): ProjectFileModalTarget | null {
+  if (resource.kind !== "local-file" || !projectContext) {
+    return null;
+  }
+
+  const relativePath = getProjectRelativePath(
+    resource.path,
+    projectContext.projectPath,
+  );
+  if (!relativePath) {
+    return null;
+  }
+
+  return {
+    filePath: relativePath,
+    lineEnd: resource.lineEnd,
+    lineNumber: resource.lineNumber,
+    projectId: projectContext.projectId,
+  };
 }
 
 function localMediaApiPath(path: string): string {
@@ -475,10 +586,14 @@ function getLocalMediaType(
 
 /**
  * Hook that provides a delegated click handler for rendered HTML containing
- * local-resource links. Local media opens the existing modal. Raw local-file
- * API links are blocked in remote mode until the file viewer branch is wired.
+ * local-resource links. Local media opens the existing modal. Local file paths
+ * under the active project root become project file viewer targets.
  */
-export function useLocalResourceClick() {
+export function useLocalResourceClick(
+  options: UseLocalResourceClickOptions = {},
+): UseLocalResourceClickResult {
+  const sessionMetadata = useOptionalSessionMetadata();
+  const projectContext = options.projectContext ?? sessionMetadata;
   const [modal, setModal] = useState<{
     path: string;
     mediaType: LocalResourceMediaType;
@@ -486,6 +601,8 @@ export function useLocalResourceClick() {
   const [localFileModal, setLocalFileModal] = useState<LocalResourceRef | null>(
     null,
   );
+  const [projectFileModal, setProjectFileModal] =
+    useState<ProjectFileModalTarget | null>(null);
 
   const handleClick = (e: MouseEvent) => {
     if (!(e.target instanceof Element)) {
@@ -537,6 +654,22 @@ export function useLocalResourceClick() {
     );
     if (!resource) return;
 
+    const projectFileTarget = normalizeResourceForProjectContext(
+      resource,
+      projectContext,
+    );
+    if (projectFileTarget) {
+      if (shouldPreserveDirectBrowserGesture(e)) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      setProjectFileModal(projectFileTarget);
+      setLocalFileModal(null);
+      setModal(null);
+      return;
+    }
+
     if (resource.kind === "local-media") {
       e.preventDefault();
       e.stopPropagation();
@@ -544,6 +677,8 @@ export function useLocalResourceClick() {
         path: resource.path,
         mediaType: getLocalMediaType(resource, target),
       });
+      setLocalFileModal(null);
+      setProjectFileModal(null);
       return;
     }
 
@@ -554,18 +689,23 @@ export function useLocalResourceClick() {
       e.preventDefault();
       e.stopPropagation();
       setLocalFileModal(resource);
+      setModal(null);
+      setProjectFileModal(null);
     }
   };
 
   const closeModal = () => setModal(null);
   const closeLocalFileModal = () => setLocalFileModal(null);
+  const closeProjectFileModal = () => setProjectFileModal(null);
 
   return {
     modal,
     localFileModal,
+    projectFileModal,
     handleClick,
     closeModal,
     closeLocalFileModal,
+    closeProjectFileModal,
   };
 }
 

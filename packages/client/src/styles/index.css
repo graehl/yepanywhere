@@ -1191,7 +1191,7 @@ a.sidebar-nav-item {
 }
 
 .sidebar-nav-item:hover {
-  background: transparent;
+  background: var(--bg-hover);
 }
 
 .sidebar-nav-item.active {
@@ -1283,7 +1283,7 @@ a.sidebar-nav-item {
 }
 
 .sidebar-session-list li a:hover {
-  background: transparent;
+  background: var(--bg-hover);
 }
 
 .sidebar-session-list li {
@@ -10827,7 +10827,7 @@ a.sidebar-nav-item {
 }
 
 .session-list-item--compact .session-list-item__link:hover {
-  background: transparent;
+  background: var(--bg-hover);
 }
 
 .session-list-item--compact .session-list-item__title-row {

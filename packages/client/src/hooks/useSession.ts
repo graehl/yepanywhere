@@ -1588,6 +1588,8 @@ export function useSession(
         const msgType =
           typeof sdkMessage.type === "string" ? sdkMessage.type : undefined;
         const msgRole = sdkMessage.role as Message["role"] | undefined;
+        const isLiveStreamingUpdate =
+          msgType === "stream_event" || sdkMessage._isStreaming === true;
         const hasUserVisibleLiveness =
           msgType === "stream_event" &&
           hasUserVisibleStreamProgress(
@@ -1595,9 +1597,9 @@ export function useSession(
           );
 
         // Track stream activity for engagement/freshness UI. Queue state,
-        // status, and full user/assistant messages stay immediate; only
-        // token-level stream_event freshness is coalesced.
-        noteStreamActivity(msgType !== "stream_event");
+        // status, and full user/assistant messages stay immediate; live
+        // token/delta freshness is coalesced.
+        noteStreamActivity(!isLiveStreamingUpdate);
 
         if (hasUserVisibleLiveness) {
           noteStreamProgressLiveness();

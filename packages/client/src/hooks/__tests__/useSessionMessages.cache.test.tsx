@@ -1,5 +1,13 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { useSessionMessages } from "../useSessionMessages";
 
 const apiMocks = vi.hoisted(() => ({
@@ -10,7 +18,17 @@ vi.mock("../../api/client", () => ({
   api: apiMocks,
 }));
 
+vi.mock("../useStreamingEnabled", () => ({
+  getStreamingEnabled: vi.fn(() => true),
+}));
+
+import { getStreamingEnabled } from "../useStreamingEnabled";
+
 describe("useSessionMessages cache", () => {
+  beforeEach(() => {
+    (getStreamingEnabled as Mock).mockReturnValue(true);
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
     delete (globalThis as { __YA_SESSION_LOAD_CACHE__?: unknown })
@@ -236,5 +254,195 @@ describe("useSessionMessages cache", () => {
     });
 
     expect(apiMocks.getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("suppresses Codex live streaming messages when response streaming is disabled", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.handleStreamMessageEvent({
+        uuid: "codex-item-1",
+        type: "assistant",
+        _isStreaming: true,
+        message: { role: "assistant", content: "Hel" },
+      });
+    });
+    expect(result.current.messages).toHaveLength(1);
+
+    (getStreamingEnabled as Mock).mockReturnValue(false);
+
+    act(() => {
+      result.current.handleStreamMessageEvent({
+        uuid: "codex-item-1",
+        type: "assistant",
+        _isStreaming: true,
+        message: { role: "assistant", content: "Hello" },
+      });
+    });
+    expect(result.current.messages).toEqual([]);
+
+    act(() => {
+      result.current.handleStreamMessageEvent({
+        uuid: "codex-item-1",
+        type: "assistant",
+        message: { role: "assistant", content: "Hello" },
+      });
+    });
+
+    expect(result.current.messages).toMatchObject([
+      {
+        uuid: "codex-item-1",
+        type: "assistant",
+        message: { content: "Hello" },
+      },
+    ]);
+  });
+
+  it("suppresses buffered Codex live streaming messages when response streaming is disabled", async () => {
+    (getStreamingEnabled as Mock).mockReturnValue(false);
+
+    let resolveLoad!: (value: unknown) => void;
+    apiMocks.getSession.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveLoad = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    act(() => {
+      result.current.handleStreamMessageEvent({
+        uuid: "codex-buffered-1",
+        type: "assistant",
+        _isStreaming: true,
+        message: { role: "assistant", content: "partial" },
+      });
+    });
+
+    await act(async () => {
+      resolveLoad({
+        session: {
+          provider: "codex",
+          updatedAt: "2026-05-04T00:00:00.000Z",
+        },
+        messages: [],
+        ownership: { owner: "self" },
+        pendingInputRequest: null,
+        slashCommands: null,
+        pagination: {
+          hasOlderMessages: false,
+          totalMessageCount: 0,
+          returnedMessageCount: 0,
+          totalCompactions: 0,
+        },
+      });
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.messages).toEqual([]);
+  });
+
+  it("suppresses Codex subagent live streaming messages when response streaming is disabled", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.handleStreamSubagentMessage(
+        {
+          uuid: "codex-subagent-1",
+          type: "assistant",
+          _isStreaming: true,
+          message: { role: "assistant", content: "partial" },
+        },
+        "task-1",
+      );
+    });
+    expect(result.current.agentContent["task-1"]?.messages).toHaveLength(1);
+
+    (getStreamingEnabled as Mock).mockReturnValue(false);
+
+    act(() => {
+      result.current.handleStreamSubagentMessage(
+        {
+          uuid: "codex-subagent-1",
+          type: "assistant",
+          _isStreaming: true,
+          message: { role: "assistant", content: "partial done" },
+        },
+        "task-1",
+      );
+    });
+
+    expect(result.current.agentContent).toEqual({});
+
+    act(() => {
+      result.current.handleStreamSubagentMessage(
+        {
+          uuid: "codex-subagent-1",
+          type: "assistant",
+          message: { role: "assistant", content: "done" },
+        },
+        "task-1",
+      );
+    });
+
+    expect(result.current.agentContent["task-1"]?.messages).toMatchObject([
+      {
+        uuid: "codex-subagent-1",
+        message: { content: "done" },
+      },
+    ]);
   });
 });

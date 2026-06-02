@@ -13,6 +13,7 @@ import {
 } from "../lib/mergeMessages";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { getProvider } from "../providers/registry";
+import { getStreamingEnabled } from "./useStreamingEnabled";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
 
 /** Content from a subagent (Task tool) */
@@ -173,6 +174,15 @@ function isCodexProvider(provider?: string): boolean {
   return provider === "codex" || provider === "codex-oss";
 }
 
+function shouldSuppressLiveStreamingMessage(message: Message): boolean {
+  return message._isStreaming === true && !getStreamingEnabled();
+}
+
+function clearStreamingMessages(messages: Message[]): Message[] {
+  const filtered = messages.filter((message) => !message._isStreaming);
+  return filtered.length === messages.length ? messages : filtered;
+}
+
 function isEmptyAssistantContent(message: Message): boolean {
   if (message.type !== "assistant") {
     return false;
@@ -308,8 +318,13 @@ export function useSessionMessages(
         isReplay &&
         incomingTimestampMs !== null &&
         incomingTimestampMs <= maxPersistedTimestampMsRef.current;
+      const suppressStreaming = shouldSuppressLiveStreamingMessage(incoming);
 
       setMessages((prev) => {
+        if (suppressStreaming) {
+          return clearStreamingMessages(prev);
+        }
+
         // Replay history from the stream should not re-add messages that are
         // already persisted and loaded from JSONL.
         if (isPersistedReplay) {
@@ -342,6 +357,24 @@ export function useSessionMessages(
           messages: [],
           status: "running" as const,
         };
+        if (shouldSuppressLiveStreamingMessage(incoming)) {
+          const messages = clearStreamingMessages(existing.messages);
+          if (messages === existing.messages) {
+            return prev;
+          }
+          if (messages.length === 0 && existing.contextUsage === undefined) {
+            const next = { ...prev };
+            delete next[agentId];
+            return next;
+          }
+          return {
+            ...prev,
+            [agentId]: {
+              ...existing,
+              messages,
+            },
+          };
+        }
         const incomingId = getMessageId(incoming);
         if (findMessageIndexById(existing.messages, incomingId) !== -1) {
           return prev;

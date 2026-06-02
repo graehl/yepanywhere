@@ -1,5 +1,6 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { FileViewer } from "../components/FileViewer";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 
 /**
@@ -8,11 +9,15 @@ import { useI18n } from "../i18n";
  */
 export function FilePage() {
   const { t } = useI18n();
+  const basePath = useRemoteBasePath();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams] = useSearchParams();
   const filePath = searchParams.get("path");
   const lineNumber = parsePositiveInteger(searchParams.get("line"));
   const lineEnd = parsePositiveInteger(searchParams.get("lineEnd"));
+  const projectSessionsPath = projectId
+    ? `${basePath}/sessions?project=${encodeURIComponent(projectId)}`
+    : `${basePath}/projects`;
 
   if (!projectId) {
     return (
@@ -20,7 +25,7 @@ export function FilePage() {
         <div className="file-page-error-content">
           <h1>{t("fileInvalidUrl" as never)}</h1>
           <p>{t("fileMissingProjectId" as never)}</p>
-          <Link to="/projects" className="file-page-back-link">
+          <Link to={`${basePath}/projects`} className="file-page-back-link">
             {t("fileGoToProjects" as never)}
           </Link>
         </div>
@@ -34,7 +39,7 @@ export function FilePage() {
         <div className="file-page-error-content">
           <h1>{t("fileInvalidUrl" as never)}</h1>
           <p>{t("fileMissingPath" as never)}</p>
-          <Link to={`/projects/${projectId}`} className="file-page-back-link">
+          <Link to={projectSessionsPath} className="file-page-back-link">
             {t("fileGoToProject" as never)}
           </Link>
         </div>
@@ -46,7 +51,7 @@ export function FilePage() {
     <div className="file-page">
       <div className="file-page-nav">
         <Link
-          to={`/projects/${projectId}`}
+          to={projectSessionsPath}
           className="file-page-back-link"
           title={t("fileBackToProject" as never)}
         >

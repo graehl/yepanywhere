@@ -8,7 +8,10 @@ import {
   useState,
 } from "react";
 import { api } from "../api/client";
+import { useConnection } from "../hooks/useConnection";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
+import { toBrowserAppHref } from "../lib/appHref";
 import {
   LocalMediaModal,
   useLocalMediaClick,
@@ -111,6 +114,8 @@ export const FileViewer = memo(function FileViewer({
   lineEnd,
 }: FileViewerProps) {
   const { t } = useI18n();
+  const connection = useConnection();
+  const basePath = useRemoteBasePath();
   const [fileData, setFileData] = useState<FileContentResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -210,10 +215,25 @@ export const FileViewer = memo(function FileViewer({
     }
   }, [fileData?.content]);
 
-  const handleDownload = useCallback(() => {
-    const url = api.getFileRawUrl(projectId, filePath, true);
-    window.open(url, "_blank");
-  }, [projectId, filePath]);
+  const handleDownload = useCallback(async () => {
+    const params = new URLSearchParams({ path: filePath, download: "true" });
+    try {
+      const blob = await connection.fetchBlob(
+        `/projects/${projectId}/files/raw?${params}`,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = getFileName(filePath);
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to download file");
+    }
+  }, [connection, projectId, filePath]);
 
   const handleOpenInNewTab = useCallback(() => {
     const searchParams = new URLSearchParams({ path: filePath });
@@ -223,9 +243,11 @@ export const FileViewer = memo(function FileViewer({
     if (lineEnd !== undefined) {
       searchParams.set("lineEnd", String(lineEnd));
     }
-    const url = `/projects/${projectId}/file?${searchParams}`;
+    const url = toBrowserAppHref(
+      `${basePath}/projects/${projectId}/file?${searchParams}`,
+    );
     window.open(url, "_blank");
-  }, [projectId, filePath, lineNumber, lineEnd]);
+  }, [basePath, projectId, filePath, lineNumber, lineEnd]);
 
   const fileName = getFileName(filePath);
   const language = getLanguageFromPath(filePath);

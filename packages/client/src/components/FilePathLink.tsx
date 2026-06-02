@@ -5,6 +5,8 @@ import {
   buildPublicShareFileHref,
   usePublicShareContext,
 } from "../contexts/PublicShareContext";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { toBrowserAppHref } from "../lib/appHref";
 import { FileViewer } from "./FileViewer";
 
 interface FilePathLinkProps {
@@ -26,12 +28,13 @@ function getProjectFileViewUrl(
   projectId: string,
   filePath: string,
   lineNumber?: number,
+  basePath = "",
 ): string {
   const params = new URLSearchParams({ path: filePath });
   if (lineNumber !== undefined) {
     params.set("line", String(lineNumber));
   }
-  return `/projects/${projectId}/file?${params.toString()}`;
+  return `${basePath}/projects/${projectId}/file?${params.toString()}`;
 }
 
 function getProjectPath(projectId: string): string | null {
@@ -84,6 +87,7 @@ export const FilePathLink = memo(function FilePathLink({
   showFullPath = false,
 }: FilePathLinkProps) {
   const publicShareContext = usePublicShareContext();
+  const basePath = useRemoteBasePath();
   const [showModal, setShowModal] = useState(false);
   const viewerFilePath = useMemo(
     () => getProjectViewerFilePath(projectId, filePath),
@@ -98,7 +102,9 @@ export const FilePathLink = memo(function FilePathLink({
     : null;
   const fileViewUrl =
     publicShareFileViewUrl ??
-    getProjectFileViewUrl(projectId, viewerFilePath, lineNumber);
+    toBrowserAppHref(
+      getProjectFileViewUrl(projectId, viewerFilePath, lineNumber, basePath),
+    );
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (publicShareFileViewUrl) {

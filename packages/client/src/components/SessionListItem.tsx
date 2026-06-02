@@ -8,6 +8,7 @@ import type {
   ProviderName,
   SessionStatus,
 } from "../types";
+import { toBrowserAppHref } from "../lib/appHref";
 import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
@@ -396,7 +397,7 @@ export function SessionListItem({
       e.preventDefault();
       e.stopPropagation();
       if (e.metaKey || e.ctrlKey || e.shiftKey) {
-        window.open(parentHref, "_blank", "noopener");
+        window.open(toBrowserAppHref(parentHref), "_blank", "noopener");
         return;
       }
       navigate(parentHref);
@@ -427,7 +428,7 @@ export function SessionListItem({
       if (e.metaKey || e.ctrlKey || e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();
-        window.open(sessionHref, "_blank", "noopener");
+        window.open(toBrowserAppHref(sessionHref), "_blank", "noopener");
         return;
       }
 
@@ -454,7 +455,7 @@ export function SessionListItem({
       if (e.button !== 1) return;
       e.preventDefault();
       e.stopPropagation();
-      window.open(sessionHref, "_blank", "noopener");
+      window.open(toBrowserAppHref(sessionHref), "_blank", "noopener");
     },
     [sessionHref],
   );

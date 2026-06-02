@@ -75,6 +75,7 @@ import {
 } from "../hooks/useSession";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
+import { toBrowserAppHref } from "../lib/appHref";
 import { storeUploadedAttachmentPreview } from "../lib/attachmentPreviewCache";
 import { getBtwSplitRouting, getBtwToolbarMode } from "../lib/btwAsideRouting";
 import {
@@ -3661,12 +3662,13 @@ function SessionPageContent({
             setShowHandoffModal(false);
             showToast(t("sessionHandoffStarted"), "success");
             const handoffUrl = `${basePath}/projects/${projectId}/sessions/${result.sessionId}`;
+            const handoffHref = toBrowserAppHref(handoffUrl);
             if (options?.targetWindow && !options.targetWindow.closed) {
-              options.targetWindow.location.href = handoffUrl;
+              options.targetWindow.location.href = handoffHref;
               return;
             }
             if (options?.openInNewWindow) {
-              window.open(handoffUrl, "_blank", "noopener");
+              window.open(handoffHref, "_blank", "noopener");
               return;
             }
             navigate(handoffUrl, {

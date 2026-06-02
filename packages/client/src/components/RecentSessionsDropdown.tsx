@@ -9,6 +9,7 @@ import {
   getBtwAsideSessionDisplayTitle,
   isBtwAsideSessionTitle,
 } from "../lib/btwAsideSessions";
+import { toBrowserAppHref } from "../lib/appHref";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 
 const MAX_RECENT_SESSIONS = 10;
@@ -220,7 +221,11 @@ export function RecentSessionsDropdown({
                           e.preventDefault();
                           e.stopPropagation();
                           if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                            window.open(parentHref, "_blank", "noopener");
+                            window.open(
+                              toBrowserAppHref(parentHref),
+                              "_blank",
+                              "noopener",
+                            );
                             return;
                           }
                           navigate(parentHref);

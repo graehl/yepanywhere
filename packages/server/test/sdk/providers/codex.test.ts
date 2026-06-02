@@ -18,12 +18,21 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { preprocessMessages } from "../../../../client/src/lib/preprocessMessages.ts";
+import { logSDKMessage } from "../../../src/sdk/messageLogger.js";
 import {
   CodexProvider,
   type CodexProviderConfig,
 } from "../../../src/sdk/providers/codex.js";
+
+vi.mock("../../../src/sdk/messageLogger.js", () => ({
+  logSDKMessage: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.mocked(logSDKMessage).mockClear();
+});
 
 describe("CodexProvider", () => {
   let provider: CodexProvider;
@@ -1177,6 +1186,36 @@ describe("CodexProvider Event Normalization", () => {
     expect(typeof provider.isAuthenticated).toBe("function");
     expect(typeof provider.getAuthStatus).toBe("function");
     expect(typeof provider.startSession).toBe("function");
+  });
+
+  it("logs raw Codex app-server notifications for sdk raw logging", () => {
+    const provider = createTestProvider() as unknown as {
+      logRawCodexNotification: (
+        sessionId: string,
+        notification: { method: string; params?: unknown },
+      ) => void;
+    };
+    const notification = {
+      method: "item/commandExecution/outputDelta",
+      params: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        delta: "chunk",
+      },
+    };
+
+    provider.logRawCodexNotification("session-1", notification);
+
+    expect(logSDKMessage).toHaveBeenCalledOnce();
+    expect(logSDKMessage).toHaveBeenCalledWith(
+      "session-1",
+      {
+        _rawSource: "codex_app_server_notification",
+        ...notification,
+      },
+      { provider: "codex" },
+    );
   });
 
   it("normalizes command execution tool_use and tool_result to Read shape", () => {

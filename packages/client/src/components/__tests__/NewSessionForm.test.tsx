@@ -844,6 +844,7 @@ describe("NewSessionForm", () => {
       />,
     );
 
+    fireEvent.contextMenu(screen.getByText("voice"));
     expect(screen.getByText("Grok STT audio")).toBeDefined();
     expect(
       (screen.getByLabelText("Compressed") as HTMLInputElement).checked,

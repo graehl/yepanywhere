@@ -302,13 +302,13 @@ describe("MessageInput", () => {
 
     renderMessageInput();
 
-    expect(screen.getByText("Grok STT")).toBeDefined();
     expect(screen.getByRole("button", { name: "voice" }).dataset.speechMethod).toBe(
       "ya-grok",
     );
 
-    fireEvent.click(screen.getByText("Grok STT").closest("button")!);
-    fireEvent.click(screen.getByText("Deepgram STT").closest("button")!);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    expect(screen.getByRole("radio", { name: /Grok STT/ })).toBeDefined();
+    fireEvent.click(screen.getByRole("radio", { name: /Deepgram STT/ }));
 
     expect(mockSetSpeechMethod).toHaveBeenCalledWith("ya-deepgram");
   });
@@ -346,7 +346,8 @@ describe("MessageInput", () => {
 
     renderMessageInput();
 
-    expect(screen.getByText("Audio")).toBeDefined();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    expect(screen.getByText("Grok STT audio")).toBeDefined();
     expect(
       (screen.getByLabelText("Compressed") as HTMLInputElement).checked,
     ).toBe(true);

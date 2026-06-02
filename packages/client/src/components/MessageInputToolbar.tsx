@@ -57,13 +57,12 @@ import type {
 } from "../lib/speechProviders/SpeechProvider";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import type { ContextUsage, PermissionMode } from "../types";
-import { FilterDropdown, type FilterOption } from "./FilterDropdown";
+import type { FilterOption } from "./FilterDropdown";
 import { MessageAge } from "./MessageAge";
 import { RenderModeGlyph } from "./ui/RenderModeGlyph";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { ModeSelector } from "./ModeSelector";
-import { SpeechGrokAudioControls } from "./SpeechGrokAudioControls";
-import { SpeechSmartTurnControls } from "./SpeechSmartTurnControls";
+import { SpeechControlMenu } from "./SpeechControlMenu";
 import { SlashCommandButton } from "./SlashCommandButton";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
@@ -507,8 +506,6 @@ export function MessageInputToolbarView({
   const showLastActivityChip = statusControl?.showLastActivityChip ?? false;
   const showSendButton = !!actionsControl.send?.onSend;
   const showStopButton = !!actionsControl.stop;
-  const showSpeechMethodSelector =
-    visibility.microphone && !!speechControl?.showMethodSelector;
   const showModelIndicator =
     visibility.modelIndicator &&
     !!modelControl &&
@@ -680,68 +677,72 @@ export function MessageInputToolbarView({
             </svg>
           </button>
         )}
-        {showSpeechMethodSelector && speechControl && selectedSpeechMethod && (
-          <FilterDropdown
-            label={t("newSessionSpeechTitle")}
-            options={speechControl.methodOptions}
-            selected={[selectedSpeechMethod]}
-            onChange={speechControl.onMethodChange}
-            multiSelect={false}
-            placeholder={t("newSessionSpeechPlaceholder")}
-            className="filter-dropdown--speech-toolbar"
-          />
-        )}
         {visibility.microphone &&
-          selectedSpeechMethod === "ya-grok" &&
-          speechControl?.grokAudioSettings &&
-          speechControl.onGrokAudioSettingsChange && (
-            <SpeechGrokAudioControls
-              compact
-              settings={speechControl.grokAudioSettings}
-              onChange={speechControl.onGrokAudioSettingsChange}
-              disabled={speechControl.smartTurnDisabled}
-            />
-          )}
-        {visibility.microphone &&
-          speechControl?.smartTurnSettings &&
-          speechControl.onSmartTurnSettingsChange && (
-            <SpeechSmartTurnControls
-              compact
-              settings={speechControl.smartTurnSettings}
-              onChange={speechControl.onSmartTurnSettingsChange}
-              disabled={speechControl.smartTurnDisabled}
-            />
-          )}
-        {visibility.microphone &&
+          selectedSpeechMethod &&
           speechControl?.voiceButton?.kind === "preview" && (
-            <button
-              type="button"
-              className="voice-input-button"
-              disabled={speechControl.voiceButton.disabled}
-              title={t("voiceInputStart" as never)}
-              aria-label={t("voiceInputStartLabel" as never)}
-            >
-              <ToolbarMicrophoneIcon />
-            </button>
+            <SpeechControlMenu
+              showMethodSelector={speechControl.showMethodSelector}
+              methodOptions={speechControl.methodOptions}
+              selectedMethod={selectedSpeechMethod}
+              onMethodChange={speechControl.onMethodChange}
+              smartTurnSettings={speechControl.smartTurnSettings}
+              onSmartTurnSettingsChange={
+                speechControl.onSmartTurnSettingsChange
+              }
+              smartTurnDisabled={speechControl.smartTurnDisabled}
+              grokAudioSettings={speechControl.grokAudioSettings}
+              onGrokAudioSettingsChange={
+                speechControl.onGrokAudioSettingsChange
+              }
+              trigger={
+                <button
+                  type="button"
+                  className="voice-input-button"
+                  disabled={speechControl.voiceButton.disabled}
+                  title={t("voiceInputStart" as never)}
+                  aria-label={t("voiceInputStartLabel" as never)}
+                >
+                  <ToolbarMicrophoneIcon />
+                </button>
+              }
+            />
           )}
         {visibility.microphone &&
+          selectedSpeechMethod &&
           speechControl?.voiceButton?.kind === "live" &&
           speechControl.voiceButton.ref && (
-            <VoiceInputButton
-              ref={speechControl.voiceButton.ref}
-              onTranscript={speechControl.voiceButton.onTranscript}
-              onInterimTranscript={
-                speechControl.voiceButton.onInterimTranscript
+            <SpeechControlMenu
+              showMethodSelector={speechControl.showMethodSelector}
+              methodOptions={speechControl.methodOptions}
+              selectedMethod={selectedSpeechMethod}
+              onMethodChange={speechControl.onMethodChange}
+              smartTurnSettings={speechControl.smartTurnSettings}
+              onSmartTurnSettingsChange={
+                speechControl.onSmartTurnSettingsChange
               }
-              onListeningStart={speechControl.voiceButton.onListeningStart}
-              disabled={speechControl.voiceButton.disabled}
-              speechMethod={speechControl.voiceButton.speechMethod}
-              getTranscriptionContext={
-                speechControl.voiceButton.getTranscriptionContext
+              smartTurnDisabled={speechControl.smartTurnDisabled}
+              grokAudioSettings={speechControl.grokAudioSettings}
+              onGrokAudioSettingsChange={
+                speechControl.onGrokAudioSettingsChange
               }
-              smartTurn={speechControl.voiceButton.smartTurn}
-              grokSpeechAudioSettings={
-                speechControl.voiceButton.grokSpeechAudioSettings
+              trigger={
+                <VoiceInputButton
+                  ref={speechControl.voiceButton.ref}
+                  onTranscript={speechControl.voiceButton.onTranscript}
+                  onInterimTranscript={
+                    speechControl.voiceButton.onInterimTranscript
+                  }
+                  onListeningStart={speechControl.voiceButton.onListeningStart}
+                  disabled={speechControl.voiceButton.disabled}
+                  speechMethod={speechControl.voiceButton.speechMethod}
+                  getTranscriptionContext={
+                    speechControl.voiceButton.getTranscriptionContext
+                  }
+                  smartTurn={speechControl.voiceButton.smartTurn}
+                  grokSpeechAudioSettings={
+                    speechControl.voiceButton.grokSpeechAudioSettings
+                  }
+                />
               }
             />
           )}

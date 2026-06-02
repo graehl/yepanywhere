@@ -80,8 +80,7 @@ import { useVersion } from "../hooks/useVersion";
 import { shortenPath } from "../lib/text";
 import type { PermissionMode, Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
-import { SpeechGrokAudioControls } from "./SpeechGrokAudioControls";
-import { SpeechSmartTurnControls } from "./SpeechSmartTurnControls";
+import { SpeechControlMenu } from "./SpeechControlMenu";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
 interface PendingFile {
@@ -787,7 +786,7 @@ export function NewSessionForm({
     setSelectedModel(selected[0] ?? null);
   }, []);
 
-  // Build STT backend options for FilterDropdown.
+  // Build STT backend options for the mic-attached speech menu.
   const speechMethodOptions = useMemo((): FilterOption<SpeechMethodId>[] => {
     const serverBackends = versionInfo?.voiceBackends ?? [];
     return getSpeechMethods(serverBackends).map((method) => ({
@@ -1450,17 +1449,38 @@ export function NewSessionForm({
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
             </svg>
           </button>
-          <VoiceInputButton
-            ref={voiceButtonRef}
-            onTranscript={handleVoiceTranscript}
-            onInterimTranscript={handleInterimTranscript}
-            onListeningStart={() => textareaRef.current?.focus()}
-            disabled={isStarting}
-            className="toolbar-button"
-            speechMethod={selectedSpeechMethod}
-            getTranscriptionContext={getTranscriptionContext}
-            smartTurn={activeSpeechSmartTurnSettings}
-            grokSpeechAudioSettings={grokSpeechAudioSettings}
+          <SpeechControlMenu
+            showMethodSelector={showSpeechMethodSelector}
+            methodOptions={speechMethodOptions}
+            selectedMethod={selectedSpeechMethod}
+            onMethodChange={handleSpeechMethodSelect}
+            smartTurnSettings={activeSpeechSmartTurnSettings}
+            onSmartTurnSettingsChange={
+              supportsSelectedSpeechSmartTurn
+                ? setSpeechSmartTurnSettings
+                : undefined
+            }
+            smartTurnDisabled={isStarting}
+            grokAudioSettings={
+              showGrokSpeechAudioControls ? grokSpeechAudioSettings : undefined
+            }
+            onGrokAudioSettingsChange={
+              showGrokSpeechAudioControls ? setGrokSpeechAudioSettings : undefined
+            }
+            trigger={
+              <VoiceInputButton
+                ref={voiceButtonRef}
+                onTranscript={handleVoiceTranscript}
+                onInterimTranscript={handleInterimTranscript}
+                onListeningStart={() => textareaRef.current?.focus()}
+                disabled={isStarting}
+                className="toolbar-button"
+                speechMethod={selectedSpeechMethod}
+                getTranscriptionContext={getTranscriptionContext}
+                smartTurn={activeSpeechSmartTurnSettings}
+                grokSpeechAudioSettings={grokSpeechAudioSettings}
+              />
+            }
           />
           {supportsThinkingToggle && (
             <>
@@ -1777,37 +1797,6 @@ export function NewSessionForm({
         />
       </div>
     ) : null;
-  const shouldShowSpeechField =
-    showSpeechMethodSelector ||
-    showGrokSpeechAudioControls ||
-    supportsSelectedSpeechSmartTurn;
-  const speechField = shouldShowSpeechField ? (
-    <div className="new-session-speech-field">
-      <h3>{t("newSessionSpeechTitle")}</h3>
-      {showSpeechMethodSelector && (
-        <FilterDropdown
-          label={t("newSessionSpeechTitle")}
-          options={speechMethodOptions}
-          selected={[selectedSpeechMethod]}
-          onChange={handleSpeechMethodSelect}
-          multiSelect={false}
-          placeholder={t("newSessionSpeechPlaceholder")}
-        />
-      )}
-      {showGrokSpeechAudioControls && (
-        <SpeechGrokAudioControls
-          settings={grokSpeechAudioSettings}
-          onChange={setGrokSpeechAudioSettings}
-        />
-      )}
-      {supportsSelectedSpeechSmartTurn && (
-        <SpeechSmartTurnControls
-          settings={speechSmartTurnSettings}
-          onChange={setSpeechSmartTurnSettings}
-        />
-      )}
-    </div>
-  ) : null;
   const modelSection = modelField ? (
     <div className="new-session-model-section">
       {modelField}
@@ -1913,7 +1902,6 @@ export function NewSessionForm({
   const hasConfigControls = Boolean(
     selectedProvider ||
       permissionSection ||
-      speechField ||
       recapSection ||
       promptSuggestionSection,
   );
@@ -1978,7 +1966,6 @@ export function NewSessionForm({
             {providerSection}
             {modelSection}
             {permissionSection}
-            {speechField}
             {recapSection}
             {promptSuggestionSection}
             {defaultsBar}

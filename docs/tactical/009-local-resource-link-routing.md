@@ -24,6 +24,10 @@ Progress:
   local-file and local-media links while preserving fallback hrefs. Completed
   Markdown rendering and streaming pending-link rendering now share the same
   local-link helpers.
+- [x] 2026-06-02: Extracted shared server-side local resource path policy for
+  local-file and local-image routes. Direct route tests now cover allowed-path
+  containment, symlink escapes, platform-aware Windows drive path recognition,
+  and secure relay request forwarding for `/api/local-file`.
 
 ## Context
 
@@ -346,9 +350,12 @@ Current implementation state:
 - Server Markdown renderers now emit `data-ya-resource`, `data-ya-path`,
   location hints, render-mode hints, and media-type hints for recognized local
   resources while keeping legacy href parsing as fallback.
-- The next implementation branch should clean up the server local-file and
-  local-image route boundary so POSIX and Windows path recognition, approved
-  folder checks, symlink handling, and content-type policy do not drift.
+- Local-file and local-image routes now share server-side path classification,
+  approved-folder resolution, symlink containment, regular-file checks, and
+  local resource content-type maps.
+- The next implementation branch should review public-share compatibility and
+  any remaining raw local-resource navigation paths that intentionally stay
+  narrower than authenticated direct/remote behavior.
 
 ### 4. Server Route Cleanup
 
@@ -380,7 +387,7 @@ The first implementation series should stay small and staged:
    current connection.
 5. [x] Add server renderer tests that prove agent-authored Markdown links become
    YA-authored semantic metadata while preserving fallback hrefs.
-6. [ ] Add route tests for direct mode, remote mode, and Windows `C:/...`
+6. [x] Add route tests for direct mode, remote mode, and Windows `C:/...`
    local-file serving.
 
 Leave broader file viewer download/open-new-tab cleanup for a follow-up unless

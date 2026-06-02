@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -161,6 +168,67 @@ describe("Local file routes", () => {
     expect(response.status).toBe(415);
     await expect(response.json()).resolves.toEqual({
       error: "Not a supported local file",
+    });
+  });
+
+  it("rejects non-absolute paths before local file type checks", async () => {
+    const routes = createLocalFileRoutes({
+      allowedPaths: [tempDir],
+    });
+
+    const response = await routes.request("/?path=relative-image.png");
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Path must be absolute",
+    });
+  });
+
+  it("rejects supported files outside the allowed directories", async () => {
+    const allowedDir = path.join(tempDir, "allowed");
+    const otherDir = path.join(tempDir, "allowed-sibling");
+    await mkdir(allowedDir, { recursive: true });
+    await mkdir(otherDir, { recursive: true });
+
+    const filePath = path.join(otherDir, "outside.json");
+    await writeFile(filePath, "{}");
+
+    const routes = createLocalFileRoutes({
+      allowedPaths: [allowedDir],
+    });
+
+    const response = await routes.request(
+      `/?path=${encodeURIComponent(filePath)}`,
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Path not in allowed directories",
+    });
+  });
+
+  it("rejects symlinks that resolve outside allowed directories", async () => {
+    const allowedDir = path.join(tempDir, "allowed");
+    const otherDir = path.join(tempDir, "other");
+    await mkdir(allowedDir, { recursive: true });
+    await mkdir(otherDir, { recursive: true });
+
+    const outsideFile = path.join(otherDir, "outside.json");
+    const linkPath = path.join(allowedDir, "linked.json");
+    await writeFile(outsideFile, "{}");
+    await symlink(outsideFile, linkPath);
+
+    const routes = createLocalFileRoutes({
+      allowedPaths: [allowedDir],
+    });
+
+    const response = await routes.request(
+      `/?path=${encodeURIComponent(linkPath)}`,
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Path not in allowed directories",
     });
   });
 });

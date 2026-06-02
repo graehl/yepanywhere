@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -84,6 +84,44 @@ describe("Local image routes", () => {
 
     const response = await routes.request(
       `/?path=${encodeURIComponent(filePath)}`,
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Path not in allowed directories",
+    });
+  });
+
+  it("rejects non-absolute paths before media type checks", async () => {
+    const routes = createLocalImageRoutes({
+      allowedPaths: [tempDir],
+    });
+
+    const response = await routes.request("/?path=relative-file.txt");
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Path must be absolute",
+    });
+  });
+
+  it("rejects symlinks that resolve outside allowed directories", async () => {
+    const uploadsDir = path.join(tempDir, "uploads");
+    const otherDir = path.join(tempDir, "other");
+    await mkdir(uploadsDir, { recursive: true });
+    await mkdir(otherDir, { recursive: true });
+
+    const outsideFile = path.join(otherDir, "outside.png");
+    const linkPath = path.join(uploadsDir, "linked.png");
+    await writeFile(outsideFile, "png-bytes");
+    await symlink(outsideFile, linkPath);
+
+    const routes = createLocalImageRoutes({
+      allowedPaths: [uploadsDir],
+    });
+
+    const response = await routes.request(
+      `/?path=${encodeURIComponent(linkPath)}`,
     );
 
     expect(response.status).toBe(403);

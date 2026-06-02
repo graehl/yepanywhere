@@ -527,6 +527,64 @@ describe("Files API", () => {
       expect(json.rawUrl).toBeDefined();
     });
 
+    it("returns only requested lines for compact range views", async () => {
+      await writeFile(
+        join(projectPath, "range.ts"),
+        ["const one = 1;", "const two = 2;", "const three = 3;"].join("\n"),
+      );
+
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files?path=range.ts&line=2&lineEnd=3&view=range&highlight=true`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as FileContentResponse;
+      expect(json.content).toBe("const two = 2;\nconst three = 3;");
+      expect(json.contentStartLine).toBe(2);
+      expect(json.contentEndLine).toBe(3);
+      expect(json.contentTotalLines).toBe(3);
+      expect(json.contentTruncated).toBe(true);
+      expect(json.highlightedHtml).toBeDefined();
+    });
+
+    it("returns a bounded window around requested lines in large files", async () => {
+      const lines = Array.from(
+        { length: 1600 },
+        (_, index) =>
+          `const line${String(index + 1).padStart(4, "0")} = ` +
+          `"${"x".repeat(880)}";`,
+      );
+      await writeFile(join(projectPath, "large.ts"), lines.join("\n"));
+
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files?path=large.ts&line=1200&lineEnd=1202&highlight=true`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as FileContentResponse;
+      expect(json.metadata.isText).toBe(true);
+      expect(json.contentTruncated).toBe(true);
+      expect(json.contentStartLine).toBeGreaterThan(1);
+      expect(json.contentStartLine).toBeLessThanOrEqual(1200);
+      expect(json.contentEndLine).toBeGreaterThanOrEqual(1202);
+      expect(Buffer.byteLength(json.content ?? "", "utf8")).toBeLessThanOrEqual(
+        1024 * 1024,
+      );
+      expect(json.content).toContain("1200 ");
+      expect(json.content).toContain("1202 ");
+      expect(json.highlightedHtml).toBeDefined();
+    });
+
     it("raw endpoint still returns large files", async () => {
       // Create a file larger than 1MB
       const largeContent = "x".repeat(1024 * 1024 + 1);

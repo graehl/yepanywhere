@@ -1024,11 +1024,27 @@ export function createApp(options: AppOptions): AppResult {
     const fetchPublicShareProjectFile = async (
       projectId: UrlProjectId,
       filePath: string,
-      fileOptions: { download?: boolean; highlight?: boolean; raw?: boolean },
+      fileOptions: {
+        download?: boolean;
+        highlight?: boolean;
+        lineEnd?: number;
+        lineNumber?: number;
+        raw?: boolean;
+        viewMode?: "full" | "range";
+      },
     ): Promise<Response> => {
       const searchParams = new URLSearchParams({ path: filePath });
       if (fileOptions.highlight) {
         searchParams.set("highlight", "true");
+      }
+      if (fileOptions.lineNumber !== undefined) {
+        searchParams.set("line", String(fileOptions.lineNumber));
+      }
+      if (fileOptions.lineEnd !== undefined) {
+        searchParams.set("lineEnd", String(fileOptions.lineEnd));
+      }
+      if (fileOptions.viewMode === "range") {
+        searchParams.set("view", "range");
       }
       if (fileOptions.download) {
         searchParams.set("download", "true");

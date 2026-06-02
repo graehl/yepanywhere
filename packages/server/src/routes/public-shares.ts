@@ -71,7 +71,14 @@ export interface PublicShareRoutesDeps {
   fetchProjectFile?: (
     projectId: UrlProjectId,
     path: string,
-    options: { download?: boolean; highlight?: boolean; raw?: boolean },
+    options: {
+      download?: boolean;
+      highlight?: boolean;
+      lineEnd?: number;
+      lineNumber?: number;
+      raw?: boolean;
+      viewMode?: "full" | "range";
+    },
   ) => Promise<Response>;
 }
 
@@ -119,6 +126,16 @@ function getPublicShareReadiness(deps: PublicShareRoutesDeps): {
     relayStatus,
     canCreate: enabled && configured && remoteAccessEnabled,
   };
+}
+
+function parsePositiveIntegerQuery(
+  value: string | undefined,
+): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function buildPublicShareUrl(
@@ -663,14 +680,29 @@ async function servePublicShareProjectFile(
     return notFound(c);
   }
 
+  const lineNumber = parsePositiveIntegerQuery(c.req.query("line"));
+  const lineEnd = parsePositiveIntegerQuery(c.req.query("lineEnd"));
+  const fileOptions: Parameters<
+    NonNullable<PublicShareRoutesDeps["fetchProjectFile"]>
+  >[2] = {
+    download: c.req.query("download") === "true",
+    highlight: c.req.query("highlight") === "true",
+    raw: options.raw,
+  };
+  if (lineNumber !== undefined) {
+    fileOptions.lineNumber = lineNumber;
+  }
+  if (lineEnd !== undefined) {
+    fileOptions.lineEnd = lineEnd;
+  }
+  if (c.req.query("view") === "range") {
+    fileOptions.viewMode = "range";
+  }
+
   const response = await deps.fetchProjectFile(
     record.source.projectId,
     relativePath,
-    {
-      download: c.req.query("download") === "true",
-      highlight: c.req.query("highlight") === "true",
-      raw: options.raw,
-    },
+    fileOptions,
   );
 
   if (options.raw) {

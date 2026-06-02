@@ -10,20 +10,34 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
+import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
+import { compactShikiLineBreaks } from "../lib/shikiHtml";
 import {
   fetchMediaBlob,
-  type LocalMediaSource,
   LocalMediaModal,
+  type LocalMediaSource,
   useLocalMediaClick,
   useLocalMediaInlinePreviews,
 } from "./LocalMediaModal";
-import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
+import {
+  combineDensityOffsets,
+  FILE_MARKDOWN_PREVIEW_BASE_DENSITY,
+  FILE_SOURCE_BASE_DENSITY,
+  FileViewerDensityControls,
+  getSourceViewStyle,
+  MarkdownPreview,
+  MarkdownViewToggle,
+  useFileViewerDensity,
+} from "./MarkdownPreview";
 
 export interface FileViewerSource {
   loadFile: (
     projectId: string,
     filePath: string,
     highlight: boolean,
+    lineNumber?: number,
+    lineEnd?: number,
+    viewMode?: FileViewerMode,
   ) => Promise<FileContentResponse>;
   getRawFileUrl?: (
     projectId: string,
@@ -55,7 +69,11 @@ interface FileViewerProps {
   lineNumber?: number;
   /** End line for range highlighting (1-indexed). If not provided, only lineNumber is highlighted. */
   lineEnd?: number;
+  /** Full shows context; range shows only the requested line range. */
+  viewMode?: FileViewerMode;
 }
+
+export type FileViewerMode = "full" | "range";
 
 /**
  * Format file size for display.
@@ -129,9 +147,84 @@ function getFileName(filePath: string): string {
   return filePath.split("/").pop() || filePath;
 }
 
+function getHighlightRange(
+  lineNumber?: number,
+  lineEnd?: number,
+): { end: number; start: number } | null {
+  if (lineNumber === undefined) {
+    return null;
+  }
+  return {
+    end: Math.max(lineNumber, lineEnd ?? lineNumber),
+    start: lineNumber,
+  };
+}
+
+function getContentStartLine(fileData: FileContentResponse | null): number {
+  return fileData?.contentStartLine ?? 1;
+}
+
+function getContentEndLine(fileData: FileContentResponse): number | undefined {
+  if (fileData.contentEndLine !== undefined) {
+    return fileData.contentEndLine;
+  }
+  if (fileData.content === undefined) {
+    return undefined;
+  }
+  return (
+    getContentStartLine(fileData) + fileData.content.split("\n").length - 1
+  );
+}
+
+function getContentWindowLabel(fileData: FileContentResponse): string | null {
+  if (!fileData.contentTruncated) {
+    return null;
+  }
+  const endLine = getContentEndLine(fileData);
+  const total = fileData.contentTotalLines
+    ? ` of ${fileData.contentTotalLines}`
+    : "";
+  return `Showing lines ${getContentStartLine(fileData)}-${endLine}${total}`;
+}
+
+function annotateHighlightedHtmlLines(
+  html: string | undefined,
+  contentStartLine: number,
+  lineNumber?: number,
+  lineEnd?: number,
+): string | undefined {
+  if (!html) {
+    return html;
+  }
+  const range = getHighlightRange(lineNumber, lineEnd);
+  if (!range) {
+    return html;
+  }
+
+  const singleLine = range.start === range.end;
+  let currentLine = 0;
+  return html.replace(/<span class="([^"]*)">/g, (match, className: string) => {
+    if (!className.split(/\s+/).includes("line")) {
+      return match;
+    }
+    currentLine += 1;
+    const actualLine = contentStartLine + currentLine - 1;
+    const inRange = actualLine >= range.start && actualLine <= range.end;
+    const classes = [
+      className,
+      singleLine && inRange ? "highlighted-line" : "",
+      actualLine === range.start ? "highlighted-line-start" : "",
+      actualLine === range.end ? "highlighted-line-end" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return `<span class="${classes}" data-line="${actualLine}">`;
+  });
+}
+
 const DEFAULT_FILE_VIEWER_SOURCE: FileViewerSource = {
-  loadFile: (projectId, filePath, highlight) =>
-    api.getFile(projectId, filePath, highlight),
+  loadFile: (projectId, filePath, highlight, lineNumber, lineEnd, viewMode) =>
+    api.getFile(projectId, filePath, highlight, lineNumber, lineEnd, viewMode),
   getRawFileUrl: (projectId, filePath, download) =>
     api.getFileRawUrl(projectId, filePath, download),
   createMediaSource: (fileData) =>
@@ -167,6 +260,7 @@ export const FileViewer = memo(function FileViewer({
   standalone = false,
   lineNumber,
   lineEnd,
+  viewMode = "full",
 }: FileViewerProps) {
   const { t } = useI18n();
   const [fileData, setFileData] = useState<FileContentResponse | null>(null);
@@ -178,6 +272,17 @@ export const FileViewer = memo(function FileViewer({
   const [imageObjectUrl, setImageObjectUrl] = useState<string | null>(null);
   const [highlightedLineRef, setHighlightedLineRef] =
     useState<HTMLElement | null>(null);
+  const viewerDensity = useFileViewerDensity();
+  const sourceDensity = combineDensityOffsets(
+    FILE_SOURCE_BASE_DENSITY,
+    viewerDensity.density,
+  );
+  const markdownDensity = combineDensityOffsets(
+    FILE_MARKDOWN_PREVIEW_BASE_DENSITY,
+    viewerDensity.density,
+  );
+  const sourceStyle = getSourceViewStyle(sourceDensity);
+  const fileViewerBodyRef = useRef<HTMLDivElement>(null);
   const markdownPreviewRef = useRef<HTMLDivElement>(null);
   const {
     modal: localMediaModal,
@@ -212,6 +317,15 @@ export const FileViewer = memo(function FileViewer({
         )
       : fileData.renderedMarkdownHtml;
   }, [fileData, source]);
+  const highlightedHtml = useMemo(() => {
+    const annotated = annotateHighlightedHtmlLines(
+      fileData?.highlightedHtml,
+      getContentStartLine(fileData),
+      lineNumber,
+      lineEnd,
+    );
+    return compactShikiLineBreaks(annotated);
+  }, [fileData, lineEnd, lineNumber]);
   useLocalMediaInlinePreviews(
     markdownPreviewRef,
     showPreview ? renderedMarkdownHtml : null,
@@ -222,10 +336,11 @@ export const FileViewer = memo(function FileViewer({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setHighlightedLineRef(null);
 
     // Request highlighting for code files
     source
-      .loadFile(projectId, filePath, true)
+      .loadFile(projectId, filePath, true, lineNumber, lineEnd, viewMode)
       .then((data) => {
         if (!cancelled) {
           setFileData(data);
@@ -247,7 +362,7 @@ export const FileViewer = memo(function FileViewer({
     return () => {
       cancelled = true;
     };
-  }, [projectId, filePath, lineNumber, source, t]);
+  }, [projectId, filePath, lineEnd, lineNumber, source, t, viewMode]);
 
   useEffect(() => {
     if (!fileData || !isImageFile(fileData.metadata.mimeType)) {
@@ -296,19 +411,26 @@ export const FileViewer = memo(function FileViewer({
 
   // Scroll to highlighted line when it's rendered
   useEffect(() => {
-    if (highlightedLineRef) {
-      // Small delay to ensure layout is complete
+    if (lineNumber === undefined) {
+      return;
+    }
+    const highlightedLine =
+      highlightedLineRef ??
+      fileViewerBodyRef.current?.querySelector<HTMLElement>(
+        ".highlighted-line-start",
+      );
+    if (highlightedLine) {
       requestAnimationFrame(() => {
-        highlightedLineRef.scrollIntoView({
-          behavior: "smooth",
+        highlightedLine.scrollIntoView({
+          behavior: "auto",
           block: "center",
         });
       });
     }
-  }, [highlightedLineRef]);
+  }, [fileData, highlightedLineRef, lineEnd, lineNumber, showPreview]);
 
   const handleCopy = useCallback(async () => {
-    if (!fileData?.content) return;
+    if (fileData?.content === undefined) return;
     try {
       await navigator.clipboard.writeText(fileData.content);
       setCopied(true);
@@ -347,9 +469,12 @@ export const FileViewer = memo(function FileViewer({
     if (lineEnd !== undefined) {
       searchParams.set("lineEnd", String(lineEnd));
     }
+    if (viewMode === "range") {
+      searchParams.set("view", "range");
+    }
     const url = `/projects/${projectId}/file?${searchParams}`;
     window.open(url, "_blank");
-  }, [projectId, filePath, lineNumber, lineEnd]);
+  }, [projectId, filePath, lineNumber, lineEnd, viewMode]);
 
   // Render loading state
   if (loading) {
@@ -378,6 +503,8 @@ export const FileViewer = memo(function FileViewer({
   const rawFileUrl =
     source.getRawFileUrl?.(projectId, filePath, false) ?? rawUrl;
   const canDownload = Boolean(source.fetchRawFileBlob || rawFileUrl);
+  const hasMarkdownPreview =
+    content !== undefined && isMarkdownFile(filePath) && !!renderedMarkdownHtml;
 
   // Render content based on file type
   const renderContent = () => {
@@ -399,123 +526,93 @@ export const FileViewer = memo(function FileViewer({
 
     // Text files
     if (content !== undefined) {
-      const isMarkdown = isMarkdownFile(filePath);
-      const hasMarkdownPreview = isMarkdown && !!renderedMarkdownHtml;
-
-      // Toggle button for markdown files
-      const toggleButton = hasMarkdownPreview && (
-        <div className="markdown-view-toggle">
-          <button
-            type="button"
-            className={`toggle-btn ${!showPreview ? "active" : ""}`}
-            onClick={() => setShowPreview(false)}
-          >
-            {t("fileViewerSource" as never)}
-          </button>
-          <button
-            type="button"
-            className={`toggle-btn ${showPreview ? "active" : ""}`}
-            onClick={() => setShowPreview(true)}
-          >
-            {t("fileViewerPreview" as never)}
-          </button>
-        </div>
-      );
-
       // Show rendered markdown preview
       if (showPreview && renderedMarkdownHtml) {
         return (
-          <>
-            {toggleButton}
-            <div
-              className="markdown-preview"
-              role="region"
-              aria-label={t("fileViewerPreview" as never)}
-              onClick={handleLocalMediaClick}
-              onKeyDown={handleLocalMediaKeyDown}
-              ref={markdownPreviewRef}
-            >
-              <div
-                className="markdown-rendered"
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-                dangerouslySetInnerHTML={{
-                  __html: renderedMarkdownHtml,
-                }}
-              />
-            </div>
-          </>
+          <MarkdownPreview
+            html={renderedMarkdownHtml}
+            density={markdownDensity}
+            ariaLabel={t("fileViewerPreview" as never)}
+            onClick={handleLocalMediaClick}
+            onKeyDown={handleLocalMediaKeyDown}
+            ref={markdownPreviewRef}
+          />
         );
       }
 
       // Server-rendered syntax highlighting (preferred)
-      if (fileData.highlightedHtml) {
+      if (highlightedHtml) {
+        const contentWindowLabel = getContentWindowLabel(fileData);
         return (
-          <>
-            {toggleButton}
+          <div
+            className="file-viewer-code file-viewer-code-highlighted"
+            data-language={fileData.highlightedLanguage ?? language}
+            style={sourceStyle}
+          >
             <div
-              className="file-viewer-code file-viewer-code-highlighted"
-              data-language={fileData.highlightedLanguage ?? language}
-            >
-              <div
-                className="shiki-container"
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-                dangerouslySetInnerHTML={{ __html: fileData.highlightedHtml }}
-              />
-              {fileData.highlightedTruncated && (
-                <div className="file-viewer-truncated">
-                  {t("fileViewerHighlightTruncated" as never)}
-                </div>
-              )}
-            </div>
-          </>
+              className="shiki-container"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+            />
+            {fileData.highlightedTruncated && (
+              <div className="file-viewer-truncated">
+                {t("fileViewerHighlightTruncated" as never)}
+              </div>
+            )}
+            {contentWindowLabel && (
+              <div className="file-viewer-truncated">{contentWindowLabel}</div>
+            )}
+          </div>
         );
       }
 
       // Fallback: plain code (no syntax highlighting available)
-      const lines = content.split("\n");
+      const lines = content.length > 0 ? content.split("\n") : [];
+      const contentStartLine = getContentStartLine(fileData);
       const highlightStart = lineNumber ?? 0;
-      const highlightEnd = lineEnd ?? highlightStart;
+      const highlightEnd = Math.max(highlightStart, lineEnd ?? highlightStart);
+      const singleLineHighlight = highlightStart === highlightEnd;
+      const contentWindowLabel = getContentWindowLabel(fileData);
 
       return (
-        <>
-          {toggleButton}
-          <div className="file-viewer-code" data-language={language}>
+        <div
+          className="file-viewer-code"
+          data-language={language}
+          style={sourceStyle}
+        >
+          {lines.length > 0 ? (
             <div className="code-highlighter-plain">
               <div className="code-line-numbers">
-                {lines.map((_, i) => (
-                  <div key={`ln-${i + 1}`}>{i + 1}</div>
-                ))}
+                {lines.map((_, i) => {
+                  const num = contentStartLine + i;
+                  return <div key={`ln-${num}`}>{num}</div>;
+                })}
               </div>
               <pre className="code-content">
                 <code>
                   {lines.map((line, i) => {
-                    const num = i + 1;
-                    const isHighlighted =
-                      lineNumber &&
+                    const num = contentStartLine + i;
+                    const inRange =
+                      lineNumber !== undefined &&
                       num >= highlightStart &&
                       num <= highlightEnd;
+                    const classes = [
+                      singleLineHighlight && inRange ? "highlighted-line" : "",
+                      num === highlightStart ? "highlighted-line-start" : "",
+                      num === highlightEnd ? "highlighted-line-end" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ");
                     return (
                       <div
-                        key={`line-${i + 1}`}
+                        key={`line-${num}`}
                         ref={
-                          lineNumber && num === highlightStart
+                          lineNumber !== undefined && num === highlightStart
                             ? (el) => setHighlightedLineRef(el)
                             : undefined
                         }
-                        className={
-                          isHighlighted ? "highlighted-line" : undefined
-                        }
-                        style={
-                          isHighlighted
-                            ? {
-                                backgroundColor: "rgba(255, 255, 0, 0.15)",
-                                marginLeft: "-0.75rem",
-                                marginRight: "-0.75rem",
-                                paddingLeft: "0.75rem",
-                                paddingRight: "0.75rem",
-                              }
-                            : undefined
-                        }
+                        className={classes || undefined}
+                        data-line={num}
                       >
                         {line || " "}
                       </div>
@@ -524,8 +621,13 @@ export const FileViewer = memo(function FileViewer({
                 </code>
               </pre>
             </div>
-          </div>
-        </>
+          ) : (
+            <div className="file-viewer-empty-content">No content read</div>
+          )}
+          {contentWindowLabel && (
+            <div className="file-viewer-truncated">{contentWindowLabel}</div>
+          )}
+        </div>
       );
     }
 
@@ -562,15 +664,42 @@ export const FileViewer = memo(function FileViewer({
         </span>
         <span className="file-viewer-meta">
           {formatFileSize(metadata.size)}
-          {metadata.isText &&
-            content &&
-            ` \u2022 ${t("fileViewerLines" as never, {
-              count: content.split("\n").length,
-            })}`}
+          {metadata.isText && content !== undefined && (
+            <>
+              {" \u2022 "}
+              {fileData.contentTruncated
+                ? `lines ${getContentStartLine(fileData)}-${getContentEndLine(fileData)}${
+                    fileData.contentTotalLines
+                      ? ` of ${fileData.contentTotalLines}`
+                      : ""
+                  }`
+                : t("fileViewerLines" as never, {
+                    count: content.length > 0 ? content.split("\n").length : 0,
+                  })}
+            </>
+          )}
         </span>
       </div>
       <div className="file-viewer-actions">
-        {content && (
+        {hasMarkdownPreview && (
+          <MarkdownViewToggle
+            sourceLabel={t("fileViewerSource" as never)}
+            previewLabel={t("fileViewerPreview" as never)}
+            showPreview={showPreview}
+            onShowSource={() => setShowPreview(false)}
+            onShowPreview={() => setShowPreview(true)}
+          />
+        )}
+        {metadata.isText && content !== undefined && (
+          <FileViewerDensityControls
+            zoom={viewerDensity.zoom}
+            canZoomIn={viewerDensity.canZoomIn}
+            canZoomOut={viewerDensity.canZoomOut}
+            onZoomIn={viewerDensity.zoomIn}
+            onZoomOut={viewerDensity.zoomOut}
+          />
+        )}
+        {content !== undefined && (
           <button
             type="button"
             className={`file-viewer-action ${copied ? "copied" : ""}`}
@@ -634,6 +763,7 @@ export const FileViewer = memo(function FileViewer({
     "file-viewer",
     standalone && "file-viewer-standalone",
     fullscreen && "file-viewer-fullscreen",
+    viewMode === "range" && "file-viewer-compact",
   ]
     .filter(Boolean)
     .join(" ");
@@ -641,7 +771,9 @@ export const FileViewer = memo(function FileViewer({
   return (
     <div className={viewerClass}>
       {header}
-      <div className="file-viewer-body">{renderContent()}</div>
+      <div className="file-viewer-body" ref={fileViewerBodyRef}>
+        {renderContent()}
+      </div>
       {localMediaModal ? (
         <LocalMediaModal
           path={localMediaModal.path}

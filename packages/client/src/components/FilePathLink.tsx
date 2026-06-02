@@ -5,7 +5,7 @@ import {
   buildPublicShareFileHref,
   usePublicShareContext,
 } from "../contexts/PublicShareContext";
-import { FileViewer } from "./FileViewer";
+import { FileViewer, type FileViewerMode } from "./FileViewer";
 
 interface FilePathLinkProps {
   /** The file path to display and link to */
@@ -14,22 +14,36 @@ interface FilePathLinkProps {
   projectId: string;
   /** Optional line number to display */
   lineNumber?: number;
+  /** Optional end line for range highlighting */
+  lineEnd?: number;
   /** Optional column number to display */
   columnNumber?: number;
   /** Optional custom display text (defaults to filename) */
   displayText?: string;
+  /** Whether to append the line/range suffix to the visible link text */
+  showLineSuffix?: boolean;
   /** Whether to show full path or just filename */
   showFullPath?: boolean;
+  /** Viewer mode. The range mode shows only the requested line range. */
+  viewMode?: FileViewerMode;
 }
 
 function getProjectFileViewUrl(
   projectId: string,
   filePath: string,
   lineNumber?: number,
+  lineEnd?: number,
+  viewMode?: FileViewerMode,
 ): string {
   const params = new URLSearchParams({ path: filePath });
   if (lineNumber !== undefined) {
     params.set("line", String(lineNumber));
+  }
+  if (lineEnd !== undefined) {
+    params.set("lineEnd", String(lineEnd));
+  }
+  if (viewMode === "range") {
+    params.set("view", "range");
   }
   return `/projects/${projectId}/file?${params.toString()}`;
 }
@@ -71,6 +85,16 @@ function getFileName(filePath: string): string {
   return filePath.split("/").pop() || filePath;
 }
 
+function formatLineSuffix(lineNumber?: number, lineEnd?: number): string {
+  if (lineNumber === undefined) {
+    return "";
+  }
+  if (lineEnd !== undefined && lineEnd > lineNumber) {
+    return `:${lineNumber}-${lineEnd}`;
+  }
+  return `:${lineNumber}`;
+}
+
 /**
  * FilePathLink - A clickable link component that opens a file viewer modal.
  * Used to make file paths in messages interactive.
@@ -79,9 +103,12 @@ export const FilePathLink = memo(function FilePathLink({
   filePath,
   projectId,
   lineNumber,
+  lineEnd,
   columnNumber,
   displayText,
+  showLineSuffix = true,
   showFullPath = false,
+  viewMode = "full",
 }: FilePathLinkProps) {
   const publicShareContext = usePublicShareContext();
   const [showModal, setShowModal] = useState(false);
@@ -93,24 +120,35 @@ export const FilePathLink = memo(function FilePathLink({
     ? buildPublicShareFileHref(publicShareContext, {
         columnNumber,
         filePath: viewerFilePath,
+        lineEnd,
         lineNumber,
+        viewMode,
       })
     : null;
   const fileViewUrl =
     publicShareFileViewUrl ??
-    getProjectFileViewUrl(projectId, viewerFilePath, lineNumber);
+    getProjectFileViewUrl(
+      projectId,
+      viewerFilePath,
+      lineNumber,
+      lineEnd,
+      viewMode,
+    );
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (publicShareFileViewUrl) {
-      return;
-    }
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
-      return;
-    }
-    e.preventDefault();
-    setShowModal(true);
-  }, [publicShareFileViewUrl]);
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (publicShareFileViewUrl) {
+        return;
+      }
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+        return;
+      }
+      e.preventDefault();
+      setShowModal(true);
+    },
+    [publicShareFileViewUrl],
+  );
 
   const handleClose = useCallback(() => {
     setShowModal(false);
@@ -120,14 +158,13 @@ export const FilePathLink = memo(function FilePathLink({
   const fileName = showFullPath ? filePath : getFileName(filePath);
   const text = displayText || fileName;
 
-  // Build line/column suffix
-  let suffix = "";
-  if (lineNumber !== undefined) {
-    suffix = `:${lineNumber}`;
-    if (columnNumber !== undefined) {
-      suffix += `:${columnNumber}`;
-    }
-  }
+  const lineSuffix = formatLineSuffix(lineNumber, lineEnd);
+  const columnSuffix =
+    lineSuffix && columnNumber !== undefined && lineEnd === undefined
+      ? `:${columnNumber}`
+      : "";
+  const suffix = `${lineSuffix}${columnSuffix}`;
+  const visibleSuffix = showLineSuffix ? suffix : "";
 
   return (
     <>
@@ -138,7 +175,9 @@ export const FilePathLink = memo(function FilePathLink({
         title={`${filePath}${suffix}\nClick to view, or use a browser link gesture to open this file`}
       >
         <span className="file-path-link-name">{text}</span>
-        {suffix && <span className="file-path-link-line">{suffix}</span>}
+        {visibleSuffix && (
+          <span className="file-path-link-line">{visibleSuffix}</span>
+        )}
       </a>
       {showModal &&
         createPortal(
@@ -146,6 +185,8 @@ export const FilePathLink = memo(function FilePathLink({
             projectId={projectId}
             filePath={viewerFilePath}
             lineNumber={lineNumber}
+            lineEnd={lineEnd}
+            viewMode={viewMode}
             onClose={handleClose}
           />,
           document.body,
@@ -161,11 +202,15 @@ export function FileViewerModal({
   projectId,
   filePath,
   lineNumber,
+  lineEnd,
+  viewMode = "full",
   onClose,
 }: {
   projectId: string;
   filePath: string;
   lineNumber?: number;
+  lineEnd?: number;
+  viewMode?: FileViewerMode;
   onClose: () => void;
 }) {
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -205,7 +250,9 @@ export function FileViewerModal({
     >
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: click only stops propagation, keyboard handled globally */}
       <dialog
-        className="modal file-viewer-modal"
+        className={`modal file-viewer-modal ${
+          viewMode === "range" ? "file-viewer-modal-compact" : ""
+        }`}
         open
         onClick={(e) => e.stopPropagation()}
       >
@@ -213,6 +260,8 @@ export function FileViewerModal({
           projectId={projectId}
           filePath={filePath}
           lineNumber={lineNumber}
+          lineEnd={lineEnd}
+          viewMode={viewMode}
           onClose={onClose}
         />
       </dialog>

@@ -4,8 +4,8 @@ import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContex
 import { I18nProvider } from "../../../i18n";
 import {
   DEFERRED_PREVIEW_HEIGHT,
-  ToolCallRow,
   estimateDeferredPreviewHeightPx,
+  ToolCallRow,
 } from "../ToolCallRow";
 
 vi.mock("../../../contexts/SchemaValidationContext", () => ({
@@ -106,12 +106,17 @@ describe("ToolCallRow", () => {
     );
 
     expect(screen.getByText("Ran")).toBeDefined();
-    expect(container.querySelector(".tool-row-collapsed-preview")).not.toBeNull();
+    expect(
+      container.querySelector(".tool-row-collapsed-preview"),
+    ).not.toBeNull();
     expect(screen.getByText("New")).toBeDefined();
-    expect(container.querySelector(".fixed-font-markdown-heading")).toBeTruthy();
+    expect(
+      container.querySelector(".fixed-font-markdown-heading"),
+    ).toBeTruthy();
     expect(container.querySelector("strong")?.textContent).toBe("done");
     expect(
-      container.querySelector(".fixed-font-rendered__content code")?.textContent,
+      container.querySelector(".fixed-font-rendered__content code")
+        ?.textContent,
     ).toBe("dev");
     expect(container.querySelector(".expand-chevron")).toBeNull();
     expect(screen.getAllByText("git diff -- notes.md")).toHaveLength(1);
@@ -127,7 +132,9 @@ describe("ToolCallRow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Expand preview" }));
 
-    expect(container.querySelector(".tool-row-collapsed-preview")).not.toBeNull();
+    expect(
+      container.querySelector(".tool-row-collapsed-preview"),
+    ).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse preview" }));
 
@@ -136,6 +143,34 @@ describe("ToolCallRow", () => {
     expect(
       screen.getByRole("button", { name: "Expand preview" }),
     ).toBeDefined();
+  });
+
+  it("does not make empty completed Bash rows expandable", () => {
+    const { container } = render(
+      <ToolCallRow
+        id="tool-empty-bash"
+        toolName="Bash"
+        toolInput={{ command: "true" }}
+        toolResult={{
+          structured: {
+            stdout: "",
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+          },
+          content: "",
+          isError: false,
+        }}
+        status="complete"
+        sessionProvider="codex"
+      />,
+    );
+
+    expect(screen.getByText("Ran")).toBeDefined();
+    expect(screen.getByText("true")).toBeDefined();
+    expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
+    expect(container.querySelector(".expand-chevron")).toBeNull();
+    expect(screen.queryByRole("button", { name: /expand/i })).toBeNull();
   });
 
   it("shows PTY-backed read shell rows inline without requiring expansion", () => {
@@ -243,9 +278,7 @@ describe("ToolCallRow", () => {
 
     expect(container.querySelector(".read-text-inline")).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand inline view" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Expand inline view" }));
 
     expect(container.querySelector(".read-text-inline")).not.toBeNull();
 
@@ -297,9 +330,7 @@ describe("ToolCallRow", () => {
     expect(container.querySelector(".edit-collapsed-preview")).not.toBeNull();
     expect(container.querySelector(".edit-result")).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand inline view" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Expand inline view" }));
 
     expect(container.querySelector(".edit-collapsed-preview")).toBeNull();
     expect(container.querySelector(".edit-result")).not.toBeNull();
@@ -375,9 +406,7 @@ describe("ToolCallRow", () => {
         }) as DOMRect;
     }
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Expand inline view" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Expand inline view" }));
 
     expect(scrollTop).toBe(148);
   });
@@ -455,9 +484,7 @@ describe("ToolCallRow", () => {
     expect(wide).not.toBeNull();
     expect(narrow).not.toBeNull();
     expect(narrow as number).toBeGreaterThan(wide as number);
-    expect(narrow as number).toBeLessThanOrEqual(
-      DEFERRED_PREVIEW_HEIGHT.maxPx,
-    );
+    expect(narrow as number).toBeLessThanOrEqual(DEFERRED_PREVIEW_HEIGHT.maxPx);
 
     const huge = estimateDeferredPreviewHeightPx({
       toolName: "Bash",

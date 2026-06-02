@@ -2,8 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ZodError } from "zod";
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { compactShikiLineBreaks } from "../../../lib/shikiHtml";
 import { makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
+import {
+  FILE_MARKDOWN_PREVIEW_BASE_DENSITY,
+  MarkdownPreview,
+} from "../../MarkdownPreview";
 import { SchemaWarning } from "../../SchemaWarning";
 import { SessionFilePathLink } from "../../SessionFilePathLink";
 import { FilePathDisplay } from "../../ui/FilePathDisplay";
@@ -111,13 +116,10 @@ function WriteModalContent({
     return (
       <div className="file-content-modal">
         {toggleButton}
-        <div className="markdown-preview">
-          <div
-            className="markdown-rendered"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-            dangerouslySetInnerHTML={{ __html: input._renderedMarkdownHtml }}
-          />
-        </div>
+        <MarkdownPreview
+          html={input._renderedMarkdownHtml}
+          density={FILE_MARKDOWN_PREVIEW_BASE_DENSITY}
+        />
       </div>
     );
   }
@@ -131,7 +133,9 @@ function WriteModalContent({
           <div
             className="shiki-container"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-            dangerouslySetInnerHTML={{ __html: input._highlightedContentHtml }}
+            dangerouslySetInnerHTML={{
+              __html: compactShikiLineBreaks(input._highlightedContentHtml) ?? "",
+            }}
           />
           {input._highlightedTruncated && (
             <div className="file-viewer-truncated">
@@ -244,7 +248,9 @@ function WriteToolResult({
           <div
             className="shiki-container"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-            dangerouslySetInnerHTML={{ __html: input._highlightedContentHtml }}
+            dangerouslySetInnerHTML={{
+              __html: compactShikiLineBreaks(input._highlightedContentHtml) ?? "",
+            }}
           />
           {input._highlightedTruncated && (
             <div className="file-viewer-truncated">
@@ -411,7 +417,9 @@ function WriteCollapsedPreview({
             <div
               className="shiki-container"
               // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-              dangerouslySetInnerHTML={{ __html: previewHtml }}
+              dangerouslySetInnerHTML={{
+                __html: compactShikiLineBreaks(previewHtml) ?? "",
+              }}
             />
           ) : (
             <pre>

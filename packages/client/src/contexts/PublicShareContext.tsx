@@ -3,11 +3,7 @@ import {
   isUrlProjectId,
   parseLineColumn,
 } from "@yep-anywhere/shared";
-import {
-  createContext,
-  useContext,
-  type ReactNode,
-} from "react";
+import { createContext, type ReactNode, useContext } from "react";
 
 export interface PublicShareContextValue {
   projectId: string | null;
@@ -15,6 +11,8 @@ export interface PublicShareContextValue {
   relayUsername: string;
   secret: string;
 }
+
+export type PublicShareFileViewMode = "full" | "range";
 
 const PublicShareContext = createContext<PublicShareContextValue | null>(null);
 
@@ -109,6 +107,7 @@ export function buildPublicShareFileHref(
     filePath: string;
     lineEnd?: number;
     lineNumber?: number;
+    viewMode?: PublicShareFileViewMode;
   },
 ): string | null {
   const normalized = normalizePublicShareFilePath(
@@ -139,6 +138,9 @@ export function buildPublicShareFileHref(
   if (options.columnNumber !== undefined) {
     url.searchParams.set("column", String(options.columnNumber));
   }
+  if (options.viewMode === "range") {
+    url.searchParams.set("view", "range");
+  }
   return `${url.pathname}${url.search}`;
 }
 
@@ -147,6 +149,7 @@ export interface PublicShareFileReference {
   lineEnd?: number;
   lineNumber?: number;
   path: string;
+  viewMode?: PublicShareFileViewMode;
 }
 
 export function getPublicShareFileReferenceFromLocalAppHref(
@@ -185,7 +188,10 @@ export function getPublicShareFileReferenceFromLocalAppHref(
     if (!filePath) {
       return null;
     }
-    const normalized = normalizePublicShareFilePath(filePath, context.projectId);
+    const normalized = normalizePublicShareFilePath(
+      filePath,
+      context.projectId,
+    );
     return normalized
       ? {
           path: normalized.path,
@@ -193,6 +199,8 @@ export function getPublicShareFileReferenceFromLocalAppHref(
           lineNumber:
             parsePositiveInteger(url.searchParams.get("line")) ??
             normalized.lineNumber,
+          viewMode:
+            url.searchParams.get("view") === "range" ? "range" : undefined,
         }
       : null;
   }
@@ -212,7 +220,10 @@ export function getPublicShareFileReferenceFromLocalAppHref(
     if (!filePath) {
       return null;
     }
-    const normalized = normalizePublicShareFilePath(filePath, context.projectId);
+    const normalized = normalizePublicShareFilePath(
+      filePath,
+      context.projectId,
+    );
     return normalized ? { path: normalized.path } : null;
   }
 
@@ -224,14 +235,20 @@ export function getPublicShareFileReferenceFromLocalAppHref(
     if (!filePath) {
       return null;
     }
-    const normalized = normalizePublicShareFilePath(filePath, context.projectId);
+    const normalized = normalizePublicShareFilePath(
+      filePath,
+      context.projectId,
+    );
     return normalized
       ? {
           path: normalized.path,
           columnNumber: parsePositiveInteger(url.searchParams.get("column")),
+          lineEnd: parsePositiveInteger(url.searchParams.get("lineEnd")),
           lineNumber:
             parsePositiveInteger(url.searchParams.get("line")) ??
             normalized.lineNumber,
+          viewMode:
+            url.searchParams.get("view") === "range" ? "range" : undefined,
         }
       : null;
   }
@@ -258,6 +275,7 @@ export function rewritePublicShareLocalAppHref(
     columnNumber: reference.columnNumber,
     lineEnd: reference.lineEnd,
     lineNumber: reference.lineNumber,
+    viewMode: reference.viewMode,
   });
 }
 
@@ -316,7 +334,10 @@ export function rewritePublicShareLocalAppLinks(
     if (!filePath) {
       continue;
     }
-    const normalized = normalizePublicShareFilePath(filePath, context.projectId);
+    const normalized = normalizePublicShareFilePath(
+      filePath,
+      context.projectId,
+    );
     if (normalized) {
       preview.setAttribute("data-public-share-src-path", normalized.path);
     }

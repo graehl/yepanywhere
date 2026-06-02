@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from "vitest";
 import { toUrlProjectId } from "@yep-anywhere/shared";
+import { describe, expect, it } from "vitest";
 import {
   buildPublicShareRawFileApiPath,
   rewritePublicShareLocalAppHref,
@@ -53,25 +53,25 @@ describe("rewritePublicShareLocalAppHref", () => {
 
   it("rewrites project file viewer links to public share file routes", () => {
     const rewritten = rewritePublicShareLocalAppHref(
-      `/projects/${projectId}/file?path=ui-report%2FREADME.md&line=8`,
+      `/projects/${projectId}/file?path=ui-report%2FREADME.md&line=8&view=range`,
       context,
       shareUrl,
     );
 
     expect(rewritten).toBe(
-      `/share/share-secret/file?path=ui-report%2FREADME.md&h=ygraehl&r=wss%3A%2F%2Frelay.graehl.org%2Fws&projectId=${projectId}&line=8`,
+      `/share/share-secret/file?path=ui-report%2FREADME.md&h=ygraehl&r=wss%3A%2F%2Frelay.graehl.org%2Fws&projectId=${projectId}&line=8&view=range`,
     );
   });
 
   it("rewrites local-file links under the shared project root", () => {
     const rewritten = rewritePublicShareLocalAppHref(
-      "https://ya.graehl.org/api/local-file?path=%2Flocal%2Fgraehl%2Fyepanywhere%2Fui-report%2FREADME.md&render=1&line=8",
+      "https://ya.graehl.org/api/local-file?path=%2Flocal%2Fgraehl%2Fyepanywhere%2Fui-report%2FREADME.md&render=1&line=8&lineEnd=12",
       context,
       shareUrl,
     );
 
     expect(rewritten).toBe(
-      `/share/share-secret/file?path=ui-report%2FREADME.md&h=ygraehl&r=wss%3A%2F%2Frelay.graehl.org%2Fws&projectId=${projectId}&line=8`,
+      `/share/share-secret/file?path=ui-report%2FREADME.md&h=ygraehl&r=wss%3A%2F%2Frelay.graehl.org%2Fws&projectId=${projectId}&line=8&lineEnd=12`,
     );
   });
 

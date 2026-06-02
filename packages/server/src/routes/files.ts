@@ -1,4 +1,4 @@
-import type { Stats } from "node:fs";
+import { createReadStream, type Stats } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
 import {
   dirname,
@@ -8,6 +8,7 @@ import {
   relative,
   resolve,
 } from "node:path";
+import { createInterface } from "node:readline";
 import {
   type FileContentResponse,
   type FileMetadata,
@@ -26,6 +27,7 @@ export interface FilesDeps {
 
 /** Maximum file size to include content inline (1MB) */
 const MAX_INLINE_SIZE = 1024 * 1024;
+const MAX_TARGET_WINDOW_SIZE = MAX_INLINE_SIZE;
 const MAX_EMBEDDED_MARKDOWN_MEDIA_BYTES = 8 * 1024 * 1024;
 const MAX_EMBEDDED_MARKDOWN_MEDIA_FILE_BYTES = 2 * 1024 * 1024;
 
@@ -249,6 +251,263 @@ function getMimeType(filePath: string): string {
   return MIME_TYPES[ext] || "application/octet-stream";
 }
 
+function parsePositiveIntegerQuery(
+  value: string | undefined,
+): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function getLineRange(
+  lineNumber: number | undefined,
+  lineEnd: number | undefined,
+): { end: number; start: number } | null {
+  if (lineNumber === undefined) {
+    return null;
+  }
+  return {
+    end: Math.max(lineNumber, lineEnd ?? lineNumber),
+    start: lineNumber,
+  };
+}
+
+interface TextContentSlice {
+  content: string;
+  endLine: number;
+  startLine: number;
+  totalLines?: number;
+  truncated: boolean;
+}
+
+type FileViewMode = "full" | "range";
+
+interface LineEntry {
+  bytes: number;
+  lineNumber: number;
+  text: string;
+}
+
+function lineBytes(text: string): number {
+  return Buffer.byteLength(`${text}\n`, "utf8");
+}
+
+function truncateUtf8(text: string, maxBytes: number): string {
+  if (Buffer.byteLength(text, "utf8") <= maxBytes) {
+    return text;
+  }
+  return Buffer.from(text, "utf8").subarray(0, maxBytes).toString("utf8");
+}
+
+function trimLineWindowToBudget(
+  lines: LineEntry[],
+  byteBudget: number,
+): number {
+  let bytes = lines.reduce((total, line) => total + line.bytes, 0);
+  while (bytes > byteBudget && lines.length > 0) {
+    const removed = lines.shift();
+    bytes -= removed?.bytes ?? 0;
+  }
+  return bytes;
+}
+
+async function readTargetedTextWindow(
+  filePath: string,
+  range: { end: number; start: number },
+): Promise<TextContentSlice> {
+  const beforeLines: LineEntry[] = [];
+  const targetLines: LineEntry[] = [];
+  const afterLines: LineEntry[] = [];
+  let beforeBytes = 0;
+  let targetBytes = 0;
+  let afterBytes = 0;
+  let lineNumber = 0;
+  let completed = true;
+
+  const stream = createReadStream(filePath, { encoding: "utf8" });
+  const reader = createInterface({
+    crlfDelay: Number.POSITIVE_INFINITY,
+    input: stream,
+  });
+
+  try {
+    for await (const line of reader) {
+      lineNumber += 1;
+      const entry: LineEntry = {
+        bytes: lineBytes(line),
+        lineNumber,
+        text: line,
+      };
+
+      if (lineNumber < range.start) {
+        beforeLines.push(entry);
+        beforeBytes += entry.bytes;
+        beforeBytes = trimLineWindowToBudget(
+          beforeLines,
+          Math.floor(MAX_TARGET_WINDOW_SIZE / 2),
+        );
+        continue;
+      }
+
+      if (lineNumber <= range.end) {
+        const remainingTargetBytes = MAX_TARGET_WINDOW_SIZE - targetBytes;
+        if (remainingTargetBytes <= 0) {
+          completed = false;
+          break;
+        }
+        if (entry.bytes > remainingTargetBytes) {
+          beforeLines.length = 0;
+          afterLines.length = 0;
+          beforeBytes = 0;
+          afterBytes = 0;
+          if (targetLines.length === 0) {
+            const text = truncateUtf8(entry.text, MAX_TARGET_WINDOW_SIZE);
+            targetLines.push({
+              bytes: Buffer.byteLength(text, "utf8"),
+              lineNumber,
+              text,
+            });
+            targetBytes = targetLines[0]?.bytes ?? 0;
+          }
+          completed = false;
+          break;
+        }
+
+        targetLines.push(entry);
+        targetBytes += entry.bytes;
+        const beforeBudget = Math.max(
+          0,
+          Math.floor((MAX_TARGET_WINDOW_SIZE - targetBytes) / 2),
+        );
+        beforeBytes = trimLineWindowToBudget(beforeLines, beforeBudget);
+        if (targetBytes >= MAX_TARGET_WINDOW_SIZE) {
+          beforeLines.length = 0;
+          beforeBytes = 0;
+          completed = false;
+          break;
+        }
+        continue;
+      }
+
+      const remaining =
+        MAX_TARGET_WINDOW_SIZE - beforeBytes - targetBytes - afterBytes;
+      if (remaining <= 0 || entry.bytes > remaining) {
+        completed = false;
+        break;
+      }
+      afterLines.push(entry);
+      afterBytes += entry.bytes;
+    }
+  } finally {
+    reader.close();
+    stream.destroy();
+  }
+
+  const included = [...beforeLines, ...targetLines, ...afterLines];
+  if (included.length === 0) {
+    return {
+      content: "",
+      endLine: lineNumber,
+      startLine: 1,
+      totalLines: completed ? lineNumber : undefined,
+      truncated: true,
+    };
+  }
+
+  const startLine = included[0]?.lineNumber ?? 1;
+  const endLine = included.at(-1)?.lineNumber ?? startLine;
+  return {
+    content: included.map((line) => line.text).join("\n"),
+    endLine,
+    startLine,
+    totalLines: completed ? lineNumber : undefined,
+    truncated: startLine > 1 || !completed,
+  };
+}
+
+function sliceContentToRange(
+  content: string,
+  range: { end: number; start: number },
+): TextContentSlice {
+  const lines = content.split("\n");
+  const startIndex = Math.max(0, range.start - 1);
+  const endIndex = Math.min(lines.length, range.end);
+  const selected = lines.slice(startIndex, endIndex);
+  const endLine =
+    selected.length > 0 ? range.start + selected.length - 1 : range.start;
+  return {
+    content: selected.join("\n"),
+    endLine,
+    startLine: range.start,
+    totalLines: lines.length,
+    truncated: range.start > 1 || endLine < lines.length,
+  };
+}
+
+async function readExactTextRange(
+  filePath: string,
+  range: { end: number; start: number },
+): Promise<TextContentSlice> {
+  const selected: LineEntry[] = [];
+  let bytes = 0;
+  let lineNumber = 0;
+  let completed = true;
+
+  const stream = createReadStream(filePath, { encoding: "utf8" });
+  const reader = createInterface({
+    crlfDelay: Number.POSITIVE_INFINITY,
+    input: stream,
+  });
+
+  try {
+    for await (const line of reader) {
+      lineNumber += 1;
+      if (lineNumber < range.start) {
+        continue;
+      }
+      if (lineNumber > range.end) {
+        completed = false;
+        break;
+      }
+
+      const entry: LineEntry = {
+        bytes: lineBytes(line),
+        lineNumber,
+        text: line,
+      };
+      if (bytes + entry.bytes > MAX_TARGET_WINDOW_SIZE) {
+        if (selected.length === 0) {
+          const text = truncateUtf8(entry.text, MAX_TARGET_WINDOW_SIZE);
+          selected.push({
+            bytes: Buffer.byteLength(text, "utf8"),
+            lineNumber,
+            text,
+          });
+        }
+        completed = false;
+        break;
+      }
+      selected.push(entry);
+      bytes += entry.bytes;
+    }
+  } finally {
+    reader.close();
+    stream.destroy();
+  }
+
+  const startLine = selected[0]?.lineNumber ?? range.start;
+  const endLine = selected.at(-1)?.lineNumber ?? startLine;
+  return {
+    content: selected.map((line) => line.text).join("\n"),
+    endLine,
+    startLine,
+    totalLines: completed ? lineNumber : undefined,
+    truncated: startLine > 1 || !completed,
+  };
+}
+
 function decodeHtmlAttribute(value: string): string {
   return value
     .replaceAll("&amp;", "&")
@@ -450,6 +709,12 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
     const projectId = c.req.param("projectId");
     const relativePath = c.req.query("path");
     const highlight = c.req.query("highlight") === "true";
+    const viewMode: FileViewMode =
+      c.req.query("view") === "range" ? "range" : "full";
+    const requestedRange = getLineRange(
+      parsePositiveIntegerQuery(c.req.query("line")),
+      parsePositiveIntegerQuery(c.req.query("lineEnd")),
+    );
 
     // Validate project ID format
     if (!isUrlProjectId(projectId)) {
@@ -507,11 +772,40 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
       rawUrl,
     };
 
-    // For text files under size limit, include content
-    if (isText && stats.size <= MAX_INLINE_SIZE) {
+    // For text files under size limit, include the whole file unless the link
+    // explicitly asks for a compact range view. For targeted links into larger
+    // files, include a bounded window centered on the target.
+    if (isText && (stats.size <= MAX_INLINE_SIZE || requestedRange)) {
       try {
-        const content = await readFile(filePath, "utf-8");
+        const slice =
+          viewMode === "range" && requestedRange
+            ? stats.size <= MAX_INLINE_SIZE
+              ? sliceContentToRange(
+                  await readFile(filePath, "utf-8"),
+                  requestedRange,
+                )
+              : await readExactTextRange(filePath, requestedRange)
+            : stats.size <= MAX_INLINE_SIZE
+              ? {
+                  content: await readFile(filePath, "utf-8"),
+                  endLine: undefined,
+                  startLine: 1,
+                  totalLines: undefined,
+                  truncated: false,
+                }
+              : await readTargetedTextWindow(filePath, requestedRange!);
+        const { content } = slice;
         response.content = content;
+        response.contentStartLine = slice.startLine;
+        if (slice.endLine !== undefined) {
+          response.contentEndLine = slice.endLine;
+        }
+        if (slice.totalLines !== undefined) {
+          response.contentTotalLines = slice.totalLines;
+        }
+        if (slice.truncated) {
+          response.contentTruncated = true;
+        }
 
         // Add syntax highlighting if requested
         if (highlight) {

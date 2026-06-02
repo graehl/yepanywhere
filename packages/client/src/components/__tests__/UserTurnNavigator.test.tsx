@@ -52,8 +52,14 @@ function dispatchPointerMove(
   clientY: number,
 ) {
   const event = new Event("pointermove", { bubbles: true });
-  Object.defineProperty(event, "clientX", { configurable: true, value: clientX });
-  Object.defineProperty(event, "clientY", { configurable: true, value: clientY });
+  Object.defineProperty(event, "clientX", {
+    configurable: true,
+    value: clientX,
+  });
+  Object.defineProperty(event, "clientY", {
+    configurable: true,
+    value: clientY,
+  });
   element.dispatchEvent(event);
 }
 
@@ -142,6 +148,11 @@ describe("UserTurnNavigator", () => {
 
     fireEvent.pointerEnter(secondMarker);
     expect(screen.getByText("Second request with more context")).toBeTruthy();
+    expect(
+      document
+        .querySelector(".user-turn-nav-preview")
+        ?.classList.contains("is-short"),
+    ).toBe(true);
 
     fireEvent.click(secondMarker);
     await waitFor(() => {
@@ -261,9 +272,9 @@ describe("UserTurnNavigator", () => {
     );
 
     await waitFor(() => {
-      expect(
-        container.querySelectorAll(".user-turn-nav-preview"),
-      ).toHaveLength(3);
+      expect(container.querySelectorAll(".user-turn-nav-preview")).toHaveLength(
+        3,
+      );
     });
     const previews = Array.from(
       container.querySelectorAll(".user-turn-nav-preview"),
@@ -391,6 +402,9 @@ describe("UserTurnNavigator", () => {
     );
     expect(
       previews.some((preview) => preview.classList.contains("is-compact")),
+    ).toBe(false);
+    expect(
+      previews.some((preview) => preview.classList.contains("is-short")),
     ).toBe(false);
   });
 

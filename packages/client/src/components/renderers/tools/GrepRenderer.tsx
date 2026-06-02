@@ -8,6 +8,13 @@ import type { GrepInput, GrepResult, ToolRenderer } from "./types";
 const MAX_FILES_COLLAPSED = 20;
 const MAX_LINES_COLLAPSED = 30;
 
+function countGrepMatches(content: string | undefined): number {
+  if (!content) {
+    return 0;
+  }
+  return content.split("\n").filter((line) => /(^|:)\d+:/.test(line)).length;
+}
+
 /**
  * Extract filename from path
  */
@@ -177,10 +184,7 @@ function GrepToolResult({
 
   // Content mode - show search results
   if (mode === "content" && content) {
-    // Count actual match lines (lines with :linenum: pattern indicate matches)
-    // Handles both single-file format (42:content) and multi-file format (file:42:content)
-    const lines = content.split("\n");
-    const matchCount = lines.filter((line) => /(^|:)\d+:/.test(line)).length;
+    const matchCount = countGrepMatches(content);
 
     return (
       <div className="grep-result">
@@ -235,7 +239,7 @@ function GrepToolResult({
 
 export const grepRenderer: ToolRenderer<GrepInput, GrepResult> = {
   tool: "Grep",
-  displayName: "Search",
+  displayName: "Grep",
 
   renderToolUse(input, _context) {
     return <GrepToolUse input={input as GrepInput} />;
@@ -255,13 +259,14 @@ export const grepRenderer: ToolRenderer<GrepInput, GrepResult> = {
     if (!r) return "Results";
 
     // For content mode, count actual matches
-    if (r.mode === "content" && r.content) {
-      const matchCount = r.content
-        .split("\n")
-        .filter((line) => /(^|:)\d+:/.test(line)).length;
+    if (r.mode === "content") {
+      const matchCount = countGrepMatches(r.content);
       return `${matchCount} ${matchCount === 1 ? "match" : "matches"}`;
     }
 
+    if (r.numFiles === 0) {
+      return "0 matches";
+    }
     return r.numFiles !== undefined ? `${r.numFiles} files` : "Results";
   },
 };

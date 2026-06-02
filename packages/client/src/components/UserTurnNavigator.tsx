@@ -1,12 +1,12 @@
 import {
   memo,
+  type ReactElement,
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactElement,
-  type RefObject,
 } from "react";
 
 export interface UserTurnNavAnchor {
@@ -59,6 +59,7 @@ interface UserTurnPreviewLabel {
   topPx: number;
   text: string;
   compact: boolean;
+  short: boolean;
   active: boolean;
 }
 
@@ -70,6 +71,7 @@ const PREVIEW_FULL_MIN_GAP_PX = 62;
 const PREVIEW_COMPACT_MIN_GAP_PX = 24;
 const NAV_REVEAL_HOTZONE_PX = 64;
 const MAX_SEARCH_PREVIEW_LABELS = 10;
+const SHORT_PREVIEW_MAX_CHARS = 48;
 const MOTION_CUE_CLEAR_MS = 760;
 
 type LayoutUpdateKind = "full" | "scroll";
@@ -97,6 +99,10 @@ function findRenderRow(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function isShortSingleLinePreview(text: string): boolean {
+  return text.length <= SHORT_PREVIEW_MAX_CHARS && !text.includes("\n");
 }
 
 function renderHighlightedText(text: string, query: string) {
@@ -625,16 +631,20 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
               index > 0 &&
               top - (rawTops[index - 1] ?? top) < PREVIEW_FULL_MIN_GAP_PX,
           ));
-      const labels = previewMarkers.map((marker, index) => ({
-        id: marker.id,
-        topPx: rawTops[index] ?? PREVIEW_VERTICAL_MARGIN_PX,
-        text:
+      const labels = previewMarkers.map((marker, index) => {
+        const text =
           searchState.previewsById.get(marker.id) ??
           (marker.id === searchState.activeId ? searchState.preview : null) ??
-          marker.preview,
-        compact: crowded,
-        active: marker.id === searchState.activeId,
-      }));
+          marker.preview;
+        return {
+          id: marker.id,
+          topPx: rawTops[index] ?? PREVIEW_VERTICAL_MARGIN_PX,
+          text,
+          compact: crowded,
+          short: !crowded && isShortSingleLinePreview(text),
+          active: marker.id === searchState.activeId,
+        };
+      });
       return spreadPreviewLabels(labels, layout.height, crowded);
     }
 
@@ -658,6 +668,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
         ),
         text: hoverPreviewMarker.preview,
         compact: false,
+        short: isShortSingleLinePreview(hoverPreviewMarker.preview),
         active: false,
       },
     ];
@@ -764,6 +775,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
               hasSearchMatches ? "is-search-preview" : "",
               hasSingleSearchMatch ? "is-single-search-match" : "",
               label.compact ? "is-compact" : "",
+              label.short ? "is-short" : "",
               label.active ? "is-search-active" : "",
             ]
               .filter(Boolean)

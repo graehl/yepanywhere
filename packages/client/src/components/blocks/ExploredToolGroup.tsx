@@ -1,12 +1,13 @@
 import { memo, useRef, useState } from "react";
 import {
-  MESSAGE_STALE_THRESHOLD_MS,
   getLatestMessageTimestampMs,
+  MESSAGE_STALE_THRESHOLD_MS,
 } from "../../lib/messageAge";
 import type { RenderItem, ToolCallItem } from "../../types/renderItems";
 import { MessageAge } from "../MessageAge";
 import { toolRegistry } from "../renderers/tools";
 import type { RenderContext } from "../renderers/types";
+import { getToolSummary } from "../tools/summaries";
 
 const EXPLORATION_GROUP_MAX_GAP_MS = 5 * 60 * 1000;
 
@@ -54,10 +55,10 @@ function getExplorationKind(toolName: string): ExplorationKind | null {
   return null;
 }
 
-export function isExplorationToolCall(
-  item: RenderItem,
-): item is ToolCallItem {
-  return item.type === "tool_call" && getExplorationKind(item.toolName) !== null;
+export function isExplorationToolCall(item: RenderItem): item is ToolCallItem {
+  return (
+    item.type === "tool_call" && getExplorationKind(item.toolName) !== null
+  );
 }
 
 function timestampsAreTooFarApart(
@@ -135,6 +136,9 @@ function getGroupTimestampMs(items: ToolCallItem[]): number | null {
 function getDisplayLabel(toolName: string): string {
   const kind = getExplorationKind(toolName);
   if (kind === "search") {
+    if (toolRegistry.get(toolName).tool === "Grep") {
+      return "Grep";
+    }
     return "Search";
   }
   if (kind === "list") {
@@ -247,6 +251,15 @@ function renderEntrySummary(
     }
   }
 
+  if (isComplete && (kind === "search" || kind === "list")) {
+    return getToolSummary(
+      item.toolName,
+      item.toolInput,
+      item.toolResult,
+      item.status,
+    );
+  }
+
   return getFallbackSummary(item);
 }
 
@@ -271,7 +284,9 @@ export const ExploredToolGroup = memo(function ExploredToolGroup({
     ageNowMs !== null &&
     timestampMs !== null &&
     ageNowMs - timestampMs >= MESSAGE_STALE_THRESHOLD_MS;
-  const toggleLabel = expanded ? "Collapse explored tools" : "Expand explored tools";
+  const toggleLabel = expanded
+    ? "Collapse explored tools"
+    : "Expand explored tools";
 
   return (
     <div

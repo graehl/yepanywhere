@@ -13,6 +13,8 @@ export function FilePage() {
   const filePath = searchParams.get("path");
   const lineNumber = parsePositiveInteger(searchParams.get("line"));
   const lineEnd = parsePositiveInteger(searchParams.get("lineEnd"));
+  const viewMode =
+    searchParams.get("view") === "range" ? ("range" as const) : "full";
 
   if (!projectId) {
     return (
@@ -60,6 +62,7 @@ export function FilePage() {
           filePath={filePath}
           lineNumber={lineNumber}
           lineEnd={lineEnd}
+          viewMode={viewMode}
           standalone
         />
       </div>

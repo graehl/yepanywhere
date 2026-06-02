@@ -6,9 +6,9 @@ import { FileViewer, type FileViewerSource } from "../components/FileViewer";
 import {
   buildPublicShareRawFileApiPath,
   normalizePublicShareFilePath,
+  type PublicShareContextValue,
   PublicShareProvider,
   rewritePublicShareLocalAppLinks,
-  type PublicShareContextValue,
 } from "../contexts/PublicShareContext";
 import { useI18n } from "../i18n";
 import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
@@ -43,6 +43,9 @@ export function PublicShareFilePage() {
   const projectId = searchParams.get("projectId");
   const relayUsername = searchParams.get("h") ?? "";
   const lineNumber = parsePositiveInteger(searchParams.get("line"));
+  const lineEnd = parsePositiveInteger(searchParams.get("lineEnd"));
+  const viewMode =
+    searchParams.get("view") === "range" ? ("range" as const) : "full";
 
   const relayConfig = useMemo((): { error: string | null; url: string } => {
     try {
@@ -108,10 +111,26 @@ export function PublicShareFilePage() {
       });
     };
     return {
-      loadFile: async (_projectId, rawPath, highlight) => {
+      loadFile: async (
+        _projectId,
+        rawPath,
+        highlight,
+        lineNumber,
+        lineEnd,
+        viewMode,
+      ) => {
         const params = new URLSearchParams({ path: rawPath });
         if (highlight) {
           params.set("highlight", "true");
+        }
+        if (lineNumber !== undefined) {
+          params.set("line", String(lineNumber));
+        }
+        if (lineEnd !== undefined) {
+          params.set("lineEnd", String(lineEnd));
+        }
+        if (viewMode === "range") {
+          params.set("view", "range");
         }
         return await fetchPublicShareJsonViaRelay<FileContentResponse>({
           relayUrl: relayConfig.url,
@@ -165,9 +184,11 @@ export function PublicShareFilePage() {
           <FileViewer
             projectId={projectId ?? ""}
             filePath={filePath}
+            lineEnd={lineEnd}
             lineNumber={lineNumber}
             source={source}
             standalone
+            viewMode={viewMode}
           />
         ) : (
           <div className="file-viewer">

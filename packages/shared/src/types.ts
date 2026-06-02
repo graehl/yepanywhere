@@ -370,6 +370,14 @@ export interface FileContentResponse {
   metadata: FileMetadata;
   /** File content (only for text files under size limit) */
   content?: string;
+  /** 1-indexed line number for the first returned content line. Defaults to 1. */
+  contentStartLine?: number;
+  /** 1-indexed line number for the last returned content line. */
+  contentEndLine?: number;
+  /** Total line count when known for a partial text response. */
+  contentTotalLines?: number;
+  /** Whether content is a bounded window rather than the complete file. */
+  contentTruncated?: boolean;
   /** URL to fetch raw file content */
   rawUrl: string;
   /**

@@ -998,9 +998,19 @@ export const api = {
     }),
 
   // File API
-  getFile: (projectId: string, path: string, highlight = false) => {
+  getFile: (
+    projectId: string,
+    path: string,
+    highlight = false,
+    lineNumber?: number,
+    lineEnd?: number,
+    viewMode?: "full" | "range",
+  ) => {
     const params = new URLSearchParams({ path });
     if (highlight) params.set("highlight", "true");
+    if (lineNumber !== undefined) params.set("line", String(lineNumber));
+    if (lineEnd !== undefined) params.set("lineEnd", String(lineEnd));
+    if (viewMode === "range") params.set("view", "range");
     return fetchJSON<FileContentResponse>(
       `/projects/${projectId}/files?${params.toString()}`,
     );

@@ -5,8 +5,8 @@ import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContex
 import type { Message } from "../../../types";
 import type { RenderItem, ToolCallItem } from "../../../types/renderItems";
 import {
-  ExploredToolGroup,
   buildAssistantRenderSegments,
+  ExploredToolGroup,
 } from "../ExploredToolGroup";
 
 vi.mock("../../../contexts/SchemaValidationContext", () => ({
@@ -115,10 +115,24 @@ describe("ExploredToolGroup", () => {
         },
       },
     );
-    const search = toolCall("grep-1", "Search", {
-      query: "tool|bash",
-      path: "packages/client/src",
-    });
+    const search = toolCall(
+      "grep-1",
+      "Grep",
+      {
+        pattern: "tool|bash",
+        path: "packages/client/src",
+      },
+      "2026-05-28T00:00:00.000Z",
+      {
+        content: "",
+        isError: false,
+        structured: {
+          mode: "files_with_matches",
+          filenames: [],
+          numFiles: 0,
+        },
+      },
+    );
     const list = toolCall("ls-1", "list_dir", {
       target_directory: "packages/client/src",
     });
@@ -135,7 +149,7 @@ describe("ExploredToolGroup", () => {
 
     expect(screen.getByText("Explored")).toBeDefined();
     expect(screen.getByText("Read")).toBeDefined();
-    expect(screen.getByText("Search")).toBeDefined();
+    expect(screen.getByText("Grep")).toBeDefined();
     expect(screen.getByText("List")).toBeDefined();
     const readLink = screen.getByRole("link", {
       name: /rich-text-rendering\.md/i,
@@ -143,12 +157,14 @@ describe("ExploredToolGroup", () => {
     expect(readLink.getAttribute("href")).toBe(
       `/projects/${projectId}/file?path=topics%2Frich-text-rendering.md`,
     );
-    expect(screen.getByText("tool|bash in packages/client/src")).toBeDefined();
+    expect(screen.getByText("tool|bash → 0 matches")).toBeDefined();
     expect(screen.getByText("packages/client/src")).toBeDefined();
 
-    fireEvent.click(screen.getByRole("button", { name: "Collapse explored tools" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse explored tools" }),
+    );
 
-    expect(screen.queryByText("Search")).toBeNull();
+    expect(screen.queryByText("Grep")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Expand explored tools" }),
     ).toBeDefined();

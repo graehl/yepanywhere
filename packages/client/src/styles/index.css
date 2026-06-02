@@ -1837,6 +1837,13 @@ a.sidebar-nav-item {
   animation: user-turn-nav-preview-pulse 0.86s ease-out both;
 }
 
+.user-turn-nav-preview.is-short:not(.is-compact) {
+  width: max-content;
+  max-width: min(340px, calc(100vw - 72px));
+  white-space: nowrap;
+  -webkit-line-clamp: 1;
+}
+
 @keyframes user-turn-nav-preview-pulse {
   0% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary-color) 46%, transparent);
@@ -1869,6 +1876,11 @@ a.sidebar-nav-item {
 @media (min-width: 900px) {
   .user-turn-nav-preview {
     width: min(620px, calc(100vw - 120px));
+  }
+
+  .user-turn-nav-preview.is-short:not(.is-compact) {
+    width: max-content;
+    max-width: min(620px, calc(100vw - 120px));
   }
 }
 
@@ -9357,17 +9369,23 @@ a.sidebar-nav-item {
   .main-content-constrained .session-messages {
     overflow-y: auto;
     scrollbar-gutter: stable;
+    padding-right: calc(1rem + min(30px, 2vw));
     -webkit-overflow-scrolling: touch;
   }
 
   /* Constrain content inside the full-width sections */
   /* Note: session-header-inner is NOT constrained so the toggle button aligns with sidebar edge */
-  .main-content-constrained .session-messages .message-list,
   .main-content-constrained .session-input-inner,
   .main-content-constrained .page-content-inner {
     max-width: var(--content-max-width);
     margin: 0 auto;
     width: 100%;
+  }
+
+  .main-content-constrained .session-messages .message-list {
+    width: 100%;
+    max-width: none;
+    margin: 0;
   }
 
   /* Show sidebar toggle on desktop for collapse/expand functionality */

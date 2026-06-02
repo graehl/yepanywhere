@@ -1,15 +1,22 @@
 import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
-import { FilePathDisplay } from "./ui/FilePathDisplay";
 import { FilePathLink } from "./FilePathLink";
+import type { FileViewerMode } from "./FileViewer";
+import { FilePathDisplay } from "./ui/FilePathDisplay";
 
 export function SessionFilePathLink({
   displayPath,
   filePath,
+  lineEnd,
   lineNumber,
+  showLineSuffix,
+  viewMode,
 }: {
   displayPath: string;
   filePath: string;
+  lineEnd?: number;
   lineNumber?: number;
+  showLineSuffix?: boolean;
+  viewMode?: FileViewerMode;
 }) {
   const sessionMetadata = useOptionalSessionMetadata();
   if (sessionMetadata?.projectId) {
@@ -18,7 +25,10 @@ export function SessionFilePathLink({
         projectId={sessionMetadata.projectId}
         filePath={filePath}
         displayText={displayPath}
+        lineEnd={lineEnd}
         lineNumber={lineNumber}
+        showLineSuffix={showLineSuffix}
+        viewMode={viewMode}
       />
     );
   }

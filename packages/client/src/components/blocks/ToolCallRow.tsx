@@ -267,6 +267,11 @@ export const ToolCallRow = memo(function ToolCallRow({
 
   // Check if this tool renders inline (bypasses entire tool-row structure)
   const hasInlineRenderer = toolRegistry.hasInlineRenderer(toolName);
+  const hasOnlyRedundantBashDetail = isRedundantBashResultExpansion(
+    toolName,
+    structuredResult,
+    status,
+  );
   const suppressCollapsedPreview = shouldSuppressBashCollapsedPreview(
     toolName,
     structuredResult,
@@ -357,7 +362,10 @@ export const ToolCallRow = memo(function ToolCallRow({
   const [bashPreviewExpanded, setBashPreviewExpanded] = useState(true);
   // Tools with collapsed preview or interactive summary don't expand
   const isNonExpandable =
-    hasInteractiveSummary || hasCollapsedPreview || hasDeferredInteractiveShell;
+    hasOnlyRedundantBashDetail ||
+    hasInteractiveSummary ||
+    hasCollapsedPreview ||
+    hasDeferredInteractiveShell;
 
   // Edit and TodoWrite tools are expanded by default
   const [expanded, setExpanded] = useState(
@@ -375,7 +383,8 @@ export const ToolCallRow = memo(function ToolCallRow({
 
   // Dot button: expandable rows + preview-first rows with an inline result.
   const showDotBtn =
-    !isNonExpandable || canInlineExpandToolResult || hasBashPreviewToggle;
+    !hasOnlyRedundantBashDetail &&
+    (!isNonExpandable || canInlineExpandToolResult || hasBashPreviewToggle);
 
   // Header toggles dotExpanded for preview-first inline result rows.
   const hasHeaderDotToggle = canInlineExpandToolResult;
@@ -719,7 +728,30 @@ function shouldSuppressBashCollapsedPreview(
     return true;
   }
 
-  return result === undefined;
+  return (
+    result === undefined ||
+    isRedundantBashResultExpansion(toolName, result, status)
+  );
+}
+
+function isRedundantBashResultExpansion(
+  toolName: string,
+  result: unknown,
+  status?: ToolCallItem["status"],
+): boolean {
+  if (!isBashLikeToolName(toolName) || status !== "complete") {
+    return false;
+  }
+  if (result === undefined) {
+    return false;
+  }
+  if (getBashResultOutputForRichPreview(result).trim().length > 0) {
+    return false;
+  }
+  if (!isRecord(result)) {
+    return true;
+  }
+  return result.interrupted !== true && result.backgroundTaskId === undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

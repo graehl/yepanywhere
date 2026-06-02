@@ -1,17 +1,22 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useScrollPreservingToggle } from "../../../lib/scrollAnchor";
+import { compactShikiLineBreaks } from "../../../lib/shikiHtml";
+import { makeDisplayPath } from "../../../lib/text";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import {
+  FILE_MARKDOWN_PREVIEW_BASE_DENSITY,
+  MarkdownPreview,
+} from "../../MarkdownPreview";
+import { SchemaWarning } from "../../SchemaWarning";
+import { SessionFilePathLink } from "../../SessionFilePathLink";
 import {
   FixedFontMathToggle,
   renderFixedFontMath,
   renderFixedFontRichContent,
 } from "../../ui/FixedFontMathToggle";
-import type { ZodError } from "zod";
-import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
-import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
-import { makeDisplayPath } from "../../../lib/text";
-import { validateToolResult } from "../../../lib/validateToolResult";
-import { SchemaWarning } from "../../SchemaWarning";
-import { SessionFilePathLink } from "../../SessionFilePathLink";
 import { RenderModeGlyph } from "../../ui/RenderModeGlyph";
 import type {
   ImageFile,
@@ -28,36 +33,6 @@ interface ReadResultWithAugment extends ReadResult {
   _highlightedLanguage?: string;
   _highlightedTruncated?: boolean;
   _renderedMarkdownHtml?: string;
-  session_id?: string | number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function getReadSessionId(result: unknown): string | number | undefined {
-  if (!isRecord(result)) {
-    return undefined;
-  }
-  const sessionId = result.session_id;
-  if (typeof sessionId === "string" || typeof sessionId === "number") {
-    return sessionId;
-  }
-  return undefined;
-}
-
-function isPtyHandoffTextRead(
-  result: ReadResultWithAugment | undefined,
-): boolean {
-  if (result?.type !== "text") {
-    return false;
-  }
-  const sessionId = getReadSessionId(result);
-  if (sessionId === undefined) {
-    return false;
-  }
-  const file = result.file as TextFile | undefined;
-  return !!file && file.content.length === 0;
 }
 
 /**
@@ -65,6 +40,42 @@ function isPtyHandoffTextRead(
  */
 function getFileName(filePath: string): string {
   return filePath.split("/").pop() || filePath;
+}
+
+function getReadLineRange(file: TextFile): {
+  lineEnd?: number;
+  lineNumber?: number;
+} {
+  if (file.numLines <= 0) {
+    return {};
+  }
+  const hasRange = file.startLine > 1 || file.numLines < file.totalLines;
+  if (!hasRange) {
+    return {};
+  }
+  const lineEnd = file.startLine + Math.max(1, file.numLines) - 1;
+  return {
+    lineEnd: lineEnd > file.startLine ? lineEnd : undefined,
+    lineNumber: file.startLine,
+  };
+}
+
+function getReadInputLineRange(input: ReadInput): {
+  lineEnd?: number;
+  lineNumber?: number;
+} {
+  if (input.offset === undefined) {
+    return {};
+  }
+  const lineEnd =
+    input.limit !== undefined
+      ? input.offset + Math.max(1, input.limit) - 1
+      : undefined;
+  return {
+    lineEnd:
+      lineEnd !== undefined && lineEnd > input.offset ? lineEnd : undefined,
+    lineNumber: input.offset,
+  };
 }
 
 function renderReadMathPanel(html: string) {
@@ -83,11 +94,13 @@ function ReadFilePathSummary({
   children,
   displayPath,
   filePath,
+  lineEnd,
   lineNumber,
 }: {
   children?: ReactNode;
   displayPath: string;
   filePath: string;
+  lineEnd?: number;
   lineNumber?: number;
 }) {
   return (
@@ -95,10 +108,34 @@ function ReadFilePathSummary({
       <SessionFilePathLink
         displayPath={displayPath}
         filePath={filePath}
+        lineEnd={lineEnd}
         lineNumber={lineNumber}
       />
       {children && <> {children}</>}
     </span>
+  );
+}
+
+function ReadRangeLink({
+  filePath,
+  lineEnd,
+  lineNumber,
+  text,
+}: {
+  filePath: string;
+  lineEnd?: number;
+  lineNumber?: number;
+  text: string;
+}) {
+  return (
+    <SessionFilePathLink
+      displayPath={text}
+      filePath={filePath}
+      lineEnd={lineEnd}
+      lineNumber={lineNumber}
+      showLineSuffix={false}
+      viewMode="range"
+    />
   );
 }
 
@@ -108,13 +145,15 @@ function ReadFilePathSummary({
 function ReadToolUse({ input }: { input: ReadInput }) {
   const meta = useOptionalSessionMetadata();
   const displayPath = makeDisplayPath(input.file_path, meta?.projectPath);
+  const lineRange = getReadInputLineRange(input);
   return (
     <div className="read-tool-use">
       <span className="file-path">
         <SessionFilePathLink
           displayPath={displayPath}
           filePath={input.file_path}
-          lineNumber={input.offset}
+          lineEnd={lineRange.lineEnd}
+          lineNumber={lineRange.lineNumber}
         />
       </span>
       {(input.offset !== undefined || input.limit !== undefined) && (
@@ -169,43 +208,45 @@ function FileModalContent({
   const { btnRef: mathBtnRef, handleClick: handleMathToggle } =
     useScrollPreservingToggle(showMath, () => setShowMath((v) => !v));
 
-  const lines = (file.content ?? "").split("\n");
+  const lines = file.content.length > 0 ? file.content.split("\n") : [];
 
-  const sourceView = highlightedHtml ? (
-    <div className="file-viewer-code file-viewer-code-highlighted">
-      <div
-        className="shiki-container"
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-        dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-      />
-      {highlightedTruncated && (
-        <div className="file-viewer-truncated">
-          Content truncated for highlighting (showing first 2000 lines)
-        </div>
-      )}
-    </div>
-  ) : (
-    <div className="file-content-with-lines">
-      <div className="line-numbers">
-        {lines.map((_, i) => (
-          <div key={`ln-${i + 1}`}>{file.startLine + i}</div>
-        ))}
+  const sourceView =
+    file.content.length === 0 ? (
+      <div className="file-viewer-empty-content">No content read</div>
+    ) : highlightedHtml ? (
+      <div className="file-viewer-code file-viewer-code-highlighted">
+        <div
+          className="shiki-container"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+          dangerouslySetInnerHTML={{
+            __html: compactShikiLineBreaks(highlightedHtml) ?? "",
+          }}
+        />
+        {highlightedTruncated && (
+          <div className="file-viewer-truncated">
+            Content truncated for highlighting (showing first 2000 lines)
+          </div>
+        )}
       </div>
-      <pre className="line-content">
-        <code>{file.content}</code>
-      </pre>
-    </div>
-  );
+    ) : (
+      <div className="file-content-with-lines">
+        <div className="line-numbers">
+          {lines.map((_, i) => (
+            <div key={`ln-${i + 1}`}>{file.startLine + i}</div>
+          ))}
+        </div>
+        <pre className="line-content">
+          <code>{file.content}</code>
+        </pre>
+      </div>
+    );
 
   const content =
     showPreview && markdownHtml ? (
-      <div className="markdown-preview">
-        <div
-          className="markdown-rendered"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-          dangerouslySetInnerHTML={{ __html: markdownHtml }}
-        />
-      </div>
+      <MarkdownPreview
+        html={markdownHtml}
+        density={FILE_MARKDOWN_PREVIEW_BASE_DENSITY}
+      />
     ) : highlightedHtml ? (
       // Code file: show math-rendered plain text when toggled on, Shiki otherwise.
       // Math mode loses syntax colouring intentionally — you asked for the formula.
@@ -276,32 +317,18 @@ function TextFileResult({
   highlightedHtml,
   highlightedTruncated,
   renderedMarkdownHtml,
-  isPtyHandoff = false,
 }: {
   file: TextFile;
   highlightedHtml?: string;
   highlightedTruncated?: boolean;
   renderedMarkdownHtml?: string;
-  isPtyHandoff?: boolean;
 }) {
   const meta = useOptionalSessionMetadata();
   const displayPath = makeDisplayPath(file.filePath, meta?.projectPath);
-  const showRange = file.startLine > 1 || file.numLines < file.totalLines;
-
-  if (isPtyHandoff) {
-    return (
-      <div className="read-text-result">
-        <span className="file-path">
-          <SessionFilePathLink
-            displayPath={displayPath}
-            filePath={file.filePath}
-            lineNumber={file.startLine}
-          />
-        </span>{" "}
-        <span className="file-line-count">continues in Shell</span>
-      </div>
-    );
-  }
+  const hasReadLines = file.numLines > 0;
+  const showRange =
+    hasReadLines && (file.startLine > 1 || file.numLines < file.totalLines);
+  const lineRange = getReadLineRange(file);
 
   return (
     <div className="read-text-result read-text-inline">
@@ -309,13 +336,25 @@ function TextFileResult({
         <SessionFilePathLink
           displayPath={displayPath}
           filePath={file.filePath}
-          lineNumber={file.startLine > 1 ? file.startLine : undefined}
+          lineEnd={lineRange.lineEnd}
+          lineNumber={lineRange.lineNumber}
         />
       </div>
       {showRange && (
         <div className="file-range-inline">
-          lines {file.startLine}–{file.startLine + file.numLines - 1} of{" "}
-          {file.totalLines}
+          <ReadRangeLink
+            filePath={file.filePath}
+            lineEnd={lineRange.lineEnd}
+            lineNumber={lineRange.lineNumber}
+            text={`lines ${file.startLine}–${file.startLine + file.numLines - 1}`}
+          />{" "}
+          of {file.totalLines}
+        </div>
+      )}
+      {!hasReadLines && (
+        <div className="file-range-inline">
+          <span className="file-line-count-inline">0 lines</span>
+          {file.totalLines > 0 && <> of {file.totalLines}</>}
         </div>
       )}
       <FileModalContent
@@ -522,7 +561,6 @@ function ReadToolResult({
         highlightedHtml={result._highlightedContentHtml}
         highlightedTruncated={result._highlightedTruncated}
         renderedMarkdownHtml={result._renderedMarkdownHtml}
-        isPtyHandoff={isPtyHandoffTextRead(result)}
       />
     </>
   );
@@ -591,10 +629,7 @@ function ReadInteractiveSummary({
 
   if (result.type === "pdf") {
     return (
-      <ReadFilePathSummary
-        displayPath={displayPath}
-        filePath={input.file_path}
-      >
+      <ReadFilePathSummary displayPath={displayPath} filePath={input.file_path}>
         <span className="file-line-count-inline">(PDF)</span>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Read" errors={validationErrors} />
@@ -605,10 +640,7 @@ function ReadInteractiveSummary({
 
   if (result.type === "image") {
     return (
-      <ReadFilePathSummary
-        displayPath={displayPath}
-        filePath={input.file_path}
-      >
+      <ReadFilePathSummary displayPath={displayPath} filePath={input.file_path}>
         <span className="file-line-count-inline">(image)</span>
         {showValidationWarning && validationErrors && (
           <SchemaWarning toolName="Read" errors={validationErrors} />
@@ -618,18 +650,15 @@ function ReadInteractiveSummary({
   }
 
   const file = result.file as TextFile;
-  const isPtyHandoff = isPtyHandoffTextRead(result);
 
-  if (isPtyHandoff) {
+  if (file.numLines <= 0) {
     return (
-      <span>
-        <SessionFilePathLink
-          displayPath={displayPath}
-          filePath={file.filePath}
-          lineNumber={file.startLine}
-        />{" "}
-        <span className="file-line-count-inline">continues in Shell</span>
-      </span>
+      <ReadFilePathSummary displayPath={displayPath} filePath={file.filePath}>
+        <span className="file-line-count-inline">0 lines</span>
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Read" errors={validationErrors} />
+        )}
+      </ReadFilePathSummary>
     );
   }
 
@@ -637,9 +666,15 @@ function ReadInteractiveSummary({
     <ReadFilePathSummary
       displayPath={displayPath}
       filePath={file.filePath}
-      lineNumber={file.startLine > 1 ? file.startLine : undefined}
+      {...getReadLineRange(file)}
     >
-      <span className="file-line-count-inline">{file.numLines} lines</span>
+      <span className="file-line-count-inline">
+        <ReadRangeLink
+          filePath={file.filePath}
+          text={`${file.numLines} lines`}
+          {...getReadLineRange(file)}
+        />
+      </span>
       {showValidationWarning && validationErrors && (
         <SchemaWarning toolName="Read" errors={validationErrors} />
       )}
@@ -673,10 +708,10 @@ export const readRenderer: ToolRenderer<ReadInput, ReadResult> = {
     if (isError) return "Error";
     const r = result as ReadResultWithAugment;
     if (!r?.file) return "Reading...";
-    if (isPtyHandoffTextRead(r)) return "continues in Shell";
     if (r.type === "pdf") return "PDF";
     if (r.type === "image") return "Image";
-    return getFileName((r.file as TextFile).filePath);
+    const file = r.file as TextFile;
+    return file.numLines <= 0 ? "0 lines" : getFileName(file.filePath);
   },
 
   renderInteractiveSummary(input, result, isError, _context) {

@@ -76,6 +76,42 @@ describe("ReadRenderer", () => {
     );
   });
 
+  it("links partial read summaries and their line counts to the read range", () => {
+    renderInSession(
+      <div>
+        {readRenderer.renderInteractiveSummary?.(
+          {
+            file_path: "packages/client/src/lib/connection/SecureConnection.ts",
+          },
+          {
+            type: "text",
+            file: {
+              filePath:
+                "packages/client/src/lib/connection/SecureConnection.ts",
+              content: "line\n".repeat(81),
+              numLines: 81,
+              startLine: 510,
+              totalLines: 900,
+            },
+          },
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    const expectedHref = `/projects/${projectId}/file?path=packages%2Fclient%2Fsrc%2Flib%2Fconnection%2FSecureConnection.ts&line=510&lineEnd=590`;
+    const expectedRangeHref = `${expectedHref}&view=range`;
+    expect(
+      screen
+        .getByRole("link", { name: /SecureConnection\.ts\s*:510-590/i })
+        .getAttribute("href"),
+    ).toBe(expectedHref);
+    expect(
+      screen.getByRole("link", { name: "81 lines" }).getAttribute("href"),
+    ).toBe(expectedRangeHref);
+  });
+
   it("renders public share Read summaries as share file links", () => {
     render(
       <PublicShareProvider
@@ -110,7 +146,11 @@ describe("ReadRenderer", () => {
       </PublicShareProvider>,
     );
 
-    expect(screen.getByRole("link").getAttribute("href")).toBe(
+    expect(
+      screen
+        .getByRole("link", { name: /ui-report\/README\.md/i })
+        .getAttribute("href"),
+    ).toBe(
       `/share/share-secret/file?path=ui-report%2FREADME.md&h=ygraehl&r=wss%3A%2F%2Frelay.graehl.org%2Fws&projectId=${projectId}`,
     );
   });
@@ -140,7 +180,7 @@ describe("ReadRenderer", () => {
     ).toBeDefined();
   });
 
-  it("does not offer an empty modal for PTY handoff reads", () => {
+  it("renders zero-line PTY-backed reads without fake continuation text", () => {
     renderInSession(
       <div>
         {readRenderer.renderInteractiveSummary?.(
@@ -165,13 +205,15 @@ describe("ReadRenderer", () => {
     expect(
       screen.queryByRole("button", { name: /useGlobalSessions\.ts/i }),
     ).toBeNull();
-    expect(
-      screen.getByRole("link", { name: /useGlobalSessions\.ts/i }),
-    ).toBeDefined();
-    expect(screen.getByText(/continues in Shell/)).toBeDefined();
+    const link = screen.getByRole("link", { name: /useGlobalSessions\.ts/i });
+    expect(link).toBeDefined();
+    expect(link.getAttribute("href")).not.toContain("line=1");
+    expect(link.textContent).not.toContain(":1");
+    expect(screen.getByText("0 lines")).toBeDefined();
+    expect(screen.queryByText(/continues in Shell/)).toBeNull();
   });
 
-  it("renders PTY handoff result without a file button", () => {
+  it("renders zero-line PTY-backed read results without a phantom first line", () => {
     renderInSession(
       <div>
         {readRenderer.renderToolResult(
@@ -195,9 +237,12 @@ describe("ReadRenderer", () => {
     expect(
       screen.queryByRole("button", { name: /useGlobalSessions\.ts/i }),
     ).toBeNull();
-    expect(
-      screen.getByRole("link", { name: /useGlobalSessions\.ts/i }),
-    ).toBeDefined();
-    expect(screen.getByText(/continues in Shell/)).toBeDefined();
+    const link = screen.getByRole("link", { name: /useGlobalSessions\.ts/i });
+    expect(link).toBeDefined();
+    expect(link.getAttribute("href")).not.toContain("line=1");
+    expect(link.textContent).not.toContain(":1");
+    expect(screen.getByText("0 lines")).toBeDefined();
+    expect(screen.getByText("No content read")).toBeDefined();
+    expect(screen.queryByText(/continues in Shell/)).toBeNull();
   });
 });

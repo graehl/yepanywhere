@@ -6,25 +6,25 @@
  * formatting for pending/incomplete text during streaming.
  */
 
+import { hasAnsiEscapes, renderAnsiToHtml } from "@yep-anywhere/shared";
 import {
   type BundledLanguage,
-  type Highlighter,
   bundledLanguages,
   createHighlighter,
+  type Highlighter,
 } from "shiki";
 import { createCssVariablesTheme } from "shiki/core";
-import { hasAnsiEscapes, renderAnsiToHtml } from "@yep-anywhere/shared";
 import type {
   CompletedBlock,
   StreamingCodeBlock,
   StreamingList,
 } from "./block-detector.js";
 import {
-  MEDIA_EXTENSIONS,
-  VIDEO_EXTENSIONS,
+  getLocalPathExtension,
   isLocalFilePath,
-  localFileApiUrl,
-  localMediaApiUrl,
+  MEDIA_EXTENSIONS,
+  renderLocalFileLink,
+  renderLocalMediaLink,
   renderSafeMarkdown,
   type SafeMarkdownRenderOptions,
   sanitizeUrl,
@@ -268,23 +268,13 @@ function renderInlineFormatting(text: string): string {
   // Links: [text](url) — handle local file paths and regular URLs
   result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => {
     if (isLocalFilePath(href)) {
-      const ext = (
-        href.split(/[?#]/, 1)[0]?.split(".").pop() ?? ""
-      ).toLowerCase();
+      const ext = getLocalPathExtension(href);
       if (MEDIA_EXTENSIONS.has(ext)) {
-        const trimmedHref = href.trim();
-        const apiUrl = escapeHtml(localMediaApiUrl(trimmedHref));
-        const escapedPath = escapeHtml(trimmedHref);
-        const mediaType = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
-        const typeLabel = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
-        return `<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="true" aria-label="Collapse ${mediaType}" aria-expanded="true" title="Collapse inline preview">-</button><a href="${apiUrl}" class="local-media-link" data-media-type="${mediaType}">${label}<span class="local-media-type">(${typeLabel})</span></a></span><span class="local-media-inline-preview" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="true"></span>`;
+        return renderLocalMediaLink(href, label, ext);
       }
-      const apiUrl = escapeHtml(
-        localFileApiUrl(href, {
-          renderMarkdown: ext === "md" || ext === "markdown",
-        }),
-      );
-      return `<a href="${apiUrl}">${label}</a>`;
+      return renderLocalFileLink(href, label, {
+        renderMarkdown: ext === "md" || ext === "markdown",
+      });
     }
     const safeHref = sanitizeUrl(href);
     if (!safeHref) {

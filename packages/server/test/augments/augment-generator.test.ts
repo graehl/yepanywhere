@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
@@ -311,6 +311,22 @@ describe("AugmentGenerator", () => {
       expect(result).toBe(
         'Contact <a href="mailto:support@example.com">support</a>',
       );
+    });
+
+    it("renders local file links with semantic metadata", () => {
+      const result = generator.renderPending(
+        "Open [probe](C:/tmp/playbox-zero-g-compare.json:12)",
+      );
+
+      expect(result).toContain(
+        'href="/api/local-file?path=C%3A%2Ftmp%2Fplaybox-zero-g-compare.json&amp;line=12"',
+      );
+      expect(result).toContain('data-ya-resource="local-file"');
+      expect(result).toContain(
+        'data-ya-path="C:/tmp/playbox-zero-g-compare.json"',
+      );
+      expect(result).toContain('data-ya-line="12"');
+      expect(result).toContain('data-ya-render-markdown="false"');
     });
 
     it("does not render unsafe links", () => {

@@ -20,6 +20,10 @@ Progress:
   from blob URLs, and surfaces server-side rejections in the modal. Remote mode
   currently fetches HTML/Markdown through the relay but shows it as source text
   until nested iframe links/images can be routed through the same handler.
+- [x] 2026-06-02: Added semantic `data-ya-resource` metadata to server-rendered
+  local-file and local-media links while preserving fallback hrefs. Completed
+  Markdown rendering and streaming pending-link rendering now share the same
+  local-link helpers.
 
 ## Context
 
@@ -339,9 +343,12 @@ Current implementation state:
 - `LocalFileModal` reaches the user's YA server through the active connection,
   and the blob-fetch error path now preserves JSON route error messages such as
   approved-folder rejections.
-- The next implementation branch should emit semantic `data-ya-resource`
-  attributes from the server renderers for local-file links, keeping legacy
-  href parsing as fallback.
+- Server Markdown renderers now emit `data-ya-resource`, `data-ya-path`,
+  location hints, render-mode hints, and media-type hints for recognized local
+  resources while keeping legacy href parsing as fallback.
+- The next implementation branch should clean up the server local-file and
+  local-image route boundary so POSIX and Windows path recognition, approved
+  folder checks, symlink handling, and content-type policy do not drift.
 
 ### 4. Server Route Cleanup
 
@@ -371,7 +378,7 @@ The first implementation series should stay small and staged:
 3. [x] For local media, route to the existing media modal unchanged.
 4. [x] For local text-like files, open a simple modal populated through the
    current connection.
-5. [ ] Add server renderer tests that prove agent-authored Markdown links become
+5. [x] Add server renderer tests that prove agent-authored Markdown links become
    YA-authored semantic metadata while preserving fallback hrefs.
 6. [ ] Add route tests for direct mode, remote mode, and Windows `C:/...`
    local-file serving.

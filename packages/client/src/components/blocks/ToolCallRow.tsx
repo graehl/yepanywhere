@@ -3,12 +3,14 @@ import {
   type MouseEvent,
   memo,
   type RefObject,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { OUTPUT_APPEARANCE_CHANGE_EVENT } from "../../hooks/useOutputAppearance";
 import { getDisplayBashCommandFromInput } from "../../lib/bashCommand";
 import { PREDICTIVE_SCROLL_ROOT_MARGIN } from "../../lib/predictiveScroll";
 import { parseShellToolOutput } from "../../lib/shellToolOutput";
@@ -41,6 +43,18 @@ export const DEFERRED_PREVIEW_HEIGHT = {
   averageCharWidthPx: 7.5,
 } as const;
 
+interface DeferredPreviewTypographyMetrics {
+  averageCharWidthPx: number;
+  outputLineHeightPx: number;
+  outputRowChromePx: number;
+}
+
+const DEFAULT_DEFERRED_PREVIEW_TYPOGRAPHY: DeferredPreviewTypographyMetrics = {
+  averageCharWidthPx: DEFERRED_PREVIEW_HEIGHT.averageCharWidthPx,
+  outputLineHeightPx: DEFERRED_PREVIEW_HEIGHT.outputLineHeightPx,
+  outputRowChromePx: DEFERRED_PREVIEW_HEIGHT.outputRowChromePx,
+};
+
 type DeferredPreviewStyle = CSSProperties & {
   "--tool-row-deferred-preview-height"?: string;
 };
@@ -49,13 +63,42 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function estimatePreviewCharsPerLine(rowWidthPx?: number | null): number {
+function normalizeTypographyMetrics(
+  metrics?: Partial<DeferredPreviewTypographyMetrics>,
+): DeferredPreviewTypographyMetrics {
+  return {
+    averageCharWidthPx: clamp(
+      metrics?.averageCharWidthPx ??
+        DEFAULT_DEFERRED_PREVIEW_TYPOGRAPHY.averageCharWidthPx,
+      4,
+      18,
+    ),
+    outputLineHeightPx: clamp(
+      metrics?.outputLineHeightPx ??
+        DEFAULT_DEFERRED_PREVIEW_TYPOGRAPHY.outputLineHeightPx,
+      12,
+      42,
+    ),
+    outputRowChromePx: clamp(
+      metrics?.outputRowChromePx ??
+        DEFAULT_DEFERRED_PREVIEW_TYPOGRAPHY.outputRowChromePx,
+      4,
+      32,
+    ),
+  };
+}
+
+function estimatePreviewCharsPerLine(
+  rowWidthPx?: number | null,
+  typography?: DeferredPreviewTypographyMetrics,
+): number {
   const contentWidthPx =
     typeof rowWidthPx === "number" && rowWidthPx > 0
       ? Math.max(120, rowWidthPx - 112)
       : DEFERRED_PREVIEW_HEIGHT.defaultContentWidthPx;
+  const metrics = normalizeTypographyMetrics(typography);
   return clamp(
-    Math.floor(contentWidthPx / DEFERRED_PREVIEW_HEIGHT.averageCharWidthPx),
+    Math.floor(contentWidthPx / metrics.averageCharWidthPx),
     DEFERRED_PREVIEW_HEIGHT.minCharsPerLine,
     DEFERRED_PREVIEW_HEIGHT.maxCharsPerLine,
   );
@@ -76,6 +119,7 @@ export function estimateDeferredPreviewHeightPx(params: {
   result: unknown;
   status: ToolCallItem["status"];
   rowWidthPx?: number | null;
+  typography?: Partial<DeferredPreviewTypographyMetrics>;
 }): number | null {
   if (
     !canDeferRichToolRow(params.status) ||
@@ -89,15 +133,19 @@ export function estimateDeferredPreviewHeightPx(params: {
     return null;
   }
 
-  const charsPerLine = estimatePreviewCharsPerLine(params.rowWidthPx);
+  const typography = normalizeTypographyMetrics(params.typography);
+  const charsPerLine = estimatePreviewCharsPerLine(
+    params.rowWidthPx,
+    typography,
+  );
   const outputPx = output
     ? Math.max(
         DEFERRED_PREVIEW_HEIGHT.minOutputRowPx,
         Math.min(
           DEFERRED_PREVIEW_HEIGHT.maxOutputPx,
           estimateWrappedLineCount(output, charsPerLine) *
-            DEFERRED_PREVIEW_HEIGHT.outputLineHeightPx,
-        ) + DEFERRED_PREVIEW_HEIGHT.outputRowChromePx,
+            typography.outputLineHeightPx,
+        ) + typography.outputRowChromePx,
       )
     : params.result
       ? DEFERRED_PREVIEW_HEIGHT.emptyOutputRowPx
@@ -108,6 +156,67 @@ export function estimateDeferredPreviewHeightPx(params: {
     DEFERRED_PREVIEW_HEIGHT.minPx,
     DEFERRED_PREVIEW_HEIGHT.maxPx,
   );
+}
+
+function readDeferredPreviewTypographyMetrics(): DeferredPreviewTypographyMetrics {
+  if (typeof document === "undefined") {
+    return DEFAULT_DEFERRED_PREVIEW_TYPOGRAPHY;
+  }
+
+  const probe = document.createElement("span");
+  probe.style.position = "absolute";
+  probe.style.left = "-9999px";
+  probe.style.top = "-9999px";
+  probe.style.visibility = "hidden";
+  probe.style.whiteSpace = "pre";
+  probe.style.fontFamily = "var(--output-prose-font-family)";
+  probe.style.fontSize = "var(--output-prose-font-size)";
+  probe.style.lineHeight = "var(--output-prose-line-height)";
+  probe.textContent =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  document.body.appendChild(probe);
+  const computed = window.getComputedStyle(probe);
+  const rect = probe.getBoundingClientRect();
+  const fontSizePx = Number.parseFloat(computed.fontSize);
+  const lineHeightPx = Number.parseFloat(computed.lineHeight);
+  probe.remove();
+
+  const effectiveFontSizePx = Number.isFinite(fontSizePx)
+    ? fontSizePx
+    : DEFAULT_DEFERRED_PREVIEW_TYPOGRAPHY.outputLineHeightPx / 1.5;
+  const averageCharWidthPx =
+    rect.width > 0 && probe.textContent
+      ? rect.width / probe.textContent.length
+      : effectiveFontSizePx * 0.5;
+  const outputLineHeightPx = Number.isFinite(lineHeightPx)
+    ? lineHeightPx
+    : effectiveFontSizePx * 1.5;
+  const outputRowChromePx =
+    DEFERRED_PREVIEW_HEIGHT.outputRowChromePx +
+    (outputLineHeightPx -
+      DEFAULT_DEFERRED_PREVIEW_TYPOGRAPHY.outputLineHeightPx) *
+      0.5;
+
+  return normalizeTypographyMetrics({
+    averageCharWidthPx,
+    outputLineHeightPx,
+    outputRowChromePx,
+  });
+}
+
+function useDeferredPreviewTypographyMetrics(): DeferredPreviewTypographyMetrics {
+  const [metrics, setMetrics] = useState(readDeferredPreviewTypographyMetrics);
+
+  useEffect(() => {
+    const updateMetrics = () =>
+      setMetrics(readDeferredPreviewTypographyMetrics());
+    updateMetrics();
+    window.addEventListener(OUTPUT_APPEARANCE_CHANGE_EVENT, updateMetrics);
+    return () =>
+      window.removeEventListener(OUTPUT_APPEARANCE_CHANGE_EVENT, updateMetrics);
+  }, []);
+
+  return metrics;
 }
 
 function isBashLikeToolName(toolName: string): boolean {
@@ -245,6 +354,13 @@ export const ToolCallRow = memo(function ToolCallRow({
   status,
   sessionProvider,
 }: Props) {
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [bashCommandExpanded, setBashCommandExpanded] = useState(false);
+  const deferredPreviewTypography = useDeferredPreviewTypographyMetrics();
+  const toggleSummaryExpanded = useCallback(() => {
+    setSummaryExpanded((current) => !current);
+  }, []);
+
   // Create a minimal render context for tool renderers
   const renderContext: RenderContext = useMemo(
     () => ({
@@ -254,6 +370,14 @@ export const ToolCallRow = memo(function ToolCallRow({
       provider: sessionProvider,
     }),
     [status, id, sessionProvider],
+  );
+  const interactiveSummaryContext: RenderContext = useMemo(
+    () => ({
+      ...renderContext,
+      summaryExpanded,
+      toggleSummaryExpanded,
+    }),
+    [renderContext, summaryExpanded, toggleSummaryExpanded],
   );
 
   // Get structured result for interactive summary
@@ -283,6 +407,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   const isEditTool = rendererToolName === "Edit";
   const isReadTool = rendererToolName === "Read";
   const isBashTool = rendererToolName === "Bash";
+  const isGrepTool = rendererToolName === "Grep";
   const canRenderInteractiveSummary =
     status === "complete" || (status === "pending" && isEditTool);
   const mayHaveInteractiveSummary =
@@ -295,8 +420,16 @@ export const ToolCallRow = memo(function ToolCallRow({
         result: structuredResult,
         status,
         rowWidthPx,
+        typography: deferredPreviewTypography,
       }),
-    [toolName, toolInput, structuredResult, status, rowWidthPx],
+    [
+      toolName,
+      toolInput,
+      structuredResult,
+      status,
+      rowWidthPx,
+      deferredPreviewTypography,
+    ],
   );
 
   const interactiveSummaryContent = useMemo(() => {
@@ -308,7 +441,7 @@ export const ToolCallRow = memo(function ToolCallRow({
       toolInput,
       structuredResult,
       toolResult?.isError ?? false,
-      renderContext,
+      interactiveSummaryContext,
     );
   }, [
     status,
@@ -316,7 +449,7 @@ export const ToolCallRow = memo(function ToolCallRow({
     toolInput,
     structuredResult,
     toolResult,
-    renderContext,
+    interactiveSummaryContext,
     shouldHydrateRichContent,
     canRenderInteractiveSummary,
   ]);
@@ -380,11 +513,15 @@ export const ToolCallRow = memo(function ToolCallRow({
     hasInteractiveSummary &&
     shouldHydrateRichContent &&
     (isReadTool || (isEditTool && toolResult !== undefined));
+  const hasSummaryDotToggle = isGrepTool && mayHaveInteractiveSummary;
 
   // Dot button: expandable rows + preview-first rows with an inline result.
   const showDotBtn =
     !hasOnlyRedundantBashDetail &&
-    (!isNonExpandable || canInlineExpandToolResult || hasBashPreviewToggle);
+    (!isNonExpandable ||
+      canInlineExpandToolResult ||
+      hasBashPreviewToggle ||
+      hasSummaryDotToggle);
 
   // Header toggles dotExpanded for preview-first inline result rows.
   const hasHeaderDotToggle = canInlineExpandToolResult;
@@ -400,6 +537,8 @@ export const ToolCallRow = memo(function ToolCallRow({
         }
         return !v;
       });
+    } else if (hasSummaryDotToggle) {
+      setSummaryExpanded((current) => !current);
     } else if (!isNonExpandable) {
       setExpanded((v) => {
         if (!v) {
@@ -423,6 +562,17 @@ export const ToolCallRow = memo(function ToolCallRow({
   const headerCommand = isBashTool
     ? getDisplayBashCommandFromInput(toolInput)
     : "";
+  const hasBashDescription =
+    isBashTool &&
+    isRecord(toolInput) &&
+    typeof toolInput.description === "string" &&
+    toolInput.description.trim().length > 0;
+  const showBashCommandTarget =
+    isBashTool && !hasBashDescription && headerCommand.length > 0;
+
+  useEffect(() => {
+    setBashCommandExpanded(false);
+  }, [headerCommand]);
 
   const handleToggle = () => {
     hydrateNow();
@@ -451,9 +601,13 @@ export const ToolCallRow = memo(function ToolCallRow({
       ? bashPreviewExpanded
         ? "Collapse preview"
         : "Expand preview"
-      : dotExpanded
-        ? "Collapse inline view"
-        : "Expand inline view";
+      : hasSummaryDotToggle
+        ? summaryExpanded
+          ? "Collapse summary"
+          : "Expand summary"
+        : dotExpanded
+          ? "Collapse inline view"
+          : "Expand inline view";
 
   useLayoutEffect(() => {
     if (
@@ -595,9 +749,28 @@ export const ToolCallRow = memo(function ToolCallRow({
         </span>
 
         {hasInteractiveSummary && canRenderInteractiveSummary ? (
-          <span className="tool-summary interactive-summary">
+          <span
+            className={`tool-summary interactive-summary${hasSummaryDotToggle ? " outline-summary" : ""}`}
+          >
             {interactiveSummaryContent}
           </span>
+        ) : showBashCommandTarget ? (
+          <button
+            type="button"
+            className={`tool-summary tool-summary-command${bashCommandExpanded ? " is-expanded" : ""}`}
+            title={headerCommand}
+            aria-label={
+              bashCommandExpanded ? "Collapse command" : "Show full command"
+            }
+            aria-expanded={bashCommandExpanded}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setBashCommandExpanded((current) => !current);
+            }}
+          >
+            {headerCommand}
+          </button>
         ) : (
           <span className="tool-summary">
             {summary}

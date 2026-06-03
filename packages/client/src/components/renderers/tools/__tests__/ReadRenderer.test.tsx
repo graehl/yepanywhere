@@ -180,6 +180,33 @@ describe("ReadRenderer", () => {
     ).toBeDefined();
   });
 
+  it("does not markdown-render backticks in non-Markdown reads", () => {
+    const { container } = renderInSession(
+      <div>
+        {readRenderer.renderToolResult(
+          {
+            type: "text",
+            file: {
+              filePath: "packages/client/src/components/Widget.tsx",
+              content: "const label = `dev`;\n",
+              numLines: 1,
+              startLine: 1,
+              totalLines: 1,
+            },
+          },
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.getByText("const label = `dev`;")).toBeDefined();
+    expect(
+      container.querySelector(".fixed-font-rendered__content code"),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show source" })).toBeNull();
+  });
+
   it("renders zero-line PTY-backed reads without fake continuation text", () => {
     renderInSession(
       <div>

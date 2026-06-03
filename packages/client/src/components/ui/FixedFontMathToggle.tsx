@@ -21,12 +21,15 @@ interface FixedFontMathToggleProps {
   diffAware?: boolean;
   baseFilePath?: string;
   precomputedRendered?: RenderedMathResult;
+  renderMode?: FixedFontRenderMode;
 }
 
 export interface RenderedMathResult {
   html: string;
   changed: boolean;
 }
+
+export type FixedFontRenderMode = "rich" | "math";
 
 interface DiffAwareLine {
   prefix: "" | " " | "+" | "-";
@@ -750,6 +753,7 @@ export function FixedFontMathToggle({
   diffAware,
   baseFilePath,
   precomputedRendered,
+  renderMode = "rich",
 }: FixedFontMathToggleProps) {
   const sessionMetadata = useOptionalSessionMetadata();
   const publicShare = usePublicShareContext();
@@ -765,16 +769,19 @@ export function FixedFontMathToggle({
   const rendered = useMemo(
     () =>
       precomputedRendered ??
-      renderFixedFontRichContent(sourceText, {
-        diffAware,
-        projectId: sessionMetadata?.projectId,
-        projectPath: sessionMetadata?.projectPath ?? undefined,
-        baseFilePath,
-        publicShare,
-      }),
+      (renderMode === "math"
+        ? renderFixedFontMath(sourceText)
+        : renderFixedFontRichContent(sourceText, {
+            diffAware,
+            projectId: sessionMetadata?.projectId,
+            projectPath: sessionMetadata?.projectPath ?? undefined,
+            baseFilePath,
+            publicShare,
+          })),
     [
       precomputedRendered,
       sourceText,
+      renderMode,
       diffAware,
       sessionMetadata?.projectId,
       sessionMetadata?.projectPath,
@@ -786,7 +793,7 @@ export function FixedFontMathToggle({
     rendered.changed,
     {
       renderWhenDisabled: false,
-      resetDependencies: [sourceText],
+      resetDependencies: [sourceText, renderMode],
     },
   );
   const { btnRef: toggleBtnRef, handleClick: handleToggleClick } =

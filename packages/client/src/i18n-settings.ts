@@ -1,4 +1,5 @@
 import type { FontSize } from "./hooks/useFontSize";
+import type { OutputProseFont } from "./hooks/useOutputAppearance";
 import type { TabSize } from "./hooks/useTabSize";
 import type { Theme } from "./hooks/useTheme";
 import type { Locale } from "./i18n";
@@ -33,6 +34,18 @@ export function getFontSizeLabel(
       return t("fontSizeLarge");
     case "larger":
       return t("fontSizeLarger");
+  }
+}
+
+export function getOutputProseFontLabel(
+  font: OutputProseFont,
+  t: (key: string) => string,
+): string {
+  switch (font) {
+    case "system":
+      return t("outputProseFontSystem");
+    case "source-serif-4":
+      return t("outputProseFontSourceSerif4");
   }
 }
 

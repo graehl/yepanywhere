@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../../../i18n";
@@ -177,7 +183,9 @@ describe("EditRenderer collapsed preview fallback", () => {
     );
 
     expect(screen.getByText("Findings")).toBeDefined();
-    expect(container.querySelector(".fixed-font-markdown-heading")).toBeTruthy();
+    expect(
+      container.querySelector(".fixed-font-markdown-heading"),
+    ).toBeTruthy();
     expect(container.querySelector("strong")?.textContent).toBe("win");
     expect(container.querySelector("code")?.textContent).toBe("dev");
     const gutters = Array.from(
@@ -185,6 +193,40 @@ describe("EditRenderer collapsed preview fallback", () => {
     ).map((node) => node.textContent);
     expect(gutters).toContain("+");
     expect(gutters).toContain("-");
+  });
+
+  it("does not markdown-render backticks in non-Markdown edits", () => {
+    const structuredPatch = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-const label = `old`;", "+const label = `dev`;"],
+      },
+    ];
+
+    const { container } = render(
+      <div>
+        {renderCollapsedPreview(
+          {
+            _structuredPatch: structuredPatch,
+          } as never,
+          {
+            filePath: "Widget.tsx",
+            structuredPatch,
+          } as never,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.getByText("+const label = `dev`;")).toBeDefined();
+    expect(
+      container.querySelector(".fixed-font-rendered__content code"),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show source" })).toBeNull();
   });
 
   it("renders headerless markdown table edit hunks", () => {
@@ -339,16 +381,18 @@ describe("EditRenderer collapsed preview fallback", () => {
   });
 
   it("summarizes multi-file raw Codex patches without implying the previous read", () => {
-    const summary = editRenderer.getUseSummary?.([
-      "*** Begin Patch",
-      "*** Update File: RegressionTests/AwesomeAlign/regtest-awesome-chi.yml",
-      "@@",
-      "+# checked chi",
-      "*** Update File: RegressionTests/AwesomeAlign/regtest-xmt-awesomealign.yml",
-      "@@",
-      "+# checked align",
-      "*** End Patch",
-    ].join("\n") as never);
+    const summary = editRenderer.getUseSummary?.(
+      [
+        "*** Begin Patch",
+        "*** Update File: RegressionTests/AwesomeAlign/regtest-awesome-chi.yml",
+        "@@",
+        "+# checked chi",
+        "*** Update File: RegressionTests/AwesomeAlign/regtest-xmt-awesomealign.yml",
+        "@@",
+        "+# checked align",
+        "*** End Patch",
+      ].join("\n") as never,
+    );
 
     expect(summary).toBe("regtest-awesome-chi.yml +1 files");
   });
@@ -521,11 +565,7 @@ describe("EditRenderer collapsed preview fallback", () => {
         oldLines: 0,
         newStart: 1,
         newLines: 3,
-        lines: [
-          "+# Recent MT Adapter Progress",
-          "+",
-          "+- **win** in `dev`",
-        ],
+        lines: ["+# Recent MT Adapter Progress", "+", "+- **win** in `dev`"],
       },
     ];
 
@@ -552,12 +592,14 @@ describe("EditRenderer collapsed preview fallback", () => {
 
     expect(screen.queryByText(/\*\*\* Begin Patch/)).toBeNull();
     expect(screen.getByText("Recent MT Adapter Progress")).toBeDefined();
-    expect(container.querySelector(".fixed-font-markdown-heading")).toBeTruthy();
+    expect(
+      container.querySelector(".fixed-font-markdown-heading"),
+    ).toBeTruthy();
     expect(container.querySelector("strong")?.textContent).toBe("win");
     expect(container.querySelector("code")?.textContent).toBe("dev");
   });
 
-  it("copies only post-change diff text from the copy button", () => {
+  it("copies only post-change diff text from the copy button", async () => {
     const writeText = vi.fn(async () => undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
 
@@ -587,9 +629,13 @@ describe("EditRenderer collapsed preview fallback", () => {
       </div>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy post-change text" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy post-change text" }),
+    );
 
-    expect(writeText).toHaveBeenCalledWith("context\nnew\ntail");
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("context\nnew\ntail");
+    });
   });
 
   it("opens full add-file modal with a fresh render toggle", () => {

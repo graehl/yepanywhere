@@ -21,6 +21,7 @@ interface RenderModeContextValue {
 }
 
 interface UseRenderModeToggleOptions {
+  participateInGlobalMode?: boolean;
   renderWhenDisabled?: boolean;
   resetDependencies?: readonly unknown[];
 }
@@ -98,8 +99,11 @@ export function useRenderModeToggle(
   options: UseRenderModeToggleOptions = {},
 ) {
   const context = useOptionalRenderModeContext();
-  const globalMode = context?.globalMode ?? "rendered";
-  const resetVersion = context?.resetVersion ?? 0;
+  const participateInGlobalMode = options.participateInGlobalMode ?? true;
+  const globalMode =
+    participateInGlobalMode && context ? context.globalMode : "rendered";
+  const resetVersion =
+    participateInGlobalMode && context ? context.resetVersion : 0;
   const renderWhenDisabled = options.renderWhenDisabled ?? true;
   const resetDependencies = options.resetDependencies ?? [];
   const registrationId = useId();
@@ -110,7 +114,7 @@ export function useRenderModeToggle(
   }, [canToggle, resetVersion, ...resetDependencies]);
 
   useEffect(() => {
-    if (!context) {
+    if (!context || !participateInGlobalMode) {
       return;
     }
 
@@ -120,7 +124,13 @@ export function useRenderModeToggle(
     return () => {
       context.setOverrideActive(registrationId, false);
     };
-  }, [canToggle, context, overrideMode, registrationId]);
+  }, [
+    canToggle,
+    context,
+    overrideMode,
+    participateInGlobalMode,
+    registrationId,
+  ]);
 
   const showRendered = canToggle
     ? (overrideMode ?? globalMode) === "rendered"

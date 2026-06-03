@@ -419,6 +419,46 @@ function getGrepUseSummary(input: GrepInput): string {
   return parts.filter(Boolean).join(" ");
 }
 
+function GrepSummaryPattern({
+  expanded,
+  input,
+  onToggle,
+}: {
+  expanded: boolean;
+  input: GrepInput;
+  onToggle?: () => void;
+}) {
+  const summary = getGrepUseSummary(input);
+  const clipClassName = `grep-summary-pattern-clip${onToggle ? " grep-summary-pattern-action" : ""}`;
+  const clipContent = onToggle ? (
+    <button
+      type="button"
+      className={clipClassName}
+      title={summary}
+      aria-label={expanded ? "Collapse grep pattern" : "Show full grep pattern"}
+      aria-expanded={expanded}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggle();
+      }}
+    >
+      {summary}
+    </button>
+  ) : (
+    <span className={clipClassName} title={summary}>
+      {summary}
+    </span>
+  );
+
+  return (
+    <span className={`grep-summary-pattern${expanded ? " is-expanded" : ""}`}>
+      {clipContent}
+      {expanded && <span className="grep-summary-pattern-full">{summary}</span>}
+    </span>
+  );
+}
+
 function getGrepResultLabel(result: GrepResult): {
   matches: GrepMatch[];
   text: string;
@@ -449,10 +489,14 @@ function GrepInteractiveSummary({
   input,
   result,
   isError,
+  summaryExpanded,
+  toggleSummaryExpanded,
 }: {
   input: GrepInput;
   result: GrepResult | undefined;
   isError: boolean;
+  summaryExpanded?: boolean;
+  toggleSummaryExpanded?: () => void;
 }) {
   if (isError || !result) {
     return null;
@@ -460,8 +504,14 @@ function GrepInteractiveSummary({
   const resultLabel = getGrepResultLabel(result);
   return (
     <span className="grep-inline-summary">
-      <span>{getGrepUseSummary(input)}</span>
-      <span aria-hidden="true"> → </span>
+      <GrepSummaryPattern
+        expanded={summaryExpanded ?? false}
+        input={input}
+        onToggle={toggleSummaryExpanded}
+      />
+      <span className="grep-summary-arrow" aria-hidden="true">
+        →
+      </span>
       <GrepMatchDrilldown
         label={resultLabel.text}
         matches={resultLabel.matches}
@@ -500,12 +550,14 @@ export const grepRenderer: ToolRenderer<GrepInput, GrepResult> = {
     return getGrepResultLabel(r).text;
   },
 
-  renderInteractiveSummary(input, result, isError) {
+  renderInteractiveSummary(input, result, isError, context) {
     return (
       <GrepInteractiveSummary
         input={input as GrepInput}
         result={result as GrepResult | undefined}
         isError={isError}
+        summaryExpanded={context.summaryExpanded}
+        toggleSummaryExpanded={context.toggleSummaryExpanded}
       />
     );
   },

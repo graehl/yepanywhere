@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ThinkingText } from "../../ThinkingText";
 import type { ContentBlock, ContentRenderer, RenderContext } from "../types";
 
 interface ThinkingBlock extends ContentBlock {
@@ -44,20 +45,21 @@ function ThinkingRendererComponent({
     context.toggleThinkingExpanded ?? (() => setLocalExpanded((prev) => !prev));
 
   if (isExpanded) {
-    // Expanded: whole block is clickable to collapse
     return (
-      <button
-        type="button"
-        className="thinking-block thinking-block-expanded"
-        onClick={toggleThinkingExpanded}
-        aria-expanded={true}
-      >
-        <div className="thinking-toggle-expanded">
+      <div className="thinking-block thinking-block-expanded">
+        <button
+          type="button"
+          className="thinking-toggle-expanded"
+          onClick={toggleThinkingExpanded}
+          aria-expanded={true}
+        >
           <span className="thinking-label">Thinking</span>
           <span className="thinking-icon">▲</span>
+        </button>
+        <div className="thinking-content">
+          <ThinkingText text={thinking} />
         </div>
-        <div className="thinking-content">{thinking}</div>
-      </button>
+      </div>
     );
   }
 

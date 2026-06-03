@@ -32,4 +32,33 @@ describe("ThinkingRenderer", () => {
       screen.getByText("Checking the provider reasoning alias"),
     ).toBeDefined();
   });
+
+  it("uses the thinking outline for standalone bold heading lines", () => {
+    const { container } = render(
+      <ContentBlockRenderer
+        block={{
+          type: "reasoning",
+          summary: [
+            {
+              type: "summary_text",
+              text: [
+                "**Checking instructions**",
+                "",
+                "Reading `AGENTS.md` before editing.",
+              ].join("\n"),
+            },
+          ],
+        }}
+        context={{ isStreaming: false, theme: "dark" }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Thinking/i }));
+
+    expect(screen.getByText("Checking instructions")).toBeDefined();
+    expect(container.querySelector(".thinking-inline-code")?.textContent).toBe(
+      "AGENTS.md",
+    );
+    expect(screen.queryByText(/\*\*Checking instructions/)).toBeNull();
+  });
 });

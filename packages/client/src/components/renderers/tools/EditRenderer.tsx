@@ -16,12 +16,16 @@ import {
   getErrorClassSuffix,
   isUserRejection,
 } from "../../../lib/classifyToolError";
+import { isMarkdownLikeFile } from "../../../lib/markdownFiles";
 import { makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { FilePathLink } from "../../FilePathLink";
 import { SchemaWarning } from "../../SchemaWarning";
 import { FilePathDisplay } from "../../ui/FilePathDisplay";
-import { FixedFontMathToggle } from "../../ui/FixedFontMathToggle";
+import {
+  FixedFontMathToggle,
+  type FixedFontRenderMode,
+} from "../../ui/FixedFontMathToggle";
 import { Modal } from "../../ui/Modal";
 import type { EditInput, EditResult, PatchHunk, ToolRenderer } from "./types";
 
@@ -127,15 +131,17 @@ function extractEditFilePaths(
   return paths;
 }
 
-function extractFilePathFromRawPatch(rawPatch?: string): string | undefined {
-  return extractFilePathsFromRawPatch(rawPatch)[0];
-}
-
 function getEditFilePath(
   input?: unknown,
   result?: Partial<EditResult>,
 ): string {
   return extractEditFilePaths(input, result)[0] ?? "";
+}
+
+function getEditRenderMode(filePaths: string[]): FixedFontRenderMode {
+  return filePaths.length > 0 && filePaths.every(isMarkdownLikeFile)
+    ? "rich"
+    : "math";
 }
 
 /**
@@ -306,8 +312,45 @@ function DiffCopyButton({ text }: { text: string }) {
       aria-label="Copy post-change text"
       title="Copy post-change text"
     >
-      {copied ? "Copied" : "Copy"}
+      {copied ? <CheckIcon /> : <CopyIcon />}
     </button>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="5" width="9" height="9" rx="1.5" />
+      <path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2H3.5A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 8.5 6.5 12 13 4" />
+    </svg>
   );
 }
 
@@ -317,6 +360,7 @@ function DiffMathView({
   truncated = false,
   diffAware = true,
   baseFilePath,
+  renderMode,
   copyText,
 }: {
   sourceText: string;
@@ -324,15 +368,19 @@ function DiffMathView({
   truncated?: boolean;
   diffAware?: boolean;
   baseFilePath?: string;
+  renderMode?: FixedFontRenderMode;
   copyText?: string;
 }) {
   const effectiveCopyText =
     copyText ?? (diffAware ? diffTextToNewSide(sourceText) : sourceText);
+  const effectiveRenderMode =
+    renderMode ?? getEditRenderMode(baseFilePath ? [baseFilePath] : []);
   return (
     <FixedFontMathToggle
       sourceText={sourceText}
       diffAware={diffAware}
       baseFilePath={baseFilePath}
+      renderMode={effectiveRenderMode}
       sourceView={
         <div className={`diff-view-container ${truncated ? "truncated" : ""}`}>
           <div className="diff-view">{sourceView}</div>
@@ -464,6 +512,15 @@ function RawPatchPreview({
   truncateLines?: number;
   baseFilePath?: string;
 }) {
+  const targetFilePaths = extractFilePathsFromRawPatch(rawPatch);
+  const targetFilePath = baseFilePath ?? targetFilePaths[0];
+  const renderMode = getEditRenderMode(
+    targetFilePaths.length > 0
+      ? targetFilePaths
+      : targetFilePath
+        ? [targetFilePath]
+        : [],
+  );
   const preview = useMemo(() => {
     if (!truncateLines) {
       return { text: rawPatch, truncated: false };
@@ -475,7 +532,8 @@ function RawPatchPreview({
     <FixedFontMathToggle
       sourceText={preview.text}
       diffAware
-      baseFilePath={baseFilePath ?? extractFilePathFromRawPatch(rawPatch)}
+      baseFilePath={targetFilePath}
+      renderMode={renderMode}
       sourceView={
         <div
           className={`diff-view-container ${preview.truncated ? "truncated" : ""}`}
@@ -509,12 +567,22 @@ function RawPatchModalContent({
   rawPatch: string;
   baseFilePath?: string;
 }) {
+  const targetFilePaths = extractFilePathsFromRawPatch(rawPatch);
+  const targetFilePath = baseFilePath ?? targetFilePaths[0];
+  const renderMode = getEditRenderMode(
+    targetFilePaths.length > 0
+      ? targetFilePaths
+      : targetFilePath
+        ? [targetFilePath]
+        : [],
+  );
   return (
     <div className="diff-modal-content">
       <FixedFontMathToggle
         sourceText={rawPatch}
         diffAware
-        baseFilePath={baseFilePath ?? extractFilePathFromRawPatch(rawPatch)}
+        baseFilePath={targetFilePath}
+        renderMode={renderMode}
         sourceView={
           <pre className="code-block">
             <code>{rawPatch}</code>
@@ -554,6 +622,7 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
 
   const diffLines = input._structuredPatch.flatMap((hunk) => hunk.lines);
   const filePath = getEditFilePath(input);
+  const renderMode = getEditRenderMode(extractEditFilePaths(input));
   const changeSummary = computeChangeSummary(input._structuredPatch);
   const isTruncated = diffLines.length > MAX_VISIBLE_LINES;
 
@@ -565,6 +634,7 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
       <DiffMathView
         sourceText={diffLines.join("\n")}
         baseFilePath={filePath}
+        renderMode={renderMode}
         truncated={isTruncated}
         sourceView={
           input._diffHtml ? (
@@ -780,6 +850,7 @@ function EditCollapsedPreview({
 
   // Use result data if available, fall back to input
   const filePath = getEditFilePath(input, result);
+  const renderMode = getEditRenderMode(extractEditFilePaths(input, result));
   const fileName = getFileName(filePath);
   const oldString = result?.oldString ?? input.old_string;
   const newString = result?.newString ?? input.new_string;
@@ -851,6 +922,7 @@ function EditCollapsedPreview({
             <DiffMathView
               sourceText={proposedDiffLines.join("\n")}
               baseFilePath={filePath}
+              renderMode={renderMode}
               truncated={proposedDiffTruncated}
               sourceView={
                 input._diffHtml ? (
@@ -978,6 +1050,7 @@ function EditCollapsedPreview({
         <DiffMathView
           sourceText={diffLines.join("\n")}
           baseFilePath={filePath}
+          renderMode={renderMode}
           truncated={isTruncated}
           sourceView={
             diffHtml ? (
@@ -1284,6 +1357,9 @@ function EditToolResult({
     const proposedDiffTruncated = proposedDiffLines.length > MAX_VISIBLE_LINES;
 
     const filePath = getEditFilePath(inputWithAugment);
+    const renderMode = getEditRenderMode(
+      extractEditFilePaths(inputWithAugment),
+    );
     const fileName = getFileName(filePath);
     const fileLineRange = getPatchFileLineRange(
       inputWithAugment?._structuredPatch,
@@ -1314,6 +1390,7 @@ function EditToolResult({
               <DiffMathView
                 sourceText={proposedDiffLines.join("\n")}
                 baseFilePath={filePath}
+                renderMode={renderMode}
                 truncated={proposedDiffTruncated}
                 sourceView={
                   inputWithAugment?._diffHtml ? (
@@ -1424,6 +1501,7 @@ function EditToolResult({
             .flatMap((hunk) => hunk.lines)
             .join("\n")}
           baseFilePath={result.filePath}
+          renderMode={getEditRenderMode(extractEditFilePaths(input, result))}
           truncated={isTruncated}
           sourceView={result.structuredPatch.map((hunk, i) => (
             <DiffHunk key={`hunk-${hunk.oldStart}-${i}`} hunk={hunk} />

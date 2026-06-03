@@ -19,6 +19,29 @@ and the rationale for each choice.
 | **Edit diff** | `EditCollapsedPreview` → `DiffMathView` | unified-diff string |
 | **Diff nested in Bash output** | `BashCollapsedPreview` → `FixedFontMathToggle` | detected via `looksLikeUnifiedDiff` |
 
+## Thinking block formatting
+
+Thinking blocks are user-visible model reasoning summaries, not normal assistant
+prose and not tool output. They may arrive while streaming, so YA keeps their
+renderer deliberately smaller than the assistant Markdown path: cheap line-level
+transforms only, with no whole-document Markdown reparse requirement.
+
+Current thinking rendering activates an outline view only when the first line is
+a standalone `**heading**`. Subsequent standalone `**heading**` lines become
+collapsible outline sections; a blank line immediately after a heading is
+suppressed so the visual grouping follows the heading/body structure. Inline
+backtick spans and fenced or indented fixed-font blocks get monospace treatment.
+Other thinking text remains plain pre-wrapped text.
+
+Provider formats observed so far:
+
+| Provider | Thinking content shape | Markdown-like conventions |
+|----------|------------------------|---------------------------|
+| Codex | `thinking` content blocks, including reasoning summaries | Often emits standalone `**section**` lines, blank-line-separated prose, and occasional backtick/fenced-code snippets. |
+| Claude | Native `thinking` blocks when enabled | Usually plain prose; detailed Markdown conventions not yet catalogued. |
+| Grok | ACP `agent_thought_chunk` normalized to YA `thinking` | Structured plan/thought data exists in provider docs; final visible formatting still incomplete. |
+| OpenCode | ACP `reasoning` normalized to YA `thinking` for live events | Durable reload handling is incomplete; formatting conventions not yet catalogued. |
+
 ## Always-on transforms
 
 These run unconditionally and are not user-configurable:
@@ -76,7 +99,9 @@ output that mixes prose and code; see "code file exclusion" below.
 **Global render mode:** `RenderModeProvider` holds `globalMode` (default
 `"rendered"`) and a set of per-panel override IDs. A panel starts in the global
 mode unless the user has toggled it locally. `toggleGlobalMode` resets all local
-overrides.
+overrides. Assistant turn prose has its own local source/render toggle and does
+not participate in this global mode; the bottom-bar render-mode control is scoped
+to `FixedFontMathToggle` panels.
 
 ## Code file exclusion — and math opt-in
 
@@ -96,13 +121,36 @@ the global render mode, so the default stays off regardless of Ctrl/Cmd+Shift+M.
 Note: math mode currently loses Shiki colouring — the two renders are mutually
 exclusive until a compositing path is built.
 
-Plain-text / log / output files (no `_highlightedContentHtml`) retain the full
-`FixedFontMathToggle` pipeline (ANSI colour, markdown tables, math) with the
-sigma button defaulting to rendered if rich content is detected.
+Filename-affiliated plain-text files retain only the math portion of the
+`FixedFontMathToggle` pipeline unless their extension is Markdown-like (`.md`,
+`.markdown`, `.mdx`, `.mdown`, `.mkd`, `.mkdn`). This avoids structural Markdown
+false positives from source files without Shiki highlighting, especially TSX
+template literals and backtick-heavy code.
 
 For markdown files, `FileModalContent` uses its own outer Σ button (not
 `FixedFontMathToggle`) to toggle between the server-rendered HTML preview and
 the raw source view — avoiding double-sigma situations.
+
+Edit diffs and raw patches follow the same filename gate. A diff is rich-rendered
+only when its target path set is entirely Markdown-like; otherwise it is math-only
+even if the diff contains backticks, tables, or bold markers. Bash/command output
+is not filename-affiliated and still uses the broad organic rich-content
+heuristic, because command output often mixes prose, diffs, tables, and math with
+no reliable file extension.
+
+## Summary affordances
+
+Long one-line summaries keep the row tail visible by reserving result/count
+columns and applying normal end-ellipsis only to the variable expression. Grep
+uses the left timeline dot as its outline affordance: clicking the dot expands
+the full search expression under the clipped header while keeping the match count
+visible. The clipped pattern text is also clickable as a secondary target, but the
+dot is the stable control.
+
+Bash/Ran rows keep the left dot and row middle for the existing output-preview
+show/hide behavior. The command text itself is a separate click target; clicking
+it expands the full command inline with wrapping, so a huge command can be
+inspected without collapsing the output preview accidentally.
 
 ## Sigma button placement and scroll preservation
 

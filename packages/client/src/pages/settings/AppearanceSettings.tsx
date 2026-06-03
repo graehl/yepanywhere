@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { SessionToolbarPreview } from "../../components/SessionToolbarPreview";
+import { ThinkingText } from "../../components/ThinkingText";
 import {
   DEFAULT_CONTENT_MAX_WIDTH_PX,
   MAX_CONTENT_MAX_WIDTH_PX,
@@ -10,29 +12,79 @@ import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionBut
 import { FONT_SIZES, useFontSize } from "../../hooks/useFontSize";
 import { useFunPhrases } from "../../hooks/useFunPhrases";
 import {
+  DEFAULT_OUTPUT_FONT_SIZE_PX,
+  DEFAULT_OUTPUT_LINE_SPACING_PERCENT,
+  DEFAULT_OUTPUT_THINKING_FONT_SIZE_OFFSET_PX,
+  DEFAULT_OUTPUT_VERTICAL_SPACING_PERCENT,
+  OUTPUT_FONT_SIZE_MAX_PX,
+  OUTPUT_FONT_SIZE_MIN_PX,
+  OUTPUT_FONT_SIZE_PRESETS,
+  OUTPUT_FONT_SIZE_STEP_PX,
+  OUTPUT_LINE_SPACING_MAX_PERCENT,
+  OUTPUT_LINE_SPACING_MIN_PERCENT,
+  OUTPUT_LINE_SPACING_STEP_PERCENT,
+  OUTPUT_PROSE_FONTS,
+  OUTPUT_THINKING_FONT_SIZE_OFFSET_MAX_PX,
+  OUTPUT_THINKING_FONT_SIZE_OFFSET_MIN_PX,
+  OUTPUT_THINKING_FONT_SIZE_OFFSET_STEP_PX,
+  OUTPUT_VERTICAL_SPACING_MAX_PERCENT,
+  OUTPUT_VERTICAL_SPACING_MIN_PERCENT,
+  OUTPUT_VERTICAL_SPACING_STEP_PERCENT,
+  useOutputAppearance,
+} from "../../hooks/useOutputAppearance";
+import {
   type SessionToolbarVisibilityKey,
   useSessionToolbarVisibility,
 } from "../../hooks/useSessionToolbarVisibility";
 import { useStreamingEnabled } from "../../hooks/useStreamingEnabled";
-import { useTabTitleActivityPreference } from "../../hooks/useTabTitleActivityPreference";
 import { TAB_SIZES, useTabSize } from "../../hooks/useTabSize";
+import { useTabTitleActivityPreference } from "../../hooks/useTabTitleActivityPreference";
 import { THEMES, useTheme } from "../../hooks/useTheme";
 import { SUPPORTED_LOCALES, useI18n } from "../../i18n";
 import {
   getFontSizeLabel,
   getLocaleLabel,
+  getOutputProseFontLabel,
   getTabSizeLabel,
   getThemeLabel,
 } from "../../i18n-settings";
-import { SessionToolbarPreview } from "../../components/SessionToolbarPreview";
+
+function formatNumberSetting(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(value);
+}
 
 export function AppearanceSettings() {
   const { locale, setLocale, t } = useI18n();
   const { fontSize, setFontSize } = useFontSize();
+  const {
+    outputFont,
+    outputFontSizePx,
+    outputThinkingFontSizeOffsetPx,
+    outputLineSpacingPercent,
+    outputVerticalSpacingPercent,
+    setOutputFont,
+    setOutputFontSizePx,
+    setOutputThinkingFontSizeOffsetPx,
+    setOutputLineSpacingPercent,
+    setOutputVerticalSpacingPercent,
+  } = useOutputAppearance();
   const { tabSize, setTabSize } = useTabSize();
   const { contentMaxWidth, setContentMaxWidth } = useContentMaxWidth();
   const [contentMaxWidthDraft, setContentMaxWidthDraft] = useState(() =>
     String(contentMaxWidth),
+  );
+  const [outputFontSizeDraft, setOutputFontSizeDraft] = useState(() =>
+    formatNumberSetting(outputFontSizePx),
+  );
+  const [
+    outputThinkingFontSizeOffsetDraft,
+    setOutputThinkingFontSizeOffsetDraft,
+  ] = useState(() => formatNumberSetting(outputThinkingFontSizeOffsetPx));
+  const [outputLineSpacingDraft, setOutputLineSpacingDraft] = useState(() =>
+    formatNumberSetting(outputLineSpacingPercent),
+  );
+  const [outputVerticalSpacingDraft, setOutputVerticalSpacingDraft] = useState(
+    () => formatNumberSetting(outputVerticalSpacingPercent),
   );
   const { theme, setTheme } = useTheme();
   const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
@@ -124,10 +176,62 @@ export function AppearanceSettings() {
     setContentMaxWidthDraft(String(contentMaxWidth));
   }, [contentMaxWidth]);
 
+  useEffect(() => {
+    setOutputFontSizeDraft(formatNumberSetting(outputFontSizePx));
+  }, [outputFontSizePx]);
+
+  useEffect(() => {
+    setOutputThinkingFontSizeOffsetDraft(
+      formatNumberSetting(outputThinkingFontSizeOffsetPx),
+    );
+  }, [outputThinkingFontSizeOffsetPx]);
+
+  useEffect(() => {
+    setOutputLineSpacingDraft(formatNumberSetting(outputLineSpacingPercent));
+  }, [outputLineSpacingPercent]);
+
+  useEffect(() => {
+    setOutputVerticalSpacingDraft(
+      formatNumberSetting(outputVerticalSpacingPercent),
+    );
+  }, [outputVerticalSpacingPercent]);
+
   const commitContentMaxWidth = () => {
     const parsed = Number.parseInt(contentMaxWidthDraft, 10);
     setContentMaxWidth(
       Number.isFinite(parsed) ? parsed : DEFAULT_CONTENT_MAX_WIDTH_PX,
+    );
+  };
+
+  const commitOutputFontSize = () => {
+    const parsed = Number(outputFontSizeDraft);
+    setOutputFontSizePx(
+      Number.isFinite(parsed) ? parsed : DEFAULT_OUTPUT_FONT_SIZE_PX,
+    );
+  };
+
+  const commitOutputThinkingFontSizeOffset = () => {
+    const parsed = Number(outputThinkingFontSizeOffsetDraft);
+    setOutputThinkingFontSizeOffsetPx(
+      Number.isFinite(parsed)
+        ? parsed
+        : DEFAULT_OUTPUT_THINKING_FONT_SIZE_OFFSET_PX,
+    );
+  };
+
+  const commitOutputLineSpacing = () => {
+    const parsed = Number(outputLineSpacingDraft);
+    setOutputLineSpacingPercent(
+      Number.isFinite(parsed) ? parsed : DEFAULT_OUTPUT_LINE_SPACING_PERCENT,
+    );
+  };
+
+  const commitOutputVerticalSpacing = () => {
+    const parsed = Number(outputVerticalSpacingDraft);
+    setOutputVerticalSpacingPercent(
+      Number.isFinite(parsed)
+        ? parsed
+        : DEFAULT_OUTPUT_VERTICAL_SPACING_PERCENT,
     );
   };
 
@@ -189,6 +293,263 @@ export function AppearanceSettings() {
                 {getFontSizeLabel(size, translate)}
               </button>
             ))}
+          </div>
+        </div>
+        <div className="settings-item output-appearance-settings">
+          <div className="settings-item-info">
+            <strong>{t("appearanceOutputTypographyTitle")}</strong>
+            <p>{t("appearanceOutputTypographyDescription")}</p>
+          </div>
+
+          <div className="output-appearance-panel">
+            <div className="output-appearance-controls">
+              <div className="output-appearance-control">
+                <span className="output-appearance-label">
+                  {t("appearanceOutputFontLabel")}
+                </span>
+                <div className="font-size-selector output-font-selector">
+                  {OUTPUT_PROSE_FONTS.map((font) => (
+                    <button
+                      key={font}
+                      type="button"
+                      className={`font-size-option output-font-option output-font-option-${font} ${outputFont === font ? "active" : ""}`}
+                      onClick={() => setOutputFont(font)}
+                    >
+                      {getOutputProseFontLabel(font, translate)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label
+                className="output-appearance-control"
+                htmlFor="output-font-size"
+              >
+                <span className="output-appearance-label">
+                  {t("appearanceOutputFontSizeLabel")}
+                </span>
+                <span className="output-appearance-slider-row">
+                  <input
+                    id="output-font-size"
+                    type="range"
+                    min={OUTPUT_FONT_SIZE_MIN_PX}
+                    max={OUTPUT_FONT_SIZE_MAX_PX}
+                    step={OUTPUT_FONT_SIZE_STEP_PX}
+                    value={outputFontSizePx}
+                    list="output-font-size-presets"
+                    onChange={(e) =>
+                      setOutputFontSizePx(Number(e.target.value))
+                    }
+                  />
+                  <span className="output-appearance-number-wrap">
+                    <input
+                      type="number"
+                      className="settings-input-small output-appearance-number"
+                      min={OUTPUT_FONT_SIZE_MIN_PX}
+                      max={OUTPUT_FONT_SIZE_MAX_PX}
+                      step={OUTPUT_FONT_SIZE_STEP_PX}
+                      value={outputFontSizeDraft}
+                      onChange={(e) => setOutputFontSizeDraft(e.target.value)}
+                      onBlur={commitOutputFontSize}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          commitOutputFontSize();
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      aria-label={t("appearanceOutputFontSizeLabel")}
+                    />
+                    <span className="output-appearance-unit">px</span>
+                  </span>
+                </span>
+              </label>
+              <datalist id="output-font-size-presets">
+                {OUTPUT_FONT_SIZE_PRESETS.map((preset) => (
+                  <option
+                    key={preset.value}
+                    value={preset.value}
+                    label={preset.label}
+                  />
+                ))}
+              </datalist>
+
+              <label
+                className="output-appearance-control"
+                htmlFor="output-thinking-size-offset"
+              >
+                <span className="output-appearance-label">
+                  {t("appearanceOutputThinkingSizeOffsetLabel")}
+                </span>
+                <span className="output-appearance-slider-row">
+                  <input
+                    id="output-thinking-size-offset"
+                    type="range"
+                    min={OUTPUT_THINKING_FONT_SIZE_OFFSET_MIN_PX}
+                    max={OUTPUT_THINKING_FONT_SIZE_OFFSET_MAX_PX}
+                    step={OUTPUT_THINKING_FONT_SIZE_OFFSET_STEP_PX}
+                    value={outputThinkingFontSizeOffsetPx}
+                    onChange={(e) =>
+                      setOutputThinkingFontSizeOffsetPx(Number(e.target.value))
+                    }
+                  />
+                  <span className="output-appearance-number-wrap">
+                    <input
+                      type="number"
+                      className="settings-input-small output-appearance-number"
+                      min={OUTPUT_THINKING_FONT_SIZE_OFFSET_MIN_PX}
+                      max={OUTPUT_THINKING_FONT_SIZE_OFFSET_MAX_PX}
+                      step={OUTPUT_THINKING_FONT_SIZE_OFFSET_STEP_PX}
+                      value={outputThinkingFontSizeOffsetDraft}
+                      onChange={(e) =>
+                        setOutputThinkingFontSizeOffsetDraft(e.target.value)
+                      }
+                      onBlur={commitOutputThinkingFontSizeOffset}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          commitOutputThinkingFontSizeOffset();
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      aria-label={t("appearanceOutputThinkingSizeOffsetLabel")}
+                    />
+                    <span className="output-appearance-unit">px</span>
+                  </span>
+                </span>
+              </label>
+
+              <label
+                className="output-appearance-control"
+                htmlFor="output-line-spacing"
+              >
+                <span className="output-appearance-label">
+                  {t("appearanceOutputLineSpacingLabel")}
+                </span>
+                <span className="output-appearance-slider-row">
+                  <input
+                    id="output-line-spacing"
+                    type="range"
+                    min={OUTPUT_LINE_SPACING_MIN_PERCENT}
+                    max={OUTPUT_LINE_SPACING_MAX_PERCENT}
+                    step={OUTPUT_LINE_SPACING_STEP_PERCENT}
+                    value={outputLineSpacingPercent}
+                    onChange={(e) =>
+                      setOutputLineSpacingPercent(Number(e.target.value))
+                    }
+                  />
+                  <span className="output-appearance-number-wrap">
+                    <input
+                      type="number"
+                      className="settings-input-small output-appearance-number"
+                      min={OUTPUT_LINE_SPACING_MIN_PERCENT}
+                      max={OUTPUT_LINE_SPACING_MAX_PERCENT}
+                      step={OUTPUT_LINE_SPACING_STEP_PERCENT}
+                      value={outputLineSpacingDraft}
+                      onChange={(e) =>
+                        setOutputLineSpacingDraft(e.target.value)
+                      }
+                      onBlur={commitOutputLineSpacing}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          commitOutputLineSpacing();
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      aria-label={t("appearanceOutputLineSpacingLabel")}
+                    />
+                    <span className="output-appearance-unit">%</span>
+                  </span>
+                </span>
+              </label>
+
+              <label
+                className="output-appearance-control"
+                htmlFor="output-vertical-spacing"
+              >
+                <span className="output-appearance-label">
+                  {t("appearanceOutputVerticalSpacingLabel")}
+                </span>
+                <span className="output-appearance-slider-row">
+                  <input
+                    id="output-vertical-spacing"
+                    type="range"
+                    min={OUTPUT_VERTICAL_SPACING_MIN_PERCENT}
+                    max={OUTPUT_VERTICAL_SPACING_MAX_PERCENT}
+                    step={OUTPUT_VERTICAL_SPACING_STEP_PERCENT}
+                    value={outputVerticalSpacingPercent}
+                    onChange={(e) =>
+                      setOutputVerticalSpacingPercent(Number(e.target.value))
+                    }
+                  />
+                  <span className="output-appearance-number-wrap">
+                    <input
+                      type="number"
+                      className="settings-input-small output-appearance-number"
+                      min={OUTPUT_VERTICAL_SPACING_MIN_PERCENT}
+                      max={OUTPUT_VERTICAL_SPACING_MAX_PERCENT}
+                      step={OUTPUT_VERTICAL_SPACING_STEP_PERCENT}
+                      value={outputVerticalSpacingDraft}
+                      onChange={(e) =>
+                        setOutputVerticalSpacingDraft(e.target.value)
+                      }
+                      onBlur={commitOutputVerticalSpacing}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          commitOutputVerticalSpacing();
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      aria-label={t("appearanceOutputVerticalSpacingLabel")}
+                    />
+                    <span className="output-appearance-unit">%</span>
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <div
+              className="output-appearance-preview"
+              role="region"
+              aria-label={t("appearanceOutputPreviewLabel")}
+            >
+              <div className="output-preview-system">
+                <span className="output-preview-system-icon">ok</span>
+                <span>System note: provider configuration was applied.</span>
+              </div>
+              <div className="output-preview-prose">
+                <p>
+                  Ran <code>codex update</code>. It completed cleanly and kept
+                  the existing session ready for follow-up work.
+                </p>
+                <p>Post-checks:</p>
+                <ul>
+                  <li>
+                    Codex version: <code>codex-cli 0.136.0</code>
+                  </li>
+                  <li>
+                    Doctor summary: <code>17 ok / 0 warn / 0 fail</code>
+                  </li>
+                </ul>
+              </div>
+              <div className="output-preview-thinking thinking-content">
+                <ThinkingText
+                  text={[
+                    "**Considering spacing adjustments**",
+                    "",
+                    "Thinking text stays quieter and one step smaller.",
+                  ].join("\n")}
+                />
+              </div>
+              <div className="output-preview-diff" aria-hidden="true">
+                <div>
+                  <span className="output-preview-diff-gutter">+</span>
+                  <span>Rendered diff prose follows the output font.</span>
+                </div>
+                <div>
+                  <span className="output-preview-diff-gutter">-</span>
+                  <span>Extra paragraph space can be dialed down.</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div className="settings-item">
@@ -296,9 +657,7 @@ export function AppearanceSettings() {
               <input
                 type="checkbox"
                 checked={tabTitleActivityEnabled}
-                onChange={(e) =>
-                  setTabTitleActivityEnabled(e.target.checked)
-                }
+                onChange={(e) => setTabTitleActivityEnabled(e.target.checked)}
               />
               <span className="toggle-slider" />
             </label>

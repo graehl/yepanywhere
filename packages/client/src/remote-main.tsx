@@ -28,6 +28,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ConnectionGate, RemoteApp, UnauthenticatedGate } from "./RemoteApp";
 import { initializeContentMaxWidth } from "./hooks/useContentMaxWidth";
 import { initializeFontSize } from "./hooks/useFontSize";
+import { initializeOutputAppearance } from "./hooks/useOutputAppearance";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
 import { I18nProvider } from "./i18n";
@@ -54,6 +55,7 @@ import "./styles/index.css";
 // Apply saved preferences before React renders to avoid flash
 initializeTheme();
 initializeFontSize();
+initializeOutputAppearance();
 initializeTabSize();
 initializeContentMaxWidth();
 

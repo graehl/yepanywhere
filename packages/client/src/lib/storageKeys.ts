@@ -45,6 +45,15 @@ export const UI_KEYS = {
   locale: "yep-anywhere-locale",
   theme: "yep-anywhere-theme",
   fontSize: "yep-anywhere-font-size",
+  outputProseFont: "yep-anywhere-output-prose-font",
+  outputProseFontSize: "yep-anywhere-output-prose-font-size",
+  outputProseThinkingFontSizeOffset:
+    "yep-anywhere-output-prose-thinking-font-size-offset",
+  outputProseLineSpacingPercent:
+    "yep-anywhere-output-prose-line-spacing-percent",
+  outputProseVerticalSpacing: "yep-anywhere-output-prose-vertical-spacing",
+  outputProseVerticalSpacingPercent:
+    "yep-anywhere-output-prose-vertical-spacing-percent",
   tabSize: "yep-anywhere-tab-size",
   contentMaxWidth: "yep-anywhere-content-max-width",
   sidebarWidth: "yep-anywhere-sidebar-width",

@@ -9,6 +9,7 @@ import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { initializeFontSize } from "./hooks/useFontSize";
 import { initializeContentMaxWidth } from "./hooks/useContentMaxWidth";
+import { initializeOutputAppearance } from "./hooks/useOutputAppearance";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
 import { NavigationLayout } from "./layouts";
@@ -29,6 +30,7 @@ import "./styles/index.css";
 // Apply saved preferences before React renders to avoid flash
 initializeTheme();
 initializeFontSize();
+initializeOutputAppearance();
 initializeTabSize();
 initializeContentMaxWidth();
 

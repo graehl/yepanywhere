@@ -11,6 +11,7 @@ import {
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
 import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
+import { isMarkdownLikeFile } from "../lib/markdownFiles";
 import { compactShikiLineBreaks } from "../lib/shikiHtml";
 import {
   fetchMediaBlob,
@@ -131,14 +132,6 @@ function getLanguageFromPath(filePath: string): string {
  */
 function isImageFile(mimeType: string): boolean {
   return mimeType.startsWith("image/");
-}
-
-/**
- * Check if file is markdown.
- */
-function isMarkdownFile(filePath: string): boolean {
-  const ext = filePath.split(".").pop()?.toLowerCase() || "";
-  return ext === "md" || ext === "markdown";
 }
 
 /**
@@ -373,7 +366,7 @@ export const FileViewer = memo(function FileViewer({
           setFileData(data);
           setShowPreview(
             lineNumber === undefined &&
-              isMarkdownFile(filePath) &&
+              isMarkdownLikeFile(filePath) &&
               Boolean(data.renderedMarkdownHtml),
           );
           setLoading(false);
@@ -536,7 +529,9 @@ export const FileViewer = memo(function FileViewer({
     source.getRawFileUrl?.(projectId, filePath, false) ?? rawUrl;
   const canDownload = Boolean(source.fetchRawFileBlob || rawFileUrl);
   const hasMarkdownPreview =
-    content !== undefined && isMarkdownFile(filePath) && !!renderedMarkdownHtml;
+    content !== undefined &&
+    isMarkdownLikeFile(filePath) &&
+    !!renderedMarkdownHtml;
 
   // Render content based on file type
   const renderContent = () => {
@@ -559,7 +554,7 @@ export const FileViewer = memo(function FileViewer({
     // Text files
     if (content !== undefined) {
       // Show rendered markdown preview
-      if (showPreview && renderedMarkdownHtml) {
+      if (showPreview && hasMarkdownPreview && renderedMarkdownHtml) {
         return (
           <MarkdownPreview
             html={renderedMarkdownHtml}

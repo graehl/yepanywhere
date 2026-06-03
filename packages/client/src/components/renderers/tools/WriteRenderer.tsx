@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ZodError } from "zod";
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { isMarkdownLikeFile } from "../../../lib/markdownFiles";
 import { compactShikiLineBreaks } from "../../../lib/shikiHtml";
 import { makeDisplayPath } from "../../../lib/text";
 import { validateToolResult } from "../../../lib/validateToolResult";
@@ -24,14 +25,6 @@ interface WriteInputWithAugment extends WriteInput {
   _highlightedLanguage?: string;
   _highlightedTruncated?: boolean;
   _renderedMarkdownHtml?: string;
-}
-
-/**
- * Check if file is markdown based on extension.
- */
-function isMarkdownFile(filePath: string): boolean {
-  const ext = filePath.split(".").pop()?.toLowerCase() || "";
-  return ext === "md" || ext === "markdown";
 }
 
 /**
@@ -88,7 +81,7 @@ function WriteModalContent({
   const [showPreview, setShowPreview] = useState(false);
   const lines = file.content.split("\n");
 
-  const isMarkdown = isMarkdownFile(file.filePath);
+  const isMarkdown = isMarkdownLikeFile(file.filePath);
   const hasMarkdownPreview = isMarkdown && !!input?._renderedMarkdownHtml;
 
   // Toggle button for markdown files
@@ -134,7 +127,8 @@ function WriteModalContent({
             className="shiki-container"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
             dangerouslySetInnerHTML={{
-              __html: compactShikiLineBreaks(input._highlightedContentHtml) ?? "",
+              __html:
+                compactShikiLineBreaks(input._highlightedContentHtml) ?? "",
             }}
           />
           {input._highlightedTruncated && (
@@ -249,7 +243,8 @@ function WriteToolResult({
             className="shiki-container"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
             dangerouslySetInnerHTML={{
-              __html: compactShikiLineBreaks(input._highlightedContentHtml) ?? "",
+              __html:
+                compactShikiLineBreaks(input._highlightedContentHtml) ?? "",
             }}
           />
           {input._highlightedTruncated && (
@@ -433,7 +428,10 @@ function WriteCollapsedPreview({
         <Modal
           title={
             <span className="file-path">
-              <SessionFilePathLink displayPath={displayPath} filePath={filePath} />
+              <SessionFilePathLink
+                displayPath={displayPath}
+                filePath={filePath}
+              />
             </span>
           }
           onClose={handleClose}

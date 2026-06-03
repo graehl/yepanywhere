@@ -62,4 +62,62 @@ describe("GrepRenderer", () => {
     expect(screen.getAllByText("needle")).toHaveLength(2);
     expect(document.querySelectorAll(".grep-match-highlight")).toHaveLength(2);
   });
+
+  it("keeps long patterns clipped until summary context expands them", () => {
+    const longPattern =
+      "Ran codex update\\. It completed cleanly and kept the existing session ready for follow-up work\\.";
+    const result = {
+      mode: "content" as const,
+      filenames: [],
+      numFiles: 1,
+      content: "log.txt:3:Ran codex update. It completed cleanly",
+      matches: [
+        {
+          filePath: "log.txt",
+          lineNumber: 3,
+          text: "Ran codex update. It completed cleanly",
+        },
+      ],
+    };
+
+    const { container, rerender } = render(
+      <div>
+        {grepRenderer.renderInteractiveSummary?.(
+          { pattern: longPattern, output_mode: "content" },
+          result,
+          false,
+          {
+            ...renderContext,
+            summaryExpanded: false,
+            toggleSummaryExpanded: vi.fn(),
+          },
+        )}
+      </div>,
+    );
+
+    expect(container.querySelector(".grep-summary-pattern-full")).toBeNull();
+    expect(
+      container.querySelector(".grep-summary-pattern-clip")?.textContent,
+    ).toBe(longPattern);
+    expect(screen.getByRole("button", { name: "1 match" })).toBeDefined();
+
+    rerender(
+      <div>
+        {grepRenderer.renderInteractiveSummary?.(
+          { pattern: longPattern, output_mode: "content" },
+          result,
+          false,
+          {
+            ...renderContext,
+            summaryExpanded: true,
+            toggleSummaryExpanded: vi.fn(),
+          },
+        )}
+      </div>,
+    );
+
+    expect(
+      container.querySelector(".grep-summary-pattern-full")?.textContent,
+    ).toBe(longPattern);
+  });
 });

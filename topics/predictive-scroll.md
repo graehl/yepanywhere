@@ -52,17 +52,22 @@ rows hydrate while the user scrolls.
 
 1. **Content width**: measured from the row's `getBoundingClientRect` when
    available; falls back to 720px.
-2. **Chars per line**: `clamp(floor(width / 7.5), 24, 160)` where 7.5px is the
-   average monospace character width.
-3. **Output line count**: counts logical lines in stdout+stderr, wrapping long
+2. **Typography metrics**: read from the active output appearance CSS variables
+   via a hidden probe and refreshed on output-appearance changes. Defaults remain
+   available for tests and non-DOM callers.
+3. **Chars per line**: `clamp(floor(width / averageCharWidthPx), 24, 160)`.
+4. **Output line count**: counts logical lines in stdout+stderr, wrapping long
    lines using the chars-per-line estimate.
-4. **Output height**: `clamp(lineCount × 18, 35, 80)px + 12px` chrome, or a
+5. **Output height**:
+   `clamp(lineCount × outputLineHeightPx, 35, 80)px + outputRowChromePx`, or a
    28px empty-output row.
-5. **Total**: output height plus the 2px preview border, clamped to `[28, 94]px`.
+6. **Total**: output height plus the 2px preview border, clamped to `[28, 94]px`.
 
 Constants live in `DEFERRED_PREVIEW_HEIGHT` (exported from `ToolCallRow.tsx`)
-so tests can reference them directly; see
-`blocks/__tests__/ToolCallRow.preview-height.test.ts`.
+so tests can reference the fallback model directly; see
+`blocks/__tests__/ToolCallRow.preview-height.test.ts`. The runtime model accepts
+`typography` metrics so output font size and wrapped-line spacing changes do not
+leave stale oversized or undersized deferred placeholders.
 
 The placeholder is rendered in a separate `hasDeferredPreviewShell` branch
 (distinct from the live collapsed preview) using a CSS custom property

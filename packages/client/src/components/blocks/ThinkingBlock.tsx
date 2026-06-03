@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { ThinkingText } from "../ThinkingText";
 
 interface Props {
   thinking: string;
@@ -75,7 +76,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         <span className="collapsible__icon">▸</span>
       </summary>
       <div className="collapsible__content">
-        <span className="text-content">{thinking}</span>
+        <ThinkingText text={thinking} />
       </div>
     </details>
   );

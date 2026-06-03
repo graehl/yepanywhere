@@ -230,16 +230,54 @@
 .tool-summary {
   flex: 1;
   min-width: 0;
-  font-size: var(--font-size-base);
+  font-family: var(--output-prose-font-family);
+  font-optical-sizing: var(--output-prose-font-optical-sizing);
+  font-variation-settings: var(--output-prose-font-variation-settings);
+  font-size: var(--output-prose-font-size);
   color: var(--text-muted, #888);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+button.tool-summary {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.tool-summary.interactive-summary.outline-summary {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .ran-tool-row .tool-summary {
   font-family: "SF Mono", Monaco, "Cascadia Code", "Consolas", monospace;
+  font-size: var(--font-size-base);
   color: var(--text-primary, #ccc);
+}
+
+.tool-summary-command {
+  cursor: pointer;
+}
+
+.tool-summary-command:hover {
+  color: var(--text-primary, #ccc);
+}
+
+.tool-summary-command:focus {
+  outline: 1px solid var(--focus-border, #007acc);
+  outline-offset: -1px;
+}
+
+.tool-summary-command.is-expanded {
+  max-height: min(30vh, 16rem);
+  overflow: auto;
+  text-overflow: clip;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .tool-header-copy {

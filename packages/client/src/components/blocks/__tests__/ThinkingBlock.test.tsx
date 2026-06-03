@@ -52,4 +52,38 @@ describe("ThinkingBlock", () => {
       screen.getByRole("button", { name: "Expand thinking" }),
     ).toBeDefined();
   });
+
+  it("renders heading-style thinking as a collapsible outline", () => {
+    const { container } = render(
+      <ThinkingBlock
+        thinking={[
+          "**Considering spacing adjustments**",
+          "",
+          "Spacing should relate to `font-size`.",
+          "```",
+          "line-height = 1.5em - delta",
+          "```",
+          "**Considering implementation**",
+          "",
+          "Use a line-level transform.",
+        ].join("\n")}
+        status="complete"
+        isExpanded={true}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Considering spacing adjustments")).toBeDefined();
+    expect(screen.getByText("Considering implementation")).toBeDefined();
+    expect(screen.queryByText(/\*\*Considering spacing/)).toBeNull();
+    expect(
+      container.querySelectorAll(".thinking-outline-section"),
+    ).toHaveLength(2);
+    expect(container.querySelector(".thinking-inline-code")?.textContent).toBe(
+      "font-size",
+    );
+    expect(container.querySelector(".thinking-code-block")?.textContent).toBe(
+      "line-height = 1.5em - delta",
+    );
+  });
 });

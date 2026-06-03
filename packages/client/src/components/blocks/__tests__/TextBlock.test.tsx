@@ -1,6 +1,19 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  RenderModeProvider,
+  useOptionalRenderModeContext,
+} from "../../../contexts/RenderModeContext";
 import { TextBlock } from "../TextBlock";
+
+function GlobalRenderModeButton() {
+  const renderMode = useOptionalRenderModeContext();
+  return (
+    <button type="button" onClick={renderMode?.toggleGlobalMode}>
+      global render mode
+    </button>
+  );
+}
 
 describe("TextBlock", () => {
   afterEach(() => {
@@ -41,6 +54,23 @@ describe("TextBlock", () => {
 
     expect(container.querySelector(".text-block-toggle")).toBeTruthy();
     expect(container.querySelector("strong")?.textContent).toBe("win");
+  });
+
+  it("keeps assistant markdown rendered when global render mode changes", () => {
+    const { container } = render(
+      <RenderModeProvider>
+        <GlobalRenderModeButton />
+        <TextBlock
+          text="- **win**"
+          augmentHtml="<ul><li><strong>win</strong></li></ul>"
+        />
+      </RenderModeProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "global render mode" }));
+
+    expect(container.querySelector("strong")?.textContent).toBe("win");
+    expect(container.querySelector(".text-block-source")).toBeNull();
   });
 
   it("mounts local media previews inline beside rendered markdown links", async () => {

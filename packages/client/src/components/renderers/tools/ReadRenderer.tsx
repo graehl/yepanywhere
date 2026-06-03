@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
+import { isMarkdownLikeFile } from "../../../lib/markdownFiles";
 import { useScrollPreservingToggle } from "../../../lib/scrollAnchor";
 import { compactShikiLineBreaks } from "../../../lib/shikiHtml";
 import { makeDisplayPath } from "../../../lib/text";
@@ -183,16 +184,19 @@ function FileModalContent({
   highlightedTruncated?: boolean;
   renderedMarkdownHtml?: string;
 }) {
+  const isMarkdown = isMarkdownLikeFile(file.filePath);
   const clientMarkdownPreview = useMemo(() => {
-    if (renderedMarkdownHtml) {
+    if (!isMarkdown || renderedMarkdownHtml) {
       return null;
     }
     const rendered = renderFixedFontRichContent(file.content, {
       baseFilePath: file.filePath,
     });
     return rendered.changed ? rendered.html : null;
-  }, [file.content, file.filePath, renderedMarkdownHtml]);
-  const markdownHtml = renderedMarkdownHtml ?? clientMarkdownPreview;
+  }, [file.content, file.filePath, isMarkdown, renderedMarkdownHtml]);
+  const markdownHtml = isMarkdown
+    ? (renderedMarkdownHtml ?? clientMarkdownPreview)
+    : null;
   const hasMarkdownPreview = !!markdownHtml;
   const [showPreview, setShowPreview] = useState(false);
 
@@ -256,9 +260,11 @@ function FileModalContent({
         sourceView
       )
     ) : (
-      // Plain text / log / output: full ANSI + math + markdown table detection.
+      // Filename-affiliated non-Markdown files use math-only rendering to avoid
+      // treating source-code backticks, arrays, or operators as Markdown.
       <FixedFontMathToggle
         sourceText={file.content}
+        renderMode={isMarkdown ? "rich" : "math"}
         sourceView={sourceView}
         renderRenderedView={(html) => renderReadMathPanel(html)}
       />

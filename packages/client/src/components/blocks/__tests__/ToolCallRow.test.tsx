@@ -173,6 +173,82 @@ describe("ToolCallRow", () => {
     expect(screen.queryByRole("button", { name: /expand/i })).toBeNull();
   });
 
+  it("expands Bash command text without toggling row details", () => {
+    const command = `printf '${"x".repeat(180)}'`;
+    const { container } = render(
+      <ToolCallRow
+        id="tool-long-bash"
+        toolName="Bash"
+        toolInput={{ command }}
+        toolResult={{
+          structured: {
+            stdout: "",
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+          },
+          content: "",
+          isError: false,
+        }}
+        status="complete"
+        sessionProvider="codex"
+      />,
+    );
+
+    const commandButton = screen.getByRole("button", {
+      name: "Show full command",
+    });
+    expect(commandButton.textContent).toBe(command);
+
+    fireEvent.click(commandButton);
+
+    expect(commandButton.className).toContain("is-expanded");
+    expect(container.querySelector(".tool-row-content")).toBeNull();
+    expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
+  });
+
+  it("uses the timeline dot to expand long Grep summaries", () => {
+    const pattern =
+      "Ran codex update\\. It completed cleanly and kept the existing session ready for follow-up work\\.";
+    const { container } = render(
+      <ToolCallRow
+        id="tool-grep"
+        toolName="Grep"
+        toolInput={{ pattern, output_mode: "content" }}
+        toolResult={{
+          structured: {
+            mode: "content",
+            filenames: [],
+            numFiles: 1,
+            content: "log.txt:3:Ran codex update. It completed cleanly",
+            matches: [
+              {
+                filePath: "log.txt",
+                lineNumber: 3,
+                text: "Ran codex update. It completed cleanly",
+              },
+            ],
+          },
+          content: "",
+          isError: false,
+        }}
+        status="complete"
+        sessionProvider="codex"
+      />,
+    );
+
+    expect(container.querySelector(".grep-summary-pattern-full")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand summary" }));
+
+    expect(
+      container.querySelector(".grep-summary-pattern-full")?.textContent,
+    ).toBe(pattern);
+    expect(
+      screen.getByRole("button", { name: "Collapse summary" }),
+    ).toBeDefined();
+  });
+
   it("shows PTY-backed read shell rows inline without requiring expansion", () => {
     const { container } = render(
       <ToolCallRow
@@ -222,33 +298,34 @@ describe("ToolCallRow", () => {
   it("collapses generic expanded tool rows from the left strip", () => {
     const { container } = render(
       <ToolCallRow
-        id="tool-grep"
-        toolName="Grep"
-        toolInput={{ pattern: "needle" }}
+        id="tool-glob"
+        toolName="Glob"
+        toolInput={{ pattern: "**/*.ts" }}
         toolResult={{
           structured: {
-            mode: "content",
-            content: "src/file.ts:1:needle",
+            filenames: ["src/file.ts"],
             numFiles: 1,
+            durationMs: 12,
+            truncated: false,
           },
-          content: "src/file.ts:1:needle",
+          content: "src/file.ts",
           isError: false,
         }}
         status="complete"
       />,
     );
 
-    expect(container.querySelector(".grep-result")).toBeNull();
+    expect(container.querySelector(".glob-result")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand" }));
 
-    expect(container.querySelector(".grep-result")).not.toBeNull();
+    expect(container.querySelector(".glob-result")).not.toBeNull();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Collapse expanded tool row" }),
     );
 
-    expect(container.querySelector(".grep-result")).toBeNull();
+    expect(container.querySelector(".glob-result")).toBeNull();
     expect(screen.getByRole("button", { name: "Expand" })).toBeDefined();
   });
 
@@ -498,6 +575,38 @@ describe("ToolCallRow", () => {
         DEFERRED_PREVIEW_HEIGHT.maxOutputPx +
         DEFERRED_PREVIEW_HEIGHT.previewBorderPx,
     );
+  });
+
+  it("scales deferred Bash preview height with output typography metrics", () => {
+    const output = "x".repeat(260);
+    const compact = estimateDeferredPreviewHeightPx({
+      toolName: "Bash",
+      toolInput: { command: "printf long" },
+      result: { stdout: output, stderr: "" },
+      status: "complete",
+      rowWidthPx: 360,
+      typography: {
+        averageCharWidthPx: 5.5,
+        outputLineHeightPx: 14,
+        outputRowChromePx: 6,
+      },
+    });
+    const roomy = estimateDeferredPreviewHeightPx({
+      toolName: "Bash",
+      toolInput: { command: "printf long" },
+      result: { stdout: output, stderr: "" },
+      status: "complete",
+      rowWidthPx: 360,
+      typography: {
+        averageCharWidthPx: 9,
+        outputLineHeightPx: 24,
+        outputRowChromePx: 18,
+      },
+    });
+
+    expect(compact).not.toBeNull();
+    expect(roomy).not.toBeNull();
+    expect(roomy as number).toBeGreaterThan(compact as number);
   });
 
   it("does not reserve estimated preview height for rows without a cheap model", () => {

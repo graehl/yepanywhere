@@ -114,6 +114,7 @@ export const TextBlock = memo(function TextBlock({
   const { showRendered, toggleLocalMode } = useRenderModeToggle(
     canToggleRendered,
     {
+      participateInGlobalMode: false,
       resetDependencies: [
         isStreaming,
         isStreaming ? "" : text,

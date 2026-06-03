@@ -1,21 +1,15 @@
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { type FileContentResponse, toUrlProjectId } from "@yep-anywhere/shared";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
-import { PublicShareFilePage } from "../PublicShareFilePage";
 import {
   fetchPublicShareBlobViaRelay,
   fetchPublicShareJsonViaRelay,
 } from "../../lib/publicShareRelay";
+import { PublicShareFilePage } from "../PublicShareFilePage";
 
 vi.mock("../../lib/publicShareRelay", () => ({
   fetchPublicShareBlobViaRelay: vi.fn(),
@@ -25,7 +19,9 @@ vi.mock("../../lib/publicShareRelay", () => ({
 const fetchPublicShareJsonViaRelayMock = vi.mocked(
   fetchPublicShareJsonViaRelay,
 );
-const fetchPublicShareBlobViaRelayMock = vi.mocked(fetchPublicShareBlobViaRelay);
+const fetchPublicShareBlobViaRelayMock = vi.mocked(
+  fetchPublicShareBlobViaRelay,
+);
 
 function installObjectUrlMock() {
   const URLCtor = URL;
@@ -98,17 +94,16 @@ describe("PublicShareFilePage", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Guide" })).toBeTruthy();
+    expect(screen.queryByAltText("diagram.png")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Expand image" }));
+
     const inlineImage = await screen.findByAltText("diagram.png");
     expect(inlineImage.getAttribute("src")).toBe("blob:embedded-media");
 
     const mediaLink = screen.getByRole("link", { name: /diagram/i });
-    expect(mediaLink.getAttribute("href")).toContain("/share/share-secret/file");
-    fireEvent.click(mediaLink);
-
-    expect(await screen.findByRole("dialog")).toBeTruthy();
-    await waitFor(() => {
-      expect(screen.getAllByAltText("diagram.png").length).toBeGreaterThan(1);
-    });
+    expect(mediaLink.getAttribute("href")).toContain(
+      "/share/share-secret/file",
+    );
     expect(fetchPublicShareBlobViaRelayMock).not.toHaveBeenCalled();
   });
 });

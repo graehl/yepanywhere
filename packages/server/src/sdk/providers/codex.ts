@@ -149,6 +149,20 @@ const CODEX_RECAP_CHEAPEST_MODEL_PREFERENCES = [
   "gpt-5.1-codex-mini",
   "gpt-5.3-codex-spark",
 ] as const;
+const CODEX_DISABLE_LIVE_DELTAS_ENV = "YA_CODEX_DISABLE_LIVE_DELTAS";
+const CODEX_LIVE_DELTA_NOTIFICATION_METHODS = new Set<string>([
+  "item/agentMessage/delta",
+  "item/plan/delta",
+  "item/reasoning/summaryTextDelta",
+  "item/commandExecution/outputDelta",
+  "item/fileChange/outputDelta",
+]);
+function isCodexLiveDeltaSuppressionEnabled(): boolean {
+  return process.env[CODEX_DISABLE_LIVE_DELTAS_ENV] === "true";
+}
+function isCodexLiveDeltaNotificationMethod(method: string): boolean {
+  return CODEX_LIVE_DELTA_NOTIFICATION_METHODS.has(method);
+}
 const CODEX_BUILTIN_COMMANDS: SlashCommand[] = [
   {
     name: "goal",
@@ -667,6 +681,9 @@ class CodexAppServerClient {
     private readonly command: string,
     private readonly cwd: string,
     private readonly env: NodeJS.ProcessEnv,
+    private readonly shouldSuppressNotification?: (
+      notification: JsonRpcNotification,
+    ) => boolean,
   ) {}
 
   setServerRequestHandler(handler: AppServerRequestHandler): void {
@@ -766,8 +783,13 @@ class CodexAppServerClient {
         return;
       }
 
+      const notification = { method, params: message.params };
+      if (this.shouldSuppressNotification?.(notification)) {
+        return;
+      }
+
       this.recordRawProviderEvent(`codex:notification:${method}`);
-      this.notifications.push({ method, params: message.params });
+      this.notifications.push(notification);
       return;
     }
 
@@ -949,6 +971,11 @@ export class CodexProvider implements AgentProvider {
     this.config = config;
   }
 
+  setCodexPath(codexPath: string | undefined): void {
+    this.config.codexPath = codexPath;
+    this.modelCache = null;
+  }
+
   /**
    * Check if the Codex CLI is installed.
    */
@@ -960,10 +987,7 @@ export class CodexProvider implements AgentProvider {
    * Check if Codex CLI is installed by looking in PATH and common locations.
    */
   private async isCodexCliInstalled(): Promise<boolean> {
-    if (this.config.codexPath) {
-      return true;
-    }
-    return (await findCodexCliPath()) !== null;
+    return (await findCodexCliPath(this.config.codexPath)) !== null;
   }
 
   /**
@@ -1663,6 +1687,8 @@ export class CodexProvider implements AgentProvider {
       codexCommand,
       options.cwd,
       this.getCodexEnv(),
+      (notification) =>
+        this.shouldSuppressLiveDeltaNotification(notification, options),
     );
     setActiveClient(appServer);
 
@@ -1673,13 +1699,8 @@ export class CodexProvider implements AgentProvider {
       activeTurnId: null,
       recentNotifications: [],
     };
-    const logMessage = (message: SDKMessage): SDKMessage => {
-      const messageSessionId =
-        typeof (message as { session_id?: unknown }).session_id === "string"
-          ? ((message as { session_id: string }).session_id ?? "unknown")
-          : sessionId || "unknown";
-      logSDKMessage(messageSessionId, message, { provider: "codex" });
-      return message;
+    const logRawNotification = (notification: JsonRpcNotification): void => {
+      this.logRawCodexNotification(sessionId || "unknown", notification);
     };
 
     appServer.setServerRequestHandler(async (request) => {
@@ -1732,14 +1753,12 @@ export class CodexProvider implements AgentProvider {
       );
 
       // Emit init immediately with the real session ID.
-      yield logMessage(
-        withCodexTimestamp({
-          type: "system",
-          subtype: "init",
-          session_id: sessionId,
-          cwd: options.cwd,
-        } as SDKMessage),
-      );
+      yield withCodexTimestamp({
+        type: "system",
+        subtype: "init",
+        session_id: sessionId,
+        cwd: options.cwd,
+      } as SDKMessage);
 
       const requestedReasoningEffort = this.mapEffortToReasoningEffort(
         options.effort,
@@ -1753,7 +1772,7 @@ export class CodexProvider implements AgentProvider {
         requestedReasoningEffort,
       );
       if (sessionConfigAck) {
-        yield logMessage(withCodexTimestamp(sessionConfigAck));
+        yield withCodexTimestamp(sessionConfigAck);
       }
 
       const messageGen = queue;
@@ -1797,7 +1816,7 @@ export class CodexProvider implements AgentProvider {
           uuid: message.uuid,
           chars: userPrompt.length,
         };
-        yield logMessage(userMessage);
+        yield userMessage;
 
         const messagePermissionMode =
           this.getPermissionModeFromMessage(message);
@@ -1833,6 +1852,10 @@ export class CodexProvider implements AgentProvider {
 
         while (!turnComplete && !signal.aborted) {
           const notification = await appServer.nextNotification(signal);
+          if (this.shouldSuppressLiveDeltaNotification(notification, options)) {
+            continue;
+          }
+          logRawNotification(notification);
           const currentActiveTurnId = runtimeState.activeTurnId ?? activeTurnId;
           failureTrace.activeTurnId = currentActiveTurnId;
 
@@ -1868,7 +1891,7 @@ export class CodexProvider implements AgentProvider {
                 : rawMsg;
             failureTrace.lastEmittedMessage =
               this.describeSDKMessageForFailureTrace(msg);
-            yield logMessage(msg);
+            yield msg;
           }
 
           if (
@@ -1889,7 +1912,7 @@ export class CodexProvider implements AgentProvider {
           turnResult.turn.status === "failed" &&
           turnResult.turn.error?.message
         ) {
-          yield logMessage({
+          yield {
             type: "error",
             session_id: sessionId,
             error: turnResult.turn.error.message,
@@ -1903,13 +1926,13 @@ export class CodexProvider implements AgentProvider {
               turnResult.turn.error.additionalDetails,
               turnResult.turn.error.message,
             ),
-          } as SDKMessage);
+          } as SDKMessage;
         }
 
-        yield logMessage({
+        yield {
           type: "result",
           session_id: sessionId,
-        } as SDKMessage);
+        } as SDKMessage;
       }
     } catch (error) {
       const codexFailureTrace = this.snapshotCodexFailureTrace(failureTrace);
@@ -1918,23 +1941,50 @@ export class CodexProvider implements AgentProvider {
         "Error in codex app-server session",
       );
       if (!signal.aborted) {
-        yield logMessage({
+        yield {
           type: "error",
           session_id: sessionId,
           error: error instanceof Error ? error.message : String(error),
           codexFailureTrace,
           codexFailureSummary: this.formatCodexFailureTrace(codexFailureTrace),
-        } as SDKMessage);
+        } as SDKMessage;
       }
     } finally {
       runtimeState.activeTurnId = null;
       appServer.close();
     }
 
-    yield logMessage({
+    yield {
       type: "result",
       session_id: sessionId,
-    } as SDKMessage);
+    } as SDKMessage;
+  }
+
+  private logRawCodexNotification(
+    sessionId: string,
+    notification: JsonRpcNotification,
+  ): void {
+    logSDKMessage(
+      sessionId || "unknown",
+      {
+        _rawSource: "codex_app_server_notification",
+        ...notification,
+      },
+      { provider: "codex" },
+    );
+  }
+
+  private shouldSuppressLiveDeltaNotification(
+    notification: JsonRpcNotification,
+    options: StartSessionOptions,
+  ): boolean {
+    if (!isCodexLiveDeltaNotificationMethod(notification.method)) {
+      return false;
+    }
+    if (isCodexLiveDeltaSuppressionEnabled()) {
+      return true;
+    }
+    return options.shouldEmitLiveDeltas?.() === false;
   }
 
   private isTurnTerminalNotification(

@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 import { OUTPUT_APPEARANCE_CHANGE_EVENT } from "../../hooks/useOutputAppearance";
+import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewRendering";
 import { getDisplayBashCommandFromInput } from "../../lib/bashCommand";
 import { PREDICTIVE_SCROLL_ROOT_MARGIN } from "../../lib/predictiveScroll";
 import { parseShellToolOutput } from "../../lib/shellToolOutput";
@@ -228,8 +229,11 @@ function isBashLikeToolName(toolName: string): boolean {
   );
 }
 
-function canDeferRichToolRow(status: ToolCallItem["status"]): boolean {
-  return status === "complete" || status === "error";
+function canDeferRichToolRow(
+  status: ToolCallItem["status"],
+  deferRichContent = true,
+): boolean {
+  return deferRichContent && (status === "complete" || status === "error");
 }
 
 function findNearestScrollContainer(element: HTMLElement): HTMLElement | null {
@@ -273,7 +277,10 @@ function queueExpandedToolTopFocus(rowRef: RefObject<HTMLDivElement | null>) {
   window.setTimeout(focusTop, 80);
 }
 
-function useNearViewportHydration(status: ToolCallItem["status"]): {
+function useNearViewportHydration(
+  status: ToolCallItem["status"],
+  deferRichContent: boolean,
+): {
   rowRef: RefObject<HTMLDivElement | null>;
   shouldHydrate: boolean;
   hydrateNow: () => void;
@@ -283,13 +290,13 @@ function useNearViewportHydration(status: ToolCallItem["status"]): {
   const [rowWidthPx, setRowWidthPx] = useState<number | null>(null);
   const [shouldHydrate, setShouldHydrate] = useState(
     () =>
-      !canDeferRichToolRow(status) ||
+      !canDeferRichToolRow(status, deferRichContent) ||
       typeof window === "undefined" ||
       typeof IntersectionObserver === "undefined",
   );
 
   useEffect(() => {
-    if (!canDeferRichToolRow(status)) {
+    if (!canDeferRichToolRow(status, deferRichContent)) {
       setShouldHydrate(true);
       return;
     }
@@ -298,10 +305,10 @@ function useNearViewportHydration(status: ToolCallItem["status"]): {
       return;
     }
     setShouldHydrate(false);
-  }, [status]);
+  }, [status, deferRichContent]);
 
   useLayoutEffect(() => {
-    if (shouldHydrate || !canDeferRichToolRow(status)) {
+    if (shouldHydrate || !canDeferRichToolRow(status, deferRichContent)) {
       return;
     }
     const node = rowRef.current;
@@ -312,10 +319,10 @@ function useNearViewportHydration(status: ToolCallItem["status"]): {
     if (width > 0) {
       setRowWidthPx((current) => (current === width ? current : width));
     }
-  }, [shouldHydrate, status]);
+  }, [shouldHydrate, status, deferRichContent]);
 
   useEffect(() => {
-    if (shouldHydrate || !canDeferRichToolRow(status)) {
+    if (shouldHydrate || !canDeferRichToolRow(status, deferRichContent)) {
       return;
     }
 
@@ -336,7 +343,7 @@ function useNearViewportHydration(status: ToolCallItem["status"]): {
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [shouldHydrate, status]);
+  }, [shouldHydrate, status, deferRichContent]);
 
   return {
     rowRef,
@@ -382,12 +389,13 @@ export const ToolCallRow = memo(function ToolCallRow({
 
   // Get structured result for interactive summary
   const structuredResult = toolResult?.structured ?? toolResult?.content;
+  const { stableToolPreviewRendering } = useStableToolPreviewRendering();
   const {
     rowRef,
     shouldHydrate: shouldHydrateRichContent,
     hydrateNow,
     rowWidthPx,
-  } = useNearViewportHydration(status);
+  } = useNearViewportHydration(status, !stableToolPreviewRendering);
 
   // Check if this tool renders inline (bypasses entire tool-row structure)
   const hasInlineRenderer = toolRegistry.hasInlineRenderer(toolName);

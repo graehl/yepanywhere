@@ -11,6 +11,7 @@ import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionButtonEnabled";
 import { FONT_SIZES, useFontSize } from "../../hooks/useFontSize";
 import { useFunPhrases } from "../../hooks/useFunPhrases";
+import { useInlineMedia } from "../../hooks/useInlineMedia";
 import {
   DEFAULT_OUTPUT_FONT_SIZE_PX,
   DEFAULT_OUTPUT_LINE_SPACING_PERCENT,
@@ -36,6 +37,7 @@ import {
   type SessionToolbarVisibilityKey,
   useSessionToolbarVisibility,
 } from "../../hooks/useSessionToolbarVisibility";
+import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewRendering";
 import { useStreamingEnabled } from "../../hooks/useStreamingEnabled";
 import { TAB_SIZES, useTabSize } from "../../hooks/useTabSize";
 import { useTabTitleActivityPreference } from "../../hooks/useTabTitleActivityPreference";
@@ -88,6 +90,10 @@ export function AppearanceSettings() {
   );
   const { theme, setTheme } = useTheme();
   const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
+  const { stableToolPreviewRendering, setStableToolPreviewRendering } =
+    useStableToolPreviewRendering();
+  const { inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault } =
+    useInlineMedia();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
   const { floatingActionButtonEnabled, setFloatingActionButtonEnabled } =
     useFloatingActionButtonEnabled();
@@ -520,6 +526,10 @@ export function AppearanceSettings() {
                   Ran <code>codex update</code>. It completed cleanly and kept
                   the existing session ready for follow-up work.
                 </p>
+                <p>
+                  Inline math:{" "}
+                  <span className="output-preview-math">f(x) = 100%</span>
+                </p>
                 <p>Post-checks:</p>
                 <ul>
                   <li>
@@ -615,6 +625,36 @@ export function AppearanceSettings() {
               type="checkbox"
               checked={streamingEnabled}
               onChange={(e) => setStreamingEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceStableToolPreviewTitle")}</strong>
+            <p>{t("appearanceStableToolPreviewDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={stableToolPreviewRendering}
+              onChange={(e) => setStableToolPreviewRendering(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceInlineImagesTitle")}</strong>
+            <p>{t("appearanceInlineImagesDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={inlineMediaExpandedByDefault}
+              onChange={(e) =>
+                setInlineMediaExpandedByDefault(e.target.checked)
+              }
             />
             <span className="toggle-slider" />
           </label>

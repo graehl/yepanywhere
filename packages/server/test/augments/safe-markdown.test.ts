@@ -99,6 +99,9 @@ describe("renderSafeMarkdown — local file links", () => {
     expect(html).toContain(
       'href="/api/local-file?path=%2Ftmp%2Fsession-notes.md&amp;render=1"',
     );
+    expect(html).toContain('data-ya-resource="local-file"');
+    expect(html).toContain('data-ya-path="/tmp/session-notes.md"');
+    expect(html).toContain('data-ya-render-markdown="true"');
     expect(html).not.toContain("/api/local-image");
   });
 
@@ -109,7 +112,23 @@ describe("renderSafeMarkdown — local file links", () => {
       'href="/api/local-file?path=%2Ftmp%2Fsession-notes.md&amp;render=1&amp;line=8"',
     );
     expect(html).toContain('title="/tmp/session-notes.md:8"');
+    expect(html).toContain('data-ya-line="8"');
     expect(html).not.toContain("session-notes.md%3A8");
+  });
+
+  it("adds semantic metadata to local text file links", () => {
+    const html = renderSafeMarkdown(
+      "[probe json](C:/tmp/playbox-zero-g-compare.json:12:4)",
+    );
+
+    expect(html).toContain(
+      'href="/api/local-file?path=C%3A%2Ftmp%2Fplaybox-zero-g-compare.json&amp;line=12&amp;column=4"',
+    );
+    expect(html).toContain('data-ya-resource="local-file"');
+    expect(html).toContain('data-ya-path="C:/tmp/playbox-zero-g-compare.json"');
+    expect(html).toContain('data-ya-line="12"');
+    expect(html).toContain('data-ya-column="4"');
+    expect(html).toContain('data-ya-render-markdown="false"');
   });
 
   it("keeps local media links on the media endpoint", () => {
@@ -121,7 +140,22 @@ describe("renderSafeMarkdown — local file links", () => {
     expect(html).toContain('class="local-media-link"');
     expect(html).toContain('class="local-media-inline-toggle"');
     expect(html).toContain('class="local-media-inline-preview"');
-    expect(html).toContain('data-expanded="true"');
+    expect(html).toContain('data-expanded="false"');
+    expect(html).toContain('aria-label="Expand image"');
+    expect(html).toContain('data-ya-resource="local-media"');
+    expect(html).toContain('data-ya-path="/tmp/screenshot.png"');
+    expect(html).toContain('data-ya-media-type="image"');
+  });
+
+  it("starts local video media placeholders collapsed", () => {
+    const html = renderSafeMarkdown("[clip](/tmp/demo.mp4)");
+
+    expect(html).toContain('href="/api/local-image?path=%2Ftmp%2Fdemo.mp4"');
+    expect(html).toContain('class="local-media-link"');
+    expect(html).toContain('data-media-type="video"');
+    expect(html).toContain('data-expanded="false"');
+    expect(html).toContain('aria-label="Expand video"');
+    expect(html).toContain('data-ya-media-type="video"');
   });
 
   it("resolves relative local file links against a base directory", () => {
@@ -133,6 +167,7 @@ describe("renderSafeMarkdown — local file links", () => {
       'href="/api/local-file?path=%2Fworkspace%2Fproject%2Fdocs%2Fpeer.md&amp;render=1"',
     );
     expect(html).toContain('title="/workspace/project/docs/peer.md"');
+    expect(html).toContain('data-ya-path="/workspace/project/docs/peer.md"');
   });
 
   it("preserves line hints on relative local file links", () => {
@@ -169,6 +204,10 @@ describe("renderSafeMarkdown — local file links", () => {
     expect(html).toContain(
       '<img src="/api/local-image?path=%2Fworkspace%2Fproject%2Fdocs%2Fassets%2Fdiagram.svg" alt="diagram"',
     );
+    expect(html).toContain(
+      'data-ya-path="/workspace/project/docs/assets/diagram.svg"',
+    );
+    expect(html).toContain('data-ya-resource="local-media"');
     expect(html).not.toContain("local-media-inline-preview");
   });
 

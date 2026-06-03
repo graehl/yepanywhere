@@ -49,6 +49,8 @@
   --font-brand: "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
     Baskerville, Georgia, "Times New Roman", ui-serif, serif;
   --font-output-serif: "Source Serif 4", Georgia, ui-serif, serif;
+  --font-math: "KaTeX_Main", "STIX Two Math", "Cambria Math",
+    "Times New Roman", serif;
   --brand-wordmark-yep-full: color-mix(
     in srgb,
     var(--app-yep-green) 76%,
@@ -1243,7 +1245,7 @@ a.sidebar-nav-item {
 }
 
 .sidebar-nav-item:hover {
-  background: transparent;
+  background: var(--bg-hover);
 }
 
 .sidebar-nav-item.active {
@@ -1335,7 +1337,7 @@ a.sidebar-nav-item {
 }
 
 .sidebar-session-list li a:hover {
-  background: transparent;
+  background: var(--bg-hover);
 }
 
 .sidebar-session-list li {
@@ -3603,8 +3605,8 @@ a.sidebar-nav-item {
 
 .queue-button,
 .stop-button {
-  width: var(--composer-control-size);
-  height: var(--composer-control-size);
+  width: var(--composer-primary-control-size);
+  height: var(--composer-primary-control-size);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3617,8 +3619,8 @@ a.sidebar-nav-item {
 }
 
 .send-button {
-  width: var(--composer-control-size);
-  height: var(--composer-control-size);
+  width: var(--composer-primary-control-size);
+  height: var(--composer-primary-control-size);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6617,6 +6619,12 @@ a.sidebar-nav-item {
   font-size: 0.9em;
 }
 
+.output-preview-math {
+  font-family: var(--font-math);
+  font-optical-sizing: auto;
+  font-variation-settings: normal;
+}
+
 .output-preview-diff {
   display: grid;
   gap: var(--output-prose-list-gap);
@@ -8215,7 +8223,7 @@ a.sidebar-nav-item {
   .message-input-toolbar {
     gap: 0.3rem;
     --composer-control-size: 30px;
-    --composer-primary-control-size: 34px;
+    --composer-primary-control-size: 36px;
   }
 
   .message-input-wrapper .message-input-toolbar {
@@ -8318,7 +8326,7 @@ a.sidebar-nav-item {
 @media (max-width: 480px) {
   .message-input-toolbar {
     --composer-control-size: 28px;
-    --composer-primary-control-size: 32px;
+    --composer-primary-control-size: 36px;
   }
 
   .context-usage-pie {
@@ -11236,7 +11244,7 @@ a.sidebar-nav-item {
 }
 
 .session-list-item--compact .session-list-item__link:hover {
-  background: transparent;
+  background: var(--bg-hover);
 }
 
 .session-list-item--compact .session-list-item__title-row {

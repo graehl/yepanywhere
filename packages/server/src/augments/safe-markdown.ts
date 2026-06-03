@@ -1,3 +1,5 @@
+import { isAbsolute, normalize, resolve } from "node:path";
+import { parseLineColumn } from "@yep-anywhere/shared";
 import katex from "katex";
 import {
   Marked,
@@ -5,9 +7,7 @@ import {
   type RendererThis,
   type Tokens,
 } from "marked";
-import { isAbsolute, normalize, resolve } from "node:path";
 import sanitizeHtml from "sanitize-html";
-import { parseLineColumn } from "@yep-anywhere/shared";
 
 const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 const ALLOWED_IMAGE_PROTOCOLS = new Set(["http:", "https:"]);
@@ -54,6 +54,11 @@ interface LocalPathReference {
   columnNumber?: number;
 }
 
+interface LocalResourceAttributeOptions {
+  mediaType?: "image" | "video";
+  renderMarkdown?: boolean;
+}
+
 function stripHrefSuffix(href: string): string {
   return href.split(/[?#]/, 1)[0] ?? "";
 }
@@ -65,6 +70,14 @@ function parseLocalPathReference(path: string): LocalPathReference {
     lineNumber: parsed.line,
     columnNumber: parsed.column,
   };
+}
+
+function toLocalPathReference(
+  reference: LocalPathReference | string,
+): LocalPathReference {
+  return typeof reference === "string"
+    ? parseLocalPathReference(reference)
+    : reference;
 }
 
 function formatLocalPathReference(reference: LocalPathReference): string {
@@ -84,8 +97,7 @@ function formatLocalPathReference(reference: LocalPathReference): string {
  */
 function isLocalFilePath(href: string): boolean {
   const trimmed = parseLocalPathReference(href).filePath;
-  const isPosixAbsolute =
-    trimmed.startsWith("/") && !trimmed.startsWith("//");
+  const isPosixAbsolute = trimmed.startsWith("/") && !trimmed.startsWith("//");
   const isWindowsDriveAbsolute = /^[A-Za-z]:[\\/]/.test(trimmed);
   if (!isPosixAbsolute && !isWindowsDriveAbsolute) return false;
 
@@ -98,8 +110,9 @@ function isLocalFilePath(href: string): boolean {
  * Get the file extension from a path (lowercase, without the dot).
  */
 function getExtension(path: string): string {
-  return (parseLocalPathReference(path).filePath.split(".").pop() ?? "")
-    .toLowerCase();
+  return (
+    parseLocalPathReference(path).filePath.split(".").pop() ?? ""
+  ).toLowerCase();
 }
 
 /**
@@ -126,20 +139,70 @@ function localMediaApiUrl(path: string): string {
  * Rewrite a local text file path to the local-file API endpoint.
  */
 function localFileApiUrl(
-  reference: LocalPathReference,
+  reference: LocalPathReference | string,
   options: { renderMarkdown?: boolean } = {},
 ): string {
-  let url = `/api/local-file?path=${encodeURIComponent(reference.filePath)}`;
+  const parsed = toLocalPathReference(reference);
+  let url = `/api/local-file?path=${encodeURIComponent(parsed.filePath)}`;
   if (options.renderMarkdown) {
     url += "&render=1";
   }
-  if (reference.lineNumber !== undefined) {
-    url += `&line=${reference.lineNumber}`;
+  if (parsed.lineNumber !== undefined) {
+    url += `&line=${parsed.lineNumber}`;
   }
-  if (reference.columnNumber !== undefined) {
-    url += `&column=${reference.columnNumber}`;
+  if (parsed.columnNumber !== undefined) {
+    url += `&column=${parsed.columnNumber}`;
   }
   return url;
+}
+
+function localResourceDataAttributes(
+  kind: "local-file" | "local-media",
+  reference: LocalPathReference | string,
+  options: LocalResourceAttributeOptions = {},
+): string {
+  const parsed = toLocalPathReference(reference);
+  const attributes: Array<[string, string]> = [
+    ["data-ya-resource", kind],
+    ["data-ya-path", parsed.filePath],
+  ];
+
+  if (parsed.lineNumber !== undefined) {
+    attributes.push(["data-ya-line", String(parsed.lineNumber)]);
+  }
+  if (parsed.columnNumber !== undefined) {
+    attributes.push(["data-ya-column", String(parsed.columnNumber)]);
+  }
+  if (options.renderMarkdown !== undefined) {
+    attributes.push([
+      "data-ya-render-markdown",
+      options.renderMarkdown ? "true" : "false",
+    ]);
+  }
+  if (options.mediaType) {
+    attributes.push(["data-ya-media-type", options.mediaType]);
+  }
+
+  return attributes
+    .map(([name, value]) => `${name}="${escapeHtml(value)}"`)
+    .join(" ");
+}
+
+function renderLocalFileLink(
+  reference: LocalPathReference | string,
+  labelHtml: string,
+  options: { renderMarkdown?: boolean; title?: string } = {},
+): string {
+  const parsed = toLocalPathReference(reference);
+  const apiUrl = escapeHtml(
+    localFileApiUrl(parsed, { renderMarkdown: options.renderMarkdown }),
+  );
+  const title = options.title ?? formatLocalPathReference(parsed);
+  const titleAttr = ` title="${escapeHtml(title)}"`;
+  const resourceAttrs = localResourceDataAttributes("local-file", parsed, {
+    renderMarkdown: options.renderMarkdown,
+  });
+  return `<a href="${apiUrl}"${titleAttr} ${resourceAttrs}>${labelHtml}</a>`;
 }
 
 /**
@@ -147,23 +210,39 @@ function localFileApiUrl(
  * The client intercepts clicks on .local-media-link to open a modal.
  */
 function renderLocalMediaLink(
-  reference: LocalPathReference,
+  reference: LocalPathReference | string,
   label: string,
   ext: string,
 ): string {
-  const apiUrl = escapeHtml(localMediaApiUrl(reference.filePath));
-  const escapedPath = escapeHtml(reference.filePath);
-  const escapedLabel = escapeHtml(label || getFileName(reference.filePath));
+  const parsed = toLocalPathReference(reference);
+  const apiUrl = escapeHtml(localMediaApiUrl(parsed.filePath));
+  const escapedPath = escapeHtml(parsed.filePath);
+  const escapedLabel = escapeHtml(label || getFileName(parsed.filePath));
   const mediaType = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
   const typeLabel = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
-  return `<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="true" aria-label="Collapse ${mediaType}" aria-expanded="true" title="Collapse inline preview">-</button><a href="${apiUrl}" class="local-media-link" data-media-type="${mediaType}">${escapedLabel}<span class="local-media-type">(${typeLabel})</span></a></span><span class="local-media-inline-preview" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="true"></span>`;
+  const defaultExpanded = false;
+  const toggleVerb = defaultExpanded ? "Collapse" : "Expand";
+  const toggleTitle = defaultExpanded
+    ? "Collapse inline preview"
+    : "Expand inline preview";
+  const toggleText = defaultExpanded ? "-" : "+";
+  const resourceAttrs = localResourceDataAttributes("local-media", parsed, {
+    mediaType,
+  });
+  return `<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="${defaultExpanded}" aria-label="${toggleVerb} ${mediaType}" aria-expanded="${defaultExpanded}" title="${toggleTitle}">${toggleText}</button><a href="${apiUrl}" class="local-media-link" data-media-type="${mediaType}" ${resourceAttrs}>${escapedLabel}<span class="local-media-type">(${typeLabel})</span></a></span><span class="local-media-inline-preview" data-media-path="${escapedPath}" data-media-type="${mediaType}" data-expanded="${defaultExpanded}"></span>`;
 }
 
 function renderDirectLocalImage(path: string, altText: string, title?: string) {
   const src = escapeHtml(localMediaApiUrl(path));
+  const parsed = parseLocalPathReference(path);
+  const ext = getExtension(path);
+  const mediaType = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
   const altAttr = altText ? ` alt="${escapeHtml(altText)}"` : ' alt=""';
   const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-  return `<img src="${src}"${altAttr}${titleAttr}>`;
+  const resourceAttrs = localResourceDataAttributes("local-media", parsed, {
+    mediaType,
+  });
+  return `<img src="${src}"${altAttr}${titleAttr} ${resourceAttrs}>`;
 }
 
 function resolveLocalMarkdownHref(href: string): LocalPathReference | null {
@@ -240,7 +319,21 @@ const MARKDOWN_SANITIZE_OPTIONS = {
     "ul",
   ],
   allowedAttributes: {
-    a: ["href", "title", "class", "data-media-type"],
+    a: [
+      "href",
+      "title",
+      "class",
+      "data-media-type",
+      "data-ya-resource",
+      "data-ya-path",
+      "data-ya-project-id",
+      "data-ya-line",
+      "data-ya-line-end",
+      "data-ya-column",
+      "data-ya-render-markdown",
+      "data-ya-download",
+      "data-ya-media-type",
+    ],
     button: [
       "type",
       "class",
@@ -252,7 +345,14 @@ const MARKDOWN_SANITIZE_OPTIONS = {
       "title",
     ],
     code: ["class"],
-    img: ["src", "alt", "title"],
+    img: [
+      "src",
+      "alt",
+      "title",
+      "data-ya-resource",
+      "data-ya-path",
+      "data-ya-media-type",
+    ],
     input: ["type", "checked", "disabled"],
     ol: ["start"],
     span: ["class", "data-media-path", "data-media-type", "data-expanded"],
@@ -286,15 +386,10 @@ const renderer: RendererObject<string, string> = {
       if (MEDIA_EXTENSIONS.has(ext)) {
         return renderLocalMediaLink(localPath, renderedText, ext);
       }
-      const apiUrl = escapeHtml(
-        localFileApiUrl(localPath, {
-          renderMarkdown: isMarkdownExtension(ext),
-        }),
-      );
-      const titleAttr = ` title="${escapeHtml(
-        title ?? formatLocalPathReference(localPath),
-      )}"`;
-      return `<a href="${apiUrl}"${titleAttr}>${renderedText}</a>`;
+      return renderLocalFileLink(localPath, renderedText, {
+        renderMarkdown: isMarkdownExtension(ext),
+        title: title ?? formatLocalPathReference(localPath),
+      });
     }
 
     const safeHref = sanitizeUrl(href);
@@ -493,10 +588,14 @@ function escapeHtml(text: string): string {
 }
 
 export {
+  getExtension as getLocalPathExtension,
   IMAGE_EXTENSIONS,
-  MEDIA_EXTENSIONS,
-  VIDEO_EXTENSIONS,
   isLocalFilePath,
   localFileApiUrl,
   localMediaApiUrl,
+  localResourceDataAttributes,
+  MEDIA_EXTENSIONS,
+  renderLocalFileLink,
+  renderLocalMediaLink,
+  VIDEO_EXTENSIONS,
 };

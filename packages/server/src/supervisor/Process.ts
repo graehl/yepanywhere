@@ -163,6 +163,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   abortFn?: () => void;
   /** Check if underlying CLI process is still alive (for stale detection) */
   isProcessAlive?: () => boolean;
+  /** Return true when an idle process should stay owned for an explicit feature. */
+  shouldRetainIdleProcess?: (sessionId: string) => boolean;
   /** Actively query provider/session status when passive evidence is stale. */
   probeLivenessFn?: () => Promise<ProviderLivenessProbeResult>;
   /** Passive raw provider/app-server event cadence, when available. */
@@ -213,6 +215,7 @@ export class Process {
   private abortFn: (() => void) | null;
   private _state: ProcessState = { type: "in-turn" };
   private listeners: Set<Listener> = new Set();
+  private liveDeltaSubscriberCount = 0;
   private idleTimer: NodeJS.Timeout | null = null;
   private idleTimeoutMs: number;
   private iteratorDone = false;
@@ -307,8 +310,9 @@ export class Process {
   /** Timestamp of last Process state transition. */
   private _lastStateChangeTime: Date;
 
-  /** Check if underlying CLI process is still alive (undefined = not available, fall back to time heuristic) */
+  /** Check if underlying CLI process is still alive (undefined = not available). */
   private _isProcessAlive: (() => boolean) | null;
+  private shouldRetainIdleProcess: ((sessionId: string) => boolean) | null;
   /** Provider-specific active liveness probe, when available. */
   private probeLivenessFn: (() => Promise<ProviderLivenessProbeResult>) | null;
   private getProviderActivityFn: (() => ProviderActivitySnapshot) | null;
@@ -330,6 +334,8 @@ export class Process {
   /** Promise that resolves when the process fully terminates (CLI exits) */
   private _exitPromise: Promise<void>;
   private _exitResolve: (() => void) | null = null;
+  /** True while idle timeout intentionally tears down the provider process. */
+  private idleReapInProgress = false;
 
   constructor(
     private sdkIterator: AsyncIterator<SDKMessage>,
@@ -361,6 +367,7 @@ export class Process {
     this._pidResolver = options.pid;
     this.setModelFn = options.setModelFn ?? null;
     this._isProcessAlive = options.isProcessAlive ?? null;
+    this.shouldRetainIdleProcess = options.shouldRetainIdleProcess ?? null;
     this.probeLivenessFn = options.probeLivenessFn ?? null;
     this.getProviderActivityFn = options.getProviderActivityFn ?? null;
     this._recapMode =
@@ -2087,6 +2094,23 @@ export class Process {
     };
   }
 
+  hasLiveDeltaSubscribers(): boolean {
+    return this.liveDeltaSubscriberCount > 0;
+  }
+
+  registerLiveDeltaSubscriber(): () => void {
+    this.liveDeltaSubscriberCount += 1;
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      this.liveDeltaSubscriberCount = Math.max(
+        0,
+        this.liveDeltaSubscriberCount - 1,
+      );
+    };
+  }
+
   /**
    * Terminate the process with a reason (e.g., staleness detection).
    * Unlike abort(), this records the reason for logging/debugging.
@@ -2264,6 +2288,11 @@ export class Process {
       }
     } catch (error) {
       const err = error as Error;
+
+      if (this.idleReapInProgress && this.isProcessTerminationError(err)) {
+        return;
+      }
+
       const log = getLogger();
 
       log.error(
@@ -2479,10 +2508,9 @@ export class Process {
         return;
       }
 
-      // Keep ownership while the underlying process is still alive. This lets
-      // long-lived Claude sessions remain reusable instead of decaying into
-      // "external" after the idle timeout.
-      if (this.isProcessAlive === true) {
+      const retainedByFeature =
+        this.shouldRetainIdleProcess?.(this._sessionId) ?? false;
+      if (this.hasLiveDeltaSubscribers() || retainedByFeature) {
         getLogger().debug(
           {
             event: "idle_cleanup_deferred",
@@ -2490,17 +2518,38 @@ export class Process {
             processId: this.id,
             projectId: this.projectId,
             idleTimeoutMs: this.idleTimeoutMs,
+            liveDeltaSubscriberCount: this.liveDeltaSubscriberCount,
+            retainedByFeature,
           },
-          `Idle cleanup deferred: ${this._sessionId} is still alive`,
+          `Idle cleanup deferred: ${this._sessionId} is explicitly retained`,
         );
         this.startIdleTimer();
         return;
       }
 
-      // Emit completion - Supervisor will clean up
-      this.emit({ type: "complete" });
+      this.reapIdleProcess();
     }, this.idleTimeoutMs);
     this.idleTimer.unref?.();
+  }
+
+  private reapIdleProcess(): void {
+    this.idleReapInProgress = true;
+    this.stopBucketSwapTimer();
+    this.iteratorDone = true;
+
+    this.emit({ type: "idle-reap" });
+
+    if (this.abortFn) {
+      this.abortFn();
+    }
+
+    this.emit({ type: "complete" });
+    this.listeners.clear();
+
+    if (this._exitResolve) {
+      this._exitResolve();
+      this._exitResolve = null;
+    }
   }
 
   private clearIdleTimer(): void {

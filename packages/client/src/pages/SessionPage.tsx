@@ -75,6 +75,7 @@ import {
 } from "../hooks/useSession";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
+import { toBrowserAppHref } from "../lib/appHref";
 import { storeUploadedAttachmentPreview } from "../lib/attachmentPreviewCache";
 import { getBtwSplitRouting, getBtwToolbarMode } from "../lib/btwAsideRouting";
 import {
@@ -1391,7 +1392,12 @@ function SessionPageContent({
             result.serverTimestamp,
           ),
         });
-        setStatus({ owner: "self", processId: result.processId });
+        setStatus({
+          owner: "self",
+          processId: result.processId,
+          permissionMode: result.permissionMode,
+          modeVersion: result.modeVersion,
+        });
       } else {
         // Queue to existing process with current permission mode and thinking setting
         const result = await api.queueMessage(
@@ -1496,7 +1502,12 @@ function SessionPageContent({
               result.serverTimestamp,
             ),
           });
-          setStatus({ owner: "self", processId: result.processId });
+          setStatus({
+            owner: "self",
+            processId: result.processId,
+            permissionMode: result.permissionMode,
+            modeVersion: result.modeVersion,
+          });
           rememberSentSubmission(text, tempId);
           draftControlsRef.current?.clearDraft();
           setCorrectionDraft(null);
@@ -1753,7 +1764,12 @@ function SessionPageContent({
             tempId,
             processId: result.processId,
           });
-          setStatus({ owner: "self", processId: result.processId });
+          setStatus({
+            owner: "self",
+            processId: result.processId,
+            permissionMode: result.permissionMode,
+            modeVersion: result.modeVersion,
+          });
           removePendingMessage(tempId);
           rememberSentSubmission(text, tempId);
           draftControlsRef.current?.clearDraft();
@@ -3662,12 +3678,13 @@ function SessionPageContent({
             setShowHandoffModal(false);
             showToast(t("sessionHandoffStarted"), "success");
             const handoffUrl = `${basePath}/projects/${projectId}/sessions/${result.sessionId}`;
+            const handoffHref = toBrowserAppHref(handoffUrl);
             if (options?.targetWindow && !options.targetWindow.closed) {
-              options.targetWindow.location.href = handoffUrl;
+              options.targetWindow.location.href = handoffHref;
               return;
             }
             if (options?.openInNewWindow) {
-              window.open(handoffUrl, "_blank", "noopener");
+              window.open(handoffHref, "_blank", "noopener");
               return;
             }
             navigate(handoffUrl, {
@@ -3675,6 +3692,8 @@ function SessionPageContent({
                 initialStatus: {
                   owner: "self",
                   processId: result.processId,
+                  permissionMode: result.permissionMode,
+                  modeVersion: result.modeVersion,
                 },
                 initialTitle: result.title,
                 initialModel: result.model ?? liveBadgeModel,

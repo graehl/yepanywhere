@@ -65,6 +65,10 @@ export const UI_KEYS = {
   developerMode: "yep-anywhere-developer-mode",
   sessionToolbarVisibility: "yep-anywhere-session-toolbar-visibility",
   sessionThinkingVisible: "yep-anywhere-session-thinking-visible",
+  stableToolPreviewRendering:
+    "yep-anywhere-stable-tool-preview-rendering-enabled",
+  // Preserve the first-shipped key; true now means previews start expanded.
+  inlineMediaExpandedByDefault: "yep-anywhere-inline-images-enabled",
   schemaValidation: "yep-anywhere-schema-validation",
   emulatorMaxFps: "yep-anywhere-emulator-max-fps",
   emulatorMaxWidth: "yep-anywhere-emulator-max-width",
@@ -84,7 +88,6 @@ export const SERVER_SCOPED_KEYS = {
   thinkingLevel: "thinking-level",
   thinkingEnabled: "thinking-enabled",
   thinkingMode: "thinking-mode",
-  permissionMode: "permission-mode",
   voiceInputEnabled: "voice-input-enabled",
   speechMethod: "speech-method",
   speechSmartTurn: "speech-smart-turn",
@@ -220,7 +223,6 @@ export const LEGACY_KEYS = {
   thinkingLevel: "yep-anywhere-thinking-level",
   thinkingEnabled: "yep-anywhere-thinking-enabled",
   thinkingMode: "yep-anywhere-thinking-mode",
-  permissionMode: "yep-anywhere-permission-mode",
   voiceInputEnabled: "yep-anywhere-voice-input-enabled",
   speechMethod: "yep-anywhere-speech-method",
   speechSmartTurn: "yep-anywhere-speech-smart-turn",

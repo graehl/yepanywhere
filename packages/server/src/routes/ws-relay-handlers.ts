@@ -385,6 +385,7 @@ export function handleSessionSubscribe(
   supervisor: Supervisor,
 ): void {
   const { subscriptionId, sessionId } = msg;
+  const wantsLiveDeltas = msg.wantsLiveDeltas !== false;
 
   if (!sessionId) {
     send({
@@ -419,6 +420,7 @@ export function handleSessionSubscribe(
   };
 
   const { cleanup } = createSessionSubscription(process, sendEvent, {
+    wantsLiveDeltas,
     onError: (err) => {
       console.error("[WS Relay] Error in session subscription:", err);
     },

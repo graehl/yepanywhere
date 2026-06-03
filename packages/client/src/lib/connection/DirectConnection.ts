@@ -3,12 +3,33 @@ import { uploadFile } from "../../api/upload";
 import { authEvents } from "../authEvents";
 import type {
   Connection,
+  SessionSubscriptionOptions,
   StreamHandlers,
   Subscription,
   UploadOptions,
 } from "./types";
 
 const API_BASE = "/api";
+
+async function formatBlobFetchError(response: Response): Promise<string> {
+  let detail = "";
+  try {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.toLowerCase().includes("application/json")) {
+      const body = (await response.json()) as { error?: unknown };
+      if (typeof body.error === "string" && body.error.trim()) {
+        detail = body.error.trim();
+      }
+    } else {
+      detail = (await response.text()).trim();
+    }
+  } catch {
+    detail = "";
+  }
+
+  const status = `${response.status} ${response.statusText}`.trim();
+  return detail ? `API error: ${status}: ${detail}` : `API error: ${status}`;
+}
 
 /**
  * Direct connection to yepanywhere server using native browser APIs.
@@ -70,7 +91,7 @@ export class DirectConnection implements Connection {
     });
 
     if (!res.ok) {
-      throw new Error(`API error: ${res.status} ${res.statusText}`);
+      throw new Error(await formatBlobFetchError(res));
     }
 
     return res.blob();
@@ -80,6 +101,7 @@ export class DirectConnection implements Connection {
     _sessionId: string,
     _handlers: StreamHandlers,
     _lastEventId?: string,
+    _options?: SessionSubscriptionOptions,
   ): Subscription {
     throw new Error("Use WebSocket subscriptions");
   }

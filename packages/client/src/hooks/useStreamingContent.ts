@@ -203,14 +203,33 @@ export function useStreamingContent(
     [flushStreamingUpdates],
   );
 
+  // Clear all accumulated streaming state and pending UI flushes.
+  const clearStreaming = useCallback(() => {
+    const throttle = streamingThrottleRef.current;
+    if (throttle.timer) {
+      clearTimeout(throttle.timer);
+      throttle.timer = null;
+    }
+    throttle.pendingIds.clear();
+    throttle.pendingEventCount = 0;
+    throttle.intervalMs = STREAMING_UPDATE_BASE_MS;
+    streamingContentRef.current.clear();
+    currentStreamingIdRef.current = null;
+    currentStreamingAgentIdRef.current = null;
+  }, []);
+
   // Process a stream_event SSE message
   // Returns true if the event was handled, false if it should be processed elsewhere
   const handleStreamEvent = useCallback(
     (data: Record<string, unknown>): boolean => {
-      // Only handle stream_event messages when streaming is enabled
       const msgType = data.type as string | undefined;
-      if (msgType !== "stream_event" || !getStreamingEnabled()) {
+      if (msgType !== "stream_event") {
         return false;
+      }
+
+      if (!getStreamingEnabled()) {
+        clearStreaming();
+        return true;
       }
 
       const event = data.event as Record<string, unknown> | undefined;
@@ -348,27 +367,13 @@ export function useStreamingContent(
       updateStreamingMessage,
       throttledUpdateStreamingMessage,
       flushStreamingUpdates,
+      clearStreaming,
       streamingMarkdownCallbacks,
       onToolUseMapping,
       onAgentContextUsage,
       defaultContextWindowSize,
     ],
   );
-
-  // Clear all streaming state (called when assistant message arrives)
-  const clearStreaming = useCallback(() => {
-    const throttle = streamingThrottleRef.current;
-    if (throttle.timer) {
-      clearTimeout(throttle.timer);
-      throttle.timer = null;
-    }
-    throttle.pendingIds.clear();
-    throttle.pendingEventCount = 0;
-    throttle.intervalMs = STREAMING_UPDATE_BASE_MS;
-    streamingContentRef.current.clear();
-    currentStreamingIdRef.current = null;
-    currentStreamingAgentIdRef.current = null;
-  }, []);
 
   // Get the current streaming agent ID (for routing assistant messages)
   const getCurrentAgentId = useCallback(() => {

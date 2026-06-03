@@ -3,6 +3,7 @@ import { ContextUsageIndicator } from "../components/ContextUsageIndicator";
 import { PageHeader } from "../components/PageHeader";
 import { ThinkingIndicator } from "../components/ThinkingIndicator";
 import { type ProcessInfo, useProcesses } from "../hooks/useProcesses";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 
@@ -116,14 +117,19 @@ function getProviderBadgeClass(provider: string | undefined): string {
 
 interface ProcessCardProps {
   process: ProcessInfo;
+  basePath?: string;
   isTerminated?: boolean;
 }
 
-function ProcessCard({ process, isTerminated = false }: ProcessCardProps) {
+function ProcessCard({
+  process,
+  basePath = "",
+  isTerminated = false,
+}: ProcessCardProps) {
   const { t } = useI18n();
   return (
     <Link
-      to={`/projects/${process.projectId}/sessions/${process.sessionId}`}
+      to={`${basePath}/projects/${process.projectId}/sessions/${process.sessionId}`}
       className={`agent-card ${isTerminated ? "agent-card-terminated" : ""}`}
     >
       <div className="agent-card-header">
@@ -203,6 +209,7 @@ function ProcessCard({ process, isTerminated = false }: ProcessCardProps) {
 export function AgentsPage() {
   const { t } = useI18n();
   const { processes, terminatedProcesses, loading, error } = useProcesses();
+  const basePath = useRemoteBasePath();
 
   const { openSidebar, isWideScreen } = useNavigationLayout();
 
@@ -240,7 +247,11 @@ export function AgentsPage() {
                 ) : (
                   <div className="agents-list">
                     {activeProcesses.map((process) => (
-                      <ProcessCard key={process.id} process={process} />
+                      <ProcessCard
+                        key={process.id}
+                        process={process}
+                        basePath={basePath}
+                      />
                     ))}
                   </div>
                 )}
@@ -255,7 +266,11 @@ export function AgentsPage() {
                 ) : (
                   <div className="agents-list">
                     {idleProcesses.map((process) => (
-                      <ProcessCard key={process.id} process={process} />
+                      <ProcessCard
+                        key={process.id}
+                        process={process}
+                        basePath={basePath}
+                      />
                     ))}
                   </div>
                 )}
@@ -273,6 +288,7 @@ export function AgentsPage() {
                       <ProcessCard
                         key={process.id}
                         process={process}
+                        basePath={basePath}
                         isTerminated
                       />
                     ))}

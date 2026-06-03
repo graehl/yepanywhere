@@ -112,6 +112,8 @@ ENVIRONMENT VARIABLES:
   LOG_LEVEL                     Log level: fatal, error, warn, info, debug, trace
   LOG_PRETTY                    Pretty-print console logs (default: true)
   MAINTENANCE_PORT              Maintenance server port (default: disabled)
+  YA_CODEX_DISABLE_LIVE_DELTAS
+                                Drop Codex live delta notifications before raw logging and client emit
   CODEX_WATCH_PERIODIC_RESCAN_MS
                                 Codex watcher fallback rescan interval in ms (default: 5000 on macOS, 0 elsewhere)
   SESSION_INDEX_FULL_VALIDATION_MS

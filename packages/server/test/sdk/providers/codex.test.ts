@@ -18,12 +18,21 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { preprocessMessages } from "../../../../client/src/lib/preprocessMessages.ts";
+import { logSDKMessage } from "../../../src/sdk/messageLogger.js";
 import {
   CodexProvider,
   type CodexProviderConfig,
 } from "../../../src/sdk/providers/codex.js";
+
+vi.mock("../../../src/sdk/messageLogger.js", () => ({
+  logSDKMessage: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.mocked(logSDKMessage).mockClear();
+});
 
 describe("CodexProvider", () => {
   let provider: CodexProvider;
@@ -39,14 +48,24 @@ describe("CodexProvider", () => {
     });
 
     it("should use custom codexPath if provided and exists", async () => {
-      // Custom path is used IF it exists, otherwise falls back to PATH detection
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-path-"));
+      const codexPath = join(tempDir, "codex");
+      writeFileSync(codexPath, "#!/bin/sh\necho codex-cli 0.0.0\n", "utf-8");
+      const customProvider = new CodexProvider({
+        codexPath,
+      });
+      try {
+        expect(await customProvider.isInstalled()).toBe(true);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("should treat missing custom codexPath as not installed", async () => {
       const customProvider = new CodexProvider({
         codexPath: "/nonexistent/path/to/codex",
       });
-      // isInstalled will still check PATH if custom path doesn't exist
-      const isInstalled = await customProvider.isInstalled();
-      // We just verify it returns a boolean - actual value depends on system
-      expect(typeof isInstalled).toBe("boolean");
+      expect(await customProvider.isInstalled()).toBe(false);
     });
   });
 
@@ -138,9 +157,7 @@ describe("CodexProvider app-server lifecycle", () => {
     writeFileSync(codexPath, buildFakeCodexAppServer(logPath), "utf-8");
     chmodSync(codexPath, 0o755);
 
-    let session:
-      | Awaited<ReturnType<CodexProvider["startSession"]>>
-      | undefined;
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
     let consume: Promise<void> | undefined;
 
     try {
@@ -214,9 +231,7 @@ describe("CodexProvider app-server lifecycle", () => {
     );
     chmodSync(codexPath, 0o755);
 
-    let session:
-      | Awaited<ReturnType<CodexProvider["startSession"]>>
-      | undefined;
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
     let consume: Promise<void> | undefined;
 
     try {
@@ -256,9 +271,141 @@ describe("CodexProvider app-server lifecycle", () => {
         turnId: "turn-active",
       });
       expect(
+        messages.some((message) =>
+          JSON.stringify(message).includes("aborted by user after 1.0s"),
+        ),
+      ).toBe(true);
+    } finally {
+      session?.abort();
+      await consume?.catch(() => undefined);
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("drops Codex live deltas before raw logging when disabled by env", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-deltas-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = join(tempDir, "fake-codex-live-deltas.mjs");
+    writeFileSync(
+      codexPath,
+      buildFakeCodexAppServerWithLiveDelta(logPath),
+      "utf-8",
+    );
+    chmodSync(codexPath, 0o755);
+    vi.stubEnv("YA_CODEX_DISABLE_LIVE_DELTAS", "true");
+
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
+    let consume: Promise<void> | undefined;
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+      session = await testProvider.startSession({
+        cwd: tempDir,
+        initialMessage: { text: "start a fake streamed turn" },
+        effort: "low",
+      });
+
+      const messages: Array<Record<string, unknown>> = [];
+      consume = (async () => {
+        for await (const message of session?.iterator ?? []) {
+          messages.push(message);
+          if (message.type === "result") {
+            break;
+          }
+        }
+      })();
+
+      await consume;
+
+      expect(messages.some((message) => message._isStreaming)).toBe(false);
+      expect(
         messages.some(
           (message) =>
-            JSON.stringify(message).includes("aborted by user after 1.0s"),
+            message.type === "assistant" &&
+            (message.message as { content?: unknown } | undefined)?.content ===
+              "Final streamed answer",
+        ),
+      ).toBe(true);
+
+      const rawNotifications = vi
+        .mocked(logSDKMessage)
+        .mock.calls.map((call) => call[1] as { method?: string });
+      expect(
+        rawNotifications.some(
+          (notification) =>
+            notification.method === "item/agentMessage/delta",
+        ),
+      ).toBe(false);
+      expect(
+        rawNotifications.some(
+          (notification) => notification.method === "item/completed",
+        ),
+      ).toBe(true);
+    } finally {
+      session?.abort();
+      await consume?.catch(() => undefined);
+      vi.unstubAllEnvs();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("drops Codex live deltas before raw logging when no subscriber wants them", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-no-demand-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = join(tempDir, "fake-codex-live-deltas.mjs");
+    writeFileSync(
+      codexPath,
+      buildFakeCodexAppServerWithLiveDelta(logPath),
+      "utf-8",
+    );
+    chmodSync(codexPath, 0o755);
+
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
+    let consume: Promise<void> | undefined;
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+      session = await testProvider.startSession({
+        cwd: tempDir,
+        initialMessage: { text: "start a fake streamed turn" },
+        effort: "low",
+        shouldEmitLiveDeltas: () => false,
+      });
+
+      const messages: Array<Record<string, unknown>> = [];
+      consume = (async () => {
+        for await (const message of session?.iterator ?? []) {
+          messages.push(message);
+          if (message.type === "result") {
+            break;
+          }
+        }
+      })();
+
+      await consume;
+
+      expect(messages.some((message) => message._isStreaming)).toBe(false);
+      expect(
+        messages.some(
+          (message) =>
+            message.type === "assistant" &&
+            (message.message as { content?: unknown } | undefined)?.content ===
+              "Final streamed answer",
+        ),
+      ).toBe(true);
+
+      const rawNotifications = vi
+        .mocked(logSDKMessage)
+        .mock.calls.map((call) => call[1] as { method?: string });
+      expect(
+        rawNotifications.some(
+          (notification) =>
+            notification.method === "item/agentMessage/delta",
+        ),
+      ).toBe(false);
+      expect(
+        rawNotifications.some(
+          (notification) => notification.method === "item/completed",
         ),
       ).toBe(true);
     } finally {
@@ -279,9 +426,7 @@ describe("CodexProvider app-server lifecycle", () => {
     );
     chmodSync(codexPath, 0o755);
 
-    let session:
-      | Awaited<ReturnType<CodexProvider["startSession"]>>
-      | undefined;
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
     let consume: Promise<void> | undefined;
 
     try {
@@ -333,9 +478,7 @@ describe("CodexProvider app-server lifecycle", () => {
     );
     chmodSync(codexPath, 0o755);
 
-    let session:
-      | Awaited<ReturnType<CodexProvider["startSession"]>>
-      | undefined;
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
     let consume: Promise<void> | undefined;
 
     try {
@@ -367,9 +510,9 @@ describe("CodexProvider app-server lifecycle", () => {
       await consume;
 
       const requests = readFakeCodexRequests(logPath);
-      expect(
-        requests.some((request) => request.method === "thread/read"),
-      ).toBe(true);
+      expect(requests.some((request) => request.method === "thread/read")).toBe(
+        true,
+      );
       expect(
         messages.some(
           (message) =>
@@ -392,9 +535,7 @@ describe("CodexProvider app-server lifecycle", () => {
     writeFileSync(codexPath, buildFakeCodexAppServer(logPath), "utf-8");
     chmodSync(codexPath, 0o755);
 
-    let session:
-      | Awaited<ReturnType<CodexProvider["startSession"]>>
-      | undefined;
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
 
     try {
       const testProvider = new CodexProvider({ codexPath });
@@ -450,9 +591,9 @@ describe("CodexProvider app-server lifecycle", () => {
         (request) => request.method === "turn/start",
       );
 
-      expect(
-        requests.some((request) => request.method === "model/list"),
-      ).toBe(true);
+      expect(requests.some((request) => request.method === "model/list")).toBe(
+        true,
+      );
       expect(threadStart?.params).toMatchObject({
         ephemeral: true,
         approvalPolicy: "untrusted",
@@ -476,41 +617,37 @@ const describeRealCodexContract =
   process.env.YA_CODEX_REAL_CONTRACT_TEST === "true" ? describe : describe.skip;
 
 describeRealCodexContract("Codex app-server real contract", () => {
-  it(
-    "verifies steer and interrupt against the installed Codex app-server",
-    async () => {
-      const repoRoot = join(
-        dirname(fileURLToPath(import.meta.url)),
-        "..",
-        "..",
-        "..",
-        "..",
-        "..",
-      );
-      const probePath = join(
-        repoRoot,
-        "scripts",
-        "probe-codex-app-server-turns.mjs",
-      );
-      const result = await runNodeProbe(probePath, repoRoot);
+  it("verifies steer and interrupt against the installed Codex app-server", async () => {
+    const repoRoot = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "..",
+      "..",
+      "..",
+      "..",
+    );
+    const probePath = join(
+      repoRoot,
+      "scripts",
+      "probe-codex-app-server-turns.mjs",
+    );
+    const result = await runNodeProbe(probePath, repoRoot);
 
-      if (result.code !== 0) {
-        throw new Error(
-          [
-            `Codex app-server probe exited with code ${result.code}`,
-            "stdout:",
-            result.stdout.trim() || "(empty)",
-            "stderr:",
-            result.stderr.trim() || "(empty)",
-          ].join("\n"),
-        );
-      }
-      expect(result.stdout).toContain("turn/steer");
-      expect(result.stdout).toContain("turn/interrupt");
-      expect(result.stdout).toContain('"status": "interrupted"');
-    },
-    70_000,
-  );
+    if (result.code !== 0) {
+      throw new Error(
+        [
+          `Codex app-server probe exited with code ${result.code}`,
+          "stdout:",
+          result.stdout.trim() || "(empty)",
+          "stderr:",
+          result.stderr.trim() || "(empty)",
+        ].join("\n"),
+      );
+    }
+    expect(result.stdout).toContain("turn/steer");
+    expect(result.stdout).toContain("turn/interrupt");
+    expect(result.stdout).toContain('"status": "interrupted"');
+  }, 70_000);
 });
 
 function runNodeProbe(
@@ -621,6 +758,104 @@ function handleMessage(message) {
           durationMs: null,
         },
       });
+      break;
+    default:
+      respond(message.id, {});
+      break;
+  }
+}
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString("utf-8");
+  const lines = buffer.split("\\n");
+  buffer = lines.pop() || "";
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    handleMessage(JSON.parse(line));
+  }
+});
+`;
+}
+
+function buildFakeCodexAppServerWithLiveDelta(logPath: string): string {
+  return `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+const logPath = ${JSON.stringify(logPath)};
+let buffer = "";
+
+function write(payload) {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...payload }) + "\\n");
+}
+
+function logRequest(message) {
+  appendFileSync(
+    logPath,
+    JSON.stringify({
+      id: message.id,
+      method: message.method,
+      params: message.params,
+    }) + "\\n",
+  );
+}
+
+function respond(id, result) {
+  write({ id, result });
+}
+
+function notify(method, params) {
+  write({ method, params });
+}
+
+function handleMessage(message) {
+  if (!message || typeof message !== "object") return;
+  logRequest(message);
+  if (message.id === undefined) return;
+
+  switch (message.method) {
+    case "initialize":
+      respond(message.id, { userAgent: "fake-codex" });
+      break;
+    case "thread/start":
+      respond(message.id, {
+        thread: { id: "thread-1" },
+        model: "gpt-5.4-mini",
+        reasoningEffort: "low",
+      });
+      break;
+    case "turn/start":
+      respond(message.id, {
+        turn: { id: "turn-live", status: "inProgress", error: null },
+      });
+      setTimeout(() => {
+        notify("item/agentMessage/delta", {
+          threadId: "thread-1",
+          turnId: "turn-live",
+          itemId: "message-live",
+          delta: "Live partial",
+        });
+        notify("item/completed", {
+          threadId: "thread-1",
+          turnId: "turn-live",
+          item: {
+            id: "message-live",
+            type: "agentMessage",
+            text: "Final streamed answer",
+          },
+        });
+        notify("turn/completed", {
+          threadId: "thread-1",
+          turn: {
+            id: "turn-live",
+            items: [],
+            status: "completed",
+            error: null,
+            startedAt: null,
+            completedAt: null,
+            durationMs: null,
+          },
+        });
+      }, 0);
       break;
     default:
       respond(message.id, {});
@@ -1050,7 +1285,9 @@ async function waitForFakeCodexRequest(
 ): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 2000) {
-    if (readFakeCodexRequests(logPath).some((entry) => entry.method === method)) {
+    if (
+      readFakeCodexRequests(logPath).some((entry) => entry.method === method)
+    ) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -1180,6 +1417,99 @@ describe("CodexProvider Event Normalization", () => {
     expect(typeof provider.isAuthenticated).toBe("function");
     expect(typeof provider.getAuthStatus).toBe("function");
     expect(typeof provider.startSession).toBe("function");
+  });
+
+  it("logs raw Codex app-server notifications for sdk raw logging", () => {
+    const provider = createTestProvider() as unknown as {
+      logRawCodexNotification: (
+        sessionId: string,
+        notification: { method: string; params?: unknown },
+      ) => void;
+    };
+    const notification = {
+      method: "item/commandExecution/outputDelta",
+      params: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        delta: "chunk",
+      },
+    };
+
+    provider.logRawCodexNotification("session-1", notification);
+
+    expect(logSDKMessage).toHaveBeenCalledOnce();
+    expect(logSDKMessage).toHaveBeenCalledWith(
+      "session-1",
+      {
+        _rawSource: "codex_app_server_notification",
+        ...notification,
+      },
+      { provider: "codex" },
+    );
+  });
+
+  it("identifies live delta notifications for the backend suppression toggle", () => {
+    const provider = createTestProvider() as unknown as {
+      shouldSuppressLiveDeltaNotification: (
+        notification: {
+          method: string;
+          params?: unknown;
+        },
+        options: {
+          cwd: string;
+          shouldEmitLiveDeltas?: () => boolean;
+        },
+      ) => boolean;
+    };
+    const liveDeltaMethods = [
+      "item/agentMessage/delta",
+      "item/plan/delta",
+      "item/reasoning/summaryTextDelta",
+      "item/commandExecution/outputDelta",
+      "item/fileChange/outputDelta",
+    ];
+
+    try {
+      vi.stubEnv("YA_CODEX_DISABLE_LIVE_DELTAS", "false");
+
+      for (const method of liveDeltaMethods) {
+        expect(
+          provider.shouldSuppressLiveDeltaNotification({ method }, {
+            cwd: "/tmp",
+          }),
+        ).toBe(false);
+      }
+
+      for (const method of liveDeltaMethods) {
+        expect(
+          provider.shouldSuppressLiveDeltaNotification(
+            { method },
+            { cwd: "/tmp", shouldEmitLiveDeltas: () => false },
+          ),
+        ).toBe(true);
+      }
+
+      vi.stubEnv("YA_CODEX_DISABLE_LIVE_DELTAS", "true");
+
+      for (const method of liveDeltaMethods) {
+        expect(
+          provider.shouldSuppressLiveDeltaNotification({ method }, {
+            cwd: "/tmp",
+          }),
+        ).toBe(true);
+      }
+      expect(
+        provider.shouldSuppressLiveDeltaNotification(
+          {
+            method: "item/completed",
+          },
+          { cwd: "/tmp", shouldEmitLiveDeltas: () => false },
+        ),
+      ).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("normalizes command execution tool_use and tool_result to Read shape", () => {
@@ -1440,7 +1770,11 @@ describe("CodexProvider Event Normalization", () => {
       ) => Record<string, unknown>;
     };
 
-    const params = provider.createTurnStartParams("thread-1", "test prompt", {});
+    const params = provider.createTurnStartParams(
+      "thread-1",
+      "test prompt",
+      {},
+    );
 
     expect(params).toMatchObject({
       threadId: "thread-1",

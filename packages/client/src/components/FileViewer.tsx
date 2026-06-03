@@ -9,16 +9,20 @@ import {
   useState,
 } from "react";
 import { api } from "../api/client";
+import { useConnection } from "../hooks/useConnection";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
+import { toBrowserAppHref } from "../lib/appHref";
 import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
 import { compactShikiLineBreaks } from "../lib/shikiHtml";
 import {
   fetchMediaBlob,
+  LocalFileModal,
   LocalMediaModal,
   type LocalMediaSource,
-  useLocalMediaClick,
   useLocalMediaInlinePreviews,
+  useLocalResourceClick,
 } from "./LocalMediaModal";
 import {
   combineDensityOffsets,
@@ -30,6 +34,7 @@ import {
   MarkdownViewToggle,
   useFileViewerDensity,
 } from "./MarkdownPreview";
+import { Modal } from "./ui/Modal";
 
 export interface FileViewerSource {
   loadFile: (
@@ -283,6 +288,8 @@ export const FileViewer = memo(function FileViewer({
   viewMode = "full",
 }: FileViewerProps) {
   const { t } = useI18n();
+  const connection = useConnection();
+  const basePath = useRemoteBasePath();
   const [fileData, setFileData] = useState<FileContentResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -306,14 +313,18 @@ export const FileViewer = memo(function FileViewer({
   const markdownPreviewRef = useRef<HTMLDivElement>(null);
   const {
     modal: localMediaModal,
-    handleClick: handleLocalMediaClick,
+    localFileModal,
+    projectFileModal,
+    handleClick: handleLocalResourceClick,
     closeModal: closeLocalMediaModal,
-  } = useLocalMediaClick();
-  const handleLocalMediaKeyDown = useCallback(
+    closeLocalFileModal,
+    closeProjectFileModal,
+  } = useLocalResourceClick();
+  const handleLocalResourceKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (event.key !== " ") return;
       const target = (event.target as HTMLElement).closest?.(
-        "a.local-media-link",
+        "a[href]",
       ) as HTMLAnchorElement | null;
       if (!target) return;
 
@@ -475,12 +486,17 @@ export const FileViewer = memo(function FileViewer({
         });
       return;
     }
-    const url =
-      source.getRawFileUrl?.(projectId, filePath, true) ?? fileData.rawUrl;
-    if (url) {
-      window.open(url, "_blank");
-    }
-  }, [fileData, fileName, filePath, projectId, source]);
+
+    const params = new URLSearchParams({ path: filePath, download: "true" });
+    void connection
+      .fetchBlob(`/projects/${projectId}/files/raw?${params}`)
+      .then((blob) => downloadBlob(blob, fileName))
+      .catch((err) => {
+        setError(
+          err instanceof Error ? err.message : "Failed to download file",
+        );
+      });
+  }, [connection, fileData, fileName, filePath, projectId, source]);
 
   const handleOpenInNewTab = useCallback(() => {
     if (openInNewTabUrl) {
@@ -497,9 +513,19 @@ export const FileViewer = memo(function FileViewer({
     if (viewMode === "range") {
       searchParams.set("view", "range");
     }
-    const url = `/projects/${projectId}/file?${searchParams}`;
+    const url = toBrowserAppHref(
+      `${basePath}/projects/${projectId}/file?${searchParams}`,
+    );
     window.open(url, "_blank");
-  }, [projectId, filePath, lineNumber, lineEnd, openInNewTabUrl, viewMode]);
+  }, [
+    basePath,
+    projectId,
+    filePath,
+    lineNumber,
+    lineEnd,
+    openInNewTabUrl,
+    viewMode,
+  ]);
 
   // Render loading state
   if (loading) {
@@ -560,8 +586,8 @@ export const FileViewer = memo(function FileViewer({
             html={renderedMarkdownHtml}
             density={markdownDensity}
             ariaLabel={t("fileViewerPreview" as never)}
-            onClick={handleLocalMediaClick}
-            onKeyDown={handleLocalMediaKeyDown}
+            onClick={handleLocalResourceClick}
+            onKeyDown={handleLocalResourceKeyDown}
             ref={markdownPreviewRef}
           />
         );
@@ -808,6 +834,26 @@ export const FileViewer = memo(function FileViewer({
           mediaSource={mediaSource}
           onClose={closeLocalMediaModal}
         />
+      ) : null}
+      {localFileModal ? (
+        <LocalFileModal
+          resource={localFileModal}
+          onClose={closeLocalFileModal}
+        />
+      ) : null}
+      {projectFileModal ? (
+        <Modal
+          title={getFileName(projectFileModal.filePath)}
+          onClose={closeProjectFileModal}
+        >
+          <FileViewer
+            projectId={projectFileModal.projectId}
+            filePath={projectFileModal.filePath}
+            lineNumber={projectFileModal.lineNumber}
+            lineEnd={projectFileModal.lineEnd}
+            onClose={closeProjectFileModal}
+          />
+        </Modal>
       ) : null}
     </div>
   );

@@ -53,6 +53,7 @@ import { SrpClientSession } from "./srp-client";
 import {
   type Connection,
   RelayReconnectRequiredError,
+  type SessionSubscriptionOptions,
   type StreamHandlers,
   type Subscription,
   type UploadOptions,
@@ -1349,8 +1350,14 @@ export class SecureConnection implements Connection {
     sessionId: string,
     handlers: StreamHandlers,
     lastEventId?: string,
+    options?: SessionSubscriptionOptions,
   ): Subscription {
-    return this.protocol.subscribeSession(sessionId, handlers, lastEventId);
+    return this.protocol.subscribeSession(
+      sessionId,
+      handlers,
+      lastEventId,
+      options,
+    );
   }
 
   subscribeActivity(handlers: StreamHandlers): Subscription {

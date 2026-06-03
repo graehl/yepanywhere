@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { basename, dirname, extname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseLineColumn } from "@yep-anywhere/shared";
@@ -7,44 +7,16 @@ import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import {
+  createLocalResourcePathPolicy,
+  LOCAL_FILE_CONTENT_TYPES,
+  LOCAL_MEDIA_EXTENSIONS,
+} from "./local-resource-policy.js";
 
 interface LocalFileDeps {
   allowedPaths: string[];
   scanner?: Pick<ProjectScanner, "listProjects">;
 }
-
-const LOCAL_FILE_CONTENT_TYPES: Record<string, string> = {
-  ".txt": "text/plain; charset=utf-8",
-  ".md": "text/plain; charset=utf-8",
-  ".markdown": "text/plain; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".jsonl": "application/x-ndjson; charset=utf-8",
-  ".yaml": "text/yaml; charset=utf-8",
-  ".yml": "text/yaml; charset=utf-8",
-  ".toml": "text/x-toml; charset=utf-8",
-  ".csv": "text/csv; charset=utf-8",
-  ".log": "text/plain; charset=utf-8",
-  ".html": "text/html; charset=utf-8",
-  ".htm": "text/html; charset=utf-8",
-  ".pdf": "application/pdf",
-};
-
-const LOCAL_MEDIA_EXTENSIONS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".bmp",
-  ".tiff",
-  ".tif",
-  ".svg",
-  ".mp4",
-  ".webm",
-  ".mov",
-  ".avi",
-  ".mkv",
-]);
 
 interface LocalFileReference {
   filePath: string;
@@ -164,13 +136,13 @@ function rewriteHtmlLocalReference(
     return localMediaHref(resolvedReference.filePath);
   }
 
-    if (LOCAL_FILE_CONTENT_TYPES[ext]) {
-      const rewrittenHref = localFileHref(resolvedReference.filePath, {
-        renderMarkdown: isMarkdownPath(resolvedReference.filePath),
-      });
-      return attr.toLowerCase() === "href"
-        ? `${rewrittenHref}${resolvedReference.hash}`
-        : rewrittenHref;
+  if (LOCAL_FILE_CONTENT_TYPES[ext]) {
+    const rewrittenHref = localFileHref(resolvedReference.filePath, {
+      renderMarkdown: isMarkdownPath(resolvedReference.filePath),
+    });
+    return attr.toLowerCase() === "href"
+      ? `${rewrittenHref}${resolvedReference.hash}`
+      : rewrittenHref;
   }
 
   return null;
@@ -341,42 +313,7 @@ ${bodyHtml}
  */
 export function createLocalFileRoutes(deps: LocalFileDeps) {
   const routes = new Hono();
-
-  let resolvedAllowedPaths: string[] | null = null;
-  async function getAllowedPaths(): Promise<string[]> {
-    if (!resolvedAllowedPaths) {
-      resolvedAllowedPaths = await Promise.all(
-        deps.allowedPaths.map(async (p) => {
-          try {
-            return await realpath(p);
-          } catch {
-            return p;
-          }
-        }),
-      );
-    }
-    if (!deps.scanner) {
-      return resolvedAllowedPaths;
-    }
-
-    const projects = await deps.scanner.listProjects();
-    const projectPaths = await Promise.all(
-      projects.map(async (project) => {
-        try {
-          return await realpath(project.path);
-        } catch {
-          return null;
-        }
-      }),
-    );
-
-    return Array.from(
-      new Set([
-        ...resolvedAllowedPaths,
-        ...projectPaths.filter((path): path is string => Boolean(path)),
-      ]),
-    );
-  }
+  const pathPolicy = createLocalResourcePathPolicy(deps);
 
   routes.get("/", async (c) => {
     const rawFilePath = c.req.query("path");
@@ -390,7 +327,7 @@ export function createLocalFileRoutes(deps: LocalFileDeps) {
     );
     const filePath = requested.filePath;
 
-    if (!filePath.startsWith("/")) {
+    if (!pathPolicy.isAbsolutePath(filePath)) {
       return c.json({ error: "Path must be absolute" }, 400);
     }
 
@@ -400,26 +337,12 @@ export function createLocalFileRoutes(deps: LocalFileDeps) {
       return c.json({ error: "Not a supported local file" }, 415);
     }
 
-    let resolvedPath: string;
     try {
-      resolvedPath = await realpath(filePath);
-    } catch {
-      return c.json({ error: "File not found" }, 404);
-    }
-
-    const allowed = await getAllowedPaths();
-    const isAllowed = allowed.some((prefix) =>
-      resolvedPath.startsWith(`${prefix}/`),
-    );
-    if (!isAllowed) {
-      return c.json({ error: "Path not in allowed directories" }, 403);
-    }
-
-    try {
-      const stats = await stat(resolvedPath);
-      if (!stats.isFile()) {
-        return c.json({ error: "Not a file" }, 404);
+      const resolved = await pathPolicy.resolveAllowedFilePath(filePath);
+      if (!resolved.ok) {
+        return c.json({ error: resolved.error }, resolved.status);
       }
+      const { resolvedPath, stats } = resolved.file;
 
       if (
         (c.req.query("render") === "1" || requested.hadInlineLocation) &&

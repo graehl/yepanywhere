@@ -1,34 +1,17 @@
 import { createReadStream } from "node:fs";
-import { realpath, stat } from "node:fs/promises";
 import * as path from "node:path";
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import type { ProjectScanner } from "../projects/scanner.js";
+import {
+  createLocalResourcePathPolicy,
+  LOCAL_MEDIA_CONTENT_TYPES,
+} from "./local-resource-policy.js";
 
 interface LocalImageDeps {
   allowedPaths: string[];
   scanner?: Pick<ProjectScanner, "listProjects">;
 }
-
-const MEDIA_EXTENSIONS: Record<string, string> = {
-  // Images
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  bmp: "image/bmp",
-  tiff: "image/tiff",
-  tif: "image/tiff",
-  svg: "image/svg+xml",
-  // Video
-  mp4: "video/mp4",
-  webm: "video/webm",
-  mov: "video/quicktime",
-  avi: "video/x-msvideo",
-  mkv: "video/x-matroska",
-  ogv: "video/ogg",
-};
 
 /**
  * Create routes for serving local images from allowed paths.
@@ -40,43 +23,7 @@ const MEDIA_EXTENSIONS: Record<string, string> = {
  */
 export function createLocalImageRoutes(deps: LocalImageDeps) {
   const routes = new Hono();
-
-  // Resolve allowed paths at startup so symlinks like /tmp -> /private/tmp work
-  let resolvedAllowedPaths: string[] | null = null;
-  async function getAllowedPaths(): Promise<string[]> {
-    if (!resolvedAllowedPaths) {
-      resolvedAllowedPaths = await Promise.all(
-        deps.allowedPaths.map(async (p) => {
-          try {
-            return await realpath(p);
-          } catch {
-            return p;
-          }
-        }),
-      );
-    }
-    if (!deps.scanner) {
-      return resolvedAllowedPaths;
-    }
-
-    const projects = await deps.scanner.listProjects();
-    const projectPaths = await Promise.all(
-      projects.map(async (project) => {
-        try {
-          return await realpath(project.path);
-        } catch {
-          return null;
-        }
-      }),
-    );
-
-    return Array.from(
-      new Set([
-        ...resolvedAllowedPaths,
-        ...projectPaths.filter((path): path is string => Boolean(path)),
-      ]),
-    );
-  }
+  const pathPolicy = createLocalResourcePathPolicy(deps);
 
   routes.get("/", async (c) => {
     const filePath = c.req.query("path");
@@ -84,40 +31,22 @@ export function createLocalImageRoutes(deps: LocalImageDeps) {
       return c.json({ error: "Missing path parameter" }, 400);
     }
 
-    // Must be an absolute path
-    if (!path.isAbsolute(filePath)) {
+    if (!pathPolicy.isAbsolutePath(filePath)) {
       return c.json({ error: "Path must be absolute" }, 400);
     }
 
-    // Check file extension
-    const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
-    const contentType = MEDIA_EXTENSIONS[ext];
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = LOCAL_MEDIA_CONTENT_TYPES[ext];
     if (!contentType) {
       return c.json({ error: "Not a recognized media type" }, 400);
     }
 
-    // Resolve symlinks to get the real path
-    let resolvedPath: string;
     try {
-      resolvedPath = await realpath(filePath);
-    } catch {
-      return c.json({ error: "File not found" }, 404);
-    }
-
-    // Check resolved path against resolved allowed prefixes
-    const allowed = await getAllowedPaths();
-    const isAllowed = allowed.some((prefix) =>
-      isPathInsideDirectory(resolvedPath, prefix),
-    );
-    if (!isAllowed) {
-      return c.json({ error: "Path not in allowed directories" }, 403);
-    }
-
-    try {
-      const stats = await stat(resolvedPath);
-      if (!stats.isFile()) {
-        return c.json({ error: "Not a file" }, 404);
+      const resolved = await pathPolicy.resolveAllowedFilePath(filePath);
+      if (!resolved.ok) {
+        return c.json({ error: resolved.error }, resolved.status);
       }
+      const { resolvedPath, stats } = resolved.file;
 
       c.header("Content-Type", contentType);
       c.header("Content-Length", stats.size.toString());
@@ -139,14 +68,4 @@ export function createLocalImageRoutes(deps: LocalImageDeps) {
   });
 
   return routes;
-}
-
-function isPathInsideDirectory(filePath: string, directory: string): boolean {
-  const relative = path.relative(directory, filePath);
-  return (
-    relative !== "" &&
-    relative !== ".." &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
 }

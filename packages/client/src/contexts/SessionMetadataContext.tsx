@@ -1,4 +1,4 @@
-import { type ReactNode, createContext, useContext } from "react";
+import { type ReactNode, createContext, useContext, useMemo } from "react";
 
 /**
  * Minimal session metadata for components that need project/session info.
@@ -18,10 +18,13 @@ export function SessionMetadataProvider({
   sessionId,
   children,
 }: SessionMetadata & { children: ReactNode }) {
+  const value = useMemo<SessionMetadata>(
+    () => ({ projectId, projectPath, sessionId }),
+    [projectId, projectPath, sessionId],
+  );
+
   return (
-    <SessionMetadataContext.Provider
-      value={{ projectId, projectPath, sessionId }}
-    >
+    <SessionMetadataContext.Provider value={value}>
       {children}
     </SessionMetadataContext.Provider>
   );

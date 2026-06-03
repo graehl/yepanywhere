@@ -1,5 +1,4 @@
 import {
-  ALL_PERMISSION_MODES,
   type MarkdownAugment,
   type ContextUsage,
   type ProviderName,
@@ -14,11 +13,6 @@ import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { getMessageId } from "../lib/mergeMessages";
 import { findPendingTasks } from "../lib/pendingTasks";
 import { extractSessionIdFromFileEvent } from "../lib/sessionFile";
-import {
-  LEGACY_KEYS,
-  getServerScoped,
-  setServerScoped,
-} from "../lib/storageKeys";
 import type {
   InputRequest,
   Message,
@@ -43,6 +37,7 @@ import {
   type StreamingMarkdownCallbacks,
   useStreamingContent,
 } from "./useStreamingContent";
+import { getStreamingEnabled } from "./useStreamingEnabled";
 
 export type ProcessState = "idle" | "in-turn" | "waiting-input";
 
@@ -95,25 +90,6 @@ function hasUserVisibleStreamProgress(
   return false;
 }
 
-function isPermissionMode(value: unknown): value is PermissionMode {
-  return (
-    typeof value === "string" &&
-    ALL_PERMISSION_MODES.includes(value as PermissionMode)
-  );
-}
-
-function loadStickyPermissionMode(): PermissionMode {
-  try {
-    const stored = getServerScoped(
-      "permissionMode",
-      LEGACY_KEYS.permissionMode,
-    );
-    return isPermissionMode(stored) ? stored : "default";
-  } catch {
-    return "default";
-  }
-}
-
 function getContextUsageFromTokenUsageMessage(
   message: Record<string, unknown>,
   fallbackModel?: string,
@@ -157,14 +133,6 @@ function getContextUsageFromTokenUsageMessage(
     ...(outputTokens !== undefined ? { outputTokens } : {}),
     ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
   };
-}
-
-function saveStickyPermissionMode(mode: PermissionMode): void {
-  try {
-    setServerScoped("permissionMode", mode, LEGACY_KEYS.permissionMode);
-  } catch {
-    // Ignore storage failures; the in-memory selection still applies this turn.
-  }
 }
 
 function parseProcessState(value: unknown): ProcessState | null {
@@ -645,7 +613,12 @@ function summarizeDeferredMessages(messages: DeferredMessage[]): Array<{
 export function useSession(
   projectId: string,
   sessionId: string,
-  initialStatus?: { owner: "self"; processId: string },
+  initialStatus?: {
+    owner: "self";
+    processId: string;
+    permissionMode?: PermissionMode;
+    modeVersion?: number;
+  },
   streamingMarkdownCallbacks?: StreamingMarkdownCallbacks,
   options?: { tailTurns?: number; tailFrom?: string },
 ) {
@@ -829,11 +802,13 @@ export function useSession(
   >({});
 
   // Permission mode state: localMode is UI-selected, serverMode is confirmed by server
-  const [localMode, setLocalMode] = useState<PermissionMode>(
-    loadStickyPermissionMode,
-  );
-  const [, setServerMode] = useState<PermissionMode>("default");
-  const [modeVersion, setModeVersion] = useState<number>(0);
+  const initialPermissionMode = initialStatus?.permissionMode ?? "default";
+  const initialModeVersion = initialStatus?.modeVersion ?? 0;
+  const [localMode, setLocalMode] =
+    useState<PermissionMode>(initialPermissionMode);
+  const [, setServerMode] = useState<PermissionMode>(initialPermissionMode);
+  const [modeVersion, setModeVersion] =
+    useState<number>(initialModeVersion);
   const localModeRef = useRef<PermissionMode>(localMode);
   // Track whether we've already processed a stream "connected" event in this mount.
   // For Codex providers, the first connected-event catch-up fetch can duplicate
@@ -898,7 +873,7 @@ export function useSession(
   // MCP servers available for this session (from init message)
   const [mcpServers, setMcpServers] = useState<string[]>([]);
   const [promptSuggestion, setPromptSuggestion] = useState<string | null>(null);
-  const lastKnownModeVersionRef = useRef<number>(0);
+  const lastKnownModeVersionRef = useRef<number>(initialModeVersion);
 
   useEffect(() => {
     localModeRef.current = localMode;
@@ -912,15 +887,8 @@ export function useSession(
         lastKnownModeVersionRef.current = version;
         setServerMode(mode);
         setModeVersion(version);
-        const preserveStickyMode =
-          mode === "default" &&
-          version === 0 &&
-          localModeRef.current !== "default";
-        if (!preserveStickyMode) {
-          localModeRef.current = mode;
-          setLocalMode(mode);
-          saveStickyPermissionMode(mode);
-        }
+        localModeRef.current = mode;
+        setLocalMode(mode);
       }
     },
     [],
@@ -1027,7 +995,6 @@ export function useSession(
     async (mode: PermissionMode) => {
       localModeRef.current = mode;
       setLocalMode(mode);
-      saveStickyPermissionMode(mode);
 
       // If there's an active process, immediately sync to server
       if (status.owner === "self" || status.owner === "external") {
@@ -1588,6 +1555,8 @@ export function useSession(
         const msgType =
           typeof sdkMessage.type === "string" ? sdkMessage.type : undefined;
         const msgRole = sdkMessage.role as Message["role"] | undefined;
+        const isLiveStreamingUpdate =
+          msgType === "stream_event" || sdkMessage._isStreaming === true;
         const hasUserVisibleLiveness =
           msgType === "stream_event" &&
           hasUserVisibleStreamProgress(
@@ -1595,9 +1564,9 @@ export function useSession(
           );
 
         // Track stream activity for engagement/freshness UI. Queue state,
-        // status, and full user/assistant messages stay immediate; only
-        // token-level stream_event freshness is coalesced.
-        noteStreamActivity(msgType !== "stream_event");
+        // status, and full user/assistant messages stay immediate; live
+        // token/delta freshness is coalesced.
+        noteStreamActivity(!isLiveStreamingUpdate);
 
         if (hasUserVisibleLiveness) {
           noteStreamProgressLiveness();
@@ -1905,29 +1874,10 @@ export function useSession(
           connectedData.permissionMode &&
           connectedData.modeVersion !== undefined
         ) {
-          const shouldReapplyStickyMode =
-            connectedData.permissionMode === "default" &&
-            connectedData.modeVersion === 0 &&
-            localModeRef.current !== "default";
           applyServerModeUpdate(
             connectedData.permissionMode,
             connectedData.modeVersion,
           );
-          if (shouldReapplyStickyMode) {
-            const desiredMode = localModeRef.current;
-            void api
-              .setPermissionMode(serverSessionId ?? sessionId, desiredMode)
-              .then((result) => {
-                if (result.modeVersion >= lastKnownModeVersionRef.current) {
-                  lastKnownModeVersionRef.current = result.modeVersion;
-                  setServerMode(result.permissionMode);
-                  setModeVersion(result.modeVersion);
-                }
-              })
-              .catch((err) => {
-                console.warn("Failed to reapply permission mode:", err);
-              });
-          }
         }
 
         // Update session with provider/model from connected event (belt-and-suspenders)
@@ -2003,7 +1953,10 @@ export function useSession(
             ...prev,
             [augmentData.messageId as string]: { html: augmentData.html },
           }));
-        } else if (augmentData.blockIndex !== undefined) {
+        } else if (
+          augmentData.blockIndex !== undefined &&
+          getStreamingEnabled()
+        ) {
           // Streaming block augment - dispatch to context
           streamingMarkdownCallbacks?.onAugment?.({
             blockIndex: augmentData.blockIndex,
@@ -2018,9 +1971,11 @@ export function useSession(
           eventType: string;
           html: string;
         };
-        streamingMarkdownCallbacks?.onPending?.({
-          html: pendingData.html,
-        });
+        if (getStreamingEnabled()) {
+          streamingMarkdownCallbacks?.onPending?.({
+            html: pendingData.html,
+          });
+        }
       } else if (data.eventType === "session-id-changed") {
         // Handle session ID change (temp ID → real SDK ID)
         // This event means the URL should be updated to use the new session ID

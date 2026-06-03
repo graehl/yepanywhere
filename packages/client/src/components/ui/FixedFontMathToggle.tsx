@@ -7,6 +7,8 @@ import {
 } from "../../contexts/PublicShareContext";
 import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContext";
+import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
+import { toBrowserAppHref } from "../../lib/appHref";
 import { profileRenderWork } from "../../lib/diagnostics/renderProfiler";
 import { useScrollPreservingToggle } from "../../lib/scrollAnchor";
 import { makeDisplayPath } from "../../lib/text";
@@ -40,6 +42,7 @@ interface RenderOptions {
   diffAware?: boolean;
   projectId?: string;
   baseFilePath?: string;
+  basePath?: string;
   projectPath?: string;
   publicShare?: PublicShareContextValue | null;
 }
@@ -171,7 +174,9 @@ function renderMarkdownFileLink(
     buildPublicShareFileHref(options.publicShare, { filePath });
   const fileUrl =
     rawUrl ??
-    `/projects/${encodeURIComponent(options.projectId)}/file?path=${encodeURIComponent(filePath)}`;
+    toBrowserAppHref(
+      `${options.basePath ?? ""}/projects/${encodeURIComponent(options.projectId)}/file?path=${encodeURIComponent(filePath)}`,
+    );
   // normalizeProjectPath strips the leading / from absolute paths; restore it
   // so makeDisplayPath can apply project-relative or ~/… shortening.
   const absoluteFilePath = `/${filePath}`;
@@ -757,6 +762,7 @@ export function FixedFontMathToggle({
 }: FixedFontMathToggleProps) {
   const sessionMetadata = useOptionalSessionMetadata();
   const publicShare = usePublicShareContext();
+  const basePath = useRemoteBasePath();
   const [viewerLink, setViewerLink] = useState<{
     filePath: string;
     href: string | null;
@@ -776,6 +782,7 @@ export function FixedFontMathToggle({
             projectId: sessionMetadata?.projectId,
             projectPath: sessionMetadata?.projectPath ?? undefined,
             baseFilePath,
+            basePath,
             publicShare,
           })),
     [
@@ -786,6 +793,7 @@ export function FixedFontMathToggle({
       sessionMetadata?.projectId,
       sessionMetadata?.projectPath,
       baseFilePath,
+      basePath,
       publicShare,
     ],
   );

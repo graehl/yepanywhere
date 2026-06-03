@@ -36,7 +36,11 @@ export function formatAttachmentName(name: string): string {
   const overshootLimit =
     ATTACHMENT_NAME_SOFT_LIMIT + ATTACHMENT_NAME_SEPARATOR_WINDOW;
 
-  for (let index = ATTACHMENT_NAME_SOFT_LIMIT; index < trimmed.length; index += 1) {
+  for (
+    let index = ATTACHMENT_NAME_SOFT_LIMIT;
+    index < trimmed.length;
+    index += 1
+  ) {
     if (isNameSeparator(trimmed[index])) {
       if (index <= overshootLimit) {
         return `${trimmed.slice(0, index).replace(/[ -_]+$/u, "")}...`;
@@ -90,8 +94,12 @@ function useCachedAttachmentImage(
 } {
   const [cachePreviewUrl, setCachePreviewUrl] = useState<string | null>(null);
   const [cacheFullUrl, setCacheFullUrl] = useState<string | null>(null);
-  const [cachePreviewWidth, setCachePreviewWidth] = useState<number | null>(null);
-  const [cachePreviewHeight, setCachePreviewHeight] = useState<number | null>(null);
+  const [cachePreviewWidth, setCachePreviewWidth] = useState<number | null>(
+    null,
+  );
+  const [cachePreviewHeight, setCachePreviewHeight] = useState<number | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [remoteEnabled, setRemoteEnabled] = useState(false);
@@ -152,7 +160,9 @@ function useCachedAttachmentImage(
           setRemoteEnabled(true);
         } else {
           setError(
-            err instanceof Error ? err.message : "Failed to load attachment preview",
+            err instanceof Error
+              ? err.message
+              : "Failed to load attachment preview",
           );
         }
         setLoading(false);
@@ -200,8 +210,14 @@ export function AttachmentChip({
   const [showModal, setShowModal] = useState(false);
   const isImage = isImageMimeType(mimeType);
   const cacheKey = attachmentId ?? path;
-  const { previewUrl: imagePreviewUrl, fullUrl, previewWidth, previewHeight, loading, error } =
-    useCachedAttachmentImage(cacheKey, path, showModal, previewUrl);
+  const {
+    previewUrl: imagePreviewUrl,
+    fullUrl,
+    previewWidth,
+    previewHeight,
+    loading,
+    error,
+  } = useCachedAttachmentImage(cacheKey, path, showModal, previewUrl);
   const previewPlan =
     previewWidth && previewHeight
       ? { width: previewWidth, height: previewHeight }
@@ -241,7 +257,10 @@ export function AttachmentChip({
 
   return (
     <>
-      <div className="attachment-chip attachment-chip-image" title={`${mimeType}, ${sizeLabel}`}>
+      <div
+        className="attachment-chip attachment-chip-image"
+        title={`${mimeType}, ${sizeLabel}`}
+      >
         <button
           type="button"
           className="attachment-chip-main"
@@ -249,7 +268,11 @@ export function AttachmentChip({
           aria-label={`Open ${originalName}`}
           title={`${mimeType}, ${sizeLabel}`}
         >
-          <span className="attachment-preview" aria-hidden="true" style={previewStyle}>
+          <span
+            className="attachment-preview"
+            aria-hidden="true"
+            style={previewStyle}
+          >
             {imagePreviewUrl ? (
               <img src={imagePreviewUrl} alt="" />
             ) : (

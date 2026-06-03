@@ -5,6 +5,8 @@ import {
   buildPublicShareFileHref,
   usePublicShareContext,
 } from "../contexts/PublicShareContext";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { toBrowserAppHref } from "../lib/appHref";
 import {
   FileViewer,
   type FileViewerMode,
@@ -39,6 +41,7 @@ function getProjectFileViewUrl(
   lineNumber?: number,
   lineEnd?: number,
   viewMode?: FileViewerMode,
+  basePath = "",
 ): string {
   const params = new URLSearchParams({ path: filePath });
   if (lineNumber !== undefined) {
@@ -50,7 +53,7 @@ function getProjectFileViewUrl(
   if (viewMode === "range") {
     params.set("view", "range");
   }
-  return `/projects/${projectId}/file?${params.toString()}`;
+  return `${basePath}/projects/${projectId}/file?${params.toString()}`;
 }
 
 function getProjectPath(projectId: string): string | null {
@@ -116,6 +119,7 @@ export const FilePathLink = memo(function FilePathLink({
   viewMode = "full",
 }: FilePathLinkProps) {
   const publicShareContext = usePublicShareContext();
+  const basePath = useRemoteBasePath();
   const [showModal, setShowModal] = useState(false);
   const viewerFilePath = useMemo(
     () => getProjectViewerFilePath(projectId, filePath),
@@ -133,12 +137,15 @@ export const FilePathLink = memo(function FilePathLink({
   const fileViewUrl =
     publicShareContext !== null
       ? publicShareFileViewUrl
-      : getProjectFileViewUrl(
-          projectId,
-          viewerFilePath,
-          lineNumber,
-          lineEnd,
-          viewMode,
+      : toBrowserAppHref(
+          getProjectFileViewUrl(
+            projectId,
+            viewerFilePath,
+            lineNumber,
+            lineEnd,
+            viewMode,
+            basePath,
+          ),
         );
   const publicShareFileViewerSource = useMemo(
     () =>

@@ -994,6 +994,8 @@ export function NewSessionForm({
 
       let sessionId: string;
       let processId: string;
+      let initialPermissionMode: PermissionMode = mode;
+      let initialModeVersion = 0;
       const uploadedFiles: UploadedFile[] = [];
 
       // Get model and thinking settings
@@ -1041,6 +1043,8 @@ export function NewSessionForm({
         const activeProjectId = createResult.projectId;
         sessionId = createResult.sessionId;
         processId = createResult.processId;
+        initialPermissionMode = createResult.permissionMode;
+        initialModeVersion = createResult.modeVersion;
         resolvedProjectId = activeProjectId;
         logSessionUiTrace("new-session-created", {
           sessionId,
@@ -1159,6 +1163,8 @@ export function NewSessionForm({
         });
         sessionId = result.sessionId;
         processId = result.processId;
+        initialPermissionMode = result.permissionMode;
+        initialModeVersion = result.modeVersion;
         resolvedProjectId = result.projectId;
         logSessionUiTrace("new-session-started", {
           sessionId,
@@ -1199,7 +1205,12 @@ export function NewSessionForm({
         `${basePath}/projects/${resolvedProjectId}/sessions/${sessionId}`,
         {
           state: createSessionNavigationState({
-            initialStatus: { owner: "self", processId },
+            initialStatus: {
+              owner: "self",
+              processId,
+              permissionMode: initialPermissionMode,
+              modeVersion: initialModeVersion,
+            },
             initialTitle: trimmedMessage,
             initialModel: selectedModel ?? undefined,
             initialProvider: selectedProvider ?? undefined,

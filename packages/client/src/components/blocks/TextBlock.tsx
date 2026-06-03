@@ -3,10 +3,12 @@ import { useRenderModeToggle } from "../../contexts/RenderModeContext";
 import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
 import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
 import { registerMarkdownCopySource } from "../../lib/markdownSelectionCopy";
+import { FileViewerModal } from "../FilePathLink";
 import {
+  LocalFileModal,
   LocalMediaModal,
-  useLocalMediaClick,
   useLocalMediaInlinePreviews,
+  useLocalResourceClick,
 } from "../LocalMediaModal";
 import { renderFixedFontMath } from "../ui/FixedFontMathToggle";
 import { RenderModeGlyph } from "../ui/RenderModeGlyph";
@@ -106,7 +108,15 @@ export const TextBlock = memo(function TextBlock({
     return registerMarkdownCopySource(element, text);
   }, [text]);
 
-  const { modal, handleClick, closeModal } = useLocalMediaClick();
+  const {
+    modal,
+    localFileModal,
+    projectFileModal,
+    handleClick,
+    closeModal,
+    closeLocalFileModal,
+    closeProjectFileModal,
+  } = useLocalResourceClick();
   useLocalMediaInlinePreviews(copySourceRef);
 
   const showStreamingContent = isStreaming && useStreamingContent;
@@ -205,6 +215,23 @@ export const TextBlock = memo(function TextBlock({
           path={modal.path}
           mediaType={modal.mediaType}
           onClose={closeModal}
+        />
+      )}
+
+      {localFileModal && (
+        <LocalFileModal
+          resource={localFileModal}
+          onClose={closeLocalFileModal}
+        />
+      )}
+
+      {projectFileModal && (
+        <FileViewerModal
+          projectId={projectFileModal.projectId}
+          filePath={projectFileModal.filePath}
+          lineNumber={projectFileModal.lineNumber}
+          lineEnd={projectFileModal.lineEnd}
+          onClose={closeProjectFileModal}
         />
       )}
     </div>

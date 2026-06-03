@@ -1,4 +1,9 @@
-import { LocalMediaModal, useLocalMediaClick } from "../../LocalMediaModal";
+import { FileViewerModal } from "../../FilePathLink";
+import {
+  LocalFileModal,
+  LocalMediaModal,
+  useLocalResourceClick,
+} from "../../LocalMediaModal";
 import type { ContentBlock, ContentRenderer } from "../types";
 
 interface TextBlock extends ContentBlock {
@@ -12,12 +17,21 @@ interface TextBlock extends ContentBlock {
  * Text renderer - displays text content with markdown rendering
  */
 function TextRendererComponent({ block }: { block: TextBlock }) {
-  const { modal, handleClick, closeModal } = useLocalMediaClick();
+  const {
+    modal,
+    localFileModal,
+    projectFileModal,
+    handleClick,
+    closeModal,
+    closeLocalFileModal,
+    closeProjectFileModal,
+  } = useLocalResourceClick();
 
   // Prefer server-rendered HTML if available
   if (block._renderedHtml) {
     return (
-      // biome-ignore lint/a11y/useKeyWithClickEvents: click handler intercepts local media links only
+      // biome-ignore lint/a11y/noStaticElementInteractions: click is delegated to local resource links inside rendered markdown
+      // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation remains on descendant links/controls
       <div className="text-block" onClick={handleClick}>
         <div
           // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered markdown
@@ -28,6 +42,21 @@ function TextRendererComponent({ block }: { block: TextBlock }) {
             path={modal.path}
             mediaType={modal.mediaType}
             onClose={closeModal}
+          />
+        )}
+        {localFileModal && (
+          <LocalFileModal
+            resource={localFileModal}
+            onClose={closeLocalFileModal}
+          />
+        )}
+        {projectFileModal && (
+          <FileViewerModal
+            projectId={projectFileModal.projectId}
+            filePath={projectFileModal.filePath}
+            lineNumber={projectFileModal.lineNumber}
+            lineEnd={projectFileModal.lineEnd}
+            onClose={closeProjectFileModal}
           />
         )}
       </div>

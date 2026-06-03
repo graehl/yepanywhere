@@ -1,7 +1,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
+import { setStableToolPreviewRenderingPreference } from "../../../hooks/useStableToolPreviewRendering";
 import { I18nProvider } from "../../../i18n";
+import { UI_KEYS } from "../../../lib/storageKeys";
 import {
   DEFERRED_PREVIEW_HEIGHT,
   estimateDeferredPreviewHeightPx,
@@ -20,6 +22,8 @@ describe("ToolCallRow", () => {
   afterEach(() => {
     cleanup();
     Reflect.deleteProperty(window, "IntersectionObserver");
+    setStableToolPreviewRenderingPreference(true);
+    window.localStorage.removeItem(UI_KEYS.stableToolPreviewRendering);
   });
 
   it("keeps pending Codex command rows collapsed without output preview cards", () => {
@@ -498,6 +502,7 @@ describe("ToolCallRow", () => {
       configurable: true,
       value: DeferredIntersectionObserver,
     });
+    setStableToolPreviewRenderingPreference(false);
 
     const { container } = render(
       <ToolCallRow
@@ -527,6 +532,105 @@ describe("ToolCallRow", () => {
     expect(
       shell?.style.getPropertyValue("--tool-row-deferred-preview-height"),
     ).toMatch(/px$/);
+  });
+
+  it("renders completed Edit previews immediately by default", () => {
+    class DeferredIntersectionObserver {
+      observe = vi.fn();
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+    }
+    Object.defineProperty(window, "IntersectionObserver", {
+      configurable: true,
+      value: DeferredIntersectionObserver,
+    });
+
+    const { container } = render(
+      <ToolCallRow
+        id="tool-default-stable-edit"
+        toolName="Edit"
+        toolInput={{
+          file_path: "packages/client/src/file.ts",
+          old_string: "const value = 1;",
+          new_string: "const value = 2;",
+        }}
+        toolResult={{
+          structured: {
+            filePath: "packages/client/src/file.ts",
+            oldString: "const value = 1;",
+            newString: "const value = 2;",
+            originalFile: "const value = 1;\n",
+            replaceAll: false,
+            userModified: false,
+            structuredPatch: [
+              {
+                oldStart: 1,
+                oldLines: 1,
+                newStart: 1,
+                newLines: 1,
+                lines: ["-const value = 1;", "+const value = 2;"],
+              },
+            ],
+          },
+          content: "const value = 2;",
+          isError: false,
+        }}
+        status="complete"
+      />,
+    );
+
+    expect(container.querySelector(".tool-row-deferred-preview")).toBeNull();
+    expect(container.querySelector(".edit-collapsed-preview")).not.toBeNull();
+  });
+
+  it("defers completed Edit previews when stable preview rendering is disabled", () => {
+    class DeferredIntersectionObserver {
+      observe = vi.fn();
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+    }
+    Object.defineProperty(window, "IntersectionObserver", {
+      configurable: true,
+      value: DeferredIntersectionObserver,
+    });
+    setStableToolPreviewRenderingPreference(false);
+
+    const { container } = render(
+      <ToolCallRow
+        id="tool-deferred-edit"
+        toolName="Edit"
+        toolInput={{
+          file_path: "packages/client/src/file.ts",
+          old_string: "const value = 1;",
+          new_string: "const value = 2;",
+        }}
+        toolResult={{
+          structured: {
+            filePath: "packages/client/src/file.ts",
+            oldString: "const value = 1;",
+            newString: "const value = 2;",
+            originalFile: "const value = 1;\n",
+            replaceAll: false,
+            userModified: false,
+            structuredPatch: [
+              {
+                oldStart: 1,
+                oldLines: 1,
+                newStart: 1,
+                newLines: 1,
+                lines: ["-const value = 1;", "+const value = 2;"],
+              },
+            ],
+          },
+          content: "const value = 2;",
+          isError: false,
+        }}
+        status="complete"
+      />,
+    );
+
+    expect(container.querySelector(".edit-collapsed-preview")).toBeNull();
+    expect(container.querySelector(".tool-row-deferred-preview")).toBeNull();
   });
 
   it("estimates deferred Bash preview height from text, width, and max preview cap", () => {

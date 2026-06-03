@@ -11,6 +11,7 @@ import { useServerSettings } from "../hooks/useServerSettings";
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
+import { toBrowserAppHref } from "../lib/appHref";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
 import { UI_KEYS } from "../lib/storageKeys";
 import { getSessionDisplayTitle } from "../utils";
@@ -211,7 +212,9 @@ export function Sidebar({
   const { totalNeedsAttention: inboxCount } = useInboxContext();
   const newSessionPath = "/new-session";
   const newSessionHref = `${basePath}${newSessionPath}`;
-  const expandedSidebarNewSessionHref = `${newSessionHref}${newSessionHref.includes("?") ? "&" : "?"}sidebar=expanded`;
+  const expandedSidebarNewSessionHref = toBrowserAppHref(
+    `${newSessionHref}${newSessionHref.includes("?") ? "&" : "?"}sidebar=expanded`,
+  );
 
   const sidebarRef = useRef<HTMLElement>(null);
   const sidebarSessionsRef = useRef<HTMLDivElement | null>(null);
@@ -584,7 +587,7 @@ export function Sidebar({
           ) : isDesktop ? (
             /* Desktop expanded mode: show brand (toggle is in toolbar) */
             <Link
-              to={newSessionPath}
+              to={newSessionHref}
               className="sidebar-brand sidebar-brand-link"
               title={t("sidebarNewSession")}
             >
@@ -594,7 +597,7 @@ export function Sidebar({
             /* Mobile mode: brand text + close button */
             <>
               <Link
-                to={newSessionPath}
+                to={newSessionHref}
                 className="sidebar-brand sidebar-brand-link"
                 title={t("sidebarNewSession")}
                 onClick={onNavigate}

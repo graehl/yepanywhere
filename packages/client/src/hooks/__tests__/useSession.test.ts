@@ -4,6 +4,7 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { UI_KEYS } from "../../lib/storageKeys";
 import type {
   SessionStatusEvent,
   SessionUpdatedEvent,
@@ -672,6 +673,52 @@ describe("useSession completion reconciliation", () => {
     });
   });
 
+  it("drops live markdown events when response streaming is disabled", () => {
+    window.localStorage.setItem(UI_KEYS.streamingEnabled, "false");
+    const streamingMarkdownCallbacks = {
+      onAugment: vi.fn(),
+      onPending: vi.fn(),
+      onStreamEnd: vi.fn(),
+      setCurrentMessageId: vi.fn(),
+      captureHtml: vi.fn(() => null),
+    };
+    const { result } = renderHook(() =>
+      useSession(
+        PROJECT_ID,
+        "sess-1",
+        {
+          owner: "self",
+          processId: "proc-1",
+        },
+        streamingMarkdownCallbacks,
+      ),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "markdown-augment",
+        blockIndex: 0,
+        html: "<p>partial</p>",
+        type: "text",
+      });
+      sessionStreamHandler?.({
+        eventType: "pending",
+        html: "<p>pending</p>",
+      });
+      sessionStreamHandler?.({
+        eventType: "markdown-augment",
+        messageId: "assistant-1",
+        html: "<p>complete</p>",
+      });
+    });
+
+    expect(streamingMarkdownCallbacks.onAugment).not.toHaveBeenCalled();
+    expect(streamingMarkdownCallbacks.onPending).not.toHaveBeenCalled();
+    expect(result.current.markdownAugments).toEqual({
+      "assistant-1": { html: "<p>complete</p>" },
+    });
+  });
+
   it("marks a promoted deferred queue chip as sending without Codex catch-up", () => {
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {
@@ -949,10 +996,24 @@ describe("useSession completion reconciliation", () => {
     ]);
   });
 
-  it("keeps sticky permission mode across a backend reload default ack", async () => {
+  it("does not load permission mode from localStorage on session view mount", () => {
     window.localStorage.setItem(
       "yep-anywhere-permission-mode",
-      "acceptEdits",
+      "bypassPermissions",
+    );
+
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1"),
+    );
+
+    expect(result.current.permissionMode).toBe("default");
+    expect(apiMocks.setPermissionMode).not.toHaveBeenCalled();
+  });
+
+  it("treats backend default mode as authoritative instead of reapplying localStorage", async () => {
+    window.localStorage.setItem(
+      "yep-anywhere-permission-mode",
+      "bypassPermissions",
     );
 
     const { result } = renderHook(() =>
@@ -961,8 +1022,6 @@ describe("useSession completion reconciliation", () => {
         processId: "proc-1",
       }),
     );
-
-    expect(result.current.permissionMode).toBe("acceptEdits");
 
     await act(async () => {
       sessionStreamHandler?.({
@@ -975,32 +1034,50 @@ describe("useSession completion reconciliation", () => {
       });
     });
 
-    expect(result.current.permissionMode).toBe("acceptEdits");
-    expect(apiMocks.setPermissionMode).toHaveBeenCalledWith(
-      "sess-1",
-      "acceptEdits",
-    );
+    expect(result.current.permissionMode).toBe("default");
+    expect(apiMocks.setPermissionMode).not.toHaveBeenCalled();
   });
 
-  it("persists user-selected permission mode for remounts", async () => {
-    const { result, unmount } = renderHook(() =>
-      useSession(PROJECT_ID, "sess-1"),
+  it("uses explicit initial owned permission mode for newly started sessions", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+        permissionMode: "bypassPermissions",
+        modeVersion: 2,
+      }),
+    );
+
+    expect(result.current.permissionMode).toBe("bypassPermissions");
+    expect(result.current.modeVersion).toBe(2);
+  });
+
+  it("keeps the same-page toolbar mode after ownership drops", async () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
     );
 
     await act(async () => {
-      await result.current.setPermissionMode("bypassPermissions");
+      await result.current.setPermissionMode("acceptEdits");
     });
 
-    expect(window.localStorage.getItem("yep-anywhere-permission-mode")).toBe(
-      "bypassPermissions",
-    );
+    expect(result.current.permissionMode).toBe("acceptEdits");
+    expect(window.localStorage.getItem("yep-anywhere-permission-mode")).toBeNull();
 
-    unmount();
+    act(() => {
+      fileActivityOptions?.onSessionStatusChange?.({
+        type: "session-status-changed",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID,
+        ownership: { owner: "none" } as SessionStatus,
+        timestamp: "2026-04-23T00:00:00.000Z",
+      });
+    });
 
-    const { result: remounted } = renderHook(() =>
-      useSession(PROJECT_ID, "sess-1"),
-    );
-
-    expect(remounted.current.permissionMode).toBe("bypassPermissions");
+    expect(result.current.status).toEqual({ owner: "none" });
+    expect(result.current.permissionMode).toBe("acceptEdits");
   });
 });

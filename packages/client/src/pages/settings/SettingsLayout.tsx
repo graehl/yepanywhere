@@ -23,6 +23,7 @@ import { NotificationsSettings } from "./NotificationsSettings";
 import { ProvidersSettings } from "./ProvidersSettings";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { RemoteExecutorsSettings } from "./RemoteExecutorsSettings";
+import { SettingsCategoryIcon } from "./SettingsCategoryIcons";
 import { SpeechSettings } from "./SpeechSettings";
 import type { SettingsCategory } from "./types";
 
@@ -61,7 +62,7 @@ function SettingsCategoryItem({
       className={`settings-category-item ${isActive ? "active" : ""}`}
       onClick={onClick}
     >
-      <span className="settings-category-icon">{category.icon}</span>
+      <SettingsCategoryIcon id={category.id} />
       <div className="settings-category-text">
         <span className="settings-category-label">{category.label}</span>
         <span className="settings-category-description">

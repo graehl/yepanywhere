@@ -80,73 +80,61 @@ export function getSettingsCategories(
     {
       id: "appearance",
       label: t("settingsAppearanceTitle"),
-      icon: "🎨",
       description: t("settingsAppearanceDescription"),
     },
     {
       id: "model",
       label: t("settingsModelTitle"),
-      icon: "🧠",
       description: t("settingsModelDescription"),
     },
     {
       id: "agent-context",
       label: t("settingsAgentContextTitle"),
-      icon: "📋",
       description: t("settingsAgentContextDescription"),
     },
     {
       id: "notifications",
       label: t("settingsNotificationsTitle"),
-      icon: "🔔",
       description: t("settingsNotificationsDescription"),
     },
     {
       id: "webhooks",
       label: t("settingsWebhooksTitle"),
-      icon: "🪝",
       description: t("settingsWebhooksDescription"),
     },
     {
       id: "devices",
       label: t("settingsDevicesTitle"),
-      icon: "📱",
       description: t("settingsDevicesDescription"),
     },
     {
       id: "local-access",
       label: t("settingsLocalAccessTitle"),
-      icon: "🔒",
       description: t("settingsLocalAccessDescription"),
     },
     {
       id: "remote",
       label: t("settingsRemoteTitle"),
-      icon: "🌐",
       description: t("settingsRemoteDescription"),
     },
     {
       id: "providers",
       label: t("settingsProvidersTitle"),
-      icon: "🔌",
       description: t("settingsProvidersDescription"),
     },
     {
       id: "speech",
       label: t("settingsSpeechTitle"),
-      icon: "🎙️",
       description: t("settingsSpeechDescription"),
     },
     {
       id: "remote-executors",
       label: t("settingsRemoteExecutorsTitle"),
-      icon: "🖥️",
       description: t("settingsRemoteExecutorsDescription"),
     },
     {
       id: "about",
       label: t("settingsAboutTitle"),
-      icon: "ℹ️",
       description: t("settingsAboutDescription"),
     },
   ];
@@ -158,7 +146,6 @@ export function getEmulatorCategory(
   return {
     id: "emulator",
     label: t("settingsEmulatorTitle"),
-    icon: "🤖",
     description: t("settingsEmulatorDescription"),
   };
 }
@@ -169,7 +156,6 @@ export function getDevelopmentCategory(
   return {
     id: "development",
     label: t("settingsDevelopmentTitle"),
-    icon: "🛠️",
     description: t("settingsDevelopmentDescription"),
   };
 }

@@ -19,7 +19,7 @@ regeneration rules.
 | `grok` | xAI Grok Build provider integration, isolated behind provider-specific files and feature gates while ACP supervision matures. | [grok](topics/grok.md) |
 | `hard-development-rules` | Binding upstream-facing constraints that protect user trust, explicit configuration, and operator intent across YA changes. | [hard-development-rules](topics/hard-development-rules.md) |
 | `heartbeat` | YA's heartbeat-shaped mechanisms, separating transport/status frames from provider liveness evidence and user-visible state. | [heartbeat](topics/heartbeat.md) |
-| `kzahel-disabled` | YA UI or behavior experiments that upstream disables or removes, but that may still be worth preserving behind explicit user configuration. | [kzahel-disabled](topics/kzahel-disabled.md) |
+| `kzahel-disabled` | YA UI or behavior experiments disabled or removed by the kzahel/main branch, but that may still be worth preserving behind explicit user configuration. | [kzahel-disabled](topics/kzahel-disabled.md) |
 | `memory-growth` | Browser and server memory constraints for long-lived YA sessions, especially avoiding whole-transcript work on idle UI timers. | [memory-growth](topics/memory-growth.md) |
 | `message-control-steer-queue-btw-later-interrupt` | UI-visible message-control contract for direct sends, steering, queueing, `/btw`, and deferred or later intent while a session is busy. | [message-control-steer-queue-btw-later-interrupt](topics/message-control-steer-queue-btw-later-interrupt.md) |
 | `opencode-backend` | The OpenCode backend is YA's provider integration contract for starting, resuming, controlling, and rendering OpenCode sessions without losing provider-specific transcript meaning. | [opencode-backend](topics/opencode-backend.md) |

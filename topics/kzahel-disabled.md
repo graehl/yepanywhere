@@ -1,8 +1,8 @@
-# Kzahel-Disabled Features
+# Features Disabled by kzahel/main
 
-> Kzahel-disabled features are YA UI or behavior experiments that upstream
-> disables or removes, but that may still be worth preserving behind explicit
-> user configuration.
+> Features disabled by kzahel/main are YA UI or behavior experiments that
+> upstream disables or removes, but that may still be worth preserving behind
+> explicit user configuration.
 
 Topic: kzahel-disabled
 

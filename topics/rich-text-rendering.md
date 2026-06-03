@@ -161,6 +161,17 @@ formulas as literal text, matching the experience in their editor.
 - Comment/string-literal markdown rendering in source files is not attempted;
   the tradeoff between false positives and useful rendering favours
   source-only display for all code.
+- GitHub-flavored Markdown footnotes (`[^id]` / `[^id]: ...`) are not yet
+  supported by the server Markdown renderer. If footnote support is added later,
+  full-file previews should render real footnotes, and a whole-document preview
+  that marks a selected range should keep those document-level footnotes
+  semantically intact. Exact range-only previews may use a lower-cost local
+  treatment instead of reproducing table-footnote layout: when the displayed
+  range references a footnote, pull in only that matching definition and show it
+  inline, as a tooltip, or as a compact note after the rendered fragment. A
+  future higher-fidelity range marker path should render the document in whole
+  chunks with renderer-provided or coarse source-line alignment, then place range
+  markers against that rendered output.
 - Edit diff rich render does not yet inline-expand image links. This would help
   Markdown edits that add or update `![image](...)`, but it should share the
   local-media hydration path rather than adding a second image loader.

@@ -9,6 +9,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentContentProvider } from "../../contexts/AgentContentContext";
+import { RenderModeProvider } from "../../contexts/RenderModeContext";
+import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
+import { StreamingMarkdownProvider } from "../../contexts/StreamingMarkdownContext";
 import { buildCorrectionText } from "../../lib/correctionText";
 import type { Message } from "../../types";
 import { MessageList } from "../MessageList";
@@ -72,6 +76,38 @@ function stubClipboardWriteText() {
     value: { writeText },
   });
   return writeText;
+}
+
+function SessionTranscriptHarness({ messages }: { messages: Message[] }) {
+  return (
+    <StreamingMarkdownProvider>
+      <RenderModeProvider>
+        <SessionMetadataProvider
+          projectId="project-1"
+          projectPath="/repo"
+          sessionId="session-1"
+        >
+          <AgentContentProvider
+            agentContent={{}}
+            setAgentContent={() => {}}
+            toolUseToAgent={new Map()}
+            projectId="project-1"
+            sessionId="session-1"
+          >
+            <MessageList
+              messages={messages}
+              provider="codex"
+              markdownAugments={{
+                "assistant-1": {
+                  html: '<ol><li>First item</li><li>Second item</li></ol><pre class="code-block"><code>const superLongIdentifierName = "value";</code></pre>',
+                },
+              }}
+            />
+          </AgentContentProvider>
+        </SessionMetadataProvider>
+      </RenderModeProvider>
+    </StreamingMarkdownProvider>
+  );
 }
 
 describe("MessageList", () => {
@@ -415,6 +451,60 @@ describe("MessageList", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(setData).toHaveBeenCalledWith("text/plain", "1. Second item");
+  });
+
+  it("preserves old rendered assistant DOM when later messages append", () => {
+    const first = assistantMessage(
+      "assistant-1",
+      "1. First item\n1. Second item",
+      "2026-04-25T00:00:00.000Z",
+    );
+    const { rerender } = render(
+      <SessionTranscriptHarness messages={[first]} />,
+    );
+
+    const selectedElement = screen.getByText("Second item");
+    const selectedTextNode = selectedElement.firstChild;
+    expect(selectedTextNode).toBeTruthy();
+    const codeBlock = document.querySelector(
+      ".code-block",
+    ) as HTMLElement | null;
+    expect(codeBlock).toBeTruthy();
+    if (codeBlock) {
+      codeBlock.scrollLeft = 73;
+    }
+
+    const range = document.createRange();
+    range.setStart(selectedTextNode as Node, 0);
+    range.setEnd(selectedTextNode as Node, "Second item".length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    rerender(
+      <SessionTranscriptHarness
+        messages={[
+          first,
+          assistantMessage(
+            "assistant-2",
+            "new complete response",
+            "2026-04-25T00:01:00.000Z",
+          ),
+        ]}
+      />,
+    );
+
+    const nextSelectedElement = screen.getByText("Second item");
+    const nextCodeBlock = document.querySelector(
+      ".code-block",
+    ) as HTMLElement | null;
+
+    expect(nextSelectedElement).toBe(selectedElement);
+    expect(selectedTextNode?.isConnected).toBe(true);
+    expect(window.getSelection()?.toString()).toBe("Second item");
+    expect(nextCodeBlock).toBe(codeBlock);
+    expect(codeBlock?.isConnected).toBe(true);
+    expect(nextCodeBlock?.scrollLeft).toBe(73);
   });
 
   it("does not drop user text from mixed turn selections", () => {

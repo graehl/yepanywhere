@@ -3,6 +3,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useRef,
 } from "react";
 import type { AugmentEvent, PendingEvent } from "../hooks/useStreamingMarkdown";
@@ -153,14 +154,24 @@ export function StreamingMarkdownProvider({
     return handlersRef.current?.captureHtml?.() ?? null;
   }, []);
 
-  const value: StreamingMarkdownContextValue = {
-    registerStreamingHandler,
-    setCurrentMessageId,
-    dispatchAugment,
-    dispatchPending,
-    dispatchStreamEnd,
-    captureStreamingHtml,
-  };
+  const value = useMemo<StreamingMarkdownContextValue>(
+    () => ({
+      registerStreamingHandler,
+      setCurrentMessageId,
+      dispatchAugment,
+      dispatchPending,
+      dispatchStreamEnd,
+      captureStreamingHtml,
+    }),
+    [
+      registerStreamingHandler,
+      setCurrentMessageId,
+      dispatchAugment,
+      dispatchPending,
+      dispatchStreamEnd,
+      captureStreamingHtml,
+    ],
+  );
 
   return (
     <StreamingMarkdownContext.Provider value={value}>

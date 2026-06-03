@@ -4,6 +4,7 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { UI_KEYS } from "../../lib/storageKeys";
 import type {
   SessionStatusEvent,
   SessionUpdatedEvent,
@@ -669,6 +670,52 @@ describe("useSession completion reconciliation", () => {
       derivedStatus: "long-silent-unverified",
       lastVerifiedProgressAt: "2026-04-24T00:00:00.000Z",
       silenceMs: 3_600_000,
+    });
+  });
+
+  it("drops live markdown events when response streaming is disabled", () => {
+    window.localStorage.setItem(UI_KEYS.streamingEnabled, "false");
+    const streamingMarkdownCallbacks = {
+      onAugment: vi.fn(),
+      onPending: vi.fn(),
+      onStreamEnd: vi.fn(),
+      setCurrentMessageId: vi.fn(),
+      captureHtml: vi.fn(() => null),
+    };
+    const { result } = renderHook(() =>
+      useSession(
+        PROJECT_ID,
+        "sess-1",
+        {
+          owner: "self",
+          processId: "proc-1",
+        },
+        streamingMarkdownCallbacks,
+      ),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "markdown-augment",
+        blockIndex: 0,
+        html: "<p>partial</p>",
+        type: "text",
+      });
+      sessionStreamHandler?.({
+        eventType: "pending",
+        html: "<p>pending</p>",
+      });
+      sessionStreamHandler?.({
+        eventType: "markdown-augment",
+        messageId: "assistant-1",
+        html: "<p>complete</p>",
+      });
+    });
+
+    expect(streamingMarkdownCallbacks.onAugment).not.toHaveBeenCalled();
+    expect(streamingMarkdownCallbacks.onPending).not.toHaveBeenCalled();
+    expect(result.current.markdownAugments).toEqual({
+      "assistant-1": { html: "<p>complete</p>" },
     });
   });
 

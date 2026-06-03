@@ -43,6 +43,7 @@ import {
   type StreamingMarkdownCallbacks,
   useStreamingContent,
 } from "./useStreamingContent";
+import { getStreamingEnabled } from "./useStreamingEnabled";
 
 export type ProcessState = "idle" | "in-turn" | "waiting-input";
 
@@ -2005,7 +2006,10 @@ export function useSession(
             ...prev,
             [augmentData.messageId as string]: { html: augmentData.html },
           }));
-        } else if (augmentData.blockIndex !== undefined) {
+        } else if (
+          augmentData.blockIndex !== undefined &&
+          getStreamingEnabled()
+        ) {
           // Streaming block augment - dispatch to context
           streamingMarkdownCallbacks?.onAugment?.({
             blockIndex: augmentData.blockIndex,
@@ -2020,9 +2024,11 @@ export function useSession(
           eventType: string;
           html: string;
         };
-        streamingMarkdownCallbacks?.onPending?.({
-          html: pendingData.html,
-        });
+        if (getStreamingEnabled()) {
+          streamingMarkdownCallbacks?.onPending?.({
+            html: pendingData.html,
+          });
+        }
       } else if (data.eventType === "session-id-changed") {
         // Handle session ID change (temp ID → real SDK ID)
         // This event means the URL should be updated to use the new session ID

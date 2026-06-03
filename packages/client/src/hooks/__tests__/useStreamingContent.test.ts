@@ -67,7 +67,7 @@ describe("useStreamingContent", () => {
       expect(handled).toBe(false);
     });
 
-    it("returns false when streaming is disabled", () => {
+    it("consumes stream_event messages without updates when streaming is disabled", () => {
       (getStreamingEnabled as Mock).mockReturnValue(false);
 
       const { result } = renderHook(() =>
@@ -79,7 +79,11 @@ describe("useStreamingContent", () => {
         event: { type: "message_start" },
       });
 
-      expect(handled).toBe(false);
+      expect(handled).toBe(true);
+      expect(onUpdateMessage).not.toHaveBeenCalled();
+      expect(
+        streamingMarkdownCallbacks.setCurrentMessageId,
+      ).not.toHaveBeenCalled();
     });
 
     it("returns true for stream_event with no event data", () => {

@@ -39,14 +39,7 @@ import {
   isStaleTimestamp,
   parseTimestampMs,
 } from "../lib/messageAge";
-import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
-import {
-  getModelIndicatorTextVariants,
-  getModelIndicatorTooltip,
-  type ModelToolbarDensity,
-  modelIndicatorFitsWithMode,
-  normalizeProviderKey,
-} from "../lib/modelIndicatorText";
+import { normalizeProviderKey } from "../lib/modelIndicatorText";
 import {
   SESSION_ISEARCH_GUIDE_EVENT,
   type SessionIsearchGuideState,
@@ -107,10 +100,9 @@ export interface MessageInputToolbarProps {
   btwActive?: boolean;
   btwHasAsides?: boolean;
   btwToolbarMode?: BtwToolbarMode;
-  modelIndicatorProvider?: string;
-  modelIndicatorModel?: string;
-  modelIndicatorTone?: ModelIndicatorTone;
-  modelIndicatorTitle?: string;
+  /** Provider/model context used by the thinking effort chooser. */
+  thinkingProvider?: string;
+  thinkingModel?: string;
 
   // Session heartbeat
   heartbeatEnabled?: boolean;
@@ -268,13 +260,6 @@ function isBtwPressed(mode: BtwToolbarMode): boolean {
   );
 }
 
-const MODEL_DENSITY_ORDER: readonly ModelToolbarDensity[] = [
-  "full",
-  "compact",
-  "glyph",
-  "hidden",
-];
-
 const LAST_ACTIVITY_TEXT_PREFIX_THRESHOLD_MS = 30 * 60 * 1000;
 const COMPACT_STATUS_QUERY = "(max-width: 600px)";
 
@@ -296,7 +281,6 @@ interface ToolbarRefs {
   left?: RefObject<HTMLDivElement | null>;
   status?: RefObject<HTMLDivElement | null>;
   actions?: RefObject<HTMLDivElement | null>;
-  modelButton?: RefObject<HTMLButtonElement | null>;
 }
 
 interface ToolbarModeControl {
@@ -376,15 +360,6 @@ interface ToolbarSpeechControl {
   voiceButton?: ToolbarVoiceButtonControl;
 }
 
-interface ToolbarModelControl {
-  density: ModelToolbarDensity;
-  label: string;
-  tone?: ModelIndicatorTone;
-  tooltip: string;
-  disabled?: boolean;
-  onClick: () => void;
-}
-
 interface ToolbarStatusControl {
   showToolbarStatus: boolean;
   showLivenessChip: boolean;
@@ -455,7 +430,6 @@ export interface MessageInputToolbarViewProps {
   renderModeControl?: ToolbarRenderModeControl | null;
   nudgeControl?: ToolbarNudgeControl | null;
   speechControl?: ToolbarSpeechControl | null;
-  modelControl?: ToolbarModelControl | null;
   statusControl?: ToolbarStatusControl | null;
   pendingApproval?: MessageInputToolbarProps["pendingApproval"];
   shortcutsControl: ToolbarShortcutsControl;
@@ -737,7 +711,6 @@ export function MessageInputToolbarView({
   renderModeControl,
   nudgeControl,
   speechControl,
-  modelControl,
   statusControl,
   pendingApproval,
   shortcutsControl,
@@ -752,10 +725,6 @@ export function MessageInputToolbarView({
   const showLastActivityChip = statusControl?.showLastActivityChip ?? false;
   const showSendButton = !!actionsControl.send?.onSend;
   const showStopButton = !!actionsControl.stop;
-  const showModelIndicator =
-    visibility.modelIndicator &&
-    !!modelControl &&
-    modelControl.density !== "hidden";
   const selectedSpeechMethod = speechControl?.selectedMethod;
   const queueControl = actionsControl.send?.queue;
 
@@ -937,19 +906,6 @@ export function MessageInputToolbarView({
               }
             />
           )}
-        {showModelIndicator && (
-          <button
-            type="button"
-            ref={refs?.modelButton}
-            className={`model-toolbar-button${modelControl.tone ? ` tone-${modelControl.tone}` : ""}`}
-            onClick={modelControl.onClick}
-            disabled={modelControl.disabled}
-            title={modelControl.tooltip}
-            aria-label="Switch model"
-          >
-            <span className="model-toolbar-label">{modelControl.label}</span>
-          </button>
-        )}
       </div>
       {showToolbarStatus && statusControl && (
         <div ref={refs?.status} className="composer-status-ages">
@@ -1315,10 +1271,8 @@ export function MessageInputToolbar({
   btwActive = false,
   btwHasAsides = false,
   btwToolbarMode,
-  modelIndicatorProvider,
-  modelIndicatorModel,
-  modelIndicatorTone,
-  modelIndicatorTitle,
+  thinkingProvider,
+  thinkingModel,
   heartbeatEnabled = false,
   onToggleHeartbeat,
   onConfigureHeartbeat,
@@ -1361,63 +1315,31 @@ export function MessageInputToolbar({
   );
   const lastNonOffThinkingModeRef =
     useRef<Exclude<ThinkingMode, "off">>("auto");
-  const modelToolbarButtonRef = useRef<HTMLButtonElement | null>(null);
-  const modelToolbarMeasureCtxRef = useRef<CanvasRenderingContext2D | null>(
-    null,
-  );
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const toolbarLeftRef = useRef<HTMLDivElement | null>(null);
   const toolbarStatusRef = useRef<HTMLDivElement | null>(null);
   const toolbarActionsRef = useRef<HTMLDivElement | null>(null);
-  const [modelToolbarDensity, setModelToolbarDensity] =
-    useState<ModelToolbarDensity>("full");
   const [isCompactStatusMode, setIsCompactStatusMode] = useState(() =>
     typeof window === "undefined"
       ? false
       : (getCompactStatusMatchMedia()?.matches ?? false),
   );
-  const hasModelIndicator =
-    toolbarVisibility.modelIndicator &&
-    slashCommands.includes("model") &&
-    !!onSelectSlashCommand;
-  const normalizedModelIndicatorProvider = useMemo(
-    () => normalizeProviderKey(modelIndicatorProvider),
-    [modelIndicatorProvider],
+  const normalizedThinkingProvider = useMemo(
+    () => normalizeProviderKey(thinkingProvider),
+    [thinkingProvider],
   );
   const thinkingEffortOptions = useMemo(
     () =>
       getEffortLevelOptions({
-        provider: normalizedModelIndicatorProvider as ProviderName,
-        model: modelIndicatorModel,
+        provider: normalizedThinkingProvider as ProviderName,
+        model: thinkingModel,
       }),
-    [modelIndicatorModel, normalizedModelIndicatorProvider],
+    [thinkingModel, normalizedThinkingProvider],
   );
   const effectiveThinkingLevel = useMemo(
     () => resolveSupportedEffortLevel(thinkingLevel, thinkingEffortOptions),
     [thinkingEffortOptions, thinkingLevel],
   );
-  const modelToolbarVariants = useMemo(
-    () =>
-      getModelIndicatorTextVariants(
-        normalizedModelIndicatorProvider,
-        modelIndicatorModel ?? "",
-        modelIndicatorTitle,
-      ),
-    [
-      modelIndicatorModel,
-      modelIndicatorTitle,
-      normalizedModelIndicatorProvider,
-    ],
-  );
-  const modelToolbarLabel = useMemo(() => {
-    return modelToolbarDensity === "full"
-      ? modelToolbarVariants.full
-      : modelToolbarDensity === "compact"
-        ? modelToolbarVariants.compact
-        : modelToolbarDensity === "glyph"
-          ? modelToolbarVariants.glyph
-          : modelToolbarVariants.full;
-  }, [modelToolbarDensity, modelToolbarVariants]);
   const lastActivityMs = parseTimestampMs(lastActivityAt);
   const showLastActivityAge = isStaleTimestamp(lastActivityMs, nowMs);
   const lastActivityAgeMs =
@@ -1493,11 +1415,6 @@ export function MessageInputToolbar({
           ? "Queue from primary action"
           : t("toolbarQueueLabel")
         : t("toolbarSend");
-  const modelIndicatorTooltip = getModelIndicatorTooltip(
-    modelIndicatorProvider,
-    modelIndicatorModel,
-    modelIndicatorTitle,
-  );
   const stopTitle = `${t("toolbarStop")} (Esc)`;
   const showStopButton = !!(isRunning && onStop && isThinking);
   const showSendButton = !!(onSend && (!showStopButton || canSend));
@@ -1557,105 +1474,6 @@ export function MessageInputToolbar({
       thinkingMode === "off" ? lastNonOffThinkingModeRef.current : "off",
     );
   }, [setThinkingMode, thinkingMode]);
-
-  useLayoutEffect(() => {
-    if (typeof window === "undefined" || !hasModelIndicator) {
-      setModelToolbarDensity("hidden");
-      return;
-    }
-
-    const button = modelToolbarButtonRef.current;
-    if (!button) {
-      setModelToolbarDensity("full");
-      return;
-    }
-
-    const candidateByDensity: Record<ModelToolbarDensity, string> = {
-      full: modelToolbarVariants.full,
-      compact: modelToolbarVariants.compact,
-      glyph: modelToolbarVariants.glyph,
-      hidden: "",
-    };
-
-    const pxOrZero = (value: string) => {
-      const parsed = Number.parseFloat(value);
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
-
-    const getMeasureContext = () => {
-      if (modelToolbarMeasureCtxRef.current) {
-        return modelToolbarMeasureCtxRef.current;
-      }
-      const canvas = document.createElement("canvas");
-      const context = canvas.getContext("2d");
-      modelToolbarMeasureCtxRef.current = context;
-      return context;
-    };
-
-    let raf = 0;
-    const updateDensity = () => {
-      const currentButton = modelToolbarButtonRef.current;
-      if (!currentButton) return;
-
-      const context = getMeasureContext();
-      if (!context) return;
-
-      const styles = getComputedStyle(currentButton);
-      const widthBudget =
-        currentButton.clientWidth -
-        pxOrZero(styles.paddingLeft) -
-        pxOrZero(styles.paddingRight);
-      if (widthBudget <= 0) {
-        setModelToolbarDensity((currentDensity) =>
-          currentDensity === "hidden" ? currentDensity : "hidden",
-        );
-        return;
-      }
-
-      const nextDensity =
-        MODEL_DENSITY_ORDER.find((density) =>
-          density === "hidden"
-            ? false
-            : modelIndicatorFitsWithMode(
-                context,
-                candidateByDensity[density],
-                currentButton,
-                widthBudget,
-              ),
-        ) ?? "hidden";
-      setModelToolbarDensity((currentDensity) =>
-        currentDensity === nextDensity ? currentDensity : nextDensity,
-      );
-    };
-
-    const scheduleDensityUpdate = () => {
-      window.cancelAnimationFrame(raf);
-      raf = window.requestAnimationFrame(updateDensity);
-    };
-
-    const resizeObserver = new ResizeObserver(() => {
-      scheduleDensityUpdate();
-    });
-    resizeObserver.observe(button);
-
-    const onWindowResize = () => {
-      scheduleDensityUpdate();
-    };
-    window.addEventListener("resize", onWindowResize);
-    scheduleDensityUpdate();
-
-    return () => {
-      window.cancelAnimationFrame(raf);
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", onWindowResize);
-      modelToolbarMeasureCtxRef.current = null;
-    };
-  }, [
-    hasModelIndicator,
-    modelToolbarVariants.full,
-    modelToolbarVariants.compact,
-    modelToolbarVariants.glyph,
-  ]);
 
   useLayoutEffect(() => {
     const compactStatusQuery = getCompactStatusMatchMedia();
@@ -1808,7 +1626,6 @@ export function MessageInputToolbar({
         left: toolbarLeftRef,
         status: toolbarStatusRef,
         actions: toolbarActionsRef,
-        modelButton: modelToolbarButtonRef,
       }}
       visibility={toolbarVisibility}
       isCompactStatusMode={isCompactStatusMode}
@@ -1906,18 +1723,6 @@ export function MessageInputToolbar({
               }
             : undefined,
       }}
-      modelControl={
-        hasModelIndicator
-          ? {
-              density: modelToolbarDensity,
-              label: modelToolbarLabel,
-              tone: modelIndicatorTone,
-              tooltip: modelIndicatorTooltip,
-              disabled: disabled || voiceDisabled,
-              onClick: () => onSelectSlashCommand?.("/model"),
-            }
-          : null
-      }
       statusControl={{
         showToolbarStatus,
         showLivenessChip,

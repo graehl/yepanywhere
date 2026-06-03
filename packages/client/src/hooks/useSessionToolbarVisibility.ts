@@ -7,7 +7,6 @@ export interface SessionToolbarVisibility {
   slashMenu: boolean;
   thinkingToggle: boolean;
   renderMode: boolean;
-  modelIndicator: boolean;
   microphone: boolean;
   shortcutsHelp: boolean;
   contextUsage: boolean;
@@ -25,7 +24,6 @@ export const DEFAULT_SESSION_TOOLBAR_VISIBILITY: SessionToolbarVisibility = {
   slashMenu: true,
   thinkingToggle: true,
   renderMode: false,
-  modelIndicator: false,
   microphone: true,
   shortcutsHelp: true,
   contextUsage: true,
@@ -37,7 +35,6 @@ export const DEFAULT_SESSION_TOOLBAR_VISIBILITY: SessionToolbarVisibility = {
 
 const MOBILE_SESSION_TOOLBAR_VISIBILITY_DEFAULTS: Partial<SessionToolbarVisibility> =
   {
-    modelIndicator: false,
     microphone: false,
     shortcutsHelp: false,
     sessionStatus: false,

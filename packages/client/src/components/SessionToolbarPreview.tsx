@@ -2,10 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSessionToolbarVisibility } from "../hooks/useSessionToolbarVisibility";
 import { useI18n } from "../i18n";
 import { getEffortLevelOptions } from "../lib/effortLevels";
-import {
-  getModelIndicatorTextVariants,
-  getModelIndicatorTooltip,
-} from "../lib/modelIndicatorText";
 import type { ContextUsage } from "../types";
 import {
   type LivenessDisplay,
@@ -26,24 +22,6 @@ export function SessionToolbarPreview() {
   const inertRef = useRef<HTMLDivElement | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const previewNowMs = useMemo(() => Date.now(), []);
-  const modelLabel = useMemo(
-    () =>
-      getModelIndicatorTextVariants(
-        "codex",
-        "gpt-5.5-codex",
-        "Codex 5.5 · Effort max",
-      ).compact,
-    [],
-  );
-  const modelTooltip = useMemo(
-    () =>
-      getModelIndicatorTooltip(
-        "codex",
-        "gpt-5.5-codex",
-        "Codex 5.5 · Effort max",
-      ),
-    [],
-  );
   const livenessDisplay = useMemo<LivenessDisplay>(
     () => ({
       prefix: "Verified idle",
@@ -122,13 +100,6 @@ export function SessionToolbarPreview() {
             voiceButton: {
               kind: "preview",
             },
-          }}
-          modelControl={{
-            density: "compact",
-            label: modelLabel,
-            tone: "max",
-            tooltip: modelTooltip,
-            onClick: noop,
           }}
           statusControl={{
             showToolbarStatus: visibility.sessionStatus,

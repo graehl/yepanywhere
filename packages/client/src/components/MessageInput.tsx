@@ -21,7 +21,6 @@ import {
 import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import { hasCoarsePointer } from "../lib/deviceDetection";
-import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 import type {
   SpeechTranscriptionContext,
   SpeechTranscriptionResultMetadata,
@@ -166,11 +165,9 @@ interface Props {
   btwHasAsides?: boolean;
   /** Explicit /btw toolbar display state when focus and footer routing differ. */
   btwToolbarMode?: BtwToolbarMode;
-  /** Live model/effort indicator shown on the slash button */
-  modelIndicatorTone?: ModelIndicatorTone;
-  modelIndicatorProvider?: string;
-  modelIndicatorModel?: string;
-  modelIndicatorTitle?: string;
+  /** Provider/model context used by the thinking effort chooser. */
+  thinkingProvider?: string;
+  thinkingModel?: string;
   /** Whether heartbeat turns are currently enabled for this session */
   heartbeatEnabled?: boolean;
   /** Quick-toggle session heartbeat */
@@ -224,10 +221,8 @@ export function MessageInput({
   btwActive = false,
   btwHasAsides = false,
   btwToolbarMode,
-  modelIndicatorTone,
-  modelIndicatorProvider,
-  modelIndicatorModel,
-  modelIndicatorTitle,
+  thinkingProvider,
+  thinkingModel,
   heartbeatEnabled = false,
   onToggleHeartbeat,
   onConfigureHeartbeat,
@@ -950,10 +945,8 @@ export function MessageInput({
             btwActive={btwActive}
             btwHasAsides={btwHasAsides}
             btwToolbarMode={btwToolbarMode}
-            modelIndicatorTone={modelIndicatorTone}
-            modelIndicatorProvider={modelIndicatorProvider}
-            modelIndicatorModel={modelIndicatorModel}
-            modelIndicatorTitle={modelIndicatorTitle}
+            thinkingProvider={thinkingProvider}
+            thinkingModel={thinkingModel}
             heartbeatEnabled={heartbeatEnabled}
             onToggleHeartbeat={onToggleHeartbeat}
             onConfigureHeartbeat={onConfigureHeartbeat}

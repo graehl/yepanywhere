@@ -1,7 +1,6 @@
-import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { getSlashCommandMenuParts } from "../lib/slashCommands";
-import type { ModelIndicatorTone } from "../lib/modelConfigIndicator";
 
 interface SlashCommandButtonProps {
   /** Available slash commands (without the "/" prefix) */
@@ -10,10 +9,6 @@ interface SlashCommandButtonProps {
   onSelectCommand: (command: string) => void;
   /** Whether the button should be disabled */
   disabled?: boolean;
-  /** Live model/effort indicator shown on the slash button */
-  modelIndicatorTone?: ModelIndicatorTone;
-  /** Optional tooltip text for the live model/effort indicator */
-  modelIndicatorTitle?: string;
 }
 
 /**
@@ -24,11 +19,12 @@ export function SlashCommandButton({
   commands,
   onSelectCommand,
   disabled,
-  modelIndicatorTone,
-  modelIndicatorTitle,
 }: SlashCommandButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState<{ bottom: number; left: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{
+    bottom: number;
+    left: number;
+  } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -106,18 +102,12 @@ export function SlashCommandButton({
         className={`slash-command-button ${isOpen ? "active" : ""}`}
         onClick={handleToggle}
         disabled={disabled}
-        title={modelIndicatorTitle ?? "Slash commands"}
+        title="Slash commands"
         aria-label="Show slash commands"
         aria-expanded={isOpen}
         aria-haspopup="menu"
       >
         <span className="slash-icon">/</span>
-        {modelIndicatorTone && (
-          <span
-            className={`slash-command-indicator tone-${modelIndicatorTone}`}
-            aria-hidden="true"
-          />
-        )}
       </button>
       {isOpen &&
         menuPos &&
@@ -125,7 +115,11 @@ export function SlashCommandButton({
           <div
             ref={menuRef}
             className="slash-command-menu"
-            style={{ position: "fixed", bottom: menuPos.bottom, left: menuPos.left }}
+            style={{
+              position: "fixed",
+              bottom: menuPos.bottom,
+              left: menuPos.left,
+            }}
             role="menu"
             aria-label="Slash commands"
           >

@@ -30,6 +30,7 @@ interface ModelSwitchModalProps {
     thinking?: { type: string };
     effort?: string;
   }) => void;
+  onOpenSessionInfo?: () => void;
   onClose: () => void;
 }
 
@@ -67,6 +68,7 @@ export function ModelSwitchModal({
   sessionId,
   currentModel,
   onModelChanged,
+  onOpenSessionInfo,
   onClose,
 }: ModelSwitchModalProps) {
   const { t } = useI18n();
@@ -168,7 +170,7 @@ export function ModelSwitchModal({
       effectiveEffortLevel,
     );
 
-  const applyConfig = async () => {
+  const applyConfig = async (afterApply?: () => void) => {
     if (switching || !selectedModel) return;
     setSwitching(true);
     setError(null);
@@ -182,6 +184,7 @@ export function ModelSwitchModal({
       setEffortLevel(effectiveEffortLevel);
       onModelChanged(result);
       onClose();
+      afterApply?.();
     } catch (err: unknown) {
       setError(
         err instanceof Error ? err.message : t("modelSwitchChangeFailed"),
@@ -197,6 +200,15 @@ export function ModelSwitchModal({
       return;
     }
     onClose();
+  };
+
+  const handleOpenSessionInfo = () => {
+    if (!onOpenSessionInfo || switching) return;
+    if (dirty) {
+      void applyConfig(onOpenSessionInfo);
+      return;
+    }
+    onOpenSessionInfo();
   };
 
   const currentIndicatorTone = getIndicatorToneFromProcess(
@@ -291,6 +303,18 @@ export function ModelSwitchModal({
                 </div>
               )}
             </div>
+            {onOpenSessionInfo && (
+              <div className="model-switch-info-action">
+                <button
+                  type="button"
+                  className="settings-button settings-button-secondary model-switch-inline-save"
+                  onClick={handleOpenSessionInfo}
+                  disabled={switching}
+                >
+                  {t("sessionViewInfo")}
+                </button>
+              </div>
+            )}
 
             {error && <div className="model-switch-error">{error}</div>}
 

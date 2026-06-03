@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  getModelIndicatorModelLabel,
-  getModelIndicatorTextVariants,
-  getModelIndicatorTooltip,
-} from "../modelIndicatorText";
+import { getModelIndicatorModelLabel } from "../modelIndicatorText";
 
 describe("getModelIndicatorModelLabel", () => {
   describe("claude models", () => {
@@ -21,9 +17,7 @@ describe("getModelIndicatorModelLabel", () => {
       expect(getModelIndicatorModelLabel("claude", "opus")).toBe("Cl ◐");
     });
     it("opus 1m alias", () => {
-      expect(getModelIndicatorModelLabel("claude", "opus[1m]")).toBe(
-        "Cl ◐ 1m",
-      );
+      expect(getModelIndicatorModelLabel("claude", "opus[1m]")).toBe("Cl ◐ 1m");
     });
     it("opus plan alias", () => {
       expect(getModelIndicatorModelLabel("claude", "opusplan")).toBe(
@@ -142,14 +136,14 @@ describe("getModelIndicatorModelLabel", () => {
 
   describe("variant provider model rules fall back to base provider", () => {
     it("claude-ollama uses claude model rules", () => {
-      expect(getModelIndicatorModelLabel("claude-ollama", "claude-sonnet-4-6")).toBe(
-        "Cl↓ ♪ 4.6",
-      );
+      expect(
+        getModelIndicatorModelLabel("claude-ollama", "claude-sonnet-4-6"),
+      ).toBe("Cl↓ ♪ 4.6");
     });
     it("gemini-acp uses gemini model rules", () => {
-      expect(getModelIndicatorModelLabel("gemini-acp", "gemini-2.5-flash")).toBe(
-        "✦ ⚡",
-      );
+      expect(
+        getModelIndicatorModelLabel("gemini-acp", "gemini-2.5-flash"),
+      ).toBe("✦ ⚡");
     });
     it("codex-oss uses its own explicit rules (not codex fallback)", () => {
       expect(getModelIndicatorModelLabel("codex-oss", "gpt-5.4-mini")).toBe(
@@ -166,93 +160,5 @@ describe("getModelIndicatorModelLabel", () => {
         getModelIndicatorModelLabel("codex-oss", "gpt-5.4-codex-spark"),
       ).toBe("Cd↓ ⚡");
     });
-  });
-});
-
-describe("getModelIndicatorTooltip", () => {
-  it("combines status and readable model", () => {
-    expect(
-      getModelIndicatorTooltip("claude", "claude-sonnet-4-6", "Thinking"),
-    ).toBe("Thinking - Cl Sonnet 4.6");
-  });
-  it("status-only without model", () => {
-    expect(getModelIndicatorTooltip("claude", "", "Thinking")).toBe("Thinking");
-  });
-  it("no status: just provider abbrev + readable model", () => {
-    expect(
-      getModelIndicatorTooltip("claude", "claude-opus-4-8", undefined),
-    ).toBe("Cl Opus 4.8");
-  });
-  it("opus alias tooltip stays generic without provider catalog data", () => {
-    expect(getModelIndicatorTooltip("claude", "opus", undefined)).toBe(
-      "Cl Opus",
-    );
-  });
-  it("codex model", () => {
-    expect(
-      getModelIndicatorTooltip("codex", "gpt-5.4-mini", "Thinking"),
-    ).toBe("Thinking - Cd 5.4-mini");
-  });
-  it("gemini model", () => {
-    expect(
-      getModelIndicatorTooltip("gemini", "gemini-2.5-flash", undefined),
-    ).toBe("✦ 2.5-flash");
-  });
-  it("non-status title falls back to model label", () => {
-    expect(
-      getModelIndicatorTooltip("claude", "claude-haiku-3-5", "4-6 · Thinking off"),
-    ).toBe("Cl Haiku 3.5");
-  });
-});
-
-describe("getModelIndicatorTextVariants", () => {
-  it("full is raw title, glyph is compact, compact includes extras", () => {
-    const variants = getModelIndicatorTextVariants(
-      "claude",
-      "claude-sonnet-4-6",
-      "4-6 · Thinking off",
-    );
-    expect(variants.full).toBe("4-6 · Thinking off");
-    expect(variants.glyph).toBe("Cl ♪ 4.6");
-    expect(variants.compact).toBe("Cl ♪ 4.6 · Thinking off");
-  });
-
-  it("status-only titles pass through unchanged", () => {
-    for (const title of [
-      "Thinking",
-      "Compacting",
-      "Slash commands",
-      "Waiting for input",
-    ]) {
-      const variants = getModelIndicatorTextVariants(
-        "claude",
-        "claude-sonnet-4-6",
-        title,
-      );
-      expect(variants.full).toBe(title);
-      expect(variants.compact).toBe(title);
-      expect(variants.glyph).toBe(title);
-    }
-  });
-
-  it("no title falls back to glyph label", () => {
-    const variants = getModelIndicatorTextVariants(
-      "claude",
-      "claude-sonnet-4-6",
-    );
-    expect(variants.full).toBe("model");
-    expect(variants.glyph).toBe("Cl ♪ 4.6");
-    expect(variants.compact).toBe("Cl ♪ 4.6");
-  });
-
-  it("non-status codex title handles codex suffix variants", () => {
-    const variants = getModelIndicatorTextVariants(
-      "codex",
-      "gpt-5.4-codex-spark",
-      "gpt-5.4-codex-spark · Thinking auto",
-    );
-    expect(variants.compact).toBe("Cd ⚡ · Thinking auto");
-    expect(variants.full).toBe("gpt-5.4-codex-spark · Thinking auto");
-    expect(variants.glyph).toBe("Cd ⚡");
   });
 });

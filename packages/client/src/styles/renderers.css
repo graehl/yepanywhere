@@ -2277,6 +2277,12 @@ details[open] .collapsible__icon {
   background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
 }
 
+.model-switch-info-action {
+  display: flex;
+  justify-content: flex-end;
+  margin: -0.25rem 0 0.6rem;
+}
+
 .model-switch-status-row {
   display: flex;
   align-items: center;

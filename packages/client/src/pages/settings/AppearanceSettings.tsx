@@ -163,11 +163,6 @@ export function AppearanceSettings() {
       description: t("appearanceToolbarMicrophoneDescription"),
     },
     {
-      key: "modelIndicator",
-      title: t("appearanceToolbarModelTitle"),
-      description: t("appearanceToolbarModelDescription"),
-    },
-    {
       key: "sessionStatus",
       title: t("appearanceToolbarStatusTitle"),
       description: t("appearanceToolbarStatusDescription"),

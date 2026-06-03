@@ -4856,46 +4856,6 @@ a.sidebar-nav-item {
   line-height: 1;
 }
 
-.slash-command-indicator {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: 999px;
-  border: 1px solid var(--bg-primary);
-  background: var(--text-muted);
-  pointer-events: none;
-}
-
-.slash-command-indicator.tone-off {
-  background: var(--text-muted);
-}
-
-.slash-command-indicator.tone-auto {
-  background: var(--link-color);
-}
-
-.slash-command-indicator.tone-low {
-  background: #2f9e44;
-}
-
-.slash-command-indicator.tone-medium {
-  background: #d97706;
-}
-
-.slash-command-indicator.tone-high {
-  background: #ea580c;
-}
-
-.slash-command-indicator.tone-xhigh {
-  background: #dc2626;
-}
-
-.slash-command-indicator.tone-max {
-  background: #991b1b;
-}
-
 .slash-command-menu {
   position: absolute;
   bottom: 100%;
@@ -4944,51 +4904,6 @@ a.sidebar-nav-item {
 
 .slash-command-item:only-child {
   border-radius: var(--radius-md);
-}
-
-/* Persistent model indicator button */
-.model-toolbar-button {
-  display: inline-flex;
-  align-items: center;
-  height: var(--composer-control-size);
-  padding: 0 0.4rem 0 0.45rem;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  border-left: 2px solid var(--text-muted);
-  border-radius: var(--radius-md);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: var(--font-size-xs);
-  font-family: var(--font-mono);
-  max-width: 9rem;
-  flex-shrink: 1;
-  min-width: 0;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.model-toolbar-button:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-input);
-  border-left-color: var(--text-secondary);
-  color: var(--text-primary);
-}
-
-.model-toolbar-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.model-toolbar-button.tone-auto { border-left-color: var(--link-color); }
-.model-toolbar-button.tone-low { border-left-color: #2f9e44; }
-.model-toolbar-button.tone-medium { border-left-color: #d97706; }
-.model-toolbar-button.tone-high { border-left-color: #ea580c; }
-.model-toolbar-button.tone-xhigh { border-left-color: #dc2626; }
-.model-toolbar-button.tone-max { border-left-color: #991b1b; }
-
-.model-toolbar-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Attachment list */

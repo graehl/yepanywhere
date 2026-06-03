@@ -13,13 +13,14 @@ visibility list, plus a reset-to-defaults action.
 <!-- verified: AppearanceSettings.tsx:51-121,327; SessionToolbarPreview.tsx -->
 Visibility state is held by `useSessionToolbarVisibility` and currently covers
 `modeSelector`, `attachments`, `slashMenu`, `thinkingToggle`, `renderMode`,
-`nudge`, `microphone`, `modelIndicator`, `sessionStatus`, `shortcutsHelp`,
-`contextUsage`, `btw`, and `queueControls`. Toggling a control updates the
+`nudge`, `microphone`, `sessionStatus`, `shortcutsHelp`, `contextUsage`, `btw`,
+and `queueControls`. Toggling a control updates the
 preview immediately.
 
-The session model indicator control remains configurable, but its default is
-hidden. The bottom toolbar already carries thinking/effort state separately, and
-the full model chip is too large/noisy for the default composer surface.
+The former composer model indicator chip is removed from the customizable
+toolbar. The top-right provider badge remains the model/effort status surface
+and opens the mid-session model, thinking, and effort control panel for owned
+sessions.
 
 This is the resolution path for session controls that are useful to some users
 but too busy, speculative, or maintainer-contested for the default UI. Examples

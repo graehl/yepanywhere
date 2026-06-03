@@ -1,11 +1,3 @@
-export type ModelToolbarDensity = "full" | "compact" | "glyph" | "hidden";
-
-export interface ModelIndicatorTextVariants {
-  full: string;
-  compact: string;
-  glyph: string;
-}
-
 const DEFAULT_PROVIDER_GLYPH = "◌";
 
 const providerGlyphMap: Record<string, string> = {
@@ -18,13 +10,6 @@ const providerGlyphMap: Record<string, string> = {
   grok: "Gk",
   opencode: "OC",
 };
-
-const statusOnlyModelIndicatorTitles = new Set([
-  "Slash commands",
-  "Compacting",
-  "Thinking",
-  "Waiting for input",
-]);
 
 type ModelGlyphMatch = {
   glyph: string;
@@ -242,120 +227,4 @@ export function getModelIndicatorModelLabel(
 
   const suffix = match.suffix ? ` ${match.suffix}` : "";
   return `${providerGlyph} ${match.glyph}${suffix}`;
-}
-
-// Returns human-readable model name for use in tooltips:
-// "Sonnet 4.x", "Opus 4.x", "5.4-mini", "2.5-flash"
-function getModelReadableName(
-  providerKey: string,
-  normalizedModel: string,
-  match: ReturnType<typeof deriveModelGlyphMatch>,
-): string {
-  if (!match) {
-    return normalizedModel;
-  }
-  // For Claude family, extract the family word and capitalize it
-  if (providerKey === "claude") {
-    for (const family of ["opus", "sonnet", "haiku"]) {
-      if (normalizedModel.includes(family)) {
-        const capitalized = family.charAt(0).toUpperCase() + family.slice(1);
-        return match.suffix ? `${capitalized} ${match.suffix}` : capitalized;
-      }
-    }
-  }
-  // For GPT-prefix patterns the suffix already carries the version
-  if (normalizedModel.startsWith("gpt-")) {
-    return match.suffix || normalizedModel.slice(4);
-  }
-  // Gemini, opencode, etc.
-  return match.suffix || normalizedModel;
-}
-
-// Tooltip for the model/status button: "{status} - {providerGlyph} {readableName}"
-// or just "{providerGlyph} {readableName}" when there is no special status.
-export function getModelIndicatorTooltip(
-  provider?: string,
-  model?: string,
-  title?: string,
-): string {
-  const providerKey = normalizeProviderKey(provider);
-  const providerGlyph = providerGlyphMap[providerKey] ?? DEFAULT_PROVIDER_GLYPH;
-  const trimmedModel = model?.trim();
-  const modelPart = (() => {
-    if (!trimmedModel) return "";
-    const normalizedModel = normalizeForModelGlyphMatching(trimmedModel);
-    const normalizedForMatching = normalizeForCodexModelAliasMatching(
-      normalizedModel,
-      providerKey,
-    );
-    const match = deriveModelGlyphMatch(providerKey, normalizedForMatching);
-    const readable = getModelReadableName(
-      providerKey,
-      normalizedForMatching,
-      match,
-    );
-    return `${providerGlyph} ${readable}`;
-  })();
-
-  const { statusOnly } = getStatusTitleParts(title);
-  if (statusOnly && title) {
-    return modelPart ? `${title} - ${modelPart}` : title;
-  }
-  return modelPart || title || "Switch model";
-}
-
-function getStatusTitleParts(title?: string): {
-  statusOnly: boolean;
-  modelTitleParts: readonly string[];
-} {
-  const modelTitleParts = (title ?? "").split("·").map((part) => part.trim());
-  return {
-    statusOnly: statusOnlyModelIndicatorTitles.has(modelTitleParts[0] ?? ""),
-    modelTitleParts,
-  };
-}
-
-export function getModelIndicatorTextVariants(
-  provider: string,
-  model: string,
-  title?: string,
-): ModelIndicatorTextVariants {
-  const { statusOnly, modelTitleParts } = getStatusTitleParts(title);
-  const modelLabel = getModelIndicatorModelLabel(provider, model);
-
-  if (statusOnly) {
-    const fallback = title ?? "model";
-    return {
-      full: fallback,
-      compact: fallback,
-      glyph: fallback,
-    };
-  }
-
-  const extras = modelTitleParts.slice(1).join(" · ");
-  const compact = extras && modelLabel ? `${modelLabel} · ${extras}` : modelLabel;
-
-  return {
-    full: title ?? "model",
-    compact,
-    glyph: modelLabel,
-  };
-}
-
-export function modelIndicatorFitsWithMode(
-  ctx: CanvasRenderingContext2D,
-  label: string,
-  button: HTMLButtonElement | null,
-  widthBudget: number,
-): boolean {
-  if (!button) {
-    return false;
-  }
-
-  if (widthBudget <= 0) {
-    return false;
-  }
-
-  ctx.font = getComputedStyle(button).font;
-  return ctx.measureText(label).width <= widthBudget;
 }

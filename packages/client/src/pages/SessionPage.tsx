@@ -90,12 +90,6 @@ import {
 import { buildCorrectionText } from "../lib/correctionText";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
-import {
-  getEffortLevelLabel,
-  normalizeEffortLevelForProvider,
-} from "../lib/effortLevels";
-import { getIndicatorToneFromProcess } from "../lib/modelConfigIndicator";
-import { getModelIndicatorModelLabel } from "../lib/modelIndicatorText";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { resolveSessionProviderCapabilities } from "../lib/providerCapabilities";
 import {
@@ -104,11 +98,11 @@ import {
   measureServerLatencyMs,
   recordServerClockSample,
 } from "../lib/serverClock";
+import { getSessionActivityUiState } from "../lib/sessionActivityUi";
 import {
   createSessionNavigationState,
   parseSessionNavigationState,
 } from "../lib/sessionNavigationState";
-import { getSessionActivityUiState } from "../lib/sessionActivityUi";
 import {
   CLIENT_SLASH_COMMANDS,
   resolveComposerSlashTurn,
@@ -1537,7 +1531,9 @@ function SessionPageContent({
       setProcessState("idle");
       const errorMsg =
         finalError instanceof Error ? finalError.message : String(finalError);
-      if (requiresHandoffAfterClaudeResumeError(finalError, effectiveProvider)) {
+      if (
+        requiresHandoffAfterClaudeResumeError(finalError, effectiveProvider)
+      ) {
         setShowHandoffModal(true);
         showToast(
           errorMsg.includes("API error: 409")
@@ -1793,7 +1789,9 @@ function SessionPageContent({
       setAttachments(currentAttachments);
       const errorMsg =
         finalError instanceof Error ? finalError.message : String(finalError);
-      if (requiresHandoffAfterClaudeResumeError(finalError, effectiveProvider)) {
+      if (
+        requiresHandoffAfterClaudeResumeError(finalError, effectiveProvider)
+      ) {
         setShowHandoffModal(true);
         showToast(
           errorMsg.includes("API error: 409")
@@ -2669,71 +2667,7 @@ function SessionPageContent({
     ],
   );
 
-  const slashModelIndicatorTone =
-    currentOwnedProcessId && liveModelConfig
-      ? getIndicatorToneFromProcess(
-          liveModelConfig.thinking,
-          liveModelConfig.effort,
-          effectiveProvider,
-        )
-      : undefined;
   const liveBadgeModel = liveModelConfig?.model ?? effectiveModel;
-  // Keep the status title compact while preserving model state for non-status
-  // states and avoid leaking verbose model suffixes.
-  const stripBadgePrefix = (model: string) => {
-    const compactCodexLabel = getModelIndicatorModelLabel(
-      effectiveProvider,
-      model,
-    );
-    const compactModel =
-      effectiveProvider === "codex" || effectiveProvider === "codex-oss"
-        ? compactCodexLabel || model
-        : model;
-    const claudeMatch = compactModel.match(/^claude-\w+-(.+)$/);
-    return claudeMatch ? claudeMatch[1] : compactModel;
-  };
-  const slashModelIndicatorTitle = useMemo(() => {
-    if (!currentOwnedProcessId) {
-      return "Slash commands";
-    }
-
-    if (isCompacting) {
-      return "Compacting";
-    }
-
-    if (processState === "in-turn") {
-      return "Thinking";
-    }
-
-    if (processState === "waiting-input") {
-      return "Waiting for input";
-    }
-
-    return liveBadgeModel
-      ? `${stripBadgePrefix(liveBadgeModel)} · ${
-          liveModelConfig?.thinking?.type === "disabled" ||
-          !liveModelConfig?.thinking
-            ? "Thinking off"
-            : liveModelConfig?.effort
-              ? `Effort ${getEffortLevelLabel(
-                  normalizeEffortLevelForProvider(
-                    liveModelConfig.effort,
-                    effectiveProvider,
-                  ),
-                  effectiveProvider,
-                )}`
-              : "Thinking auto"
-        }`
-      : "Slash commands";
-  }, [
-    currentOwnedProcessId,
-    isCompacting,
-    processState,
-    liveBadgeModel,
-    effectiveProvider,
-    liveModelConfig?.effort,
-    liveModelConfig?.thinking?.type,
-  ]);
 
   const handleAbort = async () => {
     if (status.owner === "self" && status.processId) {
@@ -3302,8 +3236,8 @@ function SessionPageContent({
           <h2 style={{ marginTop: 0 }}>Session not found</h2>
           <p style={{ color: "#666" }}>
             The backing data for this session on disk or in a live process is
-            not currently readable. This can happen after a YA server restart,
-            a provider storage upgrade, or native session directories being
+            not currently readable. This can happen after a YA server restart, a
+            provider storage upgrade, or native session directories being
             cleaned.
           </p>
           <div
@@ -3566,8 +3500,18 @@ function SessionPageContent({
               <button
                 type="button"
                 className="provider-badge-button"
-                onClick={() => setShowProcessInfoModal(true)}
-                title={t("sessionViewInfo")}
+                onClick={() => {
+                  if (status.owner === "self" && status.processId) {
+                    setShowModelSwitchModal(true);
+                    return;
+                  }
+                  setShowProcessInfoModal(true);
+                }}
+                title={
+                  status.owner === "self" && status.processId
+                    ? t("sessionConfigureModel")
+                    : t("sessionViewInfo")
+                }
               >
                 <ProviderBadge
                   provider={effectiveProvider}
@@ -3657,6 +3601,10 @@ function SessionPageContent({
           sessionId={actualSessionId}
           currentModel={session?.model}
           onModelChanged={handleModelChanged}
+          onOpenSessionInfo={() => {
+            setShowModelSwitchModal(false);
+            setShowProcessInfoModal(true);
+          }}
           onClose={() => setShowModelSwitchModal(false)}
         />
       )}
@@ -3984,10 +3932,8 @@ function SessionPageContent({
                       status.owner === "self" ? allSlashCommands : []
                     }
                     onSelectSlashCommand={handleToolbarSlashCommand}
-                    modelIndicatorTone={slashModelIndicatorTone}
-                    modelIndicatorProvider={effectiveProvider}
-                    modelIndicatorModel={liveBadgeModel}
-                    modelIndicatorTitle={slashModelIndicatorTitle}
+                    thinkingProvider={effectiveProvider}
+                    thinkingModel={liveBadgeModel}
                     heartbeatEnabled={heartbeatTurnsEnabled}
                     onToggleHeartbeat={handleToggleHeartbeat}
                     onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
@@ -4097,10 +4043,8 @@ function SessionPageContent({
                   stickyBtwAsides.length > 0 || !!childSessionParentHref
                 }
                 btwToolbarMode={btwToolbarMode}
-                modelIndicatorTone={slashModelIndicatorTone}
-                modelIndicatorProvider={effectiveProvider}
-                modelIndicatorModel={liveBadgeModel}
-                modelIndicatorTitle={slashModelIndicatorTitle}
+                thinkingProvider={effectiveProvider}
+                thinkingModel={liveBadgeModel}
                 heartbeatEnabled={heartbeatTurnsEnabled}
                 onToggleHeartbeat={handleToggleHeartbeat}
                 onConfigureHeartbeat={() => setShowHeartbeatModal(true)}

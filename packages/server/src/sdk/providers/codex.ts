@@ -149,6 +149,20 @@ const CODEX_RECAP_CHEAPEST_MODEL_PREFERENCES = [
   "gpt-5.1-codex-mini",
   "gpt-5.3-codex-spark",
 ] as const;
+const CODEX_DISABLE_LIVE_DELTAS_ENV = "YA_CODEX_DISABLE_LIVE_DELTAS";
+const CODEX_LIVE_DELTA_NOTIFICATION_METHODS = new Set<string>([
+  "item/agentMessage/delta",
+  "item/plan/delta",
+  "item/reasoning/summaryTextDelta",
+  "item/commandExecution/outputDelta",
+  "item/fileChange/outputDelta",
+]);
+function isCodexLiveDeltaSuppressionEnabled(): boolean {
+  return process.env[CODEX_DISABLE_LIVE_DELTAS_ENV] === "true";
+}
+function isCodexLiveDeltaNotificationMethod(method: string): boolean {
+  return CODEX_LIVE_DELTA_NOTIFICATION_METHODS.has(method);
+}
 const CODEX_BUILTIN_COMMANDS: SlashCommand[] = [
   {
     name: "goal",
@@ -763,6 +777,13 @@ class CodexAppServerClient {
           params: message.params,
         };
         this.handleServerRequest(request);
+        return;
+      }
+
+      if (
+        isCodexLiveDeltaSuppressionEnabled() &&
+        isCodexLiveDeltaNotificationMethod(method)
+      ) {
         return;
       }
 
@@ -1828,6 +1849,9 @@ export class CodexProvider implements AgentProvider {
 
         while (!turnComplete && !signal.aborted) {
           const notification = await appServer.nextNotification(signal);
+          if (this.shouldSuppressLiveDeltaNotification(notification)) {
+            continue;
+          }
           logRawNotification(notification);
           const currentActiveTurnId = runtimeState.activeTurnId ?? activeTurnId;
           failureTrace.activeTurnId = currentActiveTurnId;
@@ -1944,6 +1968,15 @@ export class CodexProvider implements AgentProvider {
         ...notification,
       },
       { provider: "codex" },
+    );
+  }
+
+  private shouldSuppressLiveDeltaNotification(
+    notification: JsonRpcNotification,
+  ): boolean {
+    return (
+      isCodexLiveDeltaSuppressionEnabled() &&
+      isCodexLiveDeltaNotificationMethod(notification.method)
     );
   }
 

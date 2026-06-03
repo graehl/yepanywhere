@@ -282,6 +282,73 @@ describe("CodexProvider app-server lifecycle", () => {
     }
   });
 
+  it("drops Codex live deltas before raw logging when disabled by env", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-deltas-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = join(tempDir, "fake-codex-live-deltas.mjs");
+    writeFileSync(
+      codexPath,
+      buildFakeCodexAppServerWithLiveDelta(logPath),
+      "utf-8",
+    );
+    chmodSync(codexPath, 0o755);
+    vi.stubEnv("YA_CODEX_DISABLE_LIVE_DELTAS", "true");
+
+    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
+    let consume: Promise<void> | undefined;
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+      session = await testProvider.startSession({
+        cwd: tempDir,
+        initialMessage: { text: "start a fake streamed turn" },
+        effort: "low",
+      });
+
+      const messages: Array<Record<string, unknown>> = [];
+      consume = (async () => {
+        for await (const message of session?.iterator ?? []) {
+          messages.push(message);
+          if (message.type === "result") {
+            break;
+          }
+        }
+      })();
+
+      await consume;
+
+      expect(messages.some((message) => message._isStreaming)).toBe(false);
+      expect(
+        messages.some(
+          (message) =>
+            message.type === "assistant" &&
+            (message.message as { content?: unknown } | undefined)?.content ===
+              "Final streamed answer",
+        ),
+      ).toBe(true);
+
+      const rawNotifications = vi
+        .mocked(logSDKMessage)
+        .mock.calls.map((call) => call[1] as { method?: string });
+      expect(
+        rawNotifications.some(
+          (notification) =>
+            notification.method === "item/agentMessage/delta",
+        ),
+      ).toBe(false);
+      expect(
+        rawNotifications.some(
+          (notification) => notification.method === "item/completed",
+        ),
+      ).toBe(true);
+    } finally {
+      session?.abort();
+      await consume?.catch(() => undefined);
+      vi.unstubAllEnvs();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("accepts interrupt with a Codex background tool handle", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-background-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
@@ -625,6 +692,104 @@ function handleMessage(message) {
           durationMs: null,
         },
       });
+      break;
+    default:
+      respond(message.id, {});
+      break;
+  }
+}
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString("utf-8");
+  const lines = buffer.split("\\n");
+  buffer = lines.pop() || "";
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    handleMessage(JSON.parse(line));
+  }
+});
+`;
+}
+
+function buildFakeCodexAppServerWithLiveDelta(logPath: string): string {
+  return `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+const logPath = ${JSON.stringify(logPath)};
+let buffer = "";
+
+function write(payload) {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...payload }) + "\\n");
+}
+
+function logRequest(message) {
+  appendFileSync(
+    logPath,
+    JSON.stringify({
+      id: message.id,
+      method: message.method,
+      params: message.params,
+    }) + "\\n",
+  );
+}
+
+function respond(id, result) {
+  write({ id, result });
+}
+
+function notify(method, params) {
+  write({ method, params });
+}
+
+function handleMessage(message) {
+  if (!message || typeof message !== "object") return;
+  logRequest(message);
+  if (message.id === undefined) return;
+
+  switch (message.method) {
+    case "initialize":
+      respond(message.id, { userAgent: "fake-codex" });
+      break;
+    case "thread/start":
+      respond(message.id, {
+        thread: { id: "thread-1" },
+        model: "gpt-5.4-mini",
+        reasoningEffort: "low",
+      });
+      break;
+    case "turn/start":
+      respond(message.id, {
+        turn: { id: "turn-live", status: "inProgress", error: null },
+      });
+      setTimeout(() => {
+        notify("item/agentMessage/delta", {
+          threadId: "thread-1",
+          turnId: "turn-live",
+          itemId: "message-live",
+          delta: "Live partial",
+        });
+        notify("item/completed", {
+          threadId: "thread-1",
+          turnId: "turn-live",
+          item: {
+            id: "message-live",
+            type: "agentMessage",
+            text: "Final streamed answer",
+          },
+        });
+        notify("turn/completed", {
+          threadId: "thread-1",
+          turn: {
+            id: "turn-live",
+            items: [],
+            status: "completed",
+            error: null,
+            startedAt: null,
+            completedAt: null,
+            durationMs: null,
+          },
+        });
+      }, 0);
       break;
     default:
       respond(message.id, {});
@@ -1216,6 +1381,45 @@ describe("CodexProvider Event Normalization", () => {
       },
       { provider: "codex" },
     );
+  });
+
+  it("identifies live delta notifications for the backend suppression toggle", () => {
+    const provider = createTestProvider() as unknown as {
+      shouldSuppressLiveDeltaNotification: (notification: {
+        method: string;
+        params?: unknown;
+      }) => boolean;
+    };
+    const liveDeltaMethods = [
+      "item/agentMessage/delta",
+      "item/plan/delta",
+      "item/reasoning/summaryTextDelta",
+      "item/commandExecution/outputDelta",
+      "item/fileChange/outputDelta",
+    ];
+
+    try {
+      for (const method of liveDeltaMethods) {
+        expect(
+          provider.shouldSuppressLiveDeltaNotification({ method }),
+        ).toBe(false);
+      }
+
+      vi.stubEnv("YA_CODEX_DISABLE_LIVE_DELTAS", "true");
+
+      for (const method of liveDeltaMethods) {
+        expect(provider.shouldSuppressLiveDeltaNotification({ method })).toBe(
+          true,
+        );
+      }
+      expect(
+        provider.shouldSuppressLiveDeltaNotification({
+          method: "item/completed",
+        }),
+      ).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("normalizes command execution tool_use and tool_result to Read shape", () => {

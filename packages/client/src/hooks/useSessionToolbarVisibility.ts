@@ -25,7 +25,7 @@ export const DEFAULT_SESSION_TOOLBAR_VISIBILITY: SessionToolbarVisibility = {
   slashMenu: true,
   thinkingToggle: true,
   renderMode: false,
-  modelIndicator: true,
+  modelIndicator: false,
   microphone: true,
   shortcutsHelp: true,
   contextUsage: true,

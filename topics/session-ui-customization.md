@@ -17,6 +17,10 @@ Visibility state is held by `useSessionToolbarVisibility` and currently covers
 `contextUsage`, `btw`, and `queueControls`. Toggling a control updates the
 preview immediately.
 
+The session model indicator control remains configurable, but its default is
+hidden. The bottom toolbar already carries thinking/effort state separately, and
+the full model chip is too large/noisy for the default composer surface.
+
 This is the resolution path for session controls that are useful to some users
 but too busy, speculative, or maintainer-contested for the default UI. Examples
 include composer delivery choices such as ASAP versus deferred/"when idle"

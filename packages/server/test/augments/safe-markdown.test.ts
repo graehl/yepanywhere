@@ -147,6 +147,17 @@ describe("renderSafeMarkdown — local file links", () => {
     expect(html).toContain('data-ya-media-type="image"');
   });
 
+  it("starts local video media placeholders collapsed", () => {
+    const html = renderSafeMarkdown("[clip](/tmp/demo.mp4)");
+
+    expect(html).toContain('href="/api/local-image?path=%2Ftmp%2Fdemo.mp4"');
+    expect(html).toContain('class="local-media-link"');
+    expect(html).toContain('data-media-type="video"');
+    expect(html).toContain('data-expanded="false"');
+    expect(html).toContain('aria-label="Expand video"');
+    expect(html).toContain('data-ya-media-type="video"');
+  });
+
   it("resolves relative local file links against a base directory", () => {
     const html = renderSafeMarkdown("[peer](docs/peer.md)", {
       localFileBasePath: "/workspace/project",

@@ -6,7 +6,7 @@ import {
 } from "@yep-anywhere/shared";
 import { type MouseEvent, type RefObject, useEffect, useState } from "react";
 import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
-import { useInlineImages } from "../hooks/useInlineImages";
+import { useInlineMedia } from "../hooks/useInlineMedia";
 import { useFetchedImage } from "../hooks/useRemoteImage";
 import { getGlobalConnection, isRemoteMode } from "../lib/connection";
 import { Modal } from "./ui/Modal";
@@ -726,7 +726,7 @@ export function useLocalMediaInlinePreviews(
   rootRef: RefObject<HTMLElement | null>,
   refreshKey?: unknown,
 ) {
-  const { inlineImagesExpandedByDefault } = useInlineImages();
+  const { inlineMediaExpandedByDefault } = useInlineMedia();
 
   useEffect(() => {
     const root = rootRef.current;
@@ -737,9 +737,6 @@ export function useLocalMediaInlinePreviews(
       const mediaType = element.getAttribute("data-media-type");
       return isLocalMediaType(mediaType) ? mediaType : "image";
     };
-
-    const isImageInlineControl = (element: HTMLElement) =>
-      getInlineMediaType(element) !== "video";
 
     const setToggleExpanded = (
       toggle: HTMLButtonElement,
@@ -774,27 +771,26 @@ export function useLocalMediaInlinePreviews(
         "button.local-media-inline-toggle",
       );
       for (const toggle of toggles) {
-        if (!isImageInlineControl(toggle)) continue;
         if (toggle.dataset.userToggled === "true") continue;
         if (
           toggle.dataset.defaultExpanded ===
-          String(inlineImagesExpandedByDefault)
+          String(inlineMediaExpandedByDefault)
         ) {
           continue;
         }
 
         const mediaType = getInlineMediaType(toggle);
-        setToggleExpanded(toggle, inlineImagesExpandedByDefault, mediaType);
-        toggle.dataset.defaultExpanded = String(inlineImagesExpandedByDefault);
+        setToggleExpanded(toggle, inlineMediaExpandedByDefault, mediaType);
+        toggle.dataset.defaultExpanded = String(inlineMediaExpandedByDefault);
 
         const preview = getPreviewForToggle(toggle);
         if (preview && preview.dataset.userToggled !== "true") {
           preview.setAttribute(
             "data-expanded",
-            String(inlineImagesExpandedByDefault),
+            String(inlineMediaExpandedByDefault),
           );
           preview.dataset.defaultExpanded = String(
-            inlineImagesExpandedByDefault,
+            inlineMediaExpandedByDefault,
           );
         }
       }
@@ -849,5 +845,5 @@ export function useLocalMediaInlinePreviews(
         URL.revokeObjectURL(url);
       }
     };
-  }, [inlineImagesExpandedByDefault, rootRef, refreshKey]);
+  }, [inlineMediaExpandedByDefault, rootRef, refreshKey]);
 }

@@ -220,7 +220,7 @@ function renderLocalMediaLink(
   const escapedLabel = escapeHtml(label || getFileName(parsed.filePath));
   const mediaType = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
   const typeLabel = VIDEO_EXTENSIONS.has(ext) ? "video" : "image";
-  const defaultExpanded = mediaType === "video";
+  const defaultExpanded = false;
   const toggleVerb = defaultExpanded ? "Collapse" : "Expand";
   const toggleTitle = defaultExpanded
     ? "Collapse inline preview"

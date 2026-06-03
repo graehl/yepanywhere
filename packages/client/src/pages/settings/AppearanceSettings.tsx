@@ -10,7 +10,7 @@ import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionButtonEnabled";
 import { FONT_SIZES, useFontSize } from "../../hooks/useFontSize";
 import { useFunPhrases } from "../../hooks/useFunPhrases";
-import { useInlineImages } from "../../hooks/useInlineImages";
+import { useInlineMedia } from "../../hooks/useInlineMedia";
 import {
   type SessionToolbarVisibilityKey,
   useSessionToolbarVisibility,
@@ -40,8 +40,8 @@ export function AppearanceSettings() {
   const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
   const { stableToolPreviewRendering, setStableToolPreviewRendering } =
     useStableToolPreviewRendering();
-  const { inlineImagesExpandedByDefault, setInlineImagesExpandedByDefault } =
-    useInlineImages();
+  const { inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault } =
+    useInlineMedia();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
   const { floatingActionButtonEnabled, setFloatingActionButtonEnabled } =
     useFloatingActionButtonEnabled();
@@ -286,9 +286,9 @@ export function AppearanceSettings() {
           <label className="toggle-switch">
             <input
               type="checkbox"
-              checked={inlineImagesExpandedByDefault}
+              checked={inlineMediaExpandedByDefault}
               onChange={(e) =>
-                setInlineImagesExpandedByDefault(e.target.checked)
+                setInlineMediaExpandedByDefault(e.target.checked)
               }
             />
             <span className="toggle-slider" />

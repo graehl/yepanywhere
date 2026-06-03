@@ -1,8 +1,14 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
+import { setInlineMediaExpandedPreference } from "../../../hooks/useInlineMedia";
 import { I18nProvider } from "../../../i18n";
-import { setInlineImagesExpandedPreference } from "../../../hooks/useInlineImages";
 import { type Connection, setGlobalConnection } from "../../../lib/connection";
 import { TextBlock } from "../TextBlock";
 
@@ -30,7 +36,7 @@ describe("TextBlock", () => {
   afterEach(() => {
     cleanup();
     setGlobalConnection(null);
-    setInlineImagesExpandedPreference(false);
+    setInlineMediaExpandedPreference(false);
     apiMocks.getFile.mockReset();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -74,7 +80,7 @@ describe("TextBlock", () => {
   });
 
   it("mounts local media previews inline beside rendered markdown links", async () => {
-    setInlineImagesExpandedPreference(true);
+    setInlineMediaExpandedPreference(true);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(new Blob(["png"], { type: "image/png" }))),
@@ -102,7 +108,7 @@ describe("TextBlock", () => {
   });
 
   it("keeps local media previews collapsed by default until expanded", async () => {
-    setInlineImagesExpandedPreference(false);
+    setInlineMediaExpandedPreference(false);
     const fetchMock = vi.fn(
       async () => new Response(new Blob(["png"], { type: "image/png" })),
     );
@@ -157,6 +163,72 @@ describe("TextBlock", () => {
     expect(
       await screen.findByRole("img", { name: "trajectory.png" }),
     ).toBeTruthy();
+  });
+
+  it("keeps inline videos collapsed by default until expanded", async () => {
+    setInlineMediaExpandedPreference(false);
+    const fetchMock = vi.fn(
+      async () => new Response(new Blob(["mp4"], { type: "video/mp4" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:video-preview"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    const { container } = render(
+      <I18nProvider>
+        <TextBlock
+          text="[demo](/tmp/demo.mp4)"
+          augmentHtml={
+            '<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="/tmp/demo.mp4" data-media-type="video" data-expanded="true" aria-label="Collapse video" aria-expanded="true" title="Collapse inline preview">-</button><a href="/api/local-image?path=%2Ftmp%2Fdemo.mp4" class="local-media-link" data-ya-resource="local-media" data-ya-path="/tmp/demo.mp4" data-ya-media-type="video" data-media-type="video">demo<span class="local-media-type">(video)</span></a></span><span class="local-media-inline-preview" data-media-path="/tmp/demo.mp4" data-media-type="video" data-expanded="true"></span>'
+          }
+        />
+      </I18nProvider>,
+    );
+
+    const toggle = container.querySelector(
+      ".local-media-inline-toggle",
+    ) as HTMLButtonElement | null;
+    const preview = container.querySelector(
+      ".local-media-inline-preview",
+    ) as HTMLElement | null;
+
+    expect(toggle?.textContent).toBe("+");
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(preview?.getAttribute("data-expanded")).toBe("false");
+    expect(container.querySelector(".local-media-inline-player")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.click(toggle as HTMLButtonElement);
+
+    expect(toggle?.textContent).toBe("-");
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+    await waitFor(() => {
+      expect(
+        container.querySelector(".local-media-inline-player"),
+      ).toBeTruthy();
+    });
+    expect(
+      container
+        .querySelector(".local-media-inline-player")
+        ?.getAttribute("src"),
+    ).toBe("blob:video-preview");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const clickAllowed = fireEvent.click(
+      screen.getByRole("link", { name: /demo/i }),
+    );
+
+    expect(clickAllowed).toBe(false);
+    expect(screen.getByRole("dialog").textContent).toContain("demo.mp4");
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog").querySelector(".local-media-player"),
+      ).toBeTruthy();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("opens semantic local media links through the existing modal", async () => {

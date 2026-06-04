@@ -11,12 +11,29 @@ import { useNavigate } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useI18n } from "../i18n";
-import { type SavedHost, loadSavedHosts, removeHost } from "../lib/hostStorage";
+import {
+  clearHostSession,
+  loadSavedHosts,
+  removeHost,
+  type SavedHost,
+} from "../lib/hostStorage";
 
 type HostStatus = "online" | "offline" | "checking" | "unknown";
 
 interface HostStatusMap {
   [hostId: string]: HostStatus;
+}
+
+function relayLoginPath(host: SavedHost): string {
+  const params = new URLSearchParams();
+  if (host.relayUsername) {
+    params.set("u", host.relayUsername);
+  }
+  if (host.relayUrl) {
+    params.set("r", host.relayUrl);
+  }
+  const query = params.toString();
+  return `/login/relay${query ? `?${query}` : ""}`;
 }
 
 export function HostPickerPage() {
@@ -112,9 +129,7 @@ export function HostPickerPage() {
             // ConnectionGate will redirect to /{username}/projects (URL: /remote/{username}/projects)
           } else {
             // No session - go to relay login pre-filled
-            navigate(
-              `/login/relay?u=${encodeURIComponent(host.relayUsername)}`,
-            );
+            navigate(relayLoginPath(host));
           }
         } else {
           // Direct mode
@@ -144,10 +159,9 @@ export function HostPickerPage() {
           message.includes("resume_incompatible") ||
           message.includes("session resume unsupported")
         ) {
+          clearHostSession(host.id);
           if (host.mode === "relay" && host.relayUsername) {
-            navigate(
-              `/login/relay?u=${encodeURIComponent(host.relayUsername)}`,
-            );
+            navigate(relayLoginPath(host));
           } else {
             navigate("/login/direct");
           }

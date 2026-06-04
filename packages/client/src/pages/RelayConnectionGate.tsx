@@ -12,13 +12,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Navigate, Outlet, useLocation, useParams } from "react-router-dom";
-import { ConnectedAppContent } from "../RemoteApp";
 import { HostOfflineModal } from "../components/HostOfflineModal";
 import {
   type AutoResumeError,
   useRemoteConnection,
 } from "../contexts/RemoteConnectionContext";
-import { getHostById, getHostByRelayUsername } from "../lib/hostStorage";
+import {
+  clearHostSession,
+  getHostById,
+  getHostByRelayUsername,
+} from "../lib/hostStorage";
+import { ConnectedAppContent } from "../RemoteApp";
 
 type ConnectionState =
   | "checking"
@@ -221,13 +225,20 @@ export function RelayConnectionGate() {
         setState("connected");
       })
       .catch((err) => {
-        setError(
-          createAutoResumeError(
-            err,
-            host.relayUsername ?? relayUsername,
-            host.relayUrl,
-          ),
+        const autoResumeError = createAutoResumeError(
+          err,
+          host.relayUsername ?? relayUsername,
+          host.relayUrl,
         );
+        if (
+          autoResumeError.reason === "resume_incompatible" ||
+          autoResumeError.reason === "auth_failed"
+        ) {
+          clearHostSession(host.id);
+          setState("no_session");
+          return;
+        }
+        setError(autoResumeError);
         setState("error");
       });
   }, [
@@ -287,13 +298,20 @@ export function RelayConnectionGate() {
                   setState("connected");
                 })
                 .catch((err) => {
-                  setError(
-                    createAutoResumeError(
-                      err,
-                      host.relayUsername ?? relayUsername ?? "",
-                      host.relayUrl,
-                    ),
+                  const autoResumeError = createAutoResumeError(
+                    err,
+                    host.relayUsername ?? relayUsername ?? "",
+                    host.relayUrl,
                   );
+                  if (
+                    autoResumeError.reason === "resume_incompatible" ||
+                    autoResumeError.reason === "auth_failed"
+                  ) {
+                    clearHostSession(host.id);
+                    setState("no_session");
+                    return;
+                  }
+                  setError(autoResumeError);
                   setState("error");
                 });
             } else {

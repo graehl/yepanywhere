@@ -119,6 +119,30 @@ export function updateHostSession(
   }
 }
 
+/** Remove only the stored resume session for a host, preserving login config. */
+export function clearHostSession(id: string): void {
+  const data = loadSavedHosts();
+  const host = data.hosts.find((h) => h.id === id);
+
+  if (host?.session) {
+    delete host.session;
+    saveSavedHosts(data);
+  }
+}
+
+/** Remove only the stored resume session for a relay host. */
+export function clearRelayHostSession(relayUsername: string): void {
+  const data = loadSavedHosts();
+  const host = data.hosts.find(
+    (h) => h.mode === "relay" && h.relayUsername === relayUsername,
+  );
+
+  if (host?.session) {
+    delete host.session;
+    saveSavedHosts(data);
+  }
+}
+
 /** Remove a host by ID */
 export function removeHost(id: string): void {
   const data = loadSavedHosts();

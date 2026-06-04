@@ -15,8 +15,8 @@ import {
   isRelayClientError,
 } from "@yep-anywhere/shared";
 import {
-  type ReactNode,
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -36,6 +36,7 @@ import {
 } from "../lib/connection/SecureConnection";
 import type { Connection } from "../lib/connection/types";
 import {
+  clearRelayHostSession,
   getHostById,
   updateHostSession,
   upsertRelayHost,
@@ -180,6 +181,25 @@ function updateStoredSession(session: StoredSession): void {
     }
   } catch {
     // Ignore storage errors
+  }
+}
+
+function clearStoredSession(): void {
+  try {
+    const stored = loadStoredCredentials();
+    if (stored?.session) {
+      delete stored.session;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function clearStaleResumeSession(stored: StoredCredentials | null): void {
+  clearStoredSession();
+  if (stored?.mode === "relay" && stored.relayUsername) {
+    clearRelayHostSession(stored.relayUsername);
   }
 }
 
@@ -721,6 +741,13 @@ export function RemoteConnectionProvider({ children }: Props) {
         const reason = categorizeError(message);
         const isRelay = currentStored.mode === "relay";
 
+        if (reason === "resume_incompatible") {
+          clearStaleResumeSession(currentStored);
+          setError(null);
+          setAutoResumeError(null);
+          return;
+        }
+
         // Only show the modal for connection failures, not auth failures
         // Auth failures should go straight to login form
         if (reason !== "auth_failed" && reason !== "other") {
@@ -776,6 +803,9 @@ export function RemoteConnectionProvider({ children }: Props) {
       const reason = categorizeError(error.message);
       const currentStored = storedRef.current;
       const isRelay = currentStored?.mode === "relay";
+      if (reason === "resume_incompatible") {
+        clearStaleResumeSession(currentStored);
+      }
       if (reason !== "auth_failed" && reason !== "other") {
         setAutoResumeError({
           reason,

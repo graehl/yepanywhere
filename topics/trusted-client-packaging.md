@@ -29,6 +29,17 @@ compromised, but the user has already installed or pinned a trusted client.
   later reconnects should prefer key-bound resume without asking the hosted page
   for the password again.
 
+## Deferred Verification Setup
+
+A useful host-local regression gate would run a separate YA checkout or built
+artifact, not the in-tree hot-reload instance, with its own data directory,
+ports, and fixed relay reservation name. A script could refresh that isolated
+server, load credentials from an operator-private file, register it with the
+relay, serve the candidate remote client, and then run the same browser path a
+GitHub Pages publish would expose. That would test the actual hosted-client +
+relay + YA-server shape before pushing Pages changes, while keeping private
+relay credentials out of the public repo.
+
 ## Security Requirements
 
 - A pinned value must be a verification key, key commitment, or server-auth

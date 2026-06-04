@@ -204,6 +204,78 @@ test.describe("Full Relay Integration", () => {
     ).toBeVisible();
   });
 
+  test("old relay resume session falls back to fresh login", async ({
+    page,
+    remoteClientURL,
+    relayWsURL,
+  }) => {
+    await page.addInitScript(
+      (params: { relayUrl: string; relayUsername: string }) => {
+        const { relayUrl, relayUsername } = params;
+        localStorage.clear();
+        sessionStorage.clear();
+        const staleSession = {
+          wsUrl: relayUrl,
+          username: relayUsername,
+          sessionId: "stale-session",
+          sessionKey: btoa("stale session key material"),
+          resumeProtocolVersion: 2,
+        };
+        localStorage.setItem(
+          "yep-anywhere-remote-credentials",
+          JSON.stringify({
+            wsUrl: relayUrl,
+            username: relayUsername,
+            mode: "relay",
+            relayUsername,
+            session: staleSession,
+          }),
+        );
+        localStorage.setItem(
+          "yep-anywhere-saved-hosts",
+          JSON.stringify({
+            version: 1,
+            hosts: [
+              {
+                id: "stale-relay-host",
+                displayName: relayUsername,
+                mode: "relay",
+                relayUrl,
+                relayUsername,
+                srpUsername: relayUsername,
+                session: staleSession,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          }),
+        );
+      },
+      { relayUrl: relayWsURL, relayUsername: TEST_RELAY_USERNAME },
+    );
+
+    await page.goto(`${remoteClientURL}/${TEST_RELAY_USERNAME}/projects`);
+
+    await expect(page.locator('[data-testid="relay-login-form"]')).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(
+      page.locator('[data-testid="relay-username-input"]'),
+    ).toHaveValue(TEST_RELAY_USERNAME);
+    await expect(
+      page.locator('[data-testid="custom-relay-url-input"]'),
+    ).toHaveValue(relayWsURL);
+
+    const stored = await page.evaluate(() => ({
+      credentials: localStorage.getItem("yep-anywhere-remote-credentials"),
+      hosts: localStorage.getItem("yep-anywhere-saved-hosts"),
+    }));
+    expect(JSON.parse(stored.credentials ?? "{}").session).toBeUndefined();
+    const savedHosts = JSON.parse(stored.hosts ?? '{"hosts":[]}') as {
+      hosts: Array<{ session?: unknown }>;
+    };
+    expect(savedHosts.hosts[0]?.session).toBeUndefined();
+  });
+
   test("mock project visible through relay connection", async ({
     page,
     remoteClientURL,

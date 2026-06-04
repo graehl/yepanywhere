@@ -10,7 +10,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VersionInfo } from "../../api/client";
-import { restoreRemoteCompatibilityNoticeDismissals } from "../../hooks/useRemoteCompatibilityNoticeDismissals";
+import {
+  REMOTE_COMPATIBILITY_REMINDER_SNOOZE_MS,
+  restoreRemoteCompatibilityNoticeDismissals,
+} from "../../hooks/useRemoteCompatibilityNoticeDismissals";
 import { getRemoteCompatibilityNotices } from "../../lib/remoteCompatibilityNotices";
 import { RemoteCompatibilityNotices } from "../RemoteCompatibilityNotices";
 
@@ -40,10 +43,11 @@ describe("RemoteCompatibilityNotices", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.useRealTimers();
     window.localStorage.clear();
   });
 
-  it("renders and dismisses the protocol 2 relay resume warning", () => {
+  it("renders and dismisses the protocol 2 relay resume warning for this page view", () => {
     render(
       <RemoteCompatibilityNotices
         relayUsername="dev-box"
@@ -59,17 +63,12 @@ describe("RemoteCompatibilityNotices", () => {
       "Server update required soon",
     );
     expect(screen.getByText(/compatibility window/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remind me later" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Remind me later" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 
     expect(screen.queryByTestId("remote-compatibility-notice")).toBeNull();
-    const keys = Array.from(
-      { length: window.localStorage.length },
-      (_value, index) => window.localStorage.key(index) ?? "",
-    );
-    expect(keys.some((key) => key.includes("relay-resume-v3-grace"))).toBe(
-      true,
-    );
+    expect(window.localStorage.length).toBe(0);
   });
 
   it("renders the pre-v2 relay resume cutoff notice", () => {
@@ -143,7 +142,7 @@ describe("RemoteCompatibilityNotices", () => {
     );
   });
 
-  it("stays hidden after remount when the same notice was dismissed", () => {
+  it("stays hidden after remount while the same notice is snoozed", () => {
     const props = {
       relayUsername: "dev-box",
       versionInfo: version({
@@ -161,6 +160,52 @@ describe("RemoteCompatibilityNotices", () => {
     render(<RemoteCompatibilityNotices {...props} />);
 
     expect(screen.queryByTestId("remote-compatibility-notice")).toBeNull();
+  });
+
+  it("shows dismissed notices again after remount", () => {
+    const props = {
+      relayUsername: "dev-box",
+      versionInfo: version({
+        current: "0.4.28",
+        latest: "0.4.29",
+        updateAvailable: true,
+      }),
+    };
+    const view = render(<RemoteCompatibilityNotices {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByTestId("remote-compatibility-notice")).toBeNull();
+
+    view.unmount();
+    render(<RemoteCompatibilityNotices {...props} />);
+
+    expect(screen.getByTestId("remote-compatibility-notice")).toBeTruthy();
+  });
+
+  it("shows snoozed notices again after the reminder delay", () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-06-04T12:00:00Z");
+    vi.setSystemTime(now);
+    const props = {
+      relayUsername: "dev-box",
+      versionInfo: version({
+        current: "0.4.28",
+        latest: "0.4.29",
+        updateAvailable: true,
+      }),
+    };
+    const view = render(<RemoteCompatibilityNotices {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remind me later" }));
+    expect(screen.queryByTestId("remote-compatibility-notice")).toBeNull();
+
+    view.unmount();
+    vi.setSystemTime(
+      new Date(now.getTime() + REMOTE_COMPATIBILITY_REMINDER_SNOOZE_MS + 1),
+    );
+    render(<RemoteCompatibilityNotices {...props} />);
+
+    expect(screen.getByTestId("remote-compatibility-notice")).toBeTruthy();
   });
 
   it("reappears when another surface restores the dismissed notice", async () => {

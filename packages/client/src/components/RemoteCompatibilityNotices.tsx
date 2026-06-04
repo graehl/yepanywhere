@@ -32,7 +32,7 @@ export function RemoteCompatibilityNotices({
       }),
     [installId, relayUsername, versionInfo],
   );
-  const { dismissNotice, visibleNotices } =
+  const { dismissNotice, snoozeNotice, visibleNotices } =
     useRemoteCompatibilityNoticeDismissals(notices);
 
   const notice = visibleNotices[0];
@@ -44,6 +44,7 @@ export function RemoteCompatibilityNotices({
       noticeCount={visibleNotices.length}
       placement="floating"
       onDismiss={() => dismissNotice(notice)}
+      onSnooze={() => snoozeNotice(notice)}
     />
   );
 }
@@ -54,6 +55,7 @@ interface RemoteCompatibilityNoticeCardProps {
   placement: "floating" | "inline";
   onDismiss?: () => void;
   onRestore?: () => void;
+  onSnooze?: () => void;
 }
 
 export function RemoteCompatibilityNoticeCard({
@@ -62,10 +64,9 @@ export function RemoteCompatibilityNoticeCard({
   placement,
   onDismiss,
   onRestore,
+  onSnooze,
 }: RemoteCompatibilityNoticeCardProps) {
   const action = notice.action;
-  const dismissLabel =
-    notice.severity === "info" ? "Dismiss" : "Remind me later";
   const commandField = action?.command
     ? {
         command: action.command,
@@ -160,7 +161,16 @@ export function RemoteCompatibilityNoticeCard({
             className="remote-compatibility-notice__button"
             onClick={onDismiss}
           >
-            {dismissLabel}
+            Dismiss
+          </button>
+        )}
+        {onSnooze && notice.severity !== "info" && (
+          <button
+            type="button"
+            className="remote-compatibility-notice__button"
+            onClick={onSnooze}
+          >
+            Remind me later
           </button>
         )}
       </div>

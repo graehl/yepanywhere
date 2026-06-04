@@ -5,6 +5,7 @@ import {
   getEffortLevelLabel,
   normalizeEffortLevelForProvider,
 } from "../lib/effortLevels";
+import { useI18n } from "../i18n";
 
 const PROVIDER_COLORS: Record<ProviderName, string> = {
   claude: "var(--provider-claude)", // Claude orange
@@ -56,6 +57,7 @@ export function ProviderBadge({
   isThinking = false,
   className = "",
 }: ProviderBadgeProps) {
+  const { t } = useI18n();
   const color = PROVIDER_COLORS[provider];
   const label = PROVIDER_LABELS[provider];
 
@@ -71,12 +73,14 @@ export function ProviderBadge({
   const effortLabel = (() => {
     if (!isGptModel) return null;
     if (!thinking && !effort) return null;
-    if (!thinking || thinking.type === "disabled") return "Off";
-    if (!effort) return "Auto";
+    if (!thinking || thinking.type === "disabled") {
+      return t("modelSettingsThinkingOffLabel");
+    }
+    if (!effort) return t("modelSettingsThinkingAutoLabel");
     const level = normalizeEffortLevelForProvider(effort, provider);
-    const label = getEffortLevelLabel(level, provider);
-    if (level === "medium") return "Med";
-    if (level === "xhigh") return "XHigh";
+    const label = getEffortLevelLabel(level, provider, t);
+    if (level === "medium") return t("effortLevelMediumShortLabel");
+    if (level === "xhigh") return t("effortLevelExtraHighShortLabel");
     return label;
   })();
 

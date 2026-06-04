@@ -68,6 +68,8 @@ import { ThinkingIcon } from "./ThinkingControls";
 import { RenderModeGlyph } from "./ui/RenderModeGlyph";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
+type ToolbarTranslate = ReturnType<typeof useI18n>["t"];
+
 function getIsearchPreviousKeys(scope: SessionIsearchScope): string[] {
   if (scope === "full") {
     return ["Ctrl", "Alt", "S"];
@@ -78,16 +80,42 @@ function getIsearchPreviousKeys(scope: SessionIsearchScope): string[] {
   return ["Ctrl", "R"];
 }
 
-function getIsearchAlternateRows(scope: SessionIsearchScope): Array<{
+function getIsearchAlternateRows(
+  scope: SessionIsearchScope,
+  t: ToolbarTranslate,
+): Array<{
+  scope: SessionIsearchScope;
   keys: string[];
   label: string;
 }> {
   return [
-    ...(scope === "user" ? [] : [{ keys: ["Ctrl", "R"], label: "User turns" }]),
-    ...(scope === "all" ? [] : [{ keys: ["Ctrl", "S"], label: "All turns" }]),
+    ...(scope === "user"
+      ? []
+      : [
+          {
+            scope: "user" as const,
+            keys: ["Ctrl", "R"],
+            label: t("toolbarShortcutUserTurns"),
+          },
+        ]),
+    ...(scope === "all"
+      ? []
+      : [
+          {
+            scope: "all" as const,
+            keys: ["Ctrl", "S"],
+            label: t("toolbarShortcutAllTurns"),
+          },
+        ]),
     ...(scope === "full"
       ? []
-      : [{ keys: ["Ctrl", "Alt", "S"], label: "Full session" }]),
+      : [
+          {
+            scope: "full" as const,
+            keys: ["Ctrl", "Alt", "S"],
+            label: t("toolbarShortcutFullSession"),
+          },
+        ]),
   ];
 }
 
@@ -171,6 +199,7 @@ export interface LivenessDisplay {
 
 function describeSessionLiveness(
   snapshot: SessionLivenessSnapshot,
+  t: ToolbarTranslate,
 ): LivenessDisplay {
   const checkedMs = parseTimestampMs(snapshot.checkedAt);
   const stateMs = parseTimestampMs(snapshot.lastStateChangeAt);
@@ -192,35 +221,35 @@ function describeSessionLiveness(
   switch (snapshot.derivedStatus) {
     case "verified-progressing":
       return {
-        prefix: "Verified progress",
+        prefix: t("toolbarLivenessVerifiedProgress"),
         timestampMs: progressMs ?? checkedMs,
         tone: "ok",
         title,
       };
     case "recently-active-unverified":
       return {
-        prefix: "Unverified turn",
+        prefix: t("toolbarLivenessUnverifiedTurn"),
         timestampMs: stateMs ?? checkedMs,
         tone: "warn",
         title,
       };
     case "long-silent-unverified":
       return {
-        prefix: "Long silent",
+        prefix: t("toolbarLivenessLongSilent"),
         timestampMs: progressMs ?? stateMs ?? checkedMs,
         tone: "danger",
         title,
       };
     case "verified-waiting-provider":
       return {
-        prefix: "Waiting on provider",
+        prefix: t("toolbarLivenessWaitingOnProvider"),
         timestampMs: progressMs ?? stateMs ?? checkedMs,
         tone: "warn",
         title,
       };
     case "verified-idle":
       return {
-        prefix: "Verified idle",
+        prefix: t("toolbarLivenessVerifiedIdle"),
         timestampMs: idleMs ?? stateMs ?? checkedMs,
         tone: "muted",
         title,
@@ -229,8 +258,8 @@ function describeSessionLiveness(
       return {
         prefix:
           snapshot.activeWorkKind === "waiting-input"
-            ? "Needs input"
-            : "Needs attention",
+            ? t("toolbarLivenessNeedsInput")
+            : t("toolbarLivenessNeedsAttention"),
         timestampMs: stateMs ?? checkedMs,
         tone: "danger",
         title,
@@ -239,40 +268,50 @@ function describeSessionLiveness(
 
   const unhandledStatus: never = snapshot.derivedStatus;
   return {
-    prefix: "Unknown state",
+    prefix: t("toolbarLivenessUnknownState"),
     timestampMs: checkedMs,
     tone: "warn",
     title: `${title}\nunknown status: ${String(unhandledStatus)}`,
   };
 }
 
-function formatLivenessAge(timestampMs: number, nowMs: number): string {
+function formatLivenessAge(
+  t: ToolbarTranslate,
+  timestampMs: number,
+  nowMs: number,
+): string {
   const label = formatCompactRelativeAge(timestampMs, nowMs);
-  return label === "now" ? label : `${label} ago`;
+  return label === "now"
+    ? t("toolbarRelativeAgeNow")
+    : t("toolbarRelativeAgePast", { age: label });
 }
 
 function describeLivenessSummary(
+  t: ToolbarTranslate,
   display: LivenessDisplay,
   nowMs: number,
 ): string {
   if (display.timestampMs === null) {
     return display.prefix;
   }
-  return `${display.prefix} ${formatLivenessAge(display.timestampMs, nowMs)}`;
+  return t("toolbarLivenessSummary", {
+    state: display.prefix,
+    age: formatLivenessAge(t, display.timestampMs, nowMs),
+  });
 }
 
-function getBtwTitle(mode: BtwToolbarMode): string {
+function getBtwTitle(mode: BtwToolbarMode, t: ToolbarTranslate): string {
   switch (mode) {
     case "child-session":
-      return "Viewing a /btw child session; click to return to Mother (Ctrl+B)";
+      return t("toolbarBtwChildSessionTitle");
     case "focused-footer":
-      return "Composer is focused on a /btw aside; click to return to Mother (Ctrl+B)";
+      return t("toolbarBtwFocusedFooterTitle");
     case "focused-pane":
-      return "A /btw pane is focused; click to focus its composer (Ctrl+B)";
+      return t("toolbarBtwFocusedPaneTitle");
     case "focus-existing":
-      return "Focus existing /btw aside (Ctrl+B)";
+      return t("toolbarBtwFocusExistingTitle");
     case "start":
-      return "Start /btw aside (Ctrl+B)";
+      return t("toolbarBtwStartTitle");
   }
 }
 
@@ -297,7 +336,6 @@ function getCompactStatusMatchMedia() {
   return window.matchMedia(COMPACT_STATUS_QUERY);
 }
 
-type ToolbarTranslate = ReturnType<typeof useI18n>["t"];
 type ToolbarRenderModeState = "rendered" | "source" | "mixed";
 
 interface ToolbarRefs {
@@ -393,7 +431,7 @@ interface ToolbarStatusControl {
   showLastActivityChip: boolean;
   showLastActivityPrefix: boolean;
   lastActivityMs: number | null;
-  lastActivitySuffix?: string;
+  lastActivityIsPast: boolean;
 }
 
 interface ToolbarShortcutsControl {
@@ -481,11 +519,17 @@ function ToolbarMicrophoneIcon() {
   );
 }
 
-function getToolbarThinkingLabel(control: ToolbarThinkingControl): string {
-  if (control.mode === "off") return "Off";
-  if (control.mode === "auto") return "Auto";
-  if (control.level === "xhigh") return "XHigh";
-  return getEffortLevelLabel(control.level);
+function getToolbarThinkingLabel(
+  t: ToolbarTranslate,
+  control: ToolbarThinkingControl,
+): string {
+  if (control.mode === "off") return t("modelSettingsThinkingOffLabel");
+  if (control.mode === "auto") return t("modelSettingsThinkingAutoLabel");
+  if (control.level === "xhigh") return t("effortLevelExtraHighShortLabel");
+  return (
+    control.effortOptions.find((option) => option.value === control.level)
+      ?.label ?? getEffortLevelLabel(control.level, undefined, t)
+  );
 }
 
 function getToolbarThinkingTitle(
@@ -501,9 +545,9 @@ function getToolbarThinkingTitle(
             level:
               control.effortOptions.find(
                 (option) => option.value === control.level,
-              )?.label ?? getEffortLevelLabel(control.level),
+              )?.label ?? getEffortLevelLabel(control.level, undefined, t),
           });
-  return `${current}. Click to choose; right-click or long-press to toggle off/on. Applies next turn.`;
+  return t("toolbarThinkingTitle", { current });
 }
 
 function ThinkingToolbarControl({
@@ -618,7 +662,7 @@ function ThinkingToolbarControl({
       >
         <ThinkingIcon mode={control.mode} />
         <span className="thinking-toggle-label">
-          {getToolbarThinkingLabel(control)}
+          {getToolbarThinkingLabel(t, control)}
         </span>
       </button>
       {open && (
@@ -679,7 +723,9 @@ function ThinkingToolbarControl({
               ))}
             </div>
           </div>
-          <div className="thinking-toolbar-menu-hint">Applies next turn</div>
+          <div className="thinking-toolbar-menu-hint">
+            {t("toolbarThinkingAppliesNextTurn")}
+          </div>
         </div>
       )}
     </div>
@@ -899,7 +945,9 @@ export function MessageInputToolbarView({
             <div
               className={`composer-status-chip composer-liveness-status is-${livenessDisplay.tone}`}
               role="status"
-              aria-label={`Session verified liveness: ${statusControl.livenessSummary}`}
+              aria-label={t("toolbarLivenessAria", {
+                summary: statusControl.livenessSummary ?? "",
+              })}
               title={livenessDisplay.title}
             >
               {livenessDisplay.timestampMs !== null ? (
@@ -909,6 +957,7 @@ export function MessageInputToolbarView({
                   title={`${formatAbsoluteTimestamp(livenessDisplay.timestampMs)}\n${livenessDisplay.title}`}
                 >
                   {formatLivenessAge(
+                    t,
                     livenessDisplay.timestampMs,
                     statusControl.nowMs,
                   )}
@@ -928,18 +977,24 @@ export function MessageInputToolbarView({
                   : " composer-activity-age--compact"
               }`}
               role="status"
-              aria-label="Session last activity"
+              aria-label={t("toolbarLastActivityAria")}
             >
               <MessageAge
                 timestampMs={statusControl.lastActivityMs}
                 nowMs={statusControl.nowMs}
                 className="composer-activity-age-time"
-                prefix={
-                  statusControl.showLastActivityPrefix
-                    ? "Last activity"
-                    : undefined
-                }
-                suffix={statusControl.lastActivitySuffix}
+                formatLabel={(label) => {
+                  const localizedLabel =
+                    label === "now" ? t("toolbarRelativeAgeNow") : label;
+                  if (statusControl.showLastActivityPrefix) {
+                    return t("toolbarLastActivityAge", {
+                      age: localizedLabel,
+                    });
+                  }
+                  return statusControl.lastActivityIsPast
+                    ? t("toolbarRelativeAgePast", { age: localizedLabel })
+                    : localizedLabel;
+                }}
               />
             </div>
           )}
@@ -976,7 +1031,7 @@ export function MessageInputToolbarView({
             <button
               type="button"
               className="session-shortcuts-help-button"
-              aria-label="Session keyboard shortcuts"
+              aria-label={t("toolbarKeyboardShortcutsAria")}
               aria-expanded={shortcutsPopoverOpen}
               onClick={() => shortcutsControl.setOpen((open) => !open)}
               onFocus={() => shortcutsControl.setOpen(true)}
@@ -1013,55 +1068,59 @@ export function MessageInputToolbarView({
                         ))}
                         {shortcutsControl.isearchScope === "user" && (
                           <>
-                            <span>or</span>
+                            <span>{t("commonOr")}</span>
                             <kbd>Ctrl</kbd>
                             <kbd>Alt</kbd>
                             <kbd>R</kbd>
                           </>
                         )}
                       </span>
-                      <span>Previous match</span>
+                      <span>{t("toolbarShortcutPreviousMatch")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Enter</kbd>
                       </span>
-                      <span>Jump</span>
+                      <span>{t("toolbarShortcutJump")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>↑</kbd>
                         <kbd>↓</kbd>
                       </span>
-                      <span>Previous / next match</span>
+                      <span>{t("toolbarShortcutPreviousNextMatch")}</span>
                     </div>
                     <div className="session-shortcuts-row">
-                      <span className="session-shortcuts-keys">Click</span>
-                      <span>Match preview / rail mark jumps</span>
+                      <span className="session-shortcuts-keys">
+                        {t("toolbarShortcutClick")}
+                      </span>
+                      <span>{t("toolbarShortcutPreviewRailJumps")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Esc</kbd>
                       </span>
-                      <span>Cancel / restore focus</span>
+                      <span>{t("toolbarShortcutCancelRestoreFocus")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Ctrl</kbd>
                         <kbd>End</kbd>
                       </span>
-                      <span>Scroll to current</span>
+                      <span>{t("toolbarShortcutScrollToCurrent")}</span>
                     </div>
-                    {getIsearchAlternateRows(shortcutsControl.isearchScope).map(
-                      (row) => (
+                    {getIsearchAlternateRows(
+                      shortcutsControl.isearchScope,
+                      t,
+                    ).map((row) => (
                         <div key={row.label} className="session-shortcuts-row">
                           <span className="session-shortcuts-keys">
                             {row.keys.map((key) => (
                               <kbd key={key}>{key}</kbd>
                             ))}
-                            {row.label === "User turns" && (
+                            {row.scope === "user" && (
                               <>
-                                <span>or</span>
+                                <span>{t("commonOr")}</span>
                                 <kbd>Ctrl</kbd>
                                 <kbd>Alt</kbd>
                                 <kbd>R</kbd>
@@ -1070,8 +1129,7 @@ export function MessageInputToolbarView({
                           </span>
                           <span>{row.label}</span>
                         </div>
-                      ),
-                    )}
+                      ))}
                   </>
                 ) : (
                   <>
@@ -1079,19 +1137,19 @@ export function MessageInputToolbarView({
                       <span className="session-shortcuts-keys">
                         <kbd>Ctrl</kbd>
                         <kbd>R</kbd>
-                        <span>or</span>
+                        <span>{t("commonOr")}</span>
                         <kbd>Ctrl</kbd>
                         <kbd>Alt</kbd>
                         <kbd>R</kbd>
                       </span>
-                      <span>User-turn reverse search</span>
+                      <span>{t("toolbarShortcutUserTurnReverseSearch")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Ctrl</kbd>
                         <kbd>S</kbd>
                       </span>
-                      <span>All-turn reverse search</span>
+                      <span>{t("toolbarShortcutAllTurnReverseSearch")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
@@ -1099,7 +1157,7 @@ export function MessageInputToolbarView({
                         <kbd>Alt</kbd>
                         <kbd>S</kbd>
                       </span>
-                      <span>Full-session reverse search</span>
+                      <span>{t("toolbarShortcutFullSessionReverseSearch")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
@@ -1107,8 +1165,8 @@ export function MessageInputToolbarView({
                       </span>
                       <span>
                         {shortcutsControl.hasDualActions
-                          ? "Steer current turn"
-                          : "Send"}
+                          ? t("toolbarShortcutSteerCurrentTurn")
+                          : t("toolbarShortcutSend")}
                       </span>
                     </div>
                     <div className="session-shortcuts-row">
@@ -1116,7 +1174,7 @@ export function MessageInputToolbarView({
                         <kbd>Shift</kbd>
                         <kbd>Enter</kbd>
                       </span>
-                      <span>New line</span>
+                      <span>{t("toolbarShortcutNewLine")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
@@ -1130,41 +1188,41 @@ export function MessageInputToolbarView({
                         <kbd>Ctrl</kbd>
                         <kbd>B</kbd>
                       </span>
-                      <span>Start /btw aside</span>
+                      <span>{t("toolbarShortcutStartBtwAside")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Esc</kbd>
                       </span>
-                      <span>Stop agent / cancel overlay</span>
+                      <span>{t("toolbarShortcutStopAgentCancelOverlay")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Ctrl</kbd>
                         <kbd>P</kbd>
                       </span>
-                      <span>Recall last sent text</span>
+                      <span>{t("toolbarShortcutRecallLastSentText")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Ctrl</kbd>
                         <kbd>K</kbd>
                       </span>
-                      <span>Cancel latest queued message</span>
+                      <span>{t("toolbarShortcutCancelLatestQueuedMessage")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Ctrl</kbd>
                         <kbd>End</kbd>
                       </span>
-                      <span>Scroll to current</span>
+                      <span>{t("toolbarShortcutScrollToCurrent")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Ctrl</kbd>
                         <kbd>G</kbd>
                       </span>
-                      <span>Clear composer</span>
+                      <span>{t("toolbarShortcutClearComposer")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
@@ -1172,7 +1230,7 @@ export function MessageInputToolbarView({
                         <kbd>Shift</kbd>
                         <kbd>M</kbd>
                       </span>
-                      <span>Rendered/source mode</span>
+                      <span>{t("toolbarShortcutRenderedSourceMode")}</span>
                     </div>
                   </>
                 )}
@@ -1335,8 +1393,9 @@ export function MessageInputToolbar({
       getEffortLevelOptions({
         provider: normalizedThinkingProvider as ProviderName,
         model: thinkingModel,
+        translate: t,
       }),
-    [thinkingModel, normalizedThinkingProvider],
+    [thinkingModel, normalizedThinkingProvider, t],
   );
   const effectiveThinkingLevel = useMemo(
     () => resolveSupportedEffortLevel(thinkingLevel, thinkingEffortOptions),
@@ -1351,15 +1410,13 @@ export function MessageInputToolbar({
     !isCompactStatusMode &&
     lastActivityAgeMs !== null &&
     lastActivityAgeMs >= LAST_ACTIVITY_TEXT_PREFIX_THRESHOLD_MS;
-  const lastActivitySuffix =
+  const lastActivityIsPast =
     showLastActivityAge &&
     !showLastActivityPrefix &&
     lastActivityMs !== null &&
-    formatCompactRelativeAge(lastActivityMs, nowMs) !== "now"
-      ? "ago"
-      : undefined;
+    formatCompactRelativeAge(lastActivityMs, nowMs) !== "now";
   const livenessDisplay = sessionLiveness
-    ? describeSessionLiveness(sessionLiveness)
+    ? describeSessionLiveness(sessionLiveness, t)
     : null;
   const showLivenessChip =
     toolbarVisibility.sessionStatus &&
@@ -1371,7 +1428,7 @@ export function MessageInputToolbar({
         livenessDisplay.tone === "muted")
     );
   const livenessSummary = livenessDisplay
-    ? describeLivenessSummary(livenessDisplay, nowMs)
+    ? describeLivenessSummary(t, livenessDisplay, nowMs)
     : null;
   const heartbeatLongPressTimerRef = useRef<ReturnType<
     typeof setTimeout
@@ -1391,17 +1448,17 @@ export function MessageInputToolbar({
       ? t("toolbarSteerTooltip")
       : effectivePrimaryActionKind === "queue"
         ? showPatientQueueMode
-          ? 'Queue (sent when the turn ends). Ctrl+Enter prepends "when done,"'
+          ? t("toolbarPatientQueueTooltip")
           : t("toolbarQueueTooltip")
         : t("toolbarSendTooltip");
   const queueTooltip = showPatientQueueMode
-    ? 'Queue (sent when the turn ends). Ctrl+Enter prepends "when done,"'
+    ? t("toolbarPatientQueueTooltip")
     : t("toolbarQueueTooltip");
-  const queueShortcutLabel = "Queue while agent runs";
+  const queueShortcutLabel = t("toolbarQueueWhileAgentRuns");
   const effectiveBtwToolbarMode =
     btwToolbarMode ??
     (btwActive ? "focused-footer" : btwHasAsides ? "focus-existing" : "start");
-  const btwTitle = getBtwTitle(effectiveBtwToolbarMode);
+  const btwTitle = getBtwTitle(effectiveBtwToolbarMode, t);
   const btwPressed = isBtwPressed(effectiveBtwToolbarMode);
   const primaryActionIcon =
     effectivePrimaryActionKind === "steer"
@@ -1414,7 +1471,7 @@ export function MessageInputToolbar({
       ? t("toolbarSteerTooltip")
       : effectivePrimaryActionKind === "queue"
         ? hasDualActions
-          ? "Queue from primary action"
+          ? t("toolbarQueuePrimaryActionLabel")
           : t("toolbarQueueLabel")
         : t("toolbarSend");
   const stopTitle = `${t("toolbarStop")} (Esc)`;
@@ -1734,7 +1791,7 @@ export function MessageInputToolbar({
         showLastActivityChip,
         showLastActivityPrefix,
         lastActivityMs,
-        lastActivitySuffix,
+        lastActivityIsPast,
       }}
       pendingApproval={pendingApproval}
       shortcutsControl={{

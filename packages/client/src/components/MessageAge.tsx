@@ -9,6 +9,7 @@ interface Props {
   className?: string;
   prefix?: string;
   suffix?: string;
+  formatLabel?: (label: string) => string;
 }
 
 export function MessageAge({
@@ -17,6 +18,7 @@ export function MessageAge({
   className,
   prefix,
   suffix,
+  formatLabel,
 }: Props) {
   if (timestampMs === null || timestampMs === undefined) {
     return null;
@@ -25,9 +27,9 @@ export function MessageAge({
   const date = new Date(timestampMs);
   const label = formatCompactRelativeAge(timestampMs, nowMs);
   const absolute = formatAbsoluteTimestamp(timestampMs);
-  const text = `${prefix ? `${prefix} ` : ""}${label}${
-    suffix ? ` ${suffix}` : ""
-  }`;
+  const text =
+    formatLabel?.(label) ??
+    `${prefix ? `${prefix} ` : ""}${label}${suffix ? ` ${suffix}` : ""}`;
 
   return (
     <time

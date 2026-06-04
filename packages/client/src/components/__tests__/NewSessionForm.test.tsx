@@ -248,7 +248,23 @@ vi.mock("../../contexts/ToastContext", () => ({
 
 vi.mock("../../i18n", () => ({
   useI18n: () => ({
-    t: (key: string) => key,
+    t: (key: string) =>
+      (
+        {
+          effortLevelLowLabel: "Low",
+          effortLevelMediumLabel: "Medium",
+          effortLevelHighLabel: "High",
+          effortLevelExtraLabel: "Extra",
+          effortLevelExtraHighLabel: "Extra High",
+          effortLevelMaxLabel: "Max",
+          effortLevelLowDescription: "Fastest responses",
+          effortLevelMediumDescription: "Moderate reasoning",
+          effortLevelHighDescription: "Deep reasoning",
+          effortLevelExtraDescription: "For your hardest tasks",
+          effortLevelExtraHighDescription: "Extra-high reasoning",
+          effortLevelMaxDescription: "Maximum effort",
+        } satisfies Record<string, string>
+      )[key] ?? key,
   }),
 }));
 

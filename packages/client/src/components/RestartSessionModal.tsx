@@ -296,8 +296,8 @@ export function RestartSessionModal({
   );
   const modelOptions = useMemo<ModelInfo[]>(() => {
     if (selectedProviderModels.length > 0) return selectedProviderModels;
-    return [{ id: "default", name: "Default" }];
-  }, [selectedProviderModels]);
+    return [{ id: "default", name: t("processInfoDefaultModel") }];
+  }, [selectedProviderModels, t]);
   const helperTargetModelOptions = useMemo(
     () => helperTargetsToModelOptions(settings?.helperTargets),
     [settings?.helperTargets],
@@ -325,8 +325,9 @@ export function RestartSessionModal({
       getEffortLevelOptions({
         provider: selectedProviderInfo,
         model: selectedModelInfo,
+        translate: t,
       }),
-    [selectedModelInfo, selectedProviderInfo],
+    [selectedModelInfo, selectedProviderInfo, t],
   );
   const [selectedRecapMode, setSelectedRecapMode] = useState<RecapMode>(() =>
     getRestartDefaultRecapMode({
@@ -447,7 +448,7 @@ export function RestartSessionModal({
     if (mode === "off") return t("newSessionThinkingOff");
     if (mode === "auto") return t("newSessionThinkingAuto");
     return t("newSessionThinkingOn", {
-      level: getEffortLevelLabel(effort, selectedProviderInfo),
+      level: getEffortLevelLabel(effort, selectedProviderInfo, t),
     });
   };
 
@@ -501,7 +502,7 @@ export function RestartSessionModal({
     const nextModelOptions =
       providerModels.length > 0
         ? providerModels
-        : [{ id: "default", name: "Default" }];
+        : [{ id: "default", name: t("processInfoDefaultModel") }];
     setSelectedModel(
       getRestartDefaultModel({
         provider: providerName,
@@ -572,7 +573,7 @@ export function RestartSessionModal({
               {t("modelSwitchCurrent")}
             </span>
             <span className="model-switch-status-main">
-              {currentModel ?? "Default"}
+              {currentModel ?? t("processInfoDefaultModel")}
             </span>
             <span className="model-switch-status-detail">
               {providerDisplayName ?? provider}
@@ -583,7 +584,7 @@ export function RestartSessionModal({
               →
             </span>
             <span className="model-switch-status-main">
-              {selectedModel ?? "Default"}
+              {selectedModel ?? t("processInfoDefaultModel")}
             </span>
             <span className="model-switch-status-detail">
               {supportsThinkingToggle
@@ -719,6 +720,7 @@ export function RestartSessionModal({
                             : getEffortLevelLabel(
                                 effectiveEffortLevel,
                                 selectedProviderInfo,
+                                t,
                               )
                       }`}
                       aria-hidden="true"
@@ -732,6 +734,7 @@ export function RestartSessionModal({
                               level: getEffortLevelLabel(
                                 effectiveEffortLevel,
                                 selectedProviderInfo,
+                                t,
                               ),
                             })}
                     </span>

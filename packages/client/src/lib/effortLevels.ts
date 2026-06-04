@@ -11,6 +11,22 @@ export interface EffortLevelOption {
   description: string;
 }
 
+export type EffortLevelMessageKey =
+  | "effortLevelLowLabel"
+  | "effortLevelMediumLabel"
+  | "effortLevelHighLabel"
+  | "effortLevelExtraLabel"
+  | "effortLevelExtraHighLabel"
+  | "effortLevelMaxLabel"
+  | "effortLevelLowDescription"
+  | "effortLevelMediumDescription"
+  | "effortLevelHighDescription"
+  | "effortLevelExtraDescription"
+  | "effortLevelExtraHighDescription"
+  | "effortLevelMaxDescription";
+
+export type EffortLevelTranslate = (key: EffortLevelMessageKey) => string;
+
 export const EFFORT_LEVEL_ORDER: EffortLevel[] = [
   "low",
   "medium",
@@ -24,6 +40,24 @@ const GENERIC_EFFORT_LEVELS: EffortLevel[] = ["low", "medium", "high", "max"];
 const CODEX_EFFORT_LEVELS: EffortLevel[] = ["low", "medium", "high", "xhigh"];
 
 const EFFORT_LEVEL_SET = new Set<string>(EFFORT_LEVEL_ORDER);
+
+const DEFAULT_EFFORT_LEVEL_MESSAGES: Record<EffortLevelMessageKey, string> = {
+  effortLevelLowLabel: "Low",
+  effortLevelMediumLabel: "Medium",
+  effortLevelHighLabel: "High",
+  effortLevelExtraLabel: "Extra",
+  effortLevelExtraHighLabel: "Extra High",
+  effortLevelMaxLabel: "Max",
+  effortLevelLowDescription: "Fastest responses",
+  effortLevelMediumDescription: "Moderate reasoning",
+  effortLevelHighDescription: "Deep reasoning",
+  effortLevelExtraDescription: "For your hardest tasks",
+  effortLevelExtraHighDescription: "Extra-high reasoning",
+  effortLevelMaxDescription: "Maximum effort",
+};
+
+const defaultTranslateEffortLevel: EffortLevelTranslate = (key) =>
+  DEFAULT_EFFORT_LEVEL_MESSAGES[key];
 
 export function isEffortLevel(value: unknown): value is EffortLevel {
   return typeof value === "string" && EFFORT_LEVEL_SET.has(value);
@@ -87,42 +121,44 @@ function getFallbackEffortLevels(providerName?: ProviderName): EffortLevel[] {
 export function getEffortLevelLabel(
   level: EffortLevel,
   provider?: ProviderInfo | ProviderName | null,
+  translate: EffortLevelTranslate = defaultTranslateEffortLevel,
 ): string {
   const providerName = getProviderName(provider);
   switch (level) {
     case "low":
-      return "Low";
+      return translate("effortLevelLowLabel");
     case "medium":
-      return "Medium";
+      return translate("effortLevelMediumLabel");
     case "high":
-      return "High";
+      return translate("effortLevelHighLabel");
     case "xhigh":
       return providerName === "claude" || providerName === "claude-ollama"
-        ? "Extra"
-        : "Extra High";
+        ? translate("effortLevelExtraLabel")
+        : translate("effortLevelExtraHighLabel");
     case "max":
-      return "Max";
+      return translate("effortLevelMaxLabel");
   }
 }
 
 function getFallbackDescription(
   level: EffortLevel,
   provider?: ProviderInfo | ProviderName | null,
+  translate: EffortLevelTranslate = defaultTranslateEffortLevel,
 ): string {
   const providerName = getProviderName(provider);
   switch (level) {
     case "low":
-      return "Fastest responses";
+      return translate("effortLevelLowDescription");
     case "medium":
-      return "Moderate reasoning";
+      return translate("effortLevelMediumDescription");
     case "high":
-      return "Deep reasoning";
+      return translate("effortLevelHighDescription");
     case "xhigh":
       return providerName === "claude" || providerName === "claude-ollama"
-        ? "For your hardest tasks"
-        : "Extra-high reasoning";
+        ? translate("effortLevelExtraDescription")
+        : translate("effortLevelExtraHighDescription");
     case "max":
-      return "Maximum effort";
+      return translate("effortLevelMaxDescription");
   }
 }
 
@@ -138,6 +174,7 @@ function getModelDescription(
 export function getEffortLevelOptions(params: {
   provider?: ProviderInfo | ProviderName | null;
   model?: ModelInfo | string | null;
+  translate?: EffortLevelTranslate;
 }): EffortLevelOption[] {
   const model = getModelInfo(params.provider, params.model);
   const levels =
@@ -146,10 +183,10 @@ export function getEffortLevelOptions(params: {
 
   return levels.map((level) => ({
     value: level,
-    label: getEffortLevelLabel(level, params.provider),
+    label: getEffortLevelLabel(level, params.provider, params.translate),
     description:
       getModelDescription(model, level) ??
-      getFallbackDescription(level, params.provider),
+      getFallbackDescription(level, params.provider, params.translate),
   }));
 }
 

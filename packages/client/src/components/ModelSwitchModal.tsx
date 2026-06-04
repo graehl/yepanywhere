@@ -151,8 +151,9 @@ export function ModelSwitchModal({
       getEffortLevelOptions({
         provider,
         model: selectedModelInfo,
+        translate: t,
       }),
-    [provider, selectedModelInfo],
+    [provider, selectedModelInfo, t],
   );
   const effectiveEffortLevel = resolveSupportedEffortLevel(
     effortLevel,
@@ -224,7 +225,7 @@ export function ModelSwitchModal({
     if (mode === "off") return t("newSessionThinkingOff");
     if (mode === "auto") return t("newSessionThinkingAuto");
     return t("newSessionThinkingOn", {
-      level: getEffortLevelLabel(effort, provider),
+      level: getEffortLevelLabel(effort, provider, t),
     });
   };
   const renderConfigBadge = (
@@ -239,7 +240,7 @@ export function ModelSwitchModal({
         aria-hidden="true"
       />
       <span className="model-switch-action-badge-main">
-        {modelId ?? "Default"}
+        {modelId ?? t("processInfoDefaultModel")}
       </span>
       <span className="model-switch-action-badge-detail">
         {renderThinkingLabel(mode, effort)}
@@ -276,7 +277,7 @@ export function ModelSwitchModal({
                   aria-hidden="true"
                 />
                 <span className="model-switch-status-main">
-                  {currentModelId ?? currentModel ?? "Default"}
+                  {currentModelId ?? currentModel ?? t("processInfoDefaultModel")}
                 </span>
                 <span className="model-switch-status-detail">
                   {renderThinkingLabel(currentThinkingMode, currentEffortLevel)}
@@ -295,7 +296,9 @@ export function ModelSwitchModal({
                     aria-hidden="true"
                   />
                   <span className="model-switch-status-main">
-                    {selectedModel ?? currentModelId ?? "Default"}
+                    {selectedModel ??
+                      currentModelId ??
+                      t("processInfoDefaultModel")}
                   </span>
                   <span className="model-switch-status-detail">
                     {renderThinkingLabel(thinkingMode, effectiveEffortLevel)}
@@ -353,10 +356,10 @@ export function ModelSwitchModal({
                         />
                         <span>
                           {mode === "off"
-                            ? "Off"
+                            ? t("modelSettingsThinkingOffLabel")
                             : mode === "auto"
-                              ? "Auto"
-                              : "On"}
+                              ? t("modelSettingsThinkingAutoLabel")
+                              : t("modelSettingsThinkingOnLabel")}
                         </span>
                       </button>
                       {showInlineSave && renderInlineSave()}

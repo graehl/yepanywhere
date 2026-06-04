@@ -24,20 +24,21 @@ export function SessionToolbarPreview() {
   const previewNowMs = useMemo(() => Date.now(), []);
   const livenessDisplay = useMemo<LivenessDisplay>(
     () => ({
-      prefix: "Verified idle",
+      prefix: t("toolbarLivenessVerifiedIdle"),
       timestampMs: previewNowMs - 4 * 60 * 1000,
       tone: "muted",
-      title: "Preview session status",
+      title: t("toolbarPreviewSessionStatus"),
     }),
-    [previewNowMs],
+    [previewNowMs, t],
   );
   const effortOptions = useMemo(
     () =>
       getEffortLevelOptions({
         provider: "codex",
         model: "gpt-5.5-codex",
+        translate: t,
       }),
-    [],
+    [t],
   );
 
   useEffect(() => {
@@ -105,18 +106,22 @@ export function SessionToolbarPreview() {
             showToolbarStatus: visibility.sessionStatus,
             showLivenessChip: visibility.sessionStatus,
             livenessDisplay,
-            livenessSummary: "Verified idle 4m ago",
+            livenessSummary: t("toolbarLivenessSummary", {
+              state: t("toolbarLivenessVerifiedIdle"),
+              age: t("toolbarRelativeAgePast", { age: "4m" }),
+            }),
             nowMs: previewNowMs,
             showLastActivityChip: false,
             showLastActivityPrefix: false,
             lastActivityMs: null,
+            lastActivityIsPast: false,
           }}
           shortcutsControl={{
             open: shortcutsOpen,
             isearchScope: null,
             setOpen: setShortcutsOpen,
             hasDualActions: true,
-            queueShortcutLabel: "Queue while agent runs",
+            queueShortcutLabel: t("toolbarQueueWhileAgentRuns"),
           }}
           actionsControl={{
             contextUsage: PREVIEW_CONTEXT_USAGE,
@@ -124,7 +129,7 @@ export function SessionToolbarPreview() {
               onClick: noop,
               pressed: false,
               mode: "start",
-              title: "Start /btw aside (Ctrl+B)",
+              title: t("toolbarBtwStartTitle"),
             },
             send: {
               onSend: noop,

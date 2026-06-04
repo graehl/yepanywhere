@@ -536,6 +536,7 @@ function GrokBuildApiKeySettings() {
 }
 
 function CodexUpdatePanel() {
+  const { t } = useI18n();
   const { showToast } = useToastContext();
   const { settings, updateSetting } = useServerSettings();
   const {
@@ -555,12 +556,12 @@ function CodexUpdatePanel() {
     async (text: string) => {
       try {
         await navigator.clipboard.writeText(text);
-        showToast("Command copied", "success");
+        showToast(t("providersCodexUpdateCommandCopied"), "success");
       } catch {
-        showToast("Copy failed", "error");
+        showToast(t("providersCodexUpdateCopyFailed"), "error");
       }
     },
-    [showToast],
+    [showToast, t],
   );
 
   if (!status?.installed || !status.latest) {
@@ -581,12 +582,15 @@ function CodexUpdatePanel() {
       >
         {updateAvailable ? (
           <span>
-            <strong>Update available:</strong> {status.installed} →{" "}
+            <strong>{t("providersCodexUpdateAvailable")}</strong>{" "}
+            {status.installed} →{" "}
             {status.latest}
           </span>
         ) : (
           <span className="settings-hint">
-            Codex CLI {status.installed} is up to date
+            {t("providersCodexUpdateUpToDate", {
+              version: status.installed,
+            })}
           </span>
         )}
         <button
@@ -596,7 +600,9 @@ function CodexUpdatePanel() {
           disabled={isChecking}
           style={{ marginLeft: "auto" }}
         >
-          {isChecking ? "Checking…" : "Check now"}
+          {isChecking
+            ? t("providersCodexUpdateChecking")
+            : t("providersCodexUpdateCheckNow")}
         </button>
         {status.releaseUrl && updateAvailable && (
           <a
@@ -605,7 +611,7 @@ function CodexUpdatePanel() {
             rel="noopener noreferrer"
             className="settings-link"
           >
-            Release notes
+            {t("providersCodexUpdateReleaseNotes")}
           </a>
         )}
       </div>
@@ -627,10 +633,14 @@ function CodexUpdatePanel() {
               onClick={() => void install()}
               disabled={isInstalling}
             >
-              {isInstalling ? "Installing…" : "Update now"}
+              {isInstalling
+                ? t("providersCodexUpdateInstalling")
+                : t("providersCodexUpdateNow")}
             </button>
           ) : (
-            <span className="settings-hint">Update with your installer:</span>
+            <span className="settings-hint">
+              {t("providersCodexUpdateWithInstaller")}
+            </span>
           )}
           {status.manualInstallCommand && (
             <>
@@ -649,7 +659,7 @@ function CodexUpdatePanel() {
                 className="settings-button"
                 onClick={() => void copy(status.manualInstallCommand ?? "")}
               >
-                Copy
+                {t("remoteSetupCopy")}
               </button>
             </>
           )}
@@ -663,7 +673,9 @@ function CodexUpdatePanel() {
       )}
       {installOutput && (
         <details style={{ marginTop: "var(--space-2)" }}>
-          <summary className="settings-hint">Install output</summary>
+          <summary className="settings-hint">
+            {t("providersCodexUpdateInstallOutput")}
+          </summary>
           <pre
             style={{
               fontSize: "0.8em",
@@ -688,7 +700,7 @@ function CodexUpdatePanel() {
         }}
       >
         <legend className="settings-hint" style={{ marginBottom: 4 }}>
-          Update policy
+          {t("providersCodexUpdatePolicyTitle")}
         </legend>
         {(["auto", "notify", "off"] as const).map((value) => {
           const disabled = value === "auto" && !canAuto;
@@ -703,7 +715,9 @@ function CodexUpdatePanel() {
                 cursor: disabled ? "not-allowed" : "pointer",
               }}
               title={
-                disabled ? "Auto requires an npm-global install" : undefined
+                disabled
+                  ? t("providersCodexUpdatePolicyAutoUnavailable")
+                  : undefined
               }
             >
               <input
@@ -716,10 +730,10 @@ function CodexUpdatePanel() {
               />
               <span>
                 {value === "auto"
-                  ? "Auto"
+                  ? t("commonAuto")
                   : value === "notify"
-                    ? "Notify me"
-                    : "Off"}
+                    ? t("providersCodexUpdatePolicyNotify")
+                    : t("commonOff")}
               </span>
             </label>
           );

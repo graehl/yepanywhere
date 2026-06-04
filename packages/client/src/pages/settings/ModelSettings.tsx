@@ -224,6 +224,7 @@ export function ModelSettings() {
   const effortOptions = getEffortLevelOptions({
     provider: selectedProvider,
     model: selectedModelInfo,
+    translate: t,
   });
   const effectiveEffortLevel = resolveSupportedEffortLevel(
     effortLevel,

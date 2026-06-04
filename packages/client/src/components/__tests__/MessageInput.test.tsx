@@ -147,7 +147,61 @@ vi.mock("../../hooks/useVersion", () => ({
 
 vi.mock("../../i18n", () => ({
   useI18n: () => ({
-    t: (key: string) => key,
+    t: (key: string, params?: Record<string, string>) =>
+      (
+        {
+          commonOr: "or",
+          toolbarKeyboardShortcutsAria: "Session keyboard shortcuts",
+          toolbarPatientQueueTooltip:
+            'Queue (sent when the turn ends). Ctrl+Enter prepends "when done,"',
+          toolbarQueuePrimaryActionLabel: "Queue from primary action",
+          toolbarLivenessVerifiedProgress: "Verified progress",
+          toolbarLivenessVerifiedIdle: "Verified idle",
+          toolbarRelativeAgeNow: "now",
+          toolbarRelativeAgePast: `${params?.age ?? ""} ago`,
+          toolbarLivenessSummary: `${params?.state ?? ""} ${params?.age ?? ""}`,
+          toolbarLivenessAria: `Session verified liveness: ${
+            params?.summary ?? ""
+          }`,
+          toolbarLastActivityAria: "Session last activity",
+          toolbarLastActivityAge: `Last activity ${params?.age ?? ""}`,
+          toolbarBtwChildSessionTitle:
+            "Viewing a /btw child session; click to return to Mother (Ctrl+B)",
+          toolbarBtwFocusedFooterTitle:
+            "Composer is focused on a /btw aside; click to return to Mother (Ctrl+B)",
+          toolbarBtwFocusedPaneTitle:
+            "A /btw pane is focused; click to focus its composer (Ctrl+B)",
+          toolbarBtwFocusExistingTitle: "Focus existing /btw aside (Ctrl+B)",
+          toolbarBtwStartTitle: "Start /btw aside (Ctrl+B)",
+          toolbarShortcutUserTurns: "User turns",
+          toolbarShortcutAllTurns: "All turns",
+          toolbarShortcutFullSession: "Full session",
+          toolbarShortcutPreviousMatch: "Previous match",
+          toolbarShortcutJump: "Jump",
+          toolbarShortcutPreviousNextMatch: "Previous / next match",
+          toolbarShortcutClick: "Click",
+          toolbarShortcutPreviewRailJumps:
+            "Match preview / rail mark jumps",
+          toolbarShortcutCancelRestoreFocus: "Cancel / restore focus",
+          toolbarShortcutScrollToCurrent: "Scroll to current",
+          toolbarShortcutUserTurnReverseSearch:
+            "User-turn reverse search",
+          toolbarShortcutAllTurnReverseSearch: "All-turn reverse search",
+          toolbarShortcutFullSessionReverseSearch:
+            "Full-session reverse search",
+          toolbarShortcutSteerCurrentTurn: "Steer current turn",
+          toolbarShortcutSend: "Send",
+          toolbarShortcutNewLine: "New line",
+          toolbarShortcutStartBtwAside: "Start /btw aside",
+          toolbarShortcutStopAgentCancelOverlay:
+            "Stop agent / cancel overlay",
+          toolbarShortcutRecallLastSentText: "Recall last sent text",
+          toolbarShortcutCancelLatestQueuedMessage:
+            "Cancel latest queued message",
+          toolbarShortcutClearComposer: "Clear composer",
+          toolbarShortcutRenderedSourceMode: "Rendered/source mode",
+        } satisfies Record<string, string>
+      )[key] ?? key,
   }),
 }));
 
@@ -265,6 +319,7 @@ const toolbarT = ((key: string, params?: Record<string, string>) => {
     newSessionThinkingAuto: "Thinking: auto",
     newSessionThinkingOff: "Thinking: off",
     newSessionThinkingOn: `Thinking: on (${params?.level ?? ""})`,
+    toolbarThinkingTitle: `${params?.current ?? ""}. Click to choose; right-click or long-press to toggle off/on. Applies next turn.`,
   };
   return translations[key] ?? key;
 }) as MessageInputToolbarViewProps["t"];

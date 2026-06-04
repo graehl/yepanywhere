@@ -343,7 +343,7 @@ export function SessionHeartbeatModal({
                 }}
                 disabled={isSaving}
               >
-                Off
+                {t("commonOff")}
               </button>
               {HEARTBEAT_AFTER_PRESETS.map((value) => (
                 <button
@@ -454,7 +454,7 @@ export function SessionHeartbeatModal({
                 }}
                 disabled={isSaving}
               >
-                Off
+                {t("commonOff")}
               </button>
               {HEARTBEAT_FORCE_PRESETS.map((value) => (
                 <button

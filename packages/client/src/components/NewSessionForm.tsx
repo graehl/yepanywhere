@@ -113,8 +113,10 @@ function formatSize(bytes: number): string {
 }
 
 function createClientSpeechTurnId(): string {
-  return globalThis.crypto?.randomUUID?.() ??
-    `speech-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `speech-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
 }
 
 function getPreferredModelId(
@@ -466,8 +468,9 @@ export function NewSessionForm({
       getEffortLevelOptions({
         provider: selectedProviderInfo,
         model: selectedModelInfo,
+        translate: t,
       }),
-    [selectedModelInfo, selectedProviderInfo],
+    [selectedModelInfo, selectedProviderInfo, t],
   );
   const effectiveEffortLevel = resolveSupportedEffortLevel(
     effortLevel,
@@ -476,6 +479,7 @@ export function NewSessionForm({
   const effectiveEffortLabel = getEffortLevelLabel(
     effectiveEffortLevel,
     selectedProviderInfo,
+    t,
   );
   const selectedProviderDisplayName =
     selectedProviderInfo?.displayName ?? selectedProvider ?? "";
@@ -1326,10 +1330,7 @@ export function NewSessionForm({
 
   // Voice input handlers
   const handleVoiceTranscript = useCallback(
-    (
-      transcript: string,
-      metadata?: SpeechTranscriptionResultMetadata,
-    ) => {
+    (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
       if (metadata?.smartTurnCommand === "cancel") {
         setInterimTranscript("");
         return;
@@ -1477,7 +1478,9 @@ export function NewSessionForm({
               showGrokSpeechAudioControls ? grokSpeechAudioSettings : undefined
             }
             onGrokAudioSettingsChange={
-              showGrokSpeechAudioControls ? setGrokSpeechAudioSettings : undefined
+              showGrokSpeechAudioControls
+                ? setGrokSpeechAudioSettings
+                : undefined
             }
             trigger={
               <VoiceInputButton
@@ -1760,10 +1763,8 @@ export function NewSessionForm({
       </div>
     ) : null;
   const modelSection = modelField ? (
-    <div className="new-session-model-section">
-      {modelField}
-    </div>
-    ) : null;
+    <div className="new-session-model-section">{modelField}</div>
+  ) : null;
   const recapSection = selectedProvider ? (
     <div className="new-session-helper-section">
       <h3>{t("newSessionRecapTitle")}</h3>

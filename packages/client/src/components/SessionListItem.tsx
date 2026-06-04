@@ -2,18 +2,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { AgentActivity } from "../hooks/useFileActivity";
-import type {
-  ContextUsage,
-  PendingInputType,
-  ProviderName,
-  SessionStatus,
-} from "../types";
+import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
 import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
   isBtwAsideSessionTitle,
 } from "../lib/btwAsideSessions";
+import type {
+  ContextUsage,
+  PendingInputType,
+  ProviderName,
+  SessionStatus,
+} from "../types";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { SessionMenu } from "./SessionMenu";
 import { SessionShareModal } from "./SessionShareModal";
@@ -166,6 +167,7 @@ export function SessionListItem({
   systemTurnCount,
   publicShareControlsVisible = false,
 }: SessionListItemProps) {
+  const { t } = useI18n();
   const navigate = useNavigate();
 
   // Local state for optimistic updates (only used when action handlers are provided)
@@ -555,7 +557,7 @@ export function SessionListItem({
                 {createdAt && (
                   <span
                     className="session-list-item__age"
-                    title="Age since creation (wall time / file creation or first parse). Separate from the 'Any age' filter which is based on time since last message/activity (updatedAt)."
+                    title={t("sessionListAgeTitle")}
                   >
                     Created {formatBriefAge(createdAt)} ago
                   </span>

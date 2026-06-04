@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useRelativeNow } from "../hooks/useRelativeNow";
+import { useI18n } from "../i18n";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { copyMarkdownSelectionToClipboard } from "../lib/markdownSelectionCopy";
 import {
@@ -850,6 +851,7 @@ function BtwAsideTimelineCard({
   onToggleExpanded?: (asideId: string) => void;
   onTransferTurn?: (text: string) => void;
 }) {
+  const { t } = useI18n();
   const canExpand = Boolean(
     aside.request ||
       aside.followUps.length > 0 ||
@@ -906,7 +908,7 @@ function BtwAsideTimelineCard({
             type="button"
             className="btw-aside-action"
             onClick={onDone}
-            title="Return the composer to the main session"
+            title={t("btwAsideReturnComposerTitle")}
           >
             Done
           </button>

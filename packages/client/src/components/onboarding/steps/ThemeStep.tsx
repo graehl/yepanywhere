@@ -1,4 +1,5 @@
-import { THEMES, getThemeLabel, useTheme } from "../../../hooks/useTheme";
+import { getThemeLabel, THEMES, useTheme } from "../../../hooks/useTheme";
+import { useI18n } from "../../../i18n";
 import type { OnboardingStepProps } from "../types";
 
 /**
@@ -6,25 +7,29 @@ import type { OnboardingStepProps } from "../types";
  * Shows visual previews of each theme option.
  */
 export function ThemeStep({ onNext, onSkip, isLastStep }: OnboardingStepProps) {
+  const { t } = useI18n();
   const { theme, setTheme } = useTheme();
 
   return (
     <div className="onboarding-step-content">
       <p className="onboarding-step-description">
-        Choose your preferred color scheme. You can change this later in
-        Settings.
+        {t("onboardingThemeDescription")}
       </p>
 
       <div className="onboarding-theme-grid">
-        {THEMES.map((t) => (
+        {THEMES.map((themeName) => (
           <button
-            key={t}
+            key={themeName}
             type="button"
-            className={`onboarding-theme-option ${theme === t ? "selected" : ""}`}
-            onClick={() => setTheme(t)}
+            className={`onboarding-theme-option ${theme === themeName ? "selected" : ""}`}
+            onClick={() => setTheme(themeName)}
           >
-            <div className={`onboarding-theme-preview theme-preview-${t}`} />
-            <span className="onboarding-theme-label">{getThemeLabel(t)}</span>
+            <div
+              className={`onboarding-theme-preview theme-preview-${themeName}`}
+            />
+            <span className="onboarding-theme-label">
+              {getThemeLabel(themeName)}
+            </span>
           </button>
         ))}
       </div>

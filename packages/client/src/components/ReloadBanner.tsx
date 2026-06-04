@@ -1,3 +1,5 @@
+import { useI18n } from "../i18n";
+
 interface Props {
   target: "backend" | "frontend";
   onReload: () => void;
@@ -13,6 +15,7 @@ export function ReloadBanner({
   unsafeToRestart,
   activeWorkers,
 }: Props) {
+  const { t } = useI18n();
   const label = target === "backend" ? "Server" : "Frontend";
   const showWarning = unsafeToRestart && target === "backend";
 
@@ -21,7 +24,7 @@ export function ReloadBanner({
       className={`reload-banner ${showWarning ? "reload-banner-warning" : ""}`}
     >
       <span className="reload-banner-message">
-        {label} code changed - reload to see changes
+        {t("reloadBannerCodeChanged", { target: label })}
       </span>
       {showWarning && (
         <span className="reload-banner-warning-text">

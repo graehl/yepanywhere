@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import enMessages from "../i18n/en.json";
 
 interface Props {
   children: ReactNode;
@@ -83,15 +84,13 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div style={styles.container}>
           <div style={styles.card}>
-            <h1 style={styles.title}>Something went wrong</h1>
+            <h1 style={styles.title}>{enMessages.errorBoundaryTitle}</h1>
 
             {isVersionMismatch && (
               <div style={styles.versionWarning}>
-                <strong>Possible version mismatch detected.</strong>
+                <strong>{enMessages.errorBoundaryVersionMismatchTitle}</strong>
                 <p style={styles.versionHint}>
-                  The frontend and yepanywhere server may be running different
-                  versions. Try refreshing or updating your yepanywhere
-                  installation.
+                  {enMessages.errorBoundaryVersionMismatchHint}
                 </p>
               </div>
             )}
@@ -104,14 +103,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
             <div style={styles.versionInfo}>
               <div style={styles.versionRow}>
-                <span style={styles.versionLabel}>Server version:</span>
+                <span style={styles.versionLabel}>
+                  {enMessages.errorBoundaryServerVersion}
+                </span>
                 <span style={styles.versionValue}>
                   {versionLoading ? "Loading..." : serverVersion || "Unknown"}
                 </span>
               </div>
               {isVersionMismatch && (
                 <p style={styles.updateHint}>
-                  To update: <code>npm i -g yepanywhere</code>
+                  {enMessages.errorBoundaryToUpdate}{" "}
+                  <code>npm i -g yepanywhere</code>
                 </p>
               )}
             </div>
@@ -122,7 +124,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 onClick={this.handleReload}
                 style={styles.reloadButton}
               >
-                Reload Page
+                {enMessages.errorBoundaryReloadPage}
               </button>
               <a
                 href="https://github.com/anthropics/yep-anywhere/issues"
@@ -130,7 +132,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 rel="noopener noreferrer"
                 style={styles.issueLink}
               >
-                Report Issue
+                {enMessages.errorBoundaryReportIssue}
               </a>
             </div>
           </div>

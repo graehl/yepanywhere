@@ -1034,8 +1034,10 @@ export function GlobalSessionsPage() {
                     onClick={() => setShowHiddenDups((v) => !v)}
                     aria-expanded={showHiddenDups}
                   >
-                    {showHiddenDups ? "−" : "+"} {hiddenDupSessions.length}{" "}
-                    duplicate titles hidden (same name + provider + project)
+                    {showHiddenDups ? "−" : "+"}{" "}
+                    {t("globalSessionsHiddenDuplicates", {
+                      count: hiddenDupSessions.length,
+                    })}
                   </button>
                   {showHiddenDups && (
                     <ul className="session-list global-sessions-hidden-sublist">

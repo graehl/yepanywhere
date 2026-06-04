@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useCodexUpdateStatus } from "../hooks/useCodexUpdateStatus";
 import { useServerSettings } from "../hooks/useServerSettings";
+import { useI18n } from "../i18n";
 import { Modal } from "./ui/Modal";
 
 const STORAGE_KEY = "codex-update-seen-tag";
@@ -22,6 +23,7 @@ function writeSeenTag(tag: string): void {
 }
 
 export function CodexUpdatePrompt() {
+  const { t } = useI18n();
   const { settings, updateSetting } = useServerSettings();
   const policy = settings?.codexUpdatePolicy;
   const { status, isInstalling, error, installOutput, install } =
@@ -133,17 +135,14 @@ export function CodexUpdatePrompt() {
     <Modal title="Codex CLI update available" onClose={handleModalClose}>
       <div className="settings-group codex-update-prompt">
         <p className="codex-update-prompt__summary">
-          {installSucceeded ? (
-            <>
-              Codex CLI <strong>{status.installed ?? activeTag}</strong> is now
-              installed.
-            </>
-          ) : (
-            <>
-              Codex {status.installed} → <strong>{status.latest}</strong> is
-              ready to install.
-            </>
-          )}
+          {installSucceeded
+            ? t("codexUpdateInstalledSummary", {
+                version: status.installed ?? activeTag,
+              })
+            : t("codexUpdateReadySummary", {
+                current: status.installed ?? "unknown",
+                latest: latestTag,
+              })}
         </p>
 
         {status.releaseUrl && (
@@ -179,8 +178,7 @@ export function CodexUpdatePrompt() {
 
         {isInstalling && (
           <p className="settings-hint codex-update-prompt__progress">
-            Updating Codex CLI now. This dialog stays open so you can verify the
-            command output.
+            {t("codexUpdateProgress")}
           </p>
         )}
 
@@ -227,11 +225,7 @@ export function CodexUpdatePrompt() {
               <button
                 type="button"
                 className="settings-button settings-button-secondary"
-                onClick={
-                  installAttempted
-                    ? () => close()
-                    : handleNotNow
-                }
+                onClick={installAttempted ? () => close() : handleNotNow}
                 disabled={isInstalling}
               >
                 {installAttempted ? "Dismiss" : "Not now"}

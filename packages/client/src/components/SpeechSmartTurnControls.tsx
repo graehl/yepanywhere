@@ -1,4 +1,5 @@
 import { type ChangeEvent, useId } from "react";
+import { useI18n } from "../i18n";
 import {
   DEFAULT_SPEECH_SMART_TURN_SETTINGS,
   type SpeechSmartTurnSettings,
@@ -21,11 +22,13 @@ function cleanSettings(
   return {
     enabled: settings.enabled === true,
     threshold:
-      typeof settings.threshold === "number" && Number.isFinite(settings.threshold)
+      typeof settings.threshold === "number" &&
+      Number.isFinite(settings.threshold)
         ? clampNumber(settings.threshold, 0, 1)
         : DEFAULT_SPEECH_SMART_TURN_SETTINGS.threshold,
     timeoutMs:
-      typeof settings.timeoutMs === "number" && Number.isFinite(settings.timeoutMs)
+      typeof settings.timeoutMs === "number" &&
+      Number.isFinite(settings.timeoutMs)
         ? Math.round(clampNumber(settings.timeoutMs, 0, 5000))
         : DEFAULT_SPEECH_SMART_TURN_SETTINGS.timeoutMs,
   };
@@ -37,6 +40,7 @@ export function SpeechSmartTurnControls({
   compact = false,
   disabled = false,
 }: SpeechSmartTurnControlsProps) {
+  const { t } = useI18n();
   const id = useId();
   const thresholdId = `${id}-threshold`;
   const timeoutId = `${id}-timeout`;
@@ -122,7 +126,7 @@ export function SpeechSmartTurnControls({
       </div>
       {clean.enabled && (
         <p className="speech-smart-turn-caption">
-          After a pause: send, cancel, or wait. No command sends.
+          {t("speechSmartTurnCaption")}
         </p>
       )}
     </div>

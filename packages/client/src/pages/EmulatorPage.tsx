@@ -8,6 +8,7 @@ import { useEmulatorSettings } from "../hooks/useEmulatorSettings";
 import { useEmulatorStream } from "../hooks/useEmulatorStream";
 import { useEmulators } from "../hooks/useEmulators";
 import { useVersion } from "../hooks/useVersion";
+import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 
 const DEVICE_TYPE_ORDER: DeviceInfo["type"][] = [
@@ -392,6 +393,7 @@ export function BridgeRuntimePrompt({
   latestVersion?: string | null;
   onDownloaded: () => void;
 }) {
+  const { t } = useI18n();
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -417,16 +419,13 @@ export function BridgeRuntimePrompt({
       <p>
         {mode === "update" ? (
           <>
-            Device streaming needs a bridge runtime update before use.
+            {t("emulatorBridgeUpdateRequired")}
             {installedVersion && latestVersion
               ? ` Installed: v${installedVersion}. Latest: v${latestVersion}.`
               : null}
           </>
         ) : (
-          <>
-            Device streaming requires bridge runtime downloads (sidecar binary +
-            Android server APK).
-          </>
+          t("emulatorBridgeDownloadRequired")
         )}
       </p>
       {error && <div className="emulator-error">{error}</div>}
@@ -449,6 +448,7 @@ export function BridgeRuntimePrompt({
 }
 
 export function EmulatorPage() {
+  const { t } = useI18n();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
   const { version: versionInfo, refetch: refetchVersion } = useVersion();
@@ -510,8 +510,7 @@ export function EmulatorPage() {
               {error && <div className="emulator-error">{error}</div>}
               {!loading && emulators.length === 0 && (
                 <div className="emulator-empty">
-                  No devices detected. Connect an Android emulator/device or add
-                  a ChromeOS SSH host alias in Settings.
+                  {t("emulatorPageNoDevices")}
                 </div>
               )}
               {emulators.length > 0 && (

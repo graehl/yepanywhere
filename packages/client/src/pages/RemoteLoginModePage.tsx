@@ -9,8 +9,10 @@
 import { useNavigate } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { useI18n } from "../i18n";
 
 export function RemoteLoginModePage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { isAutoResuming } = useRemoteConnection();
 
@@ -37,7 +39,7 @@ export function RemoteLoginModePage() {
         <div className="login-logo">
           <YepAnywhereLogo />
         </div>
-        <p className="login-subtitle">How would you like to connect?</p>
+        <p className="login-subtitle">{t("hostPickerHowToConnect")}</p>
 
         <div className="login-mode-options">
           <button
@@ -46,10 +48,11 @@ export function RemoteLoginModePage() {
             onClick={() => navigate("/relay")}
             data-testid="relay-mode-button"
           >
-            <span className="login-mode-option-title">Connect via Relay</span>
+            <span className="login-mode-option-title">
+              {t("hostPickerRelayTitle")}
+            </span>
             <span className="login-mode-option-desc">
-              Use a relay server to connect from anywhere. No port forwarding
-              needed.
+              {t("hostPickerRelayDescription")}
             </span>
           </button>
 
@@ -59,16 +62,16 @@ export function RemoteLoginModePage() {
             onClick={() => navigate("/direct")}
             data-testid="direct-mode-button"
           >
-            <span className="login-mode-option-title">Direct Connection</span>
+            <span className="login-mode-option-title">
+              {t("hostPickerDirectTitle")}
+            </span>
             <span className="login-mode-option-desc">
-              Connect directly via WebSocket URL. For LAN or Tailscale.
+              {t("hostPickerDirectDescription")}
             </span>
           </button>
         </div>
 
-        <p className="login-hint">
-          Most users should choose "Connect via Relay" for the easiest setup.
-        </p>
+        <p className="login-hint">{t("hostPickerEmptyHint")}</p>
       </div>
     </div>
   );

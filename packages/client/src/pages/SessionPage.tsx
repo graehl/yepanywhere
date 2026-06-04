@@ -3233,13 +3233,8 @@ function SessionPageContent({
     if (isNotFound && actualSessionId) {
       return (
         <div className="error" style={{ maxWidth: 520, margin: "40px auto" }}>
-          <h2 style={{ marginTop: 0 }}>Session not found</h2>
-          <p style={{ color: "#666" }}>
-            The backing data for this session on disk or in a live process is
-            not currently readable. This can happen after a YA server restart, a
-            provider storage upgrade, or native session directories being
-            cleaned.
-          </p>
+          <h2 style={{ marginTop: 0 }}>{t("sessionNotFoundTitle")}</h2>
+          <p style={{ color: "#666" }}>{t("sessionNotFoundDescription")}</p>
           <div
             style={{
               display: "flex",
@@ -3267,20 +3262,21 @@ function SessionPageContent({
               }}
               style={{ padding: "8px 14px", cursor: "pointer" }}
             >
-              Archive / Hide from all lists
+              {t("sessionNotFoundArchive")}
             </button>
             <button
               type="button"
               onClick={() => window.history.back()}
               style={{ padding: "8px 14px", cursor: "pointer" }}
             >
-              Go back
+              {t("sessionNotFoundGoBack")}
             </button>
           </div>
           <p style={{ fontSize: "12px", color: "#888", marginTop: 20 }}>
-            Session ID: <code>{actualSessionId}</code>
+            {t("sessionNotFoundSessionId")} <code>{actualSessionId}</code>
             <br />
-            Run <code>ya-clean</code> for bulk bad-state and duplicate cleanup.
+            {t("sessionNotFoundCleanupPrefix")} <code>ya-clean</code>{" "}
+            {t("sessionNotFoundCleanupSuffix")}
           </p>
         </div>
       );
@@ -3861,7 +3857,7 @@ function SessionPageContent({
                             type="button"
                             className="btw-aside-action"
                             onClick={() => hideBtwAside(aside.id)}
-                            title="Return the composer to the main session"
+                            title={t("btwAsideReturnComposerTitle")}
                           >
                             Done
                           </button>
@@ -3885,7 +3881,7 @@ function SessionPageContent({
                           type="button"
                           className="btw-aside-action"
                           onClick={() => hideBtwAside(aside.id)}
-                          title="Move this aside into session history"
+                          title={t("btwAsideMoveToHistoryTitle")}
                         >
                           Hide
                         </button>

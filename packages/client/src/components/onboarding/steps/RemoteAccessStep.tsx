@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useRemoteBasePath } from "../../../hooks/useRemoteBasePath";
+import { useI18n } from "../../../i18n";
 import type { OnboardingStepProps } from "../types";
 
 /**
@@ -11,6 +12,7 @@ export function RemoteAccessStep({
   onSkip,
   isLastStep,
 }: OnboardingStepProps) {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
 
@@ -22,23 +24,19 @@ export function RemoteAccessStep({
   return (
     <div className="onboarding-step-content">
       <p className="onboarding-step-description">
-        Access yepanywhere from anywhere using a secure relay connection. This
-        lets you supervise coding agents from your phone while away from your
-        computer.
+        {t("onboardingRemoteDescription")}
       </p>
 
       <div className="onboarding-info-box">
-        <h4>What you'll need:</h4>
+        <h4>{t("onboardingRemoteRequirementsTitle")}</h4>
         <ul>
-          <li>A relay server URL (self-hosted or provided by your admin)</li>
-          <li>A username to identify your server</li>
-          <li>A password for secure authentication</li>
+          <li>{t("onboardingRemoteRequirementRelayUrl")}</li>
+          <li>{t("onboardingRemoteRequirementUsername")}</li>
+          <li>{t("onboardingRemoteRequirementPassword")}</li>
         </ul>
       </div>
 
-      <p className="onboarding-step-hint">
-        You can skip this for now and set it up later in Settings.
-      </p>
+      <p className="onboarding-step-hint">{t("onboardingRemoteHint")}</p>
 
       <div className="onboarding-step-actions">
         <button type="button" className="btn-secondary" onClick={onSkip}>

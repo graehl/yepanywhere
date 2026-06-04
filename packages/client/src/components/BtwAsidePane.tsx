@@ -1,4 +1,5 @@
 import { type RefObject, useEffect, useMemo, useRef } from "react";
+import { useI18n } from "../i18n";
 import { parseComposerSlashCommand } from "../lib/slashCommands";
 import { TextBlock } from "./blocks/TextBlock";
 import { UserPromptBlock } from "./blocks/UserPromptBlock";
@@ -87,6 +88,7 @@ export function BtwAsideTranscript({
   autoScrollLatest?: boolean;
   onTransferToComposer?: (text: string) => void;
 }) {
+  const { t } = useI18n();
   const turns = useMemo(() => getBtwAsideTranscriptTurns(aside), [aside]);
   const latestAssistantTurn =
     [...turns].reverse().find((turn) => turn.role === "assistant") ?? null;
@@ -106,11 +108,7 @@ export function BtwAsideTranscript({
   }, [autoScrollLatest, latestAssistantSignature]);
 
   if (turns.length === 0) {
-    return (
-      <div className="session-btw-pane-empty">
-        Type a /btw side request below.
-      </div>
-    );
+    return <div className="session-btw-pane-empty">{t("btwAsideEmpty")}</div>;
   }
 
   return (
@@ -223,6 +221,7 @@ export function BtwAsidePane({
   onStop,
   onTransferToComposer,
 }: BtwAsidePaneProps) {
+  const { t } = useI18n();
   const canStop = aside.status === "starting" || aside.status === "running";
 
   const submitDraft = () => {
@@ -256,7 +255,7 @@ export function BtwAsidePane({
             type="button"
             className="btw-aside-action"
             onClick={onHide}
-            title="Minimize this pane (aside stays focused; click handle to reopen)"
+            title={t("btwAsideMinimizeTitle")}
           >
             Min
           </button>
@@ -274,7 +273,7 @@ export function BtwAsidePane({
             type="button"
             className="btw-aside-action"
             onClick={() => onDone("")}
-            title="Close this aside and return composer to Mother"
+            title={t("btwAsideDoneTitle")}
           >
             Done
           </button>

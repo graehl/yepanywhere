@@ -167,6 +167,14 @@
   background: color-mix(in srgb, var(--bg-code, #1f1f1f) 52%, transparent);
 }
 
+.ran-tool-row.timeline-item::before {
+  top: 9px;
+}
+
+.ran-tool-row.timeline-item::after {
+  top: 15px;
+}
+
 .ran-tool-row .tool-row-header:hover {
   background: color-mix(in srgb, var(--bg-hover, #2a2a2a) 72%, transparent);
 }
@@ -261,7 +269,7 @@ button.tool-summary {
 
 .tool-summary-command {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.45rem;
   cursor: pointer;
   white-space: normal;
@@ -297,7 +305,6 @@ button.tool-summary {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  margin-top: 0.05rem;
   padding: 0.05rem 0.35rem;
   border: 1px solid var(--border-subtle, var(--border-color));
   border-radius: 999px;

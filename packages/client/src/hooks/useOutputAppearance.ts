@@ -13,8 +13,8 @@ export const OUTPUT_PROSE_FONTS: OutputProseFont[] = [
 
 export const OUTPUT_FIXED_FONTS: OutputFixedFont[] = [
   "system",
-  "iosevka",
   "ibm-plex-mono",
+  "iosevka",
 ];
 
 export const OUTPUT_FONT_SIZE_MIN_PX = 11;

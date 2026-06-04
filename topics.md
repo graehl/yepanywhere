@@ -24,3 +24,4 @@
 - message-control-steer-queue-btw-later-interrupt - Steer/queue control state, ownership normalization, and metadata contract cleanup.
 - ui-architecture - Shared rendering boundaries and anti-DOM-rewrite discipline.
 - opencode-backend - OpenCode provider capability and transcript-rendering parity.
+- graehl-ci-pre-kzahel-gate - Use graehl-push CI as a coverage/signal gate before pushing to kzahel.

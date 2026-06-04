@@ -1,6 +1,6 @@
 # Remote Compatibility Notices
 
-Status: Initial client slice implemented
+Status: Initial client slice implemented; v3 grace-period correction planned
 
 Progress:
 
@@ -12,6 +12,10 @@ Progress:
 - [x] 2026-06-01: Verified the focused notice tests and client typecheck.
 - [x] 2026-06-01: Added host update guidance with visible versions, npm/source
   commands, and explicit server install-source metadata.
+- [ ] 2026-06-04: Correct the relay SRP v3 rollout so protocol v2 is a
+  warning-path compatibility fallback during the grace window rather than an
+  immediate hosted-client cutoff. See
+  [`011-relay-srp-v2-v3-grace-period.md`](011-relay-srp-v2-v3-grace-period.md).
 
 ## Context
 
@@ -25,7 +29,7 @@ There are already several related user-facing prompts:
 
 - the onboarding modal in the local app;
 - the Codex CLI update prompt, which can update npm-global Codex installs;
-- the existing relay session-resume protocol cutoff in `RemoteApp`;
+- relay session-resume protocol warnings and cutoffs;
 - dev reload banners;
 - Settings -> About version/update state.
 
@@ -57,19 +61,28 @@ observability:
 - `renderProtocolVersion`
 - `capabilities`
 
-The relay resume cutoff now checks `resumeProtocolVersion < 3`. Protocol 2
-covered the security hardening released in `v0.4.0`, whose changelog includes:
+Relay resume protocol warnings should distinguish three cases:
+
+- Protocol 1 and pre-metadata servers below the v2 security baseline may be a
+  cutoff.
+- Protocol 2 is the established compatible baseline from the earlier resume
+  hardening rollout and should remain usable during a v3 grace period.
+- Protocol 3 is the current protocol for updated servers.
+
+Protocol 2 covered the security hardening released in `v0.4.0`, whose
+changelog includes:
 
 - "Harden session resume replay defenses for untrusted relays"
 - "Harden relay replay protection for SRP sessions"
 
 Protocol 3 adds mutual resume server proof so a compromised relay cannot pair a
 saved-session client with an impostor YA server that merely accepts the
-client's proof. The hosted client now requires this protocol for relay Remote
-Access; old YA servers can still be reached directly over localhost, a tunnel,
-or a VPN. Compatibility reporting to the relay itself landed later in `v0.4.11`,
-but the user-facing cutoff notice should still treat `<0.4.0` as the durable
-version fallback when protocol metadata is absent.
+client's proof. Updated YA servers should advertise and speak protocol 3, but
+the hosted remote client should continue to connect to protocol 2 servers
+during the grace period and show a server-update warning. Compatibility
+reporting to the relay itself landed later in `v0.4.11`, but the user-facing
+cutoff notice should still treat `<0.4.0` as the durable v1/pre-v2 fallback
+when protocol metadata is absent.
 
 ## Goals
 
@@ -145,11 +158,11 @@ Severity meanings:
 
 ## Initial Notice Rules
 
-### 1. Relay Resume Protocol Cutoff Notice
+### 1. Relay Resume Protocol Notices
 
-Show a `blocking` notice when either condition is true:
+Show a `blocking` cutoff notice only when either condition is true:
 
-- `resumeProtocolVersion` is known and is lower than `3`;
+- `resumeProtocolVersion` is known and is lower than `2`;
 - `resumeProtocolVersion` is absent and `currentVersion` is a comparable
   semver lower than `0.4.0`.
 
@@ -159,6 +172,20 @@ Suggested copy:
 - Body: `This hosted client requires current relay session-resume server
   verification. Update the local server, or use localhost, a tunnel, or a VPN
   with the old server.`
+- Action command: `npm update -g yepanywhere`
+
+Show a `security` or high-priority `recommended` notice when
+`resumeProtocolVersion === 2` during the v3 grace period. Basic remote login
+should remain available, but the user needs clear warning that the server must
+be updated before the cutoff.
+
+Suggested copy:
+
+- Title: `Server update required soon`
+- Body: `This server uses the older relay session-resume protocol. Remote
+  login still works during the compatibility window, but update the YA server
+  soon; future hosted clients will require the newer server-verification
+  protocol for security.`
 - Action command: `npm update -g yepanywhere`
 
 This replaces the current `RemoteApp` modal check. It should be rendered as a
@@ -205,8 +232,9 @@ Prefer semantic metadata over version checks when metadata directly expresses
 the compatibility concern:
 
 - `resumeProtocolVersion` is the primary signal for the relay resume protocol
-  cutoff notice.
-- version `<0.4.0` is the fallback for servers that do not report the protocol.
+  warning or cutoff notice.
+- version `<0.4.0` is the cutoff fallback for servers that do not report the
+  protocol.
 - future render/client contract checks should prefer `renderProtocolVersion`
   once it exists.
 - `capabilities` are useful for feature-level notice copy, but they should not
@@ -295,11 +323,13 @@ and focus on remote compatibility notices.
 - Include semver comparison helpers or reuse an existing client-safe helper if
   one exists.
 - Encode the initial notice rules:
-  - relay resume protocol cutoff, protocol first and `<0.4.0` fallback;
+  - relay resume protocol warning/cutoff, protocol first and `<0.4.0`
+    fallback;
   - upcoming backend/API recommended update baseline;
   - optional generic update-available fallback.
 - Add focused unit tests for:
-  - `resumeProtocolVersion < 3`;
+  - `resumeProtocolVersion < 2`;
+  - `resumeProtocolVersion === 2`;
   - missing protocol plus version `<0.4.0`;
   - version `0.4.0+` suppresses the cutoff notice;
   - unknown/dev versions avoid unsafe old-version claims;
@@ -317,8 +347,7 @@ and focus on remote compatibility notices.
 
 - Add `RemoteCompatibilityNotices`.
 - Render it from connected remote app content.
-- Replace the current `resumeProtocolVersion < 3` modal with the notice
-  engine.
+- Replace one-off relay protocol checks with the notice engine.
 - Use existing banner/modal styling primitives where possible.
 - Ensure text fits on mobile and actions wrap cleanly.
 
@@ -342,7 +371,9 @@ and focus on remote compatibility notices.
 ## Verification Checklist
 
 - A relay-connected server with `resumeProtocolVersion: 2` shows one
-  `blocking` notice.
+  non-blocking update-required-soon warning during the v3 grace period.
+- A relay-connected server with `resumeProtocolVersion: 1` shows one
+  `blocking` cutoff notice.
 - A relay-connected server with no `resumeProtocolVersion` and version
   `0.3.9` shows the relay resume protocol cutoff notice.
 - A relay-connected server with version `0.4.0` does not show the cutoff

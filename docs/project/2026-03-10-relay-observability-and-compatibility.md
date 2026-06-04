@@ -196,14 +196,17 @@ Policy:
 
 1. Do not require a server upgrade just to keep using hosted `/remote`
 2. Prefer dual-read compatibility in the hosted client whenever protocol evolution allows it
-3. Use protocol versions for hard cutoffs only after observing actual relay usage
-4. Treat capability flags as advisory, not as the sole basis for deprecation
+3. Give previous-protocol servers at least a few weeks of visible hosted-client
+   warning before a hard cutoff, unless an explicitly documented emergency
+   security exception says fallback is unsafe
+4. Use protocol versions for hard cutoffs only after observing actual relay usage
+5. Treat capability flags as advisory, not as the sole basis for deprecation
 
 In practical terms:
 
 - Relay registration metadata is optional first
 - Relay begins measuring protocol/version adoption before any cutoff discussion
-- Hosted client warnings can be added later, but should not block access until there is clear usage data and a deliberate deprecation decision
+- Hosted client warnings can be added later, but should not block access until there is clear usage data, a deliberate deprecation decision, and the warning grace period has elapsed
 
 ## Multi-Relay Considerations
 

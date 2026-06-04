@@ -51,6 +51,18 @@ and can be inspected with `pnpm i18n:scan -- --include-info`. Use
 `--max-warnings <n>` only when intentionally ratcheting it toward a blocking
 check.
 
+To review untranslated sparse-locale backlog without enforcing it on ordinary
+code changes, run:
+
+```bash
+pnpm i18n:missing
+pnpm i18n:missing -- --markdown --limit all > reports/i18n-missing-$(date +%F).md
+```
+
+`i18n:missing` reports English keys absent from non-English locale overlays and
+always treats missing translations as advisory. Use this for daily or weekly
+translation planning rather than as a blocking lint rule.
+
 ## Contribution Ethos: Minimalist Runtime
 
 Running code — everything outside test/build tooling — is hand-built and lean on

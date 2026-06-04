@@ -28,6 +28,9 @@ Progress:
   demoting brand names, provider names, terminal commands, keyboard hints,
   code-like snippets, renderer status text, and specimen copy to low-priority
   info or ignoring them.
+- [x] 2026-06-04: Added advisory `i18n:missing` reporting for sparse-locale
+  coverage. It lists English keys absent from each non-English overlay for
+  daily or weekly translation planning without failing ordinary code checks.
 
 ## Context
 
@@ -167,6 +170,19 @@ distinguish deliberate locale grammar from accidental placeholder loss.
     `--include-info` is passed.
 - Support `--max-warnings <n>` as a future ratchet toward CI gating, but leave
   the default exit code advisory while existing warnings are being triaged.
+
+### 6. Add Missing Translation Report
+
+- Add `scripts/report-i18n-missing.mjs` and expose it as
+  `pnpm i18n:missing`.
+- Compare `en.json` against sparse non-English locale overlays and report keys
+  missing from each locale.
+- Keep the command read-only and advisory. Missing locale keys should continue
+  to fall back to English at runtime.
+- Support text for terminal review, JSON for automation, and Markdown for
+  daily or weekly translation backlog artifacts.
+- Support `--locale <code>` and `--limit <count|all>` so maintainers can focus
+  on one locale or produce a complete report when needed.
 
 ## Open Questions
 

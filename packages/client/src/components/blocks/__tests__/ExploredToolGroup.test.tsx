@@ -138,7 +138,7 @@ describe("ExploredToolGroup", () => {
       target_directory: "packages/client/src",
     });
 
-    render(
+    const { container } = render(
       <SessionMetadataProvider
         projectId={projectId}
         projectPath={projectRoot}
@@ -158,7 +158,22 @@ describe("ExploredToolGroup", () => {
     expect(readLink.getAttribute("href")).toBe(
       `/projects/${projectId}/file?path=topics%2Frich-text-rendering.md`,
     );
-    expect(screen.getByText("tool|bash in packages/client/src")).toBeDefined();
+    const grepSummary = container.querySelector(
+      '[data-render-id="grep-1"] .grep-inline-summary',
+    );
+    const grepPattern = grepSummary?.querySelector(
+      ".grep-summary-pattern-clip",
+    );
+    expect(grepPattern?.textContent).toBe("tool|bash");
+    expect(grepPattern?.getAttribute("title")).toBe(
+      "tool|bash in packages/client/src",
+    );
+    const grepScopeLink =
+      grepSummary?.querySelector<HTMLAnchorElement>("a.file-path-link");
+    expect(grepScopeLink?.textContent).toBe("src");
+    expect(grepScopeLink?.getAttribute("href")).toBe(
+      `/projects/${projectId}/file?path=packages%2Fclient%2Fsrc`,
+    );
     expect(screen.getByText("0 matches")).toBeDefined();
     expect(screen.getByText("packages/client/src")).toBeDefined();
 
@@ -224,7 +239,7 @@ describe("ExploredToolGroup", () => {
       },
     );
 
-    render(
+    const { container } = render(
       <I18nProvider>
         <SessionMetadataProvider
           projectId={projectId}
@@ -236,7 +251,20 @@ describe("ExploredToolGroup", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByText("needle in src")).toBeDefined();
+    const grepSummary = container.querySelector(
+      '[data-render-id="grep-1"] .grep-inline-summary',
+    );
+    const grepPattern = grepSummary?.querySelector(
+      ".grep-summary-pattern-clip",
+    );
+    expect(grepPattern?.textContent).toBe("needle");
+    expect(grepPattern?.getAttribute("title")).toBe("needle in src");
+    const grepScopeLink =
+      grepSummary?.querySelector<HTMLAnchorElement>("a.file-path-link");
+    expect(grepScopeLink?.textContent).toBe("src");
+    expect(grepScopeLink?.getAttribute("href")).toBe(
+      `/projects/${projectId}/file?path=src`,
+    );
     fireEvent.click(screen.getByRole("button", { name: "2 matches" }));
 
     expect(screen.getByRole("dialog")).toBeTruthy();

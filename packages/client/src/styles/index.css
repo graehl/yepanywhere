@@ -159,6 +159,8 @@
     9px,
     calc(0.9em + var(--fixed-font-size-offset))
   );
+  --fixed-inline-code-line-height: 1.15;
+  --fixed-inline-code-baseline-shift: 0.04em;
   --thinking-prose-line-height-offset: 0px;
   --thinking-prose-line-height: calc(
     1.5em + var(--thinking-prose-line-height-offset)

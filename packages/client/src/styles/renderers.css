@@ -5108,6 +5108,18 @@ pre.code-highlighter-plain,
   font-size: var(--fixed-font-size-inline);
 }
 
+.fixed-font-rendered__content :not(pre) > code,
+.streaming-blocks :not(pre) > code,
+.streaming-block :not(pre) > code,
+.streaming-pending :not(pre) > code,
+.text-block :not(pre) > code,
+.thinking-inline-code,
+.markdown-preview .markdown-rendered :not(pre) > code,
+.output-preview-prose code {
+  line-height: var(--fixed-inline-code-line-height);
+  vertical-align: var(--fixed-inline-code-baseline-shift);
+}
+
 .streaming-blocks pre code,
 .streaming-block pre code,
 .text-block pre code,

@@ -75,7 +75,8 @@ type ConnectionState =
 const RESUME_PHASE_TIMEOUT_MS = 5000;
 const RESUME_INCOMPATIBLE_ERROR =
   "resume_incompatible: session resume unsupported by server";
-const REQUIRED_RESUME_PROTOCOL_VERSION = 3;
+const GRACE_FULL_SRP_PROTOCOL_VERSION = 2;
+const CURRENT_RESUME_PROTOCOL_VERSION = 3;
 const UPLOAD_BUFFER_HIGH_WATER_BYTES = 512 * 1024;
 const UPLOAD_BUFFER_LOW_WATER_BYTES = 256 * 1024;
 const UPLOAD_BUFFER_POLL_MS = 16;
@@ -400,10 +401,10 @@ export class SecureConnection implements Connection {
   }
 
   private storedSessionSupportsCurrentResume(): boolean {
+    const resumeProtocolVersion = this.storedSession?.resumeProtocolVersion;
     return (
-      typeof this.storedSession?.resumeProtocolVersion === "number" &&
-      this.storedSession.resumeProtocolVersion >=
-        REQUIRED_RESUME_PROTOCOL_VERSION
+      resumeProtocolVersion === undefined ||
+      resumeProtocolVersion >= GRACE_FULL_SRP_PROTOCOL_VERSION
     );
   }
 
@@ -430,21 +431,26 @@ export class SecureConnection implements Connection {
 
   private acceptAuthenticatedResumeProtocolVersion(
     resumeProtocolVersion: number,
+    minimumProtocolVersion = CURRENT_RESUME_PROTOCOL_VERSION,
   ): boolean {
     if (
       !Number.isSafeInteger(resumeProtocolVersion) ||
-      resumeProtocolVersion < REQUIRED_RESUME_PROTOCOL_VERSION
+      resumeProtocolVersion < minimumProtocolVersion
     ) {
       return false;
     }
+    const pinnedResumeProtocolVersion = Math.max(
+      this.minimumResumeProtocolVersion ?? 0,
+      this.storedSession?.resumeProtocolVersion ?? 0,
+    );
     if (
-      this.minimumResumeProtocolVersion !== null &&
-      resumeProtocolVersion < this.minimumResumeProtocolVersion
+      pinnedResumeProtocolVersion > 0 &&
+      resumeProtocolVersion < pinnedResumeProtocolVersion
     ) {
       return false;
     }
     this.minimumResumeProtocolVersion = Math.max(
-      this.minimumResumeProtocolVersion ?? 0,
+      pinnedResumeProtocolVersion,
       resumeProtocolVersion,
     );
     return true;
@@ -537,6 +543,15 @@ export class SecureConnection implements Connection {
     } catch {
       return null;
     }
+  }
+
+  private acceptGraceProtocolVersion(
+    resumeProtocolVersion: number,
+  ): boolean {
+    return this.acceptAuthenticatedResumeProtocolVersion(
+      resumeProtocolVersion,
+      GRACE_FULL_SRP_PROTOCOL_VERSION,
+    );
   }
 
   /**
@@ -632,21 +647,44 @@ export class SecureConnection implements Connection {
           atob(this.storedSession.sessionKey),
           (c) => c.charCodeAt(0),
         );
-        const transportNonce = msg.transportNonce;
-        const resumeProtocolVersion = this.verifyResumeServerProof({
-          serverProof: msg.serverProof,
-          baseSessionKey,
-          sessionId: this.storedSession.sessionId,
-          transportNonce,
-        });
         if (
-          resumeProtocolVersion === null ||
-          !transportNonce ||
-          !this.acceptAuthenticatedResumeProtocolVersion(
-            resumeProtocolVersion,
-          )
+          !msg.transportNonce ||
+          msg.transportNonce !== this.pendingResumeServerNonce
         ) {
           console.error("[SecureConnection] Resume server proof failed");
+          this.connectionState = "failed";
+          reject(new Error("Resume server verification failed"));
+          this.ws?.close();
+          return;
+        }
+        const transportNonce = msg.transportNonce;
+        let authenticatedResumeProtocolVersion = GRACE_FULL_SRP_PROTOCOL_VERSION;
+        if (msg.serverProof) {
+          const proofProtocolVersion = this.verifyResumeServerProof({
+            serverProof: msg.serverProof,
+            baseSessionKey,
+            sessionId: this.storedSession.sessionId,
+            transportNonce,
+          });
+          if (
+            proofProtocolVersion === null ||
+            !this.acceptAuthenticatedResumeProtocolVersion(
+              proofProtocolVersion,
+            )
+          ) {
+            console.error("[SecureConnection] Resume server proof failed");
+            this.connectionState = "failed";
+            reject(new Error("Resume server verification failed"));
+            this.ws?.close();
+            return;
+          }
+          authenticatedResumeProtocolVersion = proofProtocolVersion;
+        } else if (
+          !this.acceptGraceProtocolVersion(GRACE_FULL_SRP_PROTOCOL_VERSION)
+        ) {
+          console.error(
+            "[SecureConnection] Resume would downgrade authenticated protocol",
+          );
           this.connectionState = "failed";
           reject(new Error("Resume server verification failed"));
           this.ws?.close();
@@ -659,7 +697,7 @@ export class SecureConnection implements Connection {
         this.pendingResumeServerNonce = null;
         this.storedSession = {
           ...this.storedSession,
-          resumeProtocolVersion: this.minimumResumeProtocolVersion ?? undefined,
+          resumeProtocolVersion: authenticatedResumeProtocolVersion,
         };
         this.resetSequenceState();
 
@@ -1162,26 +1200,40 @@ export class SecureConnection implements Connection {
         return;
       }
       const baseSessionKey = deriveSecretboxKey(rawKey);
-      if (!msg.sessionId || !msg.transportNonce || !msg.serverInfoProof) {
+      if (!msg.sessionId || !msg.transportNonce) {
         console.error(
-          "[SecureConnection] SRP verify missing current protocol metadata",
+          "[SecureConnection] SRP verify missing required protocol metadata",
         );
         this.connectionState = "failed";
         reject(new Error("Server protocol verification failed"));
         this.ws?.close();
         return;
       }
-      const proofProtocolVersion = this.readSrpVerifyServerInfoProof({
-        serverInfoProof: msg.serverInfoProof,
-        baseSessionKey,
-        sessionId: msg.sessionId,
-        transportNonce: msg.transportNonce,
-      });
-      if (
-        typeof proofProtocolVersion !== "number" ||
-        !this.acceptAuthenticatedResumeProtocolVersion(proofProtocolVersion)
+      let authenticatedResumeProtocolVersion = GRACE_FULL_SRP_PROTOCOL_VERSION;
+      if (msg.serverInfoProof) {
+        const proofProtocolVersion = this.readSrpVerifyServerInfoProof({
+          serverInfoProof: msg.serverInfoProof,
+          baseSessionKey,
+          sessionId: msg.sessionId,
+          transportNonce: msg.transportNonce,
+        });
+        if (
+          typeof proofProtocolVersion !== "number" ||
+          !this.acceptAuthenticatedResumeProtocolVersion(proofProtocolVersion)
+        ) {
+          console.error("[SecureConnection] SRP server info proof failed");
+          this.connectionState = "failed";
+          reject(new Error("Server protocol verification failed"));
+          this.ws?.close();
+          return;
+        }
+        authenticatedResumeProtocolVersion = proofProtocolVersion;
+      } else if (
+        !this.acceptGraceProtocolVersion(GRACE_FULL_SRP_PROTOCOL_VERSION)
       ) {
-        console.error("[SecureConnection] SRP server info proof failed");
+        console.error(
+          "[SecureConnection] SRP verify would downgrade authenticated protocol",
+        );
         this.connectionState = "failed";
         reject(new Error("Server protocol verification failed"));
         this.ws?.close();
@@ -1202,8 +1254,7 @@ export class SecureConnection implements Connection {
         username: this.username,
         sessionId: this.sessionId,
         sessionKey: sessionKeyBase64,
-        resumeProtocolVersion:
-          this.minimumResumeProtocolVersion ?? undefined,
+        resumeProtocolVersion: authenticatedResumeProtocolVersion,
       };
       this.onSessionEstablished?.(this.storedSession);
 

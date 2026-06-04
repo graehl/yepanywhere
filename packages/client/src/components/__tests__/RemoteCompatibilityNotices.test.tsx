@@ -43,18 +43,22 @@ describe("RemoteCompatibilityNotices", () => {
     window.localStorage.clear();
   });
 
-  it("renders and dismisses the relay resume protocol cutoff notice", () => {
+  it("renders and dismisses the protocol 2 relay resume warning", () => {
     render(
       <RemoteCompatibilityNotices
         relayUsername="dev-box"
-        versionInfo={version({ resumeProtocolVersion: 2 })}
+        versionInfo={version({
+          current: "0.5.0",
+          latest: "0.5.1",
+          resumeProtocolVersion: 2,
+        })}
       />,
     );
 
     expect(screen.getByRole("alert").textContent).toContain(
-      "Server update required",
+      "Server update required soon",
     );
-    expect(screen.getByText(/use localhost, a tunnel, or a VPN/i)).toBeTruthy();
+    expect(screen.getByText(/compatibility window/i)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 
@@ -63,9 +67,23 @@ describe("RemoteCompatibilityNotices", () => {
       { length: window.localStorage.length },
       (_value, index) => window.localStorage.key(index) ?? "",
     );
-    expect(keys.some((key) => key.includes("relay-resume-security"))).toBe(
+    expect(keys.some((key) => key.includes("relay-resume-v3-grace"))).toBe(
       true,
     );
+  });
+
+  it("renders the pre-v2 relay resume cutoff notice", () => {
+    render(
+      <RemoteCompatibilityNotices
+        relayUsername="dev-box"
+        versionInfo={version({ resumeProtocolVersion: 1 })}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Server update required",
+    );
+    expect(screen.getByText(/use localhost, a tunnel, or a VPN/i)).toBeTruthy();
   });
 
   it("copies the update command for stable release installs", async () => {

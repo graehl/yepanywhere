@@ -20,18 +20,37 @@ describe("remoteCompatibilityNotices", () => {
     ).toEqual([]);
   });
 
-  it("emits a blocking notice for old relay resume protocol metadata", () => {
+  it("emits a warning notice for protocol 2 relay resume metadata", () => {
     const notices = getRemoteCompatibilityNotices({
-      currentVersion: "0.4.29",
-      latestVersion: "0.4.29",
+      currentVersion: "0.5.0",
+      latestVersion: "0.5.1",
       updateAvailable: false,
       resumeProtocolVersion: 2,
       relayUsername: "dev-box",
     });
 
     expect(notices.map((notice) => notice.id)).toEqual([
-      "relay-resume-security",
+      "relay-resume-v3-grace",
     ]);
+    expect(notices[0]?.severity).toBe("security");
+    expect(notices[0]?.title).toBe("Server update required soon");
+    expect(notices[0]?.versionSummary).toBe(
+      "Server v0.5.0; recommended v0.5.1",
+    );
+  });
+
+  it("emits a blocking notice for pre-v2 relay resume protocol metadata", () => {
+    const notices = getRemoteCompatibilityNotices({
+      currentVersion: "0.4.29",
+      latestVersion: "0.5.1",
+      updateAvailable: true,
+      resumeProtocolVersion: 1,
+      relayUsername: "dev-box",
+    });
+
+    expect(notices.map((notice) => notice.id)).toContain(
+      "relay-resume-security",
+    );
     expect(notices[0]?.severity).toBe("blocking");
   });
 

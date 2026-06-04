@@ -64,7 +64,7 @@ function srpVerifyServerInfoProof(params: {
 }
 
 describe("SecureConnection protocol compatibility", () => {
-  it("rejects full SRP when server omits current protocol metadata", async () => {
+  it("rejects full SRP when server omits the transport nonce", async () => {
     const conn = new SecureConnection(
       "ws://localhost:3400/api/ws",
       "test-user",
@@ -115,6 +115,71 @@ describe("SecureConnection protocol compatibility", () => {
     expect(conn.connectionState).toBe("failed");
     expect(send).not.toHaveBeenCalled();
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts protocol 2 full SRP during the grace period", async () => {
+    const conn = new SecureConnection(
+      "ws://localhost:3400/api/ws",
+      "test-user",
+      "test-password",
+    ) as unknown as {
+      ws: { readyState: number; send: ReturnType<typeof vi.fn> };
+      srpSession: {
+        verifyServer: (m2: string) => Promise<boolean>;
+        getSessionKey: () => Uint8Array;
+      };
+      sessionKey: Uint8Array;
+      storedSession: {
+        sessionId: string;
+        resumeProtocolVersion?: number;
+      } | null;
+      handleSrpVerify: (
+        data: string,
+        resolve: () => void,
+        reject: (err: Error) => void,
+      ) => Promise<void>;
+    };
+
+    const send = vi.fn();
+    conn.ws = { readyState: 1, send };
+    const rawKey = generateRandomKey();
+    const transportNonce = nonceBase64(3);
+    conn.srpSession = {
+      verifyServer: vi.fn().mockResolvedValue(true),
+      getSessionKey: vi.fn().mockReturnValue(rawKey),
+    };
+
+    const resolve = vi.fn();
+    const reject = vi.fn();
+    await conn.handleSrpVerify(
+      JSON.stringify({
+        type: "srp_verify",
+        M2: "abc123",
+        sessionId: "sess-v2",
+        transportNonce,
+      }),
+      resolve,
+      reject,
+    );
+
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(reject).not.toHaveBeenCalled();
+    expect(conn.storedSession?.sessionId).toBe("sess-v2");
+    expect(conn.storedSession?.resumeProtocolVersion).toBe(2);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    const sent = send.mock.calls[0]?.[0];
+    expect(sent).toBeInstanceOf(ArrayBuffer);
+    const plaintext = decryptBinaryEnvelope(
+      sent as ArrayBuffer,
+      conn.sessionKey,
+    );
+    const parsed = JSON.parse(plaintext ?? "{}") as {
+      seq: number;
+      msg: { type: string };
+    };
+    expect(parsed.seq).toBe(0);
+    expect(parsed.msg.type).toBe("client_capabilities");
   });
 
   it("uses sequenced binary encrypted envelopes on current servers", async () => {
@@ -242,6 +307,97 @@ describe("SecureConnection protocol compatibility", () => {
     expect(conn.storedSession?.resumeProtocolVersion).toBe(3);
   });
 
+  it("rejects protocol 2 full SRP when protocol 3 is already pinned", async () => {
+    const conn = new SecureConnection(
+      "ws://localhost:3400/api/ws",
+      "test-user",
+      "test-password",
+    ) as unknown as {
+      ws: {
+        readyState: number;
+        send: ReturnType<typeof vi.fn>;
+        close: ReturnType<typeof vi.fn>;
+      };
+      srpSession: {
+        verifyServer: (m2: string) => Promise<boolean>;
+        getSessionKey: () => Uint8Array;
+      };
+      connectionState: string;
+      minimumResumeProtocolVersion: number | null;
+      handleSrpVerify: (
+        data: string,
+        resolve: () => void,
+        reject: (err: Error) => void,
+      ) => Promise<void>;
+    };
+
+    const send = vi.fn();
+    const close = vi.fn();
+    conn.ws = { readyState: 1, send, close };
+    conn.minimumResumeProtocolVersion = 3;
+    conn.srpSession = {
+      verifyServer: vi.fn().mockResolvedValue(true),
+      getSessionKey: vi.fn().mockReturnValue(generateRandomKey()),
+    };
+
+    const resolve = vi.fn();
+    const reject = vi.fn();
+    await conn.handleSrpVerify(
+      JSON.stringify({
+        type: "srp_verify",
+        M2: "abc123",
+        sessionId: "sess-downgrade",
+        transportNonce: nonceBase64(12),
+      }),
+      resolve,
+      reject,
+    );
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(reject).toHaveBeenCalledTimes(1);
+    expect(reject.mock.calls[0]?.[0]?.message).toBe(
+      "Server protocol verification failed",
+    );
+    expect(conn.connectionState).toBe("failed");
+    expect(send).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("attempts grace-period resume for protocol 2 and unstamped sessions", () => {
+    const protocol2Conn = SecureConnection.forResumeOnly({
+      wsUrl: "ws://localhost:3400/api/ws",
+      username: "test-user",
+      sessionId: "sess-v2",
+      sessionKey: bytesBase64(generateRandomKey()),
+      resumeProtocolVersion: 2,
+    }) as unknown as {
+      storedSessionSupportsCurrentResume: () => boolean;
+    };
+
+    const unstampedConn = SecureConnection.forResumeOnly({
+      wsUrl: "ws://localhost:3400/api/ws",
+      username: "test-user",
+      sessionId: "sess-unstamped",
+      sessionKey: bytesBase64(generateRandomKey()),
+    }) as unknown as {
+      storedSessionSupportsCurrentResume: () => boolean;
+    };
+
+    const protocol1Conn = SecureConnection.forResumeOnly({
+      wsUrl: "ws://localhost:3400/api/ws",
+      username: "test-user",
+      sessionId: "sess-v1",
+      sessionKey: bytesBase64(generateRandomKey()),
+      resumeProtocolVersion: 1,
+    }) as unknown as {
+      storedSessionSupportsCurrentResume: () => boolean;
+    };
+
+    expect(protocol2Conn.storedSessionSupportsCurrentResume()).toBe(true);
+    expect(unstampedConn.storedSessionSupportsCurrentResume()).toBe(true);
+    expect(protocol1Conn.storedSessionSupportsCurrentResume()).toBe(false);
+  });
+
   it("rejects unsequenced encrypted responses", async () => {
     const conn = new SecureConnection(
       "ws://localhost:3400/api/ws",
@@ -267,7 +423,7 @@ describe("SecureConnection protocol compatibility", () => {
     expect(conn.ws.close).toHaveBeenCalledWith(4004, "Invalid sequence");
   });
 
-  it("accepts resume only with encrypted server proof", async () => {
+  it("accepts protocol 3 resume with encrypted server proof", async () => {
     const conn = new SecureConnection(
       "ws://localhost:3400/api/ws",
       "test-user",
@@ -347,9 +503,214 @@ describe("SecureConnection protocol compatibility", () => {
     };
     expect(parsed.seq).toBe(0);
     expect(parsed.msg.type).toBe("client_capabilities");
+    expect(conn.storedSession.resumeProtocolVersion).toBe(3);
   });
 
-  it("rejects resume when the server proof is missing", async () => {
+  it("accepts protocol 2 resume during grace when transport nonce is present", async () => {
+    const onSessionEstablished = vi.fn();
+    const conn = new SecureConnection(
+      "ws://localhost:3400/api/ws",
+      "test-user",
+      "",
+      onSessionEstablished,
+    ) as unknown as {
+      ws: {
+        readyState: number;
+        send: ReturnType<typeof vi.fn>;
+        close: ReturnType<typeof vi.fn>;
+        onmessage?: unknown;
+      };
+      storedSession: {
+        wsUrl: string;
+        username: string;
+        sessionId: string;
+        sessionKey: string;
+        resumeProtocolVersion?: number;
+      };
+      sessionKey: Uint8Array | null;
+      pendingResumeClientNonce: string | null;
+      pendingResumeServerNonce: string | null;
+      handleSrpResumeResponse: (
+        data: string,
+        resolve: () => void,
+        reject: (err: Error) => void,
+      ) => Promise<void>;
+    };
+
+    const send = vi.fn();
+    conn.ws = { readyState: 1, send, close: vi.fn() };
+    const baseSessionKey = generateRandomKey();
+    const sessionId = "sess-v2-resume";
+    const clientNonce = nonceBase64(13);
+    const serverNonce = nonceBase64(14);
+    conn.storedSession = {
+      wsUrl: "ws://localhost:3400/api/ws",
+      username: "test-user",
+      sessionId,
+      sessionKey: bytesBase64(baseSessionKey),
+      resumeProtocolVersion: 2,
+    };
+    conn.pendingResumeClientNonce = clientNonce;
+    conn.pendingResumeServerNonce = serverNonce;
+
+    const resolve = vi.fn();
+    const reject = vi.fn();
+    await conn.handleSrpResumeResponse(
+      JSON.stringify({
+        type: "srp_resumed",
+        sessionId,
+        transportNonce: serverNonce,
+      }),
+      resolve,
+      reject,
+    );
+
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(reject).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(conn.sessionKey).not.toBeNull();
+    expect(conn.storedSession.resumeProtocolVersion).toBe(2);
+    expect(onSessionEstablished).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId, resumeProtocolVersion: 2 }),
+    );
+
+    const sent = send.mock.calls[0]?.[0];
+    expect(sent).toBeInstanceOf(ArrayBuffer);
+    const plaintext = decryptBinaryEnvelope(
+      sent as ArrayBuffer,
+      conn.sessionKey!,
+    );
+    const parsed = JSON.parse(plaintext ?? "{}") as {
+      seq: number;
+      msg: { type: string };
+    };
+    expect(parsed.seq).toBe(0);
+    expect(parsed.msg.type).toBe("client_capabilities");
+  });
+
+  it("records unstamped stored sessions as protocol 2 after grace resume", async () => {
+    const conn = new SecureConnection(
+      "ws://localhost:3400/api/ws",
+      "test-user",
+      "",
+    ) as unknown as {
+      ws: {
+        readyState: number;
+        send: ReturnType<typeof vi.fn>;
+        close: ReturnType<typeof vi.fn>;
+        onmessage?: unknown;
+      };
+      storedSession: {
+        wsUrl: string;
+        username: string;
+        sessionId: string;
+        sessionKey: string;
+        resumeProtocolVersion?: number;
+      };
+      pendingResumeClientNonce: string | null;
+      pendingResumeServerNonce: string | null;
+      handleSrpResumeResponse: (
+        data: string,
+        resolve: () => void,
+        reject: (err: Error) => void,
+      ) => Promise<void>;
+    };
+
+    const send = vi.fn();
+    conn.ws = { readyState: 1, send, close: vi.fn() };
+    const sessionId = "sess-unstamped-resume";
+    const serverNonce = nonceBase64(16);
+    conn.storedSession = {
+      wsUrl: "ws://localhost:3400/api/ws",
+      username: "test-user",
+      sessionId,
+      sessionKey: bytesBase64(generateRandomKey()),
+    };
+    conn.pendingResumeClientNonce = nonceBase64(15);
+    conn.pendingResumeServerNonce = serverNonce;
+
+    const resolve = vi.fn();
+    const reject = vi.fn();
+    await conn.handleSrpResumeResponse(
+      JSON.stringify({
+        type: "srp_resumed",
+        sessionId,
+        transportNonce: serverNonce,
+      }),
+      resolve,
+      reject,
+    );
+
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(reject).not.toHaveBeenCalled();
+    expect(conn.storedSession.resumeProtocolVersion).toBe(2);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects protocol 2 resume when the transport nonce is missing", async () => {
+    const conn = new SecureConnection(
+      "ws://localhost:3400/api/ws",
+      "test-user",
+      "",
+    ) as unknown as {
+      ws: {
+        readyState: number;
+        send: ReturnType<typeof vi.fn>;
+        close: ReturnType<typeof vi.fn>;
+      };
+      storedSession: {
+        wsUrl: string;
+        username: string;
+        sessionId: string;
+        sessionKey: string;
+        resumeProtocolVersion?: number;
+      };
+      connectionState: string;
+      pendingResumeClientNonce: string | null;
+      pendingResumeServerNonce: string | null;
+      handleSrpResumeResponse: (
+        data: string,
+        resolve: () => void,
+        reject: (err: Error) => void,
+      ) => Promise<void>;
+    };
+
+    const send = vi.fn();
+    const close = vi.fn();
+    conn.ws = { readyState: 1, send, close };
+    const sessionId = "sess-v2-no-nonce";
+    conn.storedSession = {
+      wsUrl: "ws://localhost:3400/api/ws",
+      username: "test-user",
+      sessionId,
+      sessionKey: bytesBase64(generateRandomKey()),
+      resumeProtocolVersion: 2,
+    };
+    conn.pendingResumeClientNonce = nonceBase64(17);
+    conn.pendingResumeServerNonce = nonceBase64(18);
+
+    const resolve = vi.fn();
+    const reject = vi.fn();
+    await conn.handleSrpResumeResponse(
+      JSON.stringify({
+        type: "srp_resumed",
+        sessionId,
+      }),
+      resolve,
+      reject,
+    );
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(reject).toHaveBeenCalledTimes(1);
+    expect(reject.mock.calls[0]?.[0]?.message).toBe(
+      "Resume server verification failed",
+    );
+    expect(conn.connectionState).toBe("failed");
+    expect(send).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects protocol 3 resume when the server proof is missing", async () => {
     const conn = new SecureConnection(
       "ws://localhost:3400/api/ws",
       "test-user",

@@ -139,7 +139,10 @@ export function HostPickerPage() {
         // If session resumption failed, redirect to login page
         if (
           message.includes("Authentication failed") ||
-          message.includes("invalid")
+          message.includes("invalid") ||
+          message.includes("Resume server verification failed") ||
+          message.includes("resume_incompatible") ||
+          message.includes("session resume unsupported")
         ) {
           if (host.mode === "relay" && host.relayUsername) {
             navigate(

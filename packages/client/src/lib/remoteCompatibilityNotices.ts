@@ -41,7 +41,9 @@ export interface RemoteCompatibilityInput {
 }
 
 export const RELAY_RESUME_SECURITY_MIN_VERSION = "0.4.0";
-export const RELAY_RESUME_SECURITY_MIN_PROTOCOL = 3;
+export const RELAY_RESUME_SECURITY_MIN_PROTOCOL = 2;
+export const RELAY_RESUME_SERVER_PROOF_MIN_VERSION = "0.5.1";
+export const RELAY_RESUME_SERVER_PROOF_PROTOCOL = 3;
 export const REMOTE_BACKEND_API_RECOMMENDED_VERSION = "0.4.29";
 
 const NPM_UPDATE_COMMAND = "npm update -g yepanywhere";
@@ -87,6 +89,10 @@ export function getRemoteCompatibilityNotices(
   const oldResumeVersion =
     input.resumeProtocolVersion === undefined &&
     isVersionLessThan(input.currentVersion, RELAY_RESUME_SECURITY_MIN_VERSION);
+  const graceResumeProtocol =
+    input.resumeProtocolVersion !== undefined &&
+    input.resumeProtocolVersion >= RELAY_RESUME_SECURITY_MIN_PROTOCOL &&
+    input.resumeProtocolVersion < RELAY_RESUME_SERVER_PROOF_PROTOCOL;
 
   if (oldResumeProtocol || oldResumeVersion) {
     const target = chooseTargetVersion(
@@ -109,6 +115,28 @@ export function getRemoteCompatibilityNotices(
           (input.resumeProtocolVersion !== undefined
             ? `resume-protocol-${input.resumeProtocolVersion}`
             : "unknown-version"),
+      ),
+    });
+  }
+
+  if (graceResumeProtocol) {
+    const target = chooseTargetVersion(
+      input.latestVersion,
+      RELAY_RESUME_SERVER_PROOF_MIN_VERSION,
+    );
+    const guidance = buildUpdateGuidance(input, target.label);
+    notices.push({
+      id: "relay-resume-v3-grace",
+      severity: "security",
+      title: "Server update required soon",
+      body: "This server uses the older relay session-resume protocol. Remote login still works during the compatibility window, but update the YA server soon; future hosted clients will require the newer server-verification protocol for security.",
+      guidance: guidance.text,
+      versionSummary: buildVersionSummary(input.currentVersion, target.label),
+      action: guidance.action,
+      dismissKey: buildDismissKey(
+        input,
+        "relay-resume-v3-grace",
+        current?.normalized ?? "resume-protocol-2",
       ),
     });
   }
@@ -138,7 +166,8 @@ export function getRemoteCompatibilityNotices(
   const hasSpecificUpdateNotice = notices.some(
     (notice) =>
       notice.id.startsWith("backend-api-compat-") ||
-      notice.id === "relay-resume-security",
+      notice.id === "relay-resume-security" ||
+      notice.id === "relay-resume-v3-grace",
   );
   if (
     !hasSpecificUpdateNotice &&

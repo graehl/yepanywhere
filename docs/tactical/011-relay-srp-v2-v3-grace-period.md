@@ -1,12 +1,14 @@
 # Relay SRP v2/v3 Grace Period
 
-Status: Planned
+Status: Implemented; pending UI/copy review and cutoff-date follow-up.
 
 Progress:
 
 - [x] 2026-06-04: Captured the compatibility invariant and the corrective
   client-side rollout plan after the protocol 3 cutoff blocked protocol 2
   servers.
+- [x] 2026-06-04: Updated the plan to preserve protocol 2 silent resume during
+  the grace period when the server returns the v2 transport-nonce shape.
 
 ## Context
 
@@ -98,7 +100,7 @@ Protocol 1 or pre-v2 server:
 
 ### Session Resume
 
-Protocol 3 resume remains the preferred and only automatic resume path:
+Protocol 3 resume remains the preferred automatic resume path:
 
 - Client sends `srp_resume_init` with client nonce.
 - Server returns nonce challenge.
@@ -106,17 +108,32 @@ Protocol 3 resume remains the preferred and only automatic resume path:
 - Server returns `transportNonce` and encrypted `serverProof`.
 - Client verifies server proof and resumes.
 
-Protocol 2 resume should not be accepted as silent resume in the hosted client
-during this grace period. The safe fallback for protocol 2 servers is full SRP
-login, because SRP `M2` authenticates the server on a fresh password login while
-protocol 2 resume lacks the new server proof.
+Protocol 2 resume remains accepted during the grace period when it uses the v2
+transport-nonce shape:
+
+- Client sends `srp_resume_init` with a client nonce. Protocol 2 servers ignore
+  the client nonce, but the current client can still speak to them.
+- Server returns nonce challenge.
+- Client sends challenge-bound proof.
+- Server returns `transportNonce` but no `serverProof`.
+- The client accepts the resume only when `transportNonce` is present and
+  matches the nonce challenge used to derive the proof, derives the transport
+  key from it, marks the saved session as protocol 2, and connects.
+
+This keeps the core phone-sleep / tab-resume UX intact for protocol 2 servers
+while users are inside the grace period. The security warning is still needed
+because protocol 2 lacks the protocol 3 server proof that explicitly confirms
+the server accepted this particular resume attempt.
 
 Practical effect:
 
-- A stored protocol 2 session in resume-only mode should fall back to the login
-  flow rather than reporting an opaque host failure.
-- A stored protocol 2 session with a password available may skip resume and
-  perform full SRP.
+- A stored protocol 2 session should still silently resume when the server
+  returns the v2 `transportNonce`.
+- A stored session with no recorded `resumeProtocolVersion` may attempt resume;
+  if the server returns the v2 transport-nonce shape, the client records
+  `resumeProtocolVersion: 2`.
+- A resume response missing `transportNonce`, base-session-key traffic, legacy
+  encrypted JSON, or unsequenced payload fallback remains blocked.
 - A stored protocol 3 session must not resume or full-login-downgrade to
   protocol 2 without explicit user action.
 
@@ -130,12 +147,15 @@ Update `packages/client/src/lib/connection/SecureConnection.ts`:
 - Keep current protocol 3 verification exactly as the preferred path.
 - Add a protocol 2 full-SRP acceptance path when `serverInfoProof` is absent
   but `M2`, `sessionId`, and `transportNonce` are valid.
+- Add a protocol 2 resume acceptance path when `serverProof` is absent but
+  `sessionId` matches the stored session and `transportNonce` matches the
+  resume challenge nonce.
 - Preserve downgrade rejection when a stored session or host record has already
   observed authenticated protocol 3.
 - Store enough metadata to know whether a saved session is protocol 2 or
   protocol 3.
-- Do not attempt protocol 2 silent resume from resume-only connections; route
-  the user to password login instead.
+- Attempt resume for stored protocol 2 sessions and unstamped sessions; classify
+  the server by the authenticated response shape.
 
 ### 2. Warning Notices
 
@@ -159,9 +179,10 @@ Check the resume-only flows in:
 - `packages/client/src/pages/RelayConnectionGate.tsx`
 - `packages/client/src/pages/HostPickerPage.tsx`
 
-When a protocol 2 stored session cannot resume automatically, the user should
-land on a password login path with clear copy, not a generic offline/error
-state. The warning can be shown after successful full login from `/api/version`.
+When a stored session cannot resume because it is pre-v2, missing the required
+`transportNonce`, invalid, or expired, the user should land on a password login
+path with clear copy, not a generic offline/error state. Protocol 2 servers
+that resume successfully should show the grace warning from `/api/version`.
 
 ### 4. Tests
 
@@ -171,8 +192,11 @@ Update or add focused tests:
   - protocol 3 full SRP still requires and verifies `serverInfoProof`;
   - protocol 2 full SRP succeeds during grace;
   - protocol 2 full SRP is rejected when a stored session has pinned protocol 3;
-  - protocol 2 resume-only does not silently authenticate and sends the user to
-    login/fallback;
+  - protocol 2 resume-only succeeds during grace when `transportNonce` is
+    present;
+  - unstamped stored sessions can resume as protocol 2 when the v2
+    transport-nonce shape is present;
+  - protocol 3 stored sessions reject a protocol 2 resume response;
   - protocol 1 or missing `transportNonce` remains rejected.
 - `remoteCompatibilityNotices.test.ts`
   - protocol 2 emits a non-blocking warning;
@@ -203,6 +227,7 @@ When the grace period has elapsed, make the cutoff a deliberate change:
 
 - Check relay/version adoption if the relay has enough observability data.
 - Update the warning copy or release notes with the actual cutoff date.
-- Remove protocol 2 full-login acceptance only in that follow-up change.
+- Remove protocol 2 full-login and resume acceptance only in that follow-up
+  change.
 - Keep historical notice tests so old version/protocol behavior remains
   documented.

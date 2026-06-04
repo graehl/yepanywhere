@@ -1,0 +1,56 @@
+// @vitest-environment jsdom
+
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ThinkingEffortSelector, ThinkingIcon } from "../ThinkingControls";
+import type { EffortLevelOption } from "../../lib/effortLevels";
+
+const effortOptions: EffortLevelOption[] = [
+  { value: "low", label: "Low", description: "Fast responses" },
+  { value: "medium", label: "Medium", description: "Balanced reasoning" },
+  { value: "high", label: "High", description: "Deep reasoning" },
+  { value: "xhigh", label: "Extra High", description: "Extra reasoning" },
+];
+
+describe("ThinkingControls", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders effort options with shared selected state and click behavior", () => {
+    const onChange = vi.fn();
+
+    render(
+      <ThinkingEffortSelector
+        options={effortOptions}
+        value="high"
+        onChange={onChange}
+        ariaLabel="Thinking amount"
+        variant="settings"
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("group", { name: "Thinking amount" })
+        .classList.contains("thinking-effort-selector--settings"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Thinking amount: High" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Thinking amount: Extra High" }),
+    );
+
+    expect(onChange).toHaveBeenCalledWith("xhigh");
+  });
+
+  it("marks the auto thinking icon with an A badge", () => {
+    const { container } = render(<ThinkingIcon mode="auto" />);
+
+    expect(container.querySelector("text")?.textContent).toBe("A");
+  });
+});

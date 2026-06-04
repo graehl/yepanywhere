@@ -4637,10 +4637,11 @@ a.sidebar-nav-item {
   font-size: var(--font-size-xs);
 }
 
-.new-session-effort-selector {
+.thinking-effort-selector {
+  --thinking-effort-control-size: var(--composer-control-size, 32px);
   display: flex;
-  align-items: center;
-  height: var(--composer-control-size);
+  align-items: stretch;
+  min-height: var(--thinking-effort-control-size);
   border: 1px solid var(--border-input);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -4648,9 +4649,26 @@ a.sidebar-nav-item {
   min-width: 0;
 }
 
-.new-session-effort-option {
+.thinking-effort-selector--toolbar {
+  height: var(--thinking-effort-control-size);
+}
+
+.thinking-effort-selector--settings {
+  --thinking-effort-control-size: 34px;
+  display: grid;
+  grid-template-columns: repeat(
+    var(--thinking-effort-option-count),
+    minmax(0, 1fr)
+  );
+  width: 100%;
+  max-width: 100%;
+  margin-top: var(--space-2);
+}
+
+.thinking-effort-option {
   height: 100%;
   min-width: 2.5rem;
+  min-height: var(--thinking-effort-control-size);
   padding: 0 0.5rem;
   border: 0;
   border-left: 1px solid var(--border-input);
@@ -4662,21 +4680,25 @@ a.sidebar-nav-item {
   line-height: 1;
 }
 
-.new-session-effort-option:first-child {
+.thinking-effort-selector--settings .thinking-effort-option {
+  min-width: 0;
+}
+
+.thinking-effort-option:first-child {
   border-left: 0;
 }
 
-.new-session-effort-option:hover:not(:disabled) {
+.thinking-effort-option:hover:not(:disabled) {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
 
-.new-session-effort-option.active {
+.thinking-effort-option.active {
   background: rgba(59, 130, 246, 0.15);
   color: rgb(59, 130, 246);
 }
 
-.new-session-effort-option:disabled {
+.thinking-effort-option:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -7159,22 +7181,6 @@ a.sidebar-nav-item {
 .speech-backend-settings-field .filter-dropdown-container,
 .speech-backend-settings-field .filter-dropdown-button {
   width: 100%;
-}
-
-.session-default-effort-selector {
-  margin-top: var(--space-2);
-  width: 100%;
-  max-width: 100%;
-  height: auto;
-  min-height: var(--composer-control-size);
-  flex-wrap: wrap;
-  overflow: visible;
-}
-
-.session-default-effort-selector .new-session-effort-option {
-  flex: 1 1 5.4rem;
-  min-height: var(--composer-control-size);
-  white-space: nowrap;
 }
 
 .speech-backend-settings-field {

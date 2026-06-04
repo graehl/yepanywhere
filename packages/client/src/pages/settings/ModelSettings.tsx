@@ -33,6 +33,7 @@ import {
   FilterDropdown,
   type FilterOption,
 } from "../../components/FilterDropdown";
+import { ThinkingEffortSelector } from "../../components/ThinkingControls";
 
 const MODE_ORDER: PermissionMode[] = [
   "default",
@@ -451,26 +452,13 @@ export function ModelSettings() {
                 ))}
               </div>
               {thinkingMode === "on" && (
-                <div
-                  className="new-session-effort-selector session-default-effort-selector"
-                  role="group"
-                  aria-label={t("modelSettingsEffortTitle")}
-                >
-                  {effortOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      className={`new-session-effort-option ${
-                        effectiveEffortLevel === opt.value ? "active" : ""
-                      }`}
-                      onClick={() => setEffortLevel(opt.value)}
-                      title={opt.description}
-                      aria-label={`${t("modelSettingsEffortTitle")}: ${opt.label}`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+                <ThinkingEffortSelector
+                  options={effortOptions}
+                  value={effectiveEffortLevel}
+                  onChange={setEffortLevel}
+                  ariaLabel={t("modelSettingsEffortTitle")}
+                  variant="settings"
+                />
               )}
             </div>
           )}

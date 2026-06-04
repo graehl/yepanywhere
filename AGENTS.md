@@ -20,6 +20,17 @@ YA metadata, REST/WebSocket payloads, or UI copy. If a provider truly requires
 using its own id as a public/session id, document that exception in the
 provider contract and make the mapping explicit in the UI/debug surfaces.
 
+## Client I18n Readiness
+
+When adding or changing client UI copy, prefer `useI18n().t(...)` and entries
+in `packages/client/src/i18n/en.json` for user-facing sentences, labels,
+headings, placeholders, tooltips, and aria text. Do not force brand names,
+provider names, keyboard keys, terminal commands, code tokens, protocol values,
+or source-like renderer text into i18n keys unless the surrounding copy needs
+translation. For a permissive advisory scan of obvious raw English copy, run
+`pnpm i18n:scan`; use `--include-info` to inspect low-priority labels and
+`--max-warnings <n>` only when intentionally ratcheting the check toward CI.
+
 ## Hard Development Rules
 
 Follow `topics/hard-development-rules.md` for binding upstream-facing

@@ -29,6 +29,28 @@ pnpm test       # Unit tests
 pnpm test:e2e   # E2E tests
 ```
 
+## Client I18n
+
+Client UI copy should be i18n-ready by default. When adding visible sentences,
+labels, headings, placeholders, tooltips, or aria text, add an English key to
+`packages/client/src/i18n/en.json` and render it through `useI18n().t(...)`.
+Non-English locale files are sparse overlays; only add translated locale values
+when an actual translation is available.
+
+Do not spend effort localizing brand/provider names, keyboard keys, terminal
+commands, code tokens, protocol values, or source-like renderer text unless
+they are embedded in real explanatory copy. To catch obvious misses, run:
+
+```bash
+pnpm i18n:scan
+```
+
+The scan is intentionally permissive and advisory. It warns on likely raw
+English prose in client TSX, hides low-priority technical labels by default,
+and can be inspected with `pnpm i18n:scan -- --include-info`. Use
+`--max-warnings <n>` only when intentionally ratcheting it toward a blocking
+check.
+
 ## Contribution Ethos: Minimalist Runtime
 
 Running code — everything outside test/build tooling — is hand-built and lean on

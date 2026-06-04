@@ -23,6 +23,11 @@ Progress:
 - [x] 2026-05-31: Audited advisory candidate-unused English keys, kept the
   dynamic host picker status labels, and removed 29 confirmed-dead English keys
   plus any remaining locale overlays for those keys.
+- [x] 2026-06-04: Added permissive `i18n:scan` raw-copy detection for client
+  TSX. It warns on likely English prose and user-facing attributes, while
+  demoting brand names, provider names, terminal commands, keyboard hints,
+  code-like snippets, renderer status text, and specimen copy to low-priority
+  info or ignoring them.
 
 ## Context
 
@@ -90,6 +95,9 @@ distinguish deliberate locale grammar from accidental placeholder loss.
   `en.json` already stores endonym labels.
 - Report or prune keys that are absent from `en.json` as a separate follow-up
   check, not as part of the first exact-duplicate removal.
+- Keep raw-copy detection advisory at first. The current goal is to catch
+  obvious sentences and explanatory UI copy, not to block brand names,
+  provider names, commands, keys, or terminal/source-like renderer labels.
 
 ## Non-Goals
 
@@ -146,6 +154,20 @@ distinguish deliberate locale grammar from accidental placeholder loss.
   add `{name}` tokens, with an escape hatch for intentional grammar differences
   such as Chinese plural suffix omission.
 
+### 5. Add Advisory Raw-Copy Scan
+
+- Add `scripts/find-raw-i18n-copy.mjs` and expose it as `pnpm i18n:scan`.
+- Scan client TSX for likely raw English in JSX text and user-facing string
+  attributes such as `aria-label`, `title`, `placeholder`, and `alt`.
+- Keep the first pass permissive:
+  - ignore or demote brand/provider names, acronyms, commands, URLs, keyboard
+    hints, code-like literals, and source-like renderer/specimen text;
+  - warn on likely prose, longer explanatory strings, and obvious visible copy;
+  - hide short labels and technical strings as info unless
+    `--include-info` is passed.
+- Support `--max-warnings <n>` as a future ratchet toward CI gating, but leave
+  the default exit code advisory while existing warnings are being triaged.
+
 ## Open Questions
 
 - Should `i18n:check` run in CI by default, or should it remain a maintainer
@@ -155,6 +177,8 @@ distinguish deliberate locale grammar from accidental placeholder loss.
   other exact duplicate?
 - Should placeholder-token mismatches fail CI, warn only, or support a small
   allowlist of intentional locale-specific omissions?
+- When should `i18n:scan` become a blocking CI check, and what warning budget
+  should it use once the current obvious-copy backlog is reduced?
 
 ## Suggested Implementation Order
 
@@ -164,6 +188,8 @@ distinguish deliberate locale grammar from accidental placeholder loss.
 4. Run the script and remove exact English duplicates.
 5. Add a dead/extra-key reporting mode and resolve `toolbarSendTitle`.
 6. Decide whether the i18n checks should be part of default CI.
+7. Triage `pnpm i18n:scan` warnings into i18n keys, intentional allowlist
+   entries, or low-priority info findings.
 
 ## Verification Checklist
 
@@ -174,3 +200,6 @@ distinguish deliberate locale grammar from accidental placeholder loss.
 - `i18n:check` fails when a non-English file reintroduces an exact English
   placeholder.
 - Dead-key audit reports `toolbarSendTitle` until it is removed or made valid.
+- `pnpm i18n:scan` exits 0 by default, reports likely raw client copy, and
+  exits non-zero only when `--max-warnings` is set below the current warning
+  count.

@@ -10,6 +10,7 @@
     "i18n:check": "node scripts/prune-i18n-placeholders.mjs --check",
     "i18n:health": "node scripts/prune-i18n-placeholders.mjs --health",
     "i18n:prune": "node scripts/prune-i18n-placeholders.mjs --write",
+    "i18n:scan": "node scripts/find-raw-i18n-copy.mjs",
     "dev": "node scripts/dev.js",
     "staging": "node scripts/staging.js",
     "dev:auto": "pnpm --filter server dev & pnpm --filter client dev",

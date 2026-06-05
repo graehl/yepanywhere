@@ -33,6 +33,7 @@ import type {
   ToolApprovalResult,
   UserMessage,
 } from "../sdk/types.js";
+import { composeTimeAnchors } from "./composeTimeAnchor.js";
 import {
   buildSessionLivenessSnapshot,
   type LivenessProbeResult,
@@ -1323,6 +1324,20 @@ export class Process {
   }
 
   /**
+   * Prefix a delivered message with a compose-time context anchor (e.g.
+   * `(45s ago)`). Applied after slash-command expansion so a queued `/command`
+   * is still detected; the anchor rides ahead of the expanded provider text and
+   * the matching echo. No-op when `anchor` is absent.
+   */
+  private applyComposeAnchor(
+    message: UserMessage,
+    anchor?: string | null,
+  ): UserMessage {
+    if (!anchor) return message;
+    return { ...message, text: `${anchor}\n\n${message.text}` };
+  }
+
+  /**
    * Queue a message to be sent to the SDK.
    * For real SDK, pushes to MessageQueue.
    * For mock SDK, uses legacy queue behavior.
@@ -1331,7 +1346,7 @@ export class Process {
    */
   queueMessage(
     message: UserMessage,
-    options?: { allowSteer?: boolean },
+    options?: { allowSteer?: boolean; composeAnchor?: string | null },
   ): {
     success: boolean;
     position?: number;
@@ -1354,7 +1369,10 @@ export class Process {
       };
     }
 
-    const providerMessage = this.expandEmulatedSlashCommand(message);
+    const providerMessage = this.applyComposeAnchor(
+      this.expandEmulatedSlashCommand(message),
+      options?.composeAnchor,
+    );
 
     // Create user message with UUID - this UUID will be used by both SSE and SDK
     const uuid = providerMessage.uuid ?? randomUUID();
@@ -2396,6 +2414,33 @@ export class Process {
   }
 
   /**
+   * Server-clock epoch ms a deferred message was composed/queued. Prefers the
+   * route-stamped `serverReceivedAt` and falls back to the queue-entry
+   * timestamp — both server clock, so the delta against delivery time (now) has
+   * no skew.
+   */
+  private composedAtMsForEntry(entry: DeferredQueueEntry): number {
+    const serverReceivedAt = entry.message.metadata?.serverReceivedAt;
+    const fromMetadata = serverReceivedAt ? Date.parse(serverReceivedAt) : NaN;
+    if (Number.isFinite(fromMetadata)) return fromMetadata;
+    return Date.parse(entry.timestamp);
+  }
+
+  /**
+   * Compose-time anchor string per deferred entry, computed at delivery (now).
+   * Parallel to `entries`; each element is the `(Ns ago)` / `(Ms later)` prefix
+   * or null when below threshold. See topics/compose-time-context-anchors.md.
+   */
+  private deferredComposeAnchors(
+    entries: DeferredQueueEntry[],
+  ): (string | null)[] {
+    return composeTimeAnchors(
+      entries.map((entry) => this.composedAtMsForEntry(entry)),
+      Date.now(),
+    );
+  }
+
+  /**
    * Promote all deferred messages that may run after the completed turn.
    * Returns true when at least one message was accepted by the direct queue.
    */
@@ -2409,12 +2454,16 @@ export class Process {
     }
 
     const eligible = this.deferredQueue.splice(0);
+    const anchors = this.deferredComposeAnchors(eligible);
     const remaining: DeferredQueueEntry[] = [];
     let promoted = false;
 
     for (let index = 0; index < eligible.length; index++) {
       const entry = eligible[index]!;
-      const result = this.queueMessage(entry.message, { allowSteer: false });
+      const result = this.queueMessage(entry.message, {
+        allowSteer: false,
+        composeAnchor: anchors[index],
+      });
       if (!result.success) {
         remaining.push(entry, ...eligible.slice(index + 1));
         break;
@@ -2451,8 +2500,10 @@ export class Process {
       this.deferredEditBarrier.index--;
     }
 
+    const [composeAnchor] = this.deferredComposeAnchors([next]);
     const result = this.queueMessage(next.message, {
       allowSteer: options.allowSteer,
+      composeAnchor,
     });
     if (!result.success) {
       this.deferredQueue.unshift(next);

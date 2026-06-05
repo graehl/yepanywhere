@@ -1395,16 +1395,24 @@ export class Process {
     return { ...message, text: `${anchor}\n\n${message.text}` };
   }
 
-  /**
-   * Queue a message to be sent to the SDK.
-   * For real SDK, pushes to MessageQueue.
-   * For mock SDK, uses legacy queue behavior.
-   *
-   * @returns Object with success status and queue position or error
-   */
-  queueMessage(
+  private prepareProviderMessage(
     message: UserMessage,
-    options?: { allowSteer?: boolean; composeAnchor?: string | null },
+    composeAnchor?: string | null,
+  ): UserMessage {
+    return this.applyComposeAnchor(
+      this.expandEmulatedSlashCommand(message),
+      composeAnchor,
+    );
+  }
+
+  /**
+   * Queue already-expanded provider text. The emitted user echo and the SDK
+   * queue entry must be the same logical turn so live SSE and later transcript
+   * catch-up deduplicate cleanly.
+   */
+  private queuePreparedMessage(
+    providerMessage: UserMessage,
+    options?: { allowSteer?: boolean },
   ): {
     success: boolean;
     position?: number;
@@ -1427,11 +1435,6 @@ export class Process {
       };
     }
 
-    const providerMessage = this.applyComposeAnchor(
-      this.expandEmulatedSlashCommand(message),
-      options?.composeAnchor,
-    );
-
     // Create user message with UUID - this UUID will be used by both SSE and SDK
     const uuid = providerMessage.uuid ?? randomUUID();
     const messageWithUuid: UserMessage = { ...providerMessage, uuid };
@@ -1443,8 +1446,8 @@ export class Process {
     const sdkMessage = this.withTimestamp({
       type: "user",
       uuid,
-      tempId: message.tempId,
-      messageMetadata: message.metadata,
+      tempId: providerMessage.tempId,
+      messageMetadata: providerMessage.metadata,
       message: { role: "user", content },
     } as SDKMessage);
 
@@ -1527,6 +1530,27 @@ export class Process {
       this.processNextInQueue();
     }
     return { success: true, position: this.legacyQueue.length };
+  }
+
+  /**
+   * Queue a message to be sent to the SDK.
+   * For real SDK, pushes to MessageQueue.
+   * For mock SDK, uses legacy queue behavior.
+   *
+   * @returns Object with success status and queue position or error
+   */
+  queueMessage(
+    message: UserMessage,
+    options?: { allowSteer?: boolean; composeAnchor?: string | null },
+  ): {
+    success: boolean;
+    position?: number;
+    error?: string;
+  } {
+    return this.queuePreparedMessage(
+      this.prepareProviderMessage(message, options?.composeAnchor),
+      { allowSteer: options?.allowSteer },
+    );
   }
 
   /**
@@ -2494,9 +2518,8 @@ export class Process {
   private transitionToIdle(): void {
     this.clearIdleTimer();
 
-    // Promote deferred messages through queueMessage so clients receive the
-    // same user-message echoes as direct sends. MessageQueue still concatenates
-    // the queued provider input before the SDK consumes it.
+    // Promote deferred messages as the same stitched user turn the provider
+    // receives, so the live echo and later transcript catch-up agree.
     if (this.promoteEligibleDeferredAfterTurn()) {
       this.setState({ type: "in-turn" });
       return;
@@ -2559,34 +2582,26 @@ export class Process {
 
     const eligible = this.deferredQueue.splice(0);
     const anchors = this.deferredComposeAnchors(eligible);
-    const remaining: DeferredQueueEntry[] = [];
-    let promoted = false;
+    const providerMessages = eligible.map((entry, index) =>
+      this.prepareProviderMessage(entry.message, anchors[index]),
+    );
+    const providerTurn =
+      providerMessages.length === 1
+        ? providerMessages[0]!
+        : this.concatMessages(providerMessages);
 
-    for (let index = 0; index < eligible.length; index++) {
-      const entry = eligible[index]!;
-      const result = this.queueMessage(entry.message, {
-        allowSteer: false,
-        composeAnchor: anchors[index],
-      });
-      if (!result.success) {
-        remaining.push(entry, ...eligible.slice(index + 1));
-        break;
-      }
-      promoted = true;
+    const result = this.queuePreparedMessage(providerTurn, {
+      allowSteer: false,
+    });
+    if (!result.success) {
+      this.deferredQueue.unshift(...eligible);
+      this.emitDeferredQueueChange("queued", eligible[0]?.message.tempId);
+      return false;
     }
 
-    if (remaining.length > 0) {
-      this.deferredQueue.unshift(...remaining);
-    }
-
-    if (promoted) {
-      this.deferredEditBarrier = null;
-      this.emitDeferredQueueChange("promoted");
-    } else if (remaining.length > 0) {
-      this.emitDeferredQueueChange("queued", remaining[0]?.message.tempId);
-    }
-
-    return promoted;
+    this.deferredEditBarrier = null;
+    this.emitDeferredQueueChange("promoted");
+    return true;
   }
 
   private promoteNextDeferredMessage(options: {

@@ -85,8 +85,9 @@ messages, it should be reconciled with the preamble rather than stacked on top.
 - `packages/server/src/supervisor/composeTimeAnchor.ts` — pure
   `composeTimeAnchor` / `composeTimeAnchors` and `MIN_COMPOSE_ANCHOR_SECONDS`.
 - `packages/server/src/supervisor/Process.ts` — `composedAtMsForEntry`,
-  `deferredComposeAnchors`, the `composeAnchor` option on `queueMessage`, wired
-  into `promoteEligibleDeferredAfterTurn` and `promoteNextDeferredMessage`.
+  `deferredComposeAnchors`, `queueMessage`'s `composeAnchor` option for
+  single-message promotion, and stitched batch promotion that applies per-entry
+  anchors before concatenating the live echo/provider turn.
 - Tests: `packages/server/test/supervisor/composeTimeAnchor.test.ts` (pure) and
   the "prefixes promoted deferred turns with compose-time anchors" case in
   `packages/server/test/process.test.ts`.

@@ -1240,7 +1240,7 @@ describe("Process", () => {
       await process.abort();
     });
 
-    it("emits user messages when deferred turns promote after a non-steering turn", async () => {
+    it("emits a stitched user message when deferred turns promote after a non-steering turn", async () => {
       const controller = createControllableIterator();
       const queue = new MessageQueue();
       const process = new Process(controller.iterator, {
@@ -1275,14 +1275,13 @@ describe("Process", () => {
       expect(userMessages).toMatchObject([
         {
           tempId: "temp-1",
-          message: { role: "user", content: "first queued" },
-        },
-        {
-          tempId: "temp-2",
-          message: { role: "user", content: "second queued" },
+          message: {
+            role: "user",
+            content: `first queued\n\n${CONCAT_SEPARATOR}\n\nsecond queued`,
+          },
         },
       ]);
-      expect(queue.depth).toBe(2);
+      expect(queue.depth).toBe(1);
       const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
       expect(queuedProviderTurn.value?.message.content).toBe(
         `first queued\n\n${CONCAT_SEPARATOR}\n\nsecond queued`,
@@ -1348,16 +1347,17 @@ describe("Process", () => {
           : [],
       );
       // First chunk anchors against delivery time (~45s ago); second against
-      // the first chunk's compose time (exactly 30s later).
-      expect(userContents[0]).toMatch(/^\(\d+s ago\)\n\nfirst queued$/);
-      expect(userContents[1]).toBe("(30s later)\n\nsecond queued");
-
-      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
-      expect(queuedProviderTurn.value?.message.content).toMatch(
+      // the first chunk's compose time (exactly 30s later). The live echo is
+      // the same stitched turn that the provider receives.
+      expect(userContents).toHaveLength(1);
+      expect(userContents[0]).toMatch(
         new RegExp(
           `^\\(\\d+s ago\\)\\n\\nfirst queued\\n\\n${CONCAT_SEPARATOR}\\n\\n\\(30s later\\)\\n\\nsecond queued$`,
         ),
       );
+
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe(userContents[0]);
 
       controller.finish();
       await process.abort();

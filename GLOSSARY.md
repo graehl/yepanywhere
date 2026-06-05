@@ -30,6 +30,7 @@ regeneration rules.
 | `prompt-suggestions` | Predicted next-user-turn affordances surfaced in the composer without becoming provider transcript turns unless the user accepts one. | [prompt-suggestions](topics/prompt-suggestions.md) |
 | provider | Shorthand for an LLM/agent provider such as Claude, Codex, Gemini, Grok, or OpenCode; do not use it for speech recognition. | |
 | `provider-model-glyphs` | Compact provider and model identity glyphs for status surfaces where full provider/model text is too wide. | [provider-model-glyphs](topics/provider-model-glyphs.md) |
+| `provider-refresh` | YA's discipline for updating provider-facing protocol references, model and command catalogs, schema assumptions, and fallback constants when an upstream CLI, SDK, or harness change affects YA-visible behavior. | [provider-refresh](topics/provider-refresh.md) |
 | `provider-state-machine` | Provider and process state contract that determines what YA renders and which actions are valid in each state. | [provider-state-machine](topics/provider-state-machine.md) |
 | `recaps` | Short on-return summaries of what the agent did or is doing while the user was away, shown without polluting provider transcript state. | [recaps](topics/recaps.md) |
 | `relative-filenames` | Shortest-unambiguous file path display policy: project-relative, home-relative, then absolute as fallback. | [relative-filenames](topics/relative-filenames.md) |

@@ -216,9 +216,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.29.0
         version: 1.29.0(zod@4.3.6)
-      '@openai/codex-sdk':
-        specifier: ^0.77.0
-        version: 0.77.0
       '@yep-anywhere/shared':
         specifier: workspace:*
         version: link:../shared
@@ -1118,10 +1115,6 @@ packages:
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
-
-  '@openai/codex-sdk@0.77.0':
-    resolution: {integrity: sha512-bvJQ4dASnZ7jgfxmseViQwdRupHxs0TwHSZFeYB0gpdOAXnWwDWdGJRCMyphLSHwExRp27JNOk7EBFVmZRBanQ==}
-    engines: {node: '>=18'}
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
@@ -3633,8 +3626,6 @@ snapshots:
       zod-to-json-schema: 3.25.2(zod@4.3.6)
     transitivePeerDependencies:
       - supports-color
-
-  '@openai/codex-sdk@0.77.0': {}
 
   '@pinojs/redact@0.4.0': {}
 

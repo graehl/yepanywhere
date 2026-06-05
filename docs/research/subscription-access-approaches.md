@@ -46,13 +46,13 @@ Raw Terminal ←—————————————————————�
 
 **Verdict:** Maximum breadth, minimum depth. Works great for desktop power users who want a multi-tab terminal. Unusable for mobile supervision or any feature that requires understanding what the agent is doing.
 
-## Approach 2: SDK Process Wrapper (Yep Anywhere)
+## Approach 2: Provider Process Wrapper (Yep Anywhere)
 
 **Project:** [Yep Anywhere](https://github.com/kzahel/yepanywhere)
 
-**How it works:** Uses official provider SDKs to spawn and manage agent processes:
+**How it works:** Uses official provider process interfaces to spawn and manage agent processes:
 - **Claude:** `@anthropic-ai/claude-code` SDK — structured events (messages, tool calls, diffs, permission requests, thinking blocks)
-- **Codex:** `@openai/codex-sdk` — structured events (messages, shell commands, file patches, sandbox modes)
+- **Codex:** `codex app-server --listen stdio://` — JSON-RPC events (messages, shell commands, file patches, sandbox modes)
 - **Gemini:** `gemini -o stream-json` CLI — structured JSON stream (tool use, tool results)
 
 Each provider's SDK/CLI handles its own authentication. Yep wraps them all with provider-specific adapters that normalize events into a unified format.
@@ -68,17 +68,17 @@ Each provider's SDK/CLI handles its own authentication. Yep wraps them all with 
 - Self-hosted with E2E encrypted relay
 
 **What you lose:**
-- Coupled to each provider's SDK — Claude SDK, Codex SDK, and Gemini CLI each have different event models
+- Coupled to each provider's process protocol — Claude SDK, Codex app-server, and Gemini CLI each have different event models
 - Each provider needs a custom adapter (~500+ lines) for event normalization
-- SDK changes can break integration (though official SDKs provide migration paths)
+- Provider protocol changes can break integration
 - Adding new providers requires significant adapter work
 - Limited to providers that ship a SDK/CLI with structured output
 
-**Architecture:** Hono server manages SDK processes. React client connects via WebSocket. Sessions persist to JSONL files. Provider adapters normalize events into unified format.
+**Architecture:** Hono server manages provider processes. React client connects via WebSocket. Sessions persist to JSONL files. Provider adapters normalize events into unified format.
 
-**Key insight:** Official SDKs are the most stable way to access subscriptions programmatically. Both Anthropic and OpenAI ship SDKs (`@anthropic-ai/claude-code`, `@openai/codex-sdk`) designed for exactly this — programmatic control of their CLI agents with structured output. When SDKs change, there are documented migration paths. This is the "supported" approach for each provider.
+**Key insight:** Official provider process surfaces are the most stable way to access subscriptions programmatically. Anthropic exposes an SDK, while Codex and Gemini expose structured CLI surfaces. This keeps authentication and plan access with the provider-owned tool instead of reverse-engineering web traffic.
 
-**Verdict:** Best depth for supported providers. Adding breadth (new providers) is expensive — each needs a custom adapter. But subscription access is as stable as the official SDKs themselves.
+**Verdict:** Best depth for supported providers. Adding breadth (new providers) is expensive — each needs a custom adapter. But subscription access is as stable as the provider-owned process surfaces themselves.
 
 ## Approach 3: Reverse-Engineered OAuth (pi-mono)
 

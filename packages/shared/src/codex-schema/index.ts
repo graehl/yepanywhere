@@ -1,5 +1,5 @@
 /**
- * Codex SDK Schema
+ * Codex Session Schema
  *
  * Zod schemas for parsing Codex session files from ~/.codex/sessions/.
  *
@@ -9,7 +9,8 @@
  * - event_msg: Event notifications (user_message, agent_message, token_count)
  * - turn_context: Per-turn context (cwd, approval policy, model)
  *
- * Note: Streaming events are handled by @openai/codex-sdk directly.
+ * Note: Live app-server events are normalized by the Codex provider; these
+ * schemas cover persisted session JSONL only.
  */
 
 export * from "./content.js";

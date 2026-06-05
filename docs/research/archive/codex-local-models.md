@@ -2,11 +2,11 @@
 
 ## Problem
 
-The `@openai/codex-sdk` doesn't expose the `--oss` flag needed for local models. The SDK is intentionally limited to OpenAI cloud models ([Issue #5459](https://github.com/openai/codex/issues/5459) closed as "Not Planned").
+Current Codex local model support should be evaluated through the CLI surfaces. Older cloud-only wrapper designs are obsolete for this path.
 
 ## Solution
 
-Spawn `codex exec --oss` directly for local models, keeping the SDK for cloud models.
+Spawn `codex exec --oss` directly for local models, and use the app-server path for cloud Codex sessions.
 
 ## Why Not LiteLLM Proxy?
 
@@ -16,7 +16,7 @@ LiteLLM only proxies API calls - it doesn't change prompt format. The `--oss` fl
 
 | Provider | Backend | Use Case |
 |----------|---------|----------|
-| `codex` | SDK | Cloud models (gpt-4, o3, etc.) |
+| `codex` | App-server | Cloud models (gpt-4, o3, etc.) |
 | `codex-oss` | CLI spawn | Local models via Ollama |
 
 Both write sessions to `~/.codex/sessions/` with identical format. The `model_provider` field in session metadata distinguishes them (`"openai"` vs `"ollama"`).

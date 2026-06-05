@@ -74,14 +74,14 @@ The `parentUuid` field enables conversation branching - rewinding to a previous 
 
 **Implementation:** `packages/server/src/sdk/providers/codex.ts`
 
-Uses `@openai/codex-sdk`. Key difference from Claude: **turn-based** rather than continuous streaming.
+Uses the installed `codex` CLI app-server over JSON-RPC. Key difference from Claude: **turn-based** rather than continuous streaming.
 
 ### Process Lifecycle
 
-1. Start or resume a thread via SDK
+1. Start or resume a thread via app-server
 2. For each user message:
-   - Call `thread.runStreamed(prompt)`
-   - Process events until turn completes
+   - Call `turn/start`
+   - Process JSON-RPC notifications until the turn completes
 3. Events include: reasoning, messages, commands, file changes, MCP tools, web search
 
 ### Local Model Support
@@ -311,6 +311,6 @@ Key design decisions:
 ## References
 
 - Claude SDK: `@anthropic-ai/claude-agent-sdk`
-- Codex SDK: `@openai/codex-sdk`
+- Codex app-server protocol: `codex app-server generate-ts --experimental`
 - Gemini API: `@google/genai` (https://ai.google.dev/gemini-api/docs)
 - Gemini CLI: https://geminicli.com/docs/cli/headless/

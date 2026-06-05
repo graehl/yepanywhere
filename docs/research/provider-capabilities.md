@@ -30,22 +30,23 @@ This is what the app was designed around. Full mobile supervision works.
 
 **Status: Supported but limited supervision**
 
-Codex SDK provides:
+Codex app-server provides:
 - Full editing capabilities (file changes, command execution)
 - Transparent shell commands (grep, etc. show up as events)
-- **Opaque internal edits** - file changes happen but details not exposed via SDK
+- **Opaque internal edits** - file changes happen but details are not always exposed as granular events
 - No out-of-band approval mechanism (everything in-chat)
 - No runtime permission mode switching (must kill/restart with different flags)
 
 ### Sandbox Modes
 
-From `@openai/codex-sdk` ThreadOptions:
-- `sandboxMode: "read-only"` - Analysis only, no writes
-- `sandboxMode: "workspace-write"` - Can write to workspace
-- `sandboxMode: "danger-full-access"` - Full system access
+From Codex app-server thread parameters:
+- `sandbox: "read-only"` - Analysis only, no writes
+- `sandbox: "workspace-write"` - Can write to workspace
+- `sandbox: "danger-full-access"` - Full system access
 
 ### Approval Policies
 - `approvalPolicy: "never"` - Never ask
+- `approvalPolicy: "on-request"` - Ask for provider approval requests
 - `approvalPolicy: "on-failure"` - Ask when something fails
 
 ### Enterprise Theater
@@ -237,6 +238,5 @@ Full tool transparency via SSE events:
 ## References
 
 - [Codex Security](https://developers.openai.com/codex/security/)
-- [Codex SDK](https://developers.openai.com/codex/sdk/)
 - [Codex CLI Reference](https://developers.openai.com/codex/cli/reference/)
 - [Sandbox mode issues](https://github.com/openai/codex/issues/5202)

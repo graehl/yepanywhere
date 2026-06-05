@@ -267,8 +267,8 @@ export {
   KillShellResultSchema,
 } from "./claude-sdk-schema/tool/ToolResultSchemas.js";
 
-// Codex session file types (for reading ~/.codex/sessions/)
-// Note: Streaming events are handled by @openai/codex-sdk directly
+// Codex session file types (for reading ~/.codex/sessions/).
+// Live app-server events are normalized by the Codex provider.
 export type {
   // Content types
   CodexTextContent,

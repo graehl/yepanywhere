@@ -62,7 +62,7 @@ export class ModelInfoService {
 
   /**
    * Record a context window discovered at runtime
-   * (e.g. from model_context_window in Codex SDK messages).
+   * (e.g. from model_context_window in Codex app-server/session messages).
    */
   recordContextWindow(
     model: string,

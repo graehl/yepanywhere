@@ -40,17 +40,17 @@ import ArticleLayout from "../layouts/ArticleLayout.astro";
 
   <p><strong>Project:</strong> <a href="https://github.com/kzahel/yepanywhere">Yep Anywhere</a> (disclosure: this is our project)</p>
 
-  <p>Uses the official provider SDKs to spawn and manage agent processes:</p>
+  <p>Uses official provider process interfaces to spawn and manage agent processes:</p>
 
   <ul>
     <li><strong>Claude:</strong> <code>@anthropic-ai/claude-code</code> SDK &mdash; structured events (messages, tool calls, diffs, permission requests, thinking blocks)</li>
-    <li><strong>Codex:</strong> <code>@openai/codex-sdk</code> &mdash; structured events (messages, shell commands, file patches, sandbox modes)</li>
+    <li><strong>Codex:</strong> <code>codex app-server --listen stdio://</code> &mdash; JSON-RPC events (messages, shell commands, file patches, sandbox modes)</li>
     <li><strong>Gemini:</strong> <code>gemini -o stream-json</code> CLI &mdash; structured JSON stream</li>
   </ul>
 
   <p>Each SDK/CLI handles its own authentication. The wrapper inherits whatever plan the user is authenticated with. Provider-specific adapters normalize events into a unified format for the UI.</p>
 
-  <p>The tradeoff: <strong>each provider needs a custom adapter</strong> (~500+ lines) for event normalization. Claude SDK, Codex SDK, and Gemini CLI each have completely different event models. Adding a new provider is expensive. But subscription access is as stable as the official SDKs themselves &mdash; no reverse engineering, no spoofing.</p>
+  <p>The tradeoff: <strong>each provider needs a custom adapter</strong> (~500+ lines) for event normalization. Claude SDK, Codex app-server, and Gemini CLI each have completely different event models. Adding a new provider is expensive. But subscription access is as stable as the provider-owned process surfaces themselves &mdash; no reverse engineering, no spoofing.</p>
 
   <h3>Approach 3: Legitimate OAuth</h3>
 

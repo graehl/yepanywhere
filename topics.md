@@ -27,3 +27,4 @@
 - provider-refresh - Provider upstream/source refresh triggers, probes, and due-refresh evidence.
 - graehl-ci-pre-kzahel-gate - Use graehl-push CI as a coverage/signal gate before pushing to kzahel.
 - claude - Claude provider control, restart/resume safety, interviews, and YA-owned process bridges.
+- edit-turn - Inline editing proposal for queued/sent user turns with a visible Esc/cancel escape hatch.

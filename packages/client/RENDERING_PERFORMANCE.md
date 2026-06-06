@@ -72,6 +72,23 @@ stable component identity, and lower update cadence.
 - Composer text is user data. Streaming/render work must not steal focus,
   defeat normal browser key buffering, or delay page-lifecycle draft flushes.
 
+## Transcript Layout Stability
+
+A user must be able to scroll back and read or review a session transcript
+without historical rows changing height at unpredictable times.
+
+Do not add timers, idle callbacks, reconnect effects, visibility effects, or
+stream-status effects that automatically expand, collapse, hide, reveal, or
+otherwise change the rendered height of past transcript rows. Automatic height
+changes are acceptable only for the actively streaming tail/current turn, for
+new transcript content being appended, or in direct response to an explicit user
+action.
+
+If a feature wants to reduce old transcript noise, prefer an explicit
+session-level display mode or user-triggered control. Do not make old row layout
+depend on elapsed time, viewport position, or background heuristics without a
+documented design tradeoff and browser verification.
+
 ## Profiling
 
 Enable Developer Mode remote log collection, or set this in DevTools:
@@ -103,4 +120,8 @@ runs over a long block more than once.
   it?
 - Do unchanged transcript rows keep stable object identity across a streaming
   update?
+- Can this change alter the height of transcript rows above the current reading
+  position without a user action?
+- Does any timer, reconnect, visibility, or stream-completion effect expand,
+  collapse, hide, or reveal historical transcript content?
 - Do tests cover both the cheap live path and the completed rich path?

@@ -547,11 +547,8 @@ const BOTTOM_FOLLOW_VIEWPORT_FRACTION = 0.45;
 const FOLLOW_CATCH_UP_DELAYS_MS = [50, 120, 240, 480, 960, 1600, 2400];
 const SEND_CATCH_UP_DELAYS_MS = [80, 240, 640];
 const TOUCH_SCROLL_CANCEL_THRESHOLD_PX = 6;
-const THINKING_AUTO_COLLAPSE_MS = 4200;
 const INTERACTIVE_SCROLL_TARGET_SELECTOR =
   "button, input, textarea, select, a[href], [contenteditable='true']";
-
-type ThinkingStatus = "streaming" | "complete";
 
 function highResolutionNowMs(): number {
   return typeof performance !== "undefined" &&
@@ -608,19 +605,6 @@ function saveSessionThinkingVisible(visible: boolean) {
   } catch {
     // localStorage is only a display preference; in-memory state still applies.
   }
-}
-
-function getCurrentTurnThinkingItemId(items: readonly RenderItem[]) {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index];
-    if (item?.type === "thinking") {
-      return item.id;
-    }
-    if (item?.type === "user_prompt" || item?.type === "session_setup") {
-      return null;
-    }
-  }
-  return null;
 }
 
 function countThinkingItems(items: readonly RenderItem[]) {
@@ -990,16 +974,12 @@ export const MessageList = memo(function MessageList({
   const previousThinkingTextLengthsRef = useRef<Map<string, number> | null>(
     null,
   );
+  const observedThinkingItemIdsRef = useRef<ReadonlySet<string> | null>(null);
   const thinkingDeltaFollowAllowedRef = useRef(false);
   const navMotionCueTokenRef = useRef(0);
   const navMotionCueClearTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
-  const thinkingAutoCollapseTimerRef = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null);
-  const activeThinkingItemIdRef = useRef<string | null>(null);
-  const thinkingStatusesRef = useRef<Map<string, ThinkingStatus>>(new Map());
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchRestoreFocusRef = useRef<HTMLElement | null>(null);
   const searchOriginalScrollTopRef = useRef<number | null>(null);
@@ -1019,9 +999,9 @@ export const MessageList = memo(function MessageList({
   const [thinkingExpansionOverrides, setThinkingExpansionOverrides] = useState<
     Record<string, boolean>
   >({});
-  const [recentCompletedThinkingId, setRecentCompletedThinkingId] = useState<
-    string | null
-  >(null);
+  const [autoExpandedThinkingItemIds, setAutoExpandedThinkingItemIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [navMotionCue, setNavMotionCue] = useState<UserTurnNavMotionCue | null>(
     null,
   );
@@ -1195,12 +1175,10 @@ export const MessageList = memo(function MessageList({
     [renderItems],
   );
   const hasThinkingItems = thinkingItemCount > 0;
-  const currentTurnThinkingItemId = useMemo(
-    () => (isProcessing ? getCurrentTurnThinkingItemId(renderItems) : null),
-    [isProcessing, renderItems],
+  const isThinkingItemAutoExpanded = useCallback(
+    (itemId: string) => autoExpandedThinkingItemIds.has(itemId),
+    [autoExpandedThinkingItemIds],
   );
-  const autoExpandedThinkingItemId =
-    currentTurnThinkingItemId ?? recentCompletedThinkingId;
   const displayRenderItems = useMemo(
     () =>
       thinkingItemsVisible
@@ -1226,7 +1204,7 @@ export const MessageList = memo(function MessageList({
 
       const isExpanded =
         thinkingExpansionOverrides[item.id] ??
-        item.id === autoExpandedThinkingItemId;
+        isThinkingItemAutoExpanded(item.id);
       const previousLength = previousThinkingTextLengths.get(item.id) ?? 0;
       if (isExpanded && nextLength > previousLength) {
         visibleThinkingDelta = true;
@@ -1239,69 +1217,45 @@ export const MessageList = memo(function MessageList({
       stopFollowingForUserScroll(containerRef.current?.parentElement);
     }
   }, [
-    autoExpandedThinkingItemId,
+    isThinkingItemAutoExpanded,
     renderItems,
     stopFollowingForUserScroll,
     thinkingExpansionOverrides,
     thinkingItemsVisible,
   ]);
-  useEffect(() => {
-    const previousStatuses = thinkingStatusesRef.current;
-    const previousActiveThinkingId = activeThinkingItemIdRef.current;
-    const nextStatuses = new Map<string, ThinkingStatus>();
-    let completedFromStreamingId: string | null = null;
-
+  useLayoutEffect(() => {
+    const previouslyObservedThinkingIds = observedThinkingItemIdsRef.current;
+    const existingThinkingIds = new Set<string>();
     for (const item of renderItems) {
-      if (item.type !== "thinking") {
-        continue;
-      }
-      nextStatuses.set(item.id, item.status);
-      if (
-        item.status === "complete" &&
-        previousStatuses.get(item.id) === "streaming"
-      ) {
-        completedFromStreamingId = item.id;
+      if (item.type === "thinking") {
+        existingThinkingIds.add(item.id);
       }
     }
+    observedThinkingItemIdsRef.current = existingThinkingIds;
 
-    thinkingStatusesRef.current = nextStatuses;
-    activeThinkingItemIdRef.current = currentTurnThinkingItemId;
-
-    const clearThinkingAutoCollapseTimer = () => {
-      if (thinkingAutoCollapseTimerRef.current !== null) {
-        clearTimeout(thinkingAutoCollapseTimerRef.current);
-        thinkingAutoCollapseTimerRef.current = null;
+    setAutoExpandedThinkingItemIds((previous) => {
+      const next = new Set<string>();
+      let changed = false;
+      for (const itemId of previous) {
+        if (existingThinkingIds.has(itemId)) {
+          next.add(itemId);
+        } else {
+          changed = true;
+        }
       }
-    };
 
-    if (currentTurnThinkingItemId) {
-      clearThinkingAutoCollapseTimer();
-      setRecentCompletedThinkingId(null);
-      return;
-    }
+      if (previouslyObservedThinkingIds !== null) {
+        for (const itemId of existingThinkingIds) {
+          if (!previouslyObservedThinkingIds.has(itemId) && !next.has(itemId)) {
+            next.add(itemId);
+            changed = true;
+          }
+        }
+      }
 
-    const recentlyFinishedThinkingId =
-      completedFromStreamingId ??
-      (previousActiveThinkingId && nextStatuses.has(previousActiveThinkingId)
-        ? previousActiveThinkingId
-        : null);
-
-    if (recentlyFinishedThinkingId) {
-      clearThinkingAutoCollapseTimer();
-      setRecentCompletedThinkingId(recentlyFinishedThinkingId);
-      thinkingAutoCollapseTimerRef.current = setTimeout(() => {
-        setRecentCompletedThinkingId((current) =>
-          current === recentlyFinishedThinkingId ? null : current,
-        );
-        thinkingAutoCollapseTimerRef.current = null;
-      }, THINKING_AUTO_COLLAPSE_MS);
-      return;
-    }
-
-    setRecentCompletedThinkingId((current) =>
-      current && nextStatuses.has(current) ? current : null,
-    );
-  }, [currentTurnThinkingItemId, renderItems]);
+      return changed ? next : previous;
+    });
+  }, [renderItems]);
   const turnGroups = useMemo(() => {
     const startedAt = highResolutionNowMs();
     const grouped = groupItemsIntoTurns(displayRenderItems);
@@ -1533,15 +1487,6 @@ export const MessageList = memo(function MessageList({
     },
     [],
   );
-  useEffect(
-    () => () => {
-      if (thinkingAutoCollapseTimerRef.current !== null) {
-        clearTimeout(thinkingAutoCollapseTimerRef.current);
-        thinkingAutoCollapseTimerRef.current = null;
-      }
-    },
-    [],
-  );
   useEffect(() => {
     const handleCopy = (event: ClipboardEvent) => {
       const root = containerRef.current;
@@ -1728,8 +1673,8 @@ export const MessageList = memo(function MessageList({
     (item: RenderItem) =>
       item.type === "thinking" &&
       (thinkingExpansionOverrides[item.id] ??
-        item.id === autoExpandedThinkingItemId),
-    [autoExpandedThinkingItemId, thinkingExpansionOverrides],
+        isThinkingItemAutoExpanded(item.id)),
+    [isThinkingItemAutoExpanded, thinkingExpansionOverrides],
   );
 
   const toggleThinkingItemExpanded = useCallback(
@@ -1739,11 +1684,11 @@ export const MessageList = memo(function MessageList({
       }
       setThinkingExpansionOverrides((previous) => {
         const current =
-          previous[item.id] ?? item.id === autoExpandedThinkingItemId;
+          previous[item.id] ?? isThinkingItemAutoExpanded(item.id);
         return { ...previous, [item.id]: !current };
       });
     },
-    [autoExpandedThinkingItemId],
+    [isThinkingItemAutoExpanded],
   );
 
   const noopToggleThinkingExpanded = useCallback(() => {}, []);

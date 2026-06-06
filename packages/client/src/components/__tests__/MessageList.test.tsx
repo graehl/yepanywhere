@@ -276,8 +276,21 @@ describe("MessageList", () => {
     expect(container.querySelector(".text-block-assistant")).toBeNull();
   });
 
-  it("auto-expands only the current streaming Codex thinking block", () => {
+  it("auto-expands newly observed Codex thinking blocks", () => {
     const { container, rerender } = render(
+      <MessageList
+        provider="codex"
+        isProcessing={true}
+        messages={[]}
+      />,
+    );
+
+    let thinkingBlocks = container.querySelectorAll<HTMLDetailsElement>(
+      "details.thinking-block",
+    );
+    expect(thinkingBlocks).toHaveLength(0);
+
+    rerender(
       <MessageList
         provider="codex"
         isProcessing={true}
@@ -286,13 +299,12 @@ describe("MessageList", () => {
             "thinking-1",
             "First active thought",
             "2026-04-25T00:00:00.000Z",
-            true,
           ),
         ]}
       />,
     );
 
-    let thinkingBlocks = container.querySelectorAll<HTMLDetailsElement>(
+    thinkingBlocks = container.querySelectorAll<HTMLDetailsElement>(
       "details.thinking-block",
     );
     expect(thinkingBlocks).toHaveLength(1);
@@ -312,7 +324,6 @@ describe("MessageList", () => {
             "thinking-2",
             "Second active thought",
             "2026-04-25T00:00:02.000Z",
-            true,
           ),
         ]}
       />,
@@ -322,11 +333,11 @@ describe("MessageList", () => {
       "details.thinking-block",
     );
     expect(thinkingBlocks).toHaveLength(2);
-    expect(thinkingBlocks[0]?.open).toBe(false);
+    expect(thinkingBlocks[0]?.open).toBe(true);
     expect(thinkingBlocks[1]?.open).toBe(true);
   });
 
-  it("auto-expands the latest complete Codex thinking block while processing", () => {
+  it("does not auto-expand complete Codex thinking blocks on load", () => {
     const { container } = render(
       <MessageList
         provider="codex"
@@ -351,12 +362,16 @@ describe("MessageList", () => {
     );
     expect(thinkingBlocks).toHaveLength(2);
     expect(thinkingBlocks[0]?.open).toBe(false);
-    expect(thinkingBlocks[1]?.open).toBe(true);
+    expect(thinkingBlocks[1]?.open).toBe(false);
   });
 
-  it("collapses an auto-expanded thinking block after completion timeout", async () => {
+  it("keeps an auto-expanded thinking block open after completion", async () => {
     vi.useFakeTimers();
     const { container, rerender } = render(
+      <MessageList provider="codex" isProcessing={true} messages={[]} />,
+    );
+
+    rerender(
       <MessageList
         provider="codex"
         isProcessing={true}
@@ -402,7 +417,7 @@ describe("MessageList", () => {
     expect(
       container.querySelector<HTMLDetailsElement>("details.thinking-block")
         ?.open,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("hides and restores thinking transcript rows from the compact toggle", () => {
@@ -958,18 +973,7 @@ describe("MessageList", () => {
     });
 
     const { container, rerender } = render(
-      <MessageList
-        provider="codex"
-        isProcessing={true}
-        messages={[
-          codexThinkingMessage(
-            "thinking-1",
-            "Initial visible thought",
-            "2026-04-25T00:00:00.000Z",
-            true,
-          ),
-        ]}
-      />,
+      <MessageList provider="codex" isProcessing={true} messages={[]} />,
     );
     let scrollHeight = 1000;
     Object.defineProperty(container, "scrollTop", {
@@ -988,6 +992,21 @@ describe("MessageList", () => {
     container.scrollTo = vi.fn((options: ScrollToOptions) => {
       container.scrollTop = Number(options.top ?? 0);
     }) as typeof container.scrollTo;
+
+    rerender(
+      <MessageList
+        provider="codex"
+        isProcessing={true}
+        messages={[
+          codexThinkingMessage(
+            "thinking-1",
+            "Initial visible thought",
+            "2026-04-25T00:00:00.000Z",
+            true,
+          ),
+        ]}
+      />,
+    );
 
     scrollHeight = 1400;
     rerender(

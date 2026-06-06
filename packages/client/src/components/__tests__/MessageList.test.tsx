@@ -270,10 +270,33 @@ describe("MessageList", () => {
 
     expect(container.querySelector(".thinking-block")).not.toBeNull();
     expect(screen.getByText("Thinking")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Expand thinking" }),
-    ).toBeTruthy();
+    expect(screen.getByLabelText("Expand thinking")).toBeTruthy();
     expect(container.querySelector(".text-block-assistant")).toBeNull();
+  });
+
+  it("expands a collapsed thinking block from the left dot", async () => {
+    const { container } = render(
+      <MessageList
+        provider="codex"
+        messages={[
+          codexThinkingMessage(
+            "thinking-1",
+            "**Checking instructions**\n\nI need to inspect the repo.",
+          ),
+        ]}
+      />,
+    );
+
+    const thinkingBlock = container.querySelector<HTMLDetailsElement>(
+      "details.thinking-block",
+    );
+    const dot = container.querySelector<HTMLElement>(".thinking-dot-btn");
+    expect(thinkingBlock?.open).toBe(false);
+    expect(dot).toBeTruthy();
+
+    fireEvent.click(dot as HTMLElement);
+
+    await waitFor(() => expect(thinkingBlock?.open).toBe(true));
   });
 
   it("auto-expands newly observed Codex thinking blocks", () => {
@@ -456,6 +479,46 @@ describe("MessageList", () => {
     );
   });
 
+  it("hides and restores thinking transcript rows with Ctrl+O", async () => {
+    const { container } = render(
+      <MessageList
+        provider="codex"
+        messages={[
+          codexThinkingMessage("thinking-1", "First stored thought"),
+          codexThinkingMessage("thinking-2", "Second stored thought"),
+        ]}
+      />,
+    );
+
+    expect(container.querySelectorAll("details.thinking-block")).toHaveLength(
+      2,
+    );
+
+    fireEvent.keyDown(window, {
+      key: "o",
+      code: "KeyO",
+      ctrlKey: true,
+    });
+
+    await waitFor(() =>
+      expect(container.querySelectorAll("details.thinking-block")).toHaveLength(
+        0,
+      ),
+    );
+
+    fireEvent.keyDown(window, {
+      key: "o",
+      code: "KeyO",
+      ctrlKey: true,
+    });
+
+    await waitFor(() =>
+      expect(container.querySelectorAll("details.thinking-block")).toHaveLength(
+        2,
+      ),
+    );
+  });
+
   it("marks queued messages that are blocked behind an edit", () => {
     render(
       <MessageList
@@ -520,6 +583,59 @@ describe("MessageList", () => {
 
     expect(onEditDeferred).toHaveBeenCalledWith("temp-queued");
     expect(onCancelDeferred).toHaveBeenCalledWith("temp-queued");
+  });
+
+  it("jumps from a queued message to its transcript context and back", async () => {
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage(
+            "user-context",
+            "context request",
+            "2026-04-25T00:00:00.000Z",
+          ),
+          assistantMessage(
+            "assistant-context",
+            "context response",
+            "2026-04-25T00:00:05.000Z",
+          ),
+        ]}
+        deferredMessages={[
+          {
+            tempId: "temp-queued",
+            content: "queued after context",
+            timestamp: "2026-04-25T00:00:10.000Z",
+          },
+        ]}
+      />,
+    );
+    const scrollTo = vi.fn();
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 120,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1200,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    container.scrollTo = scrollTo as typeof container.scrollTo;
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Jump to queued message context" }),
+    );
+
+    expect(scrollTo).toHaveBeenCalled();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Return to queued message" }),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Return to queued message" }),
+    ).toBeNull();
   });
 
   it("exposes a steer-now control for steerable queued messages", () => {
@@ -652,6 +768,52 @@ describe("MessageList", () => {
       container.querySelectorAll(".message-user-prompt"),
     ).map((node) => node.textContent);
     expect(prompts).toEqual(["first already queued", "second still posting"]);
+  });
+
+  it("marks patient queued rows while preserving typed queue order", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-25T00:03:00.000Z"));
+
+    const { container } = render(
+      <MessageList
+        messages={[]}
+        deferredMessages={[
+          {
+            tempId: "temp-regular-first",
+            content: "regular first",
+            timestamp: "2026-04-25T00:00:01.000Z",
+            clientOrder: 1,
+          },
+          {
+            tempId: "temp-patient",
+            content: "patient second",
+            timestamp: "2026-04-25T00:00:00.000Z",
+            clientOrder: 2,
+            metadata: { deliveryIntent: "patient" },
+          },
+          {
+            tempId: "temp-regular-third",
+            content: "regular third",
+            timestamp: "2026-04-25T00:00:02.000Z",
+            clientOrder: 3,
+          },
+        ]}
+      />,
+    );
+
+    const prompts = Array.from(
+      container.querySelectorAll(".message-user-prompt"),
+    ).map((node) => node.textContent);
+    expect(prompts).toEqual(["regular first", "patient second", "regular third"]);
+    expect(
+      screen
+        .getByText("patient second")
+        .closest(".deferred-message")
+        ?.classList.contains("patient-deferred-message"),
+    ).toBe(true);
+    expect(screen.getByText("Patient (waiting, 3m ago)")).toBeTruthy();
+    expect(screen.getByText("Queued (next regular)")).toBeTruthy();
+    expect(screen.getByText("Queued regular (#2)")).toBeTruthy();
   });
 
   it("keeps the latest stale message age visible in the right rail", () => {

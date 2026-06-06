@@ -1357,6 +1357,148 @@ describe("Process", () => {
       await process.abort();
     });
 
+    it("lets regular deferred messages pass patient messages at turn end", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+      });
+
+      process.deferMessage({
+        text: "patient queued",
+        tempId: "temp-patient",
+        metadata: { deliveryIntent: "patient" },
+      });
+      process.deferMessage({
+        text: "regular queued",
+        tempId: "temp-regular",
+        metadata: { deliveryIntent: "deferred" },
+      });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toMatchObject([
+          {
+            tempId: "temp-patient",
+            content: "patient queued",
+            metadata: { deliveryIntent: "patient" },
+          },
+        ]),
+      );
+      expect(queue.depth).toBe(1);
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe("regular queued");
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("skips patient messages when steering regular deferred tool-boundary turns", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const steerFn = vi.fn(async () => true);
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        steerFn,
+      });
+
+      process.deferMessage({
+        text: "patient queued",
+        tempId: "temp-patient",
+        metadata: { deliveryIntent: "patient" },
+      });
+      process.deferMessage({
+        text: "regular queued",
+        tempId: "temp-regular",
+        metadata: { deliveryIntent: "deferred" },
+      });
+
+      controller.push({
+        type: "user",
+        session_id: "sess-1",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "tool-1" }],
+        },
+      });
+
+      await waitFor(() => expect(steerFn).toHaveBeenCalledTimes(1));
+      expect(steerFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "regular queued",
+          tempId: "temp-regular",
+          metadata: expect.objectContaining({ deliveryIntent: "deferred" }),
+        }),
+      );
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        {
+          tempId: "temp-patient",
+          content: "patient queued",
+          metadata: { deliveryIntent: "patient" },
+        },
+      ]);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("promotes patient deferred messages only through the patient promotion path", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+      });
+
+      const immediate = process.deferMessage(
+        {
+          text: "patient queued",
+          tempId: "temp-patient",
+          metadata: { deliveryIntent: "patient" },
+        },
+        { promoteIfReady: true },
+      );
+
+      expect(immediate).toMatchObject({ success: true, deferred: true });
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        {
+          tempId: "temp-patient",
+          content: "patient queued",
+          metadata: { deliveryIntent: "patient" },
+        },
+      ]);
+
+      expect(process.promoteEligiblePatientDeferredMessages()).toBe(true);
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      expect(process.state.type).toBe("in-turn");
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe("patient queued");
+
+      controller.finish();
+      await process.abort();
+    });
+
     it("prefixes promoted deferred turns with compose-time anchors", async () => {
       const controller = createControllableIterator();
       const queue = new MessageQueue();

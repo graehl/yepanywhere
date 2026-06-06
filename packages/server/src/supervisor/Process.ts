@@ -80,6 +80,10 @@ type PendingRecapRequest = {
   sinceMs: number | null;
 };
 
+function isPatientDeferredEntry(entry: DeferredQueueEntry): boolean {
+  return entry.message.metadata?.deliveryIntent === "patient";
+}
+
 const CODEX_NATIVE_SLASH_COMMAND_NAMES = new Set(["goal"]);
 const ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion";
 
@@ -569,6 +573,10 @@ export class Process {
 
   private get deferredQueueDepth(): number {
     return this.deferredQueue.length;
+  }
+
+  hasPatientDeferredMessages(): boolean {
+    return this.deferredQueue.some(isPatientDeferredEntry);
   }
 
   getLivenessSnapshot(now = new Date()): SessionLivenessSnapshot {
@@ -1602,7 +1610,11 @@ export class Process {
         )
       : null;
 
-    if (options?.promoteIfReady && this.messageQueue) {
+    if (
+      options?.promoteIfReady &&
+      this.messageQueue &&
+      message.metadata?.deliveryIntent !== "patient"
+    ) {
       if (this._state.type === "idle") {
         const result = this.queueMessage(message);
         if (!result.success) {
@@ -2636,7 +2648,12 @@ export class Process {
       return false;
     }
 
-    const eligible = this.deferredQueue.splice(0);
+    const eligible = this.deferredQueue.filter(
+      (entry) => !isPatientDeferredEntry(entry),
+    );
+    if (eligible.length === 0) {
+      return false;
+    }
     const anchors = this.deferredComposeAnchors(eligible);
     const providerMessages = eligible.map((entry, index) =>
       this.prepareProviderMessage(entry.message, anchors[index]),
@@ -2650,11 +2667,11 @@ export class Process {
       allowSteer: false,
     });
     if (!result.success) {
-      this.deferredQueue.unshift(...eligible);
       this.emitDeferredQueueChange("queued", eligible[0]?.message.tempId);
       return false;
     }
 
+    this.deferredQueue = this.deferredQueue.filter(isPatientDeferredEntry);
     this.deferredEditBarrier = null;
     this.emitDeferredQueueChange("promoted");
     return true;
@@ -2662,15 +2679,26 @@ export class Process {
 
   private promoteNextDeferredMessage(options: {
     allowSteer: boolean;
+    includePatient?: boolean;
   }): "empty" | "blocked" | "promoted" | "failed" {
-    if (this.deferredEditBarrier?.index === 0) {
+    const nextIndex = this.deferredQueue.findIndex(
+      (entry) => options.includePatient || !isPatientDeferredEntry(entry),
+    );
+    if (nextIndex === -1) {
+      return "empty";
+    }
+    if (
+      this.deferredEditBarrier &&
+      nextIndex >= this.deferredEditBarrier.index
+    ) {
       return "blocked";
     }
-    const next = this.deferredQueue.shift();
+    const [next] = this.deferredQueue.splice(nextIndex, 1);
     if (!next) {
       return "empty";
     }
-    const shiftedBeforeBarrier = !!this.deferredEditBarrier;
+    const shiftedBeforeBarrier =
+      !!this.deferredEditBarrier && nextIndex < this.deferredEditBarrier.index;
     if (this.deferredEditBarrier) {
       this.deferredEditBarrier.index--;
     }
@@ -2681,7 +2709,7 @@ export class Process {
       composeAnchor,
     });
     if (!result.success) {
-      this.deferredQueue.unshift(next);
+      this.deferredQueue.splice(nextIndex, 0, next);
       if (shiftedBeforeBarrier && this.deferredEditBarrier) {
         this.deferredEditBarrier.index++;
       }
@@ -2691,6 +2719,45 @@ export class Process {
 
     this.emitDeferredQueueChange("promoted", next.message.tempId);
     return "promoted";
+  }
+
+  promoteEligiblePatientDeferredMessages(): boolean {
+    if (
+      this.deferredQueue.length === 0 ||
+      !this.messageQueue ||
+      this.deferredEditBarrier ||
+      this._state.type !== "idle"
+    ) {
+      return false;
+    }
+
+    const eligible = this.deferredQueue.filter(isPatientDeferredEntry);
+    if (eligible.length === 0) {
+      return false;
+    }
+
+    const anchors = this.deferredComposeAnchors(eligible);
+    const providerMessages = eligible.map((entry, index) =>
+      this.prepareProviderMessage(entry.message, anchors[index]),
+    );
+    const providerTurn =
+      providerMessages.length === 1
+        ? providerMessages[0]!
+        : this.concatMessages(providerMessages);
+
+    const result = this.queuePreparedMessage(providerTurn, {
+      allowSteer: false,
+    });
+    if (!result.success) {
+      this.emitDeferredQueueChange("queued", eligible[0]?.message.tempId);
+      return false;
+    }
+
+    this.deferredQueue = this.deferredQueue.filter(
+      (entry) => !isPatientDeferredEntry(entry),
+    );
+    this.emitDeferredQueueChange("promoted");
+    return true;
   }
 
   private isCompletedToolResultMessage(message: SDKMessage): boolean {

@@ -119,6 +119,18 @@ function getIsearchAlternateRows(
   ];
 }
 
+function formatPatientQueueTimeout(minutes?: number | null): string | null {
+  if (!Number.isFinite(minutes ?? NaN)) {
+    return null;
+  }
+  const normalized = Math.max(1, Math.round(minutes as number));
+  if (normalized < 60) {
+    return `${normalized}m`;
+  }
+  const hours = normalized / 60;
+  return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
+}
+
 export interface MessageInputToolbarProps {
   // Mode selector
   mode?: PermissionMode;
@@ -167,8 +179,20 @@ export interface MessageInputToolbarProps {
   lastActivityAt?: string | null;
   /** Server-derived provider/session liveness evidence. */
   sessionLiveness?: SessionLivenessSnapshot | null;
-  /** Ctrl+Enter queue prepends "when done, " (deferred/patient) and is available. */
+  /** Patient queue mode is available for future queued items. */
   showPatientQueueMode?: boolean;
+  /** Whether future queue submissions use patient intent. */
+  patientQueueEnabled?: boolean;
+  /** Toggle patient intent for future queue submissions. */
+  onTogglePatientQueue?: () => void;
+  /** Current quiet-period timeout used by patient queue mode. */
+  patientQueueTimeoutMinutes?: number | null;
+  /** The action currently bound to Enter in dual-action steering sessions. */
+  enterActionKind?: "steer" | "queue";
+  /** Whether Enter and Ctrl+Enter may be swapped. */
+  canSwapEnterAction?: boolean;
+  /** Swap Enter and Ctrl+Enter in dual-action steering sessions. */
+  onSwapEnterAction?: () => void;
 
   // Actions
   isRunning?: boolean;
@@ -438,7 +462,12 @@ interface ToolbarShortcutsControl {
   open: boolean;
   isearchScope: SessionIsearchScope | null;
   setOpen: Dispatch<SetStateAction<boolean>>;
+  settingsOpen: boolean;
+  setSettingsOpen: Dispatch<SetStateAction<boolean>>;
   hasDualActions: boolean;
+  enterActionKind: "send" | "steer" | "queue";
+  canSwapEnterAction: boolean;
+  onSwapEnterAction?: () => void;
   queueShortcutLabel: string;
 }
 
@@ -454,6 +483,10 @@ interface ToolbarQueueControl {
   hasDualActions: boolean;
   queueTooltip: string;
   showPatientQueueMode: boolean;
+  patientQueueEnabled: boolean;
+  patientQueueTimeoutLabel: string | null;
+  patientQueueTooltip: string;
+  onTogglePatientQueue?: () => void;
 }
 
 interface ToolbarSendControl {
@@ -759,6 +792,27 @@ export function MessageInputToolbarView({
   const showStopButton = !!actionsControl.stop;
   const selectedSpeechMethod = speechControl?.selectedMethod;
   const queueControl = actionsControl.send?.queue;
+  const shortcutsLongPressTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+
+  const openShortcutSettings = () => {
+    shortcutsControl.setOpen(true);
+    shortcutsControl.setSettingsOpen(true);
+  };
+  const clearShortcutsLongPress = () => {
+    if (shortcutsLongPressTimerRef.current) {
+      clearTimeout(shortcutsLongPressTimerRef.current);
+      shortcutsLongPressTimerRef.current = null;
+    }
+  };
+  const startShortcutsLongPress = () => {
+    clearShortcutsLongPress();
+    shortcutsLongPressTimerRef.current = setTimeout(() => {
+      shortcutsLongPressTimerRef.current = null;
+      openShortcutSettings();
+    }, 520);
+  };
 
   return (
     <div
@@ -1026,6 +1080,7 @@ export function MessageInputToolbarView({
             className="session-shortcuts-help"
             onMouseLeave={() => {
               shortcutsControl.setOpen(false);
+              shortcutsControl.setSettingsOpen(false);
             }}
           >
             <button
@@ -1034,6 +1089,10 @@ export function MessageInputToolbarView({
               aria-label={t("toolbarKeyboardShortcutsAria")}
               aria-expanded={shortcutsPopoverOpen}
               onClick={() => shortcutsControl.setOpen((open) => !open)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                openShortcutSettings();
+              }}
               onFocus={() => shortcutsControl.setOpen(true)}
               onBlur={(event) => {
                 if (
@@ -1045,6 +1104,10 @@ export function MessageInputToolbarView({
                 }
               }}
               onMouseEnter={() => shortcutsControl.setOpen(true)}
+              onTouchStart={startShortcutsLongPress}
+              onTouchEnd={clearShortcutsLongPress}
+              onTouchCancel={clearShortcutsLongPress}
+              onTouchMove={clearShortcutsLongPress}
             >
               ?
             </button>
@@ -1183,6 +1246,35 @@ export function MessageInputToolbarView({
                       </span>
                       <span>{shortcutsControl.queueShortcutLabel}</span>
                     </div>
+                    <div className="session-shortcuts-row session-shortcuts-row-muted">
+                      <span className="session-shortcuts-keys">
+                        {t("toolbarShortcutRightClickLongPress")}
+                      </span>
+                      <span>{t("toolbarShortcutChangeKeys")}</span>
+                    </div>
+                    {shortcutsControl.settingsOpen &&
+                      shortcutsControl.canSwapEnterAction &&
+                      shortcutsControl.onSwapEnterAction && (
+                        <div className="session-shortcuts-settings">
+                          <div className="session-shortcuts-row">
+                            <span className="session-shortcuts-keys">
+                              <kbd>Enter</kbd>
+                            </span>
+                            <span>
+                              {shortcutsControl.enterActionKind === "queue"
+                                ? t("toolbarShortcutQueueCurrentTurn")
+                                : t("toolbarShortcutSteerCurrentTurn")}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="session-shortcuts-action"
+                            onClick={shortcutsControl.onSwapEnterAction}
+                          >
+                            {t("toolbarShortcutSwapEnterCtrlEnter")}
+                          </button>
+                        </div>
+                      )}
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Ctrl</kbd>
@@ -1209,6 +1301,13 @@ export function MessageInputToolbarView({
                         <kbd>K</kbd>
                       </span>
                       <span>{t("toolbarShortcutCancelLatestQueuedMessage")}</span>
+                    </div>
+                    <div className="session-shortcuts-row">
+                      <span className="session-shortcuts-keys">
+                        <kbd>Ctrl</kbd>
+                        <kbd>O</kbd>
+                      </span>
+                      <span>{t("toolbarShortcutToggleThinkingTranscript")}</span>
                     </div>
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
@@ -1273,7 +1372,37 @@ export function MessageInputToolbarView({
         {showSendButton && actionsControl.send ? (
           <>
             {visibility.queueControls &&
+              queueControl?.showPatientQueueMode &&
+              queueControl.onTogglePatientQueue && (
+                <button
+                  type="button"
+                  onClick={queueControl.onTogglePatientQueue}
+                  disabled={actionsControl.disabled}
+                  className={`send-button patient-queue-toggle ${
+                    queueControl.patientQueueEnabled ? "is-active" : ""
+                  }`}
+                  aria-label={
+                    queueControl.patientQueueEnabled
+                      ? t("toolbarPatientQueueDisable")
+                      : t("toolbarPatientQueueEnable")
+                  }
+                  aria-pressed={queueControl.patientQueueEnabled}
+                  title={queueControl.patientQueueTooltip}
+                >
+                  <span className="send-icon patient-queue-icon">⏱</span>
+                  {queueControl.patientQueueTimeoutLabel && (
+                    <span className="patient-queue-time">
+                      {queueControl.patientQueueTimeoutLabel}
+                    </span>
+                  )}
+                  {queueControl.patientQueueEnabled && (
+                    <span className="patient-queue-mode-label">Patient</span>
+                  )}
+                </button>
+              )}
+            {visibility.queueControls &&
               queueControl?.hasDualActions &&
+              actionsControl.send.primaryActionKind !== "queue" &&
               queueControl.onQueue && (
                 <button
                   type="button"
@@ -1285,7 +1414,7 @@ export function MessageInputToolbarView({
                   aria-label={t("toolbarQueueLabel")}
                   title={queueControl.queueTooltip}
                 >
-                  <span className="send-icon queue-icon">⏱</span>
+                  <span className="send-icon queue-icon">→</span>
                 </button>
               )}
             <button
@@ -1340,6 +1469,12 @@ export function MessageInputToolbar({
   lastActivityAt,
   sessionLiveness,
   showPatientQueueMode = false,
+  patientQueueEnabled = false,
+  onTogglePatientQueue,
+  patientQueueTimeoutMinutes,
+  enterActionKind,
+  canSwapEnterAction = false,
+  onSwapEnterAction,
   isRunning,
   isThinking,
   onStop,
@@ -1370,6 +1505,7 @@ export function MessageInputToolbar({
   const renderMode = useOptionalRenderModeContext();
   const nowMs = useRelativeNow();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [shortcutSettingsOpen, setShortcutSettingsOpen] = useState(false);
   const [isearchScope, setIsearchScope] = useState<SessionIsearchScope | null>(
     null,
   );
@@ -1440,21 +1576,33 @@ export function MessageInputToolbar({
       : renderMode?.state === "source"
         ? t("toolbarRenderModeSource")
         : t("toolbarRenderModeMixed");
-  const hasDualActions = !!(onSend && onQueue);
+  const hasPotentialDualActions = !!(onSend && onQueue);
   const effectivePrimaryActionKind =
-    primaryActionKind ?? (hasDualActions ? "steer" : "send");
+    primaryActionKind ?? (hasPotentialDualActions ? "steer" : "send");
+  const hasDualActions =
+    hasPotentialDualActions && effectivePrimaryActionKind === "steer";
+  const patientQueueTimeoutLabel = formatPatientQueueTimeout(
+    patientQueueTimeoutMinutes,
+  );
+  const queueIsPatient = showPatientQueueMode && patientQueueEnabled;
+  const patientTooltip = t("toolbarPatientQueueTooltip", {
+    timeout: patientQueueTimeoutLabel ?? t("toolbarPatientQueueConfiguredTimeout"),
+  });
   const sendTooltip =
     effectivePrimaryActionKind === "steer"
       ? t("toolbarSteerTooltip")
       : effectivePrimaryActionKind === "queue"
-        ? showPatientQueueMode
-          ? t("toolbarPatientQueueTooltip")
+        ? queueIsPatient
+          ? patientTooltip
           : t("toolbarQueueTooltip")
         : t("toolbarSendTooltip");
-  const queueTooltip = showPatientQueueMode
-    ? t("toolbarPatientQueueTooltip")
+  const queueTooltip = queueIsPatient
+    ? patientTooltip
     : t("toolbarQueueTooltip");
-  const queueShortcutLabel = t("toolbarQueueWhenDone");
+  const queueShortcutLabel =
+    canSwapEnterAction && effectivePrimaryActionKind === "queue"
+      ? t("toolbarShortcutSteerCurrentTurn")
+      : t("toolbarShortcutQueueCurrentTurn");
   const effectiveBtwToolbarMode =
     btwToolbarMode ??
     (btwActive ? "focused-footer" : btwHasAsides ? "focus-existing" : "start");
@@ -1464,7 +1612,7 @@ export function MessageInputToolbar({
     effectivePrimaryActionKind === "steer"
       ? "↗"
       : effectivePrimaryActionKind === "queue"
-        ? "⏱"
+        ? "→"
         : "↑";
   const primaryActionLabel =
     effectivePrimaryActionKind === "steer"
@@ -1798,7 +1946,12 @@ export function MessageInputToolbar({
         open: shortcutsOpen,
         isearchScope,
         setOpen: setShortcutsOpen,
+        settingsOpen: shortcutSettingsOpen,
+        setSettingsOpen: setShortcutSettingsOpen,
         hasDualActions,
+        enterActionKind: enterActionKind ?? effectivePrimaryActionKind,
+        canSwapEnterAction,
+        onSwapEnterAction,
         queueShortcutLabel,
       }}
       actionsControl={{
@@ -1832,6 +1985,10 @@ export function MessageInputToolbar({
                 hasDualActions,
                 queueTooltip,
                 showPatientQueueMode,
+                patientQueueEnabled: queueIsPatient,
+                patientQueueTimeoutLabel,
+                patientQueueTooltip: patientTooltip,
+                onTogglePatientQueue,
               },
             }
           : null,

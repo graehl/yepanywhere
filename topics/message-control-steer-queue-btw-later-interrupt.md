@@ -48,23 +48,47 @@ Rationale:
 | `in-turn`, provider has no steering | Queue action | `deferred` | Keep immediate turn ownership untouched; append to deferred queue. |
 | Any busy non-steering path where queue exists | Queue action | `deferred` | Keep the active turn untouched; append to the deferred queue. |
 | Any queue path | Route | `deferred` | Messages are inserted through YA-managed deferred delivery, not as direct steering. |
-| `Ctrl+Enter` queue accelerator | Queue action | `patient` | Opt-in softer "when done" intent; normal queue remains plain `deferred`. |
+| `Ctrl+Enter` alternate send | opposite of the visible Enter/default action | `steer` or `deferred` | In active steering sessions, Enter and `Ctrl+Enter` are complementary: one steers now, the other regular-queues. Patient is not the alternate-send shortcut. |
+| Patient queue setting enabled for a new queued item | Queue action | `patient` | Per-item patient intent waits for the quiet/verified-idle patience threshold before delivery. |
 | Queued chip on steering-capable active turn | `Steer now` | `steer` | User explicitly overrides queued/patient waiting and injects the queued item into the active turn. |
 | `/btw` explicit route | Aside control | separate aside session | Not a queue path and not `steer`. |
 
 ### Queue text rule
 
 - Default queueing never rewrites the user's text.
-- The `Ctrl+Enter` patient accelerator may prepend `when done,` and attach
-  `deliveryIntent: "patient"` metadata. This is provider-placeholder intent and
-  a future policy hook, not a separate scheduler today.
-- The visible queue button stays unprefixed and sends `deliveryIntent:
-  "deferred"`.
+- The phrase `when done, ` is ordinary user-authored prompt text, not a YA queue
+  mechanism. New patient queue submissions do not prepend it.
+- Regular queue sends attach `deliveryIntent: "deferred"`.
+- Patient queue sends attach `deliveryIntent: "patient"` and keep their own
+  accepted queue timestamp/metadata. Changing the patient setting later does
+  not mutate already queued items.
 - `Steer now` on an existing queued chip strips one recognized patient prefix
-  before steering, because the user has explicitly overridden "when done" with
-  "now".
-- Queueing does not make scheduling guarantees beyond keeping the message
-  in-session and avoiding immediate active-turn injection.
+  before steering for legacy queued items, because the user has explicitly
+  overridden old prompt-visible "when done" wording with "now".
+- Regular and patient queue entries are separate per-item intents. Regular
+  entries may pass patient entries at delivery time. The composer tail should
+  preserve the user's typed order while making patient rows visibly distinct
+  (for example by offset, tone, status text, and age) so the display does not
+  imply one strict FIFO when patient rows are waiting for the quiet threshold.
+- Queueing remains in-session and avoids immediate active-turn injection.
+
+### Queued-item navigation affordance
+
+Status: first implementation landed on 2026-06-06. Current queued rows expose
+copy, edit, cancel, steering-capable `Steer now`, and a context jump. The first
+anchor is the queued row's accepted timestamp, not the earlier first-typed-char
+timestamp.
+
+- Queued rows of all delivery intents should include a hyperlink-style jump
+  affordance. It jumps to the scroll/view position where the message was
+  significantly begun (earliest non-deleted character timestamp) when that
+  anchor is available; using the sent/accepted timestamp is the simpler first
+  implementation.
+- After such a jump, show a temporary one-shot jump-back anchor with a matching
+  icon in the left gutter. Activating it returns to the queued row and removes
+  the one-shot anchor.
+- The jump affordance is independent of edit/cancel/steer controls and applies
+  to regular queued, patient queued, and recovered/verifying queued rows.
 
 ## Compact-aware state transitions
 

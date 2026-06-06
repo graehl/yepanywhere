@@ -1,4 +1,8 @@
-import type { MarkdownAugment, UploadedFile } from "@yep-anywhere/shared";
+import type {
+  MarkdownAugment,
+  UploadedFile,
+  UserMessageMetadata,
+} from "@yep-anywhere/shared";
 import {
   memo,
   useCallback,
@@ -14,6 +18,7 @@ import { useI18n } from "../i18n";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { copyMarkdownSelectionToClipboard } from "../lib/markdownSelectionCopy";
 import {
+  formatCompactRelativeAge,
   getLatestMessageTimestampMs,
   isStaleTimestamp,
   MESSAGE_STALE_THRESHOLD_MS,
@@ -255,6 +260,49 @@ function findRenderRow(
   )) {
     if (row.dataset.renderId === id) {
       return row;
+    }
+  }
+  return null;
+}
+
+function findQueuedTailRow(
+  messageList: HTMLDivElement | null,
+  key: string,
+): HTMLElement | null {
+  if (!messageList) return null;
+  for (const row of messageList.querySelectorAll<HTMLElement>(
+    "[data-queued-tail-key]",
+  )) {
+    if (row.dataset.queuedTailKey === key) {
+      return row;
+    }
+  }
+  return null;
+}
+
+interface VisibleRenderAnchor {
+  id: string;
+  topOffset: number;
+}
+
+function getFirstVisibleRenderAnchor(
+  messageList: HTMLDivElement,
+  scrollContainer: HTMLElement,
+): VisibleRenderAnchor | null {
+  const containerRect = scrollContainer.getBoundingClientRect();
+  for (const row of messageList.querySelectorAll<HTMLElement>(
+    "[data-render-id]",
+  )) {
+    const id = row.dataset.renderId;
+    if (!id) {
+      continue;
+    }
+    const rowRect = row.getBoundingClientRect();
+    if (rowRect.bottom > containerRect.top && rowRect.top < containerRect.bottom) {
+      return {
+        id,
+        topOffset: rowRect.top - containerRect.top,
+      };
     }
   }
   return null;
@@ -641,10 +689,74 @@ interface DeferredMessage {
   content: string;
   timestamp: string;
   clientOrder?: number;
+  metadata?: UserMessageMetadata;
   attachmentCount?: number;
   attachments?: UploadedFile[];
   blockedByEdit?: boolean;
   deliveryState?: "queued" | "sending" | "recovered" | "verifying";
+}
+
+interface ComposerTailLanePosition {
+  regularIndex?: number;
+  patientIndex?: number;
+}
+
+interface QueuedContextReturnAnchor {
+  tailKey: string;
+  scrollTop: number;
+}
+
+function isPatientDeferredMessage(message: DeferredMessage): boolean {
+  return message.metadata?.deliveryIntent === "patient";
+}
+
+function formatQueuedAge(timestampMs: number, nowMs: number): string {
+  const label = formatCompactRelativeAge(timestampMs, nowMs);
+  return label === "now" ? "now" : `${label} ago`;
+}
+
+function getDeferredMessageStatus({
+  deferred,
+  isPatient,
+  lanePosition,
+  timestampMs,
+  nowMs,
+}: {
+  deferred: DeferredMessage;
+  isPatient: boolean;
+  lanePosition: ComposerTailLanePosition | undefined;
+  timestampMs: number | null;
+  nowMs: number;
+}): string {
+  if (deferred.deliveryState === "sending") {
+    return isPatient ? "Sending patient message..." : "Sending queued message...";
+  }
+  if (deferred.deliveryState === "recovered") {
+    return isPatient ? "Recovered patient draft" : "Recovered draft (not queued)";
+  }
+  if (deferred.deliveryState === "verifying") {
+    return isPatient ? "Patient (verifying)" : "Queued (verifying)";
+  }
+  if (deferred.blockedByEdit) {
+    return isPatient ? "Patient (after edit)" : "Queued (after edit)";
+  }
+
+  if (isPatient) {
+    const age = timestampMs !== null ? formatQueuedAge(timestampMs, nowMs) : null;
+    const position =
+      lanePosition?.patientIndex === undefined
+        ? ""
+        : lanePosition.patientIndex === 0
+          ? "waiting"
+          : `#${lanePosition.patientIndex + 1}`;
+    const detail = [position, age].filter(Boolean).join(", ");
+    return detail ? `Patient (${detail})` : "Patient queued";
+  }
+
+  const regularIndex = lanePosition?.regularIndex ?? 0;
+  return regularIndex === 0
+    ? "Queued (next regular)"
+    : `Queued regular (#${regularIndex + 1})`;
 }
 
 type ComposerTailItem =
@@ -1014,6 +1126,8 @@ export const MessageList = memo(function MessageList({
     selectedId: null,
     originalScrollTop: null,
   });
+  const [queuedContextReturn, setQueuedContextReturn] =
+    useState<QueuedContextReturnAnchor | null>(null);
   const nowMs = useRelativeNow();
 
   // Scroll to bottom, marking it as programmatic so scroll handler ignores it
@@ -1546,6 +1660,34 @@ export const MessageList = memo(function MessageList({
 
     return items.sort(compareComposerTailItems);
   }, [pendingMessages, deferredMessages]);
+  const composerTailLanePositions = useMemo(() => {
+    const positions = new Map<string, ComposerTailLanePosition>();
+    let regularIndex = 0;
+    let patientIndex = 0;
+
+    for (const item of composerTailItems) {
+      if (item.kind !== "deferred") {
+        continue;
+      }
+      if (isPatientDeferredMessage(item.message)) {
+        positions.set(item.key, { patientIndex });
+        patientIndex += 1;
+      } else {
+        positions.set(item.key, { regularIndex });
+        regularIndex += 1;
+      }
+    }
+
+    return positions;
+  }, [composerTailItems]);
+  useEffect(() => {
+    if (
+      queuedContextReturn &&
+      !composerTailItems.some((item) => item.key === queuedContextReturn.tailKey)
+    ) {
+      setQueuedContextReturn(null);
+    }
+  }, [composerTailItems, queuedContextReturn]);
   const latestCorrectablePrompt = useMemo(() => {
     if (!onCorrectLatestUserMessage) return null;
 
@@ -1693,13 +1835,81 @@ export const MessageList = memo(function MessageList({
 
   const noopToggleThinkingExpanded = useCallback(() => {}, []);
 
+  const preserveScrollAfterTranscriptHeightChange = useCallback(
+    (mutate: () => void) => {
+      const messageList = containerRef.current;
+      const scrollContainer = messageList?.parentElement;
+      if (!messageList || !scrollContainer) {
+        mutate();
+        return;
+      }
+
+      const wasAtBottom = isNearScrollBottom(scrollContainer);
+      const scrollTopBefore = scrollContainer.scrollTop;
+      const scrollHeightBefore = scrollContainer.scrollHeight;
+      const anchorBefore = wasAtBottom
+        ? null
+        : getFirstVisibleRenderAnchor(messageList, scrollContainer);
+
+      mutate();
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const nextMessageList = containerRef.current;
+          const nextScrollContainer =
+            nextMessageList?.parentElement ?? scrollContainer;
+          isProgrammaticScrollRef.current = true;
+
+          if (wasAtBottom) {
+            scrollToBottom(nextScrollContainer);
+            return;
+          }
+
+          let restoredFromAnchor = false;
+          if (anchorBefore && nextMessageList) {
+            const row = findRenderRow(nextMessageList, anchorBefore.id);
+            if (row) {
+              const containerRect =
+                nextScrollContainer.getBoundingClientRect();
+              const rowRect = row.getBoundingClientRect();
+              nextScrollContainer.scrollTop = Math.max(
+                0,
+                nextScrollContainer.scrollTop +
+                  rowRect.top -
+                  containerRect.top -
+                  anchorBefore.topOffset,
+              );
+              restoredFromAnchor = true;
+            }
+          }
+
+          if (!restoredFromAnchor) {
+            const heightDelta =
+              nextScrollContainer.scrollHeight - scrollHeightBefore;
+            nextScrollContainer.scrollTop = Math.max(
+              0,
+              scrollTopBefore + heightDelta,
+            );
+          }
+          lastHeightRef.current = nextScrollContainer.scrollHeight;
+          requestAnimationFrame(() => {
+            isProgrammaticScrollRef.current = false;
+          });
+        });
+      });
+    },
+    [scrollToBottom],
+  );
+
   const toggleThinkingItemsVisible = useCallback(() => {
-    setThinkingItemsVisible((previous) => {
-      const next = !previous;
-      saveSessionThinkingVisible(next);
-      return next;
+    preserveScrollAfterTranscriptHeightChange(() => {
+      setThinkingItemsVisible((previous) => {
+        const next = !previous;
+        saveSessionThinkingVisible(next);
+        return next;
+      });
     });
-  }, []);
+  }, [preserveScrollAfterTranscriptHeightChange]);
 
   const showNavMotionCue = useCallback((direction: "up" | "down") => {
     if (navMotionCueClearTimerRef.current !== null) {
@@ -1820,6 +2030,72 @@ export const MessageList = memo(function MessageList({
       allowThinkingDeltas: true,
     });
   }, [forceScrollToCurrent]);
+
+  const findQueuedContextRenderId = useCallback(
+    (queuedTimestampMs: number): string | null => {
+      let candidate: { id: string; timestampMs: number } | null = null;
+      for (const item of displayRenderItems) {
+        const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
+        if (timestampMs === null || timestampMs > queuedTimestampMs) {
+          continue;
+        }
+        if (!candidate || timestampMs >= candidate.timestampMs) {
+          candidate = { id: item.id, timestampMs };
+        }
+      }
+      return candidate?.id ?? displayRenderItems[0]?.id ?? null;
+    },
+    [displayRenderItems],
+  );
+
+  const jumpToQueuedContext = useCallback(
+    (tailKey: string, contextRenderId: string) => {
+      const scrollContainer = containerRef.current?.parentElement;
+      if (!scrollContainer) {
+        return;
+      }
+      setQueuedContextReturn({
+        tailKey,
+        scrollTop: scrollContainer.scrollTop,
+      });
+      scrollToRenderId(contextRenderId, "auto", "center", true);
+    },
+    [scrollToRenderId],
+  );
+
+  const returnToQueuedContext = useCallback(() => {
+    const anchor = queuedContextReturn;
+    const messageList = containerRef.current;
+    const scrollContainer = messageList?.parentElement;
+    setQueuedContextReturn(null);
+    if (!anchor || !scrollContainer) {
+      return;
+    }
+
+    const row = findQueuedTailRow(messageList, anchor.tailKey);
+    isProgrammaticScrollRef.current = true;
+    shouldAutoScrollRef.current = false;
+    setIsScrolledToBottom(false);
+
+    if (row) {
+      const scrollRect = scrollContainer.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      const offset = Math.max(
+        0,
+        (scrollContainer.clientHeight - rowRect.height) / 2,
+      );
+      scrollContainer.scrollTop = Math.max(
+        0,
+        scrollContainer.scrollTop + rowRect.top - scrollRect.top - offset,
+      );
+    } else {
+      scrollContainer.scrollTop = anchor.scrollTop;
+    }
+    lastHeightRef.current = scrollContainer.scrollHeight;
+    requestAnimationFrame(() => {
+      isProgrammaticScrollRef.current = false;
+    });
+  }, [queuedContextReturn]);
 
   const closeUserTurnSearch = useCallback((restoreScroll: boolean) => {
     const scrollTopToRestore = restoreScroll
@@ -1955,6 +2231,12 @@ export const MessageList = memo(function MessageList({
         scrollToCurrent();
         return;
       }
+      if (isCtrlKeyShortcut(event, "o", "KeyO")) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleThinkingItemsVisible();
+        return;
+      }
       const requestedScope = getSessionIsearchShortcutScope(event);
       if (requestedScope) {
         event.preventDefault();
@@ -2023,6 +2305,7 @@ export const MessageList = memo(function MessageList({
     scrollToRenderId,
     startUserTurnSearchArrowRepeat,
     stopUserTurnSearchArrowRepeat,
+    toggleThinkingItemsVisible,
     userTurnSearch.active,
     userTurnSearch.scope,
   ]);
@@ -2419,6 +2702,17 @@ export const MessageList = memo(function MessageList({
       <span>Follow</span>
     </button>
   ) : null;
+  const queuedContextReturnButton = queuedContextReturn ? (
+    <button
+      type="button"
+      className="queued-context-return"
+      onClick={returnToQueuedContext}
+      aria-label="Return to queued message"
+      title="Return to queued message"
+    >
+      ↩
+    </button>
+  ) : null;
 
   return (
     <>
@@ -2441,6 +2735,7 @@ export const MessageList = memo(function MessageList({
         ? createPortal(followButton, followButtonTarget)
         : followButton}
       <div className="message-list" ref={containerRef}>
+        {queuedContextReturnButton}
         {(hasOlderMessages || clientTailActive) && (
           <div className="load-older-messages">
             {clientTailActive && (
@@ -2630,7 +2925,17 @@ export const MessageList = memo(function MessageList({
           }
 
           const deferred = tailItem.message;
-          const index = tailItem.deferredIndex;
+          const isPatientDeferred = isPatientDeferredMessage(deferred);
+          const lanePosition = composerTailLanePositions.get(tailItem.key);
+          const contextRenderId =
+            timestampMs !== null ? findQueuedContextRenderId(timestampMs) : null;
+          const deferredStatus = getDeferredMessageStatus({
+            deferred,
+            isPatient: isPatientDeferred,
+            lanePosition,
+            timestampMs,
+            nowMs,
+          });
           const canEditDeferred = !!(deferred.tempId && onEditDeferred);
           const canSteerQueued =
             canSteerDeferred &&
@@ -2642,7 +2947,10 @@ export const MessageList = memo(function MessageList({
           return (
             <div
               key={tailItem.key}
+              data-queued-tail-key={tailItem.key}
               className={`deferred-message message-render-row ${
+                isPatientDeferred ? "patient-deferred-message" : ""
+              } ${
                 timestampMs !== null ? "has-message-age" : ""
               } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
             >
@@ -2692,18 +3000,15 @@ export const MessageList = memo(function MessageList({
                   </div>
                 ) : null}
                 <div className="deferred-message-footer">
-                  <span className="deferred-message-status">
-                    {deferred.deliveryState === "sending"
-                      ? "Sending queued message..."
-                      : deferred.deliveryState === "recovered"
-                        ? "Recovered draft (not queued)"
-                        : deferred.deliveryState === "verifying"
-                          ? "Queued (verifying)"
-                          : deferred.blockedByEdit
-                            ? "Queued (after edit)"
-                            : index === 0
-                              ? "Queued (next)"
-                              : `Queued (#${index + 1})`}
+                  <span
+                    className="deferred-message-status"
+                    title={
+                      isPatientDeferred
+                        ? "Patient queue waits for verified quiet. Regular queued messages may pass it."
+                        : undefined
+                    }
+                  >
+                    {deferredStatus}
                   </span>
                   {deferred.attachmentCount ? (
                     <span
@@ -2733,6 +3038,25 @@ export const MessageList = memo(function MessageList({
                     </span>
                   ) : null}
                   <div className="deferred-message-actions">
+                    <button
+                      type="button"
+                      className="deferred-message-action deferred-message-action-context"
+                      onClick={() => {
+                        if (contextRenderId) {
+                          jumpToQueuedContext(tailItem.key, contextRenderId);
+                        }
+                      }}
+                      disabled={!contextRenderId}
+                      aria-label="Jump to queued message context"
+                      title={
+                        contextRenderId
+                          ? "Jump to queued message context"
+                          : "No loaded context before this queued message"
+                      }
+                    >
+                      <span className="deferred-message-context-icon">↩</span>
+                      <span>Context</span>
+                    </button>
                     <CopyTextButton
                       text={deferred.content}
                       label="Copy queued message"

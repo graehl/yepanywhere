@@ -5,7 +5,6 @@ import type {
   UserMessageDeliveryIntent,
   UserMessageSpeechMetadata,
 } from "@yep-anywhere/shared";
-import { applyPatientQueuePrefix } from "@yep-anywhere/shared";
 import {
   type ClipboardEvent,
   type KeyboardEvent,
@@ -146,6 +145,8 @@ interface Props {
   thinkingModel?: string;
   /** Whether heartbeat turns are currently enabled for this session */
   heartbeatEnabled?: boolean;
+  /** Current quiet-period timeout used by patient queue mode. */
+  patientQueueTimeoutMinutes?: number | null;
   /** Quick-toggle session heartbeat */
   onToggleHeartbeat?: () => void;
   /** Open heartbeat session settings */
@@ -200,6 +201,7 @@ export function MessageInput({
   thinkingProvider,
   thinkingModel,
   heartbeatEnabled = false,
+  patientQueueTimeoutMinutes,
   onToggleHeartbeat,
   onConfigureHeartbeat,
   correctionActive = false,
@@ -241,15 +243,38 @@ export function MessageInput({
   // Panel is collapsed if user collapsed it OR if externally collapsed (approval panel showing)
   const collapsed = userCollapsed || externalCollapsed;
   const canSubmit = !!(text.trim() || attachments.length > 0);
-  const effectivePrimaryActionKind =
+  const basePrimaryActionKind =
     primaryActionKind ??
     (supportsSteering && onQueue ? "steer" : onQueue ? "queue" : "send");
-  // The "when done, " prefix is exclusively the Ctrl+Enter accelerator's
-  // behavior (deferred/patient queue). Plain Enter steers immediately when
-  // busy, and a button-click queue stays unprefixed — adding "when done" to an
-  // immediate steer would contradict its meaning. onQueue is only set while the
-  // agent is running, so a "done" agent never reaches the queue path.
-  const showPatientQueueMode = supportsSteering && !!onQueue;
+  const hasActiveDualActions =
+    supportsSteering && !!onQueue && basePrimaryActionKind === "steer";
+  const patientQueueStorageKey = `${draftKey}:patient-queue-enabled`;
+  const enterActionStorageKey = `${draftKey}:enter-action-kind`;
+  const [patientQueueEnabled, setPatientQueueEnabled] = useState(() => {
+    try {
+      return localStorage.getItem(patientQueueStorageKey) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [enterActionKind, setEnterActionKind] = useState<"steer" | "queue">(
+    () => {
+      try {
+        return localStorage.getItem(enterActionStorageKey) === "queue"
+          ? "queue"
+          : "steer";
+      } catch {
+        return "steer";
+      }
+    },
+  );
+  const effectivePrimaryActionKind = hasActiveDualActions
+    ? enterActionKind
+    : basePrimaryActionKind;
+  const showPatientQueueMode = !!(
+    (supportsSteering && onQueue) ||
+    basePrimaryActionKind === "queue"
+  );
   const primaryActionLabel =
     effectivePrimaryActionKind === "steer"
       ? t("toolbarSteerTooltip")
@@ -258,6 +283,52 @@ export function MessageInput({
         : t("toolbarSend");
 
   const canAttach = !!(projectId && sessionId && onAttach);
+
+  useEffect(() => {
+    try {
+      setPatientQueueEnabled(
+        localStorage.getItem(patientQueueStorageKey) === "true",
+      );
+    } catch {
+      setPatientQueueEnabled(false);
+    }
+  }, [patientQueueStorageKey]);
+
+  useEffect(() => {
+    try {
+      setEnterActionKind(
+        localStorage.getItem(enterActionStorageKey) === "queue"
+          ? "queue"
+          : "steer",
+      );
+    } catch {
+      setEnterActionKind("steer");
+    }
+  }, [enterActionStorageKey]);
+
+  const togglePatientQueueEnabled = useCallback(() => {
+    setPatientQueueEnabled((previous) => {
+      const next = !previous;
+      try {
+        localStorage.setItem(patientQueueStorageKey, next ? "true" : "false");
+      } catch {
+        // Patient queue mode is a local convenience; in-memory state still works.
+      }
+      return next;
+    });
+  }, [patientQueueStorageKey]);
+
+  const toggleEnterActionKind = useCallback(() => {
+    setEnterActionKind((previous) => {
+      const next = previous === "steer" ? "queue" : "steer";
+      try {
+        localStorage.setItem(enterActionStorageKey, next);
+      } catch {
+        // Keyboard preference is local-only; in-memory state still works.
+      }
+      return next;
+    });
+  }, [enterActionStorageKey]);
 
   const noteComposerEdit = useCallback((nextText: string) => {
     if (!nextText.trim()) {
@@ -385,10 +456,8 @@ export function MessageInput({
     ],
   );
 
-  // patient=true only for the Ctrl+Enter accelerator: it queues the message as
-  // deferred and prepends "when done, ". Button-driven queues pass false.
   const handleQueue = useCallback(
-    (patient = false) => {
+    () => {
       const queueHandler =
         onQueue ??
         (effectivePrimaryActionKind === "queue" ? onSend : undefined);
@@ -403,14 +472,13 @@ export function MessageInput({
 
       const hasContent = finalText.trim() || attachments.length > 0;
       if (hasContent && !disabled && queueHandler) {
-        const message = applyPatientQueuePrefix(finalText.trim(), patient);
         const metadata = buildSubmissionMetadata(
-          patient ? "patient" : "deferred",
+          patientQueueEnabled ? "patient" : "deferred",
         );
         controls.clearInput();
         resetCompositionMetadata();
         setInterimTranscript("");
-        queueHandler(message, metadata);
+        queueHandler(finalText.trim(), metadata);
         textareaRef.current?.focus();
       }
     },
@@ -420,6 +488,7 @@ export function MessageInput({
       onQueue,
       onSend,
       effectivePrimaryActionKind,
+      patientQueueEnabled,
       attachments.length,
       buildSubmissionMetadata,
       resetCompositionMetadata,
@@ -444,7 +513,7 @@ export function MessageInput({
 
   const submitPrimaryAction =
     effectivePrimaryActionKind === "queue"
-      ? () => handleQueue(false)
+      ? handleQueue
       : handleSubmit;
 
   const recallLastSubmission = useCallback(
@@ -581,10 +650,19 @@ export function MessageInput({
       // Skip Enter during IME composition (e.g. Chinese/Japanese/Korean input)
       if (e.nativeEvent.isComposing) return;
 
-      // Ctrl+Enter queues a "when done, " (patient) message when agent is running
-      if (onQueue && e.ctrlKey && !e.shiftKey) {
+      // Ctrl+Enter is the alternate regular send action while busy. Patient
+      // mode is controlled by the stopwatch toggle, not by this shortcut.
+      if (
+        (onQueue || effectivePrimaryActionKind === "queue") &&
+        e.ctrlKey &&
+        !e.shiftKey
+      ) {
         e.preventDefault();
-        handleQueue(true);
+        if (hasActiveDualActions && effectivePrimaryActionKind === "queue") {
+          handleSubmit();
+        } else {
+          handleQueue();
+        }
         return;
       }
 
@@ -804,7 +882,7 @@ export function MessageInput({
                 {effectivePrimaryActionKind === "steer"
                   ? "↗"
                   : effectivePrimaryActionKind === "queue"
-                    ? "⏱"
+                    ? "→"
                     : "↑"}
               </span>
             </button>
@@ -924,21 +1002,32 @@ export function MessageInput({
             thinkingProvider={thinkingProvider}
             thinkingModel={thinkingModel}
             heartbeatEnabled={heartbeatEnabled}
+            patientQueueTimeoutMinutes={patientQueueTimeoutMinutes}
             onToggleHeartbeat={onToggleHeartbeat}
             onConfigureHeartbeat={onConfigureHeartbeat}
             contextUsage={contextUsage}
             lastActivityAt={lastActivityAt}
             sessionLiveness={sessionLiveness}
             showPatientQueueMode={showPatientQueueMode}
+            patientQueueEnabled={patientQueueEnabled}
+            onTogglePatientQueue={togglePatientQueueEnabled}
+            enterActionKind={
+              effectivePrimaryActionKind === "steer" ||
+              effectivePrimaryActionKind === "queue"
+                ? effectivePrimaryActionKind
+                : undefined
+            }
+            canSwapEnterAction={hasActiveDualActions}
+            onSwapEnterAction={toggleEnterActionKind}
             isRunning={isRunning}
             isThinking={isThinking}
             onStop={onStop}
             onSend={
               effectivePrimaryActionKind === "queue"
-                ? () => handleQueue(false)
+                ? handleQueue
                 : handleSubmit
             }
-            onQueue={onQueue ? () => handleQueue(false) : undefined}
+            onQueue={onQueue ? handleQueue : undefined}
             primaryActionKind={effectivePrimaryActionKind}
             canSend={canSubmit}
             disabled={disabled}

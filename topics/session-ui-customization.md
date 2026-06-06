@@ -30,29 +30,36 @@ sessions.
 
 This is the resolution path for session controls that are useful to some users
 but too busy, speculative, or maintainer-contested for the default UI. Examples
-include composer delivery choices such as ASAP versus deferred/"when idle"
-send, secondary search/edit controls, and other advanced per-session actions.
+include composer delivery choices such as regular queue versus patient queue,
+secondary search/edit controls, and other advanced per-session actions.
 
-Patient queued messages graduated out of the experimental gate entirely: the
-former `Experimental features` setting in Advanced (its only entry was this
-feature) and the in-composer patient/ASAP toggle button were both removed.
-<!-- verified: useDeveloperMode.ts no longer defines experimentalFeatures -->
-The "when done, " prefix is now bound purely to invocation method rather than
-any mode or visibility toggle:
+Patient queue is a distinct per-item delivery intent, not a magic prompt prefix.
+The phrase `when done, ` is ordinary user-authored text. YA must not add it
+when queueing. The active composer model is:
 
-- **Plain Enter** while the agent is busy steers immediately (when steering is
-  supported) and is never prefixed — adding "when done" to an immediate steer
-  would contradict its meaning.
-- **Ctrl+Enter** queues a deferred message and prepends "when done, " (with
-  case-insensitive dedup so a message already opening with "when done" is left
-  alone). This is the only path that adds the prefix.
-- A **button-click queue** stays unprefixed (plain deferred).
+- **Plain Enter** follows the user's selected default action for the active
+  steering state, currently steer by default when the provider supports
+  steering.
+- **Ctrl+Enter** is the "other" regular action: if Enter steers, `Ctrl+Enter`
+  regular-queues; if Enter queues, `Ctrl+Enter` steers. Patient is not the
+  shortcut.
+- The **straight-arrow queue button** remains available for steering providers
+  while a turn is active, including mobile users who cannot rely on keybinds.
+- The **patient stopwatch toggle** is default-off and affects only future queue
+  submissions. Accepted queued items keep their own regular or patient intent.
+- Patient queued rows wait for the existing verified-quiet heartbeat timeout.
+  Regular queued rows may pass patient rows at delivery time, so UI should
+  visibly distinguish patient rows while preserving composition order in the
+  scroll-following queue tail.
+- The `?` shortcut help should mention right-click/long-press as the route to
+  change key behavior. The first narrow setting is swapping Enter and
+  `Ctrl+Enter`; broader keybind remapping can build from there.
 
 `onQueue` is only supplied while the agent is running, so a "done" agent never
 reaches the queue path. The queue control's *visibility* is the
-`queueControls` appearance toggle above; its tooltip surfaces the Ctrl+Enter
-"when done" accelerator even though the visible button itself does not prefix.
-See [`message-control-steer-queue-btw-later-interrupt.md`](message-control-steer-queue-btw-later-interrupt.md).
+`queueControls` appearance toggle above; tooltips must state the regular queue
+and patient queue distinction. See
+[`message-control-steer-queue-btw-later-interrupt.md`](message-control-steer-queue-btw-later-interrupt.md).
 
 ## Remaining work
 

@@ -55,18 +55,12 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         }
       }}
     >
-      <button
-        type="button"
-        className="timeline-dot-btn thinking-dot-btn"
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onToggle();
-        }}
+      <summary
+        className="collapsible__summary"
         aria-label={isExpanded ? "Collapse thinking" : "Expand thinking"}
         title={isExpanded ? "Collapse thinking" : "Expand thinking"}
-      />
-      <summary className="collapsible__summary">
+      >
+        <span className="timeline-dot-btn thinking-dot-btn" aria-hidden />
         <span>
           {isStreaming ? "Thinking..." : "Thinking"}
           {durationLabel && (

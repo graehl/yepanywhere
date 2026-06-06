@@ -1465,6 +1465,9 @@ export class Supervisor {
 
     try {
       for (const process of this.processes.values()) {
+        if (this.queuePatientDeferredMessagesForProcess(process, now, log)) {
+          continue;
+        }
         await this.queueHeartbeatTurnForProcess(process, now, log);
       }
 
@@ -1481,7 +1484,68 @@ export class Supervisor {
   }
 
   private shouldRetainIdleProcess(sessionId: string): boolean {
-    return this.getHeartbeatTurnSettings?.(sessionId)?.enabled === true;
+    const process = this.getProcessForSession(sessionId);
+    return (
+      process?.hasPatientDeferredMessages() === true ||
+      this.getHeartbeatTurnSettings?.(sessionId)?.enabled === true
+    );
+  }
+
+  private queuePatientDeferredMessagesForProcess(
+    process: Process,
+    now: number,
+    log: ReturnType<typeof getLogger>,
+  ): boolean {
+    if (
+      !process.hasPatientDeferredMessages() ||
+      process.isTerminated ||
+      process.state.type !== "idle" ||
+      process.queueDepth > 0 ||
+      process.isProcessAlive === false
+    ) {
+      return false;
+    }
+
+    const liveness = process.getLivenessSnapshot(new Date(now));
+    if (liveness.derivedStatus !== "verified-idle") {
+      return false;
+    }
+
+    const settings = this.getHeartbeatTurnSettings?.(process.sessionId);
+    const afterMinutes = Number.isFinite(settings?.afterMinutes)
+      ? Math.max(1, Math.min(settings?.afterMinutes ?? 0, 1440))
+      : DEFAULT_HEARTBEAT_TURNS_AFTER_MINUTES;
+    const idleThresholdMs = afterMinutes * 60 * 1000;
+    const fallbackMs = process.state.since.getTime();
+    const heartbeatResetAtMs = getHeartbeatResetAtMs(liveness, fallbackMs);
+    if (!Number.isFinite(heartbeatResetAtMs)) {
+      return false;
+    }
+
+    const idleMs = Math.max(0, now - heartbeatResetAtMs);
+    if (idleMs < idleThresholdMs) {
+      return false;
+    }
+
+    const promoted = process.promoteEligiblePatientDeferredMessages();
+    if (!promoted) {
+      return false;
+    }
+
+    log.info(
+      {
+        event: "patient_deferred_messages_promoted",
+        sessionId: process.sessionId,
+        processId: process.id,
+        projectId: process.projectId,
+        idleMs,
+        heartbeatResetAt: new Date(heartbeatResetAtMs).toISOString(),
+        afterMinutes,
+        livenessStatus: liveness.derivedStatus,
+      },
+      `Promoted patient deferred messages for session: ${process.sessionId}`,
+    );
+    return true;
   }
 
   private async queueHeartbeatTurnForProcess(

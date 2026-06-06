@@ -2147,14 +2147,14 @@ a.sidebar-nav-item {
 
 .user-turn-search-panel {
   position: absolute;
-  left: 0;
-  bottom: calc(100% + 8px);
+  right: 0;
+  bottom: 0;
   z-index: 35;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   width: max-content;
-  max-width: min(860px, 100%);
+  max-width: min(860px, calc(100% - 12px));
   padding: 6px 8px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -2162,6 +2162,22 @@ a.sidebar-nav-item {
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+}
+
+.user-turn-search-panel::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: -16px;
+  height: 16px;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--bg-primary) 88%, transparent),
+    transparent
+  );
+  pointer-events: none;
 }
 
 .user-turn-search-main {
@@ -2243,10 +2259,9 @@ a.sidebar-nav-item {
 
 @media (max-width: 600px) {
   .user-turn-search-panel {
-    left: 0;
-    right: 0;
-    bottom: calc(100% + 6px);
-    width: auto;
+    right: 6px;
+    bottom: 0;
+    width: calc(100% - 12px);
     max-width: none;
     flex-wrap: wrap;
   }
@@ -3136,8 +3151,65 @@ a.sidebar-nav-item {
   padding-left: 24px;
 }
 
+.thinking-block .collapsible__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.thinking-block .collapsible__summary::-webkit-details-marker {
+  display: none;
+}
+
+.thinking-dot-btn {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--thinking-color);
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--thinking-color) 14%, transparent);
+  flex: 0 0 auto;
+}
+
+.thinking-block .collapsible__summary:hover .thinking-dot-btn,
+.thinking-block .collapsible__summary:focus-visible .thinking-dot-btn {
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--thinking-color) 24%, transparent);
+}
+
 .message-render-row {
   position: relative;
+}
+
+.queued-context-return {
+  position: sticky;
+  top: var(--space-2);
+  z-index: 12;
+  width: 30px;
+  height: 30px;
+  margin: 0 0 -30px -38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--accent-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 800;
+  box-shadow: var(--shadow-md);
+}
+
+.queued-context-return:hover,
+.queued-context-return:focus-visible {
+  border-color: var(--focus-border);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  outline: none;
 }
 
 .message-render-content {
@@ -3565,6 +3637,10 @@ a.sidebar-nav-item {
   font-size: var(--font-size-xs);
 }
 
+.session-shortcuts-row-muted {
+  color: var(--text-dimmed);
+}
+
 .session-shortcuts-keys {
   white-space: nowrap;
 }
@@ -3584,6 +3660,32 @@ a.sidebar-nav-item {
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1;
+}
+
+.session-shortcuts-settings {
+  margin: var(--space-1) 0;
+  padding: var(--space-1) 0 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.session-shortcuts-action {
+  width: 100%;
+  margin-top: var(--space-1);
+  padding: 5px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.session-shortcuts-action:hover,
+.session-shortcuts-action:focus-visible {
+  border-color: var(--focus-border);
+  background: var(--bg-hover);
+  outline: none;
 }
 
 @media (max-width: 430px) {
@@ -3930,6 +4032,47 @@ a.sidebar-nav-item {
   color: white;
 }
 
+.send-button.patient-queue-toggle {
+  width: auto;
+  min-width: var(--composer-primary-control-size);
+  gap: 3px;
+  padding: 0 7px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.send-button.patient-queue-toggle.is-active {
+  border-color: color-mix(in srgb, var(--primary-color) 70%, transparent);
+  background: color-mix(in srgb, var(--accent-color) 24%, var(--bg-tertiary));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent-color) 45%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--accent-color) 14%, transparent);
+  color: var(--text-primary);
+}
+
+.patient-queue-time {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.patient-queue-mode-label {
+  max-width: 52px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+@media (max-width: 600px) {
+  .patient-queue-mode-label {
+    max-width: 42px;
+  }
+}
+
 .send-button-with-help::after {
   content: attr(data-tooltip);
   position: absolute;
@@ -4034,11 +4177,23 @@ a.sidebar-nav-item {
   margin-bottom: var(--space-3);
 }
 
+.deferred-message.patient-deferred-message .message-render-content {
+  margin-left: clamp(44px, 13vw, 180px);
+  max-width: calc(100% - clamp(44px, 13vw, 180px));
+}
+
 .deferred-message-bubble {
   opacity: 0.7;
   border-left: 3px solid var(--attention-color);
   padding-left: var(--space-2);
   white-space: pre-wrap;
+}
+
+.patient-deferred-message .deferred-message-bubble {
+  border-left-color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 10%, var(--bg-user-message));
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--accent-color) 18%, transparent);
 }
 
 .deferred-message-edit {
@@ -4078,6 +4233,11 @@ a.sidebar-nav-item {
   font-size: var(--font-size-xs);
   color: var(--attention-color);
   font-style: italic;
+}
+
+.patient-deferred-message .deferred-message-status {
+  color: var(--accent-color);
+  font-weight: 700;
 }
 
 .deferred-message-attachments {
@@ -4131,6 +4291,19 @@ a.sidebar-nav-item {
   color: var(--accent-color);
 }
 
+.deferred-message-action-context {
+  color: var(--accent-color);
+}
+
+.deferred-message-action-context:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.deferred-message-context-icon {
+  line-height: 1;
+}
+
 .deferred-message-steer-icon {
   line-height: 1;
 }
@@ -4141,6 +4314,11 @@ a.sidebar-nav-item {
 }
 
 @media (hover: none), (pointer: coarse), (max-width: 600px) {
+  .deferred-message.patient-deferred-message .message-render-content {
+    margin-left: clamp(28px, 10vw, 64px);
+    max-width: calc(100% - clamp(28px, 10vw, 64px));
+  }
+
   .deferred-message-actions {
     flex-basis: 100%;
     margin-top: var(--space-1);

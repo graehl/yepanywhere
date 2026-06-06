@@ -4092,6 +4092,7 @@ function SessionPageContent({
                 thinkingProvider={effectiveProvider}
                 thinkingModel={liveBadgeModel}
                 heartbeatEnabled={heartbeatTurnsEnabled}
+                patientQueueTimeoutMinutes={heartbeatTurnsAfterMinutes}
                 onToggleHeartbeat={handleToggleHeartbeat}
                 onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                 promptSuggestion={

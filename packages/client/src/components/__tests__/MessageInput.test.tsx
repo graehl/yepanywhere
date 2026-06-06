@@ -152,8 +152,11 @@ vi.mock("../../i18n", () => ({
         {
           commonOr: "or",
           toolbarKeyboardShortcutsAria: "Session keyboard shortcuts",
+          toolbarPatientQueueEnable: "Enable patient queue",
+          toolbarPatientQueueDisable: "Disable patient queue",
+          toolbarPatientQueueConfiguredTimeout: "the configured timeout",
           toolbarPatientQueueTooltip:
-            'Queue (sent when the turn ends). Ctrl+Enter prepends "when done,"',
+            `Patient queue waits for ${params?.timeout ?? ""} of verified quiet before delivery. Regular queued messages may pass patient messages.`,
           toolbarQueuePrimaryActionLabel: "Queue from primary action",
           toolbarLivenessVerifiedProgress: "Verified progress",
           toolbarLivenessVerifiedIdle: "Verified idle",
@@ -190,8 +193,12 @@ vi.mock("../../i18n", () => ({
           toolbarShortcutFullSessionReverseSearch:
             "Full-session reverse search",
           toolbarShortcutSteerCurrentTurn: "Steer current turn",
+          toolbarShortcutQueueCurrentTurn: "Queue message",
           toolbarShortcutSend: "Send",
           toolbarShortcutNewLine: "New line",
+          toolbarShortcutRightClickLongPress: "Right-click / long-press ?",
+          toolbarShortcutChangeKeys: "Change keys",
+          toolbarShortcutSwapEnterCtrlEnter: "Swap Enter and Ctrl+Enter",
           toolbarShortcutStartBtwAside: "Start /btw aside",
           toolbarShortcutStopAgentCancelOverlay:
             "Stop agent / cancel overlay",
@@ -338,7 +345,12 @@ function renderToolbarView(
         isearchScope: null,
         setOpen:
           vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+        settingsOpen: false,
+        setSettingsOpen:
+          vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
         hasDualActions: false,
+        enterActionKind: "send",
+        canSwapEnterAction: false,
         queueShortcutLabel: "Queue while agent runs",
       }}
       actionsControl={{}}
@@ -987,9 +999,8 @@ describe("MessageInput", () => {
     );
 
     expect(
-      screen.queryByRole("button", { name: "Queue when done" }),
-    ).toBeNull();
-    expect(screen.queryByRole("button", { name: "Queue ASAP" })).toBeNull();
+      screen.getByRole("button", { name: "Enable patient queue" }),
+    ).toBeTruthy();
 
     fireEvent.change(textarea, { target: { value: "follow up later" } });
     fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
@@ -1015,7 +1026,7 @@ describe("MessageInput", () => {
     expectSubmission(onQueue, "when done, already manual", "deferred");
   });
 
-  it("adds the when-done prefix only via the Ctrl+Enter accelerator", () => {
+  it("Ctrl+Enter queues without adding patient wording by default", () => {
     const onQueue = vi.fn();
     const textarea = renderMessageInput(
       vi.fn(() => true),
@@ -1025,14 +1036,10 @@ describe("MessageInput", () => {
       },
     );
 
-    expect(
-      screen.queryByRole("button", { name: "Queue when done" }),
-    ).toBeNull();
-
     fireEvent.change(textarea, { target: { value: "follow up later" } });
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
 
-    expectSubmission(onQueue, "when done, follow up later", "patient");
+    expectSubmission(onQueue, "follow up later", "deferred");
   });
 
   it("leaves a button-click queue unprefixed and deferred", () => {
@@ -1051,7 +1058,7 @@ describe("MessageInput", () => {
     expectSubmission(onQueue, "follow up later", "deferred");
   });
 
-  it("does not duplicate a manually typed when-done prefix on Ctrl+Enter", () => {
+  it("uses patient intent without rewriting text when the stopwatch is enabled", () => {
     const onQueue = vi.fn();
     const textarea = renderMessageInput(
       vi.fn(() => true),
@@ -1061,15 +1068,22 @@ describe("MessageInput", () => {
       },
     );
 
-    fireEvent.change(textarea, {
-      target: { value: "when done, when done attempt" },
-    });
-    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    expect(screen.queryByText("Patient")).toBeNull();
 
-    expectSubmission(onQueue, "when done, when done attempt", "patient");
+    fireEvent.click(screen.getByRole("button", { name: "Enable patient queue" }));
+    expect(
+      screen
+        .getByRole("button", { name: "Disable patient queue" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.getByText("Patient")).toBeTruthy();
+    fireEvent.change(textarea, { target: { value: "follow up later" } });
+    fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
+
+    expectSubmission(onQueue, "follow up later", "patient");
   });
 
-  it("does not prefix a Ctrl+Enter message already opening with when done (any case)", () => {
+  it("keeps manually typed when-done text unchanged for patient queue", () => {
     const onQueue = vi.fn();
     const textarea = renderMessageInput(
       vi.fn(() => true),
@@ -1079,6 +1093,9 @@ describe("MessageInput", () => {
       },
     );
 
+    fireEvent.click(
+      screen.getByRole("button", { name: "Enable patient queue" }),
+    );
     fireEvent.change(textarea, {
       target: { value: "When done please run tests" },
     });
@@ -1134,10 +1151,6 @@ describe("MessageInput", () => {
       { onQueue },
     );
 
-    expect(
-      screen.queryByRole("button", { name: "Queue when done" }),
-    ).toBeNull();
-
     fireEvent.change(textarea, { target: { value: "plain queue" } });
     fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
 
@@ -1176,7 +1189,7 @@ describe("MessageInput", () => {
     );
 
     fireEvent.change(textarea, { target: { value: "queue from primary" } });
-    fireEvent.click(screen.getByLabelText("Queue from primary action"));
+    fireEvent.click(screen.getByLabelText("toolbarQueueLabel"));
 
     expect(onSend).not.toHaveBeenCalled();
     expectSubmission(onQueue, "queue from primary", "deferred");

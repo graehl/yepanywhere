@@ -6,6 +6,7 @@ import type { ContextUsage } from "../types";
 import {
   type LivenessDisplay,
   MessageInputToolbarView,
+  type MessageInputToolbarViewProps,
 } from "./MessageInputToolbar";
 
 const PREVIEW_CONTEXT_USAGE: ContextUsage = {
@@ -120,8 +121,12 @@ export function SessionToolbarPreview() {
             open: shortcutsOpen,
             isearchScope: null,
             setOpen: setShortcutsOpen,
+            settingsOpen: false,
+            setSettingsOpen: noop as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
             hasDualActions: true,
-            queueShortcutLabel: t("toolbarQueueWhenDone"),
+            enterActionKind: "steer",
+            canSwapEnterAction: false,
+            queueShortcutLabel: t("toolbarShortcutQueueCurrentTurn"),
           }}
           actionsControl={{
             contextUsage: PREVIEW_CONTEXT_USAGE,
@@ -143,6 +148,11 @@ export function SessionToolbarPreview() {
                 hasDualActions: true,
                 queueTooltip: t("toolbarQueueTooltip"),
                 showPatientQueueMode: false,
+                patientQueueEnabled: false,
+                patientQueueTimeoutLabel: null,
+                patientQueueTooltip: t("toolbarPatientQueueTooltip", {
+                  timeout: t("toolbarPatientQueueConfiguredTimeout"),
+                }),
               },
             },
           }}

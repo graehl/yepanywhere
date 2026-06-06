@@ -5,17 +5,14 @@
  * server by username. After pairing, SRP authentication proceeds through the relay.
  */
 
-import { DEFAULT_RELAY_URL, normalizeRelayUrl } from "@yep-anywhere/shared";
+import { normalizeRelayUrl } from "@yep-anywhere/shared";
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useI18n } from "../i18n";
-import {
-  createRelayHost,
-  getHostByRelayUsername,
-  saveHost,
-} from "../lib/hostStorage";
+import { getDefaultRelayUrl } from "../lib/defaultRelayUrl";
+import { upsertRelayHost } from "../lib/hostStorage";
 
 /**
  * Parse credentials from URL hash for auto-login via QR code.
@@ -59,6 +56,7 @@ export function RelayLoginPage() {
   const { connectViaRelay, isAutoResuming, setCurrentHostId } =
     useRemoteConnection();
   const [searchParams] = useSearchParams();
+  const defaultRelayUrl = getDefaultRelayUrl();
 
   // Form state - relay username is also used as SRP identity
   // Pre-fill from query parameters: ?u=username&r=relay-url
@@ -87,7 +85,7 @@ export function RelayLoginPage() {
     const { username, password, relayUrl } = hashCreds;
     let effectiveRelayUrl: string;
     try {
-      effectiveRelayUrl = normalizeRelayUrl(relayUrl || DEFAULT_RELAY_URL);
+      effectiveRelayUrl = normalizeRelayUrl(relayUrl || defaultRelayUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStatus("error");
@@ -99,16 +97,13 @@ export function RelayLoginPage() {
       return;
     }
 
-    // Get or create host BEFORE connecting so handleSessionEstablished can sync session
-    let host = getHostByRelayUsername(username);
-    if (!host) {
-      host = createRelayHost({
-        relayUrl: effectiveRelayUrl,
-        relayUsername: username,
-        srpUsername: username,
-      });
-      saveHost(host);
-    }
+    // Save the current relay URL before connecting so session callbacks and
+    // later /:relayUsername routes do not reuse a stale relay endpoint.
+    const host = upsertRelayHost({
+      relayUrl: effectiveRelayUrl,
+      relayUsername: username,
+      srpUsername: username,
+    });
     // Set currentHostId before connect so the session callback can use it
     setCurrentHostId(host.id);
 
@@ -129,7 +124,7 @@ export function RelayLoginPage() {
           err instanceof Error
             ? err.message
             : t("relayLoginErrorConnectionFailed");
-        setError(formatRelayError(message, t));
+        setError(formatRelayError(message, effectiveRelayUrl, t));
         setStatus("error");
         // Pre-fill form with credentials from hash so user can retry
         setRelayUsername(username);
@@ -138,7 +133,7 @@ export function RelayLoginPage() {
           setShowAdvanced(true);
         }
       });
-  }, [connectViaRelay, isAutoResuming, setCurrentHostId, t]);
+  }, [connectViaRelay, defaultRelayUrl, isAutoResuming, setCurrentHostId, t]);
 
   // If auto-resume is in progress, show a loading screen
   if (isAutoResuming) {
@@ -174,24 +169,21 @@ export function RelayLoginPage() {
 
     let relayUrl: string;
     try {
-      relayUrl = normalizeRelayUrl(customRelayUrl.trim() || DEFAULT_RELAY_URL);
+      relayUrl = normalizeRelayUrl(customRelayUrl.trim() || defaultRelayUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return;
     }
     const username = relayUsername.trim().toLowerCase();
 
-    // Get or create host BEFORE connecting so handleSessionEstablished can sync session
+    // Save the current relay URL before connecting so session callbacks and
+    // later /:relayUsername routes do not reuse a stale relay endpoint.
     if (rememberMe) {
-      let host = getHostByRelayUsername(username);
-      if (!host) {
-        host = createRelayHost({
-          relayUrl,
-          relayUsername: username,
-          srpUsername: username,
-        });
-        saveHost(host);
-      }
+      const host = upsertRelayHost({
+        relayUrl,
+        relayUsername: username,
+        srpUsername: username,
+      });
       // Set currentHostId before connect so the session callback can use it
       setCurrentHostId(host.id);
     }
@@ -212,7 +204,7 @@ export function RelayLoginPage() {
         err instanceof Error
           ? err.message
           : t("relayLoginErrorConnectionFailed");
-      setError(formatRelayError(message, t));
+      setError(formatRelayError(message, relayUrl, t));
       setStatus("error");
     }
   };
@@ -301,7 +293,7 @@ export function RelayLoginPage() {
                 type="text"
                 value={customRelayUrl}
                 onChange={(e) => setCustomRelayUrl(e.target.value)}
-                placeholder={DEFAULT_RELAY_URL}
+                placeholder={defaultRelayUrl}
                 disabled={isConnecting}
                 data-testid="custom-relay-url-input"
               />
@@ -356,9 +348,13 @@ function getStatusMessage(
   }
 }
 
-function formatRelayError(message: string, t: (key: never) => string): string {
+function formatRelayError(
+  message: string,
+  relayUrl: string,
+  t: (key: never, values?: Record<string, string>) => string,
+): string {
   if (message.includes("server_offline")) {
-    return t("relayLoginErrorServerOffline" as never);
+    return t("relayLoginErrorServerOfflineWithRelay" as never, { relayUrl });
   }
   if (message.includes("unknown_username")) {
     return t("relayLoginErrorUnknownUsername" as never);

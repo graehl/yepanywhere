@@ -787,6 +787,7 @@
   "relayLoginErrorUsernameRequired": "Username is required",
   "relayLoginErrorPasswordRequired": "Password is required",
   "relayLoginErrorServerOffline": "Server is not connected to the relay. Make sure your server is running and has relay enabled.",
+  "relayLoginErrorServerOfflineWithRelay": "Server is not connected to {relayUrl}. Make sure your server is running and using that relay.",
   "relayLoginErrorUnknownUsername": "No server found with that username. Check the username and try again.",
   "relayLoginErrorInvalidCredentials": "Invalid username or password. Check your credentials and try again.",
   "hostPickerSavedHosts": "Saved Hosts",

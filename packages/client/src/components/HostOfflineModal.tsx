@@ -94,6 +94,12 @@ export function HostOfflineModal({
           </p>
         )}
 
+        {error.serverUrl && (
+          <p className="host-offline-detail">
+            <strong>{t("relayLoginCustomRelayUrl")}:</strong> {error.serverUrl}
+          </p>
+        )}
+
         <p className="host-offline-hint">
           {error.reason === "resume_incompatible"
             ? t("hostOfflineHintResumeIncompatible")

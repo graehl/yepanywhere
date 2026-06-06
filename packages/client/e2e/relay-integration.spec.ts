@@ -276,6 +276,51 @@ test.describe("Full Relay Integration", () => {
     expect(savedHosts.hosts[0]?.session).toBeUndefined();
   });
 
+  test("fresh relay login updates stale saved host relay URL", async ({
+    page,
+    remoteClientURL,
+    relayWsURL,
+  }) => {
+    await page.addInitScript((relayUsername: string) => {
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem(
+        "yep-anywhere-saved-hosts",
+        JSON.stringify({
+          version: 1,
+          hosts: [
+            {
+              id: "stale-relay-host",
+              displayName: relayUsername,
+              mode: "relay",
+              relayUrl: "wss://relay.yepanywhere.com/ws",
+              relayUsername,
+              srpUsername: relayUsername,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        }),
+      );
+    }, TEST_RELAY_USERNAME);
+
+    const params = new URLSearchParams({
+      u: TEST_RELAY_USERNAME,
+      r: relayWsURL,
+    });
+    await page.goto(`${remoteClientURL}/login/relay?${params.toString()}`);
+
+    await page.fill('[data-testid="srp-password-input"]', TEST_SRP_PASSWORD);
+    await page.click('[data-testid="login-button"]');
+
+    await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15000 });
+
+    const savedHosts = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("yep-anywhere-saved-hosts") ?? "{}"),
+    );
+    expect(savedHosts.hosts[0]?.relayUrl).toBe(relayWsURL);
+    expect(savedHosts.hosts[0]?.session).toBeDefined();
+  });
+
   test("mock project visible through relay connection", async ({
     page,
     remoteClientURL,

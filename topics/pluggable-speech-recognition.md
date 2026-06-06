@@ -87,6 +87,10 @@ Backends should implement a common `SpeechBackend` contract:
   Clicking stop commits the currently visible preview before ignoring
   stop-flush partials, and the final event carries the retained transcription
   id.
+  With Smart Turn enabled, a very short `speech_final` fragment that already
+  appears inside a fuller visible preview is treated as a recognizer regression:
+  the client commits the fuller preview and still uses the Smart Turn final
+  event to stop and send.
 - Backends may advertise `smartTurn: true` when their streaming API supports
   ML end-of-turn detection. Grok STT exposes this through the xAI
   `smart_turn` threshold and `smart_turn_timeout` parameters. The client shows

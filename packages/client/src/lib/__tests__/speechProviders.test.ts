@@ -39,9 +39,9 @@ describe("speech provider method selection", () => {
   });
 
   it("does not require client-side backend hardcodes to build selector options", () => {
-    expect(getSpeechMethods(["ya-custom-stt"]).map((method) => method.id)).toEqual(
-      ["ya-custom-stt", DEFAULT_SPEECH_METHOD],
-    );
+    expect(
+      getSpeechMethods(["ya-custom-stt"]).map((method) => method.id),
+    ).toEqual(["ya-custom-stt", DEFAULT_SPEECH_METHOD]);
   });
 
   it("uses explicit labels for known STT backends", () => {
@@ -53,7 +53,9 @@ describe("speech provider method selection", () => {
   });
 
   it("prefers Grok over Deepgram when no explicit user method is stored", () => {
-    expect(getPreferredSpeechMethod(["ya-deepgram", "ya-grok"])).toBe("ya-grok");
+    expect(getPreferredSpeechMethod(["ya-deepgram", "ya-grok"])).toBe(
+      "ya-grok",
+    );
     expect(
       resolveSpeechMethod(
         DEFAULT_SPEECH_METHOD,
@@ -64,9 +66,9 @@ describe("speech provider method selection", () => {
   });
 
   it("keeps explicit choices only while they are still available", () => {
-    expect(resolveSpeechMethod("ya-deepgram", ["ya-grok", "ya-deepgram"], true)).toBe(
-      "ya-deepgram",
-    );
+    expect(
+      resolveSpeechMethod("ya-deepgram", ["ya-grok", "ya-deepgram"], true),
+    ).toBe("ya-deepgram");
     expect(resolveSpeechMethod(DEFAULT_SPEECH_METHOD, ["ya-grok"], true)).toBe(
       DEFAULT_SPEECH_METHOD,
     );
@@ -82,10 +84,7 @@ describe("YA server speech provider", () => {
       configurable: true,
       value: { getUserMedia: vi.fn() },
     });
-    vi.stubGlobal(
-      "AudioContext",
-      class FakeAudioContext {},
-    );
+    vi.stubGlobal("AudioContext", class FakeAudioContext {});
     vi.stubGlobal("WebSocket", class FakeWebSocket {});
     vi.stubGlobal("MediaRecorder", undefined);
 
@@ -280,6 +279,123 @@ describe("YA server speech provider", () => {
       transcriptionId: "transcription-1",
     });
     expect(onEnd).toHaveBeenCalledTimes(1);
+
+    provider.dispose();
+  });
+
+  it("uses the fuller preview when Smart Turn speech-final regresses", async () => {
+    const stopTrack = vi.fn();
+    const fakeStream = {
+      getTracks: () => [{ stop: stopTrack }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn(async () => fakeStream);
+    const onResult = vi.fn();
+    const onInterimResult = vi.fn();
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    class FakeWebSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSED = 3;
+      static readonly instances: FakeWebSocket[] = [];
+
+      binaryType: BinaryType = "blob";
+      readyState = FakeWebSocket.CONNECTING;
+      onopen: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      onclose: ((event: CloseEvent) => void) | null = null;
+      send = vi.fn();
+
+      constructor(readonly url: string) {
+        FakeWebSocket.instances.push(this);
+      }
+
+      open() {
+        this.readyState = FakeWebSocket.OPEN;
+        this.onopen?.(new Event("open"));
+      }
+
+      receive(message: unknown) {
+        this.onmessage?.(
+          new MessageEvent("message", { data: JSON.stringify(message) }),
+        );
+      }
+
+      close() {
+        this.readyState = FakeWebSocket.CLOSED;
+        this.onclose?.(new CloseEvent("close"));
+      }
+    }
+
+    class FakeAudioContext {
+      readonly state = "running";
+      readonly sampleRate = 48_000;
+      readonly destination = {};
+      close = vi.fn(async () => undefined);
+      createMediaStreamSource() {
+        return { connect: vi.fn(), disconnect: vi.fn() };
+      }
+      createScriptProcessor() {
+        return { connect: vi.fn(), disconnect: vi.fn(), onaudioprocess: null };
+      }
+      createGain() {
+        return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+      }
+    }
+
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+
+    const provider = new YaServerProvider("ya-grok", "", {
+      serverStreaming: true,
+      smartTurn: { enabled: true, threshold: 0.9, timeoutMs: 3000 },
+      onResult,
+      onInterimResult,
+    });
+    provider.start();
+
+    await Promise.resolve();
+    const ws = FakeWebSocket.instances[0]!;
+    ws.open();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    ws.receive({
+      type: "interim",
+      text: "testing speech to text",
+      isFinal: false,
+    });
+    expect(onInterimResult).toHaveBeenLastCalledWith("testing speech to text");
+
+    ws.receive({
+      type: "interim",
+      text: "To",
+      isFinal: true,
+      speechFinal: true,
+    });
+
+    expect(onResult).toHaveBeenLastCalledWith(
+      "testing speech to text",
+      undefined,
+    );
+    expect(JSON.parse(ws.send.mock.calls.at(-1)?.[0] as string)).toEqual({
+      type: "stop",
+    });
+
+    ws.receive({
+      type: "final",
+      text: "",
+      transcriptionId: "transcription-regressed-final",
+    });
+    expect(onResult).toHaveBeenLastCalledWith("", {
+      transcriptionId: "transcription-regressed-final",
+      smartTurnCommand: "send",
+    });
 
     provider.dispose();
   });

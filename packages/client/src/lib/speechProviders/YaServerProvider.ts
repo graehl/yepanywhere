@@ -75,6 +75,45 @@ interface SmartTurnDecision {
   transcript: string;
 }
 
+function normalizeTranscriptForComparison(transcript: string): string {
+  return transcript.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function shouldPreferStreamingPreviewForSpeechFinal(
+  speechFinalTranscript: string,
+  previewTranscript: string,
+): boolean {
+  const speechFinal = normalizeTranscriptForComparison(speechFinalTranscript);
+  const preview = normalizeTranscriptForComparison(previewTranscript);
+  if (!speechFinal || !preview || speechFinal === preview) return false;
+
+  const speechFinalWords = speechFinal.split(" ");
+  const previewWords = new Set(preview.split(" "));
+  const speechFinalLooksFragment =
+    speechFinal.length <= 12 || speechFinalWords.length <= 2;
+  const previewLooksFuller =
+    preview.length >= speechFinal.length + 8 && previewWords.size >= 2;
+  const finalTextAppearsInPreview =
+    preview.includes(speechFinal) ||
+    speechFinalWords.every((word) => previewWords.has(word));
+
+  return (
+    speechFinalLooksFragment && previewLooksFuller && finalTextAppearsInPreview
+  );
+}
+
+function chooseSmartTurnTranscript(
+  speechFinalTranscript: string,
+  previewTranscript: string,
+): string {
+  return shouldPreferStreamingPreviewForSpeechFinal(
+    speechFinalTranscript,
+    previewTranscript,
+  )
+    ? previewTranscript.trim()
+    : speechFinalTranscript.trim();
+}
+
 function getAudioContextConstructor(): typeof AudioContext | null {
   if (typeof window === "undefined") return null;
   return (
@@ -166,7 +205,10 @@ function decideSmartTurn(
   return { command: "send", transcript: trimmed };
 }
 
-function floatToInt16Pcm(samples: Float32Array, sampleRate: number): ArrayBuffer {
+function floatToInt16Pcm(
+  samples: Float32Array,
+  sampleRate: number,
+): ArrayBuffer {
   const ratio = sampleRate / STREAM_SAMPLE_RATE;
   const outputLength = Math.max(1, Math.floor(samples.length / ratio));
   const buffer = new ArrayBuffer(outputLength * 2);
@@ -181,11 +223,7 @@ function floatToInt16Pcm(samples: Float32Array, sampleRate: number): ArrayBuffer
       sum += samples[j] ?? 0;
     }
     const sample = Math.max(-1, Math.min(1, sum / count));
-    view.setInt16(
-      i * 2,
-      sample < 0 ? sample * 0x8000 : sample * 0x7fff,
-      true,
-    );
+    view.setInt16(i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
   }
 
   return buffer;
@@ -361,7 +399,8 @@ export class YaServerProvider implements SpeechProvider {
 
     await new Promise<void>((resolve, reject) => {
       ws.onopen = () => resolve();
-      ws.onerror = () => reject(new Error("Speech streaming connection failed"));
+      ws.onerror = () =>
+        reject(new Error("Speech streaming connection failed"));
     });
     if (this.disposed || token !== this.startToken) {
       ws.close();
@@ -538,7 +577,13 @@ export class YaServerProvider implements SpeechProvider {
     transcript: string,
     words: SpeechWordTimestamp[] | undefined,
   ): void {
-    const decision = decideSmartTurn(transcript, words);
+    const decision = decideSmartTurn(
+      chooseSmartTurnTranscript(
+        transcript,
+        this.streamingCurrentPreviewTranscript,
+      ),
+      words,
+    );
     this.pendingSmartTurnCommand = decision.command;
 
     if (decision.command !== "cancel") {
@@ -591,7 +636,9 @@ export class YaServerProvider implements SpeechProvider {
   }
 
   private commitStreamingPreview(): boolean {
-    return this.commitStreamingTranscript(this.streamingCurrentPreviewTranscript);
+    return this.commitStreamingTranscript(
+      this.streamingCurrentPreviewTranscript,
+    );
   }
 
   private clearStreamingPreview(): void {

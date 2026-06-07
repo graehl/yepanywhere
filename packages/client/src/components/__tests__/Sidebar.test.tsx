@@ -230,14 +230,20 @@ describe("Sidebar collapsed toggle", () => {
     );
   });
 
-  it("keeps the relay Switch Host item icon-only when collapsed", () => {
+  it("renders the relay Switch Host with the standard nav-item representation", () => {
     mockRemoteConnectionState.value = { disconnect: vi.fn() };
 
     renderSidebar();
 
+    // Switch Host must share the exact representation of standard nav items
+    // (a `.sidebar-nav-item` with a `.sidebar-nav-text` label) so it inherits
+    // the shared `.sidebar-collapsed .sidebar-nav-text { display: none }` rule
+    // in the mini rail, rather than relying on a bespoke per-item guard. The
+    // visual icon-only outcome is a CSS concern, verified at the browser level.
     const switchHost = screen.getByRole("button", { name: "Switch Host" });
-    expect(switchHost.querySelector(".sidebar-nav-text")).toBeNull();
-    expect(switchHost.textContent).toBe("");
+    expect(switchHost.classList.contains("sidebar-nav-item")).toBe(true);
+    const label = switchHost.querySelector(".sidebar-nav-text");
+    expect(label?.textContent).toBe("Switch Host");
   });
 
   it("renders loaded sidebar sessions without a show-more gate", () => {
@@ -311,9 +317,8 @@ describe("Sidebar collapsed toggle", () => {
       </MemoryRouter>,
     );
 
-    expect(
-      screen.getByRole("link", { name: /New Session Draft/i }),
-    ).toBeDefined();
+    expect(screen.getByRole("link", { name: /New Session/i })).toBeDefined();
+    expect(screen.getByText("Draft")).toBeDefined();
   });
 
   it("collapses and expands the last-24-hours bucket", () => {

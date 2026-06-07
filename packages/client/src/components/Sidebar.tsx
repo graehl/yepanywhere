@@ -19,6 +19,7 @@ import { AgentsNavItem } from "./AgentsNavItem";
 import { SessionListItem } from "./SessionListItem";
 import {
   SidebarIcons,
+  SidebarNavButton,
   SidebarNavItem,
   SidebarNavSection,
 } from "./SidebarNavItem";
@@ -695,16 +696,13 @@ export function Sidebar({
               onClick={onNavigate}
               basePath={basePath}
             />
-            {/* Switch Host - show whenever we have a remote connection */}
+            {/* Relay-connected Switch Host uses nav-item markup so the mini rail stays icon-only. */}
             {remoteConnection && (
-              <button
-                type="button"
-                className="sidebar-nav-item sidebar-switch-host"
+              <SidebarNavButton
+                className="sidebar-switch-host"
                 onClick={handleSwitchHost}
-                aria-label={t("sidebarSwitchHost")}
-                title={t("sidebarSwitchHost")}
-              >
-                <span className="sidebar-nav-icon">
+                label={t("sidebarSwitchHost")}
+                icon={
                   <svg
                     width="16"
                     height="16"
@@ -721,13 +719,8 @@ export function Sidebar({
                     <polyline points="7 23 3 19 7 15" />
                     <path d="M21 13v2a4 4 0 0 1-4 4H3" />
                   </svg>
-                </span>
-                {!isCollapsed && (
-                  <span className="sidebar-nav-text">
-                    {t("sidebarSwitchHost")}
-                  </span>
-                )}
-              </button>
+                }
+              />
             )}
           </SidebarNavSection>
 

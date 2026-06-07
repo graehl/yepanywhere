@@ -226,6 +226,47 @@ export function SidebarNavItem({
   );
 }
 
+export interface SidebarNavButtonProps {
+  /** Icon to display (use SidebarIcons or custom ReactNode) */
+  icon: ReactNode;
+  /** Label text (also the accessible name) */
+  label: string;
+  /** Action invoked on click */
+  onClick: () => void;
+  /** Title tooltip (defaults to label) */
+  title?: string;
+  /** Extra class names appended to sidebar-nav-item */
+  className?: string;
+}
+
+/**
+ * Action variant of {@link SidebarNavItem}: emits the identical markup
+ * (`sidebar-nav-item` > icon + `sidebar-nav-text` label) as a <button>
+ * instead of a <Link>, so action items inherit the same styling and the
+ * collapsed-rail icon-only CSS contract (`.sidebar-collapsed .sidebar-nav-text
+ * { display: none }`) rather than re-implementing them with a bespoke guard.
+ */
+export function SidebarNavButton({
+  icon,
+  label,
+  onClick,
+  title,
+  className = "",
+}: SidebarNavButtonProps) {
+  return (
+    <button
+      type="button"
+      className={`sidebar-nav-item ${className}`.trim()}
+      onClick={onClick}
+      aria-label={label}
+      title={title ?? label}
+    >
+      {icon}
+      <span className="sidebar-nav-text">{label}</span>
+    </button>
+  );
+}
+
 export interface SidebarNavSectionProps {
   children: ReactNode;
 }

@@ -1198,132 +1198,144 @@ export function MessageInputToolbarView({
           </button>
           {bottomOverflowOpen && (
             <div className="composer-bottom-overflow-menu" role="menu">
-              {visibility.modeSelector && modeControl && (
-                <ModeSelector
-                  mode={modeControl.mode}
-                  onModeChange={modeControl.onModeChange}
-                  changesApplyNextTurn={modeControl.changesApplyNextTurn}
-                />
-              )}
-              {visibility.attachments && (
-                <button
-                  type="button"
-                  className="attach-button"
-                  onClick={attachmentControl.onAttachClick}
-                  disabled={!attachmentControl.canAttach}
-                  title={
-                    attachmentControl.canAttach
-                      ? t("toolbarAttachFiles")
-                      : t("toolbarAttachDisabled")
-                  }
-                  role="menuitem"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    aria-hidden="true"
+              <div
+                className="composer-bottom-overflow-menu-group composer-bottom-overflow-menu-left"
+              >
+                {visibility.modeSelector && modeControl && (
+                  <ModeSelector
+                    mode={modeControl.mode}
+                    onModeChange={modeControl.onModeChange}
+                    changesApplyNextTurn={modeControl.changesApplyNextTurn}
+                  />
+                )}
+                {visibility.attachments && (
+                  <button
+                    type="button"
+                    className="attach-button"
+                    onClick={attachmentControl.onAttachClick}
+                    disabled={!attachmentControl.canAttach}
+                    title={
+                      attachmentControl.canAttach
+                        ? t("toolbarAttachFiles")
+                        : t("toolbarAttachDisabled")
+                    }
+                    role="menuitem"
                   >
-                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                  </svg>
-                  {attachmentControl.attachmentCount > 0 && (
-                    <span className="attach-count">
-                      {attachmentControl.attachmentCount}
-                    </span>
-                  )}
-                </button>
-              )}
-              {visibility.slashMenu && slashControl && (
-                <SlashCommandButton
-                  commands={slashControl.commands}
-                  onSelectCommand={slashControl.onSelectCommand}
-                  disabled={slashControl.disabled}
-                />
-              )}
-              {visibility.thinkingToggle && thinkingControl && (
-                <ThinkingToolbarControl control={thinkingControl} t={t} />
-              )}
-              {visibility.renderMode && renderModeControl && (
-                <button
-                  type="button"
-                  className={`render-mode-toolbar-button ${
-                    renderModeControl.state === "rendered"
-                      ? "is-rendered"
-                      : renderModeControl.state === "mixed"
-                        ? "is-mixed"
-                        : ""
-                  }`}
-                  onClick={renderModeControl.onToggle}
-                  title={renderModeControl.title}
-                  aria-label={renderModeControl.title}
-                  aria-pressed={
-                    renderModeControl.state === "mixed"
-                      ? "mixed"
-                      : renderModeControl.state === "rendered"
-                  }
-                  role="menuitem"
-                >
-                  <RenderModeGlyph />
-                </button>
-              )}
-              {visibility.nudge && nudgeControl && (
-                <button
-                  type="button"
-                  className={`heartbeat-toolbar-button ${nudgeControl.enabled ? "active" : ""}`}
-                  onClick={nudgeControl.onClick}
-                  onContextMenu={nudgeControl.onContextMenu}
-                  onTouchStart={nudgeControl.onTouchStart}
-                  onTouchEnd={nudgeControl.onTouchEnd}
-                  onTouchCancel={nudgeControl.onClearTouch}
-                  onTouchMove={nudgeControl.onClearTouch}
-                  title={nudgeControl.title}
-                  aria-label={nudgeControl.title}
-                  aria-pressed={nudgeControl.enabled}
-                  role="menuitem"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="miter"
-                    aria-hidden="true"
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                    </svg>
+                    {attachmentControl.attachmentCount > 0 && (
+                      <span className="attach-count">
+                        {attachmentControl.attachmentCount}
+                      </span>
+                    )}
+                  </button>
+                )}
+                {visibility.slashMenu && slashControl && (
+                  <SlashCommandButton
+                    commands={slashControl.commands}
+                    onSelectCommand={slashControl.onSelectCommand}
+                    disabled={slashControl.disabled}
+                  />
+                )}
+                {visibility.thinkingToggle && thinkingControl && (
+                  <ThinkingToolbarControl control={thinkingControl} t={t} />
+                )}
+              </div>
+              <span
+                className="composer-bottom-overflow-menu-anchor"
+                aria-hidden="true"
+              />
+              <div
+                className="composer-bottom-overflow-menu-group composer-bottom-overflow-menu-right"
+              >
+                {visibility.renderMode && renderModeControl && (
+                  <button
+                    type="button"
+                    className={`render-mode-toolbar-button ${
+                      renderModeControl.state === "rendered"
+                        ? "is-rendered"
+                        : renderModeControl.state === "mixed"
+                          ? "is-mixed"
+                          : ""
+                    }`}
+                    onClick={renderModeControl.onToggle}
+                    title={renderModeControl.title}
+                    aria-label={renderModeControl.title}
+                    aria-pressed={
+                      renderModeControl.state === "mixed"
+                        ? "mixed"
+                        : renderModeControl.state === "rendered"
+                    }
+                    role="menuitem"
                   >
-                    <path className="heartbeat-baseline" d="M0.75 15H7" />
-                    <path
-                      className="heartbeat-excursion"
-                      d="M7 15l2-5 2 9 4-16 3 12"
-                    />
-                    <path className="heartbeat-baseline" d="M18 15h5.25" />
-                  </svg>
-                </button>
-              )}
-              {visibility.shortcutsHelp && (
-                <button
-                  type="button"
-                  className="session-shortcuts-help-button"
-                  aria-label={t("toolbarKeyboardShortcutsAria")}
-                  aria-expanded={shortcutsPopoverOpen}
-                  onClick={() => shortcutsControl.setOpen((open) => !open)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    openShortcutSettings();
-                  }}
-                  onTouchStart={startShortcutsLongPress}
-                  onTouchEnd={clearShortcutsLongPress}
-                  onTouchCancel={clearShortcutsLongPress}
-                  onTouchMove={clearShortcutsLongPress}
-                  role="menuitem"
-                >
-                  ?
-                </button>
-              )}
+                    <RenderModeGlyph />
+                  </button>
+                )}
+                {visibility.nudge && nudgeControl && (
+                  <button
+                    type="button"
+                    className={`heartbeat-toolbar-button ${nudgeControl.enabled ? "active" : ""}`}
+                    onClick={nudgeControl.onClick}
+                    onContextMenu={nudgeControl.onContextMenu}
+                    onTouchStart={nudgeControl.onTouchStart}
+                    onTouchEnd={nudgeControl.onTouchEnd}
+                    onTouchCancel={nudgeControl.onClearTouch}
+                    onTouchMove={nudgeControl.onClearTouch}
+                    title={nudgeControl.title}
+                    aria-label={nudgeControl.title}
+                    aria-pressed={nudgeControl.enabled}
+                    role="menuitem"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="miter"
+                      aria-hidden="true"
+                    >
+                      <path className="heartbeat-baseline" d="M0.75 15H7" />
+                      <path
+                        className="heartbeat-excursion"
+                        d="M7 15l2-5 2 9 4-16 3 12"
+                      />
+                      <path className="heartbeat-baseline" d="M18 15h5.25" />
+                    </svg>
+                  </button>
+                )}
+                {visibility.shortcutsHelp && (
+                  <button
+                    type="button"
+                    className="session-shortcuts-help-button"
+                    aria-label={t("toolbarKeyboardShortcutsAria")}
+                    aria-expanded={shortcutsPopoverOpen}
+                    onClick={() => shortcutsControl.setOpen((open) => !open)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      openShortcutSettings();
+                    }}
+                    onTouchStart={startShortcutsLongPress}
+                    onTouchEnd={clearShortcutsLongPress}
+                    onTouchCancel={clearShortcutsLongPress}
+                    onTouchMove={clearShortcutsLongPress}
+                    role="menuitem"
+                  >
+                    ?
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>

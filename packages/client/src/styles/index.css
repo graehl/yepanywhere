@@ -3737,32 +3737,54 @@ a.sidebar-nav-item {
   bottom: 0;
   left: 50%;
   z-index: 70;
+  display: grid;
+  grid-template-columns: max-content var(--composer-control-size) max-content;
+  column-gap: 2px;
+  align-items: center;
+  transform: translateX(-50%);
+}
+
+.composer-bottom-overflow-menu-group {
   display: flex;
-  min-width: max-content;
+  min-width: 0;
   height: var(--composer-primary-control-size);
   align-items: center;
-  gap: 0.3rem;
-  padding: 2px calc(var(--composer-control-size) + 0.45rem) 2px 0.45rem;
+  gap: 2px;
+  padding: 2px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-surface) 98%, transparent);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.26);
-  transform: translateX(-42%);
 }
 
-.composer-bottom-overflow-menu .mode-selector-container,
-.composer-bottom-overflow-menu .slash-command-container,
-.composer-bottom-overflow-menu .thinking-toolbar-control {
+.composer-bottom-overflow-menu-left {
+  justify-self: end;
+  flex-direction: row;
+}
+
+.composer-bottom-overflow-menu-anchor {
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
+}
+
+.composer-bottom-overflow-menu-right {
+  justify-self: start;
+  flex-direction: row;
+}
+
+.composer-bottom-overflow-menu-group .mode-selector-container,
+.composer-bottom-overflow-menu-group .slash-command-container,
+.composer-bottom-overflow-menu-group .thinking-toolbar-control {
   flex: 0 0 auto;
 }
 
-.composer-bottom-overflow-menu .mode-button,
-.composer-bottom-overflow-menu .attach-button,
-.composer-bottom-overflow-menu .slash-command-button,
-.composer-bottom-overflow-menu .thinking-toggle-button,
-.composer-bottom-overflow-menu .render-mode-toolbar-button,
-.composer-bottom-overflow-menu .heartbeat-toolbar-button,
-.composer-bottom-overflow-menu .session-shortcuts-help-button {
+.composer-bottom-overflow-menu-group .mode-button,
+.composer-bottom-overflow-menu-group .attach-button,
+.composer-bottom-overflow-menu-group .slash-command-button,
+.composer-bottom-overflow-menu-group .thinking-toggle-button,
+.composer-bottom-overflow-menu-group .render-mode-toolbar-button,
+.composer-bottom-overflow-menu-group .heartbeat-toolbar-button,
+.composer-bottom-overflow-menu-group .session-shortcuts-help-button {
   width: var(--composer-control-size);
   height: var(--composer-control-size);
   min-width: var(--composer-control-size);
@@ -3770,17 +3792,17 @@ a.sidebar-nav-item {
   padding: 0;
 }
 
-.composer-bottom-overflow-menu .mode-button {
+.composer-bottom-overflow-menu-group .mode-button {
   justify-content: center;
 }
 
-.composer-bottom-overflow-menu .mode-button-label,
-.composer-bottom-overflow-menu .mode-button-badge,
-.composer-bottom-overflow-menu .thinking-toggle-label {
+.composer-bottom-overflow-menu-group .mode-button-label,
+.composer-bottom-overflow-menu-group .mode-button-badge,
+.composer-bottom-overflow-menu-group .thinking-toggle-label {
   display: none;
 }
 
-.composer-bottom-overflow-menu .mode-button .mode-dot {
+.composer-bottom-overflow-menu-group .mode-button .mode-dot {
   width: 8px;
   height: 8px;
 }
@@ -9105,18 +9127,22 @@ a.sidebar-nav-item {
 }
 
 @media (max-width: 600px) {
+  .page {
+    padding-right: 2px;
+    padding-left: 2px;
+  }
+
+  .page-content-inner,
+  .session-input,
+  .main-content-constrained .session-input {
+    padding-right: 2px;
+    padding-left: 2px;
+  }
+
   .message-input-toolbar {
-    gap: 0.3rem;
+    gap: 2px;
     --composer-control-size: 30px;
     --composer-primary-control-size: 36px;
-  }
-
-  .composer-bottom-overflow {
-    display: inline-flex;
-  }
-
-  .composer-bottom-overflow-inline {
-    display: none;
   }
 
   .message-input-wrapper .message-input-toolbar {
@@ -9125,7 +9151,7 @@ a.sidebar-nav-item {
 
   .message-input-left,
   .message-input-actions {
-    gap: 0.3rem;
+    gap: 2px;
   }
 
   .message-input-left {
@@ -9220,6 +9246,16 @@ a.sidebar-nav-item {
   .message-input-wrapper .message-input-actions .context-usage-indicator {
     right: 0.125rem;
     bottom: calc(100% + 0.4375rem);
+  }
+}
+
+@media (max-width: 460px) {
+  .composer-bottom-overflow {
+    display: inline-flex;
+  }
+
+  .composer-bottom-overflow-inline {
+    display: none;
   }
 }
 

@@ -27,9 +27,14 @@ they can reach a control.
 - Tapping `...` opens a popup/fold-out row; tapping `...` again dismisses it.
 - The opened state is still one bottom-row control strip, not a detached
   explanatory panel: the `...` affordance remains selected at its stable anchor,
-  and the hidden icon buttons unfold left and right around it. The strip can
-  cover the composer if that is the cleanest narrow layout. Far-left and
-  far-right controls may remain visible outside or behind the popup outline.
+  and hidden icon buttons unfold as separate left and right "door" groups around
+  it. The anchor slot must not move when opening. The strip can cover the
+  composer if that is the cleanest narrow layout. Far-left and far-right
+  controls may remain visible outside or behind the popup outline.
+- Before hiding controls, spend cheap horizontal space first: reduce lateral
+  composer/window padding and inter-button gaps down to the mobile-safe minimum
+  (about 2px). Do not reduce bottom padding merely to fit the toolbar; vertical
+  touch spacing remains a usability constraint.
 - Lower-priority controls can vanish into the popup while the left and right
   anchor groups stay visually stable.
 - Hidden controls must remain reachable by tap/click from the popup menu, not
@@ -77,7 +82,8 @@ they can reach a control.
 - First pass landed on 2026-06-07: at narrow widths, permission mode,
   attachment, slash, thinking, render/formula, heartbeat/pulse, and shortcut
   help collapse behind a stable `...` affordance.
-  Tapping `...` opens one absolute bottom-row strip that unfolds those icon
-  controls around the selected anchor without reflowing the composer row.
+  Tapping `...` opens one absolute bottom-row menu with separate left and right
+  icon groups around a reserved center anchor, so the selected `...` slot does
+  not move while the doors open.
 - Context percentage, microphone, queue/patient controls, Stop, and send remain
   inline in that first pass.

@@ -3735,16 +3735,16 @@ a.sidebar-nav-item {
 .composer-bottom-overflow-menu {
   position: absolute;
   bottom: 0;
-  left: 50%;
   z-index: 70;
-  display: grid;
-  grid-template-columns: max-content var(--composer-control-size) max-content;
-  column-gap: 2px;
-  align-items: center;
-  transform: translateX(-50%);
+  left: 0;
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
+  pointer-events: none;
 }
 
 .composer-bottom-overflow-menu-group {
+  position: absolute;
+  bottom: 0;
   display: flex;
   min-width: 0;
   height: var(--composer-primary-control-size);
@@ -3755,20 +3755,16 @@ a.sidebar-nav-item {
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-surface) 98%, transparent);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.26);
+  pointer-events: auto;
 }
 
 .composer-bottom-overflow-menu-left {
-  justify-self: end;
+  right: calc(100% - 1px);
   flex-direction: row;
 }
 
-.composer-bottom-overflow-menu-anchor {
-  width: var(--composer-control-size);
-  height: var(--composer-control-size);
-}
-
 .composer-bottom-overflow-menu-right {
-  justify-self: start;
+  left: calc(100% - 1px);
   flex-direction: row;
 }
 

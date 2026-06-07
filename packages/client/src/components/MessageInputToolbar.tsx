@@ -1239,6 +1239,10 @@ export function MessageInputToolbarView({
                     )}
                   </button>
                 )}
+              </div>
+              <div
+                className="composer-bottom-overflow-menu-group composer-bottom-overflow-menu-right"
+              >
                 {visibility.slashMenu && slashControl && (
                   <SlashCommandButton
                     commands={slashControl.commands}
@@ -1249,14 +1253,6 @@ export function MessageInputToolbarView({
                 {visibility.thinkingToggle && thinkingControl && (
                   <ThinkingToolbarControl control={thinkingControl} t={t} />
                 )}
-              </div>
-              <span
-                className="composer-bottom-overflow-menu-anchor"
-                aria-hidden="true"
-              />
-              <div
-                className="composer-bottom-overflow-menu-group composer-bottom-overflow-menu-right"
-              >
                 {visibility.renderMode && renderModeControl && (
                   <button
                     type="button"

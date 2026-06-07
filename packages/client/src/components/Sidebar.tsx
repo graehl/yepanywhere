@@ -701,6 +701,8 @@ export function Sidebar({
                 type="button"
                 className="sidebar-nav-item sidebar-switch-host"
                 onClick={handleSwitchHost}
+                aria-label={t("sidebarSwitchHost")}
+                title={t("sidebarSwitchHost")}
               >
                 <span className="sidebar-nav-icon">
                   <svg

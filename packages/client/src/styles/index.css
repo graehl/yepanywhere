@@ -10629,6 +10629,7 @@ a.sidebar-nav-item {
 
   /* Collapsed sidebar - hide text, show icons only */
   .sidebar-collapsed .sidebar-nav-text,
+  .sidebar-collapsed .sidebar-nav-label,
   .sidebar-collapsed .sidebar-nav-badge,
   .sidebar-collapsed .sidebar-section,
   .sidebar-collapsed .sidebar-section-title,

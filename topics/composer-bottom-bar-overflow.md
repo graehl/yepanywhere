@@ -22,6 +22,10 @@ they can reach a control.
   context percentage circle/text. The visual layout may still have left and
   right anchor groups, but splitting controls across unrelated containers with
   different spacing logic makes priority collapse fragile.
+- Controls that visibly occupy bottom-row space must also occupy measured layout
+  space. Avoid mobile-only absolute positioning or `display: contents` wrappers
+  for row participants such as shortcut help (`?`) and context percentage,
+  because they can overlap while the responsive model thinks space remains.
 - Use a stable, tappable overflow (`...`) affordance, likely near the middle of
   the composer bottom row.
 - Tapping `...` opens a popup/fold-out row; tapping `...` again dismisses it.

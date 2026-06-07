@@ -3586,7 +3586,11 @@ a.sidebar-nav-item {
 .session-shortcuts-help {
   position: relative;
   display: inline-flex;
+  width: var(--composer-control-size);
+  height: var(--composer-control-size);
+  flex: 0 0 var(--composer-control-size);
   align-items: center;
+  justify-content: center;
 }
 
 .session-shortcuts-help-button {
@@ -9220,11 +9224,10 @@ a.sidebar-nav-item {
   }
 
   .message-input-actions .context-usage-indicator {
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 0.5rem);
+    position: static;
     z-index: 2;
-    transform: translateY(-1px);
+    flex: 0 0 auto;
+    transform: none;
     gap: 2px;
     padding: 1px 4px;
     border-radius: 999px;
@@ -9234,8 +9237,8 @@ a.sidebar-nav-item {
   }
 
   .message-input-wrapper .message-input-actions .context-usage-indicator {
-    right: 0.125rem;
-    bottom: calc(100% + 0.4375rem);
+    right: auto;
+    bottom: auto;
   }
 }
 

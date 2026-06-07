@@ -722,9 +722,11 @@ export function Sidebar({
                     <path d="M21 13v2a4 4 0 0 1-4 4H3" />
                   </svg>
                 </span>
-                <span className="sidebar-nav-label">
-                  {t("sidebarSwitchHost")}
-                </span>
+                {!isCollapsed && (
+                  <span className="sidebar-nav-text">
+                    {t("sidebarSwitchHost")}
+                  </span>
+                )}
               </button>
             )}
           </SidebarNavSection>

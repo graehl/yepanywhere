@@ -15,6 +15,7 @@ import { Sidebar } from "../Sidebar";
 const {
   globalSessionsState,
   mockGlobalLoadMore,
+  mockRemoteConnectionState,
   mockStarredLoadMore,
   mockToggleExpanded,
   mockWindowOpen,
@@ -34,6 +35,9 @@ const {
     loadMore: vi.fn(),
   },
   mockGlobalLoadMore: vi.fn(),
+  mockRemoteConnectionState: {
+    value: null as null | { disconnect: ReturnType<typeof vi.fn> },
+  },
   mockStarredLoadMore: vi.fn(),
   mockToggleExpanded: vi.fn(),
   mockWindowOpen: vi.fn(),
@@ -43,7 +47,7 @@ const {
 }));
 
 vi.mock("../../contexts/RemoteConnectionContext", () => ({
-  useOptionalRemoteConnection: () => null,
+  useOptionalRemoteConnection: () => mockRemoteConnectionState.value,
 }));
 
 vi.mock("../../contexts/InboxContext", () => ({
@@ -100,6 +104,7 @@ vi.mock("../../i18n", () => ({
           sidebarAllSessions: "All Sessions",
           sidebarProjects: "Projects",
           sidebarSettings: "Settings",
+          sidebarSwitchHost: "Switch Host",
           sidebarSectionStarred: "Starred",
           sidebarSectionLast24Hours: "Last 24 Hours",
           sidebarSectionOlder: "Older",
@@ -160,6 +165,7 @@ describe("Sidebar collapsed toggle", () => {
     });
     mockToggleExpanded.mockReset();
     mockWindowOpen.mockReset();
+    mockRemoteConnectionState.value = null;
     mockGlobalLoadMore.mockReset();
     mockStarredLoadMore.mockReset();
     globalSessionsState.sessions = [];
@@ -222,6 +228,16 @@ describe("Sidebar collapsed toggle", () => {
       "_blank",
       "noopener",
     );
+  });
+
+  it("keeps the relay Switch Host item icon-only when collapsed", () => {
+    mockRemoteConnectionState.value = { disconnect: vi.fn() };
+
+    renderSidebar();
+
+    const switchHost = screen.getByRole("button", { name: "Switch Host" });
+    expect(switchHost.querySelector(".sidebar-nav-text")).toBeNull();
+    expect(switchHost.textContent).toBe("");
   });
 
   it("renders loaded sidebar sessions without a show-more gate", () => {

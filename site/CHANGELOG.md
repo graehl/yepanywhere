@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.6.4] - 2026-06-07
+
+### Fixed
+- Keep the relay-only Switch Host item icon-only in the collapsed hosted
+  sidebar.
+
 ## [site-v1.6.3] - 2026-06-07
 
 ### Fixed

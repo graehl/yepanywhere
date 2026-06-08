@@ -83,10 +83,25 @@ layers, both real and both fixable:
   **excludes `stream_event`**, and catch-up does not reconstruct thinking
   deltas — so even the progress pings are likely dropped today.
 
-The TUI shows nothing by default for the same Layer-A reason; a thinking
-spinner/token pill is the most the redacted default yields. So "never see
-thinking" is expected behavior, not proof of a YA-specific bug — but it
-*is* fixable on both layers.
+On Opus 4.7/4.8 the **default is to show no thinking blocks** — this is
+the documented, observed default, not an uncertainty. The Claude Code TUI
+surfaces summarized thinking only when `~/.claude/settings.json` sets
+`"showThinkingSummaries": true` (the documented opt-in users add to see
+them), and in practice summaries appear routinely only at effort `high`
+or above. So the redacted default yields at most a thinking
+spinner/token pill; "never see thinking" is expected, not a YA-specific
+bug.
+
+That setting does **not** rescue YA, though YA already loads it: the
+Claude provider passes `settingSources: ["user", "project", "local"]`
+(`packages/server/src/sdk/providers/claude.ts`), so the headless SDK
+subprocess reads the same `showThinkingSummaries: true`. Yet thinking
+blocks still never appear in YA on Opus 4.8 — evidence that
+`showThinkingSummaries` is an interactive-TUI render setting the headless
+SDK consumer does not act on. YA must therefore request `display:
+'summarized'` itself (Layer A) and render the returned blocks (Layer B);
+the user's settings.json opt-in is not a path YA can lean on. Both layers
+are fixable.
 
 Isolating test (feedback loop): set `display: 'summarized'` on one
 adaptive turn that needs reasoning and watch whether

@@ -228,6 +228,9 @@ Current source refresh, 2026-06-09:
   - `supportsAutoMode: true` exposes permission mode `auto` in the session
     toolbar and in new-session/new-session-default permission choices. Absent
     metadata keeps the previous permission-mode list for older executables.
+    The fallback `fable` catalog entry must carry this flag too; otherwise
+    cached or fallback provider discovery hides the new permission option even
+    after the model itself appears.
 - `supportsFastMode` is still metadata-only in YA. Claude Code exposes fast
   mode as `/fast` or a settings-layer `fastMode` knob with explicit cost
   trade-offs, not as an existing YA per-turn/process-config field. Exposing it

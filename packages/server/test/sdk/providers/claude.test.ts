@@ -58,7 +58,9 @@ describe("ClaudeProvider model list", () => {
       name: "Fable",
       contextWindow: 1_000_000,
       supportsAdaptiveThinking: true,
+      supportsAutoMode: true,
       supportsEffort: true,
+      supportsFastMode: false,
       supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
       defaultEffortLevel: "high",
     });

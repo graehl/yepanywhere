@@ -2,10 +2,13 @@ import {
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   PROMPT_SUGGESTION_MODES,
+  type EffortLevel,
   type ModelInfo,
   type PromptSuggestionMode,
   type ProviderName,
   type RecapMode,
+  type ThinkingMode,
+  type ThinkingOption,
   resolveModel,
 } from "@yep-anywhere/shared";
 import {
@@ -27,7 +30,6 @@ import { useConnection } from "../hooks/useConnection";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import {
   getModelSetting,
-  getThinkingSetting,
   getShowThinkingSetting,
   useModelSettings,
 } from "../hooks/useModelSettings";
@@ -46,7 +48,9 @@ import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import {
   getEffortLevelOptions,
+  getThinkingModeOptions,
   resolveSupportedEffortLevel,
+  resolveSupportedThinkingMode,
 } from "../lib/effortLevels";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { hasCoarsePointer } from "../lib/deviceDetection";
@@ -78,6 +82,7 @@ import { appendSpeechTranscript } from "../lib/speechRecognition";
 import { isVoiceInputShortcut } from "../lib/voiceInputShortcut";
 import { useVersion } from "../hooks/useVersion";
 import { shortenPath } from "../lib/text";
+import { getPermissionModeOptions } from "../lib/permissionModes";
 import type { PermissionMode, Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { SpeechControlMenu } from "./SpeechControlMenu";
@@ -90,12 +95,6 @@ interface PendingFile {
   previewUrl?: string;
 }
 
-const MODE_ORDER: PermissionMode[] = [
-  "default",
-  "acceptEdits",
-  "plan",
-  "bypassPermissions",
-];
 const RECAP_MODE_ORDER: RecapMode[] = ["off", "native", "side-session"];
 const PROMPT_SUGGESTION_MODE_ORDER: PromptSuggestionMode[] = [
   ...PROMPT_SUGGESTION_MODES,
@@ -117,6 +116,15 @@ function createClientSpeechTurnId(): string {
     globalThis.crypto?.randomUUID?.() ??
     `speech-${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
+}
+
+function toThinkingOption(
+  mode: ThinkingMode,
+  effort: EffortLevel,
+): ThinkingOption {
+  if (mode === "off") return "off";
+  if (mode === "auto") return "auto";
+  return `on:${effort}`;
 }
 
 function getPreferredModelId(
@@ -401,12 +409,14 @@ export function NewSessionForm({
     acceptEdits: t("modeAcceptEditsLabel"),
     plan: t("modePlanLabel"),
     bypassPermissions: t("modeBypassPermissionsLabel"),
+    auto: t("modeAutoLabel"),
   };
   const modeDescriptions: Record<PermissionMode, string> = {
     default: t("modeDefaultDescription"),
     acceptEdits: t("modeAcceptEditsDescription"),
     plan: t("modePlanDescription"),
     bypassPermissions: t("modeBypassPermissionsDescription"),
+    auto: t("modeAutoDescription"),
   };
   const recapModeLabels: Record<RecapMode, string> = {
     off: t("recapModeOff"),
@@ -481,6 +491,29 @@ export function NewSessionForm({
     effortLevel,
     effortOptions,
   );
+  const thinkingModeOptions = useMemo(
+    () =>
+      getThinkingModeOptions({
+        provider: selectedProviderInfo,
+        model: selectedModelInfo,
+        effortOptions,
+      }),
+    [effortOptions, selectedModelInfo, selectedProviderInfo],
+  );
+  const effectiveThinkingMode = resolveSupportedThinkingMode(
+    thinkingMode,
+    thinkingModeOptions,
+  );
+  const showThinkingControls =
+    supportsThinkingToggle &&
+    thinkingModeOptions.some((option) => option !== "off");
+  const permissionModeOptions = useMemo(
+    () => getPermissionModeOptions({ model: selectedModelInfo }),
+    [selectedModelInfo],
+  );
+  const effectivePermissionMode = permissionModeOptions.includes(mode)
+    ? mode
+    : "default";
   const selectedProviderDisplayName =
     selectedProviderInfo?.displayName ?? selectedProvider ?? "";
   const availableRecapModes = RECAP_MODE_ORDER.filter((modeValue) =>
@@ -941,7 +974,7 @@ export function NewSessionForm({
       updateServerSetting("newSessionDefaults", {
         provider: selectedProvider ?? undefined,
         model: selectedModel ?? undefined,
-        permissionMode: mode,
+        permissionMode: effectivePermissionMode,
         recapMode: selectedRecapMode,
         promptSuggestionMode: preferredPromptSuggestionModeRef.current,
         helperSideModel,
@@ -950,7 +983,7 @@ export function NewSessionForm({
       console.error("Failed to save new session defaults:", err);
     });
   }, [
-    mode,
+    effectivePermissionMode,
     helperSideModel,
     selectedModel,
     selectedProvider,
@@ -1004,18 +1037,19 @@ export function NewSessionForm({
 
       let sessionId: string;
       let processId: string;
-      let initialPermissionMode: PermissionMode = mode;
+      const sessionMode = effectivePermissionMode;
+      let initialPermissionMode: PermissionMode = sessionMode;
       let initialModeVersion = 0;
       const uploadedFiles: UploadedFile[] = [];
 
       // Get model and thinking settings
-      const thinking = getThinkingSetting(effectiveEffortLevel);
+      const thinking = toThinkingOption(effectiveThinkingMode, effectiveEffortLevel);
       // "Show thinking" preference (default/on/off). Sent for all providers;
       // the server maps it to a request knob where the provider supports one,
       // and the client render gate honors it regardless.
       const showThinking = getShowThinkingSetting();
       const sessionOptions = {
-        mode,
+        mode: sessionMode,
         model: selectedModel ?? undefined,
         thinking,
         showThinking,
@@ -1028,7 +1062,7 @@ export function NewSessionForm({
       logSessionUiTrace("new-session-submit", {
         projectId: resolvedProjectId ?? null,
         detached: !resolvedProjectId,
-        mode,
+        mode: sessionMode,
         model: selectedModel ?? null,
         thinking,
         provider: selectedProvider ?? null,
@@ -1066,7 +1100,7 @@ export function NewSessionForm({
           processId,
           projectId: resolvedProjectId,
           thinking,
-          mode,
+          mode: sessionMode,
           serverTimestamp: createResult.serverTimestamp,
           requestRttMs: createTiming?.roundTripMs ?? null,
           estimatedServerOffsetMs: createTiming?.serverOffsetMs ?? null,
@@ -1125,7 +1159,7 @@ export function NewSessionForm({
         const queueResult = await api.queueMessage(
           sessionId,
           trimmedMessage,
-          mode,
+          sessionMode,
           uploadedFiles.length > 0 ? uploadedFiles : undefined,
           undefined, // tempId
           thinking, // Pass the captured thinking setting to avoid process restart
@@ -1189,7 +1223,7 @@ export function NewSessionForm({
           processId,
           projectId: resolvedProjectId,
           thinking,
-          mode,
+          mode: sessionMode,
           provider: selectedProvider ?? null,
           model: selectedModel ?? null,
           clientTimestamp,
@@ -1564,9 +1598,10 @@ export function NewSessionForm({
           })}
         </div>
       )}
-      {supportsThinkingToggle && (
+      {showThinkingControls && (
         <ThinkingControlsPanel
-          mode={thinkingMode}
+          mode={effectiveThinkingMode}
+          modeOptions={thinkingModeOptions}
           onSetMode={setThinkingMode}
           level={effectiveEffortLevel}
           effortOptions={effortOptions}
@@ -1816,11 +1851,11 @@ export function NewSessionForm({
     <div className="new-session-mode-section">
       <h3>{t("newSessionModeTitle")}</h3>
       <div className="mode-options">
-        {MODE_ORDER.map((m) => (
+        {permissionModeOptions.map((m) => (
           <button
             key={m}
             type="button"
-            className={`mode-option ${mode === m ? "selected" : ""}`}
+            className={`mode-option ${effectivePermissionMode === m ? "selected" : ""}`}
             onClick={() => handleModeSelect(m)}
             disabled={isStarting}
           >

@@ -108,4 +108,36 @@ describe("ThinkingControls", () => {
       sections[2]?.classList.contains("thinking-controls-section--effort"),
     ).toBe(true);
   });
+
+  it("hides unsupported thinking modes and effort controls", () => {
+    const onSetMode = vi.fn();
+    const { container } = render(
+      <ThinkingControlsPanel
+        mode="auto"
+        modeOptions={["off", "auto"]}
+        onSetMode={onSetMode}
+        level="high"
+        effortOptions={effortOptions}
+        onSetEffort={vi.fn()}
+        showThinking="default"
+        onSetShowThinking={vi.fn()}
+        provider="claude"
+        t={t}
+      />,
+    );
+
+    expect(container.querySelector(".mode-option-dot.thinking-on")).toBeNull();
+    expect(
+      container.querySelector(".thinking-controls-section--effort"),
+    ).toBeNull();
+
+    const offModeButton = container
+      .querySelector(".mode-option-dot.thinking-off")
+      ?.closest("button");
+    expect(offModeButton).not.toBeNull();
+
+    fireEvent.click(offModeButton as HTMLButtonElement);
+
+    expect(onSetMode).toHaveBeenCalledWith("off");
+  });
 });

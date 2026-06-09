@@ -5063,6 +5063,7 @@ export class CodexProvider implements AgentProvider {
       case "acceptEdits":
       case "plan":
       case "bypassPermissions":
+      case "auto":
         return mode;
       default:
         return undefined;

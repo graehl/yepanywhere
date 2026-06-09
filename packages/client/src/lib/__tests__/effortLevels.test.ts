@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   getEffortLevelLabel,
   getEffortLevelOptions,
+  getThinkingModeOptions,
   normalizeEffortLevelForProvider,
   resolveSupportedEffortLevel,
+  resolveSupportedThinkingMode,
 } from "../effortLevels";
 
 const claudeProvider: ProviderInfo = {
@@ -76,5 +78,35 @@ describe("effort level options", () => {
 
     expect(normalizeEffortLevelForProvider("max", codexProvider)).toBe("xhigh");
     expect(resolveSupportedEffortLevel("max", options)).toBe("xhigh");
+  });
+
+  it("gates thinking modes from model adaptive and effort flags", () => {
+    expect(
+      getThinkingModeOptions({
+        provider: claudeProvider,
+        model: {
+          id: "adaptive-only",
+          name: "Adaptive only",
+          supportsAdaptiveThinking: true,
+          supportsEffort: false,
+        },
+      }),
+    ).toEqual(["off", "auto"]);
+
+    expect(
+      getThinkingModeOptions({
+        provider: claudeProvider,
+        model: {
+          id: "no-thinking",
+          name: "No thinking",
+          supportsAdaptiveThinking: false,
+        },
+      }),
+    ).toEqual(["off"]);
+  });
+
+  it("normalizes unsupported thinking modes to the closest available mode", () => {
+    expect(resolveSupportedThinkingMode("on", ["off", "auto"])).toBe("auto");
+    expect(resolveSupportedThinkingMode("auto", ["off"])).toBe("off");
   });
 });

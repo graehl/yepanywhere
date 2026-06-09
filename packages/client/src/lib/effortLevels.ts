@@ -3,6 +3,7 @@ import type {
   ModelInfo,
   ProviderInfo,
   ProviderName,
+  ThinkingMode,
 } from "@yep-anywhere/shared";
 
 export interface EffortLevelOption {
@@ -205,6 +206,32 @@ export function resolveSupportedEffortLevel(
   return options.some((option) => option.value === effort)
     ? effort
     : getFallbackEffortLevel(options);
+}
+
+export function getThinkingModeOptions(params: {
+  provider?: ProviderInfo | ProviderName | null;
+  model?: ModelInfo | string | null;
+  effortOptions?: readonly EffortLevelOption[];
+}): ThinkingMode[] {
+  const model = getModelInfo(params.provider, params.model);
+  if (model?.supportsAdaptiveThinking === false) {
+    return ["off"];
+  }
+
+  const modes: ThinkingMode[] = ["off", "auto"];
+  const supportsEffort = model?.supportsEffort !== false;
+  if (supportsEffort && (params.effortOptions?.length ?? 1) > 0) {
+    modes.push("on");
+  }
+  return modes;
+}
+
+export function resolveSupportedThinkingMode(
+  mode: ThinkingMode,
+  options: readonly ThinkingMode[],
+): ThinkingMode {
+  if (options.includes(mode)) return mode;
+  return options.includes("auto") ? "auto" : "off";
 }
 
 export function normalizeEffortLevelForProvider(

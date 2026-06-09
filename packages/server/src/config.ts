@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Level as LogLevel } from "pino";
+import { ALL_PERMISSION_MODES } from "@yep-anywhere/shared";
 import { getDefaultCodexSessionsDir } from "./projects/codex-scanner.js";
 import type { PermissionMode } from "./sdk/types.js";
 import { getModuleEnv, harvestYaModuleEnv } from "./yaModuleEnv.js";
@@ -395,8 +396,11 @@ function parseBooleanOrDefault(
  * Parse permission mode from string or return default.
  */
 function parsePermissionMode(value: string | undefined): PermissionMode {
-  if (value === "bypassPermissions" || value === "acceptEdits") {
-    return value;
+  if (
+    typeof value === "string" &&
+    (ALL_PERMISSION_MODES as readonly string[]).includes(value)
+  ) {
+    return value as PermissionMode;
   }
   return "default";
 }

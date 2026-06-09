@@ -1,4 +1,5 @@
 import type {
+  ModelInfo,
   ProviderName,
   SessionLivenessSnapshot,
   ShowThinking,
@@ -20,6 +21,7 @@ import {
   type ThinkingMode,
   useModelSettings,
 } from "../hooks/useModelSettings";
+import { useProviders } from "../hooks/useProviders";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import {
   type SessionToolbarVisibility,
@@ -32,7 +34,9 @@ import {
   type EffortLevelOption,
   getEffortLevelLabel,
   getEffortLevelOptions,
+  getThinkingModeOptions,
   resolveSupportedEffortLevel,
+  resolveSupportedThinkingMode,
 } from "../lib/effortLevels";
 import {
   formatAbsoluteTimestamp,
@@ -41,6 +45,7 @@ import {
   parseTimestampMs,
 } from "../lib/messageAge";
 import { normalizeProviderKey } from "../lib/modelIndicatorText";
+import { getPermissionModeOptions } from "../lib/permissionModes";
 import {
   SESSION_ISEARCH_GUIDE_EVENT,
   type SessionIsearchGuideState,
@@ -410,6 +415,7 @@ interface ToolbarRefs {
 interface ToolbarModeControl {
   mode: PermissionMode;
   onModeChange: (mode: PermissionMode) => void;
+  modes?: readonly PermissionMode[];
   changesApplyNextTurn?: boolean;
 }
 
@@ -427,6 +433,7 @@ interface ToolbarSlashControl {
 
 interface ToolbarThinkingControl {
   mode: ThinkingMode;
+  modeOptions?: readonly ThinkingMode[];
   level: EffortLevel;
   effortOptions: EffortLevelOption[];
   onSetMode: (mode: ThinkingMode) => void;
@@ -734,6 +741,7 @@ function ThinkingToolbarControl({
         <div className="thinking-toolbar-menu" role="menu">
           <ThinkingControlsPanel
             mode={control.mode}
+            modeOptions={control.modeOptions}
             onSetMode={control.onSetMode}
             level={control.level}
             effortOptions={control.effortOptions}
@@ -1046,6 +1054,7 @@ export function MessageInputToolbarView({
             <ModeSelector
               mode={modeControl.mode}
               onModeChange={modeControl.onModeChange}
+              modes={modeControl.modes}
               changesApplyNextTurn={modeControl.changesApplyNextTurn}
             />
           </span>
@@ -1303,6 +1312,7 @@ export function MessageInputToolbarView({
                   <ModeSelector
                     mode={modeControl.mode}
                     onModeChange={modeControl.onModeChange}
+                    modes={modeControl.modes}
                     changesApplyNextTurn={modeControl.changesApplyNextTurn}
                   />
                 )}
@@ -1961,6 +1971,7 @@ export function MessageInputToolbar({
     setGrokSpeechAudioSettings,
   } = useModelSettings();
   const { version: versionInfo } = useVersion();
+  const { providers } = useProviders();
   const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
   const renderMode = useOptionalRenderModeContext();
   const nowMs = useRelativeNow();
@@ -1984,18 +1995,61 @@ export function MessageInputToolbar({
     () => normalizeProviderKey(thinkingProvider),
     [thinkingProvider],
   );
+  const thinkingProviderInfo = useMemo(
+    () =>
+      providers.find((provider) => provider.name === normalizedThinkingProvider) ??
+      null,
+    [normalizedThinkingProvider, providers],
+  );
+  const thinkingModelInfo = useMemo<ModelInfo | null>(
+    () =>
+      thinkingProviderInfo?.models?.find(
+        (model) => model.id === thinkingModel,
+      ) ?? null,
+    [thinkingModel, thinkingProviderInfo],
+  );
   const thinkingEffortOptions = useMemo(
     () =>
       getEffortLevelOptions({
-        provider: normalizedThinkingProvider as ProviderName,
-        model: thinkingModel,
+        provider: thinkingProviderInfo ?? (normalizedThinkingProvider as ProviderName),
+        model: thinkingModelInfo ?? thinkingModel,
         translate: t,
       }),
-    [thinkingModel, normalizedThinkingProvider, t],
+    [thinkingModel, thinkingModelInfo, thinkingProviderInfo, normalizedThinkingProvider, t],
   );
   const effectiveThinkingLevel = useMemo(
     () => resolveSupportedEffortLevel(thinkingLevel, thinkingEffortOptions),
     [thinkingEffortOptions, thinkingLevel],
+  );
+  const thinkingModeOptions = useMemo(
+    () =>
+      getThinkingModeOptions({
+        provider: thinkingProviderInfo ?? (normalizedThinkingProvider as ProviderName),
+        model: thinkingModelInfo ?? thinkingModel,
+        effortOptions: thinkingEffortOptions,
+      }),
+    [
+      thinkingEffortOptions,
+      thinkingModel,
+      thinkingModelInfo,
+      thinkingProviderInfo,
+      normalizedThinkingProvider,
+    ],
+  );
+  const effectiveThinkingMode = useMemo(
+    () => resolveSupportedThinkingMode(thinkingMode, thinkingModeOptions),
+    [thinkingMode, thinkingModeOptions],
+  );
+  const permissionModeOptions = useMemo(
+    () =>
+      getPermissionModeOptions({
+        model: thinkingModelInfo,
+        currentMode: mode,
+      }),
+    [mode, thinkingModelInfo],
+  );
+  const hasThinkingModeOptions = thinkingModeOptions.some(
+    (option) => option !== "off",
   );
   const lastActivityMs = parseTimestampMs(lastActivityAt);
   const showLastActivityAge = isStaleTimestamp(lastActivityMs, nowMs);
@@ -2139,16 +2193,21 @@ export function MessageInputToolbar({
   const showToolbarStatus = showLivenessChip || showLastActivityChip;
 
   useEffect(() => {
-    if (thinkingMode !== "off") {
-      lastNonOffThinkingModeRef.current = thinkingMode;
+    if (effectiveThinkingMode !== "off") {
+      lastNonOffThinkingModeRef.current = effectiveThinkingMode;
     }
-  }, [thinkingMode]);
+  }, [effectiveThinkingMode]);
 
   const toggleThinkingEnabled = useCallback(() => {
+    const nextEnabledMode = thinkingModeOptions.includes(
+      lastNonOffThinkingModeRef.current,
+    )
+      ? lastNonOffThinkingModeRef.current
+      : (thinkingModeOptions.find((option) => option !== "off") ?? "auto");
     setThinkingMode(
-      thinkingMode === "off" ? lastNonOffThinkingModeRef.current : "off",
+      effectiveThinkingMode === "off" ? nextEnabledMode : "off",
     );
-  }, [setThinkingMode, thinkingMode]);
+  }, [effectiveThinkingMode, setThinkingMode, thinkingModeOptions]);
 
   useLayoutEffect(() => {
     const compactStatusQuery = getCompactStatusMatchMedia();
@@ -2309,6 +2368,7 @@ export function MessageInputToolbar({
           ? {
               mode,
               onModeChange,
+              modes: permissionModeOptions,
               changesApplyNextTurn: modeChangesApplyNextTurn,
             }
           : null
@@ -2328,9 +2388,10 @@ export function MessageInputToolbar({
           : null
       }
       thinkingControl={
-        supportsThinkingToggle
+        supportsThinkingToggle && hasThinkingModeOptions
           ? {
-              mode: thinkingMode,
+              mode: effectiveThinkingMode,
+              modeOptions: thinkingModeOptions,
               level: effectiveThinkingLevel,
               effortOptions: thinkingEffortOptions,
               onSetMode: setThinkingMode,

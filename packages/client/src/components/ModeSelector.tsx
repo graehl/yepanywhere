@@ -1,18 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useI18n } from "../i18n";
+import { getPermissionModeOptions } from "../lib/permissionModes";
 import type { PermissionMode } from "../types";
-
-const MODE_ORDER: PermissionMode[] = [
-  "default",
-  "acceptEdits",
-  "plan",
-  "bypassPermissions",
-];
 
 interface ModeSelectorProps {
   mode: PermissionMode;
   onModeChange: (mode: PermissionMode) => void;
+  modes?: readonly PermissionMode[];
   disabled?: boolean;
   /** Whether permission mode changes are deferred until the next user turn. */
   changesApplyNextTurn?: boolean;
@@ -25,6 +20,7 @@ interface ModeSelectorProps {
 export function ModeSelector({
   mode,
   onModeChange,
+  modes,
   disabled,
   changesApplyNextTurn = false,
 }: ModeSelectorProps) {
@@ -100,7 +96,9 @@ export function ModeSelector({
     acceptEdits: t("modeAcceptEditsLabel" as never),
     plan: t("modePlanLabel" as never),
     bypassPermissions: t("modeBypassPermissionsLabel" as never),
+    auto: t("modeAutoLabel" as never),
   };
+  const modeOptions = modes ?? getPermissionModeOptions({ currentMode: mode });
 
   const displayLabel = modeLabels[mode];
   const displayDotClass = `mode-${mode}`;
@@ -118,7 +116,7 @@ export function ModeSelector({
       )}
 
       {/* Permission mode options */}
-      {MODE_ORDER.map((m) => (
+      {modeOptions.map((m) => (
         <button
           key={m}
           type="button"

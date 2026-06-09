@@ -3982,6 +3982,10 @@ a.sidebar-nav-item {
   background: var(--error-color);
 }
 
+.mode-dot.mode-auto {
+  background: var(--primary-color);
+}
+
 /* Mode Selector Bottom Sheet */
 .mode-selector-overlay {
   position: fixed;
@@ -10296,6 +10300,10 @@ a.sidebar-nav-item {
 
 .mode-option-dot.mode-bypassPermissions {
   background: var(--error-color);
+}
+
+.mode-option-dot.mode-auto {
+  background: var(--primary-color);
 }
 
 .mode-option-dot.recap-off {

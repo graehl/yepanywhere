@@ -220,6 +220,19 @@ Current source refresh, 2026-06-09:
 - SDK model metadata already carried optional adaptive/fast/auto mode flags;
   YA now preserves those fields from `supportedModels()` rather than dropping
   them.
+- Follow-up UI mapping:
+  - `supportsAdaptiveThinking: false` hides adaptive thinking modes in the
+    shared thinking controls and normalizes outgoing turn settings to `off`.
+  - `supportsEffort: false` hides the forced `on:<effort>` mode while keeping
+    adaptive `auto` available.
+  - `supportsAutoMode: true` exposes permission mode `auto` in the session
+    toolbar and in new-session/new-session-default permission choices. Absent
+    metadata keeps the previous permission-mode list for older executables.
+- `supportsFastMode` is still metadata-only in YA. Claude Code exposes fast
+  mode as `/fast` or a settings-layer `fastMode` knob with explicit cost
+  trade-offs, not as an existing YA per-turn/process-config field. Exposing it
+  should be a separate provider-control slice with an explicit default/on/off
+  setting and cost copy rather than silently attaching it to model selection.
 - Other SDK drift inspected but not enacted in this slice: pending
   `request_user_dialog` replay fields, usage and skill-reload control methods,
   repo-root/stage-file control requests, and additional hook/settings schema

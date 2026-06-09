@@ -106,6 +106,7 @@ const SHOW_THINKING_CHOICES: Array<"on" | "off"> = ["on", "off"];
 
 interface ThinkingControlsPanelProps {
   mode: ThinkingMode;
+  modeOptions?: readonly ThinkingMode[];
   onSetMode: (mode: ThinkingMode) => void;
   level: EffortLevel;
   effortOptions: EffortLevelOption[];
@@ -175,6 +176,7 @@ function ThinkingChoiceButton({
  */
 export function ThinkingControlsPanel({
   mode,
+  modeOptions = THINKING_MODE_ORDER,
   onSetMode,
   level,
   effortOptions,
@@ -187,6 +189,10 @@ export function ThinkingControlsPanel({
   optionRole = "radio",
   className,
 }: ThinkingControlsPanelProps) {
+  const availableModes = THINKING_MODE_ORDER.filter((m) =>
+    modeOptions.includes(m),
+  );
+  const showEffort = availableModes.includes("on") && effortOptions.length > 0;
   const modeLabel = (m: ThinkingMode) =>
     m === "off"
       ? t("modelSettingsThinkingOffLabel")
@@ -208,7 +214,7 @@ export function ThinkingControlsPanel({
           {t("modelSettingsThinkingTitle")}
         </div>
         <div className="thinking-toolbar-menu-options" role="group">
-          {THINKING_MODE_ORDER.map((m) => (
+          {availableModes.map((m) => (
             <ThinkingChoiceButton
               key={m}
               optionRole={optionRole}
@@ -264,38 +270,40 @@ export function ThinkingControlsPanel({
           })}
         </div>
       </div>
-      <div className="thinking-toolbar-menu-section thinking-controls-section thinking-controls-section--effort">
-        <div className="thinking-toolbar-menu-label">
-          {t("modelSettingsEffortTitle")}
+      {showEffort && (
+        <div className="thinking-toolbar-menu-section thinking-controls-section thinking-controls-section--effort">
+          <div className="thinking-toolbar-menu-label">
+            {t("modelSettingsEffortTitle")}
+          </div>
+          <div
+            className="thinking-toolbar-menu-options effort-options"
+            role="group"
+          >
+            {effortOptions.map((option) => (
+              <ThinkingChoiceButton
+                key={option.value}
+                optionRole={optionRole}
+                checked={mode === "on" && level === option.value}
+                className={`thinking-toolbar-option ${
+                  mode === "on" && level === option.value ? "active" : ""
+                }`}
+                title={option.description}
+                onClick={() => {
+                  onSetEffort(option.value);
+                  onSetMode("on");
+                  after();
+                }}
+              >
+                <span
+                  className={`model-switch-indicator-dot tone-${option.value}`}
+                  aria-hidden="true"
+                />
+                <span>{option.label}</span>
+              </ThinkingChoiceButton>
+            ))}
+          </div>
         </div>
-        <div
-          className="thinking-toolbar-menu-options effort-options"
-          role="group"
-        >
-          {effortOptions.map((option) => (
-            <ThinkingChoiceButton
-              key={option.value}
-              optionRole={optionRole}
-              checked={mode === "on" && level === option.value}
-              className={`thinking-toolbar-option ${
-                mode === "on" && level === option.value ? "active" : ""
-              }`}
-              title={option.description}
-              onClick={() => {
-                onSetEffort(option.value);
-                onSetMode("on");
-                after();
-              }}
-            >
-              <span
-                className={`model-switch-indicator-dot tone-${option.value}`}
-                aria-hidden="true"
-              />
-              <span>{option.label}</span>
-            </ThinkingChoiceButton>
-          ))}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

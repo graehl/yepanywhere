@@ -211,13 +211,15 @@ export interface ProviderInfo {
  * - "default": Auto-approve read-only tools (Read, Glob, Grep, etc.), ask for mutating tools
  * - "acceptEdits": Auto-approve file editing tools (Edit, Write, NotebookEdit), ask for others
  * - "plan": Auto-approve read-only tools, ask for others (planning/analysis mode)
+ * - "auto": Use provider classifier to approve or deny permission prompts
  * - "bypassPermissions": Auto-approve all tools (full autonomous mode)
  */
 export type PermissionMode =
   | "default"
   | "bypassPermissions"
   | "acceptEdits"
-  | "plan";
+  | "plan"
+  | "auto";
 
 /**
  * All permission modes in canonical order.
@@ -229,6 +231,7 @@ export const ALL_PERMISSION_MODES: readonly PermissionMode[] = [
   "acceptEdits",
   "plan",
   "bypassPermissions",
+  "auto",
 ] as const;
 
 /**

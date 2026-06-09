@@ -27,8 +27,10 @@ import { useI18n } from "../i18n";
 import {
   getEffortLevelLabel,
   getEffortLevelOptions,
+  getThinkingModeOptions,
   isEffortLevel,
   resolveSupportedEffortLevel,
+  resolveSupportedThinkingMode,
 } from "../lib/effortLevels";
 import { Modal } from "./ui/Modal";
 
@@ -364,6 +366,20 @@ export function RestartSessionModal({
     effortLevel,
     effortOptions,
   );
+  const thinkingModeOptions = useMemo(
+    () =>
+      getThinkingModeOptions({
+        provider: selectedProviderInfo,
+        model: selectedModelInfo,
+        effortOptions,
+      }),
+    [effortOptions, selectedModelInfo, selectedProviderInfo],
+  );
+  const effectiveThinkingMode = resolveSupportedThinkingMode(
+    thinkingMode,
+    thinkingModeOptions,
+  );
+  const showEffortOptions = thinkingModeOptions.includes("on");
   const [openInNewWindow, setOpenInNewWindow] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -373,6 +389,9 @@ export function RestartSessionModal({
     selectedProvider;
   const supportsThinkingToggle =
     selectedProviderInfo?.supportsThinkingToggle ?? true;
+  const showThinkingControls =
+    supportsThinkingToggle &&
+    thinkingModeOptions.some((option) => option !== "off");
 
   useEffect(() => {
     if (settingsLoading || hasUserSelectedProviderRef.current) {
@@ -467,8 +486,8 @@ export function RestartSessionModal({
       const result = await api.restartSession(projectId, sessionId, {
         mode,
         model: selectedModel,
-        thinking: supportsThinkingToggle
-          ? toThinkingOption(thinkingMode, effectiveEffortLevel)
+        thinking: showThinkingControls
+          ? toThinkingOption(effectiveThinkingMode, effectiveEffortLevel)
           : undefined,
         provider: selectedProvider,
         executor,
@@ -587,9 +606,9 @@ export function RestartSessionModal({
               {selectedModel ?? t("processInfoDefaultModel")}
             </span>
             <span className="model-switch-status-detail">
-              {supportsThinkingToggle
+              {showThinkingControls
                 ? `${selectedProviderDisplayName} · ${renderThinkingLabel(
-                    thinkingMode,
+                    effectiveThinkingMode,
                     effectiveEffortLevel,
                   )}`
                 : selectedProviderDisplayName}
@@ -696,18 +715,18 @@ export function RestartSessionModal({
           </div>
         </section>
 
-        {supportsThinkingToggle && (
+        {showThinkingControls && (
           <>
             <section className="model-switch-section">
               <div className="model-switch-section-header">
                 <strong>{t("newSessionThinkingMode")}</strong>
               </div>
               <div className="model-switch-chip-group">
-                {(["off", "auto", "on"] as ThinkingMode[]).map((mode) => (
+                {thinkingModeOptions.map((mode) => (
                   <button
                     key={mode}
                     type="button"
-                    className={`model-switch-chip ${thinkingMode === mode ? "active" : ""}`}
+                    className={`model-switch-chip ${effectiveThinkingMode === mode ? "active" : ""}`}
                     onClick={() => setThinkingMode(mode)}
                     disabled={restarting}
                   >
@@ -743,37 +762,39 @@ export function RestartSessionModal({
               </div>
             </section>
 
-            <section className="model-switch-section">
-              <div className="model-switch-section-header">
-                <strong>{t("modelSettingsEffortTitle")}</strong>
-              </div>
-              <div className="model-switch-chip-group">
-                {effortOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`model-switch-chip ${
-                      thinkingMode === "on" &&
-                      effectiveEffortLevel === option.value
-                        ? "active"
-                        : ""
-                    }`}
-                    onClick={() => {
-                      setThinkingMode("on");
-                      setEffortLevel(option.value);
-                    }}
-                    disabled={restarting}
-                    title={option.description}
-                  >
-                    <span
-                      className={`model-switch-indicator-dot tone-${option.value}`}
-                      aria-hidden="true"
-                    />
-                    <span>{option.label}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
+            {showEffortOptions && (
+              <section className="model-switch-section">
+                <div className="model-switch-section-header">
+                  <strong>{t("modelSettingsEffortTitle")}</strong>
+                </div>
+                <div className="model-switch-chip-group">
+                  {effortOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`model-switch-chip ${
+                        effectiveThinkingMode === "on" &&
+                        effectiveEffortLevel === option.value
+                          ? "active"
+                          : ""
+                      }`}
+                      onClick={() => {
+                        setThinkingMode("on");
+                        setEffortLevel(option.value);
+                      }}
+                      disabled={restarting}
+                      title={option.description}
+                    >
+                      <span
+                        className={`model-switch-indicator-dot tone-${option.value}`}
+                        aria-hidden="true"
+                      />
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
           </>
         )}
 

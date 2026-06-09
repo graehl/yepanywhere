@@ -18,8 +18,11 @@ import {
 } from "../../hooks/useModelSettings";
 import {
   getEffortLevelOptions,
+  getThinkingModeOptions,
   resolveSupportedEffortLevel,
+  resolveSupportedThinkingMode,
 } from "../../lib/effortLevels";
+import { getPermissionModeOptions } from "../../lib/permissionModes";
 import {
   getAvailableProviders,
   getDefaultProvider,
@@ -35,12 +38,6 @@ import {
 } from "../../components/FilterDropdown";
 import { ThinkingControlsPanel } from "../../components/ThinkingControls";
 
-const MODE_ORDER: PermissionMode[] = [
-  "default",
-  "acceptEdits",
-  "plan",
-  "bypassPermissions",
-];
 const RECAP_MODE_ORDER: RecapMode[] = ["off", "native", "side-session"];
 const PROMPT_SUGGESTION_MODE_ORDER: PromptSuggestionMode[] = [
   ...PROMPT_SUGGESTION_MODES,
@@ -232,18 +229,37 @@ export function ModelSettings() {
     effortLevel,
     effortOptions,
   );
+  const thinkingModeOptions = getThinkingModeOptions({
+    provider: selectedProvider,
+    model: selectedModelInfo,
+    effortOptions,
+  });
+  const effectiveThinkingMode = resolveSupportedThinkingMode(
+    thinkingMode,
+    thinkingModeOptions,
+  );
+  const permissionModeOptions = getPermissionModeOptions({
+    model: selectedModelInfo,
+  });
+  const effectiveDefaultPermissionMode = permissionModeOptions.includes(
+    savedDefaults?.permissionMode ?? "default",
+  )
+    ? (savedDefaults?.permissionMode ?? "default")
+    : "default";
   const claudeProvider = availableProviders.find((p) => p.name === "claude");
   const modeLabels: Record<PermissionMode, string> = {
     default: t("modeDefaultLabel"),
     acceptEdits: t("modeAcceptEditsLabel"),
     plan: t("modePlanLabel"),
     bypassPermissions: t("modeBypassPermissionsLabel"),
+    auto: t("modeAutoLabel"),
   };
   const modeDescriptions: Record<PermissionMode, string> = {
     default: t("modeDefaultDescription"),
     acceptEdits: t("modeAcceptEditsDescription"),
     plan: t("modePlanDescription"),
     bypassPermissions: t("modeBypassPermissionsDescription"),
+    auto: t("modeAutoDescription"),
   };
   const recapModeLabels: Record<RecapMode, string> = {
     off: t("recapModeOff"),
@@ -268,6 +284,9 @@ export function ModelSettings() {
     selectedProvider?.supportsPermissionMode ?? true;
   const supportsThinkingToggle =
     selectedProvider?.supportsThinkingToggle ?? true;
+  const showThinkingControls =
+    supportsThinkingToggle &&
+    thinkingModeOptions.some((option) => option !== "off");
   const availableRecapModes = RECAP_MODE_ORDER.filter((modeValue) =>
     providerSupportsRecapMode(selectedProvider, modeValue),
   );
@@ -425,14 +444,15 @@ export function ModelSettings() {
             </div>
           </div>
 
-          {supportsThinkingToggle && (
+          {showThinkingControls && (
             <div className="new-session-helper-section session-default-thinking-section">
               <h3>{t("modelSettingsThinkingTitle")}</h3>
               <p className="session-default-section-description">
                 {t("modelSettingsThinkingDescription")}
               </p>
               <ThinkingControlsPanel
-                mode={thinkingMode}
+                mode={effectiveThinkingMode}
+                modeOptions={thinkingModeOptions}
                 onSetMode={setThinkingMode}
                 level={effectiveEffortLevel}
                 effortOptions={effortOptions}
@@ -524,12 +544,12 @@ export function ModelSettings() {
             <div className="new-session-mode-section session-default-mode-section">
               <h3>{t("newSessionModeTitle")}</h3>
               <div className="mode-options">
-                {MODE_ORDER.map((modeValue) => (
+                {permissionModeOptions.map((modeValue) => (
                   <button
                     key={modeValue}
                     type="button"
                     className={`mode-option ${
-                      (savedDefaults?.permissionMode ?? "default") === modeValue
+                      effectiveDefaultPermissionMode === modeValue
                         ? "selected"
                         : ""
                     }`}

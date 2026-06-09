@@ -6,6 +6,7 @@ import { ModeSelector } from "../ModeSelector";
 
 const translations: Record<string, string> = {
   modeAcceptEditsLabel: "Edit",
+  modeAutoLabel: "Auto",
   modeBypassPermissionsLabel: "Bypass",
   modeClickToSelect: "Click to select mode",
   modeDefaultLabel: "Ask",
@@ -55,5 +56,21 @@ describe("ModeSelector", () => {
     expect(screen.getByText("Ask")).toBeTruthy();
     expect(screen.queryByText("Next turn")).toBeNull();
     expect(screen.getByTitle("Click to select mode")).toBeTruthy();
+  });
+
+  it("renders supplied auto mode choices", () => {
+    const onModeChange = vi.fn();
+    render(
+      <ModeSelector
+        mode="default"
+        onModeChange={onModeChange}
+        modes={["default", "auto"]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Ask/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Auto" }));
+
+    expect(onModeChange).toHaveBeenCalledWith("auto");
   });
 });

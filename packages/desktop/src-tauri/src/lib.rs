@@ -143,3 +143,26 @@ pub fn run() {
             }
         });
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::Value;
+
+    fn tauri_config() -> Value {
+        serde_json::from_str(include_str!("../tauri.conf.json"))
+            .expect("tauri.conf.json should be valid JSON")
+    }
+
+    #[test]
+    fn updater_endpoint_uses_desktop_update_route() {
+        let conf = tauri_config();
+        let endpoint = conf["plugins"]["updater"]["endpoints"][0]
+            .as_str()
+            .expect("updater endpoint must be a string");
+
+        assert_eq!(
+            endpoint,
+            "https://updates.yepanywhere.com/desktop/tauri/{{target}}/{{arch}}/{{current_version}}",
+        );
+    }
+}

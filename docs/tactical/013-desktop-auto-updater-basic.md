@@ -8,6 +8,12 @@ Progress:
   JSTorrent reference implementation.
 - [x] 2026-06-09: Added startup, periodic, and manual Tauri update checks with
   install progress and relaunch.
+- [x] 2026-06-09: Moved the Tauri updater to the `/desktop` product route and
+  added a config guard test for the updater endpoint.
+- [x] 2026-06-09: Verified the existing `desktop-v0.0.3` GitHub release does
+  not include `latest.json`; the `/desktop/tauri` route needs a future desktop
+  release built with `TAURI_SIGNING_PRIVATE_KEY` before it can return an update
+  payload.
 
 ## Reference
 
@@ -31,6 +37,13 @@ Yep Anywhere desktop already has the Tauri updater plugin, updater endpoint,
 pubkey, capabilities, and CI artifact validation. What was missing was runtime
 behavior: checking for updates, showing users what is available, installing,
 and relaunching.
+
+`updates.yepanywhere.com/version` is the existing simple version check for the
+server package, and `updates.yepanywhere.com/bridge/version` is the existing
+bridge version check. The desktop updater therefore uses its own product route:
+`updates.yepanywhere.com/desktop/tauri/{{target}}/{{arch}}/{{current_version}}`.
+The simple update server strips `/desktop` via `pathPrefix` and serves the
+Tauri updater protocol without changing the root or bridge version routes.
 
 This work is separate from managed component updates:
 
@@ -75,7 +88,10 @@ package as part of the Tauri app update flow.
 
 ## Future Work
 
-- Add endpoint/config tests similar to JSTorrent's updater guard tests.
+- Fix desktop release publishing so every `desktop-v*` release intended for
+  auto-update includes signed updater artifacts and `latest.json`; verify the
+  `TAURI_SIGNING_PRIVATE_KEY` secret is present before relying on the update
+  endpoint.
 - Add a headless updater mode if desktop needs background update checks outside
   the main UI process.
 - Add a managed components screen for Yep server package, Claude Code, and

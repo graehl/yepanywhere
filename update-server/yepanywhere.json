@@ -8,6 +8,15 @@
     "tauriUpdates": false
   },
   {
+    "id": "yepanywhere-desktop",
+    "displayName": "Yep Anywhere Desktop",
+    "hostnames": ["updates.yepanywhere.com"],
+    "githubRepo": "kzahel/yepanywhere",
+    "tagPrefix": "desktop-v",
+    "tauriUpdates": true,
+    "pathPrefix": "/desktop"
+  },
+  {
     "id": "yep-bridge",
     "displayName": "Yep Bridge",
     "hostnames": ["updates.yepanywhere.com"],

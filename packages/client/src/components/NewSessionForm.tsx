@@ -194,20 +194,22 @@ function providerSupportsPromptSuggestionMode(
   return provider?.supportsNativePromptSuggestions === true;
 }
 
-function getDefaultPromptSuggestionMode(
-  provider: { supportsNativePromptSuggestions?: boolean } | null | undefined,
+function getPreferredPromptSuggestionMode(
   defaults?: { promptSuggestionMode?: PromptSuggestionMode } | null,
 ): PromptSuggestionMode {
-  if (
-    defaults?.promptSuggestionMode &&
-    providerSupportsPromptSuggestionMode(
-      provider,
-      defaults.promptSuggestionMode,
-    )
-  ) {
-    return defaults.promptSuggestionMode;
-  }
-  return "off";
+  return defaults?.promptSuggestionMode &&
+    PROMPT_SUGGESTION_MODE_ORDER.includes(defaults.promptSuggestionMode)
+    ? defaults.promptSuggestionMode
+    : "off";
+}
+
+function resolvePromptSuggestionMode(
+  provider: { supportsNativePromptSuggestions?: boolean } | null | undefined,
+  preferredMode: PromptSuggestionMode,
+): PromptSuggestionMode {
+  return providerSupportsPromptSuggestionMode(provider, preferredMode)
+    ? preferredMode
+    : "off";
 }
 
 function getDefaultHelperSideModel(
@@ -350,6 +352,8 @@ export function NewSessionForm({
   const speechTurnIdRef = useRef<string | null>(null);
   const hasInitializedDefaultsRef = useRef(false);
   const hasUserCustomizedDefaultsRef = useRef(false);
+  const preferredPromptSuggestionModeRef =
+    useRef<PromptSuggestionMode>("off");
   const lastSyncedProjectIdRef = useRef<string | null>(null);
 
   // Thinking toggle state
@@ -689,6 +693,9 @@ export function NewSessionForm({
     if (!initialProvider) return;
 
     const initialModels = initialProvider.models ?? [];
+    const preferredPromptSuggestionMode =
+      getPreferredPromptSuggestionMode(savedDefaults);
+    preferredPromptSuggestionModeRef.current = preferredPromptSuggestionMode;
     setSelectedProvider(initialProvider.name);
     setSelectedModel(
       getPreferredProviderModelId(
@@ -699,7 +706,10 @@ export function NewSessionForm({
     );
     setSelectedRecapMode(getDefaultRecapMode(initialProvider, savedDefaults));
     setSelectedPromptSuggestionMode(
-      getDefaultPromptSuggestionMode(initialProvider, savedDefaults),
+      resolvePromptSuggestionMode(
+        initialProvider,
+        preferredPromptSuggestionMode,
+      ),
     );
     setHelperSideModel(
       getDefaultHelperSideModel(
@@ -748,7 +758,10 @@ export function NewSessionForm({
       getDefaultRecapMode(provider, settings?.newSessionDefaults),
     );
     setSelectedPromptSuggestionMode(
-      getDefaultPromptSuggestionMode(provider, settings?.newSessionDefaults),
+      resolvePromptSuggestionMode(
+        provider,
+        preferredPromptSuggestionModeRef.current,
+      ),
     );
     setHelperSideModel(
       getDefaultHelperSideModel(
@@ -930,7 +943,7 @@ export function NewSessionForm({
         model: selectedModel ?? undefined,
         permissionMode: mode,
         recapMode: selectedRecapMode,
-        promptSuggestionMode: selectedPromptSuggestionMode,
+        promptSuggestionMode: preferredPromptSuggestionModeRef.current,
         helperSideModel,
       }),
     ).catch((err) => {
@@ -1777,6 +1790,7 @@ export function NewSessionForm({
             }`}
             onClick={() => {
               hasUserCustomizedDefaultsRef.current = true;
+              preferredPromptSuggestionModeRef.current = modeValue;
               setSelectedPromptSuggestionMode(modeValue);
             }}
             disabled={isStarting}

@@ -943,6 +943,61 @@ describe("NewSessionForm", () => {
     });
   });
 
+  it("keeps native prompt suggestion preference across provider switches", async () => {
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        model: "opus",
+        permissionMode: "default",
+        promptSuggestionMode: "native",
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /promptSuggestionModeNative/ })
+          .className,
+      ).toContain("selected");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Codex" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /promptSuggestionModeOff/ })
+          .className,
+      ).toContain("selected");
+    });
+    expect(
+      screen.queryByRole("button", { name: /promptSuggestionModeNative/ }),
+    ).toBeNull();
+    expect(mockUpdateSetting).toHaveBeenCalledWith(
+      "newSessionDefaults",
+      expect.objectContaining({
+        provider: "codex",
+        promptSuggestionMode: "native",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Claude" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /promptSuggestionModeNative/ })
+          .className,
+      ).toContain("selected");
+    });
+  });
+
   it("keeps simulated recaps available when native suggestions are unsupported", async () => {
     serverSettingsState.isLoading = false;
 

@@ -41,11 +41,13 @@ import {
 import {
   DEFAULT_IDLE_PREEMPT_THRESHOLD_MS,
   type ProcessInfo,
+  type ProcessEvent,
   type ProcessOptions,
   type SessionOwnership,
   type SessionSummary,
   encodeProjectId,
 } from "./types.js";
+import { normalizeSlashCommandName } from "../sdk/slashCommandEmulation.js";
 
 /** Maximum number of terminated processes to retain */
 const MAX_TERMINATED_PROCESSES = 50;
@@ -75,6 +77,79 @@ const ACTIVE_HEARTBEAT_DOUBT_STATUSES = new Set([
   "recently-active-unverified",
   "long-silent-unverified",
 ]);
+const RESUME_COMPACT_WAIT_MS = 3 * 60 * 1000;
+
+export type ResumeMode = "full" | "compact-first";
+
+export type ResumeCompactionAttempt =
+  | { status: "completed"; command: string }
+  | { status: "timed-out"; command: string; timeoutMs: number }
+  | { status: "failed"; command?: string; reason: string }
+  | { status: "unavailable"; reason: string }
+  | { status: "skipped"; reason: string };
+
+export class ResumeCompactionError extends Error {
+  readonly sessionId: string;
+  readonly provider: ProviderName;
+  readonly attempt: ResumeCompactionAttempt;
+  readonly recovery = "full-resume" as const;
+
+  constructor(params: {
+    sessionId: string;
+    provider: ProviderName;
+    attempt: ResumeCompactionAttempt;
+  }) {
+    super(describeResumeCompactionAttempt(params.attempt));
+    this.name = "ResumeCompactionError";
+    this.sessionId = params.sessionId;
+    this.provider = params.provider;
+    this.attempt = params.attempt;
+  }
+}
+
+function isCompactBoundaryMessage(message: SDKMessage): boolean {
+  return message.type === "system" && message.subtype === "compact_boundary";
+}
+
+function compactFailureReason(message: SDKMessage): string | null {
+  if (
+    message.type !== "system" ||
+    message.subtype !== "status" ||
+    message.compact_result !== "failed"
+  ) {
+    return null;
+  }
+  return typeof message.compact_error === "string" && message.compact_error
+    ? message.compact_error
+    : "provider reported compaction failure";
+}
+
+function isCompactSuccessStatus(message: SDKMessage): boolean {
+  return (
+    message.type === "system" &&
+    message.subtype === "status" &&
+    message.compact_result === "success"
+  );
+}
+
+function describeResumeCompactionAttempt(
+  attempt: ResumeCompactionAttempt,
+): string {
+  switch (attempt.status) {
+    case "completed":
+      return `Compact-first resume completed with /${attempt.command}`;
+    case "timed-out":
+      return `Compact-first resume timed out after ${attempt.timeoutMs}ms waiting for /${attempt.command}`;
+    case "failed":
+      return attempt.command
+        ? `Compact-first resume failed after /${attempt.command}: ${attempt.reason}`
+        : `Compact-first resume failed: ${attempt.reason}`;
+    case "unavailable":
+      return `Compact-first resume unavailable: ${attempt.reason}`;
+    case "skipped":
+      return `Compact-first resume skipped: ${attempt.reason}`;
+  }
+}
 
 function getStaleInTurnThresholdMs(provider: ProviderName): number {
   return provider === "codex" || provider === "codex-oss"

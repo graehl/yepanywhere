@@ -435,6 +435,8 @@ interface ToolbarThinkingControl {
   /** "Show thinking" preference (default/on/off); all providers. */
   showThinking: ShowThinking;
   onSetShowThinking: (value: ShowThinking) => void;
+  /** Provider for resolving the inherited "default" show-thinking cue. */
+  provider?: string | null;
 }
 
 interface ToolbarRenderModeControl {
@@ -738,6 +740,7 @@ function ThinkingToolbarControl({
             onSetEffort={control.onSetEffort}
             showThinking={control.showThinking}
             onSetShowThinking={control.onSetShowThinking}
+            provider={control.provider}
             t={t}
             onSelect={close}
             optionRole="menuitemradio"
@@ -2335,6 +2338,7 @@ export function MessageInputToolbar({
               onToggleEnabled: toggleThinkingEnabled,
               showThinking,
               onSetShowThinking: setShowThinking ?? (() => {}),
+              provider: normalizedThinkingProvider,
             }
           : null
       }

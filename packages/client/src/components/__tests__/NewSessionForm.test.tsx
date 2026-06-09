@@ -717,7 +717,7 @@ describe("NewSessionForm", () => {
     expect(screen.queryByRole("button", { name: "HD" })).toBeNull();
   });
 
-  it("orders permission mode before helper controls", async () => {
+  it("orders permission mode last among the config controls", async () => {
     serverSettingsState.isLoading = false;
 
     const { container } = render(
@@ -735,14 +735,16 @@ describe("NewSessionForm", () => {
       ).toBeDefined();
     });
 
+    // Permission mode is the tallest control, so it anchors the bottom as the
+    // full-width last item rather than sitting above the helper controls.
     const headings = Array.from(
       container.querySelectorAll(".new-session-provider-slot h3"),
       (element) => element.textContent,
     );
-    expect(headings.indexOf("newSessionModeTitle")).toBeLessThan(
+    expect(headings.indexOf("newSessionModeTitle")).toBeGreaterThan(
       headings.indexOf("newSessionRecapTitle"),
     );
-    expect(headings.indexOf("newSessionModeTitle")).toBeLessThan(
+    expect(headings.indexOf("newSessionModeTitle")).toBeGreaterThan(
       headings.indexOf("newSessionPromptSuggestionsTitle"),
     );
   });

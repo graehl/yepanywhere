@@ -2,7 +2,12 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ThinkingEffortSelector, ThinkingIcon } from "../ThinkingControls";
+import type { useI18n } from "../../i18n";
+import {
+  ThinkingControlsPanel,
+  ThinkingEffortSelector,
+  ThinkingIcon,
+} from "../ThinkingControls";
 import type { EffortLevelOption } from "../../lib/effortLevels";
 
 const effortOptions: EffortLevelOption[] = [
@@ -11,6 +16,23 @@ const effortOptions: EffortLevelOption[] = [
   { value: "high", label: "High", description: "Deep reasoning" },
   { value: "xhigh", label: "Extra High", description: "Extra reasoning" },
 ];
+const t = ((key: string) =>
+  (
+    {
+      modelSettingsThinkingTitle: "Thinking",
+      modelSettingsThinkingOffLabel: "Off",
+      modelSettingsThinkingAutoLabel: "Auto",
+      modelSettingsThinkingOnLabel: "On",
+      modelSettingsEffortTitle: "Effort level",
+      showThinkingTitle: "Show thinking",
+      showThinkingHint: "Show thinking hint",
+      showThinkingOn: "On",
+      showThinkingOff: "Off",
+      showThinkingDefault: "Default",
+      showThinkingDefaultShown: "Shown",
+      showThinkingDefaultHidden: "Hidden",
+    } as Record<string, string>
+  )[key] ?? key) as ReturnType<typeof useI18n>["t"];
 
 describe("ThinkingControls", () => {
   afterEach(() => {
@@ -52,5 +74,38 @@ describe("ThinkingControls", () => {
     const { container } = render(<ThinkingIcon mode="auto" />);
 
     expect(container.querySelector("text")?.textContent).toBe("A");
+  });
+
+  it("orders show thinking immediately after thinking in the inline panel", () => {
+    const { container } = render(
+      <ThinkingControlsPanel
+        mode="auto"
+        onSetMode={vi.fn()}
+        level="high"
+        effortOptions={effortOptions}
+        onSetEffort={vi.fn()}
+        showThinking="default"
+        onSetShowThinking={vi.fn()}
+        provider="codex"
+        t={t}
+        className="thinking-controls-panel--inline"
+      />,
+    );
+
+    const sections = Array.from(
+      container.querySelectorAll(".thinking-controls-section"),
+    );
+
+    expect(
+      sections[0]?.classList.contains("thinking-controls-section--mode"),
+    ).toBe(true);
+    expect(
+      sections[1]?.classList.contains(
+        "thinking-controls-section--show-thinking",
+      ),
+    ).toBe(true);
+    expect(
+      sections[2]?.classList.contains("thinking-controls-section--effort"),
+    ).toBe(true);
   });
 });

@@ -338,7 +338,6 @@ export function NewSessionForm({
   >({});
   const [attachmentQuality] = useAttachmentUploadQuality();
   const [interimTranscript, setInterimTranscript] = useState("");
-  const [isSavingDefaults, setIsSavingDefaults] = useState(false);
   const [isProjectChooserExpanded, setIsProjectChooserExpanded] =
     useState(false);
   const [projectInput, setProjectInput] = useState(
@@ -918,27 +917,25 @@ export function NewSessionForm({
     setMode(selectedMode);
   };
 
-  const handleSaveDefaults = useCallback(async () => {
-    setIsSavingDefaults(true);
-    try {
-      await updateServerSetting("newSessionDefaults", {
+  // Auto-persist new-session defaults: any user change to provider / model /
+  // permission / recap / suggestions / helper becomes the default immediately
+  // (no explicit "save as default" step). Skips the initial load — only fires
+  // once the user has actually customized something — and stays silent to
+  // avoid a toast on every click.
+  useEffect(() => {
+    if (!hasUserCustomizedDefaultsRef.current || !selectedProvider) return;
+    void Promise.resolve(
+      updateServerSetting("newSessionDefaults", {
         provider: selectedProvider ?? undefined,
         model: selectedModel ?? undefined,
         permissionMode: mode,
         recapMode: selectedRecapMode,
         promptSuggestionMode: selectedPromptSuggestionMode,
         helperSideModel,
-      });
-      showToast(t("newSessionDefaultsSaved"), "success");
-    } catch (err) {
+      }),
+    ).catch((err) => {
       console.error("Failed to save new session defaults:", err);
-      showToast(
-        err instanceof Error ? err.message : t("newSessionDefaultsSaveError"),
-        "error",
-      );
-    } finally {
-      setIsSavingDefaults(false);
-    }
+    });
   }, [
     mode,
     helperSideModel,
@@ -946,8 +943,6 @@ export function NewSessionForm({
     selectedProvider,
     selectedPromptSuggestionMode,
     selectedRecapMode,
-    showToast,
-    t,
     updateServerSetting,
   ]);
 
@@ -1398,30 +1393,6 @@ export function NewSessionForm({
         clientTurnId: speechTurnIdRef.current,
       };
     }, [projectId]);
-  const savedDefaults = settings?.newSessionDefaults;
-  const defaultRecapMode = getDefaultRecapMode(
-    selectedProviderInfo,
-    savedDefaults,
-  );
-  const defaultHelperSideModel = getDefaultHelperSideModel(
-    helperSelectableModels,
-    savedDefaults,
-  );
-  const defaultPromptSuggestionMode = getDefaultPromptSuggestionMode(
-    selectedProviderInfo,
-    savedDefaults,
-  );
-  const savedPromptSuggestionModeForMatch =
-    savedDefaults?.promptSuggestionMode ?? defaultPromptSuggestionMode;
-  const defaultsMatchCurrent =
-    (savedDefaults?.provider ?? undefined) ===
-      (selectedProvider ?? undefined) &&
-    (savedDefaults?.model ?? undefined) === (selectedModel ?? undefined) &&
-    (savedDefaults?.permissionMode ?? "default") === mode &&
-    defaultRecapMode === selectedRecapMode &&
-    savedPromptSuggestionModeForMatch === selectedPromptSuggestionMode &&
-    defaultHelperSideModel === helperSideModel;
-
   // Shared input area with toolbar (textarea + attach/voice on left, send on right)
   const inputArea = (
     <>
@@ -1589,8 +1560,9 @@ export function NewSessionForm({
           onSetEffort={setEffortLevel}
           showThinking={showThinking}
           onSetShowThinking={setShowThinking}
+          provider={selectedProvider}
           t={t}
-          className="new-session-thinking-controls"
+          className="thinking-controls-panel--inline new-session-thinking-controls"
         />
       )}
     </>
@@ -1848,35 +1820,6 @@ export function NewSessionForm({
       </div>
     </div>
   ) : null;
-  const hasConfigControls = Boolean(
-    selectedProvider ||
-      permissionSection ||
-      recapSection ||
-      promptSuggestionSection,
-  );
-  const defaultsBar = hasConfigControls ? (
-    <div className="new-session-defaults-bar">
-      <p className="new-session-defaults-copy">
-        {t("newSessionDefaultsDescription")}
-      </p>
-      <button
-        type="button"
-        className="new-session-defaults-button"
-        onClick={handleSaveDefaults}
-        disabled={
-          isStarting ||
-          isSavingDefaults ||
-          settingsLoading ||
-          !selectedProvider ||
-          defaultsMatchCurrent
-        }
-      >
-        {isSavingDefaults
-          ? t("newSessionDefaultsSaving")
-          : t("newSessionDefaultsAction")}
-      </button>
-    </div>
-  ) : null;
 
   // Compact mode: just the input area, no header or mode selector
   if (compact) {
@@ -1909,15 +1852,13 @@ export function NewSessionForm({
           modelSection ||
           recapSection ||
           promptSuggestionSection ||
-          permissionSection ||
-          defaultsBar) && (
+          permissionSection) && (
           <div className="new-session-provider-slot">
             {providerSection}
             {modelSection}
-            {permissionSection}
             {recapSection}
             {promptSuggestionSection}
-            {defaultsBar}
+            {permissionSection}
           </div>
         )}
       </div>

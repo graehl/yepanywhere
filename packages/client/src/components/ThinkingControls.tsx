@@ -6,6 +6,7 @@ import type {
 import type { CSSProperties, ReactNode } from "react";
 import type { useI18n } from "../i18n";
 import type { EffortLevelOption } from "../lib/effortLevels";
+import { effectiveShowThinking } from "../lib/showThinking";
 
 export function ThinkingIcon({ mode }: { mode: ThinkingMode }) {
   return (
@@ -98,7 +99,10 @@ export function ThinkingEffortSelector({
 }
 
 const THINKING_MODE_ORDER: ThinkingMode[] = ["off", "auto", "on"];
-const SHOW_THINKING_ORDER: ShowThinking[] = ["default", "on", "off"];
+// Show-thinking is presented as a binary effective state; "default" is never a
+// settable target (you only ever override to on/off), it is an inherited start
+// state shown as a subtle cue on whichever effective option it resolves to.
+const SHOW_THINKING_CHOICES: Array<"on" | "off"> = ["on", "off"];
 
 interface ThinkingControlsPanelProps {
   mode: ThinkingMode;
@@ -108,6 +112,8 @@ interface ThinkingControlsPanelProps {
   onSetEffort: (level: EffortLevel) => void;
   showThinking: ShowThinking;
   onSetShowThinking: (value: ShowThinking) => void;
+  /** Provider whose native default resolves the "default" show-thinking cue. */
+  provider?: string | null;
   t: ReturnType<typeof useI18n>["t"];
   /** Called after any selection — popover mounts use this to close. */
   onSelect?: () => void;
@@ -175,6 +181,7 @@ export function ThinkingControlsPanel({
   onSetEffort,
   showThinking,
   onSetShowThinking,
+  provider,
   t,
   onSelect,
   optionRole = "radio",
@@ -186,18 +193,17 @@ export function ThinkingControlsPanel({
       : m === "auto"
         ? t("modelSettingsThinkingAutoLabel")
         : t("modelSettingsThinkingOnLabel");
-  const showThinkingLabel = (v: ShowThinking) =>
-    v === "default"
-      ? t("showThinkingDefault")
-      : v === "on"
-        ? t("showThinkingOn")
-        : t("showThinkingOff");
+  const showThinkingLabel = (v: "on" | "off") =>
+    v === "on" ? t("showThinkingOn") : t("showThinkingOff");
+  // Which On/Off the un-overridden "default" currently behaves as.
+  const effectiveShow = effectiveShowThinking(showThinking, provider);
+  const inheritsDefault = showThinking === "default";
 
   const after = () => onSelect?.();
 
   return (
     <div className={`thinking-controls-panel ${className ?? ""}`.trim()}>
-      <div className="thinking-toolbar-menu-section">
+      <div className="thinking-toolbar-menu-section thinking-controls-section thinking-controls-section--mode">
         <div className="thinking-toolbar-menu-label">
           {t("modelSettingsThinkingTitle")}
         </div>
@@ -219,7 +225,46 @@ export function ThinkingControlsPanel({
           ))}
         </div>
       </div>
-      <div className="thinking-toolbar-menu-section">
+      <div className="thinking-toolbar-menu-section thinking-controls-section thinking-controls-section--show-thinking">
+        <div
+          className="thinking-toolbar-menu-label"
+          title={t("showThinkingHint")}
+        >
+          {t("showThinkingTitle")}
+        </div>
+        <div className="thinking-toolbar-menu-options" role="group">
+          {SHOW_THINKING_CHOICES.map((v) => {
+            const isExplicit = showThinking === v;
+            const isDefaultHere = inheritsDefault && effectiveShow === v;
+            return (
+              <ThinkingChoiceButton
+                key={v}
+                optionRole={optionRole}
+                checked={isExplicit || isDefaultHere}
+                className={`thinking-toolbar-option ${isExplicit ? "active" : ""} ${
+                  isDefaultHere ? "is-default" : ""
+                }`.trim()}
+                title={
+                  isDefaultHere
+                    ? `${t("showThinkingDefault")} — ${
+                        v === "on"
+                          ? t("showThinkingDefaultShown")
+                          : t("showThinkingDefaultHidden")
+                      }`
+                    : undefined
+                }
+                onClick={() => {
+                  onSetShowThinking(v);
+                  after();
+                }}
+              >
+                {showThinkingLabel(v)}
+              </ThinkingChoiceButton>
+            );
+          })}
+        </div>
+      </div>
+      <div className="thinking-toolbar-menu-section thinking-controls-section thinking-controls-section--effort">
         <div className="thinking-toolbar-menu-label">
           {t("modelSettingsEffortTitle")}
         </div>
@@ -247,32 +292,6 @@ export function ThinkingControlsPanel({
                 aria-hidden="true"
               />
               <span>{option.label}</span>
-            </ThinkingChoiceButton>
-          ))}
-        </div>
-      </div>
-      <div className="thinking-toolbar-menu-section">
-        <div
-          className="thinking-toolbar-menu-label"
-          title={t("showThinkingHint")}
-        >
-          {t("showThinkingTitle")}
-        </div>
-        <div className="thinking-toolbar-menu-options" role="group">
-          {SHOW_THINKING_ORDER.map((v) => (
-            <ThinkingChoiceButton
-              key={v}
-              optionRole={optionRole}
-              checked={showThinking === v}
-              className={`thinking-toolbar-option ${
-                showThinking === v ? "active" : ""
-              }`}
-              onClick={() => {
-                onSetShowThinking(v);
-                after();
-              }}
-            >
-              {showThinkingLabel(v)}
             </ThinkingChoiceButton>
           ))}
         </div>

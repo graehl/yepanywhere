@@ -33,7 +33,7 @@ import {
   FilterDropdown,
   type FilterOption,
 } from "../../components/FilterDropdown";
-import { ThinkingEffortSelector } from "../../components/ThinkingControls";
+import { ThinkingControlsPanel } from "../../components/ThinkingControls";
 
 const MODE_ORDER: PermissionMode[] = [
   "default",
@@ -179,6 +179,8 @@ export function ModelSettings() {
     setEffortLevel,
     thinkingMode,
     setThinkingMode,
+    showThinking,
+    setShowThinking,
   } = useModelSettings();
   const { providers, loading: providersLoading } = useProviders();
   const {
@@ -231,14 +233,6 @@ export function ModelSettings() {
     effortOptions,
   );
   const claudeProvider = availableProviders.find((p) => p.name === "claude");
-  const thinkingOptions: Array<{
-    value: "off" | "auto" | "on";
-    label: string;
-  }> = [
-    { value: "off", label: t("modelSettingsThinkingOffLabel") },
-    { value: "auto", label: t("modelSettingsThinkingAutoLabel") },
-    { value: "on", label: t("modelSettingsThinkingOnLabel") },
-  ];
   const modeLabels: Record<PermissionMode, string> = {
     default: t("modeDefaultLabel"),
     acceptEdits: t("modeAcceptEditsLabel"),
@@ -437,65 +431,18 @@ export function ModelSettings() {
               <p className="session-default-section-description">
                 {t("modelSettingsThinkingDescription")}
               </p>
-              <div className="new-session-helper-options">
-                {thinkingOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    className={`new-session-helper-option ${
-                      thinkingMode === opt.value ? "selected" : ""
-                    }`}
-                    onClick={() => setThinkingMode(opt.value)}
-                  >
-                    <span className={`mode-option-dot thinking-${opt.value}`} />
-                    <span>{opt.label}</span>
-                  </button>
-                ))}
-              </div>
-              {thinkingMode === "on" && (
-                <ThinkingEffortSelector
-                  options={effortOptions}
-                  value={effectiveEffortLevel}
-                  onChange={setEffortLevel}
-                  ariaLabel={t("modelSettingsEffortTitle")}
-                  variant="settings"
-                />
-              )}
-            </div>
-          )}
-
-          {supportsPermissionMode && (
-            <div className="new-session-mode-section session-default-mode-section">
-              <h3>{t("newSessionModeTitle")}</h3>
-              <div className="mode-options">
-                {MODE_ORDER.map((modeValue) => (
-                  <button
-                    key={modeValue}
-                    type="button"
-                    className={`mode-option ${
-                      (savedDefaults?.permissionMode ?? "default") === modeValue
-                        ? "selected"
-                        : ""
-                    }`}
-                    onClick={() =>
-                      void updateNewSessionDefaults({
-                        permissionMode: modeValue,
-                      })
-                    }
-                    disabled={settingsLoading}
-                  >
-                    <span className={`mode-option-dot mode-${modeValue}`} />
-                    <div className="mode-option-content">
-                      <span className="mode-option-label">
-                        {modeLabels[modeValue]}
-                      </span>
-                      <span className="mode-option-desc">
-                        {modeDescriptions[modeValue]}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
+              <ThinkingControlsPanel
+                mode={thinkingMode}
+                onSetMode={setThinkingMode}
+                level={effectiveEffortLevel}
+                effortOptions={effortOptions}
+                onSetEffort={setEffortLevel}
+                showThinking={showThinking}
+                onSetShowThinking={setShowThinking}
+                provider={selectedProvider?.name}
+                t={t}
+                className="thinking-controls-panel--inline session-default-thinking-controls"
+              />
             </div>
           )}
 
@@ -572,6 +519,42 @@ export function ModelSettings() {
                 </p>
               )}
           </div>
+
+          {supportsPermissionMode && (
+            <div className="new-session-mode-section session-default-mode-section">
+              <h3>{t("newSessionModeTitle")}</h3>
+              <div className="mode-options">
+                {MODE_ORDER.map((modeValue) => (
+                  <button
+                    key={modeValue}
+                    type="button"
+                    className={`mode-option ${
+                      (savedDefaults?.permissionMode ?? "default") === modeValue
+                        ? "selected"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      void updateNewSessionDefaults({
+                        permissionMode: modeValue,
+                      })
+                    }
+                    disabled={settingsLoading}
+                    title={modeDescriptions[modeValue]}
+                  >
+                    <span className={`mode-option-dot mode-${modeValue}`} />
+                    <div className="mode-option-content">
+                      <span className="mode-option-label">
+                        {modeLabels[modeValue]}
+                      </span>
+                      <span className="mode-option-desc">
+                        {modeDescriptions[modeValue]}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

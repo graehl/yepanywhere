@@ -41,6 +41,7 @@ export type { EffortLevel, ModelOption, ThinkingMode, ThinkingOption };
 export const MODEL_OPTIONS: { value: ModelOption; label: string }[] = [
   { value: "default", label: "Default" },
   { value: "best", label: "Best" },
+  { value: "fable", label: "Fable" },
   { value: "sonnet", label: "Sonnet" },
   { value: "sonnet[1m]", label: "Sonnet 1M" },
   { value: "opus", label: "Opus" },

@@ -40,11 +40,13 @@ const modelGlyphRulesByProvider: Readonly<
       match: "exact",
     },
     { patterns: ["opus"], glyph: "◐", fixedSuffix: "", match: "exact" },
+    { patterns: ["fable"], glyph: "Fb", fixedSuffix: "", match: "exact" },
     {
       patterns: ["sonnet[1m]", "sonnet-1m"],
       glyph: "♪",
       fixedSuffix: "1m",
     },
+    { patterns: ["fable"], glyph: "Fb" },
     { patterns: ["opus"], glyph: "◐" },
     { patterns: ["sonnet"], glyph: "♪" },
     { patterns: ["haiku"], glyph: "✎" },

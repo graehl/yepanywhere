@@ -45,6 +45,8 @@ import type {
   StartSessionOptions,
 } from "./types.js";
 
+type ClaudeSdkModelInfo = Awaited<ReturnType<Query["supportedModels"]>>[number];
+
 /**
  * Use a spawn wrapper to capture the child process reference for liveness checks.
  * When true, stale detection can distinguish "process died silently" from
@@ -177,6 +179,17 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
     contextWindow: getModelContextWindow("best", "claude"),
   },
   {
+    id: "fable",
+    name: "Fable",
+    description:
+      "Most capable Claude model for demanding reasoning and long-horizon agentic work",
+    contextWindow: getModelContextWindow("fable", "claude"),
+    supportsAdaptiveThinking: true,
+    supportsEffort: true,
+    supportedEffortLevels: CLAUDE_EFFORT_LEVELS,
+    defaultEffortLevel: "high",
+  },
+  {
     id: "sonnet",
     name: "Sonnet",
     description: "Standard-context Sonnet for everyday coding tasks",
@@ -257,6 +270,21 @@ function enrichClaudeModel(model: ModelInfo): ModelInfo {
       model.contextWindow ?? getModelContextWindow(model.id, "claude"),
     supportsEffort: model.supportsEffort ?? true,
     supportedEffortLevels: model.supportedEffortLevels ?? CLAUDE_EFFORT_LEVELS,
+  };
+}
+
+function mapClaudeSdkModel(model: ClaudeSdkModelInfo): ModelInfo {
+  return {
+    id: model.value,
+    name: model.displayName,
+    description: model.description,
+    supportsEffort: model.supportsEffort,
+    supportedEffortLevels: mapClaudeSupportedEffortLevels(
+      model.supportedEffortLevels,
+    ),
+    supportsAdaptiveThinking: model.supportsAdaptiveThinking,
+    supportsFastMode: model.supportsFastMode,
+    supportsAutoMode: model.supportsAutoMode,
   };
 }
 
@@ -625,15 +653,7 @@ export class ClaudeProvider implements AgentProvider {
       ]);
 
       return mergeClaudeModels(
-        models.map((m) => ({
-          id: m.value,
-          name: m.displayName,
-          description: m.description,
-          supportsEffort: m.supportsEffort,
-          supportedEffortLevels: mapClaudeSupportedEffortLevels(
-            m.supportedEffortLevels,
-          ),
-        })),
+        models.map((model) => mapClaudeSdkModel(model)),
       );
     } finally {
       abortController.abort();
@@ -1121,15 +1141,7 @@ export class ClaudeProvider implements AgentProvider {
         const models = await sdkQuery.supportedModels();
         // Map SDK ModelInfo (value, displayName, description) to our ModelInfo (id, name, description)
         const mappedModels = mergeClaudeModels(
-          models.map((m) => ({
-            id: m.value,
-            name: m.displayName,
-            description: m.description,
-            supportsEffort: m.supportsEffort,
-            supportedEffortLevels: mapClaudeSupportedEffortLevels(
-              m.supportedEffortLevels,
-            ),
-          })),
+          models.map((model) => mapClaudeSdkModel(model)),
         );
         // Update cache for future getAvailableModels() calls
         cachedModels = mappedModels;

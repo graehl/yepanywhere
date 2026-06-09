@@ -13,6 +13,14 @@ describe("getModelIndicatorModelLabel", () => {
         "Cl ◐ 4.8",
       );
     });
+    it("fable", () => {
+      expect(getModelIndicatorModelLabel("claude", "claude-fable-5")).toBe(
+        "Cl Fb 5",
+      );
+    });
+    it("fable alias", () => {
+      expect(getModelIndicatorModelLabel("claude", "fable")).toBe("Cl Fb");
+    });
     it("opus alias", () => {
       expect(getModelIndicatorModelLabel("claude", "opus")).toBe("Cl ◐");
     });

@@ -38,6 +38,56 @@ describe("ClaudeProvider model list", () => {
     });
     expect(models.map((model) => model.id)).toContain("claude-sonnet-4-6");
   });
+
+  it("exposes Fable from fallback metadata when the SDK omits it", () => {
+    const models = mergeClaudeModels([
+      {
+        id: "claude-sonnet-4-6",
+        name: "Sonnet 4.6",
+        description: "Latest Sonnet",
+      },
+    ]);
+
+    expect(models.map((model) => model.id).slice(0, 4)).toEqual([
+      "default",
+      "best",
+      "fable",
+      "sonnet",
+    ]);
+    expect(models.find((model) => model.id === "fable")).toMatchObject({
+      name: "Fable",
+      contextWindow: 1_000_000,
+      supportsAdaptiveThinking: true,
+      supportsEffort: true,
+      supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
+      defaultEffortLevel: "high",
+    });
+  });
+
+  it("preserves SDK-reported model capability flags", () => {
+    const models = mergeClaudeModels([
+      {
+        id: "claude-fable-5",
+        name: "Fable 5",
+        description: "SDK-reported Fable",
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "medium", "high"],
+        supportsAdaptiveThinking: true,
+        supportsFastMode: false,
+        supportsAutoMode: true,
+      },
+    ]);
+
+    expect(models.find((model) => model.id === "claude-fable-5")).toMatchObject(
+      {
+        contextWindow: 1_000_000,
+        supportsAdaptiveThinking: true,
+        supportsFastMode: false,
+        supportsAutoMode: true,
+        supportedEffortLevels: ["low", "medium", "high"],
+      },
+    );
+  });
 });
 
 describe("Claude provider liveness probe", () => {

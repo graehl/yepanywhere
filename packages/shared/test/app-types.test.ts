@@ -30,6 +30,10 @@ describe("getModelContextWindow", () => {
   });
 
   it("detects explicit Claude 1M model variants", () => {
+    expect(getModelContextWindow("fable")).toBe(CLAUDE_EXTENDED_CONTEXT_WINDOW);
+    expect(getModelContextWindow("claude-fable-5")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
     expect(getModelContextWindow("sonnet[1m]")).toBe(
       CLAUDE_EXTENDED_CONTEXT_WINDOW,
     );

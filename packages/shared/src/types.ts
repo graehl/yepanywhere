@@ -80,6 +80,12 @@ export interface ModelInfo {
   supportedEffortLevels?: EffortLevel[];
   /** Provider-reported default effort level, when available. */
   defaultEffortLevel?: EffortLevel;
+  /** Whether this model supports adaptive thinking, when available. */
+  supportsAdaptiveThinking?: boolean;
+  /** Whether this model supports provider fast mode, when available. */
+  supportsFastMode?: boolean;
+  /** Whether this model supports provider auto mode, when available. */
+  supportsAutoMode?: boolean;
   /** Provider-reported input modalities, e.g. text/image. */
   inputModalities?: string[];
   /** Provider-reported personality support. */
@@ -283,6 +289,7 @@ export interface ClientDefaults {
  * Model option for Claude sessions.
  * - "default": Use the CLI's default model
  * - "best": Use Claude Code's best available model alias
+ * - "fable": Claude Fable alias
  * - "sonnet": Claude Sonnet
  * - "sonnet[1m]": Claude Sonnet with 1M context when available
  * - "opus": Claude Opus alias
@@ -293,6 +300,7 @@ export interface ClientDefaults {
 export type ModelOption =
   | "default"
   | "best"
+  | "fable"
   | "sonnet"
   | "sonnet[1m]"
   | "opus"

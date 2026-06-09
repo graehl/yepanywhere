@@ -207,7 +207,29 @@ Difference detectors:
 - Model ids, effort levels, or context windows change enough to make fallback
   constants or model glyph rules misleading.
 
-Current read-only audit, 2026-06-05:
+Current source refresh, 2026-06-09:
+
+- `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.158` to `0.3.170`,
+  whose package metadata declares bundled Claude Code `2.1.170`.
+- Fable surfaced in the new SDK types as the `fable` model alias and
+  `claude-fable-5` full model id. YA now exposes a fallback `fable` option so
+  users can select it even when the live model probe is unavailable.
+- Fable context and effort metadata are reflected in YA's fallback catalog:
+  1M context, adaptive thinking, and `low`/`medium`/`high`/`xhigh`/`max`
+  effort levels with `high` as the default.
+- SDK model metadata already carried optional adaptive/fast/auto mode flags;
+  YA now preserves those fields from `supportedModels()` rather than dropping
+  them.
+- Other SDK drift inspected but not enacted in this slice: pending
+  `request_user_dialog` replay fields, usage and skill-reload control methods,
+  repo-root/stage-file control requests, and additional hook/settings schema
+  growth. No current YA call site requires those methods for Fable exposure.
+
+Status: Claude Fable/model-metadata refresh complete in source. Older Claude
+Code executables can still use the existing model choices; selecting `fable`
+requires an upstream install/account that recognizes that alias.
+
+Previous read-only audit, 2026-06-05:
 
 - `@anthropic-ai/claude-agent-sdk` is pinned/current at `0.3.158`; latest npm
   version is `0.3.163`.

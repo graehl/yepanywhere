@@ -123,14 +123,22 @@ stable/minimal-motion so missing connector rows can never relocate a
 segment (a row moves only when its parent is present later in the same
 array).
 
-Open question (unverified, provider-side): whether `claude --resume`
-rebuilds model context by walking `parentUuid` from the chosen tip. If it
-does, a falsely-dead segment — the assistant's own completed work — would
-be silently absent from the resumed context; the predicted symptom would
-be a resumed session unaware of work it visibly completed before the
-resume. No such report exists yet; this is a prediction to test, not an
-observed failure. Adjacent to the existing API-error unsafe-resume
-contract above.
+Resume context loss (verified 2026-06-10, provider-side): `claude
+--resume` rebuilds model context by walking `parentUuid` from the chosen
+tip, so a falsely-dead segment — the assistant's own completed, user-read
+work — is silently absent from the resumed context. Probe: a
+`--fork-session` resume of the affected session (claude CLI 2.1.170,
+1M-context model, ~367k tokens loaded so nothing was compacted away) was
+asked, tools disallowed, about two facts that exist only in the dead
+segment and one same-vintage fact from the live branch. The live control
+came back verbatim-accurate (and the model quoted exact mechanical detail
+from other live turns of the same depth), while both dead-segment needles
+were reported absent, with the model explicitly distinguishing
+reconstruction from recall. Consequence: after an api_error retry
+felicity, a resumed Claude session permanently forgets work it completed
+and the user read. This is a reportable upstream data-integrity bug;
+YA's mitigation is rendering-side only (the contract above). Adjacent to
+the existing API-error unsafe-resume contract.
 
 ## Current Problem Areas
 

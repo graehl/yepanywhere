@@ -105,28 +105,31 @@ describe("Local image routes", () => {
     });
   });
 
-  it("rejects symlinks that resolve outside allowed directories", async () => {
-    const uploadsDir = path.join(tempDir, "uploads");
-    const otherDir = path.join(tempDir, "other");
-    await mkdir(uploadsDir, { recursive: true });
-    await mkdir(otherDir, { recursive: true });
+  it.skipIf(process.platform === "win32")(
+    "rejects symlinks that resolve outside allowed directories",
+    async () => {
+      const uploadsDir = path.join(tempDir, "uploads");
+      const otherDir = path.join(tempDir, "other");
+      await mkdir(uploadsDir, { recursive: true });
+      await mkdir(otherDir, { recursive: true });
 
-    const outsideFile = path.join(otherDir, "outside.png");
-    const linkPath = path.join(uploadsDir, "linked.png");
-    await writeFile(outsideFile, "png-bytes");
-    await symlink(outsideFile, linkPath);
+      const outsideFile = path.join(otherDir, "outside.png");
+      const linkPath = path.join(uploadsDir, "linked.png");
+      await writeFile(outsideFile, "png-bytes");
+      await symlink(outsideFile, linkPath);
 
-    const routes = createLocalImageRoutes({
-      allowedPaths: [uploadsDir],
-    });
+      const routes = createLocalImageRoutes({
+        allowedPaths: [uploadsDir],
+      });
 
-    const response = await routes.request(
-      `/?path=${encodeURIComponent(linkPath)}`,
-    );
+      const response = await routes.request(
+        `/?path=${encodeURIComponent(linkPath)}`,
+      );
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toEqual({
-      error: "Path not in allowed directories",
-    });
-  });
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toEqual({
+        error: "Path not in allowed directories",
+      });
+    },
+  );
 });

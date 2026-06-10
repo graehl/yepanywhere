@@ -279,12 +279,11 @@ async function detectInstallMetadataFromPath(
 export function inferManualInstallCommand(
   resolvedInstalledPath: string,
 ): string | null {
-  if (resolvedInstalledPath.includes(`${path.sep}Cellar${path.sep}`)) {
+  const normalizedPath = resolvedInstalledPath.replace(/\\/g, "/");
+  if (normalizedPath.includes("/Cellar/")) {
     return "brew upgrade codex";
   }
-  if (
-    resolvedInstalledPath.includes(`${path.sep}.cargo${path.sep}bin${path.sep}`)
-  ) {
+  if (normalizedPath.includes("/.cargo/bin/")) {
     return "cargo install --locked codex";
   }
   return null;

@@ -22,7 +22,7 @@ describe("Sessions API", () => {
     testDir = join(tmpdir(), `claude-test-${randomUUID()}`);
     const projectPath = "/home/user/myproject";
     projectId = encodeProjectId(projectPath);
-    const encodedPath = projectPath.replaceAll("/", "-");
+    const encodedPath = projectPath.replace(/[/\\:]/g, "-");
 
     await mkdir(join(testDir, "localhost", encodedPath), { recursive: true });
     // Session file must include cwd field for project path discovery
@@ -628,7 +628,7 @@ describe("Sessions API", () => {
 
       // Get project path from projectId
       const projectPath = "/home/user/myproject";
-      const encodedPath = projectPath.replaceAll("/", "-");
+      const encodedPath = projectPath.replace(/[/\\:]/g, "-");
       const sessionDir = join(testDir, "localhost", encodedPath);
 
       // Copy completed agent fixture to session directory
@@ -683,7 +683,7 @@ describe("Sessions API", () => {
       const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const projectPath = "/home/user/myproject";
-      const encodedPath = projectPath.replaceAll("/", "-");
+      const encodedPath = projectPath.replace(/[/\\:]/g, "-");
       const sessionDir = join(testDir, "localhost", encodedPath);
 
       const fixtureContent = await readFile(
@@ -708,7 +708,7 @@ describe("Sessions API", () => {
       const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const projectPath = "/home/user/myproject";
-      const encodedPath = projectPath.replaceAll("/", "-");
+      const encodedPath = projectPath.replace(/[/\\:]/g, "-");
       const sessionDir = join(testDir, "localhost", encodedPath);
 
       const fixtureContent = await readFile(

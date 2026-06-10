@@ -16,6 +16,15 @@ function runBash(env: NodeJS.ProcessEnv): string {
   );
 }
 
+function isBashAvailable(): boolean {
+  try {
+    execFileSync("bash", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function bridgeTestEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env = { ...process.env, ...overrides };
   delete env.AGENTCTL_SESSION_ID;
@@ -24,8 +33,10 @@ function bridgeTestEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return env;
 }
 
+const bashIt = isBashAvailable() ? it : it.skip;
+
 describe("agentctl session env bridge", () => {
-  it("publishes AGENTCTL_SESSION_ID to later Bash shells", () => {
+  bashIt("publishes AGENTCTL_SESSION_ID to later Bash shells", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "ya-agentctl-env-test-"));
     const originalBashEnvPath = join(tempDir, "original-bash-env.sh");
     writeFileSync(
@@ -52,15 +63,13 @@ describe("agentctl session env bridge", () => {
     }
   });
 
-  it("seeds a known resume session id before provider startup", () => {
+  bashIt("seeds a known resume session id before provider startup", () => {
     const bridge = createAgentctlSessionEnvBridge("sess-resume");
 
     try {
-      expect(
-        runBash(
-          bridge.extendEnv(bridgeTestEnv()),
-        ),
-      ).toBe("original= agentctl=sess-resume");
+      expect(runBash(bridge.extendEnv(bridgeTestEnv()))).toBe(
+        "original= agentctl=sess-resume",
+      );
     } finally {
       bridge.cleanup();
     }

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { FileContentResponse } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/app.js";
+import { canonicalizeProjectPath } from "../../src/projects/paths.js";
 import { MockClaudeSDK } from "../../src/sdk/mock.js";
 import { encodeProjectId } from "../../src/supervisor/types.js";
 
@@ -19,9 +20,9 @@ describe("Files API", () => {
 
     // Create temp directory structure with a valid project
     testDir = join(tmpdir(), `claude-test-${randomUUID()}`);
-    projectPath = join(testDir, "myproject");
+    projectPath = canonicalizeProjectPath(join(testDir, "myproject"));
     projectId = encodeProjectId(projectPath);
-    const encodedPath = projectPath.replaceAll("/", "-");
+    const encodedPath = projectPath.replace(/[/\\:]/g, "-");
 
     // Create project directory
     await mkdir(projectPath, { recursive: true });
@@ -358,27 +359,30 @@ describe("Files API", () => {
       expect(json.rawUrl).toContain(encodeURIComponent(outsideFile));
     });
 
-    it("returns 400 for symlink escaping project root", async () => {
-      const outsideDir = join(testDir, "outside");
-      const outsideFile = join(outsideDir, "secret.txt");
-      const linkPath = join(projectPath, "outside-link.txt");
-      await mkdir(outsideDir, { recursive: true });
-      await writeFile(outsideFile, "outside secret");
-      await symlink(outsideFile, linkPath);
+    it.skipIf(process.platform === "win32")(
+      "returns 400 for symlink escaping project root",
+      async () => {
+        const outsideDir = join(testDir, "outside");
+        const outsideFile = join(outsideDir, "secret.txt");
+        const linkPath = join(projectPath, "outside-link.txt");
+        await mkdir(outsideDir, { recursive: true });
+        await writeFile(outsideFile, "outside secret");
+        await symlink(outsideFile, linkPath);
 
-      const { app } = createApp({
-        sdk: mockSdk,
-        projectsDir: join(testDir, "sessions"),
-      });
+        const { app } = createApp({
+          sdk: mockSdk,
+          projectsDir: join(testDir, "sessions"),
+        });
 
-      const res = await app.request(
-        `/api/projects/${projectId}/files?path=outside-link.txt`,
-      );
+        const res = await app.request(
+          `/api/projects/${projectId}/files?path=outside-link.txt`,
+        );
 
-      expect(res.status).toBe(400);
-      const json = (await res.json()) as { error: string };
-      expect(json.error).toBe("Invalid file path");
-    });
+        expect(res.status).toBe(400);
+        const json = (await res.json()) as { error: string };
+        expect(json.error).toBe("Invalid file path");
+      },
+    );
 
     it("returns 400 for directory path", async () => {
       const { app } = createApp({
@@ -529,27 +533,30 @@ describe("Files API", () => {
       expect(json.error).toBe("Invalid file path");
     });
 
-    it("returns 400 for symlink escaping project root", async () => {
-      const outsideDir = join(testDir, "outside");
-      const outsideFile = join(outsideDir, "secret.txt");
-      const linkPath = join(projectPath, "outside-link.txt");
-      await mkdir(outsideDir, { recursive: true });
-      await writeFile(outsideFile, "outside secret");
-      await symlink(outsideFile, linkPath);
+    it.skipIf(process.platform === "win32")(
+      "returns 400 for symlink escaping project root",
+      async () => {
+        const outsideDir = join(testDir, "outside");
+        const outsideFile = join(outsideDir, "secret.txt");
+        const linkPath = join(projectPath, "outside-link.txt");
+        await mkdir(outsideDir, { recursive: true });
+        await writeFile(outsideFile, "outside secret");
+        await symlink(outsideFile, linkPath);
 
-      const { app } = createApp({
-        sdk: mockSdk,
-        projectsDir: join(testDir, "sessions"),
-      });
+        const { app } = createApp({
+          sdk: mockSdk,
+          projectsDir: join(testDir, "sessions"),
+        });
 
-      const res = await app.request(
-        `/api/projects/${projectId}/files/raw?path=outside-link.txt`,
-      );
+        const res = await app.request(
+          `/api/projects/${projectId}/files/raw?path=outside-link.txt`,
+        );
 
-      expect(res.status).toBe(400);
-      const json = (await res.json()) as { error: string };
-      expect(json.error).toBe("Invalid file path");
-    });
+        expect(res.status).toBe(400);
+        const json = (await res.json()) as { error: string };
+        expect(json.error).toBe("Invalid file path");
+      },
+    );
 
     it("returns 404 for non-existent file", async () => {
       const { app } = createApp({

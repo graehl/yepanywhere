@@ -15,14 +15,7 @@ import {
   parseLineColumn,
 } from "@yep-anywhere/shared";
 import { readFile, stat } from "node:fs/promises";
-import {
-  dirname,
-  extname,
-  isAbsolute,
-  normalize,
-  relative,
-  resolve,
-} from "node:path";
+import { dirname, extname, posix, win32 } from "node:path";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { decodeProjectId, getProjectName } from "../projects/paths.js";
@@ -249,13 +242,64 @@ function needsFrozenShareRepair(response: PublicSessionShareResponse): boolean {
   );
 }
 
+type SharePathFlavor = "posix" | "windows";
+
+function getSharePathFlavor(pathValue: string): SharePathFlavor {
+  return /^[A-Za-z]:[\\/]/.test(pathValue) || pathValue.includes("\\")
+    ? "windows"
+    : "posix";
+}
+
+function isAbsoluteSharePath(
+  pathValue: string,
+  flavor: SharePathFlavor,
+): boolean {
+  return flavor === "windows"
+    ? win32.isAbsolute(pathValue)
+    : posix.isAbsolute(pathValue);
+}
+
+function normalizeSharePath(
+  pathValue: string,
+  flavor: SharePathFlavor,
+): string {
+  return flavor === "windows"
+    ? win32.normalize(pathValue)
+    : posix.normalize(pathValue.replaceAll("\\", "/"));
+}
+
+function resolveSharePath(
+  basePath: string,
+  pathValue: string,
+  flavor: SharePathFlavor,
+): string {
+  return flavor === "windows"
+    ? win32.resolve(basePath, pathValue)
+    : posix.resolve(basePath, pathValue.replaceAll("\\", "/"));
+}
+
+function relativeSharePath(
+  fromPath: string,
+  toPath: string,
+  flavor: SharePathFlavor,
+): string {
+  return flavor === "windows"
+    ? win32.relative(fromPath, toPath)
+    : posix.relative(fromPath, toPath);
+}
+
 function isPathInsideDirectory(filePath: string, directory: string): boolean {
-  const relativePath = relative(resolve(directory), resolve(filePath));
+  const flavor = getSharePathFlavor(directory);
+  const relativePath = relativeSharePath(
+    resolveSharePath(directory, "", flavor),
+    resolveSharePath(filePath, "", flavor),
+    flavor,
+  );
   return (
     relativePath === "" ||
     (relativePath !== "" &&
       !relativePath.startsWith("..") &&
-      !isAbsolute(relativePath))
+      !isAbsoluteSharePath(relativePath, flavor))
   );
 }
 
@@ -264,22 +308,26 @@ function normalizePublicShareProjectFilePath(
   projectRoot: string,
 ): string | null {
   const { path: parsedPath } = parseLineColumn(rawPath);
-  const normalizedRoot = resolve(projectRoot);
+  const flavor = getSharePathFlavor(projectRoot);
+  const normalizedRoot = resolveSharePath(projectRoot, "", flavor);
 
-  if (parsedPath.startsWith("/")) {
-    const absolutePath = resolve(parsedPath);
+  if (isAbsoluteSharePath(parsedPath, flavor)) {
+    const absolutePath = resolveSharePath(parsedPath, "", flavor);
     if (!isPathInsideDirectory(absolutePath, normalizedRoot)) {
       return null;
     }
-    return relative(normalizedRoot, absolutePath).replaceAll("\\", "/");
+    return relativeSharePath(normalizedRoot, absolutePath, flavor).replaceAll(
+      "\\",
+      "/",
+    );
   }
 
-  const normalized = normalize(parsedPath);
+  const normalized = normalizeSharePath(parsedPath, flavor);
   if (
     !normalized ||
     normalized === "." ||
     normalized.startsWith("..") ||
-    isAbsolute(normalized)
+    isAbsoluteSharePath(normalized, flavor)
   ) {
     return null;
   }
@@ -353,7 +401,8 @@ function publicShareSessionMentionsFile(
   projectRoot: string,
   projectId: UrlProjectId,
 ): boolean {
-  const absolutePath = resolve(projectRoot, relativePath);
+  const flavor = getSharePathFlavor(projectRoot);
+  const absolutePath = resolveSharePath(projectRoot, relativePath, flavor);
   const candidates = new Set([
     relativePath,
     absolutePath,
@@ -405,7 +454,11 @@ function collectPublicShareMentionedProjectFiles(
   projectId: UrlProjectId,
 ): Set<string> {
   const files = new Set<string>();
-  const normalizedRoot = resolve(projectRoot).replace(/\/+$/, "");
+  const flavor = getSharePathFlavor(projectRoot);
+  const normalizedRoot = resolveSharePath(projectRoot, "", flavor).replace(
+    /[\\/]+$/,
+    "",
+  );
   const rootPattern = new RegExp(
     `${escapeRegExp(normalizedRoot)}/[^\\s"'<>)]*\\.[A-Za-z0-9]+(?::\\d+)?`,
     "g",
@@ -546,9 +599,12 @@ function normalizeRenderReferencePath(
     return normalizeMentionedProjectFilePath(pathOnly, projectRoot);
   }
 
-  const sourceDir = dirname(resolve(projectRoot, sourceRelativePath));
+  const flavor = getSharePathFlavor(projectRoot);
+  const sourceDir = dirname(
+    resolveSharePath(projectRoot, sourceRelativePath, flavor),
+  );
   return normalizeMentionedProjectFilePath(
-    resolve(sourceDir, pathOnly),
+    resolveSharePath(sourceDir, pathOnly, flavor),
     projectRoot,
   );
 }
@@ -560,10 +616,7 @@ async function publicShareSessionMentionsRenderAsset(
   projectId: UrlProjectId,
 ): Promise<boolean> {
   if (
-    !hasPublicShareExtension(
-      relativePath,
-      PUBLIC_SHARE_RENDER_ASSET_EXTENSIONS,
-    )
+    !hasPublicShareExtension(relativePath, PUBLIC_SHARE_RENDER_ASSET_EXTENSIONS)
   ) {
     return false;
   }
@@ -571,14 +624,16 @@ async function publicShareSessionMentionsRenderAsset(
   const sourcePaths = Array.from(
     collectPublicShareMentionedProjectFiles(session, projectRoot, projectId),
   ).filter((sourcePath) =>
-    hasPublicShareExtension(
-      sourcePath,
-      PUBLIC_SHARE_RENDER_SOURCE_EXTENSIONS,
-    ),
+    hasPublicShareExtension(sourcePath, PUBLIC_SHARE_RENDER_SOURCE_EXTENSIONS),
   );
 
   for (const sourcePath of sourcePaths.slice(0, 50)) {
-    const absoluteSourcePath = resolve(projectRoot, sourcePath);
+    const flavor = getSharePathFlavor(projectRoot);
+    const absoluteSourcePath = resolveSharePath(
+      projectRoot,
+      sourcePath,
+      flavor,
+    );
     if (!isPathInsideDirectory(absoluteSourcePath, projectRoot)) {
       continue;
     }
@@ -603,9 +658,7 @@ async function publicShareSessionMentionsRenderAsset(
           return true;
         }
       }
-    } catch {
-      continue;
-    }
+    } catch {}
   }
 
   return false;
@@ -652,7 +705,10 @@ async function servePublicShareProjectFile(
   if (!rawPath) {
     return c.json({ error: "Missing path parameter" }, 400);
   }
-  const relativePath = normalizePublicShareProjectFilePath(rawPath, projectRoot);
+  const relativePath = normalizePublicShareProjectFilePath(
+    rawPath,
+    projectRoot,
+  );
   if (!relativePath) {
     return c.json({ error: "Invalid file path" }, 400);
   }
@@ -915,8 +971,7 @@ export function createPublicShareRoutes(deps: PublicShareRoutesDeps): Hono {
     } catch (error) {
       return c.json(
         {
-          error:
-            error instanceof Error ? error.message : "Invalid YA URL",
+          error: error instanceof Error ? error.message : "Invalid YA URL",
         },
         400,
       );

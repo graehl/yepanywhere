@@ -6,7 +6,7 @@
  * contract check is opt-in via YA_CODEX_REAL_CONTRACT_TEST.
  */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -19,7 +19,15 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { preprocessMessages } from "../../../../client/src/lib/preprocessMessages.ts";
 import { getCodexCommonPaths } from "../../../src/sdk/cli-detection.js";
 import { logSDKMessage } from "../../../src/sdk/messageLogger.js";
@@ -35,6 +43,39 @@ vi.mock("../../../src/sdk/messageLogger.js", () => ({
 beforeEach(() => {
   vi.mocked(logSDKMessage).mockClear();
 });
+
+function createFakeCodexCommand(
+  tempDir: string,
+  basename: string,
+  source: string,
+): string {
+  const scriptPath = join(tempDir, `${basename}.mjs`);
+  writeFileSync(scriptPath, source, "utf-8");
+
+  if (process.platform === "win32") {
+    const cmdPath = join(tempDir, `${basename}.cmd`);
+    writeFileSync(
+      cmdPath,
+      `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`,
+      "utf-8",
+    );
+    return cmdPath;
+  }
+
+  chmodSync(scriptPath, 0o755);
+  return scriptPath;
+}
+
+function isBashAvailable(): boolean {
+  try {
+    execFileSync("bash", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const bashIt = isBashAvailable() ? it : it.skip;
 
 describe("CodexProvider", () => {
   let provider: CodexProvider;
@@ -180,53 +221,58 @@ describe("CodexProvider", () => {
 });
 
 describe("CodexProvider app-server lifecycle", () => {
-  it("publishes the Codex thread id to later app-server tool shells", async () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-agentctl-"));
-    const logPath = join(tempDir, "fake-codex-requests.jsonl");
-    const codexPath = join(tempDir, "fake-codex-agentctl.mjs");
-    writeFileSync(
-      codexPath,
-      buildFakeCodexAppServerWithAgentctlShellProbe(logPath),
-      "utf-8",
-    );
-    chmodSync(codexPath, 0o755);
-
-    let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
-    let consume: Promise<void> | undefined;
-
-    try {
-      const testProvider = new CodexProvider({ codexPath });
-      session = await testProvider.startSession({
-        cwd: tempDir,
-        initialMessage: { text: "check the agentctl env" },
-        effort: "low",
-      });
-
-      consume = (async () => {
-        for await (const _message of session?.iterator ?? []) {
-          // drain until abort below
-        }
-      })();
-
-      await waitForFakeCodexRequest(logPath, "turn/start");
-
-      const turnStartRequest = readFakeCodexRequests(logPath).find(
-        (request) => request.method === "turn/start",
+  bashIt(
+    "publishes the Codex thread id to later app-server tool shells",
+    async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-agentctl-"));
+      const logPath = join(tempDir, "fake-codex-requests.jsonl");
+      const codexPath = createFakeCodexCommand(
+        tempDir,
+        "fake-codex-agentctl",
+        buildFakeCodexAppServerWithAgentctlShellProbe(logPath),
       );
-      expect(turnStartRequest?.agentctlSessionId).toBe("thread-agentctl");
-    } finally {
-      session?.abort();
-      await consume?.catch(() => undefined);
-      rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
+
+      let session:
+        | Awaited<ReturnType<CodexProvider["startSession"]>>
+        | undefined;
+      let consume: Promise<void> | undefined;
+
+      try {
+        const testProvider = new CodexProvider({ codexPath });
+        session = await testProvider.startSession({
+          cwd: tempDir,
+          initialMessage: { text: "check the agentctl env" },
+          effort: "low",
+        });
+
+        consume = (async () => {
+          for await (const _message of session?.iterator ?? []) {
+            // drain until abort below
+          }
+        })();
+
+        await waitForFakeCodexRequest(logPath, "turn/start");
+
+        const turnStartRequest = readFakeCodexRequests(logPath).find(
+          (request) => request.method === "turn/start",
+        );
+        expect(turnStartRequest?.agentctlSessionId).toBe("thread-agentctl");
+      } finally {
+        session?.abort();
+        await consume?.catch(() => undefined);
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("uses the steered turn id for soft interrupt completion", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-lifecycle-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
-    const codexPath = join(tempDir, "fake-codex.mjs");
-    writeFileSync(codexPath, buildFakeCodexAppServer(logPath), "utf-8");
-    chmodSync(codexPath, 0o755);
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex",
+      buildFakeCodexAppServer(logPath),
+    );
 
     let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
     let consume: Promise<void> | undefined;
@@ -294,13 +340,11 @@ describe("CodexProvider app-server lifecycle", () => {
   it("accepts a clean Codex foreground-tool interrupt", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-tool-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
-    const codexPath = join(tempDir, "fake-codex-active-tool.mjs");
-    writeFileSync(
-      codexPath,
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-active-tool",
       buildFakeCodexAppServerWithActiveTool(logPath),
-      "utf-8",
     );
-    chmodSync(codexPath, 0o755);
 
     let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
     let consume: Promise<void> | undefined;
@@ -356,13 +400,11 @@ describe("CodexProvider app-server lifecycle", () => {
   it("drops Codex live deltas before raw logging when disabled by env", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-deltas-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
-    const codexPath = join(tempDir, "fake-codex-live-deltas.mjs");
-    writeFileSync(
-      codexPath,
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-live-deltas",
       buildFakeCodexAppServerWithLiveDelta(logPath),
-      "utf-8",
     );
-    chmodSync(codexPath, 0o755);
     vi.stubEnv("YA_CODEX_DISABLE_LIVE_DELTAS", "true");
 
     let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
@@ -403,8 +445,7 @@ describe("CodexProvider app-server lifecycle", () => {
         .mock.calls.map((call) => call[1] as { method?: string });
       expect(
         rawNotifications.some(
-          (notification) =>
-            notification.method === "item/agentMessage/delta",
+          (notification) => notification.method === "item/agentMessage/delta",
         ),
       ).toBe(false);
       expect(
@@ -423,13 +464,11 @@ describe("CodexProvider app-server lifecycle", () => {
   it("drops Codex live deltas before raw logging when no subscriber wants them", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-no-demand-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
-    const codexPath = join(tempDir, "fake-codex-live-deltas.mjs");
-    writeFileSync(
-      codexPath,
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-live-deltas",
       buildFakeCodexAppServerWithLiveDelta(logPath),
-      "utf-8",
     );
-    chmodSync(codexPath, 0o755);
 
     let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
     let consume: Promise<void> | undefined;
@@ -470,8 +509,7 @@ describe("CodexProvider app-server lifecycle", () => {
         .mock.calls.map((call) => call[1] as { method?: string });
       expect(
         rawNotifications.some(
-          (notification) =>
-            notification.method === "item/agentMessage/delta",
+          (notification) => notification.method === "item/agentMessage/delta",
         ),
       ).toBe(false);
       expect(
@@ -489,13 +527,11 @@ describe("CodexProvider app-server lifecycle", () => {
   it("accepts interrupt with a Codex background tool handle", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-background-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
-    const codexPath = join(tempDir, "fake-codex-background-tool.mjs");
-    writeFileSync(
-      codexPath,
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-background-tool",
       buildFakeCodexAppServerWithBackgroundTool(logPath),
-      "utf-8",
     );
-    chmodSync(codexPath, 0o755);
 
     let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
     let consume: Promise<void> | undefined;
@@ -541,13 +577,11 @@ describe("CodexProvider app-server lifecycle", () => {
   it("uses thread/read probe to reconcile a missed Codex completion", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-probe-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
-    const codexPath = join(tempDir, "fake-codex-idle-probe.mjs");
-    writeFileSync(
-      codexPath,
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-idle-probe",
       buildFakeCodexAppServerWithIdleProbe(logPath),
-      "utf-8",
     );
-    chmodSync(codexPath, 0o755);
 
     let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
     let consume: Promise<void> | undefined;
@@ -602,9 +636,11 @@ describe("CodexProvider app-server lifecycle", () => {
   it("reports interrupt incomplete before Codex has an active turn", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-no-turn-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
-    const codexPath = join(tempDir, "fake-codex-no-turn.mjs");
-    writeFileSync(codexPath, buildFakeCodexAppServer(logPath), "utf-8");
-    chmodSync(codexPath, 0o755);
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-no-turn",
+      buildFakeCodexAppServer(logPath),
+    );
 
     let session: Awaited<ReturnType<CodexProvider["startSession"]>> | undefined;
 
@@ -637,9 +673,11 @@ describe("CodexProvider app-server lifecycle", () => {
   it("generates simulated recaps through an ephemeral helper thread", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-recap-"));
     const logPath = join(tempDir, "fake-codex-requests.jsonl");
-    const codexPath = join(tempDir, "fake-codex-recap.mjs");
-    writeFileSync(codexPath, buildFakeCodexAppServerForRecap(logPath), "utf-8");
-    chmodSync(codexPath, 0o755);
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-recap",
+      buildFakeCodexAppServerForRecap(logPath),
+    );
 
     try {
       const testProvider = new CodexProvider({ codexPath });
@@ -1349,8 +1387,8 @@ import { appendFileSync } from "node:fs";
 
 const logPath = ${JSON.stringify(logPath)};
 const agentctlProbeCommand = ${JSON.stringify(
-  'printf "%s" "$' + '{AGENTCTL_SESSION_ID-}"',
-)};
+    'printf "%s" "$' + '{AGENTCTL_SESSION_ID-}"',
+  )};
 let buffer = "";
 
 function write(payload) {
@@ -1419,9 +1457,7 @@ process.stdin.on("data", (chunk) => {
 `;
 }
 
-function readFakeCodexRequests(
-  logPath: string,
-): Array<{
+function readFakeCodexRequests(logPath: string): Array<{
   id?: number;
   method?: string;
   params?: Record<string, unknown>;
@@ -1630,9 +1666,12 @@ describe("CodexProvider Event Normalization", () => {
 
       for (const method of liveDeltaMethods) {
         expect(
-          provider.shouldSuppressLiveDeltaNotification({ method }, {
-            cwd: "/tmp",
-          }),
+          provider.shouldSuppressLiveDeltaNotification(
+            { method },
+            {
+              cwd: "/tmp",
+            },
+          ),
         ).toBe(false);
       }
 
@@ -1649,9 +1688,12 @@ describe("CodexProvider Event Normalization", () => {
 
       for (const method of liveDeltaMethods) {
         expect(
-          provider.shouldSuppressLiveDeltaNotification({ method }, {
-            cwd: "/tmp",
-          }),
+          provider.shouldSuppressLiveDeltaNotification(
+            { method },
+            {
+              cwd: "/tmp",
+            },
+          ),
         ).toBe(true);
       }
       expect(

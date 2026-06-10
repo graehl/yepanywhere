@@ -1,4 +1,4 @@
-import { isAbsolute, normalize, resolve } from "node:path";
+import { isAbsolute, normalize, posix, win32 } from "node:path";
 import { parseLineColumn } from "@yep-anywhere/shared";
 import katex from "katex";
 import {
@@ -98,7 +98,7 @@ function formatLocalPathReference(reference: LocalPathReference): string {
 function isLocalFilePath(href: string): boolean {
   const trimmed = parseLocalPathReference(href).filePath;
   const isPosixAbsolute = trimmed.startsWith("/") && !trimmed.startsWith("//");
-  const isWindowsDriveAbsolute = /^[A-Za-z]:[\\/]/.test(trimmed);
+  const isWindowsDriveAbsolute = isWindowsDriveAbsolutePath(trimmed);
   if (!isPosixAbsolute && !isWindowsDriveAbsolute) return false;
 
   // Must have a file extension after the last path separator.
@@ -124,6 +124,20 @@ function getFileName(path: string): string {
 
 function isMarkdownExtension(ext: string): boolean {
   return MARKDOWN_EXTENSIONS.has(ext);
+}
+
+function isWindowsDriveAbsolutePath(path: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(path);
+}
+
+function resolveLocalRelativePath(
+  basePath: string,
+  relativePath: string,
+): string {
+  if (isWindowsDriveAbsolutePath(basePath) || basePath.includes("\\")) {
+    return win32.resolve(basePath, relativePath);
+  }
+  return posix.resolve(basePath, relativePath.replaceAll("\\", "/"));
 }
 
 /**
@@ -280,7 +294,7 @@ function resolveLocalMarkdownHref(href: string): LocalPathReference | null {
   }
 
   return {
-    filePath: resolve(basePath, normalized),
+    filePath: resolveLocalRelativePath(basePath, normalized),
     lineNumber: parsed.lineNumber,
     columnNumber: parsed.columnNumber,
   };

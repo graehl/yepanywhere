@@ -66,9 +66,7 @@ describe("Project Path Utilities", () => {
       const sessionDir = "/home/user/.claude/projects/hostname/-encoded-path";
       const sessionId = "abc-123";
       const result = getSessionFilePath(sessionDir, sessionId);
-      expect(result).toBe(
-        "/home/user/.claude/projects/hostname/-encoded-path/abc-123.jsonl",
-      );
+      expect(result).toBe(join(sessionDir, "abc-123.jsonl"));
     });
   });
 

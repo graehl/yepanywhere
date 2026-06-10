@@ -1,8 +1,12 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { toUrlProjectId, type UrlProjectId } from "@yep-anywhere/shared";
+import type { UrlProjectId } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
+import {
+  canonicalizeProjectPath,
+  encodeProjectId,
+} from "../../src/projects/paths.js";
 import {
   createSessionsRoutes,
   type SessionsDeps,
@@ -52,8 +56,8 @@ async function createGrokRedirectFixture(): Promise<{
   sessionDir: string;
 }> {
   const tempDir = await mkdtemp(join(tmpdir(), "ya-grok-redirect-"));
-  const wrongProjectPath = join(tempDir, "wrong");
-  const rightProjectPath = join(tempDir, "right");
+  const wrongProjectPath = canonicalizeProjectPath(join(tempDir, "wrong"));
+  const rightProjectPath = canonicalizeProjectPath(join(tempDir, "right"));
   const sessionId = "grok-native-id";
   const grokSessionsDir = join(tempDir, "grok-sessions");
   const sessionDir = join(
@@ -79,19 +83,19 @@ async function createGrokRedirectFixture(): Promise<{
     tempDir,
     wrongProject: {
       ...createProject(),
-      id: toUrlProjectId(wrongProjectPath),
+      id: encodeProjectId(wrongProjectPath),
       path: wrongProjectPath,
       name: "wrong",
       sessionDir: join(wrongProjectPath, ".claude-sessions"),
     },
     rightProject: {
       ...createProject(),
-      id: toUrlProjectId(rightProjectPath),
+      id: encodeProjectId(rightProjectPath),
       path: rightProjectPath,
       name: "right",
       sessionDir: join(rightProjectPath, ".claude-sessions"),
     },
-    rightProjectId: toUrlProjectId(rightProjectPath),
+    rightProjectId: encodeProjectId(rightProjectPath),
     sessionId,
     grokSessionsDir,
     sessionDir,

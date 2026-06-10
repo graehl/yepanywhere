@@ -78,6 +78,54 @@ Related topics: [session liveness and queue intent](session-liveness.md),
   resume into another `AskUserQuestion`, which should reuse the normal
   waiting-input lifecycle instead of needing a special chained-interview state.
 
+## Transcript Structure: Forest, Connector Rows, Dead Segments
+
+Claude JSONL transcripts are a single-parent branching forest: `parentUuid`
+is the only link type, each row has at most one parent, and a parent may
+have several children (forks). No multi-parent rows have been observed;
+code and docs that say "DAG" mean this forest (see the header comments in
+`packages/server/src/sessions/dag.ts` and `packages/shared/src/dag.ts`).
+
+Conversation rows routinely chain THROUGH non-conversation connector rows.
+Observed connector types: `attachment` rows (CLI-injected context such as
+`date_change` notices and file mentions — in observed sessions every
+assistant turn descends from one) and `system` rows (e.g. `api_error`
+retry bookkeeping). Any layer that drops connector rows breaks the parent
+chain of everything after them.
+
+"Dead segments" (branches with no descendants) arise two ways:
+
+1. **Genuinely abandoned content** — rewind/fork/double-escape flows where
+   the user deliberately branched away. Hiding these is correct.
+2. **Falsely-dead live conversation** — CLI bookkeeping mis-parents the
+   next turn. Verified instance (session `c5b32eda`, 2026-06-10): an API
+   call failed (Cloudflare 502); the CLI created an `api_error` system row
+   in memory with parent = the leaf at error time (an attachment row,
+   since no assistant output existed yet) but did not write it. The retry
+   succeeded and the full turn output was appended, chaining normally from
+   that attachment row. At the NEXT user turn, the CLI flushed the
+   buffered `api_error` row (error-time timestamp, so it appears
+   out-of-order in the file) and parented the new user row to it — not to
+   the real conversation tip. The entire successful retry output became
+   graph-dead even though the user read it and the in-process model
+   context contained it. This is provider-side behavior YA can only
+   observe and render sanely.
+
+Rendering contract for both cases: the server selects the active tip
+timestamp-first (`buildDag`), re-includes dead branches containing
+completed tool work as sibling branches in file order
+(`collectVisibleClaudeEntries`), and the client's `orderByParentChain`
+is stable/minimal-motion so missing connector rows can never relocate a
+segment (a row moves only when its parent is present later in the same
+array).
+
+Open question (unverified, provider-side): whether `claude --resume`
+rebuilds model context by walking `parentUuid` from the chosen tip. If it
+does, a falsely-dead segment — the assistant's own completed work — would
+be silently absent from the resumed context, which may explain
+"model forgot work it did" reports after resume. Adjacent to the existing
+API-error unsafe-resume contract above.
+
 ## Current Problem Areas
 
 Observed user reports:

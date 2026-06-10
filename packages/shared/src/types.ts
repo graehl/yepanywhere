@@ -204,6 +204,8 @@ export interface ProviderInfo {
   supportsNativeRecaps?: boolean;
   /** Whether this provider emits prompt suggestions in its ordinary protocol. */
   supportsNativePromptSuggestions?: boolean;
+  /** Provider-specific command a user can run to authenticate this provider. */
+  loginCommand?: string;
 }
 
 /**

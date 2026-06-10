@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  formatClaudeLoginCommand,
   mergeClaudeModels,
   probeClaudeControlLiveness,
   resolveClaudeSdkNativeExecutable,
@@ -227,5 +228,24 @@ describe("Claude SDK executable resolution", () => {
       expect(executable).toContain("claude-agent-sdk-linux-x64");
       expect(executable).not.toContain("claude-agent-sdk-linux-x64-musl");
     }
+  });
+});
+
+describe("Claude login command", () => {
+  it("uses the short shell command when no executable is preferred", () => {
+    expect(formatClaudeLoginCommand(undefined, "win32")).toBe(
+      "claude auth login --claudeai",
+    );
+  });
+
+  it("formats a PowerShell command for Windows executable paths", () => {
+    expect(
+      formatClaudeLoginCommand(
+        "C:\\Users\\me\\AppData\\Local\\Claude App\\claude.exe",
+        "win32",
+      ),
+    ).toBe(
+      '& "C:\\Users\\me\\AppData\\Local\\Claude App\\claude.exe" auth login --claudeai',
+    );
   });
 });

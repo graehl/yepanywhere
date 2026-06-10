@@ -1,5 +1,12 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { accessSync, constants, existsSync, readFileSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -56,6 +63,7 @@ type ClaudeSdkModelInfo = Awaited<ReturnType<Query["supportedModels"]>>[number];
 const USE_SPAWN_WRAPPER = true;
 const CLAUDE_LIVENESS_PROBE_TIMEOUT_MS = 5000;
 const CLAUDE_LIVENESS_PROBE_SOURCE = "claude:control/mcp_status";
+const DEFAULT_CLAUDE_LOGIN_COMMAND = "claude auth login --claudeai";
 const CLAUDE_EFFORT_LEVELS: EffortLevel[] = [
   "low",
   "medium",
@@ -151,6 +159,156 @@ function resolveLocalClaudeCodeExecutable(): string | undefined {
 
   cachedLocalClaudeCodeExecutable = executable ?? null;
   return executable;
+}
+
+function parseCommandLines(stdout: string): string[] {
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function safeMtimeMs(path: string): number {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function quotePowerShellDoubleQuoted(value: string): string {
+  return `"${value
+    .replace(/`/g, "``")
+    .replace(/\$/g, "`$")
+    .replace(/"/g, '`"')}"`;
+}
+
+function quotePosixSingleQuoted(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+export function formatClaudeLoginCommand(
+  executablePath?: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const trimmedPath = executablePath?.trim();
+  if (!trimmedPath || trimmedPath === "claude") {
+    return DEFAULT_CLAUDE_LOGIN_COMMAND;
+  }
+
+  const executable =
+    platform === "win32"
+      ? quotePowerShellDoubleQuoted(trimmedPath)
+      : quotePosixSingleQuoted(trimmedPath);
+  const invocation = platform === "win32" ? `& ${executable}` : executable;
+  return `${invocation} auth login --claudeai`;
+}
+
+function getClaudeDesktopCodeRoots(): string[] {
+  if (process.platform !== "win32") return [];
+
+  const localAppData =
+    process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local");
+  const appData = process.env.APPDATA ?? join(homedir(), "AppData", "Roaming");
+  const roots: string[] = [];
+
+  try {
+    for (const entry of readdirSync(join(localAppData, "Packages"), {
+      withFileTypes: true,
+    })) {
+      if (entry.isDirectory() && entry.name.startsWith("Claude_")) {
+        roots.push(
+          join(
+            localAppData,
+            "Packages",
+            entry.name,
+            "LocalCache",
+            "Roaming",
+            "Claude",
+            "claude-code",
+          ),
+        );
+      }
+    }
+  } catch {
+    // Claude Desktop may not be installed through the Store package.
+  }
+
+  roots.push(join(appData, "Claude", "claude-code"));
+  return roots;
+}
+
+function findClaudeDesktopExecutables(): string[] {
+  const candidates: Array<{ path: string; mtimeMs: number }> = [];
+
+  for (const root of getClaudeDesktopCodeRoots()) {
+    try {
+      for (const entry of readdirSync(root, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+
+        const candidateDir = join(root, entry.name);
+        const candidate = join(candidateDir, "claude.exe");
+        if (existsSync(candidate)) {
+          candidates.push({
+            path: candidate,
+            mtimeMs: safeMtimeMs(candidateDir),
+          });
+        }
+      }
+    } catch {
+      // This Claude Desktop layout is optional and version-dependent.
+    }
+  }
+
+  return candidates
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .map((candidate) => candidate.path);
+}
+
+async function hasShellClaudeCommand(): Promise<boolean> {
+  if (process.platform !== "win32") return true;
+
+  try {
+    const { stdout } = await execFileAsync("where.exe", ["claude"], {
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+    return parseCommandLines(stdout).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function isUsableClaudeExecutable(path: string): Promise<boolean> {
+  try {
+    await execFileAsync(path, ["--version"], {
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function findPreferredClaudeLoginExecutable(): Promise<
+  string | undefined
+> {
+  if (process.platform !== "win32" || (await hasShellClaudeCommand())) {
+    return undefined;
+  }
+
+  for (const executable of findClaudeDesktopExecutables()) {
+    if (await isUsableClaudeExecutable(executable)) {
+      return executable;
+    }
+  }
+
+  return undefined;
+}
+
+export async function getClaudeLoginCommand(): Promise<string> {
+  return formatClaudeLoginCommand(await findPreferredClaudeLoginExecutable());
 }
 
 async function* withCleanup<T>(
@@ -428,11 +586,11 @@ export class ClaudeProvider implements AgentProvider {
   async getAuthStatus(): Promise<AuthStatus> {
     const installed = await this.isClaudeCliInstalled();
     if (!installed) {
-      return {
+      return this.withLoginCommand({
         installed: false,
         authenticated: false,
         enabled: false,
-      };
+      });
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
@@ -446,16 +604,16 @@ export class ClaudeProvider implements AgentProvider {
 
     const cliAuthStatus = await this.getCliAuthStatus();
     if (cliAuthStatus) {
-      return cliAuthStatus;
+      return this.withLoginCommand(cliAuthStatus);
     }
 
     const credentialsPath = join(homedir(), ".claude", ".credentials.json");
     if (!existsSync(credentialsPath)) {
-      return {
+      return this.withLoginCommand({
         installed: true,
         authenticated: false,
         enabled: false,
-      };
+      });
     }
 
     try {
@@ -470,11 +628,11 @@ export class ClaudeProvider implements AgentProvider {
       const oauth = parsed.claudeAiOauth;
       const hasTokens = Boolean(oauth?.accessToken || oauth?.refreshToken);
       if (!hasTokens) {
-        return {
+        return this.withLoginCommand({
           installed: true,
           authenticated: false,
           enabled: false,
-        };
+        });
       }
 
       const expiresAt =
@@ -484,19 +642,30 @@ export class ClaudeProvider implements AgentProvider {
       const authenticated =
         !expiresAt || expiresAt >= new Date() || Boolean(oauth?.refreshToken);
 
-      return {
+      return this.withLoginCommand({
         installed: true,
         authenticated,
         enabled: authenticated,
         expiresAt,
-      };
+      });
     } catch {
-      return {
+      return this.withLoginCommand({
         installed: true,
         authenticated: false,
         enabled: false,
-      };
+      });
     }
+  }
+
+  private async withLoginCommand(status: AuthStatus): Promise<AuthStatus> {
+    if (status.authenticated || status.loginCommand) {
+      return status;
+    }
+
+    return {
+      ...status,
+      loginCommand: await getClaudeLoginCommand(),
+    };
   }
 
   private async getCliAuthStatus(): Promise<AuthStatus | null> {

@@ -133,4 +133,32 @@ describe("Providers Routes", () => {
     expect(provider.getAuthStatus).toHaveBeenCalledTimes(1);
     expect(provider.getAvailableModels).toHaveBeenCalledTimes(1);
   });
+
+  it("includes provider login command hints", async () => {
+    const provider = createProvider({
+      getAuthStatus: vi.fn(async () => ({
+        installed: true,
+        authenticated: false,
+        enabled: false,
+        loginCommand:
+          '& "C:\\Users\\me\\AppData\\Local\\Claude\\claude.exe" auth login --claudeai',
+      })),
+    });
+    const routes = createProvidersRoutes({
+      providers: [provider],
+      cacheTtlMs: 60_000,
+    });
+
+    const response = await routes.request("/");
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as { providers: Array<unknown> };
+    expect(json.providers).toEqual([
+      expect.objectContaining({
+        name: "claude",
+        loginCommand:
+          '& "C:\\Users\\me\\AppData\\Local\\Claude\\claude.exe" auth login --claudeai',
+      }),
+    ]);
+  });
 });

@@ -21,8 +21,10 @@ import {
 } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
 import { getProjectName } from "../projects/paths.js";
+import { loadConfig } from "../config.js";
 import { concatUserMessages, INTERRUPT_PREAMBLE } from "../sdk/messageQueue.js";
 import type { MessageQueue } from "../sdk/messageQueue.js";
+import { composeTimeAnchors } from "./composeTimeAnchor.js";
 import type { AgentProvider } from "../sdk/providers/types.js";
 import {
   expandSlashCommandEmulation,
@@ -224,6 +226,22 @@ interface PendingToolApproval {
   resolve: (result: ToolApprovalResult) => void;
 }
 
+/**
+ * Deferred (queued-while-busy) delivery behavior toggles. Both default off —
+ * vanilla delivery promotes one verbatim deferred turn per delivery boundary
+ * (see topics/vanilla-defaults.md). Defaults come from server config
+ * (`YA_DEFERRED_BATCH_FLUSH=1`, `YA_COMPOSE_ANCHORS=1`).
+ */
+export interface DeferredDeliveryOptions {
+  /**
+   * Flush all eligible deferred turns at a boundary as one provider turn
+   * joined with `--------` separators, instead of one turn per boundary.
+   */
+  batchFlush?: boolean;
+  /** Prepend `(Ns ago)` / `(Ms later)` compose-time staleness anchors. */
+  composeAnchors?: boolean;
+}
+
 export interface ProcessConstructorOptions extends ProcessOptions {
   /** MessageQueue for real SDK, undefined for mock SDK */
   queue?: MessageQueue;
@@ -265,6 +283,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   promptSuggestionMode?: PromptSuggestionMode;
   /** Session-level helper side model for simulated helper features. */
   helperSideModel?: string;
+  /** Override deferred-delivery toggles (tests); defaults from server config. */
+  deferredDelivery?: DeferredDeliveryOptions;
 }
 
 export class Process {
@@ -281,6 +301,11 @@ export class Process {
 
   private legacyQueue: UserMessage[] = [];
   private messageQueue: MessageQueue | null;
+  private deferredDeliveryOverrides: DeferredDeliveryOptions | undefined;
+  private _deferredDelivery: {
+    batchFlush: boolean;
+    composeAnchors: boolean;
+  } | null = null;
   private deferredEditBarrier: {
     originalTempId: string;
     index: number;
@@ -426,6 +451,7 @@ export class Process {
 
     // Real SDK provides these, mock SDK doesn't
     this.messageQueue = options.queue ?? null;
+    this.deferredDeliveryOverrides = options.deferredDelivery;
     this.abortFn = options.abortFn ?? null;
     this._permissionMode = options.permissionMode ?? "default";
     this._permissions = options.permissions;
@@ -1404,9 +1430,30 @@ export class Process {
     });
   }
 
-  private prepareProviderMessage(message: UserMessage): UserMessage {
+  /**
+   * Prefix a delivered message with a compose-time context anchor (e.g.
+   * `(45s ago)`). Applied after slash-command expansion so a queued `/command`
+   * is still detected; the anchor rides ahead of the expanded provider text and
+   * the matching echo. No-op when `anchor` is absent — including always, by
+   * default, since anchors are opt-in (YA_COMPOSE_ANCHORS=1).
+   */
+  private applyComposeAnchor(
+    message: UserMessage,
+    anchor?: string | null,
+  ): UserMessage {
+    if (!anchor) return message;
+    return { ...message, text: `${anchor}\n\n${message.text}` };
+  }
+
+  private prepareProviderMessage(
+    message: UserMessage,
+    composeAnchor?: string | null,
+  ): UserMessage {
     return this.withProviderDeliveryPriority(
-      this.expandEmulatedSlashCommand(message),
+      this.applyComposeAnchor(
+        this.expandEmulatedSlashCommand(message),
+        composeAnchor,
+      ),
     );
   }
 
@@ -1569,14 +1616,14 @@ export class Process {
    */
   queueMessage(
     message: UserMessage,
-    options?: { allowSteer?: boolean },
+    options?: { allowSteer?: boolean; composeAnchor?: string | null },
   ): {
     success: boolean;
     position?: number;
     error?: string;
   } {
     return this.queuePreparedMessage(
-      this.prepareProviderMessage(message),
+      this.prepareProviderMessage(message, options?.composeAnchor),
       { allowSteer: options?.allowSteer },
     );
   }
@@ -2639,8 +2686,77 @@ export class Process {
   }
 
   /**
-   * Promote all deferred messages that may run after the completed turn.
+   * Deferred-delivery toggles, resolved lazily from constructor overrides then
+   * server config (`YA_DEFERRED_BATCH_FLUSH`, `YA_COMPOSE_ANCHORS`). Both
+   * default off: vanilla delivery is one verbatim deferred turn per delivery
+   * boundary (topics/vanilla-defaults.md).
+   */
+  private resolveDeferredDelivery(): {
+    batchFlush: boolean;
+    composeAnchors: boolean;
+  } {
+    if (!this._deferredDelivery) {
+      const overrides = this.deferredDeliveryOverrides;
+      if (
+        overrides?.batchFlush !== undefined &&
+        overrides?.composeAnchors !== undefined
+      ) {
+        this._deferredDelivery = {
+          batchFlush: overrides.batchFlush,
+          composeAnchors: overrides.composeAnchors,
+        };
+      } else {
+        const config = loadConfig();
+        this._deferredDelivery = {
+          batchFlush: overrides?.batchFlush ?? config.deferredBatchFlush,
+          composeAnchors: overrides?.composeAnchors ?? config.composeAnchors,
+        };
+      }
+    }
+    return this._deferredDelivery;
+  }
+
+  /**
+   * Server-clock epoch ms a deferred message was composed/queued. Prefers the
+   * route-stamped `serverReceivedAt` and falls back to the queue-entry
+   * timestamp — both server clock, so the delta against delivery time (now) has
+   * no skew.
+   */
+  private composedAtMsForEntry(entry: DeferredQueueEntry): number {
+    const serverReceivedAt = entry.message.metadata?.serverReceivedAt;
+    const fromMetadata = serverReceivedAt ? Date.parse(serverReceivedAt) : NaN;
+    if (Number.isFinite(fromMetadata)) return fromMetadata;
+    return Date.parse(entry.timestamp);
+  }
+
+  /**
+   * Compose-time anchor string per deferred entry, computed at delivery (now).
+   * Parallel to `entries`; each element is the `(Ns ago)` / `(Ms later)` prefix
+   * or null when below threshold — or always null when anchors are off
+   * (the default; YA_COMPOSE_ANCHORS=1 opts in). See
+   * topics/compose-time-context-anchors.md.
+   */
+  private deferredComposeAnchors(
+    entries: DeferredQueueEntry[],
+  ): (string | null)[] {
+    if (!this.resolveDeferredDelivery().composeAnchors) {
+      return entries.map(() => null);
+    }
+    return composeTimeAnchors(
+      entries.map((entry) => this.composedAtMsForEntry(entry)),
+      Date.now(),
+    );
+  }
+
+  /**
+   * Promote deferred messages that may run after the completed turn.
    * Returns true when at least one message was accepted by the direct queue.
+   *
+   * Default: take exactly one deferred turn off the queue per delivery
+   * boundary, delivered verbatim as its own provider turn — N queued
+   * "proceed"-style messages get N work slices. With YA_DEFERRED_BATCH_FLUSH=1
+   * all eligible turns flush as one provider turn joined with `--------`
+   * separators.
    */
   private promoteEligibleDeferredAfterTurn(): boolean {
     if (
@@ -2657,8 +2773,28 @@ export class Process {
     if (eligible.length === 0) {
       return false;
     }
-    const providerMessages = eligible.map((entry) =>
-      this.prepareProviderMessage(entry.message),
+
+    if (!this.resolveDeferredDelivery().batchFlush) {
+      const next = eligible[0]!;
+      const [anchor] = this.deferredComposeAnchors([next]);
+      const result = this.queuePreparedMessage(
+        this.prepareProviderMessage(next.message, anchor),
+        { allowSteer: false },
+      );
+      if (!result.success) {
+        this.emitDeferredQueueChange("queued", next.message.tempId);
+        return false;
+      }
+      this.deferredQueue = this.deferredQueue.filter(
+        (entry) => entry !== next,
+      );
+      this.emitDeferredQueueChange("promoted", next.message.tempId);
+      return true;
+    }
+
+    const anchors = this.deferredComposeAnchors(eligible);
+    const providerMessages = eligible.map((entry, index) =>
+      this.prepareProviderMessage(entry.message, anchors[index]),
     );
     const providerTurn =
       providerMessages.length === 1
@@ -2705,8 +2841,10 @@ export class Process {
       this.deferredEditBarrier.index--;
     }
 
+    const [composeAnchor] = this.deferredComposeAnchors([next]);
     const result = this.queueMessage(next.message, {
       allowSteer: options.allowSteer,
+      composeAnchor,
     });
     if (!result.success) {
       this.deferredQueue.splice(nextIndex, 0, next);
@@ -2764,8 +2902,34 @@ export class Process {
       return { promoted: false, nextPatienceMsRemaining };
     }
 
-    const providerMessages = eligible.map((entry) =>
-      this.prepareProviderMessage(entry.message),
+    const anchors = this.deferredComposeAnchors(eligible);
+
+    if (!this.resolveDeferredDelivery().batchFlush) {
+      // Vanilla: each patient turn enters the direct queue as its own
+      // verbatim provider message — no separator-joined merge. Eligibility
+      // and quiet-window scheduling are unchanged.
+      const promotedEntries = new Set<DeferredQueueEntry>();
+      for (const [index, entry] of eligible.entries()) {
+        const result = this.queuePreparedMessage(
+          this.prepareProviderMessage(entry.message, anchors[index]),
+          { allowSteer: false },
+        );
+        if (!result.success) break;
+        promotedEntries.add(entry);
+      }
+      if (promotedEntries.size === 0) {
+        this.emitDeferredQueueChange("queued", eligible[0]?.message.tempId);
+        return { promoted: false, nextPatienceMsRemaining };
+      }
+      this.deferredQueue = this.deferredQueue.filter(
+        (entry) => !promotedEntries.has(entry),
+      );
+      this.emitDeferredQueueChange("promoted");
+      return { promoted: true, nextPatienceMsRemaining };
+    }
+
+    const providerMessages = eligible.map((entry, index) =>
+      this.prepareProviderMessage(entry.message, anchors[index]),
     );
     const providerTurn =
       providerMessages.length === 1

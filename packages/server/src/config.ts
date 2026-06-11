@@ -109,6 +109,21 @@ export interface Config {
   logPretty: boolean;
   /** Enabled provider names. Empty = all providers enabled. */
   enabledProviders: string[];
+  /**
+   * Flush all eligible deferred (queued-while-busy) turns at a delivery
+   * boundary as one provider turn joined with `--------` separators
+   * (YA_DEFERRED_BATCH_FLUSH=1). Default false: one verbatim deferred turn is
+   * promoted per boundary, matching first-party queue behavior
+   * (topics/vanilla-defaults.md).
+   */
+  deferredBatchFlush: boolean;
+  /**
+   * Prepend `(Ns ago)` / `(Ms later)` compose-time staleness anchors to
+   * delivered deferred turns (YA_COMPOSE_ANCHORS=1). Default false: queued
+   * text reaches the provider verbatim
+   * (topics/compose-time-context-anchors.md).
+   */
+  composeAnchors: boolean;
   /** Whether voice input is enabled. Default: true */
   voiceInputEnabled: boolean;
   /** Explicitly enabled server-routed voice backend ids. Empty = none. */
@@ -289,6 +304,10 @@ export function loadConfig(): Config {
           .map((s) => s.trim())
           .filter(Boolean)
       : [],
+    // Deferred (queued-while-busy) delivery toggles; both default off so
+    // queued turns reach the provider verbatim, one per delivery boundary.
+    deferredBatchFlush: process.env.YA_DEFERRED_BATCH_FLUSH === "1",
+    composeAnchors: process.env.YA_COMPOSE_ANCHORS === "1",
     // Voice input (default: true, set VOICE_INPUT=false to disable)
     voiceInputEnabled: process.env.VOICE_INPUT !== "false",
     // Explicit local/test voice backends (cloud backends auto-enable on key

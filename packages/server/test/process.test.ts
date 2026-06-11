@@ -1170,6 +1170,9 @@ describe("Process", () => {
         idleTimeoutMs: 100,
         queue,
         steerFn,
+        // Stitched flush is the opt-in path (YA_DEFERRED_BATCH_FLUSH=1);
+        // it keeps the whole queue's order visible in one provider turn.
+        deferredDelivery: { batchFlush: true, composeAnchors: false },
       });
 
       process.deferMessage({ text: "first", tempId: "temp-1" });
@@ -1401,6 +1404,8 @@ describe("Process", () => {
         sessionId: "sess-1",
         idleTimeoutMs: 100,
         queue,
+        // Stitched flush is the opt-in path (YA_DEFERRED_BATCH_FLUSH=1).
+        deferredDelivery: { batchFlush: true, composeAnchors: false },
       });
       const events: ProcessEvent[] = [];
       process.subscribe((event) => {
@@ -1630,7 +1635,7 @@ describe("Process", () => {
       await process.abort();
     });
 
-    it("promotes deferred turns without rewriting user text", async () => {
+    it("promotes one verbatim deferred turn per delivery boundary", async () => {
       const controller = createControllableIterator();
       const queue = new MessageQueue();
       const process = new Process(controller.iterator, {
@@ -1639,6 +1644,73 @@ describe("Process", () => {
         sessionId: "sess-1",
         idleTimeoutMs: 100,
         queue,
+      });
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        events.push(event);
+      });
+
+      process.deferMessage({
+        text: "first queued",
+        tempId: "temp-1",
+        metadata: {
+          deliveryIntent: "deferred",
+        },
+      });
+      process.deferMessage({
+        text: "second queued",
+        tempId: "temp-2",
+        metadata: {
+          deliveryIntent: "deferred",
+        },
+      });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      // Default (vanilla) delivery: exactly one turn leaves the deferred
+      // queue per completed-turn boundary, with the user's text untouched.
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toHaveLength(1),
+      );
+      const firstContents = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message.message.content as string]
+          : [],
+      );
+      expect(firstContents).toEqual(["first queued"]);
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
+      const allContents = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message.message.content as string]
+          : [],
+      );
+      expect(allContents).toEqual(["first queued", "second queued"]);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("flushes deferred turns as one separator-joined turn when batch flush is enabled", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        deferredDelivery: { batchFlush: true, composeAnchors: false },
       });
       const events: ProcessEvent[] = [];
       process.subscribe((event) => {
@@ -1677,6 +1749,74 @@ describe("Process", () => {
       expect(userContents).toHaveLength(1);
       expect(userContents[0]).toBe(
         `first queued\n\n${CONCAT_SEPARATOR}\n\nsecond queued`,
+      );
+
+      const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();
+      expect(queuedProviderTurn.value?.message.content).toBe(userContents[0]);
+
+      controller.finish();
+      await process.abort();
+    });
+
+    it("prefixes promoted deferred turns with compose-time anchors when opted in", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        deferredDelivery: { batchFlush: true, composeAnchors: true },
+      });
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        events.push(event);
+      });
+
+      // Anchor on metadata.serverReceivedAt so age is computed against real
+      // now() at promotion without fake timers: first composed 45s ago, second
+      // 15s ago (a 30s gap between the two).
+      const now = Date.now();
+      process.deferMessage({
+        text: "first queued",
+        tempId: "temp-1",
+        metadata: {
+          deliveryIntent: "deferred",
+          serverReceivedAt: new Date(now - 45_000).toISOString(),
+        },
+      });
+      process.deferMessage({
+        text: "second queued",
+        tempId: "temp-2",
+        metadata: {
+          deliveryIntent: "deferred",
+          serverReceivedAt: new Date(now - 15_000).toISOString(),
+        },
+      });
+
+      controller.push({
+        type: "result",
+        session_id: "sess-1",
+      });
+
+      await waitFor(() =>
+        expect(process.getDeferredQueueSummary()).toEqual([]),
+      );
+
+      const userContents = events.flatMap((event) =>
+        event.type === "message" && event.message.type === "user"
+          ? [event.message.message.content as string]
+          : [],
+      );
+      // First chunk anchors against delivery time (~45s ago); second against
+      // the first chunk's compose time (exactly 30s later). The live echo is
+      // the same stitched turn that the provider receives.
+      expect(userContents).toHaveLength(1);
+      expect(userContents[0]).toMatch(
+        new RegExp(
+          `^\\(\\d+s ago\\)\\n\\nfirst queued\\n\\n${CONCAT_SEPARATOR}\\n\\n\\(30s later\\)\\n\\nsecond queued$`,
+        ),
       );
 
       const queuedProviderTurn = await queue[Symbol.asyncIterator]().next();

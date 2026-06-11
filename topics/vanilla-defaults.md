@@ -46,7 +46,7 @@ novelty must never be the out-of-the-box experience.
   be useful should be removed, not accumulated. The configuration
   surface is itself a user-visible cost.
 
-## Worked instance: compose-time context anchors
+## Worked instances: queued-turn delivery
 
 [compose-time-context-anchors](compose-time-context-anchors.md)
 prepended `(Ns ago)` / `(Ms later)` staleness markers to queued turns at
@@ -55,8 +55,17 @@ referring to its most recent output. The benefit was believed but
 untested, and the mechanism rewrote provider input — the provider saw
 text the user did not type. Upstream removed it outright
 (`25e7f5d1`, "Keep queued messages verbatim"). The resolution under this
-theory and [kzahel-disabled](kzahel-disabled.md): preserve the behavior
-behind explicit configuration, default-off.
+theory and [kzahel-disabled](kzahel-disabled.md): preserved behind
+`YA_COMPOSE_ANCHORS=1`, default off.
+
+Batched deferred flush is the sibling instance: merging several queued
+turns into one `--------`-joined provider turn defeated the upstream
+usage of queueing N "good, proceed" messages to buy N work slices, and
+was claimed to differ from first-party queue delivery. Default is now
+one verbatim deferred turn per delivery boundary; the merged flush is
+preserved behind `YA_DEFERRED_BATCH_FLUSH=1`. The blind-go-ahead intent
+itself deserves a first-class control someday (a slice or duration
+budget), rather than riding on queue mechanics.
 
 ## Related topics
 

@@ -119,5 +119,7 @@ export function filterEnvForChildProcess(
     filtered[key] = value;
   }
 
+  filtered.ENABLE_PROMPT_CACHING_1H ??= "1";
+
   return filtered;
 }

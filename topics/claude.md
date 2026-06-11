@@ -63,6 +63,18 @@ Related topics: [session liveness and queue intent](session-liveness.md),
   active-session upkeep, not an attempt to mutate the already-running Claude
   process environment; resume sessions may seed the id before startup, while
   remote dynamic injection needs a separate remote-side design.
+- YA-owned Claude launches set `ENABLE_PROMPT_CACHING_1H=1` in the filtered
+  child environment by default, preserving any explicit operator value and
+  leaving Claude Code's documented `FORCE_PROMPT_CACHING_5M=1` override
+  available. Claude Code docs say subscriptions already use one-hour prompt
+  cache TTL automatically, while API-key, Bedrock, Vertex, Foundry, and Claude
+  Platform on AWS paths keep the cheaper five-minute default unless this env
+  var opts them into one-hour TTL; one-hour cache writes are billed at a higher
+  rate, so this default is a deliberate YA launch policy rather than proof that
+  longer TTL is free or always beneficial. Source: Claude Code prompt-caching
+  docs, Cache lifetime section
+  (<https://code.claude.com/docs/en/prompt-caching#cache-lifetime>).
+  <!-- verified: docs 2026-06-11 -->
 - Claude SDK/API package refreshes are source refreshes when they add message
   types, control methods, transcript fields, model/command metadata, or resume
   behavior that YA consumes. Unknown SDK message types may be temporarily

@@ -66,5 +66,23 @@ Undo semantics vary by pane kind, deliberately:
   binding automatically could sever the operator's own connection, so
   applying stays behind the explicit button.
 - **Not wired**: About/Devices/Remote Access (status and actions, no
-  undoable settings); Providers (multiple independent sub-forms — needs
-  a multi-registration design before a pane-level undo is honest).
+  undoable settings); Providers (below).
+
+### Why Providers sub-form undo is deferred (likely never)
+
+The Providers pane is several independent sub-forms (helper-targets
+editor with edit-in-place drafts, Ollama endpoint/prompt, per-provider
+toggles), each with its own draft, validation, and Save lifecycle. The
+header contract is one Undo button in one location, which forces a
+single answer to "undo what?" — and across heterogeneous sub-forms
+there is no honest single answer: reverting *all* sub-forms punishes a
+user who finished one edit and is mid-draft in another; reverting only
+the last-touched form makes the button's scope invisible. Supporting
+this would mean either multi-registration plumbing (several buttons or
+a scoped menu — breaking the one-button contract) or lifting every
+sub-form's state into the pane (a refactor whose cost exceeds the
+benefit: these are low-churn forms that already have explicit
+Save/cancel lifecycles). Per the options-pay-rent principle in
+[vanilla-defaults](vanilla-defaults.md), the affordance is not worth
+its complexity here unless the pane is restructured for other reasons;
+treat this as likely-never rather than pending.

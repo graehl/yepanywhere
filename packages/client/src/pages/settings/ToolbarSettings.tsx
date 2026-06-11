@@ -38,11 +38,6 @@ export function ToolbarSettings() {
       description: t("appearanceToolbarModeDescription"),
     },
     {
-      key: "steerNow",
-      title: t("appearanceToolbarSteerNowTitle"),
-      description: t("appearanceToolbarSteerNowDescription"),
-    },
-    {
       key: "attachments",
       title: t("appearanceToolbarAttachmentsTitle"),
       description: t("appearanceToolbarAttachmentsDescription"),
@@ -96,6 +91,11 @@ export function ToolbarSettings() {
       key: "queueControls",
       title: t("appearanceToolbarQueueTitle"),
       description: t("appearanceToolbarQueueDescription"),
+    },
+    {
+      key: "steerNow",
+      title: t("appearanceToolbarSteerNowTitle"),
+      description: t("appearanceToolbarSteerNowDescription"),
     },
   ];
 

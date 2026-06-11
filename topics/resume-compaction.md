@@ -8,6 +8,7 @@
 Topic: resume-compaction
 
 Related topics: [claude](claude.md),
+[session-context-actions](session-context-actions.md),
 [compact-and-handoff](compact-and-handoff.md),
 [provider-refresh](provider-refresh.md),
 [provider-state-machine](provider-state-machine.md),

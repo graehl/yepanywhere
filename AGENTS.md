@@ -40,6 +40,19 @@ runtime-safety benefit. Run the project lint wrapper for diagnostics, but do not
 turn a one-line import or export addition into a broad reorder solely to satisfy
 organize-imports advice.
 
+## Vanilla Defaults
+
+`topics/vanilla-defaults.md` is the overarching UX theory governing every new
+user-visible feature. Out of the box, YA must feel exactly like the first-party
+provider UIs users already know (Claude Code TUI, claude.ai, Codex): a
+first-time user must not have to learn, or even notice, a new concept. Any
+YA-novel user-visible behavior — including anything that modifies the user's
+submitted text before it reaches the provider — ships configurable and
+default-off. A believed-but-unproven benefit earns an option, never a default.
+Novel features remain welcome; do not assume first-party harnesses already
+cover all useful behavior. Read the topic before adding or enabling any
+user-visible feature that is not configurable default-off.
+
 ## Hard Development Rules
 
 Follow `topics/hard-development-rules.md` for binding upstream-facing

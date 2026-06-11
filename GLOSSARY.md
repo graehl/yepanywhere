@@ -52,5 +52,6 @@ regeneration rules.
 | `ui-architecture` | UI architecture keeps shared rendering, layout, and interaction behavior attached to the data or render boundary that produces it, rather than patching generated DOM after the fact. | [ui-architecture](topics/ui-architecture.md) |
 | `ui-control-alignment` | Shared baseline and metric policy for aligning compact control rows without per-control visual nudges. | [ui-control-alignment](topics/ui-control-alignment.md) |
 | `ui-testing` | Browser-first visual QA protocol for layout-sensitive client control changes. | [ui-testing](topics/ui-testing.md) |
+| `vanilla-defaults` | Out of the box, YA must feel exactly like the first-party provider UIs users already know; every YA-novel user-visible behavior ships configurable and default-off until promoted by a deliberate product decision. | [vanilla-defaults](topics/vanilla-defaults.md) |
 | YA | Shorthand for Yep Anywhere, the mobile-first supervisor for local provider sessions and remote/mobile session UI. | |
 | `ya-env-vars` | Catalog of YA environment variables and the naming conventions distinguishing YA-private consume-and-strip secrets, YA config toggles, and inherited vars. | [ya-env-vars](topics/ya-env-vars.md) |

@@ -44,6 +44,8 @@ export interface AuthStatus {
   expiresAt?: Date;
   /** User info if available */
   user?: { email?: string; name?: string };
+  /** Provider-specific command a user can run to authenticate. */
+  loginCommand?: string;
 }
 
 /**

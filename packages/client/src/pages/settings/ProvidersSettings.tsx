@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import type { HelperTargetConfig, ModelInfo } from "@yep-anywhere/shared";
+import type {
+  HelperTargetConfig,
+  ModelInfo,
+} from "@yep-anywhere/shared";
 import { api, type ServerSettings } from "../../api/client";
 import { useToastContext } from "../../contexts/ToastContext";
 import { useCodexUpdateStatus } from "../../hooks/useCodexUpdateStatus";
@@ -14,6 +17,7 @@ import { getAllProviders } from "../../providers/registry";
 
 const DEFAULT_OLLAMA_SYSTEM_PROMPT =
   "You are a helpful coding assistant. You help users with software engineering tasks. You have access to tools for reading files, editing files, running shell commands, and searching code. Use tools when needed to answer questions or make changes. Be concise and direct.";
+const DEFAULT_CLAUDE_LOGIN_COMMAND = "claude auth login --claudeai";
 
 interface HelperTargetDraft {
   id?: string;
@@ -756,20 +760,52 @@ function OllamaSettings() {
   );
 }
 
+function ClaudeLoginCommandPanel({
+  command,
+  onCopy,
+}: {
+  command: string;
+  onCopy: (command: string) => void;
+}) {
+  const { t } = useI18n();
+
+  return (
+    <div className="settings-command-panel">
+      <div
+        className="settings-command-preview"
+        role="group"
+        aria-label={t("providersClaudeLoginCommandPreviewAria")}
+      >
+        <code>{command}</code>
+      </div>
+      <button
+        type="button"
+        className="settings-button"
+        onClick={() => onCopy(command)}
+      >
+        {t("providersClaudeLoginCommandCopy")}
+      </button>
+    </div>
+  );
+}
+
 export function ProvidersSettings() {
   const { t } = useI18n();
   const { showToast } = useToastContext();
   const { providers: serverProviders } = useProviders();
   const { settings, updateSetting } = useServerSettings();
 
-  const handleCopyClaudeLoginCommand = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText("claude auth login --claudeai");
-      showToast(t("providersClaudeLoginCommandCopied"), "success");
-    } catch {
-      showToast(t("providersClaudeLoginCommandCopyError"), "error");
-    }
-  }, [showToast, t]);
+  const handleCopyClaudeLoginCommand = useCallback(
+    async (command: string) => {
+      try {
+        await navigator.clipboard.writeText(command);
+        showToast(t("providersClaudeLoginCommandCopied"), "success");
+      } catch {
+        showToast(t("providersClaudeLoginCommandCopyError"), "error");
+      }
+    },
+    [showToast, t],
+  );
 
   // Merge server detection status with client-side metadata
   const registeredProviders = getAllProviders();
@@ -781,6 +817,7 @@ export function ProvidersSettings() {
       ...clientProvider,
       installed: serverInfo?.installed ?? false,
       authenticated: serverInfo?.authenticated ?? false,
+      loginCommand: serverInfo?.loginCommand,
     };
   });
 
@@ -827,14 +864,14 @@ export function ProvidersSettings() {
                     <p className="settings-hint">
                       {t("providersClaudeLoginHint")}
                     </p>
-                    <button
-                      type="button"
-                      className="settings-button"
-                      onClick={() => void handleCopyClaudeLoginCommand()}
-                      style={{ marginTop: "var(--space-2)" }}
-                    >
-                      {t("providersClaudeLoginCommandCopy")}
-                    </button>
+                    <ClaudeLoginCommandPanel
+                      command={
+                        provider.loginCommand ?? DEFAULT_CLAUDE_LOGIN_COMMAND
+                      }
+                      onCopy={(command) =>
+                        void handleCopyClaudeLoginCommand(command)
+                      }
+                    />
                   </div>
                 )}
               {provider.id === "claude-ollama" && <OllamaSettings />}

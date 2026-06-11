@@ -445,6 +445,23 @@ async function terminateChildProcess(
     child.once("exit", () => resolve());
   });
 
+  if (process.platform === "win32") {
+    const taskkill = new Promise<void>((resolve) => {
+      execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], () =>
+        resolve(),
+      );
+    });
+    await Promise.race([
+      taskkill,
+      new Promise<void>((resolve) => setTimeout(resolve, graceMs)),
+    ]);
+    await Promise.race([
+      exited,
+      new Promise<void>((resolve) => setTimeout(resolve, 100)),
+    ]);
+    return;
+  }
+
   const killTarget =
     process.platform !== "win32" && child.pid > 0 ? -child.pid : child.pid;
 
@@ -654,6 +671,7 @@ type AppServerRequestHandler = (
 class CodexAppServerClient {
   private process: ChildProcess | null = null;
   private stdoutBuffer = "";
+  private closePromise: Promise<void> | null = null;
 
   /** OS PID of the spawned app-server child process */
   get pid(): number | undefined {
@@ -898,7 +916,10 @@ class CodexAppServerClient {
     return await this.notifications.shift(signal);
   }
 
-  close(): void {
+  async close(): Promise<void> {
+    if (this.closePromise) {
+      return await this.closePromise;
+    }
     if (this.closed) return;
     this.closed = true;
 
@@ -911,7 +932,8 @@ class CodexAppServerClient {
 
     const child = this.process;
     this.process = null;
-    void terminateChildProcess(child);
+    this.closePromise = terminateChildProcess(child);
+    await this.closePromise;
   }
 
   private handleProcessClose(error: Error): void {
@@ -1956,7 +1978,7 @@ export class CodexProvider implements AgentProvider {
       }
     } finally {
       runtimeState.activeTurnId = null;
-      appServer.close();
+      await appServer.close();
       agentctlSessionEnvBridge.cleanup();
     }
 
@@ -2316,7 +2338,7 @@ export class CodexProvider implements AgentProvider {
     } finally {
       clearTimeout(timeout);
       abortController.abort();
-      appServer.close();
+      await appServer.close();
     }
   }
 

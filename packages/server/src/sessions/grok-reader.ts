@@ -1042,7 +1042,12 @@ export class GrokSessionReader implements ISessionReader {
     return this.stripWorkspaceResultEnvelope(stdout)
       .split("\n")
       .map((line) => line.trim())
-      .filter((line) => line.startsWith("/") || line.startsWith("."));
+      .filter(
+        (line) =>
+          line.startsWith("/") ||
+          line.startsWith(".") ||
+          /^[A-Za-z]:[\\/]/.test(line),
+      );
   }
 
   private stripWorkspaceResultEnvelope(value: string): string {

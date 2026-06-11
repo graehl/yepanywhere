@@ -87,6 +87,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
         enabled: authStatus.enabled,
         expiresAt: authStatus.expiresAt?.toISOString(),
         user: authStatus.user,
+        loginCommand: authStatus.loginCommand,
         models,
         imageSizing: getProviderImageSizing(provider.name),
         supportsPermissionMode: provider.supportsPermissionMode,

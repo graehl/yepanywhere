@@ -2,6 +2,7 @@ import { createReadStream, type Stats } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import {
+  basename,
   dirname,
   extname,
   isAbsolute,
@@ -250,7 +251,12 @@ const TEXT_EXTENSIONS = new Set([
  */
 function getMimeType(filePath: string): string {
   const ext = extname(filePath).toLowerCase();
-  return MIME_TYPES[ext] || "application/octet-stream";
+  if (ext) {
+    return MIME_TYPES[ext] || "application/octet-stream";
+  }
+  return (
+    MIME_TYPES[basename(filePath).toLowerCase()] || "application/octet-stream"
+  );
 }
 
 function parsePositiveIntegerQuery(
@@ -797,8 +803,7 @@ function isTextFile(filePath: string): boolean {
     return TEXT_EXTENSIONS.has(ext);
   }
   // Handle dotfiles (files with no extension but starting with .)
-  const fileName = filePath.split("/").pop() || filePath;
-  return TEXT_DOTFILES.has(fileName.toLowerCase());
+  return TEXT_DOTFILES.has(basename(filePath).toLowerCase());
 }
 
 function expandHomePath(requestedPath: string): string {

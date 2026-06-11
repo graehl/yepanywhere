@@ -23,7 +23,11 @@ const baseProps = {
   strokeLinejoin: "round" as const,
 };
 
-function Icon(props: { children: ReactNode; className?: string; [key: string]: unknown }) {
+function Icon(props: {
+  children: ReactNode;
+  className?: string;
+  [key: string]: unknown;
+}) {
   const { children, ...rest } = props;
   return (
     <svg {...baseProps} aria-hidden="true" {...rest}>
@@ -66,6 +70,14 @@ export const settingsCategoryIcons: Record<string, ReactNode> = {
       <path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517" />
       <path d="M6 18a4 4 0 0 1-2-7.464" />
       <path d="M6.003 5.125a4 4 0 0 0-2.526 5.77" />
+    </Icon>
+  ),
+
+  "message-delivery": (
+    <Icon>
+      {/* Send / paper plane */}
+      <path d="M22 2 11 13" />
+      <path d="m22 2-7 20-4-9-9-4Z" />
     </Icon>
   ),
 
@@ -196,5 +208,9 @@ export const settingsCategoryIcons: Record<string, ReactNode> = {
 export function SettingsCategoryIcon({ id }: { id: string }) {
   const icon = settingsCategoryIcons[id];
   if (!icon) return null;
-  return <span className="settings-category-icon" aria-hidden="true">{icon}</span>;
+  return (
+    <span className="settings-category-icon" aria-hidden="true">
+      {icon}
+    </span>
+  );
 }

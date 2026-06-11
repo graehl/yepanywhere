@@ -19,6 +19,7 @@ import { DevicesSettings } from "./DevicesSettings";
 import { EmulatorSettings } from "./EmulatorSettings";
 import { LifecycleWebhooksSettings } from "./LifecycleWebhooksSettings";
 import { LocalAccessSettings } from "./LocalAccessSettings";
+import { MessageDeliverySettings } from "./MessageDeliverySettings";
 import { ModelSettings } from "./ModelSettings";
 import { NotificationsSettings } from "./NotificationsSettings";
 import { ProvidersSettings } from "./ProvidersSettings";
@@ -32,6 +33,7 @@ import type { SettingsCategory } from "./types";
 const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
   model: ModelSettings,
+  "message-delivery": MessageDeliverySettings,
   "agent-context": AgentContextSettings,
   notifications: NotificationsSettings,
   webhooks: LifecycleWebhooksSettings,

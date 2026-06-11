@@ -105,6 +105,11 @@ export function getSettingsCategories(
       description: t("settingsModelDescription"),
     },
     {
+      id: "message-delivery",
+      label: t("settingsMessageDeliveryTitle"),
+      description: t("settingsMessageDeliveryDescription"),
+    },
+    {
       id: "agent-context",
       label: t("settingsAgentContextTitle"),
       description: t("settingsAgentContextDescription"),

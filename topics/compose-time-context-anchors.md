@@ -38,13 +38,12 @@ set, else env var, else off.
 The server settings are stored by `ServerSettingsService` (PUT
 `/api/settings`), which publishes them to a live bridge
 (`supervisor/deferredDeliverySettings.ts`) so changes apply to the next
-delivery boundary without a restart. A visible settings surface is planned
-as a new "Message Delivery" pane (not Appearance, not new-session
-defaults): a slider with an adjacent numeric input where 0 reads as
-"never batch consecutive queued turns"; the same pane could later host the
-primary send-while-busy intent default (Claude now/next lanes — see
+delivery boundary without a restart. The client exposes both settings in
+the "Message Delivery" pane (not Appearance, not new-session defaults):
+a slider with an adjacent numeric input where 0 reads as "never batch
+consecutive queued turns". The same pane could later host the primary
+send-while-busy intent default (Claude now/next lanes — see
 [steer-queue-provider-differences](steer-queue-provider-differences.md)).
-The pane is deferred while concurrent client work is in flight.
 
 ## Opt-in: join window (`deferredJoinWindowSeconds` > 0)
 

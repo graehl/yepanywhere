@@ -417,7 +417,9 @@ export const api = {
   getProviders: (options?: { refresh?: boolean }) =>
     fetchJSON<{ providers: ProviderInfo[] }>(
       options?.refresh ? "/providers?refresh=1" : "/providers",
-      options?.refresh ? { headers: { "Cache-Control": "no-cache" } } : undefined,
+      options?.refresh
+        ? { headers: { "Cache-Control": "no-cache" } }
+        : undefined,
     ),
 
   getProjects: () => fetchJSON<{ projects: Project[] }>("/projects"),
@@ -1512,6 +1514,10 @@ export interface ServerSettings {
   lifecycleWebhookDryRun?: boolean;
   /** How the server handles Codex CLI updates */
   codexUpdatePolicy?: "auto" | "notify" | "off";
+  /** Max seconds between consecutive queued turns to join at delivery. */
+  deferredJoinWindowSeconds?: number;
+  /** Whether delivered queued turns receive compose-time staleness anchors. */
+  composeAnchorsEnabled?: boolean;
 }
 
 export type RelayClientStatus =

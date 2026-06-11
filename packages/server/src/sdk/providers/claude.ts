@@ -16,6 +16,7 @@ import {
   type Query,
   type CanUseTool as SDKCanUseTool,
   type SpawnedProcess,
+  forkSession as sdkForkSession,
   query,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
@@ -967,6 +968,25 @@ export class ClaudeProvider implements AgentProvider {
       clearTimeout(timeout);
       abortController.abort();
     }
+  }
+
+  /**
+   * Fork a session's transcript into a new resumable session via the Agent
+   * SDK (`forkSession`): copies the jsonl with remapped UUIDs, optionally
+   * sliced at `upToMessageId`. The kept prefix is byte-identical to the
+   * source, so provider prompt-cache warmth carries over on resume.
+   */
+  async forkSession(options: {
+    sessionId: string;
+    cwd: string;
+    upToMessageId?: string;
+    title?: string;
+  }): Promise<{ sessionId: string }> {
+    return sdkForkSession(options.sessionId, {
+      dir: options.cwd,
+      upToMessageId: options.upToMessageId,
+      title: options.title,
+    });
   }
 
   /**

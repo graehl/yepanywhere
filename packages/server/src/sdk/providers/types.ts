@@ -245,4 +245,23 @@ export interface AgentProvider {
     recentAssistantText: string[],
     options?: { model?: string },
   ) => Promise<string>;
+
+  /**
+   * Fork a session's transcript into a new resumable session, optionally
+   * sliced at a message (real prefix fork — the new session inherits the
+   * source conversation up to that point, byte-identical, so prompt-cache
+   * warmth carries over). Only providers with a true fork primitive
+   * implement this; absence means the capability does not exist and must
+   * not be emulated. See topics/session-context-actions.md.
+   */
+  forkSession?: (options: {
+    /** Source provider session id. */
+    sessionId: string;
+    /** Project working directory the session belongs to. */
+    cwd: string;
+    /** Slice transcript up to this message UUID (inclusive); omit for full copy. */
+    upToMessageId?: string;
+    /** Title for the forked session. */
+    title?: string;
+  }) => Promise<{ sessionId: string }>;
 }

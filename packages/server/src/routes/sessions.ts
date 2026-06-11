@@ -599,6 +599,18 @@ interface InputResponseBody {
 
 interface RestartSessionBody extends CreateSessionBody {
   reason?: string;
+  /**
+   * "handoff" (default): start a fresh session seeded with a bounded
+   * transcript summary. "fork": copy the provider transcript into a new
+   * session (real prefix fork; provider must support it — Claude today)
+   * and continue there.
+   */
+  restartMode?: "handoff" | "fork";
+  /**
+   * Fork slice point: transcript message UUID (inclusive). Omit for a
+   * full-transcript fork. Only meaningful with restartMode "fork".
+   */
+  forkUpToMessageId?: string;
 }
 
 const RESTART_HANDOFF_MAX_CHARS = 40_000;
@@ -1296,6 +1308,23 @@ function deriveRestartTitle(params: {
     candidates.map(normalizeRestartTitleCandidate).find(Boolean) ??
     "restarted session";
   const title = /^Handoff:/i.test(base) ? base : `Handoff: ${base}`;
+  return truncateRestartTitle(title);
+}
+
+function deriveForkTitle(params: {
+  preferredTitle?: string | null;
+  sourceSession: Session;
+}): string {
+  const candidates = [
+    params.preferredTitle,
+    params.sourceSession.customTitle,
+    params.sourceSession.title,
+    latestUserTitleCandidate(params.sourceSession.messages),
+  ];
+  const base =
+    candidates.map(normalizeRestartTitleCandidate).find(Boolean) ??
+    "forked session";
+  const title = /^Fork:/i.test(base) ? base : `Fork: ${base}`;
   return truncateRestartTitle(title);
 }
 
@@ -3100,13 +3129,25 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       executor = parsedSavedExecutor.executor;
     }
 
+    if (
+      body.restartMode !== undefined &&
+      body.restartMode !== "handoff" &&
+      body.restartMode !== "fork"
+    ) {
+      return c.json({ error: 'restartMode must be "handoff" or "fork"' }, 400);
+    }
+    const restartMode = body.restartMode ?? "handoff";
+
     const oldProcess = deps.supervisor.getProcessForSession(sessionId);
     const metadataProvider = deps.sessionMetadataService?.getProvider(
       sessionId,
     ) as ProviderName | undefined;
     const preferredSourceProvider =
       metadataProvider ?? oldProcess?.provider ?? project.provider;
-    const compactAttempt = await tryRestartCompact(oldProcess);
+    // Fork copies the transcript as-is; pre-restart compaction is a
+    // handoff-only mitigation.
+    const compactAttempt =
+      restartMode === "fork" ? undefined : await tryRestartCompact(oldProcess);
     const oldProcessInterrupted =
       await interruptOldProcessForHandoff(oldProcess);
     const sourceSession = await loadRestartSourceSession(
@@ -3125,6 +3166,139 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const providerName = body.provider ?? sourceProvider;
     const originalMetadata =
       deps.sessionMetadataService?.getMetadata(sessionId);
+
+    const { thinking, effort } = body.thinking
+      ? thinkingOptionToConfig(body.thinking, body.showThinking)
+      : { thinking: undefined, effort: undefined };
+    const model =
+      body.model && body.model !== "default" ? body.model : undefined;
+    const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
+
+    if (restartMode === "fork") {
+      if (body.provider && body.provider !== sourceProvider) {
+        return c.json(
+          {
+            error:
+              "Fork keeps the source provider; omit provider or match the source session",
+          },
+          400,
+        );
+      }
+      if (!deps.supervisor.supportsForkSession(sourceProvider)) {
+        return c.json(
+          { error: `${sourceProvider} does not support transcript fork` },
+          400,
+        );
+      }
+      const forkTitle = deriveForkTitle({
+        preferredTitle: originalMetadata?.customTitle,
+        sourceSession,
+      });
+      let fork: { sessionId: string };
+      try {
+        fork = await deps.supervisor.forkSession({
+          sessionId,
+          projectPath: project.path,
+          providerName: sourceProvider,
+          upToMessageId: body.forkUpToMessageId,
+          title: forkTitle,
+        });
+      } catch (error) {
+        getLogger().warn(
+          {
+            event: "restart_fork_failed",
+            sessionId,
+            projectId,
+            sourceProvider,
+            upToMessageId: body.forkUpToMessageId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Transcript fork failed",
+        );
+        return c.json(
+          {
+            error:
+              error instanceof Error ? error.message : "Transcript fork failed",
+          },
+          500,
+        );
+      }
+
+      const forkMessage =
+        body.reason?.trim() || "Continue from this fork point.";
+      const result = await deps.supervisor.resumeSession(
+        fork.sessionId,
+        project.path,
+        { text: forkMessage, mode: body.mode },
+        body.mode,
+        {
+          model,
+          serviceTier,
+          thinking,
+          effort,
+          providerName: sourceProvider,
+          executor,
+          globalInstructions: getGlobalInstructions(),
+          permissions: body.permissions,
+          recapMode: helperSettings.recapMode,
+          promptSuggestionMode: helperSettings.promptSuggestionMode,
+          helperSideModel: helperSettings.helperSideModel,
+        },
+      );
+
+      if (isQueueFullResponse(result)) {
+        return c.json(
+          { error: "Queue is full", maxQueueSize: result.maxQueueSize },
+          503,
+        );
+      }
+      if (isQueuedResponse(result)) {
+        deps.supervisor.cancelQueuedRequest(result.queueId);
+        return c.json(
+          {
+            error:
+              "Fork could not start immediately; old process was left running",
+          },
+          503,
+        );
+      }
+
+      await persistLaunchMetadata(result.sessionId, sourceProvider, executor);
+      if (deps.sessionMetadataService) {
+        await deps.sessionMetadataService.updateMetadata(result.sessionId, {
+          title: forkTitle,
+        });
+        deps.eventBus?.emit({
+          type: "session-metadata-changed",
+          sessionId: result.sessionId,
+          title: forkTitle,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const oldProcessAbortDeferred = abortOldProcessAfterReplacementActivity(
+        oldProcess,
+        result,
+      );
+
+      return c.json({
+        sessionId: result.sessionId,
+        processId: result.id,
+        projectId: result.projectId,
+        provider: result.provider,
+        model: result.resolvedModel ?? result.model,
+        title: forkTitle,
+        permissionMode: result.permissionMode,
+        modeVersion: result.modeVersion,
+        restartedFrom: sessionId,
+        forkUpToMessageId: body.forkUpToMessageId,
+        oldProcessId: oldProcess?.id,
+        oldProcessInterrupted,
+        oldProcessAbortDeferred,
+        oldProcessAborted: false,
+      });
+    }
+
     const handoffTitle = deriveRestartTitle({
       preferredTitle: originalMetadata?.customTitle,
       sourceSession,
@@ -3144,13 +3318,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       omittedCount,
       transcript,
     });
-
-    const { thinking, effort } = body.thinking
-      ? thinkingOptionToConfig(body.thinking, body.showThinking)
-      : { thinking: undefined, effort: undefined };
-    const model =
-      body.model && body.model !== "default" ? body.model : undefined;
-    const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
 
     const result = await deps.supervisor.startSession(
       project.path,

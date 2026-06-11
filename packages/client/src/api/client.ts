@@ -671,7 +671,13 @@ export const api = {
   restartSession: (
     projectId: string,
     sessionId: string,
-    options?: SessionOptions & { reason?: string },
+    options?: SessionOptions & {
+      reason?: string;
+      /** "handoff" (default) or "fork" (real transcript fork, Claude only). */
+      restartMode?: "handoff" | "fork";
+      /** Fork slice point (transcript message UUID, inclusive). */
+      forkUpToMessageId?: string;
+    },
   ) =>
     fetchJSON<{
       sessionId: string;
@@ -682,6 +688,7 @@ export const api = {
       permissionMode: PermissionMode;
       modeVersion: number;
       restartedFrom: string;
+      forkUpToMessageId?: string;
       oldProcessId?: string;
       oldProcessInterrupted: boolean;
       oldProcessAbortDeferred: boolean;
@@ -700,6 +707,8 @@ export const api = {
         promptSuggestionMode: options?.promptSuggestionMode,
         helperSideModel: options?.helperSideModel,
         reason: options?.reason,
+        restartMode: options?.restartMode,
+        forkUpToMessageId: options?.forkUpToMessageId,
       }),
     }),
 

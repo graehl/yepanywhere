@@ -1609,6 +1609,44 @@ export class Supervisor {
     );
   }
 
+  /** Whether the resolved provider has a real transcript-fork primitive. */
+  supportsForkSession(providerName?: ProviderName): boolean {
+    const provider = this.resolveProvider(
+      providerName ? { providerName } : undefined,
+    );
+    return typeof provider?.forkSession === "function";
+  }
+
+  /**
+   * Fork a session's transcript into a new resumable session, optionally
+   * sliced at a message UUID. Throws when the provider has no fork
+   * primitive — fork must not be emulated (see
+   * topics/session-context-actions.md).
+   */
+  async forkSession(options: {
+    sessionId: string;
+    projectPath: string;
+    providerName?: ProviderName;
+    upToMessageId?: string;
+    title?: string;
+  }): Promise<{ sessionId: string }> {
+    const provider = this.resolveProvider(
+      options.providerName ? { providerName: options.providerName } : undefined,
+    );
+    if (!provider) {
+      throw new Error("provider is not available");
+    }
+    if (typeof provider.forkSession !== "function") {
+      throw new Error(`${provider.name} does not support transcript fork`);
+    }
+    return provider.forkSession({
+      sessionId: options.sessionId,
+      cwd: options.projectPath,
+      upToMessageId: options.upToMessageId,
+      title: options.title,
+    });
+  }
+
   getProcess(processId: string): Process | undefined {
     return this.processes.get(processId);
   }

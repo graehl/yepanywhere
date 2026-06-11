@@ -98,6 +98,7 @@ export function createProvidersRoutes(deps: ProviderRouteDeps = {}): Hono {
         supportsRecaps: provider.supportsRecaps,
         supportsNativeRecaps: provider.supportsNativeRecaps,
         supportsNativePromptSuggestions: provider.supportsNativePromptSuggestions,
+        supportsForkSession: typeof provider.forkSession === "function",
       } satisfies ProviderInfo;
     })();
 

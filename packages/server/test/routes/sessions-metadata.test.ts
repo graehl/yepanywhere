@@ -1556,6 +1556,178 @@ describe("Sessions metadata route", () => {
     expect(abortProcess).toHaveBeenCalledWith("proc-old");
   });
 
+  it("forks the transcript instead of handing off when restartMode is fork", async () => {
+    const project = createProject();
+    const forkSession = vi.fn(async () => ({ sessionId: "sess-fork" }));
+    const startSession = vi.fn();
+    const resumeSession = vi.fn(async () => ({
+      id: "proc-new",
+      sessionId: "sess-fork",
+      projectId: project.id,
+      provider: "claude",
+      model: "sonnet",
+      resolvedModel: "sonnet",
+      permissionMode: "default",
+      modeVersion: 0,
+      subscribe: vi.fn(() => vi.fn()),
+    }));
+    const interruptProcess = vi.fn(async () => ({
+      success: true,
+      supported: true,
+    }));
+    const abortProcess = vi.fn(async () => true);
+    const updateMetadata = vi.fn(async () => undefined);
+    const emit = vi.fn();
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-old",
+          provider: "claude",
+          model: "sonnet",
+          resolvedModel: "sonnet",
+          permissionMode: "default",
+          modeVersion: 0,
+          state: { type: "idle", since: new Date() },
+          getMessageHistory: vi.fn(() => [
+            {
+              type: "user",
+              uuid: "u1",
+              timestamp: "2026-04-24T20:00:00.000Z",
+              message: { role: "user", content: "long-running refactor" },
+            },
+          ]),
+        })),
+        supportsForkSession: vi.fn(() => true),
+        forkSession,
+        startSession,
+        resumeSession,
+        interruptProcess,
+        abortProcess,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+            getSession: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "claude"),
+        getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => ({ customTitle: "Refactor session" })),
+        setProvider: vi.fn(async () => undefined),
+        updateMetadata,
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+      eventBus: { emit } as unknown as SessionsDeps["eventBus"],
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restartMode: "fork",
+          forkUpToMessageId: "msg-uuid-7",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      sessionId: "sess-fork",
+      processId: "proc-new",
+      title: "Fork: Refactor session",
+      restartedFrom: "sess-1",
+      forkUpToMessageId: "msg-uuid-7",
+      oldProcessId: "proc-old",
+    });
+    expect(forkSession).toHaveBeenCalledWith({
+      sessionId: "sess-1",
+      projectPath: project.path,
+      providerName: "claude",
+      upToMessageId: "msg-uuid-7",
+      title: "Fork: Refactor session",
+    });
+    expect(startSession).not.toHaveBeenCalled();
+    expect(resumeSession).toHaveBeenCalledWith(
+      "sess-fork",
+      project.path,
+      expect.objectContaining({ text: "Continue from this fork point." }),
+      undefined,
+      expect.objectContaining({ providerName: "claude" }),
+    );
+    expect(updateMetadata).toHaveBeenCalledWith("sess-fork", {
+      title: "Fork: Refactor session",
+    });
+  });
+
+  it("rejects fork restart when the provider has no fork primitive", async () => {
+    const project = createProject();
+    const forkSession = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-old",
+          provider: "codex",
+          model: "gpt-5.4",
+          resolvedModel: "gpt-5.4",
+          permissionMode: "default",
+          modeVersion: 0,
+          state: { type: "idle", since: new Date() },
+          getMessageHistory: vi.fn(() => [
+            {
+              type: "user",
+              uuid: "u1",
+              timestamp: "2026-04-24T20:00:00.000Z",
+              message: { role: "user", content: "codex work" },
+            },
+          ]),
+        })),
+        supportsForkSession: vi.fn(() => false),
+        forkSession,
+        interruptProcess: vi.fn(async () => ({
+          success: true,
+          supported: true,
+        })),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+            getSession: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "codex"),
+        getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => ({})),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/restart`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restartMode: "fork" }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(forkSession).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.error).toContain("does not support transcript fork");
+  });
+
   it("uses the requested provider only as the handoff target", async () => {
     const project = createProject();
     const summary: SessionSummary = {

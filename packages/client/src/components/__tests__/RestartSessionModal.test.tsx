@@ -262,4 +262,78 @@ describe("RestartSessionModal", () => {
       );
     });
   });
+
+  it("offers fork mode only when the source provider supports it", () => {
+    render(
+      <RestartSessionModal
+        projectId="proj-1"
+        sessionId="sess-1"
+        provider="codex"
+        providers={[
+          providerInfo("codex", [{ id: "gpt-5.5", name: "GPT-5.5" }]),
+        ]}
+        currentModel="gpt-5.5"
+        mode="default"
+        thinking="off"
+        onRestarted={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "sessionRestartModeFork" }),
+    ).toBeNull();
+  });
+
+  it("sends a fork restart pinned to the source provider", async () => {
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        model: "sonnet",
+        permissionMode: "default",
+      },
+    };
+
+    render(
+      <RestartSessionModal
+        projectId="proj-1"
+        sessionId="sess-1"
+        provider="claude"
+        providerDisplayName="Claude"
+        providers={[
+          {
+            ...providerInfo("claude", [{ id: "sonnet", name: "Sonnet" }]),
+            supportsForkSession: true,
+          },
+          providerInfo("codex", [{ id: "gpt-5.5", name: "GPT-5.5" }]),
+        ]}
+        currentModel="sonnet"
+        mode="default"
+        thinking="off"
+        onRestarted={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // Even after picking another provider, choosing fork pins back to source
+    fireEvent.click(screen.getByRole("button", { name: /Codex/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "sessionRestartModeFork" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "sessionRestartStartFork" }),
+    );
+
+    await waitFor(() => {
+      expect(mockRestartSession).toHaveBeenCalledWith(
+        "proj-1",
+        "sess-1",
+        expect.objectContaining({
+          provider: "claude",
+          restartMode: "fork",
+          reason: undefined,
+        }),
+      );
+    });
+  });
 });

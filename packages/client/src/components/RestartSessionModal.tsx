@@ -383,6 +383,12 @@ export function RestartSessionModal({
   const [openInNewWindow, setOpenInNewWindow] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sourceProviderInfo = providerOptions.find((p) => p.name === provider);
+  // Fork is a real transcript copy; only offered when the source provider
+  // has the primitive (never emulated). See topics/session-context-actions.md.
+  const canFork = sourceProviderInfo?.supportsForkSession === true;
+  const [restartMode, setRestartMode] = useState<"handoff" | "fork">("handoff");
+  const isFork = canFork && restartMode === "fork";
   const selectedProviderDisplayName =
     selectedProviderInfo?.displayName ??
     (selectedProvider === provider ? providerDisplayName : undefined) ??
@@ -489,12 +495,15 @@ export function RestartSessionModal({
         thinking: showThinkingControls
           ? toThinkingOption(effectiveThinkingMode, effectiveEffortLevel)
           : undefined,
-        provider: selectedProvider,
+        provider: isFork ? provider : selectedProvider,
         executor,
         recapMode: selectedRecapMode,
         promptSuggestionMode: selectedPromptSuggestionMode,
         helperSideModel,
-        reason: "Manual restart from Yep Anywhere",
+        // For fork, the reason would become the forked session's first user
+        // message; omit it so the server's neutral continuation text is used.
+        reason: isFork ? undefined : "Manual restart from Yep Anywhere",
+        restartMode: isFork ? "fork" : undefined,
       });
       onRestarted(result, {
         openInNewWindow: shouldOpenInNewWindow,
@@ -618,7 +627,50 @@ export function RestartSessionModal({
 
         {error && <div className="model-switch-error">{error}</div>}
 
-        {availableProviders.length > 1 && (
+        {canFork && (
+          <section className="model-switch-section">
+            <div className="model-switch-section-header">
+              <strong>{t("sessionRestartModeTitle")}</strong>
+            </div>
+            <div className="model-switch-chip-group">
+              <button
+                type="button"
+                className={`model-switch-chip ${!isFork ? "active" : ""}`}
+                onClick={() => setRestartMode("handoff")}
+                disabled={restarting}
+                title={t("sessionRestartModeHandoffDescription")}
+              >
+                <span>{t("sessionRestartModeHandoff")}</span>
+              </button>
+              <button
+                type="button"
+                className={`model-switch-chip ${isFork ? "active" : ""}`}
+                onClick={() => {
+                  setRestartMode("fork");
+                  if (selectedProvider !== provider) {
+                    handleProviderSelect(provider);
+                  }
+                }}
+                disabled={restarting}
+                title={t("sessionRestartModeForkDescription")}
+              >
+                <span>{t("sessionRestartModeFork")}</span>
+              </button>
+            </div>
+            {isFork && (
+              <div className="model-switch-section-note">
+                {t("sessionRestartForkKeepsProvider", {
+                  provider:
+                    sourceProviderInfo?.displayName ??
+                    providerDisplayName ??
+                    provider,
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {!isFork && availableProviders.length > 1 && (
           <section className="model-switch-section">
             <div className="model-switch-section-header">
               <strong>{t("newSessionProviderTitle")}</strong>
@@ -929,7 +981,13 @@ export function RestartSessionModal({
             onAuxClick={handleStartAuxClick}
             disabled={restarting || !selectedModel}
           >
-            {restarting ? t("sessionRestarting") : t("sessionRestartStart")}
+            {restarting
+              ? isFork
+                ? t("sessionRestartForking")
+                : t("sessionRestarting")
+              : isFork
+                ? t("sessionRestartStartFork")
+                : t("sessionRestartStart")}
           </button>
         </div>
       </div>

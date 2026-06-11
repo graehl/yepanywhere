@@ -2333,6 +2333,12 @@ details[open] .collapsible__icon {
   gap: 0.5rem;
 }
 
+.model-switch-section-note {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
 .model-switch-chip-group {
   display: flex;
   flex-wrap: wrap;

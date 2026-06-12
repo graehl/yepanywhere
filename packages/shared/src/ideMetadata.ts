@@ -64,6 +64,6 @@ export function parseOpenedFiles(content: string): string[] {
  * Extract the filename from a full file path.
  */
 export function getFilename(path: string): string {
-  const parts = path.split("/");
+  const parts = path.split(/[\\/]/);
   return parts[parts.length - 1] || path;
 }

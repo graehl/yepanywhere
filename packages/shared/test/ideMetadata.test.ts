@@ -169,5 +169,9 @@ function foo() {
     it("handles Windows-style paths with forward slashes", () => {
       expect(getFilename("C:/Users/test/file.ts")).toBe("file.ts");
     });
+
+    it("handles Windows-style paths with backslashes", () => {
+      expect(getFilename("C:\\Users\\test\\project\\file.ts")).toBe("file.ts");
+    });
   });
 });

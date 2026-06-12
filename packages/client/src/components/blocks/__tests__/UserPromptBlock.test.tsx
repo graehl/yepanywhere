@@ -97,6 +97,20 @@ describe("UserPromptBlock", () => {
     expect(screen.getByText(/annotated-shot\.jpg/)).toBeDefined();
   });
 
+  it("shows Windows opened-file metadata by filename", () => {
+    const path = "C:\\Users\\user\\Documents\\code\\playbox\\src\\app.ts";
+    const content = `<ide_opened_file>The user opened the file ${path} in the IDE.</ide_opened_file>Question`;
+
+    render(
+      <I18nProvider>
+        <UserPromptBlock content={content} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("app.ts")).toBeDefined();
+    expect(screen.queryByText(path)).toBeNull();
+  });
+
   it("does not fetch uploaded image previews until opened", async () => {
     const remotePath =
       "/api/projects/proj/sessions/session/upload/123e4567-e89b-12d3-a456-426614174000_photo.jpg";

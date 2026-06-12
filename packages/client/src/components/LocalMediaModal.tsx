@@ -2,13 +2,17 @@ import {
   type LocalResourceAttributes,
   type LocalResourceMediaType,
   type LocalResourceRef,
-  normalizeWindowsDrivePathname,
   parseLocalResourceLink,
 } from "@yep-anywhere/shared";
 import { type MouseEvent, type RefObject, useEffect, useState } from "react";
 import { useOptionalSessionMetadata } from "../contexts/SessionMetadataContext";
 import { useInlineMedia } from "../hooks/useInlineMedia";
 import { getGlobalConnection, isRemoteMode } from "../lib/connection";
+import {
+  getPathBasename,
+  getProjectRelativePath,
+  makeDisplayPath,
+} from "../lib/text";
 import { Modal } from "./ui/Modal";
 
 export interface LocalMediaSource {
@@ -43,13 +47,6 @@ interface ProjectContext {
   projectId: string;
   projectPath: string | null;
 }
-
-interface NormalizedPath {
-  display: string;
-  isWindowsDrive: boolean;
-}
-
-type PathComparisonMode = "case-sensitive" | "case-insensitive";
 
 interface UseLocalResourceClickOptions {
   projectContext?: ProjectContext | null;
@@ -87,59 +84,7 @@ type LocalFileViewState =
     };
 
 function getFileName(path: string): string {
-  return path.split(/[\\/]/).pop() ?? path;
-}
-
-function normalizePathForProjectComparison(path: string): NormalizedPath {
-  const display = normalizeWindowsDrivePathname(
-    path.replaceAll("\\", "/"),
-  ).replace(/\/+$/, "");
-  return {
-    display,
-    isWindowsDrive: /^[A-Za-z]:\//.test(display),
-  };
-}
-
-function getComparisonPath(
-  path: NormalizedPath,
-  mode: PathComparisonMode,
-): string {
-  return mode === "case-insensitive"
-    ? path.display.toLowerCase()
-    : path.display;
-}
-
-function getPathComparisonMode(
-  filePath: NormalizedPath,
-  projectPath: NormalizedPath,
-): PathComparisonMode {
-  return filePath.isWindowsDrive || projectPath.isWindowsDrive
-    ? "case-insensitive"
-    : "case-sensitive";
-}
-
-function getProjectRelativePath(
-  filePath: string,
-  projectPath: string | null,
-): string | null {
-  if (!projectPath) {
-    return null;
-  }
-
-  const file = normalizePathForProjectComparison(filePath);
-  const project = normalizePathForProjectComparison(projectPath);
-  if (!file.display || !project.display) {
-    return null;
-  }
-
-  const mode = getPathComparisonMode(file, project);
-  const normalizedFile = getComparisonPath(file, mode);
-  const normalizedProject = getComparisonPath(project, mode);
-  if (!normalizedFile.startsWith(`${normalizedProject}/`)) {
-    return null;
-  }
-
-  return file.display.slice(project.display.length + 1);
+  return getPathBasename(path);
 }
 
 function normalizeResourceForProjectContext(
@@ -154,7 +99,7 @@ function normalizeResourceForProjectContext(
     resource.path,
     projectContext.projectPath,
   );
-  if (!relativePath) {
+  if (!relativePath || relativePath === ".") {
     return null;
   }
 
@@ -483,8 +428,16 @@ export function LocalMediaModal({
 }
 
 export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
+  const sessionMetadata = useOptionalSessionMetadata();
   const apiPath = localResourceApiPath(resource);
   const fileName = getFileName(resource.path);
+  const locationSuffix = `${resource.lineNumber !== undefined ? `:${resource.lineNumber}` : ""}${
+    resource.columnNumber !== undefined ? `:${resource.columnNumber}` : ""
+  }`;
+  const displayPath = makeDisplayPath(
+    resource.path,
+    sessionMetadata?.projectPath,
+  );
   const [state, setState] = useState<LocalFileViewState>({
     status: "loading",
   });
@@ -543,12 +496,12 @@ export function LocalFileModal({ resource, onClose }: LocalFileModalProps) {
   return (
     <Modal title={fileName} onClose={onClose}>
       <div className="local-file-modal-content">
-        <div className="local-file-modal-meta" title={resource.path}>
-          {resource.path}
-          {resource.lineNumber !== undefined ? `:${resource.lineNumber}` : ""}
-          {resource.columnNumber !== undefined
-            ? `:${resource.columnNumber}`
-            : ""}
+        <div
+          className="local-file-modal-meta"
+          title={`${resource.path}${locationSuffix}`}
+        >
+          {displayPath}
+          {locationSuffix}
         </div>
         {state.status === "loading" && (
           <div className="local-file-loading">Loading...</div>

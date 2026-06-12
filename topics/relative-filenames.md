@@ -148,10 +148,31 @@ Verification commands run on 2026-06-12:
 - `pnpm lint`
 - `pnpm test`
 
-## Follow-on
+## Non-tool audit
 
-The next likely audit is non-tool path display: file-viewer headers, local media
-modal titles, attachment chips, raw user prompt path mentions, and any markdown
-or fixed-font link surfaces that can still receive Windows absolute paths. The
-tool renderer default is now centralized, but those surrounding surfaces should
-be checked against the same contract.
+Audited on 2026-06-12 after the tool renderer pass:
+
+- `FileViewer` now uses `makeDisplayPath()` for the header path while keeping
+  the raw `filePath` for file loading, raw download URLs, and tooltips.
+- `LocalFileModal` now uses `makeDisplayPath()` for metadata text while keeping
+  the raw local path for `/api/local-file` fetches and the tooltip.
+- `useLocalResourceClick()` now uses the shared project-relative helper instead
+  of its local duplicate, including browser-style Windows paths such as
+  `/C:/Users/...`.
+- `UserPromptBlock` opened-file metadata now benefits from a shared
+  backslash-aware `getFilename()` helper.
+- Fixed-font markdown links were already covered: they receive `projectPath`,
+  compact tooltips through `makeDisplayPath()`, and keep project-relative file
+  viewer targets.
+- Rendered normal markdown local-file links were already covered on left click:
+  project-local absolute paths become project-file viewer targets; browser link
+  gestures keep the original local-resource URL.
+- Attachment chips intentionally show the uploaded/original filename as visible
+  text and keep the raw upload path only in the tooltip/cache key.
+- Git status and activity pages did not need changes: git status receives git
+  porcelain paths, and activity rows render watcher `relativePath`.
+
+Remaining validation should be product-level rather than another broad code
+search: capture a Windows-backed session transcript and check visible path text
+in the transcript, file viewer, local resource modal, uploaded attachments, and
+user-prompt opened-file chips.

@@ -10,7 +10,7 @@ function isWindowsComparablePath(path: string): boolean {
 }
 
 export function normalizePathSeparators(path: string): string {
-  return path.replace(/\\/g, "/");
+  return path.replace(/\\/g, "/").replace(/^\/([a-zA-Z]:\/)/, "$1");
 }
 
 export function stripTrailingPathSeparators(path: string): string {

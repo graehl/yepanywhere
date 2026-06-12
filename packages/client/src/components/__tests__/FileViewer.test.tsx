@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { FileContentResponse } from "@yep-anywhere/shared";
+import { toUrlProjectId, type FileContentResponse } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { FileViewer, type FileViewerSource } from "../FileViewer";
@@ -67,6 +67,49 @@ describe("FileViewer", () => {
     restorePrototypeProperty("clientHeight", originalClientHeightDescriptor);
     restorePrototypeProperty("scrollHeight", originalScrollHeightDescriptor);
     restorePrototypeProperty("scrollTop", originalScrollTopDescriptor);
+  });
+
+  it("shows project-relative headers for Windows absolute project paths", async () => {
+    const projectRoot = "C:\\Users\\user\\Documents\\code\\playbox";
+    const rawPath = `${projectRoot}\\docs\\guide.md`;
+    const projectId = toUrlProjectId(projectRoot);
+    const fileResponse: FileContentResponse = {
+      metadata: {
+        path: rawPath,
+        size: 12,
+        mimeType: "text/markdown",
+        isText: true,
+      },
+      rawUrl: "",
+      content: "# Guide\n",
+    };
+    const source: FileViewerSource = {
+      loadFile: vi.fn(async () => fileResponse),
+    };
+
+    const { container } = render(
+      <I18nProvider>
+        <FileViewer projectId={projectId} filePath={rawPath} source={source} />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".file-viewer-path")?.textContent).toBe(
+        "docs/guide.md",
+      );
+    });
+
+    expect(
+      container.querySelector(".file-viewer-path")?.getAttribute("title"),
+    ).toBe(rawPath);
+    expect(source.loadFile).toHaveBeenCalledWith(
+      projectId,
+      rawPath,
+      true,
+      undefined,
+      undefined,
+      "full",
+    );
   });
 
   it("marks and scrolls a line range 10% below the viewer top", async () => {

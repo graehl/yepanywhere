@@ -1,4 +1,8 @@
-import type { FileContentResponse } from "@yep-anywhere/shared";
+import {
+  fromUrlProjectId,
+  isUrlProjectId,
+  type FileContentResponse,
+} from "@yep-anywhere/shared";
 import {
   memo,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -16,6 +20,11 @@ import { toBrowserAppHref } from "../lib/appHref";
 import { getEmbeddedFileMediaBlob } from "../lib/embeddedFileMedia";
 import { isMarkdownLikeFile } from "../lib/markdownFiles";
 import { compactShikiLineBreaks } from "../lib/shikiHtml";
+import {
+  getPathBasename,
+  makeDisplayPath,
+  stripTrailingPathSeparators,
+} from "../lib/text";
 import {
   fetchMediaBlob,
   LocalFileModal,
@@ -139,11 +148,15 @@ function isImageFile(mimeType: string): boolean {
   return mimeType.startsWith("image/");
 }
 
-/**
- * Get filename from path.
- */
-function getFileName(filePath: string): string {
-  return filePath.split("/").pop() || filePath;
+function getProjectPath(projectId: string): string | null {
+  if (!isUrlProjectId(projectId)) {
+    return null;
+  }
+  try {
+    return stripTrailingPathSeparators(fromUrlProjectId(projectId));
+  } catch {
+    return null;
+  }
 }
 
 function getHighlightRange(
@@ -472,7 +485,12 @@ export const FileViewer = memo(function FileViewer({
     }
   }, [fileData?.content]);
 
-  const fileName = getFileName(filePath);
+  const projectPath = useMemo(() => getProjectPath(projectId), [projectId]);
+  const displayPath = useMemo(
+    () => makeDisplayPath(filePath, projectPath),
+    [filePath, projectPath],
+  );
+  const fileName = getPathBasename(filePath);
   const language = getLanguageFromPath(filePath);
 
   const handleDownload = useCallback(() => {
@@ -713,7 +731,7 @@ export const FileViewer = memo(function FileViewer({
     <div className="file-viewer-header">
       <div className="file-viewer-info">
         <span className="file-viewer-path" title={filePath}>
-          {filePath}
+          {displayPath}
         </span>
         <span className="file-viewer-meta">
           {formatFileSize(metadata.size)}
@@ -843,7 +861,7 @@ export const FileViewer = memo(function FileViewer({
       ) : null}
       {projectFileModal ? (
         <Modal
-          title={getFileName(projectFileModal.filePath)}
+          title={getPathBasename(projectFileModal.filePath)}
           onClose={closeProjectFileModal}
         >
           <FileViewer

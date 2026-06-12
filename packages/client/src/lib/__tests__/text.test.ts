@@ -35,6 +35,15 @@ describe("path display helpers", () => {
     ).toBe("src/App.tsx");
   });
 
+  it("normalizes browser-style Windows drive paths", () => {
+    expect(
+      getProjectRelativePath(
+        "/C:/Users/user/Documents/code/playbox/src/App.tsx",
+        "C:\\Users\\user\\Documents\\code\\playbox",
+      ),
+    ).toBe("src/App.tsx");
+  });
+
   it("shortens home paths without changing unrelated absolute paths", () => {
     expect(shortenPath("C:\\Users\\user\\Downloads\\trace.log")).toBe(
       "~/Downloads/trace.log",

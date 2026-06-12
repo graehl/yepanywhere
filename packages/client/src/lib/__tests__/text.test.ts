@@ -54,6 +54,10 @@ describe("path display helpers", () => {
   });
 
   it("handles basename and display splitting for both slash styles", () => {
+    expect(splitDisplayPath("src/main.rs")).toEqual({
+      dir: "src/",
+      name: "main.rs",
+    });
     expect(getPathBasename("C:\\repo\\src\\App.tsx")).toBe("App.tsx");
     expect(splitDisplayPath("C:\\repo\\src\\App.tsx")).toEqual({
       dir: "C:\\repo\\src\\",

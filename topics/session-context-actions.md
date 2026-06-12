@@ -22,7 +22,7 @@ Nothing semantically owned by the conversation is discarded by
 inactivity; what dies is the *process* and the *cache warmth*.
 
 - YA reaps an idle provider process after `IDLE_TIMEOUT` seconds
-  (default 5 minutes, `DEFAULT_IDLE_TIMEOUT_MS` in
+  (default 20 minutes, `DEFAULT_IDLE_TIMEOUT_MS` in
   `packages/server/src/supervisor/types.ts`, env parsing in
   `config.ts`). The supervisor `Process` tracks this as an intentional
   idle reap, distinct from a crash.

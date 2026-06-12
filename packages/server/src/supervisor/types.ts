@@ -15,7 +15,7 @@ import type {
 import type { PermissionMode, SDKMessage } from "../sdk/types.js";
 
 // Constants
-export const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+export const DEFAULT_IDLE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
 export const DEFAULT_IDLE_PREEMPT_THRESHOLD_MS = 10 * 1000; // 10 seconds - workers idle longer than this can be preempted
 
 // Re-export path utilities for backward compatibility
@@ -256,7 +256,7 @@ export interface ProcessOptions {
   projectPath: string;
   projectId: UrlProjectId;
   sessionId: string;
-  idleTimeoutMs?: number; // default 5 minutes
+  idleTimeoutMs?: number; // default 20 minutes
   permissionMode?: PermissionMode;
   provider: ProviderName; // which provider is running this process
   /** Thinking configuration (undefined = thinking disabled) */

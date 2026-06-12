@@ -155,6 +155,15 @@ export interface ProviderActivitySnapshot {
   lastRawProviderEventSource?: string | null;
 }
 
+export interface ProviderRetentionSnapshot {
+  retained: boolean;
+  reasons: string[];
+  backgroundTaskCount?: number;
+  sessionCronCount?: number;
+  liveTaskCount?: number;
+  lastUpdatedAt?: Date | null;
+}
+
 export interface StartSessionOptions {
   cwd: string;
   initialMessage?: UserMessage;
@@ -180,6 +189,8 @@ export interface StartSessionOptions {
   globalInstructions?: string;
   /** Native prompt-suggestion protocol opt-in for providers that support it. */
   promptSuggestions?: boolean;
+  /** Called when provider-owned retention evidence changes. */
+  onProviderRetentionChange?: () => void;
 }
 
 export interface StartSessionResult {
@@ -194,6 +205,8 @@ export interface StartSessionResult {
   probeLiveness?: () => Promise<ProviderLivenessProbeResult>;
   /** Passive raw provider/app-server event cadence, when available. */
   getProviderActivity?: () => ProviderActivitySnapshot;
+  /** Provider-owned work that should retain an otherwise idle process. */
+  getProviderRetention?: () => ProviderRetentionSnapshot;
   /**
    * Change max thinking tokens without restarting the session.
    * Pass null to disable thinking mode.

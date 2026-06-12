@@ -683,6 +683,8 @@ export class Supervisor {
       clientName: modelSettings?.clientName,
       globalInstructions: modelSettings?.globalInstructions,
       promptSuggestions: promptSuggestionMode === "native",
+      onProviderRetentionChange: () =>
+        processHolder.process?.handleProviderRetentionChanged(),
       onToolApproval: async (toolName, input, opts) => {
         if (!processHolder.process) {
           return { behavior: "deny", message: "Process not ready" };
@@ -698,6 +700,7 @@ export class Supervisor {
       isProcessAlive,
       probeLiveness,
       getProviderActivity,
+      getProviderRetention,
       setMaxThinkingTokens,
       interrupt,
       supportedModels,
@@ -719,6 +722,7 @@ export class Supervisor {
         this.shouldRetainIdleProcess(sessionId),
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
+      getProviderRetentionFn: getProviderRetention,
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;
@@ -1060,6 +1064,8 @@ export class Supervisor {
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,
       promptSuggestions: promptSuggestionMode === "native",
+      onProviderRetentionChange: () =>
+        processHolder.process?.handleProviderRetentionChanged(),
       onToolApproval: async (toolName, input, opts) => {
         // Delegate to the process's handleToolApproval
         if (!processHolder.process) {
@@ -1076,6 +1082,7 @@ export class Supervisor {
       isProcessAlive,
       probeLiveness,
       getProviderActivity,
+      getProviderRetention,
       setMaxThinkingTokens,
       interrupt,
       supportedModels,
@@ -1096,6 +1103,7 @@ export class Supervisor {
         this.shouldRetainIdleProcess(sessionId),
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
+      getProviderRetentionFn: getProviderRetention,
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;
@@ -1183,6 +1191,8 @@ export class Supervisor {
       promptSuggestions: promptSuggestionMode === "native",
       shouldEmitLiveDeltas: () =>
         processHolder.process?.hasLiveDeltaSubscribers() ?? false,
+      onProviderRetentionChange: () =>
+        processHolder.process?.handleProviderRetentionChanged(),
       onToolApproval: async (toolName, input, opts) => {
         if (!processHolder.process) {
           return { behavior: "deny", message: "Process not ready" };
@@ -1198,6 +1208,7 @@ export class Supervisor {
       isProcessAlive,
       probeLiveness,
       getProviderActivity,
+      getProviderRetention,
       setMaxThinkingTokens,
       interrupt,
       steer,
@@ -1220,6 +1231,7 @@ export class Supervisor {
         this.shouldRetainIdleProcess(sessionId),
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
+      getProviderRetentionFn: getProviderRetention,
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;
@@ -1303,6 +1315,8 @@ export class Supervisor {
       promptSuggestions: promptSuggestionMode === "native",
       shouldEmitLiveDeltas: () =>
         processHolder.process?.hasLiveDeltaSubscribers() ?? false,
+      onProviderRetentionChange: () =>
+        processHolder.process?.handleProviderRetentionChanged(),
       onToolApproval: async (toolName, input, opts) => {
         if (!processHolder.process) {
           return { behavior: "deny", message: "Process not ready" };
@@ -1318,6 +1332,7 @@ export class Supervisor {
       isProcessAlive,
       probeLiveness,
       getProviderActivity,
+      getProviderRetention,
       setMaxThinkingTokens,
       interrupt,
       steer,
@@ -1340,6 +1355,7 @@ export class Supervisor {
         this.shouldRetainIdleProcess(sessionId),
       probeLivenessFn: probeLiveness,
       getProviderActivityFn: getProviderActivity,
+      getProviderRetentionFn: getProviderRetention,
       pid: () => {
         const p = result.pid;
         return typeof p === "function" ? p() : p;

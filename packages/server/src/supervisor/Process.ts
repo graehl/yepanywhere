@@ -37,6 +37,7 @@ import type {
   PermissionMode,
   ProviderActivitySnapshot,
   ProviderLivenessProbeResult,
+  ProviderRetentionSnapshot,
   SDKMessage,
   TimestampedSDKMessage,
   ToolApprovalResult,
@@ -258,6 +259,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   probeLivenessFn?: () => Promise<ProviderLivenessProbeResult>;
   /** Passive raw provider/app-server event cadence, when available. */
   getProviderActivityFn?: () => ProviderActivitySnapshot;
+  /** Provider-owned work that should retain an otherwise idle process. */
+  getProviderRetentionFn?: () => ProviderRetentionSnapshot;
   /** Function to change max thinking tokens at runtime (SDK 0.2.7+) */
   setMaxThinkingTokensFn?: (tokens: number | null) => Promise<void>;
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
@@ -416,6 +419,9 @@ export class Process {
   /** Provider-specific active liveness probe, when available. */
   private probeLivenessFn: (() => Promise<ProviderLivenessProbeResult>) | null;
   private getProviderActivityFn: (() => ProviderActivitySnapshot) | null;
+  private getProviderRetentionFn:
+    | (() => ProviderRetentionSnapshot)
+    | null = null;
   private _lastLivenessProbe: LivenessProbeResult | null = null;
   private _livenessProbeInFlight: Promise<LivenessProbeResult | null> | null =
     null;
@@ -473,6 +479,7 @@ export class Process {
     this.shouldRetainIdleProcess = options.shouldRetainIdleProcess ?? null;
     this.probeLivenessFn = options.probeLivenessFn ?? null;
     this.getProviderActivityFn = options.getProviderActivityFn ?? null;
+    this.getProviderRetentionFn = options.getProviderRetentionFn ?? null;
     this._recapMode =
       options.recapMode ?? (options.recapsEnabled ? "side-session" : "off");
     this._promptSuggestionMode = options.promptSuggestionMode ?? "off";
@@ -615,6 +622,7 @@ export class Process {
 
   getLivenessSnapshot(now = new Date()): SessionLivenessSnapshot {
     const providerActivity = this.getProviderActivityFn?.();
+    const providerRetention = this.getProviderRetentionSnapshot();
     return buildSessionLivenessSnapshot({
       provider: this.provider,
       state: this.toLivenessState(),
@@ -626,10 +634,27 @@ export class Process {
         providerActivity?.lastRawProviderEventSource ?? null,
       lastLivenessProbe: this._lastLivenessProbe,
       processAlive: this.isProcessAlive,
+      providerRetention,
       queueDepth: this.queueDepth,
       deferredQueueDepth: this.deferredQueueDepth,
       now,
     });
+  }
+
+  private getProviderRetentionSnapshot(): ProviderRetentionSnapshot {
+    return (
+      this.getProviderRetentionFn?.() ?? {
+        retained: false,
+        reasons: [],
+      }
+    );
+  }
+
+  handleProviderRetentionChanged(): void {
+    this.emit({ type: "liveness-update" });
+    if (this._state.type === "idle") {
+      this.rescheduleIdleTimerForCurrentIdlePeriod();
+    }
   }
 
   private toLivenessState(): LivenessProcessState {
@@ -2994,7 +3019,8 @@ export class Process {
     );
   }
 
-  private startIdleTimer(): void {
+  private startIdleTimer(delayMs = this.idleTimeoutMs): void {
+    this.clearIdleTimer();
     this.idleTimer = setTimeout(() => {
       this.idleTimer = null;
 
@@ -3005,7 +3031,12 @@ export class Process {
 
       const retainedByFeature =
         this.shouldRetainIdleProcess?.(this._sessionId) ?? false;
-      if (this.hasLiveDeltaSubscribers() || retainedByFeature) {
+      const providerRetention = this.getProviderRetentionSnapshot();
+      if (
+        this.hasLiveDeltaSubscribers() ||
+        retainedByFeature ||
+        providerRetention.retained
+      ) {
         getLogger().debug(
           {
             event: "idle_cleanup_deferred",
@@ -3015,6 +3046,12 @@ export class Process {
             idleTimeoutMs: this.idleTimeoutMs,
             liveDeltaSubscriberCount: this.liveDeltaSubscriberCount,
             retainedByFeature,
+            retainedByProvider: providerRetention.retained,
+            providerRetentionReasons: providerRetention.reasons,
+            providerBackgroundTaskCount:
+              providerRetention.backgroundTaskCount,
+            providerSessionCronCount: providerRetention.sessionCronCount,
+            providerLiveTaskCount: providerRetention.liveTaskCount,
           },
           `Idle cleanup deferred: ${this._sessionId} is explicitly retained`,
         );
@@ -3023,8 +3060,16 @@ export class Process {
       }
 
       this.reapIdleProcess();
-    }, this.idleTimeoutMs);
+    }, Math.max(0, delayMs));
     this.idleTimer.unref?.();
+  }
+
+  private rescheduleIdleTimerForCurrentIdlePeriod(): void {
+    if (this._state.type !== "idle") {
+      return;
+    }
+    const elapsedMs = Date.now() - this._state.since.getTime();
+    this.startIdleTimer(Math.max(0, this.idleTimeoutMs - elapsedMs));
   }
 
   private reapIdleProcess(): void {

@@ -1,29 +1,32 @@
 # Claude Background Task Idle Reap
 
-Status: Proposed.
+Status: Implemented. Windows manual validation still recommended.
 
 Progress:
 
 - [x] 2026-06-12: Captured the incident evidence from a live Claude session
   that YA reaped while Claude-owned background work was still capable of
   waking the agent.
-- [ ] Bump the default owned-process idle reap timeout from 5 minutes to 20
-  minutes as an immediate risk reducer.
-- [ ] Wire Claude SDK background-task and scheduled-wakeup evidence into
-  owned-process retention.
-- [ ] Add regression coverage so an owned Claude process with pending
-  provider-owned wakeups is not idle-reaped.
-- [ ] Keep explicit operator configuration authoritative: an `IDLE_TIMEOUT`
-  env override must continue to win over the new no-config default.
+- [x] 2026-06-13: Bumped the default owned-process idle reap timeout from
+  5 minutes to 20 minutes as an immediate risk reducer.
+- [x] 2026-06-13: Wired Claude SDK background-task and scheduled-wakeup
+  evidence into owned-process retention.
+- [x] 2026-06-13: Added regression coverage so an owned Claude process with
+  pending provider-owned wakeups is not idle-reaped.
+- [x] 2026-06-13: Kept explicit operator configuration authoritative:
+  an `IDLE_TIMEOUT` env override continues to win over the new no-config
+  default.
 
 ## Problem
 
 YA currently treats a Claude SDK `result` message, and Claude
 `system/session_state_changed` with `state: "idle"`, as enough to transition
 an owned `Process` into YA's idle state. The idle reaper then terminates that
-process after `DEFAULT_IDLE_TIMEOUT_MS`, currently 5 minutes, unless another
-retention feature such as a live delta subscriber or heartbeat retention is
-active.
+process after the configured idle timeout. At the incident time the no-config
+default was 5 minutes; the mitigation raised that default to 20 minutes unless
+`IDLE_TIMEOUT` is explicitly configured. Before the provider-retention fix,
+only YA-level features such as a live delta subscriber or heartbeat retention
+could defer the reap.
 
 That conflates two different concepts:
 
@@ -105,10 +108,10 @@ Relevant implementation points:
     `transitionToIdle()`.
   - `transitionToIdle()` starts the idle reap timer.
 - `packages/server/src/supervisor/types.ts`
-  - `DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000`.
+  - `DEFAULT_IDLE_TIMEOUT_MS = 20 * 60 * 1000`.
 - `packages/server/src/config.ts`
   - normal startup passes `config.idleTimeoutMs` into the supervisor, so the
-    `IDLE_TIMEOUT` default there must move with `DEFAULT_IDLE_TIMEOUT_MS`.
+    `IDLE_TIMEOUT` default there moved with `DEFAULT_IDLE_TIMEOUT_MS`.
 - `packages/server/src/supervisor/Process.ts`
   - idle reaping calls the provider abort function.
 - `packages/server/src/sdk/providers/claude.ts`
@@ -162,8 +165,8 @@ Important distinction:
 
 ## Tactical Mitigation
 
-First step: increase the no-config default idle reap timeout for owned
-provider processes from 5 minutes to 20 minutes.
+First step, now implemented: increase the no-config default idle reap timeout
+for owned provider processes from 5 minutes to 20 minutes.
 
 Rationale:
 

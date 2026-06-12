@@ -9,6 +9,7 @@ import type {
   CanUseTool,
   ProviderActivitySnapshot,
   ProviderLivenessProbeResult,
+  ProviderRetentionSnapshot,
   SDKMessage,
   UserMessage,
 } from "../types.js";
@@ -96,6 +97,8 @@ export interface StartSessionOptions {
    * undefined as true for compatibility.
    */
   shouldEmitLiveDeltas?: () => boolean;
+  /** Called when provider-owned retention evidence changes. */
+  onProviderRetentionChange?: () => void;
 }
 
 /**
@@ -117,6 +120,8 @@ export interface AgentSession {
   probeLiveness?: () => Promise<ProviderLivenessProbeResult>;
   /** Passive raw provider/app-server event cadence, when available. */
   getProviderActivity?: () => ProviderActivitySnapshot;
+  /** Provider-owned work that should retain an otherwise idle process. */
+  getProviderRetention?: () => ProviderRetentionSnapshot;
   /** Session ID if available immediately (some providers provide later via messages) */
   sessionId?: string;
   /**

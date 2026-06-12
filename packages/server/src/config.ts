@@ -251,7 +251,7 @@ export function loadConfig(): Config {
     sessionIndexWriteLockStaleMs,
     sessionAutoArchiveDays,
     projectScanCacheTtlMs,
-    idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 5 * 60) * 1000,
+    idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 20 * 60) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),
     port: parseIntOrDefault(process.env.PORT, 3400),
     portFile: process.env.PORT_FILE ?? null,

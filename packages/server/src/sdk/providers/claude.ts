@@ -30,6 +30,7 @@ import { getLogger } from "../../logging/logger.js";
 import { detectClaudeCli } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
+import { ClaudeProviderRetentionTracker } from "./claude-retention.js";
 import {
   checkRemotePath,
   createRemoteSpawn,
@@ -1232,6 +1233,10 @@ export class ClaudeProvider implements AgentProvider {
       };
     }
 
+    const providerRetention = new ClaudeProviderRetentionTracker(
+      options.onProviderRetentionChange,
+    );
+
     // Create the SDK query with our message generator
     let sdkQuery: Query;
     try {
@@ -1262,6 +1267,18 @@ export class ClaudeProvider implements AgentProvider {
           pathToClaudeCodeExecutable,
           // Filter env to exclude npm_*, yep-anywhere specific, and other irrelevant vars
           env: claudeEnv,
+          hooks: {
+            Stop: [
+              {
+                hooks: [
+                  async (input) => {
+                    providerRetention.observeStopHook(input);
+                    return { continue: true };
+                  },
+                ],
+              },
+            ],
+          },
           // Remote execution via SSH
           spawnClaudeCodeProcess,
         },
@@ -1294,6 +1311,7 @@ export class ClaudeProvider implements AgentProvider {
       executor: options.executor,
       cwd: effectiveCwd,
       remoteEnv,
+      providerRetention,
     });
     const iterator = agentctlSessionEnvBridge
       ? withCleanup(wrappedIterator, () => agentctlSessionEnvBridge.cleanup())
@@ -1325,6 +1343,7 @@ export class ClaudeProvider implements AgentProvider {
       get pid() {
         return (capturedProcess as ChildProcess | null)?.pid;
       },
+      getProviderRetention: () => providerRetention.getSnapshot(),
       publishAgentctlSessionId: (sessionId: string) => {
         agentctlSessionEnvBridge?.publishSessionId(sessionId);
       },
@@ -1371,6 +1390,7 @@ export class ClaudeProvider implements AgentProvider {
       executor?: string;
       cwd: string;
       remoteEnv?: Record<string, string>;
+      providerRetention?: ClaudeProviderRetentionTracker;
     },
   ): AsyncIterableIterator<SDKMessage> {
     const log = getLogger();
@@ -1384,6 +1404,7 @@ export class ClaudeProvider implements AgentProvider {
         logSDKMessage(sessionId, message, { provider: "claude" });
 
         const converted = this.convertMessage(message);
+        remoteOptions?.providerRetention?.observeMessage(converted);
         yield converted;
 
         // For remote sessions, sync session files after result messages

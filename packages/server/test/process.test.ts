@@ -3,7 +3,10 @@ import type { UrlProjectId } from "@yep-anywhere/shared";
 import { CONCAT_SEPARATOR, MessageQueue } from "../src/sdk/messageQueue.js";
 import { getLogger } from "../src/logging/logger.js";
 import type { AgentProvider } from "../src/sdk/providers/types.js";
-import type { SDKMessage } from "../src/sdk/types.js";
+import type {
+  ProviderRetentionSnapshot,
+  SDKMessage,
+} from "../src/sdk/types.js";
 import { Process } from "../src/supervisor/Process.js";
 import type { ProcessEvent } from "../src/supervisor/types.js";
 
@@ -289,6 +292,95 @@ describe("Process", () => {
 
       await waitFor(() => expect(process.state.type).toBe("in-turn"));
       expect(process.getPendingInputRequest()).toBeNull();
+    });
+
+    it("defers idle reaping while provider retention is active and reaps when it clears", async () => {
+      vi.useFakeTimers();
+      try {
+        let providerRetention: ProviderRetentionSnapshot = {
+          retained: true,
+          reasons: ["stop-hook-background-tasks:1"],
+          backgroundTaskCount: 1,
+          sessionCronCount: 0,
+          liveTaskCount: 0,
+        };
+        const abortFn = vi.fn();
+        const controller = createControllableIterator();
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1",
+          sessionId: "sess-1",
+          provider: "claude",
+          idleTimeoutMs: 100,
+          abortFn,
+          getProviderRetentionFn: () => providerRetention,
+        });
+
+        controller.push({
+          type: "system",
+          subtype: "init",
+          session_id: "sess-1",
+        });
+        controller.push({ type: "result", session_id: "sess-1" });
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(process.state.type).toBe("idle");
+        expect(process.getLivenessSnapshot()).toMatchObject({
+          derivedStatus: "verified-waiting-provider",
+          activeWorkKind: "agent-turn",
+        });
+
+        await vi.advanceTimersByTimeAsync(150);
+        expect(abortFn).not.toHaveBeenCalled();
+
+        providerRetention = { retained: false, reasons: [] };
+        process.handleProviderRetentionChanged();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(abortFn).toHaveBeenCalledOnce();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps Claude idle with session crons out of verified-idle liveness", async () => {
+      const providerRetention: ProviderRetentionSnapshot = {
+        retained: true,
+        reasons: ["stop-hook-session-crons:1"],
+        backgroundTaskCount: 0,
+        sessionCronCount: 1,
+        liveTaskCount: 0,
+      };
+      const controller = createControllableIterator();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 10_000,
+        getProviderRetentionFn: () => providerRetention,
+      });
+
+      controller.push({
+        type: "system",
+        subtype: "init",
+        session_id: "sess-1",
+      });
+      controller.push({
+        type: "system",
+        subtype: "session_state_changed",
+        state: "idle",
+        session_id: "sess-1",
+        uuid: "11111111-1111-4111-8111-111111111111",
+      });
+
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+      const liveness = process.getLivenessSnapshot();
+      expect(liveness.derivedStatus).toBe("verified-waiting-provider");
+      expect(liveness.evidence).toContain("provider-retained");
+      expect(liveness.evidence).toContain(
+        "provider-retention:stop-hook-session-crons:1",
+      );
     });
 
     it("logs listener failures without blocking other listeners", async () => {

@@ -5,6 +5,7 @@ import type {
   SessionLivenessProbeStatus,
   SessionLivenessSnapshot,
 } from "@yep-anywhere/shared";
+import type { ProviderRetentionSnapshot } from "../sdk/types.js";
 
 export type LivenessProcessState =
   | { type: "in-turn" }
@@ -22,6 +23,7 @@ export interface BuildSessionLivenessSnapshotInput {
   lastRawProviderEventSource?: string | null;
   lastLivenessProbe: LivenessProbeResult | null;
   processAlive?: boolean;
+  providerRetention?: ProviderRetentionSnapshot;
   queueDepth: number;
   deferredQueueDepth: number;
   now?: Date;
@@ -55,6 +57,7 @@ export function buildSessionLivenessSnapshot({
   lastRawProviderEventSource = null,
   lastLivenessProbe,
   processAlive,
+  providerRetention,
   queueDepth,
   deferredQueueDepth,
   now = new Date(),
@@ -81,6 +84,12 @@ export function buildSessionLivenessSnapshot({
   if (processAlive !== undefined) {
     evidence.push(processAlive ? "process:alive" : "process:dead");
   }
+  if (providerRetention?.retained) {
+    evidence.push("provider-retained");
+    for (const reason of providerRetention.reasons) {
+      evidence.push(`provider-retention:${reason}`);
+    }
+  }
   if (lastLivenessProbe) {
     evidence.push(`probe:${lastLivenessProbe.status}`);
     evidence.push(`probe-source:${lastLivenessProbe.source}`);
@@ -100,7 +109,12 @@ export function buildSessionLivenessSnapshot({
 
   switch (state.type) {
     case "idle":
-      if (
+      if (providerRetention?.retained) {
+        derivedStatus = "verified-waiting-provider";
+        activeWorkKind = "agent-turn";
+        lastVerifiedProgressAt =
+          providerRetention.lastUpdatedAt ?? lastProviderMessageAt;
+      } else if (
         probeAppliesToCurrentState &&
         probeIsRecent &&
         lastLivenessProbe?.status === "active"

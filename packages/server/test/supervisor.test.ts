@@ -1219,6 +1219,84 @@ describe("Supervisor", () => {
       }
     });
 
+    it("does not queue heartbeat turns while provider retention is active", async () => {
+      vi.useFakeTimers();
+      let aborted = false;
+
+      try {
+        const realSdk: RealClaudeSDKInterface = {
+          startSession: async () => {
+            const queue = new MessageQueue();
+            async function* iterator() {
+              yield {
+                type: "system",
+                subtype: "init",
+                session_id: "heartbeat-provider-retained-session",
+              };
+              await queue[Symbol.asyncIterator]().next();
+              yield {
+                type: "result",
+                session_id: "heartbeat-provider-retained-session",
+              };
+
+              while (!aborted) {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+              }
+            }
+
+            return {
+              iterator: iterator(),
+              queue,
+              abort: () => {
+                aborted = true;
+              },
+              isProcessAlive: () => !aborted,
+              getProviderRetention: () => ({
+                retained: true,
+                reasons: ["stop-hook-background-tasks:1"],
+                backgroundTaskCount: 1,
+                sessionCronCount: 0,
+                liveTaskCount: 0,
+              }),
+            };
+          },
+        };
+
+        const supervisorWithHeartbeat = new Supervisor({
+          realSdk,
+          idleTimeoutMs: 120_000,
+          getHeartbeatTurnSettings: () => ({
+            enabled: true,
+            afterMinutes: 1,
+            text: "heartbeat check",
+          }),
+        });
+
+        const started = await supervisorWithHeartbeat.startSession("/tmp/test", {
+          text: "start",
+        });
+        if (!("id" in started)) {
+          throw new Error("expected process");
+        }
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(started.state.type).toBe("idle");
+        expect(started.getLivenessSnapshot().derivedStatus).toBe(
+          "verified-waiting-provider",
+        );
+
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(started.state.type).toBe("idle");
+        expect(started.queueDepth).toBe(0);
+
+        const abortPromise = supervisorWithHeartbeat.abortProcess(started.id);
+        await vi.advanceTimersByTimeAsync(5000);
+        await expect(abortPromise).resolves.toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("promotes patient deferred messages after verified quiet", async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));

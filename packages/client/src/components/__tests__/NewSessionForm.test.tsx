@@ -581,6 +581,21 @@ describe("NewSessionForm", () => {
     expect(mockSetEffortLevel).toHaveBeenCalledWith("low");
   });
 
+  it("does not show the display-only thinking preference in session setup", () => {
+    modelSettingsState.thinkingMode = "on";
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    expect(screen.getByText("modelSettingsThinkingTitle")).toBeDefined();
+    expect(screen.queryByText("showThinkingTitle")).toBeNull();
+  });
+
   it("shows detached and recent project choices in the default launcher", () => {
     render(<NewSessionForm projects={[...chooserProjects]} />);
 

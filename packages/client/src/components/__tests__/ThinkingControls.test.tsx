@@ -109,6 +109,25 @@ describe("ThinkingControls", () => {
     ).toBe(true);
   });
 
+  it("can omit the show thinking display preference", () => {
+    const { container } = render(
+      <ThinkingControlsPanel
+        mode="auto"
+        onSetMode={vi.fn()}
+        level="high"
+        effortOptions={effortOptions}
+        onSetEffort={vi.fn()}
+        showThinkingControl={false}
+        t={t}
+      />,
+    );
+
+    expect(screen.queryByText("Show thinking")).toBeNull();
+    expect(
+      container.querySelector(".thinking-controls-section--show-thinking"),
+    ).toBeNull();
+  });
+
   it("hides unsupported thinking modes and effort controls", () => {
     const onSetMode = vi.fn();
     const { container } = render(

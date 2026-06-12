@@ -222,12 +222,6 @@ export interface MessageInputToolbarProps {
 
   // Context usage
   contextUsage?: ContextUsage;
-  /**
-   * Make the context-usage indicator a "compact now" button (provider
-   * advertises a compact command; drafted composer text becomes the
-   * compact instructions).
-   */
-  onCompactClick?: () => void;
   /** Last session activity timestamp for stale composer liveness display. */
   lastActivityAt?: string | null;
   /** Server-derived provider/session liveness evidence. */
@@ -581,7 +575,6 @@ interface ToolbarActionsControl {
   disabled?: boolean;
   voiceDisabled?: boolean;
   contextUsage?: ContextUsage;
-  compact?: { onClick: () => void; title: string } | null;
   btw?: ToolbarBtwControl | null;
   stop?: ToolbarStopControl | null;
   send?: ToolbarSendControl | null;
@@ -1764,27 +1757,12 @@ export function MessageInputToolbarView({
             )}
           </div>
         )}
-        {visibility.contextUsage &&
-          (actionsControl.compact ? (
-            <button
-              type="button"
-              className="context-usage-compact-button"
-              onClick={actionsControl.compact.onClick}
-              disabled={actionsControl.disabled}
-              title={actionsControl.compact.title}
-              aria-label={actionsControl.compact.title}
-            >
-              <ContextUsageIndicator
-                usage={actionsControl.contextUsage}
-                size={16}
-              />
-            </button>
-          ) : (
-            <ContextUsageIndicator
-              usage={actionsControl.contextUsage}
-              size={16}
-            />
-          ))}
+        {visibility.contextUsage && (
+          <ContextUsageIndicator
+            usage={actionsControl.contextUsage}
+            size={16}
+          />
+        )}
         {visibility.btw && actionsControl.btw && (
           <button
             type="button"
@@ -2008,7 +1986,6 @@ export function MessageInputToolbar({
   onToggleHeartbeat,
   onConfigureHeartbeat,
   contextUsage,
-  onCompactClick,
   lastActivityAt,
   sessionLiveness,
   showPatientQueueMode = false,
@@ -2584,12 +2561,6 @@ export function MessageInputToolbar({
         disabled,
         voiceDisabled,
         contextUsage,
-        compact: onCompactClick
-          ? {
-              onClick: onCompactClick,
-              title: t("contextUsageCompactTitle"),
-            }
-          : null,
         btw: onBtwClick
           ? {
               onClick: onBtwClick,

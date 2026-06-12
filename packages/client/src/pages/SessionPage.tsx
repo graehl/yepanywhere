@@ -4196,9 +4196,6 @@ function SessionPageContent({
                   )
                 }
                 contextUsage={session?.contextUsage}
-                supportsCompactOnUsageClick={
-                  !mainComposerForAside && supportsManualCompact
-                }
                 lastActivityAt={activityAt}
                 sessionLiveness={sessionLiveness}
                 projectId={projectId}

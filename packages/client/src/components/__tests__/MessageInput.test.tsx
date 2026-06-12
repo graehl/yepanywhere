@@ -1404,6 +1404,40 @@ describe("MessageInput", () => {
     expect(screen.getByLabelText("Queue message")).toBeTruthy();
   });
 
+  it("renders context usage as passive status chrome", () => {
+    const { container } = render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={{ ...toolbarVisibility, contextUsage: true }}
+        attachmentControl={{ attachmentCount: 0 }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{
+          contextUsage: {
+            inputTokens: 42_000,
+            percentage: 42,
+            contextWindow: 100_000,
+          },
+        }}
+      />,
+    );
+
+    const indicator = container.querySelector(".context-usage-indicator");
+    expect(indicator).toBeTruthy();
+    expect(indicator?.closest("button")).toBe(null);
+  });
+
   it("opens a bottom-row overflow strip for lower-priority controls", () => {
     const onRenderToggle = vi.fn();
     const onNudgeClick = vi.fn();

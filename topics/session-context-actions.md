@@ -200,3 +200,9 @@ Open questions: where fork's "choose a point" lives in the transcript
 UI; whether clear should offer "keep a recap" (see
 [recaps](recaps.md)); whether compact-now belongs in the same menu or
 near the context-usage indicator.
+
+Decision (2026-06-12): do not make the context-usage indicator itself
+send `/compact`. Accidental clicks can mutate an existing session, and
+the indicator is expected to be passive status chrome. Keep compaction
+behind explicit slash-command/session-menu paths unless a future design
+adds a clearly named, deliberate control.

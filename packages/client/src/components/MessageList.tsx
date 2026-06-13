@@ -623,6 +623,23 @@ function isNearScrollBottom(container: HTMLElement): boolean {
   );
 }
 
+// Small enough that one wheel notch (~100px) or a single line drops follow;
+// large enough to absorb sub-pixel / zoom / high-DPI rounding so a genuine
+// scroll-to-bottom still registers as bottom.
+const ABSOLUTE_BOTTOM_EPSILON_PX = 4;
+
+// Re-arming follow requires the *absolute* bottom, not mere proximity. Using the
+// generous isNearScrollBottom (up to ~half a viewport) to re-acquire follow traps
+// the user in a sticky band near the bottom during streaming: a single wheel-up is
+// undone before it lands. isNearScrollBottom stays only for *continuing* an
+// already-on follow through the gaps fast streaming opens.
+function isAtScrollBottom(container: HTMLElement): boolean {
+  return (
+    container.scrollHeight - container.scrollTop - container.clientHeight <=
+    ABSOLUTE_BOTTOM_EPSILON_PX
+  );
+}
+
 function eventTargetIsInside(
   target: EventTarget | null,
   container: HTMLElement,
@@ -2529,7 +2546,7 @@ export const MessageList = memo(function MessageList({
     const container = containerRef.current?.parentElement;
     if (!container) return;
 
-    const atBottom = isNearScrollBottom(container);
+    const atBottom = isAtScrollBottom(container);
     shouldAutoScrollRef.current = atBottom;
     thinkingDeltaFollowAllowedRef.current = atBottom;
     if (!atBottom) {
@@ -2667,11 +2684,9 @@ export const MessageList = memo(function MessageList({
       if (heightIncreased && shouldAutoScrollRef.current) {
         scrollToBottom(scrollContainer);
       } else {
-        if (isNearScrollBottom(scrollContainer)) {
-          shouldAutoScrollRef.current = true;
-          setIsScrolledToBottom(true);
-        }
-        // Update height tracking even when not scrolling
+        // A size change must never *start* following — only continue it (the
+        // branch above). Re-arming here from proximity is what trapped the
+        // reading area near the bottom. Just track the new height.
         lastHeightRef.current = newHeight;
       }
     });

@@ -23,6 +23,7 @@ import {
   type BtwAsideTranscriptTurn,
 } from "../components/BtwAsidePane";
 import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
+import { ExternalSessionWarning } from "../components/ExternalSessionWarning";
 import {
   MessageInput,
   type MessageSubmissionMetadata,
@@ -3854,11 +3855,7 @@ function SessionPageContent({
         />
       )}
 
-      {status.owner === "external" && (
-        <div className="external-session-warning">
-          {t("sessionExternalWarning")}
-        </div>
-      )}
+      <ExternalSessionWarning active={status.owner === "external"} />
 
       {hasPendingToolCalls && !pendingElsewhereDismissed && (
         <div

@@ -2637,6 +2637,15 @@ function SessionPageContent({
     },
     [btwAsides, hideBtwAside, updateBtwAside],
   );
+  const handleDoneBtwAside = useCallback(() => {
+    setFocusedBtwAsideId(null);
+  }, []);
+  const handleStopBtwAsideFromTranscript = useCallback(
+    (asideId: string) => {
+      void handleStopBtwAside(asideId);
+    },
+    [handleStopBtwAside],
+  );
 
   const stickyBtwAsides = useMemo(
     () => btwAsides.filter((aside) => !aside.historyAt),
@@ -3913,8 +3922,8 @@ function SessionPageContent({
                   deferredMessages={deferredMessages}
                   btwAsides={historyBtwAsides}
                   onFocusBtwAside={setFocusedBtwAsideId}
-                  onDoneBtwAside={() => setFocusedBtwAsideId(null)}
-                  onStopBtwAside={(asideId) => void handleStopBtwAside(asideId)}
+                  onDoneBtwAside={handleDoneBtwAside}
+                  onStopBtwAside={handleStopBtwAsideFromTranscript}
                   onToggleBtwAsideExpanded={toggleBtwAsideExpanded}
                   onTransferBtwAsideTurn={transferBtwTurnToMotherComposer}
                   onCancelDeferred={handleCancelDeferred}

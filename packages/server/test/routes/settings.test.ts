@@ -106,6 +106,48 @@ describe("Settings Routes", () => {
       });
     });
 
+    it("accepts agent context hint settings", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentContextHints: { latexMathRendering: true },
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json.settings.agentContextHints).toEqual({
+        latexMathRendering: true,
+      });
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        agentContextHints: { latexMathRendering: true },
+      });
+    });
+
+    it("rejects invalid agent context hint settings", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentContextHints: { latexMathRendering: "yes" },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      const json = await response.json();
+      expect(json.error).toBe("Invalid agentContextHints setting");
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("rejects invalid aliases in remoteExecutors setting", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,

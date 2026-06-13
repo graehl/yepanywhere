@@ -18,6 +18,7 @@ import {
   type UserMessageDeliveryIntent,
   type UserMessageMetadata,
   type UrlProjectId,
+  buildEffectiveAgentContext,
   clampPatientPatienceSeconds,
   getModelContextWindow,
   isUrlProjectId,
@@ -1670,7 +1671,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   };
 
   const getGlobalInstructions = (): string | undefined =>
-    deps.serverSettingsService?.getSetting("globalInstructions") || undefined;
+    buildEffectiveAgentContext({
+      globalInstructions:
+        deps.serverSettingsService?.getSetting("globalInstructions"),
+      hints: deps.serverSettingsService?.getSetting("agentContextHints"),
+    });
 
   const persistLaunchMetadata = async (
     sessionId: string,
@@ -2890,8 +2895,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
     }
 
-    const globalInstructions =
-      deps.serverSettingsService?.getSetting("globalInstructions") || undefined;
+    const globalInstructions = getGlobalInstructions();
 
     // Look up the session's original provider so we resume with the correct one
     // (e.g., claude-ollama sessions need the Ollama provider, not default Claude).
@@ -3639,8 +3643,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     // Use queueMessageToSession which handles thinking mode changes
     // If thinking mode changed, it will restart the process automatically
-    const queueGlobalInstructions =
-      deps.serverSettingsService?.getSetting("globalInstructions") || undefined;
+    const queueGlobalInstructions = getGlobalInstructions();
     const result = await deps.supervisor.queueMessageToSession(
       sessionId,
       process.projectPath,

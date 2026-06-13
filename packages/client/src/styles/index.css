@@ -7450,6 +7450,23 @@ a.sidebar-nav-item {
   margin-bottom: 0;
 }
 
+.settings-subsection-heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0 var(--space-1);
+}
+
+.settings-subsection-heading strong {
+  color: var(--text-primary);
+}
+
+.settings-subsection-heading p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
 .settings-item {
   display: flex;
   align-items: center;

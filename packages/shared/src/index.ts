@@ -6,6 +6,12 @@ export {
   getFilename,
 } from "./ideMetadata.js";
 
+export type { AgentContextHints } from "./agent-context.js";
+export {
+  buildEffectiveAgentContext,
+  LATEX_MATH_RENDERING_CLIENT_CAPABILITY,
+} from "./agent-context.js";
+
 // File path detection (shared between server and client)
 export type { DetectedFilePath, TextSegment } from "./filePathDetection.js";
 export {

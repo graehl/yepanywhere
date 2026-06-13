@@ -8,6 +8,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type {
+  AgentContextHints,
   ClientDefaults,
   HelperTargetConfig,
   NewSessionDefaults,
@@ -60,6 +61,8 @@ export interface ServerSettings {
   allowedHosts?: string;
   /** Free-form instructions appended to the system prompt for all sessions */
   globalInstructions?: string;
+  /** Optional client-context hints composed additively with global instructions */
+  agentContextHints?: AgentContextHints;
   /** Default idle minutes before an opted-in session queues a heartbeat turn */
   heartbeatTurnsAfterMinutes?: number;
   /** Default text queued as the synthetic heartbeat user turn */
@@ -167,7 +170,9 @@ function mergeLoadedClientDefaults(
 
 function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
   const normalized = { ...DEFAULT_SERVER_SETTINGS, ...settings };
-  normalized.clientDefaults = mergeLoadedClientDefaults(settings.clientDefaults);
+  normalized.clientDefaults = mergeLoadedClientDefaults(
+    settings.clientDefaults,
+  );
   const loadedHeartbeatText = settings.heartbeatTurnText?.trim();
   if (
     loadedHeartbeatText &&

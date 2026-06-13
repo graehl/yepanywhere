@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { buildEffectiveAgentContext } from "@yep-anywhere/shared";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
@@ -18,11 +19,13 @@ export function AgentContextSettings() {
   const { t } = useI18n();
   const { settings, isLoading, error, updateSettings } = useServerSettings();
   const [instructions, setInstructions] = useState("");
-  const [heartbeatTurnsAfterMinutes, setHeartbeatTurnsAfterMinutes] =
-    useState(String(DEFAULT_HEARTBEAT_AFTER_MINUTES));
+  const [heartbeatTurnsAfterMinutes, setHeartbeatTurnsAfterMinutes] = useState(
+    String(DEFAULT_HEARTBEAT_AFTER_MINUTES),
+  );
   const [heartbeatTurnText, setHeartbeatTurnText] = useState(
     DEFAULT_HEARTBEAT_TEXT,
   );
+  const [latexMathRendering, setLatexMathRendering] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -35,11 +38,15 @@ export function AgentContextSettings() {
       setInstructions(settings.globalInstructions ?? "");
       setHeartbeatTurnsAfterMinutes(
         String(
-          settings.heartbeatTurnsAfterMinutes ?? DEFAULT_HEARTBEAT_AFTER_MINUTES,
+          settings.heartbeatTurnsAfterMinutes ??
+            DEFAULT_HEARTBEAT_AFTER_MINUTES,
         ),
       );
       setHeartbeatTurnText(
         settings.heartbeatTurnText ?? DEFAULT_HEARTBEAT_TEXT,
+      );
+      setLatexMathRendering(
+        settings.agentContextHints?.latexMathRendering ?? false,
       );
       setFormSynced(true);
     }
@@ -50,20 +57,42 @@ export function AgentContextSettings() {
     settings?.heartbeatTurnsAfterMinutes ?? DEFAULT_HEARTBEAT_AFTER_MINUTES;
   const serverHeartbeatTurnText =
     settings?.heartbeatTurnText ?? DEFAULT_HEARTBEAT_TEXT;
+  const serverLatexMathRendering =
+    settings?.agentContextHints?.latexMathRendering ?? false;
+  const effectiveAgentContext = useMemo(
+    () =>
+      buildEffectiveAgentContext({
+        globalInstructions: instructions,
+        hints: { latexMathRendering },
+      }),
+    [instructions, latexMathRendering],
+  );
 
   // Header undo covers shown form values (saved or not), back to open-time.
   const undoState = useMemo(
     () =>
       formSynced
-        ? { instructions, heartbeatTurnsAfterMinutes, heartbeatTurnText }
+        ? {
+            instructions,
+            heartbeatTurnsAfterMinutes,
+            heartbeatTurnText,
+            latexMathRendering,
+          }
         : null,
-    [formSynced, instructions, heartbeatTurnsAfterMinutes, heartbeatTurnText],
+    [
+      formSynced,
+      instructions,
+      heartbeatTurnsAfterMinutes,
+      heartbeatTurnText,
+      latexMathRendering,
+    ],
   );
   const restoreUndoState = useCallback(
     (snapshot: NonNullable<typeof undoState>) => {
       setInstructions(snapshot.instructions);
       setHeartbeatTurnsAfterMinutes(snapshot.heartbeatTurnsAfterMinutes);
       setHeartbeatTurnText(snapshot.heartbeatTurnText);
+      setLatexMathRendering(snapshot.latexMathRendering);
       setHasChanges(false);
       setSaveError(null);
       void updateSettings({
@@ -73,6 +102,9 @@ export function AgentContextSettings() {
         ),
         heartbeatTurnText:
           snapshot.heartbeatTurnText.trim() || DEFAULT_HEARTBEAT_TEXT,
+        agentContextHints: {
+          latexMathRendering: snapshot.latexMathRendering,
+        },
       }).catch(() => {
         // surfaced via the hook's error state
       });
@@ -86,26 +118,31 @@ export function AgentContextSettings() {
       instructions?: string;
       heartbeatTurnsAfterMinutes?: string;
       heartbeatTurnText?: string;
+      latexMathRendering?: boolean;
     }) => {
       const nextInstructions = next.instructions ?? instructions;
       const nextHeartbeatTurnsAfterMinutes =
         next.heartbeatTurnsAfterMinutes ?? heartbeatTurnsAfterMinutes;
-      const nextHeartbeatTurnText =
-        next.heartbeatTurnText ?? heartbeatTurnText;
+      const nextHeartbeatTurnText = next.heartbeatTurnText ?? heartbeatTurnText;
+      const nextLatexMathRendering =
+        next.latexMathRendering ?? latexMathRendering;
       setHasChanges(
         nextInstructions !== serverInstructions ||
           nextHeartbeatTurnsAfterMinutes !==
             String(serverHeartbeatTurnsAfterMinutes) ||
-          nextHeartbeatTurnText !== serverHeartbeatTurnText,
+          nextHeartbeatTurnText !== serverHeartbeatTurnText ||
+          nextLatexMathRendering !== serverLatexMathRendering,
       );
     },
     [
       heartbeatTurnText,
       heartbeatTurnsAfterMinutes,
       instructions,
+      latexMathRendering,
       serverHeartbeatTurnText,
       serverHeartbeatTurnsAfterMinutes,
       serverInstructions,
+      serverLatexMathRendering,
     ],
   );
 
@@ -119,6 +156,7 @@ export function AgentContextSettings() {
           heartbeatTurnsAfterMinutes,
         ),
         heartbeatTurnText: heartbeatTurnText.trim() || DEFAULT_HEARTBEAT_TEXT,
+        agentContextHints: { latexMathRendering },
       });
       setHasChanges(false);
     } catch (err) {
@@ -132,6 +170,7 @@ export function AgentContextSettings() {
     heartbeatTurnText,
     heartbeatTurnsAfterMinutes,
     instructions,
+    latexMathRendering,
     t,
     updateSettings,
   ]);
@@ -199,6 +238,40 @@ export function AgentContextSettings() {
             </button>
           </div>
         </div>
+
+        <div className="settings-subsection-heading">
+          <strong>{t("agentContextSuggestedHintsTitle")}</strong>
+          <p>{t("agentContextSuggestedHintsDescription")}</p>
+        </div>
+
+        <label className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("agentContextSuggestedLatexTitle")}</strong>
+            <p>{t("agentContextSuggestedLatexDescription")}</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={latexMathRendering}
+            onChange={(e) => {
+              const nextLatexMathRendering = e.target.checked;
+              setLatexMathRendering(nextLatexMathRendering);
+              recomputeHasChanges({
+                latexMathRendering: nextLatexMathRendering,
+              });
+              setSaveError(null);
+            }}
+            aria-label={t("agentContextSuggestedLatexTitle")}
+          />
+        </label>
+
+        <details>
+          <summary className="settings-hint">
+            {t("agentContextPreviewSummary")}
+          </summary>
+          <pre className="settings-command-preview">
+            {effectiveAgentContext ?? t("agentContextPreviewEmpty")}
+          </pre>
+        </details>
       </div>
 
       <div className="settings-group">

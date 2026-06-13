@@ -1,5 +1,6 @@
 import type {
   AgentActivity,
+  AgentContextHints,
   BrowserProfilesResponse,
   ClientDefaults,
   ConnectionsResponse,
@@ -1478,6 +1479,8 @@ export interface ServerSettings {
   allowedHosts?: string;
   /** Free-form instructions appended to the system prompt for all sessions */
   globalInstructions?: string;
+  /** Optional additive context hints composed with global instructions */
+  agentContextHints?: AgentContextHints;
   /** Default idle minutes before an opted-in session queues a heartbeat turn */
   heartbeatTurnsAfterMinutes?: number;
   /** Default text queued as the synthetic heartbeat user turn */

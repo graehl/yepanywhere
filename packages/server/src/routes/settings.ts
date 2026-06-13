@@ -5,6 +5,7 @@
 import {
   ALL_PERMISSION_MODES,
   ALL_PROVIDERS,
+  type AgentContextHints,
   type ClientDefaults,
   type GrokSpeechAudioClientDefault,
   HELPER_SIDE_MODEL_CHEAPEST,
@@ -220,6 +221,22 @@ function parseOpenAiModelsResponse(raw: unknown): ModelInfo[] | null {
   }
 
   return models;
+}
+
+function parseAgentContextHints(
+  raw: unknown,
+  current: AgentContextHints | undefined,
+): AgentContextHints | null {
+  if (raw === undefined || raw === null) return {};
+  if (!isRecord(raw)) return null;
+
+  const parsed: AgentContextHints = { ...current };
+  if ("latexMathRendering" in raw) {
+    if (typeof raw.latexMathRendering !== "boolean") return null;
+    parsed.latexMathRendering = raw.latexMathRendering;
+  }
+
+  return parsed;
 }
 
 async function discoverOpenAiCompatibleModels(
@@ -749,6 +766,17 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       } else if (typeof body.globalInstructions === "string") {
         updates.globalInstructions = body.globalInstructions.slice(0, 10000);
       }
+    }
+
+    if ("agentContextHints" in body) {
+      const parsedHints = parseAgentContextHints(
+        body.agentContextHints,
+        serverSettingsService.getSetting("agentContextHints"),
+      );
+      if (parsedHints === null) {
+        return c.json({ error: "Invalid agentContextHints setting" }, 400);
+      }
+      updates.agentContextHints = parsedHints;
     }
 
     if ("heartbeatTurnsAfterMinutes" in body) {

@@ -8155,6 +8155,10 @@ a.sidebar-nav-item {
   flex-wrap: wrap;
 }
 
+.push-test-status {
+  min-height: 2.6em;
+}
+
 /* Select dropdown for settings */
 .settings-select {
   padding: var(--space-2) var(--space-3);

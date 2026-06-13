@@ -477,17 +477,16 @@ export function NotificationsSettings() {
               <div className="settings-item-info">
                 <strong>{t("notificationsTestPushTitle")}</strong>
                 <p>{t("notificationsTestPushDescription")}</p>
-                {testStatus && (
-                  <p
-                    className={
-                      testStatus.kind === "error"
-                        ? "settings-error"
-                        : "settings-hint"
-                    }
-                  >
-                    {testStatus.message}
-                  </p>
-                )}
+                <p
+                  className={`push-test-status ${
+                    testStatus?.kind === "error"
+                      ? "settings-error"
+                      : "settings-hint"
+                  }`}
+                  aria-live="polite"
+                >
+                  {testStatus?.message ?? "\u00a0"}
+                </p>
               </div>
               <div className="settings-item-actions">
                 <select
@@ -536,11 +535,9 @@ export function NotificationsSettings() {
                         })
                   }
                 >
-                  {isTestingMobileDevices
-                    ? t("notificationsTesting")
-                    : t("notificationsSendToMobileDevices", {
-                        count: mobilePushDevices.length,
-                      })}
+                  {t("notificationsSendToMobileDevices", {
+                    count: mobilePushDevices.length,
+                  })}
                 </button>
               </div>
             </div>
@@ -605,9 +602,7 @@ export function NotificationsSettings() {
                         disabled={testingDeviceIds.has(device.browserProfileId)}
                         title={t("notificationsTestDevice")}
                       >
-                        {testingDeviceIds.has(device.browserProfileId)
-                          ? t("notificationsTesting")
-                          : t("notificationsTest")}
+                        {t("notificationsTest")}
                       </button>
                       <button
                         type="button"

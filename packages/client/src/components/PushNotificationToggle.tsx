@@ -157,7 +157,7 @@ export function PushNotificationToggle() {
                 onClick={() => sendTest(testUrgency, deliveryUrgency)}
                 disabled={isLoading}
               >
-                {isLoading ? t("pushToggleSending") : t("pushToggleSendTest")}
+                {t("pushToggleSendTest")}
               </button>
             </div>
           </div>

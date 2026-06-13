@@ -18,6 +18,10 @@ vi.mock("../../i18n", () => ({
           "Show hidden thinking transcript rows",
         processingThinkingTranscriptShowWhenAvailable:
           "Show thinking transcript rows when available",
+        processingThinkingExpandLatestOnly:
+          "Right-click: only the latest thinking block stays expanded",
+        processingThinkingExpandAll:
+          "Right-click: every new thinking block stays expanded",
       })[key] ?? key,
   }),
 }));
@@ -103,6 +107,74 @@ describe("ProcessingIndicator", () => {
     fireEvent.click(button);
 
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("right-clicking the toggle flips the auto-expand policy, not visibility", () => {
+    const onToggleVisible = vi.fn();
+    const onToggleLatestOnly = vi.fn();
+    render(
+      <ProcessingIndicator
+        isProcessing={false}
+        hasThinkingItems={true}
+        thinkingItemsVisible={true}
+        onToggleThinkingItemsVisible={onToggleVisible}
+        onToggleThinkingLatestOnly={onToggleLatestOnly}
+      />,
+    );
+
+    const button = screen.getByRole("button");
+    fireEvent.contextMenu(button);
+
+    expect(onToggleLatestOnly).toHaveBeenCalledTimes(1);
+    expect(onToggleVisible).not.toHaveBeenCalled();
+  });
+
+  it("marks the toggle and surfaces the mode hint in latest-only mode", () => {
+    render(
+      <ProcessingIndicator
+        isProcessing={false}
+        hasThinkingItems={true}
+        thinkingItemsVisible={true}
+        thinkingLatestOnly={true}
+        onToggleThinkingItemsVisible={vi.fn()}
+        onToggleThinkingLatestOnly={vi.fn()}
+      />,
+    );
+
+    const button = screen.getByRole("button");
+    expect(button.classList.contains("is-latest-only")).toBe(true);
+    expect(button.getAttribute("title")).toContain(
+      "only the latest thinking block",
+    );
+    // The accessible name stays the clean click action.
+    expect(button.getAttribute("aria-label")).toBe(
+      "Hide thinking transcript rows (display only; the agent keeps working)",
+    );
+  });
+
+  it("long-press toggles policy and suppresses the follow-up click", () => {
+    const onToggleVisible = vi.fn();
+    const onToggleLatestOnly = vi.fn();
+    render(
+      <ProcessingIndicator
+        isProcessing={false}
+        hasThinkingItems={true}
+        thinkingItemsVisible={true}
+        onToggleThinkingItemsVisible={onToggleVisible}
+        onToggleThinkingLatestOnly={onToggleLatestOnly}
+      />,
+    );
+
+    const button = screen.getByRole("button");
+    fireEvent.touchStart(button);
+    act(() => {
+      vi.advanceTimersByTime(450);
+    });
+    fireEvent.touchEnd(button);
+    fireEvent.click(button);
+
+    expect(onToggleLatestOnly).toHaveBeenCalledTimes(1);
+    expect(onToggleVisible).not.toHaveBeenCalled();
   });
 
   it("hides when processing stops", async () => {

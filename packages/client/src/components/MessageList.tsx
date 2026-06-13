@@ -659,6 +659,33 @@ function saveSessionThinkingVisible(visible: boolean) {
   }
 }
 
+// Auto-expand policy for thinking blocks. Off (default): every newly-arriving
+// block stays expanded ("all-new"). On: only the most-recent block is
+// auto-open; it auto-collapses once a newer block appears ("latest-only").
+// Manual per-block toggles win over either policy. See
+// topics/thinking-expand-latest-only.md.
+function loadSessionThinkingLatestOnly(): boolean {
+  try {
+    return (
+      globalThis.localStorage?.getItem(UI_KEYS.sessionThinkingLatestOnly) ===
+      "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function saveSessionThinkingLatestOnly(latestOnly: boolean) {
+  try {
+    globalThis.localStorage?.setItem(
+      UI_KEYS.sessionThinkingLatestOnly,
+      latestOnly ? "true" : "false",
+    );
+  } catch {
+    // localStorage is only a display preference; in-memory state still applies.
+  }
+}
+
 function countThinkingItems(items: readonly RenderItem[]) {
   let count = 0;
   for (const item of items) {
@@ -1144,6 +1171,9 @@ export const MessageList = memo(function MessageList({
   const [thinkingExpansionOverrides, setThinkingExpansionOverrides] = useState<
     Record<string, boolean>
   >({});
+  const [thinkingLatestOnly, setThinkingLatestOnly] = useState(
+    loadSessionThinkingLatestOnly,
+  );
   const [autoExpandedThinkingItemIds, setAutoExpandedThinkingItemIds] =
     useState<ReadonlySet<string>>(() => new Set());
   const [navMotionCue, setNavMotionCue] = useState<UserTurnNavMotionCue | null>(
@@ -1409,6 +1439,36 @@ export const MessageList = memo(function MessageList({
     (itemId: string) => autoExpandedThinkingItemIds.has(itemId),
     [autoExpandedThinkingItemIds],
   );
+  // Most-recent thinking item; only meaningful in latest-only mode, where its
+  // auto-openness is recomputed each render rather than stored, so the prior
+  // block collapses with no mutation as soon as a newer one arrives.
+  const lastThinkingItemId = useMemo(() => {
+    for (let i = renderItems.length - 1; i >= 0; i -= 1) {
+      const item = renderItems[i];
+      if (item?.type === "thinking") return item.id;
+    }
+    return null;
+  }, [renderItems]);
+  // Single source of truth for "is this thinking block expanded": an explicit
+  // user toggle (tri-state: open / collapsed / absent) always wins; otherwise
+  // the active auto policy decides. A manual expand is a permanent pin — the
+  // override is never cleared — so it never auto-hides. See
+  // topics/thinking-expand-latest-only.md.
+  const resolveThinkingItemExpanded = useCallback(
+    (itemId: string) => {
+      const override = thinkingExpansionOverrides[itemId];
+      if (override !== undefined) return override;
+      return thinkingLatestOnly
+        ? itemId === lastThinkingItemId
+        : isThinkingItemAutoExpanded(itemId);
+    },
+    [
+      isThinkingItemAutoExpanded,
+      lastThinkingItemId,
+      thinkingExpansionOverrides,
+      thinkingLatestOnly,
+    ],
+  );
   const displayRenderItems = useMemo(
     () =>
       thinkingItemsVisible
@@ -1432,9 +1492,7 @@ export const MessageList = memo(function MessageList({
         continue;
       }
 
-      const isExpanded =
-        thinkingExpansionOverrides[item.id] ??
-        isThinkingItemAutoExpanded(item.id);
+      const isExpanded = resolveThinkingItemExpanded(item.id);
       const previousLength = previousThinkingTextLengths.get(item.id) ?? 0;
       if (isExpanded && nextLength > previousLength) {
         visibleThinkingDelta = true;
@@ -1447,10 +1505,9 @@ export const MessageList = memo(function MessageList({
       stopFollowingForUserScroll(containerRef.current?.parentElement);
     }
   }, [
-    isThinkingItemAutoExpanded,
     renderItems,
+    resolveThinkingItemExpanded,
     stopFollowingForUserScroll,
-    thinkingExpansionOverrides,
     thinkingItemsVisible,
   ]);
   useLayoutEffect(() => {
@@ -1931,10 +1988,8 @@ export const MessageList = memo(function MessageList({
 
   const getThinkingItemExpanded = useCallback(
     (item: RenderItem) =>
-      item.type === "thinking" &&
-      (thinkingExpansionOverrides[item.id] ??
-        isThinkingItemAutoExpanded(item.id)),
-    [isThinkingItemAutoExpanded, thinkingExpansionOverrides],
+      item.type === "thinking" && resolveThinkingItemExpanded(item.id),
+    [resolveThinkingItemExpanded],
   );
 
   const toggleThinkingItemExpanded = useCallback(
@@ -1942,13 +1997,15 @@ export const MessageList = memo(function MessageList({
       if (item.type !== "thinking") {
         return;
       }
-      setThinkingExpansionOverrides((previous) => {
-        const current =
-          previous[item.id] ?? isThinkingItemAutoExpanded(item.id);
-        return { ...previous, [item.id]: !current };
-      });
+      // Absolute write against the currently-resolved state, never cleared:
+      // toggling open from the auto state pins it open permanently.
+      const next = !resolveThinkingItemExpanded(item.id);
+      setThinkingExpansionOverrides((previous) => ({
+        ...previous,
+        [item.id]: next,
+      }));
     },
-    [isThinkingItemAutoExpanded],
+    [resolveThinkingItemExpanded],
   );
 
   const noopToggleThinkingExpanded = useCallback(() => {}, []);
@@ -2023,6 +2080,16 @@ export const MessageList = memo(function MessageList({
       setThinkingItemsVisible((previous) => {
         const next = !previous;
         saveSessionThinkingVisible(next);
+        return next;
+      });
+    });
+  }, [preserveScrollAfterTranscriptHeightChange]);
+
+  const toggleThinkingLatestOnly = useCallback(() => {
+    preserveScrollAfterTranscriptHeightChange(() => {
+      setThinkingLatestOnly((previous) => {
+        const next = !previous;
+        saveSessionThinkingLatestOnly(next);
         return next;
       });
     });
@@ -3334,6 +3401,8 @@ export const MessageList = memo(function MessageList({
           thinkingItemsVisible={thinkingItemsVisible}
           hasThinkingItems={hasThinkingItems}
           onToggleThinkingItemsVisible={toggleThinkingItemsVisible}
+          thinkingLatestOnly={thinkingLatestOnly}
+          onToggleThinkingLatestOnly={toggleThinkingLatestOnly}
         />
       </div>
     </>

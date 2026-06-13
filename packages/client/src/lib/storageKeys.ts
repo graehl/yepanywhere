@@ -70,6 +70,7 @@ export const UI_KEYS = {
   developerMode: "yep-anywhere-developer-mode",
   sessionToolbarVisibility: "yep-anywhere-session-toolbar-visibility",
   sessionThinkingVisible: "yep-anywhere-session-thinking-visible",
+  sessionThinkingLatestOnly: "yep-anywhere-session-thinking-latest-only",
   stableToolPreviewRendering:
     "yep-anywhere-stable-tool-preview-rendering-enabled",
   // Preserve the first-shipped key; true now means previews start expanded.

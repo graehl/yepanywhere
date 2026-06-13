@@ -1,4 +1,13 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import {
+  type MouseEvent,
+  type TouchEvent,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { getFunPhrasesEnabled } from "../hooks/useFunPhrases";
 import { useI18n } from "../i18n";
 import { ThinkingIndicator } from "./ThinkingIndicator";
@@ -46,6 +55,10 @@ interface Props {
   thinkingItemsVisible?: boolean;
   hasThinkingItems?: boolean;
   onToggleThinkingItemsVisible?: () => void;
+  /** Auto-expand policy: true = only the latest block, false = every new one. */
+  thinkingLatestOnly?: boolean;
+  /** Right-click / long-press the toggle flips the auto-expand policy. */
+  onToggleThinkingLatestOnly?: () => void;
 }
 
 function ThoughtTranscriptIcon({ muted }: { muted: boolean }) {
@@ -78,6 +91,8 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
   thinkingItemsVisible = true,
   hasThinkingItems = false,
   onToggleThinkingItemsVisible,
+  thinkingLatestOnly = false,
+  onToggleThinkingLatestOnly,
 }: Props) {
   const { t } = useI18n();
   const [phraseIndex, setPhraseIndex] = useState(0);
@@ -86,6 +101,57 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
   const showThinkingToggle = Boolean(
     onToggleThinkingItemsVisible && (isProcessing || hasThinkingItems),
   );
+
+  // Right-click (desktop) / long-press (touch) flips the auto-expand policy;
+  // left-click still toggles visibility. suppressTouchClickRef stops a
+  // completed long-press from also firing the click handler.
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressTouchClickRef = useRef(false);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleContextMenu = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      if (!onToggleThinkingLatestOnly) return;
+      event.preventDefault();
+      onToggleThinkingLatestOnly();
+    },
+    [onToggleThinkingLatestOnly],
+  );
+
+  const handleTouchStart = useCallback(() => {
+    if (!onToggleThinkingLatestOnly) return;
+    clearLongPress();
+    suppressTouchClickRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      suppressTouchClickRef.current = true;
+      longPressTimerRef.current = null;
+      onToggleThinkingLatestOnly();
+    }, 450);
+  }, [clearLongPress, onToggleThinkingLatestOnly]);
+
+  const handleTouchEnd = useCallback(
+    (event: TouchEvent<HTMLButtonElement>) => {
+      if (suppressTouchClickRef.current) {
+        event.preventDefault();
+      }
+      clearLongPress();
+    },
+    [clearLongPress],
+  );
+
+  const handleToggleClick = useCallback(() => {
+    if (suppressTouchClickRef.current) {
+      suppressTouchClickRef.current = false;
+      return;
+    }
+    onToggleThinkingItemsVisible?.();
+  }, [onToggleThinkingItemsVisible]);
 
   // Check setting and shuffle phrases when processing starts
   const phrases = useMemo(() => {
@@ -134,11 +200,21 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
     return null;
   }
 
-  const thinkingToggleTitle = thinkingItemsVisible
+  const visibilityTitle = thinkingItemsVisible
     ? t("processingThinkingTranscriptHide")
     : hasThinkingItems
       ? t("processingThinkingTranscriptShowHidden")
       : t("processingThinkingTranscriptShowWhenAvailable");
+  // Append the right-click affordance only when it is wired and visible.
+  const modeHint =
+    onToggleThinkingLatestOnly && thinkingItemsVisible
+      ? thinkingLatestOnly
+        ? t("processingThinkingExpandLatestOnly")
+        : t("processingThinkingExpandAll")
+      : null;
+  const thinkingToggleTitle = modeHint
+    ? `${visibilityTitle}\n${modeHint}`
+    : visibilityTitle;
 
   return (
     <div
@@ -151,10 +227,15 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
           type="button"
           className={`processing-thinking-toggle ${
             thinkingItemsVisible ? "is-visible" : "is-muted"
-          }`}
-          onClick={onToggleThinkingItemsVisible}
+          } ${thinkingLatestOnly ? "is-latest-only" : ""}`.trim()}
+          onClick={handleToggleClick}
+          onContextMenu={handleContextMenu}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={clearLongPress}
+          onTouchMove={clearLongPress}
           aria-pressed={thinkingItemsVisible}
-          aria-label={thinkingToggleTitle}
+          aria-label={visibilityTitle}
           title={thinkingToggleTitle}
         >
           <ThoughtTranscriptIcon muted={!thinkingItemsVisible} />

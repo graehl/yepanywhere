@@ -6127,6 +6127,23 @@ a.sidebar-nav-item {
   opacity: 0.85;
 }
 
+/* Latest-only auto-expand mode (right-click / long-press): a subtle dot, only
+   while thinking is visible. The tooltip carries the explanation. */
+.processing-thinking-toggle.is-latest-only.is-visible {
+  position: relative;
+}
+
+.processing-thinking-toggle.is-latest-only.is-visible::after {
+  content: "";
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .processing-thinking-toggle-icon {
   display: block;
 }

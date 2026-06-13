@@ -7698,7 +7698,7 @@ a.sidebar-nav-item {
   font: inherit;
 }
 
-.output-preview-math {
+.output-preview-math .katex {
   font-family: var(--font-math);
   font-size: max(10px, calc(1em + var(--output-math-font-size-offset)));
   font-optical-sizing: auto;

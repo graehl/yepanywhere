@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ThinkingText } from "../../components/ThinkingText";
+import { renderFixedFontMath } from "../../components/ui/FixedFontMathToggle";
 import {
   DEFAULT_CONTENT_MAX_WIDTH_PX,
   MAX_CONTENT_MAX_WIDTH_PX,
@@ -60,6 +61,8 @@ import {
   getTabSizeLabel,
   getThemeLabel,
 } from "../../i18n-settings";
+
+const OUTPUT_INLINE_MATH_SAMPLE = "$E=mc^2$";
 
 function formatNumberSetting(value: number): string {
   return Number.isInteger(value) ? String(value) : String(value);
@@ -125,6 +128,10 @@ export function AppearanceSettings() {
   const { tabTitleActivityEnabled, setTabTitleActivityEnabled } =
     useTabTitleActivityPreference();
   const { showConnectionBars, setShowConnectionBars } = useDeveloperMode();
+  const outputInlineMathHtml = useMemo(
+    () => renderFixedFontMath(OUTPUT_INLINE_MATH_SAMPLE).html,
+    [],
+  );
   // Header undo: snapshot every appearance value at pane open; restore sets
   // each preference and re-syncs the numeric draft fields.
   const undoState = useMemo(
@@ -819,7 +826,11 @@ export function AppearanceSettings() {
                   </pre>
                   <p>
                     Inline math:{" "}
-                    <span className="output-preview-math">f(x) = 100%</span>
+                    <span
+                      className="output-preview-math"
+                      // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX output is generated from a static settings preview sample
+                      dangerouslySetInnerHTML={{ __html: outputInlineMathHtml }}
+                    />
                   </p>
                   <p>Specimen rows:</p>
                   <ul>

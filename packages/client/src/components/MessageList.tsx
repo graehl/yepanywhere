@@ -623,20 +623,42 @@ function isNearScrollBottom(container: HTMLElement): boolean {
   );
 }
 
-// Small enough that one wheel notch (~100px) or a single line drops follow;
-// large enough to absorb sub-pixel / zoom / high-DPI rounding so a genuine
-// scroll-to-bottom still registers as bottom.
-const ABSOLUTE_BOTTOM_EPSILON_PX = 4;
+// Tolerance for "the last line is in view" — sub-pixel / zoom / high-DPI
+// rounding only, not a behavioural band.
+const FOLLOW_BOTTOM_TOLERANCE_PX = 4;
 
-// Re-arming follow requires the *absolute* bottom, not mere proximity. Using the
-// generous isNearScrollBottom (up to ~half a viewport) to re-acquire follow traps
-// the user in a sticky band near the bottom during streaming: a single wheel-up is
-// undone before it lands. isNearScrollBottom stays only for *continuing* an
-// already-on follow through the gaps fast streaming opens.
-function isAtScrollBottom(container: HTMLElement): boolean {
+// "At bottom" for follow purposes = the last rendered line is in view (its
+// bottom edge at or above the viewport bottom), not that scrollTop reached the
+// literal pixel-bottom. So trailing padding below the processing indicator
+// needn't be scrolled past ("as soon as the fun-text line shows, we're
+// following"), and the indicator being absent is handled for free —
+// lastElementChild is then the last message row. The generous isNearScrollBottom
+// stays only for *continuing* an already-on follow through fast-streaming gaps;
+// re-acquiring follow is governed here.
+//
+// Deliberately position-only, with no scroll-direction inference. Momentum
+// scrolling fires scroll events after the finger has lifted, and iOS rubber-band
+// bounce briefly overshoots the bottom then springs back — both corrupt any
+// velocity/direction reading. "Is the bottom line visible right now" stays
+// consistent through momentum and bounce (during a bottom bounce the last line
+// is *more* in view, which correctly reads as at-bottom), so it needs no
+// direction tracking and no settle timer. Exit-follow stays sensitive via the
+// directional wheel/touch/key handlers, which fire on intent during the touch,
+// before momentum begins.
+function isAtScrollBottom(
+  viewport: HTMLElement,
+  content: HTMLElement,
+): boolean {
+  const lastLine = content.lastElementChild;
+  if (!lastLine) {
+    return (
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <=
+      FOLLOW_BOTTOM_TOLERANCE_PX
+    );
+  }
   return (
-    container.scrollHeight - container.scrollTop - container.clientHeight <=
-    ABSOLUTE_BOTTOM_EPSILON_PX
+    lastLine.getBoundingClientRect().bottom <=
+    viewport.getBoundingClientRect().bottom + FOLLOW_BOTTOM_TOLERANCE_PX
   );
 }
 
@@ -2543,10 +2565,11 @@ export const MessageList = memo(function MessageList({
   const handleScroll = useCallback(() => {
     if (isProgrammaticScrollRef.current) return;
 
-    const container = containerRef.current?.parentElement;
-    if (!container) return;
+    const content = containerRef.current;
+    const container = content?.parentElement;
+    if (!content || !container) return;
 
-    const atBottom = isAtScrollBottom(container);
+    const atBottom = isAtScrollBottom(container, content);
     shouldAutoScrollRef.current = atBottom;
     thinkingDeltaFollowAllowedRef.current = atBottom;
     if (!atBottom) {

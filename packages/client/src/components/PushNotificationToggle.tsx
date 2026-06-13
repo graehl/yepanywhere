@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNotifyInApp } from "../hooks/useNotifyInApp";
 import { usePushNotifications } from "../hooks/usePushNotifications";
+import type {
+  PushDeliveryUrgency,
+  TestNotificationUrgency,
+} from "../hooks/useSubscribedDevices";
 import { useI18n } from "../i18n";
-
-export type TestNotificationUrgency = "normal" | "persistent" | "silent";
 
 /**
  * Toggle component for push notification settings.
@@ -24,6 +26,8 @@ export function PushNotificationToggle() {
   const { notifyInApp, setNotifyInApp } = useNotifyInApp();
   const [testUrgency, setTestUrgency] =
     useState<TestNotificationUrgency>("normal");
+  const [deliveryUrgency, setDeliveryUrgency] =
+    useState<PushDeliveryUrgency>("high");
 
   const handleToggle = async () => {
     if (isSubscribed) {
@@ -120,6 +124,7 @@ export function PushNotificationToggle() {
             <div className="settings-item-actions">
               <select
                 className="settings-select"
+                aria-label={t("pushToggleDisplayBehavior")}
                 value={testUrgency}
                 onChange={(e) =>
                   setTestUrgency(e.target.value as TestNotificationUrgency)
@@ -132,10 +137,24 @@ export function PushNotificationToggle() {
                 </option>
                 <option value="silent">{t("pushToggleUrgencySilent")}</option>
               </select>
+              <select
+                className="settings-select"
+                aria-label={t("pushTestDeliveryPriority")}
+                value={deliveryUrgency}
+                onChange={(e) =>
+                  setDeliveryUrgency(e.target.value as PushDeliveryUrgency)
+                }
+                disabled={isLoading}
+              >
+                <option value="high">{t("pushDeliveryHigh")}</option>
+                <option value="normal">{t("pushDeliveryNormal")}</option>
+                <option value="low">{t("pushDeliveryLow")}</option>
+                <option value="very-low">{t("pushDeliveryVeryLow")}</option>
+              </select>
               <button
                 type="button"
                 className="settings-button"
-                onClick={() => sendTest(testUrgency)}
+                onClick={() => sendTest(testUrgency, deliveryUrgency)}
                 disabled={isLoading}
               >
                 {isLoading ? t("pushToggleSending") : t("pushToggleSendTest")}

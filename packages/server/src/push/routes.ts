@@ -4,7 +4,11 @@
 
 import { Hono } from "hono";
 import type { PushService } from "./PushService.js";
-import type { NotificationSettings, PushSubscription } from "./types.js";
+import type {
+  NotificationSettings,
+  PushDeliveryUrgency,
+  PushSubscription,
+} from "./types.js";
 
 export interface PushRoutesDeps {
   pushService: PushService;
@@ -24,7 +28,16 @@ interface TestPushBody {
   browserProfileId: string;
   message?: string;
   urgency?: "normal" | "persistent" | "silent";
+  deliveryUrgency?: PushDeliveryUrgency;
 }
+
+type PushDeviceType = "android" | "ios" | "mobile" | "desktop" | "unknown";
+const PUSH_DELIVERY_URGENCIES = new Set<PushDeliveryUrgency>([
+  "very-low",
+  "low",
+  "normal",
+  "high",
+]);
 
 export function createPushRoutes(deps: PushRoutesDeps): Hono {
   const app = new Hono();
@@ -122,6 +135,7 @@ export function createPushRoutes(deps: PushRoutesDeps): Hono {
           createdAt: sub.createdAt,
           deviceName: sub.deviceName,
           endpointDomain,
+          deviceType: inferDeviceType(sub.deviceName, sub.userAgent),
         };
       },
     );
@@ -162,6 +176,7 @@ export function createPushRoutes(deps: PushRoutesDeps): Hono {
       body.browserProfileId,
       body.message ?? "Test notification from Yep Anywhere",
       body.urgency,
+      normalizeDeliveryUrgency(body.deliveryUrgency),
     );
 
     if (!result.success) {
@@ -217,4 +232,25 @@ export function createPushRoutes(deps: PushRoutesDeps): Hono {
   });
 
   return app;
+}
+
+function normalizeDeliveryUrgency(
+  value: PushDeliveryUrgency | undefined,
+): PushDeliveryUrgency | undefined {
+  if (value && PUSH_DELIVERY_URGENCIES.has(value)) {
+    return value;
+  }
+  return undefined;
+}
+
+function inferDeviceType(
+  deviceName: string | undefined,
+  userAgent: string | undefined,
+): PushDeviceType {
+  const text = `${deviceName ?? ""} ${userAgent ?? ""}`.toLowerCase();
+  if (/\bandroid\b/.test(text)) return "android";
+  if (/\biphone\b|\bipad\b|\bipod\b/.test(text)) return "ios";
+  if (/\bmobile\b/.test(text)) return "mobile";
+  if (/\bmac\b|\bwindows\b|\blinux\b|\bcros\b/.test(text)) return "desktop";
+  return "unknown";
 }

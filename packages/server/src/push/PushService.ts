@@ -9,10 +9,11 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import webPush from "web-push";
+import webPush, { type RequestOptions } from "web-push";
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
   type NotificationSettings,
+  type PushDeliveryUrgency,
   type PushPayload,
   type PushSubscription,
   type SendResult,
@@ -22,6 +23,7 @@ import {
 import type { VapidKeys } from "./vapid.js";
 
 const CURRENT_VERSION = 1;
+const DEFAULT_URGENT_DELIVERY: PushDeliveryUrgency = "high";
 
 export interface PushServiceOptions {
   /** Directory to store subscription data (defaults to ~/.yep-anywhere) */
@@ -215,7 +217,10 @@ export class PushService {
    */
   async sendToAll(
     payload: PushPayload,
-    options?: { excludeBrowserProfileIds?: string[] },
+    options?: {
+      excludeBrowserProfileIds?: string[];
+      deliveryUrgency?: PushDeliveryUrgency;
+    },
   ): Promise<SendResult[]> {
     this.ensureInitialized();
 
@@ -234,7 +239,9 @@ export class PushService {
 
     const results = await Promise.all(
       browserProfileIds.map((browserProfileId) =>
-        this.sendToBrowserProfile(browserProfileId, payload),
+        this.sendToBrowserProfile(browserProfileId, payload, {
+          deliveryUrgency: options?.deliveryUrgency,
+        }),
       ),
     );
 
@@ -250,6 +257,7 @@ export class PushService {
   async sendToBrowserProfile(
     browserProfileId: string,
     payload: PushPayload,
+    options: { deliveryUrgency?: PushDeliveryUrgency } = {},
   ): Promise<SendResult> {
     this.ensureInitialized();
 
@@ -271,9 +279,14 @@ export class PushService {
     }
 
     try {
+      const requestOptions = getRequestOptions(
+        payload,
+        options.deliveryUrgency,
+      );
       const response = await webPush.sendNotification(
         stored.subscription,
         JSON.stringify(payload),
+        requestOptions,
       );
 
       return {
@@ -299,13 +312,18 @@ export class PushService {
     browserProfileId: string,
     message = "Test notification",
     urgency?: "normal" | "persistent" | "silent",
+    deliveryUrgency?: PushDeliveryUrgency,
   ): Promise<SendResult> {
-    return this.sendToBrowserProfile(browserProfileId, {
-      type: "test",
-      message,
-      urgency,
-      timestamp: new Date().toISOString(),
-    });
+    return this.sendToBrowserProfile(
+      browserProfileId,
+      {
+        type: "test",
+        message,
+        urgency,
+        timestamp: new Date().toISOString(),
+      },
+      { deliveryUrgency },
+    );
   }
 
   /**
@@ -374,4 +392,22 @@ export class PushService {
   getFilePath(): string {
     return this.filePath;
   }
+}
+
+function getRequestOptions(
+  payload: PushPayload,
+  deliveryUrgency?: PushDeliveryUrgency,
+): RequestOptions | undefined {
+  if (deliveryUrgency) {
+    return { urgency: deliveryUrgency };
+  }
+
+  if (
+    payload.type === "pending-input" ||
+    payload.type === "session-halted" ||
+    payload.type === "test"
+  ) {
+    return { urgency: DEFAULT_URGENT_DELIVERY };
+  }
+  return undefined;
 }

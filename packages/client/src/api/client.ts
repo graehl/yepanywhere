@@ -1036,6 +1036,7 @@ export const api = {
         createdAt: string;
         deviceName?: string;
         endpointDomain: string;
+        deviceType: "android" | "ios" | "mobile" | "desktop" | "unknown";
       }>;
     }>("/push/subscriptions"),
 
@@ -1043,10 +1044,16 @@ export const api = {
     browserProfileId: string,
     message?: string,
     urgency?: "normal" | "persistent" | "silent",
+    deliveryUrgency?: "very-low" | "low" | "normal" | "high",
   ) =>
     fetchJSON<{ success: boolean }>("/push/test", {
       method: "POST",
-      body: JSON.stringify({ browserProfileId, message, urgency }),
+      body: JSON.stringify({
+        browserProfileId,
+        message,
+        urgency,
+        deliveryUrgency,
+      }),
     }),
 
   deletePushSubscription: (browserProfileId: string) =>

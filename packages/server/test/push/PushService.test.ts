@@ -222,6 +222,103 @@ describe("PushService", () => {
       expect(webPush.sendNotification).toHaveBeenCalledWith(
         mockSubscription,
         expect.stringContaining('"type":"test"'),
+        { urgency: "high" },
+      );
+    });
+
+    it("should request high urgency delivery for pending input", async () => {
+      vi.mocked(webPush.sendNotification).mockResolvedValue({
+        statusCode: 201,
+        body: "",
+        headers: {},
+      });
+
+      await pushService.subscribe("profile-1", mockSubscription);
+
+      await pushService.sendToBrowserProfile("profile-1", {
+        type: "pending-input",
+        sessionId: "session-1",
+        projectId: "project-1",
+        projectName: "Project",
+        inputType: "tool-approval",
+        summary: "Edit: index.ts",
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(webPush.sendNotification).toHaveBeenCalledWith(
+        mockSubscription,
+        expect.stringContaining('"type":"pending-input"'),
+        { urgency: "high" },
+      );
+    });
+
+    it("should request high urgency delivery for session halted notifications", async () => {
+      vi.mocked(webPush.sendNotification).mockResolvedValue({
+        statusCode: 201,
+        body: "",
+        headers: {},
+      });
+
+      await pushService.subscribe("profile-1", mockSubscription);
+
+      await pushService.sendToBrowserProfile("profile-1", {
+        type: "session-halted",
+        sessionId: "session-1",
+        projectId: "project-1",
+        projectName: "Project",
+        reason: "completed",
+        duration: 10_000,
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(webPush.sendNotification).toHaveBeenCalledWith(
+        mockSubscription,
+        expect.stringContaining('"type":"session-halted"'),
+        { urgency: "high" },
+      );
+    });
+
+    it("should honor explicit test delivery urgency", async () => {
+      vi.mocked(webPush.sendNotification).mockResolvedValue({
+        statusCode: 201,
+        body: "",
+        headers: {},
+      });
+
+      await pushService.subscribe("profile-1", mockSubscription);
+      await pushService.sendTest(
+        "profile-1",
+        "Normal priority test",
+        "normal",
+        "normal",
+      );
+
+      expect(webPush.sendNotification).toHaveBeenCalledWith(
+        mockSubscription,
+        expect.stringContaining("Normal priority test"),
+        { urgency: "normal" },
+      );
+    });
+
+    it("should not request high urgency delivery for dismiss messages", async () => {
+      vi.mocked(webPush.sendNotification).mockResolvedValue({
+        statusCode: 201,
+        body: "",
+        headers: {},
+      });
+
+      await pushService.subscribe("profile-1", mockSubscription);
+
+      await pushService.sendToBrowserProfile("profile-1", {
+        type: "dismiss",
+        sessionId: "session-1",
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(webPush.sendNotification).toHaveBeenCalledWith(
+        mockSubscription,
+        expect.stringContaining('"type":"dismiss"'),
+        undefined,
       );
     });
 
@@ -314,6 +411,7 @@ describe("PushService", () => {
       expect(webPush.sendNotification).toHaveBeenCalledWith(
         mockSubscription,
         expect.stringContaining('"type":"test"'),
+        { urgency: "high" },
       );
     });
 
@@ -330,6 +428,7 @@ describe("PushService", () => {
       expect(webPush.sendNotification).toHaveBeenCalledWith(
         mockSubscription,
         expect.stringContaining("Custom test message"),
+        { urgency: "high" },
       );
     });
   });

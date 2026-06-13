@@ -96,6 +96,9 @@ export interface DismissPayload extends BasePushPayload {
 /** Test notification urgency levels */
 export type TestNotificationUrgency = "normal" | "persistent" | "silent";
 
+/** Web Push protocol delivery urgency values. */
+export type PushDeliveryUrgency = "very-low" | "low" | "normal" | "high";
+
 /** Test notification */
 export interface TestPayload extends BasePushPayload {
   type: "test";

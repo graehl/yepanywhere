@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 
+export type PushDeliveryUrgency = "very-low" | "low" | "normal" | "high";
+export type TestNotificationUrgency = "normal" | "persistent" | "silent";
+export type PushDeviceType =
+  | "android"
+  | "ios"
+  | "mobile"
+  | "desktop"
+  | "unknown";
+
 export interface SubscribedDevice {
   browserProfileId: string;
   createdAt: string;
   deviceName?: string;
   endpointDomain: string;
+  deviceType: PushDeviceType;
 }
 
 interface SubscribedDevicesState {
@@ -70,9 +80,29 @@ export function useSubscribedDevices() {
     [fetchDevices],
   );
 
+  const sendTest = useCallback(
+    async (
+      browserProfileId: string,
+      options: {
+        displayUrgency?: TestNotificationUrgency;
+        deliveryUrgency?: PushDeliveryUrgency;
+        message?: string;
+      } = {},
+    ) => {
+      await api.testPush(
+        browserProfileId,
+        options.message,
+        options.displayUrgency,
+        options.deliveryUrgency,
+      );
+    },
+    [],
+  );
+
   return {
     ...state,
     removeDevice,
+    sendTest,
     refetch: fetchDevices,
   };
 }

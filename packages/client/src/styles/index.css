@@ -8152,6 +8152,7 @@ a.sidebar-nav-item {
   align-items: center;
   gap: var(--space-2);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 /* Select dropdown for settings */
@@ -13540,6 +13541,14 @@ a.sidebar-nav-item {
   margin: var(--space-1) 0 0;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
+}
+
+.device-list-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .device-current-badge {

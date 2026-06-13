@@ -5,6 +5,10 @@ import {
   getOrCreateBrowserProfileId,
   getServerScoped,
 } from "../lib/storageKeys";
+import type {
+  PushDeliveryUrgency,
+  TestNotificationUrgency,
+} from "./useSubscribedDevices";
 // Use Vite's base URL - in production remote build this is /remote/
 const SW_PATH = `${import.meta.env.BASE_URL}sw.js`;
 
@@ -233,12 +237,20 @@ export function usePushNotifications() {
 
   // Send a test notification
   const sendTest = useCallback(
-    async (urgency: "normal" | "persistent" | "silent" = "normal") => {
+    async (
+      urgency: TestNotificationUrgency = "normal",
+      deliveryUrgency: PushDeliveryUrgency = "high",
+    ) => {
       const browserProfileId = getOrCreateBrowserProfileId();
       setState((s) => ({ ...s, isLoading: true, error: null }));
 
       try {
-        await api.testPush(browserProfileId, undefined, urgency);
+        await api.testPush(
+          browserProfileId,
+          undefined,
+          urgency,
+          deliveryUrgency,
+        );
         setState((s) => ({ ...s, isLoading: false }));
       } catch (err) {
         console.error("[usePushNotifications] Test push error:", err);

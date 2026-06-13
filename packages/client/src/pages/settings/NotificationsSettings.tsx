@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { BrowserNotificationToggle } from "../../components/BrowserNotificationToggle";
 import { PushNotificationToggle } from "../../components/PushNotificationToggle";
 import { useBrowserNotifications } from "../../hooks/useBrowserNotifications";
@@ -6,7 +6,9 @@ import { useConnectedDevices } from "../../hooks/useConnectedDevices";
 import { useNotificationSettings } from "../../hooks/useNotificationSettings";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
 import {
+  type PushDeliveryUrgency,
   type SubscribedDevice,
+  type TestNotificationUrgency,
   useSubscribedDevices,
 } from "../../hooks/useSubscribedDevices";
 import { useI18n } from "../../i18n";
@@ -23,6 +25,8 @@ interface UnifiedDevice {
   browserType: string;
   /** True if device has push subscription */
   isSubscribed: boolean;
+  /** Coarse device type inferred by the server */
+  deviceType: SubscribedDevice["deviceType"];
   /** True if device is currently connected */
   isConnected: boolean;
   /** Number of connected tabs (0 if not connected) */
@@ -113,6 +117,7 @@ function mergeDevices(
       displayName,
       browserType,
       isSubscribed: true,
+      deviceType: device.deviceType,
       isConnected: !!connection,
       tabCount: connection?.connectionCount ?? 0,
       subscribedAt: device.createdAt,
@@ -130,6 +135,7 @@ function mergeDevices(
         displayName: truncatedId,
         browserType: "",
         isSubscribed: false,
+        deviceType: "unknown",
         isConnected: true,
         tabCount: connection.connectionCount,
         isCurrentDevice: browserProfileId === currentBrowserProfileId,
@@ -165,6 +171,28 @@ function mergeDevices(
   return devices;
 }
 
+function isMobilePushDevice(device: UnifiedDevice): boolean {
+  return (
+    device.isSubscribed &&
+    (device.deviceType === "android" ||
+      device.deviceType === "ios" ||
+      device.deviceType === "mobile")
+  );
+}
+
+function deliveryPriorityLabelKey(
+  urgency: PushDeliveryUrgency,
+):
+  | "pushDeliveryHigh"
+  | "pushDeliveryNormal"
+  | "pushDeliveryLow"
+  | "pushDeliveryVeryLow" {
+  if (urgency === "high") return "pushDeliveryHigh";
+  if (urgency === "low") return "pushDeliveryLow";
+  if (urgency === "very-low") return "pushDeliveryVeryLow";
+  return "pushDeliveryNormal";
+}
+
 export function NotificationsSettings() {
   const { t } = useI18n();
   const { browserProfileId } = usePushNotifications();
@@ -173,6 +201,7 @@ export function NotificationsSettings() {
     devices: subscribedDevices,
     isLoading: devicesLoading,
     removeDevice,
+    sendTest,
   } = useSubscribedDevices();
   const { connections, isLoading: connectionsLoading } = useConnectedDevices();
   const {
@@ -183,6 +212,17 @@ export function NotificationsSettings() {
 
   const hasSubscriptions = subscribedDevices.length > 0;
   const isLoading = devicesLoading || connectionsLoading;
+  const [testDisplayUrgency, setTestDisplayUrgency] =
+    useState<TestNotificationUrgency>("normal");
+  const [testDeliveryUrgency, setTestDeliveryUrgency] =
+    useState<PushDeliveryUrgency>("high");
+  const [testingDeviceIds, setTestingDeviceIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [testStatus, setTestStatus] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
 
   // Header undo for the three server-side notification toggles. Push/browser
   // subscription state is device-permission-bound and not snapshot-undoable.
@@ -213,6 +253,122 @@ export function NotificationsSettings() {
     connections,
     browserProfileId,
   );
+  const mobilePushDevices = useMemo(
+    () => unifiedDevices.filter(isMobilePushDevice),
+    [unifiedDevices],
+  );
+  const isTestingMobileDevices = mobilePushDevices.some((device) =>
+    testingDeviceIds.has(device.browserProfileId),
+  );
+
+  const buildTestMessage = useCallback(
+    () =>
+      t("pushTestMessage", {
+        priority: t(deliveryPriorityLabelKey(testDeliveryUrgency)),
+      }),
+    [t, testDeliveryUrgency],
+  );
+
+  const markTesting = useCallback(
+    (browserProfileIds: string[], testing: boolean) => {
+      setTestingDeviceIds((current) => {
+        const next = new Set(current);
+        for (const browserProfileId of browserProfileIds) {
+          if (testing) {
+            next.add(browserProfileId);
+          } else {
+            next.delete(browserProfileId);
+          }
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const sendTestToDevice = useCallback(
+    async (device: UnifiedDevice) => {
+      markTesting([device.browserProfileId], true);
+      setTestStatus(null);
+      try {
+        await sendTest(device.browserProfileId, {
+          displayUrgency: testDisplayUrgency,
+          deliveryUrgency: testDeliveryUrgency,
+          message: buildTestMessage(),
+        });
+        setTestStatus({
+          kind: "success",
+          message: t("notificationsTestSentToDevice", {
+            device: device.displayName,
+          }),
+        });
+      } catch (err) {
+        setTestStatus({
+          kind: "error",
+          message:
+            err instanceof Error
+              ? err.message
+              : t("notificationsTestFailed"),
+        });
+      } finally {
+        markTesting([device.browserProfileId], false);
+      }
+    },
+    [
+      buildTestMessage,
+      markTesting,
+      sendTest,
+      t,
+      testDeliveryUrgency,
+      testDisplayUrgency,
+    ],
+  );
+
+  const sendTestToMobileDevices = useCallback(async () => {
+    const targetIds = mobilePushDevices.map((device) => device.browserProfileId);
+    if (targetIds.length === 0) return;
+
+    markTesting(targetIds, true);
+    setTestStatus(null);
+    try {
+      const results = await Promise.allSettled(
+        mobilePushDevices.map((device) =>
+          sendTest(device.browserProfileId, {
+            displayUrgency: testDisplayUrgency,
+            deliveryUrgency: testDeliveryUrgency,
+            message: buildTestMessage(),
+          }),
+        ),
+      );
+      const failed = results.filter((result) => result.status === "rejected");
+      if (failed.length > 0) {
+        setTestStatus({
+          kind: "error",
+          message: t("notificationsTestPartialFailure", {
+            failed: failed.length,
+            total: results.length,
+          }),
+        });
+      } else {
+        setTestStatus({
+          kind: "success",
+          message: t("notificationsTestSentToMobile", {
+            count: results.length,
+          }),
+        });
+      }
+    } finally {
+      markTesting(targetIds, false);
+    }
+  }, [
+    buildTestMessage,
+    markTesting,
+    mobilePushDevices,
+    sendTest,
+    t,
+    testDeliveryUrgency,
+    testDisplayUrgency,
+  ]);
 
   return (
     <>
@@ -316,6 +472,80 @@ export function NotificationsSettings() {
           {t("notificationsDevicesDescription")}
         </p>
         <div className="settings-group">
+          {hasSubscriptions && (
+            <div className="settings-item push-test-controls">
+              <div className="settings-item-info">
+                <strong>{t("notificationsTestPushTitle")}</strong>
+                <p>{t("notificationsTestPushDescription")}</p>
+                {testStatus && (
+                  <p
+                    className={
+                      testStatus.kind === "error"
+                        ? "settings-error"
+                        : "settings-hint"
+                    }
+                  >
+                    {testStatus.message}
+                  </p>
+                )}
+              </div>
+              <div className="settings-item-actions">
+                <select
+                  className="settings-select"
+                  aria-label={t("pushToggleDisplayBehavior")}
+                  value={testDisplayUrgency}
+                  onChange={(e) =>
+                    setTestDisplayUrgency(
+                      e.target.value as TestNotificationUrgency,
+                    )
+                  }
+                  disabled={isTestingMobileDevices}
+                >
+                  <option value="normal">{t("pushToggleUrgencyNormal")}</option>
+                  <option value="persistent">
+                    {t("pushToggleUrgencyPersistent")}
+                  </option>
+                  <option value="silent">{t("pushToggleUrgencySilent")}</option>
+                </select>
+                <select
+                  className="settings-select"
+                  aria-label={t("pushTestDeliveryPriority")}
+                  value={testDeliveryUrgency}
+                  onChange={(e) =>
+                    setTestDeliveryUrgency(e.target.value as PushDeliveryUrgency)
+                  }
+                  disabled={isTestingMobileDevices}
+                >
+                  <option value="high">{t("pushDeliveryHigh")}</option>
+                  <option value="normal">{t("pushDeliveryNormal")}</option>
+                  <option value="low">{t("pushDeliveryLow")}</option>
+                  <option value="very-low">{t("pushDeliveryVeryLow")}</option>
+                </select>
+                <button
+                  type="button"
+                  className="settings-button"
+                  onClick={sendTestToMobileDevices}
+                  disabled={
+                    mobilePushDevices.length === 0 || isTestingMobileDevices
+                  }
+                  title={
+                    mobilePushDevices.length === 0
+                      ? t("notificationsNoMobilePushDevices")
+                      : t("notificationsSendToMobileDevices", {
+                          count: mobilePushDevices.length,
+                        })
+                  }
+                >
+                  {isTestingMobileDevices
+                    ? t("notificationsTesting")
+                    : t("notificationsSendToMobileDevices", {
+                        count: mobilePushDevices.length,
+                      })}
+                </button>
+              </div>
+            </div>
+          )}
+
           {isLoading ? (
             <p className="settings-hint">{t("notificationsLoadingDevices")}</p>
           ) : unifiedDevices.length === 0 ? (
@@ -367,18 +597,31 @@ export function NotificationsSettings() {
                   </div>
                   {/* Only show remove button for subscribed devices */}
                   {device.isSubscribed && (
-                    <button
-                      type="button"
-                      className="settings-button settings-button-danger-subtle"
-                      onClick={() => removeDevice(device.browserProfileId)}
-                      title={
-                        device.isCurrentDevice
-                          ? t("notificationsRemoveThisDevice")
-                          : t("notificationsRemoveDevice")
-                      }
-                    >
-                      {t("notificationsRemove")}
-                    </button>
+                    <div className="device-list-actions">
+                      <button
+                        type="button"
+                        className="settings-button"
+                        onClick={() => sendTestToDevice(device)}
+                        disabled={testingDeviceIds.has(device.browserProfileId)}
+                        title={t("notificationsTestDevice")}
+                      >
+                        {testingDeviceIds.has(device.browserProfileId)
+                          ? t("notificationsTesting")
+                          : t("notificationsTest")}
+                      </button>
+                      <button
+                        type="button"
+                        className="settings-button settings-button-danger-subtle"
+                        onClick={() => removeDevice(device.browserProfileId)}
+                        title={
+                          device.isCurrentDevice
+                            ? t("notificationsRemoveThisDevice")
+                            : t("notificationsRemoveDevice")
+                        }
+                      >
+                        {t("notificationsRemove")}
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}

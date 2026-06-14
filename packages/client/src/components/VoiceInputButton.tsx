@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useModelSettings } from "../hooks/useModelSettings";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import {
   SPEECH_STATUS_LABELS,
   useSpeechRecognition,
@@ -92,6 +93,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   } = useModelSettings();
   const { version: versionInfo } = useVersion();
   const basePath = useRemoteBasePath();
+  const { keepMicWarm } = useSpeechCaptureSettings();
   const serverVoiceEnabled =
     versionInfo?.capabilities?.includes("voiceInput") ?? true;
   const speechMethod = useMemo(
@@ -163,6 +165,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     getTranscriptionContext,
     serverStreaming,
     smartTurn: serverStreaming ? smartTurn : undefined,
+    keepMicWarm,
     onResult: handleResult,
     onInterimResult: handleInterim,
   });

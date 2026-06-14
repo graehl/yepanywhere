@@ -885,15 +885,22 @@ export function NewSessionForm({
   );
   const showSpeechMethodSelector =
     voiceInputEnabled && speechMethodOptions.length > 1;
-  const supportsSelectedSpeechSmartTurn =
+  const relayTransport = basePath !== "";
+  const selectedSpeechBackendCapabilities =
+    versionInfo?.voiceBackendCapabilities?.[selectedSpeechMethod];
+  const selectedSpeechCanStream =
+    !relayTransport &&
     selectedSpeechMethod !== "browser-native" &&
     (selectedSpeechMethod !== "ya-grok" ||
       grokSpeechAudioSettings.uplinkMode === "pcm16") &&
-    versionInfo?.voiceBackendCapabilities?.[selectedSpeechMethod]?.smartTurn ===
-      true;
+    selectedSpeechBackendCapabilities?.streaming === true;
+  const supportsSelectedSpeechSmartTurn =
+    selectedSpeechCanStream &&
+    selectedSpeechBackendCapabilities?.smartTurn === true;
   const activeSpeechSmartTurnSettings: SpeechSmartTurnSettings | undefined =
     supportsSelectedSpeechSmartTurn ? speechSmartTurnSettings : undefined;
-  const showGrokSpeechAudioControls = selectedSpeechMethod === "ya-grok";
+  const showGrokSpeechAudioControls =
+    !relayTransport && selectedSpeechMethod === "ya-grok";
 
   // Combined display text: committed text + interim transcript
   const displayText = interimTranscript

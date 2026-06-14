@@ -6,6 +6,8 @@ import {
 import { SpeechGrokAudioControls } from "../../components/SpeechGrokAudioControls";
 import { SpeechSmartTurnControls } from "../../components/SpeechSmartTurnControls";
 import { useModelSettings } from "../../hooks/useModelSettings";
+import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
+import { useSpeechCaptureSettings } from "../../hooks/useSpeechCaptureSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import {
@@ -28,6 +30,8 @@ export function SpeechSettings() {
     grokSpeechAudioSettings,
     setGrokSpeechAudioSettings,
   } = useModelSettings();
+  const { keepMicWarm, setKeepMicWarm } = useSpeechCaptureSettings();
+  const relayTransport = useRemoteBasePath() !== "";
   const { version: versionInfo, loading: versionLoading } = useVersion();
   const undoState = useMemo(
     () => ({
@@ -35,12 +39,14 @@ export function SpeechSettings() {
       speechMethod,
       speechSmartTurnSettings,
       grokSpeechAudioSettings,
+      keepMicWarm,
     }),
     [
       voiceInputEnabled,
       speechMethod,
       speechSmartTurnSettings,
       grokSpeechAudioSettings,
+      keepMicWarm,
     ],
   );
   const restoreUndoState = useCallback(
@@ -49,12 +55,14 @@ export function SpeechSettings() {
       setSpeechMethod(snapshot.speechMethod);
       setSpeechSmartTurnSettings(snapshot.speechSmartTurnSettings);
       setGrokSpeechAudioSettings(snapshot.grokSpeechAudioSettings);
+      setKeepMicWarm(snapshot.keepMicWarm);
     },
     [
       setVoiceInputEnabled,
       setSpeechMethod,
       setSpeechSmartTurnSettings,
       setGrokSpeechAudioSettings,
+      setKeepMicWarm,
     ],
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);
@@ -76,18 +84,31 @@ export function SpeechSettings() {
   const selectedBackendLabel =
     backendOptions.find((option) => option.value === selectedBackend)?.label ??
     selectedBackend;
-  const supportsSelectedSmartTurn =
+  const selectedBackendCapabilities =
+    versionInfo?.voiceBackendCapabilities?.[selectedBackend];
+  const selectedBackendCanStream =
+    !relayTransport &&
     selectedBackend !== "browser-native" &&
     (selectedBackend !== "ya-grok" ||
       grokSpeechAudioSettings.uplinkMode === "pcm16") &&
-    versionInfo?.voiceBackendCapabilities?.[selectedBackend]?.smartTurn ===
-      true;
-  const showGrokAudioSettings = selectedBackend === "ya-grok";
+    selectedBackendCapabilities?.streaming === true;
+  const supportsSelectedSmartTurn =
+    selectedBackendCanStream &&
+    selectedBackendCapabilities?.smartTurn === true;
+  const showGrokAudioSettings =
+    !relayTransport && selectedBackend === "ya-grok";
   const smartTurnRequiresPcm =
+    !relayTransport &&
     selectedBackend === "ya-grok" &&
     grokSpeechAudioSettings.uplinkMode !== "pcm16" &&
-    versionInfo?.voiceBackendCapabilities?.[selectedBackend]?.smartTurn ===
-      true;
+    selectedBackendCapabilities?.smartTurn === true;
+  const smartTurnUnavailableHint = smartTurnRequiresPcm
+    ? t("speechSettingsSmartTurnRequiresPcm")
+    : relayTransport && selectedBackend !== "browser-native"
+      ? t("speechSettingsStreamingRelayUnavailable")
+      : t("speechSettingsSmartTurnUnavailable", {
+          backend: selectedBackendLabel,
+        });
 
   return (
     <section className="settings-section">
@@ -156,6 +177,27 @@ export function SpeechSettings() {
             />
           </div>
         )}
+        {relayTransport && selectedBackend === "ya-grok" && (
+          <p className="settings-hint">
+            {t("speechSettingsStreamingRelayUnavailable")}
+          </p>
+        )}
+
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("speechSettingsKeepMicWarmTitle")}</strong>
+            <p>{t("speechSettingsKeepMicWarmDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={keepMicWarm}
+              onChange={(event) => setKeepMicWarm(event.target.checked)}
+              aria-label={t("speechSettingsKeepMicWarmTitle")}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
 
         <div className="settings-item model-settings-item">
           <div className="settings-item-info">
@@ -172,13 +214,7 @@ export function SpeechSettings() {
               onChange={setSpeechSmartTurnSettings}
             />
           ) : (
-            <p className="settings-hint">
-              {smartTurnRequiresPcm
-                ? t("speechSettingsSmartTurnRequiresPcm")
-                : t("speechSettingsSmartTurnUnavailable", {
-                    backend: selectedBackendLabel,
-                  })}
-            </p>
+            <p className="settings-hint">{smartTurnUnavailableHint}</p>
           )}
         </div>
       </div>

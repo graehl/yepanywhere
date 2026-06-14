@@ -611,6 +611,22 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
                       words: event.words,
                     });
                   },
+                  onError: (err) => {
+                    if (!isCurrent() || streamingStopRequested) return;
+                    const message =
+                      err instanceof Error ? err.message : String(err);
+                    logger.warn(
+                      {
+                        component: "speech",
+                        requestId,
+                        source: "ws",
+                        mode: "stream",
+                        backendId,
+                      },
+                      `Speech streaming failed mid-session: ${message}`,
+                    );
+                    send(ws, { type: "error", message });
+                  },
                 },
               )
               .then((session) => {

@@ -135,6 +135,25 @@ function speechWsUrl(basePath: string): string {
   return url.toString();
 }
 
+function streamingMicConstraints(): MediaStreamConstraints {
+  return {
+    audio: {
+      // Mono: a proper downmix of the capture device, which transcribes
+      // better than reading one channel of a stereo stream. (Dropping this to
+      // chase the cold-open latency hurt recognition quality, so keep it.)
+      channelCount: 1,
+      // All call-oriented processing off: capture the raw mic. No audio is
+      // played, so echoCancellation has nothing to cancel; noiseSuppression
+      // and autoGainControl reshape the waveform (the source of garbled
+      // transcripts). Capture level is managed by selecting a good input
+      // device (the mic device picker), not by AGC normalization.
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    },
+  };
+}
+
 function getWordText(word: SpeechWordTimestamp | undefined): string {
   if (!word) return "";
   return word.punctuated_word ?? word.word ?? word.text ?? "";
@@ -259,6 +278,8 @@ export class YaServerProvider implements SpeechProvider {
 
   private recorder: MediaRecorder | null = null;
   private stream: MediaStream | null = null;
+  private warmStream: MediaStream | null = null;
+  private warmStreamRequest: Promise<MediaStream> | null = null;
   private ws: WebSocket | null = null;
   private audioContext: AudioContext | null = null;
   private audioSource: MediaStreamAudioSourceNode | null = null;
@@ -297,6 +318,7 @@ export class YaServerProvider implements SpeechProvider {
       typeof window !== "undefined" &&
       hasMic &&
       (options.serverStreaming ? hasStreamingCapture : hasBatchCapture);
+    this.maybePrewarmMic();
   }
 
   getState(): SpeechProviderState {
@@ -311,6 +333,76 @@ export class YaServerProvider implements SpeechProvider {
   private setState(patch: Partial<SpeechProviderState>): void {
     this.state = { ...this.state, ...patch };
     for (const sub of this.subscribers) sub(this.state);
+  }
+
+  private hasLiveTracks(stream: MediaStream | null): stream is MediaStream {
+    return stream?.getTracks().some((track) => track.readyState !== "ended") ===
+      true;
+  }
+
+  private getMicStream(
+    constraints: MediaStreamConstraints,
+  ): Promise<MediaStream> {
+    if (
+      this.options.keepMicWarm === true &&
+      this.hasLiveTracks(this.warmStream)
+    ) {
+      return Promise.resolve(this.warmStream);
+    }
+    if (
+      this.options.keepMicWarm === true &&
+      this.warmStreamRequest !== null
+    ) {
+      return this.warmStreamRequest;
+    }
+
+    const request = navigator.mediaDevices.getUserMedia(constraints);
+    if (this.options.keepMicWarm !== true) {
+      return request;
+    }
+
+    this.warmStreamRequest = request;
+    return request
+      .then((stream) => {
+        if (!this.disposed && this.warmStreamRequest === request) {
+          this.warmStream = stream;
+        } else if (this.hasLiveTracks(stream)) {
+          this.stopStreamTracks(stream);
+        }
+        return stream;
+      })
+      .finally(() => {
+        if (this.warmStreamRequest === request) {
+          this.warmStreamRequest = null;
+        }
+      });
+  }
+
+  private getCaptureConstraints(): MediaStreamConstraints {
+    return this.options.serverStreaming
+      ? streamingMicConstraints()
+      : { audio: true };
+  }
+
+  private maybePrewarmMic(): void {
+    if (this.options.keepMicWarm !== true || !this.isSupported) return;
+    const permissions = navigator.permissions;
+    if (typeof permissions?.query !== "function") return;
+
+    void permissions
+      .query({ name: "microphone" as PermissionName })
+      .then((status) => {
+        if (status.state !== "granted" || this.disposed) return;
+        void this.getMicStream(this.getCaptureConstraints()).catch(
+          (err: unknown) => {
+            console.warn(
+              "[YaSTT] Warm microphone pre-open failed",
+              err instanceof Error ? err.message : String(err),
+            );
+          },
+        );
+      })
+      .catch(() => undefined);
   }
 
   start(): void {
@@ -343,11 +435,11 @@ export class YaServerProvider implements SpeechProvider {
   }
 
   private async doStartBatch(token: number): Promise<void> {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await this.getMicStream(this.getCaptureConstraints());
     if (this.disposed || token !== this.startToken) {
-      stream.getTracks().forEach((track) => {
-        track.stop();
-      });
+      if (stream !== this.warmStream && this.hasLiveTracks(stream)) {
+        this.stopStreamTracks(stream);
+      }
       return;
     }
     this.stream = stream;
@@ -450,20 +542,14 @@ export class YaServerProvider implements SpeechProvider {
       }
     };
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
+    mark("getUserMedia call");
+    const stream = await this.getMicStream(this.getCaptureConstraints());
     // `this.ws !== ws` means the socket already errored during acquisition and
     // its handler tore us down; do not resurrect a dead session.
     if (this.disposed || token !== this.startToken || this.ws !== ws) {
-      stream.getTracks().forEach((track) => {
-        track.stop();
-      });
+      if (stream !== this.warmStream && this.hasLiveTracks(stream)) {
+        this.stopStreamTracks(stream);
+      }
       abandonContext();
       ws.close();
       return;
@@ -671,14 +757,31 @@ export class YaServerProvider implements SpeechProvider {
     if (message.type === "error") {
       const error = message.message ?? "Speech streaming error";
       this.cleanupStreamingMedia();
-      this.setState({
-        status: "error",
-        isListening: false,
-        interimTranscript: "",
-        error,
-      });
-      this.options.onError?.(error);
-      this.options.onEnd?.();
+      // A mid-session failure (e.g. an upstream timeout while the user paused
+      // expecting Smart Turn to finalize) must not discard already-transcribed
+      // words. Commit whatever preview we have and end cleanly; only surface
+      // the error when there is nothing to salvage.
+      const salvaged =
+        !this.streamingCommittedTranscript &&
+        this.commitStreamingTranscript(this.streamingCurrentPreviewTranscript);
+      if (salvaged || this.streamingCommittedTranscript) {
+        this.setState({
+          status: "idle",
+          isListening: false,
+          interimTranscript: "",
+          error: null,
+        });
+        this.options.onEnd?.();
+      } else {
+        this.setState({
+          status: "error",
+          isListening: false,
+          interimTranscript: "",
+          error,
+        });
+        this.options.onError?.(error);
+        this.options.onEnd?.();
+      }
       this.ws?.close();
       this.ws = null;
     }
@@ -786,7 +889,7 @@ export class YaServerProvider implements SpeechProvider {
     this.submitOnStop = false;
     const audio = new Blob(this.chunks, { type: this.mimeType });
     this.chunks = [];
-    this.stopTracks();
+    this.releaseActiveStream();
 
     try {
       const response =
@@ -866,11 +969,25 @@ export class YaServerProvider implements SpeechProvider {
     }
   }
 
-  private stopTracks(): void {
-    this.stream?.getTracks().forEach((track) => {
+  private stopStreamTracks(stream: MediaStream): void {
+    stream.getTracks().forEach((track) => {
       track.stop();
     });
+  }
+
+  private releaseActiveStream(): void {
+    if (this.stream && this.stream !== this.warmStream) {
+      this.stopStreamTracks(this.stream);
+    }
     this.stream = null;
+  }
+
+  private releaseWarmStream(): void {
+    if (this.warmStream) {
+      this.stopStreamTracks(this.warmStream);
+      this.warmStream = null;
+    }
+    this.warmStreamRequest = null;
   }
 
   private cleanupStreamingMedia(): void {
@@ -883,7 +1000,7 @@ export class YaServerProvider implements SpeechProvider {
     this.silentGain = null;
     void this.audioContext?.close();
     this.audioContext = null;
-    this.stopTracks();
+    this.releaseActiveStream();
   }
 
   private cleanupMedia(submitOnStop: boolean): void {
@@ -898,7 +1015,7 @@ export class YaServerProvider implements SpeechProvider {
     this.recorder = null;
     if (!submitOnStop) {
       this.chunks = [];
-      this.stopTracks();
+      this.releaseActiveStream();
     }
   }
 
@@ -906,6 +1023,7 @@ export class YaServerProvider implements SpeechProvider {
     this.disposed = true;
     this.startToken += 1;
     this.cleanupMedia(false);
+    this.releaseWarmStream();
     this.setState({ ...INITIAL_SPEECH_STATE });
     this.subscribers.clear();
   }

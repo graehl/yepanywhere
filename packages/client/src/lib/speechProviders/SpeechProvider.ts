@@ -101,6 +101,8 @@ export interface SpeechProviderOptions extends SpeechProviderEvents {
   serverStreaming?: boolean;
   /** Smart Turn settings for streaming backends that support it. */
   smartTurn?: SpeechSmartTurnSettings;
+  /** Keep the mic device warm between dictations (skips getUserMedia cold-open). */
+  keepMicWarm?: boolean;
 }
 
 /** Subscriber callback receiving the latest state snapshot. */

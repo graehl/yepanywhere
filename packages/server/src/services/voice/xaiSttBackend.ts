@@ -178,8 +178,18 @@ export class XaiSttBackend implements SpeechBackend {
       if (ws.readyState === WebSocket.OPEN) ws.close();
     };
 
+    let notifiedError = false;
     const rejectIfPending = (error: Error) => {
-      if (!ready) rejectOpen(error);
+      if (!ready) {
+        rejectOpen(error);
+      } else if (!notifiedError) {
+        // The session already opened, so no caller is awaiting openPromise and
+        // finish()/donePromise may have no awaiter yet (the user is still
+        // speaking). Surface the failure on the live error channel so the route
+        // can tell the client and stop the UI hanging on "listening".
+        notifiedError = true;
+        handlers.onError?.(error);
+      }
       if (!settled) {
         settled = true;
         clearTimeout(timeout);

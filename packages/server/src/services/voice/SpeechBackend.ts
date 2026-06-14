@@ -97,6 +97,12 @@ export interface SpeechStreamDone {
 
 export interface SpeechStreamHandlers {
   onPartial?: (event: SpeechStreamPartial) => void;
+  /**
+   * Called when the stream fails *after* the session has opened, e.g. the
+   * upstream times out or drops while the user is still speaking. Without this
+   * the failure has no channel to the client and the UI hangs on "listening".
+   */
+  onError?: (error: Error) => void;
 }
 
 export interface SpeechStreamSession {

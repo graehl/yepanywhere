@@ -28,6 +28,7 @@ import {
   type SessionToolbarVisibility,
   useSessionToolbarVisibility,
 } from "../hooks/useSessionToolbarVisibility";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
@@ -2028,6 +2029,7 @@ export function MessageInputToolbar({
   const { version: versionInfo } = useVersion();
   const { providers } = useProviders();
   const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
+  const relayTransport = useRemoteBasePath() !== "";
   const renderMode = useOptionalRenderModeContext();
   const nowMs = useRelativeNow();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -2252,12 +2254,19 @@ export function MessageInputToolbar({
     voiceInputEnabled &&
     serverVoiceEnabled &&
     speechMethodOptions.length > 1;
-  const supportsSelectedSpeechSmartTurn =
+  const selectedSpeechBackendCapabilities =
+    versionInfo?.voiceBackendCapabilities?.[selectedSpeechMethod];
+  const selectedSpeechCanStream =
+    !relayTransport &&
     selectedSpeechMethod !== "browser-native" &&
     (selectedSpeechMethod !== "ya-grok" ||
       grokSpeechAudioSettings.uplinkMode === "pcm16") &&
-    versionInfo?.voiceBackendCapabilities?.[selectedSpeechMethod]?.smartTurn ===
-      true;
+    selectedSpeechBackendCapabilities?.streaming === true;
+  const supportsSelectedSpeechSmartTurn =
+    selectedSpeechCanStream &&
+    selectedSpeechBackendCapabilities?.smartTurn === true;
+  const showGrokSpeechAudioControls =
+    !relayTransport && selectedSpeechMethod === "ya-grok";
   const activeSpeechSmartTurnSettings: SpeechSmartTurnSettings | undefined =
     supportsSelectedSpeechSmartTurn ? speechSmartTurnSettings : undefined;
   const showLastActivityChip =
@@ -2506,11 +2515,11 @@ export function MessageInputToolbar({
           : undefined,
         smartTurnDisabled: voiceDisabled,
         grokAudioSettings:
-          selectedSpeechMethod === "ya-grok"
+          showGrokSpeechAudioControls
             ? grokSpeechAudioSettings
             : undefined,
         onGrokAudioSettingsChange:
-          selectedSpeechMethod === "ya-grok"
+          showGrokSpeechAudioControls
             ? setGrokSpeechAudioSettings
             : undefined,
         voiceButton:

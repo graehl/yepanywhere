@@ -34,3 +34,4 @@
 - resume-compaction - Compact-before-resume choice for old or context-heavy provider sessions.
 - steer-queue-provider-differences - Claude now/next/later lanes, Codex steer vs app-held queueing, and turn-end signals behind YA send modes.
 - vanilla-defaults - Overarching UX theory: first-party-familiar out of the box; YA-novel user-visible behavior is configurable default-off.
+- streaming-speech-capture - Client PCM capture contracts, warm-mic latency, and AudioWorklet follow-up.

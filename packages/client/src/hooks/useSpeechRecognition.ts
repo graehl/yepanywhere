@@ -24,6 +24,8 @@ export interface UseSpeechRecognitionOptions {
   serverStreaming?: boolean;
   /** Smart Turn settings for streaming backends that support it. */
   smartTurn?: SpeechSmartTurnSettings;
+  /** Keep the mic device warm between dictations (skips getUserMedia cold-open). */
+  keepMicWarm?: boolean;
   /** Callback when final transcript is available. */
   onResult?: (
     transcript: string,
@@ -59,6 +61,7 @@ function createProvider(
     getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
     serverStreaming?: boolean;
     smartTurn?: SpeechSmartTurnSettings;
+    keepMicWarm?: boolean;
     onResult?: (
       t: string,
       metadata?: SpeechTranscriptionResultMetadata,
@@ -91,6 +94,7 @@ export function useSpeechRecognition(
     getTranscriptionContext,
     serverStreaming,
     smartTurn,
+    keepMicWarm,
     onResult,
     onInterimResult,
     onEnd,
@@ -114,6 +118,7 @@ export function useSpeechRecognition(
   const basePathRef = useRef(basePath);
   const serverStreamingRef = useRef(serverStreaming);
   const smartTurnRef = useRef(smartTurn);
+  const keepMicWarmRef = useRef(keepMicWarm);
 
   const providerRef = useRef<SpeechProvider | null>(null);
   if (providerRef.current === null) {
@@ -125,6 +130,7 @@ export function useSpeechRecognition(
         getTranscriptionContext: () => getTranscriptionContextRef.current?.(),
         serverStreaming: serverStreamingRef.current,
         smartTurn: smartTurnRef.current,
+        keepMicWarm: keepMicWarmRef.current,
         onResult: (t, metadata) => onResultRef.current?.(t, metadata),
         onInterimResult: (t) => onInterimResultRef.current?.(t),
         onEnd: () => onEndRef.current?.(),
@@ -148,7 +154,8 @@ export function useSpeechRecognition(
     if (
       speechMethod === speechMethodRef.current &&
       serverStreaming === serverStreamingRef.current &&
-      smartTurn === smartTurnRef.current
+      smartTurn === smartTurnRef.current &&
+      keepMicWarm === keepMicWarmRef.current
     ) {
       return;
     }
@@ -156,6 +163,7 @@ export function useSpeechRecognition(
     basePathRef.current = basePath;
     serverStreamingRef.current = serverStreaming;
     smartTurnRef.current = smartTurn;
+    keepMicWarmRef.current = keepMicWarm;
 
     const old = providerRef.current;
     old?.dispose();
@@ -165,6 +173,7 @@ export function useSpeechRecognition(
       getTranscriptionContext: () => getTranscriptionContextRef.current?.(),
       serverStreaming,
       smartTurn,
+      keepMicWarm,
       onResult: (t, metadata) => onResultRef.current?.(t, metadata),
       onInterimResult: (t) => onInterimResultRef.current?.(t),
       onEnd: () => onEndRef.current?.(),
@@ -173,7 +182,7 @@ export function useSpeechRecognition(
     providerRef.current = next;
     setState(next.getState());
     next.subscribe(setState);
-  }, [speechMethod, basePath, lang, serverStreaming, smartTurn]);
+  }, [speechMethod, basePath, lang, serverStreaming, smartTurn, keepMicWarm]);
 
   useEffect(() => {
     return () => {

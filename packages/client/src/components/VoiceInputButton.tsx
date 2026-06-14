@@ -116,7 +116,16 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   const grokPcmUplink =
     speechMethod !== "ya-grok" ||
     grokSpeechAudioSettings.uplinkMode === "pcm16";
+  // The streaming WebSocket (/api/speech/ws) is a direct/local endpoint and is
+  // not multiplexed through the secure relay transport (see
+  // topics/pluggable-speech-recognition.md). Over relay (non-empty basePath)
+  // the socket cannot reach the server, so streaming is unavailable and the
+  // provider must fall back to the remote-compatible batch POST path. A
+  // non-empty basePath is exactly relay mode; direct LAN/Tailscale/localhost is
+  // "".
+  const relayTransport = basePath !== "";
   const serverStreaming =
+    !relayTransport &&
     speechMethod !== "browser-native" &&
     grokPcmUplink &&
     versionInfo?.voiceBackendCapabilities?.[speechMethod]?.streaming === true;
@@ -301,8 +310,11 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
 
   // If showing status text, wrap in container; otherwise just return the button.
   // Show during "starting" too so the user sees "Connecting..." instead of a
-  // button that looks live before capture has actually begun.
-  if (showStatusText && isActive) {
+  // button that looks live before capture has actually begun. Errors break
+  // through the desktop-only gate: on a phone (coarse pointer / narrow) the
+  // status text is normally hidden, which left mic failures with no feedback
+  // at all — the original complaint. An error must always be visible.
+  if ((showStatusText && isActive) || error) {
     return (
       <div
         className={`voice-input-container ${isListening ? "listening" : ""} ${statusClass}`}

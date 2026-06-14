@@ -221,7 +221,24 @@ describe("YA server speech provider", () => {
       }
 
       createScriptProcessor() {
-        return { connect: vi.fn(), disconnect: vi.fn(), onaudioprocess: null };
+        const node = {
+          connect: vi.fn(() => {
+            // Simulate the audio clock delivering a frame so the provider
+            // sees capture go live and transitions to "listening".
+            queueMicrotask(() =>
+              node.onaudioprocess?.({
+                inputBuffer: { getChannelData: () => new Float32Array(4096) },
+              }),
+            );
+          }),
+          disconnect: vi.fn(),
+          onaudioprocess: null as
+            | null
+            | ((event: {
+                inputBuffer: { getChannelData: () => Float32Array };
+              }) => void),
+        };
+        return node;
       }
 
       createGain() {
@@ -341,7 +358,24 @@ describe("YA server speech provider", () => {
         return { connect: vi.fn(), disconnect: vi.fn() };
       }
       createScriptProcessor() {
-        return { connect: vi.fn(), disconnect: vi.fn(), onaudioprocess: null };
+        const node = {
+          connect: vi.fn(() => {
+            // Simulate the audio clock delivering a frame so the provider
+            // sees capture go live and transitions to "listening".
+            queueMicrotask(() =>
+              node.onaudioprocess?.({
+                inputBuffer: { getChannelData: () => new Float32Array(4096) },
+              }),
+            );
+          }),
+          disconnect: vi.fn(),
+          onaudioprocess: null as
+            | null
+            | ((event: {
+                inputBuffer: { getChannelData: () => Float32Array };
+              }) => void),
+        };
+        return node;
       }
       createGain() {
         return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
@@ -456,7 +490,24 @@ describe("YA server speech provider", () => {
         return { connect: vi.fn(), disconnect: vi.fn() };
       }
       createScriptProcessor() {
-        return { connect: vi.fn(), disconnect: vi.fn(), onaudioprocess: null };
+        const node = {
+          connect: vi.fn(() => {
+            // Simulate the audio clock delivering a frame so the provider
+            // sees capture go live and transitions to "listening".
+            queueMicrotask(() =>
+              node.onaudioprocess?.({
+                inputBuffer: { getChannelData: () => new Float32Array(4096) },
+              }),
+            );
+          }),
+          disconnect: vi.fn(),
+          onaudioprocess: null as
+            | null
+            | ((event: {
+                inputBuffer: { getChannelData: () => Float32Array };
+              }) => void),
+        };
+        return node;
       }
       createGain() {
         return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
@@ -565,7 +616,24 @@ describe("YA server speech provider", () => {
         return { connect: vi.fn(), disconnect: vi.fn() };
       }
       createScriptProcessor() {
-        return { connect: vi.fn(), disconnect: vi.fn(), onaudioprocess: null };
+        const node = {
+          connect: vi.fn(() => {
+            // Simulate the audio clock delivering a frame so the provider
+            // sees capture go live and transitions to "listening".
+            queueMicrotask(() =>
+              node.onaudioprocess?.({
+                inputBuffer: { getChannelData: () => new Float32Array(4096) },
+              }),
+            );
+          }),
+          disconnect: vi.fn(),
+          onaudioprocess: null as
+            | null
+            | ((event: {
+                inputBuffer: { getChannelData: () => Float32Array };
+              }) => void),
+        };
+        return node;
       }
       createGain() {
         return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
@@ -625,5 +693,103 @@ describe("YA server speech provider", () => {
     });
 
     provider.dispose();
+  });
+
+  it("never shows listening and errors when no audio frame ever arrives", async () => {
+    vi.useFakeTimers();
+    try {
+      const fakeStream = {
+        getTracks: () => [{ stop: vi.fn() }],
+      } as unknown as MediaStream;
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: { getUserMedia: vi.fn(async () => fakeStream) },
+      });
+      const onError = vi.fn();
+      const onEnd = vi.fn();
+      const onResult = vi.fn();
+
+      class FakeWebSocket {
+        static readonly CONNECTING = 0;
+        static readonly OPEN = 1;
+        static readonly CLOSED = 3;
+        static readonly instances: FakeWebSocket[] = [];
+        binaryType: BinaryType = "blob";
+        readyState = FakeWebSocket.CONNECTING;
+        onopen: ((event: Event) => void) | null = null;
+        onmessage: ((event: MessageEvent) => void) | null = null;
+        onerror: ((event: Event) => void) | null = null;
+        onclose: ((event: CloseEvent) => void) | null = null;
+        send = vi.fn();
+        constructor(readonly url: string) {
+          FakeWebSocket.instances.push(this);
+        }
+        open() {
+          this.readyState = FakeWebSocket.OPEN;
+          this.onopen?.(new Event("open"));
+        }
+        close() {
+          this.readyState = FakeWebSocket.CLOSED;
+          this.onclose?.(new CloseEvent("close"));
+        }
+      }
+
+      // A context that resumes but whose processor never fires a callback:
+      // capture is dead even though state reports "running".
+      class FakeAudioContext {
+        readonly state = "suspended";
+        readonly sampleRate = 48_000;
+        readonly destination = {};
+        resume = vi.fn(async () => undefined);
+        close = vi.fn(async () => undefined);
+        createMediaStreamSource() {
+          return { connect: vi.fn(), disconnect: vi.fn() };
+        }
+        createScriptProcessor() {
+          return {
+            connect: vi.fn(),
+            disconnect: vi.fn(),
+            onaudioprocess: null,
+          };
+        }
+        createGain() {
+          return { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+        }
+      }
+
+      vi.stubGlobal("WebSocket", FakeWebSocket);
+      vi.stubGlobal("AudioContext", FakeAudioContext);
+
+      let lastState: { status: string; isListening: boolean } | undefined;
+      const provider = new YaServerProvider("ya-grok", "", {
+        serverStreaming: true,
+        onResult,
+        onError,
+        onEnd,
+      });
+      provider.subscribe((state) => {
+        lastState = state;
+      });
+      provider.start();
+      await vi.advanceTimersByTimeAsync(0);
+      FakeWebSocket.instances[0]?.open();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The pipeline is wired but no frame has arrived: still not listening.
+      expect(lastState?.isListening).toBe(false);
+      expect(lastState?.status).not.toBe("listening");
+      expect(onError).not.toHaveBeenCalled();
+
+      // The audio-flow watchdog must surface a visible error.
+      await vi.advanceTimersByTimeAsync(3500);
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onEnd).toHaveBeenCalledTimes(1);
+      expect(onResult).not.toHaveBeenCalled();
+      expect(lastState?.status).toBe("error");
+
+      provider.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

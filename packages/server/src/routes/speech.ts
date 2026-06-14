@@ -572,7 +572,13 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
             // dropping the first seconds of speech. Instead, buffer incoming
             // frames in `pendingAudio` and flush them in order once the session
             // resolves.
+            // Tie every continuation to this request id. A new `start` can
+            // arrive before the handshake resolves; without this guard a late
+            // resolution would assign `streamSession`, flush the *new*
+            // request's buffered frames into the *old* session, and leak the
+            // superseded upstream socket.
             const requestId = streamRequestId;
+            const isCurrent = (): boolean => streamRequestId === requestId;
             streamSessionPromise = backend
               .stream(
                 {
@@ -587,6 +593,7 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
                 },
                 {
                   onPartial: (event) => {
+                    if (!isCurrent()) return;
                     streamingTranscriptTrace.push(
                       formatStreamingTranscriptTraceLine(
                         getPartialTraceKind(event),
@@ -607,6 +614,12 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
                 },
               )
               .then((session) => {
+                if (!isCurrent()) {
+                  // Superseded by a newer start (or a stop/close): do not touch
+                  // current buffers; just close this orphaned session.
+                  session.close();
+                  return session;
+                }
                 streamSession = session;
                 for (const buffered of pendingAudio) {
                   session.sendAudio(buffered);
@@ -627,6 +640,7 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
                 },
                 "Speech streaming session failed to open",
               );
+              if (!isCurrent()) return;
               streamSessionPromise = null;
               pendingAudio = [];
               if (!streamingStopRequested) {

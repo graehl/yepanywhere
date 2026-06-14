@@ -214,19 +214,25 @@ function floatToInt16Pcm(
   sampleRate: number,
 ): ArrayBuffer {
   const ratio = sampleRate / STREAM_SAMPLE_RATE;
-  const outputLength = Math.max(1, Math.floor(samples.length / ratio));
+  const outputLength = Math.max(1, Math.round(samples.length / ratio));
   const buffer = new ArrayBuffer(outputLength * 2);
   const view = new DataView(buffer);
 
   for (let i = 0; i < outputLength; i += 1) {
-    const start = Math.floor(i * ratio);
-    const end = Math.min(samples.length, Math.floor((i + 1) * ratio));
+    const start = Math.min(samples.length - 1, Math.floor(i * ratio));
+    // Span at least one input sample. When the context runs below 24 kHz
+    // (ratio < 1, which Chrome does for voice-processed input) the naive
+    // window can be empty and would otherwise write silence for ~1/3 of
+    // output samples, attenuating and corrupting the captured audio.
+    const end = Math.max(
+      start + 1,
+      Math.min(samples.length, Math.floor((i + 1) * ratio)),
+    );
     let sum = 0;
-    const count = Math.max(1, end - start);
     for (let j = start; j < end; j += 1) {
       sum += samples[j] ?? 0;
     }
-    const sample = Math.max(-1, Math.min(1, sum / count));
+    const sample = Math.max(-1, Math.min(1, sum / (end - start)));
     view.setInt16(i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
   }
 
@@ -376,63 +382,45 @@ export class YaServerProvider implements SpeechProvider {
       throw new Error("Streaming speech capture is not supported");
     }
 
-    // Create and resume the AudioContext synchronously, before any await, so it
-    // runs inside the click's user-activation window. iOS/Android refuse to
-    // start (or silently keep suspended) an AudioContext resumed outside a user
-    // gesture; doing it after `await getUserMedia` previously left streaming
-    // capture dead on mobile with no audio and no error.
+    // Greppable startup timing so a multi-second "connecting" window can be
+    // localized to a specific step (mic acquisition vs. socket vs. resume vs.
+    // first audio frame) from the console or remote client logs.
+    const startedAt = performance.now();
+    const mark = (label: string): void => {
+      console.log(
+        `[YaSTT] +${Math.round(performance.now() - startedAt)}ms ${label}`,
+      );
+    };
+    mark("start");
+
+    // Create and resume the AudioContext synchronously, before any await, so the
+    // resume runs inside the click's user-activation window. iOS/Android refuse
+    // to start an AudioContext resumed outside a user gesture; resuming after
+    // `await getUserMedia` previously left capture dead on mobile.
     const audioContext = new AudioContextCtor();
     this.audioContext = audioContext;
     const resumePromise =
       audioContext.state === "suspended"
-        ? audioContext.resume().catch(() => undefined)
+        ? audioContext.resume()
         : Promise.resolve();
+    // Do not swallow a rejected resume. We still build the graph (connecting a
+    // source can start the context on some browsers), but if it truly never
+    // runs no processor callback fires, "listening" is never shown, and the
+    // audio-flow watchdog surfaces a visible error.
+    resumePromise.catch((err: unknown) => {
+      console.warn("[YaSTT] AudioContext.resume() rejected", err);
+    });
 
     const abandonContext = (): void => {
       void audioContext.close();
       if (this.audioContext === audioContext) this.audioContext = null;
     };
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
-    if (this.disposed || token !== this.startToken) {
-      stream.getTracks().forEach((track) => {
-        track.stop();
-      });
-      abandonContext();
-      return;
-    }
-
-    this.stream = stream;
-    this.mimeType = STREAM_MIME_TYPE;
-    this.streamingFinalReceived = false;
-    this.streamingCommittedTranscript = "";
-    this.streamingPreviewBaseTranscript = "";
-    this.streamingCurrentPreviewTranscript = "";
-    this.streamingStopRequested = false;
-    this.pendingSmartTurnCommand = null;
+    // Open the socket in parallel with mic acquisition so it is usually ready
+    // by the time the first audio frame is captured.
     const ws = new WebSocket(speechWsUrl(this.basePath));
     ws.binaryType = "arraybuffer";
     this.ws = ws;
-
-    await new Promise<void>((resolve, reject) => {
-      ws.onopen = () => resolve();
-      ws.onerror = () =>
-        reject(new Error("Speech streaming connection failed"));
-    });
-    if (this.disposed || token !== this.startToken) {
-      ws.close();
-      abandonContext();
-      this.stopTracks();
-      return;
-    }
-
     ws.onerror = () => {
       this.handleStreamingMessage(
         JSON.stringify({
@@ -462,58 +450,74 @@ export class YaServerProvider implements SpeechProvider {
       }
     };
 
-    ws.send(
-      JSON.stringify({
-        type: "start",
-        backendId: this.backendId,
-        mimeType: this.mimeType,
-        streaming: true,
-        sampleRate: STREAM_SAMPLE_RATE,
-        encoding: "pcm",
-        context: this.options.getTranscriptionContext?.(),
-        smartTurn:
-          this.options.smartTurn?.enabled === true
-            ? {
-                enabled: true,
-                threshold: this.options.smartTurn.threshold,
-                timeoutMs: this.options.smartTurn.timeoutMs,
-              }
-            : undefined,
-      }),
-    );
-
-    await resumePromise;
-    if (this.disposed || token !== this.startToken) {
-      ws.close();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    // `this.ws !== ws` means the socket already errored during acquisition and
+    // its handler tore us down; do not resurrect a dead session.
+    if (this.disposed || token !== this.startToken || this.ws !== ws) {
+      stream.getTracks().forEach((track) => {
+        track.stop();
+      });
       abandonContext();
-      this.stopTracks();
+      ws.close();
       return;
     }
+    mark("getUserMedia ready");
 
+    this.stream = stream;
+    this.mimeType = STREAM_MIME_TYPE;
+    this.streamingFinalReceived = false;
+    this.streamingCommittedTranscript = "";
+    this.streamingPreviewBaseTranscript = "";
+    this.streamingCurrentPreviewTranscript = "";
+    this.streamingStopRequested = false;
+    this.pendingSmartTurnCommand = null;
+
+    // Build the capture graph immediately: the mic is live now, so begin
+    // capturing at once and buffer PCM frames until the socket handshake
+    // completes. Waiting for the socket/resume here is what dropped the first
+    // seconds of speech.
+    let socketReady = false;
+    const pendingFrames: ArrayBuffer[] = [];
     const source = audioContext.createMediaStreamSource(stream);
     const processor = audioContext.createScriptProcessor(4096, 1, 1);
     const silentGain = audioContext.createGain();
     silentGain.gain.value = 0;
     this.audioProcessorActive = false;
+    let loudnessFramesLeft = 6;
     processor.onaudioprocess = (event) => {
-      if (
-        token !== this.startToken ||
-        this.disposed ||
-        ws.readyState !== WebSocket.OPEN
-      ) {
-        return;
-      }
-      // The processor fires off the audio clock regardless of whether the user
-      // is speaking, so the first callback means the capture pipeline is live.
+      if (token !== this.startToken || this.disposed) return;
+      const input = event.inputBuffer.getChannelData(0);
       if (!this.audioProcessorActive) {
+        // First real callback: capture is genuinely live. Only now flip to
+        // "listening" so the indicator never claims to record while the
+        // pipeline is dead (a suspended context never reaches this point).
         this.audioProcessorActive = true;
         this.clearAudioFlowWatchdog();
+        mark(`first audio frame (rate=${audioContext.sampleRate})`);
+        this.setState({ status: "listening", isListening: true, error: null });
       }
-      const pcm = floatToInt16Pcm(
-        event.inputBuffer.getChannelData(0),
-        audioContext.sampleRate,
-      );
-      ws.send(pcm);
+      if (loudnessFramesLeft > 0) {
+        let peak = 0;
+        for (let i = 0; i < input.length; i += 1) {
+          const a = Math.abs(input[i] ?? 0);
+          if (a > peak) peak = a;
+        }
+        mark(`frame peak=${peak.toFixed(3)}`);
+        loudnessFramesLeft -= 1;
+      }
+      const pcm = floatToInt16Pcm(input, audioContext.sampleRate);
+      if (socketReady && ws.readyState === WebSocket.OPEN) {
+        ws.send(pcm);
+      } else {
+        pendingFrames.push(pcm);
+      }
     };
     source.connect(processor);
     processor.connect(silentGain);
@@ -523,7 +527,44 @@ export class YaServerProvider implements SpeechProvider {
     this.processor = processor;
     this.silentGain = silentGain;
     this.startAudioFlowWatchdog(token);
-    this.setState({ status: "listening", isListening: true, error: null });
+    mark("graph built");
+
+    const sendStartAndFlush = (): void => {
+      if (this.disposed || token !== this.startToken) {
+        ws.close();
+        return;
+      }
+      mark("ws open");
+      ws.send(
+        JSON.stringify({
+          type: "start",
+          backendId: this.backendId,
+          mimeType: this.mimeType,
+          streaming: true,
+          sampleRate: STREAM_SAMPLE_RATE,
+          encoding: "pcm",
+          context: this.options.getTranscriptionContext?.(),
+          smartTurn:
+            this.options.smartTurn?.enabled === true
+              ? {
+                  enabled: true,
+                  threshold: this.options.smartTurn.threshold,
+                  timeoutMs: this.options.smartTurn.timeoutMs,
+                }
+              : undefined,
+        }),
+      );
+      socketReady = true;
+      for (const pcm of pendingFrames) {
+        if (ws.readyState === WebSocket.OPEN) ws.send(pcm);
+      }
+      pendingFrames.length = 0;
+    };
+    if (ws.readyState === WebSocket.OPEN) {
+      sendStartAndFlush();
+    } else {
+      ws.onopen = sendStartAndFlush;
+    }
   }
 
   private startAudioFlowWatchdog(token: number): void {
@@ -600,10 +641,18 @@ export class YaServerProvider implements SpeechProvider {
       if (metadata && smartTurnCommand) {
         metadata.smartTurnCommand = smartTurnCommand;
       }
+      // The server's final text can be empty when the end-of-utterance
+      // speechFinal races past our stop request, or a hallucinated near-silence
+      // token when little audio was captured. In either case the live preview
+      // holds the best transcript we have, so fall back to it rather than
+      // discarding the user's words. Only used when nothing was committed yet,
+      // so it cannot duplicate an already-committed speechFinal.
+      const finalText = (message.text ?? "").trim();
+      const resultText = finalText || this.streamingCurrentPreviewTranscript;
       const committed =
         !smartTurnCommand &&
         !this.streamingCommittedTranscript &&
-        this.commitStreamingTranscript(message.text ?? "", metadata);
+        this.commitStreamingTranscript(resultText, metadata);
       if (!committed && metadata) {
         this.options.onResult?.("", metadata);
       }

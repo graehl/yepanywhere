@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ConnectionSpeechSocket } from "../lib/connection/types";
 import { BrowserNativeProvider } from "../lib/speechProviders/BrowserNativeProvider";
 import { YaServerProvider } from "../lib/speechProviders/YaServerProvider";
 import {
@@ -28,6 +29,8 @@ export interface UseSpeechRecognitionOptions {
   keepMicWarm?: boolean;
   /** Browser-local microphone device id for YA-server capture. */
   micDeviceId?: string | null;
+  /** Dedicated secure relay speech socket opener. */
+  openRelayedSpeechSocket?: () => Promise<ConnectionSpeechSocket>;
   /** Callback when final transcript is available. */
   onResult?: (
     transcript: string,
@@ -66,6 +69,7 @@ function createProvider(
     smartTurn?: SpeechSmartTurnSettings;
     keepMicWarm?: boolean;
     micDeviceId?: string | null;
+    openRelayedSpeechSocket?: () => Promise<ConnectionSpeechSocket>;
     onResult?: (
       t: string,
       metadata?: SpeechTranscriptionResultMetadata,
@@ -100,6 +104,7 @@ export function useSpeechRecognition(
     smartTurn,
     keepMicWarm,
     micDeviceId,
+    openRelayedSpeechSocket,
     onResult,
     onInterimResult,
     onEnd,
@@ -125,6 +130,7 @@ export function useSpeechRecognition(
   const smartTurnRef = useRef(smartTurn);
   const keepMicWarmRef = useRef(keepMicWarm);
   const micDeviceIdRef = useRef(micDeviceId);
+  const openRelayedSpeechSocketRef = useRef(openRelayedSpeechSocket);
 
   const providerRef = useRef<SpeechProvider | null>(null);
   if (providerRef.current === null) {
@@ -138,6 +144,7 @@ export function useSpeechRecognition(
         smartTurn: smartTurnRef.current,
         keepMicWarm: keepMicWarmRef.current,
         micDeviceId: micDeviceIdRef.current,
+        openRelayedSpeechSocket: openRelayedSpeechSocketRef.current,
         onResult: (t, metadata) => onResultRef.current?.(t, metadata),
         onInterimResult: (t) => onInterimResultRef.current?.(t),
         onEnd: () => onEndRef.current?.(),
@@ -163,7 +170,8 @@ export function useSpeechRecognition(
       serverStreaming === serverStreamingRef.current &&
       smartTurn === smartTurnRef.current &&
       keepMicWarm === keepMicWarmRef.current &&
-      micDeviceId === micDeviceIdRef.current
+      micDeviceId === micDeviceIdRef.current &&
+      openRelayedSpeechSocket === openRelayedSpeechSocketRef.current
     ) {
       return;
     }
@@ -173,6 +181,7 @@ export function useSpeechRecognition(
     smartTurnRef.current = smartTurn;
     keepMicWarmRef.current = keepMicWarm;
     micDeviceIdRef.current = micDeviceId;
+    openRelayedSpeechSocketRef.current = openRelayedSpeechSocket;
 
     const old = providerRef.current;
     old?.dispose();
@@ -184,6 +193,7 @@ export function useSpeechRecognition(
       smartTurn,
       keepMicWarm,
       micDeviceId,
+      openRelayedSpeechSocket,
       onResult: (t, metadata) => onResultRef.current?.(t, metadata),
       onInterimResult: (t) => onInterimResultRef.current?.(t),
       onEnd: () => onEndRef.current?.(),
@@ -200,6 +210,7 @@ export function useSpeechRecognition(
     smartTurn,
     keepMicWarm,
     micDeviceId,
+    openRelayedSpeechSocket,
   ]);
 
   useEffect(() => {

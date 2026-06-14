@@ -27,6 +27,7 @@ interface DecodeFrameDeps {
   send: SendFn;
   uploadManager: UploadManager;
   routeClientMessage: (msg: RemoteClientMessage) => Promise<void>;
+  handleSpeechAudio?: (payload: Uint8Array) => Promise<void> | void;
   handleBinaryUploadChunk: (
     uploads: Map<string, RelayUploadState>,
     payload: Uint8Array,
@@ -52,6 +53,7 @@ export async function decodeFrameToParsedMessage(
     send,
     uploadManager,
     routeClientMessage,
+    handleSpeechAudio,
     handleBinaryUploadChunk,
   } = deps;
 
@@ -91,6 +93,21 @@ export async function decodeFrameToParsedMessage(
 
         if (format === BinaryFormat.BINARY_UPLOAD) {
           await handleBinaryUploadChunk(uploads, payload, send, uploadManager);
+          return null;
+        }
+
+        if (format === BinaryFormat.SPEECH_AUDIO) {
+          if (handleSpeechAudio) {
+            await handleSpeechAudio(payload);
+          } else {
+            send({
+              type: "speech_event",
+              message: {
+                type: "error",
+                message: "Speech relay is unavailable",
+              },
+            });
+          }
           return null;
         }
 
@@ -172,7 +189,8 @@ export async function decodeFrameToParsedMessage(
       if (
         format !== BinaryFormat.JSON &&
         format !== BinaryFormat.BINARY_UPLOAD &&
-        format !== BinaryFormat.COMPRESSED_JSON
+        format !== BinaryFormat.COMPRESSED_JSON &&
+        format !== BinaryFormat.SPEECH_AUDIO
       ) {
         throw new BinaryFrameError(
           `Unknown format byte: 0x${format.toString(16).padStart(2, "0")}`,
@@ -184,6 +202,17 @@ export async function decodeFrameToParsedMessage(
 
       if (format === BinaryFormat.BINARY_UPLOAD) {
         await handleBinaryUploadChunk(uploads, payload, send, uploadManager);
+        return null;
+      }
+
+      if (format === BinaryFormat.SPEECH_AUDIO) {
+        send({
+          type: "speech_event",
+          message: {
+            type: "error",
+            message: "Speech relay requires encrypted transport",
+          },
+        });
         return null;
       }
 
@@ -257,6 +286,9 @@ interface MessageRouteHandlers {
     msg: RemoteClientMessage & { type: "upload_end" },
   ) => Promise<void>;
   onPing: (msg: RemoteClientMessage & { type: "ping" }) => Promise<void> | void;
+  onSpeechControl?: (
+    msg: RemoteClientMessage & { type: "speech_control" },
+  ) => Promise<void> | void;
   onDeviceMessage?: (msg: RemoteClientMessage) => Promise<void> | void;
 }
 
@@ -274,6 +306,7 @@ function getMessageId(msg: RemoteClientMessage): string | undefined {
     case "device_stream_stop":
     case "device_webrtc_answer":
     case "device_ice_candidate":
+    case "speech_control":
       return (msg as { sessionId?: string }).sessionId;
     default:
       return undefined;
@@ -310,6 +343,13 @@ export async function routeClientMessageSafely(
         break;
       case "ping":
         await handlers.onPing(msg);
+        break;
+      case "speech_control":
+        if (handlers.onSpeechControl) {
+          await handlers.onSpeechControl(msg);
+        } else {
+          console.warn("[WS Relay] Speech control received but no handler");
+        }
         break;
       case "device_stream_start":
       case "device_stream_stop":

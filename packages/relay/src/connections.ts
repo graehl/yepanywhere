@@ -1,4 +1,6 @@
 import {
+  DEFAULT_RELAY_CHANNEL,
+  type RelayChannel,
   type RelayServerCompatibilityMetadata,
   isValidRelayUsername,
 } from "@yep-anywhere/shared";
@@ -35,6 +37,7 @@ interface Pair {
 
 export interface ActiveRelayServer extends RelayServerCompatibilityMetadata {
   username: string;
+  channel: RelayChannel;
   installId: string;
   connectedAt: string;
   state: "waiting" | "paired";
@@ -62,7 +65,7 @@ export interface ActiveRelayServerSummary {
  * - Clean up on disconnect
  */
 export class ConnectionManager {
-  /** Waiting server connections by username */
+  /** Waiting server connections by username/channel. */
   private waiting = new Map<string, WebSocket>();
   /** Active server/client pairs */
   private pairs = new Set<Pair>();
@@ -90,6 +93,7 @@ export class ConnectionManager {
     username: string,
     installId: string,
     metadata: RelayServerCompatibilityMetadata = {},
+    channel: RelayChannel = DEFAULT_RELAY_CHANNEL,
   ): RegistrationResult {
     // Validate username format
     if (!isValidRelayUsername(username)) {
@@ -106,8 +110,10 @@ export class ConnectionManager {
       return "username_taken";
     }
 
-    // Close existing waiting connection for this username (same installId reconnecting)
-    const existingWaiting = this.waiting.get(username);
+    const waitingKey = relayWaitKey(username, channel);
+
+    // Close existing waiting connection for this username/channel (same installId reconnecting)
+    const existingWaiting = this.waiting.get(waitingKey);
     if (existingWaiting) {
       this.activeServers.delete(existingWaiting);
       try {
@@ -118,9 +124,10 @@ export class ConnectionManager {
     }
 
     // Store as waiting connection
-    this.waiting.set(username, ws);
+    this.waiting.set(waitingKey, ws);
     this.activeServers.set(ws, {
       username,
+      channel,
       installId,
       connectedAt: new Date().toISOString(),
       state: "waiting",
@@ -143,19 +150,28 @@ export class ConnectionManager {
    * @returns Connection result with server WebSocket on success
    */
   connectClient(ws: WebSocket, username: string): ConnectionResult {
+    return this.connectClientChannel(ws, username, DEFAULT_RELAY_CHANNEL);
+  }
+
+  connectClientChannel(
+    ws: WebSocket,
+    username: string,
+    channel: RelayChannel = DEFAULT_RELAY_CHANNEL,
+  ): ConnectionResult {
     // Check if username is registered at all
     if (!this.registry.isRegistered(username)) {
       return { status: "unknown_username" };
     }
 
     // Check if server is currently online (has a waiting connection)
-    const serverWs = this.waiting.get(username);
+    const waitingKey = relayWaitKey(username, channel);
+    const serverWs = this.waiting.get(waitingKey);
     if (!serverWs) {
       return { status: "server_offline" };
     }
 
     // Remove from waiting map (server is now paired)
-    this.waiting.delete(username);
+    this.waiting.delete(waitingKey);
     const serverInfo = this.activeServers.get(serverWs);
     if (serverInfo) {
       serverInfo.state = "paired";
@@ -208,14 +224,12 @@ export class ConnectionManager {
    */
   handleClose(ws: WebSocket, username?: string): CloseResult {
     // Check if this was a waiting connection
-    if (username) {
-      const waitingWs = this.waiting.get(username);
-      if (waitingWs === ws) {
-        const serverInfo = this.activeServers.get(ws) ?? null;
-        this.waiting.delete(username);
-        this.activeServers.delete(ws);
-        return { kind: "waiting_server_closed", server: serverInfo };
-      }
+    const waitingKey = this.findWaitingKeyForWs(ws, username);
+    if (waitingKey) {
+      const serverInfo = this.activeServers.get(ws) ?? null;
+      this.waiting.delete(waitingKey);
+      this.activeServers.delete(ws);
+      return { kind: "waiting_server_closed", server: serverInfo };
     }
 
     // Check if this was part of a pair
@@ -262,11 +276,33 @@ export class ConnectionManager {
     return false;
   }
 
+  private findWaitingKeyForWs(
+    ws: WebSocket,
+    username?: string,
+  ): string | null {
+    if (username) {
+      for (const [key, waitingWs] of this.waiting.entries()) {
+        if (waitingWs === ws && key.startsWith(`${username}\0`)) {
+          return key;
+        }
+      }
+      return null;
+    }
+
+    for (const [key, waitingWs] of this.waiting.entries()) {
+      if (waitingWs === ws) return key;
+    }
+    return null;
+  }
+
   /**
    * Check if a username has a server waiting for a client.
    */
-  isWaiting(username: string): boolean {
-    return this.waiting.has(username);
+  isWaiting(
+    username: string,
+    channel: RelayChannel = DEFAULT_RELAY_CHANNEL,
+  ): boolean {
+    return this.waiting.has(relayWaitKey(username, channel));
   }
 
   /**
@@ -287,7 +323,13 @@ export class ConnectionManager {
    * Get all waiting usernames (for debugging/admin).
    */
   getWaitingUsernames(): string[] {
-    return Array.from(this.waiting.keys());
+    return Array.from(
+      new Set(
+        Array.from(this.waiting.keys()).map((key) =>
+          key.slice(0, key.indexOf("\0")),
+        ),
+      ),
+    );
   }
 
   /**
@@ -295,7 +337,9 @@ export class ConnectionManager {
    */
   getActiveServers(): ActiveRelayServer[] {
     return Array.from(this.activeServers.values()).sort((a, b) =>
-      a.username.localeCompare(b.username),
+      a.username === b.username
+        ? a.channel.localeCompare(b.channel)
+        : a.username.localeCompare(b.username),
     );
   }
 
@@ -320,6 +364,10 @@ export class ConnectionManager {
       capabilities: summarizeCapabilities(activeServers),
     };
   }
+}
+
+function relayWaitKey(username: string, channel: RelayChannel): string {
+  return `${username}\0${channel}`;
 }
 
 function summarizeOptionalValues<T extends string | number>(

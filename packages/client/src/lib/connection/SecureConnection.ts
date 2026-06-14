@@ -14,6 +14,8 @@ import type {
   DeviceServerMessage,
   OriginMetadata,
   RemoteClientMessage,
+  RelayChannel,
+  RelaySpeechEvent,
   SrpClientHello,
   SrpClientProof,
   SrpSessionResume,
@@ -23,6 +25,8 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   BinaryFormat,
+  DEFAULT_RELAY_CHANNEL,
+  SPEECH_RELAY_CHANNEL,
   encodeUploadChunkPayload,
   isBinaryData,
   isCompressionSupported,
@@ -52,6 +56,7 @@ import {
 import { SrpClientSession } from "./srp-client";
 import {
   type Connection,
+  type ConnectionSpeechSocket,
   RelayReconnectRequiredError,
   type SessionSubscriptionOptions,
   type StreamHandlers,
@@ -95,6 +100,12 @@ export interface StoredSession {
   resumeProtocolVersion?: number;
 }
 
+interface RelayConnectionConfig {
+  relayUrl: string;
+  relayUsername: string;
+  channel?: RelayChannel;
+}
+
 function uint8ToBase64(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) {
@@ -105,6 +116,14 @@ function uint8ToBase64(bytes: Uint8Array): string {
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toUint8ArrayView(
+  data: ArrayBuffer | Uint8Array | ArrayBufferView,
+): Uint8Array {
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 }
 
 /**
@@ -143,6 +162,7 @@ export class SecureConnection implements Connection {
   // Relay connection details for auto-reconnect (only set for relay connections)
   private relayUrl: string | null = null;
   private relayUsername: string | null = null;
+  private relayChannel: RelayChannel = DEFAULT_RELAY_CHANNEL;
 
   // Stored session for resumption (optional)
   private storedSession: StoredSession | null = null;
@@ -256,7 +276,7 @@ export class SecureConnection implements Connection {
     ws: WebSocket,
     storedSession: StoredSession,
     onSessionEstablished?: (session: StoredSession) => void,
-    relayConfig?: { relayUrl: string; relayUsername: string },
+    relayConfig?: RelayConnectionConfig,
     onDisconnect?: (error: Error) => void,
   ): Promise<SecureConnection> {
     const conn = new SecureConnection(
@@ -275,6 +295,7 @@ export class SecureConnection implements Connection {
     if (relayConfig) {
       conn.relayUrl = relayConfig.relayUrl;
       conn.relayUsername = relayConfig.relayUsername;
+      conn.relayChannel = relayConfig.channel ?? DEFAULT_RELAY_CHANNEL;
     }
 
     // Resume the session on the existing socket
@@ -1007,15 +1028,12 @@ export class SecureConnection implements Connection {
   /**
    * Reconnect through relay server and resume SRP session.
    */
-  private async reconnectThroughRelay(): Promise<void> {
-    if (!this.relayUrl || !this.relayUsername || !this.storedSession) {
-      throw new Error("Missing relay config or stored session for reconnect");
-    }
-
-    console.log("[SecureConnection] Connecting to relay:", this.relayUrl);
-    this.connectionState = "connecting";
-
-    const ws = new WebSocket(this.relayUrl);
+  private static async connectRelaySocket(
+    relayUrl: string,
+    relayUsername: string,
+    channel: RelayChannel = DEFAULT_RELAY_CHANNEL,
+  ): Promise<WebSocket> {
+    const ws = new WebSocket(relayUrl);
     ws.binaryType = "arraybuffer";
 
     await new Promise<void>((resolve, reject) => {
@@ -1035,10 +1053,16 @@ export class SecureConnection implements Connection {
       };
     });
 
-    console.log("[SecureConnection] Relay connected, sending client_connect");
+    console.log(
+      `[SecureConnection] Relay connected, sending client_connect (${channel})`,
+    );
 
     ws.send(
-      JSON.stringify({ type: "client_connect", username: this.relayUsername }),
+      JSON.stringify(
+        channel === DEFAULT_RELAY_CHANNEL
+          ? { type: "client_connect", username: relayUsername }
+          : { type: "client_connect_channel", username: relayUsername, channel },
+      ),
     );
 
     await new Promise<void>((resolve, reject) => {
@@ -1076,6 +1100,23 @@ export class SecureConnection implements Connection {
         reject(new Error("Relay connection error"));
       };
     });
+
+    return ws;
+  }
+
+  private async reconnectThroughRelay(): Promise<void> {
+    if (!this.relayUrl || !this.relayUsername || !this.storedSession) {
+      throw new Error("Missing relay config or stored session for reconnect");
+    }
+
+    console.log("[SecureConnection] Connecting to relay:", this.relayUrl);
+    this.connectionState = "connecting";
+
+    const ws = await SecureConnection.connectRelaySocket(
+      this.relayUrl,
+      this.relayUsername,
+      this.relayChannel,
+    );
 
     console.log("[SecureConnection] Resuming SRP session on new relay socket");
     ws.onmessage = null;
@@ -1357,6 +1398,72 @@ export class SecureConnection implements Connection {
     this.ws.send(envelope);
   }
 
+  async openSpeechSocket(): Promise<ConnectionSpeechSocket> {
+    if (!this.relayUrl || !this.relayUsername || !this.storedSession) {
+      throw new Error("Speech relay requires an active relayed session");
+    }
+
+    const ws = await SecureConnection.connectRelaySocket(
+      this.relayUrl,
+      this.relayUsername,
+      SPEECH_RELAY_CHANNEL,
+    );
+
+    let socket: SecureConnectionSpeechSocket | null = null;
+    const connection = await SecureConnection.forResumeOnlyWithSocket(
+      ws,
+      this.storedSession,
+      undefined,
+      {
+        relayUrl: this.relayUrl,
+        relayUsername: this.relayUsername,
+        channel: SPEECH_RELAY_CHANNEL,
+      },
+      (error) => socket?.handleDisconnect(error),
+    );
+    socket = new SecureConnectionSpeechSocket(connection);
+    return socket;
+  }
+
+  sendSpeechControlMessage(message: unknown): void {
+    this.send({ type: "speech_control", message });
+  }
+
+  sendSpeechAudioFrame(
+    data: ArrayBuffer | Uint8Array | ArrayBufferView,
+  ): void {
+    const websocketOpenState =
+      typeof WebSocket !== "undefined" ? WebSocket.OPEN : 1;
+    if (!this.ws || this.ws.readyState !== websocketOpenState) {
+      throw new Error("WebSocket not connected");
+    }
+    if (!this.sessionKey) {
+      throw new Error("Not authenticated");
+    }
+
+    const envelope = encryptBytesToBinaryEnvelope(
+      toUint8ArrayView(data),
+      BinaryFormat.SPEECH_AUDIO,
+      this.sessionKey,
+    );
+    this.ws.send(envelope);
+  }
+
+  onSpeechEvent(
+    handler: (message: RelaySpeechEvent["message"]) => void,
+  ): () => void {
+    return this.protocol.onSpeechEvent(handler);
+  }
+
+  getSpeechSocketReadyState(): number {
+    const closedState = typeof WebSocket !== "undefined" ? WebSocket.CLOSED : 3;
+    return this.ws?.readyState ?? closedState;
+  }
+
+  getSpeechSocketBufferedAmount(): number {
+    return this.ws?.bufferedAmount ?? 0;
+  }
+
   private resetSequenceState(): void {
     this.nextOutboundSeq = 0;
     this.lastInboundSeq = null;
@@ -1367,7 +1474,11 @@ export class SecureConnection implements Connection {
    * Called immediately after SRP authentication completes.
    */
   private sendCapabilities(): void {
-    const formats: number[] = [BinaryFormat.JSON, BinaryFormat.BINARY_UPLOAD];
+    const formats: number[] = [
+      BinaryFormat.JSON,
+      BinaryFormat.BINARY_UPLOAD,
+      BinaryFormat.SPEECH_AUDIO,
+    ];
 
     if (isCompressionSupported()) {
       formats.push(BinaryFormat.COMPRESSED_JSON);
@@ -1539,7 +1650,7 @@ export class SecureConnection implements Connection {
     username: string,
     password: string,
     onSessionEstablished?: (session: StoredSession) => void,
-    relayConfig?: { relayUrl: string; relayUsername: string },
+    relayConfig?: RelayConnectionConfig,
     onDisconnect?: (error: Error) => void,
   ): Promise<SecureConnection> {
     const conn = new SecureConnection(
@@ -1554,6 +1665,7 @@ export class SecureConnection implements Connection {
     if (relayConfig) {
       conn.relayUrl = relayConfig.relayUrl;
       conn.relayUsername = relayConfig.relayUsername;
+      conn.relayChannel = relayConfig.channel ?? DEFAULT_RELAY_CHANNEL;
     }
     ws.binaryType = "arraybuffer";
 
@@ -1636,5 +1748,61 @@ export class SecureConnection implements Connection {
           reject(err);
         });
     });
+  }
+}
+
+class SecureConnectionSpeechSocket implements ConnectionSpeechSocket {
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  onerror: ((event?: unknown) => void) | null = null;
+  onclose: (() => void) | null = null;
+
+  private readonly unsubscribeSpeech: () => void;
+  private closed = false;
+
+  constructor(private readonly connection: SecureConnection) {
+    this.unsubscribeSpeech = connection.onSpeechEvent((message) => {
+      this.onmessage?.({ data: JSON.stringify(message) });
+    });
+  }
+
+  get readyState(): number {
+    return this.connection.getSpeechSocketReadyState();
+  }
+
+  get bufferedAmount(): number {
+    return this.connection.getSpeechSocketBufferedAmount();
+  }
+
+  send(data: string | ArrayBuffer | Uint8Array | ArrayBufferView): void {
+    if (this.closed) {
+      throw new Error("Speech socket is closed");
+    }
+    try {
+      if (typeof data === "string") {
+        this.connection.sendSpeechControlMessage(JSON.parse(data));
+        return;
+      }
+      this.connection.sendSpeechAudioFrame(data);
+    } catch (err) {
+      this.onerror?.(err);
+      throw err;
+    }
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.unsubscribeSpeech();
+    this.connection.close();
+    this.onclose?.();
+  }
+
+  handleDisconnect(error: Error): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.unsubscribeSpeech();
+    this.onerror?.(error);
+    this.onclose?.();
   }
 }

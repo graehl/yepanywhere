@@ -29,6 +29,12 @@ export interface RelayServerCompatibilityMetadata {
   capabilities?: string[];
 }
 
+export type RelayChannel = "app" | "speech";
+export type RelayNonDefaultChannel = Exclude<RelayChannel, "app">;
+
+export const DEFAULT_RELAY_CHANNEL: RelayChannel = "app";
+export const SPEECH_RELAY_CHANNEL: RelayNonDefaultChannel = "speech";
+
 /** Yepanywhere server registers with relay, claiming a username */
 export interface RelayServerRegister {
   type: "server_register";
@@ -44,6 +50,13 @@ export interface RelayServerRegister {
   renderProtocolVersion?: number;
   /** Optional feature capabilities. */
   capabilities?: string[];
+}
+
+/** Yepanywhere server registers a named non-default relay channel. */
+export interface RelayServerChannelRegister
+  extends Omit<RelayServerRegister, "type"> {
+  type: "server_register_channel";
+  channel: RelayNonDefaultChannel;
 }
 
 /** Relay confirms server registration succeeded */
@@ -72,6 +85,14 @@ export interface RelayClientConnect {
   username: string;
 }
 
+/** Phone client requests a named non-default relay channel. */
+export interface RelayClientChannelConnect {
+  type: "client_connect_channel";
+  /** Username of server to connect to */
+  username: string;
+  channel: RelayNonDefaultChannel;
+}
+
 /** Relay confirms client connected to server */
 export interface RelayClientConnected {
   type: "client_connected";
@@ -92,13 +113,13 @@ export interface RelayClientError {
 // ============================================================================
 
 /** Messages from yepanywhere server to relay */
-export type RelayServerMessage = RelayServerRegister;
+export type RelayServerMessage = RelayServerRegister | RelayServerChannelRegister;
 
 /** Responses from relay to yepanywhere server */
 export type RelayServerResponse = RelayServerRegistered | RelayServerRejected;
 
 /** Messages from phone client to relay */
-export type RelayClientMessage = RelayClientConnect;
+export type RelayClientMessage = RelayClientConnect | RelayClientChannelConnect;
 
 /** Responses from relay to phone client */
 export type RelayClientResponse = RelayClientConnected | RelayClientError;
@@ -123,6 +144,32 @@ export function isRelayServerRegister(
     typeof msg === "object" &&
     msg !== null &&
     register.type === "server_register" &&
+    typeof register.username === "string" &&
+    typeof register.installId === "string" &&
+    (register.appVersion === undefined ||
+      typeof register.appVersion === "string") &&
+    (register.resumeProtocolVersion === undefined ||
+      typeof register.resumeProtocolVersion === "number") &&
+    (register.renderProtocolVersion === undefined ||
+      typeof register.renderProtocolVersion === "number") &&
+    (register.capabilities === undefined ||
+      (Array.isArray(register.capabilities) &&
+        register.capabilities.every(
+          (capability) => typeof capability === "string",
+        )))
+  );
+}
+
+/** Type guard for non-default server channel registration. */
+export function isRelayServerChannelRegister(
+  msg: unknown,
+): msg is RelayServerChannelRegister {
+  const register = msg as RelayServerChannelRegister;
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    register.type === "server_register_channel" &&
+    register.channel === SPEECH_RELAY_CHANNEL &&
     typeof register.username === "string" &&
     typeof register.installId === "string" &&
     (register.appVersion === undefined ||
@@ -170,6 +217,19 @@ export function isRelayClientConnect(msg: unknown): msg is RelayClientConnect {
     msg !== null &&
     (msg as RelayClientConnect).type === "client_connect" &&
     typeof (msg as RelayClientConnect).username === "string"
+  );
+}
+
+/** Type guard for non-default client channel connection. */
+export function isRelayClientChannelConnect(
+  msg: unknown,
+): msg is RelayClientChannelConnect {
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    (msg as RelayClientChannelConnect).type === "client_connect_channel" &&
+    typeof (msg as RelayClientChannelConnect).username === "string" &&
+    (msg as RelayClientChannelConnect).channel === SPEECH_RELAY_CHANNEL
   );
 }
 

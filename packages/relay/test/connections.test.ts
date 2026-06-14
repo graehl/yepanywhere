@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { SPEECH_RELAY_CHANNEL } from "@yep-anywhere/shared";
 import type { WSContext } from "hono/ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectionManager } from "../src/connections.js";
@@ -111,6 +112,46 @@ describe("ConnectionManager", () => {
       expect(manager.getWaitingUsernames()).toContain("alice");
       expect(manager.getWaitingUsernames()).toContain("bob");
     });
+
+    it("allows the same install to reserve app and speech channels", () => {
+      const appWs = createMockWs();
+      const speechWs = createMockWs();
+
+      expect(manager.registerServer(appWs, "alice", "install-1")).toBe(
+        "registered",
+      );
+      expect(
+        manager.registerServer(
+          speechWs,
+          "alice",
+          "install-1",
+          {},
+          SPEECH_RELAY_CHANNEL,
+        ),
+      ).toBe("registered");
+
+      expect(manager.getWaitingCount()).toBe(2);
+      expect(manager.isWaiting("alice")).toBe(true);
+      expect(manager.isWaiting("alice", SPEECH_RELAY_CHANNEL)).toBe(true);
+      expect(manager.getWaitingUsernames()).toEqual(["alice"]);
+    });
+
+    it("rejects speech channel registration from another install", () => {
+      const appWs = createMockWs();
+      const speechWs = createMockWs();
+
+      manager.registerServer(appWs, "alice", "install-1");
+      const result = manager.registerServer(
+        speechWs,
+        "alice",
+        "install-2",
+        {},
+        SPEECH_RELAY_CHANNEL,
+      );
+
+      expect(result).toBe("username_taken");
+      expect(manager.isWaiting("alice", SPEECH_RELAY_CHANNEL)).toBe(false);
+    });
   });
 
   describe("connectClient", () => {
@@ -145,6 +186,34 @@ describe("ConnectionManager", () => {
       const result = manager.connectClient(clientWs, "nonexistent");
 
       expect(result.status).toBe("unknown_username");
+    });
+
+    it("connects clients to the requested channel only", () => {
+      const appWs = createMockWs();
+      const speechWs = createMockWs();
+      const clientWs = createMockWs();
+
+      manager.registerServer(appWs, "alice", "install-1");
+      manager.registerServer(
+        speechWs,
+        "alice",
+        "install-1",
+        {},
+        SPEECH_RELAY_CHANNEL,
+      );
+
+      const result = manager.connectClientChannel(
+        clientWs,
+        "alice",
+        SPEECH_RELAY_CHANNEL,
+      );
+
+      expect(result.status).toBe("connected");
+      if (result.status === "connected") {
+        expect(result.serverWs).toBe(speechWs);
+      }
+      expect(manager.isWaiting("alice")).toBe(true);
+      expect(manager.isWaiting("alice", SPEECH_RELAY_CHANNEL)).toBe(false);
     });
   });
 

@@ -25,11 +25,14 @@ const DEFAULT_MIME_TYPE = "audio/webm;codecs=opus";
 // biome-ignore lint/suspicious/noExplicitAny: third-party WS upgrade type
 type UpgradeWebSocketFn = (createEvents: (c: Context) => WSEvents) => any;
 
-export interface SpeechRouteDeps {
+export interface SpeechSessionDeps {
   speechBackendRegistry: SpeechBackendRegistry;
-  upgradeWebSocket: UpgradeWebSocketFn;
   dataDir?: string;
   serverSettingsService?: ServerSettingsService;
+}
+
+export interface SpeechRouteDeps extends SpeechSessionDeps {
+  upgradeWebSocket: UpgradeWebSocketFn;
 }
 
 interface StartMsg {
@@ -47,7 +50,7 @@ interface StopMsg {
 }
 type ClientMsg = StartMsg | StopMsg;
 
-interface ServerMsg {
+export interface SpeechServerMsg {
   type: "ready" | "interim" | "final" | "error";
   text?: string;
   message?: string;
@@ -57,7 +60,13 @@ interface ServerMsg {
   words?: SpeechWordTimestamp[];
 }
 
-type SpeechWsData = string | ArrayBuffer | SharedArrayBuffer | Buffer | Blob;
+export type SpeechWsData =
+  | string
+  | ArrayBuffer
+  | SharedArrayBuffer
+  | Buffer
+  | Blob
+  | Uint8Array;
 
 interface TranscribeBody {
   backendId?: unknown;
@@ -74,7 +83,7 @@ interface SpeechSmartTurnStartOptions {
   timeoutMs?: number;
 }
 
-function send(ws: WSContext, msg: ServerMsg): void {
+function send(ws: WSContext, msg: SpeechServerMsg): void {
   ws.send(JSON.stringify(msg));
 }
 
@@ -230,7 +239,7 @@ function parseTranscriptionContext(
   return Object.keys(clean).length > 0 ? clean : undefined;
 }
 
-function getRetentionSettings(deps: SpeechRouteDeps) {
+function getRetentionSettings(deps: SpeechSessionDeps) {
   return (
     deps.serverSettingsService?.getSetting("speechAudioRetention") ??
     DEFAULT_SERVER_SETTINGS.speechAudioRetention
@@ -238,7 +247,7 @@ function getRetentionSettings(deps: SpeechRouteDeps) {
 }
 
 async function transcribeWithAudit(
-  deps: SpeechRouteDeps,
+  deps: SpeechSessionDeps,
   input: {
     source: SpeechAudioRequestSource;
     backendId: string;
@@ -323,7 +332,7 @@ async function transcribeWithAudit(
 }
 
 async function persistStreamingTranscription(
-  deps: SpeechRouteDeps,
+  deps: SpeechSessionDeps,
   input: {
     requestId: string;
     backendId: string;
@@ -418,6 +427,308 @@ function parseTranscribeBody(value: unknown):
         typeof body.mimeType === "string" ? body.mimeType : DEFAULT_MIME_TYPE,
       prompt: typeof body.prompt === "string" ? body.prompt : undefined,
       keyterms,
+    },
+  };
+}
+
+export interface SpeechWebSocketSession {
+  handleMessage(data: SpeechWsData): void;
+  close(): void;
+}
+
+export function createSpeechWebSocketSession(
+  deps: SpeechSessionDeps,
+  sendMessage: (msg: SpeechServerMsg) => void,
+): SpeechWebSocketSession {
+  const chunks: Buffer[] = [];
+  let mimeType = DEFAULT_MIME_TYPE;
+  let backendId: string | null = null;
+  let context: SpeechTranscriptionContext | undefined;
+  let streamSession: SpeechStreamSession | null = null;
+  let streamSessionPromise: Promise<SpeechStreamSession> | null = null;
+  let pendingAudio: Buffer[] = [];
+  let streamRequestId: string | null = null;
+  let streamStartedAt = "";
+  let streamStartedAtMs = 0;
+  let streamingTranscriptTrace: string[] = [];
+  let streamingSpeechFinalTexts: string[] = [];
+  let streamingStopRequested = false;
+  let messageChain = Promise.resolve();
+
+  const processMessage = async (data: SpeechWsData): Promise<void> => {
+    const normalized = await normalizeWsData(data);
+    const msg = parseWsControlMessage(normalized.text);
+
+    if (!msg) {
+      if (normalized.buffer) {
+        chunks.push(normalized.buffer);
+        if (streamSession) {
+          streamSession.sendAudio(normalized.buffer);
+        } else if (streamSessionPromise) {
+          pendingAudio.push(normalized.buffer);
+        }
+      } else {
+        logger.warn("Unparseable speech WS frame");
+      }
+      return;
+    }
+
+    if (msg.type === "start") {
+      chunks.length = 0;
+      backendId = msg.backendId ?? null;
+      mimeType = msg.mimeType ?? DEFAULT_MIME_TYPE;
+      context = parseTranscriptionContext(msg.context);
+      streamSession?.close();
+      streamSession = null;
+      streamSessionPromise = null;
+      pendingAudio = [];
+      streamRequestId = null;
+      streamingTranscriptTrace = [];
+      streamingSpeechFinalTexts = [];
+      streamingStopRequested = false;
+
+      if (msg.streaming && backendId) {
+        const backend = deps.speechBackendRegistry.getBackend(backendId);
+        if (!backend) {
+          sendMessage({ type: "error", message: "No backend selected" });
+          return;
+        }
+        if (!supportsStreaming(backend)) {
+          sendMessage({
+            type: "error",
+            message: `Backend does not support streaming: ${backendId}`,
+          });
+          return;
+        }
+        const sampleRate = msg.sampleRate ?? 16_000;
+        const encoding = msg.encoding === "pcm" ? "pcm" : null;
+        if (!encoding) {
+          sendMessage({
+            type: "error",
+            message: "Streaming speech requires pcm encoding",
+          });
+          return;
+        }
+        const smartTurn =
+          backend.capabilities.smartTurn === true ? msg.smartTurn : undefined;
+
+        streamRequestId = randomUUID();
+        streamStartedAtMs = Date.now();
+        streamStartedAt = new Date(streamStartedAtMs).toISOString();
+        logger.info(
+          {
+            component: "speech",
+            requestId: streamRequestId,
+            source: "ws",
+            mode: "stream",
+            backendId,
+            mimeType,
+            sampleRate,
+            encoding,
+            smartTurn:
+              smartTurn?.enabled === true
+                ? {
+                    threshold: smartTurn.threshold ?? null,
+                    timeoutMs: smartTurn.timeoutMs ?? null,
+                  }
+                : null,
+            context,
+          },
+          "Speech streaming transcription started",
+        );
+
+        const requestId = streamRequestId;
+        const isCurrent = (): boolean => streamRequestId === requestId;
+        streamSessionPromise = backend
+          .stream(
+            {
+              mimeType,
+              sampleRate,
+              encoding,
+              interimResults: true,
+              endpointingMs: 250,
+              language: "en",
+              smartTurnThreshold: smartTurn?.threshold,
+              smartTurnTimeoutMs: smartTurn?.timeoutMs,
+            },
+            {
+              onPartial: (event) => {
+                if (!isCurrent()) return;
+                streamingTranscriptTrace.push(
+                  formatStreamingTranscriptTraceLine(
+                    getPartialTraceKind(event),
+                    event.text,
+                  ),
+                );
+                if (event.speechFinal && !streamingStopRequested) {
+                  streamingSpeechFinalTexts.push(event.text);
+                }
+                sendMessage({
+                  type: "interim",
+                  text: event.text,
+                  isFinal: event.isFinal,
+                  speechFinal: event.speechFinal,
+                  words: event.words,
+                });
+              },
+              onError: (err) => {
+                if (!isCurrent() || streamingStopRequested) return;
+                const message =
+                  err instanceof Error ? err.message : String(err);
+                logger.warn(
+                  {
+                    component: "speech",
+                    requestId,
+                    source: "ws",
+                    mode: "stream",
+                    backendId,
+                  },
+                  `Speech streaming failed mid-session: ${message}`,
+                );
+                sendMessage({ type: "error", message });
+              },
+            },
+          )
+          .then((session) => {
+            if (!isCurrent()) {
+              session.close();
+              return session;
+            }
+            streamSession = session;
+            for (const buffered of pendingAudio) {
+              session.sendAudio(buffered);
+            }
+            pendingAudio = [];
+            return session;
+          });
+        streamSessionPromise.catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error(
+            {
+              component: "speech",
+              requestId,
+              source: "ws",
+              mode: "stream",
+              backendId,
+              err,
+            },
+            "Speech streaming session failed to open",
+          );
+          if (!isCurrent()) return;
+          streamSessionPromise = null;
+          pendingAudio = [];
+          if (!streamingStopRequested) {
+            sendMessage({ type: "error", message });
+          }
+        });
+      }
+      return;
+    }
+
+    const audio = Buffer.concat(chunks);
+    chunks.length = 0;
+
+    if (!backendId) {
+      sendMessage({ type: "error", message: "No backend selected" });
+      return;
+    }
+
+    if (streamSessionPromise && streamRequestId) {
+      try {
+        streamingStopRequested = true;
+        const session = await streamSessionPromise;
+        const done = await session.finish();
+        streamingTranscriptTrace.push(
+          formatStreamingTranscriptTraceLine("done", done.text),
+        );
+        const transcript =
+          done.text.trim() || joinStreamingSpeechFinals(streamingSpeechFinalTexts);
+        const retention = await persistStreamingTranscription(deps, {
+          requestId: streamRequestId,
+          backendId,
+          audio,
+          mimeType,
+          transcript,
+          streamingTranscriptTrace,
+          startedAt: streamStartedAt,
+          startedAtMs: streamStartedAtMs,
+          context,
+        });
+        sendMessage({
+          type: "final",
+          text: transcript,
+          transcriptionId: retention.transcriptionId,
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error(
+          {
+            component: "speech",
+            requestId: streamRequestId,
+            source: "ws",
+            mode: "stream",
+            backendId,
+            audioBytes: audio.length,
+            context,
+            err,
+          },
+          "Speech streaming transcription failed",
+        );
+        sendMessage({ type: "error", message });
+      } finally {
+        streamSession = null;
+        streamSessionPromise = null;
+        pendingAudio = [];
+        streamRequestId = null;
+        streamingTranscriptTrace = [];
+        streamingSpeechFinalTexts = [];
+        streamingStopRequested = false;
+      }
+      return;
+    }
+
+    try {
+      const { text, retention } = await transcribeWithAudit(deps, {
+        source: "ws",
+        backendId,
+        audio,
+        options: { mimeType },
+        context,
+      });
+      sendMessage({
+        type: "final",
+        text,
+        transcriptionId: retention.transcriptionId,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendMessage({ type: "error", message });
+    }
+  };
+
+  return {
+    handleMessage(data: SpeechWsData) {
+      messageChain = messageChain
+        .then(() => processMessage(data))
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error(
+            { component: "speech", err },
+            "Speech WS message handling failed",
+          );
+          sendMessage({ type: "error", message });
+        });
+    },
+    close() {
+      streamSession?.close();
+      streamSessionPromise?.then((session) => session.close()).catch(() => {});
+      streamSession = null;
+      streamSessionPromise = null;
+      pendingAudio = [];
+      streamingTranscriptTrace = [];
+      streamingSpeechFinalTexts = [];
+      streamingStopRequested = false;
+      chunks.length = 0;
     },
   };
 }

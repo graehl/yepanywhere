@@ -57,7 +57,10 @@ speech-appropriate compressed audio with `MediaRecorder`, buffers until stop,
 then sends the complete utterance through YA's ordinary API transport so local,
 hosted, and relay clients share the same request path. Streaming transcription
 captures Web Audio samples, converts them to raw PCM16 little-endian at a
-backend-supported sample rate, and sends binary frames to `/api/speech/ws`.
+backend-supported sample rate, and sends binary frames to the direct
+`/api/speech/ws` route locally or to a dedicated secure relay `speech` channel
+remotely. The relayed channel is a second WebSocket/TCP stream for speech, not
+PCM multiplexed through the app/control relay socket.
 
 Backends should implement a common `SpeechBackend` contract:
 
@@ -147,6 +150,12 @@ Backends should implement a common `SpeechBackend` contract:
   accepts JSON control frames even when the unified Node WS path presents text
   frames as `Buffer`s. Streaming metadata includes the ordered transcript trace
   as one recognizer event per line.
+- Hosted/relay clients can stream to server STT through a dedicated secure
+  relay `speech` channel. The server registers that channel separately from the
+  app channel under the same relay username/install id, the browser opens a
+  second relayed WebSocket, resumes the same YA remote-access session on it,
+  sends speech controls as encrypted JSON, and sends PCM frames as encrypted
+  binary speech-audio frames.
 - Tests cover registry defaults, explicit backend advertisement, disabled
   voice input, `/api/version.voiceBackends`, HTTP batch transcription, and the
   dummy backend through the mounted WebSocket route.
@@ -164,9 +173,9 @@ client through `fetchJSON("/speech/transcribe", ...)`.
   `voiceInput` but `voiceBackends: []`, causing the UI to expose only
   browser-native recognition. Seeing device-native speech on mobile is
   therefore expected in that bare runtime.
-- The `/api/speech/ws` route is still a direct WebSocket endpoint for local
-  use and Grok streaming. It is not itself multiplexed through the secure
-  remote transport; the batch POST path remains the remote-compatible path.
+- `/api/speech/ws` remains the direct/local streaming endpoint. Relay streaming
+  uses the dedicated secure relay `speech` channel instead of trying to route a
+  raw browser WebSocket through the hosted app origin.
 - Previously selected server methods are reconciled against current
   `voiceBackends` before the mic button is used. If an explicit server backend
   disappears, the current resolver falls back to browser-native rather than
@@ -214,10 +223,7 @@ client through `fetchJSON("/speech/transcribe", ...)`.
 5. Add backend-specific streaming partials beyond Grok where the backend
    supports them. Deepgram is the next candidate; local Whisper needs chunking
    or VAD and should remain a follow-up.
-6. Decide whether future streaming audio should use the existing direct
-   `/api/speech/ws` endpoint only for local clients or gain an explicit secure
-   remote substream.
-7. Re-check current provider audio-input support before implementing
+6. Re-check current provider audio-input support before implementing
    audio-as-modality. Providers that accept audio should get the original
    audio content, while text-only providers keep the transcript-first path.
 

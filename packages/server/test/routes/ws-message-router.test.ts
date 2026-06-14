@@ -3,6 +3,7 @@ import { BinaryFormat } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   deriveTransportKey,
+  encryptBytesToBinaryEnvelope,
   encryptToBinaryEnvelopeWithCompression,
 } from "../../src/crypto/index.js";
 import {
@@ -24,6 +25,7 @@ function createDecodeDeps() {
     send: vi.fn(),
     uploadManager: {} as never,
     routeClientMessage: vi.fn(async () => undefined),
+    handleSpeechAudio: vi.fn(async () => undefined),
     handleBinaryUploadChunk: vi.fn(async () => undefined),
   };
 }
@@ -96,6 +98,33 @@ describe("WebSocket Message Router", () => {
       type: "ping",
       id: "p3",
     });
+  });
+
+  it("routes encrypted speech audio frames after SRP auth", async () => {
+    const connState = createConnectionState();
+    connState.authState = "authenticated";
+    connState.sessionKey = new Uint8Array(32).fill(3);
+    const ws = createMockWs();
+    const deps = createDecodeDeps();
+    const audio = new Uint8Array([1, 2, 3, 4]);
+    const envelope = encryptBytesToBinaryEnvelope(
+      audio,
+      BinaryFormat.SPEECH_AUDIO,
+      connState.sessionKey,
+    );
+
+    const parsed = await decodeFrameToParsedMessage(
+      ws,
+      envelope,
+      { isBinary: true },
+      connState,
+      true,
+      deps,
+    );
+
+    expect(parsed).toBeNull();
+    expect(deps.handleSpeechAudio).toHaveBeenCalledWith(audio);
+    expect(deps.routeClientMessage).not.toHaveBeenCalled();
   });
 
   it("rejects replayed encrypted binary payload sequence", async () => {

@@ -428,6 +428,8 @@ export type {
   RelayUploadProgress,
   RelayUploadComplete,
   RelayUploadError,
+  RelaySpeechControl,
+  RelaySpeechEvent,
   RemoteClientMessage,
   YepMessage,
   RelayMessage,
@@ -538,12 +540,16 @@ export {
 
 // Relay server routing protocol (for relay server <-> yepanywhere/phone)
 export type {
+  RelayChannel,
+  RelayNonDefaultChannel,
   RelayServerCompatibilityMetadata,
   RelayServerRegister,
+  RelayServerChannelRegister,
   RelayServerRegistered,
   RelayServerRejectedReason,
   RelayServerRejected,
   RelayClientConnect,
+  RelayClientChannelConnect,
   RelayClientConnected,
   RelayClientErrorReason,
   RelayClientError,
@@ -555,10 +561,14 @@ export type {
 } from "./relay-protocol.js";
 
 export {
+  DEFAULT_RELAY_CHANNEL,
+  SPEECH_RELAY_CHANNEL,
   isRelayServerRegister,
+  isRelayServerChannelRegister,
   isRelayServerRegistered,
   isRelayServerRejected,
   isRelayClientConnect,
+  isRelayClientChannelConnect,
   isRelayClientConnected,
   isRelayClientError,
   USERNAME_REGEX,

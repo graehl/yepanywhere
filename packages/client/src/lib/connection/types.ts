@@ -170,6 +170,17 @@ export interface SessionSubscriptionOptions {
   wantsLiveDeltas?: boolean;
 }
 
+export interface ConnectionSpeechSocket {
+  readonly readyState: number;
+  readonly bufferedAmount: number;
+  onopen: (() => void) | null;
+  onmessage: ((event: { data: unknown }) => void) | null;
+  onerror: ((event?: unknown) => void) | null;
+  onclose: (() => void) | null;
+  send(data: string | ArrayBuffer | Uint8Array | ArrayBufferView): void;
+  close(): void;
+}
+
 /**
  * Options for file upload.
  */
@@ -306,4 +317,11 @@ export interface Connection {
    * Optional - only WebSocket-based connections support this.
    */
   onDeviceMessage?(handler: (msg: DeviceServerMessage) => void): () => void;
+
+  /**
+   * Open a dedicated WebSocket-shaped speech transport.
+   * Optional - relay SecureConnection implements this with a separate secure
+   * relay channel.
+   */
+  openSpeechSocket?(): Promise<ConnectionSpeechSocket>;
 }

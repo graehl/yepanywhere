@@ -1,4 +1,5 @@
 import { fetchJSON } from "../../api/client";
+import type { ConnectionSpeechSocket } from "../connection/types";
 import {
   appendSpeechTranscript,
   computeSpeechDelta,
@@ -60,6 +61,8 @@ interface SpeechWsMessage {
   speechFinal?: boolean;
   words?: SpeechWordTimestamp[];
 }
+
+type SpeechStreamingSocket = WebSocket | ConnectionSpeechSocket;
 
 const STREAM_SAMPLE_RATE = 16_000;
 const STREAM_CHUNK_MS = 100;
@@ -406,7 +409,7 @@ export class YaServerProvider implements SpeechProvider {
   private warmStream: MediaStream | null = null;
   private warmStreamRequest: Promise<MediaStream> | null = null;
   private prewarmRequest: Promise<void> | null = null;
-  private ws: WebSocket | null = null;
+  private ws: SpeechStreamingSocket | null = null;
   private audioContext: AudioContext | null = null;
   private audioSource: MediaStreamAudioSourceNode | null = null;
   private processor: ScriptProcessorNode | null = null;
@@ -508,6 +511,15 @@ export class YaServerProvider implements SpeechProvider {
     return this.options.serverStreaming
       ? streamingMicConstraints(this.options.micDeviceId)
       : batchMicConstraints(this.options.micDeviceId);
+  }
+
+  private async openStreamingSocket(): Promise<SpeechStreamingSocket> {
+    if (this.options.openRelayedSpeechSocket) {
+      return this.options.openRelayedSpeechSocket();
+    }
+    const ws = new WebSocket(speechWsUrl(this.basePath));
+    ws.binaryType = "arraybuffer";
+    return ws;
   }
 
   prewarm(): void {
@@ -645,50 +657,28 @@ export class YaServerProvider implements SpeechProvider {
       if (this.audioContext === audioContext) this.audioContext = null;
     };
 
-    // Open the socket in parallel with mic acquisition so it is usually ready
-    // by the time the first audio frame is captured.
-    const ws = new WebSocket(speechWsUrl(this.basePath));
-    ws.binaryType = "arraybuffer";
-    this.ws = ws;
-    ws.onerror = () => {
-      this.handleStreamingMessage(
-        JSON.stringify({
-          type: "error",
-          message: "Speech streaming connection failed",
-        }),
-      );
-    };
-    ws.onmessage = (event) => {
-      this.handleStreamingMessage(event.data);
-    };
-    ws.onclose = () => {
-      if (
-        !this.disposed &&
-        !this.streamingFinalReceived &&
-        this.state.status === "receiving"
-      ) {
-        const message = "Speech streaming connection closed before final text";
-        this.setState({
-          status: "error",
-          isListening: false,
-          interimTranscript: "",
-          error: message,
-        });
-        this.options.onError?.(message);
-        this.options.onEnd?.();
-      }
+    // Open the socket in parallel with mic acquisition and graph setup. Relay
+    // mode pairs and resumes a second secure channel here; the audio graph
+    // must not wait for that handshake, or the first speech frames are lost.
+    const socketPromise = this.openStreamingSocket();
+    const closePendingSocket = (): void => {
+      void socketPromise.then((socket) => socket.close()).catch(() => {});
     };
 
     mark("getUserMedia call");
-    const stream = await this.getMicStream(this.getCaptureConstraints());
-    // `this.ws !== ws` means the socket already errored during acquisition and
-    // its handler tore us down; do not resurrect a dead session.
-    if (this.disposed || token !== this.startToken || this.ws !== ws) {
+    let stream: MediaStream;
+    try {
+      stream = await this.getMicStream(this.getCaptureConstraints());
+    } catch (err) {
+      closePendingSocket();
+      throw err;
+    }
+    if (this.disposed || token !== this.startToken) {
       if (stream !== this.warmStream && this.hasLiveTracks(stream)) {
         this.stopStreamTracks(stream);
       }
       abandonContext();
-      ws.close();
+      closePendingSocket();
       return;
     }
     mark("getUserMedia ready");
@@ -708,11 +698,13 @@ export class YaServerProvider implements SpeechProvider {
     // capturing at once and buffer PCM frames until the socket handshake
     // completes. Waiting for the socket/resume here is what dropped the first
     // seconds of speech.
+    let ws: SpeechStreamingSocket | null = null;
     let socketReady = false;
     const pendingFrames: Pcm16Frame[] = [];
     const sentFrames: Pcm16Frame[] = [];
     let pcmChunker: Pcm16Chunker;
     const releaseTransmittedFrames = (): void => {
+      if (!ws) return;
       if (ws.bufferedAmount !== 0) return;
       while (sentFrames.length > 0) {
         const frame = sentFrames.pop();
@@ -720,12 +712,16 @@ export class YaServerProvider implements SpeechProvider {
       }
     };
     const sendPcmFrameNow = (frame: Pcm16Frame): void => {
+      if (!ws) {
+        pendingFrames.push(frame);
+        return;
+      }
       releaseTransmittedFrames();
       ws.send(pcm16FramePayload(frame));
       sentFrames.push(frame);
     };
     const sendPcmFrame = (frame: Pcm16Frame): void => {
-      if (socketReady && ws.readyState === WebSocket.OPEN) {
+      if (socketReady && ws?.readyState === WebSocket.OPEN) {
         sendPcmFrameNow(frame);
       } else {
         pendingFrames.push(frame);
@@ -777,6 +773,7 @@ export class YaServerProvider implements SpeechProvider {
     mark("graph built");
 
     const sendStartAndFlush = (): void => {
+      if (!ws) return;
       if (this.disposed || token !== this.startToken) {
         ws.close();
         return;
@@ -811,6 +808,47 @@ export class YaServerProvider implements SpeechProvider {
       }
       pendingFrames.length = 0;
     };
+
+    try {
+      ws = await socketPromise;
+    } catch (err) {
+      this.cleanupStreamingMedia();
+      throw err;
+    }
+    if (this.disposed || token !== this.startToken) {
+      ws.close();
+      return;
+    }
+    this.ws = ws;
+    ws.onerror = () => {
+      this.handleStreamingMessage(
+        JSON.stringify({
+          type: "error",
+          message: "Speech streaming connection failed",
+        }),
+      );
+    };
+    ws.onmessage = (event: MessageEvent | { data: unknown }) => {
+      this.handleStreamingMessage(event.data);
+    };
+    ws.onclose = () => {
+      if (
+        !this.disposed &&
+        !this.streamingFinalReceived &&
+        this.state.status === "receiving"
+      ) {
+        const message = "Speech streaming connection closed before final text";
+        this.setState({
+          status: "error",
+          isListening: false,
+          interimTranscript: "",
+          error: message,
+        });
+        this.options.onError?.(message);
+        this.options.onEnd?.();
+      }
+    };
+
     if (ws.readyState === WebSocket.OPEN) {
       sendStartAndFlush();
     } else {

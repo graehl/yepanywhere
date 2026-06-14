@@ -14,6 +14,7 @@ import type {
   BinaryFormatValue,
   OriginMetadata,
   RelayRequest,
+  RelaySpeechEvent,
   RelaySubscribe,
   RelayUnsubscribe,
   RelayUploadChunk,
@@ -47,6 +48,8 @@ import type {
   BrowserProfileService,
   ConnectedBrowsersService,
 } from "../services/index.js";
+import type { ServerSettingsService } from "../services/ServerSettingsService.js";
+import type { SpeechBackendRegistry } from "../services/voice/registry.js";
 import {
   createActivitySubscription,
   createSessionSubscription,
@@ -58,6 +61,11 @@ import {
   type WsConnectionPolicy,
   isPolicySrpRequired,
 } from "./ws-auth-policy.js";
+import {
+  type SpeechWebSocketSession,
+  createSpeechWebSocketSession,
+  type SpeechWsData,
+} from "./speech.js";
 import {
   decodeFrameToParsedMessage,
   routeClientMessageSafely,
@@ -205,6 +213,12 @@ export interface RelayHandlerDeps {
   focusedSessionWatchManager?: FocusedSessionWatchManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
   deviceBridgeService?: DeviceBridgeService;
+  /** Speech backend registry for relayed streaming STT (optional) */
+  speechBackendRegistry?: SpeechBackendRegistry;
+  /** Server data dir for relayed speech audio retention (optional) */
+  dataDir?: string;
+  /** Server settings service for relayed speech retention settings (optional) */
+  serverSettingsService?: ServerSettingsService;
 }
 
 /**
@@ -923,6 +937,8 @@ export interface HandleMessageOptions {
    * Required for raw ws connections where all data arrives as Buffers.
    */
   isBinary?: boolean;
+  /** Per-connection relayed speech session holder. */
+  speechSessionRef?: { current: SpeechWebSocketSession | null };
 }
 
 /**
@@ -950,6 +966,50 @@ export async function handleMessage(
     remoteSessionService,
   } = deps;
   const srpRequiredPolicy = isPolicySrpRequired(connState.connectionPolicy);
+  const getSpeechSession = (): SpeechWebSocketSession | null => {
+    if (!options.speechSessionRef) {
+      send({
+        type: "speech_event",
+        message: {
+          type: "error",
+          message: "Speech relay is unavailable on this connection",
+        },
+      });
+      return null;
+    }
+
+    if (!deps.speechBackendRegistry) {
+      send({
+        type: "speech_event",
+        message: {
+          type: "error",
+          message: "Speech relay is not configured",
+        },
+      });
+      return null;
+    }
+
+    if (!options.speechSessionRef.current) {
+      options.speechSessionRef.current = createSpeechWebSocketSession(
+        {
+          speechBackendRegistry: deps.speechBackendRegistry,
+          dataDir: deps.dataDir,
+          serverSettingsService: deps.serverSettingsService,
+        },
+        (message) =>
+          send({
+            type: "speech_event",
+            message: message as RelaySpeechEvent["message"],
+          }),
+      );
+      send({
+        type: "speech_event",
+        message: { type: "ready" },
+      });
+    }
+
+    return options.speechSessionRef.current;
+  };
 
   // Debug: log incoming data type and preview
   // Check Buffer BEFORE Uint8Array since Buffer extends Uint8Array
@@ -1003,6 +1063,11 @@ export async function handleMessage(
       onUploadEnd: async (uploadEndMsg) =>
         handleUploadEnd(uploads, uploadEndMsg, send, uploadManager),
       onPing: async (pingMsg) => send({ type: "pong", id: pingMsg.id }),
+      onSpeechControl: async (speechMsg) => {
+        const session = getSpeechSession();
+        if (!session) return;
+        session.handleMessage(JSON.stringify(speechMsg.message));
+      },
       onDeviceMessage: deps.deviceBridgeService
         ? (() => {
             const bridge = deps.deviceBridgeService;
@@ -1039,6 +1104,11 @@ export async function handleMessage(
       send,
       uploadManager,
       routeClientMessage,
+      handleSpeechAudio: async (payload) => {
+        const session = getSpeechSession();
+        if (!session) return;
+        session.handleMessage(Buffer.from(payload) as SpeechWsData);
+      },
       handleBinaryUploadChunk,
     },
   );

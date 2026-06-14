@@ -12,6 +12,8 @@ import type {
   BrowserProfileService,
   ConnectedBrowsersService,
 } from "../services/index.js";
+import type { ServerSettingsService } from "../services/ServerSettingsService.js";
+import type { SpeechBackendRegistry } from "../services/voice/registry.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { UploadManager } from "../uploads/manager.js";
 import type { EventBus, FocusedSessionWatchManager } from "../watcher/index.js";
@@ -60,6 +62,12 @@ export interface WsRelayDeps {
   focusedSessionWatchManager?: FocusedSessionWatchManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
   deviceBridgeService?: DeviceBridgeService;
+  /** Speech backend registry for relayed streaming STT (optional) */
+  speechBackendRegistry?: SpeechBackendRegistry;
+  /** Server data dir for relayed speech audio retention (optional) */
+  dataDir?: string;
+  /** Server settings service for relayed speech retention settings (optional) */
+  serverSettingsService?: ServerSettingsService;
 }
 
 /**
@@ -89,6 +97,12 @@ export interface AcceptRelayConnectionDeps {
   focusedSessionWatchManager?: FocusedSessionWatchManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
   deviceBridgeService?: DeviceBridgeService;
+  /** Speech backend registry for relayed streaming STT (optional) */
+  speechBackendRegistry?: SpeechBackendRegistry;
+  /** Server data dir for relayed speech audio retention (optional) */
+  dataDir?: string;
+  /** Server settings service for relayed speech retention settings (optional) */
+  serverSettingsService?: ServerSettingsService;
 }
 
 /**
@@ -194,6 +208,9 @@ export function createWsRelayRoutes(
     browserProfileService,
     focusedSessionWatchManager,
     deviceBridgeService,
+    speechBackendRegistry,
+    dataDir,
+    serverSettingsService,
   } = deps;
 
   // Build handler dependencies
@@ -209,6 +226,9 @@ export function createWsRelayRoutes(
     browserProfileService,
     focusedSessionWatchManager,
     deviceBridgeService,
+    speechBackendRegistry,
+    dataDir,
+    serverSettingsService,
   };
 
   // Return the WebSocket handler with origin validation
@@ -231,6 +251,8 @@ export function createWsRelayRoutes(
     const uploads = new Map<string, RelayUploadState>();
     // Track active emulator streaming sessions for this connection
     const deviceSessions = new Set<string>();
+    const speechSessionRef: Parameters<typeof handleMessage>[7]["speechSessionRef"] =
+      { current: null };
     // Message queue to serialize async message handling
     let messageQueue: Promise<void> = Promise.resolve();
     // Connection state for SRP authentication
@@ -312,7 +334,7 @@ export function createWsRelayRoutes(
             send,
             evt.data,
             handlerDeps,
-            {},
+            { speechSessionRef },
             deviceSessions,
           ).catch((err) => {
             console.error("[WS Relay] Unexpected error:", err);
@@ -331,6 +353,8 @@ export function createWsRelayRoutes(
 
         // Clean up emulator streaming sessions
         cleanupDeviceSessions(deviceSessions, deviceBridgeService);
+        speechSessionRef.current?.close();
+        speechSessionRef.current = null;
 
         // Clean up all subscriptions
         cleanupSubscriptions(subscriptions);
@@ -375,6 +399,9 @@ export function createAcceptRelayConnection(
     browserProfileService,
     focusedSessionWatchManager,
     deviceBridgeService,
+    speechBackendRegistry,
+    dataDir,
+    serverSettingsService,
   } = deps;
 
   // Build handler dependencies
@@ -390,6 +417,9 @@ export function createAcceptRelayConnection(
     browserProfileService,
     focusedSessionWatchManager,
     deviceBridgeService,
+    speechBackendRegistry,
+    dataDir,
+    serverSettingsService,
   };
 
   // Return the accept relay connection handler
@@ -406,6 +436,8 @@ export function createAcceptRelayConnection(
     const uploads = new Map<string, RelayUploadState>();
     // Track active emulator streaming sessions for this connection
     const deviceSessions = new Set<string>();
+    const speechSessionRef: Parameters<typeof handleMessage>[7]["speechSessionRef"] =
+      { current: null };
     // Message queue to serialize async message handling
     let messageQueue: Promise<void> = Promise.resolve();
 
@@ -429,7 +461,7 @@ export function createAcceptRelayConnection(
           send,
           data,
           handlerDeps,
-          { isBinary },
+          { isBinary, speechSessionRef },
           deviceSessions,
         ).catch((err) => {
           console.error("[WS Relay] Unexpected error:", err);
@@ -457,6 +489,8 @@ export function createAcceptRelayConnection(
 
       // Clean up emulator streaming sessions
       cleanupDeviceSessions(deviceSessions, deviceBridgeService);
+      speechSessionRef.current?.close();
+      speechSessionRef.current = null;
 
       cleanupSubscriptions(subscriptions);
       console.log("[WS Relay] Relay connection closed");
@@ -478,7 +512,7 @@ export function createAcceptRelayConnection(
         send,
         firstMessage,
         handlerDeps,
-        { isBinary: firstMessageIsBinary },
+        { isBinary: firstMessageIsBinary, speechSessionRef },
         deviceSessions,
       ).catch((err) => {
         console.error("[WS Relay] Error processing first message:", err);

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SPEECH_RELAY_CHANNEL } from "@yep-anywhere/shared";
 
 // Create the mock class and instances array in hoisted scope
 // Using a simple callback-based event emitter to avoid import issues
@@ -153,6 +154,26 @@ describe("RelayClientService", () => {
         resumeProtocolVersion: 2,
         renderProtocolVersion: 1,
         capabilities: ["git-status", "deviceBridge"],
+      });
+    });
+
+    it("registers non-default relay channels with channel message type", async () => {
+      service.start({
+        relayUrl: "wss://relay.example.com/ws",
+        username: "testuser",
+        installId: "install-123",
+        channel: SPEECH_RELAY_CHANNEL,
+        onRelayConnection: mockOnRelayConnection,
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+
+      const ws = MockWebSocketInstances[0];
+      expect(JSON.parse(ws.sentMessages[0])).toEqual({
+        type: "server_register_channel",
+        channel: "speech",
+        username: "testuser",
+        installId: "install-123",
       });
     });
 

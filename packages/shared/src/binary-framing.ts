@@ -14,7 +14,8 @@
  *   0x01 = UTF-8 JSON string
  *   0x02 = binary upload chunk (future - Phase 2)
  *   0x03 = gzip-compressed JSON (future - Phase 3)
- *   0x04-0xFF = reserved
+ *   0x04 = speech audio chunk
+ *   0x05-0xFF = reserved
  */
 
 /** Format byte values for binary WebSocket frames */
@@ -25,6 +26,8 @@ export const BinaryFormat = {
   BINARY_UPLOAD: 0x02,
   /** Gzip-compressed JSON (Phase 3) */
   COMPRESSED_JSON: 0x03,
+  /** Speech audio chunk for dedicated relayed STT streams */
+  SPEECH_AUDIO: 0x04,
 } as const;
 
 export type BinaryFormatValue =
@@ -84,7 +87,8 @@ export function decodeBinaryFrame(data: ArrayBuffer | Uint8Array): {
   if (
     format !== BinaryFormat.JSON &&
     format !== BinaryFormat.BINARY_UPLOAD &&
-    format !== BinaryFormat.COMPRESSED_JSON
+    format !== BinaryFormat.COMPRESSED_JSON &&
+    format !== BinaryFormat.SPEECH_AUDIO
   ) {
     throw new BinaryFrameError(
       `Unknown format byte: 0x${format.toString(16).padStart(2, "0")}`,
@@ -322,7 +326,8 @@ export function extractFormatAndPayload(decrypted: Uint8Array): {
   if (
     format !== BinaryFormat.JSON &&
     format !== BinaryFormat.BINARY_UPLOAD &&
-    format !== BinaryFormat.COMPRESSED_JSON
+    format !== BinaryFormat.COMPRESSED_JSON &&
+    format !== BinaryFormat.SPEECH_AUDIO
   ) {
     throw new BinaryEnvelopeError(
       `Unknown format byte: 0x${format.toString(16).padStart(2, "0")}`,

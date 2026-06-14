@@ -11,7 +11,11 @@
  */
 
 import {
+  DEFAULT_RELAY_CHANNEL,
+  SPEECH_RELAY_CHANNEL,
+  type RelayChannel,
   type RelayServerRegister,
+  type RelayServerChannelRegister,
   type RelayServerRejected,
   isRelayServerRegistered,
   isRelayServerRejected,
@@ -25,6 +29,8 @@ export interface RelayClientConfig {
   username: string;
   /** Installation ID for ownership verification */
   installId: string;
+  /** Relay channel. Omit for the default app channel. */
+  channel?: RelayChannel;
   /** Optional app version for relay observability. */
   appVersion?: string;
   /** Optional session resume protocol version for relay observability. */
@@ -235,15 +241,28 @@ export class RelayClientService {
     this.updateState({ status: "registering" });
 
     // Send registration message
-    const register: RelayServerRegister = {
-      type: "server_register",
-      username: this.config.username,
-      installId: this.config.installId,
-      appVersion: this.config.appVersion,
-      resumeProtocolVersion: this.config.resumeProtocolVersion,
-      renderProtocolVersion: this.config.renderProtocolVersion,
-      capabilities: this.config.capabilities,
-    };
+    const channel = this.config.channel ?? DEFAULT_RELAY_CHANNEL;
+    const register =
+      channel === SPEECH_RELAY_CHANNEL
+        ? ({
+            type: "server_register_channel",
+            channel,
+            username: this.config.username,
+            installId: this.config.installId,
+            appVersion: this.config.appVersion,
+            resumeProtocolVersion: this.config.resumeProtocolVersion,
+            renderProtocolVersion: this.config.renderProtocolVersion,
+            capabilities: this.config.capabilities,
+          } satisfies RelayServerChannelRegister)
+        : ({
+            type: "server_register",
+            username: this.config.username,
+            installId: this.config.installId,
+            appVersion: this.config.appVersion,
+            resumeProtocolVersion: this.config.resumeProtocolVersion,
+            renderProtocolVersion: this.config.renderProtocolVersion,
+            capabilities: this.config.capabilities,
+          } satisfies RelayServerRegister);
     ws.send(JSON.stringify(register));
   }
 
@@ -271,7 +290,7 @@ export class RelayClientService {
     // Handle relay protocol responses
     if (isRelayServerRegistered(parsed)) {
       console.log(
-        `[RelayClient] Registered with relay as: ${this.config?.username}`,
+        `[RelayClient] Registered with relay as: ${this.config?.username} (${this.config?.channel ?? DEFAULT_RELAY_CHANNEL})`,
       );
       // Transition from connecting to waiting
       this.connectingWs = null;
@@ -330,7 +349,7 @@ export class RelayClientService {
 
     const preview = firstMessage.toString("utf-8").slice(0, 100);
     console.log(
-      `[RelayClient] Connection claimed by phone client, firstMessage: Buffer(${firstMessage.length}), isBinary: ${isBinary}, preview: ${preview}`,
+      `[RelayClient] Connection claimed by phone client (${this.config.channel ?? DEFAULT_RELAY_CHANNEL}), firstMessage: Buffer(${firstMessage.length}), isBinary: ${isBinary}, preview: ${preview}`,
     );
 
     // Stop keepalive for this connection (it's being handed off)

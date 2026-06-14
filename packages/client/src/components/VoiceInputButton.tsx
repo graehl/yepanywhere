@@ -13,6 +13,7 @@ import {
   SPEECH_STATUS_LABELS,
   useSpeechRecognition,
 } from "../hooks/useSpeechRecognition";
+import { useConnection } from "../hooks/useConnection";
 import { useVersion } from "../hooks/useVersion";
 import { useViewportWidth } from "../hooks/useViewportWidth";
 import { useI18n } from "../i18n";
@@ -94,6 +95,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     grokSpeechAudioSettings: storedGrokSpeechAudioSettings,
   } = useModelSettings();
   const { version: versionInfo } = useVersion();
+  const connection = useConnection();
   const basePath = useRemoteBasePath();
   const { keepMicWarm, micDeviceId } = useSpeechCaptureSettings();
   const serverVoiceEnabled =
@@ -120,18 +122,15 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   const grokPcmUplink =
     speechMethod !== "ya-grok" ||
     grokSpeechAudioSettings.uplinkMode === "pcm16";
-  // The streaming WebSocket (/api/speech/ws) is a direct/local endpoint and is
-  // not multiplexed through the secure relay transport (see
-  // topics/pluggable-speech-recognition.md). Over relay (non-empty basePath)
-  // the socket cannot reach the server, so streaming is unavailable and the
-  // provider must fall back to the remote-compatible batch POST path. A
-  // non-empty basePath is exactly relay mode; direct LAN/Tailscale/localhost is
-  // "".
   const relayTransport = basePath !== "";
+  const openRelayedSpeechSocket =
+    relayTransport && connection.openSpeechSocket
+      ? connection.openSpeechSocket.bind(connection)
+      : undefined;
   const serverStreaming =
-    !relayTransport &&
     speechMethod !== "browser-native" &&
     grokPcmUplink &&
+    (!relayTransport || openRelayedSpeechSocket !== undefined) &&
     versionInfo?.voiceBackendCapabilities?.[speechMethod]?.streaming === true;
   const viewportWidth = useViewportWidth();
 
@@ -170,6 +169,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     smartTurn: serverStreaming ? smartTurn : undefined,
     keepMicWarm,
     micDeviceId,
+    openRelayedSpeechSocket,
     onResult: handleResult,
     onInterimResult: handleInterim,
   });

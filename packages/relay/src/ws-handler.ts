@@ -1,9 +1,13 @@
 import {
+  DEFAULT_RELAY_CHANNEL,
+  type RelayChannel,
   type RelayClientConnected,
   type RelayClientError,
   type RelayServerRegistered,
   type RelayServerRejected,
+  isRelayClientChannelConnect,
   isRelayClientConnect,
+  isRelayServerChannelRegister,
   isRelayServerRegister,
 } from "@yep-anywhere/shared";
 import type { Logger } from "pino";
@@ -16,6 +20,8 @@ import type { RelayTelemetryRecorder } from "./telemetry.js";
 interface ConnectionState {
   /** Username this connection is associated with (after registration) */
   username?: string;
+  /** Relay channel this connection is associated with. */
+  channel?: RelayChannel;
   /** Whether this is a server connection (vs client) */
   isServer?: boolean;
   /** Whether this connection has been paired */
@@ -172,7 +178,10 @@ export function createWsHandler(
       }
 
       // Handle server registration
-      if (isRelayServerRegister(msg)) {
+      if (isRelayServerRegister(msg) || isRelayServerChannelRegister(msg)) {
+        const channel = isRelayServerChannelRegister(msg)
+          ? msg.channel
+          : DEFAULT_RELAY_CHANNEL;
         const result = connectionManager.registerServer(
           ws,
           msg.username,
@@ -183,10 +192,12 @@ export function createWsHandler(
             renderProtocolVersion: msg.renderProtocolVersion,
             capabilities: msg.capabilities,
           },
+          channel,
         );
 
         if (result === "registered") {
           state.username = msg.username;
+          state.channel = channel;
           state.isServer = true;
           hooks.onProtocolAccepted?.(ws);
           const response: RelayServerRegistered = { type: "server_registered" };
@@ -208,6 +219,7 @@ export function createWsHandler(
           logger.info(
             {
               username: msg.username,
+              channel,
               appVersion: msg.appVersion,
               resumeProtocolVersion: msg.resumeProtocolVersion,
               renderProtocolVersion: msg.renderProtocolVersion,
@@ -232,11 +244,19 @@ export function createWsHandler(
       }
 
       // Handle client connection
-      if (isRelayClientConnect(msg)) {
-        const result = connectionManager.connectClient(ws, msg.username);
+      if (isRelayClientConnect(msg) || isRelayClientChannelConnect(msg)) {
+        const channel = isRelayClientChannelConnect(msg)
+          ? msg.channel
+          : DEFAULT_RELAY_CHANNEL;
+        const result = connectionManager.connectClientChannel(
+          ws,
+          msg.username,
+          channel,
+        );
 
         if (result.status === "connected") {
           state.username = msg.username;
+          state.channel = channel;
           state.isServer = false;
           state.paired = true;
           hooks.onProtocolAccepted?.(ws);
@@ -244,6 +264,7 @@ export function createWsHandler(
           // Also mark the server as paired
           const serverState = getState(result.serverWs);
           serverState.paired = true;
+          serverState.channel = channel;
 
           // Stop ping interval on server (paired connections don't need keepalive from relay)
           stopPingInterval(serverState);
@@ -263,7 +284,7 @@ export function createWsHandler(
               : undefined,
           });
 
-          logger.info({ username: msg.username }, "Pair connected");
+          logger.info({ username: msg.username, channel }, "Pair connected");
         } else {
           const response: RelayClientError = {
             type: "client_error",
@@ -276,7 +297,7 @@ export function createWsHandler(
             reason: result.status,
           });
           logger.info(
-            { username: msg.username, reason: result.status },
+            { username: msg.username, channel, reason: result.status },
             "Client connection failed",
           );
           // Close connection after error

@@ -1,17 +1,17 @@
 # Streaming speech capture (client PCM pipeline)
 
 > YA's server-streaming speech path treats browser microphone capture as a
-> stateful device pipeline: direct transport only, PCM frames from the first
-> real audio callback, and explicit opt-in for warm mic or future AudioWorklet
-> modes.
+> stateful device pipeline: PCM frames from the first real audio callback,
+> direct `/api/speech/ws` locally or a dedicated secure relay speech channel
+> remotely, and explicit opt-in for warm mic or future AudioWorklet modes.
 
 Topic: streaming-speech-capture
 
 See also: [pluggable-speech-recognition.md](pluggable-speech-recognition.md)
 (server-side backend registry, batch transcription, Smart Turn recipe). This
 doc covers the **client** capture pipeline for server-mediated streaming STT -
-the path from microphone to PCM16 frames over `/api/speech/ws` - and the
-contracts that kept biting it.
+the path from microphone to PCM16 frames over `/api/speech/ws` or the relayed
+speech channel - and the contracts that kept biting it.
 
 Primary code: `packages/client/src/lib/speechProviders/YaServerProvider.ts`
 (`doStartStreaming`), `packages/client/src/components/VoiceInputButton.tsx`,
@@ -37,12 +37,15 @@ Primary code: `packages/client/src/lib/speechProviders/YaServerProvider.ts`
 
 ## Hard contracts (each cost a debugging cycle)
 
-1. **Transport.** `/api/speech/ws` is direct-only; it is **not** multiplexed
-   through the secure relay. Over relay (`useRemoteBasePath()` non-empty) the
-   socket cannot reach the server, so streaming must be disabled and the client
-   falls back to the remote-compatible batch POST path. `VoiceInputButton`
-   gates `serverStreaming` on `!relayTransport`. Symptom when violated: a phone
-   on the hosted client shows "yellow then nothing".
+1. **Transport.** Direct/local clients use `/api/speech/ws`. Hosted/relay
+   clients use a **second secure relay WebSocket** registered on the `speech`
+   channel for the same relay username/install id. Do not tunnel PCM frames
+   through the existing app/control relay socket: speech gets its own TCP/WebSocket
+   stream so app traffic and audio traffic do not head-of-line block each other.
+   The speech channel reuses the same YA remote-access authentication boundary:
+   the relay enforces username ownership with the same install id, and the
+   browser resumes the same end-to-end SRP-backed session over the new socket.
+   It is not a new bearer secret.
 
 2. **Capture from mic-on, no dead window.** Build the audio graph the instant
    `getUserMedia` resolves and **buffer PCM frames until the socket handshake
@@ -135,12 +138,37 @@ The cold-open cannot be eliminated for the *first* use without prewarming
 before the click (mic indicator before intent), which is exactly why warm-mic
 is an explicit option rather than default behavior.
 
-WebSocket policy: create a fresh `/api/speech/ws` per dictation on click,
-parallel with `getUserMedia`, and close it on final/error/stop so close remains
-a clean utterance boundary. If future `[YaSTT]` timing shows `ws open` is a
-material latency source, the correct optimization is a short-freshness
-speculative pre-open that is dropped when too old, not reuse of an arbitrarily
-idle STT socket.
+WebSocket policy: create a fresh speech socket per dictation on click, parallel
+with `getUserMedia`, and close it on final/error/stop so close remains a clean
+utterance boundary. Direct/local mode opens `/api/speech/ws`; relay mode opens
+the dedicated `speech` relay channel and resumes the secure YA session there.
+If future `[YaSTT]` timing shows `ws open` is a material latency source, the
+correct optimization is a short-freshness speculative pre-open that is dropped
+when too old, not reuse of an arbitrarily idle STT socket.
+
+## Transport reliability
+
+Both direct and relay streaming ride WebSocket over TCP/TLS. TCP gives YA an
+ordered, reliable byte stream: under packet loss the browser/server see delayed
+frames or a close/error, not silent holes. WebSocket does not add packet-loss
+aware redundant-send semantics, and YA should not add app-level duplicate PCM
+frames to fight TCP; that cannot recover latency properties TCP has already
+lost and would complicate the encrypted stream semantics.
+
+In direct mode the path is browser -> YA server speech WebSocket -> backend STT
+WebSocket. In relay mode the browser opens browser -> relay and server -> relay
+WebSockets for the `speech` channel; the relay forwards opaque encrypted
+frames between those two ordered streams, preserving frame order per channel.
+The relay can observe usernames, channel names, timing, and ciphertext sizes,
+but not speech audio or control contents after the YA SRP transport is
+established. The server then forwards ordered PCM frames to the selected STT
+backend or fails the speech session.
+
+The encrypted JSON control path has per-connection sequence checks. Raw binary
+PCM and upload frames are individually authenticated encrypted envelopes and
+rely on TCP/WebSocket ordering rather than an extra YA sequence number. That is
+intentional for now: duplicate/redundant audio is not a supported recovery
+facility.
 
 ## Mobile: "turns yellow, never red" (open, unresolved)
 
@@ -151,22 +179,17 @@ state. Per contract #3, `listening` is gated on the first real
 fires** - the indicator gate is doing its honest job; the fault is upstream in
 capture, not in the button. Best guesses, roughly in order:
 
-1. **Streaming is being attempted on mobile and `ScriptProcessorNode` never
-   fires there.** If the hosted client's `currentRelayUsername` is empty (so
-   `useRemoteBasePath()` returns `""`), `relayTransport` is false and
-   `serverStreaming` stays true - the PCM streaming path runs on mobile even
-   though it should fall back to batch (contract #1). On mobile browsers (iOS
-   Safari especially) `ScriptProcessorNode.onaudioprocess` is unreliable and/or
-   the `AudioContext` stays `suspended` because the in-gesture `resume()` is
-   `await`-deferred past the user-activation window - either way no first frame,
-   so it sticks on yellow. The 3.5s audio-flow watchdog should then surface an
-   error; if only persistent yellow is seen, the watchdog isn't reaching the
-   mobile UI (or is being cleared) - worth checking.
-2. **Batch path also stalls.** If relay *is* detected and batch is used,
-   `getUserMedia({audio:true})` or `MediaRecorder` may hang/reject on mobile;
-   batch only sets `listening` after `recorder.start()`, so a hang likewise
-   leaves it on "starting"/yellow. Note batch uses the browser-default
-   EC/NS/AGC, unlike the streaming path's all-off constraints.
+1. **Streaming capture runs but `ScriptProcessorNode` never fires.** On mobile
+   browsers (iOS Safari especially) `ScriptProcessorNode.onaudioprocess` is
+   unreliable and/or the `AudioContext` stays `suspended` despite the in-gesture
+   `resume()` call. Either way no first frame arrives, so the mic stays yellow.
+   The 3.5s audio-flow watchdog should then surface an error; if only
+   persistent yellow is seen, the watchdog isn't reaching the mobile UI (or is
+   being cleared) - worth checking.
+2. **Device open itself stalls.** `getUserMedia()` may hang/reject on mobile;
+   the streaming path only reaches graph setup after a live `MediaStream`.
+   Batch mode can still be selected by using browser-compressed Grok audio, but
+   it has different browser-default processing and no streaming Smart Turn.
 3. **AudioWorklet mode is the likely real fix.** The deprecated
    `ScriptProcessorNode` is exactly the component that is flaky on mobile;
    moving capture to an `AudioWorklet` (the planned opt-in mode) is the
@@ -179,13 +202,14 @@ Next diagnostic step (not yet done): enable **Remote Log Collection**
 - `graph built` present but no `first audio frame` -> ScriptProcessor /
   suspended-AudioContext on mobile (guess 1/3).
 - no `getUserMedia ready` -> the device open itself hangs on mobile.
-- also confirm whether the transport resolved to relay (should be batch) or
-  direct/streaming - that decides guess 1 vs 2.
+- also confirm whether the transport resolved to direct `/api/speech/ws` or the
+  dedicated relayed speech channel; both should still reach the same client
+  capture marks.
 
 ## Implementation status (keep current)
 
-- **Done:** transport-aware streaming/batch selection and transport-aware
-  streaming-only controls (contract #1); capture from mic-on with handshake
+- **Done:** direct `/api/speech/ws` streaming and dedicated relayed speech
+  channel selection (contract #1); capture from mic-on with handshake
   buffering (#2); first-frame-gated `listening` + watchdog (#3); EC/NS/AGC off
   + `channelCount: 1` (#4); resampler at-least-1-sample span (#5); `onError`/timeout
   salvage + request-id guard (#6); browser-local warm-mic option with

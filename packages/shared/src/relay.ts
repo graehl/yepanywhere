@@ -127,6 +127,28 @@ export interface ServerPong {
 }
 
 // ============================================================================
+// Speech stream channel
+// ============================================================================
+
+export interface RelaySpeechControl {
+  type: "speech_control";
+  message: unknown;
+}
+
+export interface RelaySpeechEvent {
+  type: "speech_event";
+  message: {
+    type?: "ready" | "interim" | "final" | "error";
+    text?: string;
+    message?: string;
+    transcriptionId?: string;
+    isFinal?: boolean;
+    speechFinal?: boolean;
+    words?: Array<Record<string, unknown>>;
+  };
+}
+
+// ============================================================================
 // Client Capabilities (Phase 3 - Compression negotiation)
 // ============================================================================
 
@@ -239,6 +261,7 @@ export type RemoteClientMessage =
   | RelayUploadStart
   | RelayUploadChunk
   | RelayUploadEnd
+  | RelaySpeechControl
   | ClientCapabilities
   | ClientPing
   // Device bridge signaling
@@ -254,6 +277,7 @@ export type YepMessage =
   | RelayUploadProgress
   | RelayUploadComplete
   | RelayUploadError
+  | RelaySpeechEvent
   | ServerPong
   // Device bridge signaling
   | DeviceWebRTCOffer

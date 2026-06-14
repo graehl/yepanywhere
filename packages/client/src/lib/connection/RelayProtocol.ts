@@ -4,6 +4,7 @@ import type {
   RelayEvent,
   RelayRequest,
   RelayResponse,
+  RelaySpeechEvent,
   RelaySubscribe,
   RelayUnsubscribe,
   RelayUploadComplete,
@@ -42,6 +43,7 @@ export interface RelayTransport {
 }
 
 export type EmulatorMessageHandler = (msg: DeviceServerMessage) => void;
+export type SpeechEventHandler = (msg: RelaySpeechEvent["message"]) => void;
 
 export interface RelayProtocolOptions {
   debugEnabled?: () => boolean;
@@ -138,6 +140,8 @@ export class RelayProtocol {
   private recentlyClosed = new Set<string>();
   /** Registered handlers for emulator signaling messages */
   private emulatorHandlers = new Set<EmulatorMessageHandler>();
+  /** Registered handlers for relayed speech stream messages */
+  private speechHandlers = new Set<SpeechEventHandler>();
 
   private transport: RelayTransport;
   private options: RelayProtocolOptions;
@@ -194,6 +198,9 @@ export class RelayProtocol {
       case "pong":
         this.options.onPong?.(msg.id);
         break;
+      case "speech_event":
+        this.handleSpeechEvent(msg);
+        break;
       // Emulator signaling messages (server → client push)
       case "device_webrtc_offer":
       case "device_ice_candidate_event":
@@ -215,6 +222,12 @@ export class RelayProtocol {
     }
   }
 
+  private handleSpeechEvent(msg: RelaySpeechEvent): void {
+    for (const handler of this.speechHandlers) {
+      handler(msg.message);
+    }
+  }
+
   /**
    * Register a handler for emulator signaling messages.
    * Returns an unsubscribe function.
@@ -223,6 +236,13 @@ export class RelayProtocol {
     this.emulatorHandlers.add(handler);
     return () => {
       this.emulatorHandlers.delete(handler);
+    };
+  }
+
+  onSpeechEvent(handler: SpeechEventHandler): () => void {
+    this.speechHandlers.add(handler);
+    return () => {
+      this.speechHandlers.delete(handler);
     };
   }
 

@@ -2,10 +2,7 @@ import type { SessionLivenessSnapshot } from "@yep-anywhere/shared";
 import type { RenderItem } from "../types/renderItems";
 
 export type SessionActivityOwner = "self" | "external" | "none";
-export type SessionActivityProcessState =
-  | "idle"
-  | "in-turn"
-  | "waiting-input";
+export type SessionActivityProcessState = "idle" | "in-turn" | "waiting-input";
 
 interface SessionActivityUiInput {
   owner: SessionActivityOwner;
@@ -19,6 +16,8 @@ interface SessionActivityUiInput {
 export interface SessionActivityUiState {
   hasPendingToolCalls: boolean;
   hasPendingToolCallsInLatestTurn: boolean;
+  /** Tip-most pending tool_use in the latest turn (id + tool name), if any. */
+  pendingToolCallInLatestTurn: { id: string; toolName: string } | null;
   latestTurnSettled: boolean;
   canStopOwnedProcess: boolean;
   shouldDeferMessages: boolean;
@@ -80,6 +79,18 @@ export function getSessionActivityUiState({
   const hasPendingToolCallsInLatestTurn = latestTurnItems.some(
     (item) => item.type === "tool_call" && item.status === "pending",
   );
+  // The dangling tool call the "waiting elsewhere" banner is about: the
+  // tip-most pending tool_use in the latest turn. Used to name the tool and to
+  // re-arm a per-tool dismissal when a *different* call goes pending.
+  let pendingToolCallInLatestTurn: { id: string; toolName: string } | null =
+    null;
+  for (let index = latestTurnItems.length - 1; index >= 0; index -= 1) {
+    const item = latestTurnItems[index];
+    if (item?.type === "tool_call" && item.status === "pending") {
+      pendingToolCallInLatestTurn = { id: item.id, toolName: item.toolName };
+      break;
+    }
+  }
   const latestTurnSettled = isTerminalAssistantItem(
     latestSubstantiveItem(latestTurnItems),
   );
@@ -104,6 +115,7 @@ export function getSessionActivityUiState({
   return {
     hasPendingToolCalls,
     hasPendingToolCallsInLatestTurn,
+    pendingToolCallInLatestTurn,
     latestTurnSettled,
     canStopOwnedProcess,
     shouldDeferMessages: latestTurnMayStillBeActive,

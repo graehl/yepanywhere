@@ -142,4 +142,30 @@ describe("getSessionActivityUiState", () => {
     expect(state.canStopOwnedProcess).toBe(false);
     expect(state.showProcessingIndicator).toBe(false);
   });
+
+  it("exposes the latest-turn pending tool call for the waiting-elsewhere banner", () => {
+    const state = getSessionActivityUiState({
+      owner: "none",
+      processState: "idle",
+      items: [user("u1"), tool("t9", "pending")],
+    });
+
+    expect(state.pendingToolCallInLatestTurn).toEqual({
+      id: "t9",
+      toolName: "Bash",
+    });
+  });
+
+  it("ignores a pending tool from an earlier turn", () => {
+    const state = getSessionActivityUiState({
+      owner: "none",
+      processState: "idle",
+      items: [user("u1"), tool("t1", "pending"), user("u2"), text("a2")],
+    });
+
+    // The all-items flag still sees it, but the banner-facing latest-turn
+    // accessor must not, so a settled new turn does not re-trigger the warning.
+    expect(state.hasPendingToolCalls).toBe(true);
+    expect(state.pendingToolCallInLatestTurn).toBeNull();
+  });
 });

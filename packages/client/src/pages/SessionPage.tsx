@@ -24,6 +24,7 @@ import {
 } from "../components/BtwAsidePane";
 import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
 import { ExternalSessionWarning } from "../components/ExternalSessionWarning";
+import { PendingToolWarning } from "../components/PendingToolWarning";
 import {
   MessageInput,
   type MessageSubmissionMetadata,
@@ -198,7 +199,10 @@ function appendComposerTransferDraft(
   return `${current}\n\n${addition}`;
 }
 
-function appendSlashCommandDraft(currentDraft: string, command: string): string {
+function appendSlashCommandDraft(
+  currentDraft: string,
+  command: string,
+): string {
   const normalizedCommand = command.startsWith("/") ? command : `/${command}`;
   const current = currentDraft.trimEnd();
   if (/^\/[^\s/]*$/.test(current)) {
@@ -974,7 +978,6 @@ function SessionPageContent({
       status.owner,
     ],
   );
-  const hasPendingRenderedToolCalls = sessionActivityUi.hasPendingToolCalls;
   const canStopOwnedProcess = sessionActivityUi.canStopOwnedProcess;
   const shouldDeferMessages = sessionActivityUi.shouldDeferMessages;
   const primaryComposerAction =
@@ -1298,8 +1301,8 @@ function SessionPageContent({
   const [publicShareStatus, setPublicShareStatus] =
     useState<PublicSessionShareSessionStatusResponse | null>(null);
   const showPublicShareControls = publicShareGlobalStatus?.canCreate ?? false;
-  const [pendingElsewhereDismissed, setPendingElsewhereDismissed] =
-    useState(false);
+  const [pendingElsewhereDismissedToolId, setPendingElsewhereDismissedToolId] =
+    useState<string | null>(null);
 
   // Model switch modal state
   const [showModelSwitchModal, setShowModelSwitchModal] = useState(false);
@@ -3157,8 +3160,14 @@ function SessionPageContent({
   // Detect if session has pending tool calls without results
   // This can happen when the session is unowned but was active in another process (VS Code, CLI)
   // that is waiting for user input (tool approval, question answer)
+  const pendingToolCall = sessionActivityUi.pendingToolCallInLatestTurn;
   const hasPendingToolCalls =
-    status.owner === "none" && hasPendingRenderedToolCalls;
+    status.owner === "none" && pendingToolCall != null;
+  // Dismissal is keyed to the specific pending tool_use, so a *different* call
+  // going pending later re-arms the banner instead of staying muted all session.
+  const pendingElsewhereDismissed =
+    pendingToolCall != null &&
+    pendingElsewhereDismissedToolId === pendingToolCall.id;
   const pendingElsewhereDismissKey = useMemo(
     () => `${PENDING_ELSEWHERE_DISMISS_KEY_PREFIX}${actualSessionId}`,
     [actualSessionId],
@@ -3188,20 +3197,22 @@ function SessionPageContent({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setPendingElsewhereDismissed(
-      window.localStorage.getItem(pendingElsewhereDismissKey) === "1",
+    setPendingElsewhereDismissedToolId(
+      window.localStorage.getItem(pendingElsewhereDismissKey),
     );
   }, [pendingElsewhereDismissKey]);
 
   const handleDismissPendingElsewhereWarning = useCallback(() => {
-    setPendingElsewhereDismissed(true);
+    if (!pendingToolCall) return;
+    const dismissedId = pendingToolCall.id;
+    setPendingElsewhereDismissedToolId(dismissedId);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(pendingElsewhereDismissKey, "1");
+      window.localStorage.setItem(pendingElsewhereDismissKey, dismissedId);
     }
-  }, [pendingElsewhereDismissKey]);
+  }, [pendingElsewhereDismissKey, pendingToolCall]);
 
   const handleRestorePendingElsewhereWarning = useCallback(() => {
-    setPendingElsewhereDismissed(false);
+    setPendingElsewhereDismissedToolId(null);
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(pendingElsewhereDismissKey);
     }
@@ -3857,53 +3868,14 @@ function SessionPageContent({
 
       <ExternalSessionWarning active={status.owner === "external"} />
 
-      {hasPendingToolCalls && !pendingElsewhereDismissed && (
-        <div
-          className="external-session-warning pending-tool-warning"
-          role="status"
-        >
-          <div className="pending-tool-warning-copy">
-            <svg
-              className="pending-tool-warning-icon"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 8v4" />
-              <path d="M12 16h.01" />
-            </svg>
-            <span>{t("sessionPendingElsewhereWarning")}</span>
-          </div>
-          <button
-            type="button"
-            className="pending-tool-warning-close"
-            onClick={handleDismissPendingElsewhereWarning}
-            aria-label={t("sessionPendingElsewhereDismiss")}
-            title={t("sessionPendingElsewhereDismiss")}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
-          </button>
-        </div>
+      {hasPendingToolCalls && pendingToolCall && !pendingElsewhereDismissed && (
+        <PendingToolWarning
+          toolName={pendingToolCall.toolName}
+          pendingSinceMs={
+            sessionUpdatedAt ? Date.parse(sessionUpdatedAt) : null
+          }
+          onDismiss={handleDismissPendingElsewhereWarning}
+        />
       )}
 
       <div

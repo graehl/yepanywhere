@@ -408,7 +408,6 @@
   "sessionConfigureModel": "Configure model, thinking, and effort",
   "sessionExternalWarning": "External session active — enter messages at your own risk!",
   "sessionExternalWarningElapsed": "detected {duration} ago.",
-  "sessionExternalWarningWhy": "What's the risk?",
   "sessionExternalWarningExplainTitle": "Why \"at your own risk\"?",
   "sessionExternalRiskIntro": "Another program — often an agent you started elsewhere (Claude, Codex, or Gemini in a terminal, an IDE extension, or another tool) — is currently writing to this conversation's transcript. Each session is a single file on disk, and if you also send from here, two programs append to that one file at once without coordinating. The likely effects:",
   "sessionExternalRiskUnseenLead": "The other program may not see your messages.",

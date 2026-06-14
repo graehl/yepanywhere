@@ -10,8 +10,9 @@ import { Modal } from "./ui/Modal";
  * - Not dismissible. It fades on its own when the external activity stops.
  * - It must not fade while the window is unfocused/hidden, so a warning that
  *   appears and decays while the user is away is still seen on return.
- * - Shows how long ago the external activity was detected.
- * - A "why?" affordance reveals the likely ill effects on hover and in a modal.
+ * - Shows how long ago the external activity was detected; that elapsed
+ *   text is the affordance that reveals the likely ill effects on hover
+ *   (tooltip) and on click (modal).
  */
 export function ExternalSessionWarning({ active }: { active: boolean }) {
   const { t } = useI18n();
@@ -76,19 +77,16 @@ export function ExternalSessionWarning({ active }: { active: boolean }) {
       <span className="external-session-warning-text">
         {t("sessionExternalWarning")}
       </span>{" "}
-      <span className="external-session-warning-elapsed">
-        {t("sessionExternalWarningElapsed", {
-          duration: formatDuration(elapsedSeconds),
-        })}
-      </span>{" "}
       <span className="external-session-risk">
         <button
           type="button"
-          className="external-session-risk-link"
+          className="external-session-risk-link external-session-warning-elapsed"
           aria-haspopup="dialog"
           onClick={() => setShowModal(true)}
         >
-          {t("sessionExternalWarningWhy")}
+          {t("sessionExternalWarningElapsed", {
+            duration: formatDuration(elapsedSeconds),
+          })}
         </button>
         <div className="external-session-risk-tooltip" role="tooltip">
           <ExternalSessionRiskExplanation />

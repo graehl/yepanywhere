@@ -24,7 +24,7 @@ responsesapiClientMetadata?: { [key in string]?: string } | null,
  */
 additionalContext?: { [key in string]?: AdditionalContextEntry } | null,
 /**
- * Optional turn-scoped environments.
+ * Optional environments for this turn and subsequent turns.
  *
  * Omitted uses the thread sticky environments. Empty disables
  * environment access for this turn. Non-empty selects the first

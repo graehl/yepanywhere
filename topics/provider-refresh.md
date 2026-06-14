@@ -123,7 +123,21 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
-Current source refresh, 2026-06-09:
+Current source refresh, 2026-06-14:
+
+- Installed Codex is `codex-cli 0.139.0`; repo expected version is `0.139.0`.
+- `pnpm codex:protocol:check` failed only because generated
+  `v2/TurnStartParams.ts` changed a comment from turn-scoped environments to
+  environments that also apply to subsequent turns. Regenerating the checked-in
+  app-server subset produced no type-shape or runtime contract change.
+- No Codex provider code needed changing: YA already treats turn environment
+  overrides as sticky in the same way as the app-server comment now says, and
+  the provider currently does not send `environments` on ordinary user turns.
+
+Status: Codex 0.139 compatibility refresh complete in source; no new
+latest-Codex requirement was introduced.
+
+Previous source refresh, 2026-06-09:
 
 - Installed Codex is `codex-cli 0.138.0`; repo expected version is `0.138.0`.
 - `pnpm codex:protocol:check` is clean after regenerating the checked-in
@@ -144,8 +158,8 @@ Current source refresh, 2026-06-09:
 - Startup version mismatch wording now describes the package value as an
   advisory audited target, not a strict version requirement.
 
-Status: Codex 0.138 compatibility refresh complete in source; no new
-latest-Codex requirement was introduced.
+Status at the time: Codex 0.138 compatibility refresh complete in source; no
+new latest-Codex requirement was introduced.
 
 Previous read-only audit, 2026-06-05:
 
@@ -207,7 +221,24 @@ Difference detectors:
 - Model ids, effort levels, or context windows change enough to make fallback
   constants or model glyph rules misleading.
 
-Current source refresh, 2026-06-09:
+Current read-only/local audit, 2026-06-14:
+
+- Local `claude --version` reports `2.1.177 (Claude Code)`.
+- YA has no checked-in expected Claude CLI version gate analogous to Codex's
+  `expectedVersion`. The Claude provider resolves the installed executable,
+  checks `--version` for usability, and relies on SDK/live catalog probes for
+  model and command surfaces.
+- The 2.1.177 behavior YA currently depends on is already recorded in
+  [claude](claude.md) and [session-ownership](session-ownership.md): `--resume`
+  appends to the same transcript file, live processes do not re-read external
+  appends, concurrent writers fork the `parentUuid` chain, and later resume can
+  silently drop one branch. No provider source change is indicated by this
+  local version check.
+
+Status: Claude 2.1.177 awareness is documented; no source refresh needed from
+the local CLI version alone.
+
+Previous source refresh, 2026-06-09:
 
 - `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.158` to `0.3.170`,
   whose package metadata declares bundled Claude Code `2.1.170`.
@@ -241,9 +272,10 @@ Current source refresh, 2026-06-09:
   repo-root/stage-file control requests, and additional hook/settings schema
   growth. No current YA call site requires those methods for Fable exposure.
 
-Status: Claude Fable/model-metadata refresh complete in source. Older Claude
-Code executables can still use the existing model choices; selecting `fable`
-requires an upstream install/account that recognizes that alias.
+Status at the time: Claude Fable/model-metadata refresh complete in source.
+Older Claude Code executables can still use the existing model choices;
+selecting `fable` requires an upstream install/account that recognizes that
+alias.
 
 Previous read-only audit, 2026-06-05:
 

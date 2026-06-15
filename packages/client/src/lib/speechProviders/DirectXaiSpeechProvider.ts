@@ -6,6 +6,11 @@ import {
   type SpeechProviderSubscriber,
 } from "./SpeechProvider";
 import {
+  getSpeechMicStream,
+  isSharedSpeechMicStream,
+  stopSpeechStreamTracks,
+} from "./sharedMicCapture";
+import {
   getXaiSttCredential,
   type XaiSttCredential,
 } from "./xaiCredentials";
@@ -32,20 +37,6 @@ function preferredMimeType(): string {
     }
   }
   return "audio/webm";
-}
-
-function selectedMicDeviceConstraint(
-  micDeviceId: string | null | undefined,
-): Pick<MediaTrackConstraints, "deviceId"> {
-  return micDeviceId ? { deviceId: { exact: micDeviceId } } : {};
-}
-
-function batchMicConstraints(
-  micDeviceId: string | null | undefined,
-): MediaStreamConstraints {
-  return micDeviceId
-    ? { audio: selectedMicDeviceConstraint(micDeviceId) }
-    : { audio: true };
 }
 
 async function readErrorBody(response: Response): Promise<string> {
@@ -119,8 +110,6 @@ export class DirectXaiSpeechProvider implements SpeechProvider {
 
   private recorder: MediaRecorder | null = null;
   private stream: MediaStream | null = null;
-  private warmStream: MediaStream | null = null;
-  private warmStreamRequest: Promise<MediaStream> | null = null;
   private prewarmRequest: Promise<void> | null = null;
   private chunks: Blob[] = [];
   private mimeType = "audio/webm";
@@ -152,71 +141,18 @@ export class DirectXaiSpeechProvider implements SpeechProvider {
     for (const sub of this.subscribers) sub(this.state);
   }
 
-  private hasLiveTracks(stream: MediaStream | null): stream is MediaStream {
-    return stream?.getTracks().some((track) => track.readyState !== "ended") ===
-      true;
-  }
-
-  private stopStreamTracks(stream: MediaStream): void {
-    stream.getTracks().forEach((track) => {
-      track.stop();
-    });
-  }
-
   private releaseActiveStream(): void {
-    if (this.stream && this.stream !== this.warmStream) {
-      this.stopStreamTracks(this.stream);
+    if (this.stream && !isSharedSpeechMicStream(this.stream)) {
+      stopSpeechStreamTracks(this.stream);
     }
     this.stream = null;
   }
 
-  private releaseWarmStream(): void {
-    if (this.warmStream) {
-      this.stopStreamTracks(this.warmStream);
-      this.warmStream = null;
-    }
-    this.warmStreamRequest = null;
-  }
-
-  private getCaptureConstraints(): MediaStreamConstraints {
-    return batchMicConstraints(this.options.micDeviceId);
-  }
-
   private getMicStream(): Promise<MediaStream> {
-    const constraints = this.getCaptureConstraints();
-    if (
-      this.options.keepMicWarm === true &&
-      this.hasLiveTracks(this.warmStream)
-    ) {
-      return Promise.resolve(this.warmStream);
-    }
-    if (
-      this.options.keepMicWarm === true &&
-      this.warmStreamRequest !== null
-    ) {
-      return this.warmStreamRequest;
-    }
-
-    const request = navigator.mediaDevices.getUserMedia(constraints);
-    if (this.options.keepMicWarm !== true) {
-      return request;
-    }
-
-    this.warmStreamRequest = request;
-    return request
-      .then((stream) => {
-        if (!this.disposed && this.warmStreamRequest === request) {
-          this.warmStream = stream;
-        } else if (this.hasLiveTracks(stream)) {
-          this.stopStreamTracks(stream);
-        }
-        return stream;
-      })
-      .finally(() => {
-        if (this.warmStreamRequest === request) {
-          this.warmStreamRequest = null;
-        }
-      });
+    return getSpeechMicStream({
+      keepWarm: this.options.keepMicWarm === true,
+      micDeviceId: this.options.micDeviceId,
+    });
   }
 
   prewarm(): void {
@@ -274,8 +210,8 @@ export class DirectXaiSpeechProvider implements SpeechProvider {
     if (this.disposed || token !== this.startToken) return;
     const stream = await this.getMicStream();
     if (this.disposed || token !== this.startToken) {
-      if (stream !== this.warmStream && this.hasLiveTracks(stream)) {
-        this.stopStreamTracks(stream);
+      if (!isSharedSpeechMicStream(stream)) {
+        stopSpeechStreamTracks(stream);
       }
       return;
     }
@@ -390,7 +326,6 @@ export class DirectXaiSpeechProvider implements SpeechProvider {
     this.disposed = true;
     this.startToken += 1;
     this.cleanupMedia(false);
-    this.releaseWarmStream();
     this.setState({ ...INITIAL_SPEECH_STATE });
     this.subscribers.clear();
   }

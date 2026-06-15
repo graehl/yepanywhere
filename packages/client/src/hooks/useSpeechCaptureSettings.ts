@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
+import { releaseSharedSpeechMicStream } from "../lib/speechProviders/sharedMicCapture";
 
 const subscribers = new Set<() => void>();
 
@@ -30,16 +31,24 @@ export function setSpeechKeepMicWarmSetting(enabled: boolean): void {
       enabled ? "true" : "false",
     );
   }
+  if (!enabled) {
+    releaseSharedSpeechMicStream();
+  }
   for (const subscriber of subscribers) subscriber();
 }
 
 export function setSpeechMicDeviceIdSetting(deviceId: string | null): void {
+  const previousDeviceId = getSpeechMicDeviceIdSetting();
+  const nextDeviceId = deviceId && deviceId.length > 0 ? deviceId : null;
   if (canUseLocalStorage()) {
-    if (deviceId && deviceId.length > 0) {
-      globalThis.localStorage.setItem(UI_KEYS.speechMicDeviceId, deviceId);
+    if (nextDeviceId) {
+      globalThis.localStorage.setItem(UI_KEYS.speechMicDeviceId, nextDeviceId);
     } else {
       globalThis.localStorage.removeItem(UI_KEYS.speechMicDeviceId);
     }
+  }
+  if (previousDeviceId !== nextDeviceId) {
+    releaseSharedSpeechMicStream();
   }
   for (const subscriber of subscribers) subscriber();
 }

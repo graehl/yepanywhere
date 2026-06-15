@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { BrowserNativeProvider } from "../speechProviders/BrowserNativeProvider";
 import { DirectXaiStreamingSpeechProvider } from "../speechProviders/DirectXaiStreamingSpeechProvider";
 import { DirectXaiSpeechProvider } from "../speechProviders/DirectXaiSpeechProvider";
 import { YaServerProvider } from "../speechProviders/YaServerProvider";
+import { releaseSharedSpeechMicStream } from "../speechProviders/sharedMicCapture";
 import {
   DEFAULT_SPEECH_METHOD,
   XAI_DIRECT_BATCH_SPEECH_METHOD,
@@ -30,6 +32,7 @@ function deferred<T>(): {
 }
 
 afterEach(() => {
+  releaseSharedSpeechMicStream();
   localStorage.clear();
   vi.unstubAllGlobals();
 });
@@ -138,6 +141,105 @@ describe("speech provider method selection", () => {
     expect(resolveSpeechMethod("ya-deepgram", ["ya-grok"], true)).toBe(
       DEFAULT_SPEECH_METHOD,
     );
+  });
+});
+
+describe("browser-native speech provider", () => {
+  class FakeSpeechRecognition {
+    static instance: FakeSpeechRecognition | null = null;
+
+    continuous = false;
+    interimResults = false;
+    lang = "";
+    maxAlternatives = 1;
+    onstart: ((event: Event) => void) | null = null;
+    onend: ((event: Event) => void) | null = null;
+    onaudiostart: ((event: Event) => void) | null = null;
+    onaudioend: ((event: Event) => void) | null = null;
+    onsoundstart: ((event: Event) => void) | null = null;
+    onsoundend: ((event: Event) => void) | null = null;
+    onspeechstart: ((event: Event) => void) | null = null;
+    onspeechend: ((event: Event) => void) | null = null;
+    onerror: ((event: Event) => void) | null = null;
+    onresult: ((event: Event) => void) | null = null;
+
+    constructor() {
+      FakeSpeechRecognition.instance = this;
+    }
+
+    start() {
+      this.onstart?.(new Event("start"));
+    }
+
+    stop() {
+      this.onend?.(new Event("end"));
+    }
+
+    abort() {
+      this.onend?.(new Event("end"));
+    }
+  }
+
+  function installFakeSpeechRecognition(): typeof FakeSpeechRecognition {
+    FakeSpeechRecognition.instance = null;
+    Object.defineProperty(window, "webkitSpeechRecognition", {
+      configurable: true,
+      value: FakeSpeechRecognition,
+    });
+    return FakeSpeechRecognition;
+  }
+
+  it("keeps browser-native amber until Chrome reports audio capture", () => {
+    const Recognition = installFakeSpeechRecognition();
+    const provider = new BrowserNativeProvider();
+    const states: Array<{ status: string; isListening: boolean }> = [];
+    provider.subscribe((state) => states.push(state));
+
+    provider.start();
+
+    expect(provider.getState()).toMatchObject({
+      status: "starting",
+      isListening: false,
+    });
+
+    Recognition.instance?.onaudiostart?.(new Event("audiostart"));
+
+    expect(provider.getState()).toMatchObject({
+      status: "listening",
+      isListening: true,
+    });
+    expect(states.some((state) => state.status === "listening")).toBe(true);
+
+    provider.dispose();
+  });
+
+  it("treats browser-native results as capture evidence if audio-start is skipped", () => {
+    const Recognition = installFakeSpeechRecognition();
+    const onInterimResult = vi.fn();
+    const provider = new BrowserNativeProvider({ onInterimResult });
+
+    provider.start();
+    expect(provider.getState().isListening).toBe(false);
+
+    Recognition.instance?.onresult?.({
+      resultIndex: 0,
+      results: {
+        length: 1,
+        0: {
+          isFinal: false,
+          0: { transcript: "hello" },
+        },
+      },
+    } as unknown as Event);
+
+    expect(provider.getState()).toMatchObject({
+      status: "receiving",
+      isListening: true,
+      interimTranscript: "hello",
+    });
+    expect(onInterimResult).toHaveBeenCalledWith("hello");
+
+    provider.dispose();
   });
 });
 
@@ -257,7 +359,15 @@ describe("YA server speech provider", () => {
     await Promise.resolve();
 
     expect(getUserMedia).toHaveBeenCalledWith({
-      audio: { deviceId: { exact: "usb-mic" } },
+      audio: expect.objectContaining({
+        deviceId: { exact: "usb-mic" },
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 16_000 },
+        sampleSize: { ideal: 16 },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      }),
     });
 
     provider.dispose();
@@ -1063,7 +1173,7 @@ describe("YA server speech provider", () => {
     provider.dispose();
   });
 
-  it("keeps a warm streaming mic open across dictations until dispose", async () => {
+  it("keeps a warm streaming mic open across dictations and backend switches", async () => {
     let stopped = false;
     const stopTrack = vi.fn(() => {
       stopped = true;
@@ -1178,10 +1288,32 @@ describe("YA server speech provider", () => {
     expect(provider.getState().status).toBe("listening");
 
     provider.dispose();
+    expect(stopTrack).not.toHaveBeenCalled();
+
+    const replacement = new YaServerProvider("ya-deepgram", "", {
+      serverStreaming: true,
+      keepMicWarm: true,
+    });
+    replacement.start();
+    await Promise.resolve();
+    FakeWebSocket.instances[2]?.open();
+    for (
+      let i = 0;
+      i < 10 && replacement.getState().status !== "listening";
+      i += 1
+    ) {
+      await Promise.resolve();
+    }
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(replacement.getState().status).toBe("listening");
+
+    replacement.dispose();
+    expect(stopTrack).not.toHaveBeenCalled();
+    releaseSharedSpeechMicStream();
     expect(stopTrack).toHaveBeenCalledTimes(1);
   });
 
-  it("stops a pending pointer-near warm mic pre-open if disposed before it resolves", async () => {
+  it("keeps a pending pointer-near warm mic pre-open across provider disposal", async () => {
     const media = deferred<MediaStream>();
     const stopTrack = vi.fn();
     const fakeStream = {
@@ -1224,6 +1356,8 @@ describe("YA server speech provider", () => {
     await Promise.resolve();
     await Promise.resolve();
 
+    expect(stopTrack).not.toHaveBeenCalled();
+    releaseSharedSpeechMicStream();
     expect(stopTrack).toHaveBeenCalledTimes(1);
   });
 
@@ -1693,7 +1827,15 @@ describe("direct xAI speech provider", () => {
     await Promise.resolve();
 
     expect(getUserMedia).toHaveBeenCalledWith({
-      audio: { deviceId: { exact: "usb-mic" } },
+      audio: expect.objectContaining({
+        deviceId: { exact: "usb-mic" },
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 16_000 },
+        sampleSize: { ideal: 16 },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      }),
     });
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.x.ai/v1/stt",

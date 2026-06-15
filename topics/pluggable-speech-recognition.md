@@ -34,6 +34,14 @@ explicit credential/config material.
   native cannot: server-side keys, backend choice, project/session biasing,
   retry/buffering under YA's transport, or direct audio input to an
   audio-capable agent provider.
+- Speech readiness UI is event-driven. The mic must not turn red, show
+  recording bars, or display "Listening" from a fixed delay or from a weak
+  start-request acknowledgement. Use real capture/listening events from the
+  active path: first Web Audio processor frame for YA-controlled PCM capture,
+  browser Web Speech audio/sound/speech events for browser-native STT, and
+  backend/socket events only for backend readiness. A fixed delay or warm-up
+  margin may be proposed, but it requires explicit maintainer authorization
+  before implementation.
 - YA-server recognition keeps an audit trail by default. Captured speech audio
   is retained for eight weeks or 400 MB, whichever limit prunes it first, using
   a speech-appropriate compressed browser recording such as Opus/WebM. Each
@@ -167,6 +175,17 @@ Backends should implement a common `SpeechBackend` contract:
   `Sec-WebSocket-Protocol: xai-client-secret.*`. `xai-grok-direct-batch`
   records a complete `MediaRecorder` utterance and posts it directly to
   `POST /v1/stt`, so it emits final text only.
+- YA-controlled and direct xAI STT paths share one browser mic capture owner
+  when Keep Mic Warm is enabled. The shared stream is keyed by the selected mic
+  device, requests the same raw speech constraints for batch and streaming
+  paths (mono / 16 kHz / 16-bit ideals, echo cancellation, noise suppression,
+  and auto gain off), survives provider disposal during STT backend switches,
+  and is released when Keep Mic Warm is disabled or the selected mic changes.
+- Browser-native STT does not consume YA's shared mic stream: Chrome owns the
+  Web Speech capture path. Its UI treats `SpeechRecognition.onstart` only as a
+  start acknowledgement; red/listening state waits for Web Speech
+  audio/sound/speech start events or for a result event if Chrome skips the
+  earlier events.
 - Hosted/relay clients can stream to server STT through a dedicated secure
   relay `speech` channel. The server registers that channel separately from the
   app channel under the same relay username/install id, the browser opens a
@@ -224,6 +243,17 @@ client through `fetchJSON("/speech/transcribe", ...)`.
 - Direct Grok streaming has a browser WebSocket auth probe and focused client
   tests for the xAI socket adapter, but it still needs a live
   browser-plus-xAI smoke test with a real microphone or captured audio source.
+- Switching speech methods no longer intentionally tears down the warmed
+  YA-controlled mic stream. If Chrome still pays a later cold-open cost after a
+  backend switch, treat it as a browser/device behavior to measure, not a
+  provider-disposal consequence.
+- Live browser-native testing dropped the first second of "1 2 3 4..." after
+  Chrome had fired `SpeechRecognition.onstart`; YA therefore does not treat
+  `onstart` as a red/listening event. Browser-native remains a fallback whose
+  capture and first-word behavior are owned by Chrome, not YA. Grok PCM
+  streaming through YA appears reliable in live `ya.graehl.org` testing,
+  likely because YA buffers PCM frames while the socket/provider handshake
+  finishes.
 - Audio-as-modality forwarding to providers that natively accept audio is not
   implemented. All current YA-server backend code is transcript-first.
 

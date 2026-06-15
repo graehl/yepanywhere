@@ -14,6 +14,12 @@ import {
   type SpeechProviderSubscriber,
   type SpeechWordTimestamp,
 } from "./SpeechProvider";
+import {
+  getSpeechMicStream,
+  isSharedSpeechMicStream,
+  SPEECH_CAPTURE_SAMPLE_RATE,
+  stopSpeechStreamTracks,
+} from "./sharedMicCapture";
 
 function preferredMimeType(): string {
   const candidates = [
@@ -64,7 +70,7 @@ interface SpeechWsMessage {
 
 type SpeechStreamingSocket = WebSocket | ConnectionSpeechSocket;
 
-const STREAM_SAMPLE_RATE = 16_000;
+const STREAM_SAMPLE_RATE = SPEECH_CAPTURE_SAMPLE_RATE;
 const STREAM_CHUNK_MS = 100;
 const STREAM_CHUNK_SAMPLES = Math.round(
   (STREAM_SAMPLE_RATE * STREAM_CHUNK_MS) / 1000,
@@ -159,48 +165,6 @@ function speechWsUrl(basePath: string): string {
   const url = new URL(`${normalizedBase}/api/speech/ws`, window.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
-}
-
-function selectedMicDeviceConstraint(
-  micDeviceId: string | null | undefined,
-): Pick<MediaTrackConstraints, "deviceId"> {
-  return micDeviceId ? { deviceId: { exact: micDeviceId } } : {};
-}
-
-function streamingMicConstraints(
-  micDeviceId: string | null | undefined,
-): MediaStreamConstraints {
-  return {
-    audio: {
-      ...selectedMicDeviceConstraint(micDeviceId),
-      // Mono: a proper downmix of the capture device, which transcribes
-      // better than reading one channel of a stereo stream. (Dropping this to
-      // chase the cold-open latency hurt recognition quality, so keep it.)
-      channelCount: { ideal: 1 },
-      // xAI streaming STT recommends 16 kHz PCM16. These are ideals because
-      // browsers may not expose the mic at this exact rate/size; the
-      // AudioContext below requests 16 kHz and Web Audio resamples the track
-      // when the capture device runs at another rate.
-      sampleRate: { ideal: STREAM_SAMPLE_RATE },
-      sampleSize: { ideal: 16 },
-      // All call-oriented processing off: capture the raw mic. No audio is
-      // played, so echoCancellation has nothing to cancel; noiseSuppression
-      // and autoGainControl reshape the waveform (the source of garbled
-      // transcripts). Capture level is managed by selecting a good input
-      // device (the mic device picker), not by AGC normalization.
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-    },
-  };
-}
-
-function batchMicConstraints(
-  micDeviceId: string | null | undefined,
-): MediaStreamConstraints {
-  return micDeviceId
-    ? { audio: selectedMicDeviceConstraint(micDeviceId) }
-    : { audio: true };
 }
 
 function getWordText(word: SpeechWordTimestamp | undefined): string {
@@ -406,8 +370,6 @@ export class YaServerProvider implements SpeechProvider {
 
   private recorder: MediaRecorder | null = null;
   private stream: MediaStream | null = null;
-  private warmStream: MediaStream | null = null;
-  private warmStreamRequest: Promise<MediaStream> | null = null;
   private prewarmRequest: Promise<void> | null = null;
   private ws: SpeechStreamingSocket | null = null;
   private audioContext: AudioContext | null = null;
@@ -464,53 +426,11 @@ export class YaServerProvider implements SpeechProvider {
     for (const sub of this.subscribers) sub(this.state);
   }
 
-  private hasLiveTracks(stream: MediaStream | null): stream is MediaStream {
-    return stream?.getTracks().some((track) => track.readyState !== "ended") ===
-      true;
-  }
-
-  private getMicStream(
-    constraints: MediaStreamConstraints,
-  ): Promise<MediaStream> {
-    if (
-      this.options.keepMicWarm === true &&
-      this.hasLiveTracks(this.warmStream)
-    ) {
-      return Promise.resolve(this.warmStream);
-    }
-    if (
-      this.options.keepMicWarm === true &&
-      this.warmStreamRequest !== null
-    ) {
-      return this.warmStreamRequest;
-    }
-
-    const request = navigator.mediaDevices.getUserMedia(constraints);
-    if (this.options.keepMicWarm !== true) {
-      return request;
-    }
-
-    this.warmStreamRequest = request;
-    return request
-      .then((stream) => {
-        if (!this.disposed && this.warmStreamRequest === request) {
-          this.warmStream = stream;
-        } else if (this.hasLiveTracks(stream)) {
-          this.stopStreamTracks(stream);
-        }
-        return stream;
-      })
-      .finally(() => {
-        if (this.warmStreamRequest === request) {
-          this.warmStreamRequest = null;
-        }
-      });
-  }
-
-  private getCaptureConstraints(): MediaStreamConstraints {
-    return this.options.serverStreaming
-      ? streamingMicConstraints(this.options.micDeviceId)
-      : batchMicConstraints(this.options.micDeviceId);
+  private getMicStream(): Promise<MediaStream> {
+    return getSpeechMicStream({
+      keepWarm: this.options.keepMicWarm === true,
+      micDeviceId: this.options.micDeviceId,
+    });
   }
 
   private async openStreamingSocket(): Promise<SpeechStreamingSocket> {
@@ -539,14 +459,12 @@ export class YaServerProvider implements SpeechProvider {
       .query({ name: "microphone" as PermissionName })
       .then((status) => {
         if (status.state !== "granted" || this.disposed) return;
-        void this.getMicStream(this.getCaptureConstraints()).catch(
-          (err: unknown) => {
-            console.warn(
-              "[YaSTT] Warm microphone pre-open failed",
-              err instanceof Error ? err.message : String(err),
-            );
-          },
-        );
+        void this.getMicStream().catch((err: unknown) => {
+          console.warn(
+            "[YaSTT] Warm microphone pre-open failed",
+            err instanceof Error ? err.message : String(err),
+          );
+        });
       })
       .catch(() => undefined)
       .finally(() => {
@@ -584,10 +502,10 @@ export class YaServerProvider implements SpeechProvider {
   }
 
   private async doStartBatch(token: number): Promise<void> {
-    const stream = await this.getMicStream(this.getCaptureConstraints());
+    const stream = await this.getMicStream();
     if (this.disposed || token !== this.startToken) {
-      if (stream !== this.warmStream && this.hasLiveTracks(stream)) {
-        this.stopStreamTracks(stream);
+      if (!isSharedSpeechMicStream(stream)) {
+        stopSpeechStreamTracks(stream);
       }
       return;
     }
@@ -668,14 +586,14 @@ export class YaServerProvider implements SpeechProvider {
     mark("getUserMedia call");
     let stream: MediaStream;
     try {
-      stream = await this.getMicStream(this.getCaptureConstraints());
+      stream = await this.getMicStream();
     } catch (err) {
       closePendingSocket();
       throw err;
     }
     if (this.disposed || token !== this.startToken) {
-      if (stream !== this.warmStream && this.hasLiveTracks(stream)) {
-        this.stopStreamTracks(stream);
+      if (!isSharedSpeechMicStream(stream)) {
+        stopSpeechStreamTracks(stream);
       }
       abandonContext();
       closePendingSocket();
@@ -1173,25 +1091,11 @@ export class YaServerProvider implements SpeechProvider {
     }
   }
 
-  private stopStreamTracks(stream: MediaStream): void {
-    stream.getTracks().forEach((track) => {
-      track.stop();
-    });
-  }
-
   private releaseActiveStream(): void {
-    if (this.stream && this.stream !== this.warmStream) {
-      this.stopStreamTracks(this.stream);
+    if (this.stream && !isSharedSpeechMicStream(this.stream)) {
+      stopSpeechStreamTracks(this.stream);
     }
     this.stream = null;
-  }
-
-  private releaseWarmStream(): void {
-    if (this.warmStream) {
-      this.stopStreamTracks(this.warmStream);
-      this.warmStream = null;
-    }
-    this.warmStreamRequest = null;
   }
 
   private cleanupStreamingMedia(): void {
@@ -1228,7 +1132,6 @@ export class YaServerProvider implements SpeechProvider {
     this.disposed = true;
     this.startToken += 1;
     this.cleanupMedia(false);
-    this.releaseWarmStream();
     this.setState({ ...INITIAL_SPEECH_STATE });
     this.subscribers.clear();
   }

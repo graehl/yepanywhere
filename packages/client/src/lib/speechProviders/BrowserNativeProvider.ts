@@ -51,6 +51,12 @@ interface SpeechRecognition extends EventTarget {
   maxAlternatives: number;
   onstart: ((this: SpeechRecognition, ev: Event) => void) | null;
   onend: ((this: SpeechRecognition, ev: Event) => void) | null;
+  onaudiostart: ((this: SpeechRecognition, ev: Event) => void) | null;
+  onaudioend: ((this: SpeechRecognition, ev: Event) => void) | null;
+  onsoundstart: ((this: SpeechRecognition, ev: Event) => void) | null;
+  onsoundend: ((this: SpeechRecognition, ev: Event) => void) | null;
+  onspeechstart: ((this: SpeechRecognition, ev: Event) => void) | null;
+  onspeechend: ((this: SpeechRecognition, ev: Event) => void) | null;
   onerror:
     | ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => void)
     | null;
@@ -78,9 +84,6 @@ function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
 }
 
-/** How long after the last interim result to drop back from "receiving" to "listening". */
-const RECEIVING_LINGER_MS = 1500;
-
 /**
  * Browser-native provider using the Web Speech API.
  *
@@ -96,7 +99,6 @@ export class BrowserNativeProvider implements SpeechProvider {
   private readonly subscribers = new Set<SpeechProviderSubscriber>();
   private recognition: SpeechRecognition | null = null;
   private isStopping = false;
-  private receivingTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastFinalTranscript = "";
   private disposed = false;
 
@@ -137,7 +139,6 @@ export class BrowserNativeProvider implements SpeechProvider {
       this.recognition.abort();
       this.recognition = null;
     }
-    this.clearReceivingTimeout();
 
     this.isStopping = false;
     this.lastFinalTranscript = "";
@@ -160,18 +161,31 @@ export class BrowserNativeProvider implements SpeechProvider {
       (typeof navigator !== "undefined" ? navigator.language : "en-US");
 
     recognition.onstart = () => {
-      this.setState({ isListening: true, status: "listening" });
+      if (this.recognition !== recognition || this.isStopping) return;
+      if (!this.state.isListening) {
+        this.setState({ isListening: false, status: "starting" });
+      }
     };
+    const markAudioStarted = () => {
+      if (this.recognition !== recognition || this.isStopping) return;
+      this.markAudioStarted("listening");
+    };
+    recognition.onaudiostart = markAudioStarted;
+    recognition.onsoundstart = markAudioStarted;
+    recognition.onspeechstart = markAudioStarted;
+    const markSpeechEnded = () => {
+      if (this.recognition !== recognition || this.isStopping) return;
+      if (this.state.isListening) {
+        this.setState({ status: "listening" });
+      }
+    };
+    recognition.onsoundend = markSpeechEnded;
+    recognition.onspeechend = markSpeechEnded;
 
     recognition.onresult = (event) => {
-      if (this.isStopping) return;
+      if (this.recognition !== recognition || this.isStopping) return;
 
-      this.clearReceivingTimeout();
-      this.setState({ status: "receiving" });
-      this.receivingTimeout = setTimeout(() => {
-        this.setState({ status: "listening" });
-        this.receivingTimeout = null;
-      }, RECEIVING_LINGER_MS);
+      this.markAudioStarted("receiving");
 
       let interimText = "";
       let latestFinal = "";
@@ -212,6 +226,7 @@ export class BrowserNativeProvider implements SpeechProvider {
     };
 
     recognition.onerror = (event) => {
+      if (this.recognition !== recognition) return;
       if (event.error === "aborted") return;
 
       if (event.error === "no-speech") {
@@ -246,8 +261,6 @@ export class BrowserNativeProvider implements SpeechProvider {
     };
 
     recognition.onend = () => {
-      this.clearReceivingTimeout();
-
       if (!this.isStopping && this.recognition === recognition) {
         // Auto-restart after Chrome's ~60s idle timeout.
         this.setState({ status: "reconnecting", error: null });
@@ -285,7 +298,6 @@ export class BrowserNativeProvider implements SpeechProvider {
   stop(): void {
     if (this.disposed) return;
     this.isStopping = true;
-    this.clearReceivingTimeout();
     if (this.recognition) {
       this.recognition.stop();
       this.recognition = null;
@@ -302,7 +314,6 @@ export class BrowserNativeProvider implements SpeechProvider {
     if (this.disposed) return;
     this.disposed = true;
     this.isStopping = true;
-    this.clearReceivingTimeout();
     if (this.recognition) {
       this.recognition.abort();
       this.recognition = null;
@@ -310,11 +321,8 @@ export class BrowserNativeProvider implements SpeechProvider {
     this.subscribers.clear();
   }
 
-  private clearReceivingTimeout(): void {
-    if (this.receivingTimeout) {
-      clearTimeout(this.receivingTimeout);
-      this.receivingTimeout = null;
-    }
+  private markAudioStarted(status: "listening" | "receiving"): void {
+    this.setState({ isListening: true, status });
   }
 
   private setState(patch: Partial<SpeechProviderState>): void {

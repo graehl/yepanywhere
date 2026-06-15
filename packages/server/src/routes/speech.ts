@@ -21,6 +21,8 @@ import {
 
 const logger = getLogger();
 const DEFAULT_MIME_TYPE = "audio/webm;codecs=opus";
+const XAI_REALTIME_CLIENT_SECRET_URL =
+  "https://api.x.ai/v1/realtime/client_secrets";
 
 // biome-ignore lint/suspicious/noExplicitAny: third-party WS upgrade type
 type UpgradeWebSocketFn = (createEvents: (c: Context) => WSEvents) => any;
@@ -79,6 +81,12 @@ interface TranscribeBody {
   context?: unknown;
 }
 
+interface XaiClientSecretResponse {
+  value?: string;
+  client_secret?: string | { value?: string };
+  expires_at?: string;
+}
+
 interface SpeechSmartTurnStartOptions {
   enabled: boolean;
   threshold?: number;
@@ -87,6 +95,58 @@ interface SpeechSmartTurnStartOptions {
 
 function send(ws: WSContext, msg: SpeechServerMsg): void {
   ws.send(JSON.stringify(msg));
+}
+
+function parseXaiClientSecret(data: XaiClientSecretResponse): {
+  value: string;
+  expiresAt?: string;
+} | null {
+  const value =
+    typeof data.value === "string"
+      ? data.value
+      : typeof data.client_secret === "string"
+        ? data.client_secret
+        : data.client_secret?.value;
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return data.expires_at
+    ? { value: trimmed, expiresAt: data.expires_at }
+    : { value: trimmed };
+}
+
+async function createXaiClientSecret(apiKey: string): Promise<{
+  value: string;
+  expiresAt?: string;
+}> {
+  const response = await fetch(XAI_REALTIME_CLIENT_SECRET_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ expires_after: { seconds: 300 } }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `xAI client secret request failed (HTTP ${response.status}): ${text.slice(
+        0,
+        500,
+      )}`,
+    );
+  }
+  let data: XaiClientSecretResponse;
+  try {
+    data = JSON.parse(text) as XaiClientSecretResponse;
+  } catch {
+    throw new Error("xAI client secret request returned non-JSON");
+  }
+  const secret = parseXaiClientSecret(data);
+  if (!secret) {
+    throw new Error("xAI client secret response did not include a secret");
+  }
+  return secret;
 }
 
 type StreamingTranscriptTraceKind =
@@ -738,7 +798,17 @@ export function createSpeechWebSocketSession(
 export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
   const routes = new Hono();
 
-  routes.get("/xai-client-key", (c) => {
+  const rejectCredentialGet = (c: Context) => {
+    c.header("Allow", "POST");
+    return c.json(
+      { error: "Use POST for speech credential broker routes" },
+      405,
+    );
+  };
+
+  routes.get("/xai-client-key", rejectCredentialGet);
+
+  routes.post("/xai-client-key", (c) => {
     if (deps.shareXaiSttApiKeyWithClients !== true) {
       return c.json(
         { error: "Server xAI STT key borrowing is disabled" },
@@ -749,6 +819,24 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
       return c.json({ error: "Server xAI STT key is not configured" }, 404);
     }
     return c.json({ apiKey: deps.xaiSttApiKey });
+  });
+
+  routes.get("/xai-client-secret", rejectCredentialGet);
+
+  routes.post("/xai-client-secret", async (c) => {
+    if (!deps.xaiSttApiKey) {
+      return c.json({ error: "Server xAI STT key is not configured" }, 404);
+    }
+    try {
+      const secret = await createXaiClientSecret(deps.xaiSttApiKey);
+      return c.json({
+        clientSecret: secret.value,
+        ...(secret.expiresAt ? { expiresAt: secret.expiresAt } : {}),
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message }, 502);
+    }
   });
 
   routes.post("/transcribe", async (c) => {

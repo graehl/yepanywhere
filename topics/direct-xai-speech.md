@@ -25,10 +25,15 @@ replacement for YA-mediated speech in general:
   channel is not working end to end today. It should not block hosted Grok
   usability, but it remains valuable for phone-to-local-Whisper and other
   server-local recognizers.
-- **Credential disclosure is explicit.** A server-provided xAI STT key is a
-  client-borrowed key: authenticated private YA clients may receive and use it
-  over HTTPS/WSS. It is not secret from those clients. Public/shared views must
-  never receive it.
+- **Credential delegation is explicit.** A server-provided xAI STT credential
+  is a client-borrowed credential: authenticated private YA clients may receive
+  either a short-lived xAI client secret or, only with a stronger opt-in, the
+  long-lived STT key. Public/shared views must never receive either.
+- **Public shares spend no server STT credits.** Secret-link public viewers are
+  read-only and unauthenticated. They must not get server-mediated STT, relayed
+  speech channels, server-minted xAI client secrets, or borrowed long-lived xAI
+  keys. A public viewer using a browser-local personal xAI key would be outside
+  YA server credit delegation.
 - **Browser-local personal key is supported.** A client may configure its own
   xAI key in browser-local storage instead of borrowing the server key.
 - **Upstream default is no key exposure.** Sharing a server STT key with
@@ -38,7 +43,7 @@ replacement for YA-mediated speech in general:
 
 ## Current xAI API Facts
 
-As of 2026-06-14, xAI documents:
+As of 2026-06-15, xAI documents:
 
 - Batch STT at `POST https://api.x.ai/v1/stt`, using multipart form audio and
   `Authorization: Bearer <key>`.
@@ -48,15 +53,16 @@ As of 2026-06-14, xAI documents:
   `smart_turn_timeout=...`.
 - Streaming audio is raw binary frames, with `{"type":"audio.done"}` to flush.
   xAI recommends 16 kHz PCM and 100 ms chunks for streaming STT.
-- The streaming STT reference requires Bearer authentication in the WebSocket
+- The streaming STT reference shows Bearer authentication in the WebSocket
   handshake. Browsers cannot set arbitrary `Authorization` headers on
   `new WebSocket(...)`.
 - xAI documents browser WebSocket auth through `Sec-WebSocket-Protocol` for
-  ephemeral tokens on `/v1/realtime`; it does not clearly state that the same
-  mechanism works for `/v1/stt`.
+  client secrets minted by `/v1/realtime/client_secrets`. The STT docs still
+  describe backend proxying, but empirical probes on 2026-06-15 found the same
+  `xai-client-secret.*` subprotocol is accepted by `wss://api.x.ai/v1/stt`.
 - `/v1/realtime` is xAI's voice-agent API, not the STT API, and is priced
-  differently. Do not route YA dictation there to work around STT WebSocket
-  browser-auth limits.
+  differently. YA may call `/v1/realtime/client_secrets` only to mint a
+  browser-compatible secret; dictation audio must still stream to `/v1/stt`.
 
 Observed on 2026-06-14: unauthenticated `OPTIONS` preflight requests to
 `https://api.x.ai/v1/stt` from both `https://ya.graehl.org` and
@@ -64,6 +70,20 @@ Observed on 2026-06-14: unauthenticated `OPTIONS` preflight requests to
 and headers. That makes direct REST batch plausible in-browser. It does not
 solve WebSocket authentication, because browser WebSocket constructors still
 cannot set the required `Authorization` header.
+
+Observed on 2026-06-15:
+
+- Node `ws` reached `transcript.created` on `wss://api.x.ai/v1/stt` with
+  ordinary server-side `Authorization: Bearer ...`.
+- Node `ws` also reached `transcript.created` on the same STT endpoint with
+  the primary xAI key passed as `Sec-WebSocket-Protocol:
+  xai-client-secret.*`.
+- A short-lived client secret minted from
+  `POST https://api.x.ai/v1/realtime/client_secrets` likewise reached
+  `transcript.created` on `/v1/stt` via `xai-client-secret.*`.
+- Headless Chromium confirmed the actual browser constructor path: `new
+  WebSocket("wss://api.x.ai/v1/stt?sample_rate=16000&encoding=pcm&...",
+  ["xai-client-secret.<client-secret>"])` reached `transcript.created`.
 
 Sources:
 
@@ -80,15 +100,15 @@ The client chooses one effective xAI credential source:
 
 1. **Browser-local key.** Stored only in this browser profile. This is the most
    honest "client-owned key" path and needs no YA server key exposure.
-2. **Server-provided borrowed key.** The YA server returns its configured xAI
-   STT credential only to authenticated private clients and only when the
-   operator has explicitly enabled key sharing with
-   `YA_stt__SHARE_XAI_KEY_WITH_CLIENTS=1`. Public share routes and
-   unauthenticated views get no key material and should not show usable xAI
-   STT controls.
-3. **Ephemeral token, if STT supports it.** Preferred if xAI confirms
-   `/v1/stt` accepts short-lived client secrets through a browser-compatible
-   mechanism. YA would mint the token and never reveal the long-lived API key.
+2. **Server-minted client secret.** When the browser-local key is absent and
+   the YA server has `YA_stt__XAI_API_KEY`, `POST /api/speech/xai-client-secret`
+   mints a short-lived xAI client secret for authenticated private direct
+   streaming. The long-lived key stays on the YA server.
+3. **Server-provided borrowed key.** The YA server returns its configured xAI
+   STT key only to authenticated private clients and only when the operator has
+   explicitly enabled long-lived key sharing with
+   `YA_stt__SHARE_XAI_KEY_WITH_CLIENTS=1`. This path exists for direct batch
+   REST STT, where `fetch` needs `Authorization: Bearer ...`.
 
 Do not blur these in UI or logs. A server-provided key should be described as
 "borrowed from this YA server" and the UI should say that audio goes directly
@@ -113,33 +133,37 @@ speech UI contract.
 
 ## Implementation Plan
 
-Current implementation, 2026-06-14:
+Current implementation, 2026-06-15:
 
+- `xai-grok-direct-streaming` is a client speech method that captures Web
+  Audio, uses YA's existing PCM16 chunker discipline, and streams raw frames
+  directly to `wss://api.x.ai/v1/stt` using the `xai-client-secret.*`
+  WebSocket subprotocol.
 - `xai-grok-direct-batch` is a client speech method that records an utterance
   with `MediaRecorder`, posts multipart audio directly to
   `https://api.x.ai/v1/stt`, and emits final text only.
+- Direct xAI methods do not send audio through YA, so YA cannot retain the
+  captured audio artifact for later inspection. Do not compensate by storing
+  browser-local audio unless that is explicitly requested as a separate feature.
 - The browser-local xAI STT key lives in server-scoped local storage.
+- When the browser-local key is empty, direct streaming asks
+  `POST /api/speech/xai-client-secret` for a short-lived xAI client secret
+  minted by the YA server from `YA_stt__XAI_API_KEY`.
 - When the browser-local key is empty, the client asks
-  `/api/speech/xai-client-key` for the borrowed server key. The server returns
-  it only when `YA_stt__SHARE_XAI_KEY_WITH_CLIENTS=1` is set.
-- Direct batch is selectable in the STT backend menu and can be saved like any
-  other speech method; it is not yet an automatic no-choice hosted default.
-- No direct xAI streaming provider is shipped yet. The next streaming step is
-  still an auth spike against `wss://api.x.ai/v1/stt`, not `/v1/realtime`.
+  `POST /api/speech/xai-client-key` for the borrowed server key. The server
+  returns it only when `YA_stt__SHARE_XAI_KEY_WITH_CLIENTS=1` is set.
+- Direct streaming and direct batch are selectable in the STT backend menu and
+  can be saved like any other speech method; direct batch is explicitly labeled
+  non-streaming.
 
 1. **Direct batch first.** Ship a browser provider that records a complete
    utterance with `MediaRecorder` and posts it directly to `POST /v1/stt` with
    a browser-local key or an on-demand server-borrowed key. This is
    non-streaming but removes YA relay/server audio from the immediate hosted
    Grok path.
-2. **Browser-auth spike before direct streaming.** From a real browser, test:
-   - `POST /v1/stt` with a browser-set `Authorization` header and
-     `MediaRecorder` audio, including CORS behavior.
-   - `wss://api.x.ai/v1/stt` with the server key if xAI offers a
-     browser-compatible auth mechanism.
-   - `wss://api.x.ai/v1/stt` with an ephemeral token via subprotocol, even
-     though docs currently only advertise this for `/v1/realtime`.
-   The outcome chooses the first shippable direct mode.
+2. **Browser-auth spike before direct streaming.** Completed 2026-06-15:
+   `/v1/stt` accepts `xai-client-secret.*` in the browser WebSocket
+   subprotocol and reaches `transcript.created`.
 3. **Add an xAI credential broker endpoint.** A private authenticated YA route
    returns either an ephemeral token or, when explicitly enabled, the borrowed
    server STT key. It should also report whether public/share clients are
@@ -148,7 +172,7 @@ Current implementation, 2026-06-14:
    `YaServerProvider`, not inside it. It owns browser capture, xAI connection,
    interim/final event handling, Smart Turn handling, and clear stage-specific
    errors.
-5. **Then ship direct streaming.** Use the existing 16 kHz PCM16 chunker
+5. **Ship direct streaming.** Use the existing 16 kHz PCM16 chunker
    discipline: no per-audio-frame allocation, 100 ms frames, `audio.done` on
    stop, and first-audio-frame gated "listening" state.
 6. **Keep server-mediated paths selectable.** Existing `ya-grok` through YA
@@ -166,8 +190,11 @@ Acceptance for the immediate hosted relief path:
 
 - With a browser-local xAI key, hosted `ya.graehl.org` can transcribe a short
   utterance without YA receiving audio.
-- With server key sharing enabled, an authenticated private hosted client can
-  borrow the key or token and transcribe; public/share views cannot.
+- With server xAI STT configured, an authenticated private hosted client can
+  mint a short-lived client secret and stream directly; public/share views
+  cannot.
+- With server long-lived key sharing enabled, direct batch can borrow the key
+  and transcribe; public/share views cannot.
 - Batch mode visibly says non-streaming and produces final text or a visible
   xAI/CORS/auth error.
 - Streaming mode, when available, shows yellow immediately after click, red

@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DirectXaiStreamingSpeechProvider } from "../speechProviders/DirectXaiStreamingSpeechProvider";
 import { DirectXaiSpeechProvider } from "../speechProviders/DirectXaiSpeechProvider";
 import { YaServerProvider } from "../speechProviders/YaServerProvider";
 import {
   DEFAULT_SPEECH_METHOD,
   XAI_DIRECT_BATCH_SPEECH_METHOD,
+  XAI_DIRECT_STREAMING_SPEECH_METHOD,
+  canSpeechMethodStream,
+  getSpeechMethodCapabilities,
   getOrderedServerSpeechBackends,
   getPreferredSpeechMethod,
   getSpeechMethods,
@@ -47,6 +51,7 @@ describe("speech provider method selection", () => {
       getSpeechMethods(["ya-custom-stt"]).map((method) => method.id),
     ).toEqual([
       "ya-custom-stt",
+      XAI_DIRECT_STREAMING_SPEECH_METHOD,
       XAI_DIRECT_BATCH_SPEECH_METHOD,
       DEFAULT_SPEECH_METHOD,
     ]);
@@ -66,13 +71,48 @@ describe("speech provider method selection", () => {
         (method) => method.id === XAI_DIRECT_BATCH_SPEECH_METHOD,
       ),
     ).toMatchObject({
-      label: "Grok STT direct",
+      label: "Grok STT direct batch",
       serverRouted: false,
       clientSupported: true,
     });
     expect(
       resolveSpeechMethod(XAI_DIRECT_BATCH_SPEECH_METHOD, ["ya-grok"], true),
     ).toBe(XAI_DIRECT_BATCH_SPEECH_METHOD);
+  });
+
+  it("keeps the direct xAI streaming method as the primary direct choice", () => {
+    expect(
+      getSpeechMethods(["ya-grok"]).find(
+        (method) => method.id === XAI_DIRECT_STREAMING_SPEECH_METHOD,
+      ),
+    ).toMatchObject({
+      label: "Grok STT direct",
+      serverRouted: false,
+      clientSupported: true,
+    });
+    expect(
+      resolveSpeechMethod(
+        XAI_DIRECT_STREAMING_SPEECH_METHOD,
+        ["ya-grok"],
+        true,
+      ),
+    ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
+  });
+
+  it("gives direct xAI streaming local Smart Turn capability", () => {
+    expect(
+      getSpeechMethodCapabilities(XAI_DIRECT_STREAMING_SPEECH_METHOD, {}),
+    ).toEqual({
+      streaming: true,
+      smartTurn: true,
+    });
+    expect(
+      canSpeechMethodStream({
+        methodId: XAI_DIRECT_STREAMING_SPEECH_METHOD,
+        relayTransport: true,
+        serverCapabilities: {},
+      }),
+    ).toBe(true);
   });
 
   it("prefers Grok over Deepgram when no explicit user method is stored", () => {
@@ -1005,16 +1045,20 @@ describe("YA server speech provider", () => {
       ([payload]) => payload instanceof Int16Array,
     );
     expect(binaryCalls).toHaveLength(1);
-    expect(binaryCalls[0]?.[0]).toBeInstanceOf(Int16Array);
-    expect((binaryCalls[0]?.[0] as Int16Array).length).toBe(1600);
-    expect((binaryCalls[0]?.[0] as Int16Array).byteLength).toBe(3200);
+    const firstBinaryPayload = binaryCalls[0]?.[0];
+    expect(firstBinaryPayload).toBeInstanceOf(Int16Array);
+    const firstFrame = firstBinaryPayload as Int16Array;
+    expect(firstFrame.length).toBe(1600);
+    expect(firstFrame.byteLength).toBe(3200);
 
     provider.stop();
     const afterStopBinaryCalls = ws.send.mock.calls.filter(
       ([payload]) => payload instanceof Int16Array,
     );
     expect(afterStopBinaryCalls).toHaveLength(2);
-    expect((afterStopBinaryCalls[1]?.[0] as Int16Array).length).toBe(448);
+    const stopFlushPayload = afterStopBinaryCalls[1]?.[0];
+    expect(stopFlushPayload).toBeInstanceOf(Int16Array);
+    expect((stopFlushPayload as Int16Array).length).toBe(448);
 
     provider.dispose();
   });
@@ -1456,6 +1500,134 @@ describe("YA server speech provider", () => {
 });
 
 describe("direct xAI speech provider", () => {
+  it("streams PCM directly to xAI with browser WebSocket subprotocol auth", async () => {
+    setBrowserXaiSttApiKey("browser-xai-key");
+    const fakeTrackStop = vi.fn();
+    const fakeStream = {
+      getTracks: () => [{ stop: fakeTrackStop, readyState: "live" }],
+      getAudioTracks: () => [{ getSettings: () => ({ sampleRate: 16000 }) }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn(async () => fakeStream);
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    class FakeWebSocket {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSED = 3;
+      static readonly instances: FakeWebSocket[] = [];
+
+      readyState = FakeWebSocket.OPEN;
+      bufferedAmount = 0;
+      binaryType = "";
+      onmessage: ((event: { data: string }) => void) | null = null;
+      onerror: ((event?: unknown) => void) | null = null;
+      onclose: (() => void) | null = null;
+      readonly sent: Array<string | ArrayBuffer | ArrayBufferView> = [];
+
+      constructor(
+        readonly url: string,
+        readonly protocols?: string | string[],
+      ) {
+        FakeWebSocket.instances.push(this);
+      }
+
+      send(data: string | ArrayBuffer | ArrayBufferView) {
+        this.sent.push(data);
+      }
+
+      close() {
+        this.readyState = FakeWebSocket.CLOSED;
+        this.onclose?.();
+      }
+
+      receive(message: Record<string, unknown>) {
+        this.onmessage?.({ data: JSON.stringify(message) });
+      }
+    }
+
+    class FakeAudioContext {
+      state: AudioContextState = "running";
+      sampleRate = 16_000;
+      destination = {};
+
+      createMediaStreamSource() {
+        return { connect: vi.fn(), disconnect: vi.fn() };
+      }
+
+      createScriptProcessor() {
+        const node = {
+          connect: vi.fn(() => {
+            queueMicrotask(() => {
+              node.onaudioprocess?.({
+                inputBuffer: {
+                  getChannelData: () => new Float32Array(1600).fill(0.25),
+                },
+              } as unknown as AudioProcessingEvent);
+            });
+          }),
+          disconnect: vi.fn(),
+          onaudioprocess: null as
+            | ((event: AudioProcessingEvent) => void)
+            | null,
+        };
+        return node;
+      }
+
+      createGain() {
+        return {
+          gain: { value: 1 },
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+        };
+      }
+
+      close() {
+        return Promise.resolve();
+      }
+    }
+
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+
+    const onResult = vi.fn();
+    const onEnd = vi.fn();
+    const provider = new DirectXaiStreamingSpeechProvider({
+      smartTurn: { enabled: true, threshold: 0.5, timeoutMs: 1000 },
+      onResult,
+      onEnd,
+    });
+
+    provider.start();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const ws = FakeWebSocket.instances[0]!;
+    expect(ws.url).toContain("wss://api.x.ai/v1/stt?");
+    expect(ws.url).toContain("sample_rate=16000");
+    expect(ws.url).toContain("smart_turn=0.5");
+    expect(ws.protocols).toEqual(["xai-client-secret.browser-xai-key"]);
+
+    ws.receive({ type: "transcript.created" });
+    await Promise.resolve();
+
+    expect(provider.getState().status).toBe("listening");
+    expect(ws.sent.some((data) => typeof data !== "string")).toBe(true);
+
+    provider.stop();
+    expect(ws.sent).toContain(JSON.stringify({ type: "audio.done" }));
+    ws.receive({ type: "transcript.done", text: "direct streaming transcript" });
+    await Promise.resolve();
+
+    expect(onResult).toHaveBeenCalledWith("direct streaming transcript", undefined);
+    expect(onEnd).toHaveBeenCalledTimes(1);
+
+    provider.dispose();
+  });
+
   it("posts recorded batch audio directly to xAI with the browser key", async () => {
     setBrowserXaiSttApiKey("browser-xai-key");
     const fakeStream = {

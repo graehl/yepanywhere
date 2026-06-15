@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { Hono } from "hono";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { attachUnifiedUpgradeHandler } from "../../src/frontend/index.js";
 import { createSpeechRoutes } from "../../src/routes/speech.js";
@@ -104,6 +104,7 @@ describe("speech routes", () => {
   afterEach(async () => {
     server?.close();
     server = null;
+    vi.unstubAllGlobals();
     await Promise.all(
       tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })),
     );
@@ -115,6 +116,7 @@ describe("speech routes", () => {
     });
 
     const res = await app.request("/api/speech/xai-client-key", {
+      method: "POST",
       headers: { "X-Yep-Anywhere": "true" },
     });
     const json = await res.json();
@@ -132,12 +134,67 @@ describe("speech routes", () => {
     });
 
     const res = await app.request("/api/speech/xai-client-key", {
+      method: "POST",
       headers: { "X-Yep-Anywhere": "true" },
     });
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json).toEqual({ apiKey: "server-xai-key" });
+  });
+
+  it("mints an xAI client secret without exposing the server key", async () => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      expect(init?.headers).toMatchObject({
+        Authorization: "Bearer server-xai-key",
+        "Content-Type": "application/json",
+      });
+      return new Response(
+        JSON.stringify({
+          value: "xai-realtime-client-secret-test",
+          expires_at: "2026-06-15T01:00:00Z",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { app } = await createSpeechApp(undefined, undefined, {
+      xaiSttApiKey: "server-xai-key",
+      shareXaiSttApiKeyWithClients: false,
+    });
+
+    const res = await app.request("/api/speech/xai-client-secret", {
+      method: "POST",
+      headers: { "X-Yep-Anywhere": "true" },
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({
+      clientSecret: "xai-realtime-client-secret-test",
+      expiresAt: "2026-06-15T01:00:00Z",
+    });
+  });
+
+  it("does not mint an xAI client secret through GET", async () => {
+    const { app } = await createSpeechApp(undefined, undefined, {
+      xaiSttApiKey: "server-xai-key",
+    });
+
+    const res = await app.request("/api/speech/xai-client-secret", {
+      headers: { "X-Yep-Anywhere": "true" },
+    });
+
+    const json = await res.json();
+
+    expect(res.status).toBe(405);
+    expect(res.headers.get("Allow")).toBe("POST");
+    expect(json).toEqual({
+      error: "Use POST for speech credential broker routes",
+    });
   });
 
   it("transcribes batch audio through the HTTP endpoint", async () => {

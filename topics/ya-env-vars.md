@@ -63,7 +63,7 @@ timings, codex rescan intervals, cache TTLs) live only in `config.ts`.
 |-----|---------|
 | `YA_stt__XAI_API_KEY` | xAI key → `ya-grok` backend; auto-enables when set. |
 | `XAI_API_KEY` | xAI standard key accepted as a `ya-grok` STT fallback, then scrubbed from child env. Grok Build receives it only when its provider setting explicitly opts in. |
-| `YA_stt__SHARE_XAI_KEY_WITH_CLIENTS` | `1` lets authenticated private clients borrow the configured xAI STT key for direct browser-to-xAI transcription. Default false; setting an STT key alone does not expose it. |
+| `YA_stt__SHARE_XAI_KEY_WITH_CLIENTS` | `1` lets authenticated private clients borrow the configured long-lived xAI STT key for direct browser-to-xAI batch transcription. Default false; direct streaming instead mints short-lived xAI client secrets from `YA_stt__XAI_API_KEY` and does not require exposing the long-lived key. |
 | `YA_stt__DEEPGRAM_API_KEY` | Deepgram key → `ya-deepgram` backend; auto-enables when set. |
 | `WHISPER_MODEL` / `WHISPER_DEVICE` / `WHISPER_COMPUTE_TYPE` | Local Whisper tuning. |
 

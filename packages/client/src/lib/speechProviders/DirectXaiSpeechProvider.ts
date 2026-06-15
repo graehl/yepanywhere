@@ -158,7 +158,9 @@ export class DirectXaiSpeechProvider implements SpeechProvider {
   }
 
   private stopStreamTracks(stream: MediaStream): void {
-    stream.getTracks().forEach((track) => track.stop());
+    stream.getTracks().forEach((track) => {
+      track.stop();
+    });
   }
 
   private releaseActiveStream(): void {

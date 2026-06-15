@@ -110,12 +110,15 @@ Backends should implement a common `SpeechBackend` contract:
   treats that as unverified until compared. Smart Turn depends on Grok
   streaming and is therefore only active when the Grok uplink mode is PCM16.
 - `useSpeechRecognition` selects browser-native when the method is
-  `browser-native`; any other method constructs `YaServerProvider` with the
-  advertised backend id unchanged.
+  `browser-native`; `xai-grok-direct-streaming` constructs a direct xAI
+  streaming provider; `xai-grok-direct-batch` constructs a direct xAI batch
+  provider; advertised server backend ids construct `YaServerProvider`
+  unchanged.
 - The client speech-method selector is data-driven from
-  `/api/version.voiceBackends` plus the special browser-native fallback. It
-  does not keep a client-side whitelist of server backend ids; unknown
-  advertised ids remain selectable and route through YA unchanged.
+  `/api/version.voiceBackends` plus the special browser-native fallback and
+  the direct xAI client methods. It does not keep a client-side whitelist of
+  server backend ids; unknown advertised ids remain selectable and route
+  through YA unchanged.
 - `NewSessionForm` and the active session composer toolbar build
   speech-method dropdowns from the same advertised active backend list. The
   dropdown is shown only when more than one method is available.
@@ -154,6 +157,16 @@ Backends should implement a common `SpeechBackend` contract:
   accepts JSON control frames even when the unified Node WS path presents text
   frames as `Buffer`s. Streaming metadata includes the ordered transcript trace
   as one recognizer event per line.
+- `createSpeechRoutes` also exposes direct xAI credential brokering:
+  `/api/speech/xai-client-secret` mints a short-lived xAI client secret for
+  browser WebSocket streaming to `/v1/stt`, while
+  `/api/speech/xai-client-key` returns the long-lived STT key only when
+  `YA_stt__SHARE_XAI_KEY_WITH_CLIENTS=1` enables direct batch borrowing.
+- `xai-grok-direct-streaming` reuses the YA Web Audio PCM16 capture path but
+  opens `wss://api.x.ai/v1/stt` directly from the browser with
+  `Sec-WebSocket-Protocol: xai-client-secret.*`. `xai-grok-direct-batch`
+  records a complete `MediaRecorder` utterance and posts it directly to
+  `POST /v1/stt`, so it emits final text only.
 - Hosted/relay clients can stream to server STT through a dedicated secure
   relay `speech` channel. The server registers that channel separately from the
   app channel under the same relay username/install id, the browser opens a
@@ -208,7 +221,8 @@ client through `fetchJSON("/speech/transcribe", ...)`.
   likely intended as message content or as an end command, including cases with
   a smaller pause. Do not build that extra judging layer until we have traces
   that justify it.
-- Grok streaming has focused route tests, but it still needs a live
+- Direct Grok streaming has a browser WebSocket auth probe and focused client
+  tests for the xAI socket adapter, but it still needs a live
   browser-plus-xAI smoke test with a real microphone or captured audio source.
 - Audio-as-modality forwarding to providers that natively accept audio is not
   implemented. All current YA-server backend code is transcript-first.

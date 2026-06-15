@@ -18,6 +18,12 @@ revoked or, for live shares, until the owner stops live access. That includes a
 party who observes the public share secret in transit through an authorized
 public-share transport.
 
+Public shares do not intentionally provide a path to spend the YA server's
+metered STT credits. Public-share relay plaintext is restricted to `GET
+/public-api/shares/...`; it must not tunnel `/api/speech/*`, relayed speech
+channels, server-mediated STT, server-minted xAI client secrets, or borrowed
+long-lived xAI keys.
+
 ## Relay Operator Visibility
 
 Normal authenticated Remote Access uses SRP plus NaCl end-to-end encryption.

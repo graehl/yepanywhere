@@ -19,6 +19,8 @@ import { useViewportWidth } from "../hooks/useViewportWidth";
 import { useI18n } from "../i18n";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import {
+  canSpeechMethodStream,
+  isServerRoutedSpeechMethod,
   resolveSpeechMethod,
   type SpeechMethodId,
 } from "../lib/speechProviders/methods";
@@ -119,19 +121,20 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     selectedGrokSpeechAudioSettings ??
     storedGrokSpeechAudioSettings ??
     DEFAULT_GROK_SPEECH_AUDIO_SETTINGS;
-  const grokPcmUplink =
-    speechMethod !== "ya-grok" ||
-    grokSpeechAudioSettings.uplinkMode === "pcm16";
   const relayTransport = basePath !== "";
   const openRelayedSpeechSocket =
     relayTransport && connection.openSpeechSocket
       ? connection.openSpeechSocket.bind(connection)
       : undefined;
-  const serverStreaming =
-    speechMethod !== "browser-native" &&
-    grokPcmUplink &&
-    (!relayTransport || openRelayedSpeechSocket !== undefined) &&
-    versionInfo?.voiceBackendCapabilities?.[speechMethod]?.streaming === true;
+  const speechMethodServerRouted = isServerRoutedSpeechMethod(speechMethod);
+  const serverStreaming = canSpeechMethodStream({
+    methodId: speechMethod,
+    serverCapabilities: versionInfo?.voiceBackendCapabilities,
+    grokSpeechAudioSettings,
+    relayTransport,
+    relayedServerSpeechAvailable:
+      !speechMethodServerRouted || openRelayedSpeechSocket !== undefined,
+  });
   const viewportWidth = useViewportWidth();
 
   // Show status text on desktop with sufficient width

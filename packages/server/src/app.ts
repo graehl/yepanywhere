@@ -212,9 +212,9 @@ export interface AppOptions {
   voiceInputEnabled?: boolean;
   /** Validated server-routed speech backends for capability advertisement. */
   speechBackendRegistry?: SpeechBackendRegistry;
-  /** xAI STT key that direct browser STT clients may borrow when enabled. */
+  /** xAI STT key used for ya-grok and to mint direct-browser client secrets. */
   xaiSttApiKey?: string;
-  /** Whether authenticated clients may borrow the server's xAI STT key. */
+  /** Whether authenticated clients may borrow the long-lived xAI STT key. */
   shareXaiSttApiKeyWithClients?: boolean;
   /** Allowed directory prefixes for serving local images. Default: ["/tmp"] */
   allowedImagePaths?: string[];

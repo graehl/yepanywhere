@@ -62,6 +62,22 @@ describe("WebSocket Transport Message Auth Helpers", () => {
     expect(ws.close).toHaveBeenCalledWith(4001, "Authentication required");
   });
 
+  it("rejects pre-auth public-share attempts to reach speech credit routes", () => {
+    const connState = createConnectionState();
+    const ws = createMockWs();
+    const parsed = {
+      type: "request",
+      id: "speech-secret",
+      method: "GET",
+      path: "/api/speech/xai-client-secret",
+    };
+
+    const msg = parseApplicationClientMessage(ws, connState, true, parsed);
+
+    expect(msg).toBeNull();
+    expect(ws.close).toHaveBeenCalledWith(4001, "Authentication required");
+  });
+
   it("accepts plaintext application message when SRP is not required", () => {
     const connState = createConnectionState();
     const ws = createMockWs();

@@ -15,6 +15,7 @@ import {
   useState,
 } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { XAI_DIRECT_STREAMING_SPEECH_METHOD } from "../../lib/speechProviders/methods";
 import { NewSessionForm } from "../NewSessionForm";
 
 const {
@@ -922,6 +923,34 @@ describe("NewSessionForm", () => {
     expect(mockSetGrokSpeechAudioSettings).toHaveBeenCalledWith({
       uplinkMode: "pcm16",
     });
+  });
+
+  it("shows Smart Turn for direct Grok streaming without server capabilities", () => {
+    remoteBasePathState.basePath = "/ygraehl";
+    versionState.version = {
+      voiceBackends: ["ya-grok"],
+      voiceBackendCapabilities: {},
+    };
+    modelSettingsState.speechMethod = XAI_DIRECT_STREAMING_SPEECH_METHOD;
+    modelSettingsState.hasStoredSpeechMethod = true;
+    modelSettingsState.speechSmartTurnSettings = {
+      enabled: true,
+      threshold: 0.95,
+      timeoutMs: 3000,
+    };
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText("voice"));
+
+    expect(screen.getByText("Smart Turn")).toBeDefined();
+    expect(screen.queryByText("Grok STT audio")).toBeNull();
   });
 
   it("keeps Grok audio controls visible in relay mode", () => {

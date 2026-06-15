@@ -68,6 +68,8 @@ import {
 } from "../lib/serverClock";
 import { createSessionNavigationState } from "../lib/sessionNavigationState";
 import {
+  canSpeechMethodStream,
+  getSpeechMethodCapabilities,
   getSpeechMethods,
   isSpeechMethodId,
   resolveSpeechMethod,
@@ -885,16 +887,18 @@ export function NewSessionForm({
   );
   const showSpeechMethodSelector =
     voiceInputEnabled && speechMethodOptions.length > 1;
-  const selectedSpeechBackendCapabilities =
-    versionInfo?.voiceBackendCapabilities?.[selectedSpeechMethod];
-  const selectedSpeechCanStream =
-    selectedSpeechMethod !== "browser-native" &&
-    (selectedSpeechMethod !== "ya-grok" ||
-      grokSpeechAudioSettings.uplinkMode === "pcm16") &&
-    selectedSpeechBackendCapabilities?.streaming === true;
+  const selectedSpeechMethodCapabilities = getSpeechMethodCapabilities(
+    selectedSpeechMethod,
+    versionInfo?.voiceBackendCapabilities,
+  );
+  const selectedSpeechCanStream = canSpeechMethodStream({
+    methodId: selectedSpeechMethod,
+    serverCapabilities: versionInfo?.voiceBackendCapabilities,
+    grokSpeechAudioSettings,
+  });
   const supportsSelectedSpeechSmartTurn =
     selectedSpeechCanStream &&
-    selectedSpeechBackendCapabilities?.smartTurn === true;
+    selectedSpeechMethodCapabilities.smartTurn === true;
   const activeSpeechSmartTurnSettings: SpeechSmartTurnSettings | undefined =
     supportsSelectedSpeechSmartTurn ? speechSmartTurnSettings : undefined;
   const showGrokSpeechAudioControls = selectedSpeechMethod === "ya-grok";

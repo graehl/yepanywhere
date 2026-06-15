@@ -2,8 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConnectionSpeechSocket } from "../lib/connection/types";
 import { BrowserNativeProvider } from "../lib/speechProviders/BrowserNativeProvider";
 import { DirectXaiSpeechProvider } from "../lib/speechProviders/DirectXaiSpeechProvider";
+import { DirectXaiStreamingSpeechProvider } from "../lib/speechProviders/DirectXaiStreamingSpeechProvider";
 import { YaServerProvider } from "../lib/speechProviders/YaServerProvider";
-import { XAI_DIRECT_BATCH_SPEECH_METHOD } from "../lib/speechProviders/methods";
+import {
+  XAI_DIRECT_BATCH_SPEECH_METHOD,
+  XAI_DIRECT_STREAMING_SPEECH_METHOD,
+} from "../lib/speechProviders/methods";
 import {
   SPEECH_STATUS_LABELS as PROVIDER_SPEECH_STATUS_LABELS,
   type SpeechProvider,
@@ -81,6 +85,9 @@ function createProvider(
     onError?: (e: string) => void;
   },
 ): SpeechProvider {
+  if (speechMethod === XAI_DIRECT_STREAMING_SPEECH_METHOD) {
+    return new DirectXaiStreamingSpeechProvider(events);
+  }
   if (speechMethod === XAI_DIRECT_BATCH_SPEECH_METHOD) {
     return new DirectXaiSpeechProvider(events);
   }

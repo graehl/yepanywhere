@@ -11,7 +11,10 @@ import { useSpeechCaptureSettings } from "../../hooks/useSpeechCaptureSettings";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
 import {
+  canSpeechMethodStream,
+  getSpeechMethodCapabilities,
   getSpeechMethods,
+  isServerRoutedSpeechMethod,
   resolveSpeechMethod,
   type SpeechMethodId,
 } from "../../lib/speechProviders/methods";
@@ -91,24 +94,29 @@ export function SpeechSettings() {
   const selectedBackendLabel =
     backendOptions.find((option) => option.value === selectedBackend)?.label ??
     selectedBackend;
-  const selectedBackendCapabilities =
-    versionInfo?.voiceBackendCapabilities?.[selectedBackend];
-  const selectedBackendCanStream =
-    !relayTransport &&
-    selectedBackend !== "browser-native" &&
-    (selectedBackend !== "ya-grok" ||
-      grokSpeechAudioSettings.uplinkMode === "pcm16") &&
-    selectedBackendCapabilities?.streaming === true;
+  const selectedBackendCapabilities = getSpeechMethodCapabilities(
+    selectedBackend,
+    versionInfo?.voiceBackendCapabilities,
+  );
+  const selectedBackendServerRouted =
+    isServerRoutedSpeechMethod(selectedBackend);
+  const selectedBackendCanStream = canSpeechMethodStream({
+    methodId: selectedBackend,
+    serverCapabilities: versionInfo?.voiceBackendCapabilities,
+    grokSpeechAudioSettings,
+    relayTransport,
+    relayedServerSpeechAvailable: !selectedBackendServerRouted,
+  });
   const supportsSelectedSmartTurn =
     selectedBackendCanStream &&
-    selectedBackendCapabilities?.smartTurn === true;
+    selectedBackendCapabilities.smartTurn === true;
   const showGrokAudioSettings =
     !relayTransport && selectedBackend === "ya-grok";
   const smartTurnRequiresPcm =
     !relayTransport &&
     selectedBackend === "ya-grok" &&
     grokSpeechAudioSettings.uplinkMode !== "pcm16" &&
-    selectedBackendCapabilities?.smartTurn === true;
+    selectedBackendCapabilities.smartTurn === true;
   const smartTurnUnavailableHint = smartTurnRequiresPcm
     ? t("speechSettingsSmartTurnRequiresPcm")
     : relayTransport && selectedBackend !== "browser-native"

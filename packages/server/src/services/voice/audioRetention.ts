@@ -40,6 +40,7 @@ export interface SpeechAudioRetentionInput {
   requestId: string;
   source: SpeechAudioRequestSource;
   backendId: string;
+  model?: string;
   mimeType: string;
   audio: Buffer;
   transcript: string;
@@ -117,6 +118,7 @@ export async function persistSpeechAudio(
           requestId: input.requestId,
           source: input.source,
           backendId: input.backendId,
+          model: input.model,
           mimeType: input.mimeType,
           audioBytes: input.audio.length,
           transcript: input.transcript,

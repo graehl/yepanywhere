@@ -80,6 +80,7 @@ export type SpeechWsData =
 
 interface TranscribeBody {
   backendId?: unknown;
+  model?: unknown;
   mimeType?: unknown;
   audioBase64?: unknown;
   prompt?: unknown;
@@ -315,6 +316,15 @@ function cleanContextString(
   return trimmed ? trimmed.slice(0, maxLength) : undefined;
 }
 
+function cleanOptionalString(
+  value: unknown,
+  maxLength = 300,
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
+
 function parseTranscriptionContext(
   value: unknown,
 ): SpeechTranscriptionContext | undefined {
@@ -358,6 +368,7 @@ async function transcribeWithAudit(
     source: input.source,
     backendId: input.backendId,
     mimeType: input.options.mimeType ?? DEFAULT_MIME_TYPE,
+    model: input.options.model,
     audioBytes: input.audio.length,
     hasPrompt: !!input.options.prompt,
     keytermCount: input.options.keyterms?.length ?? 0,
@@ -381,6 +392,7 @@ async function transcribeWithAudit(
       requestId,
       source: input.source,
       backendId: input.backendId,
+      model: input.options.model,
       mimeType: input.options.mimeType ?? DEFAULT_MIME_TYPE,
       audio: input.audio,
       transcript: text,
@@ -521,6 +533,7 @@ function parseTranscribeBody(value: unknown):
     options: {
       mimeType:
         typeof body.mimeType === "string" ? body.mimeType : DEFAULT_MIME_TYPE,
+      model: cleanOptionalString(body.model, 200),
       prompt: typeof body.prompt === "string" ? body.prompt : undefined,
       keyterms,
     },

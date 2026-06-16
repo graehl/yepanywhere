@@ -36,6 +36,7 @@ vi.mock("../../hooks/useModelSettings", () => ({
     voiceInputEnabled: true,
     speechMethod: "browser-native",
     hasStoredSpeechMethod: false,
+    parakeetSpeechModel: "nvidia/parakeet-ctc-1.1b",
     grokSpeechAudioSettings: { uplinkMode: "pcm16" },
   }),
 }));
@@ -145,6 +146,20 @@ describe("VoiceInputButton", () => {
     expect(button.className).not.toContain("listening");
     expect(button.getAttribute("aria-pressed")).toBe("false");
     expect(document.querySelector(".voice-input-recording")).toBeNull();
+  });
+
+  it("passes the browser-selected Parakeet model to speech providers", () => {
+    render(
+      <VoiceInputButton
+        onTranscript={vi.fn()}
+        onInterimTranscript={vi.fn()}
+        speechMethod="ya-parakeet"
+      />,
+    );
+
+    expect(observedSpeechOptions.at(-1)?.parakeetModel).toBe(
+      "nvidia/parakeet-ctc-1.1b",
+    );
   });
 
   it("does not render streaming finalization as active capture", () => {

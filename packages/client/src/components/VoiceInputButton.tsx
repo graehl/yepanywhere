@@ -25,10 +25,10 @@ import {
   resolveSpeechMethod,
   type SpeechMethodId,
 } from "../lib/speechProviders/methods";
-import {
-  type SpeechSmartTurnSettings,
-  type SpeechTranscriptionContext,
-  type SpeechTranscriptionResultMetadata,
+import type {
+  SpeechSmartTurnSettings,
+  SpeechTranscriptionContext,
+  SpeechTranscriptionResultMetadata,
 } from "../lib/speechProviders/SpeechProvider";
 
 export interface VoiceInputButtonRef {
@@ -96,6 +96,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     voiceInputEnabled,
     speechMethod: storedSpeechMethod,
     hasStoredSpeechMethod,
+    parakeetSpeechModel,
   } = useModelSettings();
   const { version: versionInfo } = useVersion();
   const { hasBrowserXaiSttApiKey } = useBrowserXaiSttApiKey();
@@ -172,6 +173,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     smartTurn: serverStreaming ? smartTurn : undefined,
     keepMicWarm,
     micDeviceId,
+    parakeetModel: parakeetSpeechModel,
     openRelayedSpeechSocket,
     onResult: handleResult,
     onInterimResult: handleInterim,

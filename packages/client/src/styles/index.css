@@ -5040,7 +5040,8 @@ a.sidebar-nav-item {
 }
 
 .speech-mic-device-select,
-.speech-xai-key-input {
+.speech-xai-key-input,
+.speech-parakeet-model-input {
   width: 100%;
   min-width: 0;
   min-height: 1.9rem;

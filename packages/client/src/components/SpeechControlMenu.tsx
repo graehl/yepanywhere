@@ -12,9 +12,11 @@ import {
 import type { FilterOption } from "./FilterDropdown";
 import { SpeechSmartTurnControls } from "./SpeechSmartTurnControls";
 import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
+import { useModelSettings } from "../hooks/useModelSettings";
 import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import { useI18n } from "../i18n";
 import type { SpeechMethodId } from "../lib/speechProviders/methods";
+import { PARAKEET_SPEECH_MODEL_PRESETS } from "../lib/speechProviders/parakeetModels";
 import type { SpeechSmartTurnSettings } from "../lib/speechProviders/SpeechProvider";
 
 interface SpeechControlMenuProps {
@@ -58,7 +60,10 @@ export function SpeechControlMenu({
   const { t } = useI18n();
   const micDeviceSelectId = useId();
   const xaiKeyInputId = useId();
+  const parakeetModelInputId = useId();
+  const parakeetModelListId = useId();
   const { micDeviceId, setMicDeviceId } = useSpeechCaptureSettings();
+  const { parakeetSpeechModel, setParakeetSpeechModel } = useModelSettings();
   const { browserXaiSttApiKey, setBrowserXaiSttApiKey } =
     useBrowserXaiSttApiKey();
   const [open, setOpen] = useState(false);
@@ -78,11 +83,13 @@ export function SpeechControlMenu({
   const showSmartTurnControls =
     !!smartTurnSettings && !!onSmartTurnSettingsChange;
   const showMicDeviceControls = selectedMethod !== "browser-native";
+  const showParakeetModelControls = selectedMethod === "ya-parakeet";
   const showXaiKeyControls = true;
   const hasOptions =
     showMethodSelector ||
     showXaiKeyControls ||
     showMicDeviceControls ||
+    showParakeetModelControls ||
     showSmartTurnControls;
   const selectedMicDeviceUnavailable =
     !!micDeviceId &&
@@ -356,6 +363,39 @@ export function SpeechControlMenu({
                 }}
                 aria-label={t("speechSettingsXaiKeyTitle")}
               />
+            </section>
+          )}
+          {showParakeetModelControls && (
+            <section className="speech-options-section">
+              <label
+                className="speech-options-section-title"
+                htmlFor={parakeetModelInputId}
+              >
+                {t("speechSettingsParakeetModelTitle")}
+              </label>
+              <input
+                id={parakeetModelInputId}
+                list={parakeetModelListId}
+                className="speech-parakeet-model-input"
+                value={parakeetSpeechModel}
+                placeholder={t("speechSettingsParakeetModelPlaceholder")}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => {
+                  onBeforeCaptureChange?.();
+                  setParakeetSpeechModel(event.currentTarget.value);
+                }}
+                aria-label={t("speechSettingsParakeetModelTitle")}
+              />
+              <datalist id={parakeetModelListId}>
+                {PARAKEET_SPEECH_MODEL_PRESETS.map((preset) => (
+                  <option
+                    key={preset.value}
+                    value={preset.value}
+                    label={preset.label}
+                  />
+                ))}
+              </datalist>
             </section>
           )}
           {showMicDeviceControls && (

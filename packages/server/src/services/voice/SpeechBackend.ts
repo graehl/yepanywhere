@@ -33,6 +33,8 @@ export interface SpeechBackendInfo {
 export interface TranscribeOptions {
   /** MIME type of the audio buffer (e.g. "audio/webm;codecs=opus"). */
   mimeType?: string;
+  /** Backend-specific model id selected for this transcription request. */
+  model?: string;
   /** Free-text context prompt for Whisper-compatible backends. */
   prompt?: string;
   /** Keyword boosts for Deepgram-style backends. */

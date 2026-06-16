@@ -12,6 +12,7 @@ import { DUMMY_TRANSCRIPT } from "../../src/services/voice/dummyBackend.js";
 import { initSpeechBackendRegistry } from "../../src/services/voice/registry.js";
 import { SpeechBackendRegistry } from "../../src/services/voice/registry.js";
 import type {
+  SpeechBackend,
   SpeechStreamHandlers,
   SpeechStreamOptions,
   SpeechStreamSession,
@@ -94,6 +95,24 @@ class StreamingTestBackend implements StreamingSpeechBackend {
       },
       close: () => {},
     };
+  }
+}
+
+class RecordingBatchBackend implements SpeechBackend {
+  readonly id = "ya-recording";
+  readonly label = "Recording test";
+  lastOptions: TranscribeOptions | null = null;
+
+  async validate(): Promise<{ ok: true }> {
+    return { ok: true };
+  }
+
+  async transcribe(
+    _audio: Buffer,
+    options: TranscribeOptions = {},
+  ): Promise<string> {
+    this.lastOptions = options;
+    return "recorded";
   }
 }
 
@@ -214,6 +233,31 @@ describe("speech routes", () => {
     expect(await res.json()).toEqual({
       text: DUMMY_TRANSCRIPT,
       transcriptionId: expect.any(String),
+    });
+  });
+
+  it("passes a requested local model to the selected batch backend", async () => {
+    const backend = new RecordingBatchBackend();
+    const registry = new SpeechBackendRegistry();
+    await registry.register(backend);
+    const { app } = await createSpeechApp(undefined, registry);
+
+    const res = await app.request("/api/speech/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        backendId: "ya-recording",
+        model: "nvidia/parakeet-ctc-1.1b",
+        mimeType: "audio/webm",
+        audioBase64: Buffer.from("audio").toString("base64"),
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ text: "recorded" });
+    expect(backend.lastOptions).toMatchObject({
+      mimeType: "audio/webm",
+      model: "nvidia/parakeet-ctc-1.1b",
     });
   });
 

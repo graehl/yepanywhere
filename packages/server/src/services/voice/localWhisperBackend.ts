@@ -5,12 +5,10 @@ import { dirname, join } from "node:path";
 import { getLogger } from "../../logging/logger.js";
 import type { SpeechBackend, TranscribeOptions } from "./SpeechBackend.js";
 import {
-  execFileAsync,
-  localSttReadyHint,
+  ensureLocalSttRuntime,
   PIXI_COMMAND,
   PIXI_PYTHON_ARGS,
   PIXI_STT_ENV,
-  summarizeChildError,
 } from "./localSttRuntime.js";
 const logger = getLogger();
 
@@ -18,8 +16,6 @@ const WORKER_SCRIPT = join(
   dirname(fileURLToPath(import.meta.url)),
   "whisper_worker.py",
 );
-
-const PIXI_STT_READY_HINT = localSttReadyHint("stt-bootstrap");
 
 /** Milliseconds to wait for model load before giving up. */
 const MODEL_LOAD_TIMEOUT_MS = 120_000;
@@ -44,19 +40,11 @@ export class LocalWhisperBackend implements SpeechBackend {
   }
 
   async validate(): Promise<{ ok: true } | { ok: false; reason: string }> {
-    try {
-      await execFileAsync(
-        PIXI_COMMAND,
-        [...PIXI_PYTHON_ARGS, "-c", "from faster_whisper import WhisperModel"],
-        { cwd: process.cwd(), timeout: 30_000 },
-      );
-      return { ok: true };
-    } catch (error) {
-      return {
-        ok: false,
-        reason: `local STT pixi environment is not ready. ${PIXI_STT_READY_HINT} Detail: ${summarizeChildError(error)}`,
-      };
-    }
+    return ensureLocalSttRuntime({
+      backendLabel: "local STT",
+      checkPython: "from faster_whisper import WhisperModel",
+      bootstrapTask: "stt-bootstrap",
+    });
   }
 
   private startWorker(): Promise<void> {

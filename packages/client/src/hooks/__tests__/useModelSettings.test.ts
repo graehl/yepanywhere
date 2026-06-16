@@ -80,4 +80,24 @@ describe("useModelSettings speech defaults", () => {
       },
     });
   });
+
+  it("stores the Parakeet model as a browser-local STT choice", async () => {
+    const { useModelSettings } = await import("../useModelSettings");
+    const { result } = renderHook(() => useModelSettings());
+
+    act(() =>
+      result.current.setParakeetSpeechModel("nvidia/parakeet-ctc-1.1b"),
+    );
+
+    expect(window.localStorage.getItem(LEGACY_KEYS.parakeetSpeechModel)).toBe(
+      "nvidia/parakeet-ctc-1.1b",
+    );
+    expect(mocks.updateServerSettings).not.toHaveBeenCalledWith({
+      clientDefaults: {
+        speech: {
+          parakeetSpeechModel: "nvidia/parakeet-ctc-1.1b",
+        },
+      },
+    });
+  });
 });

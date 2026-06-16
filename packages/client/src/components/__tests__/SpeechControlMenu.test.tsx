@@ -13,6 +13,24 @@ import { UI_KEYS } from "../../lib/storageKeys";
 import { getBrowserXaiSttApiKey } from "../../lib/speechProviders/xaiCredentials";
 import { SpeechControlMenu } from "../SpeechControlMenu";
 
+const modelSettings = vi.hoisted(() => {
+  const state = {
+    parakeetSpeechModel: "nvidia/parakeet-tdt-0.6b-v3",
+    setParakeetSpeechModel: vi.fn(),
+  };
+  state.setParakeetSpeechModel = vi.fn((model: string) => {
+    state.parakeetSpeechModel = model;
+  });
+  return state;
+});
+
+vi.mock("../../hooks/useModelSettings", () => ({
+  useModelSettings: () => ({
+    parakeetSpeechModel: modelSettings.parakeetSpeechModel,
+    setParakeetSpeechModel: modelSettings.setParakeetSpeechModel,
+  }),
+}));
+
 function installMediaDevices(devices: MediaDeviceInfo[]) {
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
@@ -39,6 +57,8 @@ describe("SpeechControlMenu", () => {
     cleanup();
     localStorage.clear();
     vi.unstubAllGlobals();
+    modelSettings.parakeetSpeechModel = "nvidia/parakeet-tdt-0.6b-v3";
+    modelSettings.setParakeetSpeechModel.mockClear();
   });
 
   it("persists a selected microphone device for server STT capture", async () => {
@@ -169,5 +189,30 @@ describe("SpeechControlMenu", () => {
     });
 
     expect(getBrowserXaiSttApiKey()).toBe("xai-browser-key");
+  });
+
+  it("shows a free-text Parakeet model selector for the Parakeet backend", () => {
+    installMediaDevices([]);
+    const onBeforeCaptureChange = vi.fn();
+
+    renderSpeechControlMenu({
+      trigger: <button type="button">voice</button>,
+      showMethodSelector: false,
+      methodOptions: [],
+      selectedMethod: "ya-parakeet",
+      onMethodChange: vi.fn(),
+      onBeforeCaptureChange,
+    });
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    const input = screen.getByLabelText("Parakeet Model");
+    fireEvent.change(input, {
+      target: { value: "nvidia/parakeet-ctc-1.1b" },
+    });
+
+    expect(modelSettings.setParakeetSpeechModel).toHaveBeenCalledWith(
+      "nvidia/parakeet-ctc-1.1b",
+    );
+    expect(onBeforeCaptureChange).toHaveBeenCalledTimes(1);
   });
 });

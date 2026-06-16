@@ -36,6 +36,8 @@ export interface UseSpeechRecognitionOptions {
   keepMicWarm?: boolean;
   /** Browser-local microphone device id for YA-server capture. */
   micDeviceId?: string | null;
+  /** Browser-selected local Parakeet model id for the YA Parakeet backend. */
+  parakeetModel?: string;
   /** Dedicated secure relay speech socket opener. */
   openRelayedSpeechSocket?: () => Promise<ConnectionSpeechSocket>;
   /** Callback when final transcript is available. */
@@ -76,6 +78,7 @@ function createProvider(
     smartTurn?: SpeechSmartTurnSettings;
     keepMicWarm?: boolean;
     micDeviceId?: string | null;
+    parakeetModel?: string;
     openRelayedSpeechSocket?: () => Promise<ConnectionSpeechSocket>;
     onResult?: (
       t: string,
@@ -121,6 +124,7 @@ export function useSpeechRecognition(
     smartTurn,
     keepMicWarm,
     micDeviceId,
+    parakeetModel,
     openRelayedSpeechSocket,
     onResult,
     onInterimResult,
@@ -147,6 +151,7 @@ export function useSpeechRecognition(
   const smartTurnRef = useRef(smartTurn);
   const keepMicWarmRef = useRef(keepMicWarm);
   const micDeviceIdRef = useRef(micDeviceId);
+  const parakeetModelRef = useRef(parakeetModel);
   const openRelayedSpeechSocketRef = useRef(openRelayedSpeechSocket);
 
   const providerRef = useRef<SpeechProvider | null>(null);
@@ -161,6 +166,7 @@ export function useSpeechRecognition(
         smartTurn: smartTurnRef.current,
         keepMicWarm: keepMicWarmRef.current,
         micDeviceId: micDeviceIdRef.current,
+        parakeetModel: parakeetModelRef.current,
         openRelayedSpeechSocket: openRelayedSpeechSocketRef.current,
         onResult: (t, metadata) => onResultRef.current?.(t, metadata),
         onInterimResult: (t) => onInterimResultRef.current?.(t),
@@ -188,6 +194,7 @@ export function useSpeechRecognition(
       smartTurn === smartTurnRef.current &&
       keepMicWarm === keepMicWarmRef.current &&
       micDeviceId === micDeviceIdRef.current &&
+      parakeetModel === parakeetModelRef.current &&
       openRelayedSpeechSocket === openRelayedSpeechSocketRef.current
     ) {
       return;
@@ -198,6 +205,7 @@ export function useSpeechRecognition(
     smartTurnRef.current = smartTurn;
     keepMicWarmRef.current = keepMicWarm;
     micDeviceIdRef.current = micDeviceId;
+    parakeetModelRef.current = parakeetModel;
     openRelayedSpeechSocketRef.current = openRelayedSpeechSocket;
 
     const old = providerRef.current;
@@ -210,6 +218,7 @@ export function useSpeechRecognition(
       smartTurn,
       keepMicWarm,
       micDeviceId,
+      parakeetModel,
       openRelayedSpeechSocket,
       onResult: (t, metadata) => onResultRef.current?.(t, metadata),
       onInterimResult: (t) => onInterimResultRef.current?.(t),
@@ -227,6 +236,7 @@ export function useSpeechRecognition(
     smartTurn,
     keepMicWarm,
     micDeviceId,
+    parakeetModel,
     openRelayedSpeechSocket,
   ]);
 

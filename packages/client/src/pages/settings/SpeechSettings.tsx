@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useId, useMemo } from "react";
 import {
   FilterDropdown,
   type FilterOption,
@@ -18,6 +18,7 @@ import {
   resolveSpeechMethod,
   type SpeechMethodId,
 } from "../../lib/speechProviders/methods";
+import { PARAKEET_SPEECH_MODEL_PRESETS } from "../../lib/speechProviders/parakeetModels";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 export function SpeechSettings() {
@@ -30,7 +31,11 @@ export function SpeechSettings() {
     setSpeechMethod,
     speechSmartTurnSettings,
     setSpeechSmartTurnSettings,
+    parakeetSpeechModel,
+    setParakeetSpeechModel,
   } = useModelSettings();
+  const parakeetModelInputId = useId();
+  const parakeetModelListId = useId();
   const { keepMicWarm, setKeepMicWarm } = useSpeechCaptureSettings();
   const {
     browserXaiSttApiKey,
@@ -45,12 +50,14 @@ export function SpeechSettings() {
       speechMethod,
       speechSmartTurnSettings,
       keepMicWarm,
+      parakeetSpeechModel,
     }),
     [
       voiceInputEnabled,
       speechMethod,
       speechSmartTurnSettings,
       keepMicWarm,
+      parakeetSpeechModel,
     ],
   );
   const restoreUndoState = useCallback(
@@ -59,12 +66,14 @@ export function SpeechSettings() {
       setSpeechMethod(snapshot.speechMethod);
       setSpeechSmartTurnSettings(snapshot.speechSmartTurnSettings);
       setKeepMicWarm(snapshot.keepMicWarm);
+      setParakeetSpeechModel(snapshot.parakeetSpeechModel);
     },
     [
       setVoiceInputEnabled,
       setSpeechMethod,
       setSpeechSmartTurnSettings,
       setKeepMicWarm,
+      setParakeetSpeechModel,
     ],
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);
@@ -95,6 +104,7 @@ export function SpeechSettings() {
   );
   const selectedBackendServerRouted =
     isServerRoutedSpeechMethod(selectedBackend);
+  const showParakeetModelControls = selectedBackend === "ya-parakeet";
   const selectedBackendCanStream = canSpeechMethodStream({
     methodId: selectedBackend,
     serverCapabilities: versionInfo?.voiceBackendCapabilities,
@@ -170,6 +180,42 @@ export function SpeechSettings() {
           <p className="settings-hint">
             {t("speechSettingsStreamingRelayUnavailable")}
           </p>
+        )}
+
+        {showParakeetModelControls && (
+          <div className="settings-item model-settings-item">
+            <div className="settings-item-info">
+              <strong>{t("speechSettingsParakeetModelTitle")}</strong>
+              <p>{t("speechSettingsParakeetModelDescription")}</p>
+            </div>
+            <div className="speech-backend-settings-field">
+              <input
+                id={parakeetModelInputId}
+                list={parakeetModelListId}
+                className="settings-input"
+                value={parakeetSpeechModel}
+                placeholder={t("speechSettingsParakeetModelPlaceholder")}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) =>
+                  setParakeetSpeechModel(event.currentTarget.value)
+                }
+                aria-label={t("speechSettingsParakeetModelTitle")}
+              />
+              <datalist id={parakeetModelListId}>
+                {PARAKEET_SPEECH_MODEL_PRESETS.map((preset) => (
+                  <option
+                    key={preset.value}
+                    value={preset.value}
+                    label={preset.label}
+                  />
+                ))}
+              </datalist>
+              <p className="settings-hint">
+                {t("speechSettingsParakeetModelHint")}
+              </p>
+            </div>
+          </div>
         )}
 
         <div className="settings-item model-settings-item">

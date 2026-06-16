@@ -16,6 +16,10 @@ import {
 } from "../lib/defaultedStorage";
 import { EFFORT_LEVEL_OPTIONS, isEffortLevel } from "../lib/effortLevels";
 import {
+  cleanParakeetSpeechModel,
+  DEFAULT_PARAKEET_SPEECH_MODEL,
+} from "../lib/speechProviders/parakeetModels";
+import {
   DEFAULT_SPEECH_METHOD,
   isSpeechMethodId,
   type SpeechMethodId,
@@ -287,6 +291,22 @@ function saveGrokSpeechAudioSettings(settings: GrokSpeechAudioSettings) {
   );
 }
 
+function loadParakeetSpeechModel(): string {
+  const stored = getServerScoped(
+    "parakeetSpeechModel",
+    LEGACY_KEYS.parakeetSpeechModel,
+  );
+  return stored?.trim() ? stored : DEFAULT_PARAKEET_SPEECH_MODEL;
+}
+
+function saveParakeetSpeechModel(model: string) {
+  setServerScoped(
+    "parakeetSpeechModel",
+    cleanParakeetSpeechModel(model),
+    LEGACY_KEYS.parakeetSpeechModel,
+  );
+}
+
 function getBuiltInSpeechClientDefaults(): Required<
   NonNullable<ClientDefaults["speech"]>
 > {
@@ -375,6 +395,9 @@ export function useModelSettings() {
         speechDefaults.grokSpeechAudioSettings,
       ),
     );
+  const [parakeetSpeechModel, setParakeetSpeechModelState] = useState<string>(
+    loadParakeetSpeechModel,
+  );
 
   useEffect(() => {
     if (isClientStorageDefault(loadVoiceInputEnabledSetting())) {
@@ -465,6 +488,11 @@ export function useModelSettings() {
     [],
   );
 
+  const setParakeetSpeechModel = useCallback((model: string) => {
+    setParakeetSpeechModelState(model);
+    saveParakeetSpeechModel(model);
+  }, []);
+
   return {
     model,
     setModel,
@@ -488,6 +516,8 @@ export function useModelSettings() {
     setSpeechSmartTurnSettings,
     grokSpeechAudioSettings,
     setGrokSpeechAudioSettings,
+    parakeetSpeechModel,
+    setParakeetSpeechModel,
   };
 }
 
@@ -551,4 +581,8 @@ export function getSpeechSmartTurnSettings(): SpeechSmartTurnSettings {
 
 export function getGrokSpeechAudioSettings(): GrokSpeechAudioSettings {
   return loadGrokSpeechAudioSettings();
+}
+
+export function getParakeetSpeechModel(): string {
+  return loadParakeetSpeechModel() || DEFAULT_PARAKEET_SPEECH_MODEL;
 }

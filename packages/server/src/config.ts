@@ -144,7 +144,7 @@ export interface Config {
   whisperDevice?: string;
   /** Whisper compute type for ya-whisper backend (default: int8). */
   whisperComputeType?: string;
-  /** Parakeet model name for ya-parakeet backend (default: nvidia/parakeet-tdt-0.6b-v3). */
+  /** Parakeet fallback model name for ya-parakeet backend (default: nvidia/parakeet-tdt-0.6b-v3). */
   parakeetModel?: string;
   /** Parakeet device for ya-parakeet backend (default: auto). */
   parakeetDevice?: string;

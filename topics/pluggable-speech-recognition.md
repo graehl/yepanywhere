@@ -205,7 +205,12 @@ streaming/confidence surface exists.
   Whisper path uses a warm Python worker subprocess around `faster_whisper`.
   The local Parakeet path uses the same pixi `stt` environment with a separate
   Transformers/PyTorch bootstrap and a warm Python worker around
-  `pipeline("automatic-speech-recognition")`; it is batch-only until a local
+  `pipeline("automatic-speech-recognition")`. The browser can choose the
+  Parakeet model id per request from STT settings or the mic options panel; the
+  server `PARAKEET_MODEL` remains the fallback for clients that send no model.
+  The implemented presets are limited to Hugging Face model cards that document
+  Transformers pipeline usage: `nvidia/parakeet-tdt-0.6b-v3` and
+  `nvidia/parakeet-ctc-1.1b`. The backend is batch-only until a local
   streaming/chunking surface is proven.
 - The normal `index.ts` runtime mounts `/api/speech` after
   `createNodeWebSocket()` creates the shared `upgradeWebSocket` helper.
@@ -360,14 +365,17 @@ Deploy it in stages:
 3. **Ship explicit operator configuration.** The opt-in is
    `YA_VOICE_BACKENDS=ya-whisper` or `YA_VOICE_BACKENDS=ya-parakeet`. The backend is pixi-only in the first
    implementation: the YA checkout commits a `stt` pixi environment, and the
-   operator must run `pixi run -e stt stt-bootstrap` before starting YA with
-   `ya-whisper` enabled, or `pixi run -e stt stt-bootstrap-parakeet` before
-   starting YA with `ya-parakeet` enabled. Runtime validation and the warm worker use
-   `pixi run --frozen -e stt python`, not ambient `python3`, so old system
-   Python cannot accidentally become the ASR runtime. Model/runtime knobs stay
-   server-local: `WHISPER_MODEL`, `WHISPER_DEVICE`, and
-   `WHISPER_COMPUTE_TYPE` for Whisper, and `PARAKEET_MODEL` plus
-   `PARAKEET_DEVICE` for Parakeet. Whisper's default should remain CPU-safe
+   server validates the backend by importing the required Python packages; if
+   that import probe fails for an explicitly enabled local backend, startup runs
+   the matching pixi bootstrap task once (`stt-bootstrap` for `ya-whisper`,
+   `stt-bootstrap-parakeet` for `ya-parakeet`) and then probes again. Runtime
+   validation and the warm worker use `pixi run --frozen -e stt python`, not
+   ambient `python3`, so old system Python cannot accidentally become the ASR
+   runtime. Model/runtime knobs stay server-local for Whisper:
+   `WHISPER_MODEL`, `WHISPER_DEVICE`, and `WHISPER_COMPUTE_TYPE`. For
+   Parakeet, `PARAKEET_MODEL` is the server fallback, `PARAKEET_DEVICE` is the
+   server device policy, and authenticated browser UI may send a per-request
+   model id for the same worker. Whisper's default should remain CPU-safe
    (`device=cpu`, `compute_type=int8`). Parakeet defaults to the current
    NVIDIA Transformers model (`nvidia/parakeet-tdt-0.6b-v3`) with
    `PARAKEET_DEVICE=auto`, which lets the worker choose CUDA when available
@@ -379,10 +387,10 @@ Deploy it in stages:
    `/api/version.voiceBackends` advertise `ya-whisper`. Failures should be
    actionable in logs: missing pixi, stale/missing pixi lock or environment,
    missing package, missing model/cache, unsupported device/compute type, or
-   model-load timeout. The YA server should still start with `ya-whisper`
-   disabled if local STT is not ready; deploy wrappers may choose to run
-   `stt-bootstrap`/`stt-check` as a strict preflight and abort before launching
-   YA.
+   model-load timeout. The YA server should still start with a requested local
+   backend disabled if bootstrap or validation fails; deploy wrappers may
+   choose to run `stt-bootstrap`/`stt-check` as a strict preflight and abort
+   before launching YA.
 5. **Make model warm-up observable.** The first utterance may legitimately pay
    model-load cost, but the UI and logs should distinguish "loading local STT
    model" from ordinary recognition. Record model name, device, compute type,
@@ -410,7 +418,8 @@ The committed pixi environment is intentionally not part of the normal
 Node/PNPM install. To enable local Whisper on a server:
 
 1. Install pixi on the host.
-2. From the YA checkout, run the relevant bootstrap:
+2. Either let YA run the relevant bootstrap task when the backend is explicitly
+   enabled, or preflight it manually from the YA checkout:
    - `pixi run -e stt stt-bootstrap` for `ya-whisper`;
    - `pixi run -e stt stt-bootstrap-parakeet` for `ya-parakeet`;
    - `pixi run -e stt stt-bootstrap-all` for both.
@@ -426,10 +435,19 @@ already contain it. Cloud STT backends still auto-enable from their
 `YA_stt__*` keys; the wrapper must not read or print those keys.
 
 Parakeet reuses this deployment shape through `requirements/stt-parakeet.txt`
-and `stt-bootstrap-parakeet`. The YA server does not run `pip install` at
-startup: an explicit backend id only selects and validates an already
-bootstrapped local runtime, while a deploy wrapper may choose to run the pixi
-bootstrap as a strict preflight.
+and `stt-bootstrap-parakeet`. The YA server runs that bootstrap only after the
+operator explicitly names `ya-parakeet`; a deploy wrapper may still choose to
+run the pixi bootstrap as a stricter preflight.
+
+Current Parakeet support is intentionally Transformers-only. The desired next
+track is a NeMo-backed local Parakeet worker so
+`nvidia/parakeet-unified-en-0.6b` can become the local default if it verifies:
+its model card reports stronger offline accuracy and streaming quality up to
+roughly 240 ms latency, but it documents NeMo 2.7.3 rather than the
+Transformers pipeline. That NeMo worker should also evaluate
+`nvidia/parakeet-rnnt-1.1b` for lower-case English, and any NIM/NGC
+multilingual RNNT variant only if there is a host-installable local runtime
+that fits the Rocky 8 / pixi deployment constraints.
 
 Hosted relay support for server-local STT is a product choice, not a technical
 requirement. If the operator wants phone-to-local-Whisper dictation through
@@ -495,6 +513,8 @@ to a local model remains a later optimization after local batch is solid.
   and later utterances reuse the worker.
 - With `YA_VOICE_BACKENDS=ya-parakeet` and the Parakeet Transformers runtime
   importable, startup validation advertises `ya-parakeet`; the first utterance
-  warms the model once and later utterances reuse the worker.
+  warms the selected model once and later utterances reuse the worker. Choosing
+  a different Parakeet model in STT settings or mic options sends that model id
+  to `/api/speech/transcribe` and restarts the warm worker for the new model.
 - Removing a previously selected backend causes an explicit method-selection
   prompt or notice, not a silent fallback and not a dead mic button.

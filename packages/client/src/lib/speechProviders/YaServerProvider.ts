@@ -1418,6 +1418,10 @@ export class YaServerProvider implements SpeechProvider {
               body: JSON.stringify({
                 backendId: this.backendId,
                 mimeType: recording.mimeType,
+                model:
+                  this.backendId === "ya-parakeet"
+                    ? this.options.parakeetModel
+                    : undefined,
                 audioBase64: await blobToBase64(audio),
                 context: recording.context,
               }),

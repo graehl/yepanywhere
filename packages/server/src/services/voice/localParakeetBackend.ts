@@ -5,12 +5,10 @@ import { fileURLToPath } from "node:url";
 import { getLogger } from "../../logging/logger.js";
 import type { SpeechBackend, TranscribeOptions } from "./SpeechBackend.js";
 import {
-  execFileAsync,
-  localSttReadyHint,
+  ensureLocalSttRuntime,
   PIXI_COMMAND,
   PIXI_PYTHON_ARGS,
   PIXI_STT_ENV,
-  summarizeChildError,
 } from "./localSttRuntime.js";
 
 const logger = getLogger();
@@ -20,7 +18,7 @@ const WORKER_SCRIPT = join(
   "parakeet_worker.py",
 );
 
-const PIXI_STT_READY_HINT = localSttReadyHint("stt-bootstrap-parakeet");
+export const DEFAULT_PARAKEET_MODEL = "nvidia/parakeet-tdt-0.6b-v3";
 
 /** Milliseconds to wait for model load before giving up. */
 const MODEL_LOAD_TIMEOUT_MS = 180_000;
@@ -34,45 +32,57 @@ export class LocalParakeetBackend implements SpeechBackend {
 
   private proc: ChildProcess | null = null;
   private warmPromise: Promise<void> | null = null;
+  private workerReady = false;
+  private workerModel: string | null = null;
+  private workerDevice: string | null = null;
   private pendingResolve: ((text: string) => void) | null = null;
   private pendingReject: ((err: Error) => void) | null = null;
 
   constructor(opts: { model?: string; device?: string } = {}) {
-    this.model = opts.model ?? "nvidia/parakeet-tdt-0.6b-v3";
+    this.model = opts.model ?? DEFAULT_PARAKEET_MODEL;
     this.device = opts.device ?? "auto";
   }
 
   async validate(): Promise<{ ok: true } | { ok: false; reason: string }> {
-    try {
-      await execFileAsync(
-        PIXI_COMMAND,
-        [
-          ...PIXI_PYTHON_ARGS,
-          "-c",
-          "import torch; from transformers import pipeline",
-        ],
-        { cwd: process.cwd(), timeout: 30_000 },
-      );
-      return { ok: true };
-    } catch (error) {
-      return {
-        ok: false,
-        reason: `local Parakeet pixi environment is not ready. ${PIXI_STT_READY_HINT} Detail: ${summarizeChildError(error)}`,
-      };
-    }
+    return ensureLocalSttRuntime({
+      backendLabel: "local Parakeet",
+      checkPython: "import torch; from transformers import pipeline",
+      bootstrapTask: "stt-bootstrap-parakeet",
+    });
   }
 
-  private startWorker(): Promise<void> {
-    if (this.warmPromise) return this.warmPromise;
+  private stopWorker(): void {
+    const proc = this.proc;
+    this.proc = null;
+    this.warmPromise = null;
+    this.workerReady = false;
+    this.workerModel = null;
+    this.workerDevice = null;
+    proc?.kill();
+  }
+
+  private startWorker(model: string, device: string): Promise<void> {
+    if (this.warmPromise) {
+      if (this.workerModel === model && this.workerDevice === device) {
+        return this.warmPromise;
+      }
+      if (!this.workerReady || this.pendingResolve) {
+        throw new Error("Parakeet backend is busy with another request");
+      }
+      this.stopWorker();
+    }
 
     this.warmPromise = new Promise<void>((resolve, reject) => {
       logger.info(
-        `Starting parakeet worker via pixi env "${PIXI_STT_ENV}" (model=${this.model} device=${this.device})`,
+        `Starting parakeet worker via pixi env "${PIXI_STT_ENV}" (model=${model} device=${device})`,
       );
+      this.workerReady = false;
+      this.workerModel = model;
+      this.workerDevice = device;
 
       const proc = spawn(
         PIXI_COMMAND,
-        [...PIXI_PYTHON_ARGS, WORKER_SCRIPT, this.model, this.device],
+        [...PIXI_PYTHON_ARGS, WORKER_SCRIPT, model, device],
         { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] },
       );
       this.proc = proc;
@@ -85,6 +95,7 @@ export class LocalParakeetBackend implements SpeechBackend {
       });
 
       proc.on("error", (error) => {
+        if (this.proc !== proc) return;
         if (!ready) {
           if (loadTimeout) clearTimeout(loadTimeout);
           reject(error);
@@ -93,9 +104,15 @@ export class LocalParakeetBackend implements SpeechBackend {
 
       proc.on("exit", (code) => {
         logger.warn(`Parakeet worker exited (code=${code})`);
-        this.proc = null;
-        this.warmPromise = null;
-        if (this.pendingReject) {
+        const currentWorkerExited = this.proc === proc;
+        if (currentWorkerExited) {
+          this.proc = null;
+          this.warmPromise = null;
+          this.workerReady = false;
+          this.workerModel = null;
+          this.workerDevice = null;
+        }
+        if (currentWorkerExited && this.pendingReject) {
           this.pendingReject(new Error("Parakeet worker exited unexpectedly"));
           this.pendingResolve = null;
           this.pendingReject = null;
@@ -112,6 +129,7 @@ export class LocalParakeetBackend implements SpeechBackend {
       }, MODEL_LOAD_TIMEOUT_MS);
 
       rl.on("line", (line: string) => {
+        if (this.proc !== proc) return;
         try {
           const msg = JSON.parse(line) as {
             status?: string;
@@ -123,6 +141,7 @@ export class LocalParakeetBackend implements SpeechBackend {
             clearTimeout(loadTimeout);
             if (msg.status === "ready") {
               ready = true;
+              this.workerReady = true;
               resolve();
             } else {
               reject(new Error(msg.error ?? "Worker failed to start"));
@@ -153,7 +172,8 @@ export class LocalParakeetBackend implements SpeechBackend {
       throw new Error("Parakeet backend is busy with another request");
     }
 
-    await this.startWorker();
+    const model = options.model?.trim() || this.model;
+    await this.startWorker(model, this.device);
 
     if (!this.proc?.stdin) {
       throw new Error("Parakeet worker is not running");

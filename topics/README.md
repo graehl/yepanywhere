@@ -25,6 +25,7 @@
 - Provider process state machine
 - Compact-and-handoff guardrail (targeted provider/model policy)
 - Claude 1M vs 200K context window (resolution, reporting, autocompact)
+- Exposing older Claude models (Opus 4.7/4.6/4.5, Sonnet 4.5) as an opt-in path
 - Heartbeat ownership and timers
 - Claude provider control
 - Codex API provider as a future API-key-backed backend

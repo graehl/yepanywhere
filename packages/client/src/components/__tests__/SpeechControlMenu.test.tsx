@@ -101,4 +101,50 @@ describe("SpeechControlMenu", () => {
 
     expect(prewarm).toHaveBeenCalledTimes(2);
   });
+
+  it("stops active capture before opening speech options", () => {
+    installMediaDevices([]);
+    const onBeforeOpen = vi.fn();
+
+    render(
+      <SpeechControlMenu
+        trigger={<button type="button">voice</button>}
+        showMethodSelector={false}
+        methodOptions={[]}
+        selectedMethod="ya-grok"
+        onMethodChange={vi.fn()}
+        onBeforeOpen={onBeforeOpen}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+
+    expect(onBeforeOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops active capture before changing speech backend", () => {
+    installMediaDevices([]);
+    const onBeforeCaptureChange = vi.fn();
+    const onMethodChange = vi.fn();
+
+    render(
+      <SpeechControlMenu
+        trigger={<button type="button">voice</button>}
+        showMethodSelector
+        methodOptions={[
+          { value: "browser-native", label: "Browser" },
+          { value: "xai-grok-direct-streaming", label: "Grok direct" },
+        ]}
+        selectedMethod="browser-native"
+        onMethodChange={onMethodChange}
+        onBeforeCaptureChange={onBeforeCaptureChange}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Grok direct" }));
+
+    expect(onBeforeCaptureChange).toHaveBeenCalledTimes(1);
+    expect(onMethodChange).toHaveBeenCalledWith(["xai-grok-direct-streaming"]);
+  });
 });

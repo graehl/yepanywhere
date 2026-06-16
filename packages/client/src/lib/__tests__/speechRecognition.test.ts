@@ -4,11 +4,14 @@ import {
   appendSpeechTranscript,
   computeSpeechDelta,
   createSpeechInsertionRange,
+  getSpeechSelectionFinalDelayMs,
   getSpeechTranscriptInsertionParts,
+  getSpeechTranscriptReplacementParts,
   getSpeechTranscriptSeparator,
   insertSpeechTranscriptAt,
   mapTextIndexThroughEdit,
   processSpeechResults,
+  retargetSpeechInsertionRangeReplacement,
   removeLatestSpeechChunkFromRange,
   replaceSpeechTranscriptBefore,
   replaceSpeechTranscriptInRange,
@@ -148,6 +151,40 @@ describe("speech transcript text edits", () => {
     });
   });
 
+  it("returns inline mirror parts for a selected replacement span", () => {
+    expect(
+      getSpeechTranscriptReplacementParts("replace this text", "spoken", 8, 12),
+    ).toEqual({
+      before: "replace",
+      separatorBefore: " ",
+      transcript: "spoken",
+      separatorAfter: " ",
+      after: "text",
+      text: "replace spoken text",
+      cursor: "replace spoken".length,
+    });
+  });
+
+  it("decapitalizes selected mid-sentence replacements to match context", () => {
+    expect(
+      replaceSpeechTranscriptInRange(
+        "Ok, look again.",
+        "Focus",
+        createSpeechInsertionRange(4, 8),
+        0,
+      ).text,
+    ).toBe("Ok, focus again.");
+
+    expect(
+      replaceSpeechTranscriptInRange(
+        "look again.",
+        "Focus",
+        createSpeechInsertionRange(0, 4),
+        0,
+      ).text,
+    ).toBe("Focus again.");
+  });
+
   it("replaces a provider-owned finalized suffix without text matching", () => {
     expect(
       replaceSpeechTranscriptBefore(
@@ -190,6 +227,42 @@ describe("speech transcript text edits", () => {
       replacementStart: 8,
       replacementEnd: 12,
     });
+  });
+
+  it("arms a hot-mic selection target with a final-chunk grace window", () => {
+    const range = createSpeechInsertionRange(4, 4);
+    const retargeted = retargetSpeechInsertionRangeReplacement(
+      range,
+      8,
+      12,
+      1000,
+    );
+
+    expect(retargeted).toMatchObject({
+      start: 4,
+      end: 8,
+      replaceEnd: 12,
+      replaceSelectedAtMs: 1000,
+    });
+    expect(getSpeechSelectionFinalDelayMs(retargeted, 1125)).toBe(175);
+    expect(getSpeechSelectionFinalDelayMs(retargeted, 1300)).toBe(0);
+  });
+
+  it("does not delay final chunks without a hot non-empty selection", () => {
+    expect(getSpeechSelectionFinalDelayMs(createSpeechInsertionRange(4, 4))).toBe(
+      0,
+    );
+    expect(getSpeechSelectionFinalDelayMs(createSpeechInsertionRange(4, 8))).toBe(
+      0,
+    );
+  });
+
+  it("does not retarget speech replacement for a collapsed selection", () => {
+    const range = createSpeechInsertionRange(4, 4);
+
+    expect(
+      retargetSpeechInsertionRangeReplacement(range, 8, 8, 1000),
+    ).toBe(range);
   });
 
   it("removes only the latest committed speech chunk", () => {

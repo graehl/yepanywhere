@@ -202,6 +202,7 @@ export interface MessageInputToolbarProps {
   ) => void;
   onInterimTranscript?: (transcript: string) => void;
   onListeningStart?: () => void;
+  onListeningStop?: () => void;
   voiceDisabled?: boolean;
   getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
 
@@ -485,6 +486,7 @@ type ToolbarVoiceButtonControl =
       ) => void;
       onInterimTranscript: (transcript: string) => void;
       onListeningStart?: () => void;
+      onListeningStop?: () => void;
       disabled?: boolean;
       speechMethod: SpeechMethodId;
       getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
@@ -1219,6 +1221,18 @@ export function MessageInputToolbarView({
                 speechControl.onSmartTurnSettingsChange
               }
               smartTurnDisabled={speechControl.smartTurnDisabled}
+              onBeforeOpen={() => {
+                if (speechControl.voiceButton?.kind !== "live") return;
+                speechControl.voiceButton.onListeningStop?.();
+                speechControl.voiceButton.ref?.current?.stopAndFinalize();
+                speechControl.voiceButton.onInterimTranscript("");
+              }}
+              onBeforeCaptureChange={() => {
+                if (speechControl.voiceButton?.kind !== "live") return;
+                speechControl.voiceButton.onListeningStop?.();
+                speechControl.voiceButton.ref?.current?.stopAndFinalize();
+                speechControl.voiceButton.onInterimTranscript("");
+              }}
               onPointerNearTrigger={() =>
                 speechControl.voiceButton?.kind === "live"
                   ? speechControl.voiceButton.ref?.current?.prewarm?.()
@@ -1232,6 +1246,7 @@ export function MessageInputToolbarView({
                     speechControl.voiceButton.onInterimTranscript
                   }
                   onListeningStart={speechControl.voiceButton.onListeningStart}
+                  onListeningStop={speechControl.voiceButton.onListeningStop}
                   disabled={speechControl.voiceButton.disabled}
                   speechMethod={speechControl.voiceButton.speechMethod}
                   getTranscriptionContext={
@@ -1963,6 +1978,7 @@ export function MessageInputToolbar({
   onVoiceTranscript,
   onInterimTranscript,
   onListeningStart,
+  onListeningStop,
   voiceDisabled,
   getTranscriptionContext,
   slashCommands = [],
@@ -2511,6 +2527,7 @@ export function MessageInputToolbar({
                 onTranscript: onVoiceTranscript,
                 onInterimTranscript,
                 onListeningStart,
+                onListeningStop,
                 disabled: voiceDisabled,
                 speechMethod: selectedSpeechMethod,
                 getTranscriptionContext,

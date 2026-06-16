@@ -104,15 +104,20 @@ Backends should implement a common `SpeechBackend` contract:
   preview; final partial events commit provider-owned transcript segments into
   the editable draft without stopping the mic, and utterance-final partials
   (`speech_final=true`) close or Smart Turn-decide the speech turn.
-  For xAI-style streaming events, YA treats `start` plus `duration` (or word
-  timestamps when needed) as the audio cursor for already-committed final
-  chunks. Once a final chunk is committed, the next mutable target advances to
-  after that chunk; the next final chunk in the same utterance must insert
-  there rather than replacing the prior final text. If a later stitched
-  utterance-final event overlaps already-committed audio, YA uses word
-  timestamps to keep only the text after the committed-audio cursor. Distinct
-  later spans append even if their transcript text is identical. The streaming
-  path must not dedupe or slice by substring comparison.
+  For xAI-style streaming events, YA treats word timestamps as the committed
+  audio span when they are present. The top-level `start` plus `duration` may
+  instead describe a broader segment window that remains fixed while xAI emits
+  several non-empty `is_final` sub-chunks. YA uses the top-level `start` as the
+  replacement group key, uses word spans to advance the committed cursor inside
+  that group, and treats a later `speech_final=true` event for the group as an
+  authoritative correction of the group-owned text. If a stitched
+  utterance-final event starts at an earlier committed group and no longer has
+  the already-committed group text as its prefix, YA replaces the owned group
+  range through explicit composer replacement metadata. If the event is merely
+  cumulative and still has the committed group text as a prefix, YA keeps only
+  the word-timestamp tail after the committed-audio cursor. Distinct later spans
+  append even if their transcript text is identical. The streaming path must
+  not dedupe or slice by substring comparison.
   The client does not infer safe sub-spans from punctuation, confidence, or
   sentence boundaries; safe-to-edit text is only the text already committed by
   provider event semantics.

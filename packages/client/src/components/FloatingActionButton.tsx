@@ -15,10 +15,14 @@ import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import {
+  clearSpeechInsertionRangeReplacement,
   createSpeechInsertionRange,
+  getSpeechSelectionFinalDelayMs,
   getSpeechTranscriptInsertionParts,
+  getSpeechTranscriptReplacementParts,
   mapSpeechInsertionRangeThroughEdit,
   removeLatestSpeechChunkFromRange,
+  retargetSpeechInsertionRangeReplacement,
   replaceSpeechTranscriptBefore,
   replaceSpeechTranscriptInRange,
   type SpeechInsertionRange,
@@ -37,6 +41,12 @@ interface PendingTextareaSelectionRestore {
   restore: (textarea: HTMLTextAreaElement) => void;
 }
 
+interface PendingSpeechFinal {
+  timer: ReturnType<typeof setTimeout>;
+  transcript: string;
+  metadata?: SpeechTranscriptionResultMetadata;
+}
+
 /**
  * Floating Action Button for quick session creation.
  * Desktop-only feature that appears in the right margin when there's room.
@@ -52,18 +62,28 @@ export function FloatingActionButton() {
   const [message, setMessage, draftControls] =
     useDraftPersistence(FAB_DRAFT_KEY);
   const [interimTranscript, setInterimTranscript] = useState("");
+  const [, setSpeechPreviewRevision] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const speechInsertionRangeRef = useRef<SpeechInsertionRange | null>(null);
+  const pendingSpeechFinalRef = useRef<PendingSpeechFinal | null>(null);
   const pendingTextareaSelectionRef =
     useRef<PendingTextareaSelectionRestore | null>(null);
   const interimDisplayTranscript = interimTranscript.trim();
-  const interimInsertion = getSpeechTranscriptInsertionParts(
-    message,
-    interimDisplayTranscript,
-    speechInsertionRangeRef.current?.end ?? message.length,
-  );
+  const speechInsertionRange = speechInsertionRangeRef.current;
+  const interimInsertion = speechInsertionRange
+    ? getSpeechTranscriptReplacementParts(
+        message,
+        interimDisplayTranscript,
+        speechInsertionRange.end,
+        speechInsertionRange.replaceEnd ?? speechInsertionRange.end,
+      )
+    : getSpeechTranscriptInsertionParts(
+        message,
+        interimDisplayTranscript,
+        message.length,
+      );
 
   // Extract projectId from current URL if we're in a project context
   const projectIdFromUrl = extractProjectIdFromPath(location.pathname);
@@ -132,36 +152,33 @@ export function FloatingActionButton() {
     [message, projectIdFromUrl, navigate, draftControls, basePath],
   );
 
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      // Skip Enter during IME composition (e.g. Chinese/Japanese/Korean input)
-      if (e.key === "Enter" && e.nativeEvent.isComposing) return;
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Skip Enter during IME composition (e.g. Chinese/Japanese/Korean input)
+    if (e.key === "Enter" && e.nativeEvent.isComposing) return;
 
-      if (
-        e.key === "Escape" &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.shiftKey &&
-        !e.altKey &&
-        voiceButtonRef.current?.isListening
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-        voiceButtonRef.current.stopAndFinalize();
-        setInterimTranscript("");
-        return;
-      }
+    if (
+      e.key === "Escape" &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      !e.altKey &&
+      voiceButtonRef.current?.isListening
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleListeningStop();
+      voiceButtonRef.current.stopAndFinalize();
+      return;
+    }
 
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSubmit();
-      } else if (e.key === "Escape") {
-        setIsExpanded(false);
-      }
-      // Shift+Enter naturally adds newline (default behavior)
-    },
-    [handleSubmit],
-  );
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    } else if (e.key === "Escape") {
+      setIsExpanded(false);
+    }
+    // Shift+Enter naturally adds newline (default behavior)
+  };
 
   const handleButtonClick = useCallback(() => {
     setIsExpanded(true);
@@ -191,7 +208,53 @@ export function FloatingActionButton() {
     setInterimTranscript("");
   }, [draftControls]);
 
-  const handleVoiceTranscript = useCallback(
+  const clearPendingSpeechFinal = useCallback(() => {
+    const pending = pendingSpeechFinalRef.current;
+    if (pending === null) return;
+    clearTimeout(pending.timer);
+    pendingSpeechFinalRef.current = null;
+  }, []);
+
+  useEffect(() => clearPendingSpeechFinal, [clearPendingSpeechFinal]);
+
+  const handleSpeechSelectionTarget = useCallback(() => {
+    const textarea = textareaRef.current;
+    const range = speechInsertionRangeRef.current;
+    if (!textarea || !range) return;
+    const selectionStart = textarea.selectionStart;
+    const selectionEnd = textarea.selectionEnd;
+    if (selectionStart === selectionEnd) {
+      clearPendingSpeechFinal();
+      speechInsertionRangeRef.current =
+        clearSpeechInsertionRangeReplacement(range);
+      setSpeechPreviewRevision((revision) => revision + 1);
+      return;
+    }
+    if (
+      range.replaceSelectedAtMs === undefined &&
+      range.end === selectionStart &&
+      range.replaceEnd === selectionEnd
+    ) {
+      return;
+    }
+    speechInsertionRangeRef.current = retargetSpeechInsertionRangeReplacement(
+      range,
+      selectionStart,
+      selectionEnd,
+    );
+    setSpeechPreviewRevision((revision) => revision + 1);
+  }, [clearPendingSpeechFinal]);
+
+  const clearSpeechSelectionTarget = useCallback(() => {
+    clearPendingSpeechFinal();
+    if (!speechInsertionRangeRef.current) return;
+    speechInsertionRangeRef.current = clearSpeechInsertionRangeReplacement(
+      speechInsertionRangeRef.current,
+    );
+    setSpeechPreviewRevision((revision) => revision + 1);
+  }, [clearPendingSpeechFinal]);
+
+  const commitVoiceTranscript = useCallback(
     (
       transcript: string,
       metadata?: SpeechTranscriptionResultMetadata,
@@ -292,6 +355,42 @@ export function FloatingActionButton() {
     [draftControls, handleSubmit],
   );
 
+  const handleVoiceTranscript = useCallback(
+    (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
+      const delayMs = metadata?.smartTurnCommand
+        ? 0
+        : getSpeechSelectionFinalDelayMs(speechInsertionRangeRef.current);
+      if (delayMs > 0) {
+        clearPendingSpeechFinal();
+        const timer = setTimeout(() => {
+          const pending = pendingSpeechFinalRef.current;
+          if (!pending || pending.timer !== timer) return;
+          pendingSpeechFinalRef.current = null;
+          commitVoiceTranscript(pending.transcript, pending.metadata);
+        }, delayMs);
+        pendingSpeechFinalRef.current = { timer, transcript, metadata };
+        return;
+      }
+
+      clearPendingSpeechFinal();
+      commitVoiceTranscript(transcript, metadata);
+    },
+    [clearPendingSpeechFinal, commitVoiceTranscript],
+  );
+
+  const flushPendingSpeechFinal = useCallback(() => {
+    const pending = pendingSpeechFinalRef.current;
+    if (pending === null) return;
+    clearTimeout(pending.timer);
+    pendingSpeechFinalRef.current = null;
+    commitVoiceTranscript(pending.transcript, pending.metadata);
+  }, [commitVoiceTranscript]);
+
+  const handleListeningStop = useCallback(() => {
+    flushPendingSpeechFinal();
+    setInterimTranscript("");
+  }, [flushPendingSpeechFinal]);
+
   const handleInterimTranscript = useCallback((transcript: string) => {
     setInterimTranscript(transcript);
   }, []);
@@ -347,18 +446,27 @@ export function FloatingActionButton() {
                 value={message}
                 onChange={(e) => {
                   const nextMessage = e.target.value;
+                  clearPendingSpeechFinal();
                   const range = speechInsertionRangeRef.current;
                   if (range) {
                     speechInsertionRangeRef.current =
-                      mapSpeechInsertionRangeThroughEdit(
-                        message,
-                        nextMessage,
-                        range,
+                      clearSpeechInsertionRangeReplacement(
+                        mapSpeechInsertionRangeThroughEdit(
+                          message,
+                          nextMessage,
+                          range,
+                        ),
                       );
                   }
                   setMessage(nextMessage);
                 }}
                 onKeyDown={handleKeyDown}
+                onSelect={handleSpeechSelectionTarget}
+                onPointerUp={handleSpeechSelectionTarget}
+                onKeyUp={handleSpeechSelectionTarget}
+                onCut={clearSpeechSelectionTarget}
+                onCopy={clearSpeechSelectionTarget}
+                onPaste={clearSpeechSelectionTarget}
                 placeholder={t("fabPlaceholder")}
                 className="fab-textarea"
                 rows={3}
@@ -381,6 +489,7 @@ export function FloatingActionButton() {
               onTranscript={handleVoiceTranscript}
               onInterimTranscript={handleInterimTranscript}
               onListeningStart={handleListeningStart}
+              onListeningStop={handleListeningStop}
               className="toolbar-button"
             />
             <button

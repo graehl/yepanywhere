@@ -7,6 +7,7 @@ import type { ServerSettingsService } from "../services/ServerSettingsService.js
 import { DEFAULT_SERVER_SETTINGS } from "../services/ServerSettingsService.js";
 import {
   persistSpeechAudio,
+  type SpeechStreamingTranscriptTraceEvent,
   type SpeechAudioRequestSource,
   type SpeechAudioRetentionResult,
   type SpeechTranscriptionContext,
@@ -15,6 +16,8 @@ import type { SpeechBackendRegistry } from "../services/voice/registry.js";
 import {
   supportsStreaming,
   type SpeechStreamSession,
+  type SpeechStreamDone,
+  type SpeechStreamPartial,
   type TranscribeOptions,
   type SpeechWordTimestamp,
 } from "../services/voice/SpeechBackend.js";
@@ -163,6 +166,30 @@ function formatStreamingTranscriptTraceLine(
   text: string,
 ): string {
   return `${kind}\t${text.replaceAll("\r", "\\r").replaceAll("\n", "\\n")}`;
+}
+
+function toStreamingPartialTraceEvent(
+  event: SpeechStreamPartial,
+): SpeechStreamingTranscriptTraceEvent {
+  return {
+    kind: getPartialTraceKind(event),
+    text: event.text,
+    isFinal: event.isFinal,
+    speechFinal: event.speechFinal,
+    start: event.start,
+    duration: event.duration,
+    words: event.words,
+  };
+}
+
+function toStreamingDoneTraceEvent(
+  done: SpeechStreamDone,
+): SpeechStreamingTranscriptTraceEvent {
+  return {
+    kind: "done",
+    text: done.text,
+    duration: done.duration,
+  };
 }
 
 function getPartialTraceKind(event: {
@@ -405,6 +432,7 @@ async function persistStreamingTranscription(
     mimeType: string;
     transcript: string;
     streamingTranscriptTrace?: string[];
+    streamingTranscriptEvents?: SpeechStreamingTranscriptTraceEvent[];
     startedAt: string;
     startedAtMs: number;
     context?: SpeechTranscriptionContext;
@@ -422,6 +450,7 @@ async function persistStreamingTranscription(
     audio: input.audio,
     transcript: input.transcript,
     streamingTranscriptTrace: input.streamingTranscriptTrace,
+    streamingTranscriptEvents: input.streamingTranscriptEvents,
     startedAt: input.startedAt,
     completedAt,
     durationMs: completedAtMs - input.startedAtMs,
@@ -442,6 +471,7 @@ async function persistStreamingTranscription(
       transcriptChars: input.transcript.length,
       streamingTranscriptTraceEvents:
         input.streamingTranscriptTrace?.length ?? 0,
+      streamingTranscriptRawEvents: input.streamingTranscriptEvents?.length ?? 0,
       transcriptionId: retention.transcriptionId,
       retention: {
         stored: retention.stored,
@@ -516,6 +546,7 @@ export function createSpeechWebSocketSession(
   let streamStartedAt = "";
   let streamStartedAtMs = 0;
   let streamingTranscriptTrace: string[] = [];
+  let streamingTranscriptEvents: SpeechStreamingTranscriptTraceEvent[] = [];
   let streamingSpeechFinalTexts: string[] = [];
   let streamingStopRequested = false;
   let messageChain = Promise.resolve();
@@ -549,6 +580,7 @@ export function createSpeechWebSocketSession(
       pendingAudio = [];
       streamRequestId = null;
       streamingTranscriptTrace = [];
+      streamingTranscriptEvents = [];
       streamingSpeechFinalTexts = [];
       streamingStopRequested = false;
 
@@ -625,7 +657,10 @@ export function createSpeechWebSocketSession(
                     event.text,
                   ),
                 );
-                if (event.speechFinal && !streamingStopRequested) {
+                streamingTranscriptEvents.push(
+                  toStreamingPartialTraceEvent(event),
+                );
+                if (event.speechFinal) {
                   streamingSpeechFinalTexts.push(event.text);
                 }
                 sendMessage({
@@ -708,6 +743,7 @@ export function createSpeechWebSocketSession(
         streamingTranscriptTrace.push(
           formatStreamingTranscriptTraceLine("done", done.text),
         );
+        streamingTranscriptEvents.push(toStreamingDoneTraceEvent(done));
         const transcript =
           done.text.trim() || joinStreamingSpeechFinals(streamingSpeechFinalTexts);
         const retention = await persistStreamingTranscription(deps, {
@@ -717,6 +753,7 @@ export function createSpeechWebSocketSession(
           mimeType,
           transcript,
           streamingTranscriptTrace,
+          streamingTranscriptEvents,
           startedAt: streamStartedAt,
           startedAtMs: streamStartedAtMs,
           context,
@@ -748,6 +785,7 @@ export function createSpeechWebSocketSession(
         pendingAudio = [];
         streamRequestId = null;
         streamingTranscriptTrace = [];
+        streamingTranscriptEvents = [];
         streamingSpeechFinalTexts = [];
         streamingStopRequested = false;
       }
@@ -793,6 +831,7 @@ export function createSpeechWebSocketSession(
       streamSessionPromise = null;
       pendingAudio = [];
       streamingTranscriptTrace = [];
+      streamingTranscriptEvents = [];
       streamingSpeechFinalTexts = [];
       streamingStopRequested = false;
       chunks.length = 0;
@@ -893,6 +932,7 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
       let streamStartedAt = "";
       let streamStartedAtMs = 0;
       let streamingTranscriptTrace: string[] = [];
+      let streamingTranscriptEvents: SpeechStreamingTranscriptTraceEvent[] = [];
       let streamingSpeechFinalTexts: string[] = [];
       let streamingStopRequested = false;
       let messageChain = Promise.resolve();
@@ -930,6 +970,7 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
           pendingAudio = [];
           streamRequestId = null;
           streamingTranscriptTrace = [];
+          streamingTranscriptEvents = [];
           streamingSpeechFinalTexts = [];
           streamingStopRequested = false;
 
@@ -1019,7 +1060,10 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
                         event.text,
                       ),
                     );
-                    if (event.speechFinal && !streamingStopRequested) {
+                    streamingTranscriptEvents.push(
+                      toStreamingPartialTraceEvent(event),
+                    );
+                    if (event.speechFinal) {
                       streamingSpeechFinalTexts.push(event.text);
                     }
                     send(ws, {
@@ -1106,6 +1150,7 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
             streamingTranscriptTrace.push(
               formatStreamingTranscriptTraceLine("done", done.text),
             );
+            streamingTranscriptEvents.push(toStreamingDoneTraceEvent(done));
             const transcript =
               done.text.trim() ||
               joinStreamingSpeechFinals(streamingSpeechFinalTexts);
@@ -1116,6 +1161,7 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
               mimeType,
               transcript,
               streamingTranscriptTrace,
+              streamingTranscriptEvents,
               startedAt: streamStartedAt,
               startedAtMs: streamStartedAtMs,
               context,
@@ -1147,6 +1193,7 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
             pendingAudio = [];
             streamRequestId = null;
             streamingTranscriptTrace = [];
+            streamingTranscriptEvents = [];
             streamingSpeechFinalTexts = [];
             streamingStopRequested = false;
           }
@@ -1201,6 +1248,7 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
           streamSessionPromise = null;
           pendingAudio = [];
           streamingTranscriptTrace = [];
+          streamingTranscriptEvents = [];
           streamingSpeechFinalTexts = [];
           streamingStopRequested = false;
           chunks.length = 0;

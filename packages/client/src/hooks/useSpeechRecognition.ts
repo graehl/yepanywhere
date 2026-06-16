@@ -249,7 +249,7 @@ export function useSpeechRecognition(
     const provider = providerRef.current;
     if (!provider) return;
     const providerState = provider.getState();
-    if (providerState.isListening || providerState.status === "starting") {
+    if (providerState.status !== "idle" && providerState.status !== "error") {
       provider.stop();
     } else {
       provider.start();

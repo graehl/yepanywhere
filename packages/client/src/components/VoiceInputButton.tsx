@@ -53,6 +53,8 @@ interface VoiceInputButtonProps {
   onInterimTranscript?: (text: string) => void;
   /** Callback when listening starts - useful for focusing input */
   onListeningStart?: () => void;
+  /** Callback when the user explicitly stops active capture. */
+  onListeningStop?: () => void;
   /** Whether the button should be disabled */
   disabled?: boolean;
   /** Additional class name */
@@ -76,6 +78,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     onTranscript,
     onInterimTranscript,
     onListeningStart,
+    onListeningStop,
     disabled,
     className = "",
     speechMethod: selectedSpeechMethod,
@@ -167,7 +170,9 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     onInterimResult: handleInterim,
   });
   const isStarting = status === "starting";
-  const isActive = isListening || isStarting;
+  const isCapturing =
+    isListening || status === "listening" || status === "receiving";
+  const isActive = isCapturing || isStarting || status === "reconnecting";
 
   const isAvailable = isSupported && voiceInputEnabled && serverVoiceEnabled;
 
@@ -180,7 +185,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     () => ({
       stopAndFinalize: () => {
         const pending = interimTranscript;
-        if (isListening || isStarting) {
+        if (isActive) {
           stopListening();
         }
         return pending;
@@ -192,8 +197,6 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     }),
     [
       interimTranscript,
-      isListening,
-      isStarting,
       isActive,
       prewarm,
       stopListening,
@@ -204,20 +207,23 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
 
   // Clear interim when listening stops
   useEffect(() => {
-    if (!isListening && interimTranscript) {
+    if (!isCapturing && interimTranscript) {
       onInterimTranscript?.("");
     }
-  }, [isListening, interimTranscript, onInterimTranscript]);
+  }, [isCapturing, interimTranscript, onInterimTranscript]);
 
   // Handle click - toggle listening and notify when starting
   const handleClick = useCallback(() => {
     const wasActive = isActive;
+    if (wasActive) {
+      onListeningStop?.();
+    }
     toggleListening();
     // If we weren't listening, we're now starting - notify parent
     if (!wasActive) {
       onListeningStart?.();
     }
-  }, [isActive, toggleListening, onListeningStart]);
+  }, [isActive, toggleListening, onListeningStart, onListeningStop]);
 
   // Don't render if not supported or disabled in settings
   if (!isAvailable) {
@@ -241,7 +247,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   const button = (
     <button
       type="button"
-      className={`voice-input-button ${isListening ? "listening" : ""} ${isStarting ? "connecting" : ""} ${className}`}
+      className={`voice-input-button ${isCapturing ? "listening" : ""} ${isStarting ? "connecting" : ""} ${className}`}
       onClick={handleClick}
       disabled={disabled}
       title={
@@ -258,7 +264,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
       }
       aria-pressed={isActive}
     >
-      {isListening ? (
+      {isCapturing ? (
         // Recording indicator - animated bars (only once audio is actually
         // flowing; during "starting" we show the mic so the button does not
         // look like it is capturing before the pipeline is live).
@@ -319,7 +325,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   if ((showStatusText && isActive) || error) {
     return (
       <div
-        className={`voice-input-container ${isListening ? "listening" : ""} ${statusClass}`}
+        className={`voice-input-container ${isCapturing ? "listening" : ""} ${statusClass}`}
       >
         {button}
         <span className="voice-input-status">{statusLabel}</span>

@@ -31,6 +31,26 @@ draft end and not over the previous chunk.
 
 Interim streaming text is only a preview at the transaction insertion point. It
 does not delete pending selected text and does not enter the textarea value.
+When a provisional selected replacement target exists, the preview mirror
+renders as if the selected text were replaced so following text wraps at the
+same positions it will use once a final chunk commits.
+
+If the user makes a non-empty selection after the mic transaction is already
+active, YA treats that selection as a provisional replacement target for the
+next non-command final speech chunk. The replacement is not committed
+immediately: a final chunk that arrives within 300 ms of the selection is held
+until that grace window ends. The value is an explicit speech-UI exception
+authorized for this race, not a general readiness or latency delay. If the user
+types, cuts, copies, pastes, or collapses the selection before the held final
+chunk commits, the manual action wins and the provisional speech replacement
+is cleared.
+
+Speech providers may sentence-initial-capitalize the first word of a chunk even
+when the user is replacing a lowercase word in the middle of a sentence. For
+explicit selected-span replacement, YA may lowercase a title-case first word
+when the selected text starts lowercase and the replacement context is not
+sentence-initial. It must not do this for collapsed-cursor insertion or for
+all-caps/acronym-looking words.
 
 ## Streaming Behavior
 
@@ -38,6 +58,44 @@ Streaming providers may emit mutable interim text, finalized chunks
 (`is_final`), and utterance-final or end-of-turn events. YA commits finalized
 chunks into the speech transaction as they arrive, using provider audio timing
 where available to advance the insertion target.
+
+xAI STT has two timing notions. The top-level `start`/`duration` on a partial
+can identify the current segment window and remain fixed while several
+separate finalized sub-chunks arrive. Word timestamps are the committed audio
+span for a chunk. YA therefore uses word timestamps, when present, for the
+committed cursor and uses the top-level `start` only as the segment group key.
+
+Within one xAI segment group, a later `speech_final` partial may revise the
+text made from earlier non-empty `is_final` sub-chunks. YA must not append a
+tail guessed from the segment window in that case. It replaces the currently
+owned text for that segment with the `speech_final` text by emitting explicit
+replacement metadata to the composer.
+
+If a later `speech_final` starts at an earlier committed segment group and its
+text is no longer prefixed by the already-committed group text, YA treats it as
+a correction spanning the committed groups from that start point to the current
+insertion target. It replaces that owned suffix instead of slicing off only the
+word-timestamp tail.
+
+An empty finalized chunk is not committed speech. It must not clear the mutable
+preview and must not advance the committed audio cursor; xAI can emit empty
+`is_final` chunks before a later non-empty final chunk for the same audio span.
+
+When Smart Turn triggers an automatic send from an endpoint event, the provider
+may still deliver additional final text in its done event. YA must commit that
+uncommitted tail before applying the send command metadata.
+
+xAI may also send one or more non-empty final partials after YA has sent
+`audio.done`, then send an empty `transcript.done`. YA stages such post-stop
+final partials in order and uses them only if the final done event has no text,
+preserving protection against bad stop-flush partials when `transcript.done`
+does contain text.
+
+When server-routed speech audio retention is enabled, YA persists structured
+streaming transcript events next to the retained audio. The older
+tab-separated text trace is kept for grepping, but the structured trace keeps
+`isFinal`, `speechFinal`, `start`, `duration`, and word timestamps for replay
+and reducer tests.
 
 Spoken commands are evaluated from finalized speech, not from mutable interim
 text. A command word is a trailing lexical token such as `send`, `cancel`, or
@@ -81,8 +139,13 @@ Batch supports simple whole-batch spoken commands:
 ## Stop And Escape
 
 Clicking the active mic button or pressing the voice shortcut toggles capture
-off using the provider's normal stop behavior. In the initial implementation,
-Esc may duplicate that same toggle behavior when focus is in the composer.
+off using the provider's normal stop behavior. For xAI streaming STT, manual
+stop sends `audio.done` immediately and waits for `transcript.done`; YA should
+not treat the live interim preview as final unless the final response fails and
+the preview is being salvaged. Smart Turn/endpointing finalizes through
+`is_final` transcript partials, but manual stop does not require or promise one
+last `is_final` partial. In the initial implementation, Esc may duplicate that
+same toggle behavior when focus is in the composer.
 
 Proposed stronger Esc behavior: while a mic transaction is active, Esc should
 remove all speech inserted since the button press and stop recognition. That

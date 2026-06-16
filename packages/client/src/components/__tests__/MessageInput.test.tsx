@@ -8,7 +8,13 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { type ComponentProps, useCallback, useMemo, useState } from "react";
+import {
+  type ComponentProps,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SESSION_ISEARCH_GUIDE_EVENT } from "../../lib/sessionIsearchGuide";
 import {
@@ -90,15 +96,26 @@ const {
 
 vi.mock("../../hooks/useDraftPersistence", () => ({
   useDraftPersistence: () => {
-    const [value, setValue] = useState("");
-    const getDraft = useCallback(() => value, [value]);
-    const setDraft = useCallback(
-      (nextValue: string) => setValue(nextValue),
-      [],
-    );
+    const [value, setValueInternal] = useState("");
+    const valueRef = useRef("");
+    const setValue = useCallback((nextValue: string) => {
+      valueRef.current = nextValue;
+      setValueInternal(nextValue);
+    }, []);
+    const getDraft = useCallback(() => valueRef.current, []);
+    const setDraft = useCallback((nextValue: string) => {
+      valueRef.current = nextValue;
+      setValueInternal(nextValue);
+    }, []);
     const flushDraft = useCallback(() => {}, []);
-    const clearInput = useCallback(() => setValue(""), []);
-    const clearDraft = useCallback(() => setValue(""), []);
+    const clearInput = useCallback(() => {
+      valueRef.current = "";
+      setValueInternal("");
+    }, []);
+    const clearDraft = useCallback(() => {
+      valueRef.current = "";
+      setValueInternal("");
+    }, []);
     const restoreFromStorage = useCallback(() => {}, []);
 
     const controls = useMemo(
@@ -267,6 +284,7 @@ vi.mock("../VoiceInputButton", async () => {
           ) => void;
           onInterimTranscript?: (text: string) => void;
           onListeningStart?: () => void;
+          onListeningStop?: () => void;
           speechMethod?: string;
         },
         ref,
@@ -583,6 +601,20 @@ describe("MessageInput", () => {
     expect(mockSetSpeechMethod).toHaveBeenCalledWith("ya-deepgram");
   });
 
+  it("stops active voice capture before opening speech settings", () => {
+    versionState.version = {
+      ...versionState.version,
+      voiceBackends: ["ya-grok"],
+    };
+    voiceButtonState.isListening = true;
+
+    renderMessageInput();
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+
+    expect(mockVoiceStopAndFinalize).toHaveBeenCalledTimes(1);
+  });
+
   it("toggles session voice input on Ctrl+Space from the composer", () => {
     const textarea = renderMessageInput();
 
@@ -633,6 +665,26 @@ describe("MessageInput", () => {
     });
   });
 
+  it("does not grace-delay the selection that started the mic transaction", () => {
+    vi.useFakeTimers();
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "replace this text" } });
+    textarea.focus();
+    textarea.setSelectionRange(8, 12);
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+    });
+    fireEvent.select(textarea);
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("spoken");
+    });
+
+    expect(textarea.value).toBe("replace spoken text");
+  });
+
   it("leaves a selected replacement untouched when speech is cancelled first", async () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
@@ -654,6 +706,61 @@ describe("MessageInput", () => {
     });
   });
 
+  it("replaces a hot-mic selection with the next final chunk after grace", () => {
+    vi.useFakeTimers();
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "replace this text" } });
+    textarea.focus();
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+    });
+
+    textarea.setSelectionRange(8, 12);
+    fireEvent.select(textarea);
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("spoken");
+    });
+
+    expect(textarea.value).toBe("replace this text");
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(textarea.value).toBe("replace spoken text");
+    expect(textarea.selectionStart).toBe("replace spoken".length);
+  });
+
+  it("lets a manual edit cancel a pending hot-mic selection replacement", () => {
+    vi.useFakeTimers();
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "replace this text" } });
+    textarea.focus();
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+    });
+
+    textarea.setSelectionRange(8, 12);
+    fireEvent.select(textarea);
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("spoken");
+    });
+
+    fireEvent.change(textarea, { target: { value: "replace typed text" } });
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(textarea.value).toBe("replace typed text");
+  });
+
   it("renders interim speech at the current insertion point", async () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
@@ -672,6 +779,55 @@ describe("MessageInput", () => {
       ).toBe("hello there world");
       expect(textarea.value).toBe("hello world");
       expect(textarea.selectionStart).toBe(5);
+    });
+  });
+
+  it("relayouts interim speech over a hot selected replacement span", async () => {
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "alpha beta gamma" } });
+    textarea.focus();
+    textarea.setSelectionRange(
+      "alpha beta gamma".length,
+      "alpha beta gamma".length,
+    );
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onInterimTranscript?.("draft");
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector(".speech-draft-mirror")?.textContent,
+      ).toBe("alpha beta gamma draft");
+    });
+
+    textarea.setSelectionRange("alpha ".length, "alpha beta".length);
+    fireEvent.select(textarea);
+
+    await waitFor(() => {
+      expect(
+        document.querySelector(".speech-draft-mirror")?.textContent,
+      ).toBe("alpha draft gamma");
+      expect(textarea.value).toBe("alpha beta gamma");
+    });
+  });
+
+  it("uses selected text context to case speech replacements", async () => {
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "Ok, look again." } });
+    textarea.focus();
+    textarea.setSelectionRange("Ok, ".length, "Ok, look".length);
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onTranscript?.("Focus");
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("Ok, focus again.");
     });
   });
 
@@ -698,6 +854,43 @@ describe("MessageInput", () => {
     });
   });
 
+  it("replaces a corrected streaming segment after several final chunks", async () => {
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onTranscript?.("Audio isn't done.");
+      voicePropsState.current?.onTranscript?.("Empty final box.");
+      voicePropsState.current?.onTranscript?.("Blocks");
+      voicePropsState.current?.onTranscript?.(", blocks");
+      voicePropsState.current?.onTranscript?.(", empty, five");
+      voicePropsState.current?.onTranscript?.("o blocks.");
+      voicePropsState.current?.onTranscript?.("Empty, final.");
+      voicePropsState.current?.onTranscript?.("Blocks.");
+    });
+
+    const previousSegment =
+      "Blocks, blocks, empty, five o blocks. Empty, final. Blocks.";
+    await waitFor(() => {
+      expect(textarea.value).toBe(
+        `Audio isn't done. Empty final box. ${previousSegment}`,
+      );
+    });
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.(
+        "Blocks, blocks, empty final blocks, empty final blocks.",
+        { replacePreviousTranscriptChars: previousSegment.length },
+      );
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe(
+        "Audio isn't done. Empty final box. Blocks, blocks, empty final blocks, empty final blocks.",
+      );
+    });
+  });
+
   it("inserts consecutive final speech chunks at a middle cursor", async () => {
     const textarea = renderMessageInput() as HTMLTextAreaElement;
 
@@ -720,6 +913,49 @@ describe("MessageInput", () => {
 
     await waitFor(() => {
       expect(textarea.value).toBe("prefix first. second. suffix");
+    });
+  });
+
+  it("keeps active streaming final chunks in the composer", async () => {
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), { onSend }) as HTMLTextAreaElement;
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onInterimTranscript?.("Okay");
+      voicePropsState.current?.onTranscript?.("Okay.");
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("Okay.");
+    });
+
+    act(() => {
+      voicePropsState.current?.onInterimTranscript?.("Does it work");
+      voicePropsState.current?.onTranscript?.("Does it work at all?");
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("Okay. Does it work at all?");
+    });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("submits committed speech when Smart Turn send follows immediately", async () => {
+    const onSend = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), { onSend }) as HTMLTextAreaElement;
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+      voicePropsState.current?.onTranscript?.("Okay.");
+      voicePropsState.current?.onTranscript?.("", {
+        smartTurnCommand: "send",
+      });
+    });
+
+    await waitFor(() => {
+      expectSubmission(onSend, "Okay.", "direct");
+      expect(textarea.value).toBe("");
     });
   });
 

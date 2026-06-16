@@ -388,6 +388,7 @@ describe("speech routes", () => {
         transcript?: string;
         streamingTranscriptTrace?: string[];
         streamingTranscriptTraceText?: string;
+        streamingTranscriptEvents?: unknown[];
       };
       expect(metadata.transcript).toBe("hello world");
       expect(metadata.streamingTranscriptTrace).toEqual([
@@ -399,6 +400,32 @@ describe("speech routes", () => {
       expect(metadata.streamingTranscriptTraceText).toBe(
         "update\thel\nfinal\thello\nspeech-final\thello world\ndone\t",
       );
+      expect(metadata.streamingTranscriptEvents).toEqual([
+        {
+          kind: "update",
+          text: "hel",
+          isFinal: false,
+        },
+        {
+          kind: "final",
+          text: "hello",
+          isFinal: true,
+        },
+        {
+          kind: "speech-final",
+          text: "hello world",
+          isFinal: true,
+          speechFinal: true,
+          words: [
+            { word: "hello", start: 0, duration: 0.2 },
+            { word: "world", start: 0.3, duration: 0.2 },
+          ],
+        },
+        {
+          kind: "done",
+          text: "",
+        },
+      ]);
     } finally {
       ws.close();
     }

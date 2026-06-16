@@ -65,6 +65,10 @@ export function computeSpeechDelta(
 }
 
 const NO_SPACE_BEFORE_TRANSCRIPT = /^[,.;:!?%)]/;
+const INITIAL_TITLE_CASE_WORD = /^(\s*[(["'`]*)([A-Z])(?=[a-z])/;
+const LOWERCASE_CONTEXT_WORD = /^[^A-Za-z]*[a-z]/;
+const SENTENCE_INITIAL_CONTEXT = /(?:^|[.!?][)"'\]]*)$/;
+export const SPEECH_SELECTION_FINAL_GRACE_MS = 300;
 
 export function getSpeechTranscriptSeparator(
   base: string,
@@ -94,6 +98,7 @@ export interface SpeechInsertionRange {
   start: number;
   end: number;
   replaceEnd?: number;
+  replaceSelectedAtMs?: number;
   chunks: SpeechOwnedChunk[];
 }
 
@@ -144,6 +149,66 @@ export function getSpeechTranscriptInsertionParts(
     text: `${before}${insertedText}${separatorAfter}${after}`,
     cursor: before.length + insertedText.length,
   };
+}
+
+function lowercaseInitialTitleCaseWord(transcript: string): string {
+  return transcript.replace(
+    INITIAL_TITLE_CASE_WORD,
+    (_match, prefix: string, letter: string) => `${prefix}${letter.toLowerCase()}`,
+  );
+}
+
+function isSentenceInitialReplacementContext(
+  base: string,
+  replacementStart: number,
+): boolean {
+  return SENTENCE_INITIAL_CONTEXT.test(base.slice(0, replacementStart).trimEnd());
+}
+
+function normalizeSpeechTranscriptForReplacementContext(
+  base: string,
+  transcript: string,
+  replacementStart: number,
+  replacementEnd: number,
+): string {
+  const trimmedTranscript = transcript.trim();
+  if (!trimmedTranscript || replacementEnd <= replacementStart) {
+    return trimmedTranscript;
+  }
+  const selectedText = base.slice(replacementStart, replacementEnd);
+  if (!LOWERCASE_CONTEXT_WORD.test(selectedText)) return trimmedTranscript;
+  if (isSentenceInitialReplacementContext(base, replacementStart)) {
+    return trimmedTranscript;
+  }
+  return lowercaseInitialTitleCaseWord(trimmedTranscript);
+}
+
+export function getSpeechTranscriptReplacementParts(
+  base: string,
+  transcript: string,
+  replacementStart: number,
+  replacementEnd: number,
+): SpeechTranscriptInsertionParts {
+  const clampedReplacementStart = Math.max(
+    0,
+    Math.min(replacementStart, base.length),
+  );
+  const clampedReplacementEnd = Math.max(
+    clampedReplacementStart,
+    Math.min(replacementEnd, base.length),
+  );
+  const normalizedTranscript = normalizeSpeechTranscriptForReplacementContext(
+    base,
+    transcript,
+    clampedReplacementStart,
+    clampedReplacementEnd,
+  );
+  const baseWithoutReplacement = `${base.slice(0, clampedReplacementStart)}${base.slice(clampedReplacementEnd)}`;
+  return getSpeechTranscriptInsertionParts(
+    baseWithoutReplacement,
+    normalizedTranscript,
+    clampedReplacementStart,
+  );
 }
 
 export function insertSpeechTranscriptAt(
@@ -200,6 +265,53 @@ export function createSpeechInsertionRange(
   };
 }
 
+export function retargetSpeechInsertionRangeReplacement(
+  range: SpeechInsertionRange,
+  selectionStart: number,
+  selectionEnd: number,
+  selectedAtMs = Date.now(),
+): SpeechInsertionRange {
+  const start = Math.max(0, Math.min(selectionStart, selectionEnd));
+  const end = Math.max(start, Math.max(selectionStart, selectionEnd));
+  if (end <= start) return range;
+  return {
+    ...range,
+    end: start,
+    replaceEnd: end,
+    replaceSelectedAtMs: selectedAtMs,
+  };
+}
+
+export function clearSpeechInsertionRangeReplacement(
+  range: SpeechInsertionRange,
+): SpeechInsertionRange {
+  if (range.replaceEnd === undefined && range.replaceSelectedAtMs === undefined)
+    return range;
+  return {
+    ...range,
+    replaceEnd: undefined,
+    replaceSelectedAtMs: undefined,
+  };
+}
+
+export function getSpeechSelectionFinalDelayMs(
+  range: SpeechInsertionRange | null,
+  nowMs = Date.now(),
+): number {
+  if (
+    !range ||
+    range.replaceEnd === undefined ||
+    range.replaceEnd <= range.end ||
+    range.replaceSelectedAtMs === undefined
+  ) {
+    return 0;
+  }
+
+  const elapsedMs = nowMs - range.replaceSelectedAtMs;
+  if (elapsedMs < 0) return SPEECH_SELECTION_FINAL_GRACE_MS;
+  return Math.max(0, SPEECH_SELECTION_FINAL_GRACE_MS - elapsedMs);
+}
+
 export function mapSpeechInsertionRangeThroughEdit(
   previousText: string,
   nextText: string,
@@ -212,6 +324,7 @@ export function mapSpeechInsertionRangeThroughEdit(
       range.replaceEnd === undefined
         ? undefined
         : mapTextIndexThroughEdit(previousText, nextText, range.replaceEnd),
+    replaceSelectedAtMs: range.replaceSelectedAtMs,
     chunks: range.chunks.map((chunk) => ({
       start: mapTextIndexThroughEdit(previousText, nextText, chunk.start),
       end: mapTextIndexThroughEdit(previousText, nextText, chunk.end),
@@ -242,25 +355,33 @@ export function replaceSpeechTranscriptInRange(
     range.end,
     range.replaceEnd ?? range.end,
   );
+  const replacingExplicitRange =
+    range.replaceEnd !== undefined && range.replaceEnd > range.end;
   const replacementStart = Math.max(
     0,
-    Math.min(range.end, base.length) - Math.max(0, previousChars),
+    replacingExplicitRange
+      ? Math.min(range.end, base.length)
+      : Math.min(range.end, base.length) - Math.max(0, previousChars),
   );
   const clampedReplacementEnd = Math.max(
     replacementStart,
     Math.min(replacementEnd, base.length),
   );
-  const baseWithoutReplacement = `${base.slice(0, replacementStart)}${base.slice(clampedReplacementEnd)}`;
-  const insertion = getSpeechTranscriptInsertionParts(
-    baseWithoutReplacement,
-    transcript,
-    replacementStart,
-  );
+  const insertion = replacingExplicitRange
+    ? getSpeechTranscriptReplacementParts(
+        base,
+        transcript,
+        replacementStart,
+        clampedReplacementEnd,
+      )
+    : getSpeechTranscriptInsertionParts(
+        `${base.slice(0, replacementStart)}${base.slice(clampedReplacementEnd)}`,
+        transcript,
+        replacementStart,
+      );
   const insertionStart = insertion.before.length;
-  const insertedLength =
-    insertion.cursor - replacementStart;
-  const delta =
-    insertion.text.length - base.length;
+  const insertedLength = insertion.cursor - replacementStart;
+  const delta = insertion.text.length - base.length;
   const nextChunks = range.chunks
     .map((chunk) =>
       mapChunkAfterReplacement(
@@ -312,6 +433,7 @@ export function removeLatestSpeechChunkFromRange(
       start: range.start,
       end: nextEnd,
       replaceEnd: range.replaceEnd,
+      replaceSelectedAtMs: range.replaceSelectedAtMs,
       chunks: nextChunks,
     },
   };

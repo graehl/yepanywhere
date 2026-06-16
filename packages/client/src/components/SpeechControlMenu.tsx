@@ -25,6 +25,8 @@ interface SpeechControlMenuProps {
   onSmartTurnSettingsChange?: (settings: SpeechSmartTurnSettings) => void;
   smartTurnDisabled?: boolean;
   onPointerNearTrigger?: () => void;
+  onBeforeOpen?: () => void;
+  onBeforeCaptureChange?: () => void;
 }
 
 const LONG_PRESS_MS = 500;
@@ -48,6 +50,8 @@ export function SpeechControlMenu({
   onSmartTurnSettingsChange,
   smartTurnDisabled = false,
   onPointerNearTrigger,
+  onBeforeOpen,
+  onBeforeCaptureChange,
 }: SpeechControlMenuProps) {
   const micDeviceSelectId = useId();
   const { micDeviceId, setMicDeviceId } = useSpeechCaptureSettings();
@@ -82,6 +86,11 @@ export function SpeechControlMenu({
       longPressTimerRef.current = null;
     }
   }, []);
+
+  const openMenu = useCallback(() => {
+    onBeforeOpen?.();
+    setOpen(true);
+  }, [onBeforeOpen]);
 
   useEffect(() => {
     if (!hasOptions) {
@@ -182,6 +191,9 @@ export function SpeechControlMenu({
     event.stopPropagation();
     clearLongPress();
     longPressOpenedRef.current = false;
+    if (!open) {
+      onBeforeOpen?.();
+    }
     setOpen((current) => !current);
   };
 
@@ -195,7 +207,7 @@ export function SpeechControlMenu({
     longPressTimerRef.current = setTimeout(() => {
       longPressOpenedRef.current = true;
       longPressTimerRef.current = null;
-      setOpen(true);
+      openMenu();
     }, LONG_PRESS_MS);
   };
 
@@ -284,7 +296,12 @@ export function SpeechControlMenu({
                       }`}
                       role="radio"
                       aria-checked={selected}
-                      onClick={() => onMethodChange([option.value])}
+                      onClick={() => {
+                        if (option.value !== selectedMethod) {
+                          onBeforeCaptureChange?.();
+                        }
+                        onMethodChange([option.value]);
+                      }}
                     >
                       <span className="speech-method-radio" aria-hidden="true">
                         {selected && (
@@ -322,9 +339,10 @@ export function SpeechControlMenu({
                 id={micDeviceSelectId}
                 className="speech-mic-device-select"
                 value={micDeviceId ?? ""}
-                onChange={(event) =>
-                  setMicDeviceId(event.currentTarget.value || null)
-                }
+                onChange={(event) => {
+                  onBeforeCaptureChange?.();
+                  setMicDeviceId(event.currentTarget.value || null);
+                }}
                 onFocus={() => void refreshMicDevices()}
               >
                 <option value="">System default</option>

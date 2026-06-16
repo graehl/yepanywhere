@@ -547,10 +547,22 @@ describe("YA server speech provider", () => {
 
     ws.receive({
       type: "interim",
+      text: "",
+      isFinal: true,
+      start: 0,
+      duration: 0.5,
+      words: [],
+    });
+    expect(onInterimResult).toHaveBeenLastCalledWith("hel");
+    expect(onResult).not.toHaveBeenCalled();
+
+    ws.receive({
+      type: "interim",
       text: "hello",
       isFinal: true,
       start: 0,
       duration: 1,
+      words: [{ word: "hello", start: 0, duration: 1 }],
     });
     expect(onInterimResult).toHaveBeenLastCalledWith("");
     expect(onResult).toHaveBeenLastCalledWith("hello", undefined);
@@ -592,6 +604,149 @@ describe("YA server speech provider", () => {
       ],
     });
     expect(onResult).toHaveBeenLastCalledWith("world", undefined);
+
+    ws.receive({
+      type: "interim",
+      text: "Blocks",
+      isFinal: true,
+      speechFinal: false,
+      start: 4,
+      duration: 1.84,
+      words: [{ word: "Blocks", start: 4.81, duration: 0.59 }],
+    });
+    expect(onResult).toHaveBeenLastCalledWith("Blocks", undefined);
+
+    ws.receive({
+      type: "interim",
+      text: ", blocks",
+      isFinal: true,
+      speechFinal: false,
+      start: 4,
+      duration: 4.08,
+      words: [
+        { word: ",", start: 5.84, duration: 0.2 },
+        { word: "blocks", start: 6.2, duration: 0.48 },
+      ],
+    });
+    expect(onResult).toHaveBeenLastCalledWith(", blocks", undefined);
+
+    ws.receive({
+      type: "interim",
+      text: ", empty, five",
+      isFinal: true,
+      speechFinal: false,
+      start: 4,
+      duration: 5.3,
+      words: [
+        { word: ",", start: 6.84, duration: 0.2 },
+        { word: "empty,", start: 7.2, duration: 0.4 },
+        { word: "five", start: 7.68, duration: 0.32 },
+      ],
+    });
+    expect(onResult).toHaveBeenLastCalledWith(", empty, five", undefined);
+
+    ws.receive({
+      type: "interim",
+      text: "o blocks.",
+      isFinal: true,
+      speechFinal: false,
+      start: 4,
+      duration: 6.16,
+      words: [
+        { word: "o", start: 8.14, duration: 0.2 },
+        { word: "blocks.", start: 8.5, duration: 0.5 },
+      ],
+    });
+    expect(onResult).toHaveBeenLastCalledWith("o blocks.", undefined);
+
+    ws.receive({
+      type: "interim",
+      text: "Empty, final.",
+      isFinal: true,
+      speechFinal: false,
+      start: 4,
+      duration: 8.54,
+      words: [
+        { word: "Empty,", start: 9.79, duration: 0.4 },
+        { word: "final.", start: 10.28, duration: 0.5 },
+      ],
+    });
+    expect(onResult).toHaveBeenLastCalledWith("Empty, final.", undefined);
+
+    ws.receive({
+      type: "interim",
+      text: "Blocks.",
+      isFinal: true,
+      speechFinal: false,
+      start: 4,
+      duration: 9.36,
+      words: [{ word: "Blocks.", start: 11.3, duration: 0.43 }],
+    });
+    expect(onResult).toHaveBeenLastCalledWith("Blocks.", undefined);
+
+    const previousSegment =
+      "Blocks, blocks, empty, five o blocks. Empty, final. Blocks.";
+    ws.receive({
+      type: "interim",
+      text: "Blocks, blocks, empty final blocks, empty final blocks.",
+      isFinal: true,
+      speechFinal: true,
+      start: 4,
+      duration: 12.02,
+      words: [
+        { word: "Blocks,", start: 4.82, duration: 0.5 },
+        { word: "blocks,", start: 5.84, duration: 0.48 },
+        { word: "empty", start: 6.84, duration: 0.4 },
+        { word: "final", start: 7.68, duration: 0.4 },
+        { word: "blocks,", start: 8.5, duration: 0.5 },
+        { word: "empty", start: 9.79, duration: 0.4 },
+        { word: "final", start: 10.28, duration: 0.5 },
+        { word: "blocks.", start: 11.3, duration: 0.43 },
+      ],
+    });
+    expect(onResult).toHaveBeenLastCalledWith(
+      "Blocks, blocks, empty final blocks, empty final blocks.",
+      { replacePreviousTranscriptChars: previousSegment.length },
+    );
+
+    ws.receive({
+      type: "interim",
+      text: "Alpha",
+      isFinal: true,
+      speechFinal: false,
+      start: 20,
+      duration: 1,
+      words: [{ word: "Alpha", start: 20.1, duration: 0.4 }],
+    });
+    expect(onResult).toHaveBeenLastCalledWith("Alpha", undefined);
+
+    ws.receive({
+      type: "interim",
+      text: "Beta",
+      isFinal: true,
+      speechFinal: false,
+      start: 21,
+      duration: 1,
+      words: [{ word: "Beta", start: 21.1, duration: 0.4 }],
+    });
+    expect(onResult).toHaveBeenLastCalledWith("Beta", undefined);
+
+    ws.receive({
+      type: "interim",
+      text: "Alfa beta gamma.",
+      isFinal: true,
+      speechFinal: true,
+      start: 20,
+      duration: 2.6,
+      words: [
+        { word: "Alfa", start: 20.1, duration: 0.4 },
+        { word: "beta", start: 21.1, duration: 0.4 },
+        { word: "gamma.", start: 22.1, duration: 0.4 },
+      ],
+    });
+    expect(onResult).toHaveBeenLastCalledWith("Alfa beta gamma.", {
+      replacePreviousTranscriptChars: "Alpha Beta".length,
+    });
 
     ws.receive({
       type: "final",
@@ -747,7 +902,7 @@ describe("YA server speech provider", () => {
     provider.dispose();
   });
 
-  it("commits the current streaming preview on stop and ignores stop-flush partials", async () => {
+  it("waits for stop finalization and ignores stop-flush partials", async () => {
     const fakeStream = {
       getTracks: () => [{ stop: vi.fn() }],
     } as unknown as MediaStream;
@@ -849,10 +1004,7 @@ describe("YA server speech provider", () => {
       isFinal: false,
     });
     provider.stop();
-    expect(onResult).toHaveBeenLastCalledWith(
-      "does not delete the content",
-      undefined,
-    );
+    expect(onResult).not.toHaveBeenCalled();
 
     ws.receive({
       type: "interim",
@@ -860,16 +1012,18 @@ describe("YA server speech provider", () => {
       isFinal: true,
       speechFinal: true,
     });
-    expect(onResult).toHaveBeenCalledTimes(1);
+    expect(onResult).not.toHaveBeenCalled();
 
     ws.receive({
       type: "final",
-      text: "",
+      text: "does not delete the content",
       transcriptionId: "transcription-2",
     });
-    expect(onResult).toHaveBeenLastCalledWith("", {
-      transcriptionId: "transcription-2",
-    });
+    expect(onResult).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenLastCalledWith(
+      "does not delete the content",
+      { transcriptionId: "transcription-2" },
+    );
 
     provider.dispose();
   });
@@ -1016,14 +1170,20 @@ describe("YA server speech provider", () => {
       ],
     });
 
-    expect(onResult).toHaveBeenLastCalledWith("Second sentence", undefined);
+    expect(onResult).toHaveBeenLastCalledWith(
+      "Are extra spaces appearing for final chunks? I wonder now. Second sentence",
+      {
+        replacePreviousTranscriptChars:
+          "Are extra spaces appearing for final chunks? I wonder now".length,
+      },
+    );
     expect(JSON.parse(ws.send.mock.calls.at(-1)?.[0] as string)).toEqual({
       type: "stop",
     });
 
     ws.receive({
       type: "final",
-      text: "",
+      text: "Are extra spaces appearing for final chunks? I wonder now. Second sentence wait",
       transcriptionId: "transcription-smart-turn",
     });
     expect(onResult).toHaveBeenLastCalledWith("", {
@@ -1874,12 +2034,50 @@ describe("direct xAI speech provider", () => {
     expect(provider.getState().status).toBe("listening");
     expect(ws.sent.some((data) => typeof data !== "string")).toBe(true);
 
-    provider.stop();
+    ws.receive({
+      type: "transcript.partial",
+      text: "Okay.",
+      is_final: true,
+      speech_final: true,
+    });
+    expect(onResult).toHaveBeenCalledWith("Okay.", undefined);
+    ws.receive({
+      type: "transcript.partial",
+      text: "Does it work",
+      is_final: true,
+      speech_final: false,
+      start: 1,
+      duration: 1,
+      words: [
+        { word: "Does", start: 1, duration: 0.2 },
+        { word: "it", start: 1.2, duration: 0.2 },
+        { word: "work", start: 1.4, duration: 0.2 },
+      ],
+    });
+    ws.receive({
+      type: "transcript.partial",
+      text: "at all?",
+      is_final: true,
+      speech_final: true,
+      start: 2,
+      duration: 1,
+      words: [
+        { word: "at", start: 2, duration: 0.2 },
+        { word: "all?", start: 2.2, duration: 0.2 },
+      ],
+    });
+
     expect(ws.sent).toContain(JSON.stringify({ type: "audio.done" }));
-    ws.receive({ type: "transcript.done", text: "direct streaming transcript" });
+    ws.receive({
+      type: "transcript.done",
+      text: "",
+    });
     await Promise.resolve();
 
-    expect(onResult).toHaveBeenCalledWith("direct streaming transcript", undefined);
+    expect(onResult).toHaveBeenCalledWith("Does it work", undefined);
+    expect(onResult).toHaveBeenCalledWith("at all?", {
+      smartTurnCommand: "send",
+    });
     expect(onEnd).toHaveBeenCalledTimes(1);
 
     provider.dispose();

@@ -24,6 +24,7 @@
 - Session liveness and queue intent
 - Provider process state machine
 - Compact-and-handoff guardrail (targeted provider/model policy)
+- Claude 1M vs 200K context window (resolution, reporting, autocompact)
 - Heartbeat ownership and timers
 - Claude provider control
 - Codex API provider as a future API-key-backed backend

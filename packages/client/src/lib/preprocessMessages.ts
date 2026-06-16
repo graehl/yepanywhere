@@ -256,7 +256,8 @@ function processMessage(
       subtype === "compact_boundary" ||
       subtype === "turn_aborted" ||
       subtype === "config_ack" ||
-      subtype === "away_summary"
+      subtype === "away_summary" ||
+      subtype === "subagent_activity"
     ) {
       const configSignature =
         subtype === "config_ack" ? getConfigAckSignature(msg) : null;
@@ -269,7 +270,9 @@ function processMessage(
               ? "Configuration updated"
               : subtype === "away_summary"
                 ? "Recap unavailable"
-                : "Context compacted";
+                : subtype === "subagent_activity"
+                  ? "Subagent updated"
+                  : "Context compacted";
       const systemItem: SystemItem = {
         type: "system",
         id: msgId,

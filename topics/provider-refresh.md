@@ -123,7 +123,30 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
-Current source refresh, 2026-06-14:
+Current source refresh, 2026-06-16:
+
+- Installed Codex is `codex-cli 0.140.0`; repo expected version is `0.140.0`.
+- `pnpm codex:protocol:check` is clean after regenerating the checked-in
+  app-server subset. Notable protocol drift from the 0.139 target: generated
+  `AgentMessageInputContent` now admits `input_text`; `ThreadSource` is now
+  provider-defined `string`; `ToolRequestUserInputParams` gained
+  `autoResolutionMs`; `ThreadStartParams` gained selected capability roots; and
+  `ThreadItem` gained `subAgentActivity`.
+- App-server `model/list` returned the same visible YA model set:
+  `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, and `gpt-5.3-codex-spark`; `priority`
+  service tier remains on `gpt-5.5` and `gpt-5.4`.
+- Runtime compatibility change: YA now normalizes live `subAgentActivity`
+  items into visible system messages. Codex docs say subagent activity is
+  surfaced in the first-party CLI/app, so silently dropping those app-server
+  items would make YA less faithful to the provider UI. Selected capability
+  roots remain protocol-only for YA because this provider path does not set
+  them, and tool user-input requests still receive empty answers in the current
+  MVP path.
+
+Status: Codex 0.140 compatibility refresh complete in source; no new
+latest-Codex requirement was introduced.
+
+Previous source refresh, 2026-06-14:
 
 - Installed Codex is `codex-cli 0.139.0`; repo expected version is `0.139.0`.
 - `pnpm codex:protocol:check` failed only because generated

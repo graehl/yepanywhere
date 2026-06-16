@@ -569,6 +569,14 @@ type NormalizedThreadItem =
       type: "todo_list";
       items: Array<{ text: string; completed: boolean }>;
     }
+  | {
+      id: string;
+      type: "subagent_activity";
+      kind: string;
+      agentThreadId: string;
+      agentPath: string;
+      text: string;
+    }
   | { id: string; type: "context_compaction" }
   | { id: string; type: "error"; message: string }
   | { id: string; type: "image_view"; path: string };
@@ -3745,6 +3753,19 @@ export class CodexProvider implements AgentProvider {
         };
       }
 
+      case "sub_agent_activity": {
+        const kind = this.getOptionalString(itemRecord.kind) ?? "updated";
+        const agentPath = this.getOptionalString(itemRecord.agentPath) ?? "";
+        return {
+          id,
+          type: "subagent_activity",
+          kind,
+          agentThreadId: this.getOptionalString(itemRecord.agentThreadId) ?? "",
+          agentPath,
+          text: this.formatSubagentActivity(kind, agentPath),
+        };
+      }
+
       case "context_compaction":
         return { id, type: "context_compaction" };
 
@@ -3788,6 +3809,20 @@ export class CodexProvider implements AgentProvider {
     }
 
     return "";
+  }
+
+  private formatSubagentActivity(kind: string, agentPath: string): string {
+    const target = agentPath ? `: ${agentPath}` : "";
+    switch (kind) {
+      case "started":
+        return `Subagent started${target}`;
+      case "interacted":
+        return `Subagent updated${target}`;
+      case "interrupted":
+        return `Subagent interrupted${target}`;
+      default:
+        return `Subagent ${kind}${target}`;
+    }
   }
 
   private normalizeStatus(status: unknown): string {
@@ -4924,6 +4959,30 @@ export class CodexProvider implements AgentProvider {
         );
         logSdkCorrelationDebug(sessionId, message, {
           eventKind: "todo_list",
+          turnId,
+          itemId: item.id,
+          phase: isComplete ? "completed" : "started",
+          sourceEvent,
+        });
+        return [message];
+      }
+
+      case "subagent_activity": {
+        const message = withCodexTimestamp(
+          {
+            type: "system",
+            subtype: "subagent_activity",
+            session_id: sessionId,
+            uuid,
+            content: item.text,
+            codexSubagentKind: item.kind,
+            codexSubagentThreadId: item.agentThreadId,
+            codexSubagentPath: item.agentPath,
+          } as SDKMessage,
+          observedAt,
+        );
+        logSdkCorrelationDebug(sessionId, message, {
+          eventKind: "subagent_activity",
           turnId,
           itemId: item.id,
           phase: isComplete ? "completed" : "started",

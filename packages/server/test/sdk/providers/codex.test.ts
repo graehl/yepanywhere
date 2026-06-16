@@ -1954,6 +1954,52 @@ describe("CodexProvider Event Normalization", () => {
     });
   });
 
+  it("surfaces subagent activity items as visible system messages", () => {
+    const provider = createTestProvider() as unknown as {
+      normalizeThreadItem: (item: unknown) => Record<string, unknown> | null;
+      convertItemToSDKMessages: (
+        item: unknown,
+        sessionId: string,
+        turnId: string,
+        sourceEvent: "item/started" | "item/completed",
+      ) => Array<Record<string, unknown>>;
+    };
+
+    const normalized = provider.normalizeThreadItem({
+      id: "subagent-activity-1",
+      type: "subAgentActivity",
+      kind: "started",
+      agentThreadId: "thread-subagent-1",
+      agentPath: "Explore",
+    });
+
+    expect(normalized).toMatchObject({
+      id: "subagent-activity-1",
+      type: "subagent_activity",
+      kind: "started",
+      agentThreadId: "thread-subagent-1",
+      agentPath: "Explore",
+      text: "Subagent started: Explore",
+    });
+
+    const messages = provider.convertItemToSDKMessages(
+      normalized,
+      "session-1",
+      "turn-1",
+      "item/completed",
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      type: "system",
+      subtype: "subagent_activity",
+      content: "Subagent started: Explore",
+      codexSubagentKind: "started",
+      codexSubagentThreadId: "thread-subagent-1",
+      codexSubagentPath: "Explore",
+    });
+  });
+
   it("declares experimentalApi during initialize when enabled", () => {
     const provider = createTestProvider() as unknown as {
       createInitializeParams: (

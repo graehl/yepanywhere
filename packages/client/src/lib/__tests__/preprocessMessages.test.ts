@@ -516,8 +516,12 @@ describe("preprocessMessages", () => {
 
     const streamingThinking = streamingItems[0];
     const completeThinking = completeItems[0];
-    expect(streamingThinking?.type === "thinking" && streamingThinking.status).toBe("streaming");
-    expect(completeThinking?.type === "thinking" && completeThinking.status).toBe("complete");
+    expect(
+      streamingThinking?.type === "thinking" && streamingThinking.status,
+    ).toBe("streaming");
+    expect(
+      completeThinking?.type === "thinking" && completeThinking.status,
+    ).toBe("complete");
   });
 
   it("hides internal reasoning placeholders but keeps real text", () => {
@@ -847,6 +851,26 @@ describe("preprocessMessages", () => {
       type: "system",
       subtype: "turn_aborted",
       content: "approval denied",
+    });
+  });
+
+  it("renders subagent activity system messages", () => {
+    const messages: Message[] = [
+      {
+        id: "subagent-1",
+        type: "system",
+        subtype: "subagent_activity",
+        content: "Subagent started: Explore",
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      type: "system",
+      subtype: "subagent_activity",
+      content: "Subagent started: Explore",
     });
   });
 

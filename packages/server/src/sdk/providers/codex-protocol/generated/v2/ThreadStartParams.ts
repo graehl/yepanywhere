@@ -8,6 +8,7 @@ import type { ApprovalsReviewer } from "./ApprovalsReviewer.js";
 import type { AskForApproval } from "./AskForApproval.js";
 import type { DynamicToolSpec } from "./DynamicToolSpec.js";
 import type { SandboxMode } from "./SandboxMode.js";
+import type { SelectedCapabilityRoot } from "./SelectedCapabilityRoot.js";
 import type { ThreadSource } from "./ThreadSource.js";
 import type { ThreadStartSource } from "./ThreadStartSource.js";
 import type { TurnEnvironmentParams } from "./TurnEnvironmentParams.js";
@@ -39,6 +40,10 @@ threadSource?: ThreadSource | null,
  * current turn environment.
  */
 environments?: Array<TurnEnvironmentParams> | null, dynamicTools?: Array<DynamicToolSpec> | null,
+/**
+ * Capability roots selected for this thread by the hosting platform.
+ */
+selectedCapabilityRoots?: Array<SelectedCapabilityRoot> | null,
 /**
  * Test-only experimental field used to validate experimental gating and
  * schema filtering behavior in a stable way.

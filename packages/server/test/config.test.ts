@@ -102,7 +102,10 @@ describe("loadConfig codex paths", () => {
   });
 
   it("parses explicitly enabled server-routed voice backends", async () => {
-    vi.stubEnv("YA_VOICE_BACKENDS", "ya-dummy, local-whisper,ya-dummy");
+    vi.stubEnv(
+      "YA_VOICE_BACKENDS",
+      "ya-dummy, local-whisper,ya-parakeet,ya-dummy",
+    );
 
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig();
@@ -110,8 +113,20 @@ describe("loadConfig codex paths", () => {
     expect(config.voiceBackends).toEqual([
       "ya-dummy",
       "local-whisper",
+      "ya-parakeet",
       "ya-dummy",
     ]);
+  });
+
+  it("parses local Parakeet tuning options", async () => {
+    vi.stubEnv("PARAKEET_MODEL", "nvidia/parakeet-tdt-0.6b-v3");
+    vi.stubEnv("PARAKEET_DEVICE", "cuda:0");
+
+    const { loadConfig } = await import("../src/config.js");
+    const config = loadConfig();
+
+    expect(config.parakeetModel).toBe("nvidia/parakeet-tdt-0.6b-v3");
+    expect(config.parakeetDevice).toBe("cuda:0");
   });
 
   it("defaults idle cleanup to 20 minutes", async () => {

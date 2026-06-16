@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { getLogger } from "../../logging/logger.js";
 import type { SpeechBackend, TranscribeOptions } from "./SpeechBackend.js";
 import {
@@ -12,49 +12,52 @@ import {
   PIXI_STT_ENV,
   summarizeChildError,
 } from "./localSttRuntime.js";
+
 const logger = getLogger();
 
 const WORKER_SCRIPT = join(
   dirname(fileURLToPath(import.meta.url)),
-  "whisper_worker.py",
+  "parakeet_worker.py",
 );
 
-const PIXI_STT_READY_HINT = localSttReadyHint("stt-bootstrap");
+const PIXI_STT_READY_HINT = localSttReadyHint("stt-bootstrap-parakeet");
 
 /** Milliseconds to wait for model load before giving up. */
-const MODEL_LOAD_TIMEOUT_MS = 120_000;
+const MODEL_LOAD_TIMEOUT_MS = 180_000;
 
-export class LocalWhisperBackend implements SpeechBackend {
-  readonly id = "ya-whisper";
-  readonly label = "Local Whisper (pixi stt)";
+export class LocalParakeetBackend implements SpeechBackend {
+  readonly id = "ya-parakeet";
+  readonly label = "Local Parakeet (pixi stt)";
 
   private readonly model: string;
   private readonly device: string;
-  private readonly computeType: string;
 
   private proc: ChildProcess | null = null;
   private warmPromise: Promise<void> | null = null;
   private pendingResolve: ((text: string) => void) | null = null;
   private pendingReject: ((err: Error) => void) | null = null;
 
-  constructor(opts: { model?: string; device?: string; computeType?: string } = {}) {
-    this.model = opts.model ?? "distil-large-v3";
-    this.device = opts.device ?? "cpu";
-    this.computeType = opts.computeType ?? "int8";
+  constructor(opts: { model?: string; device?: string } = {}) {
+    this.model = opts.model ?? "nvidia/parakeet-tdt-0.6b-v3";
+    this.device = opts.device ?? "auto";
   }
 
   async validate(): Promise<{ ok: true } | { ok: false; reason: string }> {
     try {
       await execFileAsync(
         PIXI_COMMAND,
-        [...PIXI_PYTHON_ARGS, "-c", "from faster_whisper import WhisperModel"],
+        [
+          ...PIXI_PYTHON_ARGS,
+          "-c",
+          "import torch; from transformers import pipeline",
+        ],
         { cwd: process.cwd(), timeout: 30_000 },
       );
       return { ok: true };
     } catch (error) {
       return {
         ok: false,
-        reason: `local STT pixi environment is not ready. ${PIXI_STT_READY_HINT} Detail: ${summarizeChildError(error)}`,
+        reason: `local Parakeet pixi environment is not ready. ${PIXI_STT_READY_HINT} Detail: ${summarizeChildError(error)}`,
       };
     }
   }
@@ -64,18 +67,12 @@ export class LocalWhisperBackend implements SpeechBackend {
 
     this.warmPromise = new Promise<void>((resolve, reject) => {
       logger.info(
-        `Starting whisper worker via pixi env "${PIXI_STT_ENV}" (model=${this.model} device=${this.device} compute_type=${this.computeType})`,
+        `Starting parakeet worker via pixi env "${PIXI_STT_ENV}" (model=${this.model} device=${this.device})`,
       );
 
       const proc = spawn(
         PIXI_COMMAND,
-        [
-          ...PIXI_PYTHON_ARGS,
-          WORKER_SCRIPT,
-          this.model,
-          this.device,
-          this.computeType,
-        ],
+        [...PIXI_PYTHON_ARGS, WORKER_SCRIPT, this.model, this.device],
         { cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] },
       );
       this.proc = proc;
@@ -84,7 +81,7 @@ export class LocalWhisperBackend implements SpeechBackend {
       let loadTimeout: NodeJS.Timeout | null = null;
 
       proc.stderr?.on("data", (chunk: Buffer) => {
-        logger.debug(`[whisper] ${chunk.toString().trim()}`);
+        logger.debug(`[parakeet] ${chunk.toString().trim()}`);
       });
 
       proc.on("error", (error) => {
@@ -95,11 +92,11 @@ export class LocalWhisperBackend implements SpeechBackend {
       });
 
       proc.on("exit", (code) => {
-        logger.warn(`Whisper worker exited (code=${code})`);
+        logger.warn(`Parakeet worker exited (code=${code})`);
         this.proc = null;
         this.warmPromise = null;
         if (this.pendingReject) {
-          this.pendingReject(new Error("Whisper worker exited unexpectedly"));
+          this.pendingReject(new Error("Parakeet worker exited unexpectedly"));
           this.pendingResolve = null;
           this.pendingReject = null;
         }
@@ -109,7 +106,7 @@ export class LocalWhisperBackend implements SpeechBackend {
 
       loadTimeout = setTimeout(() => {
         if (!ready) {
-          reject(new Error("Whisper model load timed out"));
+          reject(new Error("Parakeet model load timed out"));
           proc.kill();
         }
       }, MODEL_LOAD_TIMEOUT_MS);
@@ -143,7 +140,7 @@ export class LocalWhisperBackend implements SpeechBackend {
             this.pendingReject = null;
           }
         } catch {
-          logger.warn(`Unparseable whisper output: ${line}`);
+          logger.warn(`Unparseable parakeet output: ${line}`);
         }
       });
     });
@@ -153,13 +150,13 @@ export class LocalWhisperBackend implements SpeechBackend {
 
   async transcribe(audio: Buffer, options: TranscribeOptions = {}): Promise<string> {
     if (this.pendingResolve) {
-      throw new Error("Whisper backend is busy with another request");
+      throw new Error("Parakeet backend is busy with another request");
     }
 
     await this.startWorker();
 
     if (!this.proc?.stdin) {
-      throw new Error("Whisper worker is not running");
+      throw new Error("Parakeet worker is not running");
     }
 
     return new Promise<string>((resolve, reject) => {
@@ -169,7 +166,6 @@ export class LocalWhisperBackend implements SpeechBackend {
       const req = {
         audio_b64: audio.toString("base64"),
         mime_type: options.mimeType ?? "audio/webm;codecs=opus",
-        prompt: options.prompt ?? "",
       };
 
       this.proc!.stdin!.write(`${JSON.stringify(req)}\n`);

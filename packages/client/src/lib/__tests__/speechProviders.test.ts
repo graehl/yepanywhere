@@ -46,10 +46,11 @@ describe("speech provider method selection", () => {
       getOrderedServerSpeechBackends([
         "ya-deepgram",
         "ya-whisper",
+        "ya-parakeet",
         "ya-grok",
         "ya-grok",
       ]),
-    ).toEqual(["ya-grok", "ya-deepgram", "ya-whisper"]);
+    ).toEqual(["ya-grok", "ya-deepgram", "ya-whisper", "ya-parakeet"]);
   });
 
   it("does not require client-side backend hardcodes to build selector options", () => {
@@ -73,13 +74,14 @@ describe("speech provider method selection", () => {
 
   it("uses explicit labels for known STT backends", () => {
     expect(
-      getSpeechMethods(["ya-deepgram", "ya-grok"])
+      getSpeechMethods(["ya-deepgram", "ya-parakeet", "ya-grok"])
         .filter((method) => method.serverRouted)
         .map((method) => method.label),
     ).toEqual([
       "Grok STT through YA",
       "Grok STT through YA batch",
       "Deepgram STT",
+      "Parakeet STT",
     ]);
   });
 

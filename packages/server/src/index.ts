@@ -561,6 +561,8 @@ async function startServer() {
     whisperModel: config.whisperModel,
     whisperDevice: config.whisperDevice,
     whisperComputeType: config.whisperComputeType,
+    parakeetModel: config.parakeetModel,
+    parakeetDevice: config.parakeetDevice,
   });
   const enabledSpeechBackends = speechBackendRegistry.enabledIds();
   if (enabledSpeechBackends.length > 0) {

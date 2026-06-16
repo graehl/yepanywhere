@@ -54,7 +54,7 @@ timings, codex rescan intervals, cache TTLs) live only in `config.ts`.
 |-----|---------|
 | `ENABLED_PROVIDERS` | Comma list of exposed providers (empty = all). |
 | `VOICE_INPUT` | `false` disables the mic button server-side. |
-| `YA_VOICE_BACKENDS` | Explicit local/test speech backends (`ya-whisper`, `ya-dummy`). Cloud backends auto-enable on key presence instead. |
+| `YA_VOICE_BACKENDS` | Explicit local/test speech backends (`ya-whisper`, `ya-parakeet`, `ya-dummy`). Cloud backends auto-enable on key presence instead. |
 | `YA_DEFERRED_JOIN_WINDOW_S` | Max seconds between consecutive compose times for queued-while-busy turns to join into one `--------`-joined provider turn at a delivery boundary. Default 0: never join — one verbatim turn per boundary. Server setting `deferredJoinWindowSeconds` overrides ([compose-time-context-anchors](compose-time-context-anchors.md)). |
 | `YA_COMPOSE_ANCHORS` | `1` prepends `(Ns ago)` / `(Ms later)` staleness anchors to delivered queued turns. Default off: queued text reaches the provider verbatim. Server setting `composeAnchorsEnabled` overrides. |
 
@@ -66,6 +66,7 @@ timings, codex rescan intervals, cache TTLs) live only in `config.ts`.
 | `YA_stt__SHARE_XAI_KEY_WITH_CLIENTS` | `1` lets authenticated private clients borrow the configured long-lived xAI STT key for direct browser-to-xAI batch transcription. Default false; direct streaming instead mints short-lived xAI client secrets from `YA_stt__XAI_API_KEY` and does not require exposing the long-lived key. |
 | `YA_stt__DEEPGRAM_API_KEY` | Deepgram key → `ya-deepgram` backend; auto-enables when set. |
 | `WHISPER_MODEL` / `WHISPER_DEVICE` / `WHISPER_COMPUTE_TYPE` | Local Whisper tuning. `ya-whisper` runs through the committed pixi `stt` environment; bootstrap it with `pixi run -e stt stt-bootstrap` before enabling the backend. |
+| `PARAKEET_MODEL` / `PARAKEET_DEVICE` | Local NVIDIA Parakeet tuning. `ya-parakeet` uses the same pixi `stt` environment with the Parakeet requirements; bootstrap it with `pixi run -e stt stt-bootstrap-parakeet` before enabling the backend. Defaults: `nvidia/parakeet-tdt-0.6b-v3`, `auto`. |
 
 See [pluggable-speech-recognition.md](pluggable-speech-recognition.md) for
 backend semantics and [cost-efficiency.md](cost-efficiency.md) for the

@@ -144,6 +144,10 @@ export interface Config {
   whisperDevice?: string;
   /** Whisper compute type for ya-whisper backend (default: int8). */
   whisperComputeType?: string;
+  /** Parakeet model name for ya-parakeet backend (default: nvidia/parakeet-tdt-0.6b-v3). */
+  parakeetModel?: string;
+  /** Parakeet device for ya-parakeet backend (default: auto). */
+  parakeetDevice?: string;
   /** Allowed directory prefixes for serving local images (e.g., ["/tmp"]). Empty = disabled. */
   allowedImagePaths: string[];
 
@@ -330,6 +334,8 @@ export function loadConfig(): Config {
     whisperModel: process.env.WHISPER_MODEL || undefined,
     whisperDevice: process.env.WHISPER_DEVICE || undefined,
     whisperComputeType: process.env.WHISPER_COMPUTE_TYPE || undefined,
+    parakeetModel: process.env.PARAKEET_MODEL || undefined,
+    parakeetDevice: process.env.PARAKEET_DEVICE || undefined,
     // Always allow yep-managed uploads. ALLOWED_IMAGE_PATHS adds external paths
     // like /tmp; an empty value disables only those extras.
     allowedImagePaths: Array.from(

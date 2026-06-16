@@ -40,6 +40,10 @@ const SERVER_BACKEND_LABELS: Record<
     label: "Whisper STT",
     description: "Local Whisper speech-to-text through YA.",
   },
+  "ya-parakeet": {
+    label: "Parakeet STT",
+    description: "Local Parakeet speech-to-text through YA.",
+  },
   "ya-dummy": {
     label: "Dummy STT",
     description: "Test speech backend through YA.",

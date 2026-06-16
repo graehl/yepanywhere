@@ -1,0 +1,16 @@
+# Optional NVIDIA Parakeet dependencies for the committed pixi stt env.
+#
+# Install inside the existing stt environment with:
+#   pixi run -e stt stt-bootstrap-parakeet
+#
+# YA validates and launches ya-parakeet through:
+#   pixi run --frozen -e stt python ...
+#
+# The Parakeet model card currently documents Transformers support from source
+# for nvidia/parakeet-tdt-0.6b-v3. Keep this separate from requirements/stt.txt
+# so Whisper-only local STT bootstrap does not pull the larger PyTorch stack.
+torch>=2.6,<3
+accelerate>=1.8,<2
+soundfile>=0.13
+librosa>=0.11,<1
+transformers @ git+https://github.com/huggingface/transformers.git@7ff490aca20f597f6c6e42a449c7c8dd28807c6b

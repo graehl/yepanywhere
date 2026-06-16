@@ -18,7 +18,7 @@ behavior across streaming and batch STT.
 - `VOICE_INPUT=false` is the master kill switch. When it is false, YA does
   not advertise voice input or server-routed speech backends.
 - Server-routed backends are off unless an explicit signal enables them.
-  Local/test backends (`ya-whisper`, `ya-dummy`) must be named in
+  Local/test backends (`ya-whisper`, `ya-parakeet`, `ya-dummy`) must be named in
   `YA_VOICE_BACKENDS`; cloud backends (`ya-deepgram`, `ya-grok`) auto-enable
   when their YA-scoped key is provided, since providing a metered key is the
   operator's explicit opt-in. Only backends that pass startup validation are
@@ -185,11 +185,12 @@ streaming/confidence surface exists.
   hatch.
 - Server config parses `VOICE_INPUT`, `YA_VOICE_BACKENDS`,
   `YA_stt__DEEPGRAM_API_KEY`, `YA_stt__XAI_API_KEY`, `XAI_API_KEY`,
-  `WHISPER_MODEL`, `WHISPER_DEVICE`, and `WHISPER_COMPUTE_TYPE`.
+  `WHISPER_MODEL`, `WHISPER_DEVICE`, `WHISPER_COMPUTE_TYPE`,
+  `PARAKEET_MODEL`, and `PARAKEET_DEVICE`.
   `YA_stt__XAI_API_KEY` takes precedence for `ya-grok`; `XAI_API_KEY` is a
   convenience fallback that is scrubbed from `process.env` after config load.
 - `SpeechBackendRegistry` supports `ya-dummy`, `ya-deepgram`,
-  `ya-grok`, and `ya-whisper`; it validates configured backends and
+  `ya-grok`, `ya-whisper`, and `ya-parakeet`; it validates configured backends and
   exposes enabled ids plus capability metadata to `/api/version`.
 - `ya-grok` posts batch multipart audio to xAI's `POST /v1/stt`
   endpoint and implements xAI's `wss://api.x.ai/v1/stt` streaming endpoint.
@@ -202,6 +203,10 @@ streaming/confidence surface exists.
   advertising streaming.
 - Deepgram and local faster-whisper backend implementations exist. The local
   Whisper path uses a warm Python worker subprocess around `faster_whisper`.
+  The local Parakeet path uses the same pixi `stt` environment with a separate
+  Transformers/PyTorch bootstrap and a warm Python worker around
+  `pipeline("automatic-speech-recognition")`; it is batch-only until a local
+  streaming/chunking surface is proven.
 - The normal `index.ts` runtime mounts `/api/speech` after
   `createNodeWebSocket()` creates the shared `upgradeWebSocket` helper.
 - `createSpeechRoutes` implements `POST /api/speech/transcribe` for batch
@@ -353,17 +358,20 @@ Deploy it in stages:
    it behind the same warm-worker `SpeechBackend` boundary only if install plus
    cold/warm latency beats `faster-whisper` for this server.
 3. **Ship explicit operator configuration.** The opt-in is
-   `YA_VOICE_BACKENDS=ya-whisper`. The backend is pixi-only in the first
+   `YA_VOICE_BACKENDS=ya-whisper` or `YA_VOICE_BACKENDS=ya-parakeet`. The backend is pixi-only in the first
    implementation: the YA checkout commits a `stt` pixi environment, and the
    operator must run `pixi run -e stt stt-bootstrap` before starting YA with
-   `ya-whisper` enabled. Runtime validation and the warm worker use
+   `ya-whisper` enabled, or `pixi run -e stt stt-bootstrap-parakeet` before
+   starting YA with `ya-parakeet` enabled. Runtime validation and the warm worker use
    `pixi run --frozen -e stt python`, not ambient `python3`, so old system
    Python cannot accidentally become the ASR runtime. Model/runtime knobs stay
    server-local: `WHISPER_MODEL`, `WHISPER_DEVICE`, and
-   `WHISPER_COMPUTE_TYPE`. The default should remain CPU-safe (`device=cpu`,
-   `compute_type=int8`) and the model should be chosen for the host class
-   rather than silently downloading a multi-GB model on first use without a
-   clear operator decision.
+   `WHISPER_COMPUTE_TYPE` for Whisper, and `PARAKEET_MODEL` plus
+   `PARAKEET_DEVICE` for Parakeet. Whisper's default should remain CPU-safe
+   (`device=cpu`, `compute_type=int8`). Parakeet defaults to the current
+   NVIDIA Transformers model (`nvidia/parakeet-tdt-0.6b-v3`) with
+   `PARAKEET_DEVICE=auto`, which lets the worker choose CUDA when available
+   without making CUDA a startup requirement.
 4. **Add a readiness surface before advertising.** Startup validation should
    confirm pixi exists, the `stt` environment is already bootstrapped,
    `faster_whisper` imports, the configured model can load, and a tiny known
@@ -402,9 +410,14 @@ The committed pixi environment is intentionally not part of the normal
 Node/PNPM install. To enable local Whisper on a server:
 
 1. Install pixi on the host.
-2. From the YA checkout, run `pixi run -e stt stt-bootstrap`. This creates the
-   `stt` environment from `pixi.lock` and installs `requirements/stt.txt`.
-3. Start YA with `YA_VOICE_BACKENDS` containing `ya-whisper`.
+2. From the YA checkout, run the relevant bootstrap:
+   - `pixi run -e stt stt-bootstrap` for `ya-whisper`;
+   - `pixi run -e stt stt-bootstrap-parakeet` for `ya-parakeet`;
+   - `pixi run -e stt stt-bootstrap-all` for both.
+   These commands create the `stt` environment from `pixi.lock` and install the
+   relevant Python requirements file(s).
+3. Start YA with `YA_VOICE_BACKENDS` containing `ya-whisper`, `ya-parakeet`, or
+   both.
 
 For the private `reyep` helper, the local-STT switch should be set-union logic,
 not assignment. A `YA_LOCAL_STT=1 reyep`-style wrapper should append
@@ -412,10 +425,11 @@ not assignment. A `YA_LOCAL_STT=1 reyep`-style wrapper should append
 already contain it. Cloud STT backends still auto-enable from their
 `YA_stt__*` keys; the wrapper must not read or print those keys.
 
-Future local recognizers such as Parakeet should reuse this deployment shape:
-extend the pixi `stt` environment or add a sibling requirements file and task,
-then expose the model behind the same warm-worker `SpeechBackend` boundary only
-after an isolated install/latency spike.
+Parakeet reuses this deployment shape through `requirements/stt-parakeet.txt`
+and `stt-bootstrap-parakeet`. The YA server does not run `pip install` at
+startup: an explicit backend id only selects and validates an already
+bootstrapped local runtime, while a deploy wrapper may choose to run the pixi
+bootstrap as a strict preflight.
 
 Hosted relay support for server-local STT is a product choice, not a technical
 requirement. If the operator wants phone-to-local-Whisper dictation through
@@ -479,5 +493,8 @@ to a local model remains a later optimization after local batch is solid.
 - With `YA_VOICE_BACKENDS=ya-whisper` and `faster_whisper` importable, startup
   validation advertises `ya-whisper`; the first utterance warms the model once
   and later utterances reuse the worker.
+- With `YA_VOICE_BACKENDS=ya-parakeet` and the Parakeet Transformers runtime
+  importable, startup validation advertises `ya-parakeet`; the first utterance
+  warms the model once and later utterances reuse the worker.
 - Removing a previously selected backend causes an explicit method-selection
   prompt or notice, not a silent fallback and not a dead mic button.

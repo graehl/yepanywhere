@@ -1,6 +1,7 @@
 import { getLogger } from "../../logging/logger.js";
 import { DeepgramBackend } from "./deepgramBackend.js";
 import { DummyBackend } from "./dummyBackend.js";
+import { LocalParakeetBackend } from "./localParakeetBackend.js";
 import { LocalWhisperBackend } from "./localWhisperBackend.js";
 import type {
   SpeechBackend,
@@ -97,6 +98,10 @@ export interface SpeechRegistryInitOptions {
   whisperDevice?: string;
   /** Whisper compute type (default: int8). */
   whisperComputeType?: string;
+  /** Parakeet model name (default: nvidia/parakeet-tdt-0.6b-v3). */
+  parakeetModel?: string;
+  /** Parakeet device (default: auto). */
+  parakeetDevice?: string;
 }
 
 export async function initSpeechBackendRegistry(
@@ -109,9 +114,9 @@ export async function initSpeechBackendRegistry(
   }
 
   // Cloud STT backends auto-enable when their key is present — a provisioned
-  // key is the opt-in signal. Local/test backends (ya-whisper, ya-dummy) stay
-  // explicit via YA_VOICE_BACKENDS. Set keeps insertion order and de-dupes when
-  // a key is also listed explicitly.
+  // key is the opt-in signal. Local/test backends stay explicit via
+  // YA_VOICE_BACKENDS. Set keeps insertion order and de-dupes when a key is
+  // also listed explicitly.
   const requested = new Set(options.voiceBackends ?? []);
   if (options.deepgramApiKey) {
     requested.add("ya-deepgram");
@@ -156,6 +161,15 @@ export async function initSpeechBackendRegistry(
             model: options.whisperModel,
             device: options.whisperDevice,
             computeType: options.whisperComputeType,
+          }),
+        );
+        break;
+
+      case "ya-parakeet":
+        await registry.register(
+          new LocalParakeetBackend({
+            model: options.parakeetModel,
+            device: options.parakeetDevice,
           }),
         );
         break;

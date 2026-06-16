@@ -14,6 +14,7 @@ import { setRecentProjectId } from "../hooks/useRecentProject";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
+import { generateUUID } from "../lib/uuid";
 import {
   clearSpeechInsertionRangeReplacement,
   createSpeechInsertionRange,
@@ -21,6 +22,7 @@ import {
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
   mapSpeechInsertionRangeThroughEdit,
+  mapSpeechInsertionRangeThroughReplacement,
   removeLatestSpeechChunkFromRange,
   retargetSpeechInsertionRangeReplacement,
   replaceSpeechTranscriptBefore,
@@ -31,10 +33,17 @@ import {
   captureTextareaAppendSelection,
   restoreTextareaReplacementSelection,
 } from "../lib/textareaSelection";
-import type { SpeechTranscriptionResultMetadata } from "../lib/speechProviders/SpeechProvider";
+import type {
+  SpeechTranscriptionContext,
+  SpeechTranscriptionResultMetadata,
+} from "../lib/speechProviders/SpeechProvider";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
 const FAB_DRAFT_KEY = "fab-draft";
+
+function createSpeechTargetId(): string {
+  return `speech-target-${generateUUID()}`;
+}
 
 interface PendingTextareaSelectionRestore {
   value: string;
@@ -62,26 +71,34 @@ export function FloatingActionButton() {
   const [message, setMessage, draftControls] =
     useDraftPersistence(FAB_DRAFT_KEY);
   const [interimTranscript, setInterimTranscript] = useState("");
+  const [speechProcessing, setSpeechProcessing] = useState(false);
   const [, setSpeechPreviewRevision] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const speechInsertionRangeRef = useRef<SpeechInsertionRange | null>(null);
+  const activeSpeechTargetIdRef = useRef<string | null>(null);
+  const speechInsertionRangesRef = useRef<Map<string, SpeechInsertionRange>>(
+    new Map(),
+  );
   const pendingSpeechFinalRef = useRef<PendingSpeechFinal | null>(null);
   const pendingTextareaSelectionRef =
     useRef<PendingTextareaSelectionRestore | null>(null);
   const interimDisplayTranscript = interimTranscript.trim();
+  const speechInlineTranscript =
+    interimDisplayTranscript ||
+    (speechProcessing ? t("speechTranscribingPlaceholder" as never) : "");
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
         message,
-        interimDisplayTranscript,
+        speechInlineTranscript,
         speechInsertionRange.end,
         speechInsertionRange.replaceEnd ?? speechInsertionRange.end,
       )
     : getSpeechTranscriptInsertionParts(
         message,
-        interimDisplayTranscript,
+        speechInlineTranscript,
         message.length,
       );
 
@@ -196,10 +213,11 @@ export function FloatingActionButton() {
       selectionStart,
       Math.min(textarea?.selectionEnd ?? selectionStart, current.length),
     );
-    speechInsertionRangeRef.current = createSpeechInsertionRange(
-      selectionStart,
-      selectionEnd,
-    );
+    const targetId = createSpeechTargetId();
+    const range = createSpeechInsertionRange(selectionStart, selectionEnd);
+    activeSpeechTargetIdRef.current = targetId;
+    speechInsertionRangeRef.current = range;
+    speechInsertionRangesRef.current.set(targetId, range);
     pendingTextareaSelectionRef.current = null;
     if (textarea) {
       textarea.focus();
@@ -225,8 +243,14 @@ export function FloatingActionButton() {
     const selectionEnd = textarea.selectionEnd;
     if (selectionStart === selectionEnd) {
       clearPendingSpeechFinal();
-      speechInsertionRangeRef.current =
-        clearSpeechInsertionRangeReplacement(range);
+      const nextRange = clearSpeechInsertionRangeReplacement(range);
+      speechInsertionRangeRef.current = nextRange;
+      if (activeSpeechTargetIdRef.current) {
+        speechInsertionRangesRef.current.set(
+          activeSpeechTargetIdRef.current,
+          nextRange,
+        );
+      }
       setSpeechPreviewRevision((revision) => revision + 1);
       return;
     }
@@ -237,20 +261,34 @@ export function FloatingActionButton() {
     ) {
       return;
     }
-    speechInsertionRangeRef.current = retargetSpeechInsertionRangeReplacement(
+    const nextRange = retargetSpeechInsertionRangeReplacement(
       range,
       selectionStart,
       selectionEnd,
     );
+    speechInsertionRangeRef.current = nextRange;
+    if (activeSpeechTargetIdRef.current) {
+      speechInsertionRangesRef.current.set(
+        activeSpeechTargetIdRef.current,
+        nextRange,
+      );
+    }
     setSpeechPreviewRevision((revision) => revision + 1);
   }, [clearPendingSpeechFinal]);
 
   const clearSpeechSelectionTarget = useCallback(() => {
     clearPendingSpeechFinal();
     if (!speechInsertionRangeRef.current) return;
-    speechInsertionRangeRef.current = clearSpeechInsertionRangeReplacement(
+    const nextRange = clearSpeechInsertionRangeReplacement(
       speechInsertionRangeRef.current,
     );
+    speechInsertionRangeRef.current = nextRange;
+    if (activeSpeechTargetIdRef.current) {
+      speechInsertionRangesRef.current.set(
+        activeSpeechTargetIdRef.current,
+        nextRange,
+      );
+    }
     setSpeechPreviewRevision((revision) => revision + 1);
   }, [clearPendingSpeechFinal]);
 
@@ -259,9 +297,71 @@ export function FloatingActionButton() {
       transcript: string,
       metadata?: SpeechTranscriptionResultMetadata,
     ) => {
+      const targetId = metadata?.speechTargetId;
+      const getSpeechRange = () =>
+        targetId
+          ? (speechInsertionRangesRef.current.get(targetId) ?? null)
+          : speechInsertionRangeRef.current;
+      const updateSpeechRange = (range: SpeechInsertionRange | null) => {
+        if (targetId) {
+          if (range) {
+            speechInsertionRangesRef.current.set(targetId, range);
+          } else {
+            speechInsertionRangesRef.current.delete(targetId);
+          }
+          if (activeSpeechTargetIdRef.current === targetId) {
+            speechInsertionRangeRef.current = range;
+          }
+          return;
+        }
+        speechInsertionRangeRef.current = range;
+        if (activeSpeechTargetIdRef.current) {
+          if (range) {
+            speechInsertionRangesRef.current.set(
+              activeSpeechTargetIdRef.current,
+              range,
+            );
+          } else {
+            speechInsertionRangesRef.current.delete(
+              activeSpeechTargetIdRef.current,
+            );
+          }
+        }
+      };
+      const mapOtherSpeechRangesThroughReplacement = (
+        replacementStart: number,
+        replacementEnd: number,
+        insertedLength: number,
+        committedRange: SpeechInsertionRange | null,
+      ) => {
+        if (speechInsertionRangesRef.current.size === 0) return;
+        const committedTargetId =
+          targetId ?? activeSpeechTargetIdRef.current;
+        const nextRanges = new Map<string, SpeechInsertionRange>();
+        for (const [rangeTargetId, range] of speechInsertionRangesRef.current) {
+          if (rangeTargetId === committedTargetId) {
+            if (committedRange) nextRanges.set(rangeTargetId, committedRange);
+            continue;
+          }
+          nextRanges.set(
+            rangeTargetId,
+            mapSpeechInsertionRangeThroughReplacement(
+              range,
+              replacementStart,
+              replacementEnd,
+              insertedLength,
+            ),
+          );
+        }
+        speechInsertionRangesRef.current = nextRanges;
+        speechInsertionRangeRef.current =
+          activeSpeechTargetIdRef.current !== null
+            ? (nextRanges.get(activeSpeechTargetIdRef.current) ?? null)
+            : null;
+      };
       if (metadata?.smartTurnCommand === "cancel") {
         const current = draftControls.getDraft();
-        const range = speechInsertionRangeRef.current;
+        const range = getSpeechRange();
         const removal = range
           ? removeLatestSpeechChunkFromRange(current, range)
           : null;
@@ -285,12 +385,19 @@ export function FloatingActionButton() {
               },
             };
             draftControls.setDraft(removal.text);
-            speechInsertionRangeRef.current = removal.range;
+            mapOtherSpeechRangesThroughReplacement(
+              removal.replacementStart,
+              removal.replacementEnd,
+              removal.insertedLength,
+              removal.range,
+            );
+            updateSpeechRange(removal.range);
           } else {
             pendingTextareaSelectionRef.current = null;
           }
         } else {
           pendingTextareaSelectionRef.current = null;
+          if (targetId) updateSpeechRange(null);
         }
         setInterimTranscript("");
         return;
@@ -298,7 +405,7 @@ export function FloatingActionButton() {
 
       const current = draftControls.getDraft();
       const trimmedTranscript = transcript.trim();
-      const speechRange = speechInsertionRangeRef.current;
+      const speechRange = getSpeechRange();
       let nextSpeechRange: SpeechInsertionRange | null = null;
       const replacement = speechRange
         ? (() => {
@@ -340,13 +447,19 @@ export function FloatingActionButton() {
           },
         };
         draftControls.setDraft(nextMessage);
+        mapOtherSpeechRangesThroughReplacement(
+          replacement.replacementStart,
+          replacement.replacementEnd,
+          replacement.insertedLength,
+          nextSpeechRange,
+        );
         if (nextSpeechRange) {
-          speechInsertionRangeRef.current = nextSpeechRange;
+          updateSpeechRange(nextSpeechRange);
         }
       }
       setInterimTranscript("");
       if (metadata?.smartTurnCommand) {
-        speechInsertionRangeRef.current = null;
+        updateSpeechRange(null);
       }
       if (metadata?.smartTurnCommand === "send") {
         handleSubmit(nextMessage);
@@ -357,9 +470,12 @@ export function FloatingActionButton() {
 
   const handleVoiceTranscript = useCallback(
     (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
+      const speechRange = metadata?.speechTargetId
+        ? (speechInsertionRangesRef.current.get(metadata.speechTargetId) ?? null)
+        : speechInsertionRangeRef.current;
       const delayMs = metadata?.smartTurnCommand
         ? 0
-        : getSpeechSelectionFinalDelayMs(speechInsertionRangeRef.current);
+        : getSpeechSelectionFinalDelayMs(speechRange);
       if (delayMs > 0) {
         clearPendingSpeechFinal();
         const timer = setTimeout(() => {
@@ -395,6 +511,18 @@ export function FloatingActionButton() {
     setInterimTranscript(transcript);
   }, []);
 
+  const handleSpeechProcessingChange = useCallback((processing: boolean) => {
+    setSpeechProcessing(processing);
+  }, []);
+
+  const getTranscriptionContext =
+    useCallback((): SpeechTranscriptionContext => {
+      return {
+        draftKey: FAB_DRAFT_KEY,
+        speechTargetId: activeSpeechTargetIdRef.current ?? undefined,
+      };
+    }, []);
+
   // Hide (but don't unmount) when not visible, on new-session page, or while
   // supervising an active session. On session pages it duplicates the sidebar
   // new-session affordance and competes with the real composer.
@@ -427,14 +555,20 @@ export function FloatingActionButton() {
       {isExpanded && (
         <div className="fab-input-panel">
           <div
-            className={`speech-draft-field ${interimTranscript ? "has-interim" : ""}`}
+            className={`speech-draft-field ${speechInlineTranscript ? "has-interim" : ""}`}
           >
             <div className="speech-draft-inline">
-              {interimDisplayTranscript && (
+              {speechInlineTranscript && (
                 <div className="speech-draft-mirror" aria-hidden="true">
                   <span>{interimInsertion.before}</span>
                   {interimInsertion.separatorBefore}
-                  <span className="speech-interim-inline">
+                  <span
+                    className={
+                      interimDisplayTranscript
+                        ? "speech-interim-inline"
+                        : "speech-processing-inline"
+                    }
+                  >
                     {interimInsertion.transcript}
                   </span>
                   {interimInsertion.separatorAfter}
@@ -447,16 +581,27 @@ export function FloatingActionButton() {
                 onChange={(e) => {
                   const nextMessage = e.target.value;
                   clearPendingSpeechFinal();
-                  const range = speechInsertionRangeRef.current;
-                  if (range) {
-                    speechInsertionRangeRef.current =
-                      clearSpeechInsertionRangeReplacement(
-                        mapSpeechInsertionRangeThroughEdit(
-                          message,
-                          nextMessage,
-                          range,
+                  if (speechInsertionRangesRef.current.size > 0) {
+                    const nextRanges = new Map<string, SpeechInsertionRange>();
+                    for (const [targetId, range] of speechInsertionRangesRef
+                      .current) {
+                      nextRanges.set(
+                        targetId,
+                        clearSpeechInsertionRangeReplacement(
+                          mapSpeechInsertionRangeThroughEdit(
+                            message,
+                            nextMessage,
+                            range,
+                          ),
                         ),
                       );
+                    }
+                    speechInsertionRangesRef.current = nextRanges;
+                    speechInsertionRangeRef.current =
+                      activeSpeechTargetIdRef.current !== null
+                        ? (nextRanges.get(activeSpeechTargetIdRef.current) ??
+                          null)
+                        : null;
                   }
                   setMessage(nextMessage);
                 }}
@@ -490,6 +635,8 @@ export function FloatingActionButton() {
               onInterimTranscript={handleInterimTranscript}
               onListeningStart={handleListeningStart}
               onListeningStop={handleListeningStop}
+              onProcessingChange={handleSpeechProcessingChange}
+              getTranscriptionContext={getTranscriptionContext}
               className="toolbar-button"
             />
             <button

@@ -1345,6 +1345,7 @@
   "voiceInputStop": "Stop voice input (Ctrl+Space)",
   "voiceInputStartLabel": "Start voice input",
   "voiceInputStopLabel": "Stop voice input",
+  "speechTranscribingPlaceholder": "Transcribing...",
   "modeSelectLabel": "Select mode",
   "modeClickToSelect": "Click to select mode",
   "remoteSetupUsername": "Username",

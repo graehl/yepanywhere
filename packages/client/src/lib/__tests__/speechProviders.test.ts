@@ -430,6 +430,119 @@ describe("YA server speech provider", () => {
     provider.dispose();
   });
 
+  it("keeps a stopped batch recording tied to its speech target while starting another", async () => {
+    const fakeStream = {
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn(async () => fakeStream);
+    const firstFetch = deferred<Response>();
+    const fetchMock = vi.fn(() => firstFetch.promise);
+    let currentSpeechTargetId = "target-1";
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    class FakeMediaRecorder {
+      static readonly instances: FakeMediaRecorder[] = [];
+
+      static isTypeSupported() {
+        return true;
+      }
+
+      state: RecordingState = "inactive";
+      ondataavailable: ((event: BlobEvent) => void) | null = null;
+      onstop: (() => void) | null = null;
+
+      constructor(
+        readonly stream: MediaStream,
+        readonly options: MediaRecorderOptions,
+      ) {
+        FakeMediaRecorder.instances.push(this);
+      }
+
+      start() {
+        this.state = "recording";
+      }
+
+      stop() {
+        this.state = "inactive";
+        this.ondataavailable?.({
+          data: new Blob(["audio"], { type: "audio/webm;codecs=opus" }),
+        } as BlobEvent);
+        this.onstop?.();
+      }
+    }
+
+    class FakeBlob {
+      readonly size: number;
+      readonly type: string;
+
+      constructor(parts: Array<{ size?: number } | string> = [], options = {}) {
+        this.size = parts.reduce(
+          (total, part) =>
+            total + (typeof part === "string" ? part.length : (part.size ?? 1)),
+          0,
+        );
+        this.type = (options as { type?: string }).type ?? "";
+      }
+
+      async arrayBuffer(): Promise<ArrayBuffer> {
+        return new Uint8Array([1]).buffer;
+      }
+    }
+
+    vi.stubGlobal("Blob", FakeBlob);
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("btoa", () => "YXVkaW8=");
+
+    const onResult = vi.fn();
+    const provider = new YaServerProvider("ya-whisper", "", {
+      getTranscriptionContext: () => ({
+        speechTargetId: currentSpeechTargetId,
+      }),
+      onResult,
+    });
+
+    provider.start();
+    await Promise.resolve();
+    expect(provider.getState().status).toBe("listening");
+
+    provider.stop();
+    await Promise.resolve();
+    expect(provider.getState()).toMatchObject({
+      status: "processing",
+      error: null,
+    });
+
+    currentSpeechTargetId = "target-2";
+    provider.start();
+    await Promise.resolve();
+    expect(provider.getState().status).toBe("listening");
+    expect(FakeMediaRecorder.instances).toHaveLength(2);
+
+    firstFetch.resolve(
+      new Response(
+        JSON.stringify({ text: "first transcript", transcriptionId: "tx-1" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(onResult).toHaveBeenCalledWith("first transcript", {
+        speechTargetId: "target-1",
+        transcriptionId: "tx-1",
+      }),
+    );
+    expect(provider.getState().status).toBe("listening");
+
+    provider.dispose();
+  });
+
   it("commits provider-owned streaming final segments", async () => {
     const stopTrack = vi.fn();
     const fakeStream = {
@@ -1004,6 +1117,11 @@ describe("YA server speech provider", () => {
       isFinal: false,
     });
     provider.stop();
+    expect(provider.getState()).toMatchObject({
+      status: "finalizing",
+      isListening: false,
+      error: null,
+    });
     expect(onResult).not.toHaveBeenCalled();
 
     ws.receive({
@@ -1445,6 +1563,11 @@ describe("YA server speech provider", () => {
     expect(firstFrame.byteLength).toBe(3200);
 
     provider.stop();
+    expect(provider.getState()).toMatchObject({
+      status: "finalizing",
+      isListening: false,
+      error: null,
+    });
     const afterStopBinaryCalls = ws.send.mock.calls.filter(
       ([payload]) => payload instanceof Int16Array,
     );
@@ -1558,6 +1681,7 @@ describe("YA server speech provider", () => {
     expect(provider.getState().status).toBe("listening");
 
     provider.stop();
+    expect(provider.getState().status).toBe("finalizing");
     expect(stopTrack).not.toHaveBeenCalled();
     FakeWebSocket.instances[0]?.receive({ type: "final", text: "" });
     expect(provider.getState().status).toBe("idle");

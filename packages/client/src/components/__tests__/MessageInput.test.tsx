@@ -83,10 +83,13 @@ const {
         metadata?: {
           smartTurnCommand?: "cancel" | "send" | "wait";
           replacePreviousTranscriptChars?: number;
+          speechTargetId?: string;
         },
       ) => void;
       onInterimTranscript?: (text: string) => void;
       onListeningStart?: () => void;
+      onListeningStop?: () => void;
+      getTranscriptionContext?: () => { speechTargetId?: string };
     },
   },
   remoteBasePathState: {
@@ -280,11 +283,13 @@ vi.mock("../VoiceInputButton", async () => {
             metadata?: {
               smartTurnCommand?: "cancel" | "send" | "wait";
               replacePreviousTranscriptChars?: number;
+              speechTargetId?: string;
             },
           ) => void;
           onInterimTranscript?: (text: string) => void;
           onListeningStart?: () => void;
           onListeningStop?: () => void;
+          getTranscriptionContext?: () => { speechTargetId?: string };
           speechMethod?: string;
         },
         ref,
@@ -909,6 +914,50 @@ describe("MessageInput", () => {
 
     act(() => {
       voicePropsState.current?.onTranscript?.("second.");
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("prefix first. second. suffix");
+    });
+  });
+
+  it("moves a pending batch target after earlier speech inserted at the same cursor", async () => {
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "prefix suffix" } });
+    textarea.focus();
+    textarea.setSelectionRange("prefix".length, "prefix".length);
+
+    act(() => {
+      voicePropsState.current?.onListeningStart?.();
+    });
+    const firstTarget =
+      voicePropsState.current?.getTranscriptionContext?.().speechTargetId;
+    expect(firstTarget).toBeTruthy();
+
+    act(() => {
+      voicePropsState.current?.onListeningStop?.();
+      voicePropsState.current?.onListeningStart?.();
+    });
+    const secondTarget =
+      voicePropsState.current?.getTranscriptionContext?.().speechTargetId;
+    expect(secondTarget).toBeTruthy();
+    expect(secondTarget).not.toBe(firstTarget);
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("first.", {
+        speechTargetId: firstTarget,
+      });
+    });
+
+    await waitFor(() => {
+      expect(textarea.value).toBe("prefix first. suffix");
+    });
+
+    act(() => {
+      voicePropsState.current?.onTranscript?.("second.", {
+        speechTargetId: secondTarget,
+      });
     });
 
     await waitFor(() => {

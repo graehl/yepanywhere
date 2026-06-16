@@ -3439,6 +3439,14 @@ a.sidebar-nav-item {
     color-mix(in srgb, var(--app-yep-green) 28%, transparent);
 }
 
+.speech-processing-inline {
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-tertiary) 86%, transparent);
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 0 0.2em;
+}
+
 .speech-interim-status {
   position: absolute;
   width: 1px;
@@ -5797,6 +5805,14 @@ a.sidebar-nav-item {
 .voice-input-container.status-receiving .voice-input-status {
   color: rgb(34, 197, 94); /* Green - actively receiving */
   font-weight: 500;
+}
+
+.voice-input-container.status-processing .voice-input-status {
+  color: var(--text-muted);
+}
+
+.voice-input-container.status-finalizing .voice-input-status {
+  color: var(--text-muted);
 }
 
 .voice-input-container.status-reconnecting .voice-input-status {

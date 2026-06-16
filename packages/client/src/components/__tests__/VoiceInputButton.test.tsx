@@ -19,6 +19,8 @@ const { connection, observedSpeechOptions, openSpeechSocket, speechState } =
           | "starting"
           | "listening"
           | "receiving"
+          | "processing"
+          | "finalizing"
           | "reconnecting"
           | "error",
       },
@@ -55,6 +57,8 @@ vi.mock("../../hooks/useSpeechRecognition", () => ({
     starting: "Connecting...",
     listening: "Listening",
     receiving: "Receiving",
+    processing: "Transcribing",
+    finalizing: "Finalizing",
     reconnecting: "Reconnecting...",
     error: "Error",
   },
@@ -126,8 +130,8 @@ describe("VoiceInputButton", () => {
     expect(secondOpenSpeechSocket).toBe(firstOpenSpeechSocket);
   });
 
-  it("renders receiving status as active capture even if listening is stale", () => {
-    speechState.status = "receiving";
+  it("does not render post-capture processing as active capture", () => {
+    speechState.status = "processing";
 
     render(
       <VoiceInputButton
@@ -137,9 +141,26 @@ describe("VoiceInputButton", () => {
       />,
     );
 
-    const button = screen.getByRole("button", { name: "voiceInputStopLabel" });
-    expect(button.className).toContain("listening");
-    expect(button.getAttribute("aria-pressed")).toBe("true");
-    expect(document.querySelector(".voice-input-recording")).toBeTruthy();
+    const button = screen.getByRole("button", { name: "voiceInputStartLabel" });
+    expect(button.className).not.toContain("listening");
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(document.querySelector(".voice-input-recording")).toBeNull();
+  });
+
+  it("does not render streaming finalization as active capture", () => {
+    speechState.status = "finalizing";
+
+    render(
+      <VoiceInputButton
+        onTranscript={vi.fn()}
+        onInterimTranscript={vi.fn()}
+        speechMethod="browser-native"
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Finalizing" });
+    expect(button.className).not.toContain("listening");
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(document.querySelector(".voice-input-recording")).toBeNull();
   });
 });

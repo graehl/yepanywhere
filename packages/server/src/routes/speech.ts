@@ -324,6 +324,7 @@ function parseTranscriptionContext(
     sessionId: cleanContextString(value.sessionId),
     clientTurnId: cleanContextString(value.clientTurnId, 120),
     draftKey: cleanContextString(value.draftKey, 300),
+    speechTargetId: cleanContextString(value.speechTargetId, 120),
   };
   const clean = Object.fromEntries(
     Object.entries(context).filter(([, entry]) => entry !== undefined),

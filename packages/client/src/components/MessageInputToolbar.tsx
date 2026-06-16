@@ -203,6 +203,7 @@ export interface MessageInputToolbarProps {
   onInterimTranscript?: (transcript: string) => void;
   onListeningStart?: () => void;
   onListeningStop?: () => void;
+  onSpeechProcessingChange?: (processing: boolean) => void;
   voiceDisabled?: boolean;
   getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
 
@@ -487,6 +488,7 @@ type ToolbarVoiceButtonControl =
       onInterimTranscript: (transcript: string) => void;
       onListeningStart?: () => void;
       onListeningStop?: () => void;
+      onProcessingChange?: (processing: boolean) => void;
       disabled?: boolean;
       speechMethod: SpeechMethodId;
       getTranscriptionContext?: () => SpeechTranscriptionContext | undefined;
@@ -1247,6 +1249,9 @@ export function MessageInputToolbarView({
                   }
                   onListeningStart={speechControl.voiceButton.onListeningStart}
                   onListeningStop={speechControl.voiceButton.onListeningStop}
+                  onProcessingChange={
+                    speechControl.voiceButton.onProcessingChange
+                  }
                   disabled={speechControl.voiceButton.disabled}
                   speechMethod={speechControl.voiceButton.speechMethod}
                   getTranscriptionContext={
@@ -1979,6 +1984,7 @@ export function MessageInputToolbar({
   onInterimTranscript,
   onListeningStart,
   onListeningStop,
+  onSpeechProcessingChange,
   voiceDisabled,
   getTranscriptionContext,
   slashCommands = [],
@@ -2528,6 +2534,7 @@ export function MessageInputToolbar({
                 onInterimTranscript,
                 onListeningStart,
                 onListeningStop,
+                onProcessingChange: onSpeechProcessingChange,
                 disabled: voiceDisabled,
                 speechMethod: selectedSpeechMethod,
                 getTranscriptionContext,

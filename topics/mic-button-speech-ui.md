@@ -91,6 +91,17 @@ final partials in order and uses them only if the final done event has no text,
 preserving protection against bad stop-flush partials when `transcript.done`
 does contain text.
 
+Manual stop for streaming STT is a flush/finalize operation, not cancellation.
+It stops capturing new audio immediately, but final transcript updates for
+audio already sent must still reach the composer and retain their Smart Turn
+command metadata. Only one streaming provider request is active at a time in
+the current implementation, so a reclick during streaming finalization does not
+start a competing stream. Future work may make that reclick start local
+prerecording immediately, buffer PCM into a new speech transaction, and open
+the next provider stream only after the previous `transcript.done` resolves.
+That follow-up must preserve the user's click-time insertion target and flush
+the buffered audio without dropping first words.
+
 When server-routed speech audio retention is enabled, YA persists structured
 streaming transcript events next to the retained audio. The older
 tab-separated text trace is kept for grepping, but the structured trace keeps
@@ -124,6 +135,23 @@ Batch providers produce no streaming drafts and no mid-utterance Smart Turn.
 The default batch result is "wait": insert the whole recognized transcript at
 the speech transaction point, stop recognition, and do not submit.
 
+Stopping a batch recording ends capture synchronously. The mic button must
+clear its red/listening state immediately; slower upload, provider latency,
+local model load, or a slow CPU plus large ASR model are post-capture
+processing and must not make the mic look active. While the result is pending,
+the composer may show a distinct "Transcribing..." placeholder at the speech
+transaction point, but that placeholder is mirror/status UI only and is not
+part of the textarea value.
+
+When the batch result arrives, YA treats it as one delayed finalized streaming
+chunk. It uses the speech transaction target captured at mic start, including
+the originally selected replacement span, rather than whatever selection or
+speech transaction is current at result time. User edits made while the batch
+is pending map that target through ordinary textarea edits. A new recording may
+start while the earlier batch transcription is still pending; if multiple batch
+transcriptions overlap, each result must either carry a distinct speech target
+or be blocked until the previous pending result has landed.
+
 Batch supports simple whole-batch spoken commands:
 
 - A trailing `send` word is stripped, the preceding recognized text is inserted
@@ -140,12 +168,15 @@ Batch supports simple whole-batch spoken commands:
 
 Clicking the active mic button or pressing the voice shortcut toggles capture
 off using the provider's normal stop behavior. For xAI streaming STT, manual
-stop sends `audio.done` immediately and waits for `transcript.done`; YA should
-not treat the live interim preview as final unless the final response fails and
-the preview is being salvaged. Smart Turn/endpointing finalizes through
-`is_final` transcript partials, but manual stop does not require or promise one
-last `is_final` partial. In the initial implementation, Esc may duplicate that
-same toggle behavior when focus is in the composer.
+stop sends `audio.done` immediately and waits for `transcript.done`. The mic
+button must clear its red/listening state as soon as capture stops, but the
+speech provider remains in a non-recording finalizing state until the final
+response lands. YA should not treat the live interim preview as final unless
+the final response fails and the preview is being salvaged. Smart
+Turn/endpointing finalizes through `is_final` transcript partials, but manual
+stop does not require or promise one last `is_final` partial. In the initial
+implementation, Esc may duplicate that same toggle behavior when focus is in
+the composer.
 
 Proposed stronger Esc behavior: while a mic transaction is active, Esc should
 remove all speech inserted since the button press and stop recognition. That

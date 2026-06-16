@@ -5,6 +5,7 @@ import {
   INITIAL_SPEECH_STATE,
   type SpeechProvider,
   type SpeechTurnCommand,
+  type SpeechTranscriptionContext,
   type SpeechTranscriptionResultMetadata,
   type SpeechProviderOptions,
   type SpeechProviderState,
@@ -40,6 +41,12 @@ function preferredMimeType(): string {
     }
   }
   return "audio/webm";
+}
+
+function releaseSpeechStream(stream: MediaStream | null): void {
+  if (stream && !isSharedSpeechMicStream(stream)) {
+    stopSpeechStreamTracks(stream);
+  }
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -114,6 +121,15 @@ interface PendingStreamingFinalPartial {
   words?: SpeechWordTimestamp[];
 }
 
+interface BatchRecording {
+  token: number;
+  chunks: Blob[];
+  context?: SpeechTranscriptionContext;
+  mimeType: string;
+  stream: MediaStream;
+  submitOnStop: boolean;
+}
+
 interface StreamingCommittedGroup {
   groupStart: number;
   text: string;
@@ -125,6 +141,14 @@ interface StreamingCommitOptions {
   groupStart?: number | null;
   replaceGroup?: boolean;
   words?: SpeechWordTimestamp[];
+}
+
+function withSpeechContextMetadata(
+  metadata: SpeechTranscriptionResultMetadata | undefined,
+  context: SpeechTranscriptionContext | undefined,
+): SpeechTranscriptionResultMetadata | undefined {
+  if (!context?.speechTargetId) return metadata;
+  return { ...metadata, speechTargetId: context.speechTargetId };
 }
 
 function getAudioContextConstructor(): typeof AudioContext | null {
@@ -429,9 +453,9 @@ export class YaServerProvider implements SpeechProvider {
   private processor: ScriptProcessorNode | null = null;
   private silentGain: GainNode | null = null;
   private pcmChunker: Pcm16Chunker | null = null;
-  private chunks: Blob[] = [];
+  private batchRecording: BatchRecording | null = null;
   private mimeType = "audio/webm";
-  private submitOnStop = false;
+  private streamingContext: SpeechTranscriptionContext | undefined;
   private streamingFinalReceived = false;
   private streamingCommittedTranscript = "";
   private streamingCommittedAudioEnd: number | null = null;
@@ -501,7 +525,8 @@ export class YaServerProvider implements SpeechProvider {
     if (
       this.state.isListening ||
       this.state.status === "starting" ||
-      this.state.status === "receiving"
+      this.state.status === "finalizing" ||
+      (this.state.status === "receiving" && this.state.isListening)
     ) {
       return;
     }
@@ -531,7 +556,8 @@ export class YaServerProvider implements SpeechProvider {
     if (
       this.state.isListening ||
       this.state.status === "starting" ||
-      this.state.status === "receiving"
+      this.state.status === "finalizing" ||
+      (this.state.status === "receiving" && this.state.isListening)
     ) {
       return;
     }
@@ -564,24 +590,35 @@ export class YaServerProvider implements SpeechProvider {
       return;
     }
     this.stream = stream;
-    this.mimeType = preferredMimeType();
-    this.chunks = [];
-    this.submitOnStop = true;
+    const mimeType = preferredMimeType();
+    this.mimeType = mimeType;
+    const recording: BatchRecording = {
+      token,
+      chunks: [],
+      context: this.options.getTranscriptionContext?.(),
+      mimeType,
+      stream,
+      submitOnStop: true,
+    };
+    this.batchRecording = recording;
 
     const recorder = new MediaRecorder(stream, {
-      mimeType: this.mimeType,
+      mimeType,
       audioBitsPerSecond: 32_000,
     });
     this.recorder = recorder;
 
     recorder.ondataavailable = (e: BlobEvent) => {
-      if (token === this.startToken && this.submitOnStop && e.data.size > 0) {
-        this.chunks.push(e.data);
+      if (!this.disposed && recording.submitOnStop && e.data.size > 0) {
+        recording.chunks.push(e.data);
       }
     };
     recorder.onstop = () => {
-      if (token === this.startToken && this.submitOnStop) {
-        void this.transcribeRecording();
+      if (this.batchRecording === recording) {
+        this.batchRecording = null;
+      }
+      if (recording.submitOnStop) {
+        void this.transcribeRecording(recording);
       }
     };
 
@@ -667,6 +704,7 @@ export class YaServerProvider implements SpeechProvider {
     this.streamingStopRequested = false;
     this.pendingStreamingFinalPartials = [];
     this.pendingSmartTurnCommand = null;
+    this.streamingContext = this.options.getTranscriptionContext?.();
 
     // Build the capture graph immediately: the mic is live now, so begin
     // capturing at once and buffer PCM frames until the socket handshake
@@ -761,7 +799,7 @@ export class YaServerProvider implements SpeechProvider {
           streaming: true,
           sampleRate: STREAM_SAMPLE_RATE,
           encoding: "pcm",
-          context: this.options.getTranscriptionContext?.(),
+          context: this.streamingContext,
           smartTurn:
             this.options.smartTurn?.enabled === true
               ? {
@@ -795,21 +833,24 @@ export class YaServerProvider implements SpeechProvider {
     }
     this.ws = ws;
     ws.onerror = () => {
+      if (this.disposed || token !== this.startToken) return;
       this.handleStreamingMessage(
         JSON.stringify({
           type: "error",
           message: "Speech streaming connection failed",
         }),
+        token,
       );
     };
     ws.onmessage = (event: MessageEvent | { data: unknown }) => {
-      this.handleStreamingMessage(event.data);
+      this.handleStreamingMessage(event.data, token);
     };
     ws.onclose = () => {
       if (
         !this.disposed &&
+        token === this.startToken &&
         !this.streamingFinalReceived &&
-        this.state.status === "receiving"
+        (this.state.status === "receiving" || this.state.status === "finalizing")
       ) {
         const message = "Speech streaming connection closed before final text";
         const salvaged = this.commitStreamingTranscript(
@@ -870,7 +911,8 @@ export class YaServerProvider implements SpeechProvider {
     }
   }
 
-  private handleStreamingMessage(data: unknown): void {
+  private handleStreamingMessage(data: unknown, token = this.startToken): void {
+    if (this.disposed || token !== this.startToken) return;
     const text = typeof data === "string" ? data : String(data);
     let message: SpeechWsMessage;
     try {
@@ -944,6 +986,10 @@ export class YaServerProvider implements SpeechProvider {
       if (metadata && smartTurnCommand) {
         metadata.smartTurnCommand = smartTurnCommand;
       }
+      const resultMetadata = withSpeechContextMetadata(
+        metadata,
+        this.streamingContext,
+      );
       // The server's final text can be empty when the end-of-utterance
       // speechFinal races past our stop request, or a hallucinated near-silence
       // token when little audio was captured. A non-empty final may also
@@ -962,7 +1008,7 @@ export class YaServerProvider implements SpeechProvider {
             finalText,
             pendingSmartTurn?.recognizedCommand === false,
           ),
-          metadata,
+          resultMetadata,
         );
         metadataApplied = committed;
       } else if (pendingFinalPartials.length > 0) {
@@ -975,7 +1021,7 @@ export class YaServerProvider implements SpeechProvider {
           const partialMetadata = last ? metadata : undefined;
           const partialCommitted = this.commitStreamingTranscript(
             transcript,
-            partialMetadata,
+            withSpeechContextMetadata(partialMetadata, this.streamingContext),
             {
               span: partial.span,
               groupStart: partial.groupStart,
@@ -989,12 +1035,12 @@ export class YaServerProvider implements SpeechProvider {
       } else {
         committed = this.commitStreamingTranscript(
           this.streamingCurrentPreviewTranscript,
-          metadata,
+          resultMetadata,
         );
         metadataApplied = committed;
       }
-      if (!metadataApplied && metadata) {
-        this.options.onResult?.("", metadata);
+      if (!metadataApplied && resultMetadata) {
+        this.options.onResult?.("", resultMetadata);
       }
       this.setState({
         status: "idle",
@@ -1053,7 +1099,13 @@ export class YaServerProvider implements SpeechProvider {
 
     if (decision.recognizedCommand && decision.command === "cancel") {
       this.clearStreamingPreview();
-      this.options.onResult?.("", { smartTurnCommand: "cancel" });
+      this.options.onResult?.(
+        "",
+        withSpeechContextMetadata(
+          { smartTurnCommand: "cancel" },
+          this.streamingContext,
+        ),
+      );
       return;
     }
 
@@ -1075,7 +1127,7 @@ export class YaServerProvider implements SpeechProvider {
 
     this.streamingStopRequested = true;
     this.cleanupStreamingMedia();
-    this.setState({ status: "receiving", isListening: false, error: null });
+    this.setState({ status: "finalizing", isListening: false, error: null });
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: "stop" }));
     } else {
@@ -1278,10 +1330,16 @@ export class YaServerProvider implements SpeechProvider {
       this.setState({ interimTranscript: "" });
       this.options.onInterimResult?.("");
       this.streamingCurrentPreviewTranscript = "";
-      this.options.onResult?.(latest, {
-        ...metadata,
-        replacePreviousTranscriptChars,
-      });
+      this.options.onResult?.(
+        latest,
+        withSpeechContextMetadata(
+          {
+            ...metadata,
+            replacePreviousTranscriptChars,
+          },
+          this.streamingContext,
+        ),
+      );
       return true;
     }
 
@@ -1298,10 +1356,16 @@ export class YaServerProvider implements SpeechProvider {
         this.setState({ interimTranscript: "" });
         this.options.onInterimResult?.("");
         this.streamingCurrentPreviewTranscript = "";
-        this.options.onResult?.(latest, {
-          ...metadata,
-          replacePreviousTranscriptChars,
-        });
+        this.options.onResult?.(
+          latest,
+          withSpeechContextMetadata(
+            {
+              ...metadata,
+              replacePreviousTranscriptChars,
+            },
+            this.streamingContext,
+          ),
+        );
         return true;
       }
     }
@@ -1333,15 +1397,18 @@ export class YaServerProvider implements SpeechProvider {
     );
     this.appendStreamingCommittedGroup(latest, span, groupStart);
     this.streamingCurrentPreviewTranscript = "";
-    this.options.onResult?.(latest, metadata);
+    this.options.onResult?.(
+      latest,
+      withSpeechContextMetadata(metadata, this.streamingContext),
+    );
     return true;
   }
 
-  private async transcribeRecording(): Promise<void> {
-    this.submitOnStop = false;
-    const audio = new Blob(this.chunks, { type: this.mimeType });
-    this.chunks = [];
-    this.releaseActiveStream();
+  private async transcribeRecording(recording: BatchRecording): Promise<void> {
+    recording.submitOnStop = false;
+    const audio = new Blob(recording.chunks, { type: recording.mimeType });
+    recording.chunks = [];
+    releaseSpeechStream(recording.stream);
 
     try {
       const response =
@@ -1350,19 +1417,13 @@ export class YaServerProvider implements SpeechProvider {
               method: "POST",
               body: JSON.stringify({
                 backendId: this.backendId,
-                mimeType: this.mimeType,
+                mimeType: recording.mimeType,
                 audioBase64: await blobToBase64(audio),
-                context: this.options.getTranscriptionContext?.(),
+                context: recording.context,
               }),
             })
           : { text: "" };
       if (this.disposed) return;
-      this.setState({
-        status: "idle",
-        isListening: false,
-        interimTranscript: "",
-        error: null,
-      });
       if (response.text) {
         const decision = decideBatchSpeechCommand(response.text);
         const metadata: SpeechTranscriptionResultMetadata = {
@@ -1371,20 +1432,49 @@ export class YaServerProvider implements SpeechProvider {
         if (decision.recognizedCommand) {
           metadata.smartTurnCommand = decision.command;
         }
-        this.options.onResult?.(decision.transcript, metadata);
+        this.options.onResult?.(
+          decision.transcript,
+          withSpeechContextMetadata(metadata, recording.context),
+        );
+      } else {
+        const metadata = withSpeechContextMetadata(
+          response.transcriptionId
+            ? { transcriptionId: response.transcriptionId }
+            : undefined,
+          recording.context,
+        );
+        if (metadata) this.options.onResult?.("", metadata);
       }
-      this.options.onEnd?.();
+      if (
+        recording.token === this.startToken &&
+        !this.state.isListening &&
+        this.state.status === "processing"
+      ) {
+        this.setState({
+          status: "idle",
+          isListening: false,
+          interimTranscript: "",
+          error: null,
+        });
+        this.options.onEnd?.();
+      }
     } catch (err: unknown) {
       if (this.disposed) return;
       const message = err instanceof Error ? err.message : String(err);
-      this.setState({
-        status: "error",
-        isListening: false,
-        interimTranscript: "",
-        error: message,
-      });
       this.options.onError?.(message);
-      this.options.onEnd?.();
+      if (
+        recording.token === this.startToken &&
+        !this.state.isListening &&
+        this.state.status === "processing"
+      ) {
+        this.setState({
+          status: "error",
+          isListening: false,
+          interimTranscript: "",
+          error: message,
+        });
+        this.options.onEnd?.();
+      }
     }
   }
 
@@ -1392,7 +1482,7 @@ export class YaServerProvider implements SpeechProvider {
     if (this.disposed) return;
     if (
       this.state.status === "starting" ||
-      this.state.status === "receiving" ||
+      (this.state.status === "receiving" && this.state.isListening) ||
       this.state.status === "reconnecting"
     ) {
       this.startToken += 1;
@@ -1407,9 +1497,8 @@ export class YaServerProvider implements SpeechProvider {
       return;
     }
     if (!this.state.isListening) return;
-    this.setState({ status: "receiving", isListening: false });
-
     if (this.options.serverStreaming) {
+      this.setState({ status: "finalizing", isListening: false, error: null });
       this.streamingStopRequested = true;
       this.pendingSmartTurnCommand = null;
       this.pcmChunker?.flush();
@@ -1423,17 +1512,21 @@ export class YaServerProvider implements SpeechProvider {
       return;
     }
 
-    if (this.recorder?.state !== "inactive") {
-      this.recorder?.stop();
+    this.setState({ status: "processing", isListening: false });
+    const recorder = this.recorder;
+    const recording = this.batchRecording;
+    this.recorder = null;
+    this.batchRecording = null;
+    this.stream = null;
+    if (recorder?.state !== "inactive") {
+      recorder?.stop();
     } else {
-      void this.transcribeRecording();
+      if (recording) void this.transcribeRecording(recording);
     }
   }
 
   private releaseActiveStream(): void {
-    if (this.stream && !isSharedSpeechMicStream(this.stream)) {
-      stopSpeechStreamTracks(this.stream);
-    }
+    releaseSpeechStream(this.stream);
     this.stream = null;
   }
 
@@ -1452,20 +1545,28 @@ export class YaServerProvider implements SpeechProvider {
   }
 
   private cleanupMedia(submitOnStop: boolean): void {
-    this.submitOnStop = submitOnStop;
     this.cleanupStreamingMedia();
     this.ws?.close();
     this.ws = null;
     this.streamingCommittedGroups = [];
     this.pendingStreamingFinalPartials = [];
     this.pendingSmartTurnCommand = null;
-    if (this.recorder && this.recorder.state !== "inactive") {
-      this.recorder.stop();
-    }
+    const recorder = this.recorder;
+    const recording = this.batchRecording;
     this.recorder = null;
+    this.batchRecording = null;
+    if (recording) {
+      recording.submitOnStop = submitOnStop;
+    }
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
     if (!submitOnStop) {
-      this.chunks = [];
       this.releaseActiveStream();
+      if (recording) {
+        recording.chunks = [];
+        releaseSpeechStream(recording.stream);
+      }
     }
   }
 

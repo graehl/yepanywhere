@@ -19,6 +19,8 @@ export type SpeechProviderStatus =
   | "starting"
   | "listening"
   | "receiving"
+  | "processing"
+  | "finalizing"
   | "reconnecting"
   | "error";
 
@@ -37,6 +39,7 @@ export interface SpeechTranscriptionContext {
   sessionId?: string;
   clientTurnId?: string;
   draftKey?: string;
+  speechTargetId?: string;
 }
 
 export type SpeechTurnCommand = "send" | "cancel" | "wait";
@@ -75,6 +78,7 @@ export interface SpeechWordTimestamp {
 
 export interface SpeechTranscriptionResultMetadata {
   transcriptionId?: string;
+  speechTargetId?: string;
   smartTurnCommand?: SpeechTurnCommand;
   /** Replace this many characters immediately before the current speech range. */
   replacePreviousTranscriptChars?: number;
@@ -166,6 +170,8 @@ export const SPEECH_STATUS_LABELS: Record<SpeechProviderStatus, string> = {
   starting: "Connecting...",
   listening: "Listening...",
   receiving: "Receiving...",
+  processing: "Transcribing...",
+  finalizing: "Finalizing...",
   reconnecting: "Reconnecting...",
   error: "Error",
 };

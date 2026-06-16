@@ -332,6 +332,65 @@ export function mapSpeechInsertionRangeThroughEdit(
   };
 }
 
+function mapTextIndexThroughReplacement(
+  index: number,
+  replacementStart: number,
+  replacementEnd: number,
+  insertedLength: number,
+): number {
+  const start = Math.max(0, replacementStart);
+  const end = Math.max(start, replacementEnd);
+  const delta = insertedLength - (end - start);
+  if (index < start) return index;
+  if (start === end) return index + insertedLength;
+  if (index > end) return index + delta;
+  return start + insertedLength;
+}
+
+function speechReplacementIntersectsRangeReplacement(
+  range: SpeechInsertionRange,
+  replacementStart: number,
+  replacementEnd: number,
+): boolean {
+  if (range.replaceEnd === undefined || range.replaceEnd <= range.end) {
+    return false;
+  }
+  return replacementStart < range.replaceEnd && replacementEnd > range.end;
+}
+
+export function mapSpeechInsertionRangeThroughReplacement(
+  range: SpeechInsertionRange,
+  replacementStart: number,
+  replacementEnd: number,
+  insertedLength: number,
+): SpeechInsertionRange {
+  const mapIndex = (index: number): number =>
+    mapTextIndexThroughReplacement(
+      index,
+      replacementStart,
+      replacementEnd,
+      insertedLength,
+    );
+  const mapped = {
+    start: mapIndex(range.start),
+    end: mapIndex(range.end),
+    replaceEnd:
+      range.replaceEnd === undefined ? undefined : mapIndex(range.replaceEnd),
+    replaceSelectedAtMs: range.replaceSelectedAtMs,
+    chunks: range.chunks.map((chunk) => ({
+      start: mapIndex(chunk.start),
+      end: mapIndex(chunk.end),
+    })),
+  };
+  return speechReplacementIntersectsRangeReplacement(
+    range,
+    replacementStart,
+    replacementEnd,
+  )
+    ? clearSpeechInsertionRangeReplacement(mapped)
+    : mapped;
+}
+
 function mapChunkAfterReplacement(
   chunk: SpeechOwnedChunk,
   replacementStart: number,

@@ -26,6 +26,7 @@ import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import { hasCoarsePointer } from "../lib/deviceDetection";
+import { generateUUID } from "../lib/uuid";
 import type {
   SpeechTranscriptionContext,
   SpeechTranscriptionResultMetadata,
@@ -37,6 +38,7 @@ import {
   getSpeechTranscriptInsertionParts,
   getSpeechTranscriptReplacementParts,
   mapSpeechInsertionRangeThroughEdit,
+  mapSpeechInsertionRangeThroughReplacement,
   removeLatestSpeechChunkFromRange,
   retargetSpeechInsertionRangeReplacement,
   replaceSpeechTranscriptBefore,
@@ -113,10 +115,11 @@ function clearTextareaContentsUndoably(textarea: HTMLTextAreaElement): void {
 }
 
 function createClientSpeechTurnId(): string {
-  return (
-    globalThis.crypto?.randomUUID?.() ??
-    `speech-${Date.now()}-${Math.random().toString(36).slice(2)}`
-  );
+  return generateUUID();
+}
+
+function createSpeechTargetId(): string {
+  return `speech-target-${generateUUID()}`;
 }
 
 function getLeadingSlashQuery(text: string): string | null {
@@ -264,12 +267,17 @@ export function MessageInput({
   const speechTurnIdRef = useRef<string | null>(null);
   const speechTranscriptionIdsRef = useRef<string[]>([]);
   const speechInsertionRangeRef = useRef<SpeechInsertionRange | null>(null);
+  const activeSpeechTargetIdRef = useRef<string | null>(null);
+  const speechInsertionRangesRef = useRef<Map<string, SpeechInsertionRange>>(
+    new Map(),
+  );
   const pendingSpeechFinalRef = useRef<PendingSpeechFinal | null>(null);
   const pendingTextareaSelectionRef =
     useRef<PendingTextareaSelectionRestore | null>(null);
   // User-controlled collapse state (independent of external collapse from approval panel)
   const [userCollapsed, setUserCollapsed] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
+  const [speechProcessing, setSpeechProcessing] = useState(false);
   const [, setSpeechPreviewRevision] = useState(0);
   const [dismissedSlashQuery, setDismissedSlashQuery] = useState<string | null>(
     null,
@@ -293,17 +301,20 @@ export function MessageInput({
     matchingSlashCommands.length > 0;
   const canSubmit = !!(text.trim() || attachments.length > 0);
   const interimDisplayTranscript = interimTranscript.trim();
+  const speechInlineTranscript =
+    interimDisplayTranscript ||
+    (speechProcessing ? t("speechTranscribingPlaceholder" as never) : "");
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
         text,
-        interimDisplayTranscript,
+        speechInlineTranscript,
         speechInsertionRange.end,
         speechInsertionRange.replaceEnd ?? speechInsertionRange.end,
       )
     : getSpeechTranscriptInsertionParts(
         text,
-        interimDisplayTranscript,
+        speechInlineTranscript,
         text.length,
       );
 
@@ -446,6 +457,7 @@ export function MessageInput({
         sessionId,
         draftKey,
         clientTurnId: ensureSpeechTurnId(),
+        speechTargetId: activeSpeechTargetIdRef.current ?? undefined,
       };
     }, [draftKey, ensureSpeechTurnId, projectId, sessionId]);
 
@@ -908,10 +920,11 @@ export function MessageInput({
       selectionStart,
       Math.min(textarea?.selectionEnd ?? selectionStart, currentText.length),
     );
-    speechInsertionRangeRef.current = createSpeechInsertionRange(
-      selectionStart,
-      selectionEnd,
-    );
+    const targetId = createSpeechTargetId();
+    const range = createSpeechInsertionRange(selectionStart, selectionEnd);
+    activeSpeechTargetIdRef.current = targetId;
+    speechInsertionRangeRef.current = range;
+    speechInsertionRangesRef.current.set(targetId, range);
     pendingTextareaSelectionRef.current = null;
     if (textarea) {
       textarea.focus();
@@ -937,8 +950,14 @@ export function MessageInput({
     const selectionEnd = textarea.selectionEnd;
     if (selectionStart === selectionEnd) {
       clearPendingSpeechFinal();
-      speechInsertionRangeRef.current =
-        clearSpeechInsertionRangeReplacement(range);
+      const nextRange = clearSpeechInsertionRangeReplacement(range);
+      speechInsertionRangeRef.current = nextRange;
+      if (activeSpeechTargetIdRef.current) {
+        speechInsertionRangesRef.current.set(
+          activeSpeechTargetIdRef.current,
+          nextRange,
+        );
+      }
       setSpeechPreviewRevision((revision) => revision + 1);
       return;
     }
@@ -949,25 +968,101 @@ export function MessageInput({
     ) {
       return;
     }
-    speechInsertionRangeRef.current = retargetSpeechInsertionRangeReplacement(
+    const nextRange = retargetSpeechInsertionRangeReplacement(
       range,
       selectionStart,
       selectionEnd,
     );
+    speechInsertionRangeRef.current = nextRange;
+    if (activeSpeechTargetIdRef.current) {
+      speechInsertionRangesRef.current.set(
+        activeSpeechTargetIdRef.current,
+        nextRange,
+      );
+    }
     setSpeechPreviewRevision((revision) => revision + 1);
   }, [clearPendingSpeechFinal]);
 
   const clearSpeechSelectionTarget = useCallback(() => {
     clearPendingSpeechFinal();
     if (!speechInsertionRangeRef.current) return;
-    speechInsertionRangeRef.current = clearSpeechInsertionRangeReplacement(
+    const nextRange = clearSpeechInsertionRangeReplacement(
       speechInsertionRangeRef.current,
     );
+    speechInsertionRangeRef.current = nextRange;
+    if (activeSpeechTargetIdRef.current) {
+      speechInsertionRangesRef.current.set(
+        activeSpeechTargetIdRef.current,
+        nextRange,
+      );
+    }
     setSpeechPreviewRevision((revision) => revision + 1);
   }, [clearPendingSpeechFinal]);
 
   const commitVoiceTranscript = useCallback(
     (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
+      const targetId = metadata?.speechTargetId;
+      const getSpeechRange = () =>
+        targetId
+          ? (speechInsertionRangesRef.current.get(targetId) ?? null)
+          : speechInsertionRangeRef.current;
+      const updateSpeechRange = (range: SpeechInsertionRange | null) => {
+        if (targetId) {
+          if (range) {
+            speechInsertionRangesRef.current.set(targetId, range);
+          } else {
+            speechInsertionRangesRef.current.delete(targetId);
+          }
+          if (activeSpeechTargetIdRef.current === targetId) {
+            speechInsertionRangeRef.current = range;
+          }
+          return;
+        }
+        speechInsertionRangeRef.current = range;
+        if (activeSpeechTargetIdRef.current) {
+          if (range) {
+            speechInsertionRangesRef.current.set(
+              activeSpeechTargetIdRef.current,
+              range,
+            );
+          } else {
+            speechInsertionRangesRef.current.delete(
+              activeSpeechTargetIdRef.current,
+            );
+          }
+        }
+      };
+      const mapOtherSpeechRangesThroughReplacement = (
+        replacementStart: number,
+        replacementEnd: number,
+        insertedLength: number,
+        committedRange: SpeechInsertionRange | null,
+      ) => {
+        if (speechInsertionRangesRef.current.size === 0) return;
+        const committedTargetId =
+          targetId ?? activeSpeechTargetIdRef.current;
+        const nextRanges = new Map<string, SpeechInsertionRange>();
+        for (const [rangeTargetId, range] of speechInsertionRangesRef.current) {
+          if (rangeTargetId === committedTargetId) {
+            if (committedRange) nextRanges.set(rangeTargetId, committedRange);
+            continue;
+          }
+          nextRanges.set(
+            rangeTargetId,
+            mapSpeechInsertionRangeThroughReplacement(
+              range,
+              replacementStart,
+              replacementEnd,
+              insertedLength,
+            ),
+          );
+        }
+        speechInsertionRangesRef.current = nextRanges;
+        speechInsertionRangeRef.current =
+          activeSpeechTargetIdRef.current !== null
+            ? (nextRanges.get(activeSpeechTargetIdRef.current) ?? null)
+            : null;
+      };
       // Append transcript to existing text with space separator
       // Trim the transcript since mobile speech API includes leading/trailing spaces
       const trimmedTranscript = transcript.trim();
@@ -979,7 +1074,7 @@ export function MessageInput({
       }
       if (metadata?.smartTurnCommand === "cancel") {
         const currentText = controls.getDraft();
-        const range = speechInsertionRangeRef.current;
+        const range = getSpeechRange();
         const removal = range
           ? removeLatestSpeechChunkFromRange(currentText, range)
           : null;
@@ -1004,19 +1099,26 @@ export function MessageInput({
             };
             noteComposerEdit(removal.text);
             controls.setDraft(removal.text);
-            speechInsertionRangeRef.current = removal.range;
+            mapOtherSpeechRangesThroughReplacement(
+              removal.replacementStart,
+              removal.replacementEnd,
+              removal.insertedLength,
+              removal.range,
+            );
+            updateSpeechRange(removal.range);
           } else {
             pendingTextareaSelectionRef.current = null;
           }
         } else {
           pendingTextareaSelectionRef.current = null;
+          if (targetId) updateSpeechRange(null);
         }
         setInterimTranscript("");
         return;
       }
 
       const currentText = controls.getDraft();
-      const speechRange = speechInsertionRangeRef.current;
+      const speechRange = getSpeechRange();
       let nextSpeechRange: SpeechInsertionRange | null = null;
       const replacement = speechRange
         ? (() => {
@@ -1061,13 +1163,19 @@ export function MessageInput({
           : null;
         noteComposerEdit(nextText);
         controls.setDraft(nextText);
+        mapOtherSpeechRangesThroughReplacement(
+          replacement.replacementStart,
+          replacement.replacementEnd,
+          replacement.insertedLength,
+          nextSpeechRange,
+        );
         if (nextSpeechRange) {
-          speechInsertionRangeRef.current = nextSpeechRange;
+          updateSpeechRange(nextSpeechRange);
         }
       }
       setInterimTranscript("");
       if (metadata?.smartTurnCommand) {
-        speechInsertionRangeRef.current = null;
+        updateSpeechRange(null);
       }
       if (metadata?.smartTurnCommand === "send") {
         handleSubmit(nextText);
@@ -1078,9 +1186,12 @@ export function MessageInput({
 
   const handleVoiceTranscript = useCallback(
     (transcript: string, metadata?: SpeechTranscriptionResultMetadata) => {
+      const speechRange = metadata?.speechTargetId
+        ? (speechInsertionRangesRef.current.get(metadata.speechTargetId) ?? null)
+        : speechInsertionRangeRef.current;
       const delayMs = metadata?.smartTurnCommand
         ? 0
-        : getSpeechSelectionFinalDelayMs(speechInsertionRangeRef.current);
+        : getSpeechSelectionFinalDelayMs(speechRange);
       if (delayMs > 0) {
         clearPendingSpeechFinal();
         const timer = setTimeout(() => {
@@ -1116,6 +1227,10 @@ export function MessageInput({
     setInterimTranscript(transcript);
   }, []);
 
+  const handleSpeechProcessingChange = useCallback((processing: boolean) => {
+    setSpeechProcessing(processing);
+  }, []);
+
   const handleComposerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (!isVoiceInputShortcut(event)) return;
@@ -1126,11 +1241,11 @@ export function MessageInput({
       const wasActive = voice.isListening;
       if (wasActive) {
         handleListeningStop();
+        voice.toggle();
+        return;
       }
+      handleListeningStart();
       voice.toggle();
-      if (!wasActive) {
-        handleListeningStart();
-      }
     },
     [handleListeningStart, handleListeningStop],
   );
@@ -1171,14 +1286,20 @@ export function MessageInput({
         className={`message-input ${collapsed ? "message-input-collapsed" : ""} ${interimTranscript ? "voice-recording" : ""}`}
       >
         <div
-          className={`speech-draft-field ${interimTranscript ? "has-interim" : ""}`}
+          className={`speech-draft-field ${speechInlineTranscript ? "has-interim" : ""}`}
         >
           <div className="speech-draft-inline">
-            {interimDisplayTranscript && (
+            {speechInlineTranscript && (
               <div className="speech-draft-mirror" aria-hidden="true">
                 <span>{interimInsertion.before}</span>
                 {interimInsertion.separatorBefore}
-                <span className="speech-interim-inline">
+                <span
+                  className={
+                    interimDisplayTranscript
+                      ? "speech-interim-inline"
+                      : "speech-processing-inline"
+                  }
+                >
                   {interimInsertion.transcript}
                 </span>
                 {interimInsertion.separatorAfter}
@@ -1191,15 +1312,27 @@ export function MessageInput({
               onChange={(e) => {
                 const nextText = e.target.value;
                 clearPendingSpeechFinal();
-                if (speechInsertionRangeRef.current) {
-                  speechInsertionRangeRef.current =
-                    clearSpeechInsertionRangeReplacement(
-                      mapSpeechInsertionRangeThroughEdit(
-                        text,
-                        nextText,
-                        speechInsertionRangeRef.current,
+                if (speechInsertionRangesRef.current.size > 0) {
+                  const nextRanges = new Map<string, SpeechInsertionRange>();
+                  for (const [targetId, range] of speechInsertionRangesRef
+                    .current) {
+                    nextRanges.set(
+                      targetId,
+                      clearSpeechInsertionRangeReplacement(
+                        mapSpeechInsertionRangeThroughEdit(
+                          text,
+                          nextText,
+                          range,
+                        ),
                       ),
                     );
+                  }
+                  speechInsertionRangesRef.current = nextRanges;
+                  speechInsertionRangeRef.current =
+                    activeSpeechTargetIdRef.current !== null
+                      ? (nextRanges.get(activeSpeechTargetIdRef.current) ??
+                        null)
+                      : null;
                 }
                 noteComposerEdit(nextText);
                 setText(nextText);
@@ -1395,6 +1528,7 @@ export function MessageInput({
             onInterimTranscript={handleInterimTranscript}
             onListeningStart={handleListeningStart}
             onListeningStop={handleListeningStop}
+            onSpeechProcessingChange={handleSpeechProcessingChange}
             voiceDisabled={disabled}
             getTranscriptionContext={getTranscriptionContext}
             slashCommands={slashCommands}

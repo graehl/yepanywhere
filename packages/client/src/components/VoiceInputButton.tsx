@@ -55,6 +55,8 @@ interface VoiceInputButtonProps {
   onListeningStart?: () => void;
   /** Callback when the user explicitly stops active capture. */
   onListeningStop?: () => void;
+  /** Callback when provider-side post-capture transcription starts or ends. */
+  onProcessingChange?: (processing: boolean) => void;
   /** Whether the button should be disabled */
   disabled?: boolean;
   /** Additional class name */
@@ -79,6 +81,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     onInterimTranscript,
     onListeningStart,
     onListeningStop,
+    onProcessingChange,
     disabled,
     className = "",
     speechMethod: selectedSpeechMethod,
@@ -171,8 +174,14 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   });
   const isStarting = status === "starting";
   const isCapturing =
-    isListening || status === "listening" || status === "receiving";
-  const isActive = isCapturing || isStarting || status === "reconnecting";
+    isListening ||
+    status === "listening" ||
+    (status === "receiving" && isListening);
+  const isFinalizing = status === "finalizing";
+  const isBusy = isStarting || isFinalizing || status === "reconnecting";
+  const isActive = isCapturing || isBusy;
+  const isPressed = isCapturing || isStarting || status === "reconnecting";
+  const isProcessing = status === "processing";
 
   const isAvailable = isSupported && voiceInputEnabled && serverVoiceEnabled;
 
@@ -212,17 +221,23 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     }
   }, [isCapturing, interimTranscript, onInterimTranscript]);
 
+  useEffect(() => {
+    onProcessingChange?.(isProcessing);
+    return () => {
+      if (isProcessing) onProcessingChange?.(false);
+    };
+  }, [isProcessing, onProcessingChange]);
+
   // Handle click - toggle listening and notify when starting
   const handleClick = useCallback(() => {
     const wasActive = isActive;
     if (wasActive) {
       onListeningStop?.();
+      toggleListening();
+      return;
     }
+    onListeningStart?.();
     toggleListening();
-    // If we weren't listening, we're now starting - notify parent
-    if (!wasActive) {
-      onListeningStart?.();
-    }
   }, [isActive, toggleListening, onListeningStart, onListeningStop]);
 
   // Don't render if not supported or disabled in settings
@@ -236,6 +251,10 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
       ? "status-error"
       : status === "reconnecting"
         ? "status-reconnecting"
+        : status === "finalizing"
+          ? "status-finalizing"
+        : status === "processing"
+          ? "status-processing"
         : status === "starting"
           ? "status-starting"
           : status === "receiving"
@@ -253,16 +272,20 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
       title={
         error
           ? error
-          : isActive
+          : isFinalizing
+            ? statusLabel
+            : isActive
             ? t("voiceInputStop" as never)
             : t("voiceInputStart" as never)
       }
       aria-label={
-        isActive
+        isFinalizing
+          ? statusLabel
+          : isActive
           ? t("voiceInputStopLabel" as never)
           : t("voiceInputStartLabel" as never)
       }
-      aria-pressed={isActive}
+      aria-pressed={isPressed}
     >
       {isCapturing ? (
         // Recording indicator - animated bars (only once audio is actually

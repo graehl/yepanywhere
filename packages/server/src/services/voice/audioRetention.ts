@@ -11,6 +11,7 @@ export interface SpeechTranscriptionContext {
   sessionId?: string;
   clientTurnId?: string;
   draftKey?: string;
+  speechTargetId?: string;
 }
 
 export type SpeechAudioRequestSource = "http" | "ws";

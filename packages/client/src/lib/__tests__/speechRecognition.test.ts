@@ -9,6 +9,7 @@ import {
   getSpeechTranscriptReplacementParts,
   getSpeechTranscriptSeparator,
   insertSpeechTranscriptAt,
+  mapSpeechInsertionRangeThroughReplacement,
   mapTextIndexThroughEdit,
   processSpeechResults,
   retargetSpeechInsertionRangeReplacement,
@@ -297,5 +298,43 @@ describe("speech transcript text edits", () => {
     expect(mapTextIndexThroughEdit("alpha beta", "alpha edited beta", 10)).toBe(
       17,
     );
+  });
+
+  it("moves queued speech insertion points after speech inserted at the same index", () => {
+    const mapped = mapSpeechInsertionRangeThroughReplacement(
+      createSpeechInsertionRange(6, 6),
+      6,
+      6,
+      " first.".length,
+    );
+
+    expect(mapped.start).toBe("prefix first.".length);
+    expect(mapped.end).toBe("prefix first.".length);
+  });
+
+  it("preserves unrelated selected speech replacement targets", () => {
+    const mapped = mapSpeechInsertionRangeThroughReplacement(
+      createSpeechInsertionRange(12, 18),
+      6,
+      6,
+      " first.".length,
+    );
+
+    expect(mapped.start).toBe(19);
+    expect(mapped.end).toBe(19);
+    expect(mapped.replaceEnd).toBe(25);
+  });
+
+  it("clears a selected speech replacement target consumed by another speech edit", () => {
+    const mapped = mapSpeechInsertionRangeThroughReplacement(
+      createSpeechInsertionRange(6, 12),
+      6,
+      12,
+      " first.".length,
+    );
+
+    expect(mapped.start).toBe("prefix first.".length);
+    expect(mapped.end).toBe("prefix first.".length);
+    expect(mapped.replaceEnd).toBeUndefined();
   });
 });

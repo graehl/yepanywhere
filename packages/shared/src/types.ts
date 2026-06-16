@@ -332,6 +332,17 @@ export interface ClientDefaults {
   steerNowDefault?: boolean;
   /** Session toolbar visibility defaults for controls with no local override. */
   sessionToolbarVisibility?: SessionToolbarVisibilityClientDefaults;
+  /**
+   * Preemptive compaction thresholds, keyed by model id, each a percent (1–99)
+   * of that model's context window. When a model's live context reaches its
+   * percent, YA queues the provider `/compact` before delivering the next turn.
+   * A model absent from the map (or a value >= 100) is off — defer to the
+   * provider's own auto-compaction. Tokens are derived from model metadata at
+   * runtime. This is per-model, not a single global setting; the default for a
+   * model migrated off its non-1M variant is seeded to ~20% (≈200K of 1M). See
+   * tasks/029.
+   */
+  compactAtContextPercent?: Record<string, number>;
 }
 
 /**

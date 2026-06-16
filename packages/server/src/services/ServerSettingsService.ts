@@ -168,6 +168,31 @@ function mergeLoadedClientDefaults(
     delete merged.sessionToolbarVisibility;
   }
 
+  // Per-model compaction thresholds: keep only valid in-range percents (1–99);
+  // anything else (including >= 100 = "off") is dropped per model, and an empty
+  // map is removed so "off everywhere" stays canonically absent.
+  const compactByModel = merged.compactAtContextPercent;
+  if (compactByModel && typeof compactByModel === "object") {
+    const cleaned: Record<string, number> = {};
+    for (const [modelId, pct] of Object.entries(compactByModel)) {
+      if (
+        typeof pct === "number" &&
+        Number.isFinite(pct) &&
+        pct > 0 &&
+        pct < 100
+      ) {
+        cleaned[modelId] = Math.round(pct);
+      }
+    }
+    if (Object.keys(cleaned).length > 0) {
+      merged.compactAtContextPercent = cleaned;
+    } else {
+      delete merged.compactAtContextPercent;
+    }
+  } else {
+    delete merged.compactAtContextPercent;
+  }
+
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 

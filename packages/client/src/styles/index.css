@@ -5039,7 +5039,8 @@ a.sidebar-nav-item {
   white-space: nowrap;
 }
 
-.speech-mic-device-select {
+.speech-mic-device-select,
+.speech-xai-key-input {
   width: 100%;
   min-width: 0;
   min-height: 1.9rem;

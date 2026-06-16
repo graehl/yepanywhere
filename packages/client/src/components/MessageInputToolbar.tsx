@@ -22,6 +22,7 @@ import {
   type ThinkingMode,
   useModelSettings,
 } from "../hooks/useModelSettings";
+import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useProviders } from "../hooks/useProviders";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import {
@@ -2233,22 +2234,31 @@ export function MessageInputToolbar({
   );
   const serverVoiceEnabled =
     versionInfo?.capabilities?.includes("voiceInput") ?? true;
+  const { hasBrowserXaiSttApiKey } = useBrowserXaiSttApiKey();
   const speechMethodOptions = useMemo((): FilterOption<SpeechMethodId>[] => {
     const serverBackends = versionInfo?.voiceBackends ?? [];
-    return getSpeechMethods(serverBackends).map((method) => ({
+    return getSpeechMethods(serverBackends, undefined, {
+      directXaiAvailable: hasBrowserXaiSttApiKey,
+    }).map((method) => ({
       value: method.id,
       label: method.label,
       description: method.description,
     }));
-  }, [versionInfo?.voiceBackends]);
+  }, [versionInfo?.voiceBackends, hasBrowserXaiSttApiKey]);
   const selectedSpeechMethod = useMemo(
     () =>
       resolveSpeechMethod(
         speechMethod,
         versionInfo?.voiceBackends,
         hasStoredSpeechMethod,
+        { directXaiAvailable: hasBrowserXaiSttApiKey },
       ),
-    [speechMethod, versionInfo?.voiceBackends, hasStoredSpeechMethod],
+    [
+      speechMethod,
+      versionInfo?.voiceBackends,
+      hasStoredSpeechMethod,
+      hasBrowserXaiSttApiKey,
+    ],
   );
   const handleSpeechMethodSelect = useCallback(
     (selected: string[]) => {

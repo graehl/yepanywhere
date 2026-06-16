@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import {
   FilterDropdown,
   type FilterOption,
 } from "../../components/FilterDropdown";
 import { SpeechSmartTurnControls } from "../../components/SpeechSmartTurnControls";
 import { useModelSettings } from "../../hooks/useModelSettings";
+import { useBrowserXaiSttApiKey } from "../../hooks/useBrowserXaiSttApiKey";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useSpeechCaptureSettings } from "../../hooks/useSpeechCaptureSettings";
 import { useVersion } from "../../hooks/useVersion";
@@ -17,10 +18,6 @@ import {
   resolveSpeechMethod,
   type SpeechMethodId,
 } from "../../lib/speechProviders/methods";
-import {
-  getBrowserXaiSttApiKey,
-  setBrowserXaiSttApiKey,
-} from "../../lib/speechProviders/xaiCredentials";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 export function SpeechSettings() {
@@ -35,9 +32,11 @@ export function SpeechSettings() {
     setSpeechSmartTurnSettings,
   } = useModelSettings();
   const { keepMicWarm, setKeepMicWarm } = useSpeechCaptureSettings();
-  const [browserXaiKey, setBrowserXaiKey] = useState(() =>
-    getBrowserXaiSttApiKey(),
-  );
+  const {
+    browserXaiSttApiKey,
+    hasBrowserXaiSttApiKey,
+    setBrowserXaiSttApiKey,
+  } = useBrowserXaiSttApiKey();
   const relayTransport = useRemoteBasePath() !== "";
   const { version: versionInfo, loading: versionLoading } = useVersion();
   const undoState = useMemo(
@@ -74,6 +73,8 @@ export function SpeechSettings() {
   const serverBackends = versionInfo?.voiceBackends ?? [];
   const backendOptions: FilterOption<SpeechMethodId>[] = getSpeechMethods(
     serverBackends,
+    undefined,
+    { directXaiAvailable: hasBrowserXaiSttApiKey },
   ).map((method) => ({
     value: method.id,
     label: method.label,
@@ -83,6 +84,7 @@ export function SpeechSettings() {
     speechMethod,
     serverBackends,
     hasStoredSpeechMethod,
+    { directXaiAvailable: hasBrowserXaiSttApiKey },
   );
   const selectedBackendLabel =
     backendOptions.find((option) => option.value === selectedBackend)?.label ??
@@ -178,14 +180,12 @@ export function SpeechSettings() {
           <input
             type="password"
             className="settings-input"
-            value={browserXaiKey}
+            value={browserXaiSttApiKey}
             placeholder={t("speechSettingsXaiKeyPlaceholder")}
             autoComplete="off"
             spellCheck={false}
             onChange={(event) => {
-              const value = event.currentTarget.value;
-              setBrowserXaiKey(value);
-              setBrowserXaiSttApiKey(value);
+              setBrowserXaiSttApiKey(event.currentTarget.value);
             }}
             aria-label={t("speechSettingsXaiKeyTitle")}
           />

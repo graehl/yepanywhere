@@ -6,6 +6,7 @@ import {
   useImperativeHandle,
   useMemo,
 } from "react";
+import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useModelSettings } from "../hooks/useModelSettings";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
@@ -97,6 +98,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     hasStoredSpeechMethod,
   } = useModelSettings();
   const { version: versionInfo } = useVersion();
+  const { hasBrowserXaiSttApiKey } = useBrowserXaiSttApiKey();
   const connection = useConnection();
   const basePath = useRemoteBasePath();
   const { keepMicWarm, micDeviceId } = useSpeechCaptureSettings();
@@ -109,12 +111,14 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
         storedSpeechMethod,
         versionInfo?.voiceBackends,
         hasStoredSpeechMethod,
+        { directXaiAvailable: hasBrowserXaiSttApiKey },
       ),
     [
       selectedSpeechMethod,
       storedSpeechMethod,
       versionInfo?.voiceBackends,
       hasStoredSpeechMethod,
+      hasBrowserXaiSttApiKey,
     ],
   );
   const relayTransport = basePath !== "";

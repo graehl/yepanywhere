@@ -55,10 +55,18 @@ describe("speech provider method selection", () => {
   it("does not require client-side backend hardcodes to build selector options", () => {
     expect(
       getSpeechMethods(["ya-custom-stt"]).map((method) => method.id),
+    ).toEqual(["ya-custom-stt", DEFAULT_SPEECH_METHOD]);
+  });
+
+  it("exposes direct Grok methods when the browser has an xAI key", () => {
+    expect(
+      getSpeechMethods(["ya-custom-stt"], undefined, {
+        directXaiAvailable: true,
+      }).map((method) => method.id),
     ).toEqual([
-      "ya-custom-stt",
       XAI_DIRECT_STREAMING_SPEECH_METHOD,
       XAI_DIRECT_BATCH_SPEECH_METHOD,
+      "ya-custom-stt",
       DEFAULT_SPEECH_METHOD,
     ]);
   });
@@ -162,6 +170,17 @@ describe("speech provider method selection", () => {
     ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
   });
 
+  it("prefers direct Grok streaming when this browser has an xAI key", () => {
+    expect(
+      getPreferredSpeechMethod([], { directXaiAvailable: true }),
+    ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
+    expect(
+      resolveSpeechMethod(DEFAULT_SPEECH_METHOD, [], false, {
+        directXaiAvailable: true,
+      }),
+    ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
+  });
+
   it("keeps explicit choices only while they are still available", () => {
     expect(
       resolveSpeechMethod("ya-deepgram", ["ya-grok", "ya-deepgram"], true),
@@ -175,6 +194,14 @@ describe("speech provider method selection", () => {
     expect(resolveSpeechMethod("ya-deepgram", ["ya-grok"], true)).toBe(
       DEFAULT_SPEECH_METHOD,
     );
+    expect(
+      resolveSpeechMethod(XAI_DIRECT_STREAMING_SPEECH_METHOD, [], true),
+    ).toBe(DEFAULT_SPEECH_METHOD);
+    expect(
+      resolveSpeechMethod(XAI_DIRECT_STREAMING_SPEECH_METHOD, [], true, {
+        directXaiAvailable: true,
+      }),
+    ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
   });
 });
 

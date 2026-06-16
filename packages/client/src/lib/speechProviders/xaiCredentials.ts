@@ -28,6 +28,7 @@ interface XaiClientSecretResponse {
 }
 
 const XAI_STT_KEY_STORAGE = "xaiSttApiKey";
+const XAI_STT_KEY_CHANGE_EVENT = "ya:xai-stt-api-key-change";
 
 export function getBrowserXaiSttApiKey(): string {
   return (
@@ -35,9 +36,30 @@ export function getBrowserXaiSttApiKey(): string {
   );
 }
 
+export function hasBrowserXaiSttApiKey(): boolean {
+  return getBrowserXaiSttApiKey().length > 0;
+}
+
 export function setBrowserXaiSttApiKey(apiKey: string): void {
   const trimmed = apiKey.trim();
+  const previous = getBrowserXaiSttApiKey();
   setServerScoped(XAI_STT_KEY_STORAGE, trimmed, LEGACY_KEYS.xaiSttApiKey);
+  if (previous !== trimmed && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(XAI_STT_KEY_CHANGE_EVENT));
+  }
+}
+
+export function subscribeBrowserXaiSttApiKey(
+  listener: () => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const handleStorage = () => listener();
+  window.addEventListener(XAI_STT_KEY_CHANGE_EVENT, listener);
+  window.addEventListener("storage", handleStorage);
+  return () => {
+    window.removeEventListener(XAI_STT_KEY_CHANGE_EVENT, listener);
+    window.removeEventListener("storage", handleStorage);
+  };
 }
 
 export async function getXaiSttCredential(): Promise<XaiSttCredential> {

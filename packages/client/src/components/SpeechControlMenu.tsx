@@ -11,7 +11,9 @@ import {
 } from "react";
 import type { FilterOption } from "./FilterDropdown";
 import { SpeechSmartTurnControls } from "./SpeechSmartTurnControls";
+import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
+import { useI18n } from "../i18n";
 import type { SpeechMethodId } from "../lib/speechProviders/methods";
 import type { SpeechSmartTurnSettings } from "../lib/speechProviders/SpeechProvider";
 
@@ -53,8 +55,12 @@ export function SpeechControlMenu({
   onBeforeOpen,
   onBeforeCaptureChange,
 }: SpeechControlMenuProps) {
+  const { t } = useI18n();
   const micDeviceSelectId = useId();
+  const xaiKeyInputId = useId();
   const { micDeviceId, setMicDeviceId } = useSpeechCaptureSettings();
+  const { browserXaiSttApiKey, setBrowserXaiSttApiKey } =
+    useBrowserXaiSttApiKey();
   const [open, setOpen] = useState(false);
   const [micDevices, setMicDevices] = useState<MediaDeviceInfo[]>([]);
   const [micDeviceError, setMicDeviceError] = useState<string | null>(null);
@@ -72,8 +78,10 @@ export function SpeechControlMenu({
   const showSmartTurnControls =
     !!smartTurnSettings && !!onSmartTurnSettingsChange;
   const showMicDeviceControls = selectedMethod !== "browser-native";
+  const showXaiKeyControls = true;
   const hasOptions =
     showMethodSelector ||
+    showXaiKeyControls ||
     showMicDeviceControls ||
     showSmartTurnControls;
   const selectedMicDeviceUnavailable =
@@ -325,6 +333,29 @@ export function SpeechControlMenu({
                   );
                 })}
               </div>
+            </section>
+          )}
+          {showXaiKeyControls && (
+            <section className="speech-options-section">
+              <label
+                className="speech-options-section-title"
+                htmlFor={xaiKeyInputId}
+              >
+                {t("speechSettingsXaiKeyTitle")}
+              </label>
+              <input
+                id={xaiKeyInputId}
+                type="password"
+                className="speech-xai-key-input"
+                value={browserXaiSttApiKey}
+                placeholder={t("speechSettingsXaiKeyPlaceholder")}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(event) => {
+                  setBrowserXaiSttApiKey(event.currentTarget.value);
+                }}
+                aria-label={t("speechSettingsXaiKeyTitle")}
+              />
             </section>
           )}
           {showMicDeviceControls && (

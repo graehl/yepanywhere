@@ -36,7 +36,10 @@ replacement for YA-mediated speech in general:
   YA server credit delegation.
 - **Browser-local personal key is supported.** A client may configure its own
   xAI key in browser-local storage instead of borrowing server credentials.
-  That browser-local key is not sent to the YA server.
+  That browser-local key is not sent to the YA server. Once the browser has a
+  non-empty local key, direct Grok streaming and direct Grok batch are
+  selectable even if the YA server has no xAI STT key and therefore does not
+  advertise `ya-grok`.
 - **Upstream default is no key exposure.** Sharing a server STT key with
   clients must be an explicit operator setting, not implied by
   `YA_stt__XAI_API_KEY` existing. Minting a short-lived xAI client secret for
@@ -157,13 +160,21 @@ Current implementation, 2026-06-15:
   `POST /api/speech/xai-client-key` for the borrowed server key. The server
   returns it only when `YA_stt__SHARE_XAI_KEY_WITH_CLIENTS=1` is set.
 - Direct streaming and direct batch are selectable in the STT backend menu and
-  can be saved like any other speech method; direct batch is explicitly labeled
-  non-streaming.
+  can be saved like any other speech method when either `ya-grok` is
+  advertised or this browser has a local xAI STT key; direct batch is
+  explicitly labeled non-streaming.
 - When `ya-grok` is advertised and no explicit local speech method is stored,
   the client defaults to `Grok STT direct` rather than Grok through YA.
+- When no server Grok backend is advertised, entering a browser-local xAI STT
+  key immediately makes `Grok STT direct` the default for a browser with no
+  explicit speech-method override. Browser paste is one input event, so the UI
+  does not add a fixed debounce delay.
 - Grok through YA is also split into `Grok STT through YA` and
   `Grok STT through YA batch` top-level methods, not a nested PCM/batch
   setting inside one method.
+- The xAI key input is always reachable from the main STT settings page and
+  from the mic-button speech options. This lets a client unlock direct Grok
+  without any server-side speech backend initialization.
 
 1. **Direct batch first.** Ship a browser provider that records a complete
    utterance with `MediaRecorder` and posts it directly to `POST /v1/stt` with

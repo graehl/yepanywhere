@@ -165,10 +165,11 @@ streaming/confidence surface exists.
   provider; advertised server backend ids construct `YaServerProvider`
   unchanged.
 - The client speech-method selector is data-driven from
-  `/api/version.voiceBackends` plus the special browser-native fallback and
-  the direct xAI client methods. It does not keep a client-side whitelist of
-  server backend ids; unknown advertised ids remain selectable and route
-  through YA unchanged.
+  `/api/version.voiceBackends`, the special browser-native fallback, and direct
+  xAI client methods only when direct xAI can run: either `ya-grok` is
+  advertised or this browser has a local xAI STT key. It does not keep a
+  client-side whitelist of server backend ids; unknown advertised ids remain
+  selectable and route through YA unchanged.
 - `NewSessionForm` and the active session composer toolbar build
   speech-method dropdowns from the same advertised active backend list. The
   dropdown is shown only when more than one method is available.
@@ -219,6 +220,10 @@ streaming/confidence surface exists.
   `Sec-WebSocket-Protocol: xai-client-secret.*`. `xai-grok-direct-batch`
   records a complete `MediaRecorder` utterance and posts it directly to
   `POST /v1/stt`, so it emits final text only.
+- The browser-local xAI STT key field is always reachable from STT settings and
+  from the mic-button speech options. Saving a non-empty browser key updates
+  the method list locally and can make direct Grok streaming the selected
+  default even when the YA server advertises no Grok STT backend.
 - YA-controlled and direct xAI STT paths share one browser mic capture owner
   when Keep Mic Warm is enabled. The shared stream is keyed by the selected mic
   device, requests the same raw speech constraints for batch and streaming

@@ -266,6 +266,8 @@ vi.mock("../../i18n", () => ({
             "Cancel latest queued message",
           toolbarShortcutClearComposer: "Clear composer",
           toolbarShortcutRenderedSourceMode: "Rendered/source mode",
+          speechSettingsXaiKeyTitle: "Browser xAI STT Key",
+          speechSettingsXaiKeyPlaceholder: "Borrow from server when empty",
         }) satisfies Record<string, string>
       )[key] ?? key,
   }),
@@ -604,6 +606,36 @@ describe("MessageInput", () => {
     fireEvent.click(screen.getByRole("radio", { name: /Deepgram STT/ }));
 
     expect(mockSetSpeechMethod).toHaveBeenCalledWith("ya-deepgram");
+  });
+
+  it("selects direct Grok streaming after entering a browser xAI key", async () => {
+    renderMessageInput();
+
+    expect(
+      screen.getByRole("button", { name: "voice" }).dataset.speechMethod,
+    ).toBe("browser-native");
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    expect(
+      screen.queryByRole("radio", {
+        name: /^Grok STT direct Browser streams PCM audio directly to xAI\.$/,
+      }),
+    ).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Browser xAI STT Key"), {
+      target: { value: "browser-xai-key" },
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "voice" }).dataset.speechMethod,
+      ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD),
+    );
+    expect(
+      screen.getByRole("radio", {
+        name: /^Grok STT direct Browser streams PCM audio directly to xAI\.$/,
+      }),
+    ).toBeDefined();
   });
 
   it("stops active voice capture before opening speech settings", () => {

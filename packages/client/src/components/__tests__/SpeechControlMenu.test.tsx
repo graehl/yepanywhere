@@ -8,7 +8,9 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "../../i18n";
 import { UI_KEYS } from "../../lib/storageKeys";
+import { getBrowserXaiSttApiKey } from "../../lib/speechProviders/xaiCredentials";
 import { SpeechControlMenu } from "../SpeechControlMenu";
 
 function installMediaDevices(devices: MediaDeviceInfo[]) {
@@ -20,6 +22,16 @@ function installMediaDevices(devices: MediaDeviceInfo[]) {
       removeEventListener: vi.fn(),
     },
   });
+}
+
+function renderSpeechControlMenu(
+  props: React.ComponentProps<typeof SpeechControlMenu>,
+) {
+  return render(
+    <I18nProvider>
+      <SpeechControlMenu {...props} />
+    </I18nProvider>,
+  );
 }
 
 describe("SpeechControlMenu", () => {
@@ -48,15 +60,13 @@ describe("SpeechControlMenu", () => {
       } as MediaDeviceInfo,
     ]);
 
-    render(
-      <SpeechControlMenu
-        trigger={<button type="button">voice</button>}
-        showMethodSelector={false}
-        methodOptions={[]}
-        selectedMethod="ya-grok"
-        onMethodChange={vi.fn()}
-      />,
-    );
+    renderSpeechControlMenu({
+      trigger: <button type="button">voice</button>,
+      showMethodSelector: false,
+      methodOptions: [],
+      selectedMethod: "ya-grok",
+      onMethodChange: vi.fn(),
+    });
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
     const select = await screen.findByRole("combobox", {
@@ -75,16 +85,14 @@ describe("SpeechControlMenu", () => {
     installMediaDevices([]);
     const prewarm = vi.fn();
 
-    render(
-      <SpeechControlMenu
-        trigger={<button type="button">voice</button>}
-        showMethodSelector={false}
-        methodOptions={[]}
-        selectedMethod="ya-grok"
-        onMethodChange={vi.fn()}
-        onPointerNearTrigger={prewarm}
-      />,
-    );
+    renderSpeechControlMenu({
+      trigger: <button type="button">voice</button>,
+      showMethodSelector: false,
+      methodOptions: [],
+      selectedMethod: "ya-grok",
+      onMethodChange: vi.fn(),
+      onPointerNearTrigger: prewarm,
+    });
 
     window.dispatchEvent(
       new MouseEvent("pointermove", { clientX: 1, clientY: 1 }),
@@ -106,16 +114,14 @@ describe("SpeechControlMenu", () => {
     installMediaDevices([]);
     const onBeforeOpen = vi.fn();
 
-    render(
-      <SpeechControlMenu
-        trigger={<button type="button">voice</button>}
-        showMethodSelector={false}
-        methodOptions={[]}
-        selectedMethod="ya-grok"
-        onMethodChange={vi.fn()}
-        onBeforeOpen={onBeforeOpen}
-      />,
-    );
+    renderSpeechControlMenu({
+      trigger: <button type="button">voice</button>,
+      showMethodSelector: false,
+      methodOptions: [],
+      selectedMethod: "ya-grok",
+      onMethodChange: vi.fn(),
+      onBeforeOpen,
+    });
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
 
@@ -127,24 +133,41 @@ describe("SpeechControlMenu", () => {
     const onBeforeCaptureChange = vi.fn();
     const onMethodChange = vi.fn();
 
-    render(
-      <SpeechControlMenu
-        trigger={<button type="button">voice</button>}
-        showMethodSelector
-        methodOptions={[
-          { value: "browser-native", label: "Browser" },
-          { value: "xai-grok-direct-streaming", label: "Grok direct" },
-        ]}
-        selectedMethod="browser-native"
-        onMethodChange={onMethodChange}
-        onBeforeCaptureChange={onBeforeCaptureChange}
-      />,
-    );
+    renderSpeechControlMenu({
+      trigger: <button type="button">voice</button>,
+      showMethodSelector: true,
+      methodOptions: [
+        { value: "browser-native", label: "Browser" },
+        { value: "xai-grok-direct-streaming", label: "Grok direct" },
+      ],
+      selectedMethod: "browser-native",
+      onMethodChange,
+      onBeforeCaptureChange,
+    });
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
     fireEvent.click(screen.getByRole("radio", { name: "Grok direct" }));
 
     expect(onBeforeCaptureChange).toHaveBeenCalledTimes(1);
     expect(onMethodChange).toHaveBeenCalledWith(["xai-grok-direct-streaming"]);
+  });
+
+  it("saves the browser xAI STT key from the mic options", () => {
+    installMediaDevices([]);
+
+    renderSpeechControlMenu({
+      trigger: <button type="button">voice</button>,
+      showMethodSelector: false,
+      methodOptions: [],
+      selectedMethod: "browser-native",
+      onMethodChange: vi.fn(),
+    });
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    fireEvent.change(screen.getByLabelText("Browser xAI STT Key"), {
+      target: { value: " xai-browser-key " },
+    });
+
+    expect(getBrowserXaiSttApiKey()).toBe("xai-browser-key");
   });
 });

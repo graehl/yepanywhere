@@ -27,6 +27,7 @@ import { useNavigate } from "react-router-dom";
 import { type UploadedFile, api } from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
 import { useToastContext } from "../contexts/ToastContext";
+import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useConnection } from "../hooks/useConnection";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import {
@@ -432,6 +433,7 @@ export function NewSessionForm({
 
   // Server version for voiceBackends advertisement
   const { version: versionInfo } = useVersion();
+  const { hasBrowserXaiSttApiKey } = useBrowserXaiSttApiKey();
 
   // Toast for error messages
   const { showToast } = useToastContext();
@@ -899,20 +901,28 @@ export function NewSessionForm({
   // Build STT backend options for the mic-attached speech menu.
   const speechMethodOptions = useMemo((): FilterOption<SpeechMethodId>[] => {
     const serverBackends = versionInfo?.voiceBackends ?? [];
-    return getSpeechMethods(serverBackends).map((method) => ({
+    return getSpeechMethods(serverBackends, undefined, {
+      directXaiAvailable: hasBrowserXaiSttApiKey,
+    }).map((method) => ({
       value: method.id,
       label: method.label,
       description: method.description,
     }));
-  }, [versionInfo?.voiceBackends]);
+  }, [versionInfo?.voiceBackends, hasBrowserXaiSttApiKey]);
   const selectedSpeechMethod = useMemo(
     () =>
       resolveSpeechMethod(
         speechMethod,
         versionInfo?.voiceBackends,
         hasStoredSpeechMethod,
+        { directXaiAvailable: hasBrowserXaiSttApiKey },
       ),
-    [speechMethod, versionInfo?.voiceBackends, hasStoredSpeechMethod],
+    [
+      speechMethod,
+      versionInfo?.voiceBackends,
+      hasStoredSpeechMethod,
+      hasBrowserXaiSttApiKey,
+    ],
   );
 
   const handleSpeechMethodSelect = useCallback(

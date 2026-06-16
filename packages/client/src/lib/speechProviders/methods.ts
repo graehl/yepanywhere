@@ -70,6 +70,11 @@ export interface SpeechMethodCapabilities {
   smartTurn?: boolean;
 }
 
+export interface SpeechMethodAvailability {
+  /** Browser-local xAI key configured, so direct Grok can run without YA key. */
+  directXaiAvailable?: boolean;
+}
+
 const DIRECT_XAI_BATCH_METHOD: SpeechMethodDescriptor = {
   id: XAI_DIRECT_BATCH_SPEECH_METHOD,
   label: "Grok STT direct batch",
@@ -238,17 +243,37 @@ export function getOrderedServerSpeechBackends(
 
 function getAvailableSpeechMethodIds(
   serverBackends: readonly string[] = [],
+  availability: SpeechMethodAvailability = {},
 ): SpeechMethodId[] {
-  return getOrderedServerSpeechBackends(serverBackends).flatMap((id) =>
+  const orderedServerBackends = getOrderedServerSpeechBackends(serverBackends);
+  const serverMethods = orderedServerBackends.flatMap((id) =>
     id === YA_GROK_BACKEND_ID ? [id, YA_GROK_BATCH_SPEECH_METHOD] : [id],
+  );
+  return directXaiAvailable(orderedServerBackends, availability)
+    ? [
+        XAI_DIRECT_STREAMING_SPEECH_METHOD,
+        XAI_DIRECT_BATCH_SPEECH_METHOD,
+        ...serverMethods,
+      ]
+    : serverMethods;
+}
+
+function directXaiAvailable(
+  orderedServerBackends: readonly string[],
+  availability: SpeechMethodAvailability,
+): boolean {
+  return (
+    availability.directXaiAvailable === true ||
+    orderedServerBackends.includes(YA_GROK_BACKEND_ID)
   );
 }
 
 export function getPreferredSpeechMethod(
   serverBackends: readonly string[] = [],
+  availability: SpeechMethodAvailability = {},
 ): SpeechMethodId {
   const orderedServerBackends = getOrderedServerSpeechBackends(serverBackends);
-  if (orderedServerBackends.includes(YA_GROK_BACKEND_ID)) {
+  if (directXaiAvailable(orderedServerBackends, availability)) {
     return XAI_DIRECT_STREAMING_SPEECH_METHOD;
   }
   return orderedServerBackends[0] ?? DEFAULT_SPEECH_METHOD;
@@ -258,6 +283,7 @@ export function resolveSpeechMethod(
   storedMethod: SpeechMethodId,
   serverBackends: readonly string[] | undefined,
   hasStoredMethod: boolean,
+  availability: SpeechMethodAvailability = {},
 ): SpeechMethodId {
   if (serverBackends === undefined) {
     return hasStoredMethod ? storedMethod : DEFAULT_SPEECH_METHOD;
@@ -265,7 +291,7 @@ export function resolveSpeechMethod(
 
   const activeServerBackends = getOrderedServerSpeechBackends(serverBackends);
   if (!hasStoredMethod) {
-    return getPreferredSpeechMethod(serverBackends);
+    return getPreferredSpeechMethod(serverBackends, availability);
   }
 
   if (storedMethod === DEFAULT_SPEECH_METHOD) {
@@ -276,22 +302,28 @@ export function resolveSpeechMethod(
     storedMethod === XAI_DIRECT_STREAMING_SPEECH_METHOD ||
     storedMethod === XAI_DIRECT_BATCH_SPEECH_METHOD
   ) {
-    return storedMethod;
+    return directXaiAvailable(activeServerBackends, availability)
+      ? storedMethod
+      : DEFAULT_SPEECH_METHOD;
   }
 
-  return getAvailableSpeechMethodIds(activeServerBackends).includes(storedMethod)
+  return getAvailableSpeechMethodIds(activeServerBackends, availability).includes(
+    storedMethod,
+  )
     ? storedMethod
     : DEFAULT_SPEECH_METHOD;
 }
 
 /**
  * Build the STT backend list from what the server advertises plus
- * the local browser-native option. Only advertised server backends
- * appear in the selector — no phantom options for unconfigured backends.
+ * the local browser-native option. Direct xAI methods appear when
+ * the server advertises Grok STT or the browser has its own xAI key.
+ * Other server-routed methods still come only from `/api/version`.
  */
 export function getSpeechMethods(
   serverBackends: readonly string[] = [],
   userAgent?: string,
+  availability: SpeechMethodAvailability = {},
 ): SpeechMethodDescriptor[] {
   const orderedServerBackends = getOrderedServerSpeechBackends(serverBackends);
   const serverMethods = orderedServerBackends.flatMap((id) =>
@@ -300,10 +332,9 @@ export function getSpeechMethods(
       : [describeServerBackend(id)],
   );
   const directMethods = [DIRECT_XAI_STREAMING_METHOD, DIRECT_XAI_BATCH_METHOD];
-  const grokEnabled = orderedServerBackends.includes(YA_GROK_BACKEND_ID);
-  return grokEnabled
+  return directXaiAvailable(orderedServerBackends, availability)
     ? [...directMethods, ...serverMethods, describeBrowserNative(userAgent)]
-    : [...serverMethods, ...directMethods, describeBrowserNative(userAgent)];
+    : [...serverMethods, describeBrowserNative(userAgent)];
 }
 
 /** @deprecated Use getSpeechMethods(serverBackends) instead. */

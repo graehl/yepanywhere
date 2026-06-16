@@ -122,16 +122,18 @@ Grok model or CLI usage.
 Local STT backends are opt-in and use the committed pixi `stt` environment:
 
 ```bash
-# Enable one or both local backends before starting the server:
+# Enable one or more local backends before starting the server:
 export YA_VOICE_BACKENDS=ya-whisper
 export YA_VOICE_BACKENDS=ya-whisper,ya-parakeet
+export YA_VOICE_BACKENDS=ya-whisper,ya-parakeet,ya-nemo
 ```
 
-When `ya-whisper` or `ya-parakeet` is enabled, startup creates/updates the pixi
-environment if needed, installs the local STT Python requirements, and downloads
-the selected model on first load. If setup and model validation succeed, the STT
-backend menu includes Whisper STT and/or Parakeet STT; otherwise the server logs
-repair hints and hides the unavailable backend.
+When `ya-whisper`, `ya-parakeet`, or `ya-nemo` is enabled, startup
+creates/updates the pixi environment if needed, installs the matching local STT
+Python requirements, and downloads the selected model on first load. `ya-nemo`
+uses the heavier optional `stt-bootstrap-nemo` add-on. If setup and model
+validation succeed, the STT backend menu includes the local backend; otherwise
+the server logs repair hints and hides the unavailable option.
 
 If you already exported xAI's standard `XAI_API_KEY`, Yep Anywhere will also use
 it for Grok STT and scrub it from child agent environments. Grok Build does not

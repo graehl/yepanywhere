@@ -18,11 +18,11 @@ behavior across streaming and batch STT.
 - `VOICE_INPUT=false` is the master kill switch. When it is false, YA does
   not advertise voice input or server-routed speech backends.
 - Server-routed backends are off unless an explicit signal enables them.
-  Local/test backends (`ya-whisper`, `ya-parakeet`, `ya-dummy`) must be named in
-  `YA_VOICE_BACKENDS`; cloud backends (`ya-deepgram`, `ya-grok`) auto-enable
-  when their YA-scoped key is provided, since providing a metered key is the
-  operator's explicit opt-in. Only backends that pass startup validation are
-  advertised through `/api/version` as `voiceBackends`.
+  Local/test backends (`ya-whisper`, `ya-parakeet`, `ya-nemo`, `ya-dummy`) must
+  be named in `YA_VOICE_BACKENDS`; cloud backends (`ya-deepgram`, `ya-grok`)
+  auto-enable when their YA-scoped key is provided, since providing a metered
+  key is the operator's explicit opt-in. Only backends that pass startup
+  validation are advertised through `/api/version` as `voiceBackends`.
 - Browser-native Web Speech recognition is a selectable local escape hatch,
   not a YA server backend. The browser still owns its recognizer, credentials,
   latency, and failure modes.
@@ -189,12 +189,13 @@ streaming/confidence surface exists.
 - Server config parses `VOICE_INPUT`, `YA_VOICE_BACKENDS`,
   `YA_stt__DEEPGRAM_API_KEY`, `YA_stt__XAI_API_KEY`, `XAI_API_KEY`,
   `WHISPER_MODEL`, `WHISPER_DEVICE`, `WHISPER_COMPUTE_TYPE`,
-  `PARAKEET_MODEL`, and `PARAKEET_DEVICE`.
+  `PARAKEET_MODEL`, `PARAKEET_DEVICE`, `NEMO_MODEL`, and `NEMO_DEVICE`.
   `YA_stt__XAI_API_KEY` takes precedence for `ya-grok`; `XAI_API_KEY` is a
   convenience fallback that is scrubbed from `process.env` after config load.
 - `SpeechBackendRegistry` supports `ya-dummy`, `ya-deepgram`,
-  `ya-grok`, `ya-whisper`, and `ya-parakeet`; it validates configured backends and
-  exposes enabled ids plus capability metadata to `/api/version`.
+  `ya-grok`, `ya-whisper`, `ya-parakeet`, and `ya-nemo`; it validates
+  configured backends and exposes enabled ids plus capability metadata to
+  `/api/version`.
 - `ya-grok` posts batch multipart audio to xAI's `POST /v1/stt`
   endpoint and implements xAI's `wss://api.x.ai/v1/stt` streaming endpoint.
   In streaming mode it can enable Smart Turn and pass through xAI word
@@ -208,13 +209,18 @@ streaming/confidence surface exists.
   Whisper path uses a warm Python worker subprocess around `faster_whisper`.
   The local Parakeet path uses the same pixi `stt` environment with a separate
   Transformers/PyTorch bootstrap and a warm Python worker around
-  `pipeline("automatic-speech-recognition")`. The browser can choose the
-  Parakeet model id per request from STT settings or the mic options panel; the
-  server `PARAKEET_MODEL` remains the fallback for clients that send no model.
-  The implemented presets are limited to Hugging Face model cards that document
-  Transformers pipeline usage: `nvidia/parakeet-tdt-0.6b-v3` and
-  `nvidia/parakeet-ctc-1.1b`. The backend is batch-only until a local
-  streaming/chunking surface is proven.
+  `pipeline("automatic-speech-recognition")`. The local NeMo Parakeet path is a
+  separate explicit `ya-nemo` backend in the same pixi `stt` environment plus
+  the heavier `stt-bootstrap-nemo` add-on. It uses a warm `nemo.collections.asr`
+  worker and decodes compressed browser recordings through `ffmpeg` only when
+  needed before handing NeMo a mono 16 kHz WAV. The browser can choose the
+  Parakeet model id per request from STT settings or the mic options panel for
+  either Parakeet backend; `PARAKEET_MODEL` / `NEMO_MODEL` remain server
+  fallbacks for clients that send no model. The implemented presets are
+  limited to model ids tested in the current runtimes:
+  `nvidia/parakeet-tdt-0.6b-v3`, `nvidia/parakeet-ctc-1.1b`, and
+  `nvidia/parakeet-rnnt-1.1b`. Both local Parakeet backends are batch-only
+  until a local streaming/chunking surface is proven.
 - The normal `index.ts` runtime mounts `/api/speech` after
   `createNodeWebSocket()` creates the shared `upgradeWebSocket` helper.
 - `createSpeechRoutes` implements `POST /api/speech/transcribe` for batch
@@ -366,26 +372,33 @@ Deploy it in stages:
    it behind the same warm-worker `SpeechBackend` boundary only if install plus
    cold/warm latency beats `faster-whisper` for this server.
 3. **Ship explicit operator configuration.** The opt-in is
-   `YA_VOICE_BACKENDS=ya-whisper` or `YA_VOICE_BACKENDS=ya-parakeet`. The backend is pixi-only in the first
+   `YA_VOICE_BACKENDS=ya-whisper`, `YA_VOICE_BACKENDS=ya-parakeet`, or
+   `YA_VOICE_BACKENDS=ya-nemo`. The backend is pixi-only in the first
    implementation: the YA checkout commits a `stt` pixi environment, and the
    server validates the backend by importing the required Python packages; if
    that import probe fails for an explicitly enabled local backend, startup runs
    the matching pixi bootstrap task once (`stt-bootstrap` for `ya-whisper`,
-   `stt-bootstrap-parakeet` for `ya-parakeet`) and then probes again. Runtime
-   validation and the warm worker use `pixi run --frozen -e stt python`, not
-   ambient `python3`, so old system Python cannot accidentally become the ASR
-   runtime. Parakeet validation also loads the configured fallback model at
-   startup; if Hugging Face auth, model access, cache space, or model loading is
-   broken, YA logs repair hints and does not advertise `ya-parakeet` to the UI.
-   Model/runtime knobs stay server-local for Whisper:
+   `stt-bootstrap-parakeet` for `ya-parakeet`, `stt-bootstrap-nemo` for
+   `ya-nemo`) and then probes again. `stt-bootstrap-all` intentionally covers
+   Whisper plus Transformers Parakeet only; NeMo is a heavier optional add-on.
+   Runtime validation and the warm worker use `pixi run --frozen -e stt
+   python`, not ambient `python3`, so old system Python cannot accidentally
+   become the ASR runtime. Parakeet validation also loads the configured
+   fallback model at startup; if Hugging Face auth, model access, cache space,
+   or model loading is broken, YA logs repair hints and does not advertise the
+   broken backend to the UI. Model/runtime knobs stay server-local for Whisper:
    `WHISPER_MODEL`, `WHISPER_DEVICE`, and `WHISPER_COMPUTE_TYPE`. For
-   Parakeet, `PARAKEET_MODEL` is the server fallback, `PARAKEET_DEVICE` is the
-   server device policy, and authenticated browser UI may send a per-request
-   model id for the same worker. Whisper's default should remain CPU-safe
-   (`device=cpu`, `compute_type=int8`). Parakeet defaults to the current
-   NVIDIA Transformers model (`nvidia/parakeet-tdt-0.6b-v3`) with
-   `PARAKEET_DEVICE=auto`, which lets the worker choose CUDA when available
-   without making CUDA a startup requirement.
+   Transformers Parakeet, `PARAKEET_MODEL` is the server fallback and
+   `PARAKEET_DEVICE` is the server device policy. For NeMo Parakeet,
+   `NEMO_MODEL` is the server fallback and `NEMO_DEVICE` is the server device
+   policy. Authenticated browser UI may send a per-request Parakeet model id to
+   either backend. Selecting a Parakeet model in either global STT settings or
+   the mic-attached speech options asks YA to prewarm that backend/model in the
+   background; the UI request returns immediately and model-load success or
+   failure is logged server-side. Whisper's default should remain CPU-safe (`device=cpu`,
+   `compute_type=int8`). Parakeet defaults to `nvidia/parakeet-tdt-0.6b-v3`
+   with `device=auto`, which lets the worker choose CUDA when available without
+   making CUDA a startup requirement.
 4. **Add a readiness surface before advertising.** Startup validation should
    confirm pixi exists, the `stt` environment is already bootstrapped,
    `faster_whisper` imports, the configured model can load, and a tiny known
@@ -428,11 +441,13 @@ Node/PNPM install. To enable local Whisper on a server:
    enabled, or preflight it manually from the YA checkout:
    - `pixi run -e stt stt-bootstrap` for `ya-whisper`;
    - `pixi run -e stt stt-bootstrap-parakeet` for `ya-parakeet`;
-   - `pixi run -e stt stt-bootstrap-all` for both.
+   - `pixi run -e stt stt-bootstrap-nemo` for `ya-nemo`;
+   - `pixi run -e stt stt-bootstrap-all` for Whisper plus Transformers
+     Parakeet.
    These commands create the `stt` environment from `pixi.lock` and install the
    relevant Python requirements file(s).
-3. Start YA with `YA_VOICE_BACKENDS` containing `ya-whisper`, `ya-parakeet`, or
-   both.
+3. Start YA with `YA_VOICE_BACKENDS` containing `ya-whisper`, `ya-parakeet`,
+   `ya-nemo`, or any comma-separated combination.
 
 For the private `reyep` helper, the local-STT switch should be set-union logic,
 not assignment. A `YA_LOCAL_STT=1 reyep`-style wrapper should append
@@ -440,20 +455,88 @@ not assignment. A `YA_LOCAL_STT=1 reyep`-style wrapper should append
 already contain it. Cloud STT backends still auto-enable from their
 `YA_stt__*` keys; the wrapper must not read or print those keys.
 
-Parakeet reuses this deployment shape through `requirements/stt-parakeet.txt`
-and `stt-bootstrap-parakeet`. The YA server runs that bootstrap only after the
-operator explicitly names `ya-parakeet`; a deploy wrapper may still choose to
-run the pixi bootstrap as a stricter preflight.
+Transformers Parakeet reuses this deployment shape through
+`requirements/stt-parakeet.txt` and `stt-bootstrap-parakeet`. NeMo Parakeet
+uses `requirements/stt-nemo.txt` and `stt-bootstrap-nemo` as a heavier optional
+add-on to the same pixi environment. The YA server runs those bootstraps only
+after the operator explicitly names the matching backend; a deploy wrapper may
+still choose to run the pixi bootstrap as a stricter preflight.
 
-Current Parakeet support is intentionally Transformers-only. The desired next
-track is a NeMo-backed local Parakeet worker so
-`nvidia/parakeet-unified-en-0.6b` can become the local default if it verifies:
-its model card reports stronger offline accuracy and streaming quality up to
-roughly 240 ms latency, but it documents NeMo 2.7.3 rather than the
-Transformers pipeline. That NeMo worker should also evaluate
-`nvidia/parakeet-rnnt-1.1b` for lower-case English, and any NIM/NGC
-multilingual RNNT variant only if there is a host-installable local runtime
-that fits the Rocky 8 / pixi deployment constraints.
+### STT env recovery before NeMo spikes
+
+`requirements/stt-known-good-2026-06-16.txt` pins the working pixi `stt`
+environment after Whisper plus the Transformers Parakeet install. It exists so
+NeMo experiments can be attempted in-place without guessing how to recover the
+known-good ASR runtime.
+
+If a NeMo install poisons the environment, reset and repin it from the YA
+checkout:
+
+1. `pixi reinstall --frozen -e stt`
+2. `pixi run --frozen -e stt python -m pip install --requirement requirements/stt-known-good-2026-06-16.txt`
+3. `pixi run --frozen -e stt stt-check`
+4. `pixi run --frozen -e stt stt-check-parakeet`
+
+When testing whether NeMo can coexist with the current stack, install it under
+that pin set as a constraint first:
+
+`pixi run --frozen -e stt python -m pip install --constraint requirements/stt-known-good-2026-06-16.txt 'nemo_toolkit[asr]'`
+
+That command is a meaningful coexistence test: it may add packages, but it must
+not downgrade or upgrade Torch, Transformers, faster-whisper, or the CUDA
+package set that the working Transformers Parakeet path is using. If the
+resolver cannot satisfy NeMo under those constraints, use a separate pixi
+environment for NeMo rather than weakening the current STT runtime.
+
+The 2026-06-16 coexistence spike found:
+
+- `nemo_toolkit[asr]==2.7.3` does not coexist with the exact current pins. It
+  requires `fsspec==2024.12.0`, while the known-good STT env has
+  `fsspec==2026.4.0`; an unconstrained dry run would also replace the
+  Transformers git build with `transformers==4.57.6` and change protobuf,
+  packaging, and Hugging Face hub packages. Treat modern NeMo as a separate
+  pixi environment unless those pins are deliberately moved together.
+- `nemo_toolkit[asr]==2.0.0` does coexist with the current pins when installed
+  through `requirements/stt-nemo.txt`. The install also needs
+  `pytorch-lightning==2.4.0`; the resolver's newer default no longer exports
+  `NeptuneLogger`, which NeMo 2.0.0 imports. `matplotlib` is also needed
+  because NeMo ASR imports VAD plotting utilities during module import.
+- Under that NeMo 2.0.0 add-on, `pip check`, `stt-check`, and
+  `stt-check-parakeet` pass; `nemo.collections.asr` imports successfully.
+- `nvidia/parakeet-rnnt-1.1b` and `nvidia/parakeet-ctc-1.1b` both load on CUDA
+  and transcribe a short 16 kHz mono PCM WAV smoke file. The RNNT model loaded
+  in about 13 s and transcribed a 7.4 s file in about 0.54 s; the CTC model
+  loaded in about 13 s and transcribed the same file in about 0.43 s.
+- NeMo 2.0.0 still expects NumPy's removed `np.sctypes` table during audio
+  preprocessing. A NeMo worker can patch this process-locally before importing
+  NeMo:
+
+  ```python
+  import numpy as np
+
+  if not hasattr(np, "sctypes"):
+      np.sctypes = {
+          "int": [np.int8, np.int16, np.int32, np.int64],
+          "uint": [np.uint8, np.uint16, np.uint32, np.uint64],
+          "float": [np.float16, np.float32, np.float64],
+          "complex": [np.complex64, np.complex128],
+          "others": [np.bool_, np.object_, np.bytes_, np.str_],
+      }
+  ```
+
+- `nvidia/parakeet-unified-en-0.6b` does not load under NeMo 2.0.0. Its config
+  passes `att_chunk_context_size` to `ConformerEncoder`, and this older NeMo
+  encoder does not accept that argument. Keep the unified streaming target on
+  the separate/newer-NeMo track.
+
+YA now exposes this as a separate batch-only `ya-nemo` backend. The shared
+Parakeet model selector includes the current NeMo 2.0.0-compatible set:
+`nvidia/parakeet-tdt-0.6b-v3`, `nvidia/parakeet-rnnt-1.1b`, and
+`nvidia/parakeet-ctc-1.1b`; `nvidia/parakeet-unified-en-0.6b` remains the
+desired streaming-quality target for a separate newer-NeMo environment. Any
+NIM/NGC multilingual RNNT variant should be considered only if there is a
+host-installable local runtime that fits the Rocky 8 / pixi deployment
+constraints.
 
 Hosted relay support for server-local STT is a product choice, not a technical
 requirement. If the operator wants phone-to-local-Whisper dictation through
@@ -522,5 +605,11 @@ to a local model remains a later optimization after local batch is solid.
   hint and hides the backend from the UI. Choosing a different Parakeet model
   in STT settings or mic options sends that model id to `/api/speech/transcribe`
   and restarts the warm worker for the new model.
+- With `YA_VOICE_BACKENDS=ya-nemo`, the NeMo ASR runtime importable, and the
+  configured fallback model loadable, startup validation advertises `ya-nemo`;
+  otherwise it logs cache/auth/model-load repair hints and hides the backend
+  from the UI. The same Parakeet model selector sends model ids to `ya-nemo`;
+  compressed batch recordings are decoded through `ffmpeg` only when needed
+  before NeMo transcribes them.
 - Removing a previously selected backend causes an explicit method-selection
   prompt or notice, not a silent fallback and not a dead mic button.

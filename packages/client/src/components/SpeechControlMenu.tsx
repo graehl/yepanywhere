@@ -1,4 +1,5 @@
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -16,10 +17,13 @@ import { useSpeechCaptureSettings } from "../hooks/useSpeechCaptureSettings";
 import { useI18n } from "../i18n";
 import type { SpeechMethodId } from "../lib/speechProviders/methods";
 import {
+  cleanParakeetSpeechModel,
   getParakeetSpeechPresetValue,
+  isParakeetModelBackend,
   PARAKEET_SPEECH_MODEL_PRESETS,
 } from "../lib/speechProviders/parakeetModels";
 import type { SpeechSmartTurnSettings } from "../lib/speechProviders/SpeechProvider";
+import { prewarmYaServerSpeechBackend } from "../lib/speechProviders/YaServerProvider";
 
 interface SpeechControlMenuProps {
   trigger: ReactNode;
@@ -82,7 +86,7 @@ export function SpeechControlMenu({
   const showSmartTurnControls =
     !!smartTurnSettings && !!onSmartTurnSettingsChange;
   const showMicDeviceControls = selectedMethod !== "browser-native";
-  const showParakeetModelControls = selectedMethod === "ya-parakeet";
+  const showParakeetModelControls = isParakeetModelBackend(selectedMethod);
   const selectedParakeetPreset =
     getParakeetSpeechPresetValue(parakeetSpeechModel);
   const hasOptions =
@@ -93,6 +97,31 @@ export function SpeechControlMenu({
   const selectedMicDeviceUnavailable =
     !!micDeviceId &&
     !micDevices.some((device) => device.deviceId === micDeviceId);
+
+  const prewarmParakeetModel = useCallback(
+    (modelValue: string, backendId: SpeechMethodId = selectedMethod) => {
+      if (!isParakeetModelBackend(backendId)) return;
+      const model = cleanParakeetSpeechModel(modelValue);
+      void prewarmYaServerSpeechBackend(backendId, model).catch(
+        (err: unknown) => {
+          console.warn(
+            "[YaSTT] Speech model prewarm failed",
+            err instanceof Error ? err.message : String(err),
+          );
+        },
+      );
+    },
+    [selectedMethod],
+  );
+
+  const handleParakeetModelKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      prewarmParakeetModel(event.currentTarget.value);
+    },
+    [prewarmParakeetModel],
+  );
 
   const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -308,6 +337,7 @@ export function SpeechControlMenu({
                   if (!preset) return;
                   onBeforeCaptureChange?.();
                   setParakeetSpeechModel(preset);
+                  prewarmParakeetModel(preset);
                 }}
                 aria-label={t("speechSettingsParakeetModelPresetLabel")}
               >
@@ -331,6 +361,10 @@ export function SpeechControlMenu({
                   onBeforeCaptureChange?.();
                   setParakeetSpeechModel(event.currentTarget.value);
                 }}
+                onBlur={(event) =>
+                  prewarmParakeetModel(event.currentTarget.value)
+                }
+                onKeyDown={handleParakeetModelKeyDown}
                 aria-label={t("speechSettingsParakeetModelInputLabel")}
               />
             </section>
@@ -358,6 +392,7 @@ export function SpeechControlMenu({
                         if (option.value !== selectedMethod) {
                           onBeforeCaptureChange?.();
                         }
+                        prewarmParakeetModel(parakeetSpeechModel, option.value);
                         onMethodChange([option.value]);
                       }}
                     >

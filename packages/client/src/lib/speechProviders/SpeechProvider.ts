@@ -113,7 +113,7 @@ export interface SpeechProviderOptions extends SpeechProviderEvents {
   keepMicWarm?: boolean;
   /** Browser-local microphone device id for YA-server capture. */
   micDeviceId?: string | null;
-  /** Browser-selected local Parakeet model id for the YA Parakeet backend. */
+  /** Browser-selected local Parakeet model id for YA Parakeet backends. */
   parakeetModel?: string;
   /** Open a dedicated relayed speech socket when YA is reached through relay. */
   openRelayedSpeechSocket?: () => Promise<ConnectionSpeechSocket>;

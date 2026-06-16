@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserNativeProvider } from "../speechProviders/BrowserNativeProvider";
 import { DirectXaiStreamingSpeechProvider } from "../speechProviders/DirectXaiStreamingSpeechProvider";
 import { DirectXaiSpeechProvider } from "../speechProviders/DirectXaiSpeechProvider";
-import { YaServerProvider } from "../speechProviders/YaServerProvider";
+import {
+  YaServerProvider,
+  prewarmYaServerSpeechBackend,
+} from "../speechProviders/YaServerProvider";
 import { decideBatchSpeechCommand } from "../speechProviders/speechCommands";
 import { releaseSharedSpeechMicStream } from "../speechProviders/sharedMicCapture";
 import {
@@ -47,10 +50,17 @@ describe("speech provider method selection", () => {
         "ya-deepgram",
         "ya-whisper",
         "ya-parakeet",
+        "ya-nemo",
         "ya-grok",
         "ya-grok",
       ]),
-    ).toEqual(["ya-grok", "ya-deepgram", "ya-whisper", "ya-parakeet"]);
+    ).toEqual([
+      "ya-grok",
+      "ya-deepgram",
+      "ya-whisper",
+      "ya-parakeet",
+      "ya-nemo",
+    ]);
   });
 
   it("does not require client-side backend hardcodes to build selector options", () => {
@@ -73,20 +83,20 @@ describe("speech provider method selection", () => {
 
   it("uses explicit labels for known STT backends", () => {
     expect(
-      getSpeechMethods(["ya-deepgram", "ya-parakeet", "ya-grok"])
+      getSpeechMethods(["ya-deepgram", "ya-parakeet", "ya-nemo", "ya-grok"])
         .filter((method) => method.serverRouted)
         .map((method) => method.label),
     ).toEqual([
       "Grok STT through YA",
       "Deepgram STT",
       "Parakeet STT",
+      "NeMo Parakeet STT",
     ]);
   });
 
   it("exposes Grok streaming methods without batch choices", () => {
     expect(
-      getSpeechMethods(["ya-grok"])
-        .map((method) => [method.id, method.label]),
+      getSpeechMethods(["ya-grok"]).map((method) => [method.id, method.label]),
     ).toEqual([
       [XAI_DIRECT_STREAMING_SPEECH_METHOD, "Grok STT direct"],
       [YA_GROK_STREAMING_SPEECH_METHOD, "Grok STT through YA"],
@@ -176,9 +186,9 @@ describe("speech provider method selection", () => {
   });
 
   it("prefers direct Grok streaming when this browser has an xAI key", () => {
-    expect(
-      getPreferredSpeechMethod([], { directXaiAvailable: true }),
-    ).toBe(XAI_DIRECT_STREAMING_SPEECH_METHOD);
+    expect(getPreferredSpeechMethod([], { directXaiAvailable: true })).toBe(
+      XAI_DIRECT_STREAMING_SPEECH_METHOD,
+    );
     expect(
       resolveSpeechMethod(DEFAULT_SPEECH_METHOD, [], false, {
         directXaiAvailable: true,
@@ -217,7 +227,7 @@ describe("speech command parsing", () => {
       transcript: "replace this",
       recognizedCommand: true,
     });
-    expect(decideBatchSpeechCommand('Cancel.')).toEqual({
+    expect(decideBatchSpeechCommand("Cancel.")).toEqual({
       command: "cancel",
       transcript: "",
       recognizedCommand: true,
@@ -230,6 +240,32 @@ describe("speech command parsing", () => {
       transcript: "please wait",
       recognizedCommand: false,
     });
+  });
+});
+
+describe("server speech prewarm", () => {
+  it("posts the selected model to the YA speech prewarm endpoint", async () => {
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await prewarmYaServerSpeechBackend("ya-nemo", "nvidia/parakeet-rnnt-1.1b");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/speech/prewarm",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          backendId: "ya-nemo",
+          model: "nvidia/parakeet-rnnt-1.1b",
+        }),
+      }),
+    );
   });
 });
 
@@ -462,16 +498,20 @@ describe("YA server speech provider", () => {
     provider.dispose();
   });
 
-  it("passes the selected Parakeet model to batch transcription", async () => {
+  it.each([
+    "ya-parakeet",
+    "ya-nemo",
+  ] as const)("passes the selected Parakeet model to %s batch transcription", async (backendId) => {
     const fakeStream = {
       getTracks: () => [{ stop: vi.fn() }],
     } as unknown as MediaStream;
     const getUserMedia = vi.fn(async () => fakeStream);
-    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify({ text: "ok" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ text: "ok" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
     );
 
     Object.defineProperty(navigator, "mediaDevices", {
@@ -524,7 +564,7 @@ describe("YA server speech provider", () => {
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("btoa", () => "YXVkaW8=");
 
-    const provider = new YaServerProvider("ya-parakeet", "", {
+    const provider = new YaServerProvider(backendId, "", {
       parakeetModel: "nvidia/parakeet-ctc-1.1b",
     });
 
@@ -537,7 +577,7 @@ describe("YA server speech provider", () => {
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
     expect(JSON.parse(String(init?.body))).toMatchObject({
-      backendId: "ya-parakeet",
+      backendId,
       model: "nvidia/parakeet-ctc-1.1b",
     });
 
@@ -1252,10 +1292,9 @@ describe("YA server speech provider", () => {
       transcriptionId: "transcription-2",
     });
     expect(onResult).toHaveBeenCalledTimes(1);
-    expect(onResult).toHaveBeenLastCalledWith(
-      "does not delete the content",
-      { transcriptionId: "transcription-2" },
-    );
+    expect(onResult).toHaveBeenLastCalledWith("does not delete the content", {
+      transcriptionId: "transcription-2",
+    });
 
     provider.dispose();
   });
@@ -1610,13 +1649,11 @@ describe("YA server speech provider", () => {
           get onaudioprocess() {
             return processorNode?.onaudioprocess ?? null;
           },
-          set onaudioprocess(
-            callback:
-              | null
-              | ((event: {
-                  inputBuffer: { getChannelData: () => Float32Array };
-                }) => void),
-          ) {
+          set onaudioprocess(callback:
+            | null
+            | ((event: {
+                inputBuffer: { getChannelData: () => Float32Array };
+              }) => void),) {
             if (processorNode) processorNode.onaudioprocess = callback;
           },
         };
@@ -1783,7 +1820,11 @@ describe("YA server speech provider", () => {
       keepMicWarm: true,
     });
     const waitForListening = async () => {
-      for (let i = 0; i < 10 && provider.getState().status !== "listening"; i += 1) {
+      for (
+        let i = 0;
+        i < 10 && provider.getState().status !== "listening";
+        i += 1
+      ) {
         await Promise.resolve();
       }
     };
@@ -2360,11 +2401,12 @@ describe("direct xAI speech provider", () => {
     }
     vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
 
-    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify({ text: "direct transcript" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ text: "direct transcript" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
     );
     vi.stubGlobal("fetch", fetchMock);
 

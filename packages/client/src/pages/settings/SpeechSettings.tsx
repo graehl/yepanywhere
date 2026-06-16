@@ -1,4 +1,9 @@
-import { useCallback, useId, useMemo } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useId,
+  useMemo,
+} from "react";
 import {
   FilterDropdown,
   type FilterOption,
@@ -19,9 +24,12 @@ import {
   type SpeechMethodId,
 } from "../../lib/speechProviders/methods";
 import {
+  cleanParakeetSpeechModel,
   getParakeetSpeechPresetValue,
+  isParakeetModelBackend,
   PARAKEET_SPEECH_MODEL_PRESETS,
 } from "../../lib/speechProviders/parakeetModels";
+import { prewarmYaServerSpeechBackend } from "../../lib/speechProviders/YaServerProvider";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 export function SpeechSettings() {
@@ -107,7 +115,7 @@ export function SpeechSettings() {
   );
   const selectedBackendServerRouted =
     isServerRoutedSpeechMethod(selectedBackend);
-  const showParakeetModelControls = selectedBackend === "ya-parakeet";
+  const showParakeetModelControls = isParakeetModelBackend(selectedBackend);
   const selectedParakeetPreset =
     getParakeetSpeechPresetValue(parakeetSpeechModel);
   const selectedBackendCanStream = canSpeechMethodStream({
@@ -117,14 +125,36 @@ export function SpeechSettings() {
     relayedServerSpeechAvailable: !selectedBackendServerRouted,
   });
   const supportsSelectedSmartTurn =
-    selectedBackendCanStream &&
-    selectedBackendCapabilities.smartTurn === true;
+    selectedBackendCanStream && selectedBackendCapabilities.smartTurn === true;
   const smartTurnUnavailableHint =
     relayTransport && selectedBackend !== "browser-native"
       ? t("speechSettingsStreamingRelayUnavailable")
       : t("speechSettingsSmartTurnUnavailable", {
           backend: selectedBackendLabel,
         });
+  const prewarmParakeetModel = useCallback(
+    (modelValue: string, backendId: SpeechMethodId = selectedBackend) => {
+      if (!isParakeetModelBackend(backendId)) return;
+      const model = cleanParakeetSpeechModel(modelValue);
+      void prewarmYaServerSpeechBackend(backendId, model).catch(
+        (err: unknown) => {
+          console.warn(
+            "[YaSTT] Speech model prewarm failed",
+            err instanceof Error ? err.message : String(err),
+          );
+        },
+      );
+    },
+    [selectedBackend],
+  );
+  const handleParakeetModelKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      prewarmParakeetModel(event.currentTarget.value);
+    },
+    [prewarmParakeetModel],
+  );
 
   return (
     <section className="settings-section">
@@ -169,7 +199,9 @@ export function SpeechSettings() {
                 value={selectedParakeetPreset}
                 onChange={(event) => {
                   const preset = event.currentTarget.value;
-                  if (preset) setParakeetSpeechModel(preset);
+                  if (!preset) return;
+                  setParakeetSpeechModel(preset);
+                  prewarmParakeetModel(preset);
                 }}
                 aria-label={t("speechSettingsParakeetModelPresetLabel")}
               >
@@ -192,6 +224,10 @@ export function SpeechSettings() {
                 onChange={(event) =>
                   setParakeetSpeechModel(event.currentTarget.value)
                 }
+                onBlur={(event) =>
+                  prewarmParakeetModel(event.currentTarget.value)
+                }
+                onKeyDown={handleParakeetModelKeyDown}
                 aria-label={t("speechSettingsParakeetModelInputLabel")}
               />
               <p className="settings-hint">
@@ -213,7 +249,11 @@ export function SpeechSettings() {
               selected={[selectedBackend]}
               onChange={(selected) => {
                 const nextBackend = selected[0];
-                if (nextBackend) setSpeechMethod(nextBackend);
+                if (!nextBackend) return;
+                if (isParakeetModelBackend(nextBackend)) {
+                  prewarmParakeetModel(parakeetSpeechModel, nextBackend);
+                }
+                setSpeechMethod(nextBackend);
               }}
               multiSelect={false}
               placeholder={t("speechSettingsBackendPlaceholder")}

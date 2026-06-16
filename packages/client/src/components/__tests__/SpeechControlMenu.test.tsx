@@ -22,12 +22,17 @@ const modelSettings = vi.hoisted(() => {
   });
   return state;
 });
+const prewarmYaServerSpeechBackend = vi.hoisted(() => vi.fn(async () => {}));
 
 vi.mock("../../hooks/useModelSettings", () => ({
   useModelSettings: () => ({
     parakeetSpeechModel: modelSettings.parakeetSpeechModel,
     setParakeetSpeechModel: modelSettings.setParakeetSpeechModel,
   }),
+}));
+
+vi.mock("../../lib/speechProviders/YaServerProvider", () => ({
+  prewarmYaServerSpeechBackend,
 }));
 
 function installMediaDevices(devices: MediaDeviceInfo[]) {
@@ -58,6 +63,7 @@ describe("SpeechControlMenu", () => {
     vi.unstubAllGlobals();
     modelSettings.parakeetSpeechModel = "nvidia/parakeet-tdt-0.6b-v3";
     modelSettings.setParakeetSpeechModel.mockClear();
+    prewarmYaServerSpeechBackend.mockClear();
   });
 
   it("persists a selected microphone device for server STT capture", async () => {
@@ -187,7 +193,10 @@ describe("SpeechControlMenu", () => {
     expect(screen.queryByLabelText("Browser xAI STT Key")).toBeNull();
   });
 
-  it("shows preset and free-text Parakeet model controls", () => {
+  it.each([
+    "ya-parakeet",
+    "ya-nemo",
+  ] as const)("shows preset and free-text Parakeet model controls for %s", (selectedMethod) => {
     installMediaDevices([]);
     const onBeforeCaptureChange = vi.fn();
 
@@ -195,7 +204,7 @@ describe("SpeechControlMenu", () => {
       trigger: <button type="button">voice</button>,
       showMethodSelector: false,
       methodOptions: [],
-      selectedMethod: "ya-parakeet",
+      selectedMethod,
       onMethodChange: vi.fn(),
       onBeforeCaptureChange,
     });
@@ -219,5 +228,55 @@ describe("SpeechControlMenu", () => {
       "nvidia/custom-parakeet",
     );
     expect(onBeforeCaptureChange).toHaveBeenCalledTimes(2);
+    expect(prewarmYaServerSpeechBackend).toHaveBeenCalledWith(
+      selectedMethod,
+      "nvidia/parakeet-ctc-1.1b",
+    );
+  });
+
+  it("prewarms a custom Parakeet model on free-text commit", () => {
+    installMediaDevices([]);
+    modelSettings.parakeetSpeechModel = "nvidia/custom-parakeet";
+
+    renderSpeechControlMenu({
+      trigger: <button type="button">voice</button>,
+      showMethodSelector: false,
+      methodOptions: [],
+      selectedMethod: "ya-parakeet",
+      onMethodChange: vi.fn(),
+    });
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    fireEvent.blur(screen.getByLabelText("Parakeet model id"));
+
+    expect(prewarmYaServerSpeechBackend).toHaveBeenCalledWith(
+      "ya-parakeet",
+      "nvidia/custom-parakeet",
+    );
+  });
+
+  it("prewarms the current Parakeet model when switching to a Parakeet backend", () => {
+    installMediaDevices([]);
+    const onMethodChange = vi.fn();
+
+    renderSpeechControlMenu({
+      trigger: <button type="button">voice</button>,
+      showMethodSelector: true,
+      methodOptions: [
+        { value: "ya-grok", label: "Grok" },
+        { value: "ya-nemo", label: "NeMo Parakeet" },
+      ],
+      selectedMethod: "ya-grok",
+      onMethodChange,
+    });
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
+    fireEvent.click(screen.getByRole("radio", { name: "NeMo Parakeet" }));
+
+    expect(onMethodChange).toHaveBeenCalledWith(["ya-nemo"]);
+    expect(prewarmYaServerSpeechBackend).toHaveBeenCalledWith(
+      "ya-nemo",
+      "nvidia/parakeet-tdt-0.6b-v3",
+    );
   });
 });

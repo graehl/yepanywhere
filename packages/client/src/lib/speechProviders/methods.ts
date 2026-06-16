@@ -42,7 +42,11 @@ const SERVER_BACKEND_LABELS: Record<
   },
   "ya-parakeet": {
     label: "Parakeet STT",
-    description: "Local Parakeet speech-to-text through YA.",
+    description: "Local Transformers Parakeet speech-to-text through YA.",
+  },
+  "ya-nemo": {
+    label: "NeMo Parakeet STT",
+    description: "Local NeMo Parakeet speech-to-text through YA.",
   },
   "ya-dummy": {
     label: "Dummy STT",
@@ -297,9 +301,10 @@ export function resolveSpeechMethod(
       : DEFAULT_SPEECH_METHOD;
   }
 
-  return getAvailableSpeechMethodIds(activeServerBackends, availability).includes(
-    storedMethod,
-  )
+  return getAvailableSpeechMethodIds(
+    activeServerBackends,
+    availability,
+  ).includes(storedMethod)
     ? storedMethod
     : DEFAULT_SPEECH_METHOD;
 }

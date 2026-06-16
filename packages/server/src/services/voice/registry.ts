@@ -1,6 +1,7 @@
 import { getLogger } from "../../logging/logger.js";
 import { DeepgramBackend } from "./deepgramBackend.js";
 import { DummyBackend } from "./dummyBackend.js";
+import { LocalNemoBackend } from "./localNemoBackend.js";
 import { LocalParakeetBackend } from "./localParakeetBackend.js";
 import { LocalWhisperBackend } from "./localWhisperBackend.js";
 import type {
@@ -102,15 +103,25 @@ export interface SpeechRegistryInitOptions {
   parakeetModel?: string;
   /** Parakeet device (default: auto). */
   parakeetDevice?: string;
+  /** NeMo Parakeet fallback model name (default: nvidia/parakeet-tdt-0.6b-v3). */
+  nemoModel?: string;
+  /** NeMo Parakeet device (default: auto). */
+  nemoDevice?: string;
 }
 
 export async function initSpeechBackendRegistry(
   options: SpeechRegistryInitOptions = {},
 ): Promise<SpeechBackendRegistry> {
   const registry = new SpeechBackendRegistry();
+  await registerSpeechBackends(registry, options);
+  return registry;
+}
 
+export function getRequestedSpeechBackendIds(
+  options: SpeechRegistryInitOptions = {},
+): string[] {
   if (options.voiceInputEnabled === false) {
-    return registry;
+    return [];
   }
 
   // Cloud STT backends auto-enable when their key is present — a provisioned
@@ -125,7 +136,14 @@ export async function initSpeechBackendRegistry(
     requested.add("ya-grok");
   }
 
-  for (const backendId of requested) {
+  return [...requested];
+}
+
+export async function registerSpeechBackends(
+  registry: SpeechBackendRegistry,
+  options: SpeechRegistryInitOptions = {},
+): Promise<void> {
+  for (const backendId of getRequestedSpeechBackendIds(options)) {
     switch (backendId) {
       case "ya-dummy":
         await registry.register(new DummyBackend());
@@ -174,10 +192,17 @@ export async function initSpeechBackendRegistry(
         );
         break;
 
+      case "ya-nemo":
+        await registry.register(
+          new LocalNemoBackend({
+            model: options.nemoModel,
+            device: options.nemoDevice,
+          }),
+        );
+        break;
+
       default:
         logger.warn(`[Voice] Unknown speech backend requested: ${backendId}`);
     }
   }
-
-  return registry;
 }

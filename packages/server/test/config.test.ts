@@ -95,6 +95,8 @@ describe("loadConfig codex paths", () => {
   });
 
   it("defaults server-routed voice backends off", async () => {
+    vi.stubEnv("YA_VOICE_BACKENDS", "");
+
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig();
 
@@ -104,7 +106,7 @@ describe("loadConfig codex paths", () => {
   it("parses explicitly enabled server-routed voice backends", async () => {
     vi.stubEnv(
       "YA_VOICE_BACKENDS",
-      "ya-dummy, local-whisper,ya-parakeet,ya-dummy",
+      "ya-dummy, local-whisper,ya-parakeet,ya-nemo,ya-dummy",
     );
 
     const { loadConfig } = await import("../src/config.js");
@@ -114,6 +116,7 @@ describe("loadConfig codex paths", () => {
       "ya-dummy",
       "local-whisper",
       "ya-parakeet",
+      "ya-nemo",
       "ya-dummy",
     ]);
   });
@@ -127,6 +130,17 @@ describe("loadConfig codex paths", () => {
 
     expect(config.parakeetModel).toBe("nvidia/parakeet-tdt-0.6b-v3");
     expect(config.parakeetDevice).toBe("cuda:0");
+  });
+
+  it("parses local NeMo Parakeet tuning options", async () => {
+    vi.stubEnv("NEMO_MODEL", "nvidia/parakeet-rnnt-1.1b");
+    vi.stubEnv("NEMO_DEVICE", "cuda:1");
+
+    const { loadConfig } = await import("../src/config.js");
+    const config = loadConfig();
+
+    expect(config.nemoModel).toBe("nvidia/parakeet-rnnt-1.1b");
+    expect(config.nemoDevice).toBe("cuda:1");
   });
 
   it("defaults idle cleanup to 20 minutes", async () => {

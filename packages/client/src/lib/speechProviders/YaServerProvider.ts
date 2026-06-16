@@ -69,6 +69,10 @@ interface TranscribeResponse {
   transcriptionId?: string;
 }
 
+interface PrewarmResponse {
+  ok: boolean;
+}
+
 interface SpeechWsMessage {
   type?: "ready" | "interim" | "final" | "error";
   text?: string;
@@ -101,6 +105,19 @@ interface SmartTurnDecision {
   command: SpeechTurnCommand;
   transcript: string;
   recognizedCommand: boolean;
+}
+
+export async function prewarmYaServerSpeechBackend(
+  backendId: string,
+  model?: string,
+): Promise<void> {
+  await fetchJSON<PrewarmResponse>("/speech/prewarm", {
+    method: "POST",
+    body: JSON.stringify({
+      backendId,
+      ...(model ? { model } : {}),
+    }),
+  });
 }
 
 interface PendingSmartTurnCommand {
@@ -232,8 +249,7 @@ function decideSmartTurn(
     wordCommand && words ? getPauseBeforeFinalWordSeconds(words) : null;
   const commandIsAllowed =
     command !== null &&
-    (pauseSeconds === null ||
-      pauseSeconds > SMART_TURN_COMMAND_PAUSE_SECONDS);
+    (pauseSeconds === null || pauseSeconds > SMART_TURN_COMMAND_PAUSE_SECONDS);
 
   if (command && commandIsAllowed) {
     return {
@@ -284,7 +300,9 @@ function getStreamingMessageSpan(
   );
 }
 
-function getStreamingMessageGroupStart(message: SpeechWsMessage): number | null {
+function getStreamingMessageGroupStart(
+  message: SpeechWsMessage,
+): number | null {
   if (typeof message.start === "number" && Number.isFinite(message.start)) {
     return message.start;
   }
@@ -850,7 +868,8 @@ export class YaServerProvider implements SpeechProvider {
         !this.disposed &&
         token === this.startToken &&
         !this.streamingFinalReceived &&
-        (this.state.status === "receiving" || this.state.status === "finalizing")
+        (this.state.status === "receiving" ||
+          this.state.status === "finalizing")
       ) {
         const message = "Speech streaming connection closed before final text";
         const salvaged = this.commitStreamingTranscript(
@@ -859,7 +878,8 @@ export class YaServerProvider implements SpeechProvider {
           ),
         );
         this.setState({
-          status: salvaged || this.streamingCommittedTranscript ? "idle" : "error",
+          status:
+            salvaged || this.streamingCommittedTranscript ? "idle" : "error",
           isListening: false,
           interimTranscript: "",
           error: salvaged || this.streamingCommittedTranscript ? null : message,
@@ -923,7 +943,8 @@ export class YaServerProvider implements SpeechProvider {
 
     if (message.type === "interim") {
       const transcript = message.text ?? "";
-      const finalPartial = message.isFinal === true || message.speechFinal === true;
+      const finalPartial =
+        message.isFinal === true || message.speechFinal === true;
       if (this.streamingStopRequested && !finalPartial) return;
       const span = getStreamingMessageSpan(message);
       const groupStart = getStreamingMessageGroupStart(message);
@@ -997,7 +1018,11 @@ export class YaServerProvider implements SpeechProvider {
       // uncommitted tail so manual stop can wait for transcript.done without
       // duplicating prior chunks.
       let finalText = (message.text ?? "").trim();
-      if (finalText && pendingSmartTurn?.recognizedCommand && smartTurnCommand) {
+      if (
+        finalText &&
+        pendingSmartTurn?.recognizedCommand &&
+        smartTurnCommand
+      ) {
         finalText = stripTrailingCommandWord(finalText, smartTurnCommand);
       }
       let committed = false;
@@ -1114,16 +1139,12 @@ export class YaServerProvider implements SpeechProvider {
       recognizedCommand: decision.recognizedCommand,
     };
 
-    this.commitStreamingTranscript(
-      decision.transcript,
-      undefined,
-      {
-        span,
-        groupStart,
-        replaceGroup: true,
-        words: decision.recognizedCommand ? words?.slice(0, -1) : words,
-      },
-    );
+    this.commitStreamingTranscript(decision.transcript, undefined, {
+      span,
+      groupStart,
+      replaceGroup: true,
+      words: decision.recognizedCommand ? words?.slice(0, -1) : words,
+    });
 
     this.streamingStopRequested = true;
     this.cleanupStreamingMedia();
@@ -1169,7 +1190,8 @@ export class YaServerProvider implements SpeechProvider {
     const committed = this.streamingCommittedTranscript.trim();
     if (!latest || !committed) return latest;
     if (latest === committed) return "";
-    if (latest.startsWith(committed)) return latest.slice(committed.length).trim();
+    if (latest.startsWith(committed))
+      return latest.slice(committed.length).trim();
     return commitNonPrefix ? latest : "";
   }
 
@@ -1178,7 +1200,8 @@ export class YaServerProvider implements SpeechProvider {
     const committed = this.streamingCommittedTranscript.trim();
     if (!latest || !committed) return latest;
     if (latest === committed) return "";
-    if (latest.startsWith(committed)) return latest.slice(committed.length).trim();
+    if (latest.startsWith(committed))
+      return latest.slice(committed.length).trim();
     return latest;
   }
 
@@ -1283,7 +1306,10 @@ export class YaServerProvider implements SpeechProvider {
         audioEnd: span?.end ?? previousAudioEnd,
       },
     );
-    if (previousText && this.streamingCommittedTranscript.endsWith(previousText)) {
+    if (
+      previousText &&
+      this.streamingCommittedTranscript.endsWith(previousText)
+    ) {
       const before = this.streamingCommittedTranscript
         .slice(0, -previousText.length)
         .trimEnd();
@@ -1370,13 +1396,17 @@ export class YaServerProvider implements SpeechProvider {
       }
     }
 
-    const committedAudioEnd = group?.audioEnd ?? this.streamingCommittedAudioEnd;
+    const committedAudioEnd =
+      group?.audioEnd ?? this.streamingCommittedAudioEnd;
     if (
       span &&
       committedAudioEnd !== null &&
       span.start < committedAudioEnd - STREAMING_AUDIO_SPAN_EPSILON_SECONDS
     ) {
-      const tail = getTranscriptAfterAudioTime(options.words, committedAudioEnd);
+      const tail = getTranscriptAfterAudioTime(
+        options.words,
+        committedAudioEnd,
+      );
       if (tail !== null) {
         latest = tail.trim();
       } else if (
@@ -1419,7 +1449,8 @@ export class YaServerProvider implements SpeechProvider {
                 backendId: this.backendId,
                 mimeType: recording.mimeType,
                 model:
-                  this.backendId === "ya-parakeet"
+                  this.backendId === "ya-parakeet" ||
+                  this.backendId === "ya-nemo"
                     ? this.options.parakeetModel
                     : undefined,
                 audioBase64: await blobToBase64(audio),

@@ -15,6 +15,7 @@ import {
 import type { SpeechBackendRegistry } from "../services/voice/registry.js";
 import {
   supportsStreaming,
+  supportsPrewarm,
   type SpeechStreamSession,
   type SpeechStreamDone,
   type SpeechStreamPartial,
@@ -86,6 +87,11 @@ interface TranscribeBody {
   prompt?: unknown;
   keyterms?: unknown;
   context?: unknown;
+}
+
+interface PrewarmBody {
+  backendId?: unknown;
+  model?: unknown;
 }
 
 interface XaiClientSecretResponse {
@@ -484,7 +490,8 @@ async function persistStreamingTranscription(
       transcriptChars: input.transcript.length,
       streamingTranscriptTraceEvents:
         input.streamingTranscriptTrace?.length ?? 0,
-      streamingTranscriptRawEvents: input.streamingTranscriptEvents?.length ?? 0,
+      streamingTranscriptRawEvents:
+        input.streamingTranscriptEvents?.length ?? 0,
       transcriptionId: retention.transcriptionId,
       retention: {
         stored: retention.stored,
@@ -536,6 +543,27 @@ function parseTranscribeBody(value: unknown):
       model: cleanOptionalString(body.model, 200),
       prompt: typeof body.prompt === "string" ? body.prompt : undefined,
       keyterms,
+    },
+  };
+}
+
+function parsePrewarmBody(
+  value: unknown,
+):
+  | { ok: true; backendId: string; options: TranscribeOptions }
+  | { ok: false; message: string } {
+  if (!isRecord(value)) {
+    return { ok: false, message: "Expected JSON object" };
+  }
+  const body = value as PrewarmBody;
+  if (typeof body.backendId !== "string" || body.backendId.length === 0) {
+    return { ok: false, message: "backendId is required" };
+  }
+  return {
+    ok: true,
+    backendId: body.backendId,
+    options: {
+      model: cleanOptionalString(body.model, 200),
     },
   };
 }
@@ -759,7 +787,8 @@ export function createSpeechWebSocketSession(
         );
         streamingTranscriptEvents.push(toStreamingDoneTraceEvent(done));
         const transcript =
-          done.text.trim() || joinStreamingSpeechFinals(streamingSpeechFinalTexts);
+          done.text.trim() ||
+          joinStreamingSpeechFinals(streamingSpeechFinalTexts);
         const retention = await persistStreamingTranscription(deps, {
           requestId: streamRequestId,
           backendId,
@@ -868,10 +897,7 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
 
   routes.post("/xai-client-key", (c) => {
     if (deps.shareXaiSttApiKeyWithClients !== true) {
-      return c.json(
-        { error: "Server xAI STT key borrowing is disabled" },
-        403,
-      );
+      return c.json({ error: "Server xAI STT key borrowing is disabled" }, 403);
     }
     if (!deps.xaiSttApiKey) {
       return c.json({ error: "Server xAI STT key is not configured" }, 404);
@@ -923,6 +949,69 @@ export function createSpeechRoutes(deps: SpeechRouteDeps): Hono {
       const message = err instanceof Error ? err.message : String(err);
       return c.json({ error: message }, 500);
     }
+  });
+
+  routes.post("/prewarm", async (c) => {
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const parsed = parsePrewarmBody(rawBody);
+    if (!parsed.ok) {
+      return c.json({ error: parsed.message }, 400);
+    }
+
+    const backend = deps.speechBackendRegistry.getBackend(parsed.backendId);
+    if (!backend) {
+      return c.json(
+        { error: `Backend not available: ${parsed.backendId}` },
+        404,
+      );
+    }
+    if (!supportsPrewarm(backend)) {
+      return c.json(
+        { error: `Backend does not support prewarm: ${parsed.backendId}` },
+        400,
+      );
+    }
+
+    logger.info(
+      {
+        component: "speech",
+        backendId: parsed.backendId,
+        model: parsed.options.model,
+      },
+      "Speech backend prewarm requested",
+    );
+
+    void backend
+      .prewarm(parsed.options)
+      .then(() => {
+        logger.info(
+          {
+            component: "speech",
+            backendId: parsed.backendId,
+            model: parsed.options.model,
+          },
+          "Speech backend prewarm completed",
+        );
+      })
+      .catch((err: unknown) => {
+        logger.warn(
+          {
+            component: "speech",
+            backendId: parsed.backendId,
+            model: parsed.options.model,
+            err,
+          },
+          "Speech backend prewarm failed",
+        );
+      });
+
+    return c.json({ ok: true });
   });
 
   routes.get(

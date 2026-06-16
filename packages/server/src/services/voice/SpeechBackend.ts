@@ -58,6 +58,17 @@ export interface SpeechBackend {
   transcribe(audio: Buffer, options?: TranscribeOptions): Promise<string>;
 }
 
+export interface PrewarmableSpeechBackend extends SpeechBackend {
+  /** Start loading backend state such as a local model without transcribing. */
+  prewarm(options?: TranscribeOptions): Promise<void>;
+}
+
+export function supportsPrewarm(
+  backend: SpeechBackend,
+): backend is PrewarmableSpeechBackend {
+  return typeof (backend as { prewarm?: unknown }).prewarm === "function";
+}
+
 export interface SpeechStreamOptions extends TranscribeOptions {
   /** Raw audio sample rate in Hz. */
   sampleRate: number;

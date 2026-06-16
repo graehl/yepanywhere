@@ -116,6 +116,31 @@ class RecordingBatchBackend implements SpeechBackend {
   }
 }
 
+class PrewarmRecordingBackend implements SpeechBackend {
+  readonly id = "ya-prewarm";
+  readonly label = "Prewarm test";
+  lastOptions: TranscribeOptions | null = null;
+  resolvePrewarm: (() => void) | null = null;
+
+  async validate(): Promise<{ ok: true }> {
+    return { ok: true };
+  }
+
+  async transcribe(
+    _audio: Buffer,
+    _options?: TranscribeOptions,
+  ): Promise<string> {
+    throw new Error("transcription should not be used");
+  }
+
+  async prewarm(options: TranscribeOptions = {}): Promise<void> {
+    this.lastOptions = options;
+    await new Promise<void>((resolve) => {
+      this.resolvePrewarm = resolve;
+    });
+  }
+}
+
 describe("speech routes", () => {
   let server: ReturnType<typeof serve> | null = null;
   const tempDirs: string[] = [];
@@ -125,7 +150,9 @@ describe("speech routes", () => {
     server = null;
     vi.unstubAllGlobals();
     await Promise.all(
-      tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })),
+      tempDirs
+        .splice(0)
+        .map((dir) => fs.rm(dir, { recursive: true, force: true })),
     );
   });
 
@@ -163,22 +190,24 @@ describe("speech routes", () => {
   });
 
   it("mints an xAI client secret without exposing the server key", async () => {
-    const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      expect(init?.headers).toMatchObject({
-        Authorization: "Bearer server-xai-key",
-        "Content-Type": "application/json",
-      });
-      return new Response(
-        JSON.stringify({
-          value: "xai-realtime-client-secret-test",
-          expires_at: "2026-06-15T01:00:00Z",
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    });
+    const fetchMock = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        expect(init?.headers).toMatchObject({
+          Authorization: "Bearer server-xai-key",
+          "Content-Type": "application/json",
+        });
+        return new Response(
+          JSON.stringify({
+            value: "xai-realtime-client-secret-test",
+            expires_at: "2026-06-15T01:00:00Z",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      },
+    );
     vi.stubGlobal("fetch", fetchMock);
     const { app } = await createSpeechApp(undefined, undefined, {
       xaiSttApiKey: "server-xai-key",
@@ -259,6 +288,29 @@ describe("speech routes", () => {
       mimeType: "audio/webm",
       model: "nvidia/parakeet-ctc-1.1b",
     });
+  });
+
+  it("starts backend prewarm without waiting for model load", async () => {
+    const backend = new PrewarmRecordingBackend();
+    const registry = new SpeechBackendRegistry();
+    await registry.register(backend);
+    const { app } = await createSpeechApp(undefined, registry);
+
+    const res = await app.request("/api/speech/prewarm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        backendId: "ya-prewarm",
+        model: "nvidia/parakeet-ctc-1.1b",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(backend.lastOptions).toMatchObject({
+      model: "nvidia/parakeet-ctc-1.1b",
+    });
+    backend.resolvePrewarm?.();
   });
 
   it("retains batch audio with transcript and session context metadata", async () => {

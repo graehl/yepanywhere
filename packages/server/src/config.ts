@@ -148,6 +148,10 @@ export interface Config {
   parakeetModel?: string;
   /** Parakeet device for ya-parakeet backend (default: auto). */
   parakeetDevice?: string;
+  /** NeMo Parakeet fallback model name for ya-nemo backend (default: nvidia/parakeet-tdt-0.6b-v3). */
+  nemoModel?: string;
+  /** NeMo Parakeet device for ya-nemo backend (default: auto). */
+  nemoDevice?: string;
   /** Allowed directory prefixes for serving local images (e.g., ["/tmp"]). Empty = disabled. */
   allowedImagePaths: string[];
 
@@ -336,6 +340,8 @@ export function loadConfig(): Config {
     whisperComputeType: process.env.WHISPER_COMPUTE_TYPE || undefined,
     parakeetModel: process.env.PARAKEET_MODEL || undefined,
     parakeetDevice: process.env.PARAKEET_DEVICE || undefined,
+    nemoModel: process.env.NEMO_MODEL || undefined,
+    nemoDevice: process.env.NEMO_DEVICE || undefined,
     // Always allow yep-managed uploads. ALLOWED_IMAGE_PATHS adds external paths
     // like /tmp; an empty value disables only those extras.
     allowedImagePaths: Array.from(

@@ -21,20 +21,23 @@ const logger = getLogger();
 
 const WORKER_SCRIPT = join(
   dirname(fileURLToPath(import.meta.url)),
-  "parakeet_worker.py",
+  "nemo_worker.py",
 );
 
-export const DEFAULT_PARAKEET_MODEL = "nvidia/parakeet-tdt-0.6b-v3";
+export const DEFAULT_NEMO_PARAKEET_MODEL = "nvidia/parakeet-tdt-0.6b-v3";
 
 /** Milliseconds to wait for model load before giving up. */
-const MODEL_LOAD_TIMEOUT_MS = 180_000;
+const MODEL_LOAD_TIMEOUT_MS = 240_000;
 
-const PARAKEET_REPAIR_HINT =
-  "If Hugging Face auth or a gated model is the problem, run `pixi run --frozen -e stt hf auth login` and accept the model terms on Hugging Face. If the error is ENOSPC, free the cache/tmp filesystem or set HF_HUB_CACHE, HF_XET_CACHE, and TMPDIR before starting YA.";
+const NEMO_IMPORT_CHECK =
+  "import numpy as np; np.sctypes = getattr(np, 'sctypes', {'int': [np.int8, np.int16, np.int32, np.int64], 'uint': [np.uint8, np.uint16, np.uint32, np.uint64], 'float': [np.float16, np.float32, np.float64], 'complex': [np.complex64, np.complex128], 'others': [np.bool_, np.object_, np.bytes_, np.str_]}); import nemo.collections.asr";
 
-export class LocalParakeetBackend implements PrewarmableSpeechBackend {
-  readonly id = "ya-parakeet";
-  readonly label = "Local Parakeet (pixi stt)";
+const NEMO_REPAIR_HINT =
+  "Run `pixi run -e stt stt-bootstrap-nemo` from the YA checkout for the heavy NeMo add-on. If Hugging Face auth or a gated model is the problem, run `pixi run --frozen -e stt hf auth login` and accept the model terms on Hugging Face. If the error is ENOSPC, free the cache/tmp filesystem or set HF_HUB_CACHE, HF_XET_CACHE, and TMPDIR before starting YA. The current in-place NeMo add-on supports nvidia/parakeet-tdt-0.6b-v3, nvidia/parakeet-rnnt-1.1b, and nvidia/parakeet-ctc-1.1b; nvidia/parakeet-unified-en-0.6b needs a separate newer-NeMo environment.";
+
+export class LocalNemoBackend implements PrewarmableSpeechBackend {
+  readonly id = "ya-nemo";
+  readonly label = "Local NeMo Parakeet (pixi stt)";
 
   private readonly model: string;
   private readonly device: string;
@@ -48,23 +51,23 @@ export class LocalParakeetBackend implements PrewarmableSpeechBackend {
   private pendingReject: ((err: Error) => void) | null = null;
 
   constructor(opts: { model?: string; device?: string } = {}) {
-    this.model = opts.model ?? DEFAULT_PARAKEET_MODEL;
+    this.model = opts.model ?? DEFAULT_NEMO_PARAKEET_MODEL;
     this.device = opts.device ?? "auto";
   }
 
   async validate(): Promise<{ ok: true } | { ok: false; reason: string }> {
     const runtime = await ensureLocalSttRuntime({
-      backendLabel: "local Parakeet",
-      checkPython: "import torch; from transformers import pipeline",
-      bootstrapTask: "stt-bootstrap-parakeet",
+      backendLabel: "local NeMo Parakeet",
+      checkPython: NEMO_IMPORT_CHECK,
+      bootstrapTask: "stt-bootstrap-nemo",
     });
     if (!runtime.ok) return runtime;
 
     const cacheDir = defaultHuggingFaceHubCache();
     logger.info(
-      `[Voice] ya-parakeet model preflight: loading fallback model "${this.model}" on device=${this.device} (cache=${cacheDir}; ${cacheFreeSpaceSummary(cacheDir)})`,
+      `[Voice] ya-nemo model preflight: loading fallback model "${this.model}" on device=${this.device} (cache=${cacheDir}; ${cacheFreeSpaceSummary(cacheDir)})`,
     );
-    logger.info(`[Voice] ya-parakeet repair hints: ${PARAKEET_REPAIR_HINT}`);
+    logger.info(`[Voice] ya-nemo repair hints: ${NEMO_REPAIR_HINT}`);
 
     try {
       await this.startWorker(this.model, this.device);
@@ -73,7 +76,7 @@ export class LocalParakeetBackend implements PrewarmableSpeechBackend {
       this.stopWorker();
       return {
         ok: false,
-        reason: `${summarizeChildError(error)} ${PARAKEET_REPAIR_HINT}`,
+        reason: `${summarizeChildError(error)} ${NEMO_REPAIR_HINT}`,
       };
     }
   }
@@ -94,14 +97,14 @@ export class LocalParakeetBackend implements PrewarmableSpeechBackend {
         return this.warmPromise;
       }
       if (!this.workerReady || this.pendingResolve) {
-        throw new Error("Parakeet backend is busy with another request");
+        throw new Error("NeMo backend is busy with another request");
       }
       this.stopWorker();
     }
 
     this.warmPromise = new Promise<void>((resolve, reject) => {
       logger.info(
-        `Starting parakeet worker via pixi env "${PIXI_STT_ENV}" (model=${model} device=${device})`,
+        `Starting nemo worker via pixi env "${PIXI_STT_ENV}" (model=${model} device=${device})`,
       );
       this.workerReady = false;
       this.workerModel = model;
@@ -118,7 +121,7 @@ export class LocalParakeetBackend implements PrewarmableSpeechBackend {
       let loadTimeout: NodeJS.Timeout | null = null;
 
       proc.stderr?.on("data", (chunk: Buffer) => {
-        logger.debug(`[parakeet] ${chunk.toString().trim()}`);
+        logger.debug(`[nemo] ${chunk.toString().trim()}`);
       });
 
       proc.on("error", (error) => {
@@ -130,7 +133,7 @@ export class LocalParakeetBackend implements PrewarmableSpeechBackend {
       });
 
       proc.on("exit", (code) => {
-        logger.warn(`Parakeet worker exited (code=${code})`);
+        logger.warn(`NeMo worker exited (code=${code})`);
         const currentWorkerExited = this.proc === proc;
         if (currentWorkerExited) {
           this.proc = null;
@@ -140,7 +143,7 @@ export class LocalParakeetBackend implements PrewarmableSpeechBackend {
           this.workerDevice = null;
         }
         if (currentWorkerExited && this.pendingReject) {
-          this.pendingReject(new Error("Parakeet worker exited unexpectedly"));
+          this.pendingReject(new Error("NeMo worker exited unexpectedly"));
           this.pendingResolve = null;
           this.pendingReject = null;
         }
@@ -150,7 +153,7 @@ export class LocalParakeetBackend implements PrewarmableSpeechBackend {
 
       loadTimeout = setTimeout(() => {
         if (!ready) {
-          reject(new Error("Parakeet model load timed out"));
+          reject(new Error("NeMo model load timed out"));
           proc.kill();
         }
       }, MODEL_LOAD_TIMEOUT_MS);
@@ -186,7 +189,7 @@ export class LocalParakeetBackend implements PrewarmableSpeechBackend {
             this.pendingReject = null;
           }
         } catch {
-          logger.warn(`Unparseable parakeet output: ${line}`);
+          logger.debug(`[nemo] stdout: ${line}`);
         }
       });
     });
@@ -204,14 +207,14 @@ export class LocalParakeetBackend implements PrewarmableSpeechBackend {
     options: TranscribeOptions = {},
   ): Promise<string> {
     if (this.pendingResolve) {
-      throw new Error("Parakeet backend is busy with another request");
+      throw new Error("NeMo backend is busy with another request");
     }
 
     const model = options.model?.trim() || this.model;
     await this.startWorker(model, this.device);
 
     if (!this.proc?.stdin) {
-      throw new Error("Parakeet worker is not running");
+      throw new Error("NeMo worker is not running");
     }
 
     return new Promise<string>((resolve, reject) => {

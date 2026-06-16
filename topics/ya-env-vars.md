@@ -54,7 +54,7 @@ timings, codex rescan intervals, cache TTLs) live only in `config.ts`.
 |-----|---------|
 | `ENABLED_PROVIDERS` | Comma list of exposed providers (empty = all). |
 | `VOICE_INPUT` | `false` disables the mic button server-side. |
-| `YA_VOICE_BACKENDS` | Explicit local/test speech backends (`ya-whisper`, `ya-parakeet`, `ya-dummy`). Cloud backends auto-enable on key presence instead. |
+| `YA_VOICE_BACKENDS` | Explicit local/test speech backends (`ya-whisper`, `ya-parakeet`, `ya-nemo`, `ya-dummy`). Cloud backends auto-enable on key presence instead. |
 | `YA_DEFERRED_JOIN_WINDOW_S` | Max seconds between consecutive compose times for queued-while-busy turns to join into one `--------`-joined provider turn at a delivery boundary. Default 0: never join — one verbatim turn per boundary. Server setting `deferredJoinWindowSeconds` overrides ([compose-time-context-anchors](compose-time-context-anchors.md)). |
 | `YA_COMPOSE_ANCHORS` | `1` prepends `(Ns ago)` / `(Ms later)` staleness anchors to delivered queued turns. Default off: queued text reaches the provider verbatim. Server setting `composeAnchorsEnabled` overrides. |
 
@@ -66,7 +66,8 @@ timings, codex rescan intervals, cache TTLs) live only in `config.ts`.
 | `YA_stt__SHARE_XAI_KEY_WITH_CLIENTS` | `1` lets authenticated private clients borrow the configured long-lived xAI STT key for direct browser-to-xAI batch transcription. Default false; direct streaming instead mints short-lived xAI client secrets from `YA_stt__XAI_API_KEY` and does not require exposing the long-lived key. |
 | `YA_stt__DEEPGRAM_API_KEY` | Deepgram key → `ya-deepgram` backend; auto-enables when set. |
 | `WHISPER_MODEL` / `WHISPER_DEVICE` / `WHISPER_COMPUTE_TYPE` | Local Whisper tuning. `ya-whisper` runs through the committed pixi `stt` environment; when explicitly enabled, YA runs `pixi run -e stt stt-bootstrap` if the import probe fails. |
-| `PARAKEET_MODEL` / `PARAKEET_DEVICE` | Local NVIDIA Parakeet fallback model and device policy. `ya-parakeet` uses the same pixi `stt` environment with the Parakeet requirements; when explicitly enabled, YA runs `pixi run -e stt stt-bootstrap-parakeet` if the import probe fails, then loads the fallback model before advertising the backend. Authenticated browser UI may send a per-request Parakeet model id. Defaults: `nvidia/parakeet-tdt-0.6b-v3`, `auto`. |
+| `PARAKEET_MODEL` / `PARAKEET_DEVICE` | Local NVIDIA Parakeet fallback model and device policy. `ya-parakeet` uses the same pixi `stt` environment with the Transformers Parakeet requirements; when explicitly enabled, YA runs `pixi run -e stt stt-bootstrap-parakeet` if the import probe fails, then loads the fallback model before advertising the backend. Authenticated browser UI may send a per-request Parakeet model id. Defaults: `nvidia/parakeet-tdt-0.6b-v3`, `auto`. |
+| `NEMO_MODEL` / `NEMO_DEVICE` | Local NeMo Parakeet fallback model and device policy. `ya-nemo` uses the same pixi `stt` environment plus the heavier NeMo add-on; when explicitly enabled, YA runs `pixi run -e stt stt-bootstrap-nemo` if the import probe fails, then loads the fallback model before advertising the backend. The same browser Parakeet model selector may send a per-request model id. Defaults: `nvidia/parakeet-tdt-0.6b-v3`, `auto`. |
 
 See [pluggable-speech-recognition.md](pluggable-speech-recognition.md) for
 backend semantics and [cost-efficiency.md](cost-efficiency.md) for the

@@ -68,7 +68,12 @@ import {
   ServerSettingsService,
   SharingService,
 } from "./services/index.js";
-import { initSpeechBackendRegistry } from "./services/voice/registry.js";
+import {
+  type SpeechRegistryInitOptions,
+  SpeechBackendRegistry,
+  getRequestedSpeechBackendIds,
+  registerSpeechBackends,
+} from "./services/voice/registry.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
 import { UploadManager } from "./uploads/manager.js";
 import {
@@ -553,7 +558,7 @@ async function startServer() {
     );
   }
 
-  const speechBackendRegistry = await initSpeechBackendRegistry({
+  const speechBackendOptions: SpeechRegistryInitOptions = {
     voiceInputEnabled: config.voiceInputEnabled,
     voiceBackends: config.voiceBackends,
     deepgramApiKey: config.deepgramApiKey,
@@ -563,11 +568,15 @@ async function startServer() {
     whisperComputeType: config.whisperComputeType,
     parakeetModel: config.parakeetModel,
     parakeetDevice: config.parakeetDevice,
-  });
-  const enabledSpeechBackends = speechBackendRegistry.enabledIds();
-  if (enabledSpeechBackends.length > 0) {
+    nemoModel: config.nemoModel,
+    nemoDevice: config.nemoDevice,
+  };
+  const speechBackendRegistry = new SpeechBackendRegistry();
+  const requestedSpeechBackends =
+    getRequestedSpeechBackendIds(speechBackendOptions);
+  if (requestedSpeechBackends.length > 0) {
     console.log(
-      `[Voice] Enabled server-routed backends: ${enabledSpeechBackends.join(", ")}`,
+      `[Voice] Server-routed backends requested: ${requestedSpeechBackends.join(", ")}`,
     );
   }
 
@@ -772,6 +781,35 @@ async function startServer() {
 
   // Wire up the callback for relay config changes from API routes
   relayConfigCallbackHolder.callback = updateRelayConnection;
+
+  let speechBackendInitializationStarted = false;
+  function startSpeechBackendInitialization(): void {
+    if (
+      speechBackendInitializationStarted ||
+      requestedSpeechBackends.length === 0
+    ) {
+      return;
+    }
+    speechBackendInitializationStarted = true;
+    console.log(
+      `[Voice] Initializing server-routed backends after health is available: ${requestedSpeechBackends.join(", ")}`,
+    );
+    void registerSpeechBackends(speechBackendRegistry, speechBackendOptions)
+      .then(async () => {
+        const enabledSpeechBackends = speechBackendRegistry.enabledIds();
+        if (enabledSpeechBackends.length > 0) {
+          console.log(
+            `[Voice] Enabled server-routed backends: ${enabledSpeechBackends.join(", ")}`,
+          );
+        }
+        await updateRelayConnection();
+      })
+      .catch((error) => {
+        const message =
+          error instanceof Error ? error.message : String(error ?? "unknown");
+        console.error(`[Voice] Backend initialization failed: ${message}`);
+      });
+  }
 
   // Start relay connection on boot if configured
   await updateRelayConnection();
@@ -1056,6 +1094,7 @@ async function startServer() {
       console.log(`Server running at ${serverUrl}`);
       console.log(`Projects dir: ${config.claudeProjectsDir}`);
       console.log(`Permission mode: ${config.defaultPermissionMode}`);
+      startSpeechBackendInitialization();
 
       if (config.openBrowser) {
         const platform = os.platform();

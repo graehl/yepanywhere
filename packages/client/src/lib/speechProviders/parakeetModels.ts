@@ -14,6 +14,10 @@ export const PARAKEET_SPEECH_MODEL_PRESETS: ParakeetSpeechModelPreset[] = [
     value: "nvidia/parakeet-ctc-1.1b",
     label: "CTC 1.1B English lowercase",
   },
+  {
+    value: "nvidia/parakeet-rnnt-1.1b",
+    label: "RNNT 1.1B English lowercase",
+  },
 ];
 
 export function getParakeetSpeechPresetValue(model: string): string {
@@ -27,4 +31,8 @@ export function cleanParakeetSpeechModel(
 ): string {
   const trimmed = value?.trim();
   return trimmed || DEFAULT_PARAKEET_SPEECH_MODEL;
+}
+
+export function isParakeetModelBackend(methodId: string): boolean {
+  return methodId === "ya-parakeet" || methodId === "ya-nemo";
 }

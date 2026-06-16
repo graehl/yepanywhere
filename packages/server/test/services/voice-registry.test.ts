@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getLogger } from "../../src/logging/logger.js";
+import { LocalNemoBackend } from "../../src/services/voice/localNemoBackend.js";
 import { LocalParakeetBackend } from "../../src/services/voice/localParakeetBackend.js";
 import { initSpeechBackendRegistry } from "../../src/services/voice/registry.js";
 
@@ -94,6 +95,30 @@ describe("initSpeechBackendRegistry", () => {
       {
         id: "ya-parakeet",
         label: "Local Parakeet (pixi stt)",
+        enabled: true,
+        capabilities: {},
+        disabledReason: undefined,
+      },
+    ]);
+  });
+
+  it("enables the NeMo Parakeet backend only when explicitly requested", async () => {
+    vi.spyOn(LocalNemoBackend.prototype, "validate").mockResolvedValue({
+      ok: true,
+    });
+
+    const registry = await initSpeechBackendRegistry({
+      voiceInputEnabled: true,
+      voiceBackends: ["ya-nemo"],
+      nemoModel: "nvidia/parakeet-rnnt-1.1b",
+      nemoDevice: "cuda:0",
+    });
+
+    expect(registry.enabledIds()).toEqual(["ya-nemo"]);
+    expect(registry.allInfo()).toEqual([
+      {
+        id: "ya-nemo",
+        label: "Local NeMo Parakeet (pixi stt)",
         enabled: true,
         capabilities: {},
         disabledReason: undefined,

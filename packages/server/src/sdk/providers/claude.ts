@@ -376,6 +376,30 @@ async function* withCleanup<T>(
   }
 }
 
+/**
+ * Opus and Sonnet always run with the 1M-token context window. The picker no
+ * longer offers a separate "1M" choice; bare `opus`/`sonnet` are normalized to
+ * the extended-context alias at every launch/setModel chokepoint, and surfaced
+ * with the 1M window in the exposed model list. Opus 4.8's 1M is standard-priced
+ * (no per-token premium). See tasks/029.
+ */
+const ALWAYS_EXTENDED_CONTEXT_ALIASES: Record<string, string> = {
+  opus: "opus[1m]",
+  sonnet: "sonnet[1m]",
+};
+
+const ALWAYS_EXTENDED_DESCRIPTIONS: Record<string, string> = {
+  opus: "Opus 4.8 with the full 1M-token context window",
+  sonnet: "Sonnet 4.6 with the full 1M-token context window",
+};
+
+/** Normalize an opus/sonnet alias to its always-on 1M variant at launch. */
+export function withExtendedClaudeContext(
+  model: string | undefined,
+): string | undefined {
+  return (model && ALWAYS_EXTENDED_CONTEXT_ALIASES[model]) || model;
+}
+
 /** Static fallback list of Claude models (used if probe fails) */
 const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   {
@@ -406,25 +430,13 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   {
     id: "sonnet",
     name: "Sonnet",
-    description: "Standard-context Sonnet for everyday coding tasks",
-    contextWindow: getModelContextWindow("sonnet", "claude"),
-  },
-  {
-    id: "sonnet[1m]",
-    name: "Sonnet 1M",
-    description: "Sonnet with 1M context for long sessions and large codebases",
+    description: ALWAYS_EXTENDED_DESCRIPTIONS.sonnet,
     contextWindow: getModelContextWindow("sonnet[1m]", "claude"),
   },
   {
     id: "opus",
     name: "Opus",
-    description: "Standard-context Opus for the most demanding reasoning",
-    contextWindow: getModelContextWindow("opus", "claude"),
-  },
-  {
-    id: "opus[1m]",
-    name: "Opus 1M",
-    description: "Opus with 1M context for the largest working sets",
+    description: ALWAYS_EXTENDED_DESCRIPTIONS.opus,
     contextWindow: getModelContextWindow("opus[1m]", "claude"),
   },
   {
@@ -521,9 +533,24 @@ export function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
     ...models.map((model) => model.id),
   ];
 
-  return [...new Set(orderedIds)]
+  const merged = [...new Set(orderedIds)]
     .map((id) => byId.get(id))
     .filter((model): model is ModelInfo => model !== undefined);
+
+  // Opus/Sonnet always use the 1M window (withExtendedClaudeContext), so drop
+  // the separate "[1m]" picker entries and surface the extended window + label
+  // on the base aliases — including when the SDK probe supplies a 200K window.
+  return merged
+    .filter((model) => model.id !== "opus[1m]" && model.id !== "sonnet[1m]")
+    .map((model) =>
+      model.id === "opus" || model.id === "sonnet"
+        ? {
+            ...model,
+            contextWindow: getModelContextWindow(`${model.id}[1m]`, "claude"),
+            description: ALWAYS_EXTENDED_DESCRIPTIONS[model.id],
+          }
+        : model,
+    );
 }
 
 /** Cached models from SDK probe */
@@ -1088,7 +1115,7 @@ export class ClaudeProvider implements AgentProvider {
           persistSession: false,
           maxTurns: 1,
           maxBudgetUsd: CLAUDE_PROMPT_CACHE_KEEPALIVE_MAX_BUDGET_USD,
-          model: options.model,
+          model: withExtendedClaudeContext(options.model),
           thinking: options.thinking,
           effort: options.effort,
           pathToClaudeCodeExecutable: options.pathToClaudeCodeExecutable,
@@ -1406,7 +1433,7 @@ export class ClaudeProvider implements AgentProvider {
           includePartialMessages: true,
           promptSuggestions: options.promptSuggestions === true,
           // Model, thinking, and effort options
-          model: options.model,
+          model: withExtendedClaudeContext(options.model),
           thinking: options.thinking,
           effort: options.effort,
           pathToClaudeCodeExecutable,
@@ -1493,7 +1520,7 @@ export class ClaudeProvider implements AgentProvider {
         this.refreshPromptCache({
           sessionId,
           cwd: effectiveCwd,
-          model: options.model,
+          model: withExtendedClaudeContext(options.model),
           thinking: options.thinking,
           effort: options.effort,
           globalInstructions: options.globalInstructions,
@@ -1532,7 +1559,8 @@ export class ClaudeProvider implements AgentProvider {
           })),
         );
       },
-      setModel: (model?: string) => sdkQuery.setModel(model),
+      setModel: (model?: string) =>
+        sdkQuery.setModel(withExtendedClaudeContext(model)),
     };
   }
 

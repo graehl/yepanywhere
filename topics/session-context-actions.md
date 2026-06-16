@@ -13,6 +13,8 @@ Related topics: [provider-context-economics](provider-context-economics.md),
 [compact-and-handoff](compact-and-handoff.md),
 [provider-state-machine](provider-state-machine.md),
 [session-liveness](session-liveness.md),
+[session-reactivation](session-reactivation.md) — planned message-less
+reactivate (spawn an idle live process with no turn),
 [session-ui-customization](session-ui-customization.md),
 [recaps](recaps.md)
 

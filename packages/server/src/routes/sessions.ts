@@ -777,6 +777,31 @@ function isAutoCompactModel(model: string | undefined): boolean {
   );
 }
 
+/**
+ * Resolve a per-model compact-early percent (task 029) from the client-defaults
+ * map. The slider and migration store the threshold under the provider alias
+ * the user picked (e.g. "opus"), but a live process resolves to a full id
+ * (e.g. "claude-opus-4-8") via the SDK. Try every known identifier first, then
+ * fall back to the model family so a threshold stored under "opus" still applies
+ * to "claude-opus-4-8". Out-of-range values are ignored by the consumer.
+ */
+export function resolveCompactPercent(
+  map: Record<string, number> | undefined,
+  candidates: (string | undefined)[],
+): number | undefined {
+  if (!map) return undefined;
+  for (const m of candidates) {
+    if (m && m !== "default" && typeof map[m] === "number") return map[m];
+  }
+  for (const m of candidates) {
+    const family = m?.match(
+      /(?:^|[-/])(opus|sonnet|haiku|fable)(?:[-/[]|$)/,
+    )?.[1];
+    if (family && typeof map[family] === "number") return map[family];
+  }
+  return undefined;
+}
+
 function isAutoCompactEligibleMessage(message: string): boolean {
   const trimmed = message.trim();
   if (!trimmed) {
@@ -3657,15 +3682,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         : (process.resolvedModel ?? process.model);
     const serviceTier = normalizeOptionalServiceTier(body.serviceTier);
 
-    // Per-model preemptive-compaction threshold (task 029). Resolve the live
-    // model's percent here (the route holds the settings); the Supervisor
-    // stays settings-agnostic. `model` is always a concrete id, never the
-    // "default" sentinel, so it matches the slider/migration map key.
-    const compactAtContextPercent =
-      model == null
-        ? undefined
-        : deps.serverSettingsService?.getSetting("clientDefaults")
-            ?.compactAtContextPercent?.[model];
+    // Per-model preemptive-compaction threshold (task 029). The route holds
+    // the settings; the Supervisor stays settings-agnostic. The slider/migration
+    // key by the provider alias the user picked ("opus"), but a live process
+    // resolves to a full id ("claude-opus-4-8"), so resolveCompactPercent tries
+    // every identifier and falls back to model family.
+    const compactAtContextPercent = resolveCompactPercent(
+      deps.serverSettingsService?.getSetting("clientDefaults")
+        ?.compactAtContextPercent,
+      [body.model, model, process.model, process.resolvedModel],
+    );
 
     // Use queueMessageToSession which handles thinking mode changes
     // If thinking mode changed, it will restart the process automatically

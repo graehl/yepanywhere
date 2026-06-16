@@ -803,30 +803,21 @@ export function resolveCompactPercent(
 }
 
 /**
- * Effective context window for the compaction threshold (task 029). Opus is
- * always-1M, but its resolved id ("claude-opus-4-8") falls through
- * `getModelContextWindow` to the base 200K window, and `process.contextWindow`
- * is often undefined — so opus is special-cased to the 1M window. Everything
- * else (bare sonnet = 200K, explicit sonnet[1m] = 1M, etc.) uses the resolver.
+ * Effective context window for the compaction threshold (task 029): the first
+ * candidate identifier with a known window. Provider-specific window quirks
+ * (Claude opus is always-1M even when its id resolves to "claude-opus-4-8")
+ * now come from `contextWindow` itself — ModelInfoService delegates to the
+ * provider's `contextWindowFor` — so this special-cases no model. See
+ * topics/provider-abstraction.md.
  */
 export function resolveCompactWindow(
   provider: ProviderName | undefined,
   candidates: (string | undefined)[],
-  fallback: (model: string | undefined, provider?: ProviderName) => number,
+  contextWindow: (model: string | undefined, provider?: ProviderName) => number,
 ): number | undefined {
-  if (provider === "claude" || provider === "claude-ollama") {
-    for (const m of candidates) {
-      // Opus is always-1M, but its resolved id ("claude-opus-4-8") otherwise
-      // reads as the base 200K window. Sonnet is NOT always-1M (bare sonnet is
-      // 200K; an explicit "sonnet[1m]" is resolved by the fallback below), so
-      // only opus is special-cased here.
-      const family = m?.match(/(?:^|[-/])(opus)(?:[-/[]|$)/)?.[1];
-      if (family) return getModelContextWindow("opus[1m]", "claude");
-    }
-  }
   for (const m of candidates) {
     if (m && m !== "default") {
-      const w = fallback(m, provider);
+      const w = contextWindow(m, provider);
       if (w > 0) return w;
     }
   }

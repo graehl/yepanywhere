@@ -1,5 +1,7 @@
+import { getModelContextWindow } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
+  claudeProvider,
   formatClaudeLoginCommand,
   mergeClaudeModels,
   probeClaudeControlLiveness,
@@ -8,12 +10,31 @@ import {
 } from "../../../src/sdk/providers/claude.js";
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
 
+describe("ClaudeProvider.contextWindowFor", () => {
+  const ONE_M = getModelContextWindow("opus[1m]", "claude");
+
+  it("returns 1M for opus (alias, resolved id, and [1m])", () => {
+    expect(claudeProvider.contextWindowFor("opus")).toBe(ONE_M);
+    expect(claudeProvider.contextWindowFor("claude-opus-4-8")).toBe(ONE_M);
+    expect(claudeProvider.contextWindowFor("opus[1m]")).toBe(ONE_M);
+  });
+
+  it("defers (undefined) for sonnet and other models — sonnet 1M needs credits", () => {
+    expect(claudeProvider.contextWindowFor("sonnet")).toBeUndefined();
+    expect(
+      claudeProvider.contextWindowFor("claude-sonnet-4-6"),
+    ).toBeUndefined();
+    expect(claudeProvider.contextWindowFor("opusplan")).toBeUndefined();
+    expect(claudeProvider.contextWindowFor("haiku")).toBeUndefined();
+    expect(claudeProvider.contextWindowFor(undefined)).toBeUndefined();
+  });
+});
+
 function control(
   mcpServerStatus: () => Promise<unknown>,
 ): Pick<Query, "mcpServerStatus"> {
   return {
-    mcpServerStatus:
-      mcpServerStatus as unknown as Query["mcpServerStatus"],
+    mcpServerStatus: mcpServerStatus as unknown as Query["mcpServerStatus"],
   };
 }
 
@@ -115,10 +136,10 @@ describe("Claude provider liveness probe", () => {
     const mcpServerStatus = vi.fn(async () => []);
     const checkedAt = new Date("2026-04-25T00:00:20.000Z");
 
-    const result = await probeClaudeControlLiveness(
-      control(mcpServerStatus),
-      { checkedAt, isProcessAlive: () => false },
-    );
+    const result = await probeClaudeControlLiveness(control(mcpServerStatus), {
+      checkedAt,
+      isProcessAlive: () => false,
+    });
 
     expect(result).toEqual({
       status: "unavailable",

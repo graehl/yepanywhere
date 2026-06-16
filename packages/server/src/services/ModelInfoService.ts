@@ -25,6 +25,11 @@ export class ModelInfoService {
    */
   getContextWindow(model: string | undefined, provider?: ProviderName): number {
     if (model && provider) {
+      // Provider-owned window quirks first (e.g. Claude opus is always-1M even
+      // when its id resolves to "claude-opus-4-8", which the alias-keyed cache
+      // below would miss). See topics/provider-abstraction.md.
+      const fromProvider = getProvider(provider)?.contextWindowFor?.(model);
+      if (fromProvider !== undefined) return fromProvider;
       const cached = this.contextWindows.get(`${provider}:${model}`);
       if (cached !== undefined) return cached;
     }

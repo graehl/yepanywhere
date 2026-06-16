@@ -248,6 +248,15 @@ export interface AgentProvider {
   getAvailableModels(): Promise<ModelInfo[]>;
 
   /**
+   * Effective context window (tokens) this provider runs `model` at, or
+   * `undefined` to defer to the generic `getModelContextWindow` heuristic.
+   * Lets a provider own model-specific window quirks (e.g. Claude opus is
+   * always-1M even when its id resolves to "claude-opus-4-8") instead of
+   * leaking them into generic callers. See topics/provider-abstraction.md.
+   */
+  contextWindowFor?(model: string | undefined): number | undefined;
+
+  /**
    * Synthesize a short recap of recent agent activity from already-emitted
    * assistant text. The provider runs an ephemeral, non-persisted query —
    * the output must not appear in the underlying session transcript.

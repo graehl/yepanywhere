@@ -665,6 +665,37 @@ export const api = {
       }),
     }),
 
+  /**
+   * Bring a reaped session's process back live WITHOUT sending a turn, so the
+   * client can read live process state (model options) before messaging.
+   * With no options the server resumes using the session's persisted
+   * provider/model. Idempotent if the session is already owned.
+   */
+  reactivateSession: (
+    projectId: string,
+    sessionId: string,
+    options?: {
+      mode?: PermissionMode;
+      model?: string;
+      provider?: ProviderName;
+      executor?: string;
+    },
+  ) =>
+    fetchJSON<{
+      processId: string;
+      permissionMode: PermissionMode;
+      modeVersion: number;
+      serverTimestamp: number;
+    }>(`/projects/${projectId}/sessions/${sessionId}/reactivate`, {
+      method: "POST",
+      body: JSON.stringify({
+        mode: options?.mode,
+        model: options?.model,
+        provider: options?.provider,
+        executor: options?.executor,
+      }),
+    }),
+
   restartSession: (
     projectId: string,
     sessionId: string,

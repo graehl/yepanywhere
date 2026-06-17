@@ -3151,6 +3151,110 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     });
   });
 
+  // POST /api/projects/:projectId/sessions/:sessionId/reactivate
+  // Spawn a live harness process bound to the session WITHOUT delivering a turn,
+  // so the client can read live process state (model options) before messaging.
+  // Idempotent: returns the existing process if the session is already owned.
+  routes.post(
+    "/projects/:projectId/sessions/:sessionId/reactivate",
+    async (c) => {
+      const projectId = c.req.param("projectId");
+      const sessionId = c.req.param("sessionId");
+
+      if (!isUrlProjectId(projectId)) {
+        return c.json({ error: "Invalid project ID format" }, 400);
+      }
+
+      const project = await deps.scanner.getOrCreateProject(projectId);
+      if (!project) {
+        return c.json(
+          { error: "Project not found or path does not exist" },
+          404,
+        );
+      }
+
+      // Already owned by a live process - return it (idempotent).
+      const existing = deps.supervisor.getProcessForSession(sessionId);
+      if (existing) {
+        return c.json({
+          processId: existing.id,
+          permissionMode: existing.permissionMode,
+          modeVersion: existing.modeVersion,
+          serverTimestamp: Date.now(),
+        });
+      }
+
+      // Body is optional - allows overriding mode/model/executor.
+      let body: StartSessionBody = {} as StartSessionBody;
+      try {
+        body = await c.req.json<StartSessionBody>();
+      } catch {
+        // No body - resume with the session's saved settings.
+      }
+
+      const parsedBodyExecutor = parseOptionalExecutor(body.executor);
+      if (parsedBodyExecutor.error) {
+        return c.json({ error: parsedBodyExecutor.error }, 400);
+      }
+
+      // Resolve provider/model/executor from the YA launch record (persisted on
+      // launch) so reactivation resumes with the correct backend and model.
+      const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
+      const providerName =
+        (metadata?.provider as ProviderName | undefined) ??
+        body.provider ??
+        project.provider;
+      const executor = parsedBodyExecutor.executor ?? metadata?.executor;
+      // Prefer an explicit override, else the YA id the session was launched
+      // with; "default" means let the backend pick (pass undefined).
+      const rawModel =
+        body.model && body.model !== "default"
+          ? body.model
+          : metadata?.requestedModel;
+      const model = rawModel && rawModel !== "default" ? rawModel : undefined;
+      const { thinking, effort } = body.thinking
+        ? thinkingOptionToConfig(body.thinking, body.showThinking)
+        : { thinking: undefined, effort: undefined };
+
+      let process: Process;
+      try {
+        process = await deps.supervisor.reactivateSession(
+          project.path,
+          sessionId,
+          body.mode,
+          {
+            model,
+            thinking,
+            effort,
+            providerName,
+            executor,
+            globalInstructions: getGlobalInstructions(),
+          },
+        );
+      } catch (error) {
+        return c.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to reactivate session",
+          },
+          503,
+        );
+      }
+
+      // Keep the launch record current (provider/executor) for this session.
+      await persistLaunchMetadata(sessionId, providerName, executor);
+
+      return c.json({
+        processId: process.id,
+        permissionMode: process.permissionMode,
+        modeVersion: process.modeVersion,
+        serverTimestamp: Date.now(),
+      });
+    },
+  );
+
   // POST /api/projects/:projectId/sessions/:sessionId/restart
   // Start a fresh session from a bounded handoff, then terminate the old YA-owned process.
   routes.post("/projects/:projectId/sessions/:sessionId/restart", async (c) => {

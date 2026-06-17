@@ -3501,6 +3501,13 @@ function SessionPageContent({
               />
             ) : null
           }
+          onActivate={async () => {
+            const result = await api.reactivateSession(
+              projectId,
+              actualSessionId,
+            );
+            setStatus({ owner: "self", processId: result.processId });
+          }}
           onClose={() => setShowModelSwitchModal(false)}
         />
       )}

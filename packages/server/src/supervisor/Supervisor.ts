@@ -733,6 +733,66 @@ export class Supervisor {
   }
 
   /**
+   * Reactivate an existing session: spawn a live harness process bound to the
+   * session id WITHOUT delivering a user turn. The process resumes the session
+   * and idles on the queue (the same state it occupies after a completed turn),
+   * so the client can read live process state (model options, config) before
+   * any message is sent. Idempotent: returns the existing live process if the
+   * session is already owned.
+   *
+   * Provider-agnostic: rides the existing message-less resume path
+   * (`createProviderSession`/`createRealSession` with `resumeSessionId`), so
+   * Claude and Codex reactivate with no synthetic turn.
+   */
+  async reactivateSession(
+    projectPath: string,
+    resumeSessionId: string,
+    permissionMode?: PermissionMode,
+    modelSettings?: ModelSettings,
+  ): Promise<Process> {
+    const existing = this.getProcessForSession(resumeSessionId);
+    if (existing) {
+      return existing;
+    }
+
+    if (this.isAtCapacity()) {
+      const preemptable = this.findPreemptableWorker();
+      if (preemptable) {
+        await this.preemptWorker(preemptable);
+      } else {
+        throw new Error(
+          "Cannot reactivate: server is at worker capacity and no idle process can be preempted",
+        );
+      }
+    }
+
+    const projectId = encodeProjectId(projectPath);
+    const provider = this.resolveProvider(modelSettings);
+    if (provider) {
+      return this.createProviderSession(
+        projectPath,
+        projectId,
+        permissionMode,
+        modelSettings,
+        provider,
+        resumeSessionId,
+      );
+    }
+    if (this.realSdk) {
+      return this.createRealSession(
+        projectPath,
+        projectId,
+        permissionMode,
+        modelSettings,
+        resumeSessionId,
+      );
+    }
+    throw new Error(
+      "reactivateSession requires provider or real SDK - legacy mock SDK not supported",
+    );
+  }
+
+  /**
    * Create a session using the real SDK without an initial message.
    * The session is created and waits for a message to be queued.
    */

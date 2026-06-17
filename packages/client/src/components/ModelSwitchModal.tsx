@@ -40,6 +40,13 @@ interface ModelSwitchModalProps {
   infoPane?: ReactNode;
   /** Which tab is focused on open (default "model"). */
   initialTab?: "model" | "info";
+  /**
+   * Spawn a live process for a reaped session without sending a turn
+   * (message-less reactivate). When provided, the Model tab's "No active
+   * process" note becomes an Activate button; on success the parent flips
+   * ownership so `processId` arrives and the full options load.
+   */
+  onActivate?: () => Promise<void>;
   onClose: () => void;
 }
 
@@ -79,6 +86,7 @@ export function ModelSwitchModal({
   onModelChanged,
   infoPane,
   initialTab,
+  onActivate,
   onClose,
 }: ModelSwitchModalProps) {
   const { t } = useI18n();
@@ -105,12 +113,17 @@ export function ModelSwitchModal({
   const [activeTab, setActiveTab] = useState<"model" | "info">(
     initialTab ?? "model",
   );
+  const [activating, setActivating] = useState(false);
+  const [activateError, setActivateError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!processId) {
       setLoading(false);
       return;
     }
+    // processId may have just appeared (e.g. after Activate) - show the spinner
+    // while models load rather than flashing the empty state.
+    setLoading(true);
     let cancelled = false;
 
     Promise.all([
@@ -238,6 +251,23 @@ export function ModelSwitchModal({
     onClose();
   };
 
+  const handleActivate = async () => {
+    if (!onActivate || activating) return;
+    setActivating(true);
+    setActivateError(null);
+    try {
+      await onActivate();
+      // On success the parent flips ownership; `processId` arrives as a prop,
+      // the model-load effect fires, and the full options replace this note.
+    } catch (err) {
+      setActivateError(
+        err instanceof Error ? err.message : t("modelSwitchActivateFailed"),
+      );
+    } finally {
+      setActivating(false);
+    }
+  };
+
   const currentIndicatorTone = getIndicatorToneFromProcess(
     { type: currentThinkingMode === "off" ? "disabled" : "adaptive" },
     currentThinkingMode === "on" ? currentEffortLevel : undefined,
@@ -363,8 +393,25 @@ export function ModelSwitchModal({
               )}
             </div>
             {!processId && (
-              <div className="model-switch-loading">
-                {t("processInfoNoActiveProcess")}
+              <div className="model-switch-activate">
+                <span className="model-switch-activate-note">
+                  {t("processInfoNoActiveProcess")}
+                </span>
+                {onActivate && (
+                  <button
+                    type="button"
+                    className="settings-button model-switch-inline-save"
+                    onClick={handleActivate}
+                    disabled={activating}
+                  >
+                    {activating
+                      ? t("modelSwitchActivating")
+                      : t("modelSwitchActivate")}
+                  </button>
+                )}
+                {activateError && (
+                  <div className="model-switch-error">{activateError}</div>
+                )}
               </div>
             )}
             {error && <div className="model-switch-error">{error}</div>}

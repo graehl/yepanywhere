@@ -369,6 +369,75 @@ describe("Supervisor", () => {
     });
   });
 
+  describe("reactivateSession", () => {
+    it("spawns a live owned process for an existing session with no user turn", async () => {
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          async function* iterator() {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id: options.resumeSessionId ?? "new-session",
+            };
+            for await (const sdkMessage of queue) {
+              void sdkMessage; // idle until a message is pushed
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => queue.push({ text: "__abort__" }),
+            supportedCommands: async () => [],
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "claude",
+        displayName: "Claude",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        supportsSteering: false,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+      };
+      const supervisor = new Supervisor({ provider, idleTimeoutMs: 60000 });
+
+      const process = await supervisor.reactivateSession(
+        "/tmp/test",
+        "claude-old",
+        undefined,
+        { providerName: "claude" },
+      );
+
+      // Resumed the existing session with no synthetic user turn.
+      expect(startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ resumeSessionId: "claude-old" }),
+      );
+      expect(startSession.mock.calls[0]?.[0].initialMessage).toBeUndefined();
+      // Now owned by this live process.
+      expect(supervisor.getProcessForSession("claude-old")).toBe(process);
+
+      // Idempotent: a second call returns the existing process, no re-spawn.
+      const again = await supervisor.reactivateSession(
+        "/tmp/test",
+        "claude-old",
+        undefined,
+        { providerName: "claude" },
+      );
+      expect(again).toBe(process);
+      expect(startSession).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("getProcess", () => {
     it("returns process by id", async () => {
       mockSdk.addScenario(createMockScenario("sess-123", "Hello!"));

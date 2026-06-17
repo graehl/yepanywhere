@@ -2286,6 +2286,19 @@ details[open] .collapsible__icon {
   overflow-y: auto;
 }
 
+.model-switch-activate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.model-switch-activate-note {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
 .model-switch-loading,
 .model-switch-error {
   font-size: var(--font-size-sm);

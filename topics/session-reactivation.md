@@ -7,8 +7,10 @@
 
 Topic: session-reactivation
 
-Status: **planned, not implemented** (2026-06-16). Blocked on coordination, not
-design — see *Coordination* below.
+Status: **implemented** (2026-06-17, after the kzahel merge). The message-less
+spawn primitive already existed in the supervisor; this work exposed it as a
+public `Supervisor.reactivateSession`, a `POST …/reactivate` route, and a
+client Activate button. See *As built* below.
 
 Naming: the user-facing button label is **"Activate"** (from the client's point
 of view a reaped session simply isn't active). The server primitive / this
@@ -33,18 +35,44 @@ We want a button that brings the process live with no turn, then reveals the
 full options once the process exists. The UI it plugs into is the unified model
 panel in `ModelSwitchModal` (Model/Info tabs).
 
-## The gap (current state)
+## What already existed (the plan overstated the server work)
 
-- **Resume mandates a message.** `POST …/resume` rejects an empty body with
-  `"Message is required"` (`routes/sessions.ts:2890`), and every `Supervisor`
-  start path takes a `UserMessage` (`Supervisor.ts:581,659,1185,…`). There is no
-  message-less spawn.
-- **But idle live processes already exist.** YA is server-owned: a process stays
-  alive and idle *between* turns. So the only missing capability is the
-  **initial** spawn without a turn — the process would then sit in the same idle
-  state it occupies after any completed turn.
-- **No provider-level model list**, so a live process is genuinely required to
-  populate the picker; this can't be sidestepped purely client-side.
+The message-less spawn primitive was **already present**, just not exposed for
+resume:
+
+- `Supervisor.createSession` spawns a process that idles on the queue with **no
+  initial message** (the two-phase "create then send" flow), and the private
+  `createProviderSession`/`createRealSession` it calls already accept a
+  `resumeSessionId` and start with no message
+  (`Supervisor.ts:1313-1337, 727-748`), registering it as owned
+  (`registerProcess(process, !resumeSessionId)`). So it is **provider-agnostic** —
+  Claude and Codex reactivate with no synthetic turn; no empty-turn fallback was
+  needed.
+- What was missing was only a **public** entry point combining the two (resume
+  an existing session id, no message) and a route. `POST …/resume` mandates a
+  message (`routes/sessions.ts:2890`), but that requirement lives in the route,
+  not the supervisor.
+- Still true: **no provider-level model list** — only
+  `getProcessModels(processId)` — so a live process is genuinely required to show
+  options; reactivate is the right primitive, not a client-only shortcut.
+
+## As built
+
+- **`Supervisor.reactivateSession(projectPath, resumeSessionId, mode?, settings?)`**
+  — idempotent (returns the existing live process if already owned); preempts an
+  idle worker at capacity, else throws; otherwise calls
+  `createProviderSession`/`createRealSession` with the `resumeSessionId` and no
+  message.
+- **`POST /api/projects/:projectId/sessions/:sessionId/reactivate`** — resolves
+  provider/model/executor from the persisted YA launch record
+  (`SessionMetadata.requestedModel`/`provider`, populated by `persistLaunchMetadata`),
+  returns `{ processId, permissionMode, modeVersion }`.
+- **Client:** `api.reactivateSession`; `ModelSwitchModal`'s "No active process"
+  note becomes an Activate button (`onActivate`); `SessionPage` calls reactivate
+  and flips `status` to `{ owner: "self", processId }`, after which the existing
+  `processId`-keyed effect loads models and the full options replace the note.
+- Coverage: `supervisor.test.ts` asserts message-less resume + ownership +
+  idempotency.
 
 ## The plan
 
@@ -106,16 +134,12 @@ billed provider call, the button must surface it per the economics rule.
   reactivation is for users who want the process live *now*. Keep both; they
   serve different intents.
 
-## Coordination
+## Coordination (resolved)
 
-The server half lands in `supervisor/Process.ts` + `supervisor/types.ts` (both
-in task029's **dirty** tree) and a route in task029's scope. Sequencing: do the
-server primitive **after** task029's supervisor restructure lands (or have
-task029 add it, since they're already in that lifecycle code), to avoid editing
-`Process.ts` underneath them. The client half (`ModelSwitchModal`,
-`SessionPage`) has no overlap and can be built against the agreed endpoint
-contract once we commit to building. Decision per 2026-06-16: **wait** until the
-need is confirmed.
+Built after task029 landed and the kzahel merge settled, so the supervisor was
+stable and uncontended. The implementation did not need `Process.ts` changes —
+it reused the existing `createProviderSession` resume path — so the earlier
+concern about editing under task029 did not materialize.
 
 ## See also
 

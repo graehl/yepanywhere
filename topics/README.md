@@ -35,3 +35,4 @@
 - UI testing and screenshot regression checks
 - Provider/model compact glyph vocabulary (top-right status)
 - Claude API failures and auto-retry (transient 5xx/overload evidence)
+- Media rendering and routing (image/video/file surfaces, the relay fetch rule, serving doors)

@@ -239,6 +239,20 @@ const DEFAULT_FILE_VIEWER_SOURCE: FileViewerSource = {
     api.getFile(projectId, filePath, highlight, lineNumber, lineEnd, viewMode),
   getRawFileUrl: (projectId, filePath, download) =>
     api.getFileRawUrl(projectId, filePath, download),
+  // Fetch raw bytes through the active connection so images and downloads work
+  // in remote (relay) mode. A direct <img src="/api/..."> hits the static relay
+  // origin and 404s; fetchMediaBlob routes through connection.fetchBlob when
+  // remote and a credentialed fetch when direct.
+  fetchRawFileBlob: (fileData, _filePath, download) => {
+    const { rawUrl } = fileData;
+    if (!rawUrl) {
+      throw new Error("Raw file URL unavailable");
+    }
+    const apiPath = download
+      ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}download=true`
+      : rawUrl;
+    return fetchMediaBlob(apiPath);
+  },
   createMediaSource: (fileData) =>
     fileData
       ? {

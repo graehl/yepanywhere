@@ -17,7 +17,7 @@ function createMockIterator(messages: SDKMessage[]): AsyncIterator<SDKMessage> {
       if (index >= messages.length) {
         return { done: true as const, value: undefined };
       }
-      return { done: false as const, value: messages[index++] };
+      return { done: false as const, value: messages[index++]! };
     },
   };
 }
@@ -141,8 +141,9 @@ describe("Process", () => {
       const iterator = createMockIterator(messages);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -168,8 +169,9 @@ describe("Process", () => {
       ]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -254,8 +256,9 @@ describe("Process", () => {
       const iterator = createMockIterator(messages);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -274,6 +277,7 @@ describe("Process", () => {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
         sessionId: "temp-session",
+        provider: "claude",
         idleTimeoutMs: 100,
         publishAgentctlSessionIdFn,
       });
@@ -292,8 +296,9 @@ describe("Process", () => {
       const iterator = createMockIterator(messages);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -319,7 +324,7 @@ describe("Process", () => {
       const controller = createControllableIterator();
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         provider: "claude",
         idleTimeoutMs: 10_000,
@@ -345,7 +350,7 @@ describe("Process", () => {
       const controller = createControllableIterator();
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         provider: "claude",
         idleTimeoutMs: 10_000,
@@ -395,7 +400,7 @@ describe("Process", () => {
         const controller = createControllableIterator();
         const process = new Process(controller.iterator, {
           projectPath: "/test",
-          projectId: "proj-1",
+          projectId: "proj-1" as UrlProjectId,
           sessionId: "sess-1",
           provider: "claude",
           idleTimeoutMs: 100,
@@ -449,7 +454,7 @@ describe("Process", () => {
         const controller = createControllableIterator();
         const process = new Process(controller.iterator, {
           projectPath: "/test",
-          projectId: "proj-1",
+          projectId: "proj-1" as UrlProjectId,
           sessionId: "sess-1",
           provider: "claude",
           idleTimeoutMs: 100,
@@ -507,7 +512,7 @@ describe("Process", () => {
       const controller = createControllableIterator();
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         provider: "claude",
         idleTimeoutMs: 10_000,
@@ -540,7 +545,7 @@ describe("Process", () => {
       const controller = createControllableIterator();
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         provider: "claude",
         idleTimeoutMs: 10_000,
@@ -579,7 +584,7 @@ describe("Process", () => {
       const controller = createControllableIterator();
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         provider: "claude",
         idleTimeoutMs: 10_000,
@@ -623,7 +628,7 @@ describe("Process", () => {
       const controller = createControllableIterator();
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         provider: "claude",
         idleTimeoutMs: 10_000,
@@ -659,7 +664,7 @@ describe("Process", () => {
       const controller = createControllableIterator();
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         provider: "claude",
         idleTimeoutMs: 10_000,
@@ -705,8 +710,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -726,8 +732,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -738,7 +745,7 @@ describe("Process", () => {
     });
 
     it("prefers steerFn for in-turn messages when available", async () => {
-      let resolveIterator: () => void;
+      let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {
         next: () =>
           new Promise((resolve) => {
@@ -750,8 +757,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         steerFn,
@@ -770,7 +778,7 @@ describe("Process", () => {
     });
 
     it("marks Claude steer-now messages with now priority", async () => {
-      let resolveIterator: () => void;
+      let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {
         next: () =>
           new Promise((resolve) => {
@@ -782,7 +790,7 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         provider: "claude",
         idleTimeoutMs: 100,
@@ -807,7 +815,7 @@ describe("Process", () => {
     });
 
     it("falls back to queue when steerFn returns false", async () => {
-      let resolveIterator: () => void;
+      let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {
         next: () =>
           new Promise((resolve) => {
@@ -819,8 +827,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         steerFn,
@@ -842,7 +851,7 @@ describe("Process", () => {
     });
 
     it("expands cached slash-command emulation before queueing", async () => {
-      let resolveIterator: () => void;
+      let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {
         next: () =>
           new Promise((resolve) => {
@@ -852,8 +861,9 @@ describe("Process", () => {
       const queue = new MessageQueue();
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         supportedCommandsFn: async () => [
@@ -884,7 +894,7 @@ describe("Process", () => {
     });
 
     it("expands hyphenated slash-command emulation before queueing", async () => {
-      let resolveIterator: () => void;
+      let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {
         next: () =>
           new Promise((resolve) => {
@@ -894,8 +904,9 @@ describe("Process", () => {
       const queue = new MessageQueue();
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         supportedCommandsFn: async () => [
@@ -926,7 +937,7 @@ describe("Process", () => {
     });
 
     it("rewrites unknown Codex slash commands to skill mentions", async () => {
-      let resolveIterator: () => void;
+      let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {
         next: () =>
           new Promise((resolve) => {
@@ -936,7 +947,7 @@ describe("Process", () => {
       const queue = new MessageQueue();
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         idleTimeoutMs: 100,
         queue,
@@ -968,7 +979,7 @@ describe("Process", () => {
     });
 
     it("keeps native Codex slash commands as slash commands", async () => {
-      let resolveIterator: () => void;
+      let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {
         next: () =>
           new Promise((resolve) => {
@@ -978,7 +989,7 @@ describe("Process", () => {
       const queue = new MessageQueue();
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         idleTimeoutMs: 100,
         queue,
@@ -1010,7 +1021,7 @@ describe("Process", () => {
     });
 
     it("keeps native Codex compact as a slash command before commands are cached", async () => {
-      let resolveIterator: () => void;
+      let resolveIterator!: () => void;
       const iterator: AsyncIterator<SDKMessage> = {
         next: () =>
           new Promise((resolve) => {
@@ -1020,7 +1031,7 @@ describe("Process", () => {
       const queue = new MessageQueue();
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         idleTimeoutMs: 100,
         queue,
@@ -1047,8 +1058,9 @@ describe("Process", () => {
       const generateRecap = vi.fn(async () => "summary");
       const process = new Process(createMockIterator([]), {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -1068,8 +1080,9 @@ describe("Process", () => {
       const generateRecap = vi.fn(async () => "summary");
       const process = new Process(createMockIterator([]), {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         recapMode: "native",
       });
@@ -1095,8 +1108,9 @@ describe("Process", () => {
       );
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         recapsEnabled: true,
       });
@@ -1147,8 +1161,9 @@ describe("Process", () => {
       );
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         recapsEnabled: true,
       });
@@ -1204,8 +1219,9 @@ describe("Process", () => {
       );
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         recapMode: "side-session",
         helperSideModel: "same-as-main",
@@ -1238,8 +1254,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -1250,6 +1267,7 @@ describe("Process", () => {
           {
             id: "file-1",
             originalName: "screenshot.png",
+            name: "screenshot.png",
             size: 1024,
             mimeType: "image/png",
             path: "/uploads/screenshot.png",
@@ -1267,6 +1285,7 @@ describe("Process", () => {
             {
               id: "file-1",
               originalName: "screenshot.png",
+              name: "screenshot.png",
               size: 1024,
               mimeType: "image/png",
               path: "/uploads/screenshot.png",
@@ -1283,8 +1302,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
       const metadata = {
@@ -1322,8 +1342,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
       const deferredEvents: ProcessEvent[] = [];
@@ -1357,8 +1378,9 @@ describe("Process", () => {
       const steerFn = vi.fn(async () => true);
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         steerFn,
@@ -1406,6 +1428,7 @@ describe("Process", () => {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         // Stitched flush is the opt-in path (YA_DEFERRED_JOIN_WINDOW_S).
@@ -1464,6 +1487,7 @@ describe("Process", () => {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
       });
@@ -1545,6 +1569,7 @@ describe("Process", () => {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         steerFn,
@@ -1597,6 +1622,7 @@ describe("Process", () => {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
       });
@@ -1646,6 +1672,7 @@ describe("Process", () => {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
       });
@@ -1681,7 +1708,7 @@ describe("Process", () => {
       );
       const firstContents = events.flatMap((event) =>
         event.type === "message" && event.message.type === "user"
-          ? [event.message.message.content as string]
+          ? [event.message.message?.content as string]
           : [],
       );
       expect(firstContents).toEqual(["first queued"]);
@@ -1696,7 +1723,7 @@ describe("Process", () => {
       );
       const allContents = events.flatMap((event) =>
         event.type === "message" && event.message.type === "user"
-          ? [event.message.message.content as string]
+          ? [event.message.message?.content as string]
           : [],
       );
       expect(allContents).toEqual(["first queued", "second queued"]);
@@ -1712,6 +1739,7 @@ describe("Process", () => {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         deferredDelivery: { joinWindowSeconds: 3600, composeAnchors: false },
@@ -1747,7 +1775,7 @@ describe("Process", () => {
 
       const userContents = events.flatMap((event) =>
         event.type === "message" && event.message.type === "user"
-          ? [event.message.message.content as string]
+          ? [event.message.message?.content as string]
           : [],
       );
       expect(userContents).toHaveLength(1);
@@ -1769,6 +1797,7 @@ describe("Process", () => {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         deferredDelivery: { joinWindowSeconds: 60, composeAnchors: false },
@@ -1817,7 +1846,7 @@ describe("Process", () => {
       );
       const firstContents = events.flatMap((event) =>
         event.type === "message" && event.message.type === "user"
-          ? [event.message.message.content as string]
+          ? [event.message.message?.content as string]
           : [],
       );
       expect(firstContents).toEqual([
@@ -1834,7 +1863,7 @@ describe("Process", () => {
       );
       const allContents = events.flatMap((event) =>
         event.type === "message" && event.message.type === "user"
-          ? [event.message.message.content as string]
+          ? [event.message.message?.content as string]
           : [],
       );
       expect(allContents[allContents.length - 1]).toBe("third queued");
@@ -1850,6 +1879,7 @@ describe("Process", () => {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         deferredDelivery: { joinWindowSeconds: 3600, composeAnchors: true },
@@ -1891,7 +1921,7 @@ describe("Process", () => {
 
       const userContents = events.flatMap((event) =>
         event.type === "message" && event.message.type === "user"
-          ? [event.message.message.content as string]
+          ? [event.message.message?.content as string]
           : [],
       );
       // First chunk anchors against delivery time (~45s ago); second against
@@ -1917,8 +1947,9 @@ describe("Process", () => {
       const steerFn = vi.fn(async () => true);
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         steerFn,
@@ -1989,8 +2020,9 @@ describe("Process", () => {
       const queue = new MessageQueue();
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
       });
@@ -2019,8 +2051,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test/path",
-        projectId: "proj-123",
+        projectId: "proj-123" as UrlProjectId,
         sessionId: "sess-456",
+        provider: "claude",
         idleTimeoutMs: 100,
         promptSuggestionMode: "native",
       });
@@ -2041,8 +2074,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -2062,8 +2096,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -2087,8 +2122,9 @@ describe("Process", () => {
       const interruptFn = vi.fn(async () => false);
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         interruptFn,
       });
@@ -2107,8 +2143,9 @@ describe("Process", () => {
 
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         interruptFn,
@@ -2139,8 +2176,9 @@ describe("Process", () => {
 
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         interruptFn,
@@ -2171,8 +2209,9 @@ describe("Process", () => {
 
       const process = new Process(controller.iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
         interruptFn,
@@ -2208,8 +2247,9 @@ describe("Process", () => {
       const iterator = createMockIterator(messages);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -2229,8 +2269,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -2241,8 +2282,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissionMode: "acceptEdits",
       });
@@ -2254,8 +2296,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -2270,8 +2313,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -2282,8 +2326,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -2303,8 +2348,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -2335,8 +2381,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissionMode: "bypassPermissions",
       });
@@ -2355,8 +2402,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissionMode: "plan",
       });
@@ -2378,8 +2426,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissionMode: "plan",
       });
@@ -2410,7 +2459,7 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         idleTimeoutMs: 100,
         provider: "codex",
@@ -2446,10 +2495,10 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
-        idleTimeoutMs: 100,
         provider: "claude",
+        idleTimeoutMs: 100,
         queue: new MessageQueue(),
       });
 
@@ -2482,8 +2531,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissionMode: "plan",
       });
@@ -2504,7 +2554,7 @@ describe("Process", () => {
       const pendingRequest = process.getPendingInputRequest();
       expect(pendingRequest).not.toBeNull();
       expect(pendingRequest?.toolName).toBe("ExitPlanMode");
-      process.respondToInput(pendingRequest?.id, "approve");
+      process.respondToInput(pendingRequest?.id ?? "", "approve");
 
       const result = await approvalPromise;
       expect(result.behavior).toBe("allow");
@@ -2516,8 +2566,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissionMode: "plan",
       });
@@ -2540,7 +2591,9 @@ describe("Process", () => {
       expect(pendingRequest?.toolName).toBe("AskUserQuestion");
       expect(pendingRequest?.type).toBe("question");
       expect(pendingRequest?.prompt).toBe("test?");
-      process.respondToInput(pendingRequest?.id, "approve", { "test?": "Yes" });
+      process.respondToInput(pendingRequest?.id ?? "", "approve", {
+        "test?": "Yes",
+      });
 
       const result = await approvalPromise;
       expect(result.behavior).toBe("allow");
@@ -2555,8 +2608,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissions: { deny: ["AskUserQuestion(*)"] },
       });
@@ -2605,8 +2659,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissionMode: "acceptEdits",
       });
@@ -2634,8 +2689,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissionMode: "default",
       });
@@ -2666,8 +2722,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissionMode: "acceptEdits",
       });
@@ -2722,16 +2779,18 @@ describe("Process", () => {
         // Create fresh processes for each tool to avoid state pollution
         const defaultProcess = new Process(createMockIterator([]), {
           projectPath: "/test",
-          projectId: "proj-1",
+          projectId: "proj-1" as UrlProjectId,
           sessionId: "sess-1",
+          provider: "claude",
           idleTimeoutMs: 100,
           permissionMode: "default",
         });
 
         const acceptEditsProcess = new Process(createMockIterator([]), {
           projectPath: "/test",
-          projectId: "proj-1",
+          projectId: "proj-1" as UrlProjectId,
           sessionId: "sess-2",
+          provider: "claude",
           idleTimeoutMs: 100,
           permissionMode: "acceptEdits",
         });
@@ -2793,8 +2852,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissionMode: "default",
       });
@@ -2827,8 +2887,9 @@ describe("Process", () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         permissionMode: "default",
       });
@@ -2894,8 +2955,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue, // Real SDK provides queue
       });
@@ -2920,8 +2982,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         // No queue = mock SDK
       });
@@ -2945,8 +3008,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue, // Real SDK
       });
@@ -2974,8 +3038,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
       });
@@ -2987,6 +3052,7 @@ describe("Process", () => {
           {
             id: "file-1",
             originalName: "screenshot.png",
+            name: "screenshot.png",
             size: 1024,
             mimeType: "image/png",
             path: "/uploads/screenshot.png",
@@ -3016,8 +3082,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
         queue,
       });
@@ -3028,6 +3095,7 @@ describe("Process", () => {
           {
             id: "file-1",
             originalName: "screenshot.png",
+            name: "screenshot.png",
             size: 1024,
             mimeType: "image/png",
             path: "/uploads/screenshot.png",
@@ -3035,6 +3103,7 @@ describe("Process", () => {
           {
             id: "file-2",
             originalName: "document.pdf",
+            name: "document.pdf",
             size: 2048576, // ~2 MB
             mimeType: "application/pdf",
             path: "/uploads/document.pdf",
@@ -3067,8 +3136,9 @@ describe("Process", () => {
 
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -3086,8 +3156,9 @@ describe("Process", () => {
 
       const process = new Process(failingIterator(), {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -3112,8 +3183,9 @@ describe("Process", () => {
 
       const process = new Process(failingIterator(), {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -3129,8 +3201,15 @@ describe("Process", () => {
         expect(terminatedEvent).not.toBe(null);
       });
 
-      expect(terminatedEvent?.reason).toContain("terminated");
-      expect(terminatedEvent?.error).toBe(error);
+      // terminatedEvent is only assigned inside the subscribe callback, so
+      // control-flow analysis narrows it back to its `null` initializer here;
+      // read through the declared type to access the captured fields.
+      const captured = terminatedEvent as {
+        reason: string;
+        error?: Error;
+      } | null;
+      expect(captured?.reason).toContain("terminated");
+      expect(captured?.error).toBe(error);
     });
 
     it("getInfo returns terminated state", async () => {
@@ -3142,8 +3221,9 @@ describe("Process", () => {
 
       const process = new Process(failingIterator(), {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
+        provider: "claude",
         idleTimeoutMs: 100,
       });
 
@@ -3180,7 +3260,7 @@ describe("Process", () => {
       ]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         provider: "claude",
         idleTimeoutMs: 100,
@@ -3188,7 +3268,9 @@ describe("Process", () => {
       });
 
       const events: ProcessEvent[] = [];
-      process.subscribe((event) => events.push(event));
+      process.subscribe((event) => {
+        events.push(event);
+      });
 
       await vi.waitFor(() => {
         expect(process.isTerminated).toBe(true);
@@ -3233,7 +3315,7 @@ describe("Process", () => {
       ]);
       const process = new Process(iterator, {
         projectPath: "/test",
-        projectId: "proj-1",
+        projectId: "proj-1" as UrlProjectId,
         sessionId: "sess-1",
         provider: "codex",
         idleTimeoutMs: 100,

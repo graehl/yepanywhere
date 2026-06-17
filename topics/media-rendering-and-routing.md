@@ -118,14 +118,20 @@ Serving routes:
 
 | Route | Access model | Source file |
 |-------|--------------|-------------|
-| `/api/local-image` | Allow-list: configured safe dirs **plus** scanned project paths | `routes/local-image.ts` |
-| `/api/local-file` | Same allow-list (text/PDF/HTML/Markdown) | `routes/local-file.ts` |
-| `/api/projects/:id/files` + `/files/raw` | Any **absolute path the authenticated operator can read** (no allow-list) | `routes/files.ts` |
+| `/api/local-image` | File-access allow-set (see below) | `routes/local-image.ts` |
+| `/api/local-file` | Same allow-set (text/PDF/HTML/Markdown) | `routes/local-file.ts` |
+| `/api/projects/:id/files` + `/files/raw` | Relative paths project-scoped; **absolute/`~` paths gated by the same file-access allow-set** | `routes/files.ts` |
 | `/api/projects/:id/sessions/:sid/upload/:filename` | Files uploaded to that session | `routes/upload.ts` |
 | `/public-api/shares/:secret/files/raw` | Share-scoped, capability-gated by secret | `routes/public-shares.ts` |
 
-The allow-list and absolute-path policies are shared by `local-image`/
-`local-file` via `routes/local-resource-policy.ts` (drive-letter/symlink-safe).
+**The file-access allow-set** is one effective list enforced by **both** doors
+(media routes and the project-files route), shared via
+`routes/local-resource-policy.ts` (drive-letter/symlink-safe). It is the union
+of user-toggled sources — projects ∪ uploads ∪ temp ∪ home ∪ custom — held live
+in `middleware/file-access.ts` and editable in Settings → Local Access → File
+access. `ALLOWED_FILE_PATHS` (alias `ALLOWED_IMAGE_PATHS`) pins it from the
+environment. Secure by default: out-of-project absolute paths are denied unless
+their folder is in the set. See `docs/tactical/018-file-access-scoping.md`.
 
 Two client routing systems decide *which* surface a link opens:
 
@@ -141,10 +147,11 @@ Two client routing systems decide *which* surface a link opens:
   `FileViewer`, and everything else to the `LocalMediaModal` / `LocalFileModal`
   (the allow-listed `/api/local-image` / `/api/local-file` doors).
 
-This asymmetry is the root of the "safe-dir image opened through the project
-files route" observation: a `C:\tmp` image read by the agent is a tool-result
-link, so it takes the first system (project files route) rather than the
-allow-listed media door.
+The two routing systems still pick *different surfaces* for the same path, but
+that no longer changes the **permission** outcome: both surfaces now resolve
+against the same file-access allow-set. So a `C:\tmp` image that takes the
+project-files route enforces the same allow-set as the media door would — the
+historical "safe-dir image opened through the project files route" 404 is gone.
 
 ## Known sharp edges
 
@@ -154,11 +161,12 @@ allow-listed media door.
 - **In-project vs. out-of-project routing** — tool-result links always use the
   project files route; rendered-text links split by location. The two systems
   don't share the in/out-of-project decision.
-- **Allow-list is narrower than the operator path policy** — `/api/local-image`
-  rejects paths outside safe dirs + projects, while `/api/projects/:id/files`
-  accepts any operator-readable absolute path. Re-routing tool-result media onto
-  the allow-listed door would narrow access for arbitrary absolute paths; that's
-  a deliberate trade-off, not a free refactor.
+- **Both doors share one allow-set** — as of `docs/tactical/018`, the
+  project-files route enforces the same file-access allow-set as the media
+  doors for absolute/`~` paths (relative paths stay project-scoped). The set is
+  secure-by-default, so absolute paths outside projects/uploads/temp are denied
+  until the user adds the folder (Settings → File access) or sets
+  `ALLOWED_FILE_PATHS`.
 - **No single media component** — surfaces share the *fetch primitive*
   (`fetchMediaBlob` / `useFetchedImage`), not one `<RemoteImage>` element, so a
   fix has to be applied per surface or pushed into a shared source adapter.

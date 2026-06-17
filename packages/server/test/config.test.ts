@@ -60,12 +60,16 @@ describe("loadConfig codex paths", () => {
     expect(config.codexCliPath).toBeUndefined();
   });
 
-  it("includes Windows temp directories in default local-image paths", async () => {
+  it("uses the real Windows temp directory for default local-image paths", async () => {
     const { getDefaultAllowedImagePaths } = await import("../src/config.js");
 
+    // Windows has no `/tmp` and no implicit `C:\tmp`; only os.tmpdir().
     expect(getDefaultAllowedImagePaths("win32", "C:\\Users\\me\\Temp")).toEqual(
-      ["/tmp", "C:\\tmp", "C:\\Users\\me\\Temp"],
+      ["C:\\Users\\me\\Temp"],
     );
+    expect(getDefaultAllowedImagePaths("linux", "/var/tmp-ignored")).toEqual([
+      "/tmp",
+    ]);
   });
 
   it("always allows the managed uploads directory for local-image", async () => {

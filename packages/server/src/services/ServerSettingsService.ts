@@ -15,7 +15,10 @@ import type {
   PromptCacheKeepaliveSettings,
 } from "@yep-anywhere/shared";
 import { normalizeYaClientBaseUrlFromShareViewerUrl } from "@yep-anywhere/shared";
+import type { FileAccessSettings } from "../middleware/file-access.js";
 import { publishDeferredDeliverySettings } from "../supervisor/deferredDeliverySettings.js";
+
+export type { FileAccessSettings };
 
 const CURRENT_VERSION = 2;
 export const DEFAULT_SPEECH_AUDIO_RETENTION_MAX_AGE_DAYS = 56;
@@ -56,6 +59,13 @@ export interface ServerSettings {
   chromeOsHosts?: string[];
   /** Allowed hostnames for host/origin validation. "*" = allow all, comma-separated = specific hosts. */
   allowedHosts?: string;
+  /**
+   * Which local path prefixes the HTTP file doors (media + project-files routes)
+   * may read. Undefined = secure defaults (projects/uploads/temp on, home off,
+   * no custom). Ignored when ALLOWED_FILE_PATHS/ALLOWED_IMAGE_PATHS is set.
+   * See docs/tactical/018-file-access-scoping.md.
+   */
+  fileAccess?: FileAccessSettings;
   /** Free-form instructions appended to the system prompt for all sessions */
   globalInstructions?: string;
   /** Optional client-context hints composed additively with global instructions */

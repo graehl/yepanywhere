@@ -20,6 +20,11 @@ import type {
 import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
 import {
+  getAllowedFilePaths,
+  shouldIncludeProjects,
+  updateFileAccess,
+} from "./middleware/file-access.js";
+import {
   corsMiddleware,
   hostCheckMiddleware,
   requireCustomHeader,
@@ -879,8 +884,16 @@ export function createApp(options: AppOptions): AppResult {
     }),
   );
 
-  // Files routes (file browser)
-  app.route("/api/projects", createFilesRoutes({ scanner }));
+  // Files routes (file browser). Absolute/`~` paths go through the shared
+  // file-access allow-set (same as the media doors below).
+  app.route(
+    "/api/projects",
+    createFilesRoutes({
+      scanner,
+      allowedPaths: getAllowedFilePaths,
+      includeProjects: shouldIncludeProjects,
+    }),
+  );
 
   // Git status routes
   app.route("/api/projects", createGitStatusRoutes({ scanner }));
@@ -922,6 +935,7 @@ export function createApp(options: AppOptions): AppResult {
       createSettingsRoutes({
         serverSettingsService: options.serverSettingsService,
         onAllowedHostsChanged: updateAllowedHosts,
+        onFileAccessChanged: updateFileAccess,
         onRemoteSessionPersistenceChanged: options.remoteSessionService
           ? (enabled) =>
               options.remoteSessionService?.setDiskPersistenceEnabled(enabled)
@@ -1194,23 +1208,25 @@ export function createApp(options: AppOptions): AppResult {
     );
   }
 
-  // Local image serving (opt-in, restricted to allowed paths)
-  if (options.allowedImagePaths && options.allowedImagePaths.length > 0) {
-    app.route(
-      "/api/local-image",
-      createLocalImageRoutes({
-        allowedPaths: options.allowedImagePaths,
-        scanner,
-      }),
-    );
-    app.route(
-      "/api/local-file",
-      createLocalFileRoutes({
-        allowedPaths: options.allowedImagePaths,
-        scanner,
-      }),
-    );
-  }
+  // Local media/file serving — both doors enforce the live file-access
+  // allow-set (uploads ∪ temp ∪ home ∪ custom, plus projects). Always mounted;
+  // the policy denies anything outside the set.
+  app.route(
+    "/api/local-image",
+    createLocalImageRoutes({
+      allowedPaths: getAllowedFilePaths,
+      includeProjects: shouldIncludeProjects,
+      scanner,
+    }),
+  );
+  app.route(
+    "/api/local-file",
+    createLocalFileRoutes({
+      allowedPaths: getAllowedFilePaths,
+      includeProjects: shouldIncludeProjects,
+      scanner,
+    }),
+  );
 
   // Push notification routes
   if (options.pushService) {

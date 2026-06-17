@@ -14,8 +14,9 @@ import {
 } from "./local-resource-policy.js";
 
 interface LocalFileDeps {
-  allowedPaths: string[];
+  allowedPaths: string[] | (() => string[]);
   scanner?: Pick<ProjectScanner, "listProjects">;
+  includeProjects?: () => boolean;
 }
 
 interface LocalFileReference {

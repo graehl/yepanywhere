@@ -82,6 +82,10 @@ export default defineConfig({
   // Build configuration for static site
   build: {
     outDir: "dist-remote",
+    // Emit external .map files (+ sourceMappingURL comments) so production stack
+    // traces in the hosted /remote bundle are debuggable. Safe to expose: the
+    // client source is already public (open-source repo + npm package).
+    sourcemap: true,
     emptyOutDir: !isWatchMode, // Don't empty in watch mode to avoid race conditions
     rollupOptions: {
       input: {

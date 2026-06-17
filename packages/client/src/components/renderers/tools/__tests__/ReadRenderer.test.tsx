@@ -6,6 +6,7 @@ import { PublicShareProvider } from "../../../../contexts/PublicShareContext";
 import { SessionMetadataProvider } from "../../../../contexts/SessionMetadataContext";
 import { setInlineMediaExpandedPreference } from "../../../../hooks/useInlineMedia";
 import { readRenderer } from "../ReadRenderer";
+import type { ReadResult } from "../types";
 
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
@@ -354,6 +355,59 @@ describe("ReadRenderer", () => {
       expect(container.querySelector("img.read-image")).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: /expand image/i }));
       expect(container.querySelector("img.read-image")).not.toBeNull();
+    });
+  });
+
+  // Claude Code's read-dedup returns a non-error Read whose `file` has only
+  // `filePath` — content/numLines are omitted because the file is unchanged
+  // since the last Read. These results must not crash or print "undefined
+  // lines"; they render a distinct "unchanged" state instead.
+  describe("read-dedup (content-less file) results", () => {
+    // Intentionally malformed vs. the ReadResult type: at runtime the validated
+    // schema allows this (all TextFile fields are optional), which is the whole
+    // point — the renderer must tolerate it.
+    const dedupResult = {
+      type: "text",
+      file: { filePath: "CLAUDE.md" },
+    } as unknown as ReadResult;
+
+    it("renders the expanded result without crashing (markdown path)", () => {
+      expect(() =>
+        renderInSession(
+          <div>
+            {readRenderer.renderToolResult(dedupResult, false, renderContext, {
+              file_path: "CLAUDE.md",
+            })}
+          </div>,
+        ),
+      ).not.toThrow();
+
+      expect(document.body.textContent).not.toContain("undefined lines");
+      expect(document.body.textContent).toContain("unchanged");
+    });
+
+    it("renders the interactive summary as unchanged, not 'undefined lines'", () => {
+      renderInSession(
+        <div>
+          {readRenderer.renderInteractiveSummary?.(
+            { file_path: "CLAUDE.md" },
+            dedupResult,
+            false,
+            renderContext,
+          )}
+        </div>,
+      );
+
+      expect(document.body.textContent).not.toContain("undefined lines");
+      expect(document.body.textContent).toContain("unchanged");
+    });
+
+    it("summarizes the collapsed row as 'unchanged'", () => {
+      expect(
+        readRenderer.getResultSummary?.(dedupResult, false, {
+          file_path: "CLAUDE.md",
+        }),
+      ).toBe("unchanged");
     });
   });
 });

@@ -728,6 +728,29 @@ describe("MessageInput", () => {
     expect(textarea.value).toBe("typed while transcribing");
   });
 
+  it("shows no transcribing chip while streaming interim is present", async () => {
+    renderMessageInput();
+
+    // Streaming interim text is previewed inline, not via the batch chip, even
+    // if a processing tick overlaps it.
+    act(() => {
+      voicePropsState.current?.onProcessingChange?.(true);
+      voicePropsState.current?.onInterimTranscript?.("live words");
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".speech-interim-inline")).not.toBeNull();
+    });
+    expect(document.querySelector(".speech-transcribing-chip")).toBeNull();
+
+    // When interim clears but processing continues (batch wait), the chip appears.
+    act(() => {
+      voicePropsState.current?.onInterimTranscript?.("");
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".speech-transcribing-chip")).not.toBeNull();
+    });
+  });
+
   it("does not grace-delay the selection that started the mic transaction", () => {
     vi.useFakeTimers();
     const textarea = renderMessageInput() as HTMLTextAreaElement;

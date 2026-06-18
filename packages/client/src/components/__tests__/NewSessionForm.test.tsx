@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -33,6 +34,8 @@ const {
   mockSetSpeechSmartTurnSettings,
   mockSetGrokSpeechAudioSettings,
   mockVoiceToggle,
+  mockVoiceCancelProcessing,
+  voicePropsState,
   draftKeys,
   modelSettingsState,
   providersState,
@@ -52,6 +55,13 @@ const {
   mockSetSpeechSmartTurnSettings: vi.fn(),
   mockSetGrokSpeechAudioSettings: vi.fn(),
   mockVoiceToggle: vi.fn(),
+  mockVoiceCancelProcessing: vi.fn(),
+  voicePropsState: {
+    current: null as null | {
+      onProcessingChange?: (processing: boolean) => void;
+      onInterimTranscript?: (text: string) => void;
+    },
+  },
   draftKeys: [] as string[],
   modelSettingsState: {
     thinkingMode: "off" as "off" | "auto" | "on",
@@ -328,19 +338,23 @@ vi.mock("../../lib/newSessionPrefill", () => ({
 }));
 
 vi.mock("../VoiceInputButton", () => ({
-  VoiceInputButton: forwardRef((_, ref) => {
-    useImperativeHandle(
-      ref,
-      () => ({
-        stopAndFinalize: () => "",
-        toggle: mockVoiceToggle,
-        isListening: false,
-        isAvailable: true,
-      }),
-      [],
-    );
-    return <button type="button">voice</button>;
-  }),
+  VoiceInputButton: forwardRef(
+    (props: Record<string, unknown>, ref) => {
+      voicePropsState.current = props as typeof voicePropsState.current;
+      useImperativeHandle(
+        ref,
+        () => ({
+          stopAndFinalize: () => "",
+          toggle: mockVoiceToggle,
+          cancelProcessing: mockVoiceCancelProcessing,
+          isListening: false,
+          isAvailable: true,
+        }),
+        [],
+      );
+      return <button type="button">voice</button>;
+    },
+  ),
 }));
 
 const chooserProjects = [
@@ -413,6 +427,8 @@ describe("NewSessionForm", () => {
     mockSetSpeechSmartTurnSettings.mockReset();
     mockSetGrokSpeechAudioSettings.mockReset();
     mockVoiceToggle.mockReset();
+    mockVoiceCancelProcessing.mockReset();
+    voicePropsState.current = null;
     draftKeys.length = 0;
     remoteBasePathState.basePath = "";
     versionState.version = null;
@@ -887,6 +903,43 @@ describe("NewSessionForm", () => {
     });
 
     expect(mockVoiceToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the new-session composer editable with a cancellable transcribing chip", async () => {
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+    const textarea = screen.getByPlaceholderText(
+      "newSessionPlaceholder",
+    ) as HTMLTextAreaElement;
+
+    expect(document.querySelector(".speech-transcribing-chip")).toBeNull();
+
+    act(() => {
+      voicePropsState.current?.onProcessingChange?.(true);
+    });
+    const chip = await waitFor(() => {
+      const el = document.querySelector(".speech-transcribing-chip");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+
+    expect(textarea.disabled).toBe(false);
+    fireEvent.change(textarea, { target: { value: "typed while transcribing" } });
+    expect(textarea.value).toBe("typed while transcribing");
+
+    fireEvent.click(
+      chip.querySelector(".speech-transcribing-cancel") as HTMLButtonElement,
+    );
+    expect(mockVoiceCancelProcessing).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(document.querySelector(".speech-transcribing-chip")).toBeNull();
+    });
+    expect(textarea.value).toBe("typed while transcribing");
   });
 
   it("hides a stored YA-routed Grok batch method from the method list", () => {

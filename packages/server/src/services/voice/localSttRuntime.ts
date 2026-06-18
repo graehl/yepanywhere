@@ -33,11 +33,12 @@ export function formatBytes(bytes: number): string {
 }
 
 export function defaultHuggingFaceHubCache(): string {
+  // Mirror Hugging Face's own hub-cache resolution so this reported path
+  // matches where the spawned worker actually caches weights. HF consults
+  // HF_HUB_CACHE, then HF_HOME/hub, then ~/.cache/huggingface/hub — it does
+  // not use XDG_CACHE_HOME, so neither do we.
   if (process.env.HF_HUB_CACHE) return process.env.HF_HUB_CACHE;
   if (process.env.HF_HOME) return join(process.env.HF_HOME, "hub");
-  if (process.env.XDG_CACHE_HOME) {
-    return join(process.env.XDG_CACHE_HOME, "huggingface", "hub");
-  }
   return join(homedir(), ".cache", "huggingface", "hub");
 }
 

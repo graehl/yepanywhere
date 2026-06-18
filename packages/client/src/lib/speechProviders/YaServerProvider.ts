@@ -99,7 +99,7 @@ const STREAM_MIME_TYPE = `audio/pcm;rate=${STREAM_SAMPLE_RATE};encoding=s16le`;
 // pipeline is dead (e.g. a mobile AudioContext that refused to resume). Surface
 // a real error instead of ending silently with no transcript.
 const AUDIO_FLOW_TIMEOUT_MS = 3500;
-const SMART_TURN_COMMAND_PAUSE_SECONDS = 0.5;
+const SMART_TURN_COMMAND_PAUSE_SECONDS = 0.3;
 const STREAMING_AUDIO_SPAN_EPSILON_SECONDS = 0.02;
 interface SmartTurnDecision {
   command: SpeechTurnCommand;
@@ -236,7 +236,7 @@ function getPauseBeforeFinalWordSeconds(
   return lastStart - previousEnd;
 }
 
-function decideSmartTurn(
+export function decideSmartTurn(
   transcript: string,
   words: SpeechWordTimestamp[] | undefined,
 ): SmartTurnDecision {
@@ -247,16 +247,31 @@ function decideSmartTurn(
   const command = wordCommand ?? transcriptCommand;
   const pauseSeconds =
     wordCommand && words ? getPauseBeforeFinalWordSeconds(words) : null;
+  // `wait` holds the send eagerly: it skips the pause gate that distinguishes a
+  // spoken `send`/`cancel` command from dictation, because a missed `wait`
+  // prematurely submits the turn (the disruptive failure) while a missed
+  // `send`/`cancel` only fails to act. The cost is that a sentence legitimately
+  // ending in "wait" also holds — which is why `wait` stays in the draft (it is
+  // not stripped below), making that case a one-click manual send with nothing
+  // lost.
   const commandIsAllowed =
     command !== null &&
-    (pauseSeconds === null || pauseSeconds > SMART_TURN_COMMAND_PAUSE_SECONDS);
+    (command === "wait" ||
+      pauseSeconds === null ||
+      pauseSeconds > SMART_TURN_COMMAND_PAUSE_SECONDS);
 
   if (command && commandIsAllowed) {
     return {
       command,
       recognizedCommand: true,
+      // `cancel` clears the owned chunk; `send` is stripped (the turn submits
+      // without it); `wait` is left in the draft for a low-friction manual send.
       transcript:
-        command === "cancel" ? "" : stripTrailingCommandWord(trimmed, command),
+        command === "cancel"
+          ? ""
+          : command === "send"
+            ? stripTrailingCommandWord(trimmed, command)
+            : trimmed,
     };
   }
   return { command: "send", transcript: trimmed, recognizedCommand: false };
@@ -1053,10 +1068,12 @@ export class YaServerProvider implements SpeechProvider {
       // uncommitted tail so manual stop can wait for transcript.done without
       // duplicating prior chunks.
       let finalText = (message.text ?? "").trim();
+      // Only `send` is stripped (the turn submits without it); `wait` stays in
+      // the draft for a one-click manual send. See decideSmartTurn.
       if (
         finalText &&
         pendingSmartTurn?.recognizedCommand &&
-        smartTurnCommand
+        smartTurnCommand === "send"
       ) {
         finalText = stripTrailingCommandWord(finalText, smartTurnCommand);
       }
@@ -1075,7 +1092,11 @@ export class YaServerProvider implements SpeechProvider {
         pendingFinalPartials.forEach((partial, index) => {
           const last = index === pendingFinalPartials.length - 1;
           let transcript = partial.transcript;
-          if (last && pendingSmartTurn?.recognizedCommand && smartTurnCommand) {
+          if (
+            last &&
+            pendingSmartTurn?.recognizedCommand &&
+            smartTurnCommand === "send"
+          ) {
             transcript = stripTrailingCommandWord(transcript, smartTurnCommand);
           }
           const partialMetadata = last ? metadata : undefined;
@@ -1178,7 +1199,12 @@ export class YaServerProvider implements SpeechProvider {
       span,
       groupStart,
       replaceGroup: true,
-      words: decision.recognizedCommand ? words?.slice(0, -1) : words,
+      // Drop the trailing word only when it was stripped from the text (`send`);
+      // `wait` keeps its word, so keep its timing too.
+      words:
+        decision.recognizedCommand && decision.command === "send"
+          ? words?.slice(0, -1)
+          : words,
     });
 
     this.streamingStopRequested = true;

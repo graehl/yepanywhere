@@ -4,6 +4,7 @@ import { DirectXaiStreamingSpeechProvider } from "../speechProviders/DirectXaiSt
 import { DirectXaiSpeechProvider } from "../speechProviders/DirectXaiSpeechProvider";
 import {
   YaServerProvider,
+  decideSmartTurn,
   prewarmYaServerSpeechBackend,
 } from "../speechProviders/YaServerProvider";
 import { decideBatchSpeechCommand } from "../speechProviders/speechCommands";
@@ -239,6 +240,79 @@ describe("speech command parsing", () => {
       command: "wait",
       transcript: "please wait",
       recognizedCommand: false,
+    });
+  });
+});
+
+describe("streaming smart-turn decision", () => {
+  // Pause (s) before the final word, computed from word timestamps.
+  const wordsEndingWith = (
+    word: string,
+    pauseBeforeFinal: number,
+  ): { word: string; start: number; end: number }[] => [
+    { word: "prior", start: 1, end: 2 },
+    { word, start: 2 + pauseBeforeFinal, end: 2 + pauseBeforeFinal + 0.3 },
+  ];
+
+  it("holds the send on a trailing wait without a pause, keeping the word", () => {
+    // The bug: a fluent end-of-turn "wait" was downgraded to an auto-send.
+    // wait holds and is left in the draft (not stripped, unlike send).
+    expect(
+      decideSmartTurn(
+        "Testing streaming with Grok speech-to-text. Wait",
+        wordsEndingWith("Wait", 0.1),
+      ),
+    ).toEqual({
+      command: "wait",
+      recognizedCommand: true,
+      transcript: "Testing streaming with Grok speech-to-text. Wait",
+    });
+  });
+
+  it("recognizes a trailing wait without word timestamps", () => {
+    expect(decideSmartTurn("hold on wait", undefined)).toEqual({
+      command: "wait",
+      recognizedCommand: true,
+      transcript: "hold on wait",
+    });
+  });
+
+  it("holds a sentence that legitimately ends in wait, leaving it for one-click send", () => {
+    // Gap-less wait means dictation ending in "wait" also holds; keeping the
+    // word makes that a no-loss one-click manual send.
+    expect(
+      decideSmartTurn("tell them I can't wait", wordsEndingWith("wait", 0.1)),
+    ).toEqual({
+      command: "wait",
+      recognizedCommand: true,
+      transcript: "tell them I can't wait",
+    });
+  });
+
+  it("still requires a pause before send so dictated send is not a command", () => {
+    expect(decideSmartTurn("ship it send", wordsEndingWith("send", 0.1))).toEqual(
+      {
+        command: "send",
+        recognizedCommand: false,
+        transcript: "ship it send",
+      },
+    );
+    expect(
+      decideSmartTurn("ship it send", wordsEndingWith("send", 1.0)),
+    ).toEqual({
+      command: "send",
+      recognizedCommand: true,
+      transcript: "ship it",
+    });
+  });
+
+  it("auto-sends plain dictation with no trailing command", () => {
+    expect(
+      decideSmartTurn("just some words", wordsEndingWith("words", 0.1)),
+    ).toEqual({
+      command: "send",
+      recognizedCommand: false,
+      transcript: "just some words",
     });
   });
 });
@@ -1684,8 +1758,10 @@ describe("YA server speech provider", () => {
       ],
     });
 
+    // `wait` is kept in the committed text (not stripped like `send`); the
+    // hold/no-submit is carried by the smartTurnCommand on the final below.
     expect(onResult).toHaveBeenLastCalledWith(
-      "Are extra spaces appearing for final chunks? I wonder now. Second sentence",
+      "Are extra spaces appearing for final chunks? I wonder now. Second sentence wait",
       {
         replacePreviousTranscriptChars:
           "Are extra spaces appearing for final chunks? I wonder now".length,

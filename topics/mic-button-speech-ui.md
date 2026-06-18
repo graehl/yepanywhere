@@ -111,13 +111,24 @@ and reducer tests.
 Spoken commands are evaluated from finalized speech, not from mutable interim
 text. A command word is a trailing lexical token such as `send`, `cancel`, or
 `wait`, after punctuation/quote stripping and case normalization. Recognized
-command words are control tokens and must not be inserted into the textbox.
+command words are control tokens and are removed from the textbox — except
+`wait`, which is intentionally left in place (see its bullet below).
 
 Current streaming command semantics:
 
 - `cancel` removes only the most recent committed final speech chunk in the
   current mic transaction and keeps recognition running.
 - `wait` stops recognition, keeps committed speech text, and does not submit.
+  It **holds the send even when Smart Turn's endpoint would otherwise auto-send**
+  the turn. Unlike `send`/`cancel`, `wait` is recognized eagerly: it does not
+  require a deliberate pause before it, because a missed `wait` prematurely
+  submits the turn (the disruptive failure) while a missed `send`/`cancel`
+  merely takes no action. So the pause gate that separates a spoken `send`/
+  `cancel` command from dictation does not apply to `wait`. Because dropping the
+  pause check means a sentence legitimately ending in the word "wait" also
+  holds, `wait` is **left in the draft** (not stripped, unlike `send`): a false
+  hold is then a one-click manual send with nothing lost. The `send`/`cancel`
+  pause gate is 300 ms.
 - `send` submits the whole composer. The initial implementation stops
   recognition after sending.
 - A future "continue after command" option may let `send` submit and begin a

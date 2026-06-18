@@ -2905,8 +2905,6 @@ export const MessageList = memo(function MessageList({
             <div
               key={tailItem.key}
               className={`deferred-message message-render-row ${
-                isPatientDeferred ? "patient-deferred-message" : ""
-              } ${
                 timestampMs !== null ? "has-message-age" : ""
               } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
             >

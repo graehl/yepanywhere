@@ -337,7 +337,29 @@ describe("Files API", () => {
       expect(json.error).toBe("Invalid file path");
     });
 
-    it("returns file metadata and content for absolute live file path", async () => {
+    it("serves an absolute path inside an allowed (project) prefix", async () => {
+      // Projects are in the default file-access allow-set, so an absolute path
+      // that resolves inside a scanned project still opens.
+      const inProjectFile = join(projectPath, "abs-notes.txt");
+      await writeFile(inProjectFile, "in-project notes");
+
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files?path=${encodeURIComponent(inProjectFile)}`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as FileContentResponse;
+      expect(json.content).toBe("in-project notes");
+    });
+
+    it("denies an absolute path outside the file-access allow-set", async () => {
+      // Secure default: out-of-project absolute paths are no longer served over
+      // HTTP unless the folder is added to the file-access allow-set.
       const outsideDir = join(testDir, "outside");
       const outsideFile = join(outsideDir, "notes.txt");
       await mkdir(outsideDir, { recursive: true });
@@ -352,11 +374,9 @@ describe("Files API", () => {
         `/api/projects/${projectId}/files?path=${encodeURIComponent(outsideFile)}`,
       );
 
-      expect(res.status).toBe(200);
-      const json = (await res.json()) as FileContentResponse;
-      expect(json.metadata.path).toBe(outsideFile);
-      expect(json.content).toBe("outside notes");
-      expect(json.rawUrl).toContain(encodeURIComponent(outsideFile));
+      expect(res.status).toBe(400);
+      const json = (await res.json()) as { error: string };
+      expect(json.error).toBe("Invalid file path");
     });
 
     it.skipIf(process.platform === "win32")(
@@ -498,7 +518,25 @@ describe("Files API", () => {
       expect(res.headers.get("Content-Disposition")).toContain("inline");
     });
 
-    it("returns raw content for an absolute live file path", async () => {
+    it("serves raw content for an absolute path inside an allowed prefix", async () => {
+      const inProjectFile = join(projectPath, "abs-raw-notes.txt");
+      await writeFile(inProjectFile, "in-project raw notes");
+
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files/raw?path=${encodeURIComponent(inProjectFile)}`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("text/plain");
+      expect(await res.text()).toBe("in-project raw notes");
+    });
+
+    it("denies raw content for an absolute path outside the allow-set", async () => {
       const outsideDir = join(testDir, "outside");
       const outsideFile = join(outsideDir, "raw-notes.txt");
       await mkdir(outsideDir, { recursive: true });
@@ -513,9 +551,9 @@ describe("Files API", () => {
         `/api/projects/${projectId}/files/raw?path=${encodeURIComponent(outsideFile)}`,
       );
 
-      expect(res.status).toBe(200);
-      expect(res.headers.get("Content-Type")).toBe("text/plain");
-      expect(await res.text()).toBe("outside raw notes");
+      expect(res.status).toBe(400);
+      const json = (await res.json()) as { error: string };
+      expect(json.error).toBe("Invalid file path");
     });
 
     it("returns 400 for path traversal attempt", async () => {

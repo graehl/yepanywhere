@@ -9,8 +9,9 @@ import {
 } from "./local-resource-policy.js";
 
 interface LocalImageDeps {
-  allowedPaths: string[];
+  allowedPaths: string[] | (() => string[]);
   scanner?: Pick<ProjectScanner, "listProjects">;
+  includeProjects?: () => boolean;
 }
 
 /**

@@ -23,10 +23,22 @@ import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
 import { renderSafeMarkdown } from "../augments/safe-markdown.js";
 import { highlightFile } from "../highlighting/index.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { createLocalResourcePathPolicy } from "./local-resource-policy.js";
 
 export interface FilesDeps {
   scanner: ProjectScanner;
+  /**
+   * Allowed (non-project) prefixes for absolute/`~` paths. When provided, the
+   * absolute-path branch is gated through the shared file-access policy (the
+   * same allow-set the media doors enforce). Relative in-project paths are
+   * always project-scoped regardless. Omitted = no scoping (test/embedding).
+   */
+  allowedPaths?: string[] | (() => string[]);
+  /** Whether scanned project paths are part of the allow-set (default: true). */
+  includeProjects?: () => boolean;
 }
+
+type LocalResourcePathPolicy = ReturnType<typeof createLocalResourcePathPolicy>;
 
 /** Maximum file size to include content inline (1MB) */
 const MAX_INLINE_SIZE = 1024 * 1024;
@@ -827,12 +839,28 @@ function expandHomePath(requestedPath: string): string {
 async function resolveFilePath(
   projectRoot: string,
   relativePath: string,
+  pathPolicy?: LocalResourcePathPolicy,
 ): Promise<string | null> {
   // Normalize the path to handle . and ..
   const normalized = normalize(expandHomePath(relativePath));
 
   if (isAbsolute(normalized) || /^[a-zA-Z]:/.test(normalized)) {
-    return (await realpath(normalized).catch(() => null)) ?? normalized;
+    const resolved =
+      (await realpath(normalized).catch(() => null)) ?? normalized;
+    // When a file-access policy is configured, absolute/`~` paths must fall
+    // inside an allowed prefix (projects ∪ uploads ∪ temp ∪ home ∪ custom).
+    // Without a policy (tests/embedding) the legacy any-readable-path behavior
+    // is preserved.
+    if (pathPolicy) {
+      const allowed = await pathPolicy.getAllowedPaths();
+      const ok = allowed.some((prefix) =>
+        isPathInsideDirectory(resolved, prefix),
+      );
+      if (!ok) {
+        return null;
+      }
+    }
+    return resolved;
   }
 
   // Reject paths that try to escape (after normalization, should not start with ..)
@@ -882,6 +910,17 @@ function isPathInsideDirectory(filePath: string, directory: string): boolean {
 export function createFilesRoutes(deps: FilesDeps): Hono {
   const routes = new Hono();
 
+  // Shared file-access policy for absolute/`~` paths (same allow-set as the
+  // media doors). Undefined when no allow-list is configured (legacy behavior).
+  const pathPolicy =
+    deps.allowedPaths !== undefined
+      ? createLocalResourcePathPolicy({
+          allowedPaths: deps.allowedPaths,
+          scanner: deps.scanner,
+          includeProjects: deps.includeProjects,
+        })
+      : undefined;
+
   /**
    * GET /api/projects/:projectId/files
    * Get file metadata and content.
@@ -920,7 +959,7 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
     const projectRoot = project.path;
 
     // Resolve and validate file path
-    const filePath = await resolveFilePath(projectRoot, relativePath);
+    const filePath = await resolveFilePath(projectRoot, relativePath, pathPolicy);
     if (!filePath) {
       return c.json({ error: "Invalid file path" }, 400);
     }
@@ -1078,7 +1117,7 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
     const projectRoot = project.path;
 
     // Resolve and validate file path
-    const filePath = await resolveFilePath(projectRoot, relativePath);
+    const filePath = await resolveFilePath(projectRoot, relativePath, pathPolicy);
     if (!filePath) {
       return c.json({ error: "Invalid file path" }, 400);
     }

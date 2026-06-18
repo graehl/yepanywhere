@@ -610,7 +610,7 @@ describe("MessageList", () => {
     expect(prompts).toEqual(["still posting", "already queued"]);
   });
 
-  it("renders deferred messages in the server's queue order", () => {
+  it("renders deferred messages in the server's queue order with status-only patient distinction", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-25T00:03:00.000Z"));
 
@@ -647,7 +647,7 @@ describe("MessageList", () => {
         .getByText("patient second")
         .closest(".deferred-message")
         ?.classList.contains("patient-deferred-message"),
-    ).toBe(true);
+    ).toBe(false);
     expect(screen.getByText("Patient (waiting, 3m ago)")).toBeTruthy();
     expect(screen.getByText("Queued (next regular)")).toBeTruthy();
     expect(screen.getByText("Queued regular (#2)")).toBeTruthy();

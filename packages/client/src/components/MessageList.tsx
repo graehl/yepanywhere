@@ -486,6 +486,16 @@ function getFullSessionSearchAnchorForItem(
             searchText: item.content,
           }
         : null;
+    case "task_notification": {
+      const searchText = item.summary ?? item.raw;
+      return searchText
+        ? {
+            id: item.id,
+            preview: getSearchPreviewFallback(searchText),
+            searchText,
+          }
+        : null;
+    }
     case "tool_call": {
       const searchText = getToolSearchText(item);
       return searchText
@@ -2895,8 +2905,6 @@ export const MessageList = memo(function MessageList({
             <div
               key={tailItem.key}
               className={`deferred-message message-render-row ${
-                isPatientDeferred ? "patient-deferred-message" : ""
-              } ${
                 timestampMs !== null ? "has-message-age" : ""
               } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
             >

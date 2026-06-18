@@ -38,6 +38,10 @@ import {
   SessionMetadataService,
 } from "./metadata/index.js";
 import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
+import {
+  initFileAccess,
+  updateFileAccess,
+} from "./middleware/file-access.js";
 import { NotificationService } from "./notifications/index.js";
 import { CodexSessionScanner } from "./projects/codex-scanner.js";
 import { GeminiSessionScanner } from "./projects/gemini-scanner.js";
@@ -469,6 +473,15 @@ async function startServer() {
 
   // Seed allowed hosts middleware from persisted settings
   updateAllowedHosts(serverSettingsService.getSetting("allowedHosts"));
+
+  // Seed file-access policy (resolved deps + persisted settings)
+  initFileAccess({
+    uploadsDir: config.managedUploadsDir,
+    homeDir: os.homedir(),
+    tempPaths: config.fileAccessTempPaths,
+    envPaths: config.fileAccessEnvPaths,
+  });
+  updateFileAccess(serverSettingsService.getSetting("fileAccess"));
 
   // Seed Ollama settings from persisted settings
   const savedOllamaUrl = serverSettingsService.getSetting("ollamaUrl");

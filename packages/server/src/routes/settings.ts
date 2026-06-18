@@ -29,6 +29,11 @@ import {
   type SpeechSmartTurnClientDefault,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
+import {
+  type FileAccessSettings,
+  getFileAccessInfo,
+  normalizeFileAccess,
+} from "../middleware/file-access.js";
 import { testSSHConnection } from "../sdk/remote-spawn.js";
 import type { PublicShareService } from "../services/PublicShareService.js";
 import type {
@@ -63,13 +68,13 @@ const SESSION_TOOLBAR_VISIBILITY_CLIENT_DEFAULT_KEYS = [
   "contextUsage",
   "btw",
   "nudge",
-  "queueControls",
   "sessionStatus",
 ] as const satisfies readonly (keyof SessionToolbarVisibilityClientDefaults)[];
 const CLIENT_DEFAULT_KEYS = [
   "speech",
   "sessionToolbarVisibility",
   "steerNowDefault",
+  "patientQueueDefault",
   "compactAtContextPercent",
 ] as const;
 const SPEECH_CLIENT_DEFAULT_KEYS = [
@@ -84,6 +89,8 @@ export interface SettingsRoutesDeps {
   serverSettingsService: ServerSettingsService;
   /** Callback to apply allowedHosts changes at runtime */
   onAllowedHostsChanged?: (value: string | undefined) => void;
+  /** Callback to apply fileAccess changes at runtime */
+  onFileAccessChanged?: (value: FileAccessSettings | undefined) => void;
   /** Callback to apply remote session persistence changes at runtime */
   onRemoteSessionPersistenceChanged?: (
     enabled: boolean,
@@ -195,6 +202,52 @@ function parseHelperTargets(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+const MAX_FILE_ACCESS_CUSTOM_ENTRIES = 100;
+const MAX_FILE_ACCESS_CUSTOM_LENGTH = 1024;
+
+/**
+ * Returns:
+ * - `null` when the payload is invalid
+ * - `undefined` when the setting should be cleared (reset to secure defaults)
+ * - a normalized object when valid
+ */
+function parseFileAccess(
+  raw: unknown,
+): FileAccessSettings | undefined | null {
+  if (raw === undefined) return null;
+  if (raw === null || raw === "") return undefined;
+  if (!isRecord(raw)) return null;
+
+  const allowedKeys = new Set(["projects", "uploads", "temp", "home", "custom"]);
+  for (const key of Object.keys(raw)) {
+    if (!allowedKeys.has(key)) return null;
+  }
+  for (const key of ["projects", "uploads", "temp", "home"] as const) {
+    if (key in raw && typeof raw[key] !== "boolean") return null;
+  }
+  if ("custom" in raw) {
+    if (
+      !Array.isArray(raw.custom) ||
+      raw.custom.length > MAX_FILE_ACCESS_CUSTOM_ENTRIES
+    ) {
+      return null;
+    }
+    for (const entry of raw.custom) {
+      if (typeof entry !== "string" || entry.length > MAX_FILE_ACCESS_CUSTOM_LENGTH) {
+        return null;
+      }
+    }
+  }
+
+  return normalizeFileAccess({
+    projects: raw.projects as boolean | undefined,
+    uploads: raw.uploads as boolean | undefined,
+    temp: raw.temp as boolean | undefined,
+    home: raw.home as boolean | undefined,
+    custom: (raw.custom as string[] | undefined) ?? [],
+  });
 }
 
 function parseOpenAiModelsResponse(raw: unknown): ModelInfo[] | null {
@@ -529,6 +582,18 @@ function parseClientDefaults(raw: unknown): ClientDefaults | undefined | null {
       parsed.steerNowDefault = raw.steerNowDefault;
     }
   }
+  if ("patientQueueDefault" in raw) {
+    if (
+      raw.patientQueueDefault === undefined ||
+      raw.patientQueueDefault === null
+    ) {
+      parsed.patientQueueDefault = undefined;
+    } else if (typeof raw.patientQueueDefault !== "boolean") {
+      return null;
+    } else {
+      parsed.patientQueueDefault = raw.patientQueueDefault;
+    }
+  }
   if ("sessionToolbarVisibility" in raw) {
     const parsedVisibility = parseSessionToolbarVisibilityClientDefaults(
       raw.sessionToolbarVisibility,
@@ -568,6 +633,13 @@ function mergeClientDefaults(
       delete merged.steerNowDefault;
     } else {
       merged.steerNowDefault = update.steerNowDefault;
+    }
+  }
+  if ("patientQueueDefault" in update) {
+    if (update.patientQueueDefault === undefined) {
+      delete merged.patientQueueDefault;
+    } else {
+      merged.patientQueueDefault = update.patientQueueDefault;
     }
   }
   if ("sessionToolbarVisibility" in update) {
@@ -694,6 +766,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
   const {
     serverSettingsService,
     onAllowedHostsChanged,
+    onFileAccessChanged,
     onRemoteSessionPersistenceChanged,
     onOllamaUrlChanged,
     onOllamaSystemPromptChanged,
@@ -709,6 +782,15 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
   app.get("/", (c) => {
     const settings = serverSettingsService.getSettings();
     return c.json({ settings });
+  });
+
+  /**
+   * GET /api/settings/file-access
+   * Read-only info for the File access settings UI: whether an env var pins
+   * the allow-set, plus the resolved temp/uploads/home prefixes for hints.
+   */
+  app.get("/file-access", (c) => {
+    return c.json(getFileAccessInfo());
   });
 
   /**
@@ -852,6 +934,15 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       } else if (typeof body.allowedHosts === "string") {
         updates.allowedHosts = body.allowedHosts;
       }
+    }
+
+    // Handle fileAccess object (checkbox model; undefined/null/"" = secure defaults)
+    if ("fileAccess" in body) {
+      const parsed = parseFileAccess(body.fileAccess);
+      if (parsed === null) {
+        return c.json({ error: "Invalid fileAccess setting" }, 400);
+      }
+      updates.fileAccess = parsed;
     }
 
     // Handle globalInstructions string (free-form text, or undefined/null/"" to clear)
@@ -1071,6 +1162,9 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     // Apply allowedHosts change to middleware at runtime
     if ("allowedHosts" in updates && onAllowedHostsChanged) {
       onAllowedHostsChanged(settings.allowedHosts);
+    }
+    if ("fileAccess" in updates && onFileAccessChanged) {
+      onFileAccessChanged(settings.fileAccess);
     }
     if (
       "persistRemoteSessionsToDisk" in updates &&

@@ -146,19 +146,13 @@ export function SessionToolbarPreview() {
               primaryActionLabel: t("toolbarSteerTooltip"),
               tooltip: t("toolbarSteerTooltip"),
               icon: "↗",
+              showSteerNowMode: true,
+              steerNowEnabled: false,
+              onToggleSteerNow: noop,
               queue: {
                 onQueue: noop,
                 hasDualActions: true,
-                queueTooltip: `${t("toolbarPatientQueueTooltip", {
-                  timeout: "30s",
-                })}\n${t("toolbarPatientQueueToggleShortcut")}`,
-                showPatientQueueMode: true,
-                patientQueueEnabled: true,
-                patientQueueTimeoutLabel: "30s",
-                patientQueueTooltip: t("toolbarPatientQueueTooltip", {
-                  timeout: "30s",
-                }),
-                onTogglePatientQueue: noop,
+                queueTooltip: t("toolbarQueueTooltip"),
               },
             },
           }}

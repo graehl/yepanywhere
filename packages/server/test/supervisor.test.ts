@@ -1456,17 +1456,113 @@ describe("Supervisor", () => {
           },
         ]);
 
-        await vi.advanceTimersByTimeAsync(29_000);
+        // Still inside the (default 2s) quiet window: not yet promoted.
+        await vi.advanceTimersByTimeAsync(1_000);
         expect(started.state.type).toBe("idle");
         expect(started.queueDepth).toBe(0);
         expect(started.getDeferredQueueSummary()).toHaveLength(1);
 
-        await vi.advanceTimersByTimeAsync(1_000);
+        // Past the quiet window: promoted.
+        await vi.advanceTimersByTimeAsync(1_500);
         expect(started.state.type).toBe("in-turn");
         expect(started.queueDepth).toBe(1);
         expect(started.getDeferredQueueSummary()).toEqual([]);
 
         const abortPromise = supervisorWithHeartbeat.abortProcess(started.id);
+        await vi.advanceTimersByTimeAsync(5000);
+        await expect(abortPromise).resolves.toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("treats a patient message as plain deferred on non-Claude providers", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
+      let aborted = false;
+
+      try {
+        const startSession = vi.fn(async () => {
+          const queue = new MessageQueue();
+          async function* iterator() {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id: "codex-patient-session",
+            };
+            await queue[Symbol.asyncIterator]().next();
+            yield { type: "result", session_id: "codex-patient-session" };
+
+            while (!aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {
+              aborted = true;
+            },
+            isProcessAlive: () => !aborted,
+          };
+        });
+        const provider: AgentProvider = {
+          name: "codex",
+          displayName: "Codex",
+          supportsPermissionMode: true,
+          supportsThinkingToggle: true,
+          supportsSlashCommands: false,
+          isInstalled: async () => true,
+          isAuthenticated: async () => true,
+          getAuthStatus: async () => ({
+            installed: true,
+            authenticated: true,
+            enabled: true,
+          }),
+          startSession,
+          getAvailableModels: async () => [],
+        };
+
+        const supervisorWithProvider = new Supervisor({
+          provider,
+          idleTimeoutMs: 100,
+        });
+
+        const started = await supervisorWithProvider.startSession("/tmp/test", {
+          text: "start",
+        });
+        if (!("id" in started)) {
+          throw new Error("expected process");
+        }
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(started.state.type).toBe("idle");
+
+        // On Claude this exact call defers and waits the verified-idle quiet
+        // window (see "promotes patient deferred messages after verified
+        // quiet"). On a non-Claude provider there is no background-work
+        // retention to wait for, so the patient tag is downgraded to a plain
+        // deferred turn that promotes immediately — no timers advanced.
+        const result = started.deferMessage(
+          {
+            text: "patient follow-up",
+            tempId: "temp-patient-codex",
+            metadata: { deliveryIntent: "patient" },
+          },
+          { promoteIfReady: true },
+        );
+        expect(result).toMatchObject({
+          success: true,
+          deferred: false,
+          promoted: true,
+        });
+        expect(started.hasPatientDeferredMessages()).toBe(false);
+        expect(started.getDeferredQueueSummary()).toEqual([]);
+        expect(started.queueDepth).toBe(1);
+        expect(started.state.type).toBe("in-turn");
+
+        const abortPromise = supervisorWithProvider.abortProcess(started.id);
         await vi.advanceTimersByTimeAsync(5000);
         await expect(abortPromise).resolves.toBe(true);
       } finally {

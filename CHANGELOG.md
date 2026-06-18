@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- File access controls (Settings → Local Access) to scope which local folders
+  the HTTP file viewer may read: project folders, uploads, temp, home, and a
+  custom list. The same allow-set is now enforced by both the media routes and
+  the project-files route. `ALLOWED_FILE_PATHS` (alias for `ALLOWED_IMAGE_PATHS`)
+  pins it from the environment.
+
+### Changed
+- **Breaking (secure-by-default):** the project-files HTTP route no longer serves
+  arbitrary absolute/`~` paths. Relative in-project paths are unchanged, but
+  absolute paths outside projects/uploads/temp are denied until the folder is
+  added under Settings → File access (or via `ALLOWED_FILE_PATHS`). Enable "Home
+  folder" to restore reading under your home directory.
+- Windows default temp allow-list now resolves through `os.tmpdir()`
+  (`%LOCALAPPDATA%\Temp`) instead of a hardcoded `C:\tmp`.
+
 ## [0.5.2] - 2026-06-05
 
 ### Added

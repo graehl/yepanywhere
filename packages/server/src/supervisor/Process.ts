@@ -40,6 +40,7 @@ import {
 import type {
   PermissionMode,
   ProviderActivitySnapshot,
+  ProviderCommandResult,
   ProviderLivenessProbeResult,
   ProviderRetentionSnapshot,
   SDKMessage,
@@ -78,8 +79,23 @@ type PromptCacheKeepaliveLease = {
   getInactivityMs: () => number | null;
 };
 
-function isPatientDeferredEntry(entry: DeferredQueueEntry): boolean {
-  return entry.message.metadata?.deliveryIntent === "patient";
+/**
+ * Whether a queued entry should ride the verified-idle "patient" path instead
+ * of the plain turn-end deferred path. Patient delivery only differs from
+ * deferred on Claude — the only provider that reports background-work retention
+ * (session crons, background/live tasks), which is what lets YA wait for
+ * genuine completion. On other providers it would add nothing but a brief
+ * sleep, so a "patient"-tagged entry is treated as an ordinary deferred one: it
+ * promotes at turn end and never engages the patient machinery.
+ */
+function isPatientDeferredEntry(
+  entry: DeferredQueueEntry,
+  provider: ProviderName,
+): boolean {
+  return (
+    entry.message.metadata?.deliveryIntent === "patient" &&
+    isClaudeSdkProvider(provider)
+  );
 }
 
 /** Quiet milliseconds this patient entry waits for after verified idle. */
@@ -348,6 +364,15 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   /** Function to change model mid-session (SDK 0.2.7+) */
   setModelFn?: (model?: string) => Promise<void>;
   /**
+   * Dispatch a provider-native slash command out-of-band (e.g. Codex
+   * `/compact` → `thread/compact/start`). Returns `{ handled: false }` when the
+   * command should fall back to normal turn delivery.
+   */
+  runProviderCommandFn?: (
+    command: string,
+    argument?: string,
+  ) => Promise<ProviderCommandResult>;
+  /**
    * Publish the provider's real session id to environment bridges that affect
    * future tool shells spawned by the provider child process.
    */
@@ -465,6 +490,10 @@ export class Process {
 
   /** Function to change model mid-session (SDK 0.2.7+) */
   private setModelFn: ((model?: string) => Promise<void>) | null;
+  /** Function to dispatch a provider-native slash command out-of-band. */
+  private runProviderCommandFn:
+    | ((command: string, argument?: string) => Promise<ProviderCommandResult>)
+    | null;
   private publishAgentctlSessionIdFn:
     | ((sessionId: string) => void | Promise<void>)
     | null;
@@ -558,6 +587,7 @@ export class Process {
     this.supportedCommandsFn = options.supportedCommandsFn ?? null;
     this._pidResolver = options.pid;
     this.setModelFn = options.setModelFn ?? null;
+    this.runProviderCommandFn = options.runProviderCommandFn ?? null;
     this.publishAgentctlSessionIdFn =
       options.publishAgentctlSessionIdFn ?? null;
     this._isProcessAlive = options.isProcessAlive ?? null;
@@ -711,7 +741,9 @@ export class Process {
   }
 
   hasPatientDeferredMessages(): boolean {
-    return this.deferredQueue.some(isPatientDeferredEntry);
+    return this.deferredQueue.some((entry) =>
+      isPatientDeferredEntry(entry, this.provider),
+    );
   }
 
   getLivenessSnapshot(now = new Date()): SessionLivenessSnapshot {
@@ -1175,6 +1207,23 @@ export class Process {
    */
   get supportsDynamicCommands(): boolean {
     return this.supportedCommandsFn !== null;
+  }
+
+  /**
+   * Dispatch a provider-native slash command out-of-band (e.g. Codex `/compact`
+   * → `thread/compact/start`) instead of delivering it as a user turn. Returns
+   * `{ handled: false }` when the provider does not own the command — including
+   * every provider that does not implement native dispatch (Claude, etc.) — so
+   * the caller can fall back to normal message delivery.
+   */
+  async runProviderCommand(
+    command: string,
+    argument?: string,
+  ): Promise<ProviderCommandResult> {
+    if (!this.runProviderCommandFn) {
+      return { handled: false };
+    }
+    return this.runProviderCommandFn(command, argument);
   }
 
   /**
@@ -1991,7 +2040,13 @@ export class Process {
     const canPromoteIfReady = !!(
       options?.promoteIfReady &&
       this.messageQueue &&
-      message.metadata?.deliveryIntent !== "patient" &&
+      // Only a "real" patient entry (Claude) waits for the verified-idle path;
+      // elsewhere a patient-tagged message is an ordinary deferred one and
+      // promotes immediately like any other deferred turn.
+      !isPatientDeferredEntry(
+        { message, timestamp: new Date().toISOString() },
+        this.provider,
+      ) &&
       this._state.type === "idle"
     );
     if (canPromoteIfReady) {
@@ -2968,7 +3023,7 @@ export class Process {
     }
 
     const eligible = this.deferredQueue.filter(
-      (entry) => !isPatientDeferredEntry(entry),
+      (entry) => !isPatientDeferredEntry(entry, this.provider),
     );
     if (eligible.length === 0) {
       return false;
@@ -3023,7 +3078,9 @@ export class Process {
       return { promoted: false, nextPatienceMsRemaining: null };
     }
 
-    const patientEntries = this.deferredQueue.filter(isPatientDeferredEntry);
+    const patientEntries = this.deferredQueue.filter((entry) =>
+      isPatientDeferredEntry(entry, this.provider),
+    );
     if (patientEntries.length === 0) {
       return { promoted: false, nextPatienceMsRemaining: null };
     }

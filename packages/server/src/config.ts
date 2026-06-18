@@ -154,6 +154,12 @@ export interface Config {
   nemoDevice?: string;
   /** Allowed directory prefixes for serving local images (e.g., ["/tmp"]). Empty = disabled. */
   allowedImagePaths: string[];
+  /** Managed uploads directory ({dataDir}/uploads); always part of the file-access set. */
+  managedUploadsDir: string;
+  /** Per-OS temp prefixes the "Temp folders" file-access toggle expands to. */
+  fileAccessTempPaths: string[];
+  /** Env-pinned file-access allow-list (ALLOWED_FILE_PATHS/ALLOWED_IMAGE_PATHS); null = unset. */
+  fileAccessEnvPaths: string[] | null;
 
   /** Whether cookie-based auth is disabled by env var (--auth-disable or AUTH_DISABLED=true). Used for recovery. */
   authDisabled: boolean;
@@ -246,6 +252,16 @@ export function loadConfig(): Config {
     process.env.ALLOWED_IMAGE_PATHS !== undefined
       ? parseCommaSeparatedList(process.env.ALLOWED_IMAGE_PATHS)
       : getDefaultAllowedImagePaths();
+  // File-access env override governs BOTH the media doors and the project-files
+  // door. ALLOWED_FILE_PATHS is the generalized name; ALLOWED_IMAGE_PATHS is the
+  // legacy alias. When either is set it pins (replaces) the editable allow-set
+  // and the UI renders read-only. `null` = no env override (use UI settings).
+  const fileAccessEnvRaw =
+    process.env.ALLOWED_FILE_PATHS ?? process.env.ALLOWED_IMAGE_PATHS;
+  const fileAccessEnvPaths =
+    fileAccessEnvRaw !== undefined
+      ? parseCommaSeparatedList(fileAccessEnvRaw)
+      : null;
 
   return {
     dataDir,
@@ -347,6 +363,9 @@ export function loadConfig(): Config {
     allowedImagePaths: Array.from(
       new Set([managedUploadsDir, ...extraAllowedImagePaths]),
     ),
+    managedUploadsDir,
+    fileAccessTempPaths: getDefaultAllowedImagePaths(),
+    fileAccessEnvPaths,
     // Auth disabled override (for recovery if user forgets password)
     authDisabled: process.env.AUTH_DISABLED === "true",
     authCookieSecret: process.env.AUTH_COOKIE_SECRET,
@@ -386,11 +405,12 @@ export function getDefaultAllowedImagePaths(
   platform: NodeJS.Platform = process.platform,
   tmpDir: string = os.tmpdir(),
 ): string[] {
-  const paths = ["/tmp"];
+  // Windows has no `/tmp`; the real temp dir is `os.tmpdir()`
+  // (%LOCALAPPDATA%\Temp / %TEMP%). Posix keeps `/tmp`.
   if (platform === "win32") {
-    paths.push("C:\\tmp", tmpDir);
+    return Array.from(new Set([tmpDir]));
   }
-  return Array.from(new Set(paths));
+  return ["/tmp"];
 }
 
 /**

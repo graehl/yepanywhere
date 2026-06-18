@@ -4620,26 +4620,11 @@ a.sidebar-nav-item {
   margin-bottom: var(--space-3);
 }
 
-.deferred-message.patient-deferred-message .message-render-content {
-  margin-left: clamp(44px, 13vw, 180px);
-  max-width: calc(100% - clamp(44px, 13vw, 180px));
-}
-
 .deferred-message-bubble {
   opacity: 0.7;
   border-left: 3px solid var(--attention-color);
   padding-left: var(--space-2);
   white-space: pre-wrap;
-}
-
-.patient-deferred-message .deferred-message-bubble {
-  border-left-color: var(--accent-color);
-  background: color-mix(
-    in srgb,
-    var(--accent-color) 10%,
-    var(--bg-user-message)
-  );
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 18%, transparent);
 }
 
 .deferred-message-edit {
@@ -4703,11 +4688,6 @@ a.sidebar-nav-item {
   font-size: var(--font-size-xs);
   color: var(--attention-color);
   font-style: italic;
-}
-
-.patient-deferred-message .deferred-message-status {
-  color: var(--accent-color);
-  font-weight: 700;
 }
 
 .deferred-message-attachments {
@@ -4790,11 +4770,6 @@ a.sidebar-nav-item {
 }
 
 @media (hover: none), (pointer: coarse), (max-width: 600px) {
-  .deferred-message.patient-deferred-message .message-render-content {
-    margin-left: clamp(28px, 10vw, 64px);
-    max-width: calc(100% - clamp(28px, 10vw, 64px));
-  }
-
   .deferred-message-actions {
     flex-basis: 100%;
     margin-top: var(--space-1);
@@ -6594,6 +6569,89 @@ a.sidebar-nav-item {
 
 .system-message-config-ack .system-message-text {
   font-style: normal;
+}
+
+/* Task notification — SDK-injected background-task lifecycle chip */
+.task-notification {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 14px;
+  margin: 8px 0;
+  background: var(--bg-tertiary, #2a2a2a);
+  border-radius: 6px;
+  border-left: 3px solid var(--accent-secondary, #6b7280);
+  font-family: var(--output-prose-font-family);
+  font-size: var(--output-prose-font-size);
+  line-height: var(--output-prose-line-height);
+  color: var(--text-muted);
+}
+
+.task-notification-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.task-notification-icon {
+  font-size: 1.05em;
+  opacity: 0.8;
+}
+
+.task-notification-summary {
+  min-width: 0;
+}
+
+.task-notification-output {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85em;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.task-notification-event {
+  margin: 0;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--bg-primary, #1a1a1a) 60%, transparent);
+  border-radius: 4px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.82em;
+  line-height: 1.45;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-notification-progress {
+  border-left-color: var(--accent-primary, #3b82f6);
+}
+
+.task-notification-completed {
+  border-left-color: var(--success-color, #10b981);
+  color: var(--text-primary);
+}
+
+.task-notification-completed .task-notification-icon {
+  color: var(--success-color, #10b981);
+  opacity: 1;
+  font-weight: 700;
+}
+
+.task-notification-failed {
+  border-left-color: var(--error-color, #ef4444);
+  color: var(--text-primary);
+}
+
+.task-notification-failed .task-notification-icon {
+  color: var(--error-color, #ef4444);
+  opacity: 1;
+  font-weight: 700;
+}
+
+.task-notification-cancelled {
+  border-left-color: var(--text-dimmed, #6b7280);
 }
 
 .system-message-config-ack .system-message-icon {

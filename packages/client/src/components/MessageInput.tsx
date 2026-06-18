@@ -54,6 +54,7 @@ import { isVoiceInputShortcut } from "../lib/voiceInputShortcut";
 import type { ContextUsage, PermissionMode } from "../types";
 import { AttachmentChip } from "./AttachmentChip";
 import { MessageInputToolbar } from "./MessageInputToolbar";
+import { SpeechTranscribingChip } from "./SpeechTranscribingChip";
 import type { VoiceInputButtonRef } from "./VoiceInputButton";
 
 /** Progress info for an in-flight upload */
@@ -304,9 +305,12 @@ export function MessageInput({
     matchingSlashCommands.length > 0;
   const canSubmit = !!(text.trim() || attachments.length > 0);
   const interimDisplayTranscript = interimTranscript.trim();
-  const speechInlineTranscript =
-    interimDisplayTranscript ||
-    (speechProcessing ? t("speechTranscribingPlaceholder" as never) : "");
+  // The inline mirror previews streaming interim text in place. A batch
+  // transcription wait (processing, no interim) instead shows a sibling chip
+  // so the textarea stays visible and freely editable. See
+  // topics/mic-button-speech-ui.md (Batch Behavior).
+  const speechInlineTranscript = interimDisplayTranscript;
+  const showTranscribingChip = speechProcessing && !interimDisplayTranscript;
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
@@ -1206,6 +1210,23 @@ export function MessageInput({
     setSpeechProcessing(processing);
   }, []);
 
+  // Cancel a pending batch transcription from the chip's ✕. The provider
+  // discards any late result; here we drop the pending speech target so the
+  // composer forgets the reserved insertion point. Backspace never reaches
+  // this — cancel is intentionally an explicit-click-only action.
+  const handleCancelTranscription = useCallback(() => {
+    voiceButtonRef.current?.cancelProcessing();
+    clearPendingSpeechFinal();
+    const targetId = activeSpeechTargetIdRef.current;
+    if (targetId) {
+      speechInsertionRangesRef.current.delete(targetId);
+    }
+    speechInsertionRangeRef.current = null;
+    activeSpeechTargetIdRef.current = null;
+    setSpeechProcessing(false);
+    setInterimTranscript("");
+  }, [clearPendingSpeechFinal]);
+
   const handleComposerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (!isVoiceInputShortcut(event)) return;
@@ -1348,6 +1369,10 @@ export function MessageInput({
             </div>
           )}
         </div>
+
+        {showTranscribingChip && (
+          <SpeechTranscribingChip onCancel={handleCancelTranscription} />
+        )}
 
         {showSlashSuggestions && (
           <div

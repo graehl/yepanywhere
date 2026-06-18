@@ -141,6 +141,11 @@ export class DirectXaiSpeechProvider implements SpeechProvider {
   private batchRecording: DirectBatchRecording | null = null;
   private mimeType = "audio/webm";
   private startToken = 0;
+  // See YaServerProvider: cancel() marks only the in-flight batch token so its
+  // late result is discarded, without affecting an overlapping recording's
+  // result delivery (every start() bumps startToken).
+  private processingBatchToken: number | null = null;
+  private cancelledBatchTokens = new Set<number>();
   private disposed = false;
 
   constructor(options: SpeechProviderOptions = {}) {
@@ -302,6 +307,7 @@ export class DirectXaiSpeechProvider implements SpeechProvider {
 
     const recorder = this.recorder;
     const recording = this.batchRecording;
+    this.processingBatchToken = recording?.token ?? null;
     this.recorder = null;
     this.batchRecording = null;
     this.stream = null;
@@ -310,6 +316,24 @@ export class DirectXaiSpeechProvider implements SpeechProvider {
     } else {
       if (recording) void this.transcribeRecording(recording);
     }
+  }
+
+  cancel(): void {
+    if (this.disposed) return;
+    if (this.state.status !== "processing") return;
+    // Mark the in-flight transcription so its late result is discarded; the
+    // backend request may still complete but stays inert.
+    if (this.processingBatchToken !== null) {
+      this.cancelledBatchTokens.add(this.processingBatchToken);
+      this.processingBatchToken = null;
+    }
+    this.setState({
+      status: "idle",
+      isListening: false,
+      interimTranscript: "",
+      error: null,
+    });
+    this.options.onEnd?.();
   }
 
   private async transcribeRecording(
@@ -326,6 +350,9 @@ export class DirectXaiSpeechProvider implements SpeechProvider {
           ? await postDirectXaiStt(audio, recording.credential)
           : "";
       if (this.disposed) return;
+      // A cancelled pending transcription must be a no-op even though the
+      // backend request still completed.
+      if (this.cancelledBatchTokens.delete(recording.token)) return;
       if (text) {
         const decision = decideBatchSpeechCommand(text);
         this.options.onResult?.(
@@ -397,6 +424,8 @@ export class DirectXaiSpeechProvider implements SpeechProvider {
   dispose(): void {
     this.disposed = true;
     this.startToken += 1;
+    this.processingBatchToken = null;
+    this.cancelledBatchTokens.clear();
     this.cleanupMedia(false);
     this.setState({ ...INITIAL_SPEECH_STATE });
     this.subscribers.clear();

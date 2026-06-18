@@ -108,6 +108,7 @@ import { getPermissionModeOptions } from "../lib/permissionModes";
 import type { PermissionMode, Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { SpeechControlMenu } from "./SpeechControlMenu";
+import { SpeechTranscribingChip } from "./SpeechTranscribingChip";
 import { ThinkingControlsPanel } from "./ThinkingControls";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
@@ -1770,6 +1771,22 @@ export function NewSessionForm({
     setSpeechProcessing(processing);
   }, []);
 
+  // Cancel a pending batch transcription from the chip's ✕. The provider
+  // discards any late result; here we drop the pending speech target. Cancel
+  // is explicit-click-only so backspace can never trigger it.
+  const handleCancelTranscription = useCallback(() => {
+    voiceButtonRef.current?.cancelProcessing();
+    clearPendingSpeechFinal();
+    const targetId = activeSpeechTargetIdRef.current;
+    if (targetId) {
+      speechInsertionRangesRef.current.delete(targetId);
+    }
+    speechInsertionRangeRef.current = null;
+    activeSpeechTargetIdRef.current = null;
+    setSpeechProcessing(false);
+    setInterimTranscript("");
+  }, [clearPendingSpeechFinal]);
+
   const handleComposerKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (!isVoiceInputShortcut(event)) return;
@@ -1792,9 +1809,11 @@ export function NewSessionForm({
   const hasContent = message.trim() || pendingFiles.length > 0;
   const canStart = Boolean(hasContent);
   const interimDisplayTranscript = interimTranscript.trim();
-  const speechInlineTranscript =
-    interimDisplayTranscript ||
-    (speechProcessing ? t("speechTranscribingPlaceholder" as never) : "");
+  // Inline mirror is streaming-interim preview only; the batch processing wait
+  // uses a sibling chip so the textarea stays editable. See
+  // topics/mic-button-speech-ui.md (Batch Behavior).
+  const speechInlineTranscript = interimDisplayTranscript;
+  const showTranscribingChip = speechProcessing && !interimDisplayTranscript;
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
@@ -1900,6 +1919,9 @@ export function NewSessionForm({
           </div>
         )}
       </div>
+      {showTranscribingChip && (
+        <SpeechTranscribingChip onCancel={handleCancelTranscription} />
+      )}
       <div className="new-session-form-toolbar">
         <div className="new-session-form-toolbar-left">
           <input

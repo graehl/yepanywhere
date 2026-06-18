@@ -64,6 +64,8 @@ export interface UseSpeechRecognitionReturn {
   startListening: () => void;
   stopListening: () => void;
   toggleListening: () => void;
+  /** Abandon an in-flight post-capture transcription; late result is discarded. */
+  cancelProcessing: () => void;
   prewarm: () => void;
   error: string | null;
 }
@@ -271,6 +273,10 @@ export function useSpeechRecognition(
     }
   }, []);
 
+  const cancelProcessing = useCallback(() => {
+    providerRef.current?.cancel?.();
+  }, []);
+
   const prewarm = useCallback(() => {
     providerRef.current?.prewarm?.();
   }, []);
@@ -283,6 +289,7 @@ export function useSpeechRecognition(
     startListening,
     stopListening,
     toggleListening,
+    cancelProcessing,
     prewarm,
     error: state.error,
   };

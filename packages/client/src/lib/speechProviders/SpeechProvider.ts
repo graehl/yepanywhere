@@ -151,6 +151,15 @@ export interface SpeechProvider {
   /** End the current session. No-op if not listening. */
   stop(): void;
 
+  /**
+   * Abandon an in-flight post-capture (`processing`) transcription. The
+   * contract is result-suppression, not work-interruption: a transcription
+   * that still completes after cancel() must be discarded (no onResult, no
+   * state change beyond returning to idle). No-op outside `processing`.
+   * Aborting the underlying request/model work is an optional optimization.
+   */
+  cancel?(): void;
+
   /** Speculatively acquire reusable resources before the user clicks. */
   prewarm?(): void;
 

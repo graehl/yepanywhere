@@ -37,6 +37,7 @@ import type {
   SpeechTranscriptionContext,
   SpeechTranscriptionResultMetadata,
 } from "../lib/speechProviders/SpeechProvider";
+import { SpeechTranscribingChip } from "./SpeechTranscribingChip";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
 const FAB_DRAFT_KEY = "fab-draft";
@@ -85,9 +86,11 @@ export function FloatingActionButton() {
   const pendingTextareaSelectionRef =
     useRef<PendingTextareaSelectionRestore | null>(null);
   const interimDisplayTranscript = interimTranscript.trim();
-  const speechInlineTranscript =
-    interimDisplayTranscript ||
-    (speechProcessing ? t("speechTranscribingPlaceholder" as never) : "");
+  // Inline mirror is streaming-interim preview only; the batch processing wait
+  // uses a sibling chip so the textarea stays editable. See
+  // topics/mic-button-speech-ui.md (Batch Behavior).
+  const speechInlineTranscript = interimDisplayTranscript;
+  const showTranscribingChip = speechProcessing && !interimDisplayTranscript;
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
@@ -515,6 +518,22 @@ export function FloatingActionButton() {
     setSpeechProcessing(processing);
   }, []);
 
+  // Cancel a pending batch transcription from the chip's ✕. The provider
+  // discards any late result; here we drop the pending speech target. Cancel
+  // is explicit-click-only so backspace can never trigger it.
+  const handleCancelTranscription = useCallback(() => {
+    voiceButtonRef.current?.cancelProcessing();
+    clearPendingSpeechFinal();
+    const targetId = activeSpeechTargetIdRef.current;
+    if (targetId) {
+      speechInsertionRangesRef.current.delete(targetId);
+    }
+    speechInsertionRangeRef.current = null;
+    activeSpeechTargetIdRef.current = null;
+    setSpeechProcessing(false);
+    setInterimTranscript("");
+  }, [clearPendingSpeechFinal]);
+
   const getTranscriptionContext =
     useCallback((): SpeechTranscriptionContext => {
       return {
@@ -628,6 +647,9 @@ export function FloatingActionButton() {
               </div>
             )}
           </div>
+          {showTranscribingChip && (
+            <SpeechTranscribingChip onCancel={handleCancelTranscription} />
+          )}
           <div className="fab-input-toolbar">
             <VoiceInputButton
               ref={voiceButtonRef}

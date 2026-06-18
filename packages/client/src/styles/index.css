@@ -3470,6 +3470,71 @@ a.sidebar-nav-item {
   white-space: nowrap;
 }
 
+/* Sibling status chip while a batch transcription is pending. The textarea
+   stays editable; this chip is never part of the draft value, and its ✕ is the
+   only way to cancel. See topics/mic-button-speech-ui.md (Batch Behavior). */
+.speech-transcribing-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-code);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.speech-transcribing-label {
+  font-style: italic;
+}
+
+.speech-transcribing-spinner {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--app-yep-green) 35%, transparent);
+  border-top-color: var(--app-yep-green);
+  animation: speech-transcribing-spin 0.8s linear infinite;
+}
+
+@keyframes speech-transcribing-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .speech-transcribing-spinner {
+    animation: none;
+  }
+}
+
+.speech-transcribing-cancel {
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  line-height: 1;
+}
+
+.speech-transcribing-cancel:hover,
+.speech-transcribing-cancel:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+
 .new-session-form .speech-draft-field {
   --speech-draft-padding: 0.6rem 0.7rem;
   --speech-draft-line-height: 1.35;

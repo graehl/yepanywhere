@@ -57,6 +57,14 @@ behavior across streaming and batch STT.
   source, audio size, MIME type, session/turn pointer, duration, transcript
   character count, and retention result. Logs must not include the transcript
   text itself; retained metadata is the place where transcript text belongs.
+- A provider may implement an optional `cancel()` to abandon an in-flight
+  post-capture (`processing`) transcription. The contract is result-suppression,
+  not work-interruption: after `cancel()`, a transcription that still completes
+  must be discarded — no `onResult`, and no state change beyond returning to
+  idle. Both batch paths gate result delivery on the start token, so a token
+  bump suffices; aborting the underlying request or model work is an optional
+  optimization. See the batch cancel chip in
+  [mic-button-speech-ui.md](mic-button-speech-ui.md).
 
 ## Intended Architecture
 

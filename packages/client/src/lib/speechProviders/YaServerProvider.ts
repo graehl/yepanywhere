@@ -485,6 +485,13 @@ export class YaServerProvider implements SpeechProvider {
   private audioFlowWatchdog: ReturnType<typeof setTimeout> | null = null;
   private audioProcessorActive = false;
   private startToken = 0;
+  // Token of the batch recording currently in post-capture transcription, and
+  // tokens whose pending transcription the user cancelled. startToken alone
+  // cannot signal cancel: every start() bumps it, and an earlier overlapping
+  // recording must still deliver its result to its target. cancel() marks only
+  // the in-flight token so its late result becomes a no-op.
+  private processingBatchToken: number | null = null;
+  private cancelledBatchTokens = new Set<number>();
   private disposed = false;
 
   constructor(
@@ -1459,6 +1466,9 @@ export class YaServerProvider implements SpeechProvider {
             })
           : { text: "" };
       if (this.disposed) return;
+      // A cancelled pending transcription must be a no-op even though the
+      // backend request still completed.
+      if (this.cancelledBatchTokens.delete(recording.token)) return;
       if (response.text) {
         const decision = decideBatchSpeechCommand(response.text);
         const metadata: SpeechTranscriptionResultMetadata = {
@@ -1550,6 +1560,7 @@ export class YaServerProvider implements SpeechProvider {
     this.setState({ status: "processing", isListening: false });
     const recorder = this.recorder;
     const recording = this.batchRecording;
+    this.processingBatchToken = recording?.token ?? null;
     this.recorder = null;
     this.batchRecording = null;
     this.stream = null;
@@ -1558,6 +1569,24 @@ export class YaServerProvider implements SpeechProvider {
     } else {
       if (recording) void this.transcribeRecording(recording);
     }
+  }
+
+  cancel(): void {
+    if (this.disposed) return;
+    if (this.state.status !== "processing") return;
+    // Mark the in-flight transcription so its late result is discarded; the
+    // backend request may still complete but stays inert.
+    if (this.processingBatchToken !== null) {
+      this.cancelledBatchTokens.add(this.processingBatchToken);
+      this.processingBatchToken = null;
+    }
+    this.setState({
+      status: "idle",
+      isListening: false,
+      interimTranscript: "",
+      error: null,
+    });
+    this.options.onEnd?.();
   }
 
   private releaseActiveStream(): void {
@@ -1608,6 +1637,8 @@ export class YaServerProvider implements SpeechProvider {
   dispose(): void {
     this.disposed = true;
     this.startToken += 1;
+    this.processingBatchToken = null;
+    this.cancelledBatchTokens.clear();
     this.cleanupMedia(false);
     this.setState({ ...INITIAL_SPEECH_STATE });
     this.subscribers.clear();

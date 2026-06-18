@@ -36,6 +36,8 @@ export interface VoiceInputButtonRef {
   stopAndFinalize: () => string;
   /** Toggle listening on/off */
   toggle: () => void;
+  /** Abandon an in-flight post-capture transcription; late result is discarded. */
+  cancelProcessing: () => void;
   /** Speculatively warm capture resources before the first click. */
   prewarm: () => void;
   /** Whether currently listening */
@@ -162,6 +164,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     status,
     toggleListening,
     stopListening,
+    cancelProcessing,
     prewarm,
     error,
     interimTranscript,
@@ -206,6 +209,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
         return pending;
       },
       toggle: toggleListening,
+      cancelProcessing,
       prewarm,
       isListening: isActive,
       isAvailable,
@@ -213,6 +217,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     [
       interimTranscript,
       isActive,
+      cancelProcessing,
       prewarm,
       stopListening,
       toggleListening,

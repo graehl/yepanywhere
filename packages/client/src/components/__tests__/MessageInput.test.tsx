@@ -38,6 +38,7 @@ const {
   mockSetGrokSpeechAudioSettings,
   mockVoiceToggle,
   mockVoiceStopAndFinalize,
+  mockVoiceCancelProcessing,
   voiceButtonState,
   voicePropsState,
   remoteBasePathState,
@@ -77,6 +78,7 @@ const {
   mockSetGrokSpeechAudioSettings: vi.fn(),
   mockVoiceToggle: vi.fn(),
   mockVoiceStopAndFinalize: vi.fn(() => ""),
+  mockVoiceCancelProcessing: vi.fn(),
   voiceButtonState: {
     isListening: false,
   },
@@ -93,6 +95,7 @@ const {
       onInterimTranscript?: (text: string) => void;
       onListeningStart?: () => void;
       onListeningStop?: () => void;
+      onProcessingChange?: (processing: boolean) => void;
       getTranscriptionContext?: () => { speechTargetId?: string };
     },
   },
@@ -294,6 +297,7 @@ vi.mock("../VoiceInputButton", async () => {
         React.useImperativeHandle(ref, () => ({
           stopAndFinalize: mockVoiceStopAndFinalize,
           toggle: mockVoiceToggle,
+          cancelProcessing: mockVoiceCancelProcessing,
           prewarm: vi.fn(),
           isAvailable: true,
           isListening: voiceButtonState.isListening,
@@ -476,6 +480,7 @@ describe("MessageInput", () => {
     mockSetGrokSpeechAudioSettings.mockReset();
     mockVoiceToggle.mockReset();
     mockVoiceStopAndFinalize.mockReset();
+    mockVoiceCancelProcessing.mockReset();
     voiceButtonState.isListening = false;
     voicePropsState.current = null;
     window.localStorage.clear();
@@ -684,6 +689,43 @@ describe("MessageInput", () => {
       expect(textarea.value).toBe("replace text");
       expect(textarea.selectionStart).toBe("replace".length);
     });
+  });
+
+  it("keeps the composer editable and shows a cancellable chip while transcribing", async () => {
+    const textarea = renderMessageInput() as HTMLTextAreaElement;
+
+    expect(document.querySelector(".speech-transcribing-chip")).toBeNull();
+
+    // Enter the batch processing wait (no interim), e.g. parakeet first-load.
+    act(() => {
+      voicePropsState.current?.onProcessingChange?.(true);
+    });
+
+    const chip = await waitFor(() => {
+      const el = document.querySelector(".speech-transcribing-chip");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+
+    // The field stays editable while transcription is pending.
+    expect(textarea.disabled).toBe(false);
+    fireEvent.change(textarea, {
+      target: { value: "typed while transcribing" },
+    });
+    expect(textarea.value).toBe("typed while transcribing");
+
+    // The chip's ✕ is the only cancel path; backspace cannot reach it.
+    const cancel = chip.querySelector(
+      ".speech-transcribing-cancel",
+    ) as HTMLButtonElement;
+    fireEvent.click(cancel);
+    expect(mockVoiceCancelProcessing).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      expect(document.querySelector(".speech-transcribing-chip")).toBeNull();
+    });
+    // Cancel leaves the user's typed text intact.
+    expect(textarea.value).toBe("typed while transcribing");
   });
 
   it("does not grace-delay the selection that started the mic transaction", () => {

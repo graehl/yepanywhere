@@ -138,10 +138,35 @@ the speech transaction point, stop recognition, and do not submit.
 Stopping a batch recording ends capture synchronously. The mic button must
 clear its red/listening state immediately; slower upload, provider latency,
 local model load, or a slow CPU plus large ASR model are post-capture
-processing and must not make the mic look active. While the result is pending,
-the composer may show a distinct "Transcribing..." placeholder at the speech
-transaction point, but that placeholder is mirror/status UI only and is not
-part of the textarea value.
+processing and must not make the mic look active.
+
+While the batch result is pending, the composer stays fully editable. The
+textarea keeps its real, visible draft and the user may type or edit anywhere,
+including the spot where the pending transcript will land. The pending
+transcription is surfaced as a sibling `Transcribing…` chip beside the field —
+a status affordance, never characters in the textarea value — so no keystroke
+or backspace can disturb or delete it. This sibling chip replaces the earlier
+transparent-textarea inline mirror for the batch wait: that mirror hid the
+whole draft behind a `Transcribing…` overlay (the field read as frozen) and let
+an accidental backspace edit invisible draft text. Streaming interim preview
+still renders inline at the insertion point; only the no-interim batch wait
+(`status: "processing"` with no interim) uses the chip.
+
+### Cancel contract
+
+The `Transcribing…` chip carries an explicit cancel control (an `✕`). Cancel is
+the only way to abandon a pending batch transcription; there is deliberately no
+keyboard path, so an inadvertent backspace cannot trigger it. Cancel removes the
+chip, ends the pending speech transaction, and drops its insertion target.
+
+The guarantee is result-suppression, not necessarily work-interruption: a
+transcription that finishes after cancel must be fully inert — it inserts
+nothing, replaces nothing, and triggers no send. The provider discards the late
+result via its `cancel()` method (see
+[pluggable-speech-recognition.md](pluggable-speech-recognition.md)). Actually
+interrupting the backend request or model work is an optional optimization and
+may never be implemented; the only contract is that a completed-after-cancel
+result is a no-op.
 
 When the batch result arrives, YA treats it as one delayed finalized streaming
 chunk. It uses the speech transaction target captured at mic start, including

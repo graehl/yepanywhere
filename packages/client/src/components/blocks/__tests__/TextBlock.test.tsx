@@ -344,7 +344,7 @@ describe("TextBlock", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(
+    const { container } = render(
       <I18nProvider>
         <SessionMetadataProvider
           projectId="project-1"
@@ -376,6 +376,10 @@ describe("TextBlock", () => {
       "full",
     );
     expect(await screen.findByText("Project doc")).toBeTruthy();
+    const overlay = document.body.querySelector(".modal-overlay");
+    expect(overlay).toBeTruthy();
+    expect(overlay?.parentElement).toBe(document.body);
+    expect(container.contains(overlay)).toBe(false);
   });
 
   it("normalizes browser-style Windows drive local-file links under the active project", async () => {

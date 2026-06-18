@@ -196,20 +196,18 @@ export const FilePathLink = memo(function FilePathLink({
           <span className="file-path-link-line">{visibleSuffix}</span>
         )}
       </a>
-      {showModal &&
-        createPortal(
-          <FileViewerModal
-            projectId={projectId}
-            filePath={viewerFilePath}
-            lineNumber={lineNumber}
-            lineEnd={lineEnd}
-            viewMode={viewMode}
-            source={publicShareFileViewerSource}
-            openInNewTabUrl={fileViewUrl}
-            onClose={handleClose}
-          />,
-          document.body,
-        )}
+      {showModal && (
+        <FileViewerModal
+          projectId={projectId}
+          filePath={viewerFilePath}
+          lineNumber={lineNumber}
+          lineEnd={lineEnd}
+          viewMode={viewMode}
+          source={publicShareFileViewerSource}
+          openInNewTabUrl={fileViewUrl}
+          onClose={handleClose}
+        />
+      )}
     </>
   );
 });
@@ -263,7 +261,7 @@ export function FileViewerModal({
     };
   }, []);
 
-  return (
+  const modalContent = (
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop click dismisses the modal; Escape is handled globally
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled in useEffect, click is for overlay dismiss
     <div
@@ -292,4 +290,6 @@ export function FileViewerModal({
       </dialog>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

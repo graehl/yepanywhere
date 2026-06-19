@@ -9232,8 +9232,11 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  /* Vertical padding trimmed ~15% to shorten the category list. */
-  padding: calc(var(--space-3) * 0.85) var(--space-3);
+  /* Vertical padding trimmed ~15% then 2px more to shorten the category list.
+     Right pad halved: the chevron (single-column) or empty space (two-column)
+     left an unbalanced gap against the icon-side left pad. */
+  padding: calc(var(--space-3) * 0.85 - 2px) calc(var(--space-3) * 0.5)
+    calc(var(--space-3) * 0.85 - 2px) var(--space-3);
   background: var(--bg-code);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -9256,7 +9259,8 @@ a.sidebar-nav-item {
 
 .settings-category-icon {
   flex-shrink: 0;
-  width: 32px;
+  /* 30px box around the 22px glyph trims the L/R air ~20% (5px -> 4px). */
+  width: 30px;
   height: 32px;
   display: flex;
   align-items: center;
@@ -9283,7 +9287,7 @@ a.sidebar-nav-item {
 
 .settings-category-description {
   display: block;
-  font-size: var(--font-size-sm);
+  font-size: calc(var(--font-size-sm) - 1px);
   color: var(--text-muted);
   margin-top: 2px;
 }

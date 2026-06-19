@@ -31,6 +31,12 @@ import type {
   SpeechTranscriptionResultMetadata,
 } from "../lib/speechProviders/SpeechProvider";
 
+/**
+ * A post-capture pending-speech state the composer shows as a cancellable chip:
+ * `transcribing` for a batch wait, `finalizing` for a streaming flush.
+ */
+export type SpeechPendingKind = "transcribing" | "finalizing";
+
 export interface VoiceInputButtonRef {
   /** Stop listening and return any pending interim text */
   stopAndFinalize: () => string;
@@ -58,8 +64,8 @@ interface VoiceInputButtonProps {
   onListeningStart?: () => void;
   /** Callback when the user explicitly stops active capture. */
   onListeningStop?: () => void;
-  /** Callback when provider-side post-capture transcription starts or ends. */
-  onProcessingChange?: (processing: boolean) => void;
+  /** Callback when a post-capture pending state (transcribing/finalizing) starts or ends. */
+  onPendingSpeechChange?: (kind: SpeechPendingKind | null) => void;
   /** Whether the button should be disabled */
   disabled?: boolean;
   /** Additional class name */
@@ -84,7 +90,7 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
     onInterimTranscript,
     onListeningStart,
     onListeningStop,
-    onProcessingChange,
+    onPendingSpeechChange,
     disabled,
     className = "",
     speechMethod: selectedSpeechMethod,
@@ -191,6 +197,13 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   const isActive = isCapturing || isBusy;
   const isPressed = isCapturing || isStarting || status === "reconnecting";
   const isProcessing = status === "processing";
+  // A post-capture wait the composer surfaces as a cancellable chip. Batch
+  // goes through "processing"; streaming flushes through "finalizing".
+  const pendingKind: SpeechPendingKind | null = isProcessing
+    ? "transcribing"
+    : isFinalizing
+      ? "finalizing"
+      : null;
 
   const isAvailable = isSupported && voiceInputEnabled && serverVoiceEnabled;
 
@@ -233,11 +246,11 @@ export const VoiceInputButton = forwardRef(function VoiceInputButton(
   }, [isCapturing, interimTranscript, onInterimTranscript]);
 
   useEffect(() => {
-    onProcessingChange?.(isProcessing);
+    onPendingSpeechChange?.(pendingKind);
     return () => {
-      if (isProcessing) onProcessingChange?.(false);
+      if (pendingKind) onPendingSpeechChange?.(null);
     };
-  }, [isProcessing, onProcessingChange]);
+  }, [pendingKind, onPendingSpeechChange]);
 
   // Handle click - toggle listening and notify when starting
   const handleClick = useCallback(() => {

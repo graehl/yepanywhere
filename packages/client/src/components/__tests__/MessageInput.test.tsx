@@ -95,7 +95,9 @@ const {
       onInterimTranscript?: (text: string) => void;
       onListeningStart?: () => void;
       onListeningStop?: () => void;
-      onProcessingChange?: (processing: boolean) => void;
+      onPendingSpeechChange?: (
+        kind: "transcribing" | "finalizing" | null,
+      ) => void;
       getTranscriptionContext?: () => { speechTargetId?: string };
     },
   },
@@ -265,6 +267,9 @@ vi.mock("../../i18n", () => ({
           toolbarShortcutRenderedSourceMode: "Rendered/source mode",
           speechSettingsXaiKeyTitle: "Browser xAI STT Key",
           speechSettingsXaiKeyPlaceholder: "Borrow from server when empty",
+          speechTranscribingPlaceholder: "Transcribing...",
+          speechFinalizingPlaceholder: "Finalizing...",
+          speechTranscribingCancel: "Cancel transcription",
         }) satisfies Record<string, string>
       )[key] ?? key,
   }),
@@ -698,7 +703,7 @@ describe("MessageInput", () => {
 
     // Enter the batch processing wait (no interim), e.g. parakeet first-load.
     act(() => {
-      voicePropsState.current?.onProcessingChange?.(true);
+      voicePropsState.current?.onPendingSpeechChange?.("transcribing");
     });
 
     const chip = await waitFor(() => {
@@ -728,13 +733,11 @@ describe("MessageInput", () => {
     expect(textarea.value).toBe("typed while transcribing");
   });
 
-  it("shows no transcribing chip while streaming interim is present", async () => {
+  it("previews streaming interim inline, then shows a Finalizing chip on flush", async () => {
     renderMessageInput();
 
-    // Streaming interim text is previewed inline, not via the batch chip, even
-    // if a processing tick overlaps it.
+    // Active streaming: interim text previews inline, no pending chip.
     act(() => {
-      voicePropsState.current?.onProcessingChange?.(true);
       voicePropsState.current?.onInterimTranscript?.("live words");
     });
     await waitFor(() => {
@@ -742,13 +745,23 @@ describe("MessageInput", () => {
     });
     expect(document.querySelector(".speech-transcribing-chip")).toBeNull();
 
-    // When interim clears but processing continues (batch wait), the chip appears.
+    // Flush (stop): the streaming finalize wait shows the chip with its own
+    // word, and the ✕ cancels — parity with the batch transcribe wait.
     act(() => {
       voicePropsState.current?.onInterimTranscript?.("");
+      voicePropsState.current?.onPendingSpeechChange?.("finalizing");
     });
-    await waitFor(() => {
-      expect(document.querySelector(".speech-transcribing-chip")).not.toBeNull();
+    const chip = await waitFor(() => {
+      const el = document.querySelector(".speech-transcribing-chip");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
     });
+    expect(chip.textContent).toContain("Finalizing");
+
+    fireEvent.click(
+      chip.querySelector(".speech-transcribing-cancel") as HTMLButtonElement,
+    );
+    expect(mockVoiceCancelProcessing).toHaveBeenCalledTimes(1);
   });
 
   it("does not grace-delay the selection that started the mic transaction", () => {

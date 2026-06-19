@@ -58,7 +58,9 @@ const {
   mockVoiceCancelProcessing: vi.fn(),
   voicePropsState: {
     current: null as null | {
-      onProcessingChange?: (processing: boolean) => void;
+      onPendingSpeechChange?: (
+        kind: "transcribing" | "finalizing" | null,
+      ) => void;
       onInterimTranscript?: (text: string) => void;
     },
   },
@@ -920,7 +922,7 @@ describe("NewSessionForm", () => {
     expect(document.querySelector(".speech-transcribing-chip")).toBeNull();
 
     act(() => {
-      voicePropsState.current?.onProcessingChange?.(true);
+      voicePropsState.current?.onPendingSpeechChange?.("transcribing");
     });
     const chip = await waitFor(() => {
       const el = document.querySelector(".speech-transcribing-chip");

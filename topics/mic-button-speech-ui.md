@@ -179,25 +179,30 @@ interrupting the backend request or model work is an optional optimization and
 may never be implemented; the only contract is that a completed-after-cancel
 result is a no-op.
 
-### Unifying batch and streaming (planned)
+### Unifying batch and streaming
 
 Batch is a special case of streaming: one `is_final` block per mic activation,
 possibly with a high startup latency (model cold-load). The pending-result wait
 (`processing`) and the streaming finalize wait (`finalizing`) are the same
-conceptual state at different latencies, and the cancellable `Transcribing…`
-chip should converge with the streaming wait onto one mechanism with
+conceptual state at different latencies, surfaced by one cancellable chip with
 mode-conditional behavior. The distinct surface wording is deliberate and
 stays — `Transcribing…` for batch, `Finalizing…` for streaming — only the
-mechanism unifies.
+mechanism unifies. The composer receives a single pending *kind*
+(`transcribing` | `finalizing`) from the mic button and shows the chip for
+both; the chip's label follows the kind.
 
 The unified `✕` cancels only the in-progress, non-final portion of the active
 mini-turn; already-accepted `is_final` blocks remain in the draft. For batch
 there is no committed block during the wait, so cancel drops the whole pending
-result (today's behavior). Bringing streaming to parity means its finalize wait
-should expose the same `✕` and the same "drop the in-progress tail, keep
-committed finals" semantics — today the streaming wait only shows a mic
-`Finalizing…` status with no cancel. This is a planned direction, not the
-current implementation.
+result. For streaming, `cancel()` discards the uncommitted preview / in-flight
+tail and ignores any racing `final` (a start-token bump makes later socket
+messages inert), while the `is_final` blocks already emitted to the draft stay;
+this is distinct from `stop()`, which finalizes/flushes the tail.
+
+Implemented: the chip + `✕` for both `processing` and `finalizing`, and the
+streaming `cancel()`. Still planned: offering the `✕` during *active* live
+capture (cancel the current utterance mid-stream, keeping committed finals) —
+today the chip and its cancel cover the post-capture waits only.
 
 When the batch result arrives, YA treats it as one delayed finalized streaming
 chunk. It uses the speech transaction target captured at mic start, including

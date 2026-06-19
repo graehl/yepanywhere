@@ -106,7 +106,11 @@ import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { SpeechControlMenu } from "./SpeechControlMenu";
 import { SpeechTranscribingChip } from "./SpeechTranscribingChip";
 import { ThinkingControlsPanel } from "./ThinkingControls";
-import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
+import {
+  VoiceInputButton,
+  type SpeechPendingKind,
+  type VoiceInputButtonRef,
+} from "./VoiceInputButton";
 
 interface PendingFile {
   id: string;
@@ -380,7 +384,9 @@ export function NewSessionForm({
   >({});
   const [attachmentQuality] = useAttachmentUploadQuality();
   const [interimTranscript, setInterimTranscript] = useState("");
-  const [speechProcessing, setSpeechProcessing] = useState(false);
+  const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
+    null,
+  );
   const [, setSpeechPreviewRevision] = useState(0);
   const [isProjectChooserExpanded, setIsProjectChooserExpanded] =
     useState(false);
@@ -1606,13 +1612,17 @@ export function NewSessionForm({
     setInterimTranscript(transcript);
   }, []);
 
-  const handleSpeechProcessingChange = useCallback((processing: boolean) => {
-    setSpeechProcessing(processing);
-  }, []);
+  const handlePendingSpeechChange = useCallback(
+    (kind: SpeechPendingKind | null) => {
+      setSpeechPending(kind);
+    },
+    [],
+  );
 
-  // Cancel a pending batch transcription from the chip's ✕. The provider
-  // discards any late result; here we drop the pending speech target. Cancel
-  // is explicit-click-only so backspace can never trigger it.
+  // Cancel a pending transcription/finalization from the chip's ✕. The provider
+  // discards the in-flight result (keeping committed text); here we drop the
+  // pending speech target. Cancel is explicit-click-only so backspace can never
+  // trigger it.
   const handleCancelTranscription = useCallback(() => {
     voiceButtonRef.current?.cancelProcessing();
     clearPendingSpeechFinal();
@@ -1622,7 +1632,7 @@ export function NewSessionForm({
     }
     speechInsertionRangeRef.current = null;
     activeSpeechTargetIdRef.current = null;
-    setSpeechProcessing(false);
+    setSpeechPending(null);
     setInterimTranscript("");
   }, [clearPendingSpeechFinal]);
 
@@ -1648,11 +1658,10 @@ export function NewSessionForm({
   const hasContent = message.trim() || pendingFiles.length > 0;
   const canStart = Boolean(hasContent);
   const interimDisplayTranscript = interimTranscript.trim();
-  // Inline mirror is streaming-interim preview only; the batch processing wait
-  // uses a sibling chip so the textarea stays editable. See
-  // topics/mic-button-speech-ui.md (Batch Behavior).
+  // Inline mirror is streaming-interim preview only; a post-capture wait (batch
+  // transcribe or streaming flush) uses a sibling chip so the textarea stays
+  // editable. See topics/mic-button-speech-ui.md (Batch Behavior, Cancel).
   const speechInlineTranscript = interimDisplayTranscript;
-  const showTranscribingChip = speechProcessing && !interimDisplayTranscript;
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
@@ -1758,8 +1767,11 @@ export function NewSessionForm({
           </div>
         )}
       </div>
-      {showTranscribingChip && (
-        <SpeechTranscribingChip onCancel={handleCancelTranscription} />
+      {speechPending && (
+        <SpeechTranscribingChip
+          kind={speechPending}
+          onCancel={handleCancelTranscription}
+        />
       )}
       <div className="new-session-form-toolbar">
         <div className="new-session-form-toolbar-left">
@@ -1817,7 +1829,7 @@ export function NewSessionForm({
                 onInterimTranscript={handleInterimTranscript}
                 onListeningStart={handleListeningStart}
                 onListeningStop={handleListeningStop}
-                onProcessingChange={handleSpeechProcessingChange}
+                onPendingSpeechChange={handlePendingSpeechChange}
                 disabled={isStarting}
                 className="toolbar-button"
                 speechMethod={selectedSpeechMethod}

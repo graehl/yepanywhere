@@ -51,7 +51,10 @@ import type { ContextUsage, PermissionMode } from "../types";
 import { AttachmentChip } from "./AttachmentChip";
 import { MessageInputToolbar } from "./MessageInputToolbar";
 import { SpeechTranscribingChip } from "./SpeechTranscribingChip";
-import type { VoiceInputButtonRef } from "./VoiceInputButton";
+import type {
+  SpeechPendingKind,
+  VoiceInputButtonRef,
+} from "./VoiceInputButton";
 
 /** Progress info for an in-flight upload */
 export interface UploadProgress {
@@ -272,7 +275,9 @@ export function MessageInput({
   // User-controlled collapse state (independent of external collapse from approval panel)
   const [userCollapsed, setUserCollapsed] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
-  const [speechProcessing, setSpeechProcessing] = useState(false);
+  const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
+    null,
+  );
   const [, setSpeechPreviewRevision] = useState(0);
   const [dismissedSlashQuery, setDismissedSlashQuery] = useState<string | null>(
     null,
@@ -296,12 +301,11 @@ export function MessageInput({
     matchingSlashCommands.length > 0;
   const canSubmit = !!(text.trim() || attachments.length > 0);
   const interimDisplayTranscript = interimTranscript.trim();
-  // The inline mirror previews streaming interim text in place. A batch
-  // transcription wait (processing, no interim) instead shows a sibling chip
-  // so the textarea stays visible and freely editable. See
-  // topics/mic-button-speech-ui.md (Batch Behavior).
+  // The inline mirror previews streaming interim text in place. A post-capture
+  // wait (batch transcribe or streaming flush) instead shows a sibling chip so
+  // the textarea stays visible and freely editable. See
+  // topics/mic-button-speech-ui.md (Batch Behavior, Cancel contract).
   const speechInlineTranscript = interimDisplayTranscript;
-  const showTranscribingChip = speechProcessing && !interimDisplayTranscript;
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
@@ -1041,14 +1045,17 @@ export function MessageInput({
     setInterimTranscript(transcript);
   }, []);
 
-  const handleSpeechProcessingChange = useCallback((processing: boolean) => {
-    setSpeechProcessing(processing);
-  }, []);
+  const handlePendingSpeechChange = useCallback(
+    (kind: SpeechPendingKind | null) => {
+      setSpeechPending(kind);
+    },
+    [],
+  );
 
-  // Cancel a pending batch transcription from the chip's ✕. The provider
-  // discards any late result; here we drop the pending speech target so the
-  // composer forgets the reserved insertion point. Backspace never reaches
-  // this — cancel is intentionally an explicit-click-only action.
+  // Cancel a pending transcription/finalization from the chip's ✕. The provider
+  // discards the in-flight result (keeping any committed text); here we drop the
+  // pending speech target so the composer forgets the reserved insertion point.
+  // Backspace never reaches this — cancel is intentionally explicit-click-only.
   const handleCancelTranscription = useCallback(() => {
     voiceButtonRef.current?.cancelProcessing();
     clearPendingSpeechFinal();
@@ -1058,7 +1065,7 @@ export function MessageInput({
     }
     speechInsertionRangeRef.current = null;
     activeSpeechTargetIdRef.current = null;
-    setSpeechProcessing(false);
+    setSpeechPending(null);
     setInterimTranscript("");
   }, [clearPendingSpeechFinal]);
 
@@ -1205,8 +1212,11 @@ export function MessageInput({
           )}
         </div>
 
-        {showTranscribingChip && (
-          <SpeechTranscribingChip onCancel={handleCancelTranscription} />
+        {speechPending && (
+          <SpeechTranscribingChip
+            kind={speechPending}
+            onCancel={handleCancelTranscription}
+          />
         )}
 
         {showSlashSuggestions && (
@@ -1363,7 +1373,7 @@ export function MessageInput({
             onInterimTranscript={handleInterimTranscript}
             onListeningStart={handleListeningStart}
             onListeningStop={handleListeningStop}
-            onSpeechProcessingChange={handleSpeechProcessingChange}
+            onPendingSpeechChange={handlePendingSpeechChange}
             voiceDisabled={disabled}
             getTranscriptionContext={getTranscriptionContext}
             slashCommands={slashCommands}

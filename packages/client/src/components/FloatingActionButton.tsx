@@ -34,7 +34,11 @@ import type {
   SpeechTranscriptionResultMetadata,
 } from "../lib/speechProviders/SpeechProvider";
 import { SpeechTranscribingChip } from "./SpeechTranscribingChip";
-import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
+import {
+  VoiceInputButton,
+  type SpeechPendingKind,
+  type VoiceInputButtonRef,
+} from "./VoiceInputButton";
 
 const FAB_DRAFT_KEY = "fab-draft";
 
@@ -63,7 +67,9 @@ export function FloatingActionButton() {
   const [message, setMessage, draftControls] =
     useDraftPersistence(FAB_DRAFT_KEY);
   const [interimTranscript, setInterimTranscript] = useState("");
-  const [speechProcessing, setSpeechProcessing] = useState(false);
+  const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
+    null,
+  );
   const [, setSpeechPreviewRevision] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
@@ -77,11 +83,10 @@ export function FloatingActionButton() {
   const pendingTextareaSelectionRef =
     useRef<PendingTextareaSelectionRestore | null>(null);
   const interimDisplayTranscript = interimTranscript.trim();
-  // Inline mirror is streaming-interim preview only; the batch processing wait
-  // uses a sibling chip so the textarea stays editable. See
-  // topics/mic-button-speech-ui.md (Batch Behavior).
+  // Inline mirror is streaming-interim preview only; a post-capture wait (batch
+  // transcribe or streaming flush) uses a sibling chip so the textarea stays
+  // editable. See topics/mic-button-speech-ui.md (Batch Behavior, Cancel).
   const speechInlineTranscript = interimDisplayTranscript;
-  const showTranscribingChip = speechProcessing && !interimDisplayTranscript;
   const speechInsertionRange = speechInsertionRangeRef.current;
   const interimInsertion = speechInsertionRange
     ? getSpeechTranscriptReplacementParts(
@@ -350,13 +355,17 @@ export function FloatingActionButton() {
     setInterimTranscript(transcript);
   }, []);
 
-  const handleSpeechProcessingChange = useCallback((processing: boolean) => {
-    setSpeechProcessing(processing);
-  }, []);
+  const handlePendingSpeechChange = useCallback(
+    (kind: SpeechPendingKind | null) => {
+      setSpeechPending(kind);
+    },
+    [],
+  );
 
-  // Cancel a pending batch transcription from the chip's ✕. The provider
-  // discards any late result; here we drop the pending speech target. Cancel
-  // is explicit-click-only so backspace can never trigger it.
+  // Cancel a pending transcription/finalization from the chip's ✕. The provider
+  // discards the in-flight result (keeping committed text); here we drop the
+  // pending speech target. Cancel is explicit-click-only so backspace can never
+  // trigger it.
   const handleCancelTranscription = useCallback(() => {
     voiceButtonRef.current?.cancelProcessing();
     clearPendingSpeechFinal();
@@ -366,7 +375,7 @@ export function FloatingActionButton() {
     }
     speechInsertionRangeRef.current = null;
     activeSpeechTargetIdRef.current = null;
-    setSpeechProcessing(false);
+    setSpeechPending(null);
     setInterimTranscript("");
   }, [clearPendingSpeechFinal]);
 
@@ -483,8 +492,11 @@ export function FloatingActionButton() {
               </div>
             )}
           </div>
-          {showTranscribingChip && (
-            <SpeechTranscribingChip onCancel={handleCancelTranscription} />
+          {speechPending && (
+            <SpeechTranscribingChip
+              kind={speechPending}
+              onCancel={handleCancelTranscription}
+            />
           )}
           <div className="fab-input-toolbar">
             <VoiceInputButton
@@ -493,7 +505,7 @@ export function FloatingActionButton() {
               onInterimTranscript={handleInterimTranscript}
               onListeningStart={handleListeningStart}
               onListeningStop={handleListeningStop}
-              onProcessingChange={handleSpeechProcessingChange}
+              onPendingSpeechChange={handlePendingSpeechChange}
               getTranscriptionContext={getTranscriptionContext}
               className="toolbar-button"
             />

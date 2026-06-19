@@ -1,24 +1,31 @@
 import { useI18n } from "../i18n";
+import type { SpeechPendingKind } from "./VoiceInputButton";
 
 interface Props {
-  /** Cancel the in-flight transcription. A late result must become a no-op. */
+  /** Which post-capture wait this is: a batch transcribe or a streaming flush. */
+  kind: SpeechPendingKind;
+  /** Cancel the in-flight speech. A late result must become a no-op. */
   onCancel: () => void;
 }
 
 /**
- * Sibling status chip shown while a batch transcription is pending. The
- * pending transcription is never characters in the textarea value, so no
- * keystroke or backspace can disturb it; the explicit ✕ is the only way to
- * abandon it. See topics/mic-button-speech-ui.md (Batch Behavior).
+ * Sibling status chip shown while speech is pending after capture — a batch
+ * transcription (`transcribing`) or a streaming flush (`finalizing`). The
+ * pending speech is never characters in the textarea value, so no keystroke or
+ * backspace can disturb it; the explicit ✕ is the only way to abandon it.
+ * Cancel keeps already-committed text and drops only the in-progress portion.
+ * See topics/mic-button-speech-ui.md (Batch Behavior, Cancel contract).
  */
-export function SpeechTranscribingChip({ onCancel }: Props) {
+export function SpeechTranscribingChip({ kind, onCancel }: Props) {
   const { t } = useI18n();
+  const label =
+    kind === "finalizing"
+      ? t("speechFinalizingPlaceholder" as never)
+      : t("speechTranscribingPlaceholder" as never);
   return (
     <div className="speech-transcribing-chip" role="status" aria-live="polite">
       <span className="speech-transcribing-spinner" aria-hidden="true" />
-      <span className="speech-transcribing-label">
-        {t("speechTranscribingPlaceholder" as never)}
-      </span>
+      <span className="speech-transcribing-label">{label}</span>
       <button
         type="button"
         className="speech-transcribing-cancel"

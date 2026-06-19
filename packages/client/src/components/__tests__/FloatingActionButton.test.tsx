@@ -24,7 +24,9 @@ const { mockVoiceCancelProcessing, mockVoiceToggle, voicePropsState } =
     mockVoiceToggle: vi.fn(),
     voicePropsState: {
       current: null as null | {
-        onProcessingChange?: (processing: boolean) => void;
+        onPendingSpeechChange?: (
+          kind: "transcribing" | "finalizing" | null,
+        ) => void;
         onInterimTranscript?: (text: string) => void;
       },
     },
@@ -122,7 +124,7 @@ describe("FloatingActionButton speech", () => {
     expect(document.querySelector(".speech-transcribing-chip")).toBeNull();
 
     act(() => {
-      voicePropsState.current?.onProcessingChange?.(true);
+      voicePropsState.current?.onPendingSpeechChange?.("transcribing");
     });
     const chip = await waitFor(() => {
       const el = document.querySelector(".speech-transcribing-chip");

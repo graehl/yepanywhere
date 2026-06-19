@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { Level as LogLevel } from "pino";
 import { ALL_PERMISSION_MODES } from "@yep-anywhere/shared";
+import { DEFAULT_IDLE_TIMEOUT_SECONDS } from "./defaults.js";
 import { getDefaultCodexSessionsDir } from "./projects/codex-scanner.js";
 import type { PermissionMode } from "./sdk/types.js";
 import { getModuleEnv, harvestYaModuleEnv } from "./yaModuleEnv.js";
@@ -277,7 +278,9 @@ export function loadConfig(): Config {
     sessionIndexWriteLockStaleMs,
     sessionAutoArchiveDays,
     projectScanCacheTtlMs,
-    idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 20 * 60) * 1000,
+    idleTimeoutMs:
+      parseIntOrDefault(process.env.IDLE_TIMEOUT, DEFAULT_IDLE_TIMEOUT_SECONDS) *
+      1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),
     port: parseIntOrDefault(process.env.PORT, 3400),
     portFile: process.env.PORT_FILE ?? null,

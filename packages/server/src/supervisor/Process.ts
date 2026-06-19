@@ -20,6 +20,7 @@ import {
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   clampPatientPatienceSeconds,
 } from "@yep-anywhere/shared";
+import { DEFAULT_IDLE_TIMEOUT_MS } from "../defaults.js";
 import { getLogger } from "../logging/logger.js";
 import { getProjectName } from "../projects/paths.js";
 import { concatUserMessages, INTERRUPT_PREAMBLE } from "../sdk/messageQueue.js";
@@ -61,7 +62,6 @@ import type {
   ProcessOptions,
   ProcessState,
 } from "./types.js";
-import { DEFAULT_IDLE_TIMEOUT_MS } from "./types.js";
 
 type Listener = (event: ProcessEvent) => void | Promise<void>;
 type ClaudeSessionState = "idle" | "running" | "requires_action";

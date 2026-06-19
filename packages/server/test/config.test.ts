@@ -147,13 +147,13 @@ describe("loadConfig codex paths", () => {
     expect(config.nemoDevice).toBe("cuda:1");
   });
 
-  it("defaults idle cleanup to 20 minutes", async () => {
+  it("defaults idle cleanup to 60 minutes", async () => {
     vi.stubEnv("IDLE_TIMEOUT", "");
 
     const { loadConfig } = await import("../src/config.js");
     const config = loadConfig();
 
-    expect(config.idleTimeoutMs).toBe(20 * 60 * 1000);
+    expect(config.idleTimeoutMs).toBe(60 * 60 * 1000);
   });
 
   it("preserves an explicit IDLE_TIMEOUT override", async () => {

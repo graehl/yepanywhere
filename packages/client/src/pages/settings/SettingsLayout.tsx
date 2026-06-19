@@ -17,6 +17,7 @@ import { AppearanceSettings } from "./AppearanceSettings";
 import { DevelopmentSettings } from "./DevelopmentSettings";
 import { DevicesSettings } from "./DevicesSettings";
 import { EmulatorSettings } from "./EmulatorSettings";
+import { EnvironmentSettings } from "./EnvironmentSettings";
 import { LifecycleWebhooksSettings } from "./LifecycleWebhooksSettings";
 import { LocalAccessSettings } from "./LocalAccessSettings";
 import { MessageDeliverySettings } from "./MessageDeliverySettings";
@@ -50,6 +51,7 @@ const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   speech: SpeechSettings,
   "remote-executors": RemoteExecutorsSettings,
   emulator: EmulatorSettings,
+  environment: EnvironmentSettings,
   about: AboutSettings,
   development: DevelopmentSettings,
 };

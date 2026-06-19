@@ -181,6 +181,15 @@ export const settingsCategoryIcons: Record<string, ReactNode> = {
     </Icon>
   ),
 
+  environment: (
+    <Icon>
+      {/* Terminal: an env/config console with a prompt chevron + line */}
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="M6 9l3 3-3 3" />
+      <line x1="12" y1="15" x2="17" y2="15" />
+    </Icon>
+  ),
+
   about: (
     <Icon>
       {/* Info (exact Lucide "info" for clear "i" glyph) */}

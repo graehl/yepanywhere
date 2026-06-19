@@ -4,6 +4,7 @@ import * as path from "node:path";
 import type { Level as LogLevel } from "pino";
 import { ALL_PERMISSION_MODES } from "@yep-anywhere/shared";
 import { DEFAULT_IDLE_TIMEOUT_SECONDS } from "./defaults.js";
+import { captureStartupEnvSettings } from "./envSettings.js";
 import { getDefaultCodexSessionsDir } from "./projects/codex-scanner.js";
 import type { PermissionMode } from "./sdk/types.js";
 import { getModuleEnv, harvestYaModuleEnv } from "./yaModuleEnv.js";
@@ -184,6 +185,9 @@ export interface Config {
  * Load configuration from environment variables with defaults.
  */
 export function loadConfig(): Config {
+  // Snapshot the documented env for the Environment settings panel before any
+  // secrets are harvested/stripped below, redacting secrets at capture time.
+  captureStartupEnvSettings();
   // Harvest YA_<module>__* secrets into the private store and strip them from
   // process.env before anything can spawn a child that would inherit them.
   harvestYaModuleEnv();

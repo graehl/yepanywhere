@@ -72,6 +72,7 @@ import {
 } from "./routes/public-shares.js";
 import { createRecentsRoutes } from "./routes/recents.js";
 import { createServerAdminRoutes } from "./routes/server-admin.js";
+import { createEnvSettingsRoutes } from "./routes/env-settings.js";
 import { createServerInfoRoutes } from "./routes/server-info.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createSettingsRoutes } from "./routes/settings.js";
@@ -696,6 +697,9 @@ export function createApp(options: AppOptions): AppResult {
       }),
     );
   }
+
+  // Documented startup env vars (read-only; secrets redacted server-side)
+  app.route("/api/env-settings", createEnvSettingsRoutes());
 
   // Server admin routes (restart, always available for remote relay)
   app.route(

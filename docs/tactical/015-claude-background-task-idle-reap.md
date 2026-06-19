@@ -118,8 +118,9 @@ Relevant implementation points:
   - Claude `system/session_state_changed` with `state: "idle"` also calls
     `transitionToIdle()`.
   - `transitionToIdle()` starts the idle reap timer.
-- `packages/server/src/supervisor/types.ts`
-  - `DEFAULT_IDLE_TIMEOUT_MS = 20 * 60 * 1000`.
+- `packages/server/src/defaults.ts`
+  - `DEFAULT_IDLE_TIMEOUT_MS` / `DEFAULT_IDLE_TIMEOUT_SECONDS` (later raised to
+    60 minutes; see commit f8f1f396).
 - `packages/server/src/config.ts`
   - normal startup passes `config.idleTimeoutMs` into the supervisor, so the
     `IDLE_TIMEOUT` default there moved with `DEFAULT_IDLE_TIMEOUT_MS`.

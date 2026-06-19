@@ -345,6 +345,23 @@ export interface ServerInfo {
   localhostOnly: boolean;
 }
 
+/**
+ * One documented startup env var. For set secrets, `value` is a redacted
+ * preview produced server-side; the raw secret is never sent to the client.
+ */
+export interface EnvSettingEntry {
+  name: string;
+  group: string;
+  description: string;
+  secret: boolean;
+  set: boolean;
+  value?: string;
+}
+
+export interface EnvSettingsReport {
+  entries: EnvSettingEntry[];
+}
+
 export interface NetworkInterface {
   /** Interface name (e.g., "eth0", "wlan0") */
   name: string;
@@ -396,6 +413,9 @@ export const api = {
 
   // Server info API (host/port binding for Local Access settings)
   getServerInfo: () => fetchJSON<ServerInfo>("/server-info"),
+
+  // Documented startup env vars (read-only; secrets redacted server-side)
+  getEnvSettings: () => fetchJSON<EnvSettingsReport>("/env-settings"),
 
   // Network binding API (runtime port/interface configuration)
   getNetworkBinding: () => fetchJSON<NetworkBindingState>("/network-binding"),

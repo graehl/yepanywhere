@@ -74,7 +74,6 @@ import {
 } from "./services/index.js";
 import {
   type SpeechRegistryInitOptions,
-  applyLastUsedSpeechModels,
   SpeechBackendRegistry,
   getRequestedSpeechBackendIds,
   registerSpeechBackends,
@@ -574,25 +573,19 @@ async function startServer() {
     );
   }
 
-  // Warm the model the user last used per local backend (unless an env model is
-  // explicitly set), so switching to it skips the cold model-swap. See
-  // topics/pluggable-speech-recognition.md.
-  const speechBackendOptions: SpeechRegistryInitOptions = applyLastUsedSpeechModels(
-    {
-      voiceInputEnabled: config.voiceInputEnabled,
-      voiceBackends: config.voiceBackends,
-      deepgramApiKey: config.deepgramApiKey,
-      xaiSttApiKey: config.xaiSttApiKey,
-      whisperModel: config.whisperModel,
-      whisperDevice: config.whisperDevice,
-      whisperComputeType: config.whisperComputeType,
-      parakeetModel: config.parakeetModel,
-      parakeetDevice: config.parakeetDevice,
-      nemoModel: config.nemoModel,
-      nemoDevice: config.nemoDevice,
-    },
-    serverSettingsService.getSetting("lastLocalSpeechModels"),
-  );
+  const speechBackendOptions: SpeechRegistryInitOptions = {
+    voiceInputEnabled: config.voiceInputEnabled,
+    voiceBackends: config.voiceBackends,
+    deepgramApiKey: config.deepgramApiKey,
+    xaiSttApiKey: config.xaiSttApiKey,
+    whisperModel: config.whisperModel,
+    whisperDevice: config.whisperDevice,
+    whisperComputeType: config.whisperComputeType,
+    parakeetModel: config.parakeetModel,
+    parakeetDevice: config.parakeetDevice,
+    nemoModel: config.nemoModel,
+    nemoDevice: config.nemoDevice,
+  };
   const speechBackendRegistry = new SpeechBackendRegistry();
   const requestedSpeechBackends =
     getRequestedSpeechBackendIds(speechBackendOptions);

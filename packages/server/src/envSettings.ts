@@ -66,6 +66,12 @@ export interface EnvSettingEntry {
    * secrets; empty string for a var set to "". Absent when the var is unset.
    */
   value?: string;
+  /**
+   * Dynamic, runtime-computed caption (not part of the static registry). Filled
+   * in per-request by the route for vars whose real effect depends on live
+   * server state — e.g. HOST gets the actual active listen addresses.
+   */
+  note?: string;
 }
 
 export interface EnvSettingsReport {
@@ -108,7 +114,7 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
     name: "HOST",
     group: "Server & network",
     description:
-      "Interface to bind. Default 127.0.0.1 (localhost only); set 0.0.0.0 to bind all interfaces.",
+      "Extra network interface to bind, applied only when the server is launched with --host. localhost is always served regardless.",
   },
   {
     name: "SERVE_FRONTEND",

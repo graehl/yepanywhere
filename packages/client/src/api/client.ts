@@ -356,6 +356,8 @@ export interface EnvSettingEntry {
   secret: boolean;
   set: boolean;
   value?: string;
+  /** Dynamic, runtime-computed caption (e.g. HOST's active listen addresses). */
+  note?: string;
 }
 
 export interface EnvSettingsReport {

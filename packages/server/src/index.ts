@@ -542,6 +542,8 @@ async function startServer() {
     onNetworkBindingChange?: (
       config: { host: string; port: number } | null,
     ) => Promise<{ success: boolean; error?: string }>;
+    /** Live: addresses currently bound (reads real sockets at call time). */
+    getActiveListeners?: () => string[];
   } = {};
 
   // Determine effective port for server-info (CLI override or saved setting)
@@ -1090,6 +1092,19 @@ async function startServer() {
   // Wire up the callbacks to the holder so routes can use them
   networkBindingCallbackHolder.onLocalhostPortChange = onLocalhostPortChange;
   networkBindingCallbackHolder.onNetworkBindingChange = onNetworkBindingChange;
+  // Report the addresses actually bound right now by reading the live sockets.
+  // A server that failed to bind (e.g. an unresolvable --host) reports a null
+  // address(), so it never appears here -- the panel shows only real listeners.
+  networkBindingCallbackHolder.getActiveListeners = () => {
+    const listeners: string[] = [];
+    for (const server of [localhostServer, networkServer]) {
+      const address = server?.address();
+      if (address && typeof address === "object") {
+        listeners.push(`${address.address}:${address.port}`);
+      }
+    }
+    return listeners;
+  };
 
   // Create the main localhost server
   const expectedServerUrl = `${serverProtocol}://127.0.0.1:${effectivePort}`;

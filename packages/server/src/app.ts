@@ -195,6 +195,8 @@ export interface AppOptions {
     onNetworkBindingChange?: (
       config: { host: string; port: number } | null,
     ) => Promise<{ success: boolean; error?: string }>;
+    /** Live accessor for the addresses the server is actually listening on. */
+    getActiveListeners?: () => string[];
   };
   /** ConnectedBrowsersService for tracking active browser connections */
   connectedBrowsers?: ConnectedBrowsersService;
@@ -698,8 +700,16 @@ export function createApp(options: AppOptions): AppResult {
     );
   }
 
-  // Documented startup env vars (read-only; secrets redacted server-side)
-  app.route("/api/env-settings", createEnvSettingsRoutes());
+  // Documented startup env vars (read-only; secrets redacted server-side).
+  // The HOST entry is annotated with the live listen addresses; read the holder
+  // lazily since its getter is set after startServer() binds.
+  app.route(
+    "/api/env-settings",
+    createEnvSettingsRoutes({
+      getActiveListeners: () =>
+        options.networkBindingCallbackHolder?.getActiveListeners?.() ?? [],
+    }),
+  );
 
   // Server admin routes (restart, always available for remote relay)
   app.route(

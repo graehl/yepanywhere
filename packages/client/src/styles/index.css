@@ -8909,6 +8909,13 @@ a.sidebar-nav-item {
   color: var(--text-muted);
 }
 
+/* Dynamic, runtime-computed caption (e.g. HOST's active listen addresses). */
+.env-var-note {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
 .settings-command-panel {
   display: flex;
   flex-direction: column;

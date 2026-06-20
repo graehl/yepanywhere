@@ -84,6 +84,7 @@ function EnvVarRow({ entry }: { entry: EnvSettingEntry }) {
         <EnvVarValue entry={entry} />
       </div>
       <p className="env-var-description">{entry.description}</p>
+      {entry.note && <p className="env-var-note">{entry.note}</p>}
     </div>
   );
 }

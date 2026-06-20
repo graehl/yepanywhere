@@ -37,3 +37,5 @@
 - Claude API failures and auto-retry (transient 5xx/overload evidence)
 - Media rendering and routing (image/video/file surfaces, the relay fetch rule, serving doors)
 - Sidebar session ordering (active rows pinned and stable, idle rows deduped by recency)
+- Deferred & tactical roadmap (prioritized: backgrounded-jobs badge, `Task*` list rendering, queue-across-compaction, rich-text gaps, OpenCode/pi provider fleshout)
+- pi provider (Zechner's pi-mono as agnostic backend: integration plan + periodic progress tracking)

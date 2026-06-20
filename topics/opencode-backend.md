@@ -6,6 +6,10 @@
 
 Topic: opencode-backend
 
+See also [`pi-provider.md`](pi-provider.md): pi-mono is the other
+agnostic-backend candidate, recommended primary with OpenCode as
+secondary/fallback (see `../docs/research/opencode-vs-pi-mono-provider-backend-comparison.md`).
+
 ## Scope
 
 OpenCode is integrated through `opencode serve` plus HTTP and SSE, not through a

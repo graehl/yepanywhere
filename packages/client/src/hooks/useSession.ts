@@ -146,6 +146,66 @@ function parseProcessState(value: unknown): ProcessState | null {
   return null;
 }
 
+interface CompactBoundarySnapshot {
+  count: number;
+  latestKey: string | null;
+  latestTimestampMs: number | null;
+}
+
+function isCompactBoundaryMessage(message: Message): boolean {
+  return message.type === "system" && message.subtype === "compact_boundary";
+}
+
+function getCompactBoundaryKey(message: Message, index: number): string {
+  return (
+    getMessageId(message) ??
+    `${index}:${typeof message.timestamp === "string" ? message.timestamp : ""}`
+  );
+}
+
+function getCompactBoundarySnapshot(
+  messages: Message[],
+): CompactBoundarySnapshot {
+  let count = 0;
+  let latestKey: string | null = null;
+  let latestTimestampMs: number | null = null;
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message || !isCompactBoundaryMessage(message)) {
+      continue;
+    }
+
+    count += 1;
+    latestKey = getCompactBoundaryKey(message, index);
+    latestTimestampMs = parseMessageTimestampMs(message.timestamp);
+  }
+
+  return { count, latestKey, latestTimestampMs };
+}
+
+function compactBoundaryAdvancedSince(
+  current: CompactBoundarySnapshot,
+  baseline: CompactBoundarySnapshot | null,
+): boolean {
+  if (current.count === 0) {
+    return false;
+  }
+  if (!baseline || baseline.count === 0) {
+    return true;
+  }
+  if (current.latestKey === baseline.latestKey) {
+    return false;
+  }
+  if (
+    current.latestTimestampMs !== null &&
+    baseline.latestTimestampMs !== null
+  ) {
+    return current.latestTimestampMs > baseline.latestTimestampMs;
+  }
+  return current.count > baseline.count;
+}
+
 // Re-export StreamingMarkdownCallbacks for consumers
 export type { StreamingMarkdownCallbacks } from "./useStreamingContent";
 
@@ -527,8 +587,10 @@ export function useSession(
     setDeferredMessages([]);
   }, [sessionId]);
 
-  // Compacting state - true when context is being compressed
-  const [isCompacting, setIsCompacting] = useState(false);
+  // Compacting state - true when context is being compressed. The setter below
+  // records a transcript baseline so JSONL catch-up can clear only compactions
+  // that completed after the current local compacting attempt began.
+  const [isCompacting, setIsCompactingState] = useState(false);
   const [sessionLiveness, setSessionLiveness] =
     useState<SessionLivenessSnapshot | null>(null);
 
@@ -722,6 +784,75 @@ export function useSession(
     onLoadComplete: handleLoadComplete,
     onLoadError: handleLoadError,
   });
+
+  const messagesRef = useRef<Message[]>(messages);
+  const messagesLoadingRef = useRef(loading);
+  const compactBoundaryBaselineRef =
+    useRef<CompactBoundarySnapshot | null>(null);
+  const canReconcileCompactingFromMessagesRef = useRef(false);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    messagesLoadingRef.current = loading;
+  }, [loading]);
+
+  const setIsCompacting = useCallback(
+    (value: boolean | ((previous: boolean) => boolean)) => {
+      setIsCompactingState((previous) => {
+        const next = typeof value === "function" ? value(previous) : value;
+
+        if (next && !previous) {
+          compactBoundaryBaselineRef.current = getCompactBoundarySnapshot(
+            messagesRef.current,
+          );
+          canReconcileCompactingFromMessagesRef.current =
+            !messagesLoadingRef.current;
+        } else if (!next) {
+          compactBoundaryBaselineRef.current = null;
+          canReconcileCompactingFromMessagesRef.current = false;
+        }
+
+        return next;
+      });
+    },
+    [],
+  );
+
+  // Centralized stale-spinner reconciliation. Live provider events still start
+  // the spinner, but durable/session snapshots must be able to disprove it
+  // after mobile sleep or a missed WebSocket frame.
+  useEffect(() => {
+    if (!isCompacting) {
+      return;
+    }
+
+    if (status.owner !== "self") {
+      setIsCompacting(false);
+      return;
+    }
+
+    if (!canReconcileCompactingFromMessagesRef.current) {
+      return;
+    }
+
+    const currentSnapshot = getCompactBoundarySnapshot(messages);
+    if (
+      compactBoundaryAdvancedSince(
+        currentSnapshot,
+        compactBoundaryBaselineRef.current,
+      )
+    ) {
+      setIsCompacting(false);
+    }
+  }, [isCompacting, messages, setIsCompacting, status.owner]);
+
+  useEffect(() => {
+    setIsCompacting(false);
+  }, [sessionId, setIsCompacting]);
+
   const nextClientOrderRef = useRef(0);
 
   useEffect(() => {

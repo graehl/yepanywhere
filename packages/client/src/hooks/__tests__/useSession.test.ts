@@ -187,6 +187,32 @@ describe("useSession completion reconciliation", () => {
     expect(fetchNewMessages).toHaveBeenCalledTimes(1);
   });
 
+  it("clears compacting state when the live stream completes", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      });
+    });
+
+    expect(result.current.isCompacting).toBe(true);
+
+    act(() => {
+      sessionStreamHandler?.({ eventType: "complete" });
+    });
+
+    expect(result.current.isCompacting).toBe(false);
+  });
+
   it("refreshes persisted messages when ownership drops to none", () => {
     const { result } = renderHook(() =>
       useSession(PROJECT_ID, "sess-1", {
@@ -210,6 +236,38 @@ describe("useSession completion reconciliation", () => {
     expect(result.current.processState).toBe("idle");
     expect(result.current.status).toEqual({ owner: "none" });
     expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears compacting state when ownership drops to none", () => {
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      });
+    });
+
+    expect(result.current.isCompacting).toBe(true);
+
+    act(() => {
+      fileActivityOptions?.onSessionStatusChange?.({
+        type: "session-status-changed",
+        sessionId: "sess-1",
+        projectId: PROJECT_ID,
+        ownership: { owner: "none" } as SessionStatus,
+        timestamp: "2026-04-23T00:00:00.000Z",
+      });
+    });
+
+    expect(result.current.isCompacting).toBe(false);
   });
 
   it("does not refresh for unrelated session status events", () => {
@@ -262,6 +320,104 @@ describe("useSession completion reconciliation", () => {
     });
     expect(result.current.processState).toBe("idle");
     expect(fetchNewMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears compacting state when reconnect reports no owner", async () => {
+    apiMocks.getSessionMetadata.mockResolvedValue({
+      session: {},
+      ownership: { owner: "none" },
+      processState: null,
+      pendingInputRequest: null,
+    });
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      });
+    });
+
+    expect(result.current.isCompacting).toBe(true);
+
+    await act(async () => {
+      await fileActivityOptions?.onReconnect?.();
+    });
+
+    expect(result.current.isCompacting).toBe(false);
+  });
+
+  it("keeps compacting state when an old compact boundary was already loaded", () => {
+    sessionMessagesMock.messages = [
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        uuid: "old-boundary",
+        timestamp: "2026-04-23T00:00:00.000Z",
+        content: "Context compacted",
+      },
+    ];
+
+    const { result } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      });
+    });
+
+    expect(result.current.isCompacting).toBe(true);
+  });
+
+  it("clears compacting state when fetched messages add a compact boundary", () => {
+    const { result, rerender } = renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "system",
+        subtype: "status",
+        status: "compacting",
+      });
+    });
+
+    expect(result.current.isCompacting).toBe(true);
+
+    sessionMessagesMock.messages = [
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        uuid: "new-boundary",
+        timestamp: "2026-04-23T00:01:00.000Z",
+        content: "Context compacted",
+      },
+    ];
+
+    act(() => {
+      rerender();
+    });
+
+    expect(result.current.isCompacting).toBe(false);
   });
 
   it("mirrors the server deferred-queue event", () => {

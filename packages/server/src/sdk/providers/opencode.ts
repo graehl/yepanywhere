@@ -453,6 +453,12 @@ export class OpenCodeProvider implements AgentProvider {
       iterator,
       queue,
       abort: () => abortController.abort(),
+      // Graceful turn interrupt: stop the in-flight turn via the server's own
+      // abort endpoint and keep the per-session `opencode serve` alive so the
+      // session can continue. (abort(), by contrast, ends the session by
+      // killing the server.) The SSE loop already treats the resulting
+      // session.idle as turn-complete.
+      interrupt: () => this.interruptTurn(runtime),
       isProcessAlive: () => isProcessStillAlive(serverProcess),
       probeLiveness: () => this.probeLiveness(runtime),
       getProviderActivity: () => this.getProviderActivity(runtime),
@@ -460,6 +466,40 @@ export class OpenCodeProvider implements AgentProvider {
         return pidRef.value;
       },
     };
+  }
+
+  /**
+   * Stop the current OpenCode turn without killing the per-session server,
+   * via POST /session/:id/abort. Returns true when the request succeeds.
+   */
+  private async interruptTurn(
+    runtime: OpenCodeRuntimeState,
+  ): Promise<boolean> {
+    const log = getLogger();
+    try {
+      const response = await fetch(
+        `${runtime.baseUrl}/session/${runtime.opencodeSessionId}/abort`,
+        {
+          method: "POST",
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+      if (!response.ok) {
+        log.warn(
+          { status: response.status, sessionId: runtime.opencodeSessionId },
+          "OpenCode turn abort request failed",
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      log.warn(
+        { error, sessionId: runtime.opencodeSessionId },
+        "OpenCode turn abort request errored",
+      );
+      return false;
+    }
   }
 
   /**

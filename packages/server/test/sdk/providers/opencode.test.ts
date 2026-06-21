@@ -629,6 +629,43 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
     session.abort();
   });
 
+  it("interrupt() posts to the OpenCode session abort endpoint", async () => {
+    const sessionId = "ses_interrupt";
+    let abortCalled = false;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/event")) {
+        return Promise.resolve(
+          sseResponse([
+            { type: "session.idle", properties: { sessionID: sessionId } },
+          ]),
+        );
+      }
+      if (url.endsWith(`/session/${sessionId}/abort`) && init?.method === "POST") {
+        abortCalled = true;
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (url.endsWith(`/session/${sessionId}/message`)) {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ id: sessionId }));
+      }
+      return Promise.resolve(jsonResponse({ sessions: [] }));
+    });
+
+    const { OpenCodeProvider } = await import(
+      "../../../src/sdk/providers/opencode.js"
+    );
+    const provider = new OpenCodeProvider({ opencodePath: "/fake/opencode" });
+    const session = await provider.startSession({ cwd: "/tmp/test" });
+
+    const result = await session.interrupt?.();
+    expect(result).toBe(true);
+    expect(abortCalled).toBe(true);
+
+    session.abort();
+  });
+
   it("uses the OpenCode message POST body when SSE closes before content", async () => {
     const sessionId = "ses_post_body_fallback";
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {

@@ -111,7 +111,7 @@ describe("OpenCodeSessionReader", () => {
     expect(loaded?.summary).toMatchObject({
       id: "ses_cli",
       provider: "opencode",
-      model: "Qwen/Qwen3.6-27B",
+      model: "local-glm/Qwen/Qwen3.6-27B",
       fullTitle: "present?",
       messageCount: 2,
     });
@@ -171,6 +171,41 @@ describe("OpenCodeSessionReader", () => {
       type: "assistant",
       message: { role: "assistant", content: [{ type: "text", text: bigText }] },
     });
+  });
+
+  it("preserves the provider prefix on the model (provider/model)", async () => {
+    // Reload must yield `github-copilot/claude-opus-4.8`, not the bare
+    // modelID — the OpenCode provider rejects a model without a provider
+    // prefix ("must use provider/model format").
+    spawnMock = makeSpawnMock((args) => {
+      if (args[0] !== "export") return null;
+      const exported = makeExport(args[1] ?? "ses_cli", projectPath);
+      exported.info.model = {
+        id: "claude-opus-4.8",
+        providerID: "github-copilot",
+        variant: "high",
+      };
+      return JSON.stringify(exported);
+    });
+    vi.doMock("node:child_process", async (importOriginal) => {
+      const actual =
+        await importOriginal<typeof import("node:child_process")>();
+      return { ...actual, spawn: spawnMock };
+    });
+    vi.resetModules();
+
+    const { OpenCodeSessionReader } = await import(
+      "../../src/sessions/opencode-reader.js"
+    );
+    const reader = new OpenCodeSessionReader({
+      storageDir: join(testDir, "missing-storage"),
+      databasePath,
+      opencodePath: "/fake/opencode",
+      projectPath,
+    });
+
+    const loaded = await reader.getSession("ses_cli", projectId);
+    expect(loaded?.summary.model).toBe("github-copilot/claude-opus-4.8");
   });
 
   it("enumerates CLI sessions with the OpenCode database as index anchor", async () => {

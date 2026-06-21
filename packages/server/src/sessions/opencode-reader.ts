@@ -443,7 +443,9 @@ export class OpenCodeSessionReader implements ISessionReader {
             // Track the latest assistant model (a session's model can
             // change mid-transcript); files iterate in chronological order.
             if (msg.role === "assistant" && msg.modelID) {
-              model = msg.modelID;
+              model =
+                this.canonicalModelId(msg.providerID, msg.modelID) ??
+                msg.modelID;
             }
 
             // Get first user message text
@@ -838,25 +840,48 @@ export class OpenCodeSessionReader implements ISessionReader {
     }
     if (model && typeof model === "object" && !Array.isArray(model)) {
       const raw = model as Record<string, unknown>;
-      const id = this.stringField(raw.id) ?? this.stringField(raw.modelID);
-      if (id) return id;
+      const canonical = this.canonicalModelId(
+        raw.providerID,
+        this.stringField(raw.id) ?? this.stringField(raw.modelID),
+      );
+      if (canonical) return canonical;
     }
 
     for (const entry of entries) {
       if (entry.message.role !== "assistant") continue;
-      const modelId =
-        entry.message.modelID ??
-        (entry.message.model &&
+      const nested =
+        entry.message.model &&
         typeof entry.message.model === "object" &&
         !Array.isArray(entry.message.model)
-          ? this.stringField(
-              (entry.message.model as Record<string, unknown>).modelID,
-            )
-          : undefined);
-      if (modelId) return modelId;
+          ? (entry.message.model as Record<string, unknown>)
+          : undefined;
+      const canonical = this.canonicalModelId(
+        entry.message.providerID ?? nested?.providerID,
+        entry.message.modelID ?? this.stringField(nested?.modelID),
+      );
+      if (canonical) return canonical;
     }
 
     return undefined;
+  }
+
+  /**
+   * Canonical OpenCode model id as `providerID/modelID` — the form
+   * `opencode models` prints and `parseOpenCodeModelSelection` requires.
+   * A reload must not drop the provider prefix, or the next turn fails with
+   * `OpenCode model must use provider/model format`. modelID may itself
+   * contain slashes (e.g. `local-glm/Qwen/Qwen3.6-27B`); only the first
+   * slash separates provider from model, so a present prefix is preserved.
+   */
+  private canonicalModelId(
+    providerID: unknown,
+    modelID: unknown,
+  ): string | undefined {
+    const mid = this.stringField(modelID);
+    if (!mid) return undefined;
+    const pid = this.stringField(providerID);
+    if (!pid || mid.startsWith(`${pid}/`)) return mid;
+    return `${pid}/${mid}`;
   }
 
   private extractContextUsageFromEntries(

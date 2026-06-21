@@ -148,9 +148,15 @@ See [`pi-provider.md`](pi-provider.md) (new) and the existing research
 which already recommends pi-mono as YA's primary agnostic backend with a
 three-phase integration plan. Two tracks:
 
-- **7.1 Integration** (strategic, larger): add a `pi` provider via RPC mode
-  first (typed protocol, stable process boundary), plus a `PiSessionReader` for
-  `~/.pi/agent/sessions` JSONL trees; later an optional in-process SDK path.
+- **7.1 Integration** (strategic, larger): add a `pi` provider. Plan A (likely
+  first version): subprocess RPC mode (`pi --mode rpc`, typed protocol, stable
+  process boundary) — pi ships this headless front-door, so no TUI driving is
+  involved. Plan B (deeper-bypass alternative): in-process SDK
+  (`createAgentSession`). Both bypass the TUI; the post-#339 refactor makes that
+  the supported design, not a hack. Plus a `PiSessionReader` for
+  `~/.pi/agent/sessions` JSONL trees. Pin to the fork `graehl/pi` (we are not
+  upstream maintainers) for a bundled YA permission-bridge extension and version
+  control. Details in `pi-provider.md`.
 - **7.2 Progress tracking** (lightweight, periodic): watch Mario Zechner's pi
   refactor of web UI vs TUI and the third-party remote web UI, since a remote
   pi supervisor overlaps YA's value prop. Anchors: `earendil-works/pi#339`

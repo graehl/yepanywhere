@@ -79,3 +79,20 @@ export function normalizeOpenCodeTool(
   const renames = OPENCODE_TOOL_FIELD_RENAMES[lower];
   return { name, input: renames ? renameFields(input, renames) : input };
 }
+
+/**
+ * Map YA's AskUserQuestion answers (a Record keyed by question text, each value
+ * a label or list of labels) into OpenCode's ordered reply shape for
+ * POST /question/{id}/reply: one array of selected option labels per question,
+ * in the original question order. A question with no answer becomes [].
+ */
+export function mapOpenCodeQuestionAnswers(
+  questions: ReadonlyArray<{ question: string }>,
+  answers: Record<string, string | string[]> | undefined,
+): string[][] {
+  return questions.map((q) => {
+    const value = answers?.[q.question];
+    if (value === undefined) return [];
+    return Array.isArray(value) ? value : [value];
+  });
+}

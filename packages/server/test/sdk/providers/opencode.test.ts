@@ -561,6 +561,74 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
     session.abort();
   });
 
+  it("routes a permission.asked event to onToolApproval and replies once on allow", async () => {
+    const sessionId = "ses_perm_bridge";
+    const onToolApproval = vi.fn().mockResolvedValue({ behavior: "allow" });
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/event")) {
+        return Promise.resolve(
+          sseResponse([
+            {
+              type: "permission.asked",
+              properties: {
+                id: "per_1",
+                sessionID: sessionId,
+                permission: "bash",
+                patterns: ["echo hi"],
+                metadata: { command: "echo hi", description: "say hi" },
+                always: ["echo *"],
+                tool: { messageID: "msg_a", callID: "call_1" },
+              },
+            },
+            { type: "session.idle", properties: { sessionID: sessionId } },
+          ]),
+        );
+      }
+      if (url.endsWith(`/session/${sessionId}/message`)) {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (url.includes("/permission/per_1/reply")) {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ id: sessionId }));
+      }
+      return Promise.resolve(jsonResponse({ sessions: [] }));
+    });
+
+    const { OpenCodeProvider } = await import(
+      "../../../src/sdk/providers/opencode.js"
+    );
+    const provider = new OpenCodeProvider({ opencodePath: "/fake/opencode" });
+    const session = await provider.startSession({
+      cwd: "/tmp/test",
+      initialMessage: { text: "run echo" },
+      onToolApproval,
+    });
+
+    for (let i = 0; i < 10; i += 1) {
+      const next = await session.iterator.next();
+      if (next.done || next.value.type === "result") break;
+    }
+    // Let the fire-and-forget approval handler settle.
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(onToolApproval).toHaveBeenCalledWith(
+      "Bash",
+      { command: "echo hi", description: "say hi" },
+      expect.objectContaining({ signal: expect.anything() }),
+    );
+    const replyCall = fetchMock.mock.calls.find((c: unknown[]) =>
+      String(c[0]).includes("/permission/per_1/reply"),
+    );
+    expect(replyCall).toBeDefined();
+    expect(
+      JSON.parse(String((replyCall?.[1] as RequestInit)?.body)),
+    ).toEqual({ reply: "once" });
+
+    session.abort();
+  });
+
   it("uses the OpenCode message POST body when SSE closes before content", async () => {
     const sessionId = "ses_post_body_fallback";
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {

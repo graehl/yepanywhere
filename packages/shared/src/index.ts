@@ -383,6 +383,10 @@ export type {
   OpenCodeMessageUpdatedEvent,
   OpenCodeMessagePartDeltaEvent,
   OpenCodeMessagePartUpdatedEvent,
+  OpenCodePermissionRequest,
+  OpenCodePermissionAskedEvent,
+  OpenCodeQuestionInfo,
+  OpenCodeQuestionAskedEvent,
   OpenCodeSSEEvent,
   // Session storage types
   OpenCodeProject,

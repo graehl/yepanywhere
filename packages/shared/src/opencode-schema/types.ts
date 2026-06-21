@@ -19,6 +19,10 @@ export type {
   OpenCodeMessageUpdatedEvent,
   OpenCodeMessagePartDeltaEvent,
   OpenCodeMessagePartUpdatedEvent,
+  OpenCodePermissionRequest,
+  OpenCodePermissionAskedEvent,
+  OpenCodeQuestionInfo,
+  OpenCodeQuestionAskedEvent,
   OpenCodeSSEEvent,
 } from "./events.js";
 

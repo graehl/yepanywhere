@@ -23,6 +23,8 @@ import type {
   OpenCodeMessagePartUpdatedEvent,
   OpenCodeMessageUpdatedEvent,
   OpenCodePart,
+  OpenCodePermissionAskedEvent,
+  OpenCodeQuestionAskedEvent,
   OpenCodeSSEEvent,
   OpenCodeSessionStatus,
   OpenCodeSessionStatusEvent,
@@ -31,8 +33,12 @@ import { parseOpenCodeSSEEvent } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
-import { normalizeOpenCodeTool } from "./opencode-tools.js";
+import {
+  mapOpenCodeQuestionAnswers,
+  normalizeOpenCodeTool,
+} from "./opencode-tools.js";
 import type {
+  CanUseTool,
   ContentBlock,
   ProviderActivitySnapshot,
   ProviderLivenessProbeResult,
@@ -212,6 +218,9 @@ function getOpenCodeEventSessionId(event: OpenCodeSSEEvent): string | undefined 
     case "message.part.updated":
       return event.properties.part.sessionID;
     case "message.part.delta":
+      return event.properties.sessionID;
+    case "permission.asked":
+    case "question.asked":
       return event.properties.sessionID;
     default:
       return undefined;
@@ -674,6 +683,7 @@ export class OpenCodeProvider implements AgentProvider {
           userPrompt,
           options.model,
           signal,
+          options.onToolApproval,
         );
       }
     } finally {
@@ -695,6 +705,7 @@ export class OpenCodeProvider implements AgentProvider {
     text: string,
     model: string | undefined,
     signal: AbortSignal,
+    onToolApproval: CanUseTool | undefined,
   ): AsyncIterableIterator<SDKMessage> {
     const log = getLogger();
     let modelSelection: OpenCodeModelSelection | undefined;
@@ -789,6 +800,29 @@ export class OpenCodeProvider implements AgentProvider {
                 messageEvent.properties.info.id,
                 messageEvent.properties.info.role,
               );
+            }
+
+            // Interactive prompts: route to YA's approval/question UI and POST
+            // the reply back to opencode. Fire-and-forget so the SSE read loop
+            // keeps draining (the tool's own progress/result events follow the
+            // reply). The handlers never throw into the loop.
+            if (event.type === "permission.asked") {
+              void this.handlePermissionAsked(
+                runtime,
+                event,
+                onToolApproval,
+                signal,
+              );
+              continue;
+            }
+            if (event.type === "question.asked") {
+              void this.handleQuestionAsked(
+                runtime,
+                event,
+                onToolApproval,
+                signal,
+              );
+              continue;
             }
 
             // Convert to SDK messages (a single unified tool part can yield
@@ -943,6 +977,135 @@ export class OpenCodeProvider implements AgentProvider {
       type: "result",
       session_id: sessionId,
     } as SDKMessage;
+  }
+
+  /**
+   * Bridge an opencode permission request to YA's approval UI, then reply.
+   * allow -> "once", deny -> "reject". Never throws; on any failure or missing
+   * approver, reject so the gated tool does not hang.
+   */
+  private async handlePermissionAsked(
+    runtime: OpenCodeRuntimeState,
+    event: OpenCodePermissionAskedEvent,
+    onToolApproval: CanUseTool | undefined,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const log = getLogger();
+    const { id: requestId, permission, metadata } = event.properties;
+    let reply: "once" | "reject" = "reject";
+    try {
+      if (onToolApproval) {
+        const { name, input } = normalizeOpenCodeTool(permission, metadata);
+        const result = await onToolApproval(name, input, { signal });
+        reply = result.behavior === "allow" ? "once" : "reject";
+      }
+    } catch (error) {
+      log.warn(
+        { error, requestId },
+        "OpenCode permission approval failed; rejecting",
+      );
+    }
+    await this.postOpenCodeReply(
+      runtime,
+      `/permission/${requestId}/reply`,
+      { reply },
+      requestId,
+    );
+  }
+
+  /**
+   * Bridge an opencode interactive question to YA's AskUserQuestion UI, then
+   * reply with the selected option labels per question (or reject). The
+   * opencode question shape matches YA's AskUserQuestion input, so the existing
+   * pending-input UI handles it. Never throws.
+   */
+  private async handleQuestionAsked(
+    runtime: OpenCodeRuntimeState,
+    event: OpenCodeQuestionAskedEvent,
+    onToolApproval: CanUseTool | undefined,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const log = getLogger();
+    const { id: requestId, questions } = event.properties;
+    try {
+      if (onToolApproval) {
+        const result = await onToolApproval(
+          "AskUserQuestion",
+          { questions },
+          { signal },
+        );
+        if (result.behavior === "allow") {
+          const answers = mapOpenCodeQuestionAnswers(
+            questions,
+            this.extractQuestionAnswers(result.updatedInput),
+          );
+          await this.postOpenCodeReply(
+            runtime,
+            `/question/${requestId}/reply`,
+            { answers },
+            requestId,
+          );
+          return;
+        }
+      }
+    } catch (error) {
+      log.warn(
+        { error, requestId },
+        "OpenCode question handling failed; rejecting",
+      );
+    }
+    await this.postOpenCodeReply(
+      runtime,
+      `/question/${requestId}/reject`,
+      {},
+      requestId,
+    );
+  }
+
+  private extractQuestionAnswers(
+    updatedInput: unknown,
+  ): Record<string, string | string[]> | undefined {
+    if (
+      updatedInput &&
+      typeof updatedInput === "object" &&
+      "answers" in updatedInput
+    ) {
+      const answers = (updatedInput as { answers?: unknown }).answers;
+      if (answers && typeof answers === "object" && !Array.isArray(answers)) {
+        return answers as Record<string, string | string[]>;
+      }
+    }
+    return undefined;
+  }
+
+  private async postOpenCodeReply(
+    runtime: OpenCodeRuntimeState,
+    path: string,
+    body: unknown,
+    requestId: string,
+  ): Promise<void> {
+    const log = getLogger();
+    try {
+      const response = await fetch(`${runtime.baseUrl}${path}`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        log.warn(
+          { requestId, status: response.status, path },
+          "OpenCode interactive reply failed",
+        );
+      }
+    } catch (error) {
+      log.warn(
+        { error, requestId, path },
+        "OpenCode interactive reply request errored",
+      );
+    }
   }
 
   /**

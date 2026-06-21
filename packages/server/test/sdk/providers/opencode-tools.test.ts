@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { normalizeOpenCodeTool } from "../../../src/sdk/providers/opencode-tools.js";
+import {
+  mapOpenCodeQuestionAnswers,
+  normalizeOpenCodeTool,
+} from "../../../src/sdk/providers/opencode-tools.js";
 
 describe("normalizeOpenCodeTool", () => {
   it("maps lower-case tool names to YA canonical renderer names", () => {
@@ -66,5 +69,33 @@ describe("normalizeOpenCodeTool", () => {
   it("tolerates missing/non-object input", () => {
     expect(normalizeOpenCodeTool("read", undefined).input).toEqual({});
     expect(normalizeOpenCodeTool(undefined, null).name).toBe("unknown");
+  });
+});
+
+describe("mapOpenCodeQuestionAnswers", () => {
+  const questions = [
+    { question: "Pick a color?" },
+    { question: "Pick fruits?" },
+    { question: "Unanswered?" },
+  ];
+
+  it("maps YA answers (keyed by question text) to ordered label arrays", () => {
+    const answers = {
+      "Pick a color?": "blue",
+      "Pick fruits?": ["apple", "pear"],
+    };
+    expect(mapOpenCodeQuestionAnswers(questions, answers)).toEqual([
+      ["blue"],
+      ["apple", "pear"],
+      [],
+    ]);
+  });
+
+  it("returns empty arrays when no answers are present", () => {
+    expect(mapOpenCodeQuestionAnswers(questions, undefined)).toEqual([
+      [],
+      [],
+      [],
+    ]);
   });
 });

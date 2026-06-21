@@ -281,6 +281,69 @@ export type OpenCodeMessagePartDeltaEvent = z.infer<
 >;
 
 /**
+ * Permission request (opencode asks before running a gated tool). The reply
+ * goes to POST /permission/{id}/reply with {reply:"once"|"always"|"reject"}.
+ */
+export const OpenCodePermissionRequestSchema = z.object({
+  id: z.string(),
+  sessionID: z.string(),
+  /** Permission/tool descriptor, e.g. "bash". */
+  permission: z.string(),
+  /** Matched patterns, e.g. ["echo PERM_OK"]. */
+  patterns: z.array(z.string()).optional(),
+  /** Tool input metadata, e.g. {command, description} for bash. */
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  always: z.array(z.string()).optional(),
+  tool: z
+    .object({ messageID: z.string(), callID: z.string() })
+    .partial()
+    .optional(),
+});
+
+export type OpenCodePermissionRequest = z.infer<
+  typeof OpenCodePermissionRequestSchema
+>;
+
+export const OpenCodePermissionAskedEventSchema = z.object({
+  type: z.literal("permission.asked"),
+  properties: OpenCodePermissionRequestSchema,
+});
+
+export type OpenCodePermissionAskedEvent = z.infer<
+  typeof OpenCodePermissionAskedEventSchema
+>;
+
+/**
+ * Interactive question (the agent's "interview" tool). Reply goes to
+ * POST /question/{id}/reply with {answers: string[][]} (one array of selected
+ * option labels per question, in order) or POST /question/{id}/reject.
+ */
+export const OpenCodeQuestionInfoSchema = z.object({
+  question: z.string(),
+  header: z.string(),
+  options: z.array(
+    z.object({ label: z.string(), description: z.string().optional() }),
+  ),
+  multiple: z.boolean().optional(),
+  custom: z.boolean().optional(),
+});
+
+export type OpenCodeQuestionInfo = z.infer<typeof OpenCodeQuestionInfoSchema>;
+
+export const OpenCodeQuestionAskedEventSchema = z.object({
+  type: z.literal("question.asked"),
+  properties: z.object({
+    id: z.string(),
+    sessionID: z.string(),
+    questions: z.array(OpenCodeQuestionInfoSchema),
+  }),
+});
+
+export type OpenCodeQuestionAskedEvent = z.infer<
+  typeof OpenCodeQuestionAskedEventSchema
+>;
+
+/**
  * Union of all OpenCode SSE event types.
  */
 export const OpenCodeSSEEventSchema = z.discriminatedUnion("type", [
@@ -292,6 +355,8 @@ export const OpenCodeSSEEventSchema = z.discriminatedUnion("type", [
   OpenCodeMessageUpdatedEventSchema,
   OpenCodeMessagePartUpdatedEventSchema,
   OpenCodeMessagePartDeltaEventSchema,
+  OpenCodePermissionAskedEventSchema,
+  OpenCodeQuestionAskedEventSchema,
 ]);
 
 export type OpenCodeSSEEvent = z.infer<typeof OpenCodeSSEEventSchema>;

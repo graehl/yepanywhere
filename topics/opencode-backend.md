@@ -208,6 +208,70 @@ pre-1.16: fall back to CLI export (captured via a **file fd**, not a pipe), then
 to the legacy file tree. Do not delete the file-tree path — older installs and
 already-migrated transcripts still use it.
 
+### Implementation plan: direct SQLite reader (Gap #11)
+
+Goal: make `OpenCodeSessionReader` read transcripts straight from `opencode.db`
+so reload/attach no longer spawns an `opencode export` subprocess per call.
+This removes the truncation-prone shell-out from the hot path (it stays only as
+a fallback) and makes externally/TUI-owned 1.16+ sessions render on reload.
+
+**Mechanism.** Use `better-sqlite3` (already a dependency in `packages/relay`;
+add it to `packages/server`), opened **read-only** with `fileMustExist: true`.
+It is synchronous, WAL-friendly, and the team already uses it. Alternative with
+no native dep: Node 24's built-in `node:sqlite` (`DatabaseSync`, readonly) — keep
+as a fallback option if adding a native build to the server is undesirable. Do
+not write, checkpoint, or `PRAGMA` anything that mutates; concurrent
+`opencode serve` writers are safe for read-only WAL readers.
+
+**Shape.** Add an internal `OpenCodeDbReader` (own file) exposing, per session:
+a summary (title/model/createdAt/updatedAt/tokens) and
+`OpenCodeSessionEntry[]` (`{ message, parts }`), identical to what the file and
+export paths return — so `normalization.ts` and the renderer need no change.
+`OpenCodeSessionReader` calls it as the **first** durable source, then falls
+back in order to: CLI export (file-fd capture), then the legacy file tree.
+
+**Queries** (all parameterized; `data` columns are JSON — `JSON.parse` then feed
+the existing `asOpenCodeMessage` / `asOpenCodeStoredPart` validators):
+
+- project id: `SELECT id FROM project WHERE worktree = ?` (cache like
+  `openCodeProjectIdCache`).
+- summary: `SELECT * FROM session WHERE id = ? AND project_id = ?` (enforces
+  project scoping the way `exportBelongsToProject` does today).
+- messages: `SELECT id, data FROM message WHERE session_id = ? ORDER BY id`
+  (ULID id is chronological; `time_created` is a tiebreaker), honoring
+  `afterMessageId` by slicing after that id.
+- parts: `SELECT id, data FROM part WHERE message_id = ? ORDER BY id`, or one
+  `WHERE session_id = ? ORDER BY message_id, id` join to avoid N+1.
+- model: canonicalize to `providerID/modelID` via the same helper the file path
+  uses (`session.model` JSON also carries both).
+
+**Edge cases / contracts.**
+
+- DB absent, unreadable, locked, or pre-1.16 schema (missing `message`/`part`
+  tables) → return null and fall through to export/file-tree. Never throw out
+  of the reader.
+- Handle caching: open lazily and cache the read-only handle keyed by db path;
+  re-stat `opencode.db` mtime to decide when a re-read is needed. A single
+  shared handle is fine (WAL readers don't block the writer).
+- Change detection: `getSessionSummaryIfChanged` should compare the session
+  row's `time_updated` (and a message-count) rather than only the db-file
+  mtime, since every session shares one db file (coarse mtime over-triggers).
+- Enumeration: `listSessions` / `listSessionFiles` should prefer DB rows
+  (`SELECT id, time_updated FROM session WHERE project_id = ?`) over the CLI
+  `session list`, keeping the CLI only as the legacy fallback.
+- `getSessionFilePath` already returns the db path; keep it as the index anchor.
+
+**Testing.** Build a temp `opencode.db` with `better-sqlite3` in the test
+(create `project`/`session`/`message`/`part`, insert JSON rows), then assert:
+parity with the export path for the same logical session; `afterMessageId`
+paging; empty-`reasoning` skipped; `providerID/modelID` preserved; large
+transcript intact; and graceful null when tables/rows are missing.
+
+**Acceptance.** Reloading or attaching to a TUI-owned 1.17.x session shows the
+full transcript with **no** `opencode` child process spawned (verify via
+process inspection); export/file-tree fallbacks still cover old installs; no
+change to any REST/WS payload shape or the YA-visible `ses_*` id.
+
 ## Thinking text is provider-dependent (empty for Copilot-proxied Claude)
 
 "No thinking shown" is often not a YA defect. opencode stores a `reasoning`
@@ -262,9 +326,9 @@ current where they disagree.
     session id.
 11. **Open (correctness, P0).** Durable storage moved to SQLite
     (`opencode.db`); the file-tree reader path is dead for 1.16+ sessions, so
-    reload/attach renders empty. Read the DB directly (see *Durable Storage
-    Format*). Until then, the CLI-export fallback must capture stdout via a
-    **file fd**, not an `execFile` pipe — Bun truncates large piped exports.
+    reload/attach renders empty. Read the DB directly — design and steps in
+    *Implementation plan: direct SQLite reader*. The CLI-export fallback
+    (now file-fd capture, DONE) covers old installs in the meantime.
 
 ## Verification Shape
 

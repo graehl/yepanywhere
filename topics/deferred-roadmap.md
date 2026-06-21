@@ -119,9 +119,14 @@ non-tool render path instead of being dropped.
 ## 6. OpenCode provider fleshout
 
 See [`opencode-backend.md`](opencode-backend.md) § "Gaps To Close" (ten items;
-the integration is well under half complete). OpenCode is integrated over
-HTTP/SSE via `opencode serve` (not ACP — the ACP family is `gemini-acp` and
-`grok`). Highest-value gaps:
+the integration is well under half complete) and
+[`opencode-copilot.md`](opencode-copilot.md), which now re-prioritizes this item
+around a primary goal — exposing GitHub Copilot models with copilot auth — and
+adds a **gating baseline review** (the integration was never well-tested and the
+`opencode` binary jumped 1.15.13 → 1.17.9). Related: copilot-as-a-Claude-backend
+is scoped in [`copilot-oauth-claude.md`](copilot-oauth-claude.md). OpenCode is
+integrated over HTTP/SSE via `opencode serve` (not ACP — the ACP family is
+`gemini-acp` and `grok`). Highest-value gaps:
 
 - **6.1** Durable reasoning: map stored/export `reasoning` parts to YA
   `thinking` blocks (with a reload fixture) — currently dropped on history view.

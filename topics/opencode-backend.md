@@ -10,6 +10,12 @@ See also [`pi-provider.md`](pi-provider.md): pi-mono is the other
 agnostic-backend candidate, recommended primary with OpenCode as
 secondary/fallback (see `../docs/research/opencode-vs-pi-mono-provider-backend-comparison.md`).
 
+See also [`opencode-copilot.md`](opencode-copilot.md): the prioritized plan to
+expose GitHub Copilot models through this backend (with a gating baseline review
+against the upgraded `opencode` binary) plus the copilot auth UX; it
+re-prioritizes the "Gaps To Close" list below around the copilot goal. The "Gaps
+To Close" contracts here remain authoritative for the general fleshout detail.
+
 ## Scope
 
 OpenCode is integrated through `opencode serve` plus HTTP and SSE, not through a

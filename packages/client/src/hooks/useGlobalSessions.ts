@@ -335,6 +335,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
           updatedAt: event.session.updatedAt,
           messageCount: event.session.messageCount,
           provider: event.session.provider,
+          model: event.session.model,
           projectId: event.session.projectId,
           projectName,
           ownership: event.session.ownership,

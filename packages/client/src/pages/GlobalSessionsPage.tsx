@@ -989,6 +989,7 @@ export function GlobalSessionsPage() {
                       pendingInputType={session.pendingInputType}
                       status={session.ownership}
                       provider={session.provider}
+                      model={session.model}
                       parentSessionId={session.parentSessionId}
                       executor={session.executor}
                       isStarred={session.isStarred}
@@ -1066,6 +1067,7 @@ export function GlobalSessionsPage() {
                             pendingInputType={session.pendingInputType}
                             status={session.ownership}
                             provider={session.provider}
+                            model={session.model}
                             parentSessionId={session.parentSessionId}
                             executor={session.executor}
                             isStarred={session.isStarred}

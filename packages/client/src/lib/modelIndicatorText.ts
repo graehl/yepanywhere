@@ -205,18 +205,100 @@ function deriveModelGlyphMatch(
   return findMatch(providerRules) ?? findMatch(anyProviderModelRules);
 }
 
-export function getModelIndicatorModelLabel(
+const subProviderAbbrevMap: Record<string, string> = {
+  "github-copilot": "copilot",
+  "github-models": "copilot",
+};
+
+/**
+ * Brief, provider-style abbreviation for a namespaced model's leading path
+ * segment (the sub-provider / router), e.g. "github-copilot" -> "copilot".
+ */
+function getSubProviderAbbrev(pathPart: string): string {
+  const key = pathPart.trim().toLowerCase();
+  const mapped = subProviderAbbrevMap[key];
+  if (mapped) {
+    return mapped;
+  }
+  const cleaned = key.replace(/^github-/u, "");
+  return cleaned.length > 12 ? cleaned.slice(0, 12) : cleaned;
+}
+
+/**
+ * Guess the model family (the provider whose glyph rules apply) from a bare
+ * model name, so a sub-provider-routed model such as "claude-opus-4.8" renders
+ * with its native glyph regardless of which provider is doing the routing.
+ */
+function inferModelFamilyProviderKey(modelPart: string): string | null {
+  const m = modelPart.toLowerCase();
+  if (/(?:claude|opus|sonnet|haiku|fable)/u.test(m)) return "claude";
+  if (/(?:gpt|codex|davinci|\bo[1-9])/u.test(m)) return "codex";
+  if (/gemini/u.test(m)) return "gemini";
+  if (/grok/u.test(m)) return "grok";
+  if (/(?:qwen|llama|mistral|deepseek|gemma|phi)/u.test(m)) return "opencode";
+  return null;
+}
+
+/** Model glyph + suffix only (no provider abbrev prefix). */
+function formatModelGlyphOnly(familyKey: string, modelPart: string): string {
+  const normalized = normalizeForModelGlyphMatching(modelPart);
+  const normalizedForMatching = normalizeForCodexModelAliasMatching(
+    normalized,
+    familyKey,
+  );
+  const match = deriveModelGlyphMatch(familyKey, normalizedForMatching);
+  if (!match) {
+    return normalizedForMatching;
+  }
+  return match.suffix ? `${match.glyph} ${match.suffix}` : match.glyph;
+}
+
+export interface ModelIndicatorParts {
+  /** Provider abbrev for the running provider, e.g. "OC". */
+  providerGlyph: string;
+  /** Sub-provider/router abbrev for a namespaced model, e.g. "copilot". */
+  subProvider?: string;
+  /** Model glyph + version, e.g. "◐ 4.8" (may be a bare name on no match). */
+  modelLabel: string;
+  /**
+   * Provider key whose color cues the model — the sub-badge the model implies
+   * (e.g. "claude" for a copilot-routed claude-opus). Lets renderers color the
+   * model glyph/version by its real family rather than the routing provider.
+   */
+  modelFamilyKey: string;
+}
+
+export function getModelIndicatorModelParts(
   provider?: string,
   model?: string,
-): string {
+): ModelIndicatorParts | null {
   const trimmedModel = model?.trim();
   if (!trimmedModel) {
-    return "";
+    return null;
   }
 
   const providerKey = normalizeProviderKey(provider);
   const providerGlyph = providerGlyphMap[providerKey] ?? DEFAULT_PROVIDER_GLYPH;
   const normalizedModel = normalizeForModelGlyphMatching(trimmedModel);
+
+  // Sub-provider namespaced model (e.g. "github-copilot/claude-opus-4.8"):
+  // three parts — provider abbrev (OC), sub-provider abbrev (copilot), and the
+  // inner model through its own family's glyph rules (◐ 4.8). The family key
+  // lets the badge color the model by the sub-badge it implies (claude).
+  const slashIndex = normalizedModel.indexOf("/");
+  if (slashIndex > 0) {
+    const pathPart = normalizedModel.slice(0, slashIndex);
+    const modelPart = normalizedModel.slice(slashIndex + 1);
+    const subProvider = getSubProviderAbbrev(pathPart);
+    const familyKey = inferModelFamilyProviderKey(modelPart) ?? providerKey;
+    return {
+      providerGlyph,
+      subProvider,
+      modelLabel: formatModelGlyphOnly(familyKey, modelPart),
+      modelFamilyKey: familyKey,
+    };
+  }
+
   const normalizedForMatching = normalizeForCodexModelAliasMatching(
     normalizedModel,
     providerKey,
@@ -224,9 +306,30 @@ export function getModelIndicatorModelLabel(
   const match = deriveModelGlyphMatch(providerKey, normalizedForMatching);
 
   if (!match) {
-    return `${providerGlyph} ${normalizedForMatching}`;
+    return {
+      providerGlyph,
+      modelLabel: normalizedForMatching,
+      modelFamilyKey: providerKey,
+    };
   }
 
-  const suffix = match.suffix ? ` ${match.suffix}` : "";
-  return `${providerGlyph} ${match.glyph}${suffix}`;
+  return {
+    providerGlyph,
+    modelLabel: match.suffix ? `${match.glyph} ${match.suffix}` : match.glyph,
+    modelFamilyKey: providerKey,
+  };
 }
+
+export function getModelIndicatorModelLabel(
+  provider?: string,
+  model?: string,
+): string {
+  const parts = getModelIndicatorModelParts(provider, model);
+  if (!parts) {
+    return "";
+  }
+  return [parts.providerGlyph, parts.subProvider, parts.modelLabel]
+    .filter((part): part is string => !!part && part.length > 0)
+    .join(" ");
+}
+

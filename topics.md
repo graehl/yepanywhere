@@ -41,3 +41,4 @@
 - direct-xai-speech - Hosted Grok STT direct browser-to-xAI data path and explicit client key borrowing.
 - mic-button-speech-ui - Mic button speech insertion, spoken commands, and streaming/batch composer behavior.
 - prompt-cache-keepalive - Open-client-only provider prompt-cache warming and cost/activity bounds.
+- session-list-display - Session list/sidebar badges, model glyph mapping, and the hover tooltip card.

@@ -108,6 +108,32 @@ describe("getModelIndicatorModelLabel", () => {
     });
   });
 
+  describe("sub-provider namespaced models (opencode routing)", () => {
+    it("github-copilot/claude-opus renders OC + copilot + native opus glyph", () => {
+      expect(
+        getModelIndicatorModelLabel(
+          "opencode",
+          "github-copilot/claude-opus-4.8",
+        ),
+      ).toBe("OC copilot ◐ 4.8");
+    });
+    it("github-copilot/gpt routes to codex glyph rules", () => {
+      expect(
+        getModelIndicatorModelLabel("opencode", "github-copilot/gpt-5.4"),
+      ).toBe("OC copilot ◇ 5.4");
+    });
+    it("unknown sub-provider falls back to the cleaned path segment", () => {
+      expect(
+        getModelIndicatorModelLabel("opencode", "openrouter/claude-sonnet-4-6"),
+      ).toBe("OC openrouter ♪ 4.6");
+    });
+    it("unrecognized inner model keeps its bare name as the third part", () => {
+      expect(
+        getModelIndicatorModelLabel("opencode", "github-copilot/whatever-1"),
+      ).toBe("OC copilot whatever-1");
+    });
+  });
+
   describe("fallbacks", () => {
     it("unknown model falls back to provider abbrev + raw model", () => {
       expect(

@@ -548,6 +548,40 @@ export function Sidebar({
   // Track which sessions have unsent drafts in localStorage
   const drafts = useDrafts();
 
+  // Single source of truth for a compact sidebar session row, so the six
+  // section render sites (starred / recent / older, each with a hidden-dups
+  // sublist) stay identical. `createdAt` + `model` feed the hover card.
+  const renderCompactSession = (session: GlobalSessionItem) => (
+    <SessionListItem
+      key={session.id}
+      sessionId={session.id}
+      projectId={session.projectId}
+      title={getSessionDisplayTitle(session)}
+      fullTitle={session.fullTitle ?? getSessionDisplayTitle(session)}
+      initialPrompt={session.initialPrompt}
+      provider={session.provider}
+      model={session.model}
+      createdAt={session.createdAt}
+      updatedAt={session.updatedAt}
+      parentSessionId={session.parentSessionId}
+      status={session.ownership}
+      pendingInputType={session.pendingInputType}
+      hasUnread={session.hasUnread}
+      isStarred={session.isStarred}
+      isArchived={session.isArchived}
+      mode="compact"
+      isCurrent={session.id === currentSessionId}
+      activity={session.activity}
+      onNavigate={onNavigate}
+      showProjectName
+      projectName={session.projectName}
+      basePath={basePath}
+      messageCount={session.messageCount}
+      hasDraft={drafts.has(session.id)}
+      publicShareControlsVisible={publicShareControlsVisible}
+    />
+  );
+
   // In desktop mode, always render. In mobile mode, only render when open.
   if (!isDesktop && !isOpen) return null;
 
@@ -762,35 +796,7 @@ export function Sidebar({
               />
               {starredExpanded && (
                 <ul id="sidebar-starred-list" className="sidebar-session-list">
-                  {filteredStarredSessions.map((session) => (
-                    <SessionListItem
-                      key={session.id}
-                      sessionId={session.id}
-                      projectId={session.projectId}
-                      title={getSessionDisplayTitle(session)}
-                      fullTitle={
-                        session.fullTitle ?? getSessionDisplayTitle(session)
-                      }
-                      initialPrompt={session.initialPrompt}
-                      provider={session.provider}
-                      parentSessionId={session.parentSessionId}
-                      status={session.ownership}
-                      pendingInputType={session.pendingInputType}
-                      hasUnread={session.hasUnread}
-                      isStarred={session.isStarred}
-                      isArchived={session.isArchived}
-                      mode="compact"
-                      isCurrent={session.id === currentSessionId}
-                      activity={session.activity}
-                      onNavigate={onNavigate}
-                      showProjectName
-                      projectName={session.projectName}
-                      basePath={basePath}
-                      messageCount={session.messageCount}
-                      hasDraft={drafts.has(session.id)}
-                      publicShareControlsVisible={publicShareControlsVisible}
-                    />
-                  ))}
+                  {filteredStarredSessions.map(renderCompactSession)}
                 </ul>
               )}
             </div>
@@ -813,64 +819,8 @@ export function Sidebar({
                   id="sidebar-last-24-hours-list"
                   className="sidebar-session-list"
                 >
-                  {recentActive.map((session) => (
-                    <SessionListItem
-                      key={session.id}
-                      sessionId={session.id}
-                      projectId={session.projectId}
-                      title={getSessionDisplayTitle(session)}
-                      fullTitle={
-                        session.fullTitle ?? getSessionDisplayTitle(session)
-                      }
-                      initialPrompt={session.initialPrompt}
-                      provider={session.provider}
-                      parentSessionId={session.parentSessionId}
-                      status={session.ownership}
-                      pendingInputType={session.pendingInputType}
-                      hasUnread={session.hasUnread}
-                      isStarred={session.isStarred}
-                      isArchived={session.isArchived}
-                      mode="compact"
-                      isCurrent={session.id === currentSessionId}
-                      activity={session.activity}
-                      onNavigate={onNavigate}
-                      showProjectName
-                      projectName={session.projectName}
-                      basePath={basePath}
-                      messageCount={session.messageCount}
-                      hasDraft={drafts.has(session.id)}
-                      publicShareControlsVisible={publicShareControlsVisible}
-                    />
-                  ))}
-                  {visibleRecent.map((session) => (
-                    <SessionListItem
-                      key={session.id}
-                      sessionId={session.id}
-                      projectId={session.projectId}
-                      title={getSessionDisplayTitle(session)}
-                      fullTitle={
-                        session.fullTitle ?? getSessionDisplayTitle(session)
-                      }
-                      initialPrompt={session.initialPrompt}
-                      provider={session.provider}
-                      parentSessionId={session.parentSessionId}
-                      status={session.ownership}
-                      pendingInputType={session.pendingInputType}
-                      hasUnread={session.hasUnread}
-                      isStarred={session.isStarred}
-                      isArchived={session.isArchived}
-                      mode="compact"
-                      isCurrent={session.id === currentSessionId}
-                      activity={session.activity}
-                      onNavigate={onNavigate}
-                      showProjectName
-                      projectName={session.projectName}
-                      basePath={basePath}
-                      messageCount={session.messageCount}
-                      hasDraft={drafts.has(session.id)}
-                      publicShareControlsVisible={publicShareControlsVisible}
-                    />
-                  ))}
+                  {recentActive.map(renderCompactSession)}
+                  {visibleRecent.map(renderCompactSession)}
                   {hiddenRecent.length > 0 && (
                     <li className="sidebar-hidden-dups">
                       <button
@@ -884,38 +834,7 @@ export function Sidebar({
                       </button>
                       {showHiddenRecent && (
                         <ul className="sidebar-session-list sidebar-hidden-sublist">
-                          {hiddenRecent.map((session) => (
-                            <SessionListItem
-                              key={session.id}
-                              sessionId={session.id}
-                              projectId={session.projectId}
-                              title={getSessionDisplayTitle(session)}
-                              fullTitle={
-                                session.fullTitle ??
-                                getSessionDisplayTitle(session)
-                              }
-                              initialPrompt={session.initialPrompt}
-                              provider={session.provider}
-                              parentSessionId={session.parentSessionId}
-                              status={session.ownership}
-                              pendingInputType={session.pendingInputType}
-                              hasUnread={session.hasUnread}
-                              publicShareControlsVisible={
-                                publicShareControlsVisible
-                              }
-                              isStarred={session.isStarred}
-                              isArchived={session.isArchived}
-                              mode="compact"
-                              isCurrent={session.id === currentSessionId}
-                              activity={session.activity}
-                              onNavigate={onNavigate}
-                              showProjectName
-                              projectName={session.projectName}
-                              basePath={basePath}
-                              messageCount={session.messageCount}
-                              hasDraft={drafts.has(session.id)}
-                            />
-                          ))}
+                          {hiddenRecent.map(renderCompactSession)}
                         </ul>
                       )}
                     </li>
@@ -939,35 +858,7 @@ export function Sidebar({
               />
               {olderExpanded && (
                 <ul id="sidebar-older-list" className="sidebar-session-list">
-                  {visibleOlder.map((session) => (
-                    <SessionListItem
-                      key={session.id}
-                      sessionId={session.id}
-                      projectId={session.projectId}
-                      title={getSessionDisplayTitle(session)}
-                      fullTitle={
-                        session.fullTitle ?? getSessionDisplayTitle(session)
-                      }
-                      initialPrompt={session.initialPrompt}
-                      provider={session.provider}
-                      parentSessionId={session.parentSessionId}
-                      status={session.ownership}
-                      pendingInputType={session.pendingInputType}
-                      hasUnread={session.hasUnread}
-                      isStarred={session.isStarred}
-                      isArchived={session.isArchived}
-                      mode="compact"
-                      isCurrent={session.id === currentSessionId}
-                      activity={session.activity}
-                      onNavigate={onNavigate}
-                      showProjectName
-                      projectName={session.projectName}
-                      basePath={basePath}
-                      messageCount={session.messageCount}
-                      hasDraft={drafts.has(session.id)}
-                      publicShareControlsVisible={publicShareControlsVisible}
-                    />
-                  ))}
+                  {visibleOlder.map(renderCompactSession)}
                   {hiddenOlder.length > 0 && (
                     <li className="sidebar-hidden-dups">
                       <button
@@ -981,38 +872,7 @@ export function Sidebar({
                       </button>
                       {showHiddenOlder && (
                         <ul className="sidebar-session-list sidebar-hidden-sublist">
-                          {hiddenOlder.map((session) => (
-                            <SessionListItem
-                              key={session.id}
-                              sessionId={session.id}
-                              projectId={session.projectId}
-                              title={getSessionDisplayTitle(session)}
-                              fullTitle={
-                                session.fullTitle ??
-                                getSessionDisplayTitle(session)
-                              }
-                              initialPrompt={session.initialPrompt}
-                              provider={session.provider}
-                              parentSessionId={session.parentSessionId}
-                              status={session.ownership}
-                              pendingInputType={session.pendingInputType}
-                              hasUnread={session.hasUnread}
-                              isStarred={session.isStarred}
-                              isArchived={session.isArchived}
-                              mode="compact"
-                              isCurrent={session.id === currentSessionId}
-                              activity={session.activity}
-                              onNavigate={onNavigate}
-                              showProjectName
-                              projectName={session.projectName}
-                              basePath={basePath}
-                              messageCount={session.messageCount}
-                              hasDraft={drafts.has(session.id)}
-                              publicShareControlsVisible={
-                                publicShareControlsVisible
-                              }
-                            />
-                          ))}
+                          {hiddenOlder.map(renderCompactSession)}
                         </ul>
                       )}
                     </li>

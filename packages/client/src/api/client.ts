@@ -91,6 +91,8 @@ export interface GlobalSessionItem {
   updatedAt: string;
   messageCount: number;
   provider: ProviderName;
+  /** Last active model for this session (from JSONL), for list/badge display. */
+  model?: string;
   projectId: string;
   projectName: string;
   ownership: SessionStatus;

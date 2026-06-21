@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { AgentActivity } from "../hooks/useFileActivity";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
+import { formatBriefAge } from "../lib/sessionAge";
 import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
@@ -16,6 +17,8 @@ import type {
   SessionStatus,
 } from "../types";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
+import { ProviderBadge } from "./ProviderBadge";
+import { SessionHoverCard } from "./SessionHoverCard";
 import { SessionMenu } from "./SessionMenu";
 import { SessionShareModal } from "./SessionShareModal";
 import { SessionStatusBadge } from "./StatusBadge";
@@ -38,6 +41,8 @@ interface SessionListItemProps {
   contextUsage?: ContextUsage;
   status?: SessionStatus;
   provider?: ProviderName;
+  /** Last active model, shown as a provider+model badge (card mode / hover). */
+  model?: string;
   /** SSH host for remote execution (undefined = local) */
   executor?: string;
   /** Parent session when this item is a YA-owned /btw aside. */
@@ -133,6 +138,7 @@ export function SessionListItem({
   contextUsage,
   status,
   provider,
+  model,
   executor,
   parentSessionId,
   // Feature toggles
@@ -184,6 +190,17 @@ export function SessionListItem({
   const [localTitle, setLocalTitle] = useState<string | undefined>(undefined);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const isSavingRef = useRef(false);
+
+  // Compact-mode replacement tooltip: a rich hover panel (full first user turn
+  // + status line). The panel (SessionHoverCard) self-positions from this row
+  // geometry + cursor x — below the row and right of the cursor, flipping above
+  // when it would not fit below.
+  const liRef = useRef<HTMLLIElement>(null);
+  const [previewPos, setPreviewPos] = useState<{
+    rowTop: number;
+    rowBottom: number;
+    cursorX: number;
+  } | null>(null);
 
   // Computed values with optimistic fallback
   const isStarred = localIsStarred ?? isStarredProp;
@@ -361,18 +378,58 @@ export function SessionListItem({
     return new Date(timestamp).toLocaleDateString();
   };
 
-  // Brief age since creation for detailed (card) lists: d / h / m
-  // (separate from the activity-based "Any age" filter which uses updatedAt)
-  const formatBriefAge = (timestamp: string): string => {
-    const diffMs = Date.now() - new Date(timestamp).getTime();
-    if (diffMs < 0) return "0m";
-    const mins = Math.floor(diffMs / 60000);
-    if (mins < 60) return `${mins}m`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h`;
-    const days = Math.floor(hours / 24);
-    return `${days}d`;
-  };
+  // Brief age since creation for detailed (card) lists and the compact hover
+  // card. `formatBriefAge` returns null for unknown/default (epoch) timestamps,
+  // so a missing creation time renders nothing rather than "Created 20625d ago".
+  const briefAge = formatBriefAge(createdAt);
+
+  // Hover tooltip age shows both: time since last activity (primary) with the
+  // creation time as an "established" aside — "5m ago (est. 2d)". Either half
+  // drops out when its timestamp is unknown/default.
+  const hoverActivityAge = formatBriefAge(updatedAt);
+  const hoverAgeLabel = hoverActivityAge
+    ? `${hoverActivityAge} ago${briefAge ? ` (est. ${briefAge})` : ""}`
+    : briefAge
+      ? `est. ${briefAge}`
+      : null;
+
+  // Hover card only makes sense in the compact (sidebar) row, and only when we
+  // have a provider to badge.
+  const showCompactPreview = mode === "compact" && !!provider;
+
+  // The full first user turn shown in the replacement tooltip.
+  const hoverPrompt = (initialPrompt || fullTitle || displayTitle || "").trim();
+
+  const handlePreviewEnter = useCallback(
+    (e: React.MouseEvent) => {
+      if (!showCompactPreview) return;
+      const rect = liRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setPreviewPos({
+        rowTop: rect.top,
+        rowBottom: rect.bottom,
+        cursorX: e.clientX,
+      });
+    },
+    [showCompactPreview],
+  );
+
+  const handlePreviewLeave = useCallback(() => {
+    setPreviewPos(null);
+  }, []);
+
+  // A fixed card would drift if the sidebar scrolls under it; clear on any
+  // scroll/resize while shown rather than tracking the moving anchor.
+  useEffect(() => {
+    if (!previewPos) return;
+    const clear = () => setPreviewPos(null);
+    window.addEventListener("scroll", clear, true);
+    window.addEventListener("resize", clear);
+    return () => {
+      window.removeEventListener("scroll", clear, true);
+      window.removeEventListener("resize", clear);
+    };
+  }, [previewPos]);
 
   // Build CSS classes
   const liClasses = [
@@ -485,7 +542,12 @@ export function SessionListItem({
   );
 
   return (
-    <li className={liClasses}>
+    <li
+      ref={liRef}
+      className={liClasses}
+      onMouseEnter={showCompactPreview ? handlePreviewEnter : undefined}
+      onMouseLeave={showCompactPreview ? handlePreviewLeave : undefined}
+    >
       {/* Checkbox for multi-select (only shown when onSelect is provided) */}
       {onSelect && (
         <input
@@ -515,7 +577,9 @@ export function SessionListItem({
           onClick={handleSessionClick}
           onMouseDown={handleSessionMouseDown}
           onAuxClick={handleSessionAuxClick}
-          title={fullTitle || displayTitle}
+          title={
+            showCompactPreview ? undefined : fullTitle || displayTitle
+          }
           className="session-list-item__link"
         >
           {mode === "card" ? (
@@ -548,18 +612,25 @@ export function SessionListItem({
                 )}
               </strong>
               <span className="session-list-item__meta">
+                {provider && (
+                  <ProviderBadge
+                    provider={provider}
+                    model={model}
+                    className="session-list-item__provider-badge"
+                  />
+                )}
                 {showProjectName && projectName && (
                   <span className="session-list-item__project">
                     {projectName}
                   </span>
                 )}
                 {showTimestamp && updatedAt && formatRelativeTime(updatedAt)}
-                {createdAt && (
+                {briefAge && (
                   <span
                     className="session-list-item__age"
                     title={t("sessionListAgeTitle")}
                   >
-                    Created {formatBriefAge(createdAt)} ago
+                    Created {briefAge} ago
                   </span>
                 )}
                 {(userTurnCount != null || systemTurnCount != null) && (
@@ -675,6 +746,21 @@ export function SessionListItem({
           title={displayTitle}
           canCreateShares={publicShareControlsVisible}
           onClose={() => setShowShareModal(false)}
+        />
+      )}
+
+      {showCompactPreview && provider && previewPos && (
+        <SessionHoverCard
+          anchor={previewPos}
+          prompt={hoverPrompt}
+          provider={provider}
+          model={model}
+          projectName={projectName}
+          ageLabel={hoverAgeLabel}
+          status={status}
+          pendingInputType={pendingInputType}
+          hasUnread={hasUnread}
+          activity={activity}
         />
       )}
     </li>

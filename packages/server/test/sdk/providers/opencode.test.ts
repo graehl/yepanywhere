@@ -548,7 +548,7 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
     expect(toolUses[0]).toMatchObject({
       type: "tool_use",
       id: "call_1",
-      name: "bash",
+      name: "Bash", // normalized from opencode "bash"
       input: { command: "echo hi" },
     });
     expect(toolResults).toHaveLength(1);

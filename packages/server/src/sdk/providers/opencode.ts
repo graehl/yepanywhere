@@ -31,6 +31,7 @@ import { parseOpenCodeSSEEvent } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
+import { normalizeOpenCodeTool } from "./opencode-tools.js";
 import type {
   ContentBlock,
   ProviderActivitySnapshot,
@@ -1153,6 +1154,7 @@ export class OpenCodeProvider implements AgentProvider {
 
       case "tool-use": {
         // Legacy split tool invocation (older opencode)
+        const normalized = normalizeOpenCodeTool(part.tool, part.input);
         return [
           {
             type: "assistant",
@@ -1163,8 +1165,8 @@ export class OpenCodeProvider implements AgentProvider {
                 {
                   type: "tool_use",
                   id: part.id,
-                  name: part.tool ?? "unknown",
-                  input: part.input ?? {},
+                  name: normalized.name,
+                  input: normalized.input,
                 },
               ],
             },
@@ -1222,6 +1224,7 @@ export class OpenCodeProvider implements AgentProvider {
 
     if (underway && !streamState.toolUseEmitted.has(callId)) {
       streamState.toolUseEmitted.add(callId);
+      const normalized = normalizeOpenCodeTool(part.tool, part.state?.input);
       messages.push({
         type: "assistant",
         session_id: sessionId,
@@ -1231,8 +1234,8 @@ export class OpenCodeProvider implements AgentProvider {
             {
               type: "tool_use",
               id: callId,
-              name: part.tool ?? "unknown",
-              input: part.state?.input ?? {},
+              name: normalized.name,
+              input: normalized.input,
             },
           ],
         },

@@ -35,6 +35,7 @@ import {
   normalizeCodexToolOutputWithContext,
   parseCodexToolArguments,
 } from "../codex/normalization.js";
+import { normalizeOpenCodeTool } from "../sdk/providers/opencode-tools.js";
 import type { ContentBlock, Message, Session } from "../supervisor/types.js";
 import { collectVisibleClaudeEntries } from "./claude-messages.js";
 import type { LoadedSession } from "./types.js";
@@ -1272,12 +1273,13 @@ function convertOpenCodeParts(parts: OpenCodeStoredPart[]): ContentBlock[] {
 
       case "tool":
         if (part.tool && part.callID) {
-          // Tool use block
+          // Tool use block, with name/fields normalized to YA's rich renderers.
+          const normalized = normalizeOpenCodeTool(part.tool, part.state?.input);
           blocks.push({
             type: "tool_use",
             id: part.callID,
-            name: part.tool,
-            input: part.state?.input ?? {},
+            name: normalized.name,
+            input: normalized.input,
           });
 
           // Once the tool settles (completed OR error), add a result block.

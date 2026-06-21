@@ -55,6 +55,9 @@ tasks/
 /AGENTS.local.md
 /ui-report/
 
+# Agent session/run state (local, any depth: root + packages/*)
+.agentctl/
+
 # Codex sample sessions (local dev data)
 codex-sample-sessions/
 

@@ -131,6 +131,14 @@ interface OpenCodeMessageResponse {
   parts?: OpenCodePart[];
 }
 
+/** OpenCode file part for the message POST (used to carry inline images). */
+interface OpenCodeFilePartInput {
+  type: "file";
+  mime: string;
+  url: string;
+  filename?: string;
+}
+
 const LOCAL_GLM_MODEL_PREFIX = "local-glm/";
 
 function getLocalGlmModelDescription(modelId: string): string {
@@ -791,6 +799,7 @@ export class OpenCodeProvider implements AgentProvider {
         if (signal.aborted) break;
 
         let userPrompt = this.extractTextFromMessage(message);
+        const imageParts = this.extractImageFileParts(message);
 
         if (isFirstNewMessage && options.globalInstructions) {
           userPrompt = `[Global context]\n${options.globalInstructions}\n\n---\n\n${userPrompt}`;
@@ -815,6 +824,7 @@ export class OpenCodeProvider implements AgentProvider {
           signal,
           options.onToolApproval,
           options.effort,
+          imageParts,
         );
       }
     } finally {
@@ -838,6 +848,7 @@ export class OpenCodeProvider implements AgentProvider {
     signal: AbortSignal,
     onToolApproval: CanUseTool | undefined,
     effort: EffortLevel | undefined,
+    imageParts: OpenCodeFilePartInput[] = [],
   ): AsyncIterableIterator<SDKMessage> {
     const log = getLogger();
     let modelSelection: OpenCodeModelSelection | undefined;
@@ -1031,7 +1042,7 @@ export class OpenCodeProvider implements AgentProvider {
             // EffortLevel. Only sent when YA provides an effort (the UI gates
             // this to models advertised with supportedEffortLevels).
             ...(effort ? { variant: effort } : {}),
-            parts: [{ type: "text", text }],
+            parts: [{ type: "text", text }, ...imageParts],
           }),
           signal,
         },
@@ -1615,6 +1626,35 @@ export class OpenCodeProvider implements AgentProvider {
         .join("\n");
     }
     return "";
+  }
+
+  /**
+   * Convert any base64 image content blocks on a user message into OpenCode
+   * file parts (a data-URL `url` + mime), so pasted/uploaded images are sent to
+   * OpenCode instead of being dropped. Non-image content is untouched.
+   */
+  private extractImageFileParts(
+    message: SDKUserMessage,
+  ): OpenCodeFilePartInput[] {
+    const content = message.message?.content;
+    if (!Array.isArray(content)) return [];
+    const parts: OpenCodeFilePartInput[] = [];
+    for (const block of content) {
+      if (typeof block !== "object" || block === null) continue;
+      const b = block as {
+        type?: string;
+        source?: { type?: string; media_type?: string; data?: string };
+      };
+      if (b.type === "image" && b.source?.type === "base64" && b.source.data) {
+        const mime = b.source.media_type || "image/png";
+        parts.push({
+          type: "file",
+          mime,
+          url: `data:${mime};base64,${b.source.data}`,
+        });
+      }
+    }
+    return parts;
   }
 
   /**

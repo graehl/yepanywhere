@@ -671,6 +671,54 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
     session.abort();
   });
 
+  it("sends image content blocks as OpenCode file parts (data URLs)", async () => {
+    const sessionId = "ses_image";
+    // 1x1 PNG (magic bytes detected as image/png by the queue)
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    let messageBody: { parts?: Array<Record<string, unknown>> } | null = null;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/event")) {
+        return Promise.resolve(
+          sseResponse([
+            { type: "session.idle", properties: { sessionID: sessionId } },
+          ]),
+        );
+      }
+      if (url.endsWith(`/session/${sessionId}/message`)) {
+        messageBody = JSON.parse(String(init?.body));
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ id: sessionId }));
+      }
+      return Promise.resolve(jsonResponse({ sessions: [] }));
+    });
+
+    const { OpenCodeProvider } = await import(
+      "../../../src/sdk/providers/opencode.js"
+    );
+    const provider = new OpenCodeProvider({ opencodePath: "/fake/opencode" });
+    const session = await provider.startSession({
+      cwd: "/tmp/test",
+      initialMessage: { text: "what is this?", images: [pngBase64] },
+    });
+    for (let i = 0; i < 6; i += 1) {
+      const next = await session.iterator.next();
+      if (next.done || next.value.type === "result") break;
+    }
+    const parts = messageBody?.parts ?? [];
+    expect(parts).toContainEqual({ type: "text", text: "what is this?" });
+    const filePart = parts.find((p) => p.type === "file");
+    expect(filePart).toMatchObject({
+      type: "file",
+      mime: "image/png",
+      url: `data:image/png;base64,${pngBase64}`,
+    });
+
+    session.abort();
+  });
+
   it("interrupt() posts to the OpenCode session abort endpoint", async () => {
     const sessionId = "ses_interrupt";
     let abortCalled = false;

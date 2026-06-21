@@ -310,18 +310,46 @@ export class OpenCodeSessionReader implements ISessionReader {
     _sessionDir: string,
     options?: { activeAfterMs?: number },
   ): Promise<{ sessionId: string; filePath: string }[]> {
-    const sessions = await this.loadCliSessionList();
-    return sessions
-      .filter((session) => {
-        if (!this.cliListSessionBelongsToProject(session)) return false;
-        if (options?.activeAfterMs === undefined) return true;
+    const out: { sessionId: string; filePath: string }[] = [];
+    const seen = new Set<string>();
+
+    // File-storage sessions: storage/session/{openCodeProjectId}/*.json.
+    // These are the bulk of OpenCode sessions. The session index enumerates via
+    // this method (not listSessions), so omitting file sessions here meant they
+    // never appeared in project listings even though listSessions returns them.
+    // Use the session json path as filePath so the index gets per-session mtime.
+    const openCodeProjectId = await this.getOpenCodeProjectId();
+    if (openCodeProjectId) {
+      const sessionDir = join(this.storageDir, "session", openCodeProjectId);
+      try {
+        for (const file of await readdir(sessionDir)) {
+          if (!file.endsWith(".json")) continue;
+          const sessionId = file.replace(".json", "");
+          out.push({ sessionId, filePath: join(sessionDir, file) });
+          seen.add(sessionId);
+        }
+      } catch {
+        // Session dir missing/unreadable — fall through to CLI sessions.
+      }
+    }
+
+    // CLI-listed sessions (e.g. other stores), deduped against file sessions.
+    const cliSessions = await this.loadCliSessionList();
+    for (const session of cliSessions) {
+      if (!this.cliListSessionBelongsToProject(session)) continue;
+      const sessionId = String(session.id);
+      if (seen.has(sessionId)) continue;
+      if (options?.activeAfterMs !== undefined) {
         const updatedAt = this.numberField(session.updated);
-        return updatedAt === undefined || updatedAt >= options.activeAfterMs;
-      })
-      .map((session) => ({
-        sessionId: String(session.id),
-        filePath: this.databasePath,
-      }));
+        if (updatedAt !== undefined && updatedAt < options.activeAfterMs) {
+          continue;
+        }
+      }
+      out.push({ sessionId, filePath: this.databasePath });
+      seen.add(sessionId);
+    }
+
+    return out;
   }
 
   getIndexScopeKey(_sessionDir: string): string {

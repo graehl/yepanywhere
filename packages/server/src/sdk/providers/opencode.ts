@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type {
+  EffortLevel,
   ModelInfo,
   OpenCodeMessagePartDeltaEvent,
   OpenCodeMessagePartUpdatedEvent,
@@ -179,6 +180,65 @@ function parseOpenCodeModelSelection(
   };
 }
 
+const OPENCODE_EFFORT_LEVELS = new Set<EffortLevel>([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+
+/**
+ * Parse `opencode models --verbose` output (header `provider/id` lines followed
+ * by pretty-printed JSON model defs) into a map of model key -> the reasoning
+ * effort levels that model's `variants` expose. OpenCode passes effort by
+ * naming a variant in the message body; the variant keys
+ * (low/medium/high/xhigh/max) coincide with YA's EffortLevel.
+ */
+export function parseOpenCodeModelVariants(
+  stdout: string,
+): Map<string, EffortLevel[]> {
+  const map = new Map<string, EffortLevel[]>();
+  let header: string | null = null;
+  let block: string[] | null = null;
+  for (const line of stdout.split("\n")) {
+    if (block === null) {
+      if (line === "{") {
+        block = [line];
+      } else if (line.trim() && line.includes("/") && !line.startsWith(" ")) {
+        header = line.trim();
+      }
+      continue;
+    }
+    block.push(line);
+    if (line !== "}") continue;
+    // Top-level closing brace (column 0) ends the model def block.
+    try {
+      const def = JSON.parse(block.join("\n")) as {
+        id?: string;
+        providerID?: string;
+        variants?: Record<string, unknown>;
+      };
+      const key =
+        header ??
+        (def.providerID && def.id ? `${def.providerID}/${def.id}` : null);
+      if (key && def.variants && typeof def.variants === "object") {
+        const levels = Object.keys(def.variants).filter((v): v is EffortLevel =>
+          OPENCODE_EFFORT_LEVELS.has(v as EffortLevel),
+        );
+        if (levels.length > 0) {
+          map.set(key, levels);
+        }
+      }
+    } catch {
+      // Skip unparseable block.
+    }
+    block = null;
+    header = null;
+  }
+  return map;
+}
+
 function isProcessStillAlive(process: ChildProcess): boolean {
   return (
     !process.killed &&
@@ -236,7 +296,10 @@ export class OpenCodeProvider implements AgentProvider {
   readonly name = "opencode" as const;
   readonly displayName = "OpenCode";
   readonly supportsPermissionMode = false; // OpenCode has its own permission model
-  readonly supportsThinkingToggle = false;
+  // OpenCode exposes per-model reasoning effort via model "variants"
+  // (low/medium/high/xhigh/max); the effort selector is gated per-model by
+  // ModelInfo.supportsEffort/supportedEffortLevels from getAvailableModels.
+  readonly supportsThinkingToggle = true;
   readonly supportsSlashCommands = false;
   readonly supportsSteering = false;
 
@@ -300,15 +363,22 @@ export class OpenCodeProvider implements AgentProvider {
         timeout: 10000,
       });
 
+      // Best-effort: learn each model's reasoning-effort variants so the UI can
+      // offer an effort selector for models that support it (e.g. copilot opus).
+      const variantMap = await this.getModelVariantMap(opencodePath);
+
       const discoveredModels: ModelInfo[] = [];
 
       for (const line of result.split("\n")) {
         const trimmed = line.trim();
         if (trimmed && !trimmed.startsWith("─")) {
-          discoveredModels.push({
-            id: trimmed,
-            name: trimmed,
-          });
+          const model: ModelInfo = { id: trimmed, name: trimmed };
+          const effortLevels = variantMap.get(trimmed);
+          if (effortLevels && effortLevels.length > 0) {
+            model.supportsEffort = true;
+            model.supportedEffortLevels = effortLevels;
+          }
+          discoveredModels.push(model);
         }
       }
 
@@ -337,6 +407,26 @@ export class OpenCodeProvider implements AgentProvider {
         { id: "opencode/big-pickle", name: "Big Pickle (Free)" },
         { id: "auto", name: "Auto (recommended)" },
       ];
+    }
+  }
+
+  /**
+   * Best-effort fetch of per-model reasoning-effort variants from
+   * `opencode models --verbose`. Returns an empty map on any failure so model
+   * discovery still works without effort metadata.
+   */
+  private async getModelVariantMap(
+    opencodePath: string,
+  ): Promise<Map<string, EffortLevel[]>> {
+    try {
+      const { stdout } = await execFileUtf8(
+        opencodePath,
+        ["models", "--verbose"],
+        { encoding: "utf-8", timeout: 15000 },
+      );
+      return parseOpenCodeModelVariants(stdout);
+    } catch {
+      return new Map();
     }
   }
 
@@ -724,6 +814,7 @@ export class OpenCodeProvider implements AgentProvider {
           options.model,
           signal,
           options.onToolApproval,
+          options.effort,
         );
       }
     } finally {
@@ -746,6 +837,7 @@ export class OpenCodeProvider implements AgentProvider {
     model: string | undefined,
     signal: AbortSignal,
     onToolApproval: CanUseTool | undefined,
+    effort: EffortLevel | undefined,
   ): AsyncIterableIterator<SDKMessage> {
     const log = getLogger();
     let modelSelection: OpenCodeModelSelection | undefined;
@@ -934,6 +1026,11 @@ export class OpenCodeProvider implements AgentProvider {
           },
           body: JSON.stringify({
             ...(modelSelection ? { model: modelSelection } : {}),
+            // OpenCode selects reasoning effort by naming a model variant; the
+            // variant keys (low/medium/high/xhigh/max) coincide with YA's
+            // EffortLevel. Only sent when YA provides an effort (the UI gates
+            // this to models advertised with supportedEffortLevels).
+            ...(effort ? { variant: effort } : {}),
             parts: [{ type: "text", text }],
           }),
           signal,

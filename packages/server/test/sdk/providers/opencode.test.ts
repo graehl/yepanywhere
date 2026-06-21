@@ -629,6 +629,48 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
     session.abort();
   });
 
+  it("sends the YA effort as an OpenCode model variant", async () => {
+    const sessionId = "ses_effort";
+    let messageBody: Record<string, unknown> | null = null;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/event")) {
+        return Promise.resolve(
+          sseResponse([
+            { type: "session.idle", properties: { sessionID: sessionId } },
+          ]),
+        );
+      }
+      if (url.endsWith(`/session/${sessionId}/message`)) {
+        messageBody = JSON.parse(String(init?.body));
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ id: sessionId }));
+      }
+      return Promise.resolve(jsonResponse({ sessions: [] }));
+    });
+
+    const { OpenCodeProvider } = await import(
+      "../../../src/sdk/providers/opencode.js"
+    );
+    const provider = new OpenCodeProvider({ opencodePath: "/fake/opencode" });
+    const session = await provider.startSession({
+      cwd: "/tmp/test",
+      initialMessage: { text: "hi" },
+      model: "github-copilot/claude-opus-4.8",
+      effort: "high",
+    });
+    for (let i = 0; i < 6; i += 1) {
+      const next = await session.iterator.next();
+      if (next.done || next.value.type === "result") break;
+    }
+    expect(messageBody).toMatchObject({
+      model: { providerID: "github-copilot", modelID: "claude-opus-4.8" },
+      variant: "high",
+    });
+    session.abort();
+  });
+
   it("interrupt() posts to the OpenCode session abort endpoint", async () => {
     const sessionId = "ses_interrupt";
     let abortCalled = false;
@@ -956,3 +998,4 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
     session.abort();
   });
 });
+

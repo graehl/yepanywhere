@@ -1280,19 +1280,23 @@ function convertOpenCodeParts(parts: OpenCodeStoredPart[]): ContentBlock[] {
             input: part.state?.input ?? {},
           });
 
-          // If tool has completed, add tool result block
-          if (part.state?.status === "completed") {
-            const resultContent = part.state.error
-              ? part.state.error
-              : typeof part.state.output === "string"
+          // Once the tool settles (completed OR error), add a result block.
+          // Previously only "completed" was handled, so failed tools silently
+          // dropped their error text on reload.
+          const status = part.state?.status;
+          if (status === "completed" || status === "error") {
+            const error = part.state?.error;
+            const resultContent = error
+              ? error
+              : typeof part.state?.output === "string"
                 ? part.state.output
-                : JSON.stringify(part.state.output ?? "");
+                : JSON.stringify(part.state?.output ?? "");
 
             blocks.push({
               type: "tool_result",
               tool_use_id: part.callID,
               content: resultContent,
-              is_error: !!part.state.error,
+              is_error: status === "error" || !!error,
             });
           }
         }

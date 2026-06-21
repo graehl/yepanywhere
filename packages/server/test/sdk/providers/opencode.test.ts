@@ -448,6 +448,119 @@ describe("OpenCodeProvider.startSession — blocking session ID", () => {
     session.abort();
   });
 
+  it("renders a unified type:'tool' part as one tool_use plus a tool_result", async () => {
+    const sessionId = "ses_unified_tool";
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/event")) {
+        return Promise.resolve(
+          sseResponse([
+            {
+              type: "message.updated",
+              properties: {
+                info: {
+                  id: "msg_a",
+                  sessionID: sessionId,
+                  role: "assistant",
+                },
+              },
+            },
+            // Same part streamed twice: running (input present) then completed.
+            {
+              type: "message.part.updated",
+              properties: {
+                part: {
+                  id: "prt_tool",
+                  sessionID: sessionId,
+                  messageID: "msg_a",
+                  type: "tool",
+                  tool: "bash",
+                  callID: "call_1",
+                  state: {
+                    status: "running",
+                    input: { command: "echo hi" },
+                  },
+                },
+              },
+            },
+            {
+              type: "message.part.updated",
+              properties: {
+                part: {
+                  id: "prt_tool",
+                  sessionID: sessionId,
+                  messageID: "msg_a",
+                  type: "tool",
+                  tool: "bash",
+                  callID: "call_1",
+                  state: {
+                    status: "completed",
+                    input: { command: "echo hi" },
+                    output: "hi\n",
+                  },
+                },
+              },
+            },
+            { type: "session.idle", properties: { sessionID: sessionId } },
+          ]),
+        );
+      }
+      if (url.endsWith(`/session/${sessionId}/message`)) {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      if (init?.method === "POST") {
+        return Promise.resolve(jsonResponse({ id: sessionId }));
+      }
+      return Promise.resolve(jsonResponse({ sessions: [] }));
+    });
+
+    const { OpenCodeProvider } = await import(
+      "../../../src/sdk/providers/opencode.js"
+    );
+    const provider = new OpenCodeProvider({ opencodePath: "/fake/opencode" });
+    const session = await provider.startSession({
+      cwd: "/tmp/test",
+      initialMessage: { text: "run echo" },
+    });
+
+    const messages = [];
+    for (let i = 0; i < 10; i += 1) {
+      const next = await session.iterator.next();
+      if (next.done) break;
+      messages.push(next.value);
+      if (next.value.type === "result") break;
+    }
+
+    const toolUses = messages.flatMap((m) =>
+      Array.isArray(m.message?.content)
+        ? m.message.content.filter((b: { type?: string }) => b.type === "tool_use")
+        : [],
+    );
+    const toolResults = messages.flatMap((m) =>
+      Array.isArray(m.message?.content)
+        ? m.message.content.filter(
+            (b: { type?: string }) => b.type === "tool_result",
+          )
+        : [],
+    );
+
+    // Streamed across two updates but deduped to exactly one of each.
+    expect(toolUses).toHaveLength(1);
+    expect(toolUses[0]).toMatchObject({
+      type: "tool_use",
+      id: "call_1",
+      name: "bash",
+      input: { command: "echo hi" },
+    });
+    expect(toolResults).toHaveLength(1);
+    expect(toolResults[0]).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "call_1",
+      content: "hi\n",
+    });
+
+    session.abort();
+  });
+
   it("uses the OpenCode message POST body when SSE closes before content", async () => {
     const sessionId = "ses_post_body_fallback";
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {

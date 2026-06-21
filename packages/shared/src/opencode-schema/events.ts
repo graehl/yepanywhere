@@ -67,7 +67,7 @@ export const OpenCodePartSchema = z.object({
   id: z.string(),
   sessionID: z.string(),
   messageID: z.string(),
-  type: z.string(), // "text", "step-start", "step-finish", "tool-use", "tool-result", etc.
+  type: z.string(), // "text", "reasoning", "step-start", "step-finish", "tool", and legacy "tool-use"/"tool-result"
   text: z.string().optional(),
   time: OpenCodeTimeSchema.optional(),
   // step-finish specific fields
@@ -75,10 +75,27 @@ export const OpenCodePartSchema = z.object({
   snapshot: z.string().optional(),
   cost: z.number().optional(),
   tokens: OpenCodeTokensSchema.optional(),
-  // tool-use specific fields
+  // Unified tool part (opencode 1.16+): a single type:"tool" part carries the
+  // call id plus a nested state that fills in across streaming updates
+  // (pending -> running -> completed/error). Without these, zod would strip
+  // them and live tool calls would be invisible.
+  callID: z.string().optional(),
+  state: z
+    .object({
+      status: z.string().optional(),
+      input: z.unknown().optional(),
+      output: z.unknown().optional(),
+      error: z.string().optional(),
+      title: z.string().optional(),
+      metadata: z.unknown().optional(),
+      time: z
+        .object({ start: z.number().optional(), end: z.number().optional() })
+        .optional(),
+    })
+    .optional(),
+  // Legacy split-part fields (older opencode "tool-use"/"tool-result")
   tool: z.string().optional(),
   input: z.unknown().optional(),
-  // tool-result specific fields
   output: z.unknown().optional(),
   error: z.string().optional(),
 });

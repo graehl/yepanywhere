@@ -97,6 +97,10 @@ interface OpenCodeStreamState {
   partTypesById: Map<string, string>;
   partTextById: Map<string, string>;
   partSentLengthsById: Map<string, number>;
+  // Unified tool parts stream pending->running->completed; dedupe the tool_use
+  // and tool_result emissions per callID so they appear exactly once.
+  toolUseEmitted: Set<string>;
+  toolResultEmitted: Set<string>;
   sawAssistantContent: boolean;
   usedPostBodyFallback: boolean;
 }
@@ -713,6 +717,8 @@ export class OpenCodeProvider implements AgentProvider {
       partTypesById: new Map(),
       partTextById: new Map(),
       partSentLengthsById: new Map(),
+      toolUseEmitted: new Set(),
+      toolResultEmitted: new Set(),
       sawAssistantContent: false,
       usedPostBodyFallback: false,
     };
@@ -784,14 +790,15 @@ export class OpenCodeProvider implements AgentProvider {
               );
             }
 
-            // Convert to SDK message
-            const sdkMessage = this.convertSSEEventToSDKMessage(
+            // Convert to SDK messages (a single unified tool part can yield
+            // both a tool_use and a tool_result, so this is an array).
+            const sdkMessages = this.convertSSEEventToSDKMessage(
               event,
               sessionId,
               streamState,
             );
 
-            if (sdkMessage) {
+            for (const sdkMessage of sdkMessages) {
               if (sdkMessage.type === "assistant") {
                 if (streamState.usedPostBodyFallback) {
                   continue;
@@ -944,7 +951,7 @@ export class OpenCodeProvider implements AgentProvider {
     event: OpenCodeSSEEvent,
     sessionId: string,
     streamState: OpenCodeStreamState,
-  ): SDKMessage | null {
+  ): SDKMessage[] {
     switch (event.type) {
       case "message.part.updated": {
         const partEvent = event as OpenCodeMessagePartUpdatedEvent;
@@ -972,10 +979,10 @@ export class OpenCodeProvider implements AgentProvider {
         );
 
         if (!messageId || !partType || deltaEvent.properties.field !== "text") {
-          return null;
+          return [];
         }
 
-        return this.convertTextLikePartToSDKMessage(
+        const message = this.convertTextLikePartToSDKMessage(
           {
             partId: deltaEvent.properties.partID,
             messageId,
@@ -986,6 +993,7 @@ export class OpenCodeProvider implements AgentProvider {
           streamState,
           streamState.messageRolesById.get(messageId),
         );
+        return message ? [message] : [];
       }
 
       case "session.idle":
@@ -995,10 +1003,10 @@ export class OpenCodeProvider implements AgentProvider {
       case "message.updated":
       case "server.connected":
         // These are status events, not content - skip
-        return null;
+        return [];
 
       default:
-        return null;
+        return [];
     }
   }
 
@@ -1097,11 +1105,11 @@ export class OpenCodeProvider implements AgentProvider {
     delta: string | undefined,
     streamState: OpenCodeStreamState,
     messageRole: "user" | "assistant" | undefined,
-  ): SDKMessage | null {
+  ): SDKMessage[] {
     switch (part.type) {
       case "text":
-      case "reasoning":
-        return this.convertTextLikePartToSDKMessage(
+      case "reasoning": {
+        const message = this.convertTextLikePartToSDKMessage(
           {
             partId: part.id,
             messageId: part.messageID,
@@ -1113,66 +1121,149 @@ export class OpenCodeProvider implements AgentProvider {
           streamState,
           messageRole,
         );
+        return message ? [message] : [];
+      }
 
       case "step-start":
         // Start of a processing step - no content to emit
-        return null;
+        return [];
 
       case "step-finish": {
         // End of processing step - emit usage info if available
         if (part.tokens) {
-          return {
-            type: "result",
-            session_id: sessionId,
-            usage: {
-              input_tokens: part.tokens.input ?? 0,
-              output_tokens: part.tokens.output ?? 0,
-            },
-          } as SDKMessage;
+          return [
+            {
+              type: "result",
+              session_id: sessionId,
+              usage: {
+                input_tokens: part.tokens.input ?? 0,
+                output_tokens: part.tokens.output ?? 0,
+              },
+            } as SDKMessage,
+          ];
         }
-        return null;
+        return [];
       }
 
+      // Unified tool part (opencode 1.16+): one type:"tool" part streams
+      // pending -> running -> completed/error. Emit the tool_use once the call
+      // is underway, then the tool_result once it settles, deduped by callID.
+      case "tool":
+        return this.convertUnifiedToolPart(part, sessionId, streamState);
+
       case "tool-use": {
-        // Tool invocation
-        return {
-          type: "assistant",
-          session_id: sessionId,
-          message: {
-            role: "assistant",
-            content: [
-              {
-                type: "tool_use",
-                id: part.id,
-                name: part.tool ?? "unknown",
-                input: part.input ?? {},
-              },
-            ],
-          },
-        } as SDKMessage;
+        // Legacy split tool invocation (older opencode)
+        return [
+          {
+            type: "assistant",
+            session_id: sessionId,
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: part.id,
+                  name: part.tool ?? "unknown",
+                  input: part.input ?? {},
+                },
+              ],
+            },
+          } as SDKMessage,
+        ];
       }
 
       case "tool-result": {
-        // Tool result
-        return {
-          type: "user",
-          session_id: sessionId,
-          message: {
-            role: "user",
-            content: [
-              {
-                type: "tool_result",
-                tool_use_id: part.id,
-                content: part.error ?? String(part.output ?? ""),
-              },
-            ],
-          },
-        } as SDKMessage;
+        // Legacy split tool result (older opencode)
+        return [
+          {
+            type: "user",
+            session_id: sessionId,
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: part.id,
+                  content: part.error ?? String(part.output ?? ""),
+                },
+              ],
+            },
+          } as SDKMessage,
+        ];
       }
 
       default:
-        return null;
+        return [];
     }
+  }
+
+  /**
+   * Convert a unified `type:"tool"` part into YA tool_use/tool_result messages.
+   *
+   * The same part is delivered repeatedly as its `state.status` advances
+   * (pending -> running -> completed/error) and `state.input`/`state.output`
+   * fill in. Emit the tool_use once the call is underway (running or settled)
+   * and the tool_result once it settles, each deduped by callID so a streamed
+   * tool appears exactly once. A fast tool whose first update is already
+   * completed yields both messages at once.
+   */
+  private convertUnifiedToolPart(
+    part: OpenCodePart,
+    sessionId: string,
+    streamState: OpenCodeStreamState,
+  ): SDKMessage[] {
+    const callId = part.callID;
+    if (!callId) return [];
+
+    const status = part.state?.status;
+    const settled = status === "completed" || status === "error";
+    const underway = status === "running" || settled;
+    const messages: SDKMessage[] = [];
+
+    if (underway && !streamState.toolUseEmitted.has(callId)) {
+      streamState.toolUseEmitted.add(callId);
+      messages.push({
+        type: "assistant",
+        session_id: sessionId,
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: callId,
+              name: part.tool ?? "unknown",
+              input: part.state?.input ?? {},
+            },
+          ],
+        },
+      } as SDKMessage);
+    }
+
+    if (settled && !streamState.toolResultEmitted.has(callId)) {
+      streamState.toolResultEmitted.add(callId);
+      const error = part.state?.error;
+      const output = part.state?.output;
+      const content =
+        error ??
+        (typeof output === "string" ? output : JSON.stringify(output ?? ""));
+      messages.push({
+        type: "user",
+        session_id: sessionId,
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: callId,
+              content,
+              is_error: status === "error" || Boolean(error),
+            },
+          ],
+        },
+      } as SDKMessage);
+    }
+
+    return messages;
   }
 
   /**

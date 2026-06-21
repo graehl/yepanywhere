@@ -98,4 +98,35 @@ describe("SessionReader model extraction", () => {
     const summary = await reader.getSessionSummary("s2", projectId);
     expect(summary?.model).toBe("claude-sonnet-4-6");
   });
+
+  it("uses the first entry's content timestamp as createdAt", async () => {
+    // birthtime is unreliable on Linux (epoch); the creation age must come from
+    // the transcript's first entry, not the file stat.
+    const created = "2026-06-20T08:30:00.000Z";
+    const later = "2026-06-20T09:15:00.000Z";
+    const lines = [
+      JSON.stringify({
+        type: "user",
+        uuid: "u0",
+        parentUuid: null,
+        timestamp: created,
+        message: { role: "user", content: "first" },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        uuid: "a0",
+        parentUuid: "u0",
+        timestamp: later,
+        message: {
+          role: "assistant",
+          model: "claude-opus-4-6",
+          content: [{ type: "text", text: "hi" }],
+        },
+      }),
+    ].join("\n");
+    await writeFile(join(sessionDir, "s3.jsonl"), `${lines}\n`);
+
+    const summary = await reader.getSessionSummary("s3", projectId);
+    expect(summary?.createdAt).toBe(created);
+  });
 });

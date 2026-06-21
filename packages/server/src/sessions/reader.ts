@@ -278,6 +278,23 @@ export class ClaudeSessionReader implements ISessionReader {
       const fullTitle = firstUserMessage?.trim() || null;
       const model = this.extractModel(conversationMessages);
 
+      // Prefer the first entry's content timestamp for the creation time. The
+      // file's birthtime is unreliable on Linux filesystems without statx btime
+      // (Node returns the unix epoch there), which made all Claude sessions show
+      // a 1970 / suppressed creation age; fall back to mtime over an epoch
+      // birthtime so the value is never bogus.
+      const firstTimestamp = messages.find(
+        (m): m is Extract<ClaudeSessionEntry, { timestamp: string }> =>
+          "timestamp" in m &&
+          typeof m.timestamp === "string" &&
+          m.timestamp.length > 0,
+      )?.timestamp;
+      const createdAt =
+        firstTimestamp ??
+        (stats.birthtimeMs > 0
+          ? stats.birthtime.toISOString()
+          : stats.mtime.toISOString());
+
       // claude-ollama sessions use the same JSONL format but have non-Claude
       // model IDs (e.g. "qwen3-coder-128k:latest" vs "claude-opus-4-5-20251101")
       const provider =
@@ -294,7 +311,7 @@ export class ClaudeSessionReader implements ISessionReader {
         projectId,
         title: this.extractTitle(firstUserMessage),
         fullTitle,
-        createdAt: stats.birthtime.toISOString(),
+        createdAt,
         updatedAt: stats.mtime.toISOString(),
         messageCount: conversationMessages.length,
         ownership: { owner: "none" }, // Will be updated by Supervisor

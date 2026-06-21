@@ -5,6 +5,7 @@ import { LEGACY_KEYS } from "../../lib/storageKeys";
 const mocks = vi.hoisted(() => ({
   updateServerSettings: vi.fn(async () => ({ settings: {} })),
   version: null as unknown,
+  installId: undefined as string | undefined,
 }));
 
 vi.mock("../../api/client", () => ({
@@ -19,11 +20,16 @@ vi.mock("../useVersion", () => ({
   }),
 }));
 
+vi.mock("../../contexts/InstallIdContext", () => ({
+  useInstallId: () => ({ installId: mocks.installId, isLoading: false }),
+}));
+
 describe("useModelSettings speech defaults", () => {
   afterEach(() => {
     cleanup();
     window.localStorage.clear();
     mocks.version = null;
+    mocks.installId = undefined;
     mocks.updateServerSettings.mockClear();
     vi.resetModules();
   });
@@ -79,6 +85,51 @@ describe("useModelSettings speech defaults", () => {
         },
       },
     });
+  });
+
+  it("re-reads the server-scoped showThinking once installId arrives", async () => {
+    // Repro of the reload race: the synchronous useState(loadShowThinking) at
+    // mount runs before installId is known, so a stored "on" reads back as
+    // "default" until the install-id re-sync effect fires.
+    const { setCurrentInstallId } = await import("../../lib/storageKeys");
+    window.localStorage.setItem("yep-anywhere-inst-1-show-thinking", "on");
+
+    mocks.installId = undefined;
+    const { useModelSettings } = await import("../useModelSettings");
+    const { result, rerender } = renderHook(() => useModelSettings());
+
+    // Mount before installId: scoped read misses -> "default".
+    expect(result.current.showThinking).toBe("default");
+
+    // InstallIdProvider resolves: sets the module-global id and context value.
+    act(() => {
+      setCurrentInstallId("inst-1");
+      mocks.installId = "inst-1";
+    });
+    rerender();
+
+    expect(result.current.showThinking).toBe("on");
+  });
+
+  it("does not clobber an in-session showThinking change when installId arrives", async () => {
+    const { setCurrentInstallId } = await import("../../lib/storageKeys");
+    window.localStorage.setItem("yep-anywhere-inst-1-show-thinking", "on");
+
+    mocks.installId = undefined;
+    const { useModelSettings } = await import("../useModelSettings");
+    const { result, rerender } = renderHook(() => useModelSettings());
+
+    act(() => result.current.setShowThinking("off"));
+    expect(result.current.showThinking).toBe("off");
+
+    act(() => {
+      setCurrentInstallId("inst-1");
+      mocks.installId = "inst-1";
+    });
+    rerender();
+
+    // User's explicit "off" wins over the stored "on".
+    expect(result.current.showThinking).toBe("off");
   });
 
   it("stores the Parakeet model as a browser-local STT choice", async () => {

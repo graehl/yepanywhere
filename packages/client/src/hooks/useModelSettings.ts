@@ -6,8 +6,9 @@ import type {
   ThinkingMode,
   ThinkingOption,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
+import { useInstallId } from "../contexts/InstallIdContext";
 import {
   CLIENT_STORAGE_DEFAULT,
   type DefaultedValue,
@@ -379,6 +380,13 @@ export function useModelSettings() {
     useState<ThinkingMode>(loadThinkingMode);
   const [showThinking, setShowThinkingState] =
     useState<ShowThinking>(loadShowThinking);
+  // showThinking is stored under a server-scoped key that needs the installId,
+  // which arrives asynchronously after a /api/server-info fetch. The synchronous
+  // useState(loadShowThinking) above therefore runs before installId is known
+  // and (lacking a legacy-key fallback) resolves to "default" on every reload.
+  // Re-read once installId lands, unless the user already changed it this mount.
+  const { installId } = useInstallId();
+  const showThinkingTouchedRef = useRef(false);
   const [voiceInputEnabled, setVoiceInputEnabledState] = useState<boolean>(() =>
     resolveDefaultedValue(
       loadVoiceInputEnabledSetting(),
@@ -434,6 +442,14 @@ export function useModelSettings() {
     hasServerSpeechMethodDefault,
   ]);
 
+  useEffect(() => {
+    if (!installId || showThinkingTouchedRef.current) {
+      return;
+    }
+    const stored = loadShowThinking();
+    setShowThinkingState((prev) => (prev === stored ? prev : stored));
+  }, [installId]);
+
   const setModel = useCallback((m: ModelOption) => {
     setModelState(m);
     saveModel(m);
@@ -450,6 +466,7 @@ export function useModelSettings() {
   }, []);
 
   const setShowThinking = useCallback((value: ShowThinking) => {
+    showThinkingTouchedRef.current = true;
     setShowThinkingState(value);
     saveShowThinking(value);
   }, []);

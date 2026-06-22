@@ -95,6 +95,31 @@ content-fingerprint dependence. Determinism is available for most items:
 So Codex's mismatch is largely **incidental**, not fundamental; the
 approx-dedup remains only for assistant messages with no response id.
 
+### Step-2 implementation crux (not yet done)
+
+The value only lands when both sides key on the same Codex id, and the
+hard half is the **durable** side. `convertCodexResponseItem`
+(`normalization.ts`) stamps every durable row with a positional
+`codex-${index}-${timestamp}` uuid; aligning means deriving the uuid from
+the Codex id instead (`payload.id` for assistant messages, `call_id` for
+tools, the event_msg `client_id` for user turns). This is entangled, so it
+is a careful, well-tested refactor rather than the additive change the
+table implies:
+- A user turn appears as *both* a `response_item` `message` (carrying the
+  Codex-generated `payload.id`, a `msg_…`) and an event_msg `UserMessage`
+  (carrying YA's `client_id`); only the latter matches the live echo
+  (`message.uuid`). The renderer must source the user uuid from the
+  `client_id`, not the response_item's own `payload.id`.
+- `buildItemMessageUuid` (live, `${itemId}-${turnId}`) also feeds tool
+  result correlation (`-result` suffix) and must change in lockstep.
+- The within-file `getCodexEntryDedupeKey` and tool-context maps already
+  read `call_id`/`payload.id`; changing the rendered uuid must not break
+  them.
+Send `clientUserMessageId` (= the queue `message.uuid`, already the live
+user uuid) on `turn/start` (`codex.ts:createTurnStartParams`) and
+`turn/steer`, and stop dropping `response_item.id` / `user_message.client_id`
+in `codex-schema/session.ts`, as the additive groundwork.
+
 ## Key files
 
 - `packages/client/src/lib/linearMessageDedup.ts` — the shared backstop.

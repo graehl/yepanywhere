@@ -39,3 +39,5 @@
 - Sidebar session ordering (active rows pinned and stable, idle rows deduped by recency)
 - Deferred & tactical roadmap (prioritized: backgrounded-jobs badge, `Task*` list rendering, queue-across-compaction, rich-text gaps, OpenCode/pi provider fleshout)
 - pi provider (Zechner's pi-mono as agnostic backend: integration plan + periodic progress tracking)
+- Provider read/edit disciplines (native edit formats vs YA's one canonical Read/Edit/Write presentation)
+- Collapse/expand mode (brainstorm: default-collapse more actions; expand subagent progress as pure outline UI)

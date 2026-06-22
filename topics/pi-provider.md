@@ -116,8 +116,10 @@ Registered in `providers/index.ts`; `pi` added to `ProviderName` /
 test and a transport smoke against the real binary (39 `provider/id` models).
 Deferred follow-ups: durable `PiSessionReader` (until then a `NullSessionReader`
 backs reload/list, so on-disk history is empty), true steering wiring
-(`supportsSteering=false` for now), the `tool_execution_start` permission bridge
-(tools run autonomously), and tool-argument field normalization.
+(`supportsSteering=false` for now), and the `tool_execution_start` permission
+bridge (tools run autonomously). Tool name **and argument-field** normalization
+is **done** (`pi-tools.ts` `normalizePiTool`; see
+[`provider-read-edit-disciplines.md`](provider-read-edit-disciplines.md)).
 
 Add a `pi` provider that spawns `pi --mode rpc --provider <p> --model <m>
 --session-dir <dir>` per session and speaks the JSONL protocol. RPC maps onto

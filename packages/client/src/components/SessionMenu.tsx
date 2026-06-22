@@ -1,9 +1,7 @@
 import type { PromptSuggestionMode } from "@yep-anywhere/shared";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api } from "../api/client";
 import { useI18n } from "../i18n";
-import { getProvider } from "../providers/registry";
 
 export interface SessionMenuProps {
   sessionId: string;
@@ -21,8 +19,6 @@ export interface SessionMenuProps {
   onRename: () => void;
   /** Copy the session's initial prompt, when available. */
   onCopyPrompt?: () => void | Promise<void>;
-  /** Called after successful clone with the new session ID */
-  onClone?: (newSessionId: string) => void | Promise<void>;
   /** Called to request compaction in the current session */
   onCompact?: () => void | Promise<void>;
   /** Called to hand off the session into a fresh agent session */
@@ -61,19 +57,15 @@ export interface SessionMenuProps {
 }
 
 export function SessionMenu({
-  sessionId,
-  projectId,
   isStarred,
   isArchived,
   hasUnread,
-  provider,
   processId,
   onToggleStar,
   onToggleArchive,
   onToggleRead,
   onRename,
   onCopyPrompt,
-  onClone,
   onCompact,
   onHandoff,
   onClear,
@@ -92,7 +84,6 @@ export function SessionMenu({
 }: SessionMenuProps) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
-  const [isCloning, setIsCloning] = useState(false);
   const [isTerminating, setIsTerminating] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<{
@@ -185,27 +176,6 @@ export function SessionMenu({
     setDropdownPosition(null);
     triggerRef.current?.blur();
     action();
-  };
-
-  const handleClone = async () => {
-    if (isCloning) return;
-    setIsCloning(true);
-    setIsOpen(false);
-    setDropdownPosition(null);
-    triggerRef.current?.blur();
-    try {
-      const result = await api.cloneSession(
-        projectId,
-        sessionId,
-        undefined,
-        provider,
-      );
-      onClone?.(result.sessionId);
-    } catch (error) {
-      console.error("Failed to clone session:", error);
-    } finally {
-      setIsCloning(false);
-    }
   };
 
   const handleTerminate = async () => {
@@ -389,23 +359,6 @@ export function SessionMenu({
             <path d="M3 3v5h5" />
           </svg>
           {t("sessionMenuRestoreWarnings")}
-        </button>
-      )}
-      {onClone && getProvider(provider).capabilities.supportsCloning && (
-        <button type="button" onClick={handleClone} disabled={isCloning}>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            aria-hidden="true"
-          >
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
-          {isCloning ? t("sessionMenuCloning") : t("sessionMenuClone")}
         </button>
       )}
       {onCompact && (

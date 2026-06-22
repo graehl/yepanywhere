@@ -273,24 +273,41 @@ tradeoff.
 ## Mobile preview access via the row menu (proposal — not built)
 
 Hover does not exist on touch devices, so the recent-activity preview is
-currently **unreachable on mobile**. The session row's `…` (overflow/hamburger)
-menu is the only affordance that opens on tap, so it is the place to surface the
-preview. Proposal, for discussion after the current work lands:
+effectively **unreachable on mobile**. In practice tapping the row's `…`
+(overflow) menu *does* surface the hover card (touch synthesizes the
+`mouseenter` the card listens for), but the menu opens on top of it and covers
+most of it — accidental, not designed. So the `…` menu is the place to present
+both together, deliberately laid out.
 
-- **Narrow the menu** so a preview can sit beside it: shorten "Copy prompt" →
-  "Copy" and "Mark as unread" → "→ unread" (an arrow glyph suggesting the
-  action, replacing the circle). Reduce the menu's horizontal padding and font
-  size.
-- **Place the preview to the left of the menu** (a tap-opened variant of the
-  hover card), so the same recent-activity content is reachable without a mouse.
-- **Alternative layout:** lay the menu items out in two columns and put the
-  preview full-width above or below the menu, choosing above vs. below from the
-  `…` button's position on screen (same below/above flip logic the hover card
-  already uses).
+Direction (agreed in discussion; not yet built):
 
-Open sub-questions: whether the tap-preview reuses `SessionHoverCard` (it is
-already portal/fixed and self-positioning) or a menu-embedded variant; and how
-the narrower menu interacts with existing `SessionMenu` items beyond Copy/unread.
+- **Drop Clone.** Tested non-functional ("does nothing"); it is wired
+  (`handleClone` → `POST /clone`) but fails silently (catch only logs).
+  Removing it takes the row menu from 7 items to **6**, which fits a grid
+  exactly. Note `SessionMenu` is shared — removing Clone there affects every
+  context that renders it (gated already by `supportsCloning`); confirm that is
+  intended vs. fixing the underlying clone failure.
+- **3 columns × 2 rows grid** for the row-menu actions: Star, Archive,
+  Read/unread, Rename, Copy, Share. Share is conditional
+  (`publicShareControlsVisible`); when hidden, 5 items reflow (one empty cell).
+- **Label/icon changes:** "Copy prompt" → "Copy"; "Mark as unread" → "→ unread"
+  with an **arrow** glyph (suggesting the action) replacing the circle. Reduce
+  horizontal padding and font size so the grid stays compact.
+- **Preview above or below** the grid (full width), choosing above vs. below
+  from the `…` button's screen position — the same flip logic the hover card
+  already uses.
+- **Position the menu close to `…`, in the opposite direction** from where the
+  preview sits, so the whole cluster stays near the tapped button and on-screen
+  (the hover card MAY position relative to the menu rather than the cursor).
+- **Keep the tapped `…` visible** — not covered by the menu/preview — so tapping
+  it again is an obvious no-action dismiss.
+- **Dismiss** when: a tap lands outside, a menu option is chosen, the preview
+  itself is tapped, or `…` is tapped again.
+
+Open sub-questions: whether the tap-preview reuses `SessionHoverCard` (already
+portal/fixed and self-positioning) or a menu-embedded variant; and whether the
+grid layout is a row-menu-only mode of the shared `SessionMenu` (the session-page
+header menu keeps its taller list with compact/handoff/clear/etc.).
 
 ## Open questions / phase 2
 

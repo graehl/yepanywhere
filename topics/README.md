@@ -42,3 +42,4 @@
 - Provider read/edit disciplines (native edit formats vs YA's one canonical Read/Edit/Write presentation)
 - Collapse/expand mode (brainstorm: default-collapse more actions; expand subagent progress as pure outline UI)
 - Session hover card recent activity (add last regular agent turn excerpt to the row tooltip; fire it on all-sessions + search too)
+- Turn-notch actions / fork-from-turn (fork already exists; proposal: expose fork/copy/trim from scrollbar notches + seed compose with the forked turn)

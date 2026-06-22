@@ -3340,11 +3340,6 @@ function SessionPageContent({
                     hasPendingToolCalls && pendingElsewhereDismissed
                   }
                   onRestoreWarnings={handleRestorePendingElsewhereWarning}
-                  onClone={(newSessionId) => {
-                    navigate(
-                      `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
-                    );
-                  }}
                   onHandoff={
                     effectiveProvider
                       ? () => setShowHandoffModal(true)

@@ -766,11 +766,6 @@ export function SessionListItem({
             setIsEditing(true);
           }}
           onCopyPrompt={copyPromptText ? handleCopyPrompt : undefined}
-          onClone={(newSessionId) => {
-            navigate(
-              `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
-            );
-          }}
           onShare={
             publicShareControlsVisible
               ? () => setShowShareModal(true)

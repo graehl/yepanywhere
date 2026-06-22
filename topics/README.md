@@ -43,3 +43,4 @@
 - Collapse/expand mode (brainstorm: default-collapse more actions; expand subagent progress as pure outline UI)
 - Session hover card recent activity (add last regular agent turn excerpt to the row tooltip; fire it on all-sessions + search too)
 - Turn-notch actions / fork-from-turn (fork already exists; proposal: expose fork/copy/trim from scrollbar notches + seed compose with the forked turn)
+- Turn-rail marker layout (hit targets sized to neighbor gaps; optional PAVA de-cluster spread behind one off-by-default constant)

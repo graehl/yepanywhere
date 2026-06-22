@@ -4,12 +4,14 @@ import {
   type ReactElement,
   type MouseEvent as ReactMouseEvent,
   type RefObject,
+  type TouchEvent as ReactTouchEvent,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 export interface UserTurnNavAnchor {
   id: string;
@@ -39,13 +41,23 @@ interface Props {
   motionCue?: UserTurnNavMotionCue | null;
   onNavigateStart?: () => void;
   onSearchMatchSelect?: (id: string, targetId: string) => void;
+  /** "Hide previous": load the client transcript from this turn (drop earlier). */
   onTrimAnchor?: (id: string) => void;
+  /** Fork the session before this turn (seeds the new composer with the turn). */
+  onForkAnchor?: (id: string) => void;
+  /** Copy this turn's text to the clipboard. */
+  onCopyAnchor?: (id: string) => void;
   searchState?: UserTurnNavSearchState | null;
 }
 
 interface UserTurnMarker extends UserTurnNavAnchor {
   topPct: number;
   scrollTopPx: number;
+  /** Rendered fraction of the track for the dash/dot/hit-target (equals topPct
+   *  when spread is off; de-clustered when MARKER_SPREAD_PX > 0). */
+  renderTopPct: number;
+  /** Hit/hover target height in px, sized to the gap to neighbors. */
+  hitPx: number;
 }
 
 interface UserTurnNavLayout {
@@ -85,6 +97,23 @@ interface PreviewFacsimile {
 const MIN_NAV_ANCHORS = 2;
 const NAV_EDGE_INSET_PX = 4;
 const NAV_VERTICAL_INSET_PX = 8;
+// Per-marker hit/hover target height is sized to the gap to its neighbors (so
+// targets tile without overlap and don't activate blank space), clamped to this
+// range. Dashes stay at their true positions (option B). See
+// topics/turn-rail-marker-layout.md.
+const MARKER_HIT_MIN_PX = 6;
+const MARKER_HIT_MAX_PX = 18;
+// De-cluster spread (option A): dense markers are pushed apart to at least this
+// px gap via L2-optimal min-gap placement. NOTE this is in direct tension with
+// conveying "work between turns": PAVA equalizes the spacing of any run denser
+// than the gap, erasing the density signal there, so a long session pooled at a
+// large gap looks almost evenly spaced. The knob trades density-signal (low)
+// for separation (high). 3px ~= the dash height: only nudges near-coincident
+// marks apart, leaving every larger gap (and its work signal) intact. 0 =
+// fully accurate. Sparse markers always keep true positions; in extremely long
+// sessions N*gap can exceed the rail and markers pile up at the bottom.
+// Internal tuning constant, not a user setting.
+const MARKER_SPREAD_PX = 3;
 const PREVIEW_VERTICAL_MARGIN_PX = 22;
 const PREVIEW_FULL_MIN_GAP_PX = 62;
 const PREVIEW_COMPACT_MIN_GAP_PX = 24;
@@ -99,6 +128,44 @@ function getScrollContainer(
   messageList: HTMLDivElement | null,
 ): HTMLElement | null {
   return messageList?.parentElement ?? null;
+}
+
+/**
+ * Optimal min-gap placement: given desired positions `xs` (ascending) and a
+ * minimum gap, return positions with `out[i+1] - out[i] >= gap` minimizing the
+ * sum of squared displacement from `xs`. Substituting `w_i = y_i - i*gap` turns
+ * the gap constraint into "w non-decreasing", so this is isotonic regression
+ * via pool-adjacent-violators (O(n)). Far-apart clusters keep their true
+ * positions; only dense ones spread (to exactly `gap`, centered on their
+ * centroid), so spreading one cluster never shoves it into the next. See
+ * topics/turn-rail-marker-layout.md.
+ */
+function spreadMinGap(xs: number[], gap: number): number[] {
+  const n = xs.length;
+  if (gap <= 0 || n === 0) return xs.slice();
+  const blocks: { sum: number; count: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    let sum = (xs[i] ?? 0) - i * gap; // shift into isotonic space
+    let count = 1;
+    let prev = blocks[blocks.length - 1];
+    while (prev && prev.sum / prev.count > sum / count) {
+      blocks.pop();
+      sum += prev.sum;
+      count += prev.count;
+      prev = blocks[blocks.length - 1];
+    }
+    blocks.push({ sum, count });
+  }
+  const out = new Array<number>(n);
+  let idx = 0;
+  for (const block of blocks) {
+    const mean = block.sum / block.count;
+    for (let k = 0; k < block.count; k++) {
+      out[idx] = mean + idx * gap; // shift back out
+      idx++;
+    }
+  }
+  return out;
 }
 
 function findRenderRow(
@@ -291,21 +358,33 @@ function renderPreviewLabelText(
   return renderPreviewFacsimile(label, searchState);
 }
 
-function findActiveId(
-  markers: UserTurnMarker[],
-  scrollTop: number,
-  clientHeight: number,
-): string {
-  const activeCutoff = scrollTop + Math.min(clientHeight * 0.35, 220);
-  let activeId = markers[0]?.id ?? "";
-  for (const marker of markers) {
-    if (marker.scrollTopPx <= activeCutoff) {
-      activeId = marker.id;
-    } else {
-      break;
-    }
+// Small tolerance so a turn flush against the viewport top isn't treated as
+// scrolled-off due to sub-pixel rounding.
+const ACTIVE_TOP_TOLERANCE_PX = 2;
+
+/**
+ * The active (long) marker is the first user turn whose row top has reached the
+ * viewport top — i.e. the topmost *fully visible* user turn. A user turn whose
+ * row has scrolled off the top (you are now reading its trailing system output)
+ * is skipped, so the long-dash tracks the visible turn, not the one whose output
+ * fills the viewport. Recomputed on every scroll (real scrollbar and click-jump
+ * alike go through updateScrollPosition), so the same rule governs both. Falls
+ * back to the last marker when scrolled past all of them.
+ */
+function findActiveId(markers: UserTurnMarker[], scrollTop: number): string {
+  if (markers.length === 0) return "";
+  // Markers are sorted top→bottom by scrollTopPx (cached at layout time), so
+  // lower-bound by binary search instead of scanning — O(log n) per scroll.
+  const threshold = scrollTop - ACTIVE_TOP_TOLERANCE_PX;
+  let lo = 0;
+  let hi = markers.length; // first index with scrollTopPx >= threshold, in [lo,hi)
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((markers[mid]?.scrollTopPx ?? 0) >= threshold) hi = mid;
+    else lo = mid + 1;
   }
-  return activeId;
+  // lo is the first fully-visible turn; if scrolled past all, use the last.
+  return (markers[lo] ?? markers[markers.length - 1])?.id ?? "";
 }
 
 function getAnimationFrame(): {
@@ -386,10 +465,13 @@ function measureLayout(
     const rowRect = row.getBoundingClientRect();
     const scrollTopPx =
       scrollContainer.scrollTop + rowRect.top - scrollRect.top;
+    const topPct = clamp(scrollTopPx / scrollHeight, 0, 1);
     markers.push({
       ...anchor,
       scrollTopPx,
-      topPct: clamp(scrollTopPx / scrollHeight, 0, 1),
+      topPct,
+      renderTopPct: topPct, // filled in below once track height is known
+      hitPx: MARKER_HIT_MAX_PX,
     });
   }
 
@@ -399,6 +481,31 @@ function measureLayout(
 
   const top = scrollRect.top + NAV_VERTICAL_INSET_PX;
   const height = Math.max(scrollRect.height - NAV_VERTICAL_INSET_PX * 2, 1);
+
+  // Render geometry (option B + optional spread A): place each marker, then size
+  // its hit/hover target to the gap to its neighbors so targets tile without
+  // overlap and don't activate blank space. MARKER_SPREAD_PX > 0 de-clusters
+  // dense markers first (dashes spread to match their targets). True positions
+  // are preserved when spread is 0. See topics/turn-rail-marker-layout.md.
+  const rawPx = markers.map((marker) => marker.topPct * height);
+  const renderPx =
+    MARKER_SPREAD_PX > 0 ? spreadMinGap(rawPx, MARKER_SPREAD_PX) : rawPx;
+  for (let i = 0; i < markers.length; i++) {
+    const marker = markers[i];
+    if (!marker) continue;
+    const pos = renderPx[i] ?? marker.topPct * height;
+    marker.renderTopPct = clamp(pos / height, 0, 1);
+    const gapAbove = i > 0 ? pos - (renderPx[i - 1] ?? pos) : Number.POSITIVE_INFINITY;
+    const gapBelow =
+      i < markers.length - 1
+        ? (renderPx[i + 1] ?? pos) - pos
+        : Number.POSITIVE_INFINITY;
+    marker.hitPx = clamp(
+      Math.min(gapAbove, gapBelow),
+      MARKER_HIT_MIN_PX,
+      MARKER_HIT_MAX_PX,
+    );
+  }
   const right =
     window.innerWidth -
     scrollRect.right +
@@ -411,7 +518,7 @@ function measureLayout(
     height,
     thumbTopPct: clamp(scrollContainer.scrollTop / scrollHeight, 0, 1),
     thumbHeightPct: clamp(clientHeight / scrollHeight, 0.04, 1),
-    activeId: findActiveId(markers, scrollContainer.scrollTop, clientHeight),
+    activeId: findActiveId(markers, scrollContainer.scrollTop),
     markers,
     previewMaxWidthPx,
   };
@@ -431,11 +538,7 @@ function updateScrollPosition(
     ...layout,
     thumbTopPct: clamp(scrollContainer.scrollTop / scrollHeight, 0, 1),
     thumbHeightPct: clamp(clientHeight / scrollHeight, 0.04, 1),
-    activeId: findActiveId(
-      layout.markers,
-      scrollContainer.scrollTop,
-      clientHeight,
-    ),
+    activeId: findActiveId(layout.markers, scrollContainer.scrollTop),
   };
   return {
     ...nextLayout,
@@ -533,9 +636,23 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   onNavigateStart,
   onSearchMatchSelect,
   onTrimAnchor,
+  onForkAnchor,
+  onCopyAnchor,
   searchState,
 }: Props) {
   const [layout, setLayout] = useState<UserTurnNavLayout | null>(null);
+  // Right-click / long-press context menu for a turn notch (fork / copy / hide).
+  const [notchMenu, setNotchMenu] = useState<{
+    id: string;
+    targetId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // While the context menu is open, suppress the hover preview entirely: it
+  // renders over the same notch and the two strobe at frame rate as each fights
+  // to be under the cursor. The ref lets focusPreview (deps []) short-circuit.
+  const notchMenuOpenRef = useRef(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [previewWindowAnchorId, setPreviewWindowAnchorId] = useState<
     string | null
@@ -553,7 +670,13 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   const visiblePreviewIdsRef = useRef<string[]>([]);
   const activeMotionCue = motionCue ?? internalMotionCue;
   const minAnchorCount = searchState ? 1 : MIN_NAV_ANCHORS;
-  const shouldMeasure = railActive || !!searchState || !!activeMotionCue;
+  // Keep the rail mounted while the context menu is open: the menu portal is
+  // rendered inside this component's output, which returns null when not
+  // measuring. Without this, the menu's overlay triggers the scroll
+  // container's pointerleave -> railActive=false -> unmount -> remount loop
+  // (frame-rate strobe). See topics/fork-from-turn.md.
+  const shouldMeasure =
+    railActive || !!searchState || !!activeMotionCue || notchMenu !== null;
   const resolveAnchors = useCallback(
     () => (getAnchors ? getAnchors() : anchors),
     [anchors, getAnchors],
@@ -643,6 +766,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
 
     const updatePointerReveal = (event: PointerEvent) => {
       if (searchState) return;
+      if (notchMenuOpenRef.current) return; // freeze reveal while menu is open
       const rect = scrollContainer.getBoundingClientRect();
       const inVerticalRange =
         event.clientY >= rect.top && event.clientY <= rect.bottom;
@@ -656,6 +780,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
       });
     };
     const hideRail = () => {
+      if (notchMenuOpenRef.current) return; // overlay covers the container; keep rail
       if (!searchState) {
         setRailActive(false);
       }
@@ -768,6 +893,59 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     },
     [handleJump, onSearchMatchSelect, searchState],
   );
+  const hasNotchMenu = Boolean(onForkAnchor || onCopyAnchor || onTrimAnchor);
+  const openNotchMenu = useCallback(
+    (id: string, targetId: string, x: number, y: number) => {
+      // Suppress the hover preview synchronously before showing the menu so the
+      // two never coexist over the same notch (which strobes).
+      notchMenuOpenRef.current = true;
+      setPreviewId(null);
+      setPreviewWindowAnchorId(null);
+      setRailActive(true); // keep the rail revealed + mounted under the menu
+      setNotchMenu({ id, targetId, x, y });
+    },
+    [],
+  );
+  const closeNotchMenu = useCallback(() => {
+    notchMenuOpenRef.current = false;
+    setNotchMenu(null);
+  }, []);
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+  const handleMarkerContextMenu = useCallback(
+    (event: ReactMouseEvent, id: string, targetId: string) => {
+      if (!hasNotchMenu) return;
+      event.preventDefault();
+      openNotchMenu(id, targetId, event.clientX, event.clientY);
+    },
+    [hasNotchMenu, openNotchMenu],
+  );
+  const handleMarkerTouchStart = useCallback(
+    (event: ReactTouchEvent, id: string, targetId: string) => {
+      if (!hasNotchMenu) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      const { clientX, clientY } = touch;
+      clearLongPress();
+      longPressTimerRef.current = setTimeout(() => {
+        openNotchMenu(id, targetId, clientX, clientY);
+      }, 450);
+    },
+    [hasNotchMenu, clearLongPress, openNotchMenu],
+  );
+  useEffect(() => {
+    if (!notchMenu) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeNotchMenu();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [notchMenu, closeNotchMenu]);
+  useEffect(() => () => clearLongPress(), [clearLongPress]);
   const keepSearchFocusOnMouseDown = useCallback(
     (event: ReactMouseEvent) => {
       if (searchState) {
@@ -777,6 +955,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     [searchState],
   );
   const focusPreview = useCallback((id: string) => {
+    if (notchMenuOpenRef.current) return; // menu open: no preview (anti-strobe)
     setPreviewId((current) => (current === id ? current : id));
     setPreviewWindowAnchorId((current) => {
       const visibleIds = visiblePreviewIdsRef.current;
@@ -822,7 +1001,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
           : searchState.activeId;
       const rawTops = previewMarkers.map((marker) =>
         clamp(
-          marker.topPct * layout.height,
+          marker.renderTopPct * layout.height,
           PREVIEW_VERTICAL_MARGIN_PX,
           Math.max(
             PREVIEW_VERTICAL_MARGIN_PX,
@@ -872,7 +1051,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
         id: hoverPreviewMarker.id,
         targetId: hoverPreviewMarker.targetId ?? hoverPreviewMarker.id,
         topPx: clamp(
-          hoverPreviewMarker.topPct * layout.height,
+          hoverPreviewMarker.renderTopPct * layout.height,
           PREVIEW_VERTICAL_MARGIN_PX,
           Math.max(
             PREVIEW_VERTICAL_MARGIN_PX,
@@ -955,10 +1134,30 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
               ]
                 .filter(Boolean)
                 .join(" ")}
-              style={{ top: `${marker.topPct * 100}%` }}
+              style={{
+                top: `${marker.renderTopPct * 100}%`,
+                height: `${marker.hitPx}px`,
+                marginTop: `${-marker.hitPx / 2}px`,
+              }}
               aria-label={`Jump to turn: ${marker.preview}`}
               title={marker.preview}
               onClick={() => handleAnchorClick(marker.id, marker.targetId)}
+              onContextMenu={(event) =>
+                handleMarkerContextMenu(
+                  event,
+                  marker.id,
+                  marker.targetId ?? marker.id,
+                )
+              }
+              onTouchStart={(event) =>
+                handleMarkerTouchStart(
+                  event,
+                  marker.id,
+                  marker.targetId ?? marker.id,
+                )
+              }
+              onTouchEnd={clearLongPress}
+              onTouchMove={clearLongPress}
               onFocus={() => focusPreview(marker.id)}
               onBlur={clearPreview}
               onMouseDown={keepSearchFocusOnMouseDown}
@@ -972,10 +1171,29 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
               <button
                 type="button"
                 className="user-turn-nav-trim-marker"
-                style={{ top: `${marker.topPct * 100}%` }}
+                style={{
+                  top: `${marker.renderTopPct * 100}%`,
+                  height: `${marker.hitPx}px`,
+                  marginTop: `${-marker.hitPx / 2}px`,
+                }}
                 aria-label={`Load client transcript from turn: ${marker.preview}`}
-                title="Load client transcript from this turn"
                 onClick={() => onTrimAnchor(marker.id)}
+                onContextMenu={(event) =>
+                  handleMarkerContextMenu(
+                    event,
+                    marker.id,
+                    marker.targetId ?? marker.id,
+                  )
+                }
+                onTouchStart={(event) =>
+                  handleMarkerTouchStart(
+                    event,
+                    marker.id,
+                    marker.targetId ?? marker.id,
+                  )
+                }
+                onTouchEnd={clearLongPress}
+                onTouchMove={clearLongPress}
                 onFocus={() => focusPreview(marker.id)}
                 onBlur={clearPreview}
                 onPointerEnter={() => focusPreview(marker.id)}
@@ -1023,6 +1241,79 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
           </button>
         ))}
       </div>
+      {notchMenu &&
+        createPortal(
+          <>
+            <button
+              type="button"
+              className="user-turn-nav-context-overlay"
+              aria-label="Dismiss menu"
+              onClick={closeNotchMenu}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                closeNotchMenu();
+              }}
+            />
+            {/* Notches sit at the right edge, so anchor the menu's right side at
+                the click and open leftward toward screen center. */}
+            <div
+              className="user-turn-nav-context-menu"
+              role="menu"
+              style={{
+                top: Math.min(notchMenu.y, window.innerHeight - 180),
+                right: Math.max(8, window.innerWidth - notchMenu.x),
+              }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  handleAnchorClick(notchMenu.id, notchMenu.targetId);
+                  closeNotchMenu();
+                }}
+              >
+                Jump to turn
+              </button>
+              {onForkAnchor && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onForkAnchor(notchMenu.id);
+                    closeNotchMenu();
+                  }}
+                >
+                  Fork from here
+                </button>
+              )}
+              {onCopyAnchor && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onCopyAnchor(notchMenu.id);
+                    closeNotchMenu();
+                  }}
+                >
+                  Copy turn
+                </button>
+              )}
+              {onTrimAnchor && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onTrimAnchor(notchMenu.id);
+                    closeNotchMenu();
+                  }}
+                >
+                  Hide previous
+                </button>
+              )}
+            </div>
+          </>,
+          document.body,
+        )}
     </nav>
   );
 });

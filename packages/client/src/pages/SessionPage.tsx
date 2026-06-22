@@ -181,6 +181,21 @@ function providerSupportsBtwAsideFork(
   return provider ? BTW_ASIDE_FORK_PROVIDERS.has(provider) : false;
 }
 
+/** Plain text of a turn's content (string or text blocks); for fork-prefill
+ *  and the turn-notch copy action. See topics/fork-from-turn.md. */
+function turnContentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter(
+      (b): b is { type: "text"; text: string } =>
+        (b as { type?: string })?.type === "text" &&
+        typeof (b as { text?: unknown }).text === "string",
+    )
+    .map((b) => b.text)
+    .join("\n");
+}
+
 function appendComposerTransferDraft(
   currentDraft: string,
   text: string,
@@ -885,10 +900,25 @@ function SessionPageContent({
         showToast(t("forkFromTurnNoAnchor"), "error");
         return;
       }
+      // The fork excludes the selected turn (we fork *before* it), so seed the
+      // new session's composer with that turn's text — "branch and retry this
+      // turn" — instead of dropping it. The composer reads this draft key
+      // directly (useDraftPersistence). See topics/fork-from-turn.md.
+      const prefill = turnContentText(messages[index]?.message?.content);
       try {
         const result = await api.forkSession(projectId, actualSessionId, {
           upToMessageId: anchorId,
         });
+        if (prefill.trim()) {
+          try {
+            localStorage.setItem(
+              `draft-message-${result.sessionId}`,
+              prefill,
+            );
+          } catch {
+            // localStorage unavailable/full — fork still proceeds, just no seed.
+          }
+        }
         showToast(t("forkFromTurnStarted"), "success");
         navigate(
           `${basePath}/projects/${projectId}/sessions/${result.sessionId}`,
@@ -901,6 +931,17 @@ function SessionPageContent({
       }
     },
     [messages, projectId, actualSessionId, navigate, basePath, showToast, t],
+  );
+  const copyUserMessage = useCallback(
+    (messageId: string) => {
+      const msg = messages.find((m) => (m.uuid ?? m.id) === messageId);
+      const text = turnContentText(msg?.message?.content).trim();
+      if (!text) return;
+      void navigator.clipboard?.writeText(text).catch((err) => {
+        console.error("Failed to copy turn:", err);
+      });
+    },
+    [messages],
   );
   const activityRenderItems = useMemo(
     () => preprocessMessages(messages),
@@ -3617,6 +3658,7 @@ function SessionPageContent({
                   onForkBeforeUserMessage={
                     supportsForkFromTurn ? forkBeforeUserMessage : undefined
                   }
+                  onCopyUserMessage={copyUserMessage}
                   markdownAugments={markdownAugments}
                   activeToolApproval={activeToolApproval}
                   hasOlderMessages={pagination?.hasOlderMessages}

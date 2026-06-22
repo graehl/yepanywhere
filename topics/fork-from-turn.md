@@ -7,7 +7,8 @@
 
 Topic: fork-from-turn
 
-Status: **partly built (fork exists); notch context menu + compose-prefill proposed.**
+Status: **built** — fork existed; the turn-notch context menu (jump / fork /
+copy / hide-previous) and fork compose-prefill are now implemented.
 
 See also:
 [session-hovercard-recent-activity](session-hovercard-recent-activity.md) (the
@@ -33,27 +34,35 @@ window the trim dot controls).
   (SessionPage builds that key; `useDraftPersistence(key)` reads it directly —
   no install-id indirection for the session composer).
 
-## Proposed enhancement
+## Implemented
 
-1. **Context menu on the notches** (right-click + long-press for touch) offering
-   **Fork**, **Copy**, and **Trim** ("load from here", the current dot action).
-   The plain click stays a jump; the menu adds the heavier actions and is the
-   only way to reach them on mobile.
-2. **Fork seeds the new tab's compose box.** On fork-before a user turn, write
-   that turn's text to `localStorage["draft-message-" + newSessionId]` before
-   navigating, so the forked session opens with the old turn pre-filled — a
-   "branch and retry this turn differently" flow. (Not implemented today; the
-   existing fork drops the turn without surfacing it.)
-3. **Copy** copies the full turn text (not the truncated `marker.preview`), so
-   the marker→message-text mapping is resolved in `SessionPage` (which holds
-   `messages`); `UserTurnNavigator` just invokes `onCopy(markerId)` / `onFork(
-   markerId)`.
+1. **Context menu on the notches.** `UserTurnNavigator` markers take
+   `onContextMenu` (desktop right-click) and a ~450ms long-press (touch) that
+   open a portaled menu (`.user-turn-nav-context-menu`) anchored with its right
+   edge at the pointer, opening leftward (notches sit at the right edge).
+   Items: **Jump to turn**, **Fork from here** (`onForkAnchor`), **Copy turn**
+   (`onCopyAnchor`), **Hide previous** (`onTrimAnchor`). Plain click still jumps;
+   the trim dot still trims. Dismiss: transparent overlay click, Escape, or
+   selecting an item. New props are optional, so items render only when wired.
+2. **Fork seeds the new composer.** `SessionPage.forkBeforeUserMessage` writes
+   the selected turn's text to `localStorage["draft-message-" + newSessionId]`
+   before navigating; the composer reads that key via `useDraftPersistence`.
+   "Branch and retry this turn." `turnContentText()` extracts the text (shared
+   with copy).
+3. **Copy** uses the full turn text, resolved in `SessionPage` (`copyUserMessage`
+   → `onCopyUserMessage` → `onCopyAnchor`), not the truncated `marker.preview`.
+   Silent (matches the existing copy-prompt action; no toast / i18n key added).
 
-## Open questions / decisions
+Wiring: `SessionPage` → `MessageList` (`onForkBeforeUserMessage`,
+`onCopyUserMessage`, `onTrimBeforeUserMessage`) → `UserTurnNavigator`
+(`onForkAnchor`, `onCopyAnchor`, `onTrimAnchor`). Fork stays gated by
+`supportsForkSession` (`SessionPage` passes `undefined` otherwise, so the menu
+omits Fork).
 
-- Context-menu interaction model on touch (long-press) vs. desktop (right-click),
-  and whether it reuses the row `…` menu styling from the hovercard topic's
-  mobile proposal (shared dismiss rules: tap-outside / option / re-tap).
-- Fork anchors *before* the selected turn; confirm the prefilled text is that
-  selected turn (the one excluded from the fork), not the anchor.
-- Non-`supportsForkSession` providers: hide Fork in the menu (leave Copy/Trim).
+## Open questions / follow-ups
+
+- Long-pressing a right-edge notch is a small touch target; may want a larger
+  hit area or to surface the menu from the wider preview label on touch.
+- Whether to share one context-menu component with the hovercard topic's mobile
+  row-`…` menu proposal (shared dismiss rules).
+- Copy has no visible confirmation (silent); add a toast if desired.

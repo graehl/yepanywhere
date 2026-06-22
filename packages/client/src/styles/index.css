@@ -1880,8 +1880,8 @@ a.sidebar-nav-item {
   position: absolute;
   right: 0;
   width: 22px;
-  height: 22px;
-  margin: -11px 0 0;
+  /* height + margin-top are set inline per marker (sized to neighbor gaps so
+     targets tile without overlap); see UserTurnNavigator. */
   padding: 0;
   border: 0;
   background: transparent;
@@ -1891,9 +1891,51 @@ a.sidebar-nav-item {
   touch-action: manipulation;
 }
 
+/* Turn-notch context menu (right-click / long-press): fork / copy / hide. */
+.user-turn-nav-context-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+
+.user-turn-nav-context-menu {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: var(--space-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+.user-turn-nav-context-menu button {
+  appearance: none;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.6rem;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.user-turn-nav-context-menu button:hover,
+.user-turn-nav-context-menu button:focus-visible {
+  background: var(--bg-hover);
+}
+
 .user-turn-nav-marker-line {
   position: absolute;
-  top: 9px;
+  top: 50%;
+  transform: translateY(-50%);
   right: 12px;
   width: 8px;
   height: 3px;
@@ -1943,8 +1985,7 @@ a.sidebar-nav-item {
   position: absolute;
   right: 3px;
   width: 10px;
-  height: 22px;
-  margin: -11px 0 0;
+  /* height + margin-top set inline per marker (sized to neighbor gaps). */
   padding: 0;
   border: 0;
   background: transparent;
@@ -1957,7 +1998,8 @@ a.sidebar-nav-item {
 
 .user-turn-nav-trim-dot {
   position: absolute;
-  top: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   right: 1px;
   width: 6px;
   height: 6px;

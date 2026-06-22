@@ -402,8 +402,6 @@
   "sessionNotFoundArchive": "アーカイブ / すべての一覧から非表示",
   "sessionNotFoundGoBack": "戻る",
   "sessionNotFoundSessionId": "セッション ID:",
-  "sessionNotFoundCleanupPrefix": "不正状態と重複を一括クリーンアップするには",
-  "sessionNotFoundCleanupSuffix": "を実行してください。",
   "btwAsideEmpty": "下に /btw サイドリクエストを入力してください。",
   "btwAsideMinimizeTitle": "このペインを最小化（アサイドはフォーカスされたまま。ハンドルをクリックして再表示）",
   "btwAsideDoneTitle": "このアサイドを閉じてコンポーザーを Mother に戻す",

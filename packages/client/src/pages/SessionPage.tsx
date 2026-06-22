@@ -911,10 +911,7 @@ function SessionPageContent({
         });
         if (prefill.trim()) {
           try {
-            localStorage.setItem(
-              `draft-message-${result.sessionId}`,
-              prefill,
-            );
+            localStorage.setItem(`draft-message-${result.sessionId}`, prefill);
           } catch {
             // localStorage unavailable/full — fork still proceeds, just no seed.
           }
@@ -3208,9 +3205,6 @@ function SessionPageContent({
           </div>
           <p style={{ fontSize: "12px", color: "#888", marginTop: 20 }}>
             {t("sessionNotFoundSessionId")} <code>{actualSessionId}</code>
-            <br />
-            {t("sessionNotFoundCleanupPrefix")} <code>ya-clean</code>{" "}
-            {t("sessionNotFoundCleanupSuffix")}
           </p>
         </div>
       );

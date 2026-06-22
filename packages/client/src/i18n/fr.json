@@ -402,8 +402,6 @@
   "sessionNotFoundArchive": "Archiver / Masquer de toutes les listes",
   "sessionNotFoundGoBack": "Retour",
   "sessionNotFoundSessionId": "ID de session :",
-  "sessionNotFoundCleanupPrefix": "Exécutez",
-  "sessionNotFoundCleanupSuffix": "pour nettoyer en masse les états invalides et les doublons.",
   "btwAsideEmpty": "Saisissez une demande d'aparté /btw ci-dessous.",
   "btwAsideMinimizeTitle": "Réduire ce panneau (l'aparté reste focalisé ; cliquez sur la poignée pour le rouvrir)",
   "btwAsideDoneTitle": "Fermer cet aparté et ramener le compositeur à Mother",

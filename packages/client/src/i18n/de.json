@@ -402,8 +402,6 @@
   "sessionNotFoundArchive": "Archivieren / Aus allen Listen ausblenden",
   "sessionNotFoundGoBack": "Zurück",
   "sessionNotFoundSessionId": "Sitzungs-ID:",
-  "sessionNotFoundCleanupPrefix": "Führe",
-  "sessionNotFoundCleanupSuffix": "für Massenbereinigung fehlerhafter Zustände und Duplikate aus.",
   "btwAsideEmpty": "Gib unten eine /btw-Nebenanfrage ein.",
   "btwAsideMinimizeTitle": "Diesen Bereich minimieren (Aside bleibt fokussiert; Griff anklicken, um ihn wieder zu öffnen)",
   "btwAsideDoneTitle": "Diesen Aside schließen und Composer zu Mother zurückgeben",

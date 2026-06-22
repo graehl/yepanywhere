@@ -402,8 +402,6 @@
   "sessionNotFoundArchive": "归档 / 从所有列表隐藏",
   "sessionNotFoundGoBack": "返回",
   "sessionNotFoundSessionId": "会话 ID：",
-  "sessionNotFoundCleanupPrefix": "运行",
-  "sessionNotFoundCleanupSuffix": "来批量清理错误状态和重复项。",
   "btwAsideEmpty": "在下方输入 /btw 旁路请求。",
   "btwAsideMinimizeTitle": "最小化此面板（侧栏保持聚焦；点击把手可重新打开）",
   "btwAsideDoneTitle": "关闭此侧栏并将编辑器返回 Mother",

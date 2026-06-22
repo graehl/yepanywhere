@@ -461,8 +461,6 @@
   "sessionNotFoundArchive": "Archive / Hide from all lists",
   "sessionNotFoundGoBack": "Go back",
   "sessionNotFoundSessionId": "Session ID:",
-  "sessionNotFoundCleanupPrefix": "Run",
-  "sessionNotFoundCleanupSuffix": "for bulk bad-state and duplicate cleanup.",
   "btwAsideEmpty": "Type a /btw side request below.",
   "btwAsideMinimizeTitle": "Minimize this pane (aside stays focused; click handle to reopen)",
   "btwAsideDoneTitle": "Close this aside and return composer to Mother",

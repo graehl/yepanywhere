@@ -78,47 +78,74 @@ the backstop, which already covers the case — revisit only if the
 
 ## Codex
 
-Codex streams and persists the **same `EventMsg`**, and YA currently
-discards the ids Codex provides (the shared Zod schema doesn't parse
-`response_item.id` or `user_message.client_id`), minting positional
-(`codex-${index}-${ts}`) durable ids and turn-scoped
-(`${itemId}-${turnId}`) live ids that share nothing — hence the historical
-content-fingerprint dependence. Determinism is available for most items:
+YA drives Codex over the app-server **thread-item** stream
+(`thread/start` with `experimentalRawEvents: false`), so the live render
+path is `item/started`/`item/completed` → `convertItemToSDKMessages`
+(NOT the `rawResponseItem/*` path, which is opt-in and unused here). What
+id a thread item carries decides whether alignment is possible, and it
+splits by item class (verified in `references/codex`
+`app-server-protocol/src/protocol/thread_history.rs`):
 
-| Item | Shared stable id | Fix |
-|---|---|---|
-| Tool calls | `call_id` (live + rollout) | key both on `call_id` |
-| User turns | `client_user_message_id` (YA-suppliable; omitted today) | send `clientUserMessageId` on turn start/steer; parse `client_id` |
-| Assistant w/ `ResponseItem.id` | `msg_...` in live `item.id` and rollout `response_item.payload.id` | parse + key on it |
-| Assistant w/o `ResponseItem.id` | none — `AgentMessageEvent` has no id | content+timestamp backstop (fundamental) |
+| Item | Live thread `item.id` | Durable rollout id | Aligned? |
+|---|---|---|---|
+| Tool calls/results | `payload.call_id` (`id: payload.call_id.clone()`) | `call_id` on the response item | **Yes** — both key on `call_id` |
+| User turns | counter `item-{N}` + separate `client_id` | event_msg `client_id` (null until YA sends it); also a positional response-item copy | Deferred (see below) |
+| Assistant / reasoning | counter `item-{N}` (`next_item_id()`) | `response_item.payload.id` — **null in practice** | **No** — no shared id; backstop only |
 
-So Codex's mismatch is largely **incidental**, not fundamental; the
-approx-dedup remains only for assistant messages with no response id.
+The decisive correction over the original plan: in the active
+(thread-item) config, assistant messages have **no shared id either
+side** — the live id is a synthetic per-thread counter and the rollout's
+`payload.id` is null (confirmed on a real 2026-06 rollout: 13 assistant
+items, all `payload.id == null`). So the "Assistant w/ `ResponseItem.id`"
+class does not occur, and *all* assistant messages fall to the
+content+timestamp backstop. Only **tool calls** are cleanly alignable.
 
-### Step-2 implementation crux (not yet done)
+### Done: tool-call id alignment
 
-The value only lands when both sides key on the same Codex id, and the
-hard half is the **durable** side. `convertCodexResponseItem`
-(`normalization.ts`) stamps every durable row with a positional
-`codex-${index}-${timestamp}` uuid; aligning means deriving the uuid from
-the Codex id instead (`payload.id` for assistant messages, `call_id` for
-tools, the event_msg `client_id` for user turns). This is entangled, so it
-is a careful, well-tested refactor rather than the additive change the
-table implies:
-- A user turn appears as *both* a `response_item` `message` (carrying the
-  Codex-generated `payload.id`, a `msg_…`) and an event_msg `UserMessage`
-  (carrying YA's `client_id`); only the latter matches the live echo
-  (`message.uuid`). The renderer must source the user uuid from the
-  `client_id`, not the response_item's own `payload.id`.
-- `buildItemMessageUuid` (live, `${itemId}-${turnId}`) also feeds tool
-  result correlation (`-result` suffix) and must change in lockstep.
-- The within-file `getCodexEntryDedupeKey` and tool-context maps already
-  read `call_id`/`payload.id`; changing the rendered uuid must not break
-  them.
-Send `clientUserMessageId` (= the queue `message.uuid`, already the live
-user uuid) on `turn/start` (`codex.ts:createTurnStartParams`) and
-`turn/steer`, and stop dropping `response_item.id` / `user_message.client_id`
-in `codex-schema/session.ts`, as the additive groundwork.
+Both sides now key the rendered message uuid on `call_id` (call →
+`call_id`, result → `${call_id}-result`), independent of turn — `call_id`
+is globally unique, so no turn scoping is needed:
+- Live (`codex.ts`): `convertItemToSDKMessages` routes tool-backed thread
+  items (`isToolBackedThreadItem`) through `buildItemToolUuid(item.id)` /
+  `buildItemResultUuid(callId)`; message/reasoning items keep
+  `${itemId}-${turnId}`. The streaming-result and (opt-in) rawResponse
+  paths use the same helpers.
+- Durable (`normalization.ts`): `codexDurableResponseItemUuid` maps
+  `function_call`/`custom_tool_call`/`web_search_call` →
+  `call_id`, `*_output` → `${call_id}-result`; the `exec_command_end`
+  event result keys on `${call_id}-result` too. Messages keep the
+  positional `codex-${index}-${ts}` uuid (the index still advances, so
+  positional ids stay stable).
+- Contract test: `render-parity.test.ts` "aligns Codex tool-call uuids
+  across stream and durable sources" asserts uuid equality per `call_id`.
+
+### Deferred: user-turn id alignment
+
+The round-trip exists — sending `clientUserMessageId` on `turn/start`
+(`codex.ts:createTurnStartParams`) and `turn/steer` makes Codex persist it
+as the event_msg `user_message.client_id` (`references/codex`
+`core/src/session/mod.rs:3717` sets `client_id: client_user_message_id`),
+and the live echo already uses the same `message.uuid`. The blocker is the
+durable double-source: when response-item user messages exist (the norm),
+`hasCodexResponseItemUserMessages` renders the user turn from the
+**response item** (positional uuid, no `client_id`) and skips the event_msg
+that carries `client_id`. Aligning requires either correlating the two or
+flipping that gate — entangled, and low marginal value over the 2s
+backstop (the residue is only two identical steers <2s apart). Not done.
+
+### Pitfalls that turned out fine (for the deferred user-turn work)
+
+Confirmed non-issues while doing the tool-call alignment, recorded so the
+user-turn step doesn't re-investigate them:
+- The live `-result` suffix correlation moved in lockstep: tool-result
+  uuids derive from the same `call_id` as the call, on both sides.
+- `getCodexEntryDedupeKey` (`codex-reader.ts`) keys the **within-file**
+  dedup on timestamp+role+content, not on ids, so changing the rendered
+  uuid does not touch it; the tool-context maps key on `call_id`, which is
+  unchanged. No regression there.
+- Parsing `response_item.id` is pointless for assistants (null in
+  practice); only `user_message.client_id` is worth parsing, and only once
+  the user-turn renderer is changed to consume it.
 
 ## Key files
 

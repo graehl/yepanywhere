@@ -514,6 +514,31 @@ function hasCodexResponseItemUserMessages(
   );
 }
 
+// Derive the durable message uuid for a Codex response item. Tool calls and
+// their outputs key on the globally-unique call_id (call -> call_id, result ->
+// `${call_id}-result`) so the durable backfill row shares a uuid with the live
+// stream and dedups by id. Messages and reasoning have no live-matching id, so
+// they keep the positional uuid and rely on the approx-dedup backstop. See
+// topics/stream-durable-id-dedup.md (Codex).
+function codexDurableResponseItemUuid(
+  payload: CodexResponseItemEntry["payload"],
+  positionalUuid: string,
+): string {
+  switch (payload.type) {
+    case "function_call":
+      return payload.call_id;
+    case "function_call_output":
+      return `${payload.call_id}-result`;
+    case "custom_tool_call":
+    case "web_search_call":
+      return payload.call_id ?? payload.id ?? positionalUuid;
+    case "custom_tool_call_output":
+      return payload.call_id ? `${payload.call_id}-result` : positionalUuid;
+    default:
+      return positionalUuid;
+  }
+}
+
 function convertCodexResponseItem(
   entry: CodexResponseItemEntry,
   index: number,
@@ -521,7 +546,8 @@ function convertCodexResponseItem(
   closedToolResultIds: Set<string>,
 ): Message | null {
   const payload = entry.payload;
-  const uuid = `codex-${index}-${entry.timestamp}`;
+  const positionalUuid = `codex-${index}-${entry.timestamp}`;
+  const uuid = codexDurableResponseItemUuid(payload, positionalUuid);
 
   switch (payload.type) {
     case "message":
@@ -1062,9 +1088,10 @@ function convertCodexEventMsg(
     if (!context) {
       return null;
     }
+    // Tool result: key on call_id so it matches the live stream's result uuid.
     const message = convertCodexExecCommandEndPayload(
       payloadUnknown,
-      uuid,
+      `${payloadUnknown.call_id}-result`,
       entry.timestamp,
       context,
     );

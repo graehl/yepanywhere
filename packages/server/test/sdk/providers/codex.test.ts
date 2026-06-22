@@ -2774,7 +2774,7 @@ describe("CodexProvider Event Normalization", () => {
     expect(toolUse[0]).toMatchObject({
       type: "assistant",
       session_id: "session-1",
-      uuid: "call-1-turn-1",
+      uuid: "call-1",
       message: {
         role: "assistant",
         content: [
@@ -2792,7 +2792,7 @@ describe("CodexProvider Event Normalization", () => {
     expect(toolResult[0]).toMatchObject({
       type: "user",
       session_id: "session-1",
-      uuid: "call-1-turn-1-result",
+      uuid: "call-1-result",
       message: {
         role: "user",
         content: [

@@ -755,6 +755,48 @@ describe("Render Parity Harness", () => {
     ).toBe(true);
   });
 
+  it("aligns Codex tool-call uuids across stream and durable sources", () => {
+    const durable = normalizeSession(
+      buildLoadedCodexSession(codexPersistedEntries()),
+    ).messages;
+    const stream = codexStreamMessages();
+
+    const collect = (messages: Array<Record<string, unknown>>) => {
+      const calls = new Map<string, string>();
+      const results = new Map<string, string>();
+      for (const msg of messages) {
+        const uuid = msg.uuid as string | undefined;
+        if (!uuid) continue;
+        const message = msg.message as { content?: unknown } | undefined;
+        const content = message?.content ?? msg.content;
+        if (!Array.isArray(content)) continue;
+        for (const block of content as Array<Record<string, unknown>>) {
+          if (block?.type === "tool_use") calls.set(block.id as string, uuid);
+          if (block?.type === "tool_result")
+            results.set(block.tool_use_id as string, uuid);
+        }
+      }
+      return { calls, results };
+    };
+
+    const durableIds = collect(durable as Array<Record<string, unknown>>);
+    const streamIds = collect(stream);
+
+    // The streamed tool calls/results and their durable backfill rows must
+    // carry identical uuids so the client dedups by id (not the backstop).
+    expect([...streamIds.calls.keys()].sort()).toEqual(
+      ["call-bash", "call-edit", "call-grep", "call-read"].sort(),
+    );
+    for (const [callId, streamUuid] of streamIds.calls) {
+      expect(streamUuid).toBe(callId);
+      expect(durableIds.calls.get(callId)).toBe(streamUuid);
+    }
+    for (const [callId, streamUuid] of streamIds.results) {
+      expect(streamUuid).toBe(`${callId}-result`);
+      expect(durableIds.results.get(callId)).toBe(streamUuid);
+    }
+  });
+
   it("keeps Claude stream and persisted rendering equivalent", async () => {
     const persisted = await runPersistedPipeline(
       buildLoadedClaudeSession(CLAUDE_FIXTURE),

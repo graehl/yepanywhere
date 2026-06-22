@@ -4143,8 +4143,18 @@ export class CodexProvider implements AgentProvider {
     return `${itemId}-${turnId}`;
   }
 
-  private buildItemResultUuid(turnId: string, itemId: string): string {
-    return `${this.buildItemMessageUuid(turnId, itemId)}-result`;
+  // Tool items carry Codex's globally-unique call_id as their thread item id,
+  // and the durable rollout persists the same call_id on the matching response
+  // item. Key the rendered uuid on call_id alone (no turn scoping — call_id is
+  // already unique) so the streamed message and its durable backfill row share
+  // a uuid and dedup by id instead of the content+timestamp backstop. See
+  // topics/stream-durable-id-dedup.md (Codex tool calls).
+  private buildItemToolUuid(callId: string): string {
+    return callId;
+  }
+
+  private buildItemResultUuid(callId: string): string {
+    return `${callId}-result`;
   }
 
   private isResultBackedThreadItem(item: NormalizedThreadItem): boolean {
@@ -4155,6 +4165,13 @@ export class CodexProvider implements AgentProvider {
       item.type === "dynamic_tool_call" ||
       item.type === "image_view"
     );
+  }
+
+  // Thread items whose rendered uuid keys on call_id (item.id) so the streamed
+  // message matches its durable backfill row. web_search emits a tool_use but is
+  // not result-backed, so it is not covered by isResultBackedThreadItem.
+  private isToolBackedThreadItem(item: NormalizedThreadItem): boolean {
+    return this.isResultBackedThreadItem(item) || item.type === "web_search";
   }
 
   private recordLiveResultBackedToolItem(
@@ -4273,7 +4290,7 @@ export class CodexProvider implements AgentProvider {
     const message = withCodexTimestamp({
       type: "user",
       session_id: sessionId,
-      uuid: this.buildItemResultUuid(turnId, itemId),
+      uuid: this.buildItemResultUuid(itemId),
       _isStreaming: true,
       message: {
         role: "user",
@@ -4346,7 +4363,7 @@ export class CodexProvider implements AgentProvider {
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: this.buildItemMessageUuid(params.turnId, callId),
+            uuid: this.buildItemToolUuid(callId),
             message: {
               role: "assistant",
               content: [
@@ -4409,7 +4426,7 @@ export class CodexProvider implements AgentProvider {
           {
             type: "user",
             session_id: sessionId,
-            uuid: this.buildItemResultUuid(params.turnId, callId),
+            uuid: this.buildItemResultUuid(callId),
             message: {
               role: "user",
               content: [toolResult],
@@ -4457,7 +4474,7 @@ export class CodexProvider implements AgentProvider {
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: this.buildItemMessageUuid(params.turnId, callId),
+            uuid: this.buildItemToolUuid(callId),
             message: {
               role: "assistant",
               content: [
@@ -4520,7 +4537,7 @@ export class CodexProvider implements AgentProvider {
           {
             type: "user",
             session_id: sessionId,
-            uuid: this.buildItemResultUuid(params.turnId, callId),
+            uuid: this.buildItemResultUuid(callId),
             message: {
               role: "user",
               content: [toolResult],
@@ -4579,8 +4596,12 @@ export class CodexProvider implements AgentProvider {
   ): SDKMessage[] {
     const isComplete = sourceEvent === "item/completed";
     const observedAt = new Date().toISOString();
-    // Create unique UUID by combining item.id with turn ID.
-    const uuid = `${item.id}-${turnId}`;
+    // Tool items key the uuid on call_id (item.id) so stream and durable rows
+    // dedup by id; message/reasoning items use a counter id (item-N) with no
+    // durable equivalent, so they stay turn-scoped and rely on the backstop.
+    const uuid = this.isToolBackedThreadItem(item)
+      ? this.buildItemToolUuid(item.id)
+      : `${item.id}-${turnId}`;
 
     switch (item.type) {
       case "reasoning": {

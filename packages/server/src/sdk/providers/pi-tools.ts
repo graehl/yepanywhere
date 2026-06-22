@@ -24,6 +24,24 @@ export interface NormalizedPiTool {
   input: Record<string, unknown>;
 }
 
+export interface PiToolState {
+  input: Record<string, unknown>;
+  name: string;
+}
+
+interface PiTextFile {
+  filePath: string;
+  content: string;
+  numLines: number;
+  startLine: number;
+  totalLines: number;
+}
+
+interface PiToolResultPayload {
+  content?: unknown;
+  details?: unknown;
+}
+
 /** pi lower-case tool name -> YA canonical renderer name. */
 const PI_TOOL_NAME_MAP: Record<string, string> = {
   read: "Read",
@@ -45,6 +63,42 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function maybeRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function textFromContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => {
+        const b = maybeRecord(block);
+        return b?.type === "text" && typeof b.text === "string" ? b.text : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+export function stringifyPiToolResult(result: unknown): string {
+  if (typeof result === "string") return result;
+  const record = maybeRecord(result);
+  if (record?.content !== undefined) {
+    const text = textFromContent(record.content);
+    if (text) return text;
+  }
+  const directText = textFromContent(result);
+  if (directText) return directText;
+  try {
+    return JSON.stringify(result ?? "");
+  } catch {
+    return String(result ?? "");
+  }
 }
 
 function renameFields(
@@ -80,6 +134,73 @@ function expandSinglePiEdit(
   return out;
 }
 
+function numberField(
+  input: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = input[key];
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function stringField(
+  input: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = input?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function textLineCount(text: string): number {
+  if (text.length === 0) return 0;
+  return text.split("\n").length;
+}
+
+function makeTextFileResult(
+  filePath: string,
+  content: string,
+  startLine: number,
+): { type: "text"; file: PiTextFile } {
+  const numLines = textLineCount(content);
+  return {
+    type: "text",
+    file: {
+      filePath,
+      content,
+      numLines,
+      startLine,
+      totalLines: startLine + Math.max(0, numLines - 1),
+    },
+  };
+}
+
+function resultPayload(rawResult: unknown): PiToolResultPayload {
+  const record = maybeRecord(rawResult);
+  if (!record) return { content: rawResult };
+  return {
+    content: record.content ?? rawResult,
+    details: record.details,
+  };
+}
+
+export function attachPiResultDetailToToolInput(
+  toolName: string,
+  input: Record<string, unknown>,
+  rawResult: unknown,
+): void {
+  if (toolName !== "Edit") return;
+  const details = maybeRecord(resultPayload(rawResult).details);
+  const patch = stringField(details, "patch");
+  if (!patch) return;
+  if (!input.rawPatch) {
+    input.rawPatch = patch;
+  }
+  if (!input._rawPatch) {
+    input._rawPatch = patch;
+  }
+}
+
 /**
  * Map a pi tool name + raw input to YA's canonical name + input.
  */
@@ -98,4 +219,53 @@ export function normalizePiTool(
     input = expandSinglePiEdit(input);
   }
   return { name, input };
+}
+
+export function normalizePiToolResult(
+  toolName: string,
+  rawResult: unknown,
+  toolInput?: Record<string, unknown>,
+  isError = false,
+): unknown {
+  const canonicalName = PI_TOOL_NAME_MAP[toolName] ?? toolName;
+  const payload = resultPayload(rawResult);
+  const text = stringifyPiToolResult(payload.content);
+
+  if (isError) {
+    return text;
+  }
+
+  switch (canonicalName) {
+    case "Bash":
+      return {
+        stdout: text,
+        stderr: "",
+        interrupted: false,
+        isImage: false,
+      };
+    case "Read": {
+      const filePath = stringField(toolInput, "file_path") ?? "";
+      const startLine = numberField(toolInput ?? {}, "offset") ?? 1;
+      return makeTextFileResult(filePath, text, startLine);
+    }
+    case "Write": {
+      const filePath = stringField(toolInput, "file_path") ?? "";
+      const content = stringField(toolInput, "content") ?? text;
+      return makeTextFileResult(filePath, content, 1);
+    }
+    case "Edit":
+      return {
+        filePath: stringField(toolInput, "file_path") ?? "",
+        oldString: stringField(toolInput, "old_string") ?? "",
+        newString: stringField(toolInput, "new_string") ?? "",
+        originalFile: "",
+        replaceAll: toolInput?.replace_all === true,
+        userModified: false,
+        structuredPatch: [],
+        piText: text,
+        piDetails: payload.details,
+      };
+    default:
+      return undefined;
+  }
 }

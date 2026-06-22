@@ -466,7 +466,11 @@ function processMessage(
         if (existingIndex !== undefined) {
           const existingItem = items[existingIndex];
           if (existingItem?.type === "tool_call") {
-            items[existingIndex] = appendSourceMessage(existingItem, msg);
+            items[existingIndex] = updateToolCallSnapshot(
+              existingItem,
+              msg,
+              block.input,
+            );
             if (existingItem.status === "pending") {
               pendingToolCalls.set(block.id, existingIndex);
             }
@@ -522,6 +526,18 @@ function appendSourceMessage(
   return {
     ...item,
     sourceMessages: [...item.sourceMessages, message],
+  };
+}
+
+function updateToolCallSnapshot(
+  item: ToolCallItem,
+  message: Message,
+  toolInput: unknown,
+): ToolCallItem {
+  const withSource = appendSourceMessage(item, message);
+  return {
+    ...withSource,
+    toolInput,
   };
 }
 

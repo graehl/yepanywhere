@@ -45,6 +45,31 @@ describe("ToolCallRow", () => {
     expect(container.querySelector(".tool-use-expanded")).toBeNull();
   });
 
+  it("shows pending pi Bash output previews when live updates attach one", () => {
+    const { container } = render(
+      <ToolCallRow
+        id="tool-pi-bash"
+        toolName="Bash"
+        toolInput={{
+          command: "printf 'partial\\n'",
+          _previewResult: {
+            stdout: "partial\n",
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+          },
+        }}
+        status="pending"
+        sessionProvider="pi"
+      />,
+    );
+
+    expect(screen.getByText("Running")).toBeDefined();
+    const preview = container.querySelector(".tool-row-collapsed-preview");
+    expect(preview).not.toBeNull();
+    expect(preview?.textContent).toContain("partial");
+  });
+
   it("shows pending Edit targets as title-backed clickable summaries", () => {
     render(
       <SessionMetadataProvider

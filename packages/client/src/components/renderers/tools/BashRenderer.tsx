@@ -520,6 +520,13 @@ function truncateOutput(
  * Collapsed preview showing command output; the command itself lives in the
  * shared "Ran ..." row header.
  */
+function getPreviewResultFromInput(
+  input: BashInput,
+): BashResult | string | undefined {
+  const preview = (input as unknown as Record<string, unknown>)._previewResult;
+  return preview as BashResult | string | undefined;
+}
+
 function BashCollapsedPreview({
   input,
   result: rawResult,
@@ -539,10 +546,12 @@ function BashCollapsedPreview({
     null,
   );
 
+  const previewResult = rawResult ?? getPreviewResultFromInput(input);
   // Normalize result to handle both structured and string formats
-  const result = rawResult
-    ? normalizeBashResult(rawResult, isError)
-    : undefined;
+  const result =
+    previewResult !== undefined
+      ? normalizeBashResult(previewResult, isError)
+      : undefined;
 
   useEffect(() => {
     if (enabled && rawResult && typeof rawResult === "object") {

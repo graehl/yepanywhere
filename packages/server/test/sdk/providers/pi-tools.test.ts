@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizePiTool } from "../../../src/sdk/providers/pi-tools.js";
+import {
+  attachPiResultDetailToToolInput,
+  normalizePiTool,
+  normalizePiToolResult,
+} from "../../../src/sdk/providers/pi-tools.js";
 
 describe("normalizePiTool", () => {
   it("maps pi lower-case tool names to YA canonical renderer names", () => {
@@ -62,5 +66,54 @@ describe("normalizePiTool", () => {
       name: "custom_tool",
       input: { a: 1 },
     });
+  });
+
+  it("normalizes pi bash results to YA BashResult", () => {
+    expect(
+      normalizePiToolResult("Bash", {
+        content: [{ type: "text", text: "hello\n" }],
+      }),
+    ).toEqual({
+      stdout: "hello\n",
+      stderr: "",
+      interrupted: false,
+      isImage: false,
+    });
+  });
+
+  it("normalizes pi read results to YA ReadResult", () => {
+    expect(
+      normalizePiToolResult(
+        "Read",
+        { content: [{ type: "text", text: "a\nb" }] },
+        { file_path: "src/a.ts", offset: 3 },
+      ),
+    ).toEqual({
+      type: "text",
+      file: {
+        filePath: "src/a.ts",
+        content: "a\nb",
+        numLines: 2,
+        startLine: 3,
+        totalLines: 4,
+      },
+    });
+  });
+
+  it("attaches pi edit patches to canonical Edit inputs", () => {
+    const input = normalizePiTool("edit", {
+      path: "a.ts",
+      edits: [
+        { oldText: "a", newText: "b" },
+        { oldText: "c", newText: "d" },
+      ],
+    }).input;
+
+    attachPiResultDetailToToolInput("Edit", input, {
+      content: [{ type: "text", text: "Successfully replaced 2 block(s)." }],
+      details: { patch: "--- a.ts\n+++ a.ts\n@@ -1 +1 @@\n-a\n+b" },
+    });
+
+    expect(input._rawPatch).toBe("--- a.ts\n+++ a.ts\n@@ -1 +1 @@\n-a\n+b");
   });
 });

@@ -462,6 +462,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   );
   const suppressCollapsedPreview = shouldSuppressBashCollapsedPreview(
     toolName,
+    toolInput,
     structuredResult,
     status,
   );
@@ -979,6 +980,7 @@ function ToolRowCollapseStrip({
 
 function shouldSuppressBashCollapsedPreview(
   toolName: string,
+  input: unknown,
   result: unknown,
   status?: ToolCallItem["status"],
 ): boolean {
@@ -987,7 +989,7 @@ function shouldSuppressBashCollapsedPreview(
   }
 
   if (status === "pending") {
-    return true;
+    return !hasBashPreviewResult(input);
   }
 
   return (
@@ -1018,6 +1020,10 @@ function isRedundantBashResultExpansion(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasBashPreviewResult(input: unknown): boolean {
+  return isRecord(input) && input._previewResult !== undefined;
 }
 
 function getBashResultOutputForRichPreview(result: unknown): string {

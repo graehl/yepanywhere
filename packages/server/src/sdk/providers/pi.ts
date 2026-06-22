@@ -30,7 +30,13 @@ import type {
   SDKMessage,
 } from "../types.js";
 import { PiRpcClient } from "./pi-rpc-client.js";
-import { normalizePiTool } from "./pi-tools.js";
+import {
+  attachPiResultDetailToToolInput,
+  normalizePiTool,
+  normalizePiToolResult,
+  stringifyPiToolResult,
+  type PiToolState,
+} from "./pi-tools.js";
 import type {
   AgentProvider,
   AgentSession,
@@ -82,6 +88,8 @@ interface PiStreamState {
   thinking: string;
   lastUsage: SdkUsage | null;
   lastCostUsd: number | null;
+  /** Canonical tool inputs by pi toolCallId, updated by live partial/final events. */
+  toolStates: Map<string, PiToolState>;
 }
 
 /** Stable per-message id for streamed assistant content. */
@@ -121,35 +129,6 @@ function parsePiModelSelection(
 
 function isProcessStillAlive(proc: ChildProcess): boolean {
   return !proc.killed && proc.exitCode === null && proc.signalCode === null;
-}
-
-/** Best-effort stringify of a pi tool result (string | content blocks | other). */
-function stringifyToolResult(result: unknown): string {
-  if (typeof result === "string") return result;
-  if (Array.isArray(result)) {
-    const text = result
-      .filter(
-        (b): b is { type: "text"; text: string } =>
-          typeof b === "object" &&
-          b !== null &&
-          (b as { type?: unknown }).type === "text" &&
-          typeof (b as { text?: unknown }).text === "string",
-      )
-      .map((b) => b.text)
-      .join("\n");
-    if (text) return text;
-  }
-  if (result && typeof result === "object") {
-    const content = (result as { content?: unknown }).content;
-    if (content !== undefined && content !== result) {
-      return stringifyToolResult(content);
-    }
-  }
-  try {
-    return JSON.stringify(result ?? "");
-  } catch {
-    return String(result ?? "");
-  }
 }
 
 function mapPiUsage(usage: unknown): {
@@ -498,6 +477,7 @@ export class PiProvider implements AgentProvider {
       thinking: "",
       lastUsage: null,
       lastCostUsd: null,
+      toolStates: new Map(),
     };
 
     const unsubscribe = client.subscribe((event) => {
@@ -552,6 +532,7 @@ export class PiProvider implements AgentProvider {
         stream.currentAssistantId = null;
         stream.text = "";
         stream.thinking = "";
+        stream.toolStates.clear();
         client.notify({
           type: "prompt",
           message: text,
@@ -683,44 +664,71 @@ export class PiProvider implements AgentProvider {
         const toolName = String(event.toolName ?? "tool");
         const id = String(event.toolCallId ?? "");
         const { name, input } = normalizePiTool(toolName, event.args ?? {});
+        stream.toolStates.set(id, { name, input });
+        return [this.makeToolUseMessage(sessionId, id, name, input)];
+      }
+
+      case "tool_execution_update": {
+        const id = String(event.toolCallId ?? "");
+        const state = stream.toolStates.get(id);
+        if (state?.name !== "Bash") return [];
+        const preview = normalizePiToolResult(
+          state.name,
+          event.partialResult,
+          state.input,
+          false,
+        );
+        if (preview === undefined) return [];
+        state.input = { ...state.input, _previewResult: preview };
+        stream.toolStates.set(id, state);
         return [
-          {
-            type: "assistant",
-            session_id: sessionId,
-            message: {
-              role: "assistant",
-              content: [
-                {
-                  type: "tool_use",
-                  id,
-                  name,
-                  input,
-                },
-              ],
-            },
-          } as SDKMessage,
+          this.makeToolUseMessage(sessionId, id, state.name, state.input),
         ];
       }
 
       case "tool_execution_end": {
         const id = String(event.toolCallId ?? "");
-        return [
-          {
-            type: "user",
-            session_id: sessionId,
-            message: {
-              role: "user",
-              content: [
-                {
-                  type: "tool_result",
-                  tool_use_id: id,
-                  content: stringifyToolResult(event.result),
-                  is_error: event.isError === true,
-                },
-              ],
-            },
-          } as SDKMessage,
-        ];
+        const state =
+          stream.toolStates.get(id) ??
+          (() => {
+            const normalized = normalizePiTool(
+              String(event.toolName ?? "tool"),
+              event.args ?? {},
+            );
+            return { name: normalized.name, input: normalized.input };
+          })();
+        const isError = event.isError === true;
+        attachPiResultDetailToToolInput(state.name, state.input, event.result);
+        const structured = normalizePiToolResult(
+          state.name,
+          event.result,
+          state.input,
+          isError,
+        );
+        const resultMessage: SDKMessage = {
+          type: "user",
+          session_id: sessionId,
+          ...(structured !== undefined ? { toolUseResult: structured } : {}),
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: id,
+                content: stringifyPiToolResult(event.result),
+                is_error: isError,
+              },
+            ],
+          },
+        } as SDKMessage;
+        const messages: SDKMessage[] = [resultMessage];
+        if (state.input._rawPatch || state.input._previewResult) {
+          messages.unshift(
+            this.makeToolUseMessage(sessionId, id, state.name, state.input),
+          );
+        }
+        stream.toolStates.delete(id);
+        return messages;
       }
 
       case "agent_end": {
@@ -742,6 +750,29 @@ export class PiProvider implements AgentProvider {
       default:
         return [];
     }
+  }
+
+  private makeToolUseMessage(
+    sessionId: string,
+    id: string,
+    name: string,
+    input: Record<string, unknown>,
+  ): SDKMessage {
+    return {
+      type: "assistant",
+      session_id: sessionId,
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id,
+            name,
+            input,
+          },
+        ],
+      },
+    } as SDKMessage;
   }
 
   private errorSession(errorMsg: string): AgentSession {

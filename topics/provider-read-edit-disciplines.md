@@ -121,6 +121,10 @@ reloaded history agree:
   (pi `path`→`file_path` for Read/Write/Edit; a single-element pi `edits[]` is
   expanded to `old_string`/`new_string` so the diff augment engages; `grep`
   keeps `path` since Claude's Grep also uses `path`).
+  `normalizePiToolResult` maps pi text results into YA's structured `Bash`,
+  `Read`, `Write`, and `Edit` result contracts where safe, and pi edit
+  `details.patch` is preserved as a raw patch so multi-edit rows can render a
+  diff after reload.
 - **Gemini-CLI server map** — `packages/server/src/sdk/providers/gemini-tools.ts`
   `normalizeGeminiTool` maps the non-ACP `gemini` CLI's `read_file`→`Read`,
   `replace`→`Edit` (`old_content`/`new_content`→`old_string`/`new_string`),
@@ -210,10 +214,13 @@ against the normalization code. Findings and resolutions:
   `run_shell_command`), which hit the raw-JSON fallback (no rich card, no diff
   augment). Added `gemini-tools.ts` (`normalizeGeminiTool`), wired into the live
   and durable paths, with `gemini-tools.test.ts`.
-- **Closed — pi argument fields.** `pi-tools.ts` (`normalizePiTool`) now renames
-  fields in addition to names, with `pi-tools.test.ts`. (The pi durable reader is
-  still a `NullSessionReader` per [`pi-provider.md`](pi-provider.md), so only the
-  live path exists to normalize today.)
+- **Closed — pi argument fields and durable reload parity.** `pi-tools.ts`
+  (`normalizePiTool` / `normalizePiToolResult`) now renames fields in addition
+  to names and structures pi built-in results for the renderer, with
+  `pi-tools.test.ts` and `pi-reader.test.ts`. The live `PiProvider` path and
+  durable `PiSessionReader` path both use the same canonical mapping, so pi
+  sessions reloaded after a YA restart should keep the original action-card
+  headline/detail quality.
 - **Verified OK — ACP (gemini-acp, grok).** Canonicalize via
   `toolCall.kind`→`mapKindToToolName`; no gap.
 - **Verified OK — Codex / OpenCode.** Codex reverse-maps shell + `apply_patch`;

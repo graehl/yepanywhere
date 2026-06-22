@@ -184,6 +184,63 @@ describe("preprocessMessages", () => {
     }
   });
 
+  it("updates a deduplicated pending tool_use snapshot", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-1",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "call_1",
+            name: "Bash",
+            input: { command: "npm test" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-2",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "call_1",
+            name: "Bash",
+            input: {
+              command: "npm test",
+              _previewResult: {
+                stdout: "partial\n",
+                stderr: "",
+                interrupted: false,
+                isImage: false,
+              },
+            },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const call = items.find((item) => item.type === "tool_call");
+
+    expect(call).toMatchObject({
+      type: "tool_call",
+      id: "call_1",
+      status: "pending",
+      toolInput: {
+        command: "npm test",
+        _previewResult: {
+          stdout: "partial\n",
+          stderr: "",
+          interrupted: false,
+          isImage: false,
+        },
+      },
+    });
+  });
+
   it("attaches tool_result to deduplicated tool_use", () => {
     const messages: Message[] = [
       {

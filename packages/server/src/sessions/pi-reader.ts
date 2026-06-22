@@ -29,6 +29,13 @@ import {
   canonicalizeProjectPath,
   readCwdFromSessionFile,
 } from "../projects/paths.js";
+import {
+  attachPiResultDetailToToolInput,
+  normalizePiTool,
+  normalizePiToolResult,
+  type PiToolState,
+  stringifyPiToolResult,
+} from "../sdk/providers/pi-tools.js";
 import type {
   ContentBlock,
   Message,
@@ -69,6 +76,7 @@ interface PiRawMessage {
   isError?: boolean;
   model?: string;
   provider?: string;
+  details?: unknown;
 }
 
 interface PiContentBlock {
@@ -285,7 +293,11 @@ export class PiSessionReader implements ISessionReader {
     return "";
   }
 
-  private mapNode(node: PiRawNode, index: number): Message | null {
+  private mapNode(
+    node: PiRawNode,
+    index: number,
+    toolStates: Map<string, PiToolState>,
+  ): Message | null {
     const m = node.message;
     if (!m) return null;
     const uuid = node.id ?? `pi-${index}`;
@@ -312,8 +324,11 @@ export class PiSessionReader implements ISessionReader {
             blocks.push({ type: "text", text: b.text });
           } else if (b?.type === "toolCall") {
             const id = String(b.id ?? "");
-            const name = String(b.name ?? "tool");
-            const input = b.arguments ?? {};
+            const { name, input } = normalizePiTool(
+              String(b.name ?? "tool"),
+              b.arguments ?? {},
+            );
+            toolStates.set(id, { name, input });
             blocks.push({ type: "tool_use", id, name, input });
             if (!firstTool) firstTool = { id, name, input };
           }
@@ -331,19 +346,37 @@ export class PiSessionReader implements ISessionReader {
     }
 
     if (m.role === "toolResult") {
+      const toolCallId = String(m.toolCallId ?? "");
+      const state =
+        toolStates.get(toolCallId) ??
+        (() => {
+          const normalized = normalizePiTool(m.toolName ?? "tool", {});
+          return { name: normalized.name, input: normalized.input };
+        })();
+      const rawResult = { content: m.content, details: m.details };
+      const isError = m.isError === true;
+      attachPiResultDetailToToolInput(state.name, state.input, rawResult);
+      const structured = normalizePiToolResult(
+        state.name,
+        rawResult,
+        state.input,
+        isError,
+      );
+      toolStates.delete(toolCallId);
       return {
         type: "user",
         uuid,
         timestamp,
         role: "user",
+        ...(structured !== undefined ? { toolUseResult: structured } : {}),
         message: {
           role: "user",
           content: [
             {
               type: "tool_result",
-              tool_use_id: String(m.toolCallId ?? ""),
-              is_error: m.isError === true,
-              content: this.contentText(m.content),
+              tool_use_id: toolCallId,
+              is_error: isError,
+              content: stringifyPiToolResult(rawResult),
             },
           ],
         },
@@ -355,8 +388,9 @@ export class PiSessionReader implements ISessionReader {
 
   private buildMessages(parsed: PiParsedSession): Message[] {
     const messages: Message[] = [];
+    const toolStates = new Map<string, PiToolState>();
     parsed.messageNodes.forEach((node, index) => {
-      const mapped = this.mapNode(node, index);
+      const mapped = this.mapNode(node, index, toolStates);
       if (mapped) messages.push(mapped);
     });
     return messages;

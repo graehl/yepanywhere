@@ -219,6 +219,96 @@ externally-(TUI-)owned pi session render without spawning pi, exactly as the
 OpenCode DB reader did for unowned OpenCode sessions
 ([`opencode-backend.md`](opencode-backend.md) § *Direct SQLite reader*).
 
+## Action rendering hardening — implemented 2026-06-22
+
+The pi provider is still rough-draft work, and action rendering should be
+hardened as a provider-contract bug, not as client cosmetics. The regression
+trace is session `019ef029-d5e1-7bfd-be5f-949333d5daf7` in project
+`/local/graehl/trtllm-speculative/draft`: the REST payload for the reloaded
+session contains raw pi tool names and fields (`read` + `path`, `edit` +
+`edits[]`, `bash` + `command`) instead of the canonical `Read`/`Edit`/`Bash`
+shape documented in
+[`provider-read-edit-disciplines.md`](provider-read-edit-disciplines.md). In
+that observed transcript, the durable reader returned 30 `bash`, 25 `read`, and
+6 `edit` raw tool calls. The client registry is case/name-sensitive for these
+names, so many rows fall through to the raw fallback and use the default
+complete-result summary (`done`) even when expanded content is present.
+
+**Target baseline.** pi's own TUI already has the product answer for core
+built-ins: `read`, `bash`, and `edit` each define tool-local `renderCall` /
+`renderResult` logic (`packages/coding-agent/src/core/tools/{read,bash,edit}.ts`)
+that produces useful headlines and inspectable detail. YA does not need to
+invent a new pi action vocabulary; it should match that headline/detail contract
+while projecting it into YA's existing canonical `Read`/`Bash`/`Edit` cards.
+
+**Primary diagnosis.** The live path and durable path have drifted. Live
+`PiProvider.mapEvent()` calls `normalizePiTool()` on `tool_execution_start`,
+but `PiSessionReader.mapNode()` currently maps persisted `toolCall` blocks
+straight through. That contradicts the `PiSessionReader` note that durable
+mapping mirrors the live mapper, and it means every reloaded/restart-survived pi
+session can lose rich action rendering even if the live turn looked acceptable.
+Name/field normalization alone is not enough: pi tool results are persisted as
+text content (usually with no `details` on successful `read`/`bash` calls),
+while YA's rich renderers expect structured result shapes for `Read`, `Write`,
+`Bash`, and `Edit`.
+
+**Secondary diagnosis.** YA ignores pi `tool_execution_update` events. The pi
+agent API documents `tool_execution_update { partialResult }`, and pi's built-in
+`bash` tool already streams stdout/stderr through `onUpdate`, throttles
+snapshots, and records a `fullOutputPath` for truncated output. YA only maps
+`tool_execution_start` and `tool_execution_end`, so live bash output cannot be
+previewed progressively, and a future live-output implementation must
+accumulate per-`toolCallId` output rather than forwarding only the latest delta
+or snapshot as the final text. A separate unbuffered `tee` or tail watcher is a
+fallback only if pi's existing `onUpdate` stream proves insufficient for
+non-line-flushing commands.
+
+**Implemented slice.** The 2026-06-22 rendering-normalization hardening landed
+these pieces:
+
+1. **Unified pi tool-use normalization at the source boundary.** Both
+   `PiProvider.mapEvent()` and `PiSessionReader.mapNode()` use
+   `normalizePiTool()`, and `message.toolUse` carries the canonical
+   `{id,name,input}`. Acceptance check: the REST payload for the observed
+   session should show `Read`/`Edit`/`Bash` with `file_path` where applicable;
+   no pi built-in action reaches the fallback renderer merely because of lower
+   case or pi field names.
+2. **Added pi result normalization, not just tool names.**
+   `normalizePiToolResult(...)` is keyed by canonical tool name plus the
+   original tool input:
+   - `Bash`: map text content to YA's `BashResult` shape
+     (`stdout`/`stderr`/`interrupted`/`isImage`) and preserve any pi truncation
+     or `fullOutputPath` evidence when present.
+   - `Read`/`Write`: synthesize `type:"text"` file results from the tool input
+     path and returned text (`filePath`, `content`, `numLines`, `startLine`,
+     `totalLines`) so interactive file summaries and file viewers engage.
+   - `Edit`: for single-element pi `edits[]`, keep the expanded
+     `old_string`/`new_string` and let the existing edit augment compute the
+     diff; for multi-edit, preserve pi `details.patch` as a raw patch so the
+     existing raw-patch augment computes the diff.
+   - `Grep`/`Glob`/`LS`: either parse into existing structured result shapes
+     when trivial, or deliberately leave text with a useful summary; do not
+     mislabel an unknown shape as a richer renderer contract.
+   Acceptance check: row headers and collapsed summaries say the action target
+   (`Ran <command>`, filename, match/file counts or explicit fallback), not
+   generic `done`; expanded rows expose detail at least as discoverably as the
+   pi TUI for reads, commands, and edits while preserving the same full text the
+   raw pi transcript contains.
+3. **Consumed live `tool_execution_update` deliberately.** The live mapper keeps
+   a per-tool state map keyed by `toolCallId`; pi Bash partial results update
+   the same pending row via a duplicate same-id `tool_use` snapshot carrying
+   `_previewResult`, while the terminal result still arrives only on
+   `tool_execution_end`. Acceptance check: a long-running pi `bash` command
+   shows progressive output, final output is not only the last update, and
+   truncated output exposes pi's `fullOutputPath` when available.
+4. **Fixed stale advisories and docs in the same pass.** The client Pi provider
+   metadata no longer says `PiSessionReader` is unwired, and
+   `provider-read-edit-disciplines.md` records live/durable pi normalization.
+5. **Added regression fixtures.** `pi-tools.test.ts`, `pi-reader.test.ts`,
+   `preprocessMessages.test.ts`, and `ToolCallRow.test.tsx` cover canonical
+   names/fields/results, durable reload parity, duplicate live tool snapshots,
+   and pending Bash preview rendering.
+
 ## Capability flags (initial `AgentProvider`)
 
 `supportsSteering=true`, `supportsSteerNow=true` (steer lands before next LLM

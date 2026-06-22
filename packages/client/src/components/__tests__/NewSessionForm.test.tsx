@@ -608,7 +608,7 @@ describe("NewSessionForm", () => {
     expect(mockSetEffortLevel).toHaveBeenCalledWith("low");
   });
 
-  it("does not show the display-only thinking preference in session setup", () => {
+  it("shows the Show-thinking control in session setup", () => {
     modelSettingsState.thinkingMode = "on";
 
     render(
@@ -619,8 +619,12 @@ describe("NewSessionForm", () => {
       />,
     );
 
+    // The new-session form edits the same persisted thinking setting as the
+    // New Session Defaults page, so the Show-thinking toggle belongs here
+    // alongside the mode control (restored in "new session: restore
+    // Show-thinking control").
     expect(screen.getByText("modelSettingsThinkingTitle")).toBeDefined();
-    expect(screen.queryByText("showThinkingTitle")).toBeNull();
+    expect(screen.getByText("showThinkingTitle")).toBeDefined();
   });
 
   it("shows detached and recent project choices in the default launcher", () => {

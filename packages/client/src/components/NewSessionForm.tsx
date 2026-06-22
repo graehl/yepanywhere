@@ -424,6 +424,8 @@ export function NewSessionForm({
     setEffortLevel,
     thinkingMode,
     setThinkingMode,
+    showThinking,
+    setShowThinking,
     voiceInputEnabled,
     speechMethod,
     hasStoredSpeechMethod,
@@ -2068,7 +2070,9 @@ export function NewSessionForm({
           level={effectiveEffortLevel}
           effortOptions={effortOptions}
           onSetEffort={setEffortLevel}
-          showThinkingControl={false}
+          showThinking={showThinking}
+          onSetShowThinking={setShowThinking}
+          provider={selectedProvider ?? undefined}
           t={t}
           className="thinking-controls-panel--inline new-session-thinking-controls"
         />

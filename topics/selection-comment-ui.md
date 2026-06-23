@@ -20,10 +20,9 @@ Topic: selection-comment-ui
 
 Status: **Phase 1 shipped 2026-06-23.** Assistant text blocks can be quoted via
 selection typing, a floating selection `>` button, or a per-block `>` button;
-the resulting `>` block is inserted into the composer and the source block is
-tinted until the quote is removed or sent. The tint is currently whole-block,
-not exact selected-span painting. Wider quotable surfaces and right-mouse
-line-select remain design/follow-up work.
+the resulting `>` block is inserted into the composer and the selected source
+span is tinted until the quote is removed or sent. Wider quotable surfaces and
+right-mouse line-select remain design/follow-up work.
 
 ## Vocabulary
 
@@ -31,8 +30,7 @@ line-select remain design/follow-up work.
   `>` blockquote appended to the composer, and focus moves to the composer.
 - **Comment anchor** — the persistent association between one inserted quote
   block and the source span it came from. Tracked in a per-session list.
-- **Comment tint** — the subtle green paint on an anchored source block in the
-  shipped v1; exact source-span paint remains a follow-up.
+- **Comment tint** — the subtle green paint on an anchored source span.
 - **Quote circle** — the circled `>` affordance that triggers quote-comment.
   Two placements: floating next to a live selection, and one per paragraph.
 
@@ -74,7 +72,7 @@ The quote block itself:
 - After insertion the caret sits after the quote, on a fresh line below it,
   ready for the comment.
 
-After a quote-comment fires, the live selection is cleared and the source block
+After a quote-comment fires, the live selection is cleared and the source span
 gets the comment tint.
 
 **Tint lifecycle — the anchor list.** Each quote block has a matching anchor,
@@ -85,9 +83,9 @@ hence a tint:
   deleted the quote). Editing words *inside* a surviving `>` line keeps it.
 - All tints clear when the turn is sent.
 
-Implementation note: v1 paints the whole text block for any active anchor. The
-anchor lifecycle already has the right draft reconciliation; exact span paint can
-replace the block-level CSS without changing quote insertion.
+Additional quote-comments add more anchored ranges to the same tint. Clearing all
+matching `>`-prefixed quote lines from the composer, or sending the turn, clears
+all corresponding tints.
 
 ## Reuse map (mostly assembly, not new machinery)
 
@@ -148,15 +146,11 @@ Follow-up, not v1.
 
 ### Tint paint over rendered markdown
 
-The recovered range is in *source* offsets; the exact painted span lives in the
-*rendered* DOM. Recommended follow-up mechanism for exact spans: **CSS Custom
-Highlight API** — register one `Highlight` under `::highlight(comment-tint)` and
-add a `Range` per anchor. It paints without mutating the DOM, so it does not
-fight React re-renders or the streaming-markdown container swaps inside
-`TextBlock`. The block renderer resolves each of its anchors' ranges from stored
-source offsets (via `buildVisibleSourceMap`) on mount/update and drops them on
-unmount, keeping the tint attached to the render boundary rather than to
-post-rendered DOM.
+The recovered range is a DOM `Range` clipped to the registered markdown source
+element. YA registers one CSS Custom Highlight API highlight under
+`::highlight(comment-tint)` and adds every live anchor range to it. It paints
+without mutating the DOM, so it does not fight React re-renders or the
+streaming-markdown container swaps inside `TextBlock`.
 
 Robustness is **best-effort by design**: the tint is a reminder of what you
 quoted, not load-bearing. If a re-render or virtualization drops a range it
@@ -222,7 +216,7 @@ already covers whole-paragraph quoting on those platforms.
 
 - **Phase 1 — core quote-comment over assistant text.** Shipped 2026-06-23:
   keystroke trigger, floating selection quote circle, per-block circles
-  (hover-default + Appearance "always show"), quote insertion, and block-level
+  (hover-default + Appearance "always show"), quote insertion, and selected-span
   comment-anchor tint with draft reconciliation. Scope is assistant text blocks,
   matching the existing copy-source scope.
 - **Phase 2 — widen quotable scope.** Extend the same selection→quote pipeline
@@ -237,9 +231,9 @@ already covers whole-paragraph quoting on those platforms.
 
 ## Decisions
 
-- 2026-06-23 — **Tint paint = best-effort.** V1 ships a whole-block tint as the
-  lower-risk reminder; exact selected spans can later use
-  `::highlight(comment-tint)`, re-resolved from a stored source range.
+- 2026-06-23 — **Tint paint = selected-span CSS highlight.** V1 keeps a list of
+  live anchor ranges and paints them with `::highlight(comment-tint)`; the tint
+  is a reminder, not load-bearing.
 - 2026-06-23 — **Per-paragraph circle = hover-default, Appearance toggle for
   always-show.** The always-show mode covers touch (no hover) and is also a
   desktop option. Lives in the Appearance settings pane.
@@ -249,8 +243,6 @@ already covers whole-paragraph quoting on those platforms.
 
 ## Still open
 
-- **Exact tint spans:** replace v1's whole-block tint with source-range to
-  rendered-DOM paint.
 - **Anchor persistence across reload** (follow-up; tint re-attaches to a
   restored draft).
 

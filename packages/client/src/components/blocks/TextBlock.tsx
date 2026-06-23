@@ -37,7 +37,6 @@ interface Props {
   isStreaming?: boolean;
   /** Pre-rendered HTML from server (for completed messages) */
   augmentHtml?: string;
-  commentAnchors?: readonly CommentAnchor[];
   onQuoteBlock?: (anchor: CommentAnchor) => void;
   alwaysShowQuoteCircle?: boolean;
 }
@@ -46,7 +45,6 @@ export const TextBlock = memo(function TextBlock({
   text,
   isStreaming = false,
   augmentHtml,
-  commentAnchors = [],
   onQuoteBlock,
   alwaysShowQuoteCircle = false,
 }: Props) {
@@ -113,15 +111,6 @@ export const TextBlock = memo(function TextBlock({
       console.error("Failed to copy text:", err);
     }
   }, [text]);
-
-  const blockAnchors = useMemo(
-    () =>
-      commentAnchors.filter(
-        (anchor) => anchor.sourceElement === copySourceRef.current,
-      ),
-    [commentAnchors],
-  );
-  const hasCommentTint = blockAnchors.length > 0;
 
   const handleQuoteBlock = useCallback(() => {
     const element = copySourceRef.current;
@@ -216,7 +205,7 @@ export const TextBlock = memo(function TextBlock({
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation remains on the descendant links/controls */}
       <div
         ref={copySourceRef}
-        className={`text-block-content${hasCommentTint ? " has-comment-tint" : ""}`}
+        className="text-block-content"
         onClick={handleClick}
       >
         {/* Always render streaming elements when streaming so refs are ready for augments */}

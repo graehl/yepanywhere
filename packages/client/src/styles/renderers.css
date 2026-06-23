@@ -583,11 +583,9 @@
   font-weight: 700;
 }
 
-.text-block-content.has-comment-tint {
-  background: color-mix(in srgb, var(--app-yep-green) 16%, transparent);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 0 0 2px
-    color-mix(in srgb, var(--app-yep-green) 18%, transparent);
+::highlight(comment-tint) {
+  background: color-mix(in srgb, var(--app-yep-green) 24%, transparent);
+  color: inherit;
 }
 
 .selection-quote-button {

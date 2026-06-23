@@ -1235,6 +1235,31 @@ export const MessageList = memo(function MessageList({
     }
   }, [quoteClearSignal]);
 
+  useEffect(() => {
+    if (
+      typeof CSS === "undefined" ||
+      !("highlights" in CSS) ||
+      typeof Highlight === "undefined"
+    ) {
+      return;
+    }
+
+    if (commentAnchors.length === 0) {
+      CSS.highlights.delete("comment-tint");
+      return;
+    }
+
+    const highlight = new Highlight(
+      ...commentAnchors
+        .filter((anchor) => anchor.sourceElement.isConnected)
+        .map((anchor) => anchor.range),
+    );
+    CSS.highlights.set("comment-tint", highlight);
+    return () => {
+      CSS.highlights.delete("comment-tint");
+    };
+  }, [commentAnchors]);
+
   // Scroll to bottom, marking it as programmatic so scroll handler ignores it
   const scrollToBottom = useCallback(
     (container: HTMLElement, behavior: ScrollBehavior = "auto") => {
@@ -3015,9 +3040,6 @@ export const MessageList = memo(function MessageList({
                       !item.isSubagent
                         ? () => onForkBeforeUserMessage(item.id)
                         : undefined
-                    }
-                    commentAnchors={
-                      item.type === "text" ? commentAnchors : undefined
                     }
                     onQuoteTextBlock={
                       item.type === "text" ? handleQuoteTextBlock : undefined

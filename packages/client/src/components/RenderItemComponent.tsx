@@ -22,7 +22,6 @@ interface Props {
   onCorrectUserPrompt?: () => void;
   onTrimBeforeUserPrompt?: () => void;
   onForkBeforeUserPrompt?: () => void;
-  commentAnchors?: readonly CommentAnchor[];
   onQuoteTextBlock?: (anchor: CommentAnchor) => void;
   alwaysShowQuoteCircle?: boolean;
   staleNowMs?: number;
@@ -145,7 +144,6 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   onCorrectUserPrompt,
   onTrimBeforeUserPrompt,
   onForkBeforeUserPrompt,
-  commentAnchors,
   onQuoteTextBlock,
   alwaysShowQuoteCircle,
   staleNowMs,
@@ -198,7 +196,6 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             text={item.text}
             isStreaming={item.isStreaming}
             augmentHtml={item.augmentHtml}
-            commentAnchors={commentAnchors}
             onQuoteBlock={onQuoteTextBlock}
             alwaysShowQuoteCircle={alwaysShowQuoteCircle}
           />

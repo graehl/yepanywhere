@@ -1154,10 +1154,7 @@ export function AppearanceSettings() {
               />
               {t("appearanceHoverCardHeightUnit")}
             </span>
-            <span
-              className="settings-hovercard-lines"
-              style={{ whiteSpace: "nowrap" }}
-            >
+            <span className="settings-hovercard-lines">
               ({hoverCardHeightLines}{" "}
               {hoverCardHeightLines === 1
                 ? t("appearanceHoverCardLineUnit")

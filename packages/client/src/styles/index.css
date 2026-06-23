@@ -8920,12 +8920,28 @@ a.sidebar-nav-item {
 }
 
 /* Keep a number input and its unit together as one wrap unit, so a narrow
-   actions row breaks after the unit rather than between value and unit. */
+   actions row breaks after the unit rather than between value and unit. The
+   unit is muted, smaller, and baseline-aligned with the box's digits. */
 .settings-input-unit {
   display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
+  align-items: baseline;
+  gap: 0.3rem;
   white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1;
+}
+
+/* Narrow numeric box: fits ~4 digits cleanly, no wider. */
+.settings-input-unit .settings-input-small {
+  width: 4.5rem;
+}
+
+/* Muted, lightweight line-count estimate beside the height box. */
+.settings-hovercard-lines {
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
 }
 
 /* Compact reset affordance (a small ×) in place of a full Reset button. */

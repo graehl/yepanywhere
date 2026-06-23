@@ -98,6 +98,7 @@ export const SERVER_SCOPED_KEYS = {
   thinkingEnabled: "thinking-enabled",
   thinkingMode: "thinking-mode",
   showThinking: "show-thinking",
+  forkSummaryAutoOpen: "fork-summary-auto-open",
   voiceInputEnabled: "voice-input-enabled",
   speechMethod: "speech-method",
   speechSmartTurn: "speech-smart-turn",

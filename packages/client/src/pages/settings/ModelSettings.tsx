@@ -33,6 +33,7 @@ import {
   useProviders,
 } from "../../hooks/useProviders";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useForkSummaryAutoOpen } from "../../hooks/useForkSummaryAutoOpen";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
@@ -218,6 +219,8 @@ export function ModelSettings() {
     setShowThinking,
   } = useModelSettings();
   const { providers, loading: providersLoading } = useProviders();
+  const [forkSummaryAutoOpen, setForkSummaryAutoOpen] =
+    useForkSummaryAutoOpen();
   const {
     settings,
     isLoading: settingsLoading,
@@ -688,6 +691,24 @@ export function ModelSettings() {
               />
             </div>
           )}
+
+          <div className="new-session-helper-section session-default-fork-summary-section">
+            <h3>{t("modelSettingsForkSummaryAutoOpenTitle")}</h3>
+            <p className="session-default-section-description">
+              {t("modelSettingsForkSummaryAutoOpenDescription")}
+            </p>
+            <label className="settings-item">
+              <div className="settings-item-info">
+                <strong>{t("modelSettingsForkSummaryAutoOpenLabel")}</strong>
+              </div>
+              <input
+                type="checkbox"
+                checked={forkSummaryAutoOpen}
+                onChange={(e) => setForkSummaryAutoOpen(e.target.checked)}
+                aria-label={t("modelSettingsForkSummaryAutoOpenLabel")}
+              />
+            </label>
+          </div>
 
           {showPromptCacheKeepalive && (
             <div className="new-session-helper-section session-default-cache-keepalive-section">

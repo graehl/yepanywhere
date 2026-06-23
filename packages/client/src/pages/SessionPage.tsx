@@ -28,6 +28,7 @@ import {
   ForkSummaryIndicator,
   type ForkSummaryJob,
 } from "../components/ForkSummaryIndicator";
+import { getForkSummaryAutoOpen } from "../hooks/useForkSummaryAutoOpen";
 import { PendingToolWarning } from "../components/PendingToolWarning";
 import {
   MessageInput,
@@ -843,6 +844,9 @@ function SessionPageContent({
     null,
   );
   const forkSummaryAbortRef = useRef<AbortController | null>(null);
+  // Live per-fork auto-open choice (seeded from the persistent default, may be
+  // toggled on the indicator while generating); read at the ready transition.
+  const forkSummaryAutoOpenRef = useRef(false);
   // File attachment state
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
@@ -971,11 +975,20 @@ function SessionPageContent({
       if (forkSummaryJob?.status === "generating") return;
       const abort = new AbortController();
       forkSummaryAbortRef.current = abort;
+      // Seed the per-fork auto-open choice from the persistent default; the
+      // indicator toggle can change it during generation, and we read the live
+      // value at completion.
+      const autoOpenDefault = getForkSummaryAutoOpen();
+      forkSummaryAutoOpenRef.current = autoOpenDefault;
       // Free the composer immediately and background the 30+ s generation
       // behind the persistent indicator instead of graying out send.
       draftControlsRef.current?.clearDraft();
       setForkSummaryDraft(null);
-      setForkSummaryJob({ status: "generating", startedAt: Date.now() });
+      setForkSummaryJob({
+        status: "generating",
+        startedAt: Date.now(),
+        autoOpenWhenReady: autoOpenDefault,
+      });
       showToast(t("forkSummaryStarted"), "info");
       try {
         const result = await api.forkSessionWithSummary(
@@ -995,17 +1008,19 @@ function SessionPageContent({
         // outside a user gesture, so browsers usually popup-block it; the
         // indicator link is then the follow path.
         let autoOpened = false;
-        try {
-          // Open without the "noopener" feature: with it set, window.open
-          // returns null by spec and we lose popup-block detection. Sever the
-          // opener link manually instead (same-origin session tab).
-          const opened = window.open(targetHref, "_blank");
-          if (opened) {
-            opened.opener = null;
-            autoOpened = true;
+        if (forkSummaryAutoOpenRef.current) {
+          try {
+            // Open without the "noopener" feature: with it set, window.open
+            // returns null by spec and we lose popup-block detection. Sever the
+            // opener link manually instead (same-origin session tab).
+            const opened = window.open(targetHref, "_blank");
+            if (opened) {
+              opened.opener = null;
+              autoOpened = true;
+            }
+          } catch {
+            autoOpened = false;
           }
-        } catch {
-          autoOpened = false;
         }
         setForkSummaryJob({
           status: "ready",
@@ -1053,6 +1068,14 @@ function SessionPageContent({
   }, []);
   const dismissForkSummaryJob = useCallback(() => {
     setForkSummaryJob(null);
+  }, []);
+  const setForkSummaryAutoOpen = useCallback((next: boolean) => {
+    forkSummaryAutoOpenRef.current = next;
+    setForkSummaryJob((job) =>
+      job && job.status === "generating"
+        ? { ...job, autoOpenWhenReady: next }
+        : job,
+    );
   }, []);
   const beginForkAfterSummary = useCallback(
     (messageId: string) => {
@@ -4154,6 +4177,7 @@ function SessionPageContent({
                 job={forkSummaryJob}
                 onCancel={cancelForkSummaryJob}
                 onDismiss={dismissForkSummaryJob}
+                onToggleAutoOpen={setForkSummaryAutoOpen}
               />
             )}
 

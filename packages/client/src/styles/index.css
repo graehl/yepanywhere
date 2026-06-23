@@ -3746,6 +3746,32 @@ a.sidebar-nav-item {
   background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-code));
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
+  /* Float fades out on a terminal event (tab opened / link clicked); the
+     duration must match FADE_MS in ForkSummaryIndicator.tsx. */
+  opacity: 1;
+  transition: opacity 350ms ease;
+}
+
+.fork-summary-indicator-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fork-summary-indicator {
+    transition: none;
+  }
+}
+
+/* Per-fork auto-open toggle; groups with Cancel at the right edge. */
+.fork-summary-indicator-autoopen {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .fork-summary-indicator-error {
@@ -3803,7 +3829,6 @@ a.sidebar-nav-item {
 
 .fork-summary-indicator-cancel {
   flex: 0 0 auto;
-  margin-left: auto;
   padding: 0 var(--space-2);
   height: 22px;
   display: inline-flex;

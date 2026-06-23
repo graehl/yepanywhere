@@ -59,14 +59,20 @@ describe("TextBlock", () => {
 
   it("defers local math rendering until streaming text completes", () => {
     const { container, rerender } = render(
-      <TextBlock text="Streaming $x^2$ now" isStreaming={true} />,
+      <I18nProvider>
+        <TextBlock text="Streaming $x^2$ now" isStreaming={true} />
+      </I18nProvider>,
     );
 
     expect(container.querySelector(".text-block-toggle")).toBeNull();
     expect(container.querySelector(".text-block-local-rendered")).toBeNull();
     expect(screen.getByText("Streaming $x^2$ now")).toBeDefined();
 
-    rerender(<TextBlock text="Streaming $x^2$ now" isStreaming={false} />);
+    rerender(
+      <I18nProvider>
+        <TextBlock text="Streaming $x^2$ now" isStreaming={false} />
+      </I18nProvider>,
+    );
 
     expect(container.querySelector(".text-block-toggle")).toBeTruthy();
     expect(container.querySelector(".text-block-local-rendered")).toBeTruthy();
@@ -75,7 +81,9 @@ describe("TextBlock", () => {
 
   it("does not show render toggle for server HTML that matches plain text", () => {
     const { container } = render(
-      <TextBlock text="Plain answer." augmentHtml="<p>Plain answer.</p>" />,
+      <I18nProvider>
+        <TextBlock text="Plain answer." augmentHtml="<p>Plain answer.</p>" />
+      </I18nProvider>,
     );
 
     expect(container.querySelector(".text-block-toggle")).toBeNull();
@@ -84,10 +92,12 @@ describe("TextBlock", () => {
 
   it("shows render toggle for completed server markdown", () => {
     const { container } = render(
-      <TextBlock
-        text="- **win**"
-        augmentHtml="<ul><li><strong>win</strong></li></ul>"
-      />,
+      <I18nProvider>
+        <TextBlock
+          text="- **win**"
+          augmentHtml="<ul><li><strong>win</strong></li></ul>"
+        />
+      </I18nProvider>,
     );
 
     expect(container.querySelector(".text-block-toggle")).toBeTruthy();
@@ -96,13 +106,15 @@ describe("TextBlock", () => {
 
   it("keeps assistant markdown rendered when global render mode changes", () => {
     const { container } = render(
-      <RenderModeProvider>
-        <GlobalRenderModeButton />
-        <TextBlock
-          text="- **win**"
-          augmentHtml="<ul><li><strong>win</strong></li></ul>"
-        />
-      </RenderModeProvider>,
+      <I18nProvider>
+        <RenderModeProvider>
+          <GlobalRenderModeButton />
+          <TextBlock
+            text="- **win**"
+            augmentHtml="<ul><li><strong>win</strong></li></ul>"
+          />
+        </RenderModeProvider>
+      </I18nProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "global render mode" }));
@@ -124,12 +136,14 @@ describe("TextBlock", () => {
     });
 
     const { container } = render(
-      <TextBlock
-        text="[trajectory](/tmp/trajectory.png)"
-        augmentHtml={
-          '<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true" aria-label="Collapse image" aria-expanded="true" title="Collapse inline preview">-</button><a href="/api/local-image?path=%2Ftmp%2Ftrajectory.png" class="local-media-link" data-media-type="image">trajectory<span class="local-media-type">(image)</span></a></span><span class="local-media-inline-preview" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true"></span>'
-        }
-      />,
+      <I18nProvider>
+        <TextBlock
+          text="[trajectory](/tmp/trajectory.png)"
+          augmentHtml={
+            '<span class="local-media-link-group"><button type="button" class="local-media-inline-toggle" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true" aria-label="Collapse image" aria-expanded="true" title="Collapse inline preview">-</button><a href="/api/local-image?path=%2Ftmp%2Ftrajectory.png" class="local-media-link" data-media-type="image">trajectory<span class="local-media-type">(image)</span></a></span><span class="local-media-inline-preview" data-media-path="/tmp/trajectory.png" data-media-type="image" data-expanded="true"></span>'
+          }
+        />
+      </I18nProvider>,
     );
 
     expect(container.querySelector(".local-media-link")).toBeTruthy();
@@ -434,12 +448,14 @@ describe("TextBlock", () => {
 
   it("preserves direct browser gestures for local-file links", () => {
     render(
-      <TextBlock
-        text="[probe json](/tmp/probe.json)"
-        augmentHtml={
-          '<p><a href="/api/local-file?path=%2Ftmp%2Fprobe.json">probe json</a></p>'
-        }
-      />,
+      <I18nProvider>
+        <TextBlock
+          text="[probe json](/tmp/probe.json)"
+          augmentHtml={
+            '<p><a href="/api/local-file?path=%2Ftmp%2Fprobe.json">probe json</a></p>'
+          }
+        />
+      </I18nProvider>,
     );
 
     let defaultPreventedBeforeDocument = true;

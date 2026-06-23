@@ -34,7 +34,16 @@ describe("useSettingsIconStyle", () => {
     expect(getSettingsIconStyle()).toBe("flat");
   });
 
-  it("reads stored icon style", () => {
+  it("reads stored flat-white icon style", () => {
+    localStorage.setItem(UI_KEYS.settingsIconStyle, "flat-white");
+
+    const { result } = renderHook(() => useSettingsIconStyle());
+
+    expect(result.current.settingsIconStyle).toBe("flat-white");
+    expect(getSettingsIconStyle()).toBe("flat-white");
+  });
+
+  it("reads stored emoji icon style", () => {
     localStorage.setItem(UI_KEYS.settingsIconStyle, "emoji");
 
     const { result } = renderHook(() => useSettingsIconStyle());
@@ -58,12 +67,12 @@ describe("useSettingsIconStyle", () => {
     const { result: second } = renderHook(() => useSettingsIconStyle());
 
     act(() => {
-      first.current.setSettingsIconStyle("flat");
+      first.current.setSettingsIconStyle("flat-white");
     });
 
-    expect(first.current.settingsIconStyle).toBe("flat");
-    expect(second.current.settingsIconStyle).toBe("flat");
-    expect(localStorage.getItem(UI_KEYS.settingsIconStyle)).toBe("flat");
+    expect(first.current.settingsIconStyle).toBe("flat-white");
+    expect(second.current.settingsIconStyle).toBe("flat-white");
+    expect(localStorage.getItem(UI_KEYS.settingsIconStyle)).toBe("flat-white");
     expect(localStorage.getItem(UI_KEYS.flatSettingsIcons)).toBeNull();
   });
 });

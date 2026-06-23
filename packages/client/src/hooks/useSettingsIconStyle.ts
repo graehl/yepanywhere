@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
 
-export const SETTINGS_ICON_STYLES = ["flat", "emoji"] as const;
+export const SETTINGS_ICON_STYLES = ["flat", "flat-white", "emoji"] as const;
 export type SettingsIconStyle = (typeof SETTINGS_ICON_STYLES)[number];
 
 const DEFAULT_SETTINGS_ICON_STYLE: SettingsIconStyle = "flat";
@@ -19,7 +19,7 @@ function getStorage(): Storage | null {
 }
 
 function isSettingsIconStyle(value: string | null): value is SettingsIconStyle {
-  return value === "flat" || value === "emoji";
+  return value === "flat" || value === "flat-white" || value === "emoji";
 }
 
 function loadSettingsIconStyle(): SettingsIconStyle {

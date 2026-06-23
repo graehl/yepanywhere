@@ -75,6 +75,7 @@
   "appearanceSettingsIconStyleTitle": "Settings Icons",
   "appearanceSettingsIconStyleDescription": "Choose the Settings category icon set for this browser.",
   "appearanceSettingsIconStyleFlat": "Flat",
+  "appearanceSettingsIconStyleFlatWhite": "Flat White",
   "appearanceSettingsIconStyleEmoji": "Emoji",
   "appearanceToolbarSettingsShortcutTitle": "Toolbar Settings",
   "appearanceToolbarSettingsShortcutDescription": "Configure composer toolbar controls, the default busy action, and the collapsed mobile action.",

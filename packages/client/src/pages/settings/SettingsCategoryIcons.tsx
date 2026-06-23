@@ -4,10 +4,10 @@ import { useSettingsIconStyle } from "../../hooks/useSettingsIconStyle";
 /**
  * Settings category icons.
  *
- * The default renderer uses inline SVGs sized to fit the
- * .settings-category-icon container. The optional emoji renderer uses native
- * color glyphs. SVGs use currentColor for theme-adaptive coloring and evenodd
- * fillRule for cutouts/holes (e.g. lock keyhole).
+ * Flat renderers use inline SVGs sized to fit the .settings-category-icon
+ * container. The optional emoji renderer uses native color glyphs. SVGs use
+ * currentColor for theme-adaptive coloring and evenodd fillRule for
+ * cutouts/holes (e.g. lock keyhole).
  */
 
 const baseProps = {
@@ -245,16 +245,14 @@ export const settingsCategoryIcons: Record<string, ReactNode> = {
 export function SettingsCategoryIcon({ id }: { id: string }) {
   const { settingsIconStyle } = useSettingsIconStyle();
   const icon =
-    settingsIconStyle === "flat"
-      ? settingsCategoryIcons[id]
-      : settingsCategoryEmojiIcons[id];
+    settingsIconStyle === "emoji"
+      ? settingsCategoryEmojiIcons[id]
+      : settingsCategoryIcons[id];
   if (!icon) return null;
   const className = [
     "settings-category-icon",
     `settings-category-icon-${id}`,
-    settingsIconStyle === "flat"
-      ? "settings-category-icon-flat"
-      : "settings-category-icon-emoji",
+    `settings-category-icon-${settingsIconStyle}`,
   ].join(" ");
   return (
     <span className={className} aria-hidden="true">

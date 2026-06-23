@@ -9526,7 +9526,7 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-1);
   background: var(--bg-code);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -9559,6 +9559,7 @@ a.sidebar-nav-item {
   box-sizing: border-box;
   font-size: 1.5rem;
   line-height: 1;
+  margin-right: 2px;
   transition:
     background 0.15s,
     box-shadow 0.15s,
@@ -9603,6 +9604,21 @@ a.sidebar-nav-item {
       var(--settings-category-icon-accent) 58%,
       var(--border-color)
     );
+}
+
+.settings-category-icon-flat-white {
+  color: #fff;
+  background: color-mix(in srgb, #0f172a 86%, var(--bg-primary));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.24),
+    0 1px 2px rgba(0, 0, 0, 0.16);
+}
+
+.settings-category-item.active .settings-category-icon-flat-white {
+  background: color-mix(in srgb, #0f172a 78%, var(--app-yep-green));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.34),
+    0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .settings-category-icon-emoji {

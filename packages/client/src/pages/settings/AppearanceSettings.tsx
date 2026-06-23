@@ -87,6 +87,8 @@ function getSettingsIconStyleLabel(
   switch (value) {
     case "flat":
       return translate("appearanceSettingsIconStyleFlat");
+    case "flat-white":
+      return translate("appearanceSettingsIconStyleFlatWhite");
     case "emoji":
       return translate("appearanceSettingsIconStyleEmoji");
   }
@@ -470,9 +472,9 @@ export function AppearanceSettings() {
             {SETTINGS_ICON_STYLES.map((style) => {
               const selected = settingsIconStyle === style;
               const preview =
-                style === "flat"
-                  ? settingsCategoryIcons.appearance
-                  : settingsCategoryEmojiIcons.appearance;
+                style === "emoji"
+                  ? settingsCategoryEmojiIcons["local-access"]
+                  : settingsCategoryIcons["local-access"];
               return (
                 <button
                   key={style}
@@ -482,7 +484,7 @@ export function AppearanceSettings() {
                   aria-pressed={selected}
                 >
                   <span
-                    className={`settings-category-icon settings-category-icon-appearance settings-category-icon-${style} settings-icon-style-preview`}
+                    className={`settings-category-icon settings-category-icon-local-access settings-category-icon-${style} settings-icon-style-preview`}
                     aria-hidden="true"
                   >
                     {preview}

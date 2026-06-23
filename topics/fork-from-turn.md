@@ -360,6 +360,69 @@ the documented shortcut.
    → `onCopyUserMessage` → `onCopyAnchor`), not the truncated `marker.preview`.
    Silent (matches the existing copy-prompt action; no toast / i18n key added).
 
+## Follow-up UI spec: inline turn actions and fork-after no-summary
+
+Status: specified 2026-06-23. These are three independent UI changes that
+should land cleanly without changing ordinary send behavior.
+
+### 1. Reserve a lane for inline turn actions
+
+Inline turn action buttons must have a reserved right-side lane. Turn text and
+the user-prompt bubble must never render underneath that lane, even if the
+buttons are hidden until hover, focus, proximity, or coarse-pointer activation.
+The fix belongs in the shared turn/action layout, not as per-button overlap
+patches.
+
+This lane is separate from the scrollbar-aligned turn notches. The notches remain
+the PC-friendly dense navigation surface, but inline action buttons are the
+mobile-friendly path for common actions.
+
+### 2. Stack inline action buttons vertically
+
+The inline turn actions are too wide as a horizontal group. Present them as a
+vertical stack in the reserved lane, ordered by priority:
+
+```text
+Copy
+Edit
+Fork before…
+Show starting here
+```
+
+**Show starting here** is the lowest-priority action and belongs last, so it is
+the first candidate to drop only if the available action space still cannot fit
+the full set. Short turns may fit the four buttons horizontally; long turns are
+where a vertical column usually pays off because it preserves transcript width
+without creating an over-wide action row. Do not treat "short turn" as the drop
+trigger by itself. The label replaces the older **Show from** wording for this
+inline action because it names the resulting view state.
+
+**Fork before…** must be visible in this inline stack whenever the provider
+supports real prefix fork. The right-notch context menu already provides the
+same operation on desktop, but that is not enough for mobile discoverability.
+
+### 3. Fork-after no-summary alternate send
+
+The fork-after-summary composer mode needs a second submit path in addition to
+the existing generated-summary submit:
+
+- Primary submit: fork after the selected completed turn and generate/submit an
+  LLM summary, as implemented today.
+- Alternate submit: fork after the selected completed turn with **no generated
+  summary**. Expose this as a bottom action beside the primary button, and wire
+  `Ctrl+Enter` to it while fork-after mode is active.
+
+No-summary semantics:
+
+- If the composer contains text, create/follow the target fork and submit that
+  text verbatim as the next ordinary user turn in the fork.
+- If the composer is empty, create/follow the target fork without submitting a
+  turn.
+
+The alternate path must not run the generator fork, must not rewrite the typed
+text, and must not alter normal `Enter` / `Ctrl+Enter` behavior outside
+fork-after mode.
+
 Wiring: `SessionPage` → `MessageList` (`onForkBeforeUserMessage`,
 `onForkAfterUserMessage`, `onCopyUserMessage`, `onTrimBeforeUserMessage`) →
 `UserTurnNavigator` (`onForkBeforeAnchor`, `onForkAfterAnchor`, `onCopyAnchor`,

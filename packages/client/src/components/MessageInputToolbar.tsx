@@ -258,6 +258,12 @@ export interface MessageInputToolbarProps {
     tooltip: string;
     icon: string;
   };
+  sendAlternate?: {
+    label: string;
+    tooltip: string;
+    icon: string;
+    onClick: () => void;
+  };
   canForkAfterSummary?: boolean;
   canSend?: boolean;
   disabled?: boolean;
@@ -565,6 +571,12 @@ interface ToolbarSendControl {
   steerNowEnabled?: boolean;
   onToggleSteerNow?: () => void;
   queue?: ToolbarQueueControl;
+  alternate?: {
+    label: string;
+    tooltip: string;
+    icon: string;
+    onClick: () => void;
+  };
 }
 
 interface ToolbarStopControl {
@@ -1762,6 +1774,20 @@ export function MessageInputToolbarView({
                   <span className="send-icon">↗</span>
                 </button>
               )}
+            {actionsControl.send.alternate && (
+              <button
+                type="button"
+                onClick={actionsControl.send.alternate.onClick}
+                disabled={actionsControl.disabled || !actionsControl.send.canSend}
+                className="send-button fork-summary-no-summary-button"
+                aria-label={actionsControl.send.alternate.label}
+                title={actionsControl.send.alternate.tooltip}
+              >
+                <span className="send-icon">
+                  {actionsControl.send.alternate.icon}
+                </span>
+              </button>
+            )}
             <button
               type="button"
               onClick={actionsControl.send?.onSend}
@@ -1830,6 +1856,7 @@ export function MessageInputToolbar({
   onSteer,
   primaryActionKind,
   sendOverride,
+  sendAlternate,
   canForkAfterSummary,
   canSend,
   disabled,
@@ -2421,6 +2448,7 @@ export function MessageInputToolbar({
                 hasDualActions,
                 queueTooltip,
               },
+              alternate: sendAlternate,
             }
           : null,
       }}

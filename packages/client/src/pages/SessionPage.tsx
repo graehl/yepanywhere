@@ -1029,6 +1029,59 @@ function SessionPageContent({
       updateTranscriptDisplayObjectsForSession,
     ],
   );
+  const submitForkAfterWithoutSummary = useCallback(
+    async (sourceMessageId: string, nextTurnText: string) => {
+      if (attachments.length > 0 || uploadProgress.length > 0) {
+        showToast(t("forkSummaryAttachmentsUnsupported"), "error");
+        return;
+      }
+      const resolved = resolveForkAfterAnchor(sourceMessageId);
+      if (resolved.pending) {
+        showToast(t("forkAfterTurnPending"), "error");
+        return;
+      }
+      if (!resolved.anchorId) {
+        showToast(t("forkAfterTurnNoAnchor"), "error");
+        return;
+      }
+
+      draftControlsRef.current?.clearDraft();
+      setForkSummaryDraft(null);
+      try {
+        const result = await api.forkSession(projectId, actualSessionId, {
+          upToMessageId: resolved.anchorId,
+        });
+        if (nextTurnText.trim()) {
+          await api.queueMessage(
+            result.sessionId,
+            nextTurnText,
+            permissionMode,
+          );
+        }
+        showToast(t("forkFromTurnStarted"), "success");
+        navigate(
+          `${basePath}/projects/${projectId}/sessions/${result.sessionId}`,
+        );
+      } catch (error) {
+        showToast(
+          error instanceof Error ? error.message : t("sessionRestartFailed"),
+          "error",
+        );
+      }
+    },
+    [
+      actualSessionId,
+      attachments.length,
+      basePath,
+      navigate,
+      permissionMode,
+      projectId,
+      resolveForkAfterAnchor,
+      showToast,
+      t,
+      uploadProgress.length,
+    ],
+  );
   const cancelForkSummaryJob = useCallback(
     async (objectId: string) => {
       const requestSessionId = actualSessionId;
@@ -4379,6 +4432,11 @@ function SessionPageContent({
                         submitLabel: t("forkSummarySubmit"),
                         tooltip: t("forkSummaryTooltip"),
                         icon: "⑂",
+                        noSummarySubmitLabel: t(
+                          "forkSummaryNoSummarySubmit",
+                        ),
+                        noSummaryTooltip: t("forkSummaryNoSummaryTooltip"),
+                        noSummaryIcon: "↱",
                         // The composer fork mode is dismissed the moment we
                         // submit (generation backgrounds into the indicator),
                         // so it never sits in a submitting state.
@@ -4388,6 +4446,12 @@ function SessionPageContent({
                           void submitForkAfterSummary(
                             forkSummaryDraft.sourceMessageId,
                             instructions,
+                          );
+                        },
+                        onSubmitWithoutSummary: (nextTurnText) => {
+                          void submitForkAfterWithoutSummary(
+                            forkSummaryDraft.sourceMessageId,
+                            nextTurnText,
                           );
                         },
                       }

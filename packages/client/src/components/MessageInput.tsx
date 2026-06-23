@@ -326,9 +326,13 @@ interface Props {
     submitLabel: string;
     tooltip: string;
     icon: string;
+    noSummarySubmitLabel?: string;
+    noSummaryTooltip?: string;
+    noSummaryIcon?: string;
     submitting?: boolean;
     onCancel: () => void;
     onSubmit: (instructions: string) => void;
+    onSubmitWithoutSummary?: (text: string) => void;
   };
   /** Composer shortcut for fork-after-summary using current draft as instructions. */
   onForkSummaryShortcut?: (instructions: string) => boolean | undefined;
@@ -807,6 +811,37 @@ export function MessageInput({
     handleSubmit(undefined, "steer");
   }, [handleSubmit]);
 
+  const handleForkWithoutSummary = useCallback(() => {
+    if (
+      !forkSummaryMode?.onSubmitWithoutSummary ||
+      disabled ||
+      attachments.length > 0 ||
+      uploadProgress.length > 0
+    ) {
+      return;
+    }
+    const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
+    let finalText = controls.getDraft();
+    if (pendingVoice) {
+      const textBeforeVoice = finalText.trimEnd();
+      finalText = textBeforeVoice
+        ? `${textBeforeVoice} ${pendingVoice}`
+        : pendingVoice;
+    }
+    controls.clearInput();
+    resetCompositionMetadata();
+    setInterimTranscript("");
+    forkSummaryMode.onSubmitWithoutSummary(finalText);
+    textareaRef.current?.focus();
+  }, [
+    attachments.length,
+    controls,
+    disabled,
+    forkSummaryMode,
+    resetCompositionMetadata,
+    uploadProgress.length,
+  ]);
+
   const handleQueue = useCallback(() => {
     const queueHandler =
       onQueue ?? (effectivePrimaryActionKind === "queue" ? onSend : undefined);
@@ -1153,6 +1188,18 @@ export function MessageInput({
     if (e.key === "Enter") {
       // Skip Enter during IME composition (e.g. Chinese/Japanese/Korean input)
       if (e.nativeEvent.isComposing) return;
+
+      if (
+        forkSummaryMode?.onSubmitWithoutSummary &&
+        e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        handleForkWithoutSummary();
+        return;
+      }
 
       // Ctrl+Enter is the alternate regular send action while busy. Patient
       // mode is controlled by the stopwatch toggle, not by this shortcut.
@@ -1937,6 +1984,20 @@ export function MessageInput({
                     label: forkSummaryMode.submitLabel,
                     tooltip: forkSummaryMode.tooltip,
                     icon: forkSummaryMode.icon,
+                  }
+                : undefined
+            }
+            sendAlternate={
+              forkSummaryMode?.onSubmitWithoutSummary
+                ? {
+                    label:
+                      forkSummaryMode.noSummarySubmitLabel ??
+                      t("forkSummaryNoSummarySubmit"),
+                    tooltip:
+                      forkSummaryMode.noSummaryTooltip ??
+                      t("forkSummaryNoSummaryTooltip"),
+                    icon: forkSummaryMode.noSummaryIcon ?? "↱",
+                    onClick: handleForkWithoutSummary,
                   }
                 : undefined
             }

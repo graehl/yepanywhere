@@ -544,6 +544,8 @@
   "forkSummaryComposerPlaceholder": "Optional summary instructions; leave empty for the default summary...",
   "forkSummarySubmit": "Fork with summary",
   "forkSummaryTooltip": "Fork after the selected turn with a generated summary",
+  "forkSummaryNoSummarySubmit": "Fork without summary",
+  "forkSummaryNoSummaryTooltip": "Fork after the selected turn without generating a summary (Ctrl+Enter)",
   "forkBeforeTurnLabel": "Fork session from before this turn",
   "forkBeforeTurnTooltip": "Fork session from before this turn (re-reads context at standard price if the session has been idle past the cache window)",
   "userPromptCopyAction": "Copy message text",

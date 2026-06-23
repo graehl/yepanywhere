@@ -606,6 +606,36 @@ describe("MessageInput", () => {
     expect(onCancel).not.toHaveBeenCalled();
   });
 
+  it("uses Ctrl+Enter for fork-after without summary while in fork mode", () => {
+    const onSubmit = vi.fn();
+    const onSubmitWithoutSummary = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), {
+      forkSummaryMode: {
+        title: "Fork after selected turn",
+        description:
+          "Keep this request and the agent response to it; replace later turns with a generated summary.",
+        placeholder:
+          "Optional summary instructions; leave empty for the default summary...",
+        submitLabel: "Fork with summary",
+        tooltip: "Fork after the selected turn with a generated summary",
+        icon: "⑂",
+        noSummarySubmitLabel: "Fork without summary",
+        noSummaryTooltip: "Fork after without summary",
+        noSummaryIcon: "↱",
+        onCancel: vi.fn(),
+        onSubmit,
+        onSubmitWithoutSummary,
+      },
+    }) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "  branch text  " } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    expect(onSubmitWithoutSummary).toHaveBeenCalledWith("  branch text  ");
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(textarea.value).toBe("");
+  });
+
   it("sends the current draft as fork summary instructions with Ctrl+Alt+Enter", () => {
     const onForkSummaryShortcut = vi.fn(() => true);
     const textarea = renderMessageInput(vi.fn(), {

@@ -18,11 +18,40 @@ See also:
 
 Topic: selection-comment-ui
 
-Status: **Phase 1 shipped 2026-06-23.** Assistant text blocks can be quoted via
-selection typing, a floating selection `>` button, or a per-block `>` button;
-the resulting `>` block is inserted into the composer and the selected source
-span is tinted until the quote is removed or sent. Wider quotable surfaces and
-right-mouse line-select remain design/follow-up work.
+Status: **Phase 1 shipped 2026-06-23, with two contract gaps still open.**
+Assistant text blocks can be quoted via selection typing, a floating selection
+`>` button, or a per-block `>` button; the resulting `>` block is inserted into
+the composer and the selected source span is tinted until the quote is removed
+or sent. Two Phase-1 deltas from the contract below remain — see *Known gaps vs
+spec*: the floating `>` button does not surface for small/partial selections,
+and the hover circle is per text block, not per paragraph. Wider quotable
+surfaces and right-mouse line-select remain design/follow-up work.
+
+## Known gaps vs spec (Phase 1)
+
+Observed against the running app; both are spec deltas, not redesigns.
+
+- **Floating `>` button missing on small/partial selections.** Selecting a
+  short span inside a paragraph surfaces no floating button. It is gated on
+  `extractMarkdownSnippetsFromSelection(root)` returning ≥1 snippet
+  (`MessageList.tsx`), and that shared extractor inherits the *copy* path's
+  coverage-equality gate — the full selected text within the container must
+  match the text covered by registered `[data-markdown-copy-source]` elements,
+  or it returns `[]`. Prime suspect, not yet reproduced to root cause; a
+  near-top position clip (`top = rect.top − rootRect.top − 34` going negative,
+  drawing the button above the visible container) is a second candidate. **Fix
+  direction:** a *quote* trigger should be strictly more permissive than a
+  *copy* trigger — surface the button whenever any non-empty markdown snippet is
+  recoverable, even when selection coverage is partial, rather than reusing the
+  copy gate verbatim.
+- **Circles are per text block, not per paragraph.** The hover circle lives on
+  `TextBlock` — one whole assistant text segment — so a multi-paragraph turn
+  shows a single circle that quotes the *entire* segment. The contract (entry
+  point 3) wants one circle per paragraph, quoting just that paragraph. **Fix
+  direction:** render a circle per top-level rendered block (paragraph / list /
+  heading) inside `TextBlock`, each mapped to its own source range via
+  `buildVisibleSourceMap`, instead of a single circle over the block's whole
+  source.
 
 ## Vocabulary
 
@@ -56,8 +85,10 @@ Three entry points, one action.
    (`components/blocks/TextBlock.tsx`). An **Appearance** option — "always show
    quote circles" — switches them to always-visible; this is what makes them
    usable on touch (no hover) and is also offered on desktop for users who want
-   them shown without moving the mouse near. Clicking quotes that whole block.
-   Its tooltip points the user at the finer path: highlight text — or right-drag
+   them shown without moving the mouse near. Clicking quotes that paragraph.
+   (Phase 1 ships this circle per *text block*, not yet per paragraph — see
+   *Known gaps vs spec*.) Its tooltip points the user at the finer path:
+   highlight text — or right-drag
    to select lines (see the line-select helper below) — to comment on a specific
    sub-range instead of the whole paragraph.
 
@@ -215,15 +246,27 @@ already covers whole-paragraph quoting on those platforms.
 ## Phasing
 
 - **Phase 1 — core quote-comment over assistant text.** Shipped 2026-06-23:
-  keystroke trigger, floating selection quote circle, per-block circles
+  keystroke trigger, floating selection quote circle, hover circles
   (hover-default + Appearance "always show"), quote insertion, and selected-span
   comment-anchor tint with draft reconciliation. Scope is assistant text blocks,
-  matching the existing copy-source scope.
+  matching the existing copy-source scope. Two contract gaps remain open in this
+  phase (small-selection floating button, and per-paragraph vs per-block
+  circles) — see *Known gaps vs spec*.
 - **Phase 2 — widen quotable scope.** Extend the same selection→quote pipeline
   to edit diffs, any outline-expanded text (including expanded Read contents),
-  user turns, and other rendered agent output. Each surface needs a registered
-  markdown/text copy-source so the shared extractor can recover its source; the
-  pipeline itself does not change.
+  user turns, thinking summaries (see below), and other rendered agent output.
+  Each surface needs a registered markdown/text copy-source so the shared
+  extractor can recover its source; the pipeline itself does not change.
+
+  **Thinking summaries — quote while streaming *or* finished.** We want to
+  select and comment on a thinking-summary item even mid-stream, not only once
+  it settles. This is the one Phase-2 surface whose source is *live*: a
+  streaming thinking summary keeps growing/rewriting, so the comment anchor
+  cannot track a moving source the way it tracks a settled block. Snapshot the
+  quoted text at quote time (the `>` block is a frozen copy regardless), and
+  either drop the tint when the underlying streaming text mutates out from under
+  the range or re-resolve it best-effort against the latest text. The quoted
+  composer content is unaffected either way; only the tint is at risk.
 - **Phase 3 — right-mouse line-select helper.** Below; intentionally last
   because it is the fiddliest and the rest does not depend on it. May be
   disabled outright on platforms where the gesture does not mesh with native

@@ -3,19 +3,21 @@
 /**
  * Staging server for yepanywhere.com
  *
- * Serves:
- * - / → Astro dev server (site/)
- * - /remote/ → packages/client/dist-remote/ (remote client app)
+ * Serves pre-built static assets (no dev servers, no file watchers):
+ * - /         → site/dist/                      (marketing site, `astro build` output)
+ * - /remote/  → packages/client/dist-remote/    (remote client app)
  *
- * Runs Astro dev server for the marketing site (with HMR) and
- * vite build --watch for the remote client.
+ * This server spawns NO child processes — it is a plain static file server.
+ * Rebuild the assets with scripts/deploy-staging.sh (which stops this service,
+ * builds both bundles sequentially, and restarts it) whenever the source
+ * changes. Running a build alongside a watcher used to swap-thrash remy, so the
+ * watch/dev-server mode was intentionally removed.
  *
  * Usage:
  *   pnpm staging              # Default port 3000
  *   PORT=8080 pnpm staging    # Custom port
  */
 
-import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
@@ -28,9 +30,8 @@ const rootDir = path.join(__dirname, "..");
 exitIfUnsafeHome({ entrypoint: "pnpm staging" });
 
 const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000;
-const astroPort = port + 10; // Internal Astro dev port (not exposed directly)
 
-const sitePath = path.join(rootDir, "site");
+const siteDistPath = path.join(rootDir, "site", "dist");
 const remoteDistPath = path.join(rootDir, "packages/client/dist-remote");
 
 // Content types for static files
@@ -40,6 +41,9 @@ const contentTypes = {
   ".js": "application/javascript; charset=utf-8",
   ".mjs": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".xml": "application/xml; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -54,9 +58,28 @@ const contentTypes = {
 };
 
 /**
+ * Resolve requestPath under root, returning null if it escapes root
+ * (path-traversal guard).
+ */
+function resolveWithin(root, requestPath) {
+  const resolved = path.normalize(path.join(root, requestPath));
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    return null;
+  }
+  return resolved;
+}
+
+/**
  * Serve a static file, always reading fresh from disk (no caching).
+ * Falls back to fallbackPath (if given) on miss, otherwise 404.
  */
 function serveFile(res, filePath, fallbackPath = null) {
+  if (filePath === null) {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not found");
+    return;
+  }
+
   const normalizedPath = path.normalize(filePath);
 
   fs.promises
@@ -88,234 +111,109 @@ function serveFile(res, filePath, fallbackPath = null) {
 }
 
 /**
- * Proxy a request to the Astro dev server.
+ * Serve the remote client app from dist-remote.
+ * Unknown (extensionless) routes fall back to remote.html for SPA routing.
  */
-function proxyToAstro(req, res) {
-  const options = {
-    hostname: "localhost",
-    port: astroPort,
-    path: req.url,
-    method: req.method,
-    headers: req.headers,
-  };
+function serveRemote(res, pathname) {
+  let remotePath = pathname.slice("/remote".length) || "/";
+  if (remotePath === "") remotePath = "/";
 
-  const proxyReq = http.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res, { end: true });
-  });
+  const filePath = resolveWithin(remoteDistPath, remotePath);
 
-  proxyReq.on("error", () => {
-    res.writeHead(502, { "Content-Type": "text/plain" });
-    res.end("Astro dev server not ready yet");
-  });
+  if (remotePath.endsWith("/") || !path.extname(remotePath)) {
+    const indexPath = path.join(remoteDistPath, "remote.html");
+    serveFile(res, filePath, indexPath);
+  } else {
+    serveFile(res, filePath);
+  }
+}
 
-  req.pipe(proxyReq, { end: true });
+/**
+ * Serve the marketing site from site/dist.
+ * Astro is built with `format: "file"` + `trailingSlash: "never"`, so routes
+ * map to flat files: "/" → index.html, "/news" → news.html.
+ */
+function serveSite(res, pathname) {
+  if (pathname === "/" || pathname === "") {
+    serveFile(res, resolveWithin(siteDistPath, "index.html"));
+    return;
+  }
+
+  // Real files (assets, with an extension) are served directly.
+  if (path.extname(pathname)) {
+    serveFile(res, resolveWithin(siteDistPath, pathname));
+    return;
+  }
+
+  // Clean URL → try "<path>.html", then "<path>/index.html", else 404.
+  const htmlPath = resolveWithin(siteDistPath, `${pathname}.html`);
+  const indexPath = resolveWithin(
+    siteDistPath,
+    path.join(pathname, "index.html"),
+  );
+  serveFile(res, htmlPath, indexPath);
 }
 
 /**
  * Handle incoming requests.
  */
 function handleRequest(req, res) {
-  const url = new URL(req.url, `http://localhost:${port}`);
-  const pathname = url.pathname;
-
-  // /remote/ paths -> serve from dist-remote
-  if (pathname.startsWith("/remote")) {
-    let remotePath = pathname.slice("/remote".length) || "/";
-    if (remotePath === "") remotePath = "/";
-
-    const filePath = path.join(remoteDistPath, remotePath);
-
-    if (remotePath.endsWith("/") || !path.extname(remotePath)) {
-      const indexPath = path.join(remoteDistPath, "remote.html");
-      serveFile(res, filePath, indexPath);
-    } else {
-      serveFile(res, filePath);
-    }
+  let pathname;
+  try {
+    const url = new URL(req.url, `http://localhost:${port}`);
+    pathname = decodeURIComponent(url.pathname);
+  } catch {
+    res.writeHead(400, { "Content-Type": "text/plain" });
+    res.end("Bad request");
     return;
   }
 
-  // All other paths -> proxy to Astro dev server
-  proxyToAstro(req, res);
-}
-
-// Track child processes for cleanup
-const children = [];
-
-function cleanup() {
-  console.log("\nShutting down...");
-  for (const child of children) {
-    if (child && !child.killed) {
-      child.kill("SIGTERM");
-    }
+  if (pathname === "/remote" || pathname.startsWith("/remote/")) {
+    serveRemote(res, pathname);
+    return;
   }
-  process.exit(0);
-}
 
-process.on("SIGINT", cleanup);
-process.on("SIGTERM", cleanup);
-
-/**
- * Start the Astro dev server for the marketing site.
- */
-function startAstroDev() {
-  console.log(`[Staging] Starting Astro dev server on port ${astroPort}...`);
-
-  const astro = spawn("npx", ["astro", "dev", "--port", String(astroPort)], {
-    cwd: sitePath,
-    stdio: ["ignore", "pipe", "pipe"],
-    shell: true,
-  });
-
-  children.push(astro);
-
-  astro.stdout.on("data", (data) => {
-    const msg = data.toString().trim();
-    if (msg) console.log(`[Astro] ${msg}`);
-  });
-
-  astro.stderr.on("data", (data) => {
-    const msg = data.toString().trim();
-    if (msg) console.error(`[Astro] ${msg}`);
-  });
-
-  astro.on("exit", (code) => {
-    if (code !== null && code !== 0) {
-      console.error(`[Astro] Exited with code ${code}`);
-    }
-  });
-
-  return astro;
+  serveSite(res, pathname);
 }
 
 /**
- * Start the vite build watcher for the remote client.
+ * Verify the pre-built assets exist; exit with guidance if not. The systemd
+ * unit has Restart=always, so a missing build surfaces as a clear, repeated log
+ * line rather than silently serving 404s.
  */
-function startViteWatch() {
-  console.log("[Staging] Starting vite build --watch for remote client...");
-
-  const vite = spawn(
-    "pnpm",
-    [
-      "--filter",
-      "client",
-      "exec",
-      "vite",
-      "build",
-      "--watch",
-      "--config",
-      "vite.config.remote.ts",
-      "--base",
-      "/remote/",
-    ],
-    {
-      cwd: rootDir,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: true,
-    },
-  );
-
-  children.push(vite);
-
-  vite.stdout.on("data", (data) => {
-    const msg = data.toString().trim();
-    if (msg) console.log(`[Vite] ${msg}`);
-  });
-
-  vite.stderr.on("data", (data) => {
-    const msg = data.toString().trim();
-    if (msg) console.error(`[Vite] ${msg}`);
-  });
-
-  vite.on("exit", (code) => {
-    if (code !== null && code !== 0) {
-      console.error(`[Vite] Exited with code ${code}`);
-    }
-  });
-
-  return vite;
-}
-
-/**
- * Start the proxy server.
- */
-function startServer() {
-  const server = http.createServer(handleRequest);
-
-  server.listen(port, () => {
-    console.log(`[Staging] Server running at http://localhost:${port}`);
-    console.log(
-      `[Staging]   /         -> Astro dev server (port ${astroPort})`,
+function verifyBuilds() {
+  const missing = [];
+  if (!fs.existsSync(path.join(siteDistPath, "index.html"))) {
+    missing.push("site/dist  (build: cd site && pnpm exec astro build)");
+  }
+  if (!fs.existsSync(path.join(remoteDistPath, "remote.html"))) {
+    missing.push(
+      "packages/client/dist-remote  (build: pnpm --filter client exec vite build --config vite.config.remote.ts --base /remote/)",
     );
-    console.log("[Staging]   /remote/  -> packages/client/dist-remote/");
-    console.log("[Staging] Site has HMR via Astro dev server");
-  });
-
-  return server;
-}
-
-// Check if dist-remote exists, if not do initial build
-async function ensureInitialBuild() {
-  const indexPath = path.join(remoteDistPath, "remote.html");
-  if (!fs.existsSync(indexPath)) {
-    console.log("[Staging] dist-remote not found, running initial build...");
-    return new Promise((resolve, reject) => {
-      const build = spawn(
-        "pnpm",
-        [
-          "--filter",
-          "client",
-          "exec",
-          "vite",
-          "build",
-          "--config",
-          "vite.config.remote.ts",
-          "--base",
-          "/remote/",
-        ],
-        {
-          cwd: rootDir,
-          stdio: "inherit",
-          shell: true,
-        },
-      );
-
-      build.on("exit", (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`Initial build failed with code ${code}`));
-        }
-      });
-    });
+  }
+  if (missing.length > 0) {
+    console.error("[Staging] Missing pre-built assets:");
+    for (const m of missing) console.error(`  - ${m}`);
+    console.error(
+      "[Staging] Run scripts/deploy-staging.sh to build the assets and (re)start staging.",
+    );
+    process.exit(1);
   }
 }
 
 // Main
-async function main() {
-  console.log("[Staging] Yepanywhere staging server");
-  console.log("");
+function main() {
+  console.log("[Staging] Yepanywhere staging server (static)");
 
-  // Check site folder exists
-  if (!fs.existsSync(sitePath)) {
-    console.error(`[Staging] Error: site/ folder not found at ${sitePath}`);
-    process.exit(1);
-  }
+  verifyBuilds();
 
-  // Ensure initial remote client build exists
-  await ensureInitialBuild();
+  const server = http.createServer(handleRequest);
 
-  // Start Astro dev server for marketing site
-  startAstroDev();
-
-  // Start vite watch for remote client
-  startViteWatch();
-
-  // Start proxy server
-  startServer();
+  server.listen(port, () => {
+    console.log(`[Staging] Server running at http://localhost:${port}`);
+    console.log("[Staging]   /         -> site/dist (marketing site)");
+    console.log("[Staging]   /remote/  -> packages/client/dist-remote/");
+  });
 }
 
-main().catch((err) => {
-  console.error("[Staging] Error:", err.message);
-  process.exit(1);
-});
+main();

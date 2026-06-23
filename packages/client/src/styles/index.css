@@ -2942,21 +2942,18 @@ a.sidebar-nav-item {
 }
 
 .user-prompt-container {
+  --user-prompt-action-size: 34px;
   --user-prompt-actions-space: calc(
-    102px +
-    var(--space-1) +
-    var(--space-1) +
-    var(--space-1)
+    (var(--user-prompt-action-size) * 4) + (var(--space-1) * 4)
   );
 
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-1);
-  flex-wrap: wrap;
+  position: relative;
+  min-height: var(--user-prompt-action-size);
+  padding-inline-end: var(--user-prompt-actions-space);
 }
 
 .user-prompt-container > .user-prompt-metadata {
-  flex-basis: 100%;
+  display: block;
 }
 
 .user-prompt-correctable {
@@ -2964,10 +2961,12 @@ a.sidebar-nav-item {
 }
 
 .user-prompt-actions {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  flex: 0 0 auto;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease;
@@ -3018,6 +3017,11 @@ a.sidebar-nav-item {
 }
 
 @media (hover: none), (pointer: coarse), (max-width: 600px) {
+  .user-prompt-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
   .user-prompt-action {
     width: 34px;
     min-width: 34px;
@@ -3033,17 +3037,15 @@ a.sidebar-nav-item {
 
 @media (min-width: 701px) {
   .message-user-prompt {
-    max-width: min(88%, calc(100% - var(--user-prompt-actions-space)));
+    max-width: 100%;
   }
 }
 
 @media (max-width: 700px) {
   .user-prompt-container {
+    --user-prompt-action-size: 30px;
     --user-prompt-actions-space: calc(
-      90px +
-      var(--space-1) +
-      var(--space-1) +
-      var(--space-1)
+      (var(--user-prompt-action-size) * 4) + (var(--space-1) * 4)
     );
   }
 

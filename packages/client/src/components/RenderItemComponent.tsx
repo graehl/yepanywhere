@@ -6,6 +6,7 @@ import {
 import type { CommentAnchor } from "../lib/commentAnchors";
 import type { RenderItem } from "../types/renderItems";
 import { MessageAge } from "./MessageAge";
+import { ForkSummaryDisplayObject } from "./ForkSummaryDisplayObject";
 import { SessionSetupBlock } from "./blocks/SessionSetupBlock";
 import { TaskNotificationBlock } from "./blocks/TaskNotificationBlock";
 import { TextBlock } from "./blocks/TextBlock";
@@ -27,6 +28,10 @@ interface Props {
   staleNowMs?: number;
   latestVisibleTimestampMs?: number | null;
   thinkingDurationMs?: number;
+  getForkSummaryTargetHref?: (targetSessionId: string) => string;
+  onCancelForkSummary?: (objectId: string) => void;
+  onToggleForkSummaryAutoOpen?: (objectId: string, value: boolean) => void;
+  onFollowForkSummary?: (objectId: string) => void;
 }
 
 function getMessageIdLike(message: Record<string, unknown>): string {
@@ -149,6 +154,10 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   staleNowMs,
   latestVisibleTimestampMs,
   thinkingDurationMs,
+  getForkSummaryTargetHref,
+  onCancelForkSummary,
+  onToggleForkSummaryAutoOpen,
+  onFollowForkSummary,
 }: Props) {
   const staticAgeNowMsRef = useRef(Date.now());
   const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
@@ -236,6 +245,23 @@ export const RenderItemComponent = memo(function RenderItemComponent({
 
       case "session_setup":
         return <SessionSetupBlock title={item.title} prompts={item.prompts} />;
+
+      case "transcript_display_object":
+        return (
+          <ForkSummaryDisplayObject
+            object={item.object}
+            targetHref={
+              item.object.targetSessionId
+                ? getForkSummaryTargetHref?.(item.object.targetSessionId)
+                : undefined
+            }
+            onCancel={() => onCancelForkSummary?.(item.object.id)}
+            onToggleAutoOpen={(value) =>
+              onToggleForkSummaryAutoOpen?.(item.object.id, value)
+            }
+            onFollow={() => onFollowForkSummary?.(item.object.id)}
+          />
+        );
 
       case "task_notification":
         return <TaskNotificationBlock item={item} />;

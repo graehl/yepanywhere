@@ -1,3 +1,4 @@
+import type { TranscriptDisplayObject } from "@yep-anywhere/shared";
 import type { ContentBlock, Message } from "../types";
 
 /**
@@ -13,6 +14,7 @@ export type RenderItem =
   | ToolCallItem
   | UserPromptItem
   | SessionSetupItem
+  | TranscriptDisplayObjectItem
   | SystemItem
   | TaskNotificationItem;
 
@@ -89,6 +91,12 @@ export interface SessionSetupItem extends RenderItemBase {
   id: string;
   title: string;
   prompts: Array<string | ContentBlock[]>;
+}
+
+export interface TranscriptDisplayObjectItem extends RenderItemBase {
+  type: "transcript_display_object";
+  id: string;
+  object: TranscriptDisplayObject;
 }
 
 export interface SystemItem extends RenderItemBase {

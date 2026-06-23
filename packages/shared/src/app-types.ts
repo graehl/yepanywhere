@@ -332,6 +332,27 @@ export interface EnrichedRecentEntry {
   provider: ProviderName;
 }
 
+export interface ForkSummaryTranscriptDisplayObject {
+  id: string;
+  kind: "fork-summary";
+  createdAt: string;
+  /** Message after which the display object is placed in the source transcript. */
+  placementAfterMessageId: string;
+  /** User request selected for Fork after. */
+  sourceMessageId: string;
+  /** Completed-turn boundary retained by the target fork. */
+  retainedThroughMessageId: string;
+  status: "generating" | "ready" | "error";
+  autoOpenWhenReady?: boolean;
+  targetSessionId?: string;
+  title?: string;
+  openedAt?: string;
+  clickedAt?: string;
+  error?: string;
+}
+
+export type TranscriptDisplayObject = ForkSummaryTranscriptDisplayObject;
+
 /**
  * Session summary for list views.
  * Contains metadata without full message content.
@@ -360,6 +381,8 @@ export interface AppSessionSummary {
   isStarred?: boolean;
   /** Parent session when this session is a YA-owned fork/aside. */
   parentSessionId?: string;
+  /** Saved viewer-only objects placed in the transcript, never provider context. */
+  transcriptDisplayObjects?: TranscriptDisplayObject[];
   /** Initial prompt text accepted by YA for new-session recovery/copy. */
   initialPrompt?: string;
   /** Capped excerpt of the most recent regular agent turn (hover card). */

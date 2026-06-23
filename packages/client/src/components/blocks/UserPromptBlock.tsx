@@ -1,4 +1,5 @@
 import { memo, type ReactNode, useState } from "react";
+import { useI18n } from "../../i18n";
 import {
   type UploadedFileInfo,
   getFilename,
@@ -322,6 +323,8 @@ function UserPromptActionButtons({
   copyText?: string;
   extraActions?: ReactNode;
 }) {
+  const { t } = useI18n();
+
   if (
     !onCorrect &&
     !onTrimBefore &&
@@ -345,8 +348,8 @@ function UserPromptActionButtons({
           type="button"
           className="user-prompt-action"
           onClick={onForkBefore}
-          aria-label="Fork session from before this turn"
-          title="Fork session from before this turn (re-reads context at standard price if the session has been idle past the cache window)"
+          aria-label={t("forkBeforeTurnLabel")}
+          title={t("forkBeforeTurnTooltip")}
         >
           <svg
             width="14"

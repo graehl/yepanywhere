@@ -3686,7 +3686,8 @@ a.sidebar-nav-item {
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
   background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-code));
-  border: 1px solid color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
+  border: 1px solid
+    color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
@@ -3733,38 +3734,23 @@ a.sidebar-nav-item {
   outline: none;
 }
 
-/* Backgrounded fork-after-summary progress/follow indicator (persists while
-   the 30+ s generation runs detached from the composer). */
-.fork-summary-indicator {
+/* Saved fork-after-summary progress/follow object in transcript order. */
+.fork-summary-display-object {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-1);
+  margin: var(--space-2) 0;
   padding: var(--space-1) var(--space-2);
-  border: 1px solid color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
+  border: 1px solid
+    color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-code));
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
-  /* Float fades out on a terminal event (tab opened / link clicked); the
-     duration must match FADE_MS in ForkSummaryIndicator.tsx. */
-  opacity: 1;
-  transition: opacity 350ms ease;
-}
-
-.fork-summary-indicator-leaving {
-  opacity: 0;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .fork-summary-indicator {
-    transition: none;
-  }
 }
 
 /* Per-fork auto-open toggle; groups with Cancel at the right edge. */
-.fork-summary-indicator-autoopen {
+.fork-summary-display-object-autoopen {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -3774,22 +3760,35 @@ a.sidebar-nav-item {
   white-space: nowrap;
 }
 
-.fork-summary-indicator-error {
-  border-color: color-mix(in srgb, var(--accent-danger, #d33) 45%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-danger, #d33) 10%, var(--bg-code));
+.fork-summary-display-object-error {
+  border-color: color-mix(
+    in srgb,
+    var(--accent-danger, #d33) 45%,
+    var(--border-color)
+  );
+  background: color-mix(
+    in srgb,
+    var(--accent-danger, #d33) 10%,
+    var(--bg-code)
+  );
 }
 
-.fork-summary-indicator-label {
+.fork-summary-display-object-error .fork-summary-display-object-cancel {
+  margin-left: auto;
+}
+
+.fork-summary-display-object-label {
   color: var(--text-primary);
   font-weight: 600;
 }
 
-.fork-summary-indicator-elapsed {
+.fork-summary-display-object-elapsed,
+.fork-summary-display-object-state {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 
-.fork-summary-indicator-spinner {
+.fork-summary-display-object-spinner {
   width: 12px;
   height: 12px;
   flex: 0 0 auto;
@@ -3806,12 +3805,12 @@ a.sidebar-nav-item {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fork-summary-indicator-spinner {
+  .fork-summary-display-object-spinner {
     animation-duration: 2s;
   }
 }
 
-.fork-summary-indicator-link {
+.fork-summary-display-object-link {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3821,13 +3820,13 @@ a.sidebar-nav-item {
   text-decoration: none;
 }
 
-.fork-summary-indicator-link:hover,
-.fork-summary-indicator-link:focus-visible {
+.fork-summary-display-object-link:hover,
+.fork-summary-display-object-link:focus-visible {
   text-decoration: underline;
   outline: none;
 }
 
-.fork-summary-indicator-cancel {
+.fork-summary-display-object-cancel {
   flex: 0 0 auto;
   padding: 0 var(--space-2);
   height: 22px;
@@ -3841,35 +3840,15 @@ a.sidebar-nav-item {
   font-size: var(--font-size-xs);
 }
 
-.fork-summary-indicator-cancel:hover,
-.fork-summary-indicator-cancel:focus-visible {
+.fork-summary-display-object-cancel:hover,
+.fork-summary-display-object-cancel:focus-visible {
   background: var(--bg-hover);
   color: var(--text-primary);
   outline: none;
 }
 
-.fork-summary-indicator-dismiss {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 auto;
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: var(--font-size-base);
-  line-height: 1;
-}
-
-.fork-summary-indicator-dismiss:hover,
-.fork-summary-indicator-dismiss:focus-visible {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  outline: none;
+.fork-summary-display-object-state {
+  white-space: nowrap;
 }
 
 .prompt-suggestion {
@@ -13631,7 +13610,6 @@ a.sidebar-nav-item {
   white-space: pre-wrap;
   word-break: break-word;
 }
-
 
 /* Checkbox for multi-select */
 .session-list-item__checkbox {

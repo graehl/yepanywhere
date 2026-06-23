@@ -1,7 +1,10 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import type {
+  TranscriptDisplayObject,
+  UrlProjectId,
+} from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   canonicalizeProjectPath,
@@ -1527,13 +1530,15 @@ describe("Sessions metadata route", () => {
     });
   });
 
-  it("generates a summary on a helper fork before starting the target fork", async () => {
+  it("owns fork-summary generation after returning a durable display object", async () => {
     const project = createProject();
     const generateSummary = vi.fn(async () => ({
-      text: "Kept the setup; continue from the fixed test failure.",
-      generatorSessionId: "sess-generator",
+      text: "Title: Refactor continuation\n\nKept the setup; continue from the fixed test failure.",
     }));
-    const forkSession = vi.fn(async () => ({ sessionId: "sess-target" }));
+    const forkSession = vi
+      .fn()
+      .mockResolvedValueOnce({ sessionId: "sess-generator" })
+      .mockResolvedValueOnce({ sessionId: "sess-target" });
     const resumeSession = vi.fn(async () => ({
       id: "proc-target",
       sessionId: "sess-target",
@@ -1550,6 +1555,21 @@ describe("Sessions metadata route", () => {
     const setProvider = vi.fn(async () => undefined);
     const setRequestedModel = vi.fn(async () => undefined);
     const emit = vi.fn();
+    let transcriptDisplayObjects: TranscriptDisplayObject[] = [];
+    const addTranscriptDisplayObject = vi.fn(async (_sessionId, object) => {
+      transcriptDisplayObjects = [...transcriptDisplayObjects, object];
+    });
+    const updateTranscriptDisplayObject = vi.fn(
+      async (_sessionId, objectId, updater) => {
+        let updated: TranscriptDisplayObject | undefined;
+        transcriptDisplayObjects = transcriptDisplayObjects.map((object) => {
+          if (object.id !== objectId) return object;
+          updated = updater(object);
+          return updated;
+        });
+        return updated;
+      },
+    );
 
     const routes = createSessionsRoutes({
       supervisor: {
@@ -1560,7 +1580,16 @@ describe("Sessions metadata route", () => {
           resolvedModel: "sonnet",
           permissionMode: "default",
           modeVersion: 0,
+          state: { type: "idle", since: new Date() },
           getMessageHistory: vi.fn(() => [
+            {
+              type: "user",
+              uuid: "msg-user-initial",
+              message: {
+                role: "user",
+                content: "Fix the failing test.",
+              },
+            },
             {
               type: "assistant",
               uuid: "msg-after-initial-turn",
@@ -1594,6 +1623,9 @@ describe("Sessions metadata route", () => {
           customTitle: "Refactor session",
           promptSuggestionMode: "native",
         })),
+        getTranscriptDisplayObjects: vi.fn(() => transcriptDisplayObjects),
+        addTranscriptDisplayObject,
+        updateTranscriptDisplayObject,
         setProvider,
         updateMetadata,
       } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
@@ -1606,45 +1638,56 @@ describe("Sessions metadata route", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          afterTurnMessageId: "msg-after-initial-turn",
+          sourceMessageId: "msg-user-initial",
           instructions: "focus on verification and next action",
         }),
       },
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
     const body = await response.json();
     expect(body).toMatchObject({
-      sessionId: "sess-target",
-      processId: "proc-target",
-      title: "Fork: Refactor session",
-      forkedFrom: "sess-1",
-      upToMessageId: "msg-after-initial-turn",
-      generatorSessionId: "sess-generator",
-      summary: "Kept the setup; continue from the fixed test failure.",
+      displayObject: {
+        kind: "fork-summary",
+        sourceMessageId: "msg-user-initial",
+        retainedThroughMessageId: "msg-after-initial-turn",
+        placementAfterMessageId: "msg-after-initial-turn",
+        status: "generating",
+      },
     });
-    expect(generateSummary).toHaveBeenCalledWith("claude", {
-      purpose: "fork-after-summary",
-      strategy: "fork",
+    await vi.waitFor(() => {
+      expect(resumeSession).toHaveBeenCalledTimes(1);
+    });
+    expect(forkSession).toHaveBeenNthCalledWith(1, {
       sessionId: "sess-1",
-      cwd: project.path,
-      afterTurnMessageId: "msg-after-initial-turn",
-      afterTurnContext: "Loaded AGENTS and found the failing test.",
-      instructions: "focus on verification and next action",
-      context: "whole",
+      projectPath: project.path,
+      providerName: "claude",
+      title: "Fork summary generator",
     });
-    expect(forkSession).toHaveBeenCalledWith({
+    expect(generateSummary).toHaveBeenCalledWith(
+      "claude",
+      expect.objectContaining({
+        purpose: "fork-after-summary",
+        strategy: "fork",
+        generatorSessionId: "sess-generator",
+        cwd: project.path,
+        afterTurnMessageId: "msg-after-initial-turn",
+        afterTurnContext: "Loaded AGENTS and found the failing test.",
+        instructions: "focus on verification and next action",
+      }),
+    );
+    expect(forkSession).toHaveBeenNthCalledWith(2, {
       sessionId: "sess-1",
       projectPath: project.path,
       providerName: "claude",
       upToMessageId: "msg-after-initial-turn",
-      title: "Fork: Refactor session",
+      title: "Refactor continuation",
     });
     expect(resumeSession).toHaveBeenCalledWith(
       "sess-target",
       project.path,
       expect.objectContaining({
-        text: "Kept the setup; continue from the fixed test failure.",
+        text: expect.stringContaining("Kept the setup"),
       }),
       undefined,
       expect.objectContaining({
@@ -1659,15 +1702,192 @@ describe("Sessions metadata route", () => {
       parentSessionId: "sess-1",
     });
     expect(updateMetadata).toHaveBeenCalledWith("sess-target", {
-      title: "Fork: Refactor session",
+      title: "Refactor continuation",
+      archived: true,
+      parentSessionId: "sess-1",
+    });
+    expect(updateMetadata).toHaveBeenCalledWith("sess-target", {
+      title: "Refactor continuation",
+      archived: false,
+      parentSessionId: "sess-1",
     });
     expect(setProvider).toHaveBeenCalledWith("sess-target", "claude");
     expect(setProvider).toHaveBeenCalledWith("sess-generator", "claude");
     expect(setRequestedModel).toHaveBeenCalledWith("sess-target", "sonnet");
-    expect(setRequestedModel).toHaveBeenCalledWith(
-      "sess-generator",
-      "sonnet",
+    expect(setRequestedModel).toHaveBeenCalledWith("sess-generator", "sonnet");
+    expect(updateTranscriptDisplayObject).toHaveBeenCalled();
+    expect(transcriptDisplayObjects[0]).toMatchObject({
+      status: "ready",
+      targetSessionId: "sess-target",
+      title: "Refactor continuation",
+    });
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "sess-generator",
+        archived: true,
+        parentSessionId: "sess-1",
+      }),
     );
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "sess-target",
+        archived: true,
+        parentSessionId: "sess-1",
+      }),
+    );
+  });
+
+  it("rejects an in-progress fork boundary before creating helper work", async () => {
+    const project = createProject();
+    const forkSession = vi.fn();
+    const generateSummary = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-source",
+          provider: "claude",
+          model: "sonnet",
+          state: { type: "in-turn", since: new Date() },
+          getMessageHistory: vi.fn(() => [
+            {
+              type: "user",
+              uuid: "msg-user",
+              message: { role: "user", content: "Still running" },
+            },
+          ]),
+        })),
+        supportsForkSession: vi.fn(() => true),
+        forkSession,
+        generateSummary,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "claude"),
+        getTranscriptDisplayObjects: vi.fn(() => []),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/fork-summary`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceMessageId: "msg-user" }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "The selected turn is still in progress",
+    });
+    expect(forkSession).not.toHaveBeenCalled();
+    expect(generateSummary).not.toHaveBeenCalled();
+  });
+
+  it("accepts a completed persisted turn with no active process", async () => {
+    const project = createProject();
+    const summary: SessionSummary = {
+      ...createSummary(),
+      provider: "grok",
+      model: "grok-build",
+    };
+    const reader = {
+      getSessionSummary: vi.fn(async () => summary),
+      getSession: vi.fn(async () => ({
+        summary,
+        data: {
+          provider: "grok",
+          session: {
+            messages: [
+              {
+                type: "user",
+                uuid: "msg-user",
+                message: { role: "user", content: "Completed request" },
+              },
+              {
+                type: "assistant",
+                uuid: "msg-assistant",
+                message: { role: "assistant", content: "Completed response" },
+              },
+            ],
+          },
+        },
+      })),
+    } as unknown as ISessionReader;
+    const forkSession = vi.fn(
+      () => new Promise<{ sessionId: string }>(() => {}),
+    );
+    let transcriptDisplayObjects: TranscriptDisplayObject[] = [];
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => undefined),
+        supportsForkSession: vi.fn(() => true),
+        forkSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => reader),
+      grokReaderFactory: vi.fn(() => reader as unknown as GrokSessionReader),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "grok"),
+        getRequestedModel: vi.fn(() => "grok-build"),
+        getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => ({})),
+        getTranscriptDisplayObjects: vi.fn(() => transcriptDisplayObjects),
+        addTranscriptDisplayObject: vi.fn(async (_sessionId, object) => {
+          transcriptDisplayObjects = [...transcriptDisplayObjects, object];
+        }),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/fork-summary`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceMessageId: "msg-user" }),
+      },
+    );
+
+    const responseBody = await response.json();
+    expect(response.status, JSON.stringify(responseBody)).toBe(202);
+    expect(responseBody).toMatchObject({
+      displayObject: {
+        retainedThroughMessageId: "msg-assistant",
+        status: "generating",
+      },
+    });
+    expect(forkSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an invalid fork-summary permission mode", async () => {
+    const project = createProject();
+    const routes = createSessionsRoutes({
+      supervisor: {} as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/fork-summary`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceMessageId: "msg-user",
+          mode: "unrestricted",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Invalid permission mode",
+    });
   });
 
   it("rejects the fork endpoint when the provider has no fork primitive", async () => {

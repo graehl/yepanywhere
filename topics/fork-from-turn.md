@@ -34,7 +34,7 @@ per provider),
 [settings-ui-placement](settings-ui-placement.md) (where the auto-open default
 setting lives, and the default + live-override pattern it follows),
 [transcript-display-objects](transcript-display-objects.md) (the durable
-pseudo-turn the fork-send float should transition into — future work),
+pseudo-turn used for fork-send progress and follow state),
 [scrollback-view-stability](scrollback-view-stability.md) (the client transcript
 window the trim dot controls).
 
@@ -221,7 +221,7 @@ immediately before the summary showing the user's typed summary-amendment
 instructions; that element is viewer state only and is not submitted to the
 provider.
 
-### Enhanced summary: computed prelude/postlude around the model body (planned)
+### Enhanced summary: computed prelude/postlude around the model body (partly built)
 
 Upgrade the submitted user turn from free prose to a **layered** structure. Only
 the middle is model-generated; YA wraps it with a **fixed computed prelude and
@@ -246,7 +246,7 @@ This is two separable workstreams, and they commit independently: the **UX**
 **summary-instruction template + computed prelude/postlude** here is a later,
 distinct commit.
 
-1. **Title line (model).** The summary's **first line** is a concise title
+1. **Title line (model, implemented).** The summary's **first line** is a concise title
    (≤ ~120 chars, no trailing period) naming the task/state, used verbatim as
    the forked session's `title` (the `forkSession({ title })` option) and as the
    follow-hyperlink label (see fork-send section). The instruction template — the
@@ -368,12 +368,12 @@ Wiring: `SessionPage` → `MessageList` (`onForkBeforeUserMessage`,
 
 ## Fork-send: backgrounded progress and follow
 
-**Status: implemented, except the durable pseudo-turn.** Shipped: the
-backgrounded indicator (phase + elapsed), the auto-open attempt with a
-title-labeled hyperlink fallback, the two cancels, the per-fork auto-open toggle
-seeded from a persistent default, and the float's fade-out on a terminal event.
-**Remaining next step:** the durable pseudo-turn (§ Float vs durable pseudo-turn).
-The numbered design below is retained as the spec it was built to.
+**Status: implemented with the durable pseudo-turn.** Shipped: server-owned
+background generation, phase + elapsed state, cancellation, the auto-open
+attempt with a title-labeled hyperlink fallback, and the per-fork auto-open
+toggle seeded from a persistent default. The progress/follow object is persisted
+server-side and placed in transcript order; there is no separate transient
+composer float.
 
 **Original symptom (the bug this fixed).** The generation step is a full LLM turn over
 the *entire* forked context — 30+ s, worse with a cold prompt cache (per
@@ -391,10 +391,11 @@ indicator,** freeing the composer immediately.
 1. **On activation,** dismiss the composer fork-mode apparatus at once
    (placeholder / badge / Cancel) and return the composer to normal — the typed
    instructions were already consumed as the summary prompt. Replace it with a
-   **persistent "Forking…" indicator**: a non-context viewer-only element (it
-   must not become a real provider turn in the parent transcript; same class as
-   the typed-instructions element noted above), pinned at the transcript tail or
-   as a small float. It shows phase ("Generating summary…") and elapsed time.
+   **persistent "Forking…" display object**: a non-context viewer-only element
+   (it must not become a real provider turn in the parent transcript; same class
+   as the typed-instructions element noted above), placed after the source
+   transcript tail as of activation. It shows phase ("Generating summary…") and
+   elapsed time.
 
 2. **On ready** (target fork created, summary submitted), **open the forked
    session in a new tab** when the auto-open preference is on — a server-scoped
@@ -427,39 +428,38 @@ indicator,** freeing the composer immediately.
   fork," visually distinct from the pre-send drop, and should note that the
   generation turn already partially billed.
 
-### Float vs durable pseudo-turn
+### Durable pseudo-turn
 
-The follow indicator has two intended forms, and the preferred end state is the
-second:
-
-- **Transient float** near the composer for immediate attention while
-  generating. On a terminal event (`(tab opened)` or `(clicked)`) it
-  **animates/fades out** — it must not linger as a permanent pinned float, which
-  would be annoying.
-- **Durable pseudo-turn** placed in the session outline at the end as of
-  creation time. The float should **transition into** this object rather than
-  just vanishing. It is a [transcript display object](transcript-display-objects.md)
-  — a saved display-only item with a placement, **not** a real turn (never in
-  model context). It **scrolls with content** (scrolls off with continued use,
-  by design), **updates in place** to `(tab opened)` when auto-open is detected,
-  and **marks `(clicked)`** when followed — but the object and its link **stay in
-  any case**. Persistence (ideally server-side, surviving device migration and a
-  YA restart) is future work; see the linked topic.
+The follow indicator is a **durable pseudo-turn** placed in the session outline
+at the source tail as of creation time. It is a
+[transcript display object](transcript-display-objects.md) — a saved
+display-only item with a placement, **not** a real turn (never in model
+context). It **scrolls with content** (scrolls off with continued use, by
+design), **updates in place** to `(tab opened)` when auto-open is detected, and
+**marks `(clicked)`** when followed — but the object and its link **stay in any
+case**. It is persisted in YA session metadata, so it survives device migration
+and a YA restart.
 
 The follow link's label is the **title line** (summary first line), shared by the
 float, the pseudo-turn, and the forked session title.
 
-**Implemented: the transient float.** It fades out on a terminal event
-(`(tab opened)` lingers briefly then fades; a link click fades), with the `×`
-kept only for the error state. The per-fork auto-open toggle and its persistent
-default ship alongside.
+**Implemented:** the durable object is created before helper work starts,
+updated through generating/ready/error states, and retained after follow. A
+server restart converts an interrupted generating object to an actionable error
+instead of pretending the job is still live.
 
-**Remaining next step — the durable pseudo-turn.** The float currently just fades
-and is gone; it does **not** yet transition into a durable
-[transcript display object](transcript-display-objects.md) placed in the session
-outline. That object — scroll-with-content placement, in-place `(tab opened)` /
-`(clicked)` updates with the link staying, and server-side persistence surviving
-device migration and a YA restart — is the next phase and is not built.
+### Operation ownership and validation
+
+Fork-after-summary is a server-owned job. The start endpoint validates the
+selected user request and resolves its completed-turn boundary from the source
+transcript before creating either fork, persists the display object, then
+returns `202`. The requesting tab may disconnect without cancelling the job.
+
+YA creates and archives the generator fork before invoking the summary helper.
+It creates the target archived, starts the generated summary turn, and only
+unarchives the target after the start succeeds. Cancellation aborts the helper
+query; failures leave scaffolding archived and update the durable object rather
+than orphaning visible sessions.
 
 ## Open questions / follow-ups
 

@@ -28,6 +28,7 @@ import type {
   ShowThinking,
   SlashCommand,
   ThinkingOption,
+  TranscriptDisplayObject,
   UploadedFile,
   UserQuestionAnswers,
   UserMessageMetadata,
@@ -812,34 +813,55 @@ export const api = {
     projectId: string,
     sessionId: string,
     options: {
-      afterTurnMessageId: string;
+      sourceMessageId: string;
       instructions?: string;
       mode?: PermissionMode;
-      signal?: AbortSignal;
+      autoOpenWhenReady?: boolean;
     },
   ) =>
     fetchJSON<{
-      sessionId: string;
-      processId: string;
-      projectId: string;
-      provider?: ProviderName;
-      model?: string;
-      title?: string;
-      permissionMode?: PermissionMode;
-      modeVersion?: number;
-      forkedFrom: string;
-      upToMessageId: string;
-      generatorSessionId?: string;
-      summary: string;
+      displayObject: TranscriptDisplayObject;
     }>(`/projects/${projectId}/sessions/${sessionId}/fork-summary`, {
       method: "POST",
       body: JSON.stringify({
-        afterTurnMessageId: options.afterTurnMessageId,
+        sourceMessageId: options.sourceMessageId,
         instructions: options.instructions,
         mode: options.mode,
+        autoOpenWhenReady: options.autoOpenWhenReady,
       }),
-      signal: options.signal,
     }),
+
+  cancelForkSessionWithSummary: (
+    projectId: string,
+    sessionId: string,
+    objectId: string,
+  ) =>
+    fetchJSON<{
+      transcriptDisplayObjects: TranscriptDisplayObject[];
+    }>(
+      `/projects/${projectId}/sessions/${sessionId}/fork-summary/${objectId}/cancel`,
+      { method: "POST" },
+    ),
+
+  updateForkSummaryDisplayObject: (
+    projectId: string,
+    sessionId: string,
+    objectId: string,
+    updates: {
+      autoOpenWhenReady?: boolean;
+      action?: "opened" | "clicked";
+    },
+  ) =>
+    fetchJSON<{
+      displayObject: TranscriptDisplayObject;
+      transcriptDisplayObjects: TranscriptDisplayObject[];
+    }>(
+      `/projects/${projectId}/sessions/${sessionId}/fork-summary/${objectId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(updates),
+      },
+    ),
 
   queueMessage: (
     sessionId: string,

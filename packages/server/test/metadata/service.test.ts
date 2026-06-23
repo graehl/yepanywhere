@@ -35,7 +35,7 @@ describe("SessionMetadataService", () => {
         "utf-8",
       );
       const state = JSON.parse(content);
-      expect(state.version).toBe(1);
+      expect(state.version).toBe(2);
       expect(state.sessions["session-1"]).toBeDefined();
       expect(state.sessions["session-1"].customTitle).toBe("My Custom Title");
     });
@@ -64,6 +64,45 @@ describe("SessionMetadataService", () => {
         customTitle: "Archived One",
         isArchived: true,
       });
+    });
+
+    it("migrates display objects and marks interrupted jobs as errors", async () => {
+      const existingState = {
+        version: 1,
+        sessions: {
+          "session-1": {
+            transcriptDisplayObjects: [
+              {
+                id: "display-1",
+                kind: "fork-summary",
+                createdAt: "2026-06-23T00:00:00.000Z",
+                placementAfterMessageId: "assistant-1",
+                sourceMessageId: "user-1",
+                retainedThroughMessageId: "assistant-1",
+                status: "generating",
+              },
+            ],
+          },
+        },
+      };
+      await writeFile(
+        join(testDir, "session-metadata.json"),
+        JSON.stringify(existingState),
+      );
+
+      await service.initialize();
+
+      expect(service.getTranscriptDisplayObjects("session-1")).toEqual([
+        expect.objectContaining({
+          id: "display-1",
+          status: "error",
+          error: "Fork summary interrupted by server restart",
+        }),
+      ]);
+      const persisted = JSON.parse(
+        await readFile(join(testDir, "session-metadata.json"), "utf-8"),
+      );
+      expect(persisted.version).toBe(2);
     });
 
     it("handles corrupted JSON gracefully", async () => {

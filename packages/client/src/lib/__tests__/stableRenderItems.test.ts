@@ -49,4 +49,25 @@ describe("stabilizeRenderItems", () => {
     expect(stable[0]).toBe(previousFirst);
     expect(stable[1]).toBe(updatedSecond);
   });
+
+  it("reuses an unchanged transcript display object", () => {
+    const object = {
+      id: "display-1",
+      kind: "fork-summary" as const,
+      createdAt: "2026-06-23T00:00:00.000Z",
+      placementAfterMessageId: "assistant-1",
+      sourceMessageId: "user-1",
+      retainedThroughMessageId: "assistant-1",
+      status: "generating" as const,
+    };
+    const previous: RenderItem = {
+      type: "transcript_display_object",
+      id: object.id,
+      object,
+      sourceMessages: [],
+    };
+    const next: RenderItem = { ...previous };
+
+    expect(stabilizeRenderItems([previous], [next])[0]).toBe(previous);
+  });
 });

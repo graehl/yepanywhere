@@ -1,5 +1,6 @@
 import type {
   MarkdownAugment,
+  TranscriptDisplayObject,
   UploadedFile,
   UserMessageMetadata,
 } from "@yep-anywhere/shared";
@@ -44,6 +45,7 @@ import {
   type SessionIsearchScope,
 } from "../lib/sessionIsearchGuide";
 import { stabilizeRenderItems } from "../lib/stableRenderItems";
+import { insertTranscriptDisplayObjects } from "../lib/transcriptDisplayObjects";
 import { UI_KEYS } from "../lib/storageKeys";
 import type { ContentBlock, Message } from "../types";
 import type { RenderItem } from "../types/renderItems";
@@ -74,14 +76,30 @@ import { CopyTextButton } from "./ui/CopyTextButton";
  * Groups consecutive assistant items (text, thinking, tool_call) into turns.
  * User prompts break the grouping and are returned as separate groups.
  */
-function groupItemsIntoTurns(
-  items: RenderItem[],
-): Array<{ isUserPrompt: boolean; items: RenderItem[] }> {
-  const groups: Array<{ isUserPrompt: boolean; items: RenderItem[] }> = [];
+function groupItemsIntoTurns(items: RenderItem[]): Array<{
+  isUserPrompt: boolean;
+  isStandalone?: boolean;
+  items: RenderItem[];
+}> {
+  const groups: Array<{
+    isUserPrompt: boolean;
+    isStandalone?: boolean;
+    items: RenderItem[];
+  }> = [];
   let currentAssistantGroup: RenderItem[] = [];
 
   for (const item of items) {
-    if (item.type === "user_prompt" || item.type === "session_setup") {
+    if (item.type === "transcript_display_object") {
+      if (currentAssistantGroup.length > 0) {
+        groups.push({ isUserPrompt: false, items: currentAssistantGroup });
+        currentAssistantGroup = [];
+      }
+      groups.push({
+        isUserPrompt: false,
+        isStandalone: true,
+        items: [item],
+      });
+    } else if (item.type === "user_prompt" || item.type === "session_setup") {
       // Flush any pending assistant items
       if (currentAssistantGroup.length > 0) {
         groups.push({ isUserPrompt: false, items: currentAssistantGroup });
@@ -468,6 +486,22 @@ function getFullSessionSearchAnchorForItem(
             id: item.id,
             preview: item.title || getSearchPreviewFallback(text),
             searchText: text,
+          }
+        : null;
+    }
+    case "transcript_display_object": {
+      const searchText = joinSearchParts([
+        item.object.title,
+        item.object.status,
+        item.object.error,
+      ]);
+      return searchText
+        ? {
+            id: item.id,
+            preview:
+              item.object.title ??
+              getSearchPreviewFallback(item.object.error ?? item.object.status),
+            searchText,
           }
         : null;
     }
@@ -887,6 +921,7 @@ interface BtwAsideTimelineItem {
 
 interface Props {
   messages: Message[];
+  transcriptDisplayObjects?: TranscriptDisplayObject[];
   provider?: string;
   isStreaming?: boolean;
   isProcessing?: boolean;
@@ -941,6 +976,10 @@ interface Props {
   onLoadOlderMessages?: () => void;
   /** Whether the client transcript is intentionally loaded from a recent tail */
   clientTailActive?: boolean;
+  getForkSummaryTargetHref?: (targetSessionId: string) => string;
+  onCancelForkSummary?: (objectId: string) => void;
+  onToggleForkSummaryAutoOpen?: (objectId: string, value: boolean) => void;
+  onFollowForkSummary?: (objectId: string) => void;
 }
 
 function XIcon({ size = 14 }: { size?: number }) {
@@ -1068,6 +1107,7 @@ function BtwAsideTimelineCard({
 
 export const MessageList = memo(function MessageList({
   messages,
+  transcriptDisplayObjects = [],
   provider,
   isStreaming = false,
   isProcessing = false,
@@ -1097,6 +1137,10 @@ export const MessageList = memo(function MessageList({
   loadingOlder = false,
   onLoadOlderMessages,
   clientTailActive = false,
+  getForkSummaryTargetHref,
+  onCancelForkSummary,
+  onToggleForkSummaryAutoOpen,
+  onFollowForkSummary,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -1396,10 +1440,13 @@ export const MessageList = memo(function MessageList({
       markdownAugments: Object.keys(markdownAugments ?? {}).length,
       hasActiveToolApproval: !!activeToolApproval,
     });
-    const nextRenderItems = preprocessMessages(messages, {
-      markdown: markdownAugments,
-      activeToolApproval,
-    });
+    const nextRenderItems = insertTranscriptDisplayObjects(
+      preprocessMessages(messages, {
+        markdown: markdownAugments,
+        activeToolApproval,
+      }),
+      transcriptDisplayObjects,
+    );
     const stabilized = stabilizeRenderItems(
       previousRenderItemsRef.current,
       nextRenderItems,
@@ -1410,7 +1457,12 @@ export const MessageList = memo(function MessageList({
       durationMs: highResolutionNowMs() - startedAt,
     });
     return stabilized;
-  }, [messages, markdownAugments, activeToolApproval]);
+  }, [
+    messages,
+    markdownAugments,
+    activeToolApproval,
+    transcriptDisplayObjects,
+  ]);
   useEffect(() => {
     previousRenderItemsRef.current = renderItems;
   }, [renderItems]);
@@ -2951,6 +3003,24 @@ export const MessageList = memo(function MessageList({
           }
 
           const { group } = entry;
+          if (group.isStandalone) {
+            const item = group.items[0];
+            if (!item) return null;
+            return (
+              <RenderItemComponent
+                key={item.id}
+                item={item}
+                isStreaming={isStreaming}
+                thinkingExpanded={false}
+                toggleThinkingExpanded={noopToggleThinkingExpanded}
+                sessionProvider={provider}
+                getForkSummaryTargetHref={getForkSummaryTargetHref}
+                onCancelForkSummary={onCancelForkSummary}
+                onToggleForkSummaryAutoOpen={onToggleForkSummaryAutoOpen}
+                onFollowForkSummary={onFollowForkSummary}
+              />
+            );
+          }
           if (group.isUserPrompt) {
             // User prompts render directly without timeline wrapper
             const item = group.items[0];

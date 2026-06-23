@@ -11,6 +11,22 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UserTurnNavigator } from "../UserTurnNavigator";
 
+vi.mock("../../i18n", () => ({
+  useI18n: () => ({
+    t: (key: string) =>
+      ({
+        turnNotchJump: "Jump",
+        turnNotchForkBefore: "Fork before…",
+        turnNotchForkAfter: "Fork after…",
+        turnNotchCopy: "Copy",
+        turnNotchShowFrom: "Show from",
+        turnNotchDismissMenu: "Dismiss menu",
+        turnNotchJumpToTurn: "Jump to turn",
+        turnNotchShowFromTurn: "Load client transcript from turn",
+      })[key] ?? key,
+  }),
+}));
+
 function rect({
   top,
   height,
@@ -78,6 +94,7 @@ describe("UserTurnNavigator", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -236,6 +253,65 @@ describe("UserTurnNavigator", () => {
     expect(onForkBeforeAnchor).not.toHaveBeenCalled();
     expect(onCopyAnchor).not.toHaveBeenCalled();
     expect(onTrimAnchor).not.toHaveBeenCalled();
+  });
+
+  it("does not jump after a long press opens turn actions", async () => {
+    const scrollContainer = document.createElement("div");
+    const messageList = document.createElement("div");
+    const firstRow = document.createElement("div");
+    const secondRow = document.createElement("div");
+
+    firstRow.dataset.renderId = "user-1";
+    secondRow.dataset.renderId = "user-2";
+    messageList.append(firstRow, secondRow);
+    scrollContainer.append(messageList);
+    document.body.append(scrollContainer);
+
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    setReadonlyNumber(scrollContainer, "scrollHeight", 1000);
+    setReadonlyNumber(scrollContainer, "clientHeight", 200);
+    setReadonlyNumber(scrollContainer, "clientWidth", 360);
+    setReadonlyNumber(scrollContainer, "offsetWidth", 380);
+    scrollContainer.getBoundingClientRect = () =>
+      rect({ top: 100, height: 200 });
+    firstRow.getBoundingClientRect = () => rect({ top: 120, height: 30 });
+    secondRow.getBoundingClientRect = () => rect({ top: 520, height: 30 });
+    const scrollTo = vi.fn();
+    scrollContainer.scrollTo = scrollTo as typeof scrollContainer.scrollTo;
+
+    render(
+      <UserTurnNavigator
+        anchors={[
+          { id: "user-1", preview: "First request" },
+          { id: "user-2", preview: "Second request" },
+        ]}
+        messageListRef={{ current: messageList }}
+        onForkBeforeAnchor={vi.fn()}
+      />,
+    );
+
+    act(() => {
+      dispatchPointerMove(scrollContainer, 492, 150);
+    });
+    const marker = await screen.findByRole("button", {
+      name: "Jump to turn: First request",
+    });
+
+    vi.useFakeTimers();
+    fireEvent.touchStart(marker, {
+      touches: [{ clientX: 492, clientY: 150 }],
+    });
+    act(() => {
+      vi.advanceTimersByTime(450);
+    });
+
+    expect(screen.getByRole("menuitem", { name: "Jump" })).toBeTruthy();
+    fireEvent.click(marker);
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 
   it("does not build normal rail anchors until the scrollbar hotzone is active", async () => {

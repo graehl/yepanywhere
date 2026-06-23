@@ -1,4 +1,5 @@
 import {
+  ALL_PERMISSION_MODES,
   type ContextUsage,
   type PermissionRules,
   PROMPT_SUGGESTION_MODES,
@@ -13,6 +14,7 @@ import {
   type SessionOwnership,
   type ShowThinking,
   type ThinkingOption,
+  type TranscriptDisplayObject,
   type UploadedFile,
   type UserQuestionAnswers,
   type UserMessageDeliveryIntent,
@@ -25,6 +27,7 @@ import {
   thinkingOptionToConfig,
   truncateSessionTitle,
 } from "@yep-anywhere/shared";
+import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { Hono } from "hono";
@@ -713,6 +716,17 @@ function messageContent(message: Message): unknown {
   return nested?.content ?? (message as { content?: unknown }).content;
 }
 
+function messageId(message: Message | undefined): string | undefined {
+  if (!message) {
+    return undefined;
+  }
+  return (
+    (typeof message.uuid === "string" && message.uuid) ||
+    (typeof message.id === "string" && message.id) ||
+    undefined
+  );
+}
+
 function messageHasToolResult(message: Message): boolean {
   if (message.toolUseResult !== undefined) {
     return true;
@@ -1276,6 +1290,110 @@ function isHumanUserMessage(message: Message): boolean {
   return role === "user" && !messageHasToolResult(message);
 }
 
+function resolveForkAfterBoundary(
+  messages: Message[],
+  sourceMessageId: string,
+  sourceIsBusy: boolean,
+):
+  | {
+      placementAfterMessageId: string;
+      retainedThroughMessageId: string;
+      retainedThroughContext?: string;
+    }
+  | { error: string; status: 400 | 404 | 409 } {
+  const sourceIndex = messages.findIndex(
+    (message) => messageId(message) === sourceMessageId,
+  );
+  const sourceMessage = messages[sourceIndex];
+  if (sourceIndex < 0 || !sourceMessage) {
+    return { error: "Selected source message was not found", status: 404 };
+  }
+  if (!isHumanUserMessage(sourceMessage)) {
+    return {
+      error: "sourceMessageId must identify a user-authored request",
+      status: 400,
+    };
+  }
+
+  let nextUserIndex = -1;
+  for (let index = sourceIndex + 1; index < messages.length; index += 1) {
+    const candidate = messages[index];
+    if (candidate && isHumanUserMessage(candidate)) {
+      nextUserIndex = index;
+      break;
+    }
+  }
+  if (nextUserIndex < 0 && sourceIsBusy) {
+    return {
+      error: "The selected turn is still in progress",
+      status: 409,
+    };
+  }
+
+  const searchEnd =
+    nextUserIndex >= 0 ? nextUserIndex - 1 : messages.length - 1;
+  let hasAssistantResponse = false;
+  for (let index = sourceIndex + 1; index <= searchEnd; index += 1) {
+    const candidate = messages[index];
+    if (candidate && messageRole(candidate) === "assistant") {
+      hasAssistantResponse = true;
+      break;
+    }
+  }
+  if (!hasAssistantResponse) {
+    return {
+      error: "The selected request has no completed assistant response",
+      status: 409,
+    };
+  }
+
+  let boundary: Message | undefined;
+  for (let index = searchEnd; index > sourceIndex; index -= 1) {
+    const candidate = messages[index];
+    const role = candidate ? messageRole(candidate) : undefined;
+    if (
+      candidate &&
+      messageId(candidate) &&
+      (role === "user" || role === "assistant")
+    ) {
+      boundary = candidate;
+      break;
+    }
+  }
+  const retainedThroughMessageId = messageId(boundary);
+  if (!boundary || !retainedThroughMessageId) {
+    return { error: "Completed turn boundary has no message id", status: 409 };
+  }
+
+  const placementAfterMessageId =
+    [...messages].reverse().map(messageId).find(Boolean) ??
+    retainedThroughMessageId;
+  const rendered = renderRestartContent(messageContent(boundary)).trim();
+  return {
+    placementAfterMessageId,
+    retainedThroughMessageId,
+    retainedThroughContext: rendered
+      ? truncateForRestart(rendered, 1200)
+      : undefined,
+  };
+}
+
+function forkSummaryTitle(
+  summary: string,
+  fallback: string | undefined,
+): string {
+  const firstLine = summary
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+  const candidate = firstLine
+    ?.replace(/^#{1,6}\s*/u, "")
+    .replace(/^title:\s*/iu, "")
+    .trim()
+    .replace(/[.!?]+$/u, "");
+  return truncateSessionTitle(candidate || fallback || "Forked session");
+}
+
 function messageTitleCandidate(message: Message): string | undefined {
   if (
     !isHumanUserMessage(message) ||
@@ -1635,6 +1753,40 @@ function extractContextUsageFromSDKMessages(
 
 export function createSessionsRoutes(deps: SessionsDeps): Hono {
   const routes = new Hono();
+  const activeForkSummaryJobs = new Map<
+    string,
+    { objectId: string; abortController: AbortController }
+  >();
+  const emitTranscriptDisplayObjects = (sessionId: string): void => {
+    deps.eventBus?.emit({
+      type: "session-metadata-changed",
+      sessionId,
+      transcriptDisplayObjects:
+        deps.sessionMetadataService?.getTranscriptDisplayObjects(sessionId) ??
+        [],
+      timestamp: new Date().toISOString(),
+    });
+  };
+  const updateForkSummaryChildMetadata = async (
+    childSessionId: string,
+    parentSessionId: string,
+    title: string,
+    archived: boolean,
+  ): Promise<void> => {
+    await deps.sessionMetadataService?.updateMetadata(childSessionId, {
+      title,
+      archived,
+      parentSessionId,
+    });
+    deps.eventBus?.emit({
+      type: "session-metadata-changed",
+      sessionId: childSessionId,
+      title,
+      archived,
+      parentSessionId,
+      timestamp: new Date().toISOString(),
+    });
+  };
   const getCodexReader = (projectPath: string): CodexSessionReader | null =>
     deps.codexReaderFactory?.(projectPath) ??
     (deps.codexSessionsDir
@@ -2073,6 +2225,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         heartbeatForceAfterMinutes:
           metadata?.heartbeatForceAfterMinutes ?? undefined,
         promptSuggestionMode: metadata?.promptSuggestionMode,
+        transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
         lastSeenAt,
         hasUnread,
       },
@@ -2398,6 +2551,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             heartbeatTurnText: metadata?.heartbeatTurnText,
             heartbeatForceAfterMinutes: metadata?.heartbeatForceAfterMinutes,
             promptSuggestionMode: metadata?.promptSuggestionMode,
+            transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
             lastSeenAt: lastSeenEntry?.timestamp,
             hasUnread,
             provider: process.provider,
@@ -2555,6 +2709,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         heartbeatTurnText: metadata?.heartbeatTurnText,
         heartbeatForceAfterMinutes: metadata?.heartbeatForceAfterMinutes,
         promptSuggestionMode: metadata?.promptSuggestionMode,
+        transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
         // Model comes from the session reader (extracted from JSONL)
         model: session.model,
         lastSeenAt,
@@ -3803,9 +3958,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   });
 
   // POST /api/projects/:projectId/sessions/:sessionId/fork-summary
-  // Generate a whole-context fork-after-summary without polluting the source
-  // transcript, then submit that summary as an ordinary user turn in the
-  // target fork.
+  // Start a server-owned whole-context fork-after-summary job. The response
+  // returns after durable job creation; generation continues independently of
+  // the requesting client connection.
   routes.post(
     "/projects/:projectId/sessions/:sessionId/fork-summary",
     async (c) => {
@@ -3824,25 +3979,40 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
 
       let body: {
-        afterTurnMessageId?: unknown;
+        sourceMessageId?: unknown;
         instructions?: unknown;
-        mode?: PermissionMode;
+        mode?: unknown;
+        autoOpenWhenReady?: unknown;
       };
       try {
         body = await c.req.json();
       } catch {
         return c.json({ error: "Invalid JSON body" }, 400);
       }
-      const afterTurnMessageId =
-        typeof body.afterTurnMessageId === "string" &&
-        body.afterTurnMessageId.trim()
-          ? body.afterTurnMessageId.trim()
+      const sourceMessageId =
+        typeof body.sourceMessageId === "string" && body.sourceMessageId.trim()
+          ? body.sourceMessageId.trim()
           : undefined;
-      if (!afterTurnMessageId) {
-        return c.json({ error: "afterTurnMessageId is required" }, 400);
+      if (!sourceMessageId) {
+        return c.json({ error: "sourceMessageId is required" }, 400);
       }
+      if (
+        body.mode !== undefined &&
+        (typeof body.mode !== "string" ||
+          !ALL_PERMISSION_MODES.includes(body.mode as PermissionMode))
+      ) {
+        return c.json({ error: "Invalid permission mode" }, 400);
+      }
+      if (
+        body.autoOpenWhenReady !== undefined &&
+        typeof body.autoOpenWhenReady !== "boolean"
+      ) {
+        return c.json({ error: "autoOpenWhenReady must be a boolean" }, 400);
+      }
+      const mode = body.mode as PermissionMode | undefined;
       const instructions =
         typeof body.instructions === "string" ? body.instructions : undefined;
+      const autoOpenWhenReady = body.autoOpenWhenReady === true;
 
       const metadataProvider = deps.sessionMetadataService?.getProvider(
         sessionId,
@@ -3856,185 +4026,411 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           400,
         );
       }
-
-      let afterTurnContext: string | undefined;
-      try {
-        const sourceSession = await loadRestartSourceSession(
-          project,
-          sessionId,
-          projectId,
-          providerName,
-          sourceProcess,
+      if (!deps.sessionMetadataService) {
+        return c.json({ error: "Session metadata service not available" }, 503);
+      }
+      if (activeForkSummaryJobs.has(sessionId)) {
+        return c.json(
+          { error: "A fork summary is already generating for this session" },
+          409,
         );
-        const boundaryMessage = sourceSession?.messages.find((message) => {
-          const record = message as { uuid?: unknown; id?: unknown };
-          return (
-            record.uuid === afterTurnMessageId || record.id === afterTurnMessageId
-          );
-        });
-        const rendered = boundaryMessage
-          ? renderRestartContent(messageContent(boundaryMessage)).trim()
-          : "";
-        afterTurnContext = rendered
-          ? truncateForRestart(rendered, 1200)
-          : undefined;
-      } catch {
-        // Boundary context is advisory; the id remains the source of truth.
       }
 
-      let generated: { text: string; generatorSessionId?: string };
-      try {
-        generated = await deps.supervisor.generateSummary(providerName, {
-          purpose: "fork-after-summary",
-          strategy: "fork",
-          sessionId,
-          cwd: project.path,
-          afterTurnMessageId,
-          afterTurnContext,
-          instructions,
-          context: "whole",
-        });
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Summary generation failed";
-        getLogger().warn(
-          {
-            event: "fork_after_summary_generation_failed",
+      const sourceSession = sourceProcess
+        ? ({
+            messages: sdkMessagesToClientMessages(
+              sourceProcess.getMessageHistory(),
+            ),
+          } as Session)
+        : await loadRestartSourceSession(
+            project,
             sessionId,
             projectId,
             providerName,
-            afterTurnMessageId,
-            error: message,
-          },
-          "Fork-after-summary generation failed",
-        );
-        return c.json({ error: message }, 500);
+          );
+      if (!sourceSession) {
+        return c.json({ error: "Source session not found" }, 404);
+      }
+      const boundary = resolveForkAfterBoundary(
+        sourceSession.messages,
+        sourceMessageId,
+        sourceProcess?.state.type === "in-turn" ||
+          sourceProcess?.state.type === "waiting-input",
+      );
+      if ("error" in boundary) {
+        return c.json({ error: boundary.error }, boundary.status);
       }
 
+      const displayObject: TranscriptDisplayObject = {
+        id: randomUUID(),
+        kind: "fork-summary",
+        createdAt: new Date().toISOString(),
+        placementAfterMessageId: boundary.placementAfterMessageId,
+        sourceMessageId,
+        retainedThroughMessageId: boundary.retainedThroughMessageId,
+        status: "generating",
+        autoOpenWhenReady: autoOpenWhenReady || undefined,
+      };
+      const abortController = new AbortController();
+      activeForkSummaryJobs.set(sessionId, {
+        objectId: displayObject.id,
+        abortController,
+      });
+      try {
+        await deps.sessionMetadataService.addTranscriptDisplayObject(
+          sessionId,
+          displayObject,
+        );
+      } catch (error) {
+        activeForkSummaryJobs.delete(sessionId);
+        throw error;
+      }
+      emitTranscriptDisplayObjects(sessionId);
+
       const originalMetadata =
-        deps.sessionMetadataService?.getMetadata(sessionId);
+        deps.sessionMetadataService.getMetadata(sessionId);
       const baseTitle = normalizeRestartTitleCandidate(
-        originalMetadata?.customTitle,
+        originalMetadata?.customTitle ?? sourceSession.title,
       );
-      const forkTitle = baseTitle
+      const fallbackTitle = baseTitle
         ? truncateSessionTitle(
             /^Fork:/i.test(baseTitle) ? baseTitle : `Fork: ${baseTitle}`,
           )
         : undefined;
-
-      let fork: { sessionId: string };
-      try {
-        fork = await deps.supervisor.forkSession({
-          sessionId,
-          projectPath: project.path,
-          providerName,
-          upToMessageId: afterTurnMessageId,
-          title: forkTitle,
-        });
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Transcript fork failed";
-        getLogger().warn(
-          {
-            event: "fork_after_summary_target_fork_failed",
-            sessionId,
-            projectId,
-            providerName,
-            afterTurnMessageId,
-            error: message,
-          },
-          "Fork-after-summary target fork failed",
-        );
-        return c.json({ error: message }, 500);
-      }
-
       const savedExecutor = parseOptionalExecutor(
-        deps.sessionMetadataService?.getExecutor(sessionId),
+        deps.sessionMetadataService.getExecutor(sessionId),
       ).executor;
       const requestedModel =
-        deps.sessionMetadataService?.getRequestedModel(sessionId) ??
+        deps.sessionMetadataService.getRequestedModel(sessionId) ??
         sourceProcess?.model;
-      const result = await deps.supervisor.resumeSession(
-        fork.sessionId,
-        project.path,
-        { text: generated.text, mode: body.mode },
-        body.mode,
-        {
-          providerName,
-          executor: savedExecutor,
-          globalInstructions: getGlobalInstructions(),
-          model: requestedModel,
-          promptSuggestionMode: originalMetadata?.promptSuggestionMode,
-        },
-      );
 
-      if (isQueueFullResponse(result)) {
-        return c.json(
-          { error: "Queue is full", maxQueueSize: result.maxQueueSize },
-          503,
-        );
-      }
-      if (isQueuedResponse(result)) {
-        deps.supervisor.cancelQueuedRequest(result.queueId);
-        return c.json(
-          { error: "Fork summary could not start immediately" },
-          503,
-        );
-      }
-
-      await persistLaunchMetadata(
-        result.sessionId,
-        providerName,
-        savedExecutor,
-        undefined,
-        requestedModel,
-        result.promptSuggestionMode,
-      );
-      if (deps.sessionMetadataService) {
-        if (generated.generatorSessionId) {
+      void (async () => {
+        let generatorSessionId: string | undefined;
+        let targetSessionId: string | undefined;
+        let targetTitle: string | undefined;
+        let targetProcessId: string | undefined;
+        let completed = false;
+        try {
+          const generator = await deps.supervisor.forkSession({
+            sessionId,
+            projectPath: project.path,
+            providerName,
+            title: "Fork summary generator",
+          });
+          generatorSessionId = generator.sessionId;
+          await updateForkSummaryChildMetadata(
+            generator.sessionId,
+            sessionId,
+            "Fork summary generator",
+            true,
+          );
           await persistLaunchMetadata(
-            generated.generatorSessionId,
+            generator.sessionId,
             providerName,
             savedExecutor,
             undefined,
             requestedModel,
             originalMetadata?.promptSuggestionMode,
           );
-          await deps.sessionMetadataService.updateMetadata(
-            generated.generatorSessionId,
+          if (abortController.signal.aborted) {
+            throw new DOMException("Fork summary cancelled", "AbortError");
+          }
+
+          const generated = await deps.supervisor.generateSummary(
+            providerName,
             {
-              title: "Fork summary generator",
-              archived: true,
-              parentSessionId: sessionId,
+              purpose: "fork-after-summary",
+              strategy: "fork",
+              generatorSessionId: generator.sessionId,
+              cwd: project.path,
+              afterTurnMessageId: boundary.retainedThroughMessageId,
+              afterTurnContext: boundary.retainedThroughContext,
+              instructions,
+              signal: abortController.signal,
             },
           );
-        }
-        if (forkTitle) {
-          await deps.sessionMetadataService.updateMetadata(result.sessionId, {
-            title: forkTitle,
-          });
-          deps.eventBus?.emit({
-            type: "session-metadata-changed",
-            sessionId: result.sessionId,
-            title: forkTitle,
-            timestamp: new Date().toISOString(),
-          });
-        }
-      }
+          if (abortController.signal.aborted) {
+            throw new DOMException("Fork summary cancelled", "AbortError");
+          }
 
+          const title = forkSummaryTitle(generated.text, fallbackTitle);
+          targetTitle = title;
+          const target = await deps.supervisor.forkSession({
+            sessionId,
+            projectPath: project.path,
+            providerName,
+            upToMessageId: boundary.retainedThroughMessageId,
+            title,
+          });
+          targetSessionId = target.sessionId;
+          await updateForkSummaryChildMetadata(
+            target.sessionId,
+            sessionId,
+            title,
+            true,
+          );
+          await persistLaunchMetadata(
+            target.sessionId,
+            providerName,
+            savedExecutor,
+            undefined,
+            requestedModel,
+            originalMetadata?.promptSuggestionMode,
+          );
+          if (abortController.signal.aborted) {
+            throw new DOMException("Fork summary cancelled", "AbortError");
+          }
+
+          const result = await deps.supervisor.resumeSession(
+            target.sessionId,
+            project.path,
+            { text: generated.text, mode },
+            mode,
+            {
+              providerName,
+              executor: savedExecutor,
+              globalInstructions: getGlobalInstructions(),
+              model: requestedModel,
+              promptSuggestionMode: originalMetadata?.promptSuggestionMode,
+            },
+          );
+          if (isQueueFullResponse(result)) {
+            throw new Error("Queue is full");
+          }
+          if (isQueuedResponse(result)) {
+            deps.supervisor.cancelQueuedRequest(result.queueId);
+            throw new Error("Fork summary could not start immediately");
+          }
+          targetProcessId = result.id;
+          if (abortController.signal.aborted) {
+            await deps.supervisor.abortProcess(result.id);
+            targetProcessId = undefined;
+            throw new DOMException("Fork summary cancelled", "AbortError");
+          }
+
+          await persistLaunchMetadata(
+            result.sessionId,
+            providerName,
+            savedExecutor,
+            undefined,
+            requestedModel,
+            result.promptSuggestionMode,
+          );
+          await updateForkSummaryChildMetadata(
+            result.sessionId,
+            sessionId,
+            title,
+            false,
+          );
+          await deps.sessionMetadataService?.updateTranscriptDisplayObject(
+            sessionId,
+            displayObject.id,
+            (object) => ({
+              ...object,
+              status: "ready",
+              targetSessionId: result.sessionId,
+              title,
+              error: undefined,
+            }),
+          );
+          emitTranscriptDisplayObjects(sessionId);
+          completed = true;
+        } catch (error) {
+          const cancelled =
+            abortController.signal.aborted ||
+            (error instanceof DOMException && error.name === "AbortError");
+          const logCleanupFailure = (
+            stage: string,
+            cleanupError: unknown,
+          ): void => {
+            getLogger().warn(
+              {
+                event: "fork_after_summary_cleanup_failed",
+                sessionId,
+                projectId,
+                providerName,
+                stage,
+                error:
+                  cleanupError instanceof Error
+                    ? cleanupError.message
+                    : String(cleanupError),
+              },
+              "Fork-after-summary cleanup failed",
+            );
+          };
+          if (generatorSessionId) {
+            try {
+              await updateForkSummaryChildMetadata(
+                generatorSessionId,
+                sessionId,
+                "Fork summary generator",
+                true,
+              );
+            } catch (cleanupError) {
+              logCleanupFailure("archive-generator", cleanupError);
+            }
+          }
+          if (targetSessionId && targetTitle) {
+            try {
+              await updateForkSummaryChildMetadata(
+                targetSessionId,
+                sessionId,
+                targetTitle,
+                true,
+              );
+            } catch (cleanupError) {
+              logCleanupFailure("archive-target", cleanupError);
+            }
+          }
+          if (!completed && targetProcessId) {
+            try {
+              await deps.supervisor.abortProcess(targetProcessId);
+            } catch (cleanupError) {
+              logCleanupFailure("abort-target-process", cleanupError);
+            }
+          }
+          if (!cancelled) {
+            const message =
+              error instanceof Error
+                ? error.message
+                : "Summary generation failed";
+            getLogger().warn(
+              {
+                event: "fork_after_summary_failed",
+                sessionId,
+                projectId,
+                providerName,
+                sourceMessageId,
+                error: message,
+              },
+              "Fork-after-summary job failed",
+            );
+            try {
+              await deps.sessionMetadataService?.updateTranscriptDisplayObject(
+                sessionId,
+                displayObject.id,
+                (object) => ({
+                  ...object,
+                  status: "error",
+                  error: message,
+                }),
+              );
+              emitTranscriptDisplayObjects(sessionId);
+            } catch (cleanupError) {
+              logCleanupFailure("persist-error-state", cleanupError);
+            }
+          }
+        } finally {
+          const active = activeForkSummaryJobs.get(sessionId);
+          if (active?.objectId === displayObject.id) {
+            activeForkSummaryJobs.delete(sessionId);
+          }
+        }
+      })().catch((error) => {
+        getLogger().error(
+          {
+            event: "fork_after_summary_unhandled_failure",
+            sessionId,
+            projectId,
+            providerName,
+            sourceMessageId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Fork-after-summary job escaped its guarded workflow",
+        );
+      });
+
+      return c.json({ displayObject }, 202);
+    },
+  );
+
+  routes.post(
+    "/projects/:projectId/sessions/:sessionId/fork-summary/:objectId/cancel",
+    async (c) => {
+      const projectId = c.req.param("projectId");
+      const sessionId = c.req.param("sessionId");
+      const objectId = c.req.param("objectId");
+      if (!isUrlProjectId(projectId)) {
+        return c.json({ error: "Invalid project ID format" }, 400);
+      }
+      const active = activeForkSummaryJobs.get(sessionId);
+      const object = deps.sessionMetadataService
+        ?.getTranscriptDisplayObjects(sessionId)
+        .find((candidate) => candidate.id === objectId);
+      if (!object) {
+        return c.json({ error: "Transcript display object not found" }, 404);
+      }
+      if (active?.objectId === objectId && object.status === "generating") {
+        active.abortController.abort();
+      } else if (object.status !== "error") {
+        return c.json({ error: "Fork summary job is not active" }, 409);
+      }
+      await deps.sessionMetadataService?.removeTranscriptDisplayObject(
+        sessionId,
+        objectId,
+      );
+      emitTranscriptDisplayObjects(sessionId);
       return c.json({
-        sessionId: result.sessionId,
-        processId: result.id,
-        projectId: result.projectId,
-        provider: result.provider,
-        model: result.resolvedModel ?? result.model,
-        title: forkTitle,
-        permissionMode: result.permissionMode,
-        modeVersion: result.modeVersion,
-        forkedFrom: sessionId,
-        upToMessageId: afterTurnMessageId,
-        generatorSessionId: generated.generatorSessionId,
-        summary: generated.text,
+        transcriptDisplayObjects:
+          deps.sessionMetadataService?.getTranscriptDisplayObjects(sessionId) ??
+          [],
+      });
+    },
+  );
+
+  routes.patch(
+    "/projects/:projectId/sessions/:sessionId/fork-summary/:objectId",
+    async (c) => {
+      const projectId = c.req.param("projectId");
+      const sessionId = c.req.param("sessionId");
+      const objectId = c.req.param("objectId");
+      if (!isUrlProjectId(projectId)) {
+        return c.json({ error: "Invalid project ID format" }, 400);
+      }
+      if (!deps.sessionMetadataService) {
+        return c.json({ error: "Session metadata service not available" }, 503);
+      }
+      let body: { autoOpenWhenReady?: unknown; action?: unknown };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+      const action =
+        body.action === "opened" || body.action === "clicked"
+          ? body.action
+          : undefined;
+      if (
+        body.autoOpenWhenReady !== undefined &&
+        typeof body.autoOpenWhenReady !== "boolean"
+      ) {
+        return c.json({ error: "autoOpenWhenReady must be a boolean" }, 400);
+      }
+      if (body.action !== undefined && !action) {
+        return c.json({ error: "action must be opened or clicked" }, 400);
+      }
+      const now = new Date().toISOString();
+      const updated =
+        await deps.sessionMetadataService.updateTranscriptDisplayObject(
+          sessionId,
+          objectId,
+          (object) => ({
+            ...object,
+            ...(typeof body.autoOpenWhenReady === "boolean"
+              ? { autoOpenWhenReady: body.autoOpenWhenReady || undefined }
+              : {}),
+            ...(action === "opened" ? { openedAt: now } : {}),
+            ...(action === "clicked" ? { clickedAt: now } : {}),
+          }),
+        );
+      if (!updated) {
+        return c.json({ error: "Transcript display object not found" }, 404);
+      }
+      emitTranscriptDisplayObjects(sessionId);
+      return c.json({
+        displayObject: updated,
+        transcriptDisplayObjects:
+          deps.sessionMetadataService.getTranscriptDisplayObjects(sessionId),
       });
     },
   );

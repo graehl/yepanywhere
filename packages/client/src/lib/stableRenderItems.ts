@@ -72,6 +72,12 @@ export function canReuseRenderItem(
         sameArrayItems(previous.prompts, next.prompts)
       );
 
+    case "transcript_display_object":
+      return (
+        next.type === "transcript_display_object" &&
+        previous.object === next.object
+      );
+
     case "system":
       return (
         next.type === "system" &&

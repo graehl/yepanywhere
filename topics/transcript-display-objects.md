@@ -2,10 +2,10 @@
 
 Topic: transcript-display-objects
 
-Status: future work / not built. Captures the idea of **saved display-only
-objects placed in a session's transcript** — the durable home the
-fork-after-summary indicator should transition into. Recorded now so the
-design intent is not lost; nothing here is implemented.
+Status: first kind implemented. Fork-after-summary progress/follow state is a
+server-persisted display object placed in the source transcript. The schema is
+deliberately a tagged union so later comments/status chips can share the
+placement mechanism without entering provider context.
 
 See also:
 [fork-from-turn](fork-from-turn.md) (the motivating instance — the
@@ -59,24 +59,33 @@ for the storage choice:
 2. **A YA (server) restart** — they reappear in the same transcript position
    after the server bounces.
 
-- **Ideal: server-side.** Save them server-side, associated with the session and
-  its placement, so both survival goals hold and the objects follow the user
-  across clients.
-- **Client-side localStorage is an acceptable quick hack** for an MVP, but it
-  cannot meet goal (1): it is per-device, so a device migration loses it. It is
-  also awkward to anchor durably. So treat localStorage as a stopgap, not the
-  target.
+- **Implemented server-side.** Objects live in `session-metadata.json`,
+  associated with the source YA session. Metadata REST responses and
+  `session-metadata-changed` events carry the complete current object set, so
+  clients converge across tabs and devices.
+- Schema version 2 is additive over existing metadata. Version-1 files migrate
+  in place. A persisted `generating` object cannot resume after a server
+  restart, so initialization deterministically marks it `error` with an
+  interrupted-by-restart message.
 
-## Open design questions (for when this is built)
+## Implemented schema and placement
 
-- **Placement anchoring.** How to pin a stable position that survives later
-  turns, edits, and the client's scrollback window (see
-  [scrollback-view-stability](scrollback-view-stability.md)). Anchor to a
-  neighboring message id? An ordinal? A timestamp?
-- **Schema.** What a saved object holds: kind (link/comment/chip), placement
-  anchor, label/text, optional href, mutable state flags (`opened`, `clicked`),
-  created-at. Server-side storage shape and API.
-- **Authorship scope.** System-generated (the fork link) vs potential
-  user-authored comments; whether both share one mechanism.
-- **GLOSSARY.** "Transcript display object" / "pseudo-turn" is a candidate term
-  if this is built.
+- `kind: "fork-summary"` identifies the first object variant.
+- `placementAfterMessageId` anchors the object after the source transcript tail
+  observed when the job is accepted. Later turns render below it. A client with
+  a compact scrollback window omits the object until that anchor is loaded.
+- Immutable provenance records the selected source request and the completed
+  turn boundary retained by the target fork.
+- Mutable state records `generating | ready | error`, target session/title,
+  per-job auto-open choice, and persisted `openedAt` / `clickedAt` timestamps.
+- The stored target is a YA session id, not an origin-qualified URL. Each client
+  constructs its own route using its deployment base path.
+
+## Open design questions
+
+- **Authorship scope.** System-generated objects are implemented. User-authored
+  comments may share the mechanism, but need editing/deletion and authorization
+  rules first.
+- **Placement repair.** Message-id anchoring is stable for append-only
+  transcripts. A future transcript rewrite that removes the anchor needs an
+  explicit re-anchoring or orphan-display policy.

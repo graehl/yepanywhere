@@ -312,8 +312,8 @@ export type SummaryGenerationRequest =
   | {
       purpose: "fork-after-summary";
       strategy: "fork";
-      /** Source provider session id whose whole context should be summarized. */
-      sessionId: string;
+      /** Archived helper fork whose whole context should be summarized. */
+      generatorSessionId: string;
       /** Project working directory the session belongs to. */
       cwd: string;
       /** Completed-turn boundary retained by the target fork. */
@@ -322,14 +322,12 @@ export type SummaryGenerationRequest =
       afterTurnContext?: string;
       /** User-authored summary instructions from the composer. */
       instructions?: string;
-      /** Fork-after-summary intentionally summarizes from whole source context. */
-      context: "whole";
+      /** Cancels the helper query when the server-owned job is cancelled. */
+      signal?: AbortSignal;
     };
 
 export interface SummaryGenerationResult {
   text: string;
-  /** Helper/generator session created to produce this summary, when any. */
-  generatorSessionId?: string;
 }
 
 export interface PromptCacheRefreshResult {

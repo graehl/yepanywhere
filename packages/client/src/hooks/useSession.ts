@@ -136,11 +136,7 @@ function getContextUsageFromTokenUsageMessage(
 }
 
 function parseProcessState(value: unknown): ProcessState | null {
-  if (
-    value === "idle" ||
-    value === "in-turn" ||
-    value === "waiting-input"
-  ) {
+  if (value === "idle" || value === "in-turn" || value === "waiting-input") {
     return value;
   }
   return null;
@@ -608,11 +604,11 @@ export function useSession(
     loadStoredPermissionMode(sessionId) ??
     "default";
   const initialModeVersion = initialStatus?.modeVersion ?? 0;
-  const [localMode, setLocalMode] =
-    useState<PermissionMode>(initialPermissionMode);
+  const [localMode, setLocalMode] = useState<PermissionMode>(
+    initialPermissionMode,
+  );
   const [, setServerMode] = useState<PermissionMode>(initialPermissionMode);
-  const [modeVersion, setModeVersion] =
-    useState<number>(initialModeVersion);
+  const [modeVersion, setModeVersion] = useState<number>(initialModeVersion);
   const localModeRef = useRef<PermissionMode>(localMode);
   // In-place session switches reuse this hook instance (page reloads remount it and
   // use the initializer above). Restore the switched-to session's stored mode, but
@@ -795,8 +791,9 @@ export function useSession(
 
   const messagesRef = useRef<Message[]>(messages);
   const messagesLoadingRef = useRef(loading);
-  const compactBoundaryBaselineRef =
-    useRef<CompactBoundarySnapshot | null>(null);
+  const compactBoundaryBaselineRef = useRef<CompactBoundarySnapshot | null>(
+    null,
+  );
   const canReconcileCompactingFromMessagesRef = useRef(false);
 
   useEffect(() => {
@@ -1166,6 +1163,9 @@ export function useSession(
           }),
           ...(event.promptSuggestionMode !== undefined && {
             promptSuggestionMode: event.promptSuggestionMode,
+          }),
+          ...(event.transcriptDisplayObjects !== undefined && {
+            transcriptDisplayObjects: event.transcriptDisplayObjects,
           }),
         };
       });
@@ -1904,6 +1904,7 @@ export function useSession(
 
   return {
     session,
+    setSession,
     setSessionModel,
     messages,
     agentContent, // Subagent messages keyed by agentId (for Task tool)

@@ -3,6 +3,7 @@ import type {
   ContextUsage,
   PendingInputType,
   PromptSuggestionMode,
+  TranscriptDisplayObject,
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import type { SessionStatus, SessionSummary } from "../types";
@@ -83,6 +84,7 @@ export interface SessionMetadataChangedEvent {
   heartbeatTurnText?: string | null;
   heartbeatForceAfterMinutes?: number | null;
   promptSuggestionMode?: PromptSuggestionMode;
+  transcriptDisplayObjects?: TranscriptDisplayObject[];
   timestamp: string;
 }
 

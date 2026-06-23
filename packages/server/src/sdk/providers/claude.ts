@@ -1105,13 +1105,14 @@ export class ClaudeProvider implements AgentProvider {
   private async generateForkAfterSummary(
     request: Extract<SummaryGenerationRequest, { strategy: "fork" }>,
   ): Promise<SummaryGenerationResult> {
-    const generatorFork = await this.forkSession({
-      sessionId: request.sessionId,
-      cwd: request.cwd,
-      title: "Fork summary generator",
-    });
     const userPrompt = this.createForkAfterSummaryPrompt(request);
     const abortController = new AbortController();
+    const abortFromJob = () => abortController.abort();
+    if (request.signal?.aborted) {
+      abortController.abort();
+    } else {
+      request.signal?.addEventListener("abort", abortFromJob, { once: true });
+    }
     const SUMMARY_TIMEOUT_MS = 60_000;
     const timeout = setTimeout(
       () => abortController.abort(),
@@ -1129,7 +1130,7 @@ export class ClaudeProvider implements AgentProvider {
         type: "user",
         message: { role: "user", content: userPrompt },
         parent_tool_use_id: null,
-        session_id: generatorFork.sessionId,
+        session_id: request.generatorSessionId,
       };
     }
 
@@ -1142,7 +1143,7 @@ export class ClaudeProvider implements AgentProvider {
           permissionMode: "default",
           pathToClaudeCodeExecutable: resolveLocalClaudeCodeExecutable(),
           env: this.getEnv(),
-          resume: generatorFork.sessionId,
+          resume: request.generatorSessionId,
           maxTurns: 1,
           systemPrompt:
             "You are a handoff summary helper. Reply with the summary text only, no preamble.",
@@ -1165,9 +1166,10 @@ export class ClaudeProvider implements AgentProvider {
       if (!cleaned) {
         throw new Error("Summary generation returned empty text");
       }
-      return { text: cleaned, generatorSessionId: generatorFork.sessionId };
+      return { text: cleaned };
     } finally {
       clearTimeout(timeout);
+      request.signal?.removeEventListener("abort", abortFromJob);
       abortController.abort();
     }
   }
@@ -1178,6 +1180,10 @@ export class ClaudeProvider implements AgentProvider {
     const instructions = request.instructions?.trim();
     const boundaryContext = request.afterTurnContext?.trim();
     return [
+      "The first non-empty line must be a concise title of at most 120 characters, with no trailing period.",
+      "Write it as: Title: <title>",
+      "Then leave one blank line before the handoff summary.",
+      "",
       "Summarize the useful state after the retained fork boundary for a peer-agent handoff.",
       `The target fork retains the conversation through completed-turn message id ${request.afterTurnMessageId}.`,
       boundaryContext

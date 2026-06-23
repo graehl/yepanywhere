@@ -223,6 +223,8 @@ export type {
   ContextUsage,
   SessionOwnership,
   SessionSandboxPolicy,
+  ForkSummaryTranscriptDisplayObject,
+  TranscriptDisplayObject,
   AppSessionSummary,
   AppSession,
   SessionMetadataPayload,

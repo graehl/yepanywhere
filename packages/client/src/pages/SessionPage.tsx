@@ -4,6 +4,7 @@ import type {
   ProviderName,
   PublicSessionShareSessionStatusResponse,
   ThinkingOption,
+  TranscriptDisplayObject,
   UploadedFile,
   UserQuestionAnswers,
 } from "@yep-anywhere/shared";
@@ -24,10 +25,6 @@ import {
 } from "../components/BtwAsidePane";
 import { ClientLogRecordingBadge } from "../components/ClientLogRecordingBadge";
 import { ExternalSessionWarning } from "../components/ExternalSessionWarning";
-import {
-  ForkSummaryIndicator,
-  type ForkSummaryJob,
-} from "../components/ForkSummaryIndicator";
 import { getForkSummaryAutoOpen } from "../hooks/useForkSummaryAutoOpen";
 import { PendingToolWarning } from "../components/PendingToolWarning";
 import {
@@ -599,22 +596,6 @@ function isSameLiveModelConfig(
   );
 }
 
-// Follow-link label / forked-session title: the summary's first non-empty line
-// (the enhanced-summary plan makes the model lead with a title line), falling
-// back to the server-provided title. Truncated for display.
-function forkSummaryDisplayTitle(
-  summary: string | undefined,
-  serverTitle: string | undefined,
-): string | undefined {
-  const firstLine = summary
-    ?.split("\n")
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
-  const raw = (firstLine ?? serverTitle ?? "").trim();
-  if (!raw) return undefined;
-  return raw.length > 80 ? `${raw.slice(0, 79)}…` : raw;
-}
-
 export function SessionPage() {
   const { projectId, sessionId } = useParams<{
     projectId: string;
@@ -728,6 +709,7 @@ function SessionPageContent({
 
   const {
     session,
+    setSession,
     messages,
     agentContent,
     setAgentContent,
@@ -836,17 +818,12 @@ function SessionPageContent({
   } | null>(null);
   const [forkSummaryDraft, setForkSummaryDraft] = useState<{
     sourceMessageId: string;
-    afterTurnMessageId: string;
   } | null>(null);
-  // Backgrounded fork-after-summary job (replaces a blocking submit that only
-  // grayed the send button for the 30+ s generation). See ForkSummaryIndicator.
-  const [forkSummaryJob, setForkSummaryJob] = useState<ForkSummaryJob | null>(
-    null,
+  const forkSummaryStartPendingRef = useRef<Set<string>>(new Set());
+  const initiatedForkSummaryAutoOpenRef = useRef<Map<string, boolean>>(
+    new Map(),
   );
-  const forkSummaryAbortRef = useRef<AbortController | null>(null);
-  // Live per-fork auto-open choice (seeded from the persistent default, may be
-  // toggled on the indicator while generating); read at the ready transition.
-  const forkSummaryAutoOpenRef = useRef(false);
+  const attemptedForkSummaryAutoOpenRef = useRef<Set<string>>(new Set());
   // File attachment state
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
@@ -856,6 +833,27 @@ function SessionPageContent({
     new Map(),
   );
   const { showToast } = useToastContext();
+  const updateTranscriptDisplayObjectsForSession = useCallback(
+    (
+      targetSessionId: string,
+      updater: (
+        objects: TranscriptDisplayObject[],
+      ) => TranscriptDisplayObject[],
+    ) => {
+      setSession((current) => {
+        if (!current || current.id !== targetSessionId) {
+          return current;
+        }
+        return {
+          ...current,
+          transcriptDisplayObjects: updater(
+            current.transcriptDisplayObjects ?? [],
+          ),
+        };
+      });
+    },
+    [setSession],
+  );
 
   const rememberSentSubmission = useCallback((text: string, id: string) => {
     const trimmed = text.trim();
@@ -954,11 +952,15 @@ function SessionPageContent({
         }
       }
 
-      if (nextUserIndex < 0 && processState !== "idle") {
+      if (
+        nextUserIndex < 0 &&
+        (processState === "in-turn" || processState === "waiting-input")
+      ) {
         return { pending: true };
       }
 
-      const searchEnd = nextUserIndex >= 0 ? nextUserIndex - 1 : messages.length - 1;
+      const searchEnd =
+        nextUserIndex >= 0 ? nextUserIndex - 1 : messages.length - 1;
       for (let i = searchEnd; i >= index; i -= 1) {
         const candidate = messages[i];
         const candidateId = messageKey(candidate);
@@ -971,112 +973,199 @@ function SessionPageContent({
     [messages, processState],
   );
   const submitForkAfterSummary = useCallback(
-    async (afterTurnMessageId: string, instructions: string) => {
-      if (forkSummaryJob?.status === "generating") return;
-      const abort = new AbortController();
-      forkSummaryAbortRef.current = abort;
-      // Seed the per-fork auto-open choice from the persistent default; the
-      // indicator toggle can change it during generation, and we read the live
-      // value at completion.
+    async (sourceMessageId: string, instructions: string) => {
+      const requestSessionId = actualSessionId;
+      if (
+        forkSummaryStartPendingRef.current.has(requestSessionId) ||
+        session?.transcriptDisplayObjects?.some(
+          (object) => object.status === "generating",
+        )
+      ) {
+        return;
+      }
+      forkSummaryStartPendingRef.current.add(requestSessionId);
       const autoOpenDefault = getForkSummaryAutoOpen();
-      forkSummaryAutoOpenRef.current = autoOpenDefault;
-      // Free the composer immediately and background the 30+ s generation
-      // behind the persistent indicator instead of graying out send.
       draftControlsRef.current?.clearDraft();
       setForkSummaryDraft(null);
-      setForkSummaryJob({
-        status: "generating",
-        startedAt: Date.now(),
-        autoOpenWhenReady: autoOpenDefault,
-      });
       showToast(t("forkSummaryStarted"), "info");
       try {
         const result = await api.forkSessionWithSummary(
           projectId,
-          actualSessionId,
+          requestSessionId,
           {
-            afterTurnMessageId,
+            sourceMessageId,
             instructions,
             mode: permissionMode,
-            signal: abort.signal,
+            autoOpenWhenReady: autoOpenDefault,
           },
         );
-        const title = forkSummaryDisplayTitle(result.summary, result.title);
-        const targetUrl = `${basePath}/projects/${projectId}/sessions/${result.sessionId}`;
-        const targetHref = `${window.location.origin}${targetUrl}`;
-        // Best-effort auto-open in a new tab. Firing after the long await is
-        // outside a user gesture, so browsers usually popup-block it; the
-        // indicator link is then the follow path.
-        let autoOpened = false;
-        if (forkSummaryAutoOpenRef.current) {
-          try {
-            // Open without the "noopener" feature: with it set, window.open
-            // returns null by spec and we lose popup-block detection. Sever the
-            // opener link manually instead (same-origin session tab).
-            const opened = window.open(targetHref, "_blank");
-            if (opened) {
-              opened.opener = null;
-              autoOpened = true;
-            }
-          } catch {
-            autoOpened = false;
-          }
-        }
-        setForkSummaryJob({
-          status: "ready",
-          startedAt: Date.now(),
-          targetSessionId: result.sessionId,
-          targetUrl,
-          targetHref,
-          title,
-          autoOpened,
-        });
+        initiatedForkSummaryAutoOpenRef.current.set(
+          result.displayObject.id,
+          autoOpenDefault,
+        );
+        updateTranscriptDisplayObjectsForSession(
+          requestSessionId,
+          (objects) =>
+            objects.some((object) => object.id === result.displayObject.id)
+              ? [...objects]
+              : [...objects, result.displayObject],
+        );
       } catch (err) {
-        if (abort.signal.aborted) {
-          setForkSummaryJob(null);
-          return;
-        }
-        setForkSummaryJob({
-          status: "error",
-          startedAt: Date.now(),
-          error: err instanceof Error ? err.message : undefined,
-        });
         showToast(
           err instanceof Error ? err.message : t("forkSummaryFailed"),
           "error",
         );
       } finally {
-        if (forkSummaryAbortRef.current === abort) {
-          forkSummaryAbortRef.current = null;
-        }
+        forkSummaryStartPendingRef.current.delete(requestSessionId);
       }
     },
     [
       actualSessionId,
-      basePath,
-      forkSummaryJob?.status,
       permissionMode,
+      projectId,
+      session?.transcriptDisplayObjects,
+      showToast,
+      t,
+      updateTranscriptDisplayObjectsForSession,
+    ],
+  );
+  const cancelForkSummaryJob = useCallback(
+    async (objectId: string) => {
+      const requestSessionId = actualSessionId;
+      try {
+        const result = await api.cancelForkSessionWithSummary(
+          projectId,
+          requestSessionId,
+          objectId,
+        );
+        initiatedForkSummaryAutoOpenRef.current.delete(objectId);
+        updateTranscriptDisplayObjectsForSession(
+          requestSessionId,
+          () => result.transcriptDisplayObjects,
+        );
+      } catch (error) {
+        showToast(
+          error instanceof Error ? error.message : t("forkSummaryFailed"),
+          "error",
+        );
+      }
+    },
+    [
+      actualSessionId,
       projectId,
       showToast,
       t,
+      updateTranscriptDisplayObjectsForSession,
     ],
   );
-  const cancelForkSummaryJob = useCallback(() => {
-    forkSummaryAbortRef.current?.abort();
-    forkSummaryAbortRef.current = null;
-    setForkSummaryJob(null);
-  }, []);
-  const dismissForkSummaryJob = useCallback(() => {
-    setForkSummaryJob(null);
-  }, []);
-  const setForkSummaryAutoOpen = useCallback((next: boolean) => {
-    forkSummaryAutoOpenRef.current = next;
-    setForkSummaryJob((job) =>
-      job && job.status === "generating"
-        ? { ...job, autoOpenWhenReady: next }
-        : job,
-    );
-  }, []);
+  const setForkSummaryAutoOpen = useCallback(
+    async (objectId: string, next: boolean) => {
+      const requestSessionId = actualSessionId;
+      initiatedForkSummaryAutoOpenRef.current.set(objectId, next);
+      updateTranscriptDisplayObjectsForSession(
+        requestSessionId,
+        (objects) =>
+          objects.map((object) =>
+            object.id === objectId
+              ? { ...object, autoOpenWhenReady: next || undefined }
+              : object,
+          ),
+      );
+      try {
+        const result = await api.updateForkSummaryDisplayObject(
+          projectId,
+          requestSessionId,
+          objectId,
+          { autoOpenWhenReady: next },
+        );
+        updateTranscriptDisplayObjectsForSession(
+          requestSessionId,
+          () => result.transcriptDisplayObjects,
+        );
+      } catch (error) {
+        showToast(
+          error instanceof Error ? error.message : t("forkSummaryFailed"),
+          "error",
+        );
+      }
+    },
+    [
+      actualSessionId,
+      projectId,
+      showToast,
+      t,
+      updateTranscriptDisplayObjectsForSession,
+    ],
+  );
+  const followForkSummary = useCallback(
+    (objectId: string) => {
+      const requestSessionId = actualSessionId;
+      void api
+        .updateForkSummaryDisplayObject(projectId, requestSessionId, objectId, {
+          action: "clicked",
+        })
+        .then((result) => {
+          updateTranscriptDisplayObjectsForSession(
+            requestSessionId,
+            () => result.transcriptDisplayObjects,
+          );
+        })
+        .catch(() => {});
+    },
+    [actualSessionId, projectId, updateTranscriptDisplayObjectsForSession],
+  );
+  const getForkSummaryTargetHref = useCallback(
+    (targetSessionId: string) =>
+      `${window.location.origin}${basePath}/projects/${projectId}/sessions/${targetSessionId}`,
+    [basePath, projectId],
+  );
+  useEffect(() => {
+    for (const object of session?.transcriptDisplayObjects ?? []) {
+      if (
+        object.status !== "ready" ||
+        !object.targetSessionId ||
+        object.openedAt ||
+        attemptedForkSummaryAutoOpenRef.current.has(object.id) ||
+        initiatedForkSummaryAutoOpenRef.current.get(object.id) !== true ||
+        object.autoOpenWhenReady !== true
+      ) {
+        continue;
+      }
+      attemptedForkSummaryAutoOpenRef.current.add(object.id);
+      try {
+        const opened = window.open(
+          getForkSummaryTargetHref(object.targetSessionId),
+          "_blank",
+        );
+        if (!opened) {
+          continue;
+        }
+        opened.opener = null;
+        void api
+          .updateForkSummaryDisplayObject(
+            projectId,
+            actualSessionId,
+            object.id,
+            { action: "opened" },
+          )
+          .then((result) => {
+            updateTranscriptDisplayObjectsForSession(
+              actualSessionId,
+              () => result.transcriptDisplayObjects,
+            );
+          })
+          .catch(() => {});
+      } catch {
+        // Popup blocking leaves the durable follow link available.
+      }
+    }
+  }, [
+    actualSessionId,
+    getForkSummaryTargetHref,
+    projectId,
+    session?.transcriptDisplayObjects,
+    updateTranscriptDisplayObjectsForSession,
+  ]);
   const beginForkAfterSummary = useCallback(
     (messageId: string) => {
       if (attachments.length > 0 || uploadProgress.length > 0) {
@@ -1096,12 +1185,11 @@ function SessionPageContent({
         draftControlsRef.current?.getDraft() ?? composerDraftForAnchors
       ).trim();
       if (instructions) {
-        void submitForkAfterSummary(resolved.anchorId, instructions);
+        void submitForkAfterSummary(messageId, instructions);
         return true;
       }
       setForkSummaryDraft({
         sourceMessageId: messageId,
-        afterTurnMessageId: resolved.anchorId,
       });
       draftControlsRef.current?.focus?.();
       return true;
@@ -1142,12 +1230,11 @@ function SessionPageContent({
         return false;
       }
       if (instructions.trim()) {
-        void submitForkAfterSummary(resolved.anchorId, instructions.trim());
+        void submitForkAfterSummary(firstUserId, instructions.trim());
         return true;
       }
       setForkSummaryDraft({
         sourceMessageId: firstUserId,
-        afterTurnMessageId: resolved.anchorId,
       });
       draftControlsRef.current?.focus?.();
       return true;
@@ -3940,6 +4027,7 @@ function SessionPageContent({
               >
                 <MessageList
                   messages={messages}
+                  transcriptDisplayObjects={session?.transcriptDisplayObjects}
                   provider={session?.provider}
                   isProcessing={sessionActivityUi.showProcessingIndicator}
                   isCompacting={isCompacting}
@@ -3974,6 +4062,14 @@ function SessionPageContent({
                   loadingOlder={loadingOlder}
                   onLoadOlderMessages={loadOlderMessages}
                   clientTailActive={clientTailActive}
+                  getForkSummaryTargetHref={getForkSummaryTargetHref}
+                  onCancelForkSummary={(objectId) => {
+                    void cancelForkSummaryJob(objectId);
+                  }}
+                  onToggleForkSummaryAutoOpen={(objectId, value) => {
+                    void setForkSummaryAutoOpen(objectId, value);
+                  }}
+                  onFollowForkSummary={followForkSummary}
                 />
               </AgentContentProvider>
             </SessionMetadataProvider>
@@ -4172,15 +4268,6 @@ function SessionPageContent({
                 </>
               )}
 
-            {!mainComposerForAside && forkSummaryJob && (
-              <ForkSummaryIndicator
-                job={forkSummaryJob}
-                onCancel={cancelForkSummaryJob}
-                onDismiss={dismissForkSummaryJob}
-                onToggleAutoOpen={setForkSummaryAutoOpen}
-              />
-            )}
-
             {/* No pending approval: show full message input */}
             {!(
               pendingInputRequest &&
@@ -4299,7 +4386,7 @@ function SessionPageContent({
                         onCancel: () => setForkSummaryDraft(null),
                         onSubmit: (instructions) => {
                           void submitForkAfterSummary(
-                            forkSummaryDraft.afterTurnMessageId,
+                            forkSummaryDraft.sourceMessageId,
                             instructions,
                           );
                         },

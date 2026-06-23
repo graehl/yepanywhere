@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "../i18n";
 
 export interface UserTurnNavAnchor {
   id: string;
@@ -497,7 +498,8 @@ function measureLayout(
     if (!marker) continue;
     const pos = renderPx[i] ?? marker.topPct * height;
     marker.renderTopPct = clamp(pos / height, 0, 1);
-    const gapAbove = i > 0 ? pos - (renderPx[i - 1] ?? pos) : Number.POSITIVE_INFINITY;
+    const gapAbove =
+      i > 0 ? pos - (renderPx[i - 1] ?? pos) : Number.POSITIVE_INFINITY;
     const gapBelow =
       i < markers.length - 1
         ? (renderPx[i + 1] ?? pos) - pos
@@ -643,6 +645,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   onCopyAnchor,
   searchState,
 }: Props) {
+  const { t } = useI18n();
   const [layout, setLayout] = useState<UserTurnNavLayout | null>(null);
   // Right-click / long-press context menu for a turn notch (fork / copy / hide).
   const [notchMenu, setNotchMenu] = useState<{
@@ -652,6 +655,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     y: number;
   } | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressNextMarkerClickRef = useRef(false);
   // While the context menu is open, suppress the hover preview entirely: it
   // renders over the same notch and the two strobe at frame rate as each fights
   // to be under the cursor. The ref lets focusPreview (deps []) short-circuit.
@@ -937,6 +941,10 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
       const { clientX, clientY } = touch;
       clearLongPress();
       longPressTimerRef.current = setTimeout(() => {
+        suppressNextMarkerClickRef.current = true;
+        window.setTimeout(() => {
+          suppressNextMarkerClickRef.current = false;
+        }, 800);
         openNotchMenu(id, targetId, clientX, clientY);
       }, 450);
     },
@@ -951,6 +959,13 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     return () => window.removeEventListener("keydown", onKey);
   }, [notchMenu, closeNotchMenu]);
   useEffect(() => () => clearLongPress(), [clearLongPress]);
+  const consumeLongPressClick = useCallback(() => {
+    if (!suppressNextMarkerClickRef.current) {
+      return false;
+    }
+    suppressNextMarkerClickRef.current = false;
+    return true;
+  }, []);
   const keepSearchFocusOnMouseDown = useCallback(
     (event: ReactMouseEvent) => {
       if (searchState) {
@@ -1144,9 +1159,13 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                 height: `${marker.hitPx}px`,
                 marginTop: `${-marker.hitPx / 2}px`,
               }}
-              aria-label={`Jump to turn: ${marker.preview}`}
+              aria-label={`${t("turnNotchJumpToTurn")}: ${marker.preview}`}
               title={marker.preview}
-              onClick={() => handleAnchorClick(marker.id, marker.targetId)}
+              onClick={() => {
+                if (!consumeLongPressClick()) {
+                  handleAnchorClick(marker.id, marker.targetId);
+                }
+              }}
               onContextMenu={(event) =>
                 handleMarkerContextMenu(
                   event,
@@ -1181,8 +1200,12 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                   height: `${marker.hitPx}px`,
                   marginTop: `${-marker.hitPx / 2}px`,
                 }}
-                aria-label={`Load client transcript from turn: ${marker.preview}`}
-                onClick={() => onTrimAnchor(marker.id)}
+                aria-label={`${t("turnNotchShowFromTurn")}: ${marker.preview}`}
+                onClick={() => {
+                  if (!consumeLongPressClick()) {
+                    onTrimAnchor(marker.id);
+                  }
+                }}
                 onContextMenu={(event) =>
                   handleMarkerContextMenu(
                     event,
@@ -1252,7 +1275,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
             <button
               type="button"
               className="user-turn-nav-context-overlay"
-              aria-label="Dismiss menu"
+              aria-label={t("turnNotchDismissMenu")}
               onClick={closeNotchMenu}
               onContextMenu={(event) => {
                 event.preventDefault();
@@ -1277,7 +1300,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                   closeNotchMenu();
                 }}
               >
-                Jump
+                {t("turnNotchJump")}
               </button>
               {onForkBeforeAnchor && (
                 <button
@@ -1288,7 +1311,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                     closeNotchMenu();
                   }}
                 >
-                  Fork before…
+                  {t("turnNotchForkBefore")}
                 </button>
               )}
               {onForkAfterAnchor && (
@@ -1300,7 +1323,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                     closeNotchMenu();
                   }}
                 >
-                  Fork after…
+                  {t("turnNotchForkAfter")}
                 </button>
               )}
               {onCopyAnchor && (
@@ -1312,7 +1335,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                     closeNotchMenu();
                   }}
                 >
-                  Copy
+                  {t("turnNotchCopy")}
                 </button>
               )}
               {onTrimAnchor && (
@@ -1324,7 +1347,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                     closeNotchMenu();
                   }}
                 >
-                  Show from
+                  {t("turnNotchShowFrom")}
                 </button>
               )}
             </div>

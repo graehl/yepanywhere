@@ -210,6 +210,20 @@ interface Props {
   promptSuggestion?: string;
   /** Dismiss the current prompt suggestion without acting on it. */
   onDismissPromptSuggestion?: () => void;
+  /** Temporary mode for entering fork-after-summary instructions. */
+  forkSummaryMode?: {
+    title: string;
+    description: string;
+    placeholder: string;
+    submitLabel: string;
+    tooltip: string;
+    icon: string;
+    submitting?: boolean;
+    onCancel: () => void;
+    onSubmit: (instructions: string) => void;
+  };
+  /** Composer shortcut for fork-after-summary using current draft as instructions. */
+  onForkSummaryShortcut?: (instructions: string) => boolean | undefined;
 }
 
 export function MessageInput({
@@ -260,6 +274,8 @@ export function MessageInput({
   onCancelLatestDeferred,
   promptSuggestion,
   onDismissPromptSuggestion,
+  forkSummaryMode,
+  onForkSummaryShortcut,
 }: Props) {
   const { t } = useI18n();
   const [text, setText, controls] = useDraftPersistence(draftKey);
@@ -309,7 +325,11 @@ export function MessageInput({
     slashQuery !== null &&
     dismissedSlashQuery !== slashQuery &&
     matchingSlashCommands.length > 0;
-  const canSubmit = !!(text.trim() || attachments.length > 0);
+  const canSubmit = forkSummaryMode
+    ? !forkSummaryMode.submitting &&
+      attachments.length === 0 &&
+      uploadProgress.length === 0
+    : !!(text.trim() || attachments.length > 0);
   const interimDisplayTranscript = interimTranscript.trim();
   // The inline mirror previews speech in place at the insertion point (replacing
   // any selected span): streaming interim text while words arrive, otherwise the
@@ -425,7 +445,9 @@ export function MessageInput({
     clampPatientPatienceSeconds(patientQueuePatienceSeconds) ??
     DEFAULT_PATIENT_QUEUE_PATIENCE_SECONDS;
   const primaryActionLabel =
-    effectivePrimaryActionKind === "steer"
+    forkSummaryMode
+      ? forkSummaryMode.submitLabel
+      : effectivePrimaryActionKind === "steer"
       ? t("toolbarSteerTooltip")
       : effectivePrimaryActionKind === "queue"
         ? t("toolbarQueueLabel")
@@ -585,6 +607,17 @@ export function MessageInput({
         finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
       }
 
+      if (forkSummaryMode) {
+        if (!disabled && attachments.length === 0 && uploadProgress.length === 0) {
+          controls.clearInput();
+          resetCompositionMetadata();
+          setInterimTranscript("");
+          forkSummaryMode.onSubmit(finalText.trim());
+          textareaRef.current?.focus();
+        }
+        return;
+      }
+
       const hasContent = finalText.trim() || attachments.length > 0;
       if (hasContent && !disabled) {
         const message = finalText.trim();
@@ -610,9 +643,11 @@ export function MessageInput({
       controls,
       onSend,
       attachments.length,
+      uploadProgress.length,
       effectivePrimaryActionKind,
       buildSubmissionMetadata,
       resetCompositionMetadata,
+      forkSummaryMode,
     ],
   );
 
@@ -671,8 +706,11 @@ export function MessageInput({
     textareaRef.current?.focus();
   }, [controls, disabled, onBtwShortcut, resetCompositionMetadata]);
 
-  const submitPrimaryAction =
-    effectivePrimaryActionKind === "queue" ? handleQueue : handleSubmit;
+  const submitPrimaryAction = forkSummaryMode
+    ? handleSubmit
+    : effectivePrimaryActionKind === "queue"
+      ? handleQueue
+      : handleSubmit;
 
   const recallLastSubmission = useCallback(
     (allowExistingText = false) => {
@@ -854,6 +892,29 @@ export function MessageInput({
     ) {
       e.preventDefault();
       handleBtwClick();
+      return;
+    }
+
+    if (
+      e.key === "Enter" &&
+      e.ctrlKey &&
+      e.altKey &&
+      !e.metaKey &&
+      !e.shiftKey &&
+      onForkSummaryShortcut
+    ) {
+      e.preventDefault();
+      const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
+      let finalText = controls.getDraft().trimEnd();
+      if (pendingVoice) {
+        finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
+      }
+      const accepted = onForkSummaryShortcut(finalText.trim());
+      if (accepted !== false && finalText.trim()) {
+        controls.clearInput();
+        resetCompositionMetadata();
+        setInterimTranscript("");
+      }
       return;
     }
 
@@ -1381,7 +1442,11 @@ export function MessageInput({
               }}
               enterKeyHint="send"
               placeholder={
-                externalCollapsed ? t("messageInputContinueAbove") : placeholder
+                externalCollapsed
+                  ? t("messageInputContinueAbove")
+                  : forkSummaryMode
+                    ? forkSummaryMode.placeholder
+                    : placeholder
               }
               disabled={disabled}
               rows={collapsed ? 1 : 3}
@@ -1440,7 +1505,9 @@ export function MessageInput({
               title={primaryActionLabel}
             >
               <span className="send-icon">
-                {effectivePrimaryActionKind === "steer"
+                {forkSummaryMode
+                  ? forkSummaryMode.icon
+                  : effectivePrimaryActionKind === "steer"
                   ? "↗"
                   : effectivePrimaryActionKind === "queue"
                     ? "→"
@@ -1461,6 +1528,28 @@ export function MessageInput({
               onClick={onCancelCorrection}
               aria-label={t("sessionCorrectionCancel")}
               title={t("sessionCorrectionCancel")}
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {!collapsed && forkSummaryMode && (
+          <div className="fork-summary-draft">
+            <div className="fork-summary-draft-copy">
+              <span className="fork-summary-draft-label">
+                {forkSummaryMode.title}
+              </span>
+              <span className="fork-summary-draft-description">
+                {forkSummaryMode.description}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="fork-summary-draft-cancel"
+              onClick={forkSummaryMode.onCancel}
+              aria-label={t("forkSummaryCancel")}
+              title={t("forkSummaryCancel")}
             >
               ×
             </button>
@@ -1587,13 +1676,25 @@ export function MessageInput({
             isThinking={isThinking}
             onStop={onStop}
             onSend={
-              effectivePrimaryActionKind === "queue"
+              forkSummaryMode
+                ? handleSubmit
+                : effectivePrimaryActionKind === "queue"
                 ? handleQueue
                 : handleSubmit
             }
             onQueue={onQueue ? handleQueue : undefined}
             onSteer={hasActiveDualActions ? handleSteer : undefined}
             primaryActionKind={effectivePrimaryActionKind}
+            sendOverride={
+              forkSummaryMode
+                ? {
+                    label: forkSummaryMode.submitLabel,
+                    tooltip: forkSummaryMode.tooltip,
+                    icon: forkSummaryMode.icon,
+                  }
+                : undefined
+            }
+            canForkAfterSummary={!!onForkSummaryShortcut}
             canSend={canSubmit}
             disabled={disabled}
           />

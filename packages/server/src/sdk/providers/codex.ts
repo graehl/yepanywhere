@@ -84,6 +84,8 @@ import type {
   AgentSession,
   AuthStatus,
   StartSessionOptions,
+  SummaryGenerationRequest,
+  SummaryGenerationResult,
 } from "./types.js";
 
 const log = getLogger().child({ component: "codex-provider" });
@@ -2290,12 +2292,25 @@ export class CodexProvider implements AgentProvider {
    * not natively emit prompt_suggestion messages, but it can still run the YA
    * simulated recap helper without mutating the parent session transcript.
    */
-  async generateRecap(
+  async generateSummary(
+    request: SummaryGenerationRequest,
+  ): Promise<SummaryGenerationResult> {
+    if (request.strategy !== "side-session") {
+      throw new Error("Codex does not support fork summary generation");
+    }
+    const text = await this.generateSideSessionRecap(
+      request.recentAssistantText,
+      request.model,
+    );
+    return { text };
+  }
+
+  private async generateSideSessionRecap(
     recentAssistantText: string[],
-    options?: { model?: string },
+    requestedModel?: string,
   ): Promise<string> {
     const userPrompt = this.createRecapPrompt(recentAssistantText);
-    const model = await this.resolveRecapHelperModel(options?.model);
+    const model = await this.resolveRecapHelperModel(requestedModel);
     const codexCommand = await this.resolveCodexCommand();
     const abortController = new AbortController();
     let timedOut = false;

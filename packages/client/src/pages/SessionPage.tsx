@@ -196,6 +196,22 @@ function turnContentText(content: unknown): string {
     .join("\n");
 }
 
+function messageKey(message: Message | undefined): string | undefined {
+  return message?.uuid ?? message?.id;
+}
+
+function isForkAnchorMessage(message: Message | undefined): boolean {
+  return message?.type === "user" || message?.type === "assistant";
+}
+
+function isSessionSetupTurnText(text: string): boolean {
+  const trimmed = text.trimStart();
+  return (
+    trimmed.startsWith("# AGENTS.md instructions") ||
+    trimmed.startsWith("<environment_context>")
+  );
+}
+
 function appendComposerTransferDraft(
   currentDraft: string,
   text: string,
@@ -797,6 +813,19 @@ function SessionPageContent({
     messageId: string;
     originalText: string;
   } | null>(null);
+  const [forkSummaryDraft, setForkSummaryDraft] = useState<{
+    sourceMessageId: string;
+    afterTurnMessageId: string;
+  } | null>(null);
+  const [forkSummarySubmitting, setForkSummarySubmitting] = useState(false);
+  // File attachment state
+  const [attachments, setAttachments] = useState<UploadedFile[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
+  const [attachmentQuality] = useAttachmentUploadQuality();
+  // Track in-flight upload promises so handleSend can wait for them
+  const pendingUploadsRef = useRef<Map<string, Promise<UploadedFile | null>>>(
+    new Map(),
+  );
   const { showToast } = useToastContext();
 
   const rememberSentSubmission = useCallback((text: string, id: string) => {
@@ -878,11 +907,165 @@ function SessionPageContent({
   const currentOwnedProcessId =
     status.owner === "self" ? status.processId : undefined;
 
-  // "Fork from here": real prefix fork up to the message before this user
+  // "Fork before…": real prefix fork up to the message before this user
   // turn; the fork opens cold with an empty composer (rewind-and-continue).
   // Only offered when the provider has a fork primitive (never emulated).
   const supportsForkFromTurn =
     currentProviderInfo?.supportsForkSession === true;
+  const resolveForkAfterAnchor = useCallback(
+    (messageId: string): { anchorId?: string; pending?: boolean } => {
+      const index = messages.findIndex((m) => messageKey(m) === messageId);
+      if (index < 0) return {};
+
+      let nextUserIndex = -1;
+      for (let i = index + 1; i < messages.length; i += 1) {
+        if (messages[i]?.type === "user") {
+          nextUserIndex = i;
+          break;
+        }
+      }
+
+      if (nextUserIndex < 0 && processState !== "idle") {
+        return { pending: true };
+      }
+
+      const searchEnd = nextUserIndex >= 0 ? nextUserIndex - 1 : messages.length - 1;
+      for (let i = searchEnd; i >= index; i -= 1) {
+        const candidate = messages[i];
+        const candidateId = messageKey(candidate);
+        if (candidateId && isForkAnchorMessage(candidate)) {
+          return { anchorId: candidateId };
+        }
+      }
+      return {};
+    },
+    [messages, processState],
+  );
+  const submitForkAfterSummary = useCallback(
+    async (afterTurnMessageId: string, instructions: string) => {
+      if (forkSummarySubmitting) return;
+      setForkSummarySubmitting(true);
+      try {
+        const result = await api.forkSessionWithSummary(
+          projectId,
+          actualSessionId,
+          {
+            afterTurnMessageId,
+            instructions,
+            mode: permissionMode,
+          },
+        );
+        draftControlsRef.current?.clearDraft();
+        setForkSummaryDraft(null);
+        showToast(t("forkSummaryStarted"), "success");
+        navigate(
+          `${basePath}/projects/${projectId}/sessions/${result.sessionId}`,
+        );
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : t("forkSummaryFailed"),
+          "error",
+        );
+      } finally {
+        setForkSummarySubmitting(false);
+      }
+    },
+    [
+      actualSessionId,
+      basePath,
+      forkSummarySubmitting,
+      navigate,
+      permissionMode,
+      projectId,
+      showToast,
+      t,
+    ],
+  );
+  const beginForkAfterSummary = useCallback(
+    (messageId: string) => {
+      if (attachments.length > 0 || uploadProgress.length > 0) {
+        showToast(t("forkSummaryAttachmentsUnsupported"), "error");
+        return false;
+      }
+      const resolved = resolveForkAfterAnchor(messageId);
+      if (resolved.pending) {
+        showToast(t("forkAfterTurnPending"), "error");
+        return false;
+      }
+      if (!resolved.anchorId) {
+        showToast(t("forkAfterTurnNoAnchor"), "error");
+        return false;
+      }
+      const instructions = (
+        draftControlsRef.current?.getDraft() ?? composerDraftForAnchors
+      ).trim();
+      if (instructions) {
+        void submitForkAfterSummary(resolved.anchorId, instructions);
+        return true;
+      }
+      setForkSummaryDraft({
+        sourceMessageId: messageId,
+        afterTurnMessageId: resolved.anchorId,
+      });
+      draftControlsRef.current?.focus?.();
+      return true;
+    },
+    [
+      attachments.length,
+      composerDraftForAnchors,
+      resolveForkAfterAnchor,
+      showToast,
+      submitForkAfterSummary,
+      t,
+      uploadProgress.length,
+    ],
+  );
+  const beginForkAfterInitialTurn = useCallback(
+    (instructions: string) => {
+      if (attachments.length > 0 || uploadProgress.length > 0) {
+        showToast(t("forkSummaryAttachmentsUnsupported"), "error");
+        return false;
+      }
+      const firstUser = messages.find((message) => {
+        if (message.type !== "user") return false;
+        const text = turnContentText(message.message?.content);
+        return !isSessionSetupTurnText(text);
+      });
+      const firstUserId = messageKey(firstUser);
+      if (!firstUserId) {
+        showToast(t("forkAfterTurnNoAnchor"), "error");
+        return false;
+      }
+      const resolved = resolveForkAfterAnchor(firstUserId);
+      if (resolved.pending) {
+        showToast(t("forkAfterTurnPending"), "error");
+        return false;
+      }
+      if (!resolved.anchorId) {
+        showToast(t("forkAfterTurnNoAnchor"), "error");
+        return false;
+      }
+      if (instructions.trim()) {
+        void submitForkAfterSummary(resolved.anchorId, instructions.trim());
+        return true;
+      }
+      setForkSummaryDraft({
+        sourceMessageId: firstUserId,
+        afterTurnMessageId: resolved.anchorId,
+      });
+      draftControlsRef.current?.focus?.();
+      return true;
+    },
+    [
+      attachments.length,
+      messages,
+      resolveForkAfterAnchor,
+      showToast,
+      submitForkAfterSummary,
+      t,
+      uploadProgress.length,
+    ],
+  );
   const forkBeforeUserMessage = useCallback(
     async (messageId: string) => {
       const index = messages.findIndex((m) => (m.uuid ?? m.id) === messageId);
@@ -1162,15 +1345,6 @@ function SessionPageContent({
     projectId,
     session?.projectId,
   ]);
-
-  // File attachment state
-  const [attachments, setAttachments] = useState<UploadedFile[]>([]);
-  const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
-  const [attachmentQuality] = useAttachmentUploadQuality();
-  // Track in-flight upload promises so handleSend can wait for them
-  const pendingUploadsRef = useRef<Map<string, Promise<UploadedFile | null>>>(
-    new Map(),
-  );
 
   useEffect(() => {
     setCorrectionDraft(null);
@@ -3694,6 +3868,9 @@ function SessionPageContent({
                   onForkBeforeUserMessage={
                     supportsForkFromTurn ? forkBeforeUserMessage : undefined
                   }
+                  onForkAfterUserMessage={
+                    supportsForkFromTurn ? beginForkAfterSummary : undefined
+                  }
                   onCopyUserMessage={copyUserMessage}
                   markdownAugments={markdownAugments}
                   activeToolApproval={activeToolApproval}
@@ -4000,6 +4177,31 @@ function SessionPageContent({
                 }
                 onDismissPromptSuggestion={
                   mainComposerForAside ? undefined : dismissPromptSuggestion
+                }
+                forkSummaryMode={
+                  !mainComposerForAside && forkSummaryDraft
+                    ? {
+                        title: t("forkSummaryComposerTitle"),
+                        description: t("forkSummaryComposerDescription"),
+                        placeholder: t("forkSummaryComposerPlaceholder"),
+                        submitLabel: t("forkSummarySubmit"),
+                        tooltip: t("forkSummaryTooltip"),
+                        icon: "⑂",
+                        submitting: forkSummarySubmitting,
+                        onCancel: () => setForkSummaryDraft(null),
+                        onSubmit: (instructions) => {
+                          void submitForkAfterSummary(
+                            forkSummaryDraft.afterTurnMessageId,
+                            instructions,
+                          );
+                        },
+                      }
+                    : undefined
+                }
+                onForkSummaryShortcut={
+                  !mainComposerForAside && supportsForkFromTurn
+                    ? beginForkAfterInitialTurn
+                    : undefined
                 }
               />
             )}

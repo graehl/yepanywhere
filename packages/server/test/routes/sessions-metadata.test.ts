@@ -1527,6 +1527,149 @@ describe("Sessions metadata route", () => {
     });
   });
 
+  it("generates a summary on a helper fork before starting the target fork", async () => {
+    const project = createProject();
+    const generateSummary = vi.fn(async () => ({
+      text: "Kept the setup; continue from the fixed test failure.",
+      generatorSessionId: "sess-generator",
+    }));
+    const forkSession = vi.fn(async () => ({ sessionId: "sess-target" }));
+    const resumeSession = vi.fn(async () => ({
+      id: "proc-target",
+      sessionId: "sess-target",
+      projectId: project.id,
+      provider: "claude",
+      model: "sonnet",
+      resolvedModel: "sonnet",
+      permissionMode: "default",
+      modeVersion: 0,
+      promptSuggestionMode: "native",
+      subscribe: vi.fn(() => vi.fn()),
+    }));
+    const updateMetadata = vi.fn(async () => undefined);
+    const setProvider = vi.fn(async () => undefined);
+    const setRequestedModel = vi.fn(async () => undefined);
+    const emit = vi.fn();
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-source",
+          provider: "claude",
+          model: "sonnet",
+          resolvedModel: "sonnet",
+          permissionMode: "default",
+          modeVersion: 0,
+          getMessageHistory: vi.fn(() => [
+            {
+              type: "assistant",
+              uuid: "msg-after-initial-turn",
+              message: {
+                role: "assistant",
+                content: "Loaded AGENTS and found the failing test.",
+              },
+            },
+          ]),
+        })),
+        supportsForkSession: vi.fn(() => true),
+        generateSummary,
+        forkSession,
+        resumeSession,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "claude"),
+        getRequestedModel: vi.fn(() => "sonnet"),
+        setRequestedModel,
+        getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => ({
+          customTitle: "Refactor session",
+          promptSuggestionMode: "native",
+        })),
+        setProvider,
+        updateMetadata,
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+      eventBus: { emit } as unknown as SessionsDeps["eventBus"],
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/fork-summary`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          afterTurnMessageId: "msg-after-initial-turn",
+          instructions: "focus on verification and next action",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      sessionId: "sess-target",
+      processId: "proc-target",
+      title: "Fork: Refactor session",
+      forkedFrom: "sess-1",
+      upToMessageId: "msg-after-initial-turn",
+      generatorSessionId: "sess-generator",
+      summary: "Kept the setup; continue from the fixed test failure.",
+    });
+    expect(generateSummary).toHaveBeenCalledWith("claude", {
+      purpose: "fork-after-summary",
+      strategy: "fork",
+      sessionId: "sess-1",
+      cwd: project.path,
+      afterTurnMessageId: "msg-after-initial-turn",
+      afterTurnContext: "Loaded AGENTS and found the failing test.",
+      instructions: "focus on verification and next action",
+      context: "whole",
+    });
+    expect(forkSession).toHaveBeenCalledWith({
+      sessionId: "sess-1",
+      projectPath: project.path,
+      providerName: "claude",
+      upToMessageId: "msg-after-initial-turn",
+      title: "Fork: Refactor session",
+    });
+    expect(resumeSession).toHaveBeenCalledWith(
+      "sess-target",
+      project.path,
+      expect.objectContaining({
+        text: "Kept the setup; continue from the fixed test failure.",
+      }),
+      undefined,
+      expect.objectContaining({
+        providerName: "claude",
+        model: "sonnet",
+        promptSuggestionMode: "native",
+      }),
+    );
+    expect(updateMetadata).toHaveBeenCalledWith("sess-generator", {
+      title: "Fork summary generator",
+      archived: true,
+      parentSessionId: "sess-1",
+    });
+    expect(updateMetadata).toHaveBeenCalledWith("sess-target", {
+      title: "Fork: Refactor session",
+    });
+    expect(setProvider).toHaveBeenCalledWith("sess-target", "claude");
+    expect(setProvider).toHaveBeenCalledWith("sess-generator", "claude");
+    expect(setRequestedModel).toHaveBeenCalledWith("sess-target", "sonnet");
+    expect(setRequestedModel).toHaveBeenCalledWith(
+      "sess-generator",
+      "sonnet",
+    );
+  });
+
   it("rejects the fork endpoint when the provider has no fork primitive", async () => {
     const project = createProject();
     const forkSession = vi.fn();

@@ -1622,7 +1622,7 @@ export class Process {
         reason: "native recaps are provider-owned",
       };
     }
-    if (!provider.supportsRecaps || !provider.generateRecap) {
+    if (!provider.supportsRecaps || !provider.generateSummary) {
       return {
         supported: false,
         emitted: false,
@@ -1658,7 +1658,7 @@ export class Process {
     reason?: string;
     text?: string;
   }> {
-    if (!provider.supportsRecaps || !provider.generateRecap) {
+    if (!provider.supportsRecaps || !provider.generateSummary) {
       return {
         supported: false,
         emitted: false,
@@ -1678,10 +1678,13 @@ export class Process {
     this.recapInFlight = true;
     try {
       const text = (
-        await provider.generateRecap(recent, {
+        await provider.generateSummary({
+          purpose: "recap",
+          strategy: "side-session",
+          recentAssistantText: recent,
           model: this.resolveHelperSideModel(),
         })
-      ).trim();
+      ).text.trim();
       if (!text) {
         return {
           supported: true,

@@ -752,10 +752,15 @@ describe("CodexProvider app-server lifecycle", () => {
       expect(testProvider.supportsRecaps).toBe(true);
       expect(testProvider.supportsNativePromptSuggestions).toBe(false);
 
-      const recap = await testProvider.generateRecap(
-        ["Implemented the Codex helper recap path.", "Ran the focused tests."],
-        { model: "cheapest" },
-      );
+      const { text: recap } = await testProvider.generateSummary({
+        purpose: "recap",
+        strategy: "side-session",
+        recentAssistantText: [
+          "Implemented the Codex helper recap path.",
+          "Ran the focused tests.",
+        ],
+        model: "cheapest",
+      });
 
       expect(recap).toBe("Implemented the helper recap and ran focused tests.");
 

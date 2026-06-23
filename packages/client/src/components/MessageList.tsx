@@ -925,6 +925,8 @@ interface Props {
   onTrimBeforeUserMessage?: (messageId: string) => void;
   /** Fork the session from just before the given user message (real prefix fork only). */
   onForkBeforeUserMessage?: (messageId: string) => void;
+  /** Fork after the completed turn for this user message, optionally with a summary. */
+  onForkAfterUserMessage?: (messageId: string) => void;
   /** Copy the given user turn's text (turn-notch context menu). */
   onCopyUserMessage?: (messageId: string) => void;
   /** Pre-rendered markdown HTML from server (keyed by message ID) */
@@ -1087,6 +1089,7 @@ export const MessageList = memo(function MessageList({
   onCorrectLatestUserMessage,
   onTrimBeforeUserMessage,
   onForkBeforeUserMessage,
+  onForkAfterUserMessage,
   onCopyUserMessage,
   markdownAugments,
   activeToolApproval,
@@ -2854,7 +2857,8 @@ export const MessageList = memo(function MessageList({
         }}
         onSearchMatchSelect={selectUserTurnSearchMatch}
         onTrimAnchor={onTrimBeforeUserMessage}
-        onForkAnchor={onForkBeforeUserMessage}
+        onForkBeforeAnchor={onForkBeforeUserMessage}
+        onForkAfterAnchor={onForkAfterUserMessage}
         onCopyAnchor={onCopyUserMessage}
         searchState={userTurnNavSearchState}
       />

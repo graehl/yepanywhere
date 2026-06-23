@@ -272,21 +272,15 @@ export interface AgentProvider {
   yaModelIdForReported?(reported: string | undefined): string | undefined;
 
   /**
-   * Synthesize a short recap of recent agent activity from already-emitted
-   * assistant text. The provider runs an ephemeral, non-persisted query —
-   * the output must not appear in the underlying session transcript.
-   * See topics/recaps.md.
-   *
-   * Implementations may apply timeouts and length limits. Returns the recap
-   * text on success; throws on unrecoverable failure. Implementations should
-   * NOT include trailing CLI-side hints (e.g., the Claude TUI's
-   * `(disable recaps in /config)` suffix) — those are TUI affordances that
-   * do not apply to a YA-generated recap.
+   * Generate a YA-owned summary through one of the supported helper
+   * strategies. Recaps use a cheap side-session strategy over recent
+   * assistant text; fork-after-summary uses a throwaway real fork so the
+   * source transcript is not polluted and provider message structure/cache
+   * warmth are preserved. See topics/recaps.md and topics/fork-from-turn.md.
    */
-  generateRecap?: (
-    recentAssistantText: string[],
-    options?: { model?: string },
-  ) => Promise<string>;
+  generateSummary?: (
+    request: SummaryGenerationRequest,
+  ) => Promise<SummaryGenerationResult>;
 
   /**
    * Fork a session's transcript into a new resumable session, optionally
@@ -306,6 +300,36 @@ export interface AgentProvider {
     /** Title for the forked session. */
     title?: string;
   }) => Promise<{ sessionId: string }>;
+}
+
+export type SummaryGenerationRequest =
+  | {
+      purpose: "recap";
+      strategy: "side-session";
+      recentAssistantText: string[];
+      model?: string;
+    }
+  | {
+      purpose: "fork-after-summary";
+      strategy: "fork";
+      /** Source provider session id whose whole context should be summarized. */
+      sessionId: string;
+      /** Project working directory the session belongs to. */
+      cwd: string;
+      /** Completed-turn boundary retained by the target fork. */
+      afterTurnMessageId: string;
+      /** Human-readable excerpt of the retained boundary, when available. */
+      afterTurnContext?: string;
+      /** User-authored summary instructions from the composer. */
+      instructions?: string;
+      /** Fork-after-summary intentionally summarizes from whole source context. */
+      context: "whole";
+    };
+
+export interface SummaryGenerationResult {
+  text: string;
+  /** Helper/generator session created to produce this summary, when any. */
+  generatorSessionId?: string;
 }
 
 export interface PromptCacheRefreshResult {

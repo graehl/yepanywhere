@@ -3802,6 +3802,243 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     });
   });
 
+  // POST /api/projects/:projectId/sessions/:sessionId/fork-summary
+  // Generate a whole-context fork-after-summary without polluting the source
+  // transcript, then submit that summary as an ordinary user turn in the
+  // target fork.
+  routes.post(
+    "/projects/:projectId/sessions/:sessionId/fork-summary",
+    async (c) => {
+      const projectId = c.req.param("projectId");
+      const sessionId = c.req.param("sessionId");
+
+      if (!isUrlProjectId(projectId)) {
+        return c.json({ error: "Invalid project ID format" }, 400);
+      }
+      const project = await deps.scanner.getOrCreateProject(projectId);
+      if (!project) {
+        return c.json(
+          { error: "Project not found or path does not exist" },
+          404,
+        );
+      }
+
+      let body: {
+        afterTurnMessageId?: unknown;
+        instructions?: unknown;
+        mode?: PermissionMode;
+      };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+      const afterTurnMessageId =
+        typeof body.afterTurnMessageId === "string" &&
+        body.afterTurnMessageId.trim()
+          ? body.afterTurnMessageId.trim()
+          : undefined;
+      if (!afterTurnMessageId) {
+        return c.json({ error: "afterTurnMessageId is required" }, 400);
+      }
+      const instructions =
+        typeof body.instructions === "string" ? body.instructions : undefined;
+
+      const metadataProvider = deps.sessionMetadataService?.getProvider(
+        sessionId,
+      ) as ProviderName | undefined;
+      const sourceProcess = deps.supervisor.getProcessForSession(sessionId);
+      const providerName =
+        metadataProvider ?? sourceProcess?.provider ?? project.provider;
+      if (!deps.supervisor.supportsForkSession(providerName)) {
+        return c.json(
+          { error: `${providerName} does not support transcript fork` },
+          400,
+        );
+      }
+
+      let afterTurnContext: string | undefined;
+      try {
+        const sourceSession = await loadRestartSourceSession(
+          project,
+          sessionId,
+          projectId,
+          providerName,
+          sourceProcess,
+        );
+        const boundaryMessage = sourceSession?.messages.find((message) => {
+          const record = message as { uuid?: unknown; id?: unknown };
+          return (
+            record.uuid === afterTurnMessageId || record.id === afterTurnMessageId
+          );
+        });
+        const rendered = boundaryMessage
+          ? renderRestartContent(messageContent(boundaryMessage)).trim()
+          : "";
+        afterTurnContext = rendered
+          ? truncateForRestart(rendered, 1200)
+          : undefined;
+      } catch {
+        // Boundary context is advisory; the id remains the source of truth.
+      }
+
+      let generated: { text: string; generatorSessionId?: string };
+      try {
+        generated = await deps.supervisor.generateSummary(providerName, {
+          purpose: "fork-after-summary",
+          strategy: "fork",
+          sessionId,
+          cwd: project.path,
+          afterTurnMessageId,
+          afterTurnContext,
+          instructions,
+          context: "whole",
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Summary generation failed";
+        getLogger().warn(
+          {
+            event: "fork_after_summary_generation_failed",
+            sessionId,
+            projectId,
+            providerName,
+            afterTurnMessageId,
+            error: message,
+          },
+          "Fork-after-summary generation failed",
+        );
+        return c.json({ error: message }, 500);
+      }
+
+      const originalMetadata =
+        deps.sessionMetadataService?.getMetadata(sessionId);
+      const baseTitle = normalizeRestartTitleCandidate(
+        originalMetadata?.customTitle,
+      );
+      const forkTitle = baseTitle
+        ? truncateSessionTitle(
+            /^Fork:/i.test(baseTitle) ? baseTitle : `Fork: ${baseTitle}`,
+          )
+        : undefined;
+
+      let fork: { sessionId: string };
+      try {
+        fork = await deps.supervisor.forkSession({
+          sessionId,
+          projectPath: project.path,
+          providerName,
+          upToMessageId: afterTurnMessageId,
+          title: forkTitle,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Transcript fork failed";
+        getLogger().warn(
+          {
+            event: "fork_after_summary_target_fork_failed",
+            sessionId,
+            projectId,
+            providerName,
+            afterTurnMessageId,
+            error: message,
+          },
+          "Fork-after-summary target fork failed",
+        );
+        return c.json({ error: message }, 500);
+      }
+
+      const savedExecutor = parseOptionalExecutor(
+        deps.sessionMetadataService?.getExecutor(sessionId),
+      ).executor;
+      const requestedModel =
+        deps.sessionMetadataService?.getRequestedModel(sessionId) ??
+        sourceProcess?.model;
+      const result = await deps.supervisor.resumeSession(
+        fork.sessionId,
+        project.path,
+        { text: generated.text, mode: body.mode },
+        body.mode,
+        {
+          providerName,
+          executor: savedExecutor,
+          globalInstructions: getGlobalInstructions(),
+          model: requestedModel,
+          promptSuggestionMode: originalMetadata?.promptSuggestionMode,
+        },
+      );
+
+      if (isQueueFullResponse(result)) {
+        return c.json(
+          { error: "Queue is full", maxQueueSize: result.maxQueueSize },
+          503,
+        );
+      }
+      if (isQueuedResponse(result)) {
+        deps.supervisor.cancelQueuedRequest(result.queueId);
+        return c.json(
+          { error: "Fork summary could not start immediately" },
+          503,
+        );
+      }
+
+      await persistLaunchMetadata(
+        result.sessionId,
+        providerName,
+        savedExecutor,
+        undefined,
+        requestedModel,
+        result.promptSuggestionMode,
+      );
+      if (deps.sessionMetadataService) {
+        if (generated.generatorSessionId) {
+          await persistLaunchMetadata(
+            generated.generatorSessionId,
+            providerName,
+            savedExecutor,
+            undefined,
+            requestedModel,
+            originalMetadata?.promptSuggestionMode,
+          );
+          await deps.sessionMetadataService.updateMetadata(
+            generated.generatorSessionId,
+            {
+              title: "Fork summary generator",
+              archived: true,
+              parentSessionId: sessionId,
+            },
+          );
+        }
+        if (forkTitle) {
+          await deps.sessionMetadataService.updateMetadata(result.sessionId, {
+            title: forkTitle,
+          });
+          deps.eventBus?.emit({
+            type: "session-metadata-changed",
+            sessionId: result.sessionId,
+            title: forkTitle,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+
+      return c.json({
+        sessionId: result.sessionId,
+        processId: result.id,
+        projectId: result.projectId,
+        provider: result.provider,
+        model: result.resolvedModel ?? result.model,
+        title: forkTitle,
+        permissionMode: result.permissionMode,
+        modeVersion: result.modeVersion,
+        forkedFrom: sessionId,
+        upToMessageId: afterTurnMessageId,
+        generatorSessionId: generated.generatorSessionId,
+        summary: generated.text,
+      });
+    },
+  );
+
   // POST /api/sessions/:sessionId/messages - Queue message
   routes.post("/sessions/:sessionId/messages", async (c) => {
     const sessionId = c.req.param("sessionId");

@@ -259,6 +259,8 @@ vi.mock("../../i18n", () => ({
             "Full-session reverse search",
           toolbarShortcutSteerCurrentTurn: "Steer current turn",
           toolbarShortcutQueueCurrentTurn: "Queue message",
+          toolbarShortcutForkAfterSummary:
+            "Fork after initial turn with summary",
           toolbarShortcutSend: "Send",
           toolbarShortcutNewLine: "New line",
           toolbarShortcutRightClickLongPress: "Right-click / long-press ?",
@@ -277,6 +279,15 @@ vi.mock("../../i18n", () => ({
           speechTranscribingPlaceholder: "Transcribing...",
           speechFinalizingPlaceholder: "Finalizing...",
           speechTranscribingCancel: "Cancel transcription",
+          forkSummaryComposerTitle: "Fork after selected turn",
+          forkSummaryComposerDescription:
+            "Keep this request and the agent response to it; replace later turns with a generated summary.",
+          forkSummaryComposerPlaceholder:
+            "Optional summary instructions; leave empty for the default summary...",
+          forkSummarySubmit: "Fork with summary",
+          forkSummaryTooltip:
+            "Fork after the selected turn with a generated summary",
+          forkSummaryCancel: "Cancel fork summary",
         }) satisfies Record<string, string>
       )[key] ?? key,
   }),
@@ -370,7 +381,11 @@ function renderMessageInput(
   );
 
   return screen.getByPlaceholderText(
-    extraProps.collapsed ? "messageInputContinueAbove" : placeholder,
+    extraProps.collapsed
+      ? "messageInputContinueAbove"
+      : extraProps.forkSummaryMode
+        ? extraProps.forkSummaryMode.placeholder
+        : placeholder,
   );
 }
 
@@ -505,6 +520,54 @@ describe("MessageInput", () => {
     cleanup();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("uses fork summary mode with empty instructions as a valid submit", () => {
+    const onSubmit = vi.fn();
+    const onCancel = vi.fn();
+    renderMessageInput(vi.fn(), {
+      forkSummaryMode: {
+        title: "Fork after selected turn",
+        description:
+          "Keep this request and the agent response to it; replace later turns with a generated summary.",
+        placeholder:
+          "Optional summary instructions; leave empty for the default summary...",
+        submitLabel: "Fork with summary",
+        tooltip: "Fork after the selected turn with a generated summary",
+        icon: "⑂",
+        onCancel,
+        onSubmit,
+      },
+    });
+
+    expect(screen.getByText("Fork after selected turn")).toBeTruthy();
+    expect(
+      screen.getByPlaceholderText(
+        "Optional summary instructions; leave empty for the default summary...",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Fork with summary" }));
+
+    expect(onSubmit).toHaveBeenCalledWith("");
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("sends the current draft as fork summary instructions with Ctrl+Alt+Enter", () => {
+    const onForkSummaryShortcut = vi.fn(() => true);
+    const textarea = renderMessageInput(vi.fn(), {
+      onForkSummaryShortcut,
+    }) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "focus on tests" } });
+    fireEvent.keyDown(textarea, {
+      key: "Enter",
+      ctrlKey: true,
+      altKey: true,
+    });
+
+    expect(onForkSummaryShortcut).toHaveBeenCalledWith("focus on tests");
+    expect(textarea.value).toBe("");
   });
 
   it("recalls the last submission from a blank composer with Up or Ctrl+P", () => {

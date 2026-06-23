@@ -253,6 +253,12 @@ export interface MessageInputToolbarProps {
   /** Steer the current turn. Used as the alternate action when Enter queues. */
   onSteer?: () => void;
   primaryActionKind?: "send" | "steer" | "queue";
+  sendOverride?: {
+    label: string;
+    tooltip: string;
+    icon: string;
+  };
+  canForkAfterSummary?: boolean;
   canSend?: boolean;
   disabled?: boolean;
 
@@ -530,6 +536,7 @@ interface ToolbarShortcutsControl {
   canSwapEnterAction: boolean;
   onSwapEnterAction?: () => void;
   queueShortcutLabel: string;
+  canForkAfterSummary?: boolean;
 }
 
 interface ToolbarBtwControl {
@@ -1567,6 +1574,16 @@ export function MessageInputToolbarView({
                       </span>
                       <span>{shortcutsControl.queueShortcutLabel}</span>
                     </div>
+                    {shortcutsControl.canForkAfterSummary && (
+                      <div className="session-shortcuts-row">
+                        <span className="session-shortcuts-keys">
+                          <kbd>Ctrl</kbd>
+                          <kbd>Alt</kbd>
+                          <kbd>Enter</kbd>
+                        </span>
+                        <span>{t("toolbarShortcutForkAfterSummary")}</span>
+                      </div>
+                    )}
                     <div className="session-shortcuts-row session-shortcuts-row-muted">
                       <span className="session-shortcuts-keys">
                         {t("toolbarShortcutRightClickLongPress")}
@@ -1812,6 +1829,8 @@ export function MessageInputToolbar({
   onQueue,
   onSteer,
   primaryActionKind,
+  sendOverride,
+  canForkAfterSummary,
   canSend,
   disabled,
   pendingApproval,
@@ -1969,8 +1988,9 @@ export function MessageInputToolbar({
     (effectivePrimaryActionKind === "steer" ||
       effectivePrimaryActionKind === "queue");
   const queueActionTooltip = t("toolbarQueueTooltip");
-  const sendTooltip =
-    effectivePrimaryActionKind === "steer"
+  const sendTooltip = sendOverride
+    ? sendOverride.tooltip
+    : effectivePrimaryActionKind === "steer"
       ? t("toolbarSteerTooltip")
       : effectivePrimaryActionKind === "queue"
         ? queueActionTooltip
@@ -1985,14 +2005,16 @@ export function MessageInputToolbar({
     (btwActive ? "focused-footer" : btwHasAsides ? "focus-existing" : "start");
   const btwTitle = getBtwTitle(effectiveBtwToolbarMode, t);
   const btwPressed = isBtwPressed(effectiveBtwToolbarMode);
-  const primaryActionIcon =
-    effectivePrimaryActionKind === "steer"
+  const primaryActionIcon = sendOverride
+    ? sendOverride.icon
+    : effectivePrimaryActionKind === "steer"
       ? "↗"
       : effectivePrimaryActionKind === "queue"
         ? "→"
         : "↑";
-  const primaryActionLabel =
-    effectivePrimaryActionKind === "steer"
+  const primaryActionLabel = sendOverride
+    ? sendOverride.label
+    : effectivePrimaryActionKind === "steer"
       ? t("toolbarSteerTooltip")
       : effectivePrimaryActionKind === "queue"
         ? hasDualActions
@@ -2359,6 +2381,7 @@ export function MessageInputToolbar({
         canSwapEnterAction,
         onSwapEnterAction,
         queueShortcutLabel,
+        canForkAfterSummary,
       }}
       actionsControl={{
         disabled,

@@ -55,6 +55,8 @@ import type {
   PromptCacheRefreshResult,
   ProviderName,
   StartSessionOptions,
+  SummaryGenerationRequest,
+  SummaryGenerationResult,
 } from "./types.js";
 
 type ClaudeSdkModelInfo = Awaited<ReturnType<Query["supportedModels"]>>[number];
@@ -84,6 +86,24 @@ const requireFromClaudeSdk = createRequire(
   requireFromHere.resolve("@anthropic-ai/claude-agent-sdk"),
 );
 let cachedLocalClaudeCodeExecutable: string | null | undefined;
+
+function extractClaudeAssistantText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+
+  let text = "";
+  for (const block of content) {
+    if (
+      block &&
+      typeof block === "object" &&
+      (block as { type?: string }).type === "text" &&
+      typeof (block as { text?: string }).text === "string"
+    ) {
+      text += (block as { text: string }).text;
+    }
+  }
+  return text;
+}
 
 function isExecutableFile(filePath: string | undefined): filePath is string {
   if (!filePath) return false;
@@ -959,9 +979,25 @@ export class ClaudeProvider implements AgentProvider {
    * recaps; the renderer should still strip defensively in case the SDK
    * later forwards a TUI-shaped recap unchanged.
    */
-  async generateRecap(
+  async generateSummary(
+    request: SummaryGenerationRequest,
+  ): Promise<SummaryGenerationResult> {
+    switch (request.strategy) {
+      case "side-session":
+        return {
+          text: await this.generateSideSessionRecap(
+            request.recentAssistantText,
+            request.model,
+          ),
+        };
+      case "fork":
+        return await this.generateForkAfterSummary(request);
+    }
+  }
+
+  private async generateSideSessionRecap(
     recentAssistantText: string[],
-    options?: { model?: string },
+    model?: string,
   ): Promise<string> {
     const trimmed = recentAssistantText
       .map((text) => text.trim())
@@ -1022,8 +1058,7 @@ export class ClaudeProvider implements AgentProvider {
       };
     }
 
-    const helperModel =
-      options?.model === HELPER_SIDE_MODEL_CHEAPEST ? "haiku" : options?.model;
+    const helperModel = model === HELPER_SIDE_MODEL_CHEAPEST ? "haiku" : model;
 
     try {
       const sdkQuery = query({
@@ -1048,21 +1083,7 @@ export class ClaudeProvider implements AgentProvider {
           message.type === "assistant" &&
           typeof message.message?.content !== "undefined"
         ) {
-          const content = message.message.content;
-          if (typeof content === "string") {
-            text += content;
-          } else if (Array.isArray(content)) {
-            for (const block of content) {
-              if (
-                block &&
-                typeof block === "object" &&
-                (block as { type?: string }).type === "text" &&
-                typeof (block as { text?: string }).text === "string"
-              ) {
-                text += (block as { text: string }).text;
-              }
-            }
-          }
+          text += extractClaudeAssistantText(message.message.content);
         }
         if (message.type === "result") {
           break;
@@ -1079,6 +1100,99 @@ export class ClaudeProvider implements AgentProvider {
       clearTimeout(timeout);
       abortController.abort();
     }
+  }
+
+  private async generateForkAfterSummary(
+    request: Extract<SummaryGenerationRequest, { strategy: "fork" }>,
+  ): Promise<SummaryGenerationResult> {
+    const generatorFork = await this.forkSession({
+      sessionId: request.sessionId,
+      cwd: request.cwd,
+      title: "Fork summary generator",
+    });
+    const userPrompt = this.createForkAfterSummaryPrompt(request);
+    const abortController = new AbortController();
+    const SUMMARY_TIMEOUT_MS = 60_000;
+    const timeout = setTimeout(
+      () => abortController.abort(),
+      SUMMARY_TIMEOUT_MS,
+    );
+    timeout.unref?.();
+
+    async function* singlePrompt(): AsyncGenerator<{
+      type: "user";
+      message: { role: "user"; content: string };
+      parent_tool_use_id: null;
+      session_id: string;
+    }> {
+      yield {
+        type: "user",
+        message: { role: "user", content: userPrompt },
+        parent_tool_use_id: null,
+        session_id: generatorFork.sessionId,
+      };
+    }
+
+    try {
+      const sdkQuery = query({
+        prompt: singlePrompt(),
+        options: {
+          cwd: request.cwd,
+          abortController,
+          permissionMode: "default",
+          pathToClaudeCodeExecutable: resolveLocalClaudeCodeExecutable(),
+          env: this.getEnv(),
+          resume: generatorFork.sessionId,
+          maxTurns: 1,
+          systemPrompt:
+            "You are a handoff summary helper. Reply with the summary text only, no preamble.",
+        },
+      });
+
+      let text = "";
+      for await (const message of sdkQuery as AsyncIterable<AgentSDKMessage>) {
+        if (
+          message.type === "assistant" &&
+          typeof message.message?.content !== "undefined"
+        ) {
+          text += extractClaudeAssistantText(message.message.content);
+        }
+        if (message.type === "result") {
+          break;
+        }
+      }
+      const cleaned = text.trim();
+      if (!cleaned) {
+        throw new Error("Summary generation returned empty text");
+      }
+      return { text: cleaned, generatorSessionId: generatorFork.sessionId };
+    } finally {
+      clearTimeout(timeout);
+      abortController.abort();
+    }
+  }
+
+  private createForkAfterSummaryPrompt(
+    request: Extract<SummaryGenerationRequest, { strategy: "fork" }>,
+  ): string {
+    const instructions = request.instructions?.trim();
+    const boundaryContext = request.afterTurnContext?.trim();
+    return [
+      "Summarize the useful state after the retained fork boundary for a peer-agent handoff.",
+      `The target fork retains the conversation through completed-turn message id ${request.afterTurnMessageId}.`,
+      boundaryContext
+        ? `The retained boundary is the completed turn ending with this excerpt:\n${boundaryContext}`
+        : undefined,
+      "The target fork already includes the original request and the assistant/tool work through that selected completed turn.",
+      "Do not repeat setup, instruction loading, initial repository orientation, or investigation already present in that retained prefix.",
+      "Preserve decisions, constraints, current state, changed files, verification evidence, open risks, and the next useful action.",
+      "Do not continue the task. Write text that can be submitted as the next user turn in the target fork.",
+      instructions ? "" : undefined,
+      instructions ? "Additional user instructions:" : undefined,
+      instructions || undefined,
+    ]
+      .filter((part): part is string => part !== undefined)
+      .join("\n");
   }
 
   async refreshPromptCache(options: {

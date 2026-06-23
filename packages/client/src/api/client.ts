@@ -808,6 +808,37 @@ export const api = {
       body: JSON.stringify({ upToMessageId: options?.upToMessageId }),
     }),
 
+  forkSessionWithSummary: (
+    projectId: string,
+    sessionId: string,
+    options: {
+      afterTurnMessageId: string;
+      instructions?: string;
+      mode?: PermissionMode;
+    },
+  ) =>
+    fetchJSON<{
+      sessionId: string;
+      processId: string;
+      projectId: string;
+      provider?: ProviderName;
+      model?: string;
+      title?: string;
+      permissionMode?: PermissionMode;
+      modeVersion?: number;
+      forkedFrom: string;
+      upToMessageId: string;
+      generatorSessionId?: string;
+      summary: string;
+    }>(`/projects/${projectId}/sessions/${sessionId}/fork-summary`, {
+      method: "POST",
+      body: JSON.stringify({
+        afterTurnMessageId: options.afterTurnMessageId,
+        instructions: options.instructions,
+        mode: options.mode,
+      }),
+    }),
+
   queueMessage: (
     sessionId: string,
     message: string,

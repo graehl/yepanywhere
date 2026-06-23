@@ -7,15 +7,12 @@
 
 Topic: fork-from-turn
 
-Status: partly built. The turn-notch context menu (jump / fork / copy /
-hide-previous) and fork compose-prefill are implemented. The next design step
-is to replace the single fork entry with explicit **Fork before…** and **Fork
-after…** actions, where **Fork after…** can use the composer as summary
-instructions and create a *fork-after-summary*: a fork whose later history is
-replaced by an LLM-generated summary. That summary is produced by the
-generalized recap/summary facility (see [recaps](recaps.md)), not pasted-together
-turns. This design is **decided** — committed to build, with the timing chosen
-later — not a speculative sketch.
+Status: built for the first UI/backend pass. The turn-notch context menu now
+uses explicit **Fork before…** and **Fork after…** actions. **Fork after…** can
+use the composer as summary instructions and create a *fork-after-summary*: a
+fork whose later history is replaced by an LLM-generated summary. That summary
+is produced by the generalized recap/summary facility (see [recaps](recaps.md)),
+not pasted-together turns.
 
 See also:
 [session-context-actions](session-context-actions.md) (fork-capability ground
@@ -110,21 +107,26 @@ If the composer already contains text, YA treats that text as summary
 instructions. If the composer is empty, the mode changes the placeholder so the
 user can enter summary instructions.
 
-For **Fork after…**, the composer mode needs these actions:
+For **Fork after…**, the composer mode is only shown when the composer was empty
+when the action was invoked. If the composer already has text, there is no mode:
+YA immediately treats the current composer contents as summary instructions and
+starts fork-after-summary. In the empty-composer case, the temporary mode changes
+the placeholder, shows a small badge/caption, changes the send icon to the fork
+action, and adds Cancel:
 
 ```text
 Fork after selected turn
 Keeps this request and the agent response to it; replaces later turns with an
 optional generated summary.
 
-[Cancel] [No summary] [Fork with summary]
+[Cancel] [Fork with summary]
 ```
 
 - **Cancel** returns the composer to normal and preserves the user's text.
-- **No summary** creates a normal fork at the selected completed-turn anchor.
 - **Fork with summary** sends the composer text as instructions for generating
   the summary, creates the target fork at the selected completed-turn anchor, and
-  submits the generated summary as the next user turn in that fork.
+  submits the generated summary as the next user turn in that fork. Empty
+  composer text means "use the default summary template," not "no summary."
 
 For **Fork before…**, the mode can share the same footer actions, but **No
 summary** is the ordinary retry fork. A summary option is allowed but is less
@@ -166,10 +168,12 @@ no `skipTranscript`, so a `resume:`-based one-turn summary would append a visibl
 turn to the *source* transcript (`recaps.md`). Generation therefore runs on a
 throwaway fork — only that fork's jsonl receives the instruction turn:
 
-1. Fork the source session at the after-turn pointer into a generator fork (full
-   context, byte-identical prefix; inherits source prompt-cache warmth while it
-   lasts). This is the high-fidelity strategy's fork, run through the shared
-   helper side session ([side-session-config](side-session-config.md)).
+1. Fork the full source session into a generator fork (byte-identical prefix;
+   inherits source prompt-cache warmth while it lasts). The after-turn pointer,
+   plus a human-readable boundary excerpt when available, tells the summary
+   prompt which completed-turn prefix the target fork will retain. This is the
+   high-fidelity strategy's fork, run through the shared helper side session
+   ([side-session-config](side-session-config.md)).
 2. Submit the YA template plus the composer instructions to the generator fork.
 3. Capture the assistant's generated summary.
 4. Create the *target* fork at the selected **Fork after…** anchor.
@@ -202,9 +206,13 @@ Additional user instructions:
 <composer text, if any>
 ```
 
-The submitted summary should be visibly distinguished from an ordinary
-user-authored request in YA, e.g. as a collapsed or labeled **fork-after-summary**
-block, even if the provider receives it as a user-role message.
+The submitted summary displays as a normal user turn and is part of the target
+fork's provider context. Content after the retained user turn can be collapsed in
+the source outline, but the summary itself should not get a special transcript
+role. Nice-to-have, low priority: YA may insert a non-context UI element
+immediately before the summary showing the user's typed summary-amendment
+instructions; that element is viewer state only and is not submitted to the
+provider.
 
 ### Capability and default posture
 
@@ -242,10 +250,10 @@ the documented shortcut.
   the same summary-instruction control is offered as an option on standard
   handoff too; default stays template + pointer, the LLM summary is opt-in.
   This revises that doc's handoff decision.
-- **Rename `generateRecap` → `generateSummary`** (recommendation): the facility
-  now emits both ≤40-word recaps and longer fork-after-summary handoffs, so
-  "recap" (a GLOSSARY term) understates it; recap becomes a preset of the
-  summary facility.
+- **Rename `generateRecap` → `generateSummary`**: the facility now emits both
+  ≤40-word recaps and longer fork-after-summary handoffs, so "recap" (a
+  GLOSSARY term) understates it; recap becomes a preset of the summary
+  facility.
 
 ## Implemented
 
@@ -253,24 +261,37 @@ the documented shortcut.
    `onContextMenu` (desktop right-click) and a ~450ms long-press (touch) that
    open a portaled menu (`.user-turn-nav-context-menu`) anchored with its right
    edge at the pointer, opening leftward (notches sit at the right edge).
-   Items: **Jump to turn**, **Fork from here** (`onForkAnchor`), **Copy turn**
-   (`onCopyAnchor`), **Hide previous** (`onTrimAnchor`). Plain click still jumps;
-   the trim dot still trims. Dismiss: transparent overlay click, Escape, or
-   selecting an item. New props are optional, so items render only when wired.
+   Items: **Jump**, **Fork before…** (`onForkBeforeAnchor`), **Fork after…**
+   (`onForkAfterAnchor`), **Copy** (`onCopyAnchor`), **Show from**
+   (`onTrimAnchor`). Plain click still jumps; the trim dot still trims. Dismiss:
+   transparent overlay click, Escape, or selecting an item. New props are
+   optional, so items render only when wired.
 2. **Fork seeds the new composer.** `SessionPage.forkBeforeUserMessage` writes
    the selected turn's text to `localStorage["draft-message-" + newSessionId]`
    before navigating; the composer reads that key via `useDraftPersistence`.
    "Branch and retry this turn." `turnContentText()` extracts the text (shared
    with copy).
-3. **Copy** uses the full turn text, resolved in `SessionPage` (`copyUserMessage`
+3. **Fork-after-summary.** `generateRecap` is refactored to provider
+   `generateSummary` with side-session recap and fork strategies. Claude's fork
+   strategy creates a throwaway full-source generator fork, submits the summary
+   prompt there, then `/fork-summary` creates the target fork at the completed
+   turn anchor and submits the generated summary as an ordinary user turn. The
+   client exposes `api.forkSessionWithSummary`.
+4. **Composer fork mode.** `SessionPage` invokes fork-after immediately when the
+   composer already has summary instructions. If the composer is empty, it puts
+   `MessageInput` into a temporary fork-summary mode: the placeholder/caption
+   explain the action, the send icon changes, `Ctrl+Alt+Enter` defaults to the
+   first completed user turn, and empty submit means the default summary
+   template. Cancel exits the mode without discarding typed text.
+5. **Copy** uses the full turn text, resolved in `SessionPage` (`copyUserMessage`
    → `onCopyUserMessage` → `onCopyAnchor`), not the truncated `marker.preview`.
    Silent (matches the existing copy-prompt action; no toast / i18n key added).
 
 Wiring: `SessionPage` → `MessageList` (`onForkBeforeUserMessage`,
-`onCopyUserMessage`, `onTrimBeforeUserMessage`) → `UserTurnNavigator`
-(`onForkAnchor`, `onCopyAnchor`, `onTrimAnchor`). Fork stays gated by
-`supportsForkSession` (`SessionPage` passes `undefined` otherwise, so the menu
-omits Fork).
+`onForkAfterUserMessage`, `onCopyUserMessage`, `onTrimBeforeUserMessage`) →
+`UserTurnNavigator` (`onForkBeforeAnchor`, `onForkAfterAnchor`, `onCopyAnchor`,
+`onTrimAnchor`). Fork stays gated by `supportsForkSession` (`SessionPage` passes
+`undefined` otherwise, so the menu omits Fork).
 
 ## Open questions / follow-ups
 

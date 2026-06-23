@@ -15,7 +15,11 @@ import {
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
 import { getProvider } from "../sdk/providers/index.js";
-import type { AgentProvider } from "../sdk/providers/types.js";
+import type {
+  AgentProvider,
+  SummaryGenerationRequest,
+  SummaryGenerationResult,
+} from "../sdk/providers/types.js";
 import { normalizeSlashCommandName } from "../sdk/slashCommandEmulation.js";
 import type {
   ClaudeSDK,
@@ -1947,6 +1951,22 @@ export class Supervisor {
       upToMessageId: options.upToMessageId,
       title: options.title,
     });
+  }
+
+  async generateSummary(
+    providerName: ProviderName | undefined,
+    request: SummaryGenerationRequest,
+  ): Promise<SummaryGenerationResult> {
+    const provider = this.resolveProvider(
+      providerName ? { providerName } : undefined,
+    );
+    if (!provider) {
+      throw new Error("provider is not available");
+    }
+    if (typeof provider.generateSummary !== "function") {
+      throw new Error(`${provider.name} does not support summary generation`);
+    }
+    return provider.generateSummary(request);
   }
 
   getProcess(processId: string): Process | undefined {

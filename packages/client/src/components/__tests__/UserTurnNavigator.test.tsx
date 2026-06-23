@@ -166,6 +166,78 @@ describe("UserTurnNavigator", () => {
     ).toBeTruthy();
   });
 
+  it("opens compact turn context actions for fork before and after", async () => {
+    const scrollContainer = document.createElement("div");
+    const messageList = document.createElement("div");
+    const firstRow = document.createElement("div");
+    const secondRow = document.createElement("div");
+    const onForkBeforeAnchor = vi.fn();
+    const onForkAfterAnchor = vi.fn();
+    const onCopyAnchor = vi.fn();
+    const onTrimAnchor = vi.fn();
+
+    firstRow.dataset.renderId = "user-1";
+    secondRow.dataset.renderId = "user-2";
+    messageList.append(firstRow, secondRow);
+    scrollContainer.append(messageList);
+    document.body.append(scrollContainer);
+
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    setReadonlyNumber(scrollContainer, "scrollHeight", 1000);
+    setReadonlyNumber(scrollContainer, "clientHeight", 200);
+    setReadonlyNumber(scrollContainer, "clientWidth", 360);
+    setReadonlyNumber(scrollContainer, "offsetWidth", 380);
+    scrollContainer.getBoundingClientRect = () =>
+      rect({ top: 100, height: 200 });
+    firstRow.getBoundingClientRect = () => rect({ top: 120, height: 30 });
+    secondRow.getBoundingClientRect = () => rect({ top: 520, height: 30 });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    render(
+      <UserTurnNavigator
+        anchors={[
+          { id: "user-1", preview: "First request" },
+          { id: "user-2", preview: "Second request" },
+        ]}
+        messageListRef={{ current: messageList }}
+        onForkBeforeAnchor={onForkBeforeAnchor}
+        onForkAfterAnchor={onForkAfterAnchor}
+        onCopyAnchor={onCopyAnchor}
+        onTrimAnchor={onTrimAnchor}
+      />,
+    );
+
+    act(() => {
+      dispatchPointerMove(scrollContainer, 492, 150);
+    });
+
+    const marker = await screen.findByRole("button", {
+      name: "Jump to turn: First request",
+    });
+    fireEvent.contextMenu(marker, { clientX: 492, clientY: 150 });
+
+    expect(screen.getByRole("menuitem", { name: "Jump" })).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Fork before…" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Fork after…" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Show from" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Fork after…" }));
+
+    expect(onForkAfterAnchor).toHaveBeenCalledWith("user-1");
+    expect(onForkBeforeAnchor).not.toHaveBeenCalled();
+    expect(onCopyAnchor).not.toHaveBeenCalled();
+    expect(onTrimAnchor).not.toHaveBeenCalled();
+  });
+
   it("does not build normal rail anchors until the scrollbar hotzone is active", async () => {
     const scrollContainer = document.createElement("div");
     const messageList = document.createElement("div");

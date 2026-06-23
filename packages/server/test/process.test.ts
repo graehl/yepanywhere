@@ -75,7 +75,7 @@ async function waitFor(assertion: () => void): Promise<void> {
 }
 
 function createRecapProvider(
-  generateRecap: AgentProvider["generateRecap"],
+  generateSummary: AgentProvider["generateSummary"],
 ): AgentProvider {
   return {
     name: "claude",
@@ -96,7 +96,7 @@ function createRecapProvider(
     startSession: async () => {
       throw new Error("not used");
     },
-    generateRecap,
+    generateSummary,
   };
 }
 
@@ -1106,7 +1106,7 @@ describe("Process", () => {
 
   describe("recaps", () => {
     it("keeps simulated recaps disabled by default", async () => {
-      const generateRecap = vi.fn(async () => "summary");
+      const generateSummary = vi.fn(async () => ({ text: "summary" }));
       const process = new Process(createMockIterator([]), {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
@@ -1116,7 +1116,7 @@ describe("Process", () => {
       });
 
       const result = await process.requestRecap(
-        createRecapProvider(generateRecap),
+        createRecapProvider(generateSummary),
       );
 
       expect(result).toMatchObject({
@@ -1124,11 +1124,11 @@ describe("Process", () => {
         emitted: false,
         reason: "recaps disabled for this session",
       });
-      expect(generateRecap).not.toHaveBeenCalled();
+      expect(generateSummary).not.toHaveBeenCalled();
     });
 
     it("does not run the simulated recap generator in native mode", async () => {
-      const generateRecap = vi.fn(async () => "summary");
+      const generateSummary = vi.fn(async () => ({ text: "summary" }));
       const process = new Process(createMockIterator([]), {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
@@ -1138,7 +1138,7 @@ describe("Process", () => {
         recapMode: "native",
       });
       const provider = {
-        ...createRecapProvider(generateRecap),
+        ...createRecapProvider(generateSummary),
         supportsNativeRecaps: true,
       };
 
@@ -1149,14 +1149,17 @@ describe("Process", () => {
         emitted: false,
         reason: "native recaps are provider-owned",
       });
-      expect(generateRecap).not.toHaveBeenCalled();
+      expect(generateSummary).not.toHaveBeenCalled();
     });
 
     it("summarizes only assistant turns after the away boundary", async () => {
       const controller = createControllableIterator();
-      const generateRecap = vi.fn(async (recent: string[]) =>
-        recent.join(" | "),
-      );
+      const generateSummary = vi.fn(async (request) => ({
+        text:
+          request.strategy === "side-session"
+            ? request.recentAssistantText.join(" | ")
+            : "",
+      }));
       const process = new Process(controller.iterator, {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
@@ -1192,7 +1195,7 @@ describe("Process", () => {
       await waitFor(() => expect(process.state.type).toBe("idle"));
 
       const result = await process.requestRecap(
-        createRecapProvider(generateRecap),
+        createRecapProvider(generateSummary),
         { sinceMs },
       );
 
@@ -1201,7 +1204,10 @@ describe("Process", () => {
       // the session's current agent line (hover card). See
       // topics/session-hovercard-recent-activity.md.
       expect(result.text).toBe("after");
-      expect(generateRecap).toHaveBeenCalledWith(["after"], {
+      expect(generateSummary).toHaveBeenCalledWith({
+        purpose: "recap",
+        strategy: "side-session",
+        recentAssistantText: ["after"],
         model: "cheapest",
       });
       expect(recaps.at(-1)?.content).toBe("after");
@@ -1211,9 +1217,12 @@ describe("Process", () => {
 
     it("defers recap generation until the active turn completes", async () => {
       const controller = createControllableIterator();
-      const generateRecap = vi.fn(async (recent: string[]) =>
-        recent.join(" | "),
-      );
+      const generateSummary = vi.fn(async (request) => ({
+        text:
+          request.strategy === "side-session"
+            ? request.recentAssistantText.join(" | ")
+            : "",
+      }));
       const process = new Process(controller.iterator, {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
@@ -1245,7 +1254,7 @@ describe("Process", () => {
       );
 
       const result = await process.requestRecap(
-        createRecapProvider(generateRecap),
+        createRecapProvider(generateSummary),
         { sinceMs },
       );
 
@@ -1254,11 +1263,14 @@ describe("Process", () => {
         emitted: false,
         reason: "recap deferred until turn completes",
       });
-      expect(generateRecap).not.toHaveBeenCalled();
+      expect(generateSummary).not.toHaveBeenCalled();
 
       controller.push({ type: "result", session_id: "sess-1" });
       await waitFor(() =>
-        expect(generateRecap).toHaveBeenCalledWith(["during"], {
+        expect(generateSummary).toHaveBeenCalledWith({
+          purpose: "recap",
+          strategy: "side-session",
+          recentAssistantText: ["during"],
           model: "cheapest",
         }),
       );
@@ -1269,9 +1281,12 @@ describe("Process", () => {
 
     it("resolves same-as-main helper model for recap generation", async () => {
       const controller = createControllableIterator();
-      const generateRecap = vi.fn(async (recent: string[]) =>
-        recent.join(" | "),
-      );
+      const generateSummary = vi.fn(async (request) => ({
+        text:
+          request.strategy === "side-session"
+            ? request.recentAssistantText.join(" | ")
+            : "",
+      }));
       const process = new Process(controller.iterator, {
         projectPath: "/test",
         projectId: "proj-1" as UrlProjectId,
@@ -1291,9 +1306,12 @@ describe("Process", () => {
       controller.push({ type: "assistant", message: { content: "after" } });
       controller.push({ type: "result", session_id: "sess-1" });
       await waitFor(() => expect(process.state.type).toBe("idle"));
-      await process.requestRecap(createRecapProvider(generateRecap));
+      await process.requestRecap(createRecapProvider(generateSummary));
 
-      expect(generateRecap).toHaveBeenCalledWith(["after"], {
+      expect(generateSummary).toHaveBeenCalledWith({
+        purpose: "recap",
+        strategy: "side-session",
+        recentAssistantText: ["after"],
         model: "sonnet",
       });
       controller.finish();

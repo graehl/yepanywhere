@@ -41,10 +41,12 @@ interface Props {
   motionCue?: UserTurnNavMotionCue | null;
   onNavigateStart?: () => void;
   onSearchMatchSelect?: (id: string, targetId: string) => void;
-  /** "Hide previous": load the client transcript from this turn (drop earlier). */
+  /** "Show from": load the client transcript from this turn (drop earlier). */
   onTrimAnchor?: (id: string) => void;
   /** Fork the session before this turn (seeds the new composer with the turn). */
-  onForkAnchor?: (id: string) => void;
+  onForkBeforeAnchor?: (id: string) => void;
+  /** Fork after this completed turn, optionally with a generated summary. */
+  onForkAfterAnchor?: (id: string) => void;
   /** Copy this turn's text to the clipboard. */
   onCopyAnchor?: (id: string) => void;
   searchState?: UserTurnNavSearchState | null;
@@ -156,7 +158,7 @@ function spreadMinGap(xs: number[], gap: number): number[] {
     }
     blocks.push({ sum, count });
   }
-  const out = new Array<number>(n);
+  const out = Array.from({ length: n }, () => 0);
   let idx = 0;
   for (const block of blocks) {
     const mean = block.sum / block.count;
@@ -636,7 +638,8 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   onNavigateStart,
   onSearchMatchSelect,
   onTrimAnchor,
-  onForkAnchor,
+  onForkBeforeAnchor,
+  onForkAfterAnchor,
   onCopyAnchor,
   searchState,
 }: Props) {
@@ -893,7 +896,9 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     },
     [handleJump, onSearchMatchSelect, searchState],
   );
-  const hasNotchMenu = Boolean(onForkAnchor || onCopyAnchor || onTrimAnchor);
+  const hasNotchMenu = Boolean(
+    onForkBeforeAnchor || onForkAfterAnchor || onCopyAnchor || onTrimAnchor,
+  );
   const openNotchMenu = useCallback(
     (id: string, targetId: string, x: number, y: number) => {
       // Suppress the hover preview synchronously before showing the menu so the
@@ -1272,18 +1277,30 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                   closeNotchMenu();
                 }}
               >
-                Jump to turn
+                Jump
               </button>
-              {onForkAnchor && (
+              {onForkBeforeAnchor && (
                 <button
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    onForkAnchor(notchMenu.id);
+                    onForkBeforeAnchor(notchMenu.id);
                     closeNotchMenu();
                   }}
                 >
-                  Fork from here
+                  Fork before…
+                </button>
+              )}
+              {onForkAfterAnchor && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onForkAfterAnchor(notchMenu.id);
+                    closeNotchMenu();
+                  }}
+                >
+                  Fork after…
                 </button>
               )}
               {onCopyAnchor && (
@@ -1295,7 +1312,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                     closeNotchMenu();
                   }}
                 >
-                  Copy turn
+                  Copy
                 </button>
               )}
               {onTrimAnchor && (
@@ -1307,7 +1324,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
                     closeNotchMenu();
                   }}
                 >
-                  Hide previous
+                  Show from
                 </button>
               )}
             </div>

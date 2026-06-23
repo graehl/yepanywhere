@@ -13838,9 +13838,16 @@ a.sidebar-nav-item {
 }
 
 .session-list-item:hover .session-list-item__menu,
-.session-list-item:focus-within .session-list-item__menu,
+.session-list-item__link:focus-visible ~ .session-list-item__menu,
+.session-list-item__menu:focus-within,
 .session-list-item__menu.is-open {
   opacity: 1;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .session-list-item:focus-within .session-list-item__menu {
+    opacity: 1;
+  }
 }
 
 /* Adjust gradient for hover state */

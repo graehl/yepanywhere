@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThinkingText } from "../../components/ThinkingText";
 import { renderFixedFontMath } from "../../components/ui/FixedFontMathToggle";
-import { useColorfulSettingsIcons } from "../../hooks/useColorfulSettingsIcons";
 import {
   DEFAULT_CONTENT_MAX_WIDTH_PX,
   MAX_CONTENT_MAX_WIDTH_PX,
@@ -11,6 +10,7 @@ import {
 } from "../../hooks/useContentMaxWidth";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useAlwaysShowQuoteCircles } from "../../hooks/useAlwaysShowQuoteCircles";
+import { useFlatSettingsIcons } from "../../hooks/useFlatSettingsIcons";
 import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionButtonEnabled";
 import { FONT_SIZES, useFontSize } from "../../hooks/useFontSize";
 import { useFunPhrases } from "../../hooks/useFunPhrases";
@@ -123,8 +123,7 @@ export function AppearanceSettings() {
   const [outputToolPreviewLineCountDraft, setOutputToolPreviewLineCountDraft] =
     useState(() => formatNumberSetting(outputToolPreviewLineCount));
   const { theme, setTheme } = useTheme();
-  const { colorfulSettingsIcons, setColorfulSettingsIcons } =
-    useColorfulSettingsIcons();
+  const { flatSettingsIcons, setFlatSettingsIcons } = useFlatSettingsIcons();
   const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
   const { stableToolPreviewRendering, setStableToolPreviewRendering } =
     useStableToolPreviewRendering();
@@ -160,7 +159,7 @@ export function AppearanceSettings() {
       tabSize,
       contentMaxWidth,
       theme,
-      colorfulSettingsIcons,
+      flatSettingsIcons,
       streamingEnabled,
       stableToolPreviewRendering,
       inlineMediaExpandedByDefault,
@@ -185,7 +184,7 @@ export function AppearanceSettings() {
       tabSize,
       contentMaxWidth,
       theme,
-      colorfulSettingsIcons,
+      flatSettingsIcons,
       streamingEnabled,
       stableToolPreviewRendering,
       inlineMediaExpandedByDefault,
@@ -214,7 +213,7 @@ export function AppearanceSettings() {
       setTabSize(snapshot.tabSize);
       setContentMaxWidth(snapshot.contentMaxWidth);
       setTheme(snapshot.theme);
-      setColorfulSettingsIcons(snapshot.colorfulSettingsIcons);
+      setFlatSettingsIcons(snapshot.flatSettingsIcons);
       setStreamingEnabled(snapshot.streamingEnabled);
       setStableToolPreviewRendering(snapshot.stableToolPreviewRendering);
       setInlineMediaExpandedByDefault(snapshot.inlineMediaExpandedByDefault);
@@ -259,7 +258,7 @@ export function AppearanceSettings() {
       setTabSize,
       setContentMaxWidth,
       setTheme,
-      setColorfulSettingsIcons,
+      setFlatSettingsIcons,
       setStreamingEnabled,
       setStableToolPreviewRendering,
       setInlineMediaExpandedByDefault,
@@ -440,14 +439,14 @@ export function AppearanceSettings() {
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>{t("appearanceColorfulSettingsIconsTitle")}</strong>
-            <p>{t("appearanceColorfulSettingsIconsDescription")}</p>
+            <strong>{t("appearanceFlatSettingsIconsTitle")}</strong>
+            <p>{t("appearanceFlatSettingsIconsDescription")}</p>
           </div>
           <label className="toggle-switch">
             <input
               type="checkbox"
-              checked={colorfulSettingsIcons}
-              onChange={(e) => setColorfulSettingsIcons(e.target.checked)}
+              checked={flatSettingsIcons}
+              onChange={(e) => setFlatSettingsIcons(e.target.checked)}
             />
             <span className="toggle-slider" />
           </label>

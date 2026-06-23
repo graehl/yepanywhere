@@ -1,16 +1,13 @@
 import type { ReactNode } from "react";
-import { useColorfulSettingsIcons } from "../../hooks/useColorfulSettingsIcons";
+import { useFlatSettingsIcons } from "../../hooks/useFlatSettingsIcons";
 
 /**
  * Settings category icons.
  *
- * Inline SVGs using currentColor for theme-adaptive coloring (dark in light theme,
- * light in dark/verydark). Proper vector paths with evenodd fillRule for
- * cutouts/holes (e.g. lock keyhole) so the item background shows through cleanly
- * with no raster fringes or anti-alias artifacts.
- *
- * Sized to fit the .settings-category-icon container. Recognizable concepts
- * inspired by the previous emoji, not pixel copies.
+ * The default renderer uses platform color emoji. The optional flat renderer
+ * uses inline SVGs sized to fit the .settings-category-icon container; those
+ * SVGs use currentColor for theme-adaptive coloring and evenodd fillRule for
+ * cutouts/holes (e.g. lock keyhole).
  */
 
 const baseProps = {
@@ -36,6 +33,26 @@ function Icon(props: {
     </svg>
   );
 }
+
+const settingsCategoryEmojiIcons: Record<string, string> = {
+  appearance: "🎨",
+  toolbar: "🎛️",
+  model: "🧠",
+  "message-delivery": "📨",
+  "agent-context": "📋",
+  notifications: "🔔",
+  webhooks: "🪝",
+  devices: "📱",
+  "local-access": "🔒",
+  remote: "🌐",
+  providers: "🔌",
+  speech: "🎙️",
+  "remote-executors": "🖥️",
+  environment: "⚙️",
+  about: "ℹ️",
+  emulator: "🤖",
+  development: "🛠️",
+};
 
 export const settingsCategoryIcons: Record<string, ReactNode> = {
   appearance: (
@@ -226,15 +243,17 @@ export const settingsCategoryIcons: Record<string, ReactNode> = {
 };
 
 export function SettingsCategoryIcon({ id }: { id: string }) {
-  const { colorfulSettingsIcons } = useColorfulSettingsIcons();
-  const icon = settingsCategoryIcons[id];
+  const { flatSettingsIcons } = useFlatSettingsIcons();
+  const icon = flatSettingsIcons
+    ? settingsCategoryIcons[id]
+    : settingsCategoryEmojiIcons[id];
   if (!icon) return null;
   const className = [
     "settings-category-icon",
     `settings-category-icon-${id}`,
-    colorfulSettingsIcons
-      ? "settings-category-icon-colorful"
-      : "settings-category-icon-monochrome",
+    flatSettingsIcons
+      ? "settings-category-icon-flat"
+      : "settings-category-icon-emoji",
   ].join(" ");
   return (
     <span className={className} aria-hidden="true">

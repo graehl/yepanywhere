@@ -9557,6 +9557,8 @@ a.sidebar-nav-item {
   justify-content: center;
   border-radius: 8px;
   box-sizing: border-box;
+  font-size: 1.5rem;
+  line-height: 1;
   transition:
     background 0.15s,
     box-shadow 0.15s,
@@ -9570,7 +9572,7 @@ a.sidebar-nav-item {
   flex-shrink: 0;
 }
 
-.settings-category-icon-colorful {
+.settings-category-icon-flat {
   color: color-mix(
     in srgb,
     var(--settings-category-icon-accent) 82%,
@@ -9589,7 +9591,7 @@ a.sidebar-nav-item {
     );
 }
 
-.settings-category-item.active .settings-category-icon-colorful {
+.settings-category-item.active .settings-category-icon-flat {
   background: color-mix(
     in srgb,
     var(--settings-category-icon-accent) 24%,
@@ -9603,10 +9605,12 @@ a.sidebar-nav-item {
     );
 }
 
-.settings-category-icon-monochrome {
+.settings-category-icon-emoji {
   color: var(--text-primary);
   background: transparent;
   box-shadow: none;
+  font-family:
+    "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
 }
 
 .settings-category-icon-appearance {

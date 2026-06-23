@@ -13840,6 +13840,13 @@ a.sidebar-nav-item {
   padding: 0.25rem 0.5rem;
 }
 
+/* Slash-command first turns render as the command itself, not the raw
+   <command-name> wrapper markup. */
+.session-hovercard__command {
+  font-family: var(--font-mono-system);
+  font-weight: 600;
+}
+
 .session-hovercard__meta {
   display: flex;
   align-items: center;

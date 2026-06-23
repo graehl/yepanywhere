@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { ProviderName } from "@yep-anywhere/shared";
 import type { AgentActivity } from "../hooks/useFileActivity";
 import type { PendingInputType, SessionStatus } from "../types";
+import { parseCommandTurn } from "../lib/commandTurn";
 import { ProviderBadge } from "./ProviderBadge";
 import { SessionStatusBadge } from "./StatusBadge";
 
@@ -143,6 +144,10 @@ export function SessionHoverCard({
       )
     : undefined;
 
+  // Slash-command turns arrive wrapped in <command-name>…</command-name> tags;
+  // show the command itself rather than the raw markup.
+  const command = prompt ? parseCommandTurn(prompt) : null;
+
   return createPortal(
     <div
       ref={ref}
@@ -165,7 +170,14 @@ export function SessionHoverCard({
           className="session-hovercard__turn"
           style={maxLines ? { WebkitLineClamp: maxLines } : undefined}
         >
-          {prompt}
+          {command ? (
+            <span className="session-hovercard__command">
+              {command.command}
+              {command.args ? ` ${command.args}` : ""}
+            </span>
+          ) : (
+            prompt
+          )}
         </div>
       )}
       <div className="session-hovercard__meta">

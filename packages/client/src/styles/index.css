@@ -13945,6 +13945,33 @@ a.sidebar-nav-item {
   }
 }
 
+/* ===== Model picker dropdown ===== */
+/*
+ * The model picker rows carry a multi-line description and a leading
+ * ProviderBadge. Top-align the row so the badge sits next to the model name
+ * (instead of floating to the vertical center of a tall, multi-line row), give
+ * the badge a consistent gutter, and widen the desktop panel so descriptions
+ * wrap to one or two lines instead of three or four.
+ */
+.model-filter-dropdown .filter-dropdown-option {
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.model-filter-dropdown .filter-dropdown-option-icon {
+  justify-content: flex-start;
+  flex-shrink: 0;
+  min-width: 96px;
+  /* Optically center the badge on the model name's first line. */
+  margin-top: 2px;
+}
+
+@media (min-width: 769px) {
+  .model-filter-dropdown .filter-dropdown-dropdown {
+    width: 360px;
+  }
+}
+
 /* ===== Floating Action Button (Desktop Only) ===== */
 
 .fab-container {

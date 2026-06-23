@@ -2223,6 +2223,7 @@ export function NewSessionForm({
       <div className="new-session-model-field">
         <h3>{t("newSessionModelTitle")}</h3>
         <FilterDropdown
+          className="model-filter-dropdown"
           label={t("newSessionModelTitle")}
           options={modelOptions}
           selected={selectedModel ? [selectedModel] : []}

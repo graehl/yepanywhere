@@ -299,7 +299,7 @@ export function FilterDropdown<T extends string>({
           >
             <div
               ref={sheetRef}
-              className="filter-dropdown-sheet"
+              className={`filter-dropdown-sheet ${className}`.trim()}
               role="dialog"
               tabIndex={-1}
               aria-label={t("filterByLabel", { label })}

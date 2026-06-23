@@ -8,6 +8,17 @@ import {
   MIN_CONTENT_MAX_WIDTH_PX,
   useContentMaxWidth,
 } from "../../hooks/useContentMaxWidth";
+import {
+  DEFAULT_HOVERCARD_MAX_HEIGHT_PX,
+  DEFAULT_HOVERCARD_SHOW_DELAY_MS,
+  HOVERCARD_MAX_HEIGHT_MAX_PX,
+  HOVERCARD_MAX_HEIGHT_MIN_PX,
+  HOVERCARD_MAX_HEIGHT_STEP_PX,
+  HOVERCARD_SHOW_DELAY_MAX_MS,
+  HOVERCARD_SHOW_DELAY_MIN_MS,
+  HOVERCARD_SHOW_DELAY_STEP_MS,
+  useHoverCardAppearance,
+} from "../../hooks/useHoverCardAppearance";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useAlwaysShowQuoteCircles } from "../../hooks/useAlwaysShowQuoteCircles";
 import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionButtonEnabled";
@@ -122,6 +133,12 @@ export function AppearanceSettings() {
   } = useOutputAppearance();
   const { tabSize, setTabSize } = useTabSize();
   const { contentMaxWidth, setContentMaxWidth } = useContentMaxWidth();
+  const {
+    hoverCardShowDelayMs,
+    hoverCardMaxHeightPx,
+    setHoverCardShowDelayMs,
+    setHoverCardMaxHeightPx,
+  } = useHoverCardAppearance();
   const [contentMaxWidthDraft, setContentMaxWidthDraft] = useState(() =>
     String(contentMaxWidth),
   );
@@ -180,6 +197,8 @@ export function AppearanceSettings() {
       outputToolPreviewLineCount,
       tabSize,
       contentMaxWidth,
+      hoverCardShowDelayMs,
+      hoverCardMaxHeightPx,
       theme,
       settingsIconStyle,
       streamingEnabled,
@@ -205,6 +224,8 @@ export function AppearanceSettings() {
       outputToolPreviewLineCount,
       tabSize,
       contentMaxWidth,
+      hoverCardShowDelayMs,
+      hoverCardMaxHeightPx,
       theme,
       settingsIconStyle,
       streamingEnabled,
@@ -234,6 +255,8 @@ export function AppearanceSettings() {
       setOutputToolPreviewLineCount(snapshot.outputToolPreviewLineCount);
       setTabSize(snapshot.tabSize);
       setContentMaxWidth(snapshot.contentMaxWidth);
+      setHoverCardShowDelayMs(snapshot.hoverCardShowDelayMs);
+      setHoverCardMaxHeightPx(snapshot.hoverCardMaxHeightPx);
       setTheme(snapshot.theme);
       setSettingsIconStyle(snapshot.settingsIconStyle);
       setStreamingEnabled(snapshot.streamingEnabled);
@@ -279,6 +302,8 @@ export function AppearanceSettings() {
       setOutputToolPreviewLineCount,
       setTabSize,
       setContentMaxWidth,
+      setHoverCardShowDelayMs,
+      setHoverCardMaxHeightPx,
       setTheme,
       setSettingsIconStyle,
       setStreamingEnabled,
@@ -1000,6 +1025,64 @@ export function AppearanceSettings() {
               }}
             >
               {t("appearanceContentWidthReset")}
+            </button>
+          </div>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceHoverCardDelayTitle")}</strong>
+            <p>{t("appearanceHoverCardDelayDescription")}</p>
+          </div>
+          <div className="settings-item-actions">
+            <input
+              type="range"
+              min={HOVERCARD_SHOW_DELAY_MIN_MS}
+              max={HOVERCARD_SHOW_DELAY_MAX_MS}
+              step={HOVERCARD_SHOW_DELAY_STEP_MS}
+              value={hoverCardShowDelayMs}
+              onChange={(e) => setHoverCardShowDelayMs(Number(e.target.value))}
+              aria-label={t("appearanceHoverCardDelayTitle")}
+            />
+            <span className="settings-input-small">
+              {hoverCardShowDelayMs} {t("appearanceHoverCardDelayUnit")}
+            </span>
+            <button
+              type="button"
+              className="settings-button settings-button-secondary"
+              onClick={() =>
+                setHoverCardShowDelayMs(DEFAULT_HOVERCARD_SHOW_DELAY_MS)
+              }
+            >
+              {t("appearanceHoverCardReset")}
+            </button>
+          </div>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceHoverCardHeightTitle")}</strong>
+            <p>{t("appearanceHoverCardHeightDescription")}</p>
+          </div>
+          <div className="settings-item-actions">
+            <input
+              type="range"
+              min={HOVERCARD_MAX_HEIGHT_MIN_PX}
+              max={HOVERCARD_MAX_HEIGHT_MAX_PX}
+              step={HOVERCARD_MAX_HEIGHT_STEP_PX}
+              value={hoverCardMaxHeightPx}
+              onChange={(e) => setHoverCardMaxHeightPx(Number(e.target.value))}
+              aria-label={t("appearanceHoverCardHeightTitle")}
+            />
+            <span className="settings-input-small">
+              {hoverCardMaxHeightPx} {t("appearanceHoverCardHeightUnit")}
+            </span>
+            <button
+              type="button"
+              className="settings-button settings-button-secondary"
+              onClick={() =>
+                setHoverCardMaxHeightPx(DEFAULT_HOVERCARD_MAX_HEIGHT_PX)
+              }
+            >
+              {t("appearanceHoverCardReset")}
             </button>
           </div>
         </div>

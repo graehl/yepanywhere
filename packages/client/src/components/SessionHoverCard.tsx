@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { ProviderName } from "@yep-anywhere/shared";
 import type { AgentActivity } from "../hooks/useFileActivity";
 import type { PendingInputType, SessionStatus } from "../types";
+import { DEFAULT_HOVERCARD_MAX_HEIGHT_PX } from "../hooks/useHoverCardAppearance";
 import { parseCommandTurn } from "../lib/commandTurn";
 import { ProviderBadge } from "./ProviderBadge";
 import { SessionStatusBadge } from "./StatusBadge";
@@ -20,10 +21,6 @@ const PADDING_RESERVE_PX = 20;
 // request greedily eating the card. Only reserved when a reply is present, so
 // the no-reply case renders exactly as before.
 const REPLY_RESERVE_PX = 38;
-// Single source of truth for the card's max height: applied via the inline
-// `maxHeight` style below, so CSS must not also set max-height (it would
-// duplicate this). This is the value the Appearance "max height" control drives.
-const MAX_CARD_HEIGHT_PX = 112;
 const MAX_PROMPT_LINES = 3;
 const GAP_PX = 4;
 const MARGIN_PX = 8;
@@ -50,6 +47,12 @@ interface SessionHoverCardProps {
   pendingInputType?: PendingInputType;
   hasUnread?: boolean;
   activity?: AgentActivity;
+  /**
+   * Card max height in px, from the hover-card appearance setting. The single
+   * source for the cap — applied via the inline `maxHeight` style below, so CSS
+   * must not also set max-height.
+   */
+  maxHeightPx?: number;
 }
 
 interface Placement {
@@ -80,6 +83,7 @@ export function SessionHoverCard({
   pendingInputType,
   hasUnread,
   activity,
+  maxHeightPx = DEFAULT_HOVERCARD_MAX_HEIGHT_PX,
 }: SessionHoverCardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
@@ -97,9 +101,9 @@ export function SessionHoverCard({
       window.innerHeight - rowBottom - GAP_PX - MARGIN_PX,
     );
     const spaceAbove = Math.max(0, rowTop - GAP_PX - MARGIN_PX);
-    const targetHeight = Math.min(naturalHeight, MAX_CARD_HEIGHT_PX);
-    const spaceBelowCapped = Math.min(spaceBelow, MAX_CARD_HEIGHT_PX);
-    const spaceAboveCapped = Math.min(spaceAbove, MAX_CARD_HEIGHT_PX);
+    const targetHeight = Math.min(naturalHeight, maxHeightPx);
+    const spaceBelowCapped = Math.min(spaceBelow, maxHeightPx);
+    const spaceAboveCapped = Math.min(spaceAbove, maxHeightPx);
 
     let below: boolean;
     let maxHeight: number;
@@ -112,10 +116,7 @@ export function SessionHoverCard({
       maxHeight = spaceAboveCapped;
     } else {
       below = spaceBelow >= spaceAbove;
-      maxHeight = Math.min(
-        Math.max(spaceBelow, spaceAbove),
-        MAX_CARD_HEIGHT_PX,
-      );
+      maxHeight = Math.min(Math.max(spaceBelow, spaceAbove), maxHeightPx);
       loosened = true;
     }
 
@@ -126,7 +127,16 @@ export function SessionHoverCard({
       window.innerWidth - width - MARGIN_PX,
     );
     setPlacement({ top: Math.max(MARGIN_PX, top), left, maxHeight, loosened });
-  }, [anchor, prompt, lastAgentText, model, projectName, ageLabel, status]);
+  }, [
+    anchor,
+    prompt,
+    lastAgentText,
+    model,
+    projectName,
+    ageLabel,
+    status,
+    maxHeightPx,
+  ]);
 
   const maxLines = placement
     ? Math.min(

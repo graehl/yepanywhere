@@ -28,8 +28,7 @@ import {
   createSessionHoverCardId,
   subscribeActiveSessionHoverCard,
 } from "./sessionHoverCardRegistry";
-
-const SESSION_HOVERCARD_SHOW_DELAY_MS = 200;
+import { useHoverCardSettings } from "../hooks/useHoverCardAppearance";
 
 interface SessionListItemProps {
   // Core (required)
@@ -201,11 +200,15 @@ export function SessionListItem({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const isSavingRef = useRef(false);
 
-  // Replacement tooltip for every list surface (sidebar compact + all-sessions
-  // / search cards): a rich hover panel (full first user turn, status line, and
-  // the most recent agent turn). The panel (SessionHoverCard) self-positions
-  // from this row geometry + cursor x — below the row and right of the cursor,
-  // flipping above when it would not fit below.
+  // Hover card for every list surface (sidebar compact + all-sessions / search
+  // cards): a rich hover panel (full first user turn, status line, and the most
+  // recent agent turn). The panel (SessionHoverCard) self-positions from this
+  // row geometry + cursor x — below the row and right of the cursor, flipping
+  // above when it would not fit below.
+  const {
+    showDelayMs: hoverCardShowDelayMs,
+    maxHeightPx: hoverCardMaxHeightPx,
+  } = useHoverCardSettings();
   const liRef = useRef<HTMLLIElement>(null);
   const hoverCardIdRef = useRef<string | null>(null);
   if (!hoverCardIdRef.current) {
@@ -467,8 +470,13 @@ export function SessionListItem({
       });
       refreshIdlePreview();
       previewShowTimer.current = null;
-    }, SESSION_HOVERCARD_SHOW_DELAY_MS);
-  }, [showHoverCard, clearPreviewTimers, refreshIdlePreview]);
+    }, hoverCardShowDelayMs);
+  }, [
+    showHoverCard,
+    clearPreviewTimers,
+    refreshIdlePreview,
+    hoverCardShowDelayMs,
+  ]);
 
   const handlePreviewEnter = useCallback(
     (e: React.MouseEvent) => {
@@ -681,9 +689,7 @@ export function SessionListItem({
           onClick={handleSessionClick}
           onMouseDown={handleSessionMouseDown}
           onAuxClick={handleSessionAuxClick}
-          title={
-            showHoverCard ? undefined : fullTitle || displayTitle
-          }
+          title={showHoverCard ? undefined : fullTitle || displayTitle}
           className="session-list-item__link"
         >
           {mode === "card" ? (
@@ -862,6 +868,7 @@ export function SessionListItem({
           pendingInputType={pendingInputType}
           hasUnread={hasUnread}
           activity={activity}
+          maxHeightPx={hoverCardMaxHeightPx}
         />
       )}
     </li>

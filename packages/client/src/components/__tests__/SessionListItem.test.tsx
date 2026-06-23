@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_HOVERCARD_SHOW_DELAY_MS } from "../../hooks/useHoverCardAppearance";
 import { I18nProvider } from "../../i18n";
 import { SessionListItem } from "../SessionListItem";
 
@@ -243,7 +244,7 @@ describe("SessionListItem links", () => {
 
     fireEvent.mouseEnter(item!, { clientX: 20 });
     act(() => {
-      vi.advanceTimersByTime(199);
+      vi.advanceTimersByTime(DEFAULT_HOVERCARD_SHOW_DELAY_MS - 1);
     });
     expect(screen.queryByText("Delayed hover prompt")).toBeNull();
 

@@ -28,6 +28,9 @@ fork + generation step),
 sibling mobile context-menu / dismiss discussion),
 [provider-agnostic-btw-asides](provider-agnostic-btw-asides.md) (the other fork
 consumer),
+[synthetic-turn-injection](synthetic-turn-injection.md) (whether the single
+summary user turn could instead be a sequence of synthetic user+agent turns,
+per provider),
 [scrollback-view-stability](scrollback-view-stability.md) (the client transcript
 window the trim dot controls).
 
@@ -214,6 +217,72 @@ immediately before the summary showing the user's typed summary-amendment
 instructions; that element is viewer state only and is not submitted to the
 provider.
 
+### Enhanced summary: computed prelude/postlude around the model body (planned)
+
+Upgrade the submitted user turn from free prose to a **layered** structure. Only
+the middle is model-generated; YA wraps it with a **fixed computed prelude and
+postlude** it assembles deterministically (the model cannot reliably know the
+target fork's session id, the anchor message id, or the source-active flag, so
+those must be computed, not prompted). None of this needs provider changes — it
+is all content in the one submitted turn, so it works on every provider that can
+fork (why we are *not* splitting into multiple synthetic turns:
+[synthetic-turn-injection](synthetic-turn-injection.md)).
+
+Layout of the submitted turn:
+
+```text
+<title line>                 model — first line of the generated summary
+<provenance header>          computed prelude (deterministic, at last moment)
+<summary body>               model — the generated summary
+<handoff close>              computed postlude — only if source-active: yes
+```
+
+This is two separable workstreams, and they commit independently: the **UX**
+(fork-send progress/follow, below) is the priority and lands first; the
+**summary-instruction template + computed prelude/postlude** here is a later,
+distinct commit.
+
+1. **Title line (model).** The summary's **first line** is a concise title
+   (≤ ~120 chars, no trailing period) naming the task/state, used verbatim as
+   the forked session's `title` (the `forkSession({ title })` option) and as the
+   follow-hyperlink label (see fork-send section). The instruction template — the
+   only model-facing template work, "if any" — asks the model to lead with this
+   line; everything else here is computed, not prompted.
+
+2. **Provenance header — computed prelude**, emitted immediately after the
+   title. Compute it at the **last moment** — when summary generation completes
+   and YA assembles the final turn — not at activation:
+   - `forked-from: <source session id> @ <project cwd>`
+   - `summary-ends-at: <anchor message id>` — the completed-turn boundary the
+     target fork retains. Everything in the source *after* this id is the source
+     branch's own divergence, not this branch's history.
+   - `source-active: <yes|no>` — computed at summary completion. `yes` if the
+     source was live or, crucially, if the user **entered a turn in the source
+     during generation**. Sampling at the last moment (after the 30+ s wait, not
+     at activation) is what catches that continued user interaction: a turn typed
+     into the source while the summary was generating is strong evidence the
+     source is the user's primary line, which the postlude honors by waiting for
+     an explicit go.
+
+3. **Handoff close — conditional computed postlude.** Emit the postlude **only
+   when `source-active: yes`** (the user acted in the source during generation).
+   In that case it instructs the receiver: do **not** take over autonomously —
+   state that you are holding and **wait for an explicit "go" from the user**
+   before resuming, because the live source is the user's primary line and two
+   branches must not do the same work.
+
+   When `source-active: no` (no user action during the summarize phase), there
+   is **no postlude at all**. The summary body plus the fork itself imply
+   continuation, so the receiver just takes over; no "intent to take over"
+   boilerplate is added.
+
+The source pointer is the dereference escape hatch for that decision: trust it
+for *current* liveness (is the source still going?), not for this branch's
+authorizations (the source may have diverged past the anchor). The postlude,
+when present, supersedes the bare "Do not continue the task" line in the template
+above, which was aimed at the *generator* fork; the close governs the *target*
+fork's receiver.
+
 ### Capability and default posture
 
 Show these actions only where YA has a real prefix-fork primitive. Claude is the
@@ -292,6 +361,57 @@ Wiring: `SessionPage` → `MessageList` (`onForkBeforeUserMessage`,
 `UserTurnNavigator` (`onForkBeforeAnchor`, `onForkAfterAnchor`, `onCopyAnchor`,
 `onTrimAnchor`). Fork stays gated by `supportsForkSession` (`SessionPage` passes
 `undefined` otherwise, so the menu omits Fork).
+
+## Fork-send: backgrounded progress and follow (planned)
+
+**Current symptom (usability bug).** The generation step is a full LLM turn over
+the *entire* forked context — 30+ s, worse with a cold prompt cache (per
+[provider-context-economics](provider-context-economics.md)) — but it is wired
+as a blocking composer submit. The only feedback is the **greyed-out send
+button**: no phase, no elapsed time, no ETA, no cancel, and the parent composer
+is locked the whole time. The user cannot tell working from hung, so 30 s of
+dead UI reads as a freeze. This generalizes the existing "show a visible pending
+state with Cancel" rule (§ Anchor meanings, written for the response-still-being-
+written case) to the generation wait, which was the unhandled case.
+
+**Fix: make fork-send a backgrounded async job with its own persistent
+indicator,** freeing the composer immediately.
+
+1. **On activation,** dismiss the composer fork-mode apparatus at once
+   (placeholder / badge / Cancel) and return the composer to normal — the typed
+   instructions were already consumed as the summary prompt. Replace it with a
+   **persistent "Forking…" indicator**: a non-context viewer-only element (it
+   must not become a real provider turn in the parent transcript; same class as
+   the typed-instructions element noted above), pinned at the transcript tail or
+   as a small float. It shows phase ("Generating summary…") and elapsed time.
+
+2. **On ready** (target fork created, summary submitted), **open the forked
+   session in a new tab by default.** Because generation typically takes 30+ s,
+   the open is deferred to completion, not attempted up front.
+
+3. **Auto-open fallback.** If the new tab cannot open (popup blocking, or a
+   user "don't auto-open" preference), the indicator stays and surfaces a
+   **hyperlink** the user clicks to follow at their choice. The hyperlink label
+   is the **title line** (summary first line). Even when auto-open succeeds, the
+   indicator may persist briefly as `Forked: <title> ↗` so the user has a way
+   back.
+
+   Lifecycle: `Forking… (Cancel)` → `Forked: <title>` (auto-opened, or a
+   click-to-open link). One indicator per in-flight fork; concurrent forks are
+   allowed if cheap, but a single-at-a-time MVP is acceptable.
+
+**Two distinct cancels — do not conflate.**
+
+- **Pre-send Cancel** (the existing composer fork-mode Cancel): the fork has not
+  been sent, no summary has been generated. It simply drops the request and
+  returns the composer to normal, preserving typed text. Cheap, no provider
+  cost incurred.
+- **In-flight Cancel** (on the progress indicator): the generator fork is
+  already running an LLM turn. This aborts that in-flight generation (the
+  generator fork is required to be cancellable per § Summary generation flow)
+  and tears down the indicator. It must be clearly scoped to "stop this running
+  fork," visually distinct from the pre-send drop, and should note that the
+  generation turn already partially billed.
 
 ## Open questions / follow-ups
 

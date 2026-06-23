@@ -109,12 +109,13 @@ Verified in SDK 0.3.170 `sdk.d.ts` (none of these are used by YA yet):
   up to a given message; the branch-from-a-point primitive without
   creating a separate file first.
 
-Other providers: Codex has no documented fork primitive; copying a
-rollout file under a new id is plausible but unverified. ACP providers
-(gemini-acp, grok-acp) and opencode hold session state provider-side
-with no exposed branch surface. A YA fork action should therefore ship
-as a Claude-capability-gated feature (a provider capability flag, same
-pattern as compact support), not a generic session action.
+Other providers: Codex implements `forkSession` through native app-server
+`thread/fork` plus `thread/rollback` for trailing completed turns; Pi
+implements `forkSession` by writing a new Pi-format JSONL file containing the
+retained branch. ACP providers (gemini-acp, grok-acp) and opencode hold session
+state provider-side with no exposed branch surface. A YA fork action should stay
+provider-capability-gated (`supportsForkSession`), not become an unconditional
+generic session action.
 
 ## Handoff and synthetic-turn replay
 

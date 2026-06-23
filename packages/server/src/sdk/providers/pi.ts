@@ -23,6 +23,8 @@ import type { EffortLevel, ModelInfo } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
+import { forkPiSessionFile } from "../../sessions/pi-fork.js";
+import { PiSessionReader } from "../../sessions/pi-reader.js";
 import type {
   ContentBlock,
   ProviderCommandResult,
@@ -107,6 +109,8 @@ interface SdkUsage {
 export interface PiProviderConfig {
   /** Path to the pi binary (auto-detected if not specified). */
   piPath?: string;
+  /** Override for testing (defaults to ~/.pi/agent/sessions). */
+  sessionsDir?: string;
 }
 
 /** YA EffortLevel → pi ThinkingLevel (pi has no "max"; map it to "xhigh"). */
@@ -172,10 +176,12 @@ export class PiProvider implements AgentProvider {
   readonly supportsSteering = false;
 
   private readonly configuredPath?: string;
+  private readonly sessionsDir?: string;
   private cachedModels: { at: number; models: ModelInfo[] } | null = null;
 
   constructor(config: PiProviderConfig = {}) {
     this.configuredPath = config.piPath;
+    this.sessionsDir = config.sessionsDir;
   }
 
   async isInstalled(): Promise<boolean> {
@@ -375,6 +381,28 @@ export class PiProvider implements AgentProvider {
         return proc.pid;
       },
     };
+  }
+
+  async forkSession(options: {
+    sessionId: string;
+    cwd: string;
+    upToMessageId?: string;
+    title?: string;
+  }): Promise<{ sessionId: string }> {
+    const reader = new PiSessionReader({
+      sessionsDir: this.sessionsDir,
+      projectPath: options.cwd,
+    });
+    const sourcePath = await reader.getSessionFilePath(options.sessionId);
+    if (!sourcePath) {
+      throw new Error(`Pi session ${options.sessionId} was not found`);
+    }
+    const fork = await forkPiSessionFile({
+      sourcePath,
+      cwd: options.cwd,
+      upToMessageId: options.upToMessageId,
+    });
+    return { sessionId: fork.sessionId };
   }
 
   /**

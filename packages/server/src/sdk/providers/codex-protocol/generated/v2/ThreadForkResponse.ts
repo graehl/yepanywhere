@@ -10,9 +10,8 @@ import type { ApprovalsReviewer } from "./ApprovalsReviewer.js";
 import type { AskForApproval } from "./AskForApproval.js";
 import type { SandboxPolicy } from "./SandboxPolicy.js";
 import type { Thread } from "./Thread.js";
-import type { TurnsPage } from "./TurnsPage.js";
 
-export type ThreadResumeResponse = { thread: Thread, model: string, modelProvider: string, serviceTier: string | null, cwd: AbsolutePathBuf,
+export type ThreadForkResponse = { thread: Thread, model: string, modelProvider: string, serviceTier: string | null, cwd: AbsolutePathBuf,
 /**
  * Thread-scoped runtime workspace roots used to materialize
  * `:workspace_roots`.
@@ -39,8 +38,4 @@ activePermissionProfile: ActivePermissionProfile | null, reasoningEffort: Reason
 /**
  * Current multi-agent mode for this thread.
  */
-multiAgentMode: MultiAgentMode,
-/**
- * `thread/turns/list` page returned when requested by `initialTurnsPage`.
- */
-initialTurnsPage: TurnsPage | null, };
+multiAgentMode: MultiAgentMode, };

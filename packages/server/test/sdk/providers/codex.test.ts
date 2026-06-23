@@ -792,6 +792,111 @@ describe("CodexProvider app-server lifecycle", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("generates session retitles through an archived helper fork", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-retitle-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-retitle",
+      buildFakeCodexAppServerForForkSummary(logPath),
+    );
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+
+      const { text } = await testProvider.generateSummary({
+        purpose: "session-retitle",
+        strategy: "fork",
+        generatorSessionId: "thread-generator",
+        cwd: tempDir,
+        currentTitle: "Old title",
+        lengthTarget: 72,
+      });
+
+      expect(text).toBe("Codex fork retitle");
+
+      const requests = readFakeCodexRequests(logPath);
+      const resume = requests.find(
+        (request) => request.method === "thread/resume",
+      );
+      const turnStart = requests.find(
+        (request) => request.method === "turn/start",
+      );
+
+      expect(resume?.params).toMatchObject({
+        threadId: "thread-generator",
+        cwd: tempDir,
+        approvalPolicy: "untrusted",
+        sandbox: "read-only",
+        excludeTurns: true,
+      });
+      expect(JSON.stringify(resume?.params)).toContain("title helper");
+      expect(turnStart?.params).toMatchObject({
+        threadId: "thread-generator",
+        approvalPolicy: "untrusted",
+        effort: "low",
+        summary: "auto",
+      });
+      expect(JSON.stringify(turnStart?.params)).toContain(
+        "What is a good new title for this session?",
+      );
+      expect(JSON.stringify(turnStart?.params)).toContain(
+        "Current title: Old title",
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("forks a Codex thread and rolls back trailing turns", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "codex-provider-fork-"));
+    const logPath = join(tempDir, "fake-codex-requests.jsonl");
+    const codexPath = createFakeCodexCommand(
+      tempDir,
+      "fake-codex-fork",
+      buildFakeCodexAppServerForFork(logPath),
+    );
+
+    try {
+      const testProvider = new CodexProvider({ codexPath });
+      const fork = await testProvider.forkSession({
+        sessionId: "source-thread",
+        cwd: tempDir,
+        upToMessageId: "assistant-2-turn-2",
+        title: "Forked from second turn",
+      });
+
+      expect(fork).toEqual({ sessionId: "fork-thread" });
+
+      const requests = readFakeCodexRequests(logPath);
+      const read = requests.find((request) => request.method === "thread/read");
+      const forkRequest = requests.find(
+        (request) => request.method === "thread/fork",
+      );
+      const rollback = requests.find(
+        (request) => request.method === "thread/rollback",
+      );
+
+      expect(read?.params).toMatchObject({
+        threadId: "source-thread",
+        includeTurns: true,
+      });
+      expect(forkRequest?.params).toMatchObject({
+        threadId: "source-thread",
+        cwd: tempDir,
+        approvalPolicy: "on-request",
+        sandbox: "workspace-write",
+        excludeTurns: true,
+      });
+      expect(rollback?.params).toMatchObject({
+        threadId: "fork-thread",
+        numTurns: 1,
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 const describeRealCodexContract =
@@ -1317,6 +1422,197 @@ function handleMessage(message) {
           id: message.params.turnId,
           items: [],
           status: "interrupted",
+          error: null,
+          startedAt: null,
+          completedAt: null,
+          durationMs: null,
+        },
+      });
+      break;
+    default:
+      respond(message.id, {});
+      break;
+  }
+}
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString("utf-8");
+  const lines = buffer.split("\\n");
+  buffer = lines.pop() || "";
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    handleMessage(JSON.parse(line));
+  }
+});
+`;
+}
+
+function buildFakeCodexAppServerForFork(logPath: string): string {
+  return `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+const logPath = ${JSON.stringify(logPath)};
+let buffer = "";
+
+function write(payload) {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...payload }) + "\\n");
+}
+
+function logRequest(message) {
+  appendFileSync(
+    logPath,
+    JSON.stringify({
+      id: message.id,
+      method: message.method,
+      params: message.params,
+    }) + "\\n",
+  );
+}
+
+function respond(id, result) {
+  write({ id, result });
+}
+
+function turn(id, userId, assistantId) {
+  return {
+    id,
+    items: [
+      { type: "userMessage", id: userId, clientId: null, content: [] },
+      {
+        type: "agentMessage",
+        id: assistantId,
+        text: "assistant text",
+        phase: null,
+        memoryCitation: null,
+      },
+    ],
+    status: "completed",
+    error: null,
+    startedAt: null,
+    completedAt: null,
+    durationMs: null,
+  };
+}
+
+function handleMessage(message) {
+  if (!message || typeof message !== "object") return;
+  logRequest(message);
+  if (message.id === undefined) return;
+
+  switch (message.method) {
+    case "initialize":
+      respond(message.id, { userAgent: "fake-codex" });
+      break;
+    case "thread/read":
+      respond(message.id, {
+        thread: {
+          id: "source-thread",
+          status: { type: "idle" },
+          turns: [
+            turn("turn-1", "user-1", "assistant-1"),
+            turn("turn-2", "user-2", "assistant-2"),
+            turn("turn-3", "user-3", "assistant-3"),
+          ],
+        },
+      });
+      break;
+    case "thread/fork":
+      respond(message.id, {
+        thread: { id: "fork-thread", turns: [] },
+        model: "gpt-5.4-mini",
+        modelProvider: "openai",
+        serviceTier: null,
+        cwd: message.params?.cwd,
+        runtimeWorkspaceRoots: [],
+        instructionSources: [],
+        approvalPolicy: message.params?.approvalPolicy ?? "on-request",
+        approvalsReviewer: "auto",
+        sandbox: { mode: message.params?.sandbox ?? "workspace-write" },
+        activePermissionProfile: null,
+        reasoningEffort: null,
+        multiAgentMode: "disabled",
+      });
+      break;
+    case "thread/rollback":
+      respond(message.id, {
+        thread: { id: message.params?.threadId ?? "fork-thread", turns: [] },
+      });
+      break;
+    default:
+      respond(message.id, {});
+      break;
+  }
+}
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString("utf-8");
+  const lines = buffer.split("\\n");
+  buffer = lines.pop() || "";
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    handleMessage(JSON.parse(line));
+  }
+});
+`;
+}
+
+function buildFakeCodexAppServerForForkSummary(logPath: string): string {
+  return `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+
+const logPath = ${JSON.stringify(logPath)};
+let buffer = "";
+
+function write(payload) {
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...payload }) + "\\n");
+}
+
+function logRequest(message) {
+  appendFileSync(
+    logPath,
+    JSON.stringify({
+      id: message.id,
+      method: message.method,
+      params: message.params,
+    }) + "\\n",
+  );
+}
+
+function respond(id, result) {
+  write({ id, result });
+}
+
+function handleMessage(message) {
+  if (!message || typeof message !== "object") return;
+  logRequest(message);
+  if (message.id === undefined) return;
+
+  switch (message.method) {
+    case "initialize":
+      respond(message.id, { userAgent: "fake-codex" });
+      break;
+    case "thread/resume":
+      respond(message.id, {
+        thread: { id: message.params?.threadId ?? "thread-generator" },
+        model: "gpt-5.4-mini",
+        reasoningEffort: "low",
+      });
+      break;
+    case "turn/start":
+      respond(message.id, {
+        turn: {
+          id: "turn-summary",
+          items: [
+            {
+              type: "agentMessage",
+              id: "message-summary",
+              text: "Codex fork retitle",
+              phase: null,
+              memoryCitation: null,
+            },
+          ],
+          itemsView: "complete",
+          status: "completed",
           error: null,
           startedAt: null,
           completedAt: null,

@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { PiProvider } from "../../src/sdk/providers/pi.js";
 import { augmentEditToolUses } from "../../src/sessions/persisted-augments.js";
 import { PiSessionReader } from "../../src/sessions/pi-reader.js";
 import type { Message } from "../../src/supervisor/types.js";
@@ -331,5 +332,127 @@ describe("PiSessionReader", () => {
       }),
       "Could not find edits[0] in src/a.ts.",
     ]);
+  });
+
+  it("forks a pi session file at a retained message anchor", async () => {
+    const sourceSessionId = "019pi-source-session";
+    const sourcePath = join(
+      sessionsDir,
+      "--fixture--",
+      `2026-06-22T00-00-00-000Z_${sourceSessionId}.jsonl`,
+    );
+    const jsonl = [
+      jsonLine({
+        type: "session",
+        version: 3,
+        id: sourceSessionId,
+        cwd: projectPath,
+        timestamp: "2026-06-22T00:00:00.000Z",
+      }),
+      jsonLine({
+        type: "message",
+        id: "u1",
+        parentId: null,
+        timestamp: "2026-06-22T00:00:01.000Z",
+        message: { role: "user", content: "first" },
+      }),
+      jsonLine({
+        type: "message",
+        id: "a1",
+        parentId: "u1",
+        timestamp: "2026-06-22T00:00:02.000Z",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "one" }],
+        },
+      }),
+      jsonLine({
+        type: "message",
+        id: "u2",
+        parentId: "a1",
+        timestamp: "2026-06-22T00:00:03.000Z",
+        message: { role: "user", content: "second" },
+      }),
+      jsonLine({
+        type: "message",
+        id: "a2",
+        parentId: "u2",
+        timestamp: "2026-06-22T00:00:04.000Z",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "two" }],
+        },
+      }),
+      jsonLine({
+        type: "message",
+        id: "u3",
+        parentId: "a2",
+        timestamp: "2026-06-22T00:00:05.000Z",
+        message: { role: "user", content: "third" },
+      }),
+      jsonLine({
+        type: "message",
+        id: "a3",
+        parentId: "u3",
+        timestamp: "2026-06-22T00:00:06.000Z",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "three" }],
+        },
+      }),
+    ].join("\n");
+    await writeFile(sourcePath, `${jsonl}\n`);
+
+    const provider = new PiProvider({ sessionsDir });
+    const fork = await provider.forkSession({
+      sessionId: sourceSessionId,
+      cwd: projectPath,
+      upToMessageId: "a2",
+      title: "Forked pi session",
+    });
+
+    expect(fork.sessionId).not.toBe(sourceSessionId);
+    const files = await readdir(join(sessionsDir, "--fixture--"));
+    const forkFile = files.find((file) =>
+      file.endsWith(`_${fork.sessionId}.jsonl`),
+    );
+    expect(forkFile).toBeTruthy();
+
+    const forkRaw = await readFile(
+      join(sessionsDir, "--fixture--", forkFile ?? ""),
+      "utf-8",
+    );
+    const forkEntries = forkRaw
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+
+    expect(forkEntries[0]).toMatchObject({
+      type: "session",
+      id: fork.sessionId,
+      cwd: projectPath,
+      parentSession: sourcePath,
+    });
+    expect(
+      forkEntries.slice(1).map((entry) => ({
+        type: entry.type,
+        id: entry.id,
+        parentId: entry.parentId,
+      })),
+    ).toEqual([
+      { type: "message", id: "u1", parentId: null },
+      { type: "message", id: "a1", parentId: "u1" },
+      { type: "message", id: "u2", parentId: "a1" },
+      { type: "message", id: "a2", parentId: "u2" },
+    ]);
+
+    const reader = new PiSessionReader({ sessionsDir, projectPath });
+    const loaded = await reader.getSession(fork.sessionId, projectId);
+    expect(loaded?.summary).toMatchObject({
+      id: fork.sessionId,
+      provider: "pi",
+      messageCount: 4,
+      title: "first",
+    });
   });
 });

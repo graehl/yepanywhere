@@ -136,7 +136,7 @@ with no missing primitive:
 | thinking/effort | `set_thinking_level` (off…xhigh) / `cycle_thinking_level` | maps YA thinking + effort |
 | `/compact` via `runProviderCommand` | `{"type":"compact",customInstructions?}` | native, returns summary + token deltas |
 | liveness / `probeLiveness` | `get_state` (`isStreaming`,`messageCount`,`pendingMessageCount`) + event cadence | poll-cheap |
-| `forkSession` | `pi --fork <id>` at startup (or runtime fork) | real prefix fork, cache-warm |
+| `forkSession` | YA-written Pi JSONL fork file | real prefix fork, cache-warm |
 | durable transcript | `PiSessionReader` over `~/.pi/agent/sessions` | see Durable transcripts |
 
 Event normalization: pi `message_*` deltas → YA `text`/`thinking` blocks,
@@ -319,7 +319,8 @@ call), `supportsThinkingToggle=true`, `supportsSlashCommands` — pi has native
 `/compact`, `/fork`, etc.; advertise once the command inventory is wired,
 otherwise start `false`. `supportsPermissionMode=true` (via the bridge
 extension). `supportsRecaps`/`supportsNativePromptSuggestions` start absent.
-`forkSession` implemented (real fork). Per CLAUDE.local.md *UI Changes Preserve
+`forkSession` implemented (real fork): YA writes a new Pi-format JSONL session
+file containing the retained branch. Per CLAUDE.local.md *UI Changes Preserve
 Non-Buggy Defaults*, gate the provider behind `ENABLED_PROVIDERS` and do not
 change any existing provider's defaults.
 

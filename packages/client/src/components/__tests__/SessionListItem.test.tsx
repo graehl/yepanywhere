@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -33,6 +34,7 @@ describe("SessionListItem links", () => {
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: originalClipboard,
@@ -211,5 +213,160 @@ describe("SessionListItem links", () => {
         "Full initial prompt that should be recoverable",
       );
     });
+  });
+
+  it("delays session hover previews", () => {
+    vi.useFakeTimers();
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="Delayed hover"
+              initialPrompt="Delayed hover prompt"
+              provider="claude"
+              status={{ owner: "self", processId: "pid-1" }}
+              mode="compact"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    const item = screen
+      .getByRole("link", { name: /Delayed hover/ })
+      .closest("li");
+    expect(item).toBeTruthy();
+
+    fireEvent.mouseEnter(item!, { clientX: 20 });
+    act(() => {
+      vi.advanceTimersByTime(199);
+    });
+    expect(screen.queryByText("Delayed hover prompt")).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByText("Delayed hover prompt")).toBeTruthy();
+  });
+
+  it("keeps only one session hover preview visible", () => {
+    vi.useFakeTimers();
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="First session"
+              initialPrompt="First session prompt"
+              provider="claude"
+              status={{ owner: "self", processId: "pid-1" }}
+              mode="compact"
+            />
+            <SessionListItem
+              sessionId="session-2"
+              projectId="project-1"
+              title="Second session"
+              initialPrompt="Second session prompt"
+              provider="claude"
+              status={{ owner: "self", processId: "pid-2" }}
+              mode="compact"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    const firstItem = screen
+      .getByRole("link", { name: /First session/ })
+      .closest("li");
+    const secondItem = screen
+      .getByRole("link", { name: /Second session/ })
+      .closest("li");
+    expect(firstItem).toBeTruthy();
+    expect(secondItem).toBeTruthy();
+
+    fireEvent.mouseEnter(firstItem!, { clientX: 20 });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByText("First session prompt")).toBeTruthy();
+
+    fireEvent.mouseEnter(secondItem!, { clientX: 20 });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.queryByText("First session prompt")).toBeNull();
+    expect(screen.getByText("Second session prompt")).toBeTruthy();
+  });
+
+  it("keeps session hover previews open during unrelated scrolls", () => {
+    vi.useFakeTimers();
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <div data-testid="transcript-scroll" />
+          <div data-testid="sidebar-scroll">
+            <ul>
+              <SessionListItem
+                sessionId="session-1"
+                projectId="project-1"
+                title="Scoped scroll"
+                initialPrompt="Scoped scroll prompt"
+                provider="claude"
+                status={{ owner: "self", processId: "pid-1" }}
+                mode="compact"
+              />
+            </ul>
+          </div>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    const item = screen
+      .getByRole("link", { name: /Scoped scroll/ })
+      .closest("li");
+    expect(item).toBeTruthy();
+
+    fireEvent.mouseEnter(item!, { clientX: 20 });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByText("Scoped scroll prompt")).toBeTruthy();
+
+    fireEvent.scroll(screen.getByTestId("transcript-scroll"));
+    expect(screen.getByText("Scoped scroll prompt")).toBeTruthy();
+
+    fireEvent.scroll(screen.getByTestId("sidebar-scroll"));
+    expect(screen.queryByText("Scoped scroll prompt")).toBeNull();
+  });
+
+  it("does not use a native title tooltip for session menu options", () => {
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="Menu title"
+              provider="claude"
+              mode="compact"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(screen.getByLabelText("Session options").getAttribute("title")).toBe(
+      null,
+    );
   });
 });

@@ -10,13 +10,15 @@ import { SessionStatusBadge } from "./StatusBadge";
 // measure pass: a font-size-sm line, plus the always-shown meta row (which may
 // wrap) and panel padding/gap.
 const LINE_HEIGHT_PX = 19;
-const META_RESERVE_PX = 48;
-const PADDING_RESERVE_PX = 24;
+const META_RESERVE_PX = 34;
+const PADDING_RESERVE_PX = 20;
 // Room held back from the opening-request clamp for the reply block (its lines
 // + divider/padding) so the most recent agent turn stays visible instead of the
 // request greedily eating the card. Only reserved when a reply is present, so
 // the no-reply case renders exactly as before.
-const REPLY_RESERVE_PX = 84;
+const REPLY_RESERVE_PX = 38;
+const MAX_CARD_HEIGHT_PX = 112;
+const MAX_PROMPT_LINES = 3;
 const GAP_PX = 4;
 const MARGIN_PX = 8;
 const CURSOR_OFFSET_PX = 14;
@@ -84,21 +86,30 @@ export function SessionHoverCard({
     const { rowTop, rowBottom, cursorX } = anchor;
     const naturalHeight = el.scrollHeight;
     const width = el.offsetWidth;
-    const spaceBelow = window.innerHeight - rowBottom - GAP_PX - MARGIN_PX;
-    const spaceAbove = rowTop - GAP_PX - MARGIN_PX;
+    const spaceBelow = Math.max(
+      0,
+      window.innerHeight - rowBottom - GAP_PX - MARGIN_PX,
+    );
+    const spaceAbove = Math.max(0, rowTop - GAP_PX - MARGIN_PX);
+    const targetHeight = Math.min(naturalHeight, MAX_CARD_HEIGHT_PX);
+    const spaceBelowCapped = Math.min(spaceBelow, MAX_CARD_HEIGHT_PX);
+    const spaceAboveCapped = Math.min(spaceAbove, MAX_CARD_HEIGHT_PX);
 
     let below: boolean;
     let maxHeight: number;
     let loosened = false;
-    if (naturalHeight <= spaceBelow) {
+    if (targetHeight <= spaceBelowCapped) {
       below = true;
-      maxHeight = spaceBelow;
-    } else if (naturalHeight <= spaceAbove) {
+      maxHeight = spaceBelowCapped;
+    } else if (targetHeight <= spaceAboveCapped) {
       below = false;
-      maxHeight = spaceAbove;
+      maxHeight = spaceAboveCapped;
     } else {
       below = spaceBelow >= spaceAbove;
-      maxHeight = Math.max(spaceBelow, spaceAbove);
+      maxHeight = Math.min(
+        Math.max(spaceBelow, spaceAbove),
+        MAX_CARD_HEIGHT_PX,
+      );
       loosened = true;
     }
 
@@ -112,14 +123,17 @@ export function SessionHoverCard({
   }, [anchor, prompt, lastAgentText, model, projectName, ageLabel, status]);
 
   const maxLines = placement
-    ? Math.max(
-        1,
-        Math.floor(
-          (placement.maxHeight -
-            META_RESERVE_PX -
-            PADDING_RESERVE_PX -
-            (lastAgentText ? REPLY_RESERVE_PX : 0)) /
-            LINE_HEIGHT_PX,
+    ? Math.min(
+        MAX_PROMPT_LINES,
+        Math.max(
+          1,
+          Math.floor(
+            (placement.maxHeight -
+              META_RESERVE_PX -
+              PADDING_RESERVE_PX -
+              (lastAgentText ? REPLY_RESERVE_PX : 0)) /
+              LINE_HEIGHT_PX,
+          ),
         ),
       )
     : undefined;

@@ -54,6 +54,8 @@ export interface SessionMenuProps {
   className?: string;
   /** Use fixed positioning for dropdown (escapes overflow clipping) */
   useFixedPositioning?: boolean;
+  /** Called when the trigger/menu is interacted with, before menu UI appears. */
+  onInteract?: () => void;
 }
 
 export function SessionMenu({
@@ -81,6 +83,7 @@ export function SessionMenu({
   useEllipsisIcon = false,
   className = "",
   useFixedPositioning = false,
+  onInteract,
 }: SessionMenuProps) {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
@@ -132,6 +135,7 @@ export function SessionMenu({
   }, [isOpen]);
 
   const handleToggleOpen = () => {
+    onInteract?.();
     if (isOpen) {
       setIsOpen(false);
       setDropdownPosition(null);
@@ -534,12 +538,13 @@ export function SessionMenu({
         ref={triggerRef}
         type="button"
         className="session-menu-trigger"
+        onPointerEnter={onInteract}
+        onFocus={onInteract}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           handleToggleOpen();
         }}
-        title={t("sessionMenuOptions")}
         aria-label={t("sessionMenuOptions")}
         aria-expanded={isOpen}
       >

@@ -23,6 +23,13 @@ import { SessionMenu } from "./SessionMenu";
 import { SessionShareModal } from "./SessionShareModal";
 import { SessionStatusBadge } from "./StatusBadge";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import {
+  announceActiveSessionHoverCard,
+  createSessionHoverCardId,
+  subscribeActiveSessionHoverCard,
+} from "./sessionHoverCardRegistry";
+
+const SESSION_HOVERCARD_SHOW_DELAY_MS = 200;
 
 interface SessionListItemProps {
   // Core (required)
@@ -200,18 +207,21 @@ export function SessionListItem({
   // from this row geometry + cursor x — below the row and right of the cursor,
   // flipping above when it would not fit below.
   const liRef = useRef<HTMLLIElement>(null);
+  const hoverCardIdRef = useRef<string | null>(null);
+  if (!hoverCardIdRef.current) {
+    hoverCardIdRef.current = createSessionHoverCardId();
+  }
   const [previewPos, setPreviewPos] = useState<{
     rowTop: number;
     rowBottom: number;
     cursorX: number;
   } | null>(null);
+  const previewShowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewCursorX = useRef(0);
   // Idle (non-running) sessions get no live session-updated events, so their
-  // recent-activity preview can be stale. On hover we recompute it once on the
-  // server (debounced), which pushes a session-updated that refreshes the row
-  // in place — no flicker. Owned/external sessions already update live.
-  const previewRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  // recent-activity preview can be stale. After the delayed hover opens, we
+  // recompute it once on the server; the pushed session-updated refreshes the
+  // row in place. Owned/external sessions already update live.
   const previewRefreshInFlight = useRef(false);
 
   // Computed values with optimistic fallback
@@ -430,52 +440,98 @@ export function SessionListItem({
     });
   }, [status?.owner, projectId, sessionId, hoverLastAgent]);
 
-  const handlePreviewEnter = useCallback(
-    (e: React.MouseEvent) => {
-      if (!showHoverCard) return;
-      const rect = liRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setPreviewPos({
-        rowTop: rect.top,
-        rowBottom: rect.bottom,
-        cursorX: e.clientX,
-      });
-      // Debounced so a quick sweep across rows does not fire a refresh per row.
-      if (previewRefreshTimer.current) clearTimeout(previewRefreshTimer.current);
-      previewRefreshTimer.current = setTimeout(refreshIdlePreview, 200);
-    },
-    [showHoverCard, refreshIdlePreview],
-  );
-
-  const handlePreviewLeave = useCallback(() => {
-    setPreviewPos(null);
-    if (previewRefreshTimer.current) {
-      clearTimeout(previewRefreshTimer.current);
-      previewRefreshTimer.current = null;
+  const clearPreviewTimers = useCallback(() => {
+    if (previewShowTimer.current) {
+      clearTimeout(previewShowTimer.current);
+      previewShowTimer.current = null;
     }
   }, []);
 
-  // Clear the debounce timer if the row unmounts mid-hover.
-  useEffect(() => {
-    return () => {
-      if (previewRefreshTimer.current) {
-        clearTimeout(previewRefreshTimer.current);
-      }
-    };
+  const clearPreview = useCallback(() => {
+    clearPreviewTimers();
+    setPreviewPos(null);
+  }, [clearPreviewTimers]);
+
+  const schedulePreviewShow = useCallback(() => {
+    if (!showHoverCard) return;
+    clearPreviewTimers();
+    previewShowTimer.current = setTimeout(() => {
+      const rect = liRef.current?.getBoundingClientRect();
+      const hoverCardId = hoverCardIdRef.current;
+      if (!rect || !hoverCardId) return;
+      announceActiveSessionHoverCard(hoverCardId);
+      setPreviewPos({
+        rowTop: rect.top,
+        rowBottom: rect.bottom,
+        cursorX: previewCursorX.current,
+      });
+      refreshIdlePreview();
+      previewShowTimer.current = null;
+    }, SESSION_HOVERCARD_SHOW_DELAY_MS);
+  }, [showHoverCard, clearPreviewTimers, refreshIdlePreview]);
+
+  const handlePreviewEnter = useCallback(
+    (e: React.MouseEvent) => {
+      if (!showHoverCard) return;
+      previewCursorX.current = e.clientX;
+      schedulePreviewShow();
+    },
+    [showHoverCard, schedulePreviewShow],
+  );
+
+  const handlePreviewMove = useCallback((e: React.MouseEvent) => {
+    previewCursorX.current = e.clientX;
   }, []);
 
-  // A fixed card would drift if the sidebar scrolls under it; clear on any
-  // scroll/resize while shown rather than tracking the moving anchor.
+  // Only one session hovercard may be visible or pending across list surfaces.
+  useEffect(() => {
+    if (!showHoverCard) return;
+    return subscribeActiveSessionHoverCard((activeId) => {
+      if (activeId !== hoverCardIdRef.current) {
+        clearPreview();
+      }
+    });
+  }, [showHoverCard, clearPreview]);
+
+  // Clear pending timers if the row unmounts mid-hover.
+  useEffect(() => {
+    return () => {
+      clearPreviewTimers();
+    };
+  }, [clearPreviewTimers]);
+
+  // A fixed card would drift if the sidebar scrolls under it; clear only when
+  // the row's own scroll ancestors move. Transcript autoscroll elsewhere should
+  // not dismiss a sidebar preview.
   useEffect(() => {
     if (!previewPos) return;
-    const clear = () => setPreviewPos(null);
-    window.addEventListener("scroll", clear, true);
-    window.addEventListener("resize", clear);
-    return () => {
-      window.removeEventListener("scroll", clear, true);
-      window.removeEventListener("resize", clear);
+    const handleScroll = (event: Event) => {
+      const row = liRef.current;
+      const target = event.target;
+      if (!row || target === window || !(target instanceof Node)) {
+        clearPreview();
+        return;
+      }
+      if (target.contains(row)) {
+        clearPreview();
+      }
     };
-  }, [previewPos]);
+    const handleResize = () => clearPreview();
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [previewPos, clearPreview]);
+
+  const handlePreviewCancel = useCallback(() => {
+    const hoverCardId = hoverCardIdRef.current;
+    if (hoverCardId) {
+      announceActiveSessionHoverCard(hoverCardId);
+    }
+    clearPreview();
+  }, [clearPreview]);
 
   // Build CSS classes
   const liClasses = [
@@ -592,7 +648,9 @@ export function SessionListItem({
       ref={liRef}
       className={liClasses}
       onMouseEnter={showHoverCard ? handlePreviewEnter : undefined}
-      onMouseLeave={showHoverCard ? handlePreviewLeave : undefined}
+      onMouseMove={showHoverCard ? handlePreviewMove : undefined}
+      onMouseLeave={showHoverCard ? handlePreviewCancel : undefined}
+      onWheel={showHoverCard ? handlePreviewCancel : undefined}
     >
       {/* Checkbox for multi-select (only shown when onSelect is provided) */}
       {onSelect && (
@@ -776,6 +834,7 @@ export function SessionListItem({
           }
           useEllipsisIcon
           useFixedPositioning
+          onInteract={handlePreviewCancel}
           className="session-list-item__menu"
         />
       )}

@@ -111,6 +111,34 @@ describe("UserPromptBlock", () => {
     expect(screen.queryByText(path)).toBeNull();
   });
 
+  it("orders long-turn actions by priority in a stacked lane", () => {
+    render(
+      <I18nProvider>
+        <UserPromptBlock
+          content={"Please handle this long user turn. ".repeat(5)}
+          onCorrect={vi.fn()}
+          onForkBefore={vi.fn()}
+          onTrimBefore={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const container = screen
+      .getByText(/Please handle this long user turn/)
+      .closest(".user-prompt-container");
+    expect(container?.classList.contains("has-stacked-actions")).toBe(true);
+
+    const actionLabels = Array.from(
+      container?.querySelectorAll(".user-prompt-actions button") ?? [],
+    ).map((button) => button.getAttribute("aria-label"));
+    expect(actionLabels).toEqual([
+      "Copy message text",
+      "Edit latest message",
+      "Fork session from before this turn",
+      "Show starting here",
+    ]);
+  });
+
   it("does not fetch uploaded image previews until opened", async () => {
     const remotePath =
       "/api/projects/proj/sessions/session/upload/123e4567-e89b-12d3-a456-426614174000_photo.jpg";

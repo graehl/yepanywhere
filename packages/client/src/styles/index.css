@@ -2956,6 +2956,12 @@ a.sidebar-nav-item {
   display: block;
 }
 
+.user-prompt-container.has-stacked-actions {
+  --user-prompt-actions-space: calc(
+    var(--user-prompt-action-size) + var(--space-1)
+  );
+}
+
 .user-prompt-correctable {
   border: 1px solid transparent;
 }
@@ -2970,6 +2976,10 @@ a.sidebar-nav-item {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease;
+}
+
+.user-prompt-container.has-stacked-actions .user-prompt-actions {
+  flex-direction: column;
 }
 
 .user-prompt-container:hover .user-prompt-actions,

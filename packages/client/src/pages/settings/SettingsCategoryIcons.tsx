@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
-import { useFlatSettingsIcons } from "../../hooks/useFlatSettingsIcons";
+import { useSettingsIconStyle } from "../../hooks/useSettingsIconStyle";
 
 /**
  * Settings category icons.
  *
- * The default renderer uses platform color emoji. The optional flat renderer
- * uses inline SVGs sized to fit the .settings-category-icon container; those
- * SVGs use currentColor for theme-adaptive coloring and evenodd fillRule for
- * cutouts/holes (e.g. lock keyhole).
+ * The default renderer uses inline SVGs sized to fit the
+ * .settings-category-icon container. The optional emoji renderer uses native
+ * color glyphs. SVGs use currentColor for theme-adaptive coloring and evenodd
+ * fillRule for cutouts/holes (e.g. lock keyhole).
  */
 
 const baseProps = {
@@ -34,7 +34,7 @@ function Icon(props: {
   );
 }
 
-const settingsCategoryEmojiIcons: Record<string, string> = {
+export const settingsCategoryEmojiIcons: Record<string, string> = {
   appearance: "🎨",
   toolbar: "🎛️",
   model: "🧠",
@@ -243,15 +243,16 @@ export const settingsCategoryIcons: Record<string, ReactNode> = {
 };
 
 export function SettingsCategoryIcon({ id }: { id: string }) {
-  const { flatSettingsIcons } = useFlatSettingsIcons();
-  const icon = flatSettingsIcons
-    ? settingsCategoryIcons[id]
-    : settingsCategoryEmojiIcons[id];
+  const { settingsIconStyle } = useSettingsIconStyle();
+  const icon =
+    settingsIconStyle === "flat"
+      ? settingsCategoryIcons[id]
+      : settingsCategoryEmojiIcons[id];
   if (!icon) return null;
   const className = [
     "settings-category-icon",
     `settings-category-icon-${id}`,
-    flatSettingsIcons
+    settingsIconStyle === "flat"
       ? "settings-category-icon-flat"
       : "settings-category-icon-emoji",
   ].join(" ");

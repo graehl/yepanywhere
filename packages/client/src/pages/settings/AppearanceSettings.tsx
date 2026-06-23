@@ -10,7 +10,6 @@ import {
 } from "../../hooks/useContentMaxWidth";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useAlwaysShowQuoteCircles } from "../../hooks/useAlwaysShowQuoteCircles";
-import { useFlatSettingsIcons } from "../../hooks/useFlatSettingsIcons";
 import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionButtonEnabled";
 import { FONT_SIZES, useFontSize } from "../../hooks/useFontSize";
 import { useFunPhrases } from "../../hooks/useFunPhrases";
@@ -51,6 +50,11 @@ import {
 } from "../../hooks/useOutputAppearance";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
+import {
+  SETTINGS_ICON_STYLES,
+  type SettingsIconStyle,
+  useSettingsIconStyle,
+} from "../../hooks/useSettingsIconStyle";
 import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewRendering";
 import { useStreamingEnabled } from "../../hooks/useStreamingEnabled";
 import { TAB_SIZES, useTabSize } from "../../hooks/useTabSize";
@@ -65,11 +69,27 @@ import {
   getTabSizeLabel,
   getThemeLabel,
 } from "../../i18n-settings";
+import {
+  settingsCategoryEmojiIcons,
+  settingsCategoryIcons,
+} from "./SettingsCategoryIcons";
 
 const OUTPUT_INLINE_MATH_SAMPLE = "$E=mc^2$";
 
 function formatNumberSetting(value: number): string {
   return Number.isInteger(value) ? String(value) : String(value);
+}
+
+function getSettingsIconStyleLabel(
+  value: SettingsIconStyle,
+  translate: (key: string) => string,
+): string {
+  switch (value) {
+    case "flat":
+      return translate("appearanceSettingsIconStyleFlat");
+    case "emoji":
+      return translate("appearanceSettingsIconStyleEmoji");
+  }
 }
 
 export function AppearanceSettings() {
@@ -123,7 +143,7 @@ export function AppearanceSettings() {
   const [outputToolPreviewLineCountDraft, setOutputToolPreviewLineCountDraft] =
     useState(() => formatNumberSetting(outputToolPreviewLineCount));
   const { theme, setTheme } = useTheme();
-  const { flatSettingsIcons, setFlatSettingsIcons } = useFlatSettingsIcons();
+  const { settingsIconStyle, setSettingsIconStyle } = useSettingsIconStyle();
   const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
   const { stableToolPreviewRendering, setStableToolPreviewRendering } =
     useStableToolPreviewRendering();
@@ -159,7 +179,7 @@ export function AppearanceSettings() {
       tabSize,
       contentMaxWidth,
       theme,
-      flatSettingsIcons,
+      settingsIconStyle,
       streamingEnabled,
       stableToolPreviewRendering,
       inlineMediaExpandedByDefault,
@@ -184,7 +204,7 @@ export function AppearanceSettings() {
       tabSize,
       contentMaxWidth,
       theme,
-      flatSettingsIcons,
+      settingsIconStyle,
       streamingEnabled,
       stableToolPreviewRendering,
       inlineMediaExpandedByDefault,
@@ -213,7 +233,7 @@ export function AppearanceSettings() {
       setTabSize(snapshot.tabSize);
       setContentMaxWidth(snapshot.contentMaxWidth);
       setTheme(snapshot.theme);
-      setFlatSettingsIcons(snapshot.flatSettingsIcons);
+      setSettingsIconStyle(snapshot.settingsIconStyle);
       setStreamingEnabled(snapshot.streamingEnabled);
       setStableToolPreviewRendering(snapshot.stableToolPreviewRendering);
       setInlineMediaExpandedByDefault(snapshot.inlineMediaExpandedByDefault);
@@ -258,7 +278,7 @@ export function AppearanceSettings() {
       setTabSize,
       setContentMaxWidth,
       setTheme,
-      setFlatSettingsIcons,
+      setSettingsIconStyle,
       setStreamingEnabled,
       setStableToolPreviewRendering,
       setInlineMediaExpandedByDefault,
@@ -439,17 +459,39 @@ export function AppearanceSettings() {
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>{t("appearanceFlatSettingsIconsTitle")}</strong>
-            <p>{t("appearanceFlatSettingsIconsDescription")}</p>
+            <strong>{t("appearanceSettingsIconStyleTitle")}</strong>
+            <p>{t("appearanceSettingsIconStyleDescription")}</p>
           </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={flatSettingsIcons}
-              onChange={(e) => setFlatSettingsIcons(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
+          <div
+            className="font-size-selector settings-icon-style-selector"
+            role="group"
+            aria-label={t("appearanceSettingsIconStyleTitle")}
+          >
+            {SETTINGS_ICON_STYLES.map((style) => {
+              const selected = settingsIconStyle === style;
+              const preview =
+                style === "flat"
+                  ? settingsCategoryIcons.appearance
+                  : settingsCategoryEmojiIcons.appearance;
+              return (
+                <button
+                  key={style}
+                  type="button"
+                  className={`font-size-option settings-icon-style-option ${selected ? "active" : ""}`}
+                  onClick={() => setSettingsIconStyle(style)}
+                  aria-pressed={selected}
+                >
+                  <span
+                    className={`settings-category-icon settings-category-icon-appearance settings-category-icon-${style} settings-icon-style-preview`}
+                    aria-hidden="true"
+                  >
+                    {preview}
+                  </span>
+                  <span>{getSettingsIconStyleLabel(style, translate)}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="settings-item">
           <div className="settings-item-info">

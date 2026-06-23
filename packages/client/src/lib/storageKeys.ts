@@ -85,6 +85,8 @@ export const UI_KEYS = {
   emulatorAdaptiveFps: "yep-anywhere-emulator-adaptive-fps",
   attachmentUploadQuality: "yep-anywhere-attachment-upload-quality",
   tabTitleActivityEnabled: "yep-anywhere-tab-title-activity-enabled",
+  settingsIconStyle: "yep-anywhere-settings-icon-style",
+  // Legacy key from the first checkbox version of this client-local setting.
   flatSettingsIcons: "yep-anywhere-flat-settings-icons-enabled",
 } as const;
 

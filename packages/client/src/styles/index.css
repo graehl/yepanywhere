@@ -9613,6 +9613,29 @@ a.sidebar-nav-item {
     "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
 }
 
+.settings-icon-style-selector {
+  justify-content: flex-end;
+}
+
+.settings-icon-style-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 10px;
+}
+
+.settings-icon-style-preview {
+  width: 26px;
+  height: 28px;
+  font-size: 1.35rem;
+}
+
+.settings-icon-style-preview svg {
+  width: 18px;
+  height: 18px;
+}
+
 .settings-category-icon-appearance {
   --settings-category-icon-accent: #16a34a;
 }

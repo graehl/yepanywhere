@@ -143,6 +143,8 @@ interface Props {
   collapsed?: boolean;
   /** Callback to receive draft controls for success/failure handling */
   onDraftControlsReady?: (controls: DraftControls) => void;
+  /** Notify parent of draft edits for UI linked to the composer text. */
+  onDraftTextChange?: (text: string) => void;
   /** Context usage for displaying usage indicator */
   contextUsage?: ContextUsage;
   /** Last session activity timestamp for stale composer liveness display. */
@@ -224,6 +226,7 @@ export function MessageInput({
   draftKey,
   collapsed: externalCollapsed,
   onDraftControlsReady,
+  onDraftTextChange,
   contextUsage,
   lastActivityAt,
   sessionLiveness,
@@ -536,10 +539,24 @@ export function MessageInput({
     }
   };
 
+  const draftControls = useMemo<DraftControls>(
+    () => ({
+      ...controls,
+      focus: () => textareaRef.current?.focus(),
+      setSelectionRange: (start, end) =>
+        textareaRef.current?.setSelectionRange(start, end),
+    }),
+    [controls],
+  );
+
   // Provide controls to parent via callback
   useEffect(() => {
-    onDraftControlsReady?.(controls);
-  }, [controls, onDraftControlsReady]);
+    onDraftControlsReady?.(draftControls);
+  }, [draftControls, onDraftControlsReady]);
+
+  useEffect(() => {
+    onDraftTextChange?.(text);
+  }, [onDraftTextChange, text]);
 
   useLayoutEffect(() => {
     const pending = pendingTextareaSelectionRef.current;
@@ -1299,7 +1316,9 @@ export function MessageInput({
                             </button>
                           )}
                         </span>
-                        {seg.tag.active && <span className="speech-tag-caret" />}
+                        {seg.tag.active && (
+                          <span className="speech-tag-caret" />
+                        )}
                       </Fragment>
                     ),
                   )

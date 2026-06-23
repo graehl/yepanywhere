@@ -3,6 +3,7 @@ import {
   MESSAGE_STALE_THRESHOLD_MS,
   getLatestMessageTimestampMs,
 } from "../lib/messageAge";
+import type { CommentAnchor } from "../lib/commentAnchors";
 import type { RenderItem } from "../types/renderItems";
 import { MessageAge } from "./MessageAge";
 import { SessionSetupBlock } from "./blocks/SessionSetupBlock";
@@ -21,6 +22,9 @@ interface Props {
   onCorrectUserPrompt?: () => void;
   onTrimBeforeUserPrompt?: () => void;
   onForkBeforeUserPrompt?: () => void;
+  commentAnchors?: readonly CommentAnchor[];
+  onQuoteTextBlock?: (anchor: CommentAnchor) => void;
+  alwaysShowQuoteCircle?: boolean;
   staleNowMs?: number;
   latestVisibleTimestampMs?: number | null;
   thinkingDurationMs?: number;
@@ -141,6 +145,9 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   onCorrectUserPrompt,
   onTrimBeforeUserPrompt,
   onForkBeforeUserPrompt,
+  commentAnchors,
+  onQuoteTextBlock,
+  alwaysShowQuoteCircle,
   staleNowMs,
   latestVisibleTimestampMs,
   thinkingDurationMs,
@@ -191,6 +198,9 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             text={item.text}
             isStreaming={item.isStreaming}
             augmentHtml={item.augmentHtml}
+            commentAnchors={commentAnchors}
+            onQuoteBlock={onQuoteTextBlock}
+            alwaysShowQuoteCircle={alwaysShowQuoteCircle}
           />
         );
 

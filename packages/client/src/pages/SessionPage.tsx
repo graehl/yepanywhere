@@ -773,6 +773,8 @@ function SessionPageContent({
 
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
+  const [composerDraftForAnchors, setComposerDraftForAnchors] = useState("");
+  const [quoteClearSignal, setQuoteClearSignal] = useState(0);
   const pendingMotherComposerTransferRef = useRef<string | null>(null);
   const lastComposerSubmissionRef = useRef<LastComposerSubmission | null>(null);
   const lastSentComposerSubmissionRef = useRef<SentComposerSubmission | null>(
@@ -1492,6 +1494,7 @@ function SessionPageContent({
       rememberSentSubmission(text, tempId);
       draftControlsRef.current?.clearDraft();
       setCorrectionDraft(null);
+      clearQuoteAnchors();
     } catch (err) {
       console.error("Failed to send:", err);
       let finalError: unknown = err;
@@ -1555,6 +1558,7 @@ function SessionPageContent({
           rememberSentSubmission(text, tempId);
           draftControlsRef.current?.clearDraft();
           setCorrectionDraft(null);
+          clearQuoteAnchors();
           return;
         } catch (retryErr) {
           console.error("Failed to resume session:", retryErr);
@@ -1700,6 +1704,7 @@ function SessionPageContent({
       }
       draftControlsRef.current?.clearDraft();
       setCorrectionDraft(null);
+      clearQuoteAnchors();
     } catch (err) {
       console.error("Failed to queue deferred message:", err);
       let finalError: unknown = err;
@@ -1748,6 +1753,7 @@ function SessionPageContent({
           rememberSentSubmission(text, tempId);
           draftControlsRef.current?.clearDraft();
           setCorrectionDraft(null);
+          clearQuoteAnchors();
           return;
         } catch (retryErr) {
           console.error("Failed to resume session:", retryErr);
@@ -2411,6 +2417,36 @@ function SessionPageContent({
     },
     [showToast],
   );
+
+  const insertQuotedSelection = useCallback(
+    (quotedText: string): string | null => {
+      const controls = draftControlsRef.current;
+      if (!controls) {
+        showToast(t("sessionQuoteComposerUnavailable"), "error");
+        return null;
+      }
+      const insertedText = quotedText.trimEnd();
+      const appendedDraft = appendComposerTransferDraft(
+        controls.getDraft(),
+        insertedText,
+      );
+      const nextDraft = quotedText.endsWith("\n")
+        ? `${appendedDraft}\n`
+        : appendedDraft;
+      controls.setDraft(nextDraft);
+      setComposerDraftForAnchors(nextDraft);
+      requestAnimationFrame(() => {
+        controls.focus?.();
+        controls.setSelectionRange?.(nextDraft.length, nextDraft.length);
+      });
+      return nextDraft;
+    },
+    [showToast, t],
+  );
+
+  const clearQuoteAnchors = useCallback(() => {
+    setQuoteClearSignal((current) => current + 1);
+  }, []);
 
   const flushPendingMotherComposerTransfer = useCallback(
     (controls = draftControlsRef.current) => {
@@ -3646,6 +3682,12 @@ function SessionPageContent({
                   onStopBtwAside={handleStopBtwAsideFromTranscript}
                   onToggleBtwAsideExpanded={toggleBtwAsideExpanded}
                   onTransferBtwAsideTurn={transferBtwTurnToMotherComposer}
+                  onQuoteSelection={insertQuotedSelection}
+                  getComposerDraft={() =>
+                    draftControlsRef.current?.getDraft() ?? ""
+                  }
+                  composerDraft={composerDraftForAnchors}
+                  quoteClearSignal={quoteClearSignal}
                   onCancelDeferred={handleCancelDeferred}
                   onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
                   onTrimBeforeUserMessage={trimClientFromUserMessage}
@@ -3907,6 +3949,7 @@ function SessionPageContent({
                     : `draft-message-${sessionId}`
                 }
                 onDraftControlsReady={handleDraftControlsReady}
+                onDraftTextChange={setComposerDraftForAnchors}
                 correctionActive={
                   !mainComposerForAside && correctionDraft !== null
                 }

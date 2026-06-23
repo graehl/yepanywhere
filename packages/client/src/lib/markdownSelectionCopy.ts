@@ -34,6 +34,14 @@ interface RangeTextWithinElement {
   selectedText: string;
   textBefore: string;
   preferExactSource: boolean;
+  range: Range;
+}
+
+export interface MarkdownSelectionSnippet {
+  markdown: string;
+  selectedText: string;
+  sourceElement: HTMLElement;
+  range: Range;
 }
 
 const markdownCopySources = new WeakMap<HTMLElement, string>();
@@ -59,12 +67,28 @@ export function copyMarkdownSelectionToClipboard(
     return false;
   }
 
-  const selection = root.ownerDocument.getSelection();
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+  const snippets = extractMarkdownSnippetsFromSelection(root);
+  if (snippets.length === 0) {
     return false;
   }
 
-  const snippets: string[] = [];
+  event.clipboardData.setData(
+    "text/plain",
+    snippets.map((snippet) => snippet.markdown).join("\n\n"),
+  );
+  event.preventDefault();
+  return true;
+}
+
+export function extractMarkdownSnippetsFromSelection(
+  root: HTMLElement,
+): MarkdownSelectionSnippet[] {
+  const selection = root.ownerDocument.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return [];
+  }
+
+  const snippets: MarkdownSelectionSnippet[] = [];
   const selectedTextParts: string[] = [];
   const coveredTextParts: string[] = [];
   const sourceElements = Array.from(
@@ -105,24 +129,41 @@ export function copyMarkdownSelectionToClipboard(
         }) ?? rangeText.selectedText;
       const normalized = trimBoundaryNewlines(markdown);
       if (normalized.trim()) {
-        snippets.push(normalized);
+        snippets.push({
+          markdown: normalized,
+          selectedText: rangeText.selectedText,
+          sourceElement: element,
+          range: rangeText.range,
+        });
       }
     }
   }
 
-  if (snippets.length === 0) {
-    return false;
-  }
   if (
     normalizeSelectedTextForCoverage(selectedTextParts.join("\n")) !==
     normalizeSelectedTextForCoverage(coveredTextParts.join("\n"))
   ) {
-    return false;
+    return [];
   }
 
-  event.clipboardData.setData("text/plain", snippets.join("\n\n"));
-  event.preventDefault();
-  return true;
+  return snippets;
+}
+
+export function getMarkdownSnippetForElement(
+  element: HTMLElement,
+): MarkdownSelectionSnippet | null {
+  const source = markdownCopySources.get(element);
+  if (!source?.trim()) {
+    return null;
+  }
+  const range = element.ownerDocument.createRange();
+  range.selectNodeContents(element);
+  return {
+    markdown: trimBoundaryNewlines(source),
+    selectedText: element.innerText || element.textContent || source,
+    sourceElement: element,
+    range,
+  };
 }
 
 export function getMarkdownForVisibleSelection(
@@ -281,6 +322,7 @@ function getRangeTextWithinElement(
     preferExactSource: sourceModeElements.some((sourceElement) =>
       rangeIntersectsNode(clippedRange, sourceElement),
     ),
+    range: clippedRange,
   };
 }
 

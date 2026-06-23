@@ -1,8 +1,16 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRenderModeToggle } from "../../contexts/RenderModeContext";
+import {
+  createCommentAnchor,
+  type CommentAnchor,
+} from "../../lib/commentAnchors";
 import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
 import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
-import { registerMarkdownCopySource } from "../../lib/markdownSelectionCopy";
+import { useI18n } from "../../i18n";
+import {
+  getMarkdownSnippetForElement,
+  registerMarkdownCopySource,
+} from "../../lib/markdownSelectionCopy";
 import { FileViewerModal } from "../FilePathLink";
 import {
   LocalFileModal,
@@ -29,13 +37,20 @@ interface Props {
   isStreaming?: boolean;
   /** Pre-rendered HTML from server (for completed messages) */
   augmentHtml?: string;
+  commentAnchors?: readonly CommentAnchor[];
+  onQuoteBlock?: (anchor: CommentAnchor) => void;
+  alwaysShowQuoteCircle?: boolean;
 }
 
 export const TextBlock = memo(function TextBlock({
   text,
   isStreaming = false,
   augmentHtml,
+  commentAnchors = [],
+  onQuoteBlock,
+  alwaysShowQuoteCircle = false,
 }: Props) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const copySourceRef = useRef<HTMLDivElement>(null);
   const localMathPreview = useMemo(
@@ -99,6 +114,27 @@ export const TextBlock = memo(function TextBlock({
     }
   }, [text]);
 
+  const blockAnchors = useMemo(
+    () =>
+      commentAnchors.filter(
+        (anchor) => anchor.sourceElement === copySourceRef.current,
+      ),
+    [commentAnchors],
+  );
+  const hasCommentTint = blockAnchors.length > 0;
+
+  const handleQuoteBlock = useCallback(() => {
+    const element = copySourceRef.current;
+    if (!element || !onQuoteBlock) {
+      return;
+    }
+    const snippet = getMarkdownSnippetForElement(element);
+    if (!snippet) {
+      return;
+    }
+    onQuoteBlock(createCommentAnchor(snippet));
+  }, [onQuoteBlock]);
+
   useEffect(() => {
     const element = copySourceRef.current;
     if (!element) {
@@ -142,6 +178,17 @@ export const TextBlock = memo(function TextBlock({
       className={`text-block text-block-assistant timeline-item${isStreaming ? " streaming" : ""}`}
     >
       <div className="text-block-actions">
+        {onQuoteBlock && (
+          <button
+            type="button"
+            className={`text-block-quote ${alwaysShowQuoteCircle ? "always-visible" : ""}`}
+            onClick={handleQuoteBlock}
+            title={t("sessionQuoteBlock")}
+            aria-label={t("sessionQuoteBlock")}
+          >
+            &gt;
+          </button>
+        )}
         {canToggleRendered && (
           <button
             type="button"
@@ -169,7 +216,7 @@ export const TextBlock = memo(function TextBlock({
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation remains on the descendant links/controls */}
       <div
         ref={copySourceRef}
-        className="text-block-content"
+        className={`text-block-content${hasCommentTint ? " has-comment-tint" : ""}`}
         onClick={handleClick}
       >
         {/* Always render streaming elements when streaming so refs are ready for augments */}

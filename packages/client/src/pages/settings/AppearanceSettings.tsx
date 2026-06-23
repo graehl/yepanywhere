@@ -8,6 +8,7 @@ import {
   useContentMaxWidth,
 } from "../../hooks/useContentMaxWidth";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
+import { useAlwaysShowQuoteCircles } from "../../hooks/useAlwaysShowQuoteCircles";
 import { useFloatingActionButtonEnabled } from "../../hooks/useFloatingActionButtonEnabled";
 import { FONT_SIZES, useFontSize } from "../../hooks/useFontSize";
 import { useFunPhrases } from "../../hooks/useFunPhrases";
@@ -122,6 +123,8 @@ export function AppearanceSettings() {
     useStableToolPreviewRendering();
   const { inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault } =
     useInlineMedia();
+  const { alwaysShowQuoteCircles, setAlwaysShowQuoteCircles } =
+    useAlwaysShowQuoteCircles();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
   const { floatingActionButtonEnabled, setFloatingActionButtonEnabled } =
     useFloatingActionButtonEnabled();
@@ -153,6 +156,7 @@ export function AppearanceSettings() {
       streamingEnabled,
       stableToolPreviewRendering,
       inlineMediaExpandedByDefault,
+      alwaysShowQuoteCircles,
       funPhrasesEnabled,
       floatingActionButtonEnabled,
       tabTitleActivityEnabled,
@@ -176,6 +180,7 @@ export function AppearanceSettings() {
       streamingEnabled,
       stableToolPreviewRendering,
       inlineMediaExpandedByDefault,
+      alwaysShowQuoteCircles,
       funPhrasesEnabled,
       floatingActionButtonEnabled,
       tabTitleActivityEnabled,
@@ -203,6 +208,7 @@ export function AppearanceSettings() {
       setStreamingEnabled(snapshot.streamingEnabled);
       setStableToolPreviewRendering(snapshot.stableToolPreviewRendering);
       setInlineMediaExpandedByDefault(snapshot.inlineMediaExpandedByDefault);
+      setAlwaysShowQuoteCircles(snapshot.alwaysShowQuoteCircles);
       setFunPhrasesEnabled(snapshot.funPhrasesEnabled);
       setFloatingActionButtonEnabled(snapshot.floatingActionButtonEnabled);
       setTabTitleActivityEnabled(snapshot.tabTitleActivityEnabled);
@@ -246,6 +252,7 @@ export function AppearanceSettings() {
       setStreamingEnabled,
       setStableToolPreviewRendering,
       setInlineMediaExpandedByDefault,
+      setAlwaysShowQuoteCircles,
       setFunPhrasesEnabled,
       setFloatingActionButtonEnabled,
       setTabTitleActivityEnabled,
@@ -953,6 +960,20 @@ export function AppearanceSettings() {
               onChange={(e) =>
                 setInlineMediaExpandedByDefault(e.target.checked)
               }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceAlwaysShowQuoteCirclesTitle")}</strong>
+            <p>{t("appearanceAlwaysShowQuoteCirclesDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={alwaysShowQuoteCircles}
+              onChange={(e) => setAlwaysShowQuoteCircles(e.target.checked)}
             />
             <span className="toggle-slider" />
           </label>

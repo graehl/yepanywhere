@@ -511,7 +511,8 @@
 
 /* Copy button for text blocks */
 .text-block-copy,
-.text-block-toggle {
+.text-block-toggle,
+.text-block-quote {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -533,12 +534,14 @@
   opacity: 0;
 }
 
-.text-block-toggle {
+.text-block-toggle,
+.text-block-quote {
   opacity: 0;
 }
 
 .text-block-copy,
-.text-block-toggle {
+.text-block-toggle,
+.text-block-quote {
   pointer-events: none;
 }
 
@@ -546,27 +549,66 @@
 .text-block:focus-within .text-block-copy,
 .text-block:hover .text-block-toggle,
 .text-block:focus-within .text-block-toggle,
+.text-block:hover .text-block-quote,
+.text-block:focus-within .text-block-quote,
 .text-block-copy:focus,
-.text-block-toggle:focus {
+.text-block-toggle:focus,
+.text-block-quote:focus,
+.text-block-quote.always-visible {
   opacity: 1;
   pointer-events: auto;
 }
 
 .text-block-copy:hover,
-.text-block-toggle:hover {
+.text-block-toggle:hover,
+.text-block-quote:hover {
   background: var(--bg-tertiary, #333);
   color: var(--text-primary, #ccc);
 }
 
 .text-block-copy:active,
-.text-block-toggle:active {
+.text-block-toggle:active,
+.text-block-quote:active {
   background: var(--bg-tertiary, #444);
 }
 
 .text-block-copy:focus,
-.text-block-toggle:focus {
+.text-block-toggle:focus,
+.text-block-quote:focus {
   outline: 1px solid var(--focus-border, #007acc);
   outline-offset: -1px;
+}
+
+.text-block-quote {
+  font-weight: 700;
+}
+
+.text-block-content.has-comment-tint {
+  background: color-mix(in srgb, var(--app-yep-green) 16%, transparent);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--app-yep-green) 18%, transparent);
+}
+
+.selection-quote-button {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--app-yep-green) 55%, #333);
+  background: color-mix(in srgb, var(--app-yep-green) 22%, var(--bg-secondary));
+  color: var(--text-primary);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.selection-quote-button:hover {
+  background: color-mix(in srgb, var(--app-yep-green) 32%, var(--bg-secondary));
 }
 
 .text-block-copy.copied {

@@ -71,6 +71,7 @@ export const UI_KEYS = {
   floatingActionButtonEnabled: "yep-anywhere-floating-action-button-enabled",
   developerMode: "yep-anywhere-developer-mode",
   sessionToolbarVisibility: "yep-anywhere-session-toolbar-visibility",
+  alwaysShowQuoteCircles: "yep-anywhere-always-show-quote-circles",
   sessionThinkingVisible: "yep-anywhere-session-thinking-visible",
   sessionThinkingLatestOnly: "yep-anywhere-session-thinking-latest-only",
   stableToolPreviewRendering:

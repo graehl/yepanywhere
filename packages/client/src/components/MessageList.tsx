@@ -13,11 +13,20 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import {
+  createCommentAnchor,
+  type CommentAnchor,
+  draftContainsAnchorQuote,
+} from "../lib/commentAnchors";
 import { getShowThinkingSetting } from "../hooks/useModelSettings";
+import { useAlwaysShowQuoteCircles } from "../hooks/useAlwaysShowQuoteCircles";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useI18n } from "../i18n";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
-import { copyMarkdownSelectionToClipboard } from "../lib/markdownSelectionCopy";
+import {
+  copyMarkdownSelectionToClipboard,
+  extractMarkdownSnippetsFromSelection,
+} from "../lib/markdownSelectionCopy";
 import {
   formatCompactRelativeAge,
   getLatestMessageTimestampMs,
@@ -832,7 +841,8 @@ function compareComposerTailItems(
     return left.deferredIndex - right.deferredIndex;
   }
 
-  const leftOrder = left.kind === "pending" ? left.message.clientOrder : undefined;
+  const leftOrder =
+    left.kind === "pending" ? left.message.clientOrder : undefined;
   const rightOrder =
     right.kind === "pending" ? right.message.clientOrder : undefined;
   if (
@@ -900,6 +910,13 @@ interface Props {
   onToggleBtwAsideExpanded?: (asideId: string) => void;
   /** Insert a /btw transcript turn into the Mother composer. */
   onTransferBtwAsideTurn?: (text: string) => void;
+  /** Append quoted assistant output to the composer. */
+  onQuoteSelection?: (quotedText: string) => string | null;
+  /** Read current composer draft for quote tint reconciliation. */
+  getComposerDraft?: () => string;
+  composerDraft?: string;
+  /** Clear all comment anchors after the quoted turn is sent. */
+  quoteClearSignal?: number;
   /** Callback to cancel a deferred message */
   onCancelDeferred?: (tempId: string) => void;
   /** Callback to correct the latest actually-sent user message */
@@ -1062,6 +1079,10 @@ export const MessageList = memo(function MessageList({
   onStopBtwAside,
   onToggleBtwAsideExpanded,
   onTransferBtwAsideTurn,
+  onQuoteSelection,
+  getComposerDraft,
+  composerDraft = "",
+  quoteClearSignal = 0,
   onCancelDeferred,
   onCorrectLatestUserMessage,
   onTrimBeforeUserMessage,
@@ -1139,7 +1160,77 @@ export const MessageList = memo(function MessageList({
     selectedId: null,
     originalScrollTop: null,
   });
+  const [commentAnchors, setCommentAnchors] = useState<
+    readonly CommentAnchor[]
+  >([]);
+  const [floatingQuoteButton, setFloatingQuoteButton] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  const { alwaysShowQuoteCircles } = useAlwaysShowQuoteCircles();
+  const { t } = useI18n();
   const nowMs = useRelativeNow();
+
+  const applyQuoteAnchors = useCallback(
+    (anchors: readonly CommentAnchor[], typedPrefix = "") => {
+      if (!onQuoteSelection || anchors.length === 0) {
+        return false;
+      }
+      const quotedText = anchors
+        .map((anchor) => anchor.quotedText)
+        .join("\n\n");
+      const nextDraft = onQuoteSelection(
+        typedPrefix ? `${quotedText}\n${typedPrefix}` : `${quotedText}\n`,
+      );
+      if (nextDraft === null) {
+        return false;
+      }
+      setCommentAnchors((previous) => [...previous, ...anchors]);
+      containerRef.current?.ownerDocument.getSelection()?.removeAllRanges();
+      setFloatingQuoteButton(null);
+      return true;
+    },
+    [onQuoteSelection],
+  );
+
+  const applyQuoteFromSelection = useCallback(
+    (typedPrefix = "") => {
+      const root = containerRef.current;
+      if (!root) {
+        return false;
+      }
+      const anchors =
+        extractMarkdownSnippetsFromSelection(root).map(createCommentAnchor);
+      return applyQuoteAnchors(anchors, typedPrefix);
+    },
+    [applyQuoteAnchors],
+  );
+
+  const handleQuoteTextBlock = useCallback(
+    (anchor: CommentAnchor) => {
+      applyQuoteAnchors([anchor]);
+    },
+    [applyQuoteAnchors],
+  );
+
+  useEffect(() => {
+    if (commentAnchors.length === 0) {
+      return;
+    }
+    const draft = getComposerDraft?.() ?? composerDraft;
+    setCommentAnchors((previous) => {
+      const next = previous.filter((anchor) =>
+        draftContainsAnchorQuote(draft, anchor),
+      );
+      return next.length === previous.length ? previous : next;
+    });
+  }, [commentAnchors.length, composerDraft, getComposerDraft]);
+
+  useEffect(() => {
+    if (quoteClearSignal > 0) {
+      setCommentAnchors([]);
+    }
+  }, [quoteClearSignal]);
 
   // Scroll to bottom, marking it as programmatic so scroll handler ignores it
   const scrollToBottom = useCallback(
@@ -1652,6 +1743,83 @@ export const MessageList = memo(function MessageList({
     document.addEventListener("copy", handleCopy);
     return () => document.removeEventListener("copy", handleCopy);
   }, []);
+
+  useEffect(() => {
+    if (!onQuoteSelection) {
+      setFloatingQuoteButton(null);
+      return;
+    }
+
+    const updateFloatingQuoteButton = () => {
+      const root = containerRef.current;
+      const selection = root?.ownerDocument.getSelection();
+      if (
+        !root ||
+        !selection ||
+        selection.isCollapsed ||
+        selection.rangeCount === 0 ||
+        extractMarkdownSnippetsFromSelection(root).length === 0
+      ) {
+        setFloatingQuoteButton(null);
+        return;
+      }
+
+      const range = selection.getRangeAt(selection.rangeCount - 1);
+      const rect = range.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) {
+        setFloatingQuoteButton(null);
+        return;
+      }
+      const rootRect = root.getBoundingClientRect();
+      setFloatingQuoteButton({
+        top: rect.top - rootRect.top - 34,
+        left: Math.max(
+          0,
+          Math.min(rect.right - rootRect.left + 8, root.clientWidth - 36),
+        ),
+      });
+    };
+
+    document.addEventListener("selectionchange", updateFloatingQuoteButton);
+    window.addEventListener("resize", updateFloatingQuoteButton);
+    window.addEventListener("scroll", updateFloatingQuoteButton, true);
+    return () => {
+      document.removeEventListener(
+        "selectionchange",
+        updateFloatingQuoteButton,
+      );
+      window.removeEventListener("resize", updateFloatingQuoteButton);
+      window.removeEventListener("scroll", updateFloatingQuoteButton, true);
+    };
+  }, [onQuoteSelection]);
+
+  useEffect(() => {
+    if (!onQuoteSelection) {
+      return;
+    }
+    const handleSelectionTyping = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.key.length !== 1 ||
+        isInteractiveScrollTarget(event.target)
+      ) {
+        return;
+      }
+      if (!applyQuoteFromSelection(event.key)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener("keydown", handleSelectionTyping, true);
+    return () =>
+      window.removeEventListener("keydown", handleSelectionTyping, true);
+  }, [applyQuoteFromSelection, onQuoteSelection]);
   const latestVisibleTimestampMs = useMemo(() => {
     let latest: number | null = null;
     const includeTimestamp = (timestampMs: number | null) => {
@@ -2697,6 +2865,22 @@ export const MessageList = memo(function MessageList({
         ? createPortal(followButton, followButtonTarget)
         : followButton}
       <div className="message-list" ref={containerRef}>
+        {floatingQuoteButton && (
+          <button
+            type="button"
+            className="selection-quote-button"
+            style={{
+              top: `${floatingQuoteButton.top}px`,
+              left: `${floatingQuoteButton.left}px`,
+            }}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => applyQuoteFromSelection()}
+            aria-label={t("sessionQuoteSelection")}
+            title={t("sessionQuoteSelection")}
+          >
+            &gt;
+          </button>
+        )}
         {(hasOlderMessages || clientTailActive) && (
           <div className="load-older-messages">
             {clientTailActive && (
@@ -2828,6 +3012,13 @@ export const MessageList = memo(function MessageList({
                         ? () => onForkBeforeUserMessage(item.id)
                         : undefined
                     }
+                    commentAnchors={
+                      item.type === "text" ? commentAnchors : undefined
+                    }
+                    onQuoteTextBlock={
+                      item.type === "text" ? handleQuoteTextBlock : undefined
+                    }
+                    alwaysShowQuoteCircle={alwaysShowQuoteCircles}
                     staleNowMs={getItemStaleNowMs(item)}
                     latestVisibleTimestampMs={latestVisibleTimestampMs}
                     thinkingDurationMs={getThinkingDurationMs(

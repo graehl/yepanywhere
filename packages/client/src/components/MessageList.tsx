@@ -72,6 +72,8 @@ import {
 } from "./UserTurnNavigator";
 import { CopyTextButton } from "./ui/CopyTextButton";
 
+const EMPTY_TRANSCRIPT_DISPLAY_OBJECTS: readonly TranscriptDisplayObject[] = [];
+
 /**
  * Groups consecutive assistant items (text, thinking, tool_call) into turns.
  * User prompts break the grouping and are returned as separate groups.
@@ -921,7 +923,7 @@ interface BtwAsideTimelineItem {
 
 interface Props {
   messages: Message[];
-  transcriptDisplayObjects?: TranscriptDisplayObject[];
+  transcriptDisplayObjects?: readonly TranscriptDisplayObject[];
   provider?: string;
   isStreaming?: boolean;
   isProcessing?: boolean;
@@ -1107,7 +1109,7 @@ function BtwAsideTimelineCard({
 
 export const MessageList = memo(function MessageList({
   messages,
-  transcriptDisplayObjects = [],
+  transcriptDisplayObjects = EMPTY_TRANSCRIPT_DISPLAY_OBJECTS,
   provider,
   isStreaming = false,
   isProcessing = false,

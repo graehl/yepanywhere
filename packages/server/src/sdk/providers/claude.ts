@@ -669,7 +669,14 @@ export class ClaudeProvider implements AgentProvider {
   readonly supportsSteering = true;
   readonly supportsSteerNow = true;
   readonly supportsRecaps = true;
-  readonly supportsNativeRecaps = true;
+  // Intentionally false. Claude emits native away_summary recaps only in the
+  // interactive TUI (entrypoint:cli), which writes them to the session JSONL
+  // after idle; YA reads and shows those regardless of recap mode. YA drives
+  // Claude via the TS SDK (entrypoint:sdk-ts), and there is no known way to
+  // make an SDK/YA-owned session emit native recaps, so a "native" choice here
+  // is a no-op (and would make fork/tailed wait a pointless native grace
+  // window). Do not re-enable on the basis of seeing CLI recaps in the JSONL.
+  readonly supportsNativeRecaps = false;
   readonly supportsNativePromptSuggestions = true;
   readonly promptCacheKeepalive?: PromptCacheKeepaliveProviderInfo = {
     supportsNoContextPollutionNudge: true,

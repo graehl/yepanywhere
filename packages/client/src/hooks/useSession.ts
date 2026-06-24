@@ -50,7 +50,51 @@ const THROTTLE_MS = 500;
 const STREAM_ACTIVITY_TOKEN_UPDATE_MS = 500;
 const STREAM_LIVENESS_UPDATE_MS = 500;
 const FALLBACK_STREAM_LONG_SILENCE_THRESHOLD_MS = 300_000;
-const RECAP_REQUEST_COOLDOWN_MS = 30_000;
+// Background "away recap" scheduling. A session is "away" when its tab is
+// hidden or the user navigated away from its view -- equivalent conditions.
+// After the session's configured away threshold elapses while still away, we
+// request a recap in the background rather than on return: recap generation has
+// ~10s latency, so on-return would stall the view. Timers are module-level so
+// they survive this hook unmounting on navigation. We gate on a live processId:
+// with no YA-owned process there is nothing to recap and we avoid the cost. (A
+// live processId is only a weak proxy for the provider context still being
+// warm, but it is the cheap, simple guard.)
+const awayRecapTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleAwayRecap(
+  sessionId: string,
+  processId: string,
+  awayThresholdMs: number,
+): void {
+  // One away period -> one timer; keep the original "away since".
+  if (awayRecapTimers.has(sessionId)) {
+    return;
+  }
+  const awaySinceMs = Date.now();
+  const timer = setTimeout(() => {
+    awayRecapTimers.delete(sessionId);
+    void api.requestRecap(processId, awaySinceMs).catch((error) => {
+      console.warn("Failed to request recap:", error);
+    });
+  }, awayThresholdMs);
+  awayRecapTimers.set(sessionId, timer);
+}
+
+function cancelAwayRecap(sessionId: string): void {
+  const timer = awayRecapTimers.get(sessionId);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    awayRecapTimers.delete(sessionId);
+  }
+}
+
+// Test-only: clear any pending away-recap timers between tests.
+export function __resetAwayRecapTimersForTest(): void {
+  for (const timer of awayRecapTimers.values()) {
+    clearTimeout(timer);
+  }
+  awayRecapTimers.clear();
+}
 
 function hasUserVisibleStreamProgress(
   streamEvent: Record<string, unknown>,
@@ -627,8 +671,6 @@ export function useSession(
   // For Codex providers, the first connected-event catch-up fetch can duplicate
   // freshly streamed messages because JSONL and stream IDs are not yet aligned.
   const hasHandledConnectedEventRef = useRef(false);
-  const hiddenSinceMsRef = useRef<number | null>(null);
-  const lastRecapRequestMsRef = useRef<number | null>(null);
   const liveProcessId = status.owner === "self" ? status.processId : null;
   const recapAwayThresholdMs =
     normalizeRecapAfterSeconds(
@@ -636,6 +678,8 @@ export function useSession(
         ? status.recapAfterSeconds
         : DEFAULT_RECAP_AFTER_SECONDS,
     ) * 1000;
+  const recapAwayThresholdMsRef = useRef(recapAwayThresholdMs);
+  recapAwayThresholdMsRef.current = recapAwayThresholdMs;
 
   // Reset connected-event tracking when switching sessions.
   useEffect(() => {
@@ -643,47 +687,55 @@ export function useSession(
     setSessionLiveness(null);
   }, [sessionId]);
 
+  // Tab visibility is one "away" signal: hiding schedules the background recap;
+  // returning (visible) cancels it if it has not fired yet.
   useEffect(() => {
     if (typeof document === "undefined") {
       return;
     }
-
     const handleVisibilityChange = () => {
-      const nowMs = Date.now();
       if (document.visibilityState === "hidden") {
-        hiddenSinceMsRef.current = nowMs;
+        if (liveProcessId) {
+          scheduleAwayRecap(
+            sessionId,
+            liveProcessId,
+            recapAwayThresholdMsRef.current,
+          );
+        }
         return;
       }
-      if (document.visibilityState !== "visible") {
-        return;
+      if (document.visibilityState === "visible") {
+        cancelAwayRecap(sessionId);
       }
-
-      const hiddenSinceMs = hiddenSinceMsRef.current;
-      hiddenSinceMsRef.current = null;
-      if (hiddenSinceMs === null || !liveProcessId) {
-        return;
-      }
-
-      const hiddenDurationMs = nowMs - hiddenSinceMs;
-      const previousRequestMs = lastRecapRequestMsRef.current;
-      const isCoolingDown =
-        previousRequestMs !== null &&
-        nowMs - previousRequestMs < RECAP_REQUEST_COOLDOWN_MS;
-      if (hiddenDurationMs < recapAwayThresholdMs || isCoolingDown) {
-        return;
-      }
-
-      lastRecapRequestMsRef.current = nowMs;
-      void api.requestRecap(liveProcessId, hiddenSinceMs).catch((error) => {
-        console.warn("Failed to request recap:", error);
-      });
     };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [liveProcessId, recapAwayThresholdMs]);
+  }, [sessionId, liveProcessId]);
+
+  // Navigating away from this session's view is the equivalent away signal:
+  // being present (mounted with the tab visible) cancels any pending recap;
+  // leaving (unmount or in-place session switch) schedules it. The cleanup
+  // closure carries this render's sessionId and processId, so an in-place
+  // A->B switch schedules A against A's own process.
+  useEffect(() => {
+    if (
+      typeof document === "undefined" ||
+      document.visibilityState === "visible"
+    ) {
+      cancelAwayRecap(sessionId);
+    }
+    return () => {
+      if (liveProcessId) {
+        scheduleAwayRecap(
+          sessionId,
+          liveProcessId,
+          recapAwayThresholdMsRef.current,
+        );
+      }
+    };
+  }, [sessionId, liveProcessId]);
 
   // Slash commands available for this session (from init message)
   const [slashCommands, setSlashCommands] = useState<string[]>([]);

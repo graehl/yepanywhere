@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import type {
   SessionLivenessSnapshot,
   UrlProjectId,
@@ -10,7 +10,7 @@ import type {
   SessionUpdatedEvent,
 } from "../../lib/activityBus";
 import type { SessionStatus } from "../../types";
-import { useSession } from "../useSession";
+import { __resetAwayRecapTimersForTest, useSession } from "../useSession";
 
 const apiMocks = vi.hoisted(() => ({
   getSessionMetadata: vi.fn(),
@@ -176,6 +176,8 @@ vi.mock("../useStreamingContent", () => ({
 describe("useSession completion reconciliation", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    cleanup();
+    __resetAwayRecapTimersForTest();
     vi.clearAllMocks();
     apiMocks.getSessionMetadata.mockReset();
     apiMocks.requestRecap.mockReset();
@@ -957,6 +959,120 @@ describe("useSession completion reconciliation", () => {
         "proc-1",
         Date.parse("2026-04-24T00:00:01.999Z"),
       );
+    } finally {
+      visibility.restore();
+    }
+  });
+
+  it("fires a background recap after the away threshold while still hidden", () => {
+    vi.setSystemTime(new Date("2026-04-24T00:00:00.000Z"));
+    const visibility = installVisibilityStateMock("visible");
+
+    try {
+      renderHook(() =>
+        useSession(PROJECT_ID, "sess-bg", {
+          owner: "self",
+          processId: "proc-bg",
+          recapAfterSeconds: 2,
+        }),
+      );
+
+      act(() => {
+        visibility.set("hidden");
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      // No return: the recap must fire in the background once the threshold passes.
+      act(() => {
+        vi.advanceTimersByTime(2_000);
+      });
+
+      expect(apiMocks.requestRecap).toHaveBeenCalledTimes(1);
+      expect(apiMocks.requestRecap).toHaveBeenCalledWith(
+        "proc-bg",
+        Date.parse("2026-04-24T00:00:00.000Z"),
+      );
+    } finally {
+      visibility.restore();
+    }
+  });
+
+  it("fires a background recap after navigating away from a live session", () => {
+    vi.setSystemTime(new Date("2026-04-24T00:00:00.000Z"));
+    const visibility = installVisibilityStateMock("visible");
+
+    try {
+      const { unmount } = renderHook(() =>
+        useSession(PROJECT_ID, "sess-nav", {
+          owner: "self",
+          processId: "proc-nav",
+          recapAfterSeconds: 2,
+        }),
+      );
+
+      act(() => {
+        unmount();
+      });
+      act(() => {
+        vi.advanceTimersByTime(2_000);
+      });
+
+      expect(apiMocks.requestRecap).toHaveBeenCalledTimes(1);
+      expect(apiMocks.requestRecap).toHaveBeenCalledWith(
+        "proc-nav",
+        Date.parse("2026-04-24T00:00:00.000Z"),
+      );
+    } finally {
+      visibility.restore();
+    }
+  });
+
+  it("cancels the background recap when returning before the threshold", () => {
+    vi.setSystemTime(new Date("2026-04-24T00:00:00.000Z"));
+    const visibility = installVisibilityStateMock("visible");
+
+    try {
+      renderHook(() =>
+        useSession(PROJECT_ID, "sess-cancel", {
+          owner: "self",
+          processId: "proc-cancel",
+          recapAfterSeconds: 5,
+        }),
+      );
+
+      act(() => {
+        visibility.set("hidden");
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      act(() => {
+        vi.advanceTimersByTime(2_000);
+        visibility.set("visible");
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+
+      expect(apiMocks.requestRecap).not.toHaveBeenCalled();
+    } finally {
+      visibility.restore();
+    }
+  });
+
+  it("does not schedule a recap without a live process id", () => {
+    const visibility = installVisibilityStateMock("visible");
+
+    try {
+      renderHook(() => useSession(PROJECT_ID, "sess-noproc"));
+
+      act(() => {
+        visibility.set("hidden");
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      act(() => {
+        vi.advanceTimersByTime(600_000);
+      });
+
+      expect(apiMocks.requestRecap).not.toHaveBeenCalled();
     } finally {
       visibility.restore();
     }

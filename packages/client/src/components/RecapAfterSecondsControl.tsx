@@ -6,11 +6,14 @@ import {
 } from "@yep-anywhere/shared";
 import {
   type KeyboardEvent,
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useI18n } from "../i18n";
+import { CommittedRangeInput } from "./ui/CommittedRangeInput";
 
 interface RecapAfterSecondsControlProps {
   value?: number;
@@ -30,51 +33,113 @@ export function RecapAfterSecondsControl({
     () => normalizeRecapAfterSeconds(value ?? DEFAULT_RECAP_AFTER_SECONDS),
     [value],
   );
-  const [draft, setDraft] = useState(String(normalizedValue));
+  const [draftValue, setDraftValue] = useState(normalizedValue);
+  const [draftText, setDraftText] = useState(String(normalizedValue));
+  const lastCommittedRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setDraft(String(normalizedValue));
+    setDraftValue(normalizedValue);
+    setDraftText(String(normalizedValue));
+    lastCommittedRef.current = null;
   }, [normalizedValue]);
 
-  const commit = () => {
-    const next = normalizeRecapAfterSeconds(Number(draft));
-    setDraft(String(next));
-    if (next !== normalizedValue) {
-      void onCommit(next);
+  const commitValue = useCallback(
+    (rawValue: number) => {
+      const next = normalizeRecapAfterSeconds(rawValue);
+      setDraftValue(next);
+      setDraftText(String(next));
+      if (next !== normalizedValue && lastCommittedRef.current !== next) {
+        lastCommittedRef.current = next;
+        void onCommit(next);
+      }
+    },
+    [normalizedValue, onCommit],
+  );
+
+  const commitText = useCallback(() => {
+    commitValue(Number(draftText));
+  }, [commitValue, draftText]);
+
+  const resetDraft = useCallback(() => {
+    setDraftValue(normalizedValue);
+    setDraftText(String(normalizedValue));
+  }, [normalizedValue]);
+
+  const updateSliderDraft = (rawValue: number) => {
+    const next = normalizeRecapAfterSeconds(rawValue);
+    setDraftText(String(next));
+  };
+
+  const updateTextDraft = (text: string) => {
+    setDraftText(text);
+    if (text.trim() === "") {
+      return;
     }
+    const parsed = Number(text);
+    if (Number.isFinite(parsed)) {
+      setDraftValue(normalizeRecapAfterSeconds(parsed));
+    }
+  };
+
+  const commitSlider = (rawValue: number) => {
+    commitValue(rawValue);
+  };
+
+  const handleTextBlur = () => {
+    commitText();
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
-      event.currentTarget.blur();
+      event.preventDefault();
+      commitText();
     } else if (event.key === "Escape") {
-      setDraft(String(normalizedValue));
-      event.currentTarget.blur();
+      event.preventDefault();
+      resetDraft();
     }
   };
 
   return (
-    <label
+    <div
       className={
         className
           ? `recap-after-seconds-control ${className}`
           : "recap-after-seconds-control"
       }
     >
-      <span>{t("recapAfterSecondsLabel")}</span>
-      <input
-        type="number"
-        min={MIN_RECAP_AFTER_SECONDS}
-        max={MAX_RECAP_AFTER_SECONDS}
-        step={1}
-        value={draft}
-        disabled={disabled}
-        aria-label={t("recapAfterSecondsAria")}
-        onChange={(event) => setDraft(event.currentTarget.value)}
-        onBlur={commit}
-        onKeyDown={handleKeyDown}
-      />
-      <span>{t("recapAfterSecondsUnit")}</span>
-    </label>
+      <span className="recap-after-seconds-label">
+        {t("recapAfterSecondsLabel")}
+      </span>
+      <span className="output-appearance-slider-row recap-after-seconds-row">
+        <CommittedRangeInput
+          min={MIN_RECAP_AFTER_SECONDS}
+          max={MAX_RECAP_AFTER_SECONDS}
+          step={1}
+          value={draftValue}
+          disabled={disabled}
+          aria-label={t("recapAfterSecondsAria")}
+          onDraftChange={updateSliderDraft}
+          onCommit={commitSlider}
+        />
+        <span className="output-appearance-number-wrap">
+          <input
+            type="number"
+            className="settings-input-small output-appearance-number"
+            min={MIN_RECAP_AFTER_SECONDS}
+            max={MAX_RECAP_AFTER_SECONDS}
+            step={1}
+            value={draftText}
+            disabled={disabled}
+            aria-label={t("recapAfterSecondsAria")}
+            onChange={(event) => updateTextDraft(event.currentTarget.value)}
+            onBlur={handleTextBlur}
+            onKeyDown={handleKeyDown}
+          />
+          <span className="output-appearance-unit">
+            {t("recapAfterSecondsUnit")}
+          </span>
+        </span>
+      </span>
+    </div>
   );
 }

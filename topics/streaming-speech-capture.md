@@ -139,10 +139,14 @@ settings surface):
   the idle warm stream; active capture and streaming/batch finalization continue
   until the user, Smart Turn, or the provider lifecycle stops them. When the
   document returns to `visible`, reacquire the idle warm stream only if Keep Mic
-  Warm remains enabled and no active capture already owns the mic. Release the
-  idle warm stream on provider dispose, option-off, backend/device change,
-  hidden document, or tab close. Browser page visibility is the portable signal:
-  YA cannot reliably detect true pixel occlusion by another OS window.
+  Warm remains enabled and no active capture already owns the mic. Provider
+  disposal cancels that provider's active capture and subscriptions; the shared
+  idle warm stream may survive provider disposal/backend replacement when Keep
+  Mic Warm remains enabled and the selected mic/constraints are compatible. The
+  idle warm stream is released on option-off, selected mic change, hidden
+  document, tab close, or the shared release path explicitly running. Browser
+  page visibility is the portable signal: YA cannot reliably detect true pixel
+  occlusion by another OS window.
 
   Default off keeps no speculative capture.
 

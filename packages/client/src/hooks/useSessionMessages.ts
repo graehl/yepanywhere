@@ -196,6 +196,10 @@ function approxDedupOptions(provider?: string): { excludeTools: boolean } {
   };
 }
 
+function isDurableRecapOverlay(message: Message): boolean {
+  return typeof message.yaRecapSource === "string";
+}
+
 /**
  * Find the id of the newest JSONL-sourced message.
  *
@@ -210,7 +214,11 @@ function approxDedupOptions(provider?: string): { excludeTools: boolean } {
 function findLastJsonlMessageId(messages: Message[]): string | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
-    if (message && (message._source ?? "sdk") === "jsonl") {
+    if (
+      message &&
+      (message._source ?? "sdk") === "jsonl" &&
+      !isDurableRecapOverlay(message)
+    ) {
       return getMessageId(message);
     }
   }
@@ -329,6 +337,9 @@ export function useSessionMessages(
     (persistedMessages: Message[]) => {
       let maxMs = maxPersistedTimestampMsRef.current;
       for (const message of persistedMessages) {
+        if (isDurableRecapOverlay(message)) {
+          continue;
+        }
         const ts = getMessageTimestampMs(message);
         if (ts !== null && ts > maxMs) {
           maxMs = ts;

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+  DurableRecapMessage,
   ProviderName,
   TranscriptDisplayObject,
   UrlProjectId,
@@ -22,7 +23,11 @@ import type {
   LoadedSession,
 } from "../../src/sessions/types.js";
 import { ResumeCompactionError } from "../../src/supervisor/Supervisor.js";
-import type { Project, SessionSummary } from "../../src/supervisor/types.js";
+import type {
+  Message,
+  Project,
+  SessionSummary,
+} from "../../src/supervisor/types.js";
 
 function createProject(): Project {
   return {
@@ -61,6 +66,31 @@ function createLoadedCodexSession(): LoadedSession {
       session: {
         entries: [],
       },
+    },
+  };
+}
+
+function createLoadedGrokSession(
+  summaryOverrides: Partial<SessionSummary> = {},
+  messages: Message[] = [
+    {
+      uuid: "provider-1",
+      type: "assistant",
+      timestamp: "2026-03-10T09:46:00.000Z",
+      message: { role: "assistant", content: "Provider response." },
+    },
+  ],
+): LoadedSession {
+  return {
+    summary: {
+      ...createSummary(),
+      provider: "grok",
+      model: "grok-build",
+      ...summaryOverrides,
+    },
+    data: {
+      provider: "grok",
+      session: { messages },
     },
   };
 }
@@ -729,6 +759,118 @@ describe("Sessions metadata route", () => {
         expect.objectContaining({ name: "goal" }),
       ]),
     );
+  });
+
+  it("computes detail unread state from overlaid recap freshness", async () => {
+    const project = { ...createProject(), provider: "grok" as const };
+    const recap: DurableRecapMessage = {
+      type: "system",
+      subtype: "away_summary",
+      content: "Fresh recap.",
+      timestamp: "2026-03-10T09:50:00.000Z",
+      uuid: "recap-1",
+      id: "recap-1",
+      yaRecapSource: "ya-synthetic",
+    };
+    const hasUnread = vi.fn(
+      (_sessionId: string, updatedAt: string) => updatedAt === recap.timestamp,
+    );
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSession: vi.fn(async () =>
+              createLoadedGrokSession({
+                updatedAt: "2026-03-10T09:46:00.000Z",
+                messageCount: 1,
+              }),
+            ),
+          }) as unknown as ISessionReader,
+      ),
+      notificationService: {
+        getLastSeen: vi.fn(() => ({
+          sessionId: "sess-1",
+          timestamp: "2026-03-10T09:49:00.000Z",
+        })),
+        hasUnread,
+      } as unknown as NonNullable<SessionsDeps["notificationService"]>,
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => undefined),
+        getProvider: vi.fn(() => "grok"),
+        getRecapMessages: vi.fn(() => [recap]),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1`,
+    );
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    expect(hasUnread).toHaveBeenCalledWith("sess-1", recap.timestamp);
+    expect(json.session).toMatchObject({
+      updatedAt: recap.timestamp,
+      hasUnread: true,
+    });
+  });
+
+  it("handles durable recap ids as overlay cursors", async () => {
+    const project = { ...createProject(), provider: "grok" as const };
+    const recap: DurableRecapMessage = {
+      type: "system",
+      subtype: "away_summary",
+      content: "Fresh recap.",
+      timestamp: "2026-03-10T09:50:00.000Z",
+      uuid: "recap-1",
+      id: "recap-1",
+      yaRecapSource: "ya-synthetic",
+    };
+    const getSession = vi.fn(async () =>
+      createLoadedGrokSession({
+        updatedAt: "2026-03-10T09:46:00.000Z",
+        messageCount: 1,
+      }),
+    );
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        wasEverOwned: vi.fn(() => false),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSession,
+          }) as unknown as ISessionReader,
+      ),
+      sessionMetadataService: {
+        getMetadata: vi.fn(() => undefined),
+        getProvider: vi.fn(() => "grok"),
+        getRecapMessages: vi.fn(() => [recap]),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1?afterMessageId=recap-1`,
+    );
+    expect(response.status).toBe(200);
+
+    expect(getSession).toHaveBeenCalledWith("sess-1", project.id, undefined, {
+      includeOrphans: false,
+    });
+    const json = await response.json();
+    expect(json.messages).toEqual([]);
   });
 
   it("prefers persisted provider over conflicting client resume provider", async () => {

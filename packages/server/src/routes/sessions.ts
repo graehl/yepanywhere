@@ -1,6 +1,7 @@
 import {
   ALL_PERMISSION_MODES,
   type ContextUsage,
+  type DurableRecapMessage,
   type PermissionRules,
   PROMPT_SUGGESTION_MODES,
   type PromptSuggestionMode,
@@ -58,6 +59,7 @@ import { normalizeSession } from "../sessions/normalization.js";
 import {
   applyRecapOverlayToSession,
   applyRecapOverlayToSummary,
+  hasEquivalentRecapMessage,
   latestRecapMessage,
   mergeRecapMessages,
 } from "../sessions/recap-overlays.js";
@@ -768,6 +770,38 @@ function messageId(message: Message | undefined): string | undefined {
     (typeof message.id === "string" && message.id) ||
     undefined
   );
+}
+
+function findDurableRecapCursor(
+  afterMessageId: string | undefined,
+  recaps: readonly DurableRecapMessage[],
+): DurableRecapMessage | undefined {
+  if (!afterMessageId) {
+    return undefined;
+  }
+  return recaps.find(
+    (recap) => recap.uuid === afterMessageId || recap.id === afterMessageId,
+  );
+}
+
+function sliceAfterDurableRecapCursor(params: {
+  messages: Message[];
+  recap: DurableRecapMessage;
+  cursorId: string;
+}): { messages: Message[]; found: boolean } {
+  const index = params.messages.findIndex((message) => {
+    const id = messageId(message);
+    return (
+      id === params.cursorId ||
+      id === params.recap.uuid ||
+      id === params.recap.id ||
+      hasEquivalentRecapMessage([message], params.recap)
+    );
+  });
+  if (index < 0) {
+    return { messages: params.messages, found: false };
+  }
+  return { messages: params.messages.slice(index + 1), found: true };
 }
 
 function messageHasToolResult(message: Message): boolean {
@@ -2204,8 +2238,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       process?.state.type === "waiting-input" ? process.state.request : null;
 
     // Read minimal session info from disk (just for title/timestamps, no messages)
-    const sourceMetadata = deps.sessionMetadataService?.getMetadata(sessionId);
-    const metadataProvider = sourceMetadata?.provider as ProviderName | undefined;
+    const metadataProvider =
+      (metadata?.provider as ProviderName | undefined) ??
+      (deps.sessionMetadataService?.getProvider(sessionId) as
+        | ProviderName
+        | undefined);
     const slashCommands = await getSessionSlashCommands(
       process,
       process?.provider ?? metadataProvider ?? project.provider,
@@ -2230,7 +2267,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     );
     const rawSessionSummary = sessionSummaryResult?.summary ?? null;
     const recapMessages =
-      deps.sessionMetadataService?.getRecapMessages(sessionId) ?? [];
+      deps.sessionMetadataService?.getRecapMessages?.(sessionId) ?? [];
     const sessionSummary = rawSessionSummary
       ? applyRecapOverlayToSummary(rawSessionSummary, recapMessages)
       : null;
@@ -2333,7 +2370,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         sessionId,
       ) as ProviderName | undefined;
       const recapMessages =
-        deps.sessionMetadataService?.getRecapMessages(sessionId) ?? [];
+        deps.sessionMetadataService?.getRecapMessages?.(sessionId) ?? [];
       let lastAgentText: string | undefined;
       if (recapMessages.length > 0) {
         const summaryResult = await findSessionSummaryAcrossProviders(
@@ -2443,13 +2480,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const metadataProvider = deps.sessionMetadataService?.getProvider(
       sessionId,
     ) as ProviderName | undefined;
+    const recapMessages =
+      deps.sessionMetadataService?.getRecapMessages?.(sessionId) ?? [];
+    const recapCursor = findDurableRecapCursor(afterMessageId, recapMessages);
+    const providerAfterMessageId = recapCursor ? undefined : afterMessageId;
 
     // Always try to read from disk first (even for owned sessions)
     const reader = deps.readerFactory(project);
     let loadedSession = await reader.getSession(
       sessionId,
       project.id,
-      afterMessageId,
+      providerAfterMessageId,
       {
         // Only include orphaned tool info if:
         // 1. We previously owned this session (not external)
@@ -2478,7 +2519,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         loadedSession = await codexReader.getSession(
           sessionId,
           project.id,
-          afterMessageId,
+          providerAfterMessageId,
           { includeOrphans: wasEverOwned && !process },
         );
       }
@@ -2504,7 +2545,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         loadedSession = await geminiReader.getSession(
           sessionId,
           project.id,
-          afterMessageId,
+          providerAfterMessageId,
           { includeOrphans: wasEverOwned && !process },
         );
       }
@@ -2528,7 +2569,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       loadedSession = await opencodeReader.getSession(
         sessionId,
         project.id,
-        afterMessageId,
+        providerAfterMessageId,
         { includeOrphans: wasEverOwned && !process },
       );
     }
@@ -2539,7 +2580,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         loadedSession = await grokReader.getSession(
           sessionId,
           project.id,
-          afterMessageId,
+          providerAfterMessageId,
           { includeOrphans: wasEverOwned && !process },
         );
       }
@@ -2551,7 +2592,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         loadedSession = await piReader.getSession(
           sessionId,
           project.id,
-          afterMessageId,
+          providerAfterMessageId,
           { includeOrphans: wasEverOwned && !process },
         );
       }
@@ -2563,10 +2604,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const normalizedMessageCount = session?.messages.length ?? 0;
     const normalizeEndMs = performance.now();
     let incrementalAnchorFound = false;
-    if (session && afterMessageId) {
+    if (session && providerAfterMessageId) {
       const sliced = sliceAfterMessageIdWithMatch(
         session.messages,
-        afterMessageId,
+        providerAfterMessageId,
       );
       session = {
         ...session,
@@ -2631,7 +2672,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         // Get metadata even for new sessions (in case it was set before file was written)
         const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
         const recapMessages =
-          deps.sessionMetadataService?.getRecapMessages(sessionId) ?? [];
+          deps.sessionMetadataService?.getRecapMessages?.(sessionId) ?? [];
         const visibleProcessMessages = mergeRecapMessages(
           processMessages,
           recapMessages,
@@ -2697,15 +2738,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     // Get session metadata (custom title, archived, starred)
     const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
-    const recapMessages =
-      deps.sessionMetadataService?.getRecapMessages(sessionId) ?? [];
 
     // Get notification data (lastSeenAt, hasUnread)
     const lastSeenEntry = deps.notificationService?.getLastSeen(sessionId);
     const lastSeenAt = lastSeenEntry?.timestamp;
-    const hasUnread = deps.notificationService
-      ? deps.notificationService.hasUnread(sessionId, session.updatedAt)
-      : undefined;
 
     // Apply pagination if requested (BEFORE expensive augmentation). tailTurns
     // is an opt-in stronger client memory cap, so it wins over compact tails.
@@ -2746,7 +2782,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // incremental request misses its anchor, never return the full historical
     // session into a compact-tail client; bound the fallback to the same tail
     // window used for initial loads.
-    if (afterMessageId && !incrementalAnchorFound) {
+    if (providerAfterMessageId && !incrementalAnchorFound) {
       const sliced = sliceAtCompactBoundaries(session.messages, 2);
       session = { ...session, messages: sliced.messages };
       paginationInfo = sliced.pagination;
@@ -2760,8 +2796,23 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
     if (!beforeMessageId) {
       session = applyRecapOverlayToSession(session, recapMessages);
+      if (recapCursor && afterMessageId) {
+        const sliced = sliceAfterDurableRecapCursor({
+          messages: session.messages,
+          recap: recapCursor,
+          cursorId: afterMessageId,
+        });
+        session = { ...session, messages: sliced.messages };
+        incrementalAnchorFound = sliced.found;
+      }
+    } else {
+      session = applyRecapOverlayToSummary(session, recapMessages);
     }
     const augmentEndMs = performance.now();
+
+    const hasUnread = deps.notificationService
+      ? deps.notificationService.hasUnread(sessionId, session.updatedAt)
+      : undefined;
 
     // Override context usage with SDK-reported context window from live process
     // The reader uses hardcoded defaults; the process captures the real value at runtime

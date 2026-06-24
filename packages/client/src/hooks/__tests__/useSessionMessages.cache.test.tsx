@@ -234,6 +234,78 @@ describe("useSessionMessages cache", () => {
     expect(second.result.current.pagination?.totalMessageCount).toBe(1);
   });
 
+  it("does not use durable recap overlays as warm-cache cursors", async () => {
+    vi.stubEnv("VITE_SESSION_LOAD_CACHE", "true");
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:01:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "assistant",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "assistant", content: "work" },
+        },
+        {
+          uuid: "recap-1",
+          id: "recap-1",
+          type: "system",
+          subtype: "away_summary",
+          timestamp: "2026-05-04T00:01:00.000Z",
+          content: "Recap overlay.",
+          yaRecapSource: "ya-synthetic",
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 2,
+        returnedMessageCount: 2,
+        totalCompactions: 0,
+      },
+    });
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:01:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+    });
+
+    const first = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    first.unmount();
+
+    renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      2,
+      "proj-1",
+      "sess-1",
+      "msg-1",
+      { tailCompactions: 2 },
+    );
+  });
+
   it("keeps warm cached messages when an incremental refresh has no delta", async () => {
     vi.stubEnv("VITE_SESSION_LOAD_CACHE", "true");
     apiMocks.getSession.mockResolvedValueOnce({

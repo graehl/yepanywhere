@@ -80,7 +80,7 @@ export function toDurableRecapMessage(
   };
 }
 
-function hasEquivalentRecapMessage(
+export function hasEquivalentRecapMessage(
   messages: readonly Message[],
   recap: DurableRecapMessage,
 ): boolean {
@@ -112,11 +112,14 @@ export function mergeRecapMessages(
   }
 
   const merged = [...messages];
-  const missing = recaps
-    .filter((recap) => !hasEquivalentRecapMessage(merged, recap))
-    .sort((a, b) => (messageTimestampMs(a) ?? 0) - (messageTimestampMs(b) ?? 0));
+  const sortedRecaps = [...recaps].sort(
+    (a, b) => (messageTimestampMs(a) ?? 0) - (messageTimestampMs(b) ?? 0),
+  );
 
-  for (const recap of missing) {
+  for (const recap of sortedRecaps) {
+    if (hasEquivalentRecapMessage(merged, recap)) {
+      continue;
+    }
     const recapMs = messageTimestampMs(recap);
     let insertAt = merged.length;
     if (recapMs !== null) {

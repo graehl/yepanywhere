@@ -12002,33 +12002,32 @@ a.sidebar-nav-item {
 }
 
 .recap-after-seconds-control {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: max-content minmax(12rem, 28rem);
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-2);
   margin-top: var(--space-2);
   color: var(--text-muted);
   font-size: var(--font-size-sm);
+  max-width: 100%;
 }
 
-.recap-after-seconds-control input {
-  width: 4.5rem;
-  height: 32px;
-  padding: 0.25rem 0.45rem;
-  background: var(--bg-code);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  color: var(--text-primary);
-  font: inherit;
+.recap-after-seconds-row {
+  width: 100%;
 }
 
-.recap-after-seconds-control input:focus {
-  outline: none;
-  border-color: var(--focus-border);
+.recap-after-seconds-label {
+  white-space: nowrap;
 }
 
-.recap-after-seconds-control input:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+@media (max-width: 560px) {
+  .recap-after-seconds-control {
+    grid-template-columns: 1fr;
+  }
+
+  .recap-after-seconds-label {
+    white-space: normal;
+  }
 }
 
 .mode-option-content {

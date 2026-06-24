@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { RemoteExecutorTestResult } from "../../api/client";
 import { useRemoteExecutors } from "../../hooks/useRemoteExecutors";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 interface ExecutorStatus {
@@ -11,6 +12,7 @@ interface ExecutorStatus {
 
 export function RemoteExecutorsSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("remoteExecutorsTitle"));
   const { executors, loading, addExecutor, removeExecutor, testExecutor } =
     useRemoteExecutors();
 
@@ -113,7 +115,6 @@ export function RemoteExecutorsSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("remoteExecutorsTitle")}</h2>
       <p className="settings-section-description">
         {t("remoteExecutorsDescription")}
       </p>

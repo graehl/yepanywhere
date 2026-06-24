@@ -34,10 +34,12 @@ import {
   resolveParakeetModelBackend,
 } from "../../lib/speechProviders/parakeetModels";
 import { prewarmYaServerSpeechBackend } from "../../lib/speechProviders/YaServerProvider";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 export function SpeechSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("speechSettingsTitle"));
   const {
     voiceInputEnabled,
     setVoiceInputEnabled,
@@ -227,7 +229,6 @@ export function SpeechSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("speechSettingsTitle")}</h2>
       <p className="settings-section-description">
         {t("speechSettingsDescription")}
       </p>

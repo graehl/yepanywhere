@@ -12,6 +12,7 @@ import {
   useSubscribedDevices,
 } from "../../hooks/useSubscribedDevices";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 /**
@@ -195,6 +196,7 @@ function deliveryPriorityLabelKey(
 
 export function NotificationsSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("settingsNotificationsTitle"));
   const { browserProfileId } = usePushNotifications();
   const { isMobile } = useBrowserNotifications();
   const {
@@ -306,9 +308,7 @@ export function NotificationsSettings() {
         setTestStatus({
           kind: "error",
           message:
-            err instanceof Error
-              ? err.message
-              : t("notificationsTestFailed"),
+            err instanceof Error ? err.message : t("notificationsTestFailed"),
         });
       } finally {
         markTesting([device.browserProfileId], false);
@@ -325,7 +325,9 @@ export function NotificationsSettings() {
   );
 
   const sendTestToMobileDevices = useCallback(async () => {
-    const targetIds = mobilePushDevices.map((device) => device.browserProfileId);
+    const targetIds = mobilePushDevices.map(
+      (device) => device.browserProfileId,
+    );
     if (targetIds.length === 0) return;
 
     markTesting(targetIds, true);
@@ -511,7 +513,9 @@ export function NotificationsSettings() {
                   aria-label={t("pushTestDeliveryPriority")}
                   value={testDeliveryUrgency}
                   onChange={(e) =>
-                    setTestDeliveryUrgency(e.target.value as PushDeliveryUrgency)
+                    setTestDeliveryUrgency(
+                      e.target.value as PushDeliveryUrgency,
+                    )
                   }
                   disabled={isTestingMobileDevices}
                 >

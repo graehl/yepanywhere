@@ -7,6 +7,7 @@ import { useOnboarding } from "../../hooks/useOnboarding";
 import { usePwaInstall } from "../../hooks/usePwaInstall";
 import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { activityBus } from "../../lib/activityBus";
 import {
   formatRemoteServerVersion,
@@ -16,6 +17,7 @@ import {
 
 export function AboutSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("aboutTitle"));
   const { canInstall, isInstalled, install } = usePwaInstall();
   const {
     version: versionInfo,
@@ -102,7 +104,6 @@ export function AboutSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("aboutTitle")}</h2>
       <div className="settings-group">
         {/* Only show Install option if install is possible or already installed */}
         {(canInstall || isInstalled) && (

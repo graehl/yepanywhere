@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import type {
-  HelperTargetConfig,
-  ModelInfo,
-} from "@yep-anywhere/shared";
+import type { HelperTargetConfig, ModelInfo } from "@yep-anywhere/shared";
 import { api, type ServerSettings } from "../../api/client";
 import { useToastContext } from "../../contexts/ToastContext";
 import { useCodexUpdateStatus } from "../../hooks/useCodexUpdateStatus";
 import { useProviders } from "../../hooks/useProviders";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import {
   helperTargetDescription,
   helperTargetValue,
@@ -587,8 +585,7 @@ function CodexUpdatePanel() {
         {updateAvailable ? (
           <span>
             <strong>{t("providersCodexUpdateAvailable")}</strong>{" "}
-            {status.installed} →{" "}
-            {status.latest}
+            {status.installed} → {status.latest}
           </span>
         ) : (
           <span className="settings-hint">
@@ -791,6 +788,7 @@ function ClaudeLoginCommandPanel({
 
 export function ProvidersSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("providersSectionTitle"));
   const { showToast } = useToastContext();
   const { providers: serverProviders } = useProviders();
   const { settings, updateSetting } = useServerSettings();
@@ -823,7 +821,6 @@ export function ProvidersSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("providersSectionTitle")}</h2>
       <p className="settings-section-description">
         {t("providersSectionDescription")}
       </p>

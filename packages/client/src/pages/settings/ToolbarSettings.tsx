@@ -10,6 +10,7 @@ import {
 } from "../../hooks/useSessionToolbarVisibility";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 const BUSY_COMPOSER_DEFAULT_ACTIONS: BusyComposerDefaultAction[] = [
@@ -25,6 +26,7 @@ const COLLAPSED_COMPOSER_BUTTON_OPTIONS: CollapsedComposerButtonPreference[] = [
 
 export function ToolbarSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("appearanceSessionToolbarTitle"));
   const {
     visibility: toolbarVisibility,
     setControlVisible,
@@ -147,7 +149,6 @@ export function ToolbarSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("appearanceSessionToolbarTitle")}</h2>
       <p className="settings-section-description">
         {t("appearanceSessionToolbarDescription")}
       </p>

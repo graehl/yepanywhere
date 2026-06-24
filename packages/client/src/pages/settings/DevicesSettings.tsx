@@ -2,6 +2,7 @@ import { useBrowserProfiles } from "../../hooks/useBrowserProfiles";
 import { useConnectedDevices } from "../../hooks/useConnectedDevices";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { parseUserAgent } from "../../lib/deviceDetection";
 
 /**
@@ -56,13 +57,13 @@ function formatOrigin(origin: string): string {
  */
 export function DevicesSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("devicesProfilesTitle"));
   const { profiles, isLoading, error, deleteProfile } = useBrowserProfiles();
   const { browserProfileId: currentBrowserProfileId } = usePushNotifications();
   const { connections } = useConnectedDevices();
 
   return (
     <section className="settings-section">
-      <h2>{t("devicesProfilesTitle")}</h2>
       <p className="settings-section-description">
         {t("devicesProfilesDescription")}
       </p>

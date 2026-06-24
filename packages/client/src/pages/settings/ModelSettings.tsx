@@ -38,6 +38,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForkSummaryAutoOpen } from "../../hooks/useForkSummaryAutoOpen";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 import { useToastContext } from "../../contexts/ToastContext";
 import { helperTargetsToModelOptions } from "../../lib/helperTargets";
@@ -218,6 +219,7 @@ function normalizeKeepaliveMinutes(value: number): number | null {
 
 export function ModelSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("modelSettingsTitle"));
   const { showToast } = useToastContext();
   const {
     model,
@@ -571,8 +573,6 @@ export function ModelSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("modelSettingsTitle")}</h2>
-
       <div className="settings-group">
         <div className="model-settings-subsection">
           <h3>{t("modelSettingsSessionDefaultsTitle")}</h3>

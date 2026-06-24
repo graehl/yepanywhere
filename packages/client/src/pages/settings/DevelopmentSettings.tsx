@@ -5,10 +5,12 @@ import { useReloadNotifications } from "../../hooks/useReloadNotifications";
 import { useSchemaValidation } from "../../hooks/useSchemaValidation";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 export function DevelopmentSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("developmentSectionTitle"));
   const {
     isManualReloadMode,
     pendingReloads,
@@ -69,8 +71,6 @@ export function DevelopmentSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("developmentSectionTitle")}</h2>
-
       <div className="settings-group">
         <div className="settings-item">
           <div className="settings-item-info">

@@ -67,6 +67,7 @@ import {
   OUTPUT_VERTICAL_SPACING_STEP_PERCENT,
   useOutputAppearance,
 } from "../../hooks/useOutputAppearance";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import {
@@ -116,6 +117,7 @@ function getSettingsIconStyleLabel(
 
 export function AppearanceSettings() {
   const { locale, setLocale, t } = useI18n();
+  useSettingsPaneTitle(t("appearanceSectionTitle"));
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
   const { fontSize, setFontSize } = useFontSize();
@@ -500,7 +502,6 @@ export function AppearanceSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("appearanceSectionTitle")}</h2>
       <div className="settings-group">
         <div className="settings-item">
           <div className="settings-item-info">

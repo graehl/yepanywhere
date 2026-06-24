@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndo } from "./SettingsUndoContext";
 
 const JOIN_WINDOW_SLIDER_MAX_SECONDS = 120;
@@ -28,6 +29,7 @@ interface MessageDeliveryBaseline {
  */
 export function MessageDeliverySettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("messageDeliveryTitle"));
   const { settings, isLoading, error, updateSettings } = useServerSettings();
 
   // null drafts mirror the server value; non-null while the user is editing
@@ -140,7 +142,6 @@ export function MessageDeliverySettings() {
   if (isLoading) {
     return (
       <section className="settings-section">
-        <h2>{t("messageDeliveryTitle")}</h2>
         <p className="settings-section-description">
           {t("messageDeliveryLoading")}
         </p>
@@ -150,7 +151,6 @@ export function MessageDeliverySettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("messageDeliveryTitle")}</h2>
       <p className="settings-section-description">
         {t("messageDeliveryDescription")}
       </p>

@@ -13,6 +13,7 @@ import { useNetworkBinding } from "../../hooks/useNetworkBinding";
 import { useServerInfo } from "../../hooks/useServerInfo";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndo } from "./SettingsUndoContext";
 
 /** File-access form state — `custom` is edited as newline-separated text. */
@@ -47,7 +48,10 @@ function fileAccessFormToSettings(form: FileAccessForm): FileAccessSettings {
   };
 }
 
-function fileAccessEquals(a: FileAccessSettings, b: FileAccessSettings): boolean {
+function fileAccessEquals(
+  a: FileAccessSettings,
+  b: FileAccessSettings,
+): boolean {
   return (
     a.projects === b.projects &&
     a.uploads === b.uploads &&
@@ -66,6 +70,7 @@ function isWholeDiskPath(line: string): boolean {
 
 export function LocalAccessSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("settingsLocalAccessTitle"));
   const auth = useOptionalAuth();
   const remoteConnection = useOptionalRemoteConnection();
   const { relayDebugEnabled, setRelayDebugEnabled } = useDeveloperMode();
@@ -152,7 +157,9 @@ export function LocalAccessSettings() {
       setAllowedHostsText(ah ?? "");
     }
     setFileAccess(
-      settingsToFileAccessForm(serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS),
+      settingsToFileAccessForm(
+        serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS,
+      ),
     );
     setFormInitialized(true);
   }, [auth, binding, formInitialized, serverSettings]);
@@ -165,7 +172,9 @@ export function LocalAccessSettings() {
     }
 
     setFileAccess(
-      settingsToFileAccessForm(serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS),
+      settingsToFileAccessForm(
+        serverSettings.fileAccess ?? DEFAULT_FILE_ACCESS,
+      ),
     );
     setFormInitialized(true);
   }, [auth, formInitialized, remoteConnection, serverSettings]);
@@ -349,9 +358,7 @@ export function LocalAccessSettings() {
               <input
                 type="checkbox"
                 checked={fileAccess.uploads}
-                onChange={(e) =>
-                  patchFileAccess({ uploads: e.target.checked })
-                }
+                onChange={(e) => patchFileAccess({ uploads: e.target.checked })}
               />
               <span className="toggle-slider" />
             </label>
@@ -403,9 +410,7 @@ export function LocalAccessSettings() {
               rows={3}
               value={fileAccess.customText}
               placeholder={t("fileAccessCustomPlaceholder")}
-              onChange={(e) =>
-                patchFileAccess({ customText: e.target.value })
-              }
+              onChange={(e) => patchFileAccess({ customText: e.target.value })}
             />
           </div>
           {fileAccess.customText
@@ -543,7 +548,6 @@ export function LocalAccessSettings() {
     if (isLoading) {
       return (
         <section className="settings-section">
-          <h2>{t("settingsLocalAccessTitle")}</h2>
           <p className="settings-section-description">
             {t("localAccessLoading")}
           </p>
@@ -556,7 +560,6 @@ export function LocalAccessSettings() {
 
     return (
       <section className="settings-section">
-        <h2>{t("settingsLocalAccessTitle")}</h2>
         <p className="settings-section-description">
           {t("localAccessDescription")}
         </p>
@@ -933,7 +936,6 @@ export function LocalAccessSettings() {
 
     return (
       <section className="settings-section">
-        <h2>{t("settingsLocalAccessTitle")}</h2>
         <p className="settings-section-description">
           {t("localAccessRemoteDescription")}
         </p>

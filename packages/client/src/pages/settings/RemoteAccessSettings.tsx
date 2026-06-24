@@ -9,6 +9,7 @@ import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionCont
 import { usePublicShareStatus } from "../../hooks/usePublicShareStatus";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { getHostById } from "../../lib/hostStorage";
 
 const DEFAULT_PUBLIC_SHARE_VIEWER_BASE_URL = buildYaClientPublicShareBaseUrl(
@@ -17,6 +18,7 @@ const DEFAULT_PUBLIC_SHARE_VIEWER_BASE_URL = buildYaClientPublicShareBaseUrl(
 
 export function RemoteAccessSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("settingsRemoteTitle"));
   const navigate = useNavigate();
   const remoteConnection = useOptionalRemoteConnection();
   const { settings, isLoading, error, updateSetting } = useServerSettings();
@@ -185,7 +187,6 @@ export function RemoteAccessSettings() {
 
     return (
       <section className="settings-section">
-        <h2>{t("remoteAccessConnectedTitle")}</h2>
         <p className="settings-section-description">
           {t("remoteAccessConnectedDescription")}
         </p>

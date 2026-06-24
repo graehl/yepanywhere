@@ -28,6 +28,10 @@ import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { RemoteExecutorsSettings } from "./RemoteExecutorsSettings";
 import { SettingsCategoryIcon } from "./SettingsCategoryIcons";
 import {
+  SettingsPaneTitleProvider,
+  useSettingsPaneTitleRegistration,
+} from "./SettingsPaneTitleContext";
+import {
   SettingsUndoProvider,
   useSettingsUndoRegistration,
 } from "./SettingsUndoContext";
@@ -157,6 +161,8 @@ export function SettingsLayout() {
     registration: undoRegistration,
     setRegistration: setUndoRegistration,
   } = useSettingsUndoRegistration();
+  const { title: paneTitle, setTitle: setPaneTitle } =
+    useSettingsPaneTitleRegistration();
 
   // Build the list of categories, conditionally including emulator and dev
   const categories: SettingsCategory[] = [
@@ -218,6 +224,32 @@ export function SettingsLayout() {
   const CategoryComponent = effectiveCategory
     ? CATEGORY_COMPONENTS[effectiveCategory]
     : null;
+  const activeCategory = categories.find((c) => c.id === effectiveCategory);
+
+  // Top-strip title for the open pane: the pane registers it via
+  // useSettingsPaneTitle; fall back to the category label until that
+  // registers (and for the rare pane that sets nothing).
+  const resolvedPaneTitle =
+    paneTitle ?? activeCategory?.label ?? t("pageTitleSettings");
+
+  // Settings breadcrumb shown in the header strip (two-column): a clickable
+  // "Settings" root plus the active pane title, so the strip names the page
+  // instead of just "Settings".
+  const settingsBreadcrumb = (
+    <span className="settings-breadcrumb">
+      <button
+        type="button"
+        className="session-title settings-breadcrumb-root"
+        onClick={handleSettingsTitleClick}
+      >
+        {t("pageTitleSettings")}
+      </button>
+      <span className="settings-breadcrumb-sep" aria-hidden="true">
+        ›
+      </span>
+      <span className="settings-breadcrumb-current">{resolvedPaneTitle}</span>
+    </span>
+  );
 
   const canUndoSettingsChange = undoRegistration?.canUndo ?? false;
 
@@ -278,11 +310,10 @@ export function SettingsLayout() {
     }
 
     // Show category detail with back button
-    const currentCategory = categories.find((c) => c.id === category);
     return (
       <MainContent isWideScreen={isWideScreen} innerRef={settingsContainerRef}>
         <PageHeader
-          title={currentCategory?.label || t("pageTitleSettings")}
+          title={resolvedPaneTitle}
           onOpenSidebar={openSidebar}
           showBack
           onBack={handleBack}
@@ -293,9 +324,11 @@ export function SettingsLayout() {
           className="page-scroll-container"
         >
           <div className="page-content-inner">
-            <SettingsUndoProvider value={setUndoRegistration}>
-              {CategoryComponent && <CategoryComponent />}
-            </SettingsUndoProvider>
+            <SettingsPaneTitleProvider value={setPaneTitle}>
+              <SettingsUndoProvider value={setUndoRegistration}>
+                {CategoryComponent && <CategoryComponent />}
+              </SettingsUndoProvider>
+            </SettingsPaneTitleProvider>
           </div>
         </main>
       </MainContent>
@@ -306,8 +339,8 @@ export function SettingsLayout() {
   return (
     <MainContent isWideScreen={isWideScreen} innerRef={settingsContainerRef}>
       <PageHeader
-        title={t("pageTitleSettings")}
-        onTitleClick={handleSettingsTitleClick}
+        title={resolvedPaneTitle}
+        titleElement={settingsBreadcrumb}
         onOpenSidebar={openSidebar}
         onToggleSidebar={toggleSidebar}
         isWideScreen={isWideScreen}
@@ -332,9 +365,11 @@ export function SettingsLayout() {
             </div>
           </nav>
           <div className="settings-content-panel">
-            <SettingsUndoProvider value={setUndoRegistration}>
-              {CategoryComponent && <CategoryComponent />}
-            </SettingsUndoProvider>
+            <SettingsPaneTitleProvider value={setPaneTitle}>
+              <SettingsUndoProvider value={setUndoRegistration}>
+                {CategoryComponent && <CategoryComponent />}
+              </SettingsUndoProvider>
+            </SettingsPaneTitleProvider>
           </div>
         </div>
       </main>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildEffectiveAgentContext } from "@yep-anywhere/shared";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 const MAX_LENGTH = 10000;
@@ -17,6 +18,7 @@ function parseHeartbeatMinutes(value: string): number {
 
 export function AgentContextSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("agentContextTitle"));
   const { settings, isLoading, error, updateSettings } = useServerSettings();
   const [instructions, setInstructions] = useState("");
   const [heartbeatTurnsAfterMinutes, setHeartbeatTurnsAfterMinutes] = useState(
@@ -178,7 +180,6 @@ export function AgentContextSettings() {
   if (isLoading) {
     return (
       <section className="settings-section">
-        <h2>{t("agentContextTitle")}</h2>
         <p className="settings-section-description">
           {t("agentContextLoading")}
         </p>
@@ -188,7 +189,6 @@ export function AgentContextSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("agentContextTitle")}</h2>
       <p className="settings-section-description">
         {t("agentContextDescription")}
       </p>

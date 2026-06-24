@@ -9,6 +9,7 @@ import {
 import { useEmulators } from "../../hooks/useEmulators";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 const QUALITY_OPTIONS: EmulatorQuality[] = ["high", "medium", "low"];
@@ -29,6 +30,7 @@ function canStopDevice(type: string, state: string, actions?: string[]) {
  */
 export function EmulatorSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("emulatorSectionTitle"));
   const { emulators, loading, error, startEmulator, stopEmulator, refresh } =
     useEmulators();
   const {
@@ -127,7 +129,6 @@ export function EmulatorSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("emulatorSectionTitle")}</h2>
       <p className="settings-description">{t("emulatorSectionDescription")}</p>
 
       <div className="settings-group">

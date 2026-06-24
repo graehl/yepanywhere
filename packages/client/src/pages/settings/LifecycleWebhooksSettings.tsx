@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerSettings } from "../../hooks/useServerSettings";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
 const MAX_URL_LENGTH = 2000;
@@ -8,6 +9,7 @@ const MAX_TOKEN_LENGTH = 5000;
 
 export function LifecycleWebhooksSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("lifecycleWebhooksTitle"));
   const { settings, isLoading, error, updateSettings } = useServerSettings();
   const [enabled, setEnabled] = useState(false);
   const [url, setUrl] = useState("");
@@ -103,7 +105,6 @@ export function LifecycleWebhooksSettings() {
   if (isLoading) {
     return (
       <section className="settings-section">
-        <h2>{t("lifecycleWebhooksTitle")}</h2>
         <p className="settings-section-description">
           {t("lifecycleWebhooksLoading")}
         </p>
@@ -113,7 +114,6 @@ export function LifecycleWebhooksSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("lifecycleWebhooksTitle")}</h2>
       <p className="settings-section-description">
         {t("lifecycleWebhooksDescription")}
       </p>

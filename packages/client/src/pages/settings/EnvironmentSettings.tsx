@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type EnvSettingEntry } from "../../api/client";
 import { useI18n } from "../../i18n";
+import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 
 interface EnvGroup {
   group: string;
@@ -25,6 +26,7 @@ function groupEntries(entries: EnvSettingEntry[]): EnvGroup[] {
 
 export function EnvironmentSettings() {
   const { t } = useI18n();
+  useSettingsPaneTitle(t("environmentSectionTitle"));
   const [entries, setEntries] = useState<EnvSettingEntry[] | null>(null);
   const [error, setError] = useState(false);
 
@@ -50,7 +52,6 @@ export function EnvironmentSettings() {
 
   return (
     <section className="settings-section">
-      <h2>{t("environmentSectionTitle")}</h2>
       <p className="settings-section-description">
         {t("environmentSectionDescription")}
       </p>

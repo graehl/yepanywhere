@@ -1637,6 +1637,36 @@ a.sidebar-nav-item {
   color: var(--text-secondary);
 }
 
+/* Settings header breadcrumb: clickable "Settings" root + active pane title. */
+.settings-breadcrumb {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Root segment keeps its size; the current-page segment ellipsizes. */
+.settings-breadcrumb .session-title.settings-breadcrumb-root {
+  flex-shrink: 0;
+}
+
+.settings-breadcrumb-sep {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.settings-breadcrumb-current {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-family: var(--font-ui);
+  font-size: calc(0.95em - 1pt);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-title-input {
   color: var(--text-primary);
   font-weight: 500;

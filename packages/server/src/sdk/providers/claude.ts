@@ -669,6 +669,7 @@ export class ClaudeProvider implements AgentProvider {
   readonly supportsSteering = true;
   readonly supportsSteerNow = true;
   readonly supportsRecaps = true;
+  readonly supportsNativeRecaps = true;
   readonly supportsNativePromptSuggestions = true;
   readonly promptCacheKeepalive?: PromptCacheKeepaliveProviderInfo = {
     supportsNoContextPollutionNudge: true,
@@ -1108,7 +1109,9 @@ export class ClaudeProvider implements AgentProvider {
     const userPrompt =
       request.purpose === "session-retitle"
         ? this.createSessionRetitlePrompt(request)
-        : this.createForkAfterSummaryPrompt(request);
+        : request.purpose === "recap"
+          ? this.createForkedRecapPrompt()
+          : this.createForkAfterSummaryPrompt(request);
     const abortController = new AbortController();
     const abortFromJob = () => abortController.abort();
     if (request.signal?.aborted) {
@@ -1151,6 +1154,8 @@ export class ClaudeProvider implements AgentProvider {
           systemPrompt:
             request.purpose === "session-retitle"
               ? "You are a title helper. Reply with the session title only, no preamble."
+              : request.purpose === "recap"
+                ? "You are a recap helper. Reply with the recap text only, no preamble."
               : "You are a handoff summary helper. Reply with the summary text only, no preamble.",
         },
       });
@@ -1207,6 +1212,15 @@ export class ClaudeProvider implements AgentProvider {
     ]
       .filter((part): part is string => part !== undefined)
       .join("\n");
+  }
+
+  private createForkedRecapPrompt(): string {
+    return [
+      "The user stepped away and is coming back.",
+      "Recap the current session state in under 40 words, 1-2 plain sentences, no markdown.",
+      "Lead with what the assistant did or is doing; mention any pending next action.",
+      "Do not greet, do not ask a question, do not add a sign-off.",
+    ].join("\n");
   }
 
   private createSessionRetitlePrompt(

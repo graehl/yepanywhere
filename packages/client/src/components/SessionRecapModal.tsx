@@ -25,17 +25,24 @@ interface SessionRecapModalProps {
   }) => void;
 }
 
-const RECAP_MODE_ORDER: RecapMode[] = ["off", "native", "side-session"];
+const RECAP_MODE_ORDER: RecapMode[] = [
+  "off",
+  "side-session",
+  "fork",
+  "native",
+];
 type Translate = ReturnType<typeof useI18n>["t"];
 
 function modeLabel(mode: RecapMode, t: Translate): string {
   if (mode === "native") return t("recapModeNative");
+  if (mode === "fork") return t("recapModeFork");
   if (mode === "side-session") return t("recapModeSideSession");
   return t("recapModeOff");
 }
 
 function modeDescription(mode: RecapMode, t: Translate): string {
   if (mode === "native") return t("recapModeNativeDescription");
+  if (mode === "fork") return t("recapModeForkDescription");
   if (mode === "side-session") {
     return t("recapModeSideSessionDescription");
   }
@@ -110,6 +117,9 @@ export function SessionRecapModal({
     () => ({
       off: true,
       native: providerInfo?.supportsNativeRecaps === true,
+      fork:
+        providerInfo?.supportsRecaps === true &&
+        providerInfo.supportsForkSession === true,
       "side-session": providerInfo?.supportsRecaps === true,
     }),
     [providerInfo],

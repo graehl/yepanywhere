@@ -1622,6 +1622,13 @@ export class Process {
         reason: "native recaps are provider-owned",
       };
     }
+    if (this._recapMode === "fork") {
+      return {
+        supported: true,
+        emitted: false,
+        reason: "forked recaps are supervisor-owned",
+      };
+    }
     if (!provider.supportsRecaps || !provider.generateSummary) {
       return {
         supported: false,

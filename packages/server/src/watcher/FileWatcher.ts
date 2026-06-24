@@ -290,6 +290,8 @@ export class FileWatcher {
         return this.parseGeminiFileType(relativePath);
       case "codex":
         return this.parseCodexFileType(relativePath);
+      case "pi":
+        return this.parsePiFileType(relativePath);
     }
   }
 
@@ -325,6 +327,14 @@ export class FileWatcher {
     relativePath: string,
   ): FileChangeEvent["fileType"] {
     // Watching ~/.codex/sessions - relativePath is {year}/{month}/{day}/rollout-*.jsonl
+    if (relativePath.endsWith(".jsonl")) {
+      return "session";
+    }
+    return "other";
+  }
+
+  private parsePiFileType(relativePath: string): FileChangeEvent["fileType"] {
+    // Watching ~/.pi/agent/sessions - relativePath is {encoded-cwd}/{ts}_{uuid}.jsonl.
     if (relativePath.endsWith(".jsonl")) {
       return "session";
     }

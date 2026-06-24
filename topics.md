@@ -45,6 +45,8 @@
 - stream-durable-id-dedup - Stream-vs-durable message id alignment and the approx-dedup backstop (codex/opencode steer double-render).
 - selection-comment-ui - Quote selected assistant output into the composer with source-block tint reminders.
 - fork-from-turn - Turn-notch fork actions and server-owned fork-after-summary jobs.
+- provider-fork-support - Whether Codex/Pi could implement the forkSession primitive, with per-provider enablement plans and gaps.
 - transcript-display-objects - Persisted viewer-only objects anchored in transcript order.
 - backward-compat - Observable and persisted surface compatibility decisions.
+- provider-session-tree - Capability-gated sidebar tree for provider transcripts with parent-link branch data.
 - session-retitle - Explicit title editing and user-confirmed generated retitle proposals.

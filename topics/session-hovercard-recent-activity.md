@@ -37,9 +37,9 @@ prior text block or a short tool label (see Content below).
 ## What exists today
 
 - **The pane** — `packages/client/src/components/SessionHoverCard.tsx`.
-  Portaled, `position: fixed`, `pointer-events: none`, self-positioning from
-  the row geometry + cursor x (below the row / right of cursor, flipping above
-  when it would not fit). A column flexbox:
+  Portaled, `position: fixed`, pointer-selectable, self-positioning from the
+  row geometry + cursor x (below the row / right of cursor, flipping above when
+  it would not fit). A column flexbox:
   - `.session-hovercard__turn` — the opening request, styled like a user
     message, `white-space: pre-wrap`, line-clamped via an inline
     `-webkit-line-clamp` (`maxLines`) computed from available vertical space.
@@ -72,8 +72,8 @@ prior text block or a short tool label (see Content below).
 
 | Dimension | Opted choice |
 |---|---|
-| Content | **Last ~3 lines** of the last regular agent turn, light-stripped; **tool-call fallback** label when the turn ends with no trailing prose. |
-| Source | **Persisted assistant→user text excerpt** from the session index. Not the live thinking/tool tail (that is phase 2). |
+| Content | **Last ~3 lines** of the last regular visible agent turn, light-stripped; **tool-call fallback** label when the turn ends with no trailing prose. Long one-line excerpts clip at the end, never by taking a middle/tail slice with a leading ellipsis. |
+| Source | **Persisted assistant→user text excerpt or provider recap** from the session index. Not hidden thinking and not the live thinking/tool tail (that is phase 2). |
 | Layout slot | A dedicated block **below the badge/meta line** (`__turn` → `__meta` → `__reply`). Deliberate "nice separation"; slightly unconventional vs. putting it directly under the request. |
 | Width | **Same treatment as the request.** The card is `max-content`; the request already forces the width, the reply wraps in it. `--wide` (880px) applies to both. No special narrowing, no one-line-beside-badges. |
 | Vertical budget | **Equal small caps**, not greedy. Cap the now-greedy opening body (≈4–5 lines) and clamp the reply (≈3 lines); the reply must not exceed the opening request's allocation. |
@@ -106,7 +106,8 @@ prior text block or a short tool label (see Content below).
 - **Persisted excerpt from the index** — *opted*. Free (already parsed),
   cached, available offline in the list. Answers "what did it tell me",
   correct for idle/done sessions.
-- **Live bottom-of-session tail** (recent thinking, `Running Bash…`, streaming
+- **Live bottom-of-session tail** (recent visible thinking when enabled,
+  `Running Bash…`, streaming
   partial) — *phase 2*. Answers "what's it doing right now", correct for
   running sessions, but **not in the list data**: `GlobalSessionItem` carries
   only `activity`/`status`/`pendingInputType`, no live text. Mirroring the
@@ -149,9 +150,9 @@ Server:
 
 - Add `lastAgentText?: string` to `SessionSummary`
   (`packages/server/src/supervisor/types.ts:69`), populated in
-  `reader.ts:getSessionSummaryFromDir` by a backward scan over
-  `conversationMessages` for the last assistant message with prose (sibling of
-  `extractModel`). **Cap at the server** (~500 chars / ~6 lines) so the index
+  `reader.ts:getSessionSummaryFromDir` by a backward scan over the active branch
+  for the newest provider recap or assistant message with visible prose (sibling
+  of `extractModel`). **Cap at the server** (~500 chars / ~3 lines) so the index
   stays small and content is fixed; the client clamps further. Cached by the
   session index (mtime/size) like `fullTitle`.
 - Thread it into `GlobalSessionItem` on both sides
@@ -213,10 +214,19 @@ for Claude.
 ## Recaps override the excerpt when they are the freshest line
 
 A Claude **recap** (away-summary; see [recaps.md](recaps.md)) is a better "where
-is it now?" line than the raw last turn — but recaps are live-only, owned +
-running, generated on an away-return, and never persisted (not in the JSONL, not
-in YA metadata). So rather than a separate field + client-side recency compare,
-the recap is **folded into `lastAgentText`** at emission:
+is it now?" line than the raw last turn. YA supports two recap sources:
+persisted provider recaps and YA-synthesized live recaps. Rather than a separate
+field + client-side recency compare, the freshest recap is **folded into
+`lastAgentText`**:
+
+- Persisted Claude `system` entries with `subtype: "away_summary"` are treated
+  as provider-supplied recaps when they are on the active branch. They override
+  an older assistant reply in summary reads and the fast reverse-scan refresh.
+  YA strips the provider hint suffix `(disable recaps in /config)` before
+  display.
+- Hidden thinking/reasoning summaries are not recaps. They stay out of
+  `lastAgentText` unless a future live-tail feature explicitly opts into
+  showing visible thinking under the user's thinking-display setting.
 
 - `Supervisor.requestRecap` emits a partial `session-updated` event with
   `lastAgentText = <recap text>` when `Process` reports a recap was emitted
@@ -231,9 +241,10 @@ the recap is **folded into `lastAgentText`** at emission:
   *deferred* until the turn completes; that completing turn emits a fresher real
   `lastAgentText`, which should win over a recap. So the deferred-recap flush is
   deliberately not wired to override the excerpt.
-- Native recaps (`recapMode: "native"`) yield no text to YA (provider-owned, not
-  delivered via the SDK), so only YA-synthesized (side-session) recaps fold in —
-  consistent with "not routinely generated unless the session is open."
+- Native recaps (`recapMode: "native"`) may be provider-owned and unavailable
+  live. When a provider persists them as explicit recap entries (Claude
+  `system/away_summary`), the session reader may still surface them as
+  provider-supplied recap text.
 
 ### On-demand refresh of idle previews (focus / hover)
 

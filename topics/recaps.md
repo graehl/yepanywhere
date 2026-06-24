@@ -115,6 +115,86 @@ change recap configuration for future sessions.
 - Changing how the server records its "last user activity" timestamp,
   since the recap trigger depends on it.
 
+## Proposal: Native-Preferred Fallback and Helper Placement
+
+This proposal revises the original "native vs simulated" split into a
+user-facing "recaps on/off" contract with provider-owned recaps preferred.
+
+When recaps are on for a provider that emits `away_summary` natively, YA should
+first show provider-emitted recap rows when they arrive. If no native recap
+arrives by a bounded deadline for the return event, YA may run its own recap
+helper and emit the same `system` / `away_summary` shape. That fallback must be
+deduped against a late native row: one visible recap per return event, with the
+native row preferred when both exist.
+
+The fallback deadline should be provider-tuned, not an unbounded "wait and hope"
+state. Historical Claude JSONL recaps in this checkout cluster around three
+minutes after prior activity, so a Claude policy should account for that native
+idle threshold and then use a short post-return grace window for catch-up. A
+candidate first pass:
+
+- If the user was away less than the provider's native idle threshold, do not
+  run fallback immediately; the provider has not yet had a chance to produce a
+  native recap.
+- Once the return event is at or beyond that threshold, refresh/catch up the
+  provider stream and wait a small grace window for an `away_summary`.
+- If no native row arrives, run the configured YA helper fallback.
+- If a native row arrives while fallback is in flight, cancel or suppress the
+  fallback result.
+
+Current implementation facts:
+
+- Claude's cheap `side-session` recap strategy does **not** fork and does not
+  run an inline hidden turn. It starts a fresh SDK `query()` with
+  `persistSession: false`, feeds bounded recent assistant text into the prompt,
+  and emits the generated text as a synthetic recap.
+- Codex's cheap `side-session` recap strategy likewise starts an ephemeral
+  helper thread over copied recent assistant text, not a fork of the source
+  thread.
+- Retitle and fork-after-summary already use the high-fidelity fork-backed
+  `strategy: "fork"`: create a temporary real fork, run one helper turn there,
+  then archive/hide the generator so it does not clutter normal session lists.
+- The installed Claude SDK exposes `promptSuggestions` as a public query option
+  but no public `awaySummary` / `awaySummaryEnabled` query option. Its bundled
+  implementation contains an internal `awaySummaryEnabled` settings schema
+  entry, marked hidden from public SDK types. Treat any attempt to drive that
+  setting as a separate probe, not as an assumed API contract.
+
+Add a recap helper placement option for fallback generation:
+
+- **Recent-text helper**: the current cheap path. It copies bounded recent
+  assistant text into a fresh non-persisted helper session/thread. It is clean
+  and cheap but loses full provider context and prompt-cache warmth.
+- **Temporary fork helper**: create an archived/hidden generator fork, run the
+  recap prompt there, emit only the resulting recap to the source view, then
+  clean up or keep the generator hidden like retitle and fork-after-summary.
+  Prefer this when the provider supports real transcript forks and fidelity or
+  cache warmth matters.
+- **Inline hidden turn**: run the helper against the live/source provider
+  context only if the provider exposes a verified "hidden from transcript /
+  skip transcript" primitive. This could be fastest and most context faithful,
+  and arguably harmless to model context if truly hidden, but it is unsafe to
+  emulate with an ordinary visible user turn. For Claude SDK, no public
+  `skipTranscript` option is currently exposed; the TUI's native recap path may
+  use internal machinery that YA cannot assume.
+
+The default should be `auto`: prefer native provider rows; on fallback, prefer a
+temporary fork when the provider has a real fork primitive; otherwise use the
+current recent-text helper. Inline hidden turns require an explicit provider
+capability because a fake-hidden turn that reaches the persisted transcript or
+future model context violates the recap contract.
+
+Open probes before implementation:
+
+- Confirm whether YA's Claude SDK stream or catch-up path can observe native
+  `away_summary` rows during an idle/away return without mounting the TUI.
+- Test whether the internal `awaySummaryEnabled` settings key can be supplied
+  through supported SDK settings plumbing, and whether it affects `--print`
+  / stream-json mode at all.
+- Measure a live native-on session: time from last activity to native recap,
+  from return/catch-up to display, and fallback behavior when the native row
+  never appears.
+
 ## Tests That Should Fail On Contract Regressions
 
 - A recap message is not written into the persisted Claude JSONL

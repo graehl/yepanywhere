@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { extractLastAgentExcerpt } from "../../src/sessions/agent-excerpt.js";
+import {
+  extractLastAgentExcerpt,
+  formatAgentExcerpt,
+} from "../../src/sessions/agent-excerpt.js";
 import type { Message } from "../../src/supervisor/types.js";
 
 function assistant(content: Message["message"]): Message {
@@ -33,6 +36,44 @@ describe("extractLastAgentExcerpt (provider-independent)", () => {
     expect(extractLastAgentExcerpt(messages)).toBe("earlier reply");
   });
 
+  it("ignores hidden thinking when choosing recent visible activity", () => {
+    const messages: Message[] = [
+      assistant({
+        role: "assistant",
+        content: [{ type: "text", text: "visible reply" }],
+      }),
+      assistant({
+        role: "assistant",
+        content: [{ type: "thinking", thinking: "private reasoning" }],
+      }),
+    ];
+    expect(extractLastAgentExcerpt(messages)).toBe("visible reply");
+  });
+
+  it("uses provider away summaries before older assistant text", () => {
+    const messages: Message[] = [
+      assistant({
+        role: "assistant",
+        content: [{ type: "text", text: "older reply" }],
+      }),
+      {
+        type: "system",
+        subtype: "away_summary",
+        content: "Fresh recap. (disable recaps in /config)",
+      },
+    ];
+    expect(extractLastAgentExcerpt(messages)).toBe("Fresh recap.");
+  });
+
+  it("clips long one-line excerpts at the end, not from the middle", () => {
+    const excerpt = formatAgentExcerpt(
+      `First sentence. ${"continued detail ".repeat(80)}`,
+    );
+    expect(excerpt.startsWith("…")).toBe(false);
+    expect(excerpt.startsWith("First sentence.")).toBe(true);
+    expect(excerpt.endsWith("…")).toBe(true);
+  });
+
   it("labels the trailing tool when there is no agent prose", () => {
     const messages: Message[] = [
       assistant({
@@ -46,7 +87,10 @@ describe("extractLastAgentExcerpt (provider-independent)", () => {
   it("detects assistant turns by message.role (normalized non-Claude shape)", () => {
     const messages: Message[] = [
       // type left generic to mimic a provider whose converter sets only role.
-      { type: "message", message: { role: "assistant", content: "shipped it" } },
+      {
+        type: "message",
+        message: { role: "assistant", content: "shipped it" },
+      },
     ];
     expect(extractLastAgentExcerpt(messages)).toBe("shipped it");
   });

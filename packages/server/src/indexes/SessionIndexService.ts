@@ -48,7 +48,7 @@ export interface CachedSessionSummary {
   provider: ProviderName;
   /** Model used for this session (e.g. "gemini-2.5-pro") */
   model?: string;
-  /** Capped excerpt of the most recent regular agent turn (hover card). */
+  /** Capped excerpt of the most recent visible agent turn or provider recap. */
   lastAgentText?: string;
 }
 

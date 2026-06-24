@@ -36,7 +36,12 @@ import { Modal } from "./ui/Modal";
 
 type ThinkingMode = "off" | "auto" | "on";
 
-const RECAP_MODE_ORDER: RecapMode[] = ["off", "native", "side-session"];
+const RECAP_MODE_ORDER: RecapMode[] = [
+  "off",
+  "side-session",
+  "fork",
+  "native",
+];
 const PROMPT_SUGGESTION_MODE_ORDER: PromptSuggestionMode[] = ["off", "native"];
 
 function parseThinkingOption(option: ThinkingOption | undefined): {
@@ -145,13 +150,21 @@ function getProviderModels(
 
 function providerSupportsRecapMode(
   provider:
-    | Pick<ProviderInfo, "supportsRecaps" | "supportsNativeRecaps">
+    | Pick<
+        ProviderInfo,
+        "supportsRecaps" | "supportsNativeRecaps" | "supportsForkSession"
+      >
     | null
     | undefined,
   mode: RecapMode,
 ): boolean {
   if (mode === "off") return true;
   if (mode === "native") return provider?.supportsNativeRecaps === true;
+  if (mode === "fork") {
+    return (
+      provider?.supportsRecaps === true && provider.supportsForkSession === true
+    );
+  }
   return provider?.supportsRecaps === true;
 }
 
@@ -574,6 +587,7 @@ export function RestartSessionModal({
     off: t("recapModeOff"),
     native: t("recapModeNative"),
     "side-session": t("recapModeSideSession"),
+    fork: t("recapModeFork"),
   };
   const promptSuggestionModeLabels: Record<PromptSuggestionMode, string> = {
     off: t("promptSuggestionModeOff"),

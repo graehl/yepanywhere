@@ -232,7 +232,7 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
         !RECAP_MODES.includes(body.recapMode as RecapMode)
       ) {
         return c.json(
-          { error: "recapMode must be one of: off, native, side-session" },
+          { error: `recapMode must be one of: ${RECAP_MODES.join(", ")}` },
           400,
         );
       }

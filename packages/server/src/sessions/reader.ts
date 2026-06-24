@@ -33,6 +33,7 @@ import {
 import {
   assistantContentParts,
   formatAgentExcerpt,
+  systemAwaySummaryExcerpt,
 } from "./agent-excerpt.js";
 import { collectVisibleClaudeEntries } from "./claude-messages.js";
 import { buildDag } from "./dag.js";
@@ -281,7 +282,9 @@ export class ClaudeSessionReader implements ISessionReader {
       const firstUserMessage = this.findFirstUserMessage(messages);
       const fullTitle = firstUserMessage?.trim() || null;
       const model = this.extractModel(conversationMessages);
-      const lastAgentText = this.findLastAgentExcerpt(conversationMessages);
+      const lastAgentText = this.findLastAgentExcerpt(
+        activeBranch.map((node) => node.raw),
+      );
 
       // Prefer the first entry's content timestamp for the creation time. The
       // file's birthtime is unreliable on Linux filesystems without statx btime
@@ -624,11 +627,12 @@ export class ClaudeSessionReader implements ISessionReader {
   }
 
   /**
-   * Excerpt of the most recent regular agent turn for the row hover card.
-   * Scans backward for the latest assistant message carrying prose (the "what
-   * did it tell me" signal); when the latest turns are tool-only, falls back to
-   * an earlier text block, and only to a "⚙ <tool>" label when there is no
-   * agent prose at all. See topics/session-hovercard-recent-activity.md.
+   * Excerpt of the most recent visible agent turn or provider recap for the row
+   * hover card. Scans backward for a provider away-summary or latest assistant
+   * message carrying prose (the "what did it tell me" signal); when the latest
+   * turns are tool-only, falls back to an earlier text block, and only to a
+   * "⚙ <tool>" label when there is no agent prose at all. See
+   * topics/session-hovercard-recent-activity.md.
    */
   private findLastAgentExcerpt(
     messages: ClaudeSessionEntry[],
@@ -636,6 +640,8 @@ export class ClaudeSessionReader implements ISessionReader {
     let trailingTool: string | undefined;
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
+      const awaySummary = systemAwaySummaryExcerpt(msg);
+      if (awaySummary) return awaySummary;
       if (msg?.type !== "assistant") continue;
       const { text, toolName } = assistantContentParts(
         (msg as { message?: { content?: unknown } }).message?.content,
@@ -671,12 +677,19 @@ export class ClaudeSessionReader implements ISessionReader {
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i]?.trim();
       if (!line) continue;
-      let entry: { type?: string; message?: { content?: unknown } };
+      let entry: {
+        type?: string;
+        subtype?: string;
+        content?: unknown;
+        message?: { content?: unknown };
+      };
       try {
         entry = JSON.parse(line);
       } catch {
         continue;
       }
+      const awaySummary = systemAwaySummaryExcerpt(entry);
+      if (awaySummary) return awaySummary;
       if (entry.type !== "assistant") continue;
       const { text, toolName } = assistantContentParts(entry.message?.content);
       const excerpt = formatAgentExcerpt(text);

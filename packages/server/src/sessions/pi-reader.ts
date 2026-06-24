@@ -46,6 +46,7 @@ import type {
   ISessionReader,
   LoadedSession,
 } from "./types.js";
+import { extractLastAgentExcerpt } from "./agent-excerpt.js";
 
 export interface PiSessionReaderOptions {
   /** Override for testing (defaults to ~/.pi/agent/sessions) */
@@ -414,6 +415,7 @@ export class PiSessionReader implements ISessionReader {
   ): SessionSummary {
     const title = this.deriveTitle(parsed);
     const updatedAt = new Date(info.mtime).toISOString();
+    const lastAgentText = extractLastAgentExcerpt(this.buildMessages(parsed));
     return {
       id: info.id,
       projectId,
@@ -425,6 +427,7 @@ export class PiSessionReader implements ISessionReader {
       messageCount: parsed.messageNodes.length,
       provider: "pi",
       model: parsed.model ?? "default",
+      lastAgentText,
     };
   }
 
@@ -520,6 +523,16 @@ export class PiSessionReader implements ISessionReader {
   async getSessionFilePath(sessionId: string): Promise<string | null> {
     const sessions = await this.scanSessions();
     return this.findSessionInfo(sessions, sessionId)?.filePath ?? null;
+  }
+
+  async getLastAgentExcerpt(sessionId: string): Promise<string | undefined> {
+    const sessions = await this.scanSessions();
+    const info = this.findSessionInfo(sessions, sessionId);
+    if (!info) return undefined;
+    const parsed = await this.parseSession(info);
+    return parsed
+      ? extractLastAgentExcerpt(this.buildMessages(parsed))
+      : undefined;
   }
 
   async listSessionFiles(

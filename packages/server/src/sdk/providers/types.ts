@@ -311,6 +311,16 @@ export type SummaryGenerationRequest =
       model?: string;
     }
   | {
+      purpose: "recap";
+      strategy: "fork";
+      /** Archived helper fork whose full current context should be recapped. */
+      generatorSessionId: string;
+      /** Project working directory the session belongs to. */
+      cwd: string;
+      /** Cancels the helper query when the request is abandoned. */
+      signal?: AbortSignal;
+    }
+  | {
       purpose: "fork-after-summary";
       strategy: "fork";
       /** Archived helper fork whose whole context should be summarized. */

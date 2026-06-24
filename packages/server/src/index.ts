@@ -39,10 +39,7 @@ import {
   SessionMetadataService,
 } from "./metadata/index.js";
 import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
-import {
-  initFileAccess,
-  updateFileAccess,
-} from "./middleware/file-access.js";
+import { initFileAccess, updateFileAccess } from "./middleware/file-access.js";
 import { NotificationService } from "./notifications/index.js";
 import { CodexSessionScanner } from "./projects/codex-scanner.js";
 import { GeminiSessionScanner } from "./projects/gemini-scanner.js";
@@ -301,7 +298,7 @@ const fileWatchers: FileWatcher[] = [];
 // Helper to create watcher if directory exists
 function createWatcherIfExists(
   watchDir: string,
-  provider: "claude" | "gemini" | "codex",
+  provider: "claude" | "gemini" | "codex" | "pi",
 ): void {
   if (fs.existsSync(watchDir)) {
     const periodicRescanMs =
@@ -326,6 +323,7 @@ function createWatcherIfExists(
 createWatcherIfExists(config.claudeSessionsDir, "claude");
 createWatcherIfExists(config.geminiSessionsDir, "gemini");
 createWatcherIfExists(config.codexSessionsDir, "codex");
+createWatcherIfExists(config.piSessionsDir, "pi");
 
 // When running without tsx watch (NO_BACKEND_RELOAD=true), start source watcher
 // to notify the UI when server code changes and needs manual reload

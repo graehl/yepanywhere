@@ -334,6 +334,66 @@ describe("PiSessionReader", () => {
     ]);
   });
 
+  it("uses visible assistant text, not hidden thinking, for lastAgentText", async () => {
+    const visibleSessionId = "019pi-visible-last-agent";
+    const jsonl = [
+      jsonLine({
+        type: "session",
+        version: 3,
+        id: visibleSessionId,
+        cwd: projectPath,
+        timestamp: "2026-06-22T00:00:00.000Z",
+      }),
+      jsonLine({
+        type: "message",
+        id: "u1",
+        parentId: null,
+        timestamp: "2026-06-22T00:00:01.000Z",
+        message: { role: "user", content: "inspect files" },
+      }),
+      jsonLine({
+        type: "message",
+        id: "a1",
+        parentId: "u1",
+        timestamp: "2026-06-22T00:00:02.000Z",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "visible result" }],
+        },
+      }),
+      jsonLine({
+        type: "message",
+        id: "a2",
+        parentId: "a1",
+        timestamp: "2026-06-22T00:00:03.000Z",
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "thinking",
+              thinking: "hidden reasoning that should not drive previews",
+            },
+          ],
+        },
+      }),
+    ].join("\n");
+    await writeFile(
+      join(
+        sessionsDir,
+        "--fixture--",
+        `2026-06-22T00-00-00-000Z_${visibleSessionId}.jsonl`,
+      ),
+      `${jsonl}\n`,
+    );
+
+    const reader = new PiSessionReader({ sessionsDir, projectPath });
+    const summary = await reader.getSessionSummary(visibleSessionId, projectId);
+    expect(summary?.lastAgentText).toBe("visible result");
+    expect(await reader.getLastAgentExcerpt(visibleSessionId)).toBe(
+      "visible result",
+    );
+  });
+
   it("forks a pi session file at a retained message anchor", async () => {
     const sourceSessionId = "019pi-source-session";
     const sourcePath = join(

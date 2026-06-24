@@ -1582,7 +1582,7 @@ describe("Sessions metadata route", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           currentTitle: "old noisy title",
-          lengthTarget: 72,
+          lengthTarget: 132,
         }),
       },
     );
@@ -1606,7 +1606,7 @@ describe("Sessions metadata route", () => {
         generatorSessionId: "sess-retitle-generator",
         cwd: project.path,
         currentTitle: "old noisy title",
-        lengthTarget: 72,
+        lengthTarget: 132,
       }),
     );
     expect(updateMetadata).toHaveBeenCalledWith("sess-retitle-generator", {

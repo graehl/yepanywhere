@@ -224,6 +224,11 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
     description: "Override the Grok sessions directory.",
   },
   {
+    name: "PI_SESSIONS_DIR",
+    group: "Sessions & scanning",
+    description: "Override the pi sessions directory.",
+  },
+  {
     name: "CODEX_WATCH_PERIODIC_RESCAN_MS",
     group: "Sessions & scanning",
     description:

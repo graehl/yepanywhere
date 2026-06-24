@@ -48,6 +48,8 @@ export interface Config {
   geminiSessionsDir: string;
   /** Codex sessions directory (~/.codex/sessions) */
   codexSessionsDir: string;
+  /** pi sessions directory (~/.pi/agent/sessions) */
+  piSessionsDir: string;
   /**
    * Periodic full-tree rescan interval for codex session watcher (ms).
    * Helps recover from missed fs.watch events on macOS. 0 disables it.
@@ -222,6 +224,9 @@ export function loadConfig(): Config {
     path.join(os.homedir(), ".gemini", "tmp");
   const codexSessionsDir =
     process.env.CODEX_SESSIONS_DIR ?? getDefaultCodexSessionsDir();
+  const piSessionsDir =
+    process.env.PI_SESSIONS_DIR ??
+    path.join(os.homedir(), ".pi", "agent", "sessions");
   // Enable periodic rescan on macOS (fs.watch misses deep file writes)
   // and Windows (fs.watch({ recursive: true }) can be unreliable for deep trees)
   const defaultCodexWatchPeriodicRescanMs =
@@ -277,6 +282,7 @@ export function loadConfig(): Config {
     claudeSessionsDir,
     geminiSessionsDir,
     codexSessionsDir,
+    piSessionsDir,
     codexWatchPeriodicRescanMs,
     sessionIndexFullValidationMs,
     sessionIndexWriteLockTimeoutMs,
@@ -284,8 +290,10 @@ export function loadConfig(): Config {
     sessionAutoArchiveDays,
     projectScanCacheTtlMs,
     idleTimeoutMs:
-      parseIntOrDefault(process.env.IDLE_TIMEOUT, DEFAULT_IDLE_TIMEOUT_SECONDS) *
-      1000,
+      parseIntOrDefault(
+        process.env.IDLE_TIMEOUT,
+        DEFAULT_IDLE_TIMEOUT_SECONDS,
+      ) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),
     port: parseIntOrDefault(process.env.PORT, 3400),
     portFile: process.env.PORT_FILE ?? null,

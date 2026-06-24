@@ -14,6 +14,7 @@ import {
 } from "@yep-anywhere/shared";
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
+import type { SessionMetadataService } from "../metadata/index.js";
 import { getProvider } from "../sdk/providers/index.js";
 import type {
   AgentProvider,
@@ -455,6 +456,8 @@ export interface SupervisorOptions {
   ) => PromptCacheKeepaliveSettings | undefined;
   /** Maximum time to wait for a graceful provider interrupt before hard abort. */
   interruptTimeoutMs?: number;
+  /** Metadata service used to hide/archive server-owned helper forks. */
+  sessionMetadataService?: SessionMetadataService;
 }
 
 export class Supervisor {
@@ -499,6 +502,9 @@ export class Supervisor {
    */
   private patientCheckTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private interruptTimeoutMs: number;
+  private sessionMetadataService?: SessionMetadataService;
+  private forkedRecapInFlight = new Set<string>();
+  private pendingForkedRecapRequests = new Map<string, number | null>();
 
   constructor(options: SupervisorOptions) {
     this.provider = options.provider ?? null;
@@ -523,6 +529,7 @@ export class Supervisor {
       options.getPromptCacheKeepaliveSettings;
     this.interruptTimeoutMs =
       options.interruptTimeoutMs ?? DEFAULT_INTERRUPT_TIMEOUT_MS;
+    this.sessionMetadataService = options.sessionMetadataService;
     this.staleCheckTimer = setInterval(
       () => this.terminateStaleProcesses(),
       STALE_CHECK_INTERVAL_MS,
@@ -2034,6 +2041,164 @@ export class Supervisor {
     return provider.generateSummary(request);
   }
 
+  private async archiveHelperFork(
+    childSessionId: string,
+    parentSessionId: string,
+    title: string,
+    providerName: ProviderName,
+    process: Process,
+  ): Promise<void> {
+    if (!this.sessionMetadataService) {
+      return;
+    }
+    await this.sessionMetadataService.updateMetadata(childSessionId, {
+      title,
+      archived: true,
+      parentSessionId,
+    });
+    await this.sessionMetadataService.setProvider(childSessionId, providerName);
+    await this.sessionMetadataService.setExecutor(
+      childSessionId,
+      process.executor,
+    );
+    await this.sessionMetadataService.setRequestedModel(
+      childSessionId,
+      process.requestedModel,
+    );
+  }
+
+  private async requestForkedRecap(
+    process: Process,
+    provider: AgentProvider,
+    sinceMs: number | null,
+  ): Promise<{
+    supported: boolean;
+    emitted: boolean;
+    reason?: string;
+    text?: string;
+  }> {
+    if (!provider.supportsRecaps || !provider.generateSummary) {
+      return {
+        supported: false,
+        emitted: false,
+        reason: "provider does not support recaps",
+      };
+    }
+    if (typeof provider.forkSession !== "function") {
+      return {
+        supported: false,
+        emitted: false,
+        reason: "provider does not support forked recaps",
+      };
+    }
+    if (this.forkedRecapInFlight.has(process.id)) {
+      return {
+        supported: true,
+        emitted: false,
+        reason: "recap already in flight",
+      };
+    }
+    if (process.state.type === "in-turn") {
+      this.pendingForkedRecapRequests.set(process.id, sinceMs);
+      return {
+        supported: true,
+        emitted: false,
+        reason: "recap deferred until turn completes",
+      };
+    }
+
+    const recent = process.getRecentAssistantText(sinceMs);
+    if (recent.length === 0) {
+      return {
+        supported: true,
+        emitted: false,
+        reason: "no recent assistant activity to summarize",
+      };
+    }
+
+    this.forkedRecapInFlight.add(process.id);
+    let generatorSessionId: string | undefined;
+    try {
+      const generator = await this.forkSession({
+        sessionId: process.sessionId,
+        projectPath: process.projectPath,
+        providerName: process.provider,
+        title: "Recap generator",
+      });
+      generatorSessionId = generator.sessionId;
+      await this.archiveHelperFork(
+        generator.sessionId,
+        process.sessionId,
+        "Recap generator",
+        process.provider,
+        process,
+      );
+      const text = (
+        await provider.generateSummary({
+          purpose: "recap",
+          strategy: "fork",
+          generatorSessionId: generator.sessionId,
+          cwd: process.projectPath,
+        })
+      ).text.trim();
+      if (!text) {
+        return {
+          supported: true,
+          emitted: false,
+          reason: "provider returned empty recap",
+        };
+      }
+      process.emitSyntheticSystemMessage("away_summary", text);
+      return { supported: true, emitted: true, text };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      getLogger().warn(
+        {
+          event: "session_forked_recap_failed",
+          sessionId: process.sessionId,
+          processId: process.id,
+          projectId: process.projectId,
+          providerName: process.provider,
+          generatorSessionId,
+          error: reason,
+        },
+        `Forked recap generation failed: ${reason}`,
+      );
+      return { supported: true, emitted: false, reason };
+    } finally {
+      this.forkedRecapInFlight.delete(process.id);
+    }
+  }
+
+  private flushPendingForkedRecapRequest(process: Process): void {
+    if (
+      process.recapMode !== "fork" ||
+      process.state.type !== "idle" ||
+      this.forkedRecapInFlight.has(process.id) ||
+      !this.pendingForkedRecapRequests.has(process.id)
+    ) {
+      return;
+    }
+    const sinceMs = this.pendingForkedRecapRequests.get(process.id) ?? null;
+    this.pendingForkedRecapRequests.delete(process.id);
+    const provider = getProvider(process.provider);
+    if (!provider) {
+      return;
+    }
+    void this.requestForkedRecap(process, provider, sinceMs).then((result) => {
+      if (result.emitted && result.text && this.eventBus) {
+        const event: SessionUpdatedEvent = {
+          type: "session-updated",
+          sessionId: process.sessionId,
+          projectId: process.projectId,
+          lastAgentText: result.text,
+          timestamp: new Date().toISOString(),
+        };
+        this.eventBus.emit(event);
+      }
+    });
+  }
+
   getProcess(processId: string): Process | undefined {
     return this.processes.get(processId);
   }
@@ -2890,7 +3055,10 @@ export class Supervisor {
       };
     }
 
-    const result = await process.requestRecap(provider, options);
+    const result =
+      process.recapMode === "fork"
+        ? await this.requestForkedRecap(process, provider, options?.sinceMs ?? null)
+        : await process.requestRecap(provider, options);
     // A fresh recap is newer than any prior turn, so surface it as the
     // session's current agent line in lists/hovers via the live update path
     // (it is intentionally not persisted; the next real turn overwrites it
@@ -3171,6 +3339,9 @@ export class Supervisor {
         ) {
           this.schedulePatientDeferredCheck(process, 250);
         }
+        if (event.state.type === "idle") {
+          this.flushPendingForkedRecapRequest(process);
+        }
       } else if (event.type === "deferred-queue") {
         if (
           event.reason === "queued" &&
@@ -3258,6 +3429,8 @@ export class Supervisor {
 
   private unregisterProcess(process: Process): void {
     this.observedProcessIds.delete(process.id);
+    this.pendingForkedRecapRequests.delete(process.id);
+    this.forkedRecapInFlight.delete(process.id);
     const patientTimer = this.patientCheckTimers.get(process.id);
     if (patientTimer) {
       clearTimeout(patientTimer);

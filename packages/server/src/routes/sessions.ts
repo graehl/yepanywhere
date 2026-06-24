@@ -272,7 +272,7 @@ function parseOptionalRecapMode(rawMode: unknown): {
   ) {
     return {
       recapMode: undefined,
-      error: "recapMode must be one of: off, native, side-session",
+      error: `recapMode must be one of: ${RECAP_MODES.join(", ")}`,
     };
   }
   return { recapMode: rawMode as RecapMode };
@@ -4032,10 +4032,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         typeof body.lengthTarget !== "number" ||
         !Number.isInteger(body.lengthTarget) ||
         body.lengthTarget < 20 ||
-        body.lengthTarget > 120
+        body.lengthTarget > 132
       ) {
         return c.json(
-          { error: "lengthTarget must be an integer between 20 and 120" },
+          { error: "lengthTarget must be an integer between 20 and 132" },
           400,
         );
       }

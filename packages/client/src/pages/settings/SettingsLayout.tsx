@@ -1,5 +1,5 @@
-import { useLayoutEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
 import { useReloadNotifications } from "../../hooks/useReloadNotifications";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
@@ -98,6 +98,15 @@ function useSettingsContainerWidth(): [
   return [setContainer, width];
 }
 
+function scrollElementToTop(element: HTMLElement): void {
+  if (typeof element.scrollTo === "function") {
+    element.scrollTo({ top: 0, behavior: "auto" });
+    return;
+  }
+
+  element.scrollTop = 0;
+}
+
 interface SettingsCategoryItemProps {
   category: SettingsCategory;
   isActive: boolean;
@@ -131,11 +140,13 @@ export function SettingsLayout() {
   const { t } = useI18n();
   const { category } = useParams<{ category?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const basePath = useRemoteBasePath();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
   const [settingsContainerRef, settingsContainerWidth] =
     useSettingsContainerWidth();
+  const settingsScrollContainerRef = useRef<HTMLElement | null>(null);
   const useTwoColumnSettings = shouldUseSettingsTwoColumn(
     settingsContainerWidth,
   );
@@ -171,6 +182,29 @@ export function SettingsLayout() {
   // Two-column settings can fit before the persistent app sidebar can.
   const effectiveCategory =
     category || (useTwoColumnSettings ? categories[0]?.id : undefined);
+
+  const setSettingsScrollContainerRef = useCallback(
+    (element: HTMLElement | null) => {
+      settingsScrollContainerRef.current = element;
+    },
+    [],
+  );
+
+  const scrollSettingsToTop = useCallback(() => {
+    const element = settingsScrollContainerRef.current;
+    if (element) {
+      scrollElementToTop(element);
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    scrollSettingsToTop();
+  }, [location.key, scrollSettingsToTop]);
+
+  const handleSettingsTitleClick = () => {
+    navigate(`${basePath}/settings`);
+    scrollSettingsToTop();
+  };
 
   const handleCategoryClick = (categoryId: string) => {
     navigate(`${basePath}/settings/${categoryId}`);
@@ -216,12 +250,16 @@ export function SettingsLayout() {
         >
           <PageHeader
             title={t("pageTitleSettings")}
+            onTitleClick={handleSettingsTitleClick}
             onOpenSidebar={openSidebar}
             onToggleSidebar={toggleSidebar}
             isWideScreen={isWideScreen}
             isSidebarCollapsed={isSidebarCollapsed}
           />
-          <main className="page-scroll-container">
+          <main
+            ref={setSettingsScrollContainerRef}
+            className="page-scroll-container"
+          >
             <div className="page-content-inner settings-category-list-shell">
               <div className="settings-category-list">
                 {categories.map((cat) => (
@@ -250,7 +288,10 @@ export function SettingsLayout() {
           onBack={handleBack}
           actions={undoButton}
         />
-        <main className="page-scroll-container">
+        <main
+          ref={setSettingsScrollContainerRef}
+          className="page-scroll-container"
+        >
           <div className="page-content-inner">
             <SettingsUndoProvider value={setUndoRegistration}>
               {CategoryComponent && <CategoryComponent />}
@@ -266,13 +307,17 @@ export function SettingsLayout() {
     <MainContent isWideScreen={isWideScreen} innerRef={settingsContainerRef}>
       <PageHeader
         title={t("pageTitleSettings")}
+        onTitleClick={handleSettingsTitleClick}
         onOpenSidebar={openSidebar}
         onToggleSidebar={toggleSidebar}
         isWideScreen={isWideScreen}
         isSidebarCollapsed={isSidebarCollapsed}
         actions={undoButton}
       />
-      <main className="page-scroll-container">
+      <main
+        ref={setSettingsScrollContainerRef}
+        className="page-scroll-container"
+      >
         <div className="settings-two-column">
           <nav className="settings-category-nav">
             <div className="settings-category-list">

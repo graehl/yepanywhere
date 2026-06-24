@@ -2634,7 +2634,9 @@ export class CodexProvider implements AgentProvider {
     const userPrompt =
       request.purpose === "session-retitle"
         ? this.createSessionRetitlePrompt(request)
-        : this.createForkAfterSummaryPrompt(request);
+        : request.purpose === "recap"
+          ? this.createForkedRecapPrompt()
+          : this.createForkAfterSummaryPrompt(request);
     const codexCommand = await this.resolveCodexCommand();
     const appServer = new CodexAppServerClient(
       codexCommand,
@@ -2781,6 +2783,8 @@ export class CodexProvider implements AgentProvider {
       developerInstructions:
         request.purpose === "session-retitle"
           ? "You are a title helper. Reply with the session title only, no preamble. Do not call tools."
+          : request.purpose === "recap"
+            ? "You are a recap helper. Reply with the recap text only, no preamble. Do not call tools."
           : "You are a handoff summary helper. Reply with the summary text only, no preamble. Do not call tools.",
     };
     if (experimentalApiEnabled) {
@@ -2817,6 +2821,15 @@ export class CodexProvider implements AgentProvider {
     ]
       .filter((part): part is string => part !== undefined)
       .join("\n");
+  }
+
+  private createForkedRecapPrompt(): string {
+    return [
+      "The user stepped away and is coming back.",
+      "Recap the current session state in under 40 words, 1-2 plain sentences, no markdown.",
+      "Lead with what the assistant did or is doing; mention any pending next action.",
+      "Do not greet, do not ask a question, do not add a sign-off.",
+    ].join("\n");
   }
 
   private createSessionRetitlePrompt(

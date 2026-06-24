@@ -358,6 +358,11 @@ export class ExternalSessionTracker {
       return;
     }
 
+    if (event.provider === "pi") {
+      await this.handlePiFileChange(event);
+      return;
+    }
+
     // Parse sessionId and projectId from path
     // Format: projects/<projectId>/<sessionId>.jsonl
     const parsed = this.parseSessionPath(event.relativePath);
@@ -536,6 +541,101 @@ export class ExternalSessionTracker {
       this.createdSessions.add(sessionId);
     } catch {
       // Ignore failures until next file change
+    }
+  }
+
+  private async handlePiFileChange(event: FileChangeEvent): Promise<void> {
+    const meta = await this.readPiSessionHeader(event.path);
+    if (!meta) return;
+
+    const process = this.supervisor.getProcessForSession(meta.id);
+    if (process) {
+      this.removeExternal(meta.id);
+      if (this.getSessionSummary) {
+        const getSessionSummary = this.getSessionSummary;
+        const projectId = process.projectId;
+        this.sessionParser.enqueue(meta.id, async () => {
+          return getSessionSummary(meta.id, projectId);
+        });
+      }
+      return;
+    }
+
+    if (this.isInAbortGracePeriod(meta.id)) {
+      return;
+    }
+
+    const projectId = encodeProjectId(meta.cwd);
+    this.markExternal(meta.id, { provider: event.provider, projectId });
+    await this.ensurePiSessionCreated(meta, event.path, projectId);
+  }
+
+  private async readPiSessionHeader(filePath: string): Promise<{
+    id: string;
+    cwd: string;
+    timestamp: string;
+    model?: string;
+  } | null> {
+    try {
+      const firstLine = await readFirstLine(filePath);
+      if (!firstLine) return null;
+
+      const parsed = JSON.parse(firstLine) as {
+        type?: string;
+        id?: string;
+        cwd?: string;
+        timestamp?: string;
+      };
+      if (
+        parsed.type !== "session" ||
+        !parsed.id ||
+        !parsed.cwd ||
+        !parsed.timestamp
+      ) {
+        return null;
+      }
+
+      return {
+        id: parsed.id,
+        cwd: parsed.cwd,
+        timestamp: parsed.timestamp,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async ensurePiSessionCreated(
+    meta: { id: string; cwd: string; timestamp: string; model?: string },
+    filePath: string,
+    projectId: UrlProjectId,
+  ): Promise<void> {
+    if (this.createdSessions.has(meta.id)) return;
+
+    try {
+      const stats = await stat(filePath);
+      const summary: SessionSummary = {
+        id: meta.id,
+        projectId,
+        title: null,
+        fullTitle: null,
+        createdAt: meta.timestamp,
+        updatedAt: stats.mtime.toISOString(),
+        messageCount: 0,
+        ownership: { owner: "external" },
+        provider: "pi",
+        model: meta.model,
+      };
+
+      const event: SessionCreatedEvent = {
+        type: "session-created",
+        session: summary,
+        timestamp: new Date().toISOString(),
+      };
+      this.eventBus.emit(event);
+      this.createdSessions.add(meta.id);
+    } catch {
+      // Ignore failures until the next file change.
     }
   }
 

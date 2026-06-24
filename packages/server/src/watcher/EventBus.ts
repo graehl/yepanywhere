@@ -15,7 +15,7 @@ import type { SessionOwnership, SessionSummary } from "../supervisor/types.js";
 export type FileChangeType = "create" | "modify" | "delete";
 
 /** Provider that owns the watched directory */
-export type WatchProvider = "claude" | "gemini" | "codex";
+export type WatchProvider = "claude" | "gemini" | "codex" | "pi";
 
 export interface FileChangeEvent {
   type: "file-change";
@@ -188,7 +188,7 @@ export interface SessionUpdatedEvent {
   contextUsage?: ContextUsage;
   /** Resolved model name (e.g., "claude-sonnet-4-5-20250929") */
   model?: string;
-  /** Capped excerpt of the most recent regular agent turn (hover card). */
+  /** Capped excerpt of the most recent visible agent turn or provider recap. */
   lastAgentText?: string;
   timestamp: string;
 }

@@ -121,8 +121,9 @@ export interface ProviderImageSizing {
   note?: string;
 }
 
-export const RECAP_MODES = ["off", "native", "side-session"] as const;
+export const RECAP_MODES = ["off", "side-session", "fork", "native"] as const;
 export type RecapMode = (typeof RECAP_MODES)[number];
+export const DEFAULT_RECAP_AFTER_SECONDS = 120;
 
 export const PROMPT_SUGGESTION_MODES = ["off", "native"] as const;
 export type PromptSuggestionMode = (typeof PROMPT_SUGGESTION_MODES)[number];
@@ -288,6 +289,12 @@ export interface NewSessionDefaults {
   serviceTier?: string;
   permissionMode?: PermissionMode;
   recapMode?: RecapMode;
+  /**
+   * Minimum verified-idle quiet time before YA starts a synthetic recap worker.
+   * Native recaps are provider-owned; this setting still travels with the
+   * session so switching to a synthetic mode has the expected delay.
+   */
+  recapAfterSeconds?: number;
   promptSuggestionMode?: PromptSuggestionMode;
   /** Provider-mapped helper side model or helper-target:<id>. */
   helperSideModel?: string;

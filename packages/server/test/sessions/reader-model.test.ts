@@ -23,20 +23,27 @@ describe("SessionReader model extraction", () => {
   });
 
   function chain(
-    entries: Array<{ type: string; message: Record<string, unknown> }>,
+    entries: Array<
+      { type: string; message?: Record<string, unknown> } & Record<
+        string,
+        unknown
+      >
+    >,
   ): string {
     // Thread parentUuid so the reader's active-branch walk sees one chain.
     let parentUuid: string | null = null;
     const lines: string[] = [];
     entries.forEach((e, i) => {
       const uuid = `msg-${i}`;
+      const { type, message, ...rest } = e;
       lines.push(
         JSON.stringify({
-          type: e.type,
+          type,
           uuid,
           parentUuid,
           timestamp: new Date(Date.now() + i * 1000).toISOString(),
-          message: e.message,
+          ...(message ? { message } : {}),
+          ...rest,
         }),
       );
       parentUuid = uuid;
@@ -184,7 +191,9 @@ describe("SessionReader model extraction", () => {
           type: "user",
           message: {
             role: "user",
-            content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
+            content: [
+              { type: "tool_result", tool_use_id: "t1", content: "ok" },
+            ],
           },
         },
         {
@@ -218,6 +227,29 @@ describe("SessionReader model extraction", () => {
 
       const summary = await reader.getSessionSummary("la4", projectId);
       expect(summary?.lastAgentText).toBe("⚙ Bash");
+    });
+
+    it("uses a persisted provider away summary as the freshest activity", async () => {
+      const jsonl = chain([
+        { type: "user", message: { role: "user", content: "go" } },
+        {
+          type: "assistant",
+          message: {
+            role: "assistant",
+            model: "claude-opus-4-6",
+            content: [{ type: "text", text: "older reply" }],
+          },
+        },
+        {
+          type: "system",
+          subtype: "away_summary",
+          content: "Fresh recap. (disable recaps in /config)",
+        },
+      ]);
+      await writeFile(join(sessionDir, "la-away.jsonl"), `${jsonl}\n`);
+
+      const summary = await reader.getSessionSummary("la-away", projectId);
+      expect(summary?.lastAgentText).toBe("Fresh recap.");
     });
 
     it("getLastAgentExcerpt reverse-scans to the same last-lines result", async () => {
@@ -254,6 +286,28 @@ describe("SessionReader model extraction", () => {
       await writeFile(join(sessionDir, "la6.jsonl"), `${jsonl}\n`);
 
       expect(await reader.getLastAgentExcerpt("la6")).toBe("⚙ Bash");
+    });
+
+    it("getLastAgentExcerpt reverse-scans provider away summaries", async () => {
+      const jsonl = chain([
+        { type: "user", message: { role: "user", content: "go" } },
+        {
+          type: "assistant",
+          message: {
+            role: "assistant",
+            model: "claude-opus-4-6",
+            content: [{ type: "text", text: "older reply" }],
+          },
+        },
+        {
+          type: "system",
+          subtype: "away_summary",
+          content: "Fast recap. (disable recaps in /config)",
+        },
+      ]);
+      await writeFile(join(sessionDir, "la7.jsonl"), `${jsonl}\n`);
+
+      expect(await reader.getLastAgentExcerpt("la7")).toBe("Fast recap.");
     });
   });
 });

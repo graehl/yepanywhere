@@ -106,11 +106,11 @@ export interface SessionSummary {
   /** Model used for this session (extracted from JSONL, e.g. "claude-opus-4-5-20251101") */
   model?: string;
   /**
-   * Excerpt of the most recent regular agent turn (last assistant message with
-   * prose), capped to the last few lines. Shown in the row hover card so a
-   * glance answers "where did this land?". A "⚙ <tool>" label when the latest
-   * turns are tool-only. Undefined when the provider's reader does not populate
-   * it yet, or there is no agent text. See
+   * Excerpt of the most recent visible regular agent turn or provider recap,
+   * capped to the last few lines. Shown in the row hover card so a glance
+   * answers "where did this land?". A "⚙ <tool>" label when the latest turns
+   * are tool-only. Hidden thinking does not populate this field. Undefined when
+   * the provider's reader does not populate it yet, or there is no agent text. See
    * topics/session-hovercard-recent-activity.md.
    */
   lastAgentText?: string;

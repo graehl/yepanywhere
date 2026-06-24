@@ -46,7 +46,12 @@ import {
 import { ProviderBadge } from "../../components/ProviderBadge";
 import { ThinkingControlsPanel } from "../../components/ThinkingControls";
 
-const RECAP_MODE_ORDER: RecapMode[] = ["off", "native", "side-session"];
+const RECAP_MODE_ORDER: RecapMode[] = [
+  "off",
+  "side-session",
+  "fork",
+  "native",
+];
 const PROMPT_SUGGESTION_MODE_ORDER: PromptSuggestionMode[] = [
   ...PROMPT_SUGGESTION_MODES,
 ];
@@ -108,6 +113,7 @@ function providerSupportsRecapMode(
     | {
         supportsRecaps?: boolean;
         supportsNativeRecaps?: boolean;
+        supportsForkSession?: boolean;
       }
     | null
     | undefined,
@@ -115,6 +121,11 @@ function providerSupportsRecapMode(
 ): boolean {
   if (mode === "off") return true;
   if (mode === "native") return provider?.supportsNativeRecaps === true;
+  if (mode === "fork") {
+    return (
+      provider?.supportsRecaps === true && provider.supportsForkSession === true
+    );
+  }
   return provider?.supportsRecaps === true;
 }
 
@@ -123,6 +134,7 @@ function getDefaultRecapMode(
     | {
         supportsRecaps?: boolean;
         supportsNativeRecaps?: boolean;
+        supportsForkSession?: boolean;
       }
     | null
     | undefined,
@@ -388,11 +400,13 @@ export function ModelSettings() {
     off: t("recapModeOff"),
     native: t("recapModeNative"),
     "side-session": t("recapModeSideSession"),
+    fork: t("recapModeFork"),
   };
   const recapModeDescriptions: Record<RecapMode, string> = {
     off: t("recapModeOffDescription"),
     native: t("recapModeNativeDescription"),
     "side-session": t("recapModeSideSessionDescription"),
+    fork: t("recapModeForkDescription"),
   };
   const promptSuggestionModeLabels: Record<PromptSuggestionMode, string> = {
     off: t("promptSuggestionModeOff"),

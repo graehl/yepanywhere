@@ -3880,9 +3880,30 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const metadataProvider = deps.sessionMetadataService?.getProvider(
       sessionId,
     ) as ProviderName | undefined;
+    const sourceProcess = deps.supervisor.getProcessForSession(sessionId);
+    const sessionSummaryResult = await findSessionSummaryAcrossProviders(
+      project,
+      sessionId,
+      projectId,
+      {
+        readerFactory: deps.readerFactory,
+        codexSessionsDir: deps.codexSessionsDir,
+        codexReaderFactory: deps.codexReaderFactory,
+        geminiSessionsDir: deps.geminiSessionsDir,
+        geminiReaderFactory: deps.geminiReaderFactory,
+        geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
+        grokSessionsDir: deps.grokSessionsDir,
+        grokReaderFactory: deps.grokReaderFactory,
+        piSessionsDir: deps.piSessionsDir,
+        piReaderFactory: deps.piReaderFactory,
+      },
+      sourceProcess?.provider ?? metadataProvider,
+    );
+    const sessionSummary = sessionSummaryResult?.summary ?? null;
     const providerName =
+      sourceProcess?.provider ??
       metadataProvider ??
-      deps.supervisor.getProcessForSession(sessionId)?.provider ??
+      sessionSummary?.provider ??
       project.provider;
     if (!deps.supervisor.supportsForkSession(providerName)) {
       return c.json(
@@ -4024,9 +4045,34 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const metadataProvider = deps.sessionMetadataService.getProvider(
       sessionId,
     ) as ProviderName | undefined;
-    const sourceProcess = deps.supervisor.getProcessForSession(sessionId);
+    let sourceProcess = deps.supervisor.getProcessForSession(sessionId);
+    const liveSourceProcess =
+      sourceProcess && !sourceProcess.isTerminated ? sourceProcess : undefined;
+    const sessionSummaryResult = await findSessionSummaryAcrossProviders(
+      project,
+      sessionId,
+      projectId,
+      {
+        readerFactory: deps.readerFactory,
+        codexSessionsDir: deps.codexSessionsDir,
+        codexReaderFactory: deps.codexReaderFactory,
+        geminiSessionsDir: deps.geminiSessionsDir,
+        geminiReaderFactory: deps.geminiReaderFactory,
+        geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
+        grokSessionsDir: deps.grokSessionsDir,
+        grokReaderFactory: deps.grokReaderFactory,
+        piSessionsDir: deps.piSessionsDir,
+        piReaderFactory: deps.piReaderFactory,
+      },
+      liveSourceProcess?.provider ?? metadataProvider,
+    );
+    const sessionSummary = sessionSummaryResult?.summary ?? null;
     const providerName =
-      metadataProvider ?? sourceProcess?.provider ?? project.provider;
+      liveSourceProcess?.provider ??
+      metadataProvider ??
+      sessionSummary?.provider ??
+      sourceProcess?.provider ??
+      project.provider;
     if (!deps.supervisor.supportsForkSession(providerName)) {
       return c.json(
         { error: `${providerName} does not support transcript fork` },
@@ -4037,9 +4083,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const savedExecutor = parseOptionalExecutor(
       deps.sessionMetadataService.getExecutor(sessionId),
     ).executor;
-    const requestedModel =
+    let requestedModel =
       deps.sessionMetadataService.getRequestedModel(sessionId) ??
-      sourceProcess?.model;
+      liveSourceProcess?.model;
     const promptSuggestionMode =
       deps.sessionMetadataService.getMetadata(sessionId)?.promptSuggestionMode;
     const abortController = new AbortController();
@@ -4054,6 +4100,25 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     let generatorSessionId: string | undefined;
     try {
+      if (!liveSourceProcess) {
+        sourceProcess = await deps.supervisor.reactivateSession(
+          project.path,
+          sessionId,
+          undefined,
+          {
+            model:
+              requestedModel && requestedModel !== "default"
+                ? requestedModel
+                : undefined,
+            providerName,
+            executor: savedExecutor,
+            globalInstructions: getGlobalInstructions(),
+            promptSuggestionMode,
+          },
+        );
+        requestedModel = requestedModel ?? sourceProcess.model;
+      }
+
       const generator = await deps.supervisor.forkSession({
         sessionId,
         projectPath: project.path,

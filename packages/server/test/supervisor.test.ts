@@ -436,6 +436,87 @@ describe("Supervisor", () => {
       expect(again).toBe(process);
       expect(startSession).toHaveBeenCalledTimes(1);
     });
+
+    it("queues a concurrent resume through an in-flight reactivation", async () => {
+      let releaseStart!: () => void;
+      const startGate = new Promise<void>((resolve) => {
+        releaseStart = resolve;
+      });
+      const delivered: string[] = [];
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          await startGate;
+          const queue = new MessageQueue();
+          let aborted = false;
+          async function* iterator() {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id: options.resumeSessionId ?? "new-session",
+            };
+            for await (const sdkMessage of queue) {
+              if (aborted) {
+                return;
+              }
+              const content = sdkMessage.message.content;
+              delivered.push(typeof content === "string" ? content : "");
+            }
+          }
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {
+              aborted = true;
+              queue.push({ text: "__abort__" });
+            },
+            supportedCommands: async () => [],
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "codex",
+        displayName: "Codex",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        supportsSteering: false,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+      };
+      const supervisor = new Supervisor({ provider, idleTimeoutMs: 60000 });
+
+      const reactivation = supervisor.reactivateSession(
+        "/tmp/test",
+        "codex-old",
+        undefined,
+        { providerName: "codex" },
+      );
+      await vi.waitFor(() => {
+        expect(startSession).toHaveBeenCalledTimes(1);
+      });
+
+      const resumed = supervisor.resumeSession("codex-old", "/tmp/test", {
+        text: "next turn",
+      });
+      releaseStart();
+
+      const process = await reactivation;
+      await expect(resumed).resolves.toBe(process);
+      expect(startSession).toHaveBeenCalledTimes(1);
+      expect(supervisor.getProcessForSession("codex-old")).toBe(process);
+      await vi.waitFor(() => {
+        expect(delivered).toEqual(["next turn"]);
+      });
+
+      await supervisor.abortProcess(process.id);
+    });
   });
 
   describe("getProcess", () => {

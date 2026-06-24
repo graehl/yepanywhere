@@ -68,6 +68,15 @@ fork-after-summary constraint: do not pollute the source provider transcript
 with a "summarize/title yourself" turn. The generated title is viewer/UI state
 until accepted.
 
+For a stopped session, retitle must first resolve the session's real provider
+from live YA ownership, persisted metadata, or cross-provider transcript
+readers before testing fork support. If YA can tail/display that stopped
+session but has no live source process, retitle reactivates the primary session
+with the ordinary message-less resume path before creating the helper fork. That
+reactivation is single-flight by YA session id, so a normal user send that
+arrives concurrently waits for the same resumed process and then queues its
+turn there instead of starting a second resume.
+
 When generation finishes, show the proposed title near the current title or
 below the inline edit surface. Do not overwrite the user's typed edit text.
 If the user already hard-confirmed the manually typed value, the later helper
@@ -132,3 +141,6 @@ retitle-only helper configuration.
   retitle/rename flow, while chevron opens recent sessions.
 - `Esc` and `X` exit either manual or generated retitle mode without changing
   session metadata.
+- Stopped mixed-provider sessions use the provider found by transcript readers,
+  wake the source session before the helper fork, and do not race a concurrent
+  normal send into a second resume.

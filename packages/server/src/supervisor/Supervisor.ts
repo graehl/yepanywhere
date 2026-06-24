@@ -460,6 +460,7 @@ export interface SupervisorOptions {
 export class Supervisor {
   private processes: Map<string, Process> = new Map();
   private sessionToProcess: Map<string, string> = new Map(); // sessionId -> processId
+  private sessionActivationInFlight: Map<string, Promise<Process>> = new Map();
   private observedProcessIds: Set<string> = new Set();
   private everOwnedSessions: Set<string> = new Set(); // Sessions we've ever owned (for orphan detection)
   private terminatedProcesses: ProcessInfo[] = []; // Recently terminated processes
@@ -569,6 +570,35 @@ export class Supervisor {
       return "native";
     }
     return "off";
+  }
+
+  private async waitForSessionActivation(sessionId: string): Promise<boolean> {
+    const activation = this.sessionActivationInFlight.get(sessionId);
+    if (!activation) {
+      return false;
+    }
+    try {
+      await activation;
+    } catch {
+      // The caller will retry the ordinary resume path, which can surface the
+      // fresh failure or recover if the transient activation failed.
+    }
+    return true;
+  }
+
+  private async startSessionActivation<T extends Process>(
+    sessionId: string,
+    activate: () => Promise<T> | T,
+  ): Promise<T> {
+    const activation = Promise.resolve().then(activate);
+    this.sessionActivationInFlight.set(sessionId, activation);
+    try {
+      return (await activation) as T;
+    } finally {
+      if (this.sessionActivationInFlight.get(sessionId) === activation) {
+        this.sessionActivationInFlight.delete(sessionId);
+      }
+    }
   }
 
   registerPromptCacheKeepaliveViewer(process: Process): () => void {
@@ -756,44 +786,63 @@ export class Supervisor {
   ): Promise<Process> {
     const existing = this.getProcessForSession(resumeSessionId);
     if (existing) {
-      return existing;
+      if (!existing.isTerminated) {
+        return existing;
+      }
+      this.unregisterProcess(existing);
     }
 
-    if (this.isAtCapacity()) {
-      const preemptable = this.findPreemptableWorker();
-      if (preemptable) {
-        await this.preemptWorker(preemptable);
-      } else {
-        throw new Error(
-          "Cannot reactivate: server is at worker capacity and no idle process can be preempted",
+    const activeActivation =
+      this.sessionActivationInFlight.get(resumeSessionId);
+    if (activeActivation) {
+      return activeActivation;
+    }
+
+    return this.startSessionActivation(resumeSessionId, async () => {
+      const activated = this.getProcessForSession(resumeSessionId);
+      if (activated) {
+        if (!activated.isTerminated) {
+          return activated;
+        }
+        this.unregisterProcess(activated);
+      }
+
+      if (this.isAtCapacity()) {
+        const preemptable = this.findPreemptableWorker();
+        if (preemptable) {
+          await this.preemptWorker(preemptable);
+        } else {
+          throw new Error(
+            "Cannot reactivate: server is at worker capacity and no idle process can be preempted",
+          );
+        }
+      }
+
+      const projectId = encodeProjectId(projectPath);
+      const provider = this.resolveProvider(modelSettings);
+      if (provider) {
+        return this.createProviderSession(
+          projectPath,
+          projectId,
+          permissionMode,
+          modelSettings,
+          provider,
+          resumeSessionId,
         );
       }
-    }
-
-    const projectId = encodeProjectId(projectPath);
-    const provider = this.resolveProvider(modelSettings);
-    if (provider) {
-      return this.createProviderSession(
-        projectPath,
-        projectId,
-        permissionMode,
-        modelSettings,
-        provider,
-        resumeSessionId,
+      if (this.realSdk) {
+        return this.createRealSession(
+          projectPath,
+          projectId,
+          permissionMode,
+          modelSettings,
+          resumeSessionId,
+        );
+      }
+      throw new Error(
+        "reactivateSession requires provider or real SDK - legacy mock SDK not supported",
       );
-    }
-    if (this.realSdk) {
-      return this.createRealSession(
-        projectPath,
-        projectId,
-        permissionMode,
-        modelSettings,
-        resumeSessionId,
-      );
-    }
-    throw new Error(
-      "reactivateSession requires provider or real SDK - legacy mock SDK not supported",
-    );
+    });
   }
 
   /**
@@ -1690,6 +1739,8 @@ export class Supervisor {
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
   ): Promise<Process | QueuedResponse | QueueFullResponse> {
+    await this.waitForSessionActivation(sessionId);
+
     // Check if already have a process for this session
     const existingProcessId = this.sessionToProcess.get(sessionId);
     if (existingProcessId) {
@@ -1814,42 +1865,66 @@ export class Supervisor {
 
     const projectId = encodeProjectId(projectPath);
 
-    // Check if at capacity
-    if (this.isAtCapacity()) {
-      // Try to preempt an idle worker
-      const preemptable = this.findPreemptableWorker();
-      if (preemptable) {
-        await this.preemptWorker(preemptable);
-        // Fall through to start session normally
-      } else {
-        // Queue the request
-        const result = this.workerQueue.enqueue({
-          type: "resume-session",
-          projectPath,
-          projectId,
-          sessionId,
-          message,
-          permissionMode,
-          modelSettings,
-        });
-        if (isQueueFullError(result)) {
-          return result;
-        }
-        return {
-          queued: true,
-          queueId: result.queueId,
-          position: result.position,
-        };
+    if (this.isAtCapacity() && !this.findPreemptableWorker()) {
+      const result = this.workerQueue.enqueue({
+        type: "resume-session",
+        projectPath,
+        projectId,
+        sessionId,
+        message,
+        permissionMode,
+        modelSettings,
+      });
+      if (isQueueFullError(result)) {
+        return result;
       }
+      return {
+        queued: true,
+        queueId: result.queueId,
+        position: result.position,
+      };
     }
 
-    const provider = this.resolveProvider(modelSettings);
-    const resumeMode = modelSettings?.resumeMode ?? "full";
+    if (await this.waitForSessionActivation(sessionId)) {
+      return this.resumeSession(
+        sessionId,
+        projectPath,
+        message,
+        permissionMode,
+        modelSettings,
+      );
+    }
 
-    // Use provider if available (preferred)
-    if (provider) {
-      if (resumeMode === "compact-first") {
-        return this.startCompactFirstProviderResume(
+    return this.startSessionActivation(sessionId, async () => {
+      if (this.isAtCapacity()) {
+        const preemptable = this.findPreemptableWorker();
+        if (preemptable) {
+          await this.preemptWorker(preemptable);
+        } else {
+          throw new Error(
+            "Cannot resume: server is at worker capacity and no idle process can be preempted",
+          );
+        }
+      }
+
+      const provider = this.resolveProvider(modelSettings);
+      const resumeMode = modelSettings?.resumeMode ?? "full";
+
+      // Use provider if available (preferred)
+      if (provider) {
+        if (resumeMode === "compact-first") {
+          return this.startCompactFirstProviderResume(
+            projectPath,
+            projectId,
+            message,
+            sessionId,
+            permissionMode,
+            modelSettings,
+            provider,
+          );
+        }
+
+        return this.startProviderSession(
           projectPath,
           projectId,
           message,
@@ -1860,21 +1935,20 @@ export class Supervisor {
         );
       }
 
-      return this.startProviderSession(
-        projectPath,
-        projectId,
-        message,
-        sessionId,
-        permissionMode,
-        modelSettings,
-        provider,
-      );
-    }
+      // Use real SDK if available
+      if (this.realSdk) {
+        if (resumeMode === "compact-first") {
+          return this.startCompactFirstRealResume(
+            projectPath,
+            projectId,
+            message,
+            sessionId,
+            permissionMode,
+            modelSettings,
+          );
+        }
 
-    // Use real SDK if available
-    if (this.realSdk) {
-      if (resumeMode === "compact-first") {
-        return this.startCompactFirstRealResume(
+        return this.startRealSession(
           projectPath,
           projectId,
           message,
@@ -1884,35 +1958,26 @@ export class Supervisor {
         );
       }
 
-      return this.startRealSession(
+      // Fall back to legacy mock SDK
+      if (resumeMode === "compact-first") {
+        throw new ResumeCompactionError({
+          sessionId,
+          provider: "claude",
+          attempt: {
+            status: "unavailable",
+            reason: "legacy mock SDK does not support compact-first resume",
+          },
+        });
+      }
+
+      return this.startLegacySession(
         projectPath,
         projectId,
         message,
         sessionId,
         permissionMode,
-        modelSettings,
       );
-    }
-
-    // Fall back to legacy mock SDK
-    if (resumeMode === "compact-first") {
-      throw new ResumeCompactionError({
-        sessionId,
-        provider: "claude",
-        attempt: {
-          status: "unavailable",
-          reason: "legacy mock SDK does not support compact-first resume",
-        },
-      });
-    }
-
-    return this.startLegacySession(
-      projectPath,
-      projectId,
-      message,
-      sessionId,
-      permissionMode,
-    );
+    });
   }
 
   /** Whether the resolved provider has a real transcript-fork primitive. */

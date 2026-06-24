@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+  ProviderName,
   TranscriptDisplayObject,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -1556,6 +1557,12 @@ describe("Sessions metadata route", () => {
       scanner: {
         getOrCreateProject: vi.fn(async () => project),
       } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(
+        () =>
+          ({
+            getSessionSummary: vi.fn(async () => null),
+          }) as unknown as ISessionReader,
+      ),
       sessionMetadataService: {
         getProvider: vi.fn(() => "claude"),
         getRequestedModel: vi.fn(() => "sonnet"),
@@ -1618,6 +1625,100 @@ describe("Sessions metadata route", () => {
     expect(setRequestedModel).toHaveBeenCalledWith(
       "sess-retitle-generator",
       "sonnet",
+    );
+  });
+
+  it("reactivates a stopped cross-provider session before retitle fork", async () => {
+    const project = createProject();
+    const summary = createSummary();
+    const primaryReader = {
+      getSessionSummary: vi.fn(async () => null),
+    } as unknown as ISessionReader;
+    const codexReader = {
+      getSessionSummary: vi.fn(async () => summary),
+    } as unknown as CodexSessionReader;
+    const reactivateSession = vi.fn(async () => ({
+      id: "proc-source",
+      provider: "codex",
+      model: "gpt-5-codex",
+      isTerminated: false,
+    }));
+    const forkSession = vi.fn(async () => ({
+      sessionId: "sess-retitle-generator",
+    }));
+    const generateSummary = vi.fn(async () => ({
+      text: "Codex-backed rename",
+    }));
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => undefined),
+        reactivateSession,
+        supportsForkSession: vi.fn(
+          (providerName: ProviderName | undefined) => providerName === "codex",
+        ),
+        forkSession,
+        generateSummary,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => primaryReader),
+      codexSessionsDir: "/tmp/codex-sessions",
+      codexReaderFactory: vi.fn(
+        () => codexReader as unknown as CodexSessionReader,
+      ),
+      sessionMetadataService: {
+        getProvider: vi.fn(() => undefined),
+        getRequestedModel: vi.fn(() => undefined),
+        getExecutor: vi.fn(() => undefined),
+        getMetadata: vi.fn(() => ({ promptSuggestionMode: "off" })),
+        updateMetadata: vi.fn(async () => undefined),
+        setProvider: vi.fn(async () => undefined),
+        setRequestedModel: vi.fn(async () => undefined),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+      eventBus: { emit: vi.fn() } as unknown as SessionsDeps["eventBus"],
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/retitle`,
+      { method: "POST", headers: { "Content-Type": "application/json" } },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      title: "Codex-backed rename",
+      generatorSessionId: "sess-retitle-generator",
+    });
+    expect(reactivateSession).toHaveBeenCalledWith(
+      project.path,
+      "sess-1",
+      undefined,
+      expect.objectContaining({
+        providerName: "codex",
+        promptSuggestionMode: "off",
+      }),
+    );
+    expect(forkSession).toHaveBeenCalledWith({
+      sessionId: "sess-1",
+      projectPath: project.path,
+      providerName: "codex",
+      title: "Retitle generator",
+    });
+    expect(generateSummary).toHaveBeenCalledWith(
+      "codex",
+      expect.objectContaining({ purpose: "session-retitle" }),
+    );
+    expect(reactivateSession.mock.invocationCallOrder[0]).toBeLessThan(
+      forkSession.mock.invocationCallOrder[0],
+    );
+    expect(primaryReader.getSessionSummary).toHaveBeenCalledWith(
+      "sess-1",
+      project.id,
+    );
+    expect(codexReader.getSessionSummary).toHaveBeenCalledWith(
+      "sess-1",
+      project.id,
     );
   });
 

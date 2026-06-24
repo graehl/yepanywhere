@@ -7,6 +7,30 @@
 
 Topic: responsive-layout-gaps
 
+## The anti-pattern
+
+anti-pattern: '...' hiding text that doesn't fit computed by math fit to current font and size settings that are user-configurable
+
+anti-pattern: Writing # of px container width rules for when to autocollapse or change layout without the reasoned-through widths being live computation w/ actual font sizes and contracts in mind
+
+## The correct pattern
+
+a layout constraint solving discipline that references real geometry and AGENTS instructions that user layout requests use it. efficiency and incremental evolution / simple code.
+
+shortcuts for fixed-width text are not allowed; always measure real horizontal extents
+
+efficiency matters esp. where layout rules affect unbounded session content
+
+## The plan
+
+locate an appropriate constraint-aware layout pattern (maybe some basics are already part of standard css/dom) and apply it piecewise as gaps are noticed by user-developers. we do not necessarily need a big declarative conceptual render graph; we just need common-sense helpers that compute rules using correct patterns and considering our project font styles' configurability and the simple width dependent ladder from mobile to mid-width PC with e.g. changing a fixed left quick access bar to a toggleable drawer at medium-small widths, up to generous-width; max content width and other legibility / allocation preferences are often encountered.
+
+### Prior art search / framework-lite invention
+
+Flesh out: what well-regarded layout constraint toolkits or frameworks easily admit incremental adoption without imposing undue global 'framework' / scene-graph burden? Clearly an all-encompassing layout algo can be run within a given rectangle canvas, but we want it to be able to feed requests/min/max to the enclosing not-framework-adopting layout system. If nothing suitable, you may propose a homegrown system evolvable toward this. Support for flicker/jitter free live-resize 'animation' is a plus but not strictly required.
+
+layout invariants specified by user deserve tests; every such test should be run under a range of font size settings and screen widths; this topic proposes concretely additionally testing with a larger UI font and a particular prose font, but this is not the only possibility.
+
 ## Current Gap Inventory
 
 Scope of this first inventory: Settings → Appearance, because the UI font and
@@ -26,6 +50,8 @@ UI size Larger.
 | Generated Title Length | `.settings-item-actions` row in `AppearanceSettings.tsx` | Same three-row pattern as Max Content Width. |
 | Hover Card Delay | `.settings-item-actions` row in `AppearanceSettings.tsx` | Same three-row pattern as Max Content Width. |
 | Hover Card Max Height | `.settings-item-actions` row in `AppearanceSettings.tsx` | Range + numeric value/unit + line-count estimate + reset wrapped to four rows. The estimate is useful, but it needs an allocated slot or a second-line contract, not accidental wrapping. |
+
+Also: 'Ran' blocks can display wrapping followed by unused space on the second line, followed by ... truncation. This was probably implemented by a fixed #chars count since it's a fixed width font - but the width is configurable!
 
 Non-gaps in the same measurement: Theme, Settings Icons, UI size, and Tab Size
 stayed one row. Composer bottom-row overflow already has its own measured

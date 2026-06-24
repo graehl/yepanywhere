@@ -23,8 +23,22 @@ cancellation on activity) and the current trigger/threshold gaps.
   need to know which side produced them.
 - Recaps must not become part of the provider's persisted transcript.
   The JSONL session file represents the underlying agent's
-  conversation; recaps are a viewer affordance and must be reproducible
-  from session state, not stored as user/assistant turns.
+  conversation; recaps are a viewer affordance and must not be stored as
+  user/assistant turns or fed into future provider context.
+- YA-synthesized recaps must be durable. They are persisted as YA-owned
+  metadata overlay rows (`SessionMetadataService.recapMessages`) and merged
+  into session detail/list reads. This makes them survive `reyep`, server
+  restart, and reopening the same session from another device without
+  polluting the provider transcript.
+- Provider-native recaps are preferred. In tailed and forked modes, YA waits
+  a bounded grace window for a native `system/away_summary`; if it arrives in
+  time, YA uses it, resets the fallback activity/return event, and suppresses
+  the synthetic fallback. Tailed/forked are therefore eventual-recap
+  guarantees, not native-recap replacements.
+- A live-observed provider-native recap may also be mirrored into the YA
+  metadata overlay as `provider-native`. This preserves the native-preferred
+  outcome across restart/reopen and is deduped against any provider row that
+  later appears in the persisted transcript.
 - Recap generation is the provider's responsibility. Providers that
   cannot generate one cheaply (no cache fork, no second model handy)
   may decline; YA surfaces this as a capability gap rather than
@@ -53,8 +67,12 @@ cancellation on activity) and the current trigger/threshold gaps.
   words for Claude-shape recaps); YA must not pad, decorate, or attach
   follow-up tool affordances that would invite further interaction with
   the recap message.
-- Recaps survive reload only as live state. They are not persisted to
-  YA's session metadata; on full page reload the recap area resets.
+- Recaps survive reload as viewer state. YA persists synthetic recaps, and
+  live-observed native recaps, in session metadata and overlays them into
+  the transcript view. The provider transcript remains the provider's record.
+- Session lists and hovercards treat a fresher recap as the current ending
+  text (`lastAgentText`) immediately on emission and after reload. A later
+  real assistant turn naturally supersedes it through the normal summary path.
 - Recap rendering is read-only. There is no reply box, no thumbs, no
   retry — clicking the recap row should not change provider state.
 
@@ -119,10 +137,10 @@ change recap configuration for future sessions.
 - Changing how the server records its "last user activity" timestamp,
   since the recap trigger depends on it.
 
-## Proposal: Native-Preferred Fallback and Helper Placement
+## Decision: Native-Preferred Fallback and Helper Placement
 
-This proposal revises the original "native vs simulated" split into a
-user-facing "recaps on/off" contract with provider-owned recaps preferred.
+This revises the original "native vs simulated" split into a user-facing
+"recaps on/off" contract with provider-owned recaps preferred.
 
 When recaps are on for a provider that emits `away_summary` natively, YA should
 first show provider-emitted recap rows when they arrive. If no native recap
@@ -131,20 +149,11 @@ helper and emit the same `system` / `away_summary` shape. That fallback must be
 deduped against a late native row: one visible recap per return event, with the
 native row preferred when both exist.
 
-The fallback deadline should be provider-tuned, not an unbounded "wait and hope"
-state. Historical Claude JSONL recaps in this checkout cluster around three
-minutes after prior activity, so a Claude policy should account for that native
-idle threshold and then use a short post-return grace window for catch-up. A
-candidate first pass:
-
-- If the user was away less than the provider's native idle threshold, do not
-  run fallback immediately; the provider has not yet had a chance to produce a
-  native recap.
-- Once the return event is at or beyond that threshold, refresh/catch up the
-  provider stream and wait a small grace window for an `away_summary`.
-- If no native row arrives, run the configured YA helper fallback.
-- If a native row arrives while fallback is in flight, cancel or suppress the
-  fallback result.
+The fallback deadline is bounded, not an unbounded "wait and hope" state.
+The current server implementation waits a short post-return grace window for
+providers that advertise native recap support, checks again after helper
+generation, and suppresses the synthetic row if a native row arrived during
+that window.
 
 Current implementation facts:
 
@@ -188,10 +197,8 @@ current recent-text helper. Inline hidden turns require an explicit provider
 capability because a fake-hidden turn that reaches the persisted transcript or
 future model context violates the recap contract.
 
-Open probes before implementation:
+Remaining probes:
 
-- Confirm whether YA's Claude SDK stream or catch-up path can observe native
-  `away_summary` rows during an idle/away return without mounting the TUI.
 - Test whether the internal `awaySummaryEnabled` settings key can be supplied
   through supported SDK settings plumbing, and whether it affects `--print`
   / stream-json mode at all.

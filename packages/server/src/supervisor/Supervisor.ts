@@ -21,6 +21,11 @@ import type {
   SummaryGenerationRequest,
   SummaryGenerationResult,
 } from "../sdk/providers/types.js";
+import { formatAgentRecapExcerpt } from "../sessions/agent-excerpt.js";
+import {
+  isAwaySummaryMessage,
+  toDurableRecapMessage,
+} from "../sessions/recap-overlays.js";
 import { normalizeSlashCommandName } from "../sdk/slashCommandEmulation.js";
 import type {
   ClaudeSDK,
@@ -39,7 +44,12 @@ import type {
   SessionUpdatedEvent,
   WorkerActivityEvent,
 } from "../watcher/EventBus.js";
-import { Process, type ProcessConstructorOptions } from "./Process.js";
+import {
+  NATIVE_RECAP_FALLBACK_GRACE_MS,
+  Process,
+  type ProcessConstructorOptions,
+  type RecapRequestResult,
+} from "./Process.js";
 import {
   type QueuedRequestInfo,
   type QueuedResponse,
@@ -343,6 +353,8 @@ export interface ModelSettings {
   permissions?: PermissionRules;
   /** How this session should answer away-recap requests. */
   recapMode?: RecapMode;
+  /** Browser-away duration before YA asks this process for a recap. */
+  recapAfterSeconds?: number;
   /** How this session should request native prompt suggestions. */
   promptSuggestionMode?: PromptSuggestionMode;
   /** Session-level helper side model for simulated helper features. */
@@ -949,6 +961,7 @@ export class Supervisor {
       executor: modelSettings?.executor,
       permissions: modelSettings?.permissions,
       recapMode: modelSettings?.recapMode,
+      recapAfterSeconds: modelSettings?.recapAfterSeconds,
       promptSuggestionMode,
       helperSideModel: modelSettings?.helperSideModel,
     };
@@ -1415,6 +1428,7 @@ export class Supervisor {
       executor: modelSettings?.executor,
       permissions: modelSettings?.permissions,
       recapMode: modelSettings?.recapMode,
+      recapAfterSeconds: modelSettings?.recapAfterSeconds,
       promptSuggestionMode,
       helperSideModel: modelSettings?.helperSideModel,
     };
@@ -1547,6 +1561,7 @@ export class Supervisor {
       executor: modelSettings?.executor,
       permissions: modelSettings?.permissions,
       recapMode: modelSettings?.recapMode,
+      recapAfterSeconds: modelSettings?.recapAfterSeconds,
       promptSuggestionMode,
       helperSideModel: modelSettings?.helperSideModel,
     };
@@ -1674,6 +1689,7 @@ export class Supervisor {
       executor: modelSettings?.executor,
       permissions: modelSettings?.permissions,
       recapMode: modelSettings?.recapMode,
+      recapAfterSeconds: modelSettings?.recapAfterSeconds,
       promptSuggestionMode,
       helperSideModel: modelSettings?.helperSideModel,
     };
@@ -2071,16 +2087,73 @@ export class Supervisor {
     );
   }
 
+  private publishRecapListUpdate(
+    process: Process,
+    text: string,
+    timestamp = new Date().toISOString(),
+  ): void {
+    if (!this.eventBus) {
+      return;
+    }
+    const lastAgentText = formatAgentRecapExcerpt(text);
+    if (!lastAgentText) {
+      return;
+    }
+    const event: SessionUpdatedEvent = {
+      type: "session-updated",
+      sessionId: process.sessionId,
+      projectId: process.projectId,
+      updatedAt: timestamp,
+      lastAgentText,
+      timestamp: new Date().toISOString(),
+    };
+    this.eventBus.emit(event);
+  }
+
+  private async persistRecapOverlay(
+    process: Process,
+    message: NonNullable<RecapRequestResult["syntheticMessage"]>,
+  ): Promise<void> {
+    if (!this.sessionMetadataService) {
+      return;
+    }
+    try {
+      await this.sessionMetadataService.addRecapMessage(process.sessionId, message);
+    } catch (error) {
+      getLogger().warn(
+        {
+          event: "session_recap_overlay_persist_failed",
+          sessionId: process.sessionId,
+          processId: process.id,
+          projectId: process.projectId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        `Failed to persist recap overlay: ${process.sessionId}`,
+      );
+    }
+  }
+
+  private async handleRecapResult(
+    process: Process,
+    result: RecapRequestResult,
+  ): Promise<void> {
+    if (result.syntheticMessage) {
+      await this.persistRecapOverlay(process, result.syntheticMessage);
+    }
+    if (result.emitted && result.text) {
+      this.publishRecapListUpdate(
+        process,
+        result.text,
+        result.syntheticMessage?.timestamp,
+      );
+    }
+  }
+
   private async requestForkedRecap(
     process: Process,
     provider: AgentProvider,
     sinceMs: number | null,
-  ): Promise<{
-    supported: boolean;
-    emitted: boolean;
-    reason?: string;
-    text?: string;
-  }> {
+  ): Promise<RecapRequestResult> {
     if (!provider.supportsRecaps || !provider.generateSummary) {
       return {
         supported: false,
@@ -2108,6 +2181,19 @@ export class Supervisor {
         supported: true,
         emitted: false,
         reason: "recap deferred until turn completes",
+      };
+    }
+
+    const nativeRecap = await process.waitForNativeRecapSince(
+      sinceMs,
+      provider.supportsNativeRecaps ? NATIVE_RECAP_FALLBACK_GRACE_MS : 0,
+    );
+    if (nativeRecap) {
+      return {
+        supported: true,
+        emitted: true,
+        reason: "native recap emitted",
+        text: nativeRecap.text,
       };
     }
 
@@ -2154,11 +2240,32 @@ export class Supervisor {
           reason: "provider returned empty recap",
         };
       }
-      process.emitSyntheticSystemMessage("away_summary", text);
-      return { supported: true, emitted: true, text };
+      const lateNativeRecap = process.getNativeRecapSince(sinceMs);
+      if (lateNativeRecap) {
+        return {
+          supported: true,
+          emitted: true,
+          reason: "native recap emitted",
+          text: lateNativeRecap.text,
+        };
+      }
+      const syntheticMessage = process.emitSyntheticSystemMessage(
+        "away_summary",
+        text,
+      );
+      return { supported: true, emitted: true, text, syntheticMessage };
     } catch (error) {
       // Cancellation on parent activity is expected, not a failure.
       if (abortController.signal.aborted) {
+        const nativeRecap = process.getNativeRecapSince(sinceMs);
+        if (nativeRecap) {
+          return {
+            supported: true,
+            emitted: true,
+            reason: "native recap emitted",
+            text: nativeRecap.text,
+          };
+        }
         return {
           supported: true,
           emitted: false,
@@ -2213,18 +2320,9 @@ export class Supervisor {
     if (!provider) {
       return;
     }
-    void this.requestForkedRecap(process, provider, sinceMs).then((result) => {
-      if (result.emitted && result.text && this.eventBus) {
-        const event: SessionUpdatedEvent = {
-          type: "session-updated",
-          sessionId: process.sessionId,
-          projectId: process.projectId,
-          lastAgentText: result.text,
-          timestamp: new Date().toISOString(),
-        };
-        this.eventBus.emit(event);
-      }
-    });
+    void this.requestForkedRecap(process, provider, sinceMs).then((result) =>
+      this.handleRecapResult(process, result),
+    );
   }
 
   getProcess(processId: string): Process | undefined {
@@ -2296,6 +2394,7 @@ export class Supervisor {
       providerName: process.provider,
       executor: process.executor,
       recapMode: process.recapMode,
+      recapAfterSeconds: process.recapAfterSeconds,
       promptSuggestionMode: process.promptSuggestionMode,
       helperSideModel: process.helperSideModel,
     };
@@ -2315,13 +2414,24 @@ export class Supervisor {
 
   configureProcessRecaps(
     processId: string,
-    config: { recapMode?: RecapMode; helperSideModel?: string },
+    config: {
+      recapMode?: RecapMode;
+      recapAfterSeconds?: number;
+      helperSideModel?: string;
+    },
   ): Process | null {
     const process = this.getProcess(processId);
     if (!process || process.isTerminated) {
       return null;
     }
     process.setRecapConfig(config);
+    this.emitOwnershipChange(process.sessionId, process.projectId, {
+      owner: "self",
+      processId: process.id,
+      permissionMode: process.permissionMode,
+      modeVersion: process.modeVersion,
+      recapAfterSeconds: process.recapAfterSeconds,
+    });
     return process;
   }
 
@@ -2436,6 +2546,8 @@ export class Supervisor {
           ...modelSettings,
           serviceTier: requestedServiceTier,
           recapMode: modelSettings?.recapMode ?? process.recapMode,
+          recapAfterSeconds:
+            modelSettings?.recapAfterSeconds ?? process.recapAfterSeconds,
           promptSuggestionMode:
             modelSettings?.promptSuggestionMode ?? process.promptSuggestionMode,
           helperSideModel:
@@ -3091,21 +3203,9 @@ export class Supervisor {
             options?.sinceMs ?? null,
           )
         : await process.requestRecap(provider, options);
-    // A fresh recap is newer than any prior turn, so surface it as the
-    // session's current agent line in lists/hovers via the live update path
-    // (it is intentionally not persisted; the next real turn overwrites it
-    // from the JSONL). See topics/session-hovercard-recent-activity.md.
-    if (result.emitted && result.text && this.eventBus) {
-      const event: SessionUpdatedEvent = {
-        type: "session-updated",
-        sessionId: process.sessionId,
-        projectId: process.projectId,
-        lastAgentText: result.text,
-        timestamp: new Date().toISOString(),
-      };
-      this.eventBus.emit(event);
-    }
-    return result;
+    await this.handleRecapResult(process, result);
+    const { syntheticMessage: _syntheticMessage, ...publicResult } = result;
+    return publicResult;
   }
 
   private async interruptProcessWithTimeout(
@@ -3209,6 +3309,7 @@ export class Supervisor {
         providerName,
         executor: sourceProcess.executor,
         permissions: sourceProcess.permissions,
+        recapAfterSeconds: sourceProcess.recapAfterSeconds,
       },
     );
 
@@ -3271,6 +3372,27 @@ export class Supervisor {
         this.emitSessionAborted(process.sessionId, process.projectId);
       } else if (event.type === "complete") {
         this.unregisterProcess(process);
+      } else if (event.type === "message") {
+        if (
+          isAwaySummaryMessage(event.message) &&
+          event.message.isSynthetic !== true
+        ) {
+          const durable = toDurableRecapMessage(
+            event.message,
+            "provider-native",
+          );
+          if (durable) {
+            void this.persistRecapOverlay(process, durable);
+            this.publishRecapListUpdate(
+              process,
+              durable.content,
+              durable.timestamp,
+            );
+            this.cancelInFlightForkedRecap(process);
+          }
+        }
+      } else if (event.type === "recap-result") {
+        void this.handleRecapResult(process, event.result);
       } else if (event.type === "context-window-observed") {
         this.onContextWindowObserved?.(
           event.model,
@@ -3323,6 +3445,7 @@ export class Supervisor {
           processId: process.id,
           permissionMode: process.permissionMode,
           modeVersion: process.modeVersion,
+          recapAfterSeconds: process.recapAfterSeconds,
         };
         this.emitOwnershipChange(
           event.newSessionId,
@@ -3425,6 +3548,7 @@ export class Supervisor {
       processId: process.id,
       permissionMode: process.permissionMode,
       modeVersion: process.modeVersion,
+      recapAfterSeconds: process.recapAfterSeconds,
     };
 
     // Emit session created event for new sessions

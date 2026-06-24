@@ -213,38 +213,35 @@ for Claude.
 
 ## Recaps override the excerpt when they are the freshest line
 
-A Claude **recap** (away-summary; see [recaps.md](recaps.md)) is a better "where
-is it now?" line than the raw last turn. YA supports two recap sources:
-persisted provider recaps and YA-synthesized live recaps. Rather than a separate
-field + client-side recency compare, the freshest recap is **folded into
-`lastAgentText`**:
+A **recap** (away-summary; see [recaps.md](recaps.md)) is a better "where is it
+now?" line than the raw last turn. YA supports two recap sources: provider-native
+recaps and YA-synthesized recaps. Rather than a separate field + client-side
+recency compare, the freshest recap is **folded into `lastAgentText`**:
 
-- Persisted Claude `system` entries with `subtype: "away_summary"` are treated
-  as provider-supplied recaps when they are on the active branch. They override
-  an older assistant reply in summary reads and the fast reverse-scan refresh.
-  YA strips the provider hint suffix `(disable recaps in /config)` before
-  display.
+- Persisted provider `system` entries with `subtype: "away_summary"` are
+  treated as provider-supplied recaps when they are on the active branch. They
+  override an older assistant reply in summary reads and the fast reverse-scan
+  refresh. YA strips the provider hint suffix `(disable recaps in /config)`
+  before display.
+- YA-synthesized recaps, and live-observed native recaps, are persisted as
+  YA-owned metadata overlay rows. The same overlay is merged into session
+  summaries, so list rows and hovercards continue to show the recap after
+  `reyep`, server restart, or reopening the session from another device.
 - Hidden thinking/reasoning summaries are not recaps. They stay out of
   `lastAgentText` unless a future live-tail feature explicitly opts into
   showing visible thinking under the user's thinking-display setting.
 
-- `Supervisor.requestRecap` emits a partial `session-updated` event with
-  `lastAgentText = <recap text>` when `Process` reports a recap was emitted
-  (`requestRecap`/`generateAndEmitRecap` now return the text). It rides the live
-  path already built; the client applies it in place (no flicker).
-- No new field, no persistence: a recap is, at emission, newer than any prior
-  turn, so it is unconditionally the current line. The **next real turn**
-  overwrites `lastAgentText` from the JSONL via the normal summary read, so the
-  recap naturally expires — matching "show the recap only if there is no later
-  activity."
-- **Immediate path only, and that is correct.** A recap requested mid-turn is
-  *deferred* until the turn completes; that completing turn emits a fresher real
-  `lastAgentText`, which should win over a recap. So the deferred-recap flush is
-  deliberately not wired to override the excerpt.
-- Native recaps (`recapMode: "native"`) may be provider-owned and unavailable
-  live. When a provider persists them as explicit recap entries (Claude
-  `system/away_summary`), the session reader may still surface them as
-  provider-supplied recap text.
+- `Supervisor.requestRecap` and deferred recap flushes publish a partial
+  `session-updated` event with `lastAgentText = <recap text>` when a recap wins.
+  It rides the live path already built; the client applies it in place (no
+  flicker), and the metadata overlay makes the same text durable.
+- A recap is, at emission, newer than any prior turn, so it is the current line.
+  The **next real turn** overwrites `lastAgentText` from the provider transcript
+  via the normal summary read, so the recap naturally expires — matching "show
+  the recap only if there is no later activity."
+- Tailed and forked recaps are native-preferred fallbacks. If a native recap row
+  arrives before the fallback commits a synthetic row, YA uses the native text,
+  mirrors it into the overlay, and suppresses the synthetic fallback.
 
 ### On-demand refresh of idle previews (focus / hover)
 

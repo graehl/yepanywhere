@@ -33,6 +33,8 @@ export interface ProcessInfo {
   contextUsage?: ContextUsage;
   /** Provider/session progress evidence, separate from transport liveness. */
   liveness?: SessionLivenessSnapshot;
+  /** Browser-away duration before YA asks this process for a recap. */
+  recapAfterSeconds?: number;
 }
 
 interface ProcessesResponse {

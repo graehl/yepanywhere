@@ -1,4 +1,5 @@
 import {
+  DEFAULT_RECAP_AFTER_SECONDS,
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
@@ -14,6 +15,7 @@ import {
   type ProviderInfo,
   type ProviderName,
   type RecapMode,
+  normalizeRecapAfterSeconds,
 } from "@yep-anywhere/shared";
 import {
   MODEL_OPTIONS,
@@ -44,6 +46,7 @@ import {
   type FilterOption,
 } from "../../components/FilterDropdown";
 import { ProviderBadge } from "../../components/ProviderBadge";
+import { RecapAfterSecondsControl } from "../../components/RecapAfterSecondsControl";
 import { ThinkingControlsPanel } from "../../components/ThinkingControls";
 
 const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork", "native"];
@@ -286,6 +289,9 @@ export function ModelSettings() {
   const selectedRecapMode = getDefaultRecapMode(
     selectedProvider,
     savedDefaults,
+  );
+  const selectedRecapAfterSeconds = normalizeRecapAfterSeconds(
+    savedDefaults?.recapAfterSeconds ?? DEFAULT_RECAP_AFTER_SECONDS,
   );
   const selectedPromptSuggestionMode = getDefaultPromptSuggestionMode(
     selectedProvider,
@@ -809,6 +815,15 @@ export function ModelSettings() {
                 </button>
               ))}
             </div>
+            {selectedRecapMode !== "off" && (
+              <RecapAfterSecondsControl
+                value={selectedRecapAfterSeconds}
+                disabled={settingsLoading}
+                onCommit={(seconds) =>
+                  updateNewSessionDefaults({ recapAfterSeconds: seconds })
+                }
+              />
+            )}
             {selectedRecapMode === "side-session" && (
               <div className="new-session-helper-model">
                 <h3>{t("helperSideModelTitle")}</h3>

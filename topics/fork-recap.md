@@ -6,9 +6,10 @@
 
 This is the supervisor-level companion to [recaps.md](recaps.md), which
 owns the product contract (what a recap is, the on-wire `away_summary`
-shape, the native/tailed/forked modes, and the no-extra-turns / no-persist
-invariants). Read recaps.md first; this doc is only the worker lifecycle
-for the high-fidelity fork path, plus the currently-known gaps.
+shape, the native/tailed/forked modes, the no-extra-provider-turns rule,
+and the durable YA overlay). Read recaps.md first; this doc is the worker
+lifecycle for the high-fidelity fork path, plus the current implementation
+handoff.
 
 See also: [side-session-config.md](side-session-config.md) (shared helper
 config), [fork-from-turn.md](fork-from-turn.md) (the fork-after-summary
@@ -32,7 +33,10 @@ is by mode in `Supervisor.requestRecap` (`Supervisor.ts:3059`):
 
 The forked path creates an archived/hidden generator fork, runs one
 helper turn there via `provider.generateSummary({strategy:"fork", …})`,
-and emits only the resulting text as a synthetic `away_summary`. The
+and emits only the resulting text as a synthetic `away_summary`. For a
+provider that can emit native `away_summary` rows, the forked path is a
+native-preferred fallback: wait a bounded grace window, use a native recap
+if it arrives, and only synthesize when native does not arrive in time. The
 supervisor must uphold:
 
 1. **At most one fork worker per process.** A second concurrent request
@@ -65,6 +69,22 @@ supervisor must uphold:
 4. **Suppress empty recaps.** No recent assistant text since the user
    left ⇒ no recap (`getRecentAssistantText`, `Supervisor.ts:2110`-ish).
 
+5. **Favor native rows when they arrive in time.** A provider-native
+   `system/away_summary` observed before fallback emission resets the return
+   event: YA persists that native row as an overlay mirror, updates the
+   list/hover excerpt, cancels or suppresses any fork fallback, and does not
+   emit a duplicate synthetic recap. If native does not arrive by the bounded
+   grace window, the fork fallback guarantees eventual recap visibility.
+
+6. **Persist only the YA overlay, never a provider turn.** A synthetic fork
+   recap is saved to `SessionMetadataService.recapMessages` and merged into
+   session-detail and session-list reads. The provider JSONL/source transcript
+   remains untouched, so future provider context is not polluted. Native rows
+   may also be mirrored into the overlay when observed live so the
+   native-preferred result survives `reyep`/server restart and another
+   device reopening the session; merge logic dedupes against provider rows
+   that later appear in the persisted transcript.
+
 The provider honours the abort: `generateForkBackedSummary`
 (`claude.ts:1106`) wires `request.signal` to an `AbortController` plus a
 60 s `SUMMARY_TIMEOUT_MS` hard cap (`claude.ts:1117-1125`).
@@ -75,29 +95,91 @@ There is **no server-managed idle timer.** The trigger is **client tab
 visibility**: `useSession.ts:643` records `hiddenSinceMs` on
 `document.visibilitychange` hidden, and on return POSTs
 `/api/processes/:id/recap` (`processes.ts:191` →
-`Supervisor.requestRecap`) iff hidden ≥ `RECAP_AWAY_THRESHOLD_MS` and not
-within `RECAP_REQUEST_COOLDOWN_MS`. Both are **hard-coded constants** in
-`useSession.ts:51-52` (5 min away, 30 s cooldown). The server *does*
-track per-session last activity — `updatedAt` from JSONL `stats.mtime`
-(`reader.ts:323`, cached in `SessionIndexService`); that is the source of
-the "4m ago" hovercard line — but nothing on the server fires a recap
-from it.
+`Supervisor.requestRecap`) iff hidden ≥ the session's configured
+`recapAfterSeconds` threshold and not within `RECAP_REQUEST_COOLDOWN_MS`.
+The default away threshold is 5 min; the cooldown remains a hard-coded
+30 s client guard. The server *does* track per-session last activity —
+`updatedAt` from JSONL `stats.mtime` (`reader.ts:323`, cached in
+`SessionIndexService`); that is the source of the "4m ago" hovercard line
+— but nothing on the server fires a recap from it.
 
 ## Status and remaining gaps
 
 - **Done:** dedup (1), in-turn deferral (2), cancellation-on-activity
   (3), empty suppression (4). Cancellation landed in
   "Cancel in-flight forked recap when the parent turns active".
-- **Gap — configurable idle threshold.** The away threshold is a fixed
-  client constant. Intended: a per-new-session "recap within _ s"
-  control in/under the Recap new-session block, plumbed to the trigger
-  (and surfaced/overridable like other recap config). See the active
-  task handoff in `tasks/` for the plan.
-- **Gap — server-driven trigger (optional).** The visibility-based
-  client trigger only fires on tab hide→show, not on general inactivity
-  while the tab stays focused. A server idle trigger off the existing
-  activity timestamp is possible but not required for the threshold
-  control; treat as a separate decision.
+- **Done:** native-preferred fallback (5). Tailed and forked modes wait
+  briefly for provider-native `away_summary`; native wins if observed before
+  fallback emission, otherwise YA synthesizes.
+- **Done:** durable recap overlay (6).
+  Synthetic recaps and live-observed native recaps are stored under
+  session metadata and merged into session detail, session summary, global
+  lists, project lists, and the hovercard's `lastAgentText`.
+- **Done:** configurable away threshold. `recapAfterSeconds` is part of
+  new-session defaults, process/session metadata, ownership/status
+  payloads, and the process recap-config route. The new-session/settings
+  Recap blocks and session Recap modal surface the value; the client
+  visibility trigger consumes it.
+- **Verified:** focused server tests, full typecheck, lint, and a real Codex
+  fork-recap smoke across `reyep` restart, and `pnpm i18n:scan`.
+  Smoke session
+  `019ef8cf-0f1a-7a51-9c9c-e1426aa88433` emitted one
+  `system/away_summary`, session detail returned it with `messageCount: 3`,
+  the global list returned the same text in `lastAgentText`, and verify-only
+  reads after `reyep` returned the same detail/list recap.
+- **Gap — server-driven trigger (optional, not comprehensive).** YA is
+  explicitly allowed to leave unattended sessions alone instead of trying to
+  generate a recap for every stale session. If a server idle trigger is ever
+  added off the existing activity timestamp, it should use a separate much
+  longer threshold than the client return trigger — for example about 5x the
+  default away timeout (25 min today), clamped below 55 min — and remain a
+  distinct decision from the current visibility-based recap flow.
+
+## 2026-06-24 implementation handoff
+
+Current worktree state:
+
+- New durable type: `DurableRecapMessage` in
+  `packages/shared/src/app-types.ts`, exported from shared. Because the
+  shared package's `"types"` entry points at `dist/index.d.ts`, refresh
+  declarations with `pnpm --filter @yep-anywhere/shared build` before
+  server-only typechecks that import a new shared type.
+- Durable store: `SessionMetadataService.recapMessages`, with capped,
+  deduped `getRecapMessages()` / `addRecapMessage()` and focused metadata
+  tests.
+- Overlay merge: `packages/server/src/sessions/recap-overlays.ts` converts
+  native/synthetic `away_summary` rows to durable overlay rows, dedupes them
+  against provider messages, merges them into session detail, and updates
+  summary `updatedAt` / `lastAgentText` when the latest recap is fresher.
+- Emission path: `Process.generateAndEmitRecap()` and
+  `Supervisor.requestForkedRecap()` return `RecapRequestResult`; a
+  `syntheticMessage` in that result is persisted by `Supervisor`, while
+  provider-native `away_summary` events are mirrored as `provider-native`
+  overlay rows when observed live.
+- List freshness: persisted or newly emitted overlay rows call through the
+  existing `session-updated` path with recap text formatted by
+  `formatAgentRecapExcerpt`, so the session list hovercard shows the recap
+  immediately as the ending text.
+
+Verification evidence:
+
+1. `pnpm --filter @yep-anywhere/shared build`
+2. `pnpm --filter @yep-anywhere/server exec tsc --noEmit`
+3. `pnpm --filter @yep-anywhere/server exec vitest run test/process.test.ts test/metadata/service.test.ts`
+4. `pnpm typecheck`
+5. `pnpm lint`
+6. `pnpm i18n:scan`
+7. Real Codex smoke with `.tmp/fork-recap-smoke.mjs`:
+   session `019ef8cf-0f1a-7a51-9c9c-e1426aa88433`, model
+   `gpt-5.4-mini`, `recapMode: "fork"`, `recapAfterSeconds: 1`. Before
+   `reyep`, the script observed `RECAP_RESPONSE.emitted: true`,
+   `MESSAGE_COUNTS.systemAwaySummary: 1`, detail recap text, and global-list
+   `lastAgentText` with the same recap. After `reyep`, verify-only mode
+   returned the same detail recap and same list `lastAgentText`.
+
+Smoke gotcha: Codex can initially return a temporary session id and then report
+the canonical session id through process state. The scratch smoke normalizes by
+waiting for idle and then using `process.sessionId` for detail/list assertions.
 
 ## Tests that should fail on regressions
 
@@ -107,3 +189,7 @@ from it.
 - A parent turn starting mid-generation aborts the generator turn (no
   late `away_summary` emitted after the new turn began).
 - A recap with no assistant output since the user left emits nothing.
+- If a native `away_summary` arrives before the fallback emits, tailed/forked
+  use the native text and do not run/commit the synthetic fallback.
+- A synthetic recap survives server restart/session reopen through the YA
+  metadata overlay, while the provider JSONL remains free of YA helper turns.

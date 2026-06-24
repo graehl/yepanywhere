@@ -144,6 +144,7 @@ export interface SessionMetadata extends SessionSummary {
   heartbeatTurnText?: string;
   heartbeatForceAfterMinutes?: number;
   promptSuggestionMode?: PromptSuggestionMode;
+  recapAfterSeconds?: number;
 }
 
 /**

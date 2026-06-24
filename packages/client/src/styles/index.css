@@ -11954,6 +11954,36 @@ a.sidebar-nav-item {
   cursor: not-allowed;
 }
 
+.recap-after-seconds-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.recap-after-seconds-control input {
+  width: 4.5rem;
+  height: 32px;
+  padding: 0.25rem 0.45rem;
+  background: var(--bg-code);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.recap-after-seconds-control input:focus {
+  outline: none;
+  border-color: var(--focus-border);
+}
+
+.recap-after-seconds-control input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .mode-option-content {
   display: flex;
   flex-direction: column;

@@ -5,7 +5,9 @@ import {
   type SessionLivenessSnapshot,
   type UploadedFile,
   type UserMessageMetadata,
+  DEFAULT_RECAP_AFTER_SECONDS,
   getModelContextWindow,
+  normalizeRecapAfterSeconds,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
@@ -48,7 +50,6 @@ const THROTTLE_MS = 500;
 const STREAM_ACTIVITY_TOKEN_UPDATE_MS = 500;
 const STREAM_LIVENESS_UPDATE_MS = 500;
 const FALLBACK_STREAM_LONG_SILENCE_THRESHOLD_MS = 300_000;
-const RECAP_AWAY_THRESHOLD_MS = 5 * 60 * 1000;
 const RECAP_REQUEST_COOLDOWN_MS = 30_000;
 
 function hasUserVisibleStreamProgress(
@@ -430,6 +431,7 @@ export function useSession(
     processId: string;
     permissionMode?: PermissionMode;
     modeVersion?: number;
+    recapAfterSeconds?: number;
   },
   streamingMarkdownCallbacks?: StreamingMarkdownCallbacks,
   options?: { tailTurns?: number; tailFrom?: string },
@@ -628,6 +630,12 @@ export function useSession(
   const hiddenSinceMsRef = useRef<number | null>(null);
   const lastRecapRequestMsRef = useRef<number | null>(null);
   const liveProcessId = status.owner === "self" ? status.processId : null;
+  const recapAwayThresholdMs =
+    normalizeRecapAfterSeconds(
+      status.owner === "self"
+        ? status.recapAfterSeconds
+        : DEFAULT_RECAP_AFTER_SECONDS,
+    ) * 1000;
 
   // Reset connected-event tracking when switching sessions.
   useEffect(() => {
@@ -661,7 +669,7 @@ export function useSession(
       const isCoolingDown =
         previousRequestMs !== null &&
         nowMs - previousRequestMs < RECAP_REQUEST_COOLDOWN_MS;
-      if (hiddenDurationMs < RECAP_AWAY_THRESHOLD_MS || isCoolingDown) {
+      if (hiddenDurationMs < recapAwayThresholdMs || isCoolingDown) {
         return;
       }
 
@@ -675,7 +683,7 @@ export function useSession(
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [liveProcessId]);
+  }, [liveProcessId, recapAwayThresholdMs]);
 
   // Slash commands available for this session (from init message)
   const [slashCommands, setSlashCommands] = useState<string[]>([]);
@@ -1164,13 +1172,28 @@ export function useSession(
           ...(event.promptSuggestionMode !== undefined && {
             promptSuggestionMode: event.promptSuggestionMode,
           }),
+          ...(event.recapAfterSeconds !== undefined && {
+            recapAfterSeconds: event.recapAfterSeconds,
+          }),
           ...(event.transcriptDisplayObjects !== undefined && {
             transcriptDisplayObjects: event.transcriptDisplayObjects,
           }),
         };
       });
+      if (event.recapAfterSeconds !== undefined) {
+        setStatus((prev) =>
+          prev.owner === "self"
+            ? {
+                ...prev,
+                recapAfterSeconds: normalizeRecapAfterSeconds(
+                  event.recapAfterSeconds,
+                ),
+              }
+            : prev,
+        );
+      }
     },
-    [sessionId, setSession],
+    [sessionId, setSession, setStatus],
   );
 
   // Listen for session status changes via stream
@@ -1659,6 +1682,7 @@ export function useSession(
           request?: InputRequest;
           provider?: ProviderName;
           model?: string;
+          recapAfterSeconds?: number;
           deferredMessages?: DeferredMessage[];
           liveness?: SessionLivenessSnapshot;
         };
@@ -1678,8 +1702,21 @@ export function useSession(
           modeVersion: connectedData.modeVersion ?? null,
           provider: connectedData.provider ?? null,
           model: connectedData.model ?? null,
+          recapAfterSeconds: connectedData.recapAfterSeconds ?? null,
           deferredCount: connectedData.deferredMessages?.length ?? 0,
         });
+        if (connectedData.recapAfterSeconds !== undefined) {
+          setStatus((prev) =>
+            prev.owner === "self"
+              ? {
+                  ...prev,
+                  recapAfterSeconds: normalizeRecapAfterSeconds(
+                    connectedData.recapAfterSeconds,
+                  ),
+                }
+              : prev,
+          );
+        }
         if (serverSessionId && serverSessionId !== sessionId) {
           setActualSessionId(serverSessionId);
         }

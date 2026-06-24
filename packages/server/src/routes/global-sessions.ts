@@ -21,6 +21,7 @@ import { listSessionsAcrossProviders } from "../sessions/provider-resolution.js"
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
+import { applyRecapOverlayToSummary } from "../sessions/recap-overlays.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type {
@@ -227,15 +228,24 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       );
       for (const session of sessions) {
         const metadata = deps.sessionMetadataService?.getMetadata(session.id);
+        const overlaidSession = deps.sessionMetadataService
+          ? applyRecapOverlayToSummary(
+              session,
+              deps.sessionMetadataService.getRecapMessages(session.id),
+            )
+          : session;
         const isArchived =
           metadata?.isArchived ??
-          session.isArchived ??
-          isSessionAutoArchived(session, statsAutoArchiveAfterMs);
+          overlaidSession.isArchived ??
+          isSessionAutoArchived(overlaidSession, statsAutoArchiveAfterMs);
         const isStarred = metadata?.isStarred ?? session.isStarred ?? false;
         const executor = metadata?.executor;
 
         const hasUnread = deps.notificationService
-          ? deps.notificationService.hasUnread(session.id, session.updatedAt)
+          ? deps.notificationService.hasUnread(
+              session.id,
+              overlaidSession.updatedAt,
+            )
           : false;
 
         if (isArchived) {
@@ -243,9 +253,9 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         } else {
           stats.totalCount++;
           if (hasUnread) stats.unreadCount++;
-          if (session.provider) {
-            stats.providerCounts[session.provider] =
-              (stats.providerCounts[session.provider] ?? 0) + 1;
+          if (overlaidSession.provider) {
+            stats.providerCounts[overlaidSession.provider] =
+              (stats.providerCounts[overlaidSession.provider] ?? 0) + 1;
           }
           const executorKey = executor ?? "local";
           stats.executorCounts[executorKey] =
@@ -351,20 +361,32 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       for (const session of sessions) {
         // Get session metadata
         const metadata = deps.sessionMetadataService?.getMetadata(session.id);
+        const overlaidSession = deps.sessionMetadataService
+          ? applyRecapOverlayToSummary(
+              session,
+              deps.sessionMetadataService.getRecapMessages(session.id),
+            )
+          : session;
         const isArchived =
           metadata?.isArchived ??
-          session.isArchived ??
-          isSessionAutoArchived(session, autoArchiveAfterMs);
-        const isStarred = metadata?.isStarred ?? session.isStarred ?? false;
-        const customTitle = metadata?.customTitle ?? session.customTitle;
+          overlaidSession.isArchived ??
+          isSessionAutoArchived(overlaidSession, autoArchiveAfterMs);
+        const isStarred =
+          metadata?.isStarred ?? overlaidSession.isStarred ?? false;
+        const customTitle =
+          metadata?.customTitle ?? overlaidSession.customTitle;
         const parentSessionId =
-          metadata?.parentSessionId ?? session.parentSessionId;
-        const initialPrompt = metadata?.initialPrompt ?? session.fullTitle;
+          metadata?.parentSessionId ?? overlaidSession.parentSessionId;
+        const initialPrompt =
+          metadata?.initialPrompt ?? overlaidSession.fullTitle;
         const executor = metadata?.executor;
 
         // Get unread status
         const hasUnread = deps.notificationService
-          ? deps.notificationService.hasUnread(session.id, session.updatedAt)
+          ? deps.notificationService.hasUnread(
+              session.id,
+              overlaidSession.updatedAt,
+            )
           : undefined;
 
         // Skip archived sessions unless explicitly requested
@@ -384,6 +406,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
               processId: process.id,
               permissionMode: process.permissionMode,
               modeVersion: process.modeVersion,
+              recapAfterSeconds: process.recapAfterSeconds,
             }
           : isExternal
             ? { owner: "external" }
@@ -408,7 +431,9 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
 
         // Apply search filter
         if (searchQuery) {
-          const titleMatch = session.title?.toLowerCase().includes(searchQuery);
+          const titleMatch = overlaidSession.title
+            ?.toLowerCase()
+            .includes(searchQuery);
           const customTitleMatch = customTitle
             ?.toLowerCase()
             .includes(searchQuery);
@@ -430,15 +455,15 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         }
 
         allSessions.push({
-          id: session.id,
-          title: session.title,
-          fullTitle: session.fullTitle,
-          createdAt: session.createdAt,
-          updatedAt: session.updatedAt,
-          messageCount: session.messageCount,
-          provider: session.provider,
-          model: session.model,
-          projectId: session.projectId,
+          id: overlaidSession.id,
+          title: overlaidSession.title,
+          fullTitle: overlaidSession.fullTitle,
+          createdAt: overlaidSession.createdAt,
+          updatedAt: overlaidSession.updatedAt,
+          messageCount: overlaidSession.messageCount,
+          provider: overlaidSession.provider,
+          model: overlaidSession.model,
+          projectId: overlaidSession.projectId,
           projectName: project.name,
           ownership,
           pendingInputType,
@@ -450,7 +475,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           parentSessionId,
           initialPrompt: initialPrompt ?? undefined,
           executor,
-          lastAgentText: session.lastAgentText,
+          lastAgentText: overlaidSession.lastAgentText,
         });
       }
     }

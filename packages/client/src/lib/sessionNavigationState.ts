@@ -3,6 +3,7 @@ import {
   ALL_PROVIDERS,
   type PermissionMode,
   type ProviderName,
+  normalizeRecapAfterSeconds,
 } from "@yep-anywhere/shared";
 
 export interface InitialSessionStatus {
@@ -10,6 +11,7 @@ export interface InitialSessionStatus {
   processId: string;
   permissionMode?: PermissionMode;
   modeVersion?: number;
+  recapAfterSeconds?: number;
 }
 
 export interface SessionNavigationState {
@@ -64,6 +66,10 @@ export function normalizeInitialSessionStatus(
       ? { permissionMode: value.permissionMode }
       : {}),
     ...(modeVersion !== undefined ? { modeVersion } : {}),
+    ...(typeof value.recapAfterSeconds === "number" &&
+    Number.isFinite(value.recapAfterSeconds)
+      ? { recapAfterSeconds: normalizeRecapAfterSeconds(value.recapAfterSeconds) }
+      : {}),
   };
 }
 

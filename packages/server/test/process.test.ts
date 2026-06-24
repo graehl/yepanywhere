@@ -1152,6 +1152,51 @@ describe("Process", () => {
       expect(generateSummary).not.toHaveBeenCalled();
     });
 
+    it("uses an organic native recap before running the tailed fallback", async () => {
+      const controller = createControllableIterator();
+      const generateSummary = vi.fn(async () => ({ text: "synthetic summary" }));
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        recapMode: "side-session",
+      });
+      const provider = {
+        ...createRecapProvider(generateSummary),
+        supportsNativeRecaps: true,
+      };
+
+      controller.push({
+        type: "system",
+        subtype: "init",
+        session_id: "sess-1",
+      });
+      controller.push({ type: "assistant", message: { content: "after" } });
+      controller.push({ type: "result", session_id: "sess-1" });
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+
+      const request = process.requestRecap(provider, { sinceMs: Date.now() - 1 });
+      controller.push({
+        type: "system",
+        subtype: "away_summary",
+        content: "Native recap wins.",
+        session_id: "sess-1",
+        uuid: "native-recap-1",
+      });
+
+      await expect(request).resolves.toMatchObject({
+        supported: true,
+        emitted: true,
+        reason: "native recap emitted",
+        text: "Native recap wins.",
+      });
+      expect(generateSummary).not.toHaveBeenCalled();
+      controller.finish();
+      await process.abort();
+    });
+
     it("summarizes only assistant turns after the away boundary", async () => {
       const controller = createControllableIterator();
       const generateSummary = vi.fn(async (request) => ({

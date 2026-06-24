@@ -419,6 +419,64 @@ describe("SessionMetadataService", () => {
     });
   });
 
+  describe("recapMessages", () => {
+    it("persists durable recap overlay rows across restarts", async () => {
+      await service.initialize();
+
+      await service.addRecapMessage("session-1", {
+        type: "system",
+        subtype: "away_summary",
+        content: "Finished the smoke test.",
+        timestamp: "2026-06-24T00:00:00.000Z",
+        uuid: "recap-1",
+        id: "recap-1",
+        isSynthetic: true,
+        yaRecapSource: "ya-synthetic",
+      });
+
+      const newService = new SessionMetadataService({ dataDir: testDir });
+      await newService.initialize();
+
+      expect(newService.getRecapMessages("session-1")).toEqual([
+        expect.objectContaining({
+          content: "Finished the smoke test.",
+          uuid: "recap-1",
+          yaRecapSource: "ya-synthetic",
+        }),
+      ]);
+    });
+
+    it("dedupes durable recap overlay rows by uuid", async () => {
+      await service.initialize();
+
+      await service.addRecapMessage("session-1", {
+        type: "system",
+        subtype: "away_summary",
+        content: "First text.",
+        timestamp: "2026-06-24T00:00:00.000Z",
+        uuid: "recap-1",
+        id: "recap-1",
+        yaRecapSource: "provider-native",
+      });
+      await service.addRecapMessage("session-1", {
+        type: "system",
+        subtype: "away_summary",
+        content: "Updated text.",
+        timestamp: "2026-06-24T00:00:01.000Z",
+        uuid: "recap-1",
+        id: "recap-1",
+        yaRecapSource: "provider-native",
+      });
+
+      expect(service.getRecapMessages("session-1")).toEqual([
+        expect.objectContaining({
+          content: "Updated text.",
+          uuid: "recap-1",
+        }),
+      ]);
+    });
+  });
+
   describe("clearSession", () => {
     it("removes all metadata for a session", async () => {
       await service.initialize();

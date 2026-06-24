@@ -123,7 +123,25 @@ export interface ProviderImageSizing {
 
 export const RECAP_MODES = ["off", "side-session", "fork", "native"] as const;
 export type RecapMode = (typeof RECAP_MODES)[number];
-export const DEFAULT_RECAP_AFTER_SECONDS = 120;
+export const DEFAULT_RECAP_AFTER_SECONDS = 5 * 60;
+export const MIN_RECAP_AFTER_SECONDS = 1;
+export const MAX_RECAP_AFTER_SECONDS = 24 * 60 * 60;
+
+export function clampRecapAfterSeconds(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_RECAP_AFTER_SECONDS;
+  return Math.min(
+    MAX_RECAP_AFTER_SECONDS,
+    Math.max(MIN_RECAP_AFTER_SECONDS, Math.round(value)),
+  );
+}
+
+export function normalizeRecapAfterSeconds(
+  value: number | null | undefined,
+): number {
+  return typeof value === "number"
+    ? clampRecapAfterSeconds(value)
+    : DEFAULT_RECAP_AFTER_SECONDS;
+}
 
 export const PROMPT_SUGGESTION_MODES = ["off", "native"] as const;
 export type PromptSuggestionMode = (typeof PROMPT_SUGGESTION_MODES)[number];
@@ -290,9 +308,7 @@ export interface NewSessionDefaults {
   permissionMode?: PermissionMode;
   recapMode?: RecapMode;
   /**
-   * Minimum verified-idle quiet time before YA starts a synthetic recap worker.
-   * Native recaps are provider-owned; this setting still travels with the
-   * session so switching to a synthetic mode has the expected delay.
+   * Browser-away duration before YA asks the live process for a recap.
    */
   recapAfterSeconds?: number;
   promptSuggestionMode?: PromptSuggestionMode;
@@ -520,6 +536,7 @@ export type SessionOwnership =
       processId: string;
       permissionMode?: PermissionMode;
       modeVersion?: number;
+      recapAfterSeconds?: number;
     }
   | { owner: "external" };
 

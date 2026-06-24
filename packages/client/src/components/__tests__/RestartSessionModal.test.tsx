@@ -14,6 +14,7 @@ const { mockRestartSession, serverSettingsState } = vi.hoisted(() => ({
         model?: string;
         permissionMode?: "default";
         recapMode?: "off" | "native" | "side-session";
+        recapAfterSeconds?: number;
         promptSuggestionMode?: "off" | "native";
         helperSideModel?: string;
       };
@@ -115,6 +116,7 @@ describe("RestartSessionModal", () => {
           provider: "codex",
           model: "gpt-5.5",
           recapMode: "off",
+          recapAfterSeconds: 300,
           promptSuggestionMode: "off",
           helperSideModel: "cheapest",
         }),

@@ -2,6 +2,7 @@ import {
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   RECAP_MODES,
+  clampRecapAfterSeconds,
   type RecapMode,
   type ShowThinking,
   type ThinkingOption,
@@ -218,14 +219,22 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
       return c.json({ error: "Process not found" }, 404);
     }
 
-    let body: { recapMode?: unknown; helperSideModel?: unknown };
+    let body: {
+      recapMode?: unknown;
+      recapAfterSeconds?: unknown;
+      helperSideModel?: unknown;
+    };
     try {
       body = await c.req.json();
     } catch {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const updates: { recapMode?: RecapMode; helperSideModel?: string } = {};
+    const updates: {
+      recapMode?: RecapMode;
+      recapAfterSeconds?: number;
+      helperSideModel?: string;
+    } = {};
     if ("recapMode" in body) {
       if (
         typeof body.recapMode !== "string" ||
@@ -237,6 +246,28 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
         );
       }
       updates.recapMode = body.recapMode as RecapMode;
+    }
+    if ("recapAfterSeconds" in body) {
+      if (
+        body.recapAfterSeconds !== undefined &&
+        body.recapAfterSeconds !== null &&
+        body.recapAfterSeconds !== "" &&
+        (typeof body.recapAfterSeconds !== "number" ||
+          !Number.isFinite(body.recapAfterSeconds))
+      ) {
+        return c.json(
+          { error: "recapAfterSeconds must be a finite number" },
+          400,
+        );
+      }
+      if (
+        typeof body.recapAfterSeconds === "number" &&
+        Number.isFinite(body.recapAfterSeconds)
+      ) {
+        updates.recapAfterSeconds = clampRecapAfterSeconds(
+          body.recapAfterSeconds,
+        );
+      }
     }
     if ("helperSideModel" in body) {
       if (
@@ -265,10 +296,19 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
     if (!updatedProcess) {
       return c.json({ error: "Process not found" }, 404);
     }
+    if (
+      deps.sessionMetadataService &&
+      updates.recapAfterSeconds !== undefined
+    ) {
+      await deps.sessionMetadataService.updateMetadata(updatedProcess.sessionId, {
+        recapAfterSeconds: updatedProcess.recapAfterSeconds,
+      });
+    }
     return c.json({
       success: true,
       processId,
       recapMode: updatedProcess.recapMode,
+      recapAfterSeconds: updatedProcess.recapAfterSeconds,
       helperSideModel: updatedProcess.helperSideModel,
     });
   });

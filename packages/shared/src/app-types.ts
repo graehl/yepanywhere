@@ -305,6 +305,7 @@ export type SessionOwnership =
       processId: string;
       permissionMode?: PermissionMode;
       modeVersion?: number;
+      recapAfterSeconds?: number;
     } // we control it
   | { owner: "external" }; // another process owns it
 
@@ -352,6 +353,18 @@ export interface ForkSummaryTranscriptDisplayObject {
 }
 
 export type TranscriptDisplayObject = ForkSummaryTranscriptDisplayObject;
+
+export interface DurableRecapMessage extends AppMessageExtensions {
+  type: "system";
+  subtype: "away_summary";
+  content: string;
+  timestamp: string;
+  uuid: string;
+  session_id?: string;
+  isMeta?: boolean;
+  isSynthetic?: boolean;
+  yaRecapSource: "provider-native" | "ya-synthetic";
+}
 
 /**
  * Session summary for list views.
@@ -421,6 +434,8 @@ export interface SessionMetadataPayload
   heartbeatForceAfterMinutes?: number;
   /** Per-session prompt-suggestion preference (off | native) */
   promptSuggestionMode?: PromptSuggestionMode;
+  /** Browser-away duration before YA asks the live process for a recap. */
+  recapAfterSeconds?: number;
 }
 
 /**

@@ -1,9 +1,11 @@
 import {
+  DEFAULT_RECAP_AFTER_SECONDS,
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   type ModelInfo,
   type ProviderName,
   type RecapMode,
+  normalizeRecapAfterSeconds,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
@@ -11,6 +13,7 @@ import { useProviders } from "../hooks/useProviders";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import { helperTargetsToModelOptions } from "../lib/helperTargets";
+import { RecapAfterSecondsControl } from "./RecapAfterSecondsControl";
 import { Modal } from "./ui/Modal";
 
 interface SessionRecapModalProps {
@@ -21,6 +24,7 @@ interface SessionRecapModalProps {
   onClose: () => void;
   onSaved: (settings: {
     recapMode: RecapMode;
+    recapAfterSeconds: number;
     helperSideModel: string;
   }) => void;
 }
@@ -61,6 +65,9 @@ export function SessionRecapModal({
   const { providers } = useProviders();
   const { settings } = useServerSettings();
   const [recapMode, setRecapMode] = useState<RecapMode>("off");
+  const [recapAfterSeconds, setRecapAfterSeconds] = useState(
+    DEFAULT_RECAP_AFTER_SECONDS,
+  );
   const [helperSideModel, setHelperSideModel] = useState<string>(
     HELPER_SIDE_MODEL_CHEAPEST,
   );
@@ -85,6 +92,9 @@ export function SessionRecapModal({
         if (cancelled) return;
         const process = response.process;
         setRecapMode(process?.recapMode ?? "off");
+        setRecapAfterSeconds(
+          normalizeRecapAfterSeconds(process?.recapAfterSeconds),
+        );
         setHelperSideModel(
           process?.helperSideModel ?? HELPER_SIDE_MODEL_CHEAPEST,
         );
@@ -154,10 +164,12 @@ export function SessionRecapModal({
     try {
       const result = await api.setProcessRecapConfig(processId, {
         recapMode,
+        recapAfterSeconds,
         helperSideModel,
       });
       onSaved({
         recapMode: result.recapMode,
+        recapAfterSeconds: result.recapAfterSeconds,
         helperSideModel: result.helperSideModel,
       });
       onClose();
@@ -172,6 +184,7 @@ export function SessionRecapModal({
     onClose,
     onSaved,
     processId,
+    recapAfterSeconds,
     recapMode,
     t,
   ]);
@@ -202,6 +215,14 @@ export function SessionRecapModal({
             })}
           </div>
         </div>
+
+        {recapMode !== "off" && (
+          <RecapAfterSecondsControl
+            value={recapAfterSeconds}
+            disabled={isLoading || isSaving}
+            onCommit={setRecapAfterSeconds}
+          />
+        )}
 
         {recapMode === "side-session" && (
           <label className="settings-item model-settings-item">

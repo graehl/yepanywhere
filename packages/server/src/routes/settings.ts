@@ -27,6 +27,7 @@ import {
   type ProviderName,
   RECAP_MODES,
   type RecapMode,
+  clampRecapAfterSeconds,
   type SessionToolbarVisibilityClientDefaults,
   type SpeechSmartTurnClientDefault,
 } from "@yep-anywhere/shared";
@@ -413,6 +414,26 @@ function parseNewSessionDefaults(
     }
     if (typeof input.recapMode === "string" && input.recapMode.length > 0) {
       parsed.recapMode = input.recapMode as RecapMode;
+    }
+  }
+
+  if ("recapAfterSeconds" in input) {
+    if (
+      input.recapAfterSeconds !== undefined &&
+      input.recapAfterSeconds !== null &&
+      input.recapAfterSeconds !== "" &&
+      (typeof input.recapAfterSeconds !== "number" ||
+        !Number.isFinite(input.recapAfterSeconds))
+    ) {
+      return null;
+    }
+    if (
+      typeof input.recapAfterSeconds === "number" &&
+      Number.isFinite(input.recapAfterSeconds)
+    ) {
+      parsed.recapAfterSeconds = clampRecapAfterSeconds(
+        input.recapAfterSeconds,
+      );
     }
   }
 

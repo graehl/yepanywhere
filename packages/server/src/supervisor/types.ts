@@ -1,6 +1,7 @@
 import type {
   AgentActivity,
   ContextUsage,
+  DurableRecapMessage,
   EffortLevel,
   InputRequest,
   PendingInputType,
@@ -52,6 +53,7 @@ export type SessionOwnership =
       processId: string;
       permissionMode?: PermissionMode;
       modeVersion?: number;
+      recapAfterSeconds?: number;
     } // we control it
   | { owner: "external" }; // another process owns it
 
@@ -235,6 +237,8 @@ export interface ProcessInfo {
   liveness?: SessionLivenessSnapshot;
   /** Current recap behavior for this live process. */
   recapMode?: RecapMode;
+  /** Browser-away duration before YA asks this process for a recap. */
+  recapAfterSeconds?: number;
   /** Current prompt-suggestion behavior for this live process. */
   promptSuggestionMode?: PromptSuggestionMode;
   /** Session-level helper side model for simulated helper features. */
@@ -268,6 +272,16 @@ export type ProcessEvent =
       }[];
       reason?: "queued" | "cancelled" | "promoted";
       tempId?: string;
+    }
+  | {
+      type: "recap-result";
+      result: {
+        supported: boolean;
+        emitted: boolean;
+        reason?: string;
+        text?: string;
+        syntheticMessage?: DurableRecapMessage;
+      };
     };
 
 // Process options
@@ -290,6 +304,8 @@ export interface ProcessOptions {
   executor?: string;
   /** How this process should answer away-recap requests. */
   recapMode?: RecapMode;
+  /** Browser-away duration before YA asks this process for a recap. */
+  recapAfterSeconds?: number;
   /** How this process should request native prompt suggestions. */
   promptSuggestionMode?: PromptSuggestionMode;
   /** Session-level helper side model for simulated helper features. */

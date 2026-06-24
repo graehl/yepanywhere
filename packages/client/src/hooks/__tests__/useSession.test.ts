@@ -14,6 +14,7 @@ import { useSession } from "../useSession";
 
 const apiMocks = vi.hoisted(() => ({
   getSessionMetadata: vi.fn(),
+  requestRecap: vi.fn(),
   setPermissionMode: vi.fn(),
 }));
 
@@ -89,6 +90,31 @@ function installLocalStorageMock(): void {
   });
 }
 
+function installVisibilityStateMock(initial: DocumentVisibilityState) {
+  let visibilityState = initial;
+  const descriptor = Object.getOwnPropertyDescriptor(
+    document,
+    "visibilityState",
+  );
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => visibilityState,
+  });
+
+  return {
+    set(value: DocumentVisibilityState) {
+      visibilityState = value;
+    },
+    restore() {
+      if (descriptor) {
+        Object.defineProperty(document, "visibilityState", descriptor);
+      } else {
+        Reflect.deleteProperty(document, "visibilityState");
+      }
+    },
+  };
+}
+
 vi.mock("../useSessionMessages", () => ({
   useSessionMessages: vi.fn(() => ({
     messages: sessionMessagesMock.messages,
@@ -152,6 +178,8 @@ describe("useSession completion reconciliation", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     apiMocks.getSessionMetadata.mockReset();
+    apiMocks.requestRecap.mockReset();
+    apiMocks.requestRecap.mockResolvedValue({ supported: true });
     apiMocks.setPermissionMode.mockReset();
     apiMocks.setPermissionMode.mockResolvedValue({
       permissionMode: "acceptEdits",
@@ -888,6 +916,50 @@ describe("useSession completion reconciliation", () => {
 
     expect(result.current.status).toEqual({ owner: "none" });
     expect(result.current.permissionMode).toBe("acceptEdits");
+  });
+
+  it("uses the configured away threshold for recap requests", () => {
+    vi.setSystemTime(new Date("2026-04-24T00:00:00.000Z"));
+    const visibility = installVisibilityStateMock("visible");
+
+    try {
+      renderHook(() =>
+        useSession(PROJECT_ID, "sess-1", {
+          owner: "self",
+          processId: "proc-1",
+          recapAfterSeconds: 2,
+        }),
+      );
+
+      act(() => {
+        visibility.set("hidden");
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      act(() => {
+        vi.advanceTimersByTime(1_999);
+        visibility.set("visible");
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      expect(apiMocks.requestRecap).not.toHaveBeenCalled();
+
+      act(() => {
+        visibility.set("hidden");
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      act(() => {
+        vi.advanceTimersByTime(2_000);
+        visibility.set("visible");
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      expect(apiMocks.requestRecap).toHaveBeenCalledTimes(1);
+      expect(apiMocks.requestRecap).toHaveBeenCalledWith(
+        "proc-1",
+        Date.parse("2026-04-24T00:00:01.999Z"),
+      );
+    } finally {
+      visibility.restore();
+    }
   });
 });
 

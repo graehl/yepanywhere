@@ -103,6 +103,7 @@ const {
         model?: string;
         permissionMode?: "default";
         recapMode?: "off" | "native" | "side-session";
+        recapAfterSeconds?: number;
         promptSuggestionMode?: "off" | "native";
         helperSideModel?: string;
       };
@@ -567,6 +568,7 @@ describe("NewSessionForm", () => {
       expect.objectContaining({
         provider: "claude",
         model: "opus",
+        recapAfterSeconds: 300,
         promptSuggestionMode: "off",
       }),
       undefined,
@@ -576,12 +578,13 @@ describe("NewSessionForm", () => {
       "/projects/project-1/sessions/session-1",
       expect.objectContaining({
         state: expect.objectContaining({
-          initialStatus: {
+          initialStatus: expect.objectContaining({
             owner: "self",
             processId: "process-1",
             permissionMode: "default",
             modeVersion: 0,
-          },
+            recapAfterSeconds: 300,
+          }),
           initialProvider: "claude",
         }),
       }),

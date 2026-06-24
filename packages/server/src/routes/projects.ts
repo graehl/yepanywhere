@@ -21,6 +21,7 @@ import { listSessionsAcrossProviders } from "../sessions/provider-resolution.js"
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
+import { applyRecapOverlayToSummary } from "../sessions/recap-overlays.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type {
@@ -139,6 +140,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
             processId: process.id,
             permissionMode: process.permissionMode,
             modeVersion: process.modeVersion,
+            recapAfterSeconds: process.recapAfterSeconds,
           },
           provider: process.provider,
         });
@@ -187,6 +189,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
             processId: process.id,
             permissionMode: process.permissionMode,
             modeVersion: process.modeVersion,
+            recapAfterSeconds: process.recapAfterSeconds,
           }
         : isExternal
           ? { owner: "external" as const }
@@ -210,23 +213,33 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         }
       }
 
+      // Get session metadata (custom title, archived, starred)
+      const metadata = deps.sessionMetadataService?.getMetadata(session.id);
+      const overlaidSession = deps.sessionMetadataService
+        ? applyRecapOverlayToSummary(
+            session,
+            deps.sessionMetadataService.getRecapMessages(session.id),
+          )
+        : session;
+
       // Get last seen and unread status
       const lastSeenEntry = deps.notificationService?.getLastSeen(session.id);
       const lastSeenAt = lastSeenEntry?.timestamp;
       const hasUnread = deps.notificationService
-        ? deps.notificationService.hasUnread(session.id, session.updatedAt)
+        ? deps.notificationService.hasUnread(
+            session.id,
+            overlaidSession.updatedAt,
+          )
         : undefined;
 
-      // Get session metadata (custom title, archived, starred)
-      const metadata = deps.sessionMetadataService?.getMetadata(session.id);
       const customTitle = metadata?.customTitle;
       const isArchived = metadata?.isArchived;
       const isStarred = metadata?.isStarred;
       const parentSessionId =
-        metadata?.parentSessionId ?? session.parentSessionId;
+        metadata?.parentSessionId ?? overlaidSession.parentSessionId;
 
       return {
-        ...session,
+        ...overlaidSession,
         ownership,
         pendingInputType,
         activity,

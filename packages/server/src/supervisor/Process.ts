@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
+  DurableRecapMessage,
   EffortLevel,
   ModelInfo,
   PermissionRules,
@@ -15,10 +16,12 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import {
+  DEFAULT_RECAP_AFTER_SECONDS,
   DEFAULT_PATIENT_QUEUE_PATIENCE_SECONDS,
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   clampPatientPatienceSeconds,
+  normalizeRecapAfterSeconds,
 } from "@yep-anywhere/shared";
 import { DEFAULT_IDLE_TIMEOUT_MS } from "../defaults.js";
 import { getLogger } from "../logging/logger.js";
@@ -50,6 +53,12 @@ import type {
   UserMessage,
 } from "../sdk/types.js";
 import {
+  getSystemMessageText,
+  isAwaySummaryMessage,
+  messageTimestampMs,
+  toDurableRecapMessage,
+} from "../sessions/recap-overlays.js";
+import {
   buildSessionLivenessSnapshot,
   type LivenessProbeResult,
   type LivenessProcessState,
@@ -71,6 +80,11 @@ type RecentAssistantRecapEntry = {
   completedAtMs: number;
   text: string;
 };
+type NativeRecapRecord = {
+  receivedAtMs: number;
+  text: string;
+  message: SDKMessage;
+};
 type PendingRecapRequest = {
   provider: AgentProvider;
   sinceMs: number | null;
@@ -78,6 +92,18 @@ type PendingRecapRequest = {
 type PromptCacheKeepaliveLease = {
   getInactivityMs: () => number | null;
 };
+
+export const NATIVE_RECAP_FALLBACK_GRACE_MS = 2_000;
+
+export interface RecapRequestResult {
+  supported: boolean;
+  emitted: boolean;
+  reason?: string;
+  /** The recap text, when one was emitted or a native recap won. */
+  text?: string;
+  /** YA-owned message row to persist as a viewer-only overlay. */
+  syntheticMessage?: DurableRecapMessage;
+}
 
 /**
  * Whether a queued entry should ride the verified-idle "patient" path instead
@@ -381,6 +407,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   recapsEnabled?: boolean;
   /** How this process should answer away-recap requests. */
   recapMode?: RecapMode;
+  /** Browser-away duration before YA asks this process for a recap. */
+  recapAfterSeconds?: number;
   /** How this process should request native prompt suggestions. */
   promptSuggestionMode?: PromptSuggestionMode;
   /** Session-level helper side model for simulated helper features. */
@@ -445,7 +473,10 @@ export class Process {
    */
   private recapInFlight = false;
   private pendingRecapRequest: PendingRecapRequest | null = null;
+  private lastNativeRecap: NativeRecapRecord | null = null;
+  private nativeRecapWaiters = new Set<() => void>();
   private _recapMode: RecapMode;
+  private _recapAfterSeconds: number;
   private _promptSuggestionMode: PromptSuggestionMode;
   private _helperSideModel: string;
 
@@ -598,6 +629,9 @@ export class Process {
     this.refreshPromptCacheFn = options.refreshPromptCacheFn ?? null;
     this._recapMode =
       options.recapMode ?? (options.recapsEnabled ? "side-session" : "off");
+    this._recapAfterSeconds = normalizeRecapAfterSeconds(
+      options.recapAfterSeconds ?? DEFAULT_RECAP_AFTER_SECONDS,
+    );
     this._promptSuggestionMode = options.promptSuggestionMode ?? "off";
     this._helperSideModel =
       options.helperSideModel ?? HELPER_SIDE_MODEL_CHEAPEST;
@@ -700,6 +734,10 @@ export class Process {
     return this._recapMode;
   }
 
+  get recapAfterSeconds(): number {
+    return this._recapAfterSeconds;
+  }
+
   get helperSideModel(): string {
     return this._helperSideModel;
   }
@@ -710,10 +748,16 @@ export class Process {
 
   setRecapConfig(config: {
     recapMode?: RecapMode;
+    recapAfterSeconds?: number;
     helperSideModel?: string;
   }): void {
     if (config.recapMode !== undefined) {
       this._recapMode = config.recapMode;
+    }
+    if (config.recapAfterSeconds !== undefined) {
+      this._recapAfterSeconds = normalizeRecapAfterSeconds(
+        config.recapAfterSeconds,
+      );
     }
     if (config.helperSideModel !== undefined) {
       this._helperSideModel =
@@ -1466,6 +1510,7 @@ export class Process {
       pid: this.pid,
       liveness: this.getLivenessSnapshot(),
       recapMode: this._recapMode,
+      recapAfterSeconds: this._recapAfterSeconds,
       promptSuggestionMode: this._promptSuggestionMode,
       helperSideModel: this._helperSideModel,
     };
@@ -1559,13 +1604,85 @@ export class Process {
       .map((entry) => entry.text);
   }
 
+  private recordNativeRecap(message: SDKMessage, receivedAt: Date): void {
+    if (!isAwaySummaryMessage(message) || message.isSynthetic === true) {
+      return;
+    }
+    const text = getSystemMessageText(message).trim();
+    if (!text) {
+      return;
+    }
+    this.lastNativeRecap = {
+      receivedAtMs: messageTimestampMs(message) ?? receivedAt.getTime(),
+      text,
+      message,
+    };
+    for (const waiter of [...this.nativeRecapWaiters]) {
+      waiter();
+    }
+  }
+
+  getNativeRecapSince(sinceMs?: number | null): NativeRecapRecord | null {
+    if (!this.lastNativeRecap) {
+      return null;
+    }
+    if (
+      sinceMs !== null &&
+      sinceMs !== undefined &&
+      this.lastNativeRecap.receivedAtMs <= sinceMs
+    ) {
+      return null;
+    }
+    return this.lastNativeRecap;
+  }
+
+  waitForNativeRecapSince(
+    sinceMs: number | null,
+    timeoutMs: number,
+  ): Promise<NativeRecapRecord | null> {
+    const existing = this.getNativeRecapSince(sinceMs);
+    if (existing || timeoutMs <= 0) {
+      return Promise.resolve(existing);
+    }
+
+    return new Promise((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let onNativeRecap: () => void;
+      const cleanup = () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        this.nativeRecapWaiters.delete(onNativeRecap);
+      };
+      onNativeRecap = () => {
+        const recap = this.getNativeRecapSince(sinceMs);
+        if (!recap) {
+          return;
+        }
+        cleanup();
+        resolve(recap);
+      };
+
+      timer = setTimeout(() => {
+        cleanup();
+        resolve(null);
+      }, timeoutMs);
+      timer.unref?.();
+      this.nativeRecapWaiters.add(onNativeRecap);
+    });
+  }
+
   /**
    * Emit a synthetic system message (no provider involvement) into the
    * session's broadcast stream. Used for YA-side recaps so they reach SSE
    * subscribers via the same path as provider-emitted messages, without
    * touching the underlying JSONL transcript.
    */
-  emitSyntheticSystemMessage(subtype: string, content: string): void {
+  emitSyntheticSystemMessage(
+    subtype: "away_summary",
+    content: string,
+  ): DurableRecapMessage {
     const synthetic = this.withTimestamp({
       type: "system",
       subtype,
@@ -1573,9 +1690,15 @@ export class Process {
       session_id: this._sessionId,
       uuid: randomUUID(),
       isMeta: false,
+      isSynthetic: true,
     } as unknown as SDKMessage);
     this.currentBucket.push(synthetic);
     this.emit({ type: "message", message: synthetic });
+    const durable = toDurableRecapMessage(synthetic, "ya-synthetic");
+    if (!durable) {
+      throw new Error("failed to create durable synthetic recap message");
+    }
+    return durable;
   }
 
   /**
@@ -1593,14 +1716,7 @@ export class Process {
   async requestRecap(
     provider: AgentProvider,
     options?: { sinceMs?: number | null },
-  ): Promise<{
-    supported: boolean;
-    emitted: boolean;
-    reason?: string;
-    /** The recap text, when one was emitted — newer than any prior turn, so
-     *  callers may surface it as the session's current agent line. */
-    text?: string;
-  }> {
+  ): Promise<RecapRequestResult> {
     if (this._recapMode === "off") {
       return {
         supported: true,
@@ -1659,17 +1775,25 @@ export class Process {
   private async generateAndEmitRecap(
     provider: AgentProvider,
     sinceMs: number | null,
-  ): Promise<{
-    supported: boolean;
-    emitted: boolean;
-    reason?: string;
-    text?: string;
-  }> {
+  ): Promise<RecapRequestResult> {
     if (!provider.supportsRecaps || !provider.generateSummary) {
       return {
         supported: false,
         emitted: false,
         reason: "provider does not support recaps",
+      };
+    }
+
+    const nativeRecap = await this.waitForNativeRecapSince(
+      sinceMs,
+      provider.supportsNativeRecaps ? NATIVE_RECAP_FALLBACK_GRACE_MS : 0,
+    );
+    if (nativeRecap) {
+      return {
+        supported: true,
+        emitted: true,
+        reason: "native recap emitted",
+        text: nativeRecap.text,
       };
     }
 
@@ -1699,8 +1823,20 @@ export class Process {
           reason: "provider returned empty recap",
         };
       }
-      this.emitSyntheticSystemMessage("away_summary", text);
-      return { supported: true, emitted: true, text };
+      const lateNativeRecap = this.getNativeRecapSince(sinceMs);
+      if (lateNativeRecap) {
+        return {
+          supported: true,
+          emitted: true,
+          reason: "native recap emitted",
+          text: lateNativeRecap.text,
+        };
+      }
+      const syntheticMessage = this.emitSyntheticSystemMessage(
+        "away_summary",
+        text,
+      );
+      return { supported: true, emitted: true, text, syntheticMessage };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       const log = getLogger();
@@ -2661,6 +2797,7 @@ export class Process {
         const receivedAt = new Date();
         this._lastMessageTime = receivedAt;
         this._lastProviderMessageTime = receivedAt;
+        this.recordNativeRecap(message, receivedAt);
 
         // Store message in history for replay to late-joining clients.
         // Exclude stream_event messages - they're transient streaming deltas that
@@ -2945,7 +3082,13 @@ export class Process {
       return;
     }
     this.pendingRecapRequest = null;
-    void this.generateAndEmitRecap(pending.provider, pending.sinceMs);
+    void this.generateAndEmitRecap(pending.provider, pending.sinceMs).then(
+      (result) => {
+        if (result.emitted) {
+          this.emit({ type: "recap-result", result });
+        }
+      },
+    );
   }
 
   /**

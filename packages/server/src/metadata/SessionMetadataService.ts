@@ -8,9 +8,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+  type DurableRecapMessage,
   type ProviderName,
   type PromptSuggestionMode,
   type TranscriptDisplayObject,
+  normalizeRecapAfterSeconds,
   sanitizeSessionTitle,
 } from "@yep-anywhere/shared";
 
@@ -25,6 +27,8 @@ export interface SessionMetadata {
   parentSessionId?: string;
   /** Saved viewer-only objects placed in the transcript. */
   transcriptDisplayObjects?: TranscriptDisplayObject[];
+  /** Durable YA-owned recap rows merged into the transcript view only. */
+  recapMessages?: DurableRecapMessage[];
   /**
    * YA model id (launch alias, e.g. "opus"/"default") chosen when YA started
    * this session. Persisted so per-model settings still key by the requested
@@ -48,6 +52,8 @@ export interface SessionMetadata {
   heartbeatForceAfterMinutes?: number | null;
   /** Per-session prompt-suggestion preference (off | native) */
   promptSuggestionMode?: PromptSuggestionMode;
+  /** Browser-away duration before YA asks the live process for a recap. */
+  recapAfterSeconds?: number;
 }
 
 export interface SessionMetadataState {
@@ -58,6 +64,7 @@ export interface SessionMetadataState {
 }
 
 const CURRENT_VERSION = 2;
+const MAX_RECAP_MESSAGES_PER_SESSION = 200;
 
 export interface SessionMetadataServiceOptions {
   /** Directory to store metadata state (defaults to ~/.yep-anywhere) */
@@ -161,6 +168,35 @@ export class SessionMetadataService {
     return [
       ...(this.state.sessions[sessionId]?.transcriptDisplayObjects ?? []),
     ];
+  }
+
+  getRecapMessages(sessionId: string): DurableRecapMessage[] {
+    return [...(this.state.sessions[sessionId]?.recapMessages ?? [])];
+  }
+
+  async addRecapMessage(
+    sessionId: string,
+    message: DurableRecapMessage,
+  ): Promise<void> {
+    this.updateSessionMetadata(sessionId, (metadata) => {
+      const existing = metadata.recapMessages ?? [];
+      const duplicate = existing.some(
+        (candidate) =>
+          candidate.uuid === message.uuid ||
+          (candidate.content === message.content &&
+            candidate.timestamp === message.timestamp),
+      );
+      const nextMessages = duplicate
+        ? existing.map((candidate) =>
+            candidate.uuid === message.uuid ? message : candidate,
+          )
+        : [...existing, message];
+      return {
+        ...metadata,
+        recapMessages: nextMessages.slice(-MAX_RECAP_MESSAGES_PER_SESSION),
+      };
+    });
+    await this.save();
   }
 
   async addTranscriptDisplayObject(
@@ -342,6 +378,14 @@ export class SessionMetadataService {
   }
 
   /**
+   * Get the persisted away-recap timing preference for a session.
+   * Returns undefined if it was never explicitly saved (use default).
+   */
+  getRecapAfterSeconds(sessionId: string): number | undefined {
+    return this.state.sessions[sessionId]?.recapAfterSeconds;
+  }
+
+  /**
    * Set the initial prompt accepted for a new session.
    * Used as a durable recovery source if provider startup fails before JSONL
    * persistence writes the user message.
@@ -373,6 +417,7 @@ export class SessionMetadataService {
       heartbeatTurnText?: string | null;
       heartbeatForceAfterMinutes?: number | null;
       promptSuggestionMode?: PromptSuggestionMode | null;
+      recapAfterSeconds?: number | null;
     },
   ): Promise<void> {
     this.updateSessionMetadata(sessionId, (metadata) => {
@@ -424,6 +469,13 @@ export class SessionMetadataService {
         result.promptSuggestionMode = updates.promptSuggestionMode ?? undefined;
       }
 
+      if (updates.recapAfterSeconds !== undefined) {
+        result.recapAfterSeconds =
+          updates.recapAfterSeconds === null
+            ? undefined
+            : normalizeRecapAfterSeconds(updates.recapAfterSeconds);
+      }
+
       return result;
     });
     await this.save();
@@ -449,6 +501,9 @@ export class SessionMetadataService {
     if (updated.transcriptDisplayObjects?.length) {
       cleaned.transcriptDisplayObjects = updated.transcriptDisplayObjects;
     }
+    if (updated.recapMessages?.length) {
+      cleaned.recapMessages = updated.recapMessages;
+    }
     if (updated.requestedModel) cleaned.requestedModel = updated.requestedModel;
     if (updated.provider) cleaned.provider = updated.provider;
     if (updated.executor) cleaned.executor = updated.executor;
@@ -467,6 +522,9 @@ export class SessionMetadataService {
     }
     if (updated.promptSuggestionMode) {
       cleaned.promptSuggestionMode = updated.promptSuggestionMode;
+    }
+    if (updated.recapAfterSeconds !== undefined) {
+      cleaned.recapAfterSeconds = updated.recapAfterSeconds;
     }
 
     if (Object.keys(cleaned).length === 0) {

@@ -165,6 +165,8 @@ export interface SessionOptions {
   executor?: string;
   /** Recap behavior for future away-return triggers in this session. */
   recapMode?: RecapMode;
+  /** Browser-away duration before YA asks this session for a recap. */
+  recapAfterSeconds?: number;
   /** Prompt suggestion behavior for this session. */
   promptSuggestionMode?: PromptSuggestionMode;
   /** Session-level helper side model for simulated helper features. */
@@ -562,6 +564,7 @@ export const api = {
       model?: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      recapAfterSeconds?: number;
       serverTimestamp: number;
     }>(`/projects/${projectId}/sessions`, {
       method: "POST",
@@ -575,6 +578,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         recapMode: options?.recapMode,
+        recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
         helperSideModel: options?.helperSideModel,
         attachments,
@@ -594,6 +598,7 @@ export const api = {
       projectId: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      recapAfterSeconds?: number;
       serverTimestamp: number;
     }>(`/projects/${projectId}/sessions/create`, {
       method: "POST",
@@ -606,6 +611,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         recapMode: options?.recapMode,
+        recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
         helperSideModel: options?.helperSideModel,
       }),
@@ -624,6 +630,7 @@ export const api = {
       projectId: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      recapAfterSeconds?: number;
       serverTimestamp: number;
     }>(`/sessions`, {
       method: "POST",
@@ -637,6 +644,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         recapMode: options?.recapMode,
+        recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
         helperSideModel: options?.helperSideModel,
         attachments,
@@ -652,6 +660,7 @@ export const api = {
       projectId: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      recapAfterSeconds?: number;
       serverTimestamp: number;
     }>(`/sessions/create`, {
       method: "POST",
@@ -664,6 +673,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         recapMode: options?.recapMode,
+        recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
         helperSideModel: options?.helperSideModel,
       }),
@@ -683,6 +693,7 @@ export const api = {
       processId: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      recapAfterSeconds?: number;
       serverTimestamp: number;
       resume?: {
         requestedMode: "full" | "compact-first";
@@ -702,6 +713,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         recapMode: options?.recapMode,
+        recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
         helperSideModel: options?.helperSideModel,
         resumeMode: options?.resumeMode,
@@ -726,12 +738,14 @@ export const api = {
       model?: string;
       provider?: ProviderName;
       executor?: string;
+      recapAfterSeconds?: number;
     },
   ) =>
     fetchJSON<{
       processId: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      recapAfterSeconds?: number;
       serverTimestamp: number;
     }>(`/projects/${projectId}/sessions/${sessionId}/reactivate`, {
       method: "POST",
@@ -740,6 +754,7 @@ export const api = {
         model: options?.model,
         provider: options?.provider,
         executor: options?.executor,
+        recapAfterSeconds: options?.recapAfterSeconds,
       }),
     }),
 
@@ -762,6 +777,7 @@ export const api = {
       title?: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      recapAfterSeconds?: number;
       restartedFrom: string;
       forkUpToMessageId?: string;
       oldProcessId?: string;
@@ -779,6 +795,7 @@ export const api = {
         provider: options?.provider,
         executor: options?.executor,
         recapMode: options?.recapMode,
+        recapAfterSeconds: options?.recapAfterSeconds,
         promptSuggestionMode: options?.promptSuggestionMode,
         helperSideModel: options?.helperSideModel,
         reason: options?.reason,
@@ -948,12 +965,17 @@ export const api = {
 
   setProcessRecapConfig: (
     processId: string,
-    config: { recapMode?: RecapMode; helperSideModel?: string },
+    config: {
+      recapMode?: RecapMode;
+      recapAfterSeconds?: number;
+      helperSideModel?: string;
+    },
   ) =>
     fetchJSON<{
       success: boolean;
       processId: string;
       recapMode: RecapMode;
+      recapAfterSeconds: number;
       helperSideModel: string;
     }>(`/processes/${processId}/recap-config`, {
       method: "POST",
@@ -1039,6 +1061,7 @@ export const api = {
         requestedModel?: string;
         liveness?: SessionLivenessSnapshot;
         recapMode?: RecapMode;
+        recapAfterSeconds?: number;
         promptSuggestionMode?: PromptSuggestionMode;
         helperSideModel?: string;
       } | null;

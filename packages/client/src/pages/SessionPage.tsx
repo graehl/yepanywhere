@@ -1449,6 +1449,13 @@ function SessionPageContent({
               }
             : null,
         );
+        if (process?.recapAfterSeconds !== undefined) {
+          setStatus((prev) =>
+            prev.owner === "self" && prev.processId === process.id
+              ? { ...prev, recapAfterSeconds: process.recapAfterSeconds }
+              : prev,
+          );
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -1459,7 +1466,7 @@ function SessionPageContent({
     return () => {
       cancelled = true;
     };
-  }, [actualSessionId, currentOwnedProcessId]);
+  }, [actualSessionId, currentOwnedProcessId, setStatus]);
 
   const latestCodexConfigAck = useMemo(() => {
     if (effectiveProvider !== "codex" && effectiveProvider !== "codex-oss") {
@@ -1896,6 +1903,7 @@ function SessionPageContent({
           processId: result.processId,
           permissionMode: result.permissionMode,
           modeVersion: result.modeVersion,
+          recapAfterSeconds: result.recapAfterSeconds,
         });
       } else {
         // Queue to existing process with current permission mode and thinking setting
@@ -1937,8 +1945,13 @@ function SessionPageContent({
           setIsCompacting(true);
         }
         // If process was restarted due to thinking mode change, reconnect stream
-        if (result.restarted && result.processId) {
-          setStatus({ owner: "self", processId: result.processId });
+        const restartedProcessId = result.restarted ? result.processId : null;
+        if (restartedProcessId) {
+          setStatus((prev) =>
+            prev.owner === "self"
+              ? { ...prev, processId: restartedProcessId }
+              : { owner: "self", processId: restartedProcessId },
+          );
           reconnectStream();
         }
       }
@@ -2006,6 +2019,7 @@ function SessionPageContent({
             processId: result.processId,
             permissionMode: result.permissionMode,
             modeVersion: result.modeVersion,
+            recapAfterSeconds: result.recapAfterSeconds,
           });
           rememberSentSubmission(text, tempId);
           draftControlsRef.current?.clearDraft();
@@ -2201,6 +2215,7 @@ function SessionPageContent({
             processId: result.processId,
             permissionMode: result.permissionMode,
             modeVersion: result.modeVersion,
+            recapAfterSeconds: result.recapAfterSeconds,
           });
           rememberSentSubmission(text, tempId);
           draftControlsRef.current?.clearDraft();
@@ -2345,7 +2360,11 @@ function SessionPageContent({
       }
       if (status.owner === "self") {
         if (status.processId !== next.processId) {
-          setStatus({ owner: "self", processId: next.processId });
+          setStatus((prev) =>
+            prev.owner === "self"
+              ? { ...prev, processId: next.processId }
+              : { owner: "self", processId: next.processId },
+          );
           reconnectStream();
         }
       }
@@ -4331,7 +4350,15 @@ function SessionPageContent({
           provider={effectiveProvider}
           currentModel={liveBadgeModel}
           onClose={() => setShowRecapModal(false)}
-          onSaved={() => {
+          onSaved={(settings) => {
+            setStatus((prev) =>
+              prev.owner === "self" && prev.processId === status.processId
+                ? {
+                    ...prev,
+                    recapAfterSeconds: settings.recapAfterSeconds,
+                  }
+                : prev,
+            );
             showToast(t("sessionRecapSaved"), "success");
           }}
         />
@@ -4387,7 +4414,13 @@ function SessionPageContent({
               projectId,
               actualSessionId,
             );
-            setStatus({ owner: "self", processId: result.processId });
+            setStatus({
+              owner: "self",
+              processId: result.processId,
+              permissionMode: result.permissionMode,
+              modeVersion: result.modeVersion,
+              recapAfterSeconds: result.recapAfterSeconds,
+            });
           }}
           onClose={() => setShowModelSwitchModal(false)}
         />
@@ -4426,6 +4459,7 @@ function SessionPageContent({
                   processId: result.processId,
                   permissionMode: result.permissionMode,
                   modeVersion: result.modeVersion,
+                  recapAfterSeconds: result.recapAfterSeconds,
                 },
                 initialTitle: result.title,
                 initialModel: result.model ?? liveBadgeModel,

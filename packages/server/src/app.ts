@@ -111,6 +111,7 @@ import { GrokSessionReader } from "./sessions/grok-reader.js";
 import { OpenCodeSessionReader } from "./sessions/opencode-reader.js";
 import { PiSessionReader } from "./sessions/pi-reader.js";
 import { findSessionSummaryAcrossProviders } from "./sessions/provider-resolution.js";
+import { applyRecapOverlayToSummary } from "./sessions/recap-overlays.js";
 import { normalizeSession } from "./sessions/normalization.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
 import type { ISessionReader } from "./sessions/types.js";
@@ -488,7 +489,12 @@ export function createApp(options: AppOptions): AppResult {
       },
       options.sessionMetadataService?.getProvider(sessionId),
     );
-    return resolved?.summary ?? null;
+    const summary = resolved?.summary ?? null;
+    if (!summary) return null;
+    return applyRecapOverlayToSummary(
+      summary,
+      options.sessionMetadataService?.getRecapMessages(sessionId) ?? [],
+    );
   };
   let supervisor: Supervisor;
   const getHeartbeatTurnCandidates = async (): Promise<

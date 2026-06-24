@@ -84,6 +84,7 @@ export interface SessionMetadataChangedEvent {
   heartbeatTurnText?: string | null;
   heartbeatForceAfterMinutes?: number | null;
   promptSuggestionMode?: PromptSuggestionMode;
+  recapAfterSeconds?: number;
   transcriptDisplayObjects?: TranscriptDisplayObject[];
   timestamp: string;
 }

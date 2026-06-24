@@ -96,6 +96,7 @@ export function createProcessLifecycleSnapshots(
     ownership: {
       owner: "self",
       processId: process.id,
+      recapAfterSeconds: process.recapAfterSeconds,
     } satisfies SessionOwnership,
     activity: process.state,
     title: process.sessionTitle,

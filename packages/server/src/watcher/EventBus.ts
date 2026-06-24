@@ -156,6 +156,8 @@ export interface SessionMetadataChangedEvent {
   heartbeatForceAfterMinutes?: number | null;
   /** Updated per-session prompt-suggestion preference (if changed) */
   promptSuggestionMode?: PromptSuggestionMode;
+  /** Updated per-session recap timing override (if changed) */
+  recapAfterSeconds?: number;
   /** Complete current set of saved viewer-only transcript objects. */
   transcriptDisplayObjects?: TranscriptDisplayObject[];
   timestamp: string;

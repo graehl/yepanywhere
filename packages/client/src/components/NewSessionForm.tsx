@@ -1,4 +1,5 @@
 import {
+  DEFAULT_RECAP_AFTER_SECONDS,
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   PROMPT_SUGGESTION_MODES,
@@ -9,6 +10,7 @@ import {
   type RecapMode,
   type ThinkingMode,
   type ThinkingOption,
+  normalizeRecapAfterSeconds,
   resolveModel,
 } from "@yep-anywhere/shared";
 import {
@@ -107,6 +109,7 @@ import { getPermissionModeOptions } from "../lib/permissionModes";
 import type { PermissionMode, Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { ProviderBadge } from "./ProviderBadge";
+import { RecapAfterSecondsControl } from "./RecapAfterSecondsControl";
 import { SpeechControlMenu } from "./SpeechControlMenu";
 import { ThinkingControlsPanel } from "./ThinkingControls";
 import {
@@ -385,6 +388,9 @@ export function NewSessionForm({
   );
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [selectedRecapMode, setSelectedRecapMode] = useState<RecapMode>("off");
+  const [recapAfterSeconds, setRecapAfterSeconds] = useState(
+    DEFAULT_RECAP_AFTER_SECONDS,
+  );
   const [selectedPromptSuggestionMode, setSelectedPromptSuggestionMode] =
     useState<PromptSuggestionMode>("off");
   const [helperSideModel, setHelperSideModel] = useState<string>(
@@ -821,6 +827,9 @@ export function NewSessionForm({
         ),
     );
     setSelectedRecapMode(getDefaultRecapMode(initialProvider, savedDefaults));
+    setRecapAfterSeconds(
+      normalizeRecapAfterSeconds(savedDefaults?.recapAfterSeconds),
+    );
     setSelectedPromptSuggestionMode(
       resolvePromptSuggestionMode(
         initialProvider,
@@ -1075,6 +1084,7 @@ export function NewSessionForm({
         model: selectedModel ?? undefined,
         permissionMode: effectivePermissionMode,
         recapMode: selectedRecapMode,
+        recapAfterSeconds,
         promptSuggestionMode: preferredPromptSuggestionModeRef.current,
         helperSideModel,
       }),
@@ -1084,6 +1094,7 @@ export function NewSessionForm({
   }, [
     effectivePermissionMode,
     helperSideModel,
+    recapAfterSeconds,
     selectedModel,
     selectedProvider,
     selectedPromptSuggestionMode,
@@ -1157,6 +1168,7 @@ export function NewSessionForm({
         provider: selectedProvider ?? undefined,
         executor: selectedExecutor ?? undefined,
         recapMode: selectedRecapMode,
+        recapAfterSeconds,
         promptSuggestionMode: selectedPromptSuggestionMode,
         helperSideModel,
       };
@@ -1169,6 +1181,7 @@ export function NewSessionForm({
         provider: selectedProvider ?? null,
         executor: selectedExecutor ?? null,
         recapMode: selectedRecapMode,
+        recapAfterSeconds,
         promptSuggestionMode: selectedPromptSuggestionMode,
         helperSideModel,
         textLength: trimmedMessage.length,
@@ -1362,6 +1375,7 @@ export function NewSessionForm({
               processId,
               permissionMode: initialPermissionMode,
               modeVersion: initialModeVersion,
+              recapAfterSeconds,
             },
             initialTitle: trimmedMessage,
             initialModel: selectedModel ?? undefined,
@@ -2273,6 +2287,16 @@ export function NewSessionForm({
           </button>
         ))}
       </div>
+      {selectedRecapMode !== "off" && (
+        <RecapAfterSecondsControl
+          value={recapAfterSeconds}
+          disabled={isStarting}
+          onCommit={(seconds) => {
+            hasUserCustomizedDefaultsRef.current = true;
+            setRecapAfterSeconds(seconds);
+          }}
+        />
+      )}
       {selectedRecapMode === "side-session" && (
         <div className="new-session-helper-model">
           <h3>{t("helperSideModelTitle")}</h3>

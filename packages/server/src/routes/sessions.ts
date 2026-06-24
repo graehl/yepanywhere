@@ -22,6 +22,7 @@ import {
   type UrlProjectId,
   buildEffectiveAgentContext,
   clampPatientPatienceSeconds,
+  clampRecapAfterSeconds,
   getModelContextWindow,
   isUrlProjectId,
   thinkingOptionToConfig,
@@ -54,6 +55,12 @@ import { GrokSessionReader } from "../sessions/grok-reader.js";
 import { PiSessionReader } from "../sessions/pi-reader.js";
 import { extractLastAgentExcerpt } from "../sessions/agent-excerpt.js";
 import { normalizeSession } from "../sessions/normalization.js";
+import {
+  applyRecapOverlayToSession,
+  applyRecapOverlayToSummary,
+  latestRecapMessage,
+  mergeRecapMessages,
+} from "../sessions/recap-overlays.js";
 import {
   type PaginationInfo,
   sliceAfterMessageIdWithMatch,
@@ -278,6 +285,22 @@ function parseOptionalRecapMode(rawMode: unknown): {
   return { recapMode: rawMode as RecapMode };
 }
 
+function parseOptionalRecapAfterSeconds(rawValue: unknown): {
+  recapAfterSeconds: number | undefined;
+  error?: string;
+} {
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
+    return { recapAfterSeconds: undefined };
+  }
+  if (typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
+    return {
+      recapAfterSeconds: undefined,
+      error: "recapAfterSeconds must be a finite number",
+    };
+  }
+  return { recapAfterSeconds: clampRecapAfterSeconds(rawValue) };
+}
+
 function parseOptionalPromptSuggestionMode(rawMode: unknown): {
   promptSuggestionMode: PromptSuggestionMode | undefined;
   error?: string;
@@ -326,10 +349,12 @@ function parseOptionalHelperSideModel(rawModel: unknown): {
 
 function parseHelperSettings(body: {
   recapMode?: unknown;
+  recapAfterSeconds?: unknown;
   promptSuggestionMode?: unknown;
   helperSideModel?: unknown;
 }): {
   recapMode: RecapMode | undefined;
+  recapAfterSeconds: number | undefined;
   promptSuggestionMode: PromptSuggestionMode | undefined;
   helperSideModel: string | undefined;
   error?: string;
@@ -338,9 +363,20 @@ function parseHelperSettings(body: {
   if (recap.error) {
     return {
       recapMode: undefined,
+      recapAfterSeconds: undefined,
       promptSuggestionMode: undefined,
       helperSideModel: undefined,
       error: recap.error,
+    };
+  }
+  const recapAfter = parseOptionalRecapAfterSeconds(body.recapAfterSeconds);
+  if (recapAfter.error) {
+    return {
+      recapMode: undefined,
+      recapAfterSeconds: undefined,
+      promptSuggestionMode: undefined,
+      helperSideModel: undefined,
+      error: recapAfter.error,
     };
   }
   const promptSuggestion = parseOptionalPromptSuggestionMode(
@@ -349,6 +385,7 @@ function parseHelperSettings(body: {
   if (promptSuggestion.error) {
     return {
       recapMode: undefined,
+      recapAfterSeconds: undefined,
       promptSuggestionMode: undefined,
       helperSideModel: undefined,
       error: promptSuggestion.error,
@@ -358,6 +395,7 @@ function parseHelperSettings(body: {
   if (helperModel.error) {
     return {
       recapMode: undefined,
+      recapAfterSeconds: undefined,
       promptSuggestionMode: undefined,
       helperSideModel: undefined,
       error: helperModel.error,
@@ -365,6 +403,7 @@ function parseHelperSettings(body: {
   }
   return {
     recapMode: recap.recapMode,
+    recapAfterSeconds: recapAfter.recapAfterSeconds,
     promptSuggestionMode: promptSuggestion.promptSuggestionMode,
     helperSideModel: helperModel.helperSideModel,
   };
@@ -548,6 +587,8 @@ interface StartSessionBody {
   permissions?: PermissionRules;
   /** Session recap behavior for future away-return triggers. */
   recapMode?: RecapMode;
+  /** Browser-away duration before YA asks this session for a recap. */
+  recapAfterSeconds?: number;
   /** Prompt suggestion behavior for this session. */
   promptSuggestionMode?: PromptSuggestionMode;
   /** Session-level helper side model for simulated helper features. */
@@ -570,6 +611,8 @@ interface CreateSessionBody {
   permissions?: PermissionRules;
   /** Session recap behavior for future away-return triggers. */
   recapMode?: RecapMode;
+  /** Browser-away duration before YA asks this session for a recap. */
+  recapAfterSeconds?: number;
   /** Prompt suggestion behavior for this session. */
   promptSuggestionMode?: PromptSuggestionMode;
   /** Session-level helper side model for simulated helper features. */
@@ -1885,6 +1928,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     initialPrompt?: string,
     requestedModel?: string,
     promptSuggestionMode?: PromptSuggestionMode,
+    recapAfterSeconds?: number,
   ): Promise<void> => {
     if (!deps.sessionMetadataService) {
       return;
@@ -1916,6 +1960,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (promptSuggestionMode !== undefined) {
       await deps.sessionMetadataService.updateMetadata(sessionId, {
         promptSuggestionMode,
+      });
+    }
+    if (recapAfterSeconds !== undefined) {
+      await deps.sessionMetadataService.updateMetadata(sessionId, {
+        recapAfterSeconds,
       });
     }
   };
@@ -1973,6 +2022,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           processId: process.id,
           permissionMode: process.permissionMode,
           modeVersion: process.modeVersion,
+          recapAfterSeconds: process.recapAfterSeconds,
         },
         provider: process.provider,
         model: process.resolvedModel ?? process.model,
@@ -2137,6 +2187,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           processId: process.id,
           permissionMode: process.permissionMode,
           modeVersion: process.modeVersion,
+          recapAfterSeconds: process.recapAfterSeconds,
         }
       : isExternal
         ? { owner: "external" as const }
@@ -2144,7 +2195,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     // Get session metadata (custom title, archived, starred)
     const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
-
     // Get notification data (lastSeenAt, hasUnread)
     const lastSeenEntry = deps.notificationService?.getLastSeen(sessionId);
     const lastSeenAt = lastSeenEntry?.timestamp;
@@ -2154,9 +2204,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       process?.state.type === "waiting-input" ? process.state.request : null;
 
     // Read minimal session info from disk (just for title/timestamps, no messages)
-    const metadataProvider = deps.sessionMetadataService?.getProvider(
-      sessionId,
-    ) as ProviderName | undefined;
+    const sourceMetadata = deps.sessionMetadataService?.getMetadata(sessionId);
+    const metadataProvider = sourceMetadata?.provider as ProviderName | undefined;
     const slashCommands = await getSessionSlashCommands(
       process,
       process?.provider ?? metadataProvider ?? project.provider,
@@ -2179,7 +2228,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       },
       metadataProvider ?? process?.provider,
     );
-    const sessionSummary = sessionSummaryResult?.summary ?? null;
+    const rawSessionSummary = sessionSummaryResult?.summary ?? null;
+    const recapMessages =
+      deps.sessionMetadataService?.getRecapMessages(sessionId) ?? [];
+    const sessionSummary = rawSessionSummary
+      ? applyRecapOverlayToSummary(rawSessionSummary, recapMessages)
+      : null;
 
     if (!sessionSummary && !process) {
       const canonicalProjectId = await getGrokNativeProjectId(
@@ -2243,6 +2297,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         heartbeatForceAfterMinutes:
           metadata?.heartbeatForceAfterMinutes ?? undefined,
         promptSuggestionMode: metadata?.promptSuggestionMode,
+        recapAfterSeconds: metadata?.recapAfterSeconds,
         transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
         lastSeenAt,
         hasUnread,
@@ -2277,11 +2332,41 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       const metadataProvider = deps.sessionMetadataService?.getProvider(
         sessionId,
       ) as ProviderName | undefined;
-      // Claude uses the fast reverse-scan; every other provider goes through
-      // the cross-provider load + normalize, then a shared extractor on the
-      // uniform message form — so the preview is provider-independent.
+      const recapMessages =
+        deps.sessionMetadataService?.getRecapMessages(sessionId) ?? [];
+      let lastAgentText: string | undefined;
+      if (recapMessages.length > 0) {
+        const summaryResult = await findSessionSummaryAcrossProviders(
+          project,
+          sessionId,
+          projectId as UrlProjectId,
+          {
+            readerFactory: deps.readerFactory,
+            codexSessionsDir: deps.codexSessionsDir,
+            codexReaderFactory: deps.codexReaderFactory,
+            geminiSessionsDir: deps.geminiSessionsDir,
+            geminiReaderFactory: deps.geminiReaderFactory,
+            geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
+            grokSessionsDir: deps.grokSessionsDir,
+            grokReaderFactory: deps.grokReaderFactory,
+            piSessionsDir: deps.piSessionsDir,
+            piReaderFactory: deps.piReaderFactory,
+          },
+          metadataProvider,
+        );
+        if (summaryResult?.summary) {
+          lastAgentText = applyRecapOverlayToSummary(
+            summaryResult.summary,
+            recapMessages,
+          ).lastAgentText;
+        }
+      }
+
+      // Claude uses the fast reverse-scan when there is no durable overlay to
+      // compare; every other provider goes through the cross-provider load +
+      // normalize, then a shared extractor on the uniform message form.
       const reader = deps.readerFactory(project);
-      let lastAgentText = reader.getLastAgentExcerpt
+      lastAgentText ??= reader.getLastAgentExcerpt
         ? await reader.getLastAgentExcerpt(sessionId)
         : undefined;
       if (lastAgentText === undefined) {
@@ -2497,6 +2582,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           processId: process.id,
           permissionMode: process.permissionMode,
           modeVersion: process.modeVersion,
+          recapAfterSeconds: process.recapAfterSeconds,
         }
       : isExternal
         ? { owner: "external" as const }
@@ -2544,9 +2630,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         // onContextWindowObserved, not as a side effect of this GET.)
         // Get metadata even for new sessions (in case it was set before file was written)
         const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
+        const recapMessages =
+          deps.sessionMetadataService?.getRecapMessages(sessionId) ?? [];
+        const visibleProcessMessages = mergeRecapMessages(
+          processMessages,
+          recapMessages,
+        );
         // Get notification data for new sessions too
         const lastSeenEntry = deps.notificationService?.getLastSeen(sessionId);
-        const newSessionUpdatedAt = new Date().toISOString();
+        const latestRecap = latestRecapMessage(recapMessages);
+        const newSessionUpdatedAt =
+          latestRecap?.timestamp ?? new Date().toISOString();
         const hasUnread = deps.notificationService
           ? deps.notificationService.hasUnread(sessionId, newSessionUpdatedAt)
           : undefined;
@@ -2569,6 +2663,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             heartbeatTurnText: metadata?.heartbeatTurnText,
             heartbeatForceAfterMinutes: metadata?.heartbeatForceAfterMinutes,
             promptSuggestionMode: metadata?.promptSuggestionMode,
+            recapAfterSeconds: metadata?.recapAfterSeconds,
             transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
             lastSeenAt: lastSeenEntry?.timestamp,
             hasUnread,
@@ -2576,7 +2671,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             model: process.resolvedModel,
             contextUsage,
           },
-          messages: processMessages,
+          messages: visibleProcessMessages,
           ownership,
           pendingInputRequest,
           slashCommands,
@@ -2602,6 +2697,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     // Get session metadata (custom title, archived, starred)
     const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
+    const recapMessages =
+      deps.sessionMetadataService?.getRecapMessages(sessionId) ?? [];
 
     // Get notification data (lastSeenAt, hasUnread)
     const lastSeenEntry = deps.notificationService?.getLastSeen(sessionId);
@@ -2660,6 +2757,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       await augmentEditToolUses(session.messages);
     } else {
       await augmentPersistedSessionMessages(session.messages);
+    }
+    if (!beforeMessageId) {
+      session = applyRecapOverlayToSession(session, recapMessages);
     }
     const augmentEndMs = performance.now();
 
@@ -2727,6 +2827,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         heartbeatTurnText: metadata?.heartbeatTurnText,
         heartbeatForceAfterMinutes: metadata?.heartbeatForceAfterMinutes,
         promptSuggestionMode: metadata?.promptSuggestionMode,
+        recapAfterSeconds: metadata?.recapAfterSeconds,
         transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
         // Model comes from the session reader (extracted from JSONL)
         model: session.model,
@@ -2820,6 +2921,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
+        recapAfterSeconds: helperSettings.recapAfterSeconds,
         promptSuggestionMode: helperSettings.promptSuggestionMode,
         helperSideModel: helperSettings.helperSideModel,
       },
@@ -2845,6 +2947,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.message,
       body.model,
       result.promptSuggestionMode,
+      helperSettings.recapAfterSeconds,
     );
 
     return c.json({
@@ -2853,6 +2956,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId: result.projectId,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+      recapAfterSeconds: result.recapAfterSeconds,
       serverTimestamp,
     });
   });
@@ -2914,6 +3018,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
+        recapAfterSeconds: helperSettings.recapAfterSeconds,
         promptSuggestionMode: helperSettings.promptSuggestionMode,
         helperSideModel: helperSettings.helperSideModel,
       },
@@ -2939,6 +3044,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       undefined,
       body.model,
       result.promptSuggestionMode,
+      helperSettings.recapAfterSeconds,
     );
 
     return c.json({
@@ -2947,6 +3053,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId: result.projectId,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+      recapAfterSeconds: result.recapAfterSeconds,
       serverTimestamp: Date.now(),
     });
   });
@@ -3007,6 +3114,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
+        recapAfterSeconds: helperSettings.recapAfterSeconds,
         promptSuggestionMode: helperSettings.promptSuggestionMode,
         helperSideModel: helperSettings.helperSideModel,
       },
@@ -3030,6 +3138,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.message,
       body.model,
       result.promptSuggestionMode,
+      helperSettings.recapAfterSeconds,
     );
 
     return c.json({
@@ -3038,6 +3147,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId: result.projectId,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+      recapAfterSeconds: result.recapAfterSeconds,
       serverTimestamp,
     });
   });
@@ -3080,6 +3190,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       globalInstructions: getGlobalInstructions(),
       permissions: body.permissions,
       recapMode: helperSettings.recapMode,
+      recapAfterSeconds: helperSettings.recapAfterSeconds,
       promptSuggestionMode: helperSettings.promptSuggestionMode,
       helperSideModel: helperSettings.helperSideModel,
     });
@@ -3102,6 +3213,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       undefined,
       body.model,
       result.promptSuggestionMode,
+      helperSettings.recapAfterSeconds,
     );
 
     return c.json({
@@ -3110,6 +3222,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       projectId: result.projectId,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+      recapAfterSeconds: result.recapAfterSeconds,
       serverTimestamp: Date.now(),
     });
   });
@@ -3347,6 +3460,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           globalInstructions,
           permissions: body.permissions,
           recapMode: helperSettings.recapMode,
+          recapAfterSeconds:
+            helperSettings.recapAfterSeconds ??
+            deps.sessionMetadataService?.getRecapAfterSeconds?.(sessionId),
           // Body value wins; otherwise recover the per-session preference from
           // metadata so a body-less resume does not default back to native.
           promptSuggestionMode:
@@ -3408,6 +3524,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       processId: result.id,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+      recapAfterSeconds: result.recapAfterSeconds,
       serverTimestamp,
       resume: {
         ...resumeDiagnostics,
@@ -3447,6 +3564,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           processId: existing.id,
           permissionMode: existing.permissionMode,
           modeVersion: existing.modeVersion,
+          recapAfterSeconds: existing.recapAfterSeconds,
           serverTimestamp: Date.now(),
         });
       }
@@ -3462,6 +3580,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       const parsedBodyExecutor = parseOptionalExecutor(body.executor);
       if (parsedBodyExecutor.error) {
         return c.json({ error: parsedBodyExecutor.error }, 400);
+      }
+      const helperSettings = parseHelperSettings(body);
+      if (helperSettings.error) {
+        return c.json({ error: helperSettings.error }, 400);
       }
 
       // Resolve provider/model/executor from the YA launch record (persisted on
@@ -3496,6 +3618,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             providerName,
             executor,
             globalInstructions: getGlobalInstructions(),
+            recapAfterSeconds:
+              helperSettings.recapAfterSeconds ?? metadata?.recapAfterSeconds,
           },
         );
       } catch (error) {
@@ -3517,6 +3641,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         processId: process.id,
         permissionMode: process.permissionMode,
         modeVersion: process.modeVersion,
+        recapAfterSeconds: process.recapAfterSeconds,
         serverTimestamp: Date.now(),
       });
     },
@@ -3676,6 +3801,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           globalInstructions: getGlobalInstructions(),
           permissions: body.permissions,
           recapMode: helperSettings.recapMode,
+          recapAfterSeconds:
+            helperSettings.recapAfterSeconds ?? originalMetadata?.recapAfterSeconds,
           // Inherit the source session's preference unless the body overrides.
           promptSuggestionMode:
             helperSettings.promptSuggestionMode ??
@@ -3708,6 +3835,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         undefined,
         body.model ?? deps.sessionMetadataService?.getRequestedModel(sessionId),
         result.promptSuggestionMode,
+        result.recapAfterSeconds,
       );
       if (deps.sessionMetadataService) {
         await deps.sessionMetadataService.updateMetadata(result.sessionId, {
@@ -3735,6 +3863,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         title: forkTitle,
         permissionMode: result.permissionMode,
         modeVersion: result.modeVersion,
+        recapAfterSeconds: result.recapAfterSeconds,
         restartedFrom: sessionId,
         forkUpToMessageId: body.forkUpToMessageId,
         oldProcessId: oldProcess?.id,
@@ -3782,6 +3911,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         globalInstructions: getGlobalInstructions(),
         permissions: body.permissions,
         recapMode: helperSettings.recapMode,
+        recapAfterSeconds:
+          helperSettings.recapAfterSeconds ?? originalMetadata?.recapAfterSeconds,
         // Inherit the source session's preference unless the body overrides.
         promptSuggestionMode:
           helperSettings.promptSuggestionMode ??
@@ -3815,6 +3946,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       undefined,
       body.model ?? deps.sessionMetadataService?.getRequestedModel(sessionId),
       result.promptSuggestionMode,
+      result.recapAfterSeconds,
     );
     if (deps.sessionMetadataService) {
       await deps.sessionMetadataService.updateMetadata(result.sessionId, {
@@ -3842,6 +3974,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       title: handoffTitle,
       permissionMode: result.permissionMode,
       modeVersion: result.modeVersion,
+      recapAfterSeconds: result.recapAfterSeconds,
       restartedFrom: sessionId,
       oldProcessId: oldProcess?.id,
       oldProcessInterrupted,
@@ -3972,7 +4105,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       savedExecutor,
       undefined,
       deps.sessionMetadataService?.getRequestedModel(sessionId),
-      deps.sessionMetadataService?.getMetadata(sessionId)?.promptSuggestionMode,
+      originalMetadata?.promptSuggestionMode,
+      originalMetadata?.recapAfterSeconds,
     );
     if (forkTitle && deps.sessionMetadataService) {
       await deps.sessionMetadataService.updateMetadata(fork.sessionId, {
@@ -4086,8 +4220,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     let requestedModel =
       deps.sessionMetadataService.getRequestedModel(sessionId) ??
       liveSourceProcess?.model;
-    const promptSuggestionMode =
-      deps.sessionMetadataService.getMetadata(sessionId)?.promptSuggestionMode;
+    const sourceMetadata = deps.sessionMetadataService.getMetadata(sessionId);
+    const promptSuggestionMode = sourceMetadata?.promptSuggestionMode;
+    const recapAfterSeconds = sourceMetadata?.recapAfterSeconds;
     const abortController = new AbortController();
     const abortFromRequest = () => abortController.abort();
     if (c.req.raw.signal.aborted) {
@@ -4114,6 +4249,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             executor: savedExecutor,
             globalInstructions: getGlobalInstructions(),
             promptSuggestionMode,
+            recapAfterSeconds,
           },
         );
         requestedModel = requestedModel ?? sourceProcess.model;
@@ -4139,6 +4275,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         undefined,
         requestedModel,
         promptSuggestionMode,
+        recapAfterSeconds,
       );
       if (abortController.signal.aborted) {
         throw new DOMException("Retitle cancelled", "AbortError");
@@ -4358,6 +4495,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             undefined,
             requestedModel,
             originalMetadata?.promptSuggestionMode,
+            originalMetadata?.recapAfterSeconds,
           );
           if (abortController.signal.aborted) {
             throw new DOMException("Fork summary cancelled", "AbortError");
@@ -4403,6 +4541,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             undefined,
             requestedModel,
             originalMetadata?.promptSuggestionMode,
+            originalMetadata?.recapAfterSeconds,
           );
           if (abortController.signal.aborted) {
             throw new DOMException("Fork summary cancelled", "AbortError");
@@ -4419,6 +4558,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
               globalInstructions: getGlobalInstructions(),
               model: requestedModel,
               promptSuggestionMode: originalMetadata?.promptSuggestionMode,
+              recapAfterSeconds: originalMetadata?.recapAfterSeconds,
             },
           );
           if (isQueueFullResponse(result)) {
@@ -4442,6 +4582,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             undefined,
             requestedModel,
             result.promptSuggestionMode,
+            result.recapAfterSeconds,
           );
           await updateForkSummaryChildMetadata(
             result.sessionId,
@@ -5170,6 +5311,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       heartbeatTurnText?: string | null;
       heartbeatForceAfterMinutes?: number | null;
       promptSuggestionMode?: unknown;
+      recapAfterSeconds?: unknown;
     } = {};
     try {
       body = await c.req.json();
@@ -5187,7 +5329,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.heartbeatTurnsAfterMinutes === undefined &&
       body.heartbeatTurnText === undefined &&
       body.heartbeatForceAfterMinutes === undefined &&
-      body.promptSuggestionMode === undefined
+      body.promptSuggestionMode === undefined &&
+      body.recapAfterSeconds === undefined
     ) {
       return c.json(
         {
@@ -5308,6 +5451,23 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
     }
 
+    let recapAfterSeconds: number | null | undefined;
+    if (body.recapAfterSeconds !== undefined) {
+      if (body.recapAfterSeconds === null || body.recapAfterSeconds === "") {
+        recapAfterSeconds = null;
+      } else if (
+        typeof body.recapAfterSeconds === "number" &&
+        Number.isFinite(body.recapAfterSeconds)
+      ) {
+        recapAfterSeconds = clampRecapAfterSeconds(body.recapAfterSeconds);
+      } else {
+        return c.json(
+          { error: "recapAfterSeconds must be null or a finite number" },
+          400,
+        );
+      }
+    }
+
     await deps.sessionMetadataService.updateMetadata(sessionId, {
       title: body.title,
       archived: body.archived,
@@ -5318,6 +5478,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       heartbeatTurnText,
       heartbeatForceAfterMinutes,
       promptSuggestionMode,
+      recapAfterSeconds,
     });
 
     // Emit SSE event so sidebar and other clients can update
@@ -5334,6 +5495,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         heartbeatTurnText,
         heartbeatForceAfterMinutes,
         promptSuggestionMode: promptSuggestionMode ?? undefined,
+        recapAfterSeconds: recapAfterSeconds ?? undefined,
         timestamp: new Date().toISOString(),
       });
     }

@@ -9,8 +9,10 @@ import type {
   ThinkingOption,
 } from "@yep-anywhere/shared";
 import {
+  DEFAULT_RECAP_AFTER_SECONDS,
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
+  normalizeRecapAfterSeconds,
   resolveModel,
 } from "@yep-anywhere/shared";
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -24,6 +26,7 @@ import { useServerSettings } from "../hooks/useServerSettings";
 import { helperTargetsToModelOptions } from "../lib/helperTargets";
 import type { PermissionMode } from "../types";
 import { useI18n } from "../i18n";
+import { RecapAfterSecondsControl } from "./RecapAfterSecondsControl";
 import {
   getEffortLevelLabel,
   getEffortLevelOptions,
@@ -252,6 +255,7 @@ interface RestartSessionModalProps {
       title?: string;
       permissionMode: PermissionMode;
       modeVersion: number;
+      recapAfterSeconds?: number;
       oldProcessAborted: boolean;
     },
     options?: {
@@ -349,6 +353,12 @@ export function RestartSessionModal({
       provider: selectedProviderInfo,
       defaults: settings?.newSessionDefaults,
     }),
+  );
+  const [recapAfterSeconds, setRecapAfterSeconds] = useState(() =>
+    normalizeRecapAfterSeconds(
+      settings?.newSessionDefaults?.recapAfterSeconds ??
+        DEFAULT_RECAP_AFTER_SECONDS,
+    ),
   );
   const [selectedPromptSuggestionMode, setSelectedPromptSuggestionMode] =
     useState<PromptSuggestionMode>(() =>
@@ -469,6 +479,9 @@ export function RestartSessionModal({
         defaults: settings?.newSessionDefaults,
       }),
     );
+    setRecapAfterSeconds(
+      normalizeRecapAfterSeconds(settings?.newSessionDefaults?.recapAfterSeconds),
+    );
   }, [
     helperSelectableModels,
     promptSuggestionMode,
@@ -511,6 +524,7 @@ export function RestartSessionModal({
         provider: isFork ? provider : selectedProvider,
         executor,
         recapMode: selectedRecapMode,
+        recapAfterSeconds,
         promptSuggestionMode: selectedPromptSuggestionMode,
         helperSideModel,
         // For fork, the reason would become the forked session's first user
@@ -570,6 +584,9 @@ export function RestartSessionModal({
         models: [...helperTargetModelOptions, ...nextModelOptions],
         defaults: settings?.newSessionDefaults,
       }),
+    );
+    setRecapAfterSeconds(
+      normalizeRecapAfterSeconds(settings?.newSessionDefaults?.recapAfterSeconds),
     );
   };
 
@@ -892,6 +909,16 @@ export function RestartSessionModal({
               );
             })}
           </div>
+          {selectedRecapMode !== "off" && (
+            <RecapAfterSecondsControl
+              value={recapAfterSeconds}
+              disabled={restarting}
+              onCommit={(seconds) => {
+                hasUserSelectedHelperConfigRef.current = true;
+                setRecapAfterSeconds(seconds);
+              }}
+            />
+          )}
         </section>
 
         <section className="model-switch-section">

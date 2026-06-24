@@ -31,6 +31,14 @@
 
 @font-face {
   font-family: "YA Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../assets/fonts/inter/inter-latin-500-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "YA Inter";
   font-style: italic;
   font-weight: 400;
   font-display: swap;
@@ -51,6 +59,15 @@
   font-weight: 400;
   font-display: swap;
   src: url("../assets/fonts/alegreya-sans/alegreya-sans-latin-400-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "YA Alegreya Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../assets/fonts/alegreya-sans/alegreya-sans-latin-500-normal.woff2")
     format("woff2");
 }
 

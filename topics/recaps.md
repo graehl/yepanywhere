@@ -10,6 +10,10 @@ across providers and across the SDK / TUI gap, since the SDK's
 `--print --output-format stream-json` mode does not run the TUI's
 idle-detection effect that triggers native recap emission.
 
+See also: [fork-recap.md](fork-recap.md) for the supervisor-level worker
+lifecycle of the `fork` recap strategy (dedup, in-turn deferral,
+cancellation on activity) and the current trigger/threshold gaps.
+
 ## Contracts
 
 - A recap is a server-emitted message with `type: "system"`, `subtype:

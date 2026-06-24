@@ -76,6 +76,10 @@ const STARTUP_ENV_COMPAT: readonly EnvAlias[] = [
     canonical: "YEP_ALLOW_SUSPICIOUS_HOME",
     legacy: ["YEP_ANYWHERE_ALLOW_SUSPICIOUS_HOME"],
   },
+  {
+    canonical: "PI_EXECUTABLE",
+    legacy: ["PI_PATH"],
+  },
 ];
 
 export function normalizeStartupEnv(

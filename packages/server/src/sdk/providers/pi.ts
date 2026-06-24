@@ -853,8 +853,9 @@ export class PiProvider implements AgentProvider {
   }
 
   private async findPiPath(): Promise<string | null> {
-    if (process.env.PI_PATH && existsSync(process.env.PI_PATH)) {
-      return process.env.PI_PATH;
+    const envExecutable = process.env.PI_EXECUTABLE ?? process.env.PI_PATH;
+    if (envExecutable && existsSync(envExecutable)) {
+      return envExecutable;
     }
     if (this.configuredPath && existsSync(this.configuredPath)) {
       return this.configuredPath;

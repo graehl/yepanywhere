@@ -36,6 +36,7 @@ describe("normalizeStartupEnv", () => {
     ["YA_CODEX_DISABLE_LIVE_DELTAS", "YEP_CODEX_DISABLE_LIVE_DELTAS"],
     ["YEP_ANYWHERE_ORIGINAL_BASH_ENV", "YEP_ORIGINAL_BASH_ENV"],
     ["YEP_ANYWHERE_ALLOW_SUSPICIOUS_HOME", "YEP_ALLOW_SUSPICIOUS_HOME"],
+    ["PI_PATH", "PI_EXECUTABLE"],
   ])("maps %s directly to %s", (legacy, canonical) => {
     const env: NodeJS.ProcessEnv = { [legacy]: "value" };
 

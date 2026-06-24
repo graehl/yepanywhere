@@ -46,6 +46,7 @@ rest of the server module graph is evaluated.
 | `YEP_PUBLIC_SHARE_ORIGIN` | `YEP_CLIENT_BASE_URL` |
 | `YEP_ANYWHERE_ORIGINAL_BASH_ENV` | `YEP_ORIGINAL_BASH_ENV` |
 | `YEP_ANYWHERE_ALLOW_SUSPICIOUS_HOME` | `YEP_ALLOW_SUSPICIOUS_HOME` |
+| `PI_PATH` | `PI_EXECUTABLE` |
 
 The startup pass applies this table once: canonical wins, otherwise the first
 set legacy value supplies it, and every listed legacy key is deleted.
@@ -95,6 +96,7 @@ set legacy value supplies it, and every listed legacy key is deleted.
 |-----|---------|
 | `ENABLED_PROVIDERS` | Comma list of exposed providers (empty = all). |
 | `VOICE_INPUT` | `false` disables the mic button server-side. |
+| `PI_EXECUTABLE` | Full path to the pi CLI executable for the pi provider. `PI_PATH` is accepted as a legacy alias when `PI_EXECUTABLE` is unset. |
 | `YEP_VOICE_BACKENDS` | Explicit local/test speech backends (`ya-whisper`, `ya-parakeet`, `ya-nemo`, `ya-dummy`). Cloud backends auto-enable on key presence instead. |
 | `YEP_DEFERRED_JOIN_WINDOW_S` | Max seconds between consecutive compose times for queued-while-busy turns to join into one `--------`-joined provider turn at a delivery boundary. Default 0: never join — one verbatim turn per boundary. Server setting `deferredJoinWindowSeconds` overrides ([compose-time-context-anchors](compose-time-context-anchors.md)). |
 | `YEP_COMPOSE_ANCHORS` | `1` prepends `(Ns ago)` / `(Ms later)` staleness anchors to delivered queued turns. Default off: queued text reaches the provider verbatim. Server setting `composeAnchorsEnabled` overrides. |

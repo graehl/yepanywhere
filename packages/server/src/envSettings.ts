@@ -359,10 +359,10 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
     description: "Alternate path hint for the Claude Code CLI executable.",
   },
   {
-    name: "PI_PATH",
+    name: "PI_EXECUTABLE",
     group: "Providers & features",
     description:
-      "Path to the pi CLI executable for the pi provider. Checked before the PATH lookup, so it overrides a pi found on PATH (e.g. an npm global bin).",
+      "Full path to the pi CLI executable for the pi provider, e.g. ~/.local/bin/pi or an npm global bin's pi file. Checked before PATH lookup; directories are not searched.",
   },
 
   // Speech & transcription

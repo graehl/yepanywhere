@@ -73,6 +73,8 @@
   "appearanceOutputSpecimenLabel": "Muestra",
   "outputProseFontSystem": "Sistema",
   "outputProseFontSourceSerif4": "Source Serif 4 (serifa)",
+  "outputProseFontInter": "Inter",
+  "outputProseFontAlegreyaSans": "Alegreya Sans",
   "outputFixedFontSystem": "Sistema",
   "outputFixedFontIosevka": "Iosevka (monoespaciada)",
   "outputFixedFontIbmPlexMono": "IBM Plex Mono (monoespaciada)",

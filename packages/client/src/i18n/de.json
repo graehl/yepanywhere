@@ -73,6 +73,8 @@
   "appearanceOutputSpecimenLabel": "Beispiel",
   "outputProseFontSystem": "Systemschrift",
   "outputProseFontSourceSerif4": "Source Serif 4 (Serifenschrift)",
+  "outputProseFontInter": "Inter",
+  "outputProseFontAlegreyaSans": "Alegreya Sans",
   "outputFixedFontSystem": "Systemschrift",
   "outputFixedFontIosevka": "Iosevka (Festbreitenschrift)",
   "outputFixedFontIbmPlexMono": "IBM Plex Mono (Festbreitenschrift)",

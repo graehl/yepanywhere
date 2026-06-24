@@ -73,6 +73,8 @@
   "appearanceOutputSpecimenLabel": "样张",
   "outputProseFontSystem": "系统",
   "outputProseFontSourceSerif4": "Source Serif 4 字体",
+  "outputProseFontInter": "Inter",
+  "outputProseFontAlegreyaSans": "Alegreya Sans",
   "outputFixedFontSystem": "系统",
   "outputFixedFontIosevka": "Iosevka 字体",
   "outputFixedFontIbmPlexMono": "IBM Plex Mono 字体",

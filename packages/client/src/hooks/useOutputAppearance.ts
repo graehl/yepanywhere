@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
 
-export type OutputProseFont = "system" | "source-serif-4";
+export type OutputProseFont =
+  | "system"
+  | "source-serif-4"
+  | "inter"
+  | "alegreya-sans";
 export type OutputFixedFont = "system" | "iosevka" | "ibm-plex-mono";
 
 export const OUTPUT_APPEARANCE_CHANGE_EVENT = "yep-output-appearance-change";
 
 export const OUTPUT_PROSE_FONTS: OutputProseFont[] = [
   "system",
+  "inter",
+  "alegreya-sans",
   "source-serif-4",
 ];
 
@@ -87,6 +93,8 @@ const DEFAULT_OUTPUT_APPEARANCE: OutputAppearance = {
 
 const outputFontStacks: Record<OutputProseFont, string> = {
   system: "var(--font-sans)",
+  inter: "var(--font-output-inter)",
+  "alegreya-sans": "var(--font-output-alegreya-sans)",
   "source-serif-4": "var(--font-output-serif)",
 };
 

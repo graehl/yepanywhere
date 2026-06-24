@@ -47,6 +47,10 @@ export function getOutputProseFontLabel(
   switch (font) {
     case "system":
       return t("outputProseFontSystem");
+    case "inter":
+      return t("outputProseFontInter");
+    case "alegreya-sans":
+      return t("outputProseFontAlegreyaSans");
     case "source-serif-4":
       return t("outputProseFontSourceSerif4");
   }

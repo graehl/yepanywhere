@@ -568,10 +568,6 @@ export function ModelSettings() {
   return (
     <section className="settings-section">
       <div className="settings-group">
-        <div className="model-settings-subsection">
-          <p>{t("modelSettingsSessionDefaultsDescription")}</p>
-        </div>
-
         <div className="settings-session-defaults-panel">
           <div className="new-session-helper-section session-default-recap-section">
             <h3>{t("newSessionRecapTitle")}</h3>

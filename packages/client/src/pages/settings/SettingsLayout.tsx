@@ -228,6 +228,10 @@ export function SettingsLayout() {
   // registers (and for the rare pane that sets nothing).
   const resolvedPaneTitle =
     paneTitle ?? activeCategory?.label ?? t("pageTitleSettings");
+  const breadcrumbDescription =
+    effectiveCategory === "model"
+      ? t("modelSettingsSessionDefaultsDescription")
+      : null;
 
   // Settings breadcrumb shown in the header strip (two-column): a clickable
   // "Settings" root plus the active pane title, so the strip names the page
@@ -245,6 +249,11 @@ export function SettingsLayout() {
         ›
       </span>
       <span className="settings-breadcrumb-current">{resolvedPaneTitle}</span>
+      {breadcrumbDescription && (
+        <span className="settings-breadcrumb-description">
+          {breadcrumbDescription}
+        </span>
+      )}
     </span>
   );
 

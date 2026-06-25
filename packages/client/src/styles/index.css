@@ -1684,6 +1684,17 @@ a.sidebar-nav-item {
   white-space: nowrap;
 }
 
+.settings-breadcrumb-description {
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-title-input {
   color: var(--text-primary);
   font-weight: 500;

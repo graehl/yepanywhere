@@ -126,6 +126,11 @@ describe("CodexSessionScanner", () => {
     expect(projects).toHaveLength(1);
     expect(projects[0].path).toBe("/home/user/project-zst");
     expect(projects[0].sessionCount).toBe(1);
+
+    const metrics = scanner.getLastScanMetrics();
+    expect(metrics?.compressedRolloutFiles).toBe(1);
+    expect(metrics?.discovery.firstLineReadsZstd).toBe(1);
+    expect(metrics?.discovery.cacheBackedCompressedReads).toBe(0);
   });
 
   it("prefers plain rollouts over compressed siblings", async () => {
@@ -151,6 +156,13 @@ describe("CodexSessionScanner", () => {
 
     expect(projects).toHaveLength(1);
     expect(projects[0].path).toBe("/home/user/plain-project");
+
+    const metrics = scanner.getLastScanMetrics();
+    expect(metrics?.rolloutFilesFound).toBe(2);
+    expect(metrics?.rolloutFilesAfterPrecedence).toBe(1);
+    expect(metrics?.precedenceSkippedCompressed).toBe(1);
+    expect(metrics?.plainRolloutFiles).toBe(1);
+    expect(metrics?.compressedRolloutFiles).toBe(1);
   });
 
   it("deduplicates mixed-slash Windows cwd variants into one project", async () => {
@@ -283,6 +295,42 @@ describe("CodexSessionScanner", () => {
     );
   });
 
+  it("records discovery index hit and miss metrics", async () => {
+    const sessionsDir = join(tmpdir(), `codex-scan-${randomUUID()}`);
+    const dataDir = join(tmpdir(), `codex-data-${randomUUID()}`);
+    tempDirs.push(sessionsDir, dataDir);
+
+    const dateDir = join(sessionsDir, "2026", "06", "25");
+    await mkdir(dateDir, { recursive: true });
+
+    const id = randomUUID();
+    await writeFile(
+      join(dateDir, `rollout-${id}.jsonl`),
+      `${makeSessionMeta(id, "/home/user/project-metrics")}\n`,
+    );
+
+    const scanner = new CodexSessionScanner({ sessionsDir, dataDir });
+    expect(await scanner.listProjects()).toHaveLength(1);
+    const firstMetrics = scanner.getLastScanMetrics();
+    expect(firstMetrics?.rolloutFilesFound).toBe(1);
+    expect(firstMetrics?.sessionsParsed).toBe(1);
+    expect(firstMetrics?.failedFiles).toBe(0);
+    expect(firstMetrics?.discovery.discoveryIndexMisses).toBe(1);
+    expect(firstMetrics?.discovery.discoveryIndexHits).toBe(0);
+    expect(firstMetrics?.discovery.firstLineReadsPlain).toBe(1);
+
+    const restartedScanner = new CodexSessionScanner({
+      sessionsDir,
+      dataDir,
+    });
+    expect(await restartedScanner.listProjects()).toHaveLength(1);
+    const restartedMetrics = restartedScanner.getLastScanMetrics();
+    expect(restartedMetrics?.discovery.discoveryIndexMisses).toBe(0);
+    expect(restartedMetrics?.discovery.discoveryIndexHits).toBe(1);
+    expect(restartedMetrics?.discovery.firstLineReadsPlain).toBe(0);
+    expect(restartedMetrics?.discovery.firstLineReadsZstd).toBe(0);
+  });
+
   it("updates cached metadata when a plain rollout path is replaced", async () => {
     const sessionsDir = join(tmpdir(), `codex-scan-${randomUUID()}`);
     const dataDir = join(tmpdir(), `codex-data-${randomUUID()}`);
@@ -407,6 +455,12 @@ describe("CodexSessionScanner", () => {
     expect(restartedProjects[0].path).toBe(
       "/home/user/project-compressed-cache",
     );
+    const metrics = restartedScanner.getLastScanMetrics();
+    expect(metrics?.compressedRolloutFiles).toBe(1);
+    expect(metrics?.discovery.discoveryIndexHits).toBe(1);
+    expect(metrics?.discovery.cacheBackedCompressedReads).toBe(1);
+    expect(metrics?.discovery.representationTransitions).toBe(1);
+    expect(metrics?.discovery.firstLineReadsZstd).toBe(0);
 
     const compressedIdentity = getCodexRolloutDiscoveryIdentity(
       sessionsDir,

@@ -3,8 +3,8 @@
 > The Codex metadata scanner is the YA subsystem that maps date-bucketed Codex
 > rollout files to projects and session summaries by reading rollout head
 > metadata; its current shortcut caches and durable discovery index help common
-> navigation, but watcher scheduling, metrics, and same-identity overwrite
-> validation still have known scale gaps.
+> navigation, but watcher scheduling, reader-side metrics, and same-identity
+> overwrite validation still have known scale gaps.
 
 Topic: codex-metadata-scanner
 
@@ -47,6 +47,11 @@ index:
   Codex uses date-bucket shards such as `2026/06/25.json` and stores a small
   source fingerprint to distinguish ordinary append growth from common
   same-path replacement cases.
+- `CodexSessionScanner` records per-scan metrics for duration, directories
+  walked, rollout counts, plain/zstd precedence filtering, discovery-index
+  hits/misses/suspect records, first-line reads by representation, and
+  cache-backed compressed discovery. Normal scans log these metrics at debug;
+  slow scans warn.
 - `ProjectScanner` keeps a short-lived project snapshot and coalesces
   concurrent scans.
 - `SessionIndexService` persists normalized session summaries and avoids
@@ -150,12 +155,13 @@ transitions and very large trees, the scanner should gain:
 1. An explicit validation strategy for same-identity, non-shrinking header
    overwrites; current source-fingerprint and shrink checks cover common
    replacement/truncation cases without rereading ordinary appends.
-2. Compression reconciliation metrics: `.jsonl` and `.jsonl.zst` map to the
-   same logical rollout, with plain-precedence and transition-safe dirty
-   handling now covered by tests.
+2. Extend scanner-style metrics to `CodexSessionReader` and watcher rescan
+   paths; project-scanner metrics now distinguish cache-backed compressed
+   discovery from zstd first-line reads.
 3. Keep streaming zstd first-line reads covered by tests so scanner discovery
    does not regress to full compressed transcript decompression.
-4. Scanner metrics and slow logs specific to Codex metadata discovery.
+4. Date-bucket/high-water metrics once routine scans stop walking the whole
+   tree.
 5. Adaptive periodic-rescan behavior or a different missed-event recovery
    strategy that cannot spin indefinitely on very large trees.
 

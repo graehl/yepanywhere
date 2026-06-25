@@ -91,6 +91,10 @@ current shape has important scale and representation gaps:
   but a same-path overwrite that keeps the same file identity and
   non-shrinking size can still keep cached head metadata until a stronger
   validation pass exists.
+- `CodexSessionScanner` now records project-scan metrics and slow logs for
+  file walking, discovery-index behavior, plain/zstd precedence, and
+  cache-backed compressed discovery. `CodexSessionReader` and watcher rescan
+  metrics are still thinner.
 - `session_meta` is effectively append-immutable, and the Codex adapter now
   reuses cached metadata across ordinary append/mtime/size changes.
 - Recursive discovery is still O(number of rollout files). Date-bucket layout
@@ -112,15 +116,15 @@ index without letting it diverge from provider-owned history:
 1. Add an explicit validation strategy for same-identity, non-shrinking header
    overwrites. Current source-fingerprint and shrink checks cover common
    replacement/truncation cases without rereading ordinary appends.
-2. Add metrics and watcher-path coverage around canonical-stem
-   rename/compression/delete reconciliation; scanner tests now cover a
-   `.jsonl -> .jsonl.zst` transition preserving the session.
+2. Extend metrics and watcher-path coverage around canonical-stem
+   rename/compression/delete reconciliation; scanner tests and metrics now
+   cover a `.jsonl -> .jsonl.zst` transition preserving the session.
 3. Re-read head metadata only when the rollout is new, cached metadata is
    missing or invalid, the file appears replaced/truncated, or an explicit
    validation pass marks the cache suspect.
-4. Add scanner instrumentation before broadening scope: files walked, metadata
-   cache hits/misses, compressed opens, zstd first-line reads, scan duration,
-   and skipped date buckets.
+4. Extend scanner instrumentation before broadening scope: `CodexSessionReader`
+   session-list scans, watcher rescan duration/backoff, dirty scopes, and
+   skipped date buckets once date-bucket probing exists.
 
 Invariant: the discovery index is derived and non-authoritative. YA must first
 observe a provider file and only then reuse indexed metadata for that file. A

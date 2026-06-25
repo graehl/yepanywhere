@@ -32,12 +32,28 @@ export interface CodexDiscoveredSession {
   isSubagent: boolean;
 }
 
+export interface CodexRolloutDiscoveryStats {
+  statCalls: number;
+  activeWindowSkips: number;
+  discoveryIndexDisabled: number;
+  discoveryIndexHits: number;
+  discoveryIndexMisses: number;
+  discoveryIndexSuspect: number;
+  discoveryIndexRefreshes: number;
+  representationTransitions: number;
+  cacheBackedCompressedReads: number;
+  firstLineReadsPlain: number;
+  firstLineReadsZstd: number;
+  metadataReadFailures: number;
+}
+
 export interface ReadCodexRolloutMetadataOptions {
   sessionsDir: string;
   filePath: string;
   discoveryIndex?: SessionDiscoveryIndex;
   activeAfterMs?: number;
   maxBytes?: number;
+  metrics?: CodexRolloutDiscoveryStats;
 }
 
 export function createCodexSessionDiscoveryIndex(
@@ -52,11 +68,31 @@ export function createCodexSessionDiscoveryIndex(
   });
 }
 
+export function createCodexRolloutDiscoveryStats(): CodexRolloutDiscoveryStats {
+  return {
+    statCalls: 0,
+    activeWindowSkips: 0,
+    discoveryIndexDisabled: 0,
+    discoveryIndexHits: 0,
+    discoveryIndexMisses: 0,
+    discoveryIndexSuspect: 0,
+    discoveryIndexRefreshes: 0,
+    representationTransitions: 0,
+    cacheBackedCompressedReads: 0,
+    firstLineReadsPlain: 0,
+    firstLineReadsZstd: 0,
+    metadataReadFailures: 0,
+  };
+}
+
 export async function readCodexRolloutMetadata(
   options: ReadCodexRolloutMetadataOptions,
 ): Promise<CodexDiscoveredSession | null> {
+  const metrics = options.metrics;
+  if (metrics) metrics.statCalls += 1;
   const stats = await stat(options.filePath);
   if (options.activeAfterMs && stats.mtimeMs < options.activeAfterMs) {
+    if (metrics) metrics.activeWindowSkips += 1;
     return null;
   }
 
@@ -69,13 +105,23 @@ export async function readCodexRolloutMetadata(
     identity.shardKey,
     identity.key,
   );
+  if (!options.discoveryIndex) {
+    if (metrics) metrics.discoveryIndexDisabled += 1;
+  } else if (!cached) {
+    if (metrics) metrics.discoveryIndexMisses += 1;
+  }
   if (
     cached &&
     isCachedRecordUsable(cached, identity, stats, sourceFingerprint)
   ) {
+    if (metrics) metrics.discoveryIndexHits += 1;
     if (
       shouldRefreshCachedRecord(cached, identity, stats, sourceFingerprint)
     ) {
+      if (metrics) metrics.discoveryIndexRefreshes += 1;
+      if (cached.representation !== identity.representation) {
+        if (metrics) metrics.representationTransitions += 1;
+      }
       await options.discoveryIndex?.upsertRecord(identity.shardKey, {
         key: identity.key,
         relativePath: identity.relativePath,
@@ -87,17 +133,40 @@ export async function readCodexRolloutMetadata(
         sourceFingerprint,
       });
     }
+    if (identity.representation === "zstd") {
+      if (metrics) metrics.cacheBackedCompressedReads += 1;
+    }
     return toDiscoveredSession(cached.metadata, options.filePath, stats);
   }
+  if (cached) {
+    if (metrics) metrics.discoveryIndexSuspect += 1;
+  }
 
-  const firstLine = await readFirstLine(
-    options.filePath,
-    options.maxBytes ?? CODEX_META_READ_MAX_BYTES,
-  );
-  if (!firstLine) return null;
+  if (identity.representation === "zstd") {
+    if (metrics) metrics.firstLineReadsZstd += 1;
+  } else {
+    if (metrics) metrics.firstLineReadsPlain += 1;
+  }
+  let firstLine: string | null;
+  try {
+    firstLine = await readFirstLine(
+      options.filePath,
+      options.maxBytes ?? CODEX_META_READ_MAX_BYTES,
+    );
+  } catch (error) {
+    if (metrics) metrics.metadataReadFailures += 1;
+    throw error;
+  }
+  if (!firstLine) {
+    if (metrics) metrics.metadataReadFailures += 1;
+    return null;
+  }
 
   const metadata = parseCodexSessionMeta(firstLine, stats);
-  if (!metadata) return null;
+  if (!metadata) {
+    if (metrics) metrics.metadataReadFailures += 1;
+    return null;
+  }
 
   await options.discoveryIndex?.upsertRecord(identity.shardKey, {
     key: identity.key,

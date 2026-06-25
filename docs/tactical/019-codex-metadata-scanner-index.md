@@ -24,7 +24,7 @@ Progress:
   rollout with explicit transition tests.
 - [x] Add streaming zstd first-line reads, or keep compressed discovery
   explicitly opt-in until that exists.
-- [ ] Add Codex scanner metrics and slow logs.
+- [x] Add Codex project-scanner metrics and slow logs.
 - [ ] Make Codex watcher missed-event recovery bounded under expensive trees.
 
 ## Context
@@ -247,7 +247,7 @@ Acceptance criteria:
 - [ ] Add explicit watcher-invalidation coverage for compression transitions
   if the watcher reconciliation path changes.
 - [x] A plain+compressed sibling pair lists only one session.
-- [ ] Scanner metrics distinguish cache-backed compressed discovery from zstd
+- [x] Scanner metrics distinguish cache-backed compressed discovery from zstd
   first-line reads.
 - [x] No default list path does whole-file zstd decompression for metadata.
 
@@ -300,21 +300,29 @@ Acceptance criteria:
 
 ## Metrics
 
-Add Codex scanner metrics before and after the index work:
+Implemented for `CodexSessionScanner` on 2026-06-25. Each uncached scan now
+records and logs:
 
 - scan duration;
 - directories walked;
-- rollout files discovered;
+- directory read errors;
+- rollout files discovered before and after plain/zstd precedence filtering;
 - discovery index hits/misses;
+- suspect discovery-index records and refreshes;
+- cache-backed compressed discovery;
 - first-line reads by representation;
 - zstd first-line reads;
-- skipped compressed files due to missing gate;
-- summary parses;
-- watcher rescan duration and backoff interval;
-- dirty-scope count.
+- parsed and skipped metadata files.
 
-Slow logs should fire for Codex metadata scans over a threshold, similar in
+Slow logs fire for Codex project metadata scans over a threshold, similar in
 spirit to `SessionIndexService` performance logs.
+
+Remaining metrics gaps:
+
+- extend equivalent metrics to `CodexSessionReader` session-list scans;
+- watcher rescan duration and backoff interval;
+- dirty-scope count;
+- skipped date buckets, once date-bucket probing exists.
 
 ## Verification Plan
 
@@ -327,6 +335,8 @@ Automated:
 - Unit tests for compressed transition `.jsonl -> .jsonl.zst`.
 - Unit tests for same-path replacement and shrink/truncation cache
   reconciliation.
+- Unit tests for scanner metrics around cache hits/misses, plain/zstd
+  precedence, and cache-backed compressed discovery.
 - Unit tests for streaming zstd first-line reads if Phase 4 lands.
 - Existing server tests:
   - `test/projects/codex-scanner.test.ts`
@@ -340,8 +350,9 @@ Manual:
 - Confirm default lists show old sessions with `SESSION_AUTO_ARCHIVE_DAYS=0`.
 - Compress a known rollout or use a fixture under a test Codex home and confirm
   it remains visible only through an allowed gate.
-- Watch server logs with scanner perf logging enabled during global sessions,
-  project sessions, and inbox navigation.
+- Watch server logs during global sessions, project sessions, and inbox
+  navigation; Codex project scans now emit debug metrics and warn on slow
+  scans.
 
 ## Non-Goals
 

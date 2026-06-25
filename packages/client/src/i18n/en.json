@@ -1303,7 +1303,7 @@
   "modelSettingsDefaultModelTitle": "Default Model",
   "modelSettingsDefaultModelDescription": "Choose the default model for that provider when starting a new session.",
   "modelSettingsSessionDefaultsTitle": "Session Defaults",
-  "modelSettingsSessionDefaultsDescription": "Choose the provider, model, and reasoning behavior new sessions should start with.",
+  "modelSettingsSessionDefaultsDescription": "(defaults for new sessions)",
   "modelSettingsThinkingTitle": "Default Thinking Mode",
   "modelSettingsThinkingDescription": "Choose how new sessions request thinking by default. Auto lets the provider decide when to think.",
   "modelSettingsThinkingOffLabel": "Off",

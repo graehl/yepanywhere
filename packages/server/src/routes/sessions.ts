@@ -77,7 +77,10 @@ import {
   augmentEditToolUses,
   augmentPersistedSessionMessages,
 } from "../sessions/persisted-augments.js";
-import { findSessionSummaryAcrossProviders } from "../sessions/provider-resolution.js";
+import {
+  type ProviderResolutionDeps,
+  findSessionSummaryAcrossProviders,
+} from "../sessions/provider-resolution.js";
 import type { ISessionReader } from "../sessions/types.js";
 import { getProvider } from "../sdk/providers/index.js";
 import { getStaticSlashCommandsForProvider } from "../sdk/providers/staticSlashCommands.js";
@@ -567,6 +570,47 @@ export interface SessionsDeps {
   modelInfoService?: ModelInfoService;
   /** Data directory for local security/audit logs */
   dataDir?: string;
+}
+
+function providerResolutionDeps(deps: SessionsDeps): ProviderResolutionDeps {
+  return {
+    readerFactory: deps.readerFactory,
+    codexSessionsDir: deps.codexSessionsDir,
+    codexReaderFactory: deps.codexReaderFactory,
+    geminiSessionsDir: deps.geminiSessionsDir,
+    geminiReaderFactory: deps.geminiReaderFactory,
+    geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
+    grokSessionsDir: deps.grokSessionsDir,
+    grokReaderFactory: deps.grokReaderFactory,
+    piSessionsDir: deps.piSessionsDir,
+    piReaderFactory: deps.piReaderFactory,
+  };
+}
+
+async function resolveSessionReaderForAgentContent({
+  deps,
+  project,
+  sessionId,
+  projectId,
+}: {
+  deps: SessionsDeps;
+  project: Project;
+  sessionId: string;
+  projectId: UrlProjectId;
+}): Promise<ISessionReader> {
+  const metadataProvider =
+    deps.sessionMetadataService?.getProvider(sessionId) as
+      | ProviderName
+      | undefined;
+  const resolved = await findSessionSummaryAcrossProviders(
+    project,
+    sessionId,
+    projectId,
+    providerResolutionDeps(deps),
+    metadataProvider,
+  );
+
+  return resolved?.source.reader ?? deps.readerFactory(project);
 }
 
 interface StartSessionBody {
@@ -2158,7 +2202,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Project not found" }, 404);
     }
 
-    const reader = deps.readerFactory(project);
+    const reader = await resolveSessionReaderForAgentContent({
+      deps,
+      project,
+      sessionId: c.req.param("sessionId"),
+      projectId: projectId as UrlProjectId,
+    });
     const mappings = await reader.getAgentMappings();
 
     return c.json({ mappings });
@@ -2182,7 +2231,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         return c.json({ error: "Project not found" }, 404);
       }
 
-      const reader = deps.readerFactory(project);
+      const reader = await resolveSessionReaderForAgentContent({
+        deps,
+        project,
+        sessionId: c.req.param("sessionId"),
+        projectId: projectId as UrlProjectId,
+      });
       const agentSession = await reader.getAgentSession(agentId);
 
       if (!agentSession) {

@@ -99,14 +99,14 @@ function statusBadge({
   isError,
   status,
   childStatus,
-  hasResult,
+  hasAgentId,
 }: {
   isError: boolean;
   status: ToolCallItem["status"];
   childStatus?: string;
-  hasResult: boolean;
+  hasAgentId: boolean;
 }): { className: string; text: string; isRunning: boolean } {
-  if (isError) {
+  if (isError || (status !== "pending" && !hasAgentId)) {
     return { className: "badge-error", text: "failed", isRunning: false };
   }
   if (status === "aborted") {
@@ -126,16 +126,30 @@ function statusBadge({
   if (childStatus === "failed") {
     return { className: "badge-error", text: "failed", isRunning: false };
   }
-  if (childStatus === "running" || (!hasResult && status === "pending")) {
+  if (childStatus === "running" || (!hasAgentId && status === "pending")) {
     return { className: "badge-running", text: "running", isRunning: true };
   }
   if (childStatus === "completed") {
     return { className: "badge-success", text: "completed", isRunning: false };
   }
-  if (hasResult) {
+  if (hasAgentId) {
     return { className: "badge-success", text: "spawned", isRunning: false };
   }
   return { className: "badge-pending", text: "pending", isRunning: false };
+}
+
+function rawResultText(result: unknown): string {
+  if (typeof result === "string") {
+    return result;
+  }
+  if (result === undefined) {
+    return "";
+  }
+  try {
+    return JSON.stringify(result, null, 2);
+  } catch {
+    return String(result);
+  }
 }
 
 function SpawnAgentInline({
@@ -164,7 +178,7 @@ function SpawnAgentInline({
     isError,
     status,
     childStatus: liveContent?.status,
-    hasResult: result !== undefined,
+    hasAgentId: Boolean(agentId),
   });
 
   const handleExpand = async () => {
@@ -185,30 +199,49 @@ function SpawnAgentInline({
   };
 
   const title = spawnAgentTitle(input, parsedResult);
+  const failedWithoutAgent = status !== "pending" && !agentId;
 
   return (
     <div
       className={`task-inline ${isExpanded ? "expanded" : "collapsed"} status-${badge.text}`}
     >
-      <button
-        type="button"
-        className="task-inline-header"
-        onClick={handleExpand}
-      >
-        <span className="task-expand-icon">{isExpanded ? "▼" : "▶"}</span>
-        <span className="badge badge-info task-agent-type">
-          {spawnAgentType(input)}
-        </span>
-        <span className="task-inline-title">{title}</span>
-        {input.model && <span className="badge task-model">{input.model}</span>}
-        {badge.isRunning ? (
-          <span className="task-spinner" role="status" aria-label="Running">
-            <Spinner />
+      {failedWithoutAgent ? (
+        <div className="task-inline-header noninteractive">
+          <span className="task-expand-icon" />
+          <span className="badge badge-info task-agent-type">
+            {spawnAgentType(input)}
           </span>
-        ) : (
+          <span className="task-inline-title">{title}</span>
+          {input.model && <span className="badge task-model">{input.model}</span>}
           <span className={`badge ${badge.className}`}>{badge.text}</span>
-        )}
-      </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="task-inline-header"
+          onClick={handleExpand}
+        >
+          <span className="task-expand-icon">{isExpanded ? "▼" : "▶"}</span>
+          <span className="badge badge-info task-agent-type">
+            {spawnAgentType(input)}
+          </span>
+          <span className="task-inline-title">{title}</span>
+          {input.model && <span className="badge task-model">{input.model}</span>}
+          {badge.isRunning ? (
+            <span className="task-spinner" role="status" aria-label="Running">
+              <Spinner />
+            </span>
+          ) : (
+            <span className={`badge ${badge.className}`}>{badge.text}</span>
+          )}
+        </button>
+      )}
+
+      {failedWithoutAgent && rawResultText(result) && (
+        <pre className="tool-fallback tool-fallback-error">
+          <code>{rawResultText(result)}</code>
+        </pre>
+      )}
 
       {isLoadingContent && (
         <div className="task-loading">

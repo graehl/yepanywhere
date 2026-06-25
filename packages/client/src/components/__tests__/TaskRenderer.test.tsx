@@ -420,4 +420,61 @@ describe("Codex spawn_agent rendering", () => {
 
     expect(screen.getByText("Searching for tree files...")).toBeDefined();
   });
+
+  it("keeps failed spawn_agent rows non-expandable with raw output", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-1",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "call-spawn-failed",
+            name: "spawn_agent",
+            input: {
+              agent_type: "worker",
+              message: "Demo subagent task",
+            },
+          },
+        ],
+      },
+      {
+        id: "msg-2",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "call-spawn-failed",
+            content:
+              "Full-history forked agents inherit the parent agent type, model, and reasoning effort.",
+          },
+        ],
+      },
+    ];
+    const [item] = preprocessMessages(messages);
+
+    expect(item?.type).toBe("tool_call");
+    if (item?.type !== "tool_call") {
+      throw new Error("Expected a tool_call render item");
+    }
+
+    render(
+      <TestWrapper>
+        <RenderItemComponent
+          item={item}
+          isStreaming={false}
+          thinkingExpanded={false}
+          toggleThinkingExpanded={() => {}}
+        />
+      </TestWrapper>,
+    );
+
+    expect(screen.queryByRole("button", { name: /Demo subagent task/i })).toBe(
+      null,
+    );
+    expect(
+      screen.getByText(/Full-history forked agents inherit/i),
+    ).toBeDefined();
+    expect(screen.queryByText("No agent session found")).toBe(null);
+  });
 });

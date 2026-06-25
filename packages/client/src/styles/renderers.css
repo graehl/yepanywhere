@@ -3698,6 +3698,14 @@ details[open] .collapsible__icon {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.task-inline-header.noninteractive {
+  cursor: default;
+}
+
+.task-inline-header.noninteractive:hover {
+  background: transparent;
+}
+
 .task-inline-header:focus {
   outline: none;
   background: rgba(255, 255, 255, 0.03);

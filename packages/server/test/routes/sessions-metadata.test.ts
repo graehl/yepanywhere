@@ -337,6 +337,72 @@ describe("Sessions metadata route", () => {
     );
   });
 
+  it("resolves agent content across providers for mixed-provider projects", async () => {
+    const project = createProject();
+    const summary = createSummary();
+    const childMessage: Message = {
+      id: "child-message-1",
+      role: "assistant",
+      content: [{ type: "text", text: "Child transcript" }],
+    };
+    const claudeReader = {
+      getSessionSummary: vi.fn(async () => null),
+      getAgentMappings: vi.fn(async () => []),
+      getAgentSession: vi.fn(async () => ({
+        messages: [],
+        status: "pending",
+      })),
+    } as unknown as ISessionReader;
+    const codexReader = {
+      getSessionSummary: vi.fn(async () => summary),
+      getAgentMappings: vi.fn(async () => [
+        { toolUseId: "call-spawn", agentId: "child-thread" },
+      ]),
+      getAgentSession: vi.fn(async () => ({
+        messages: [childMessage],
+        status: "completed",
+      })),
+    } as unknown as ISessionReader;
+
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      readerFactory: vi.fn(() => claudeReader),
+      codexSessionsDir: "/tmp/codex-sessions",
+      codexReaderFactory: vi.fn(
+        () => codexReader as unknown as CodexSessionReader,
+      ),
+    });
+
+    const mappingsResponse = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/agents`,
+    );
+    expect(mappingsResponse.status).toBe(200);
+    await expect(mappingsResponse.json()).resolves.toEqual({
+      mappings: [{ toolUseId: "call-spawn", agentId: "child-thread" }],
+    });
+
+    const contentResponse = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/agents/child-thread`,
+    );
+    expect(contentResponse.status).toBe(200);
+    await expect(contentResponse.json()).resolves.toMatchObject({
+      messages: [childMessage],
+      status: "completed",
+    });
+
+    expect(vi.mocked(claudeReader.getAgentMappings)).not.toHaveBeenCalled();
+    expect(vi.mocked(claudeReader.getAgentSession)).not.toHaveBeenCalled();
+    expect(vi.mocked(codexReader.getAgentMappings)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(codexReader.getAgentSession)).toHaveBeenCalledWith(
+      "child-thread",
+    );
+  });
+
   it("loads Grok detail by native id after process loss", async () => {
     const project = createProject();
     const grokSummary: SessionSummary = {

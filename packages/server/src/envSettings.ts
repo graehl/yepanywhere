@@ -232,7 +232,7 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
     name: "CODEX_WATCH_PERIODIC_RESCAN_MS",
     group: "Sessions & scanning",
     description:
-      "Periodic full-rescan interval for the Codex session watcher (ms). 0 disables; on by default on macOS/Windows.",
+      "Minimum periodic full-rescan interval for the Codex session watcher (ms). The watcher adapts upward when rescans are slow. 0 disables; on by default on macOS/Windows.",
   },
   {
     name: "SESSION_INDEX_FULL_VALIDATION_MS",

@@ -14,6 +14,7 @@ export type {
 } from "./EventBus.js";
 export { FileWatcher } from "./FileWatcher.js";
 export type {
+  FileWatcherBackoffReason,
   FileWatcherOptions,
   FileWatcherRescanMetrics,
   FileWatcherRescanReason,

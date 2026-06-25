@@ -26,7 +26,8 @@ Progress:
   explicitly opt-in until that exists.
 - [x] Add Codex project-scanner metrics and slow logs.
 - [x] Add watcher rescan metrics and slow logs.
-- [ ] Make Codex watcher missed-event recovery bounded under expensive trees.
+- [x] Make Codex watcher missed-event recovery bounded under expensive trees
+  with adaptive periodic-rescan backoff.
 
 ## Context
 
@@ -74,8 +75,8 @@ The current scanner model does not encode that invariant strongly enough:
 - Codex file events mark loaded Codex scopes dirty broadly because a raw file
   event does not cheaply identify the project scope.
 - The Codex watcher has a periodic full-tree rescan on Windows/macOS by
-  default. It avoids overlapping rescans, but it does not back off when the
-  scan itself is expensive.
+  default. It avoids overlapping rescans and now backs off above the configured
+  minimum interval when scans are expensive.
 
 The `.jsonl.zst` case makes this sharper. Plain JSONL can read the first line
 with a bounded partial read. A naive compressed reader that decompresses the
@@ -277,28 +278,33 @@ Tests:
 
 Make missed-event recovery bounded.
 
-Near-term options:
+Implemented near-term behavior:
 
-- Increase `CODEX_WATCH_PERIODIC_RESCAN_MS` dynamically when a periodic rescan
-  takes a large fraction of the interval.
-- Record duration and skip the next tick if the prior scan overran.
-- Prefer date-bucket probing once the discovery index has high-water marks.
+- Treat `CODEX_WATCH_PERIODIC_RESCAN_MS` as the minimum periodic-rescan
+  interval.
+- Use self-scheduled periodic timeouts instead of `setInterval`, so the next
+  periodic scan is scheduled only after the current tick has completed or
+  skipped.
+- Increase the next periodic delay when a periodic rescan takes a large
+  fraction of the current interval or when overlap skips are observed.
+- Recover back toward the configured minimum after cheap periodic scans.
 - Allow `CODEX_WATCH_PERIODIC_RESCAN_MS=0` to remain the hard opt-out.
 
 Longer-term option:
 
+- Prefer date-bucket probing once the discovery index has high-water marks.
 - Replace frequent full-tree rescans with an index-backed reconciliation job
   that scans recent date buckets often and old buckets rarely, with explicit
   manual/debug full-rescan support.
 
 Acceptance criteria:
 
-- Periodic rescans cannot run continuously on a large tree.
+- [x] Periodic rescans cannot run continuously on a large tree.
 - [x] Slow logs identify the watched dir, provider, rescan reason, files
   walked, duration, emitted create/modify/delete counts, and overlap skips.
-- Slow logs identify the active backoff interval once adaptive backoff lands.
-- Watcher teardown still clears timers and state.
-- Existing `architecture-mandates` resource-quiescence requirements remain
+- [x] Slow logs identify the active backoff interval.
+- [x] Watcher teardown still clears timers and state.
+- [x] Existing `architecture-mandates` resource-quiescence requirements remain
   satisfied.
 
 ## Metrics
@@ -323,7 +329,6 @@ spirit to `SessionIndexService` performance logs.
 Remaining metrics gaps:
 
 - extend equivalent metrics to `CodexSessionReader` session-list scans;
-- watcher adaptive backoff interval;
 - dirty-scope count;
 - skipped date buckets, once date-bucket probing exists.
 
@@ -341,6 +346,7 @@ Automated:
 - Unit tests for scanner metrics around cache hits/misses, plain/zstd
   precedence, and cache-backed compressed discovery.
 - Unit tests for watcher rescan metrics and overlap-skip accounting.
+- Unit tests for adaptive periodic-rescan backoff and recovery.
 - Unit tests for streaming zstd first-line reads if Phase 4 lands.
 - Existing server tests:
   - `test/projects/codex-scanner.test.ts`
@@ -374,7 +380,7 @@ Manual:
   overwrites?
 - Should archived Codex sessions get a separate root in the same index, or a
   separate archive index?
-- What is the right default for `CODEX_WATCH_PERIODIC_RESCAN_MS` after the
-  discovery index exists?
+- Should the Codex watcher replace full-tree rescans with date-bucket probing
+  once discovery shards expose high-water marks?
 - Should there be a user-facing "rebuild Codex history index" action, or only
   a maintenance/debug endpoint?

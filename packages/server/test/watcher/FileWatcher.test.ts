@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventBus, type FileChangeEvent } from "../../src/watcher/EventBus.js";
 import { FileWatcher } from "../../src/watcher/FileWatcher.js";
 
@@ -107,6 +107,8 @@ describe("FileWatcher", () => {
       watchDir,
       provider: "codex",
       eventBus: new EventBus(),
+      periodicRescanMs: 100,
+      periodicRescanMaxBackoffMs: 1000,
       rescanSlowLogThresholdMs: 60_000,
     });
     const internals = watcher as unknown as FileWatcherTestAccess;
@@ -119,8 +121,57 @@ describe("FileWatcher", () => {
 
     expect(watcher.getLastRescanMetrics()).toMatchObject({
       reason: "periodic",
+      periodicRescanCurrentMs: 100,
+      periodicRescanNextMs: 200,
+      periodicRescanBackoffReason: "overlap",
       overlapSkipsSinceLast: 1,
       overlapSkipsTotal: 1,
     });
+    expect(watcher.getPeriodicRescanDelayMs()).toBe(200);
+  });
+
+  it("backs off and recovers periodic rescan delay from duration", async () => {
+    const watchDir = join(tmpdir(), `file-watcher-${randomUUID()}`);
+    tempDirs.push(watchDir);
+    await mkdir(watchDir, { recursive: true });
+
+    const watcher = new FileWatcher({
+      watchDir,
+      provider: "codex",
+      eventBus: new EventBus(),
+      periodicRescanMs: 100,
+      periodicRescanMaxBackoffMs: 1000,
+      rescanSlowLogThresholdMs: 60_000,
+    });
+    const dateNow = vi.spyOn(Date, "now");
+
+    try {
+      dateNow.mockReturnValue(1060);
+      dateNow.mockReturnValueOnce(1000).mockReturnValueOnce(1060);
+      forceRescan(watcher, "periodic");
+
+      expect(watcher.getLastRescanMetrics()).toMatchObject({
+        durationMs: 60,
+        periodicRescanCurrentMs: 100,
+        periodicRescanNextMs: 200,
+        periodicRescanBackoffReason: "slow",
+      });
+      expect(watcher.getPeriodicRescanDelayMs()).toBe(200);
+
+      dateNow.mockReset();
+      dateNow.mockReturnValue(2005);
+      dateNow.mockReturnValueOnce(2000).mockReturnValueOnce(2005);
+      forceRescan(watcher, "periodic");
+
+      expect(watcher.getLastRescanMetrics()).toMatchObject({
+        durationMs: 5,
+        periodicRescanCurrentMs: 200,
+        periodicRescanNextMs: 100,
+        periodicRescanBackoffReason: "recovered",
+      });
+      expect(watcher.getPeriodicRescanDelayMs()).toBe(100);
+    } finally {
+      dateNow.mockRestore();
+    }
   });
 });

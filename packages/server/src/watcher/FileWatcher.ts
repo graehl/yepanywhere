@@ -23,17 +23,29 @@ export interface FileWatcherOptions {
    * Useful on platforms where fs.watch may miss deep file writes.
    */
   periodicRescanMs?: number;
+  /** Maximum adaptive periodic rescan delay in ms. */
+  periodicRescanMaxBackoffMs?: number;
   /** Slow rescan log threshold in ms (default: 250). */
   rescanSlowLogThresholdMs?: number;
 }
 
 export type FileWatcherRescanReason = "fallback" | "periodic";
+export type FileWatcherBackoffReason =
+  | "disabled"
+  | "overlap"
+  | "recovered"
+  | "slow"
+  | "unchanged";
 
 export interface FileWatcherRescanMetrics {
   provider: WatchProvider;
   watchDir: string;
   reason: FileWatcherRescanReason;
   periodicRescanMs: number;
+  periodicRescanCurrentMs: number;
+  periodicRescanNextMs: number;
+  periodicRescanMaxMs: number;
+  periodicRescanBackoffReason: FileWatcherBackoffReason;
   durationMs: number;
   directoriesVisited: number;
   filesScanned: number;
@@ -54,6 +66,9 @@ export interface FileWatcherRescanMetrics {
 }
 
 const DEFAULT_RESCAN_SLOW_LOG_THRESHOLD_MS = 250;
+const PERIODIC_RESCAN_BACKOFF_RATIO = 0.5;
+const PERIODIC_RESCAN_RECOVERY_RATIO = 0.1;
+const PERIODIC_RESCAN_DEFAULT_MAX_BACKOFF_MS = 60 * 60 * 1000;
 
 export class FileWatcher {
   private watchDir: string;
@@ -61,6 +76,8 @@ export class FileWatcher {
   private eventBus: EventBus;
   private debounceMs: number;
   private periodicRescanMs: number;
+  private periodicRescanCurrentMs: number;
+  private periodicRescanMaxBackoffMs: number;
   private rescanSlowLogThresholdMs: number;
   private watcher: fs.FSWatcher | null = null;
   private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -78,6 +95,15 @@ export class FileWatcher {
     this.eventBus = options.eventBus;
     this.debounceMs = options.debounceMs ?? 200;
     this.periodicRescanMs = options.periodicRescanMs ?? 0;
+    this.periodicRescanCurrentMs = this.periodicRescanMs;
+    this.periodicRescanMaxBackoffMs = Math.max(
+      this.periodicRescanMs,
+      options.periodicRescanMaxBackoffMs ??
+        Math.max(
+          PERIODIC_RESCAN_DEFAULT_MAX_BACKOFF_MS,
+          this.periodicRescanMs * 12,
+        ),
+    );
     this.rescanSlowLogThresholdMs = Math.max(
       0,
       options.rescanSlowLogThresholdMs ??
@@ -119,11 +145,10 @@ export class FileWatcher {
       getLogger().info(`[FileWatcher] Watching ${this.watchDir}`);
 
       if (this.periodicRescanMs > 0) {
-        this.periodicRescanTimer = setInterval(() => {
-          this.rescanAndEmit("periodic");
-        }, this.periodicRescanMs);
+        this.periodicRescanCurrentMs = this.periodicRescanMs;
+        this.scheduleNextPeriodicRescan();
         getLogger().info(
-          `[FileWatcher] Periodic rescan enabled (${this.periodicRescanMs}ms) for ${this.watchDir}`,
+          `[FileWatcher] Periodic rescan enabled (base=${this.periodicRescanMs}ms, max=${this.periodicRescanMaxBackoffMs}ms) for ${this.watchDir}`,
         );
       }
     } catch (error) {
@@ -150,7 +175,7 @@ export class FileWatcher {
       this.rescanTimer = null;
     }
     if (this.periodicRescanTimer) {
-      clearInterval(this.periodicRescanTimer);
+      clearTimeout(this.periodicRescanTimer);
       this.periodicRescanTimer = null;
     }
     this.knownFileMtimes.clear();
@@ -169,6 +194,10 @@ export class FileWatcher {
     return this.lastRescanMetrics
       ? { ...this.lastRescanMetrics }
       : null;
+  }
+
+  getPeriodicRescanDelayMs(): number {
+    return this.periodicRescanCurrentMs;
   }
 
   private scanExistingFiles(): void {
@@ -324,6 +353,22 @@ export class FileWatcher {
     );
   }
 
+  private scheduleNextPeriodicRescan(): void {
+    if (this.periodicRescanMs <= 0 || !this.watcher) return;
+    if (this.periodicRescanTimer) {
+      clearTimeout(this.periodicRescanTimer);
+    }
+
+    this.periodicRescanTimer = setTimeout(() => {
+      this.periodicRescanTimer = null;
+      try {
+        this.rescanAndEmit("periodic");
+      } finally {
+        this.scheduleNextPeriodicRescan();
+      }
+    }, this.periodicRescanCurrentMs);
+  }
+
   private rescanAndEmit(reason: FileWatcherRescanReason): void {
     if (this.rescanInProgress) {
       this.rescanOverlapSkipsSinceLast += 1;
@@ -334,6 +379,12 @@ export class FileWatcher {
           provider: this.provider,
           watchDir: this.watchDir,
           reason,
+          periodicRescanMs: this.periodicRescanMs,
+          periodicRescanCurrentMs: this.periodicRescanCurrentMs,
+          periodicRescanNextMs: this.periodicRescanCurrentMs,
+          periodicRescanMaxMs: this.periodicRescanMaxBackoffMs,
+          periodicRescanBackoffReason:
+            this.periodicRescanMs > 0 ? "overlap" : "disabled",
           overlapSkipsSinceLast: this.rescanOverlapSkipsSinceLast,
           overlapSkipsTotal: this.rescanOverlapSkipsTotal,
         },
@@ -377,6 +428,7 @@ export class FileWatcher {
       metrics.knownFilesAfter = this.knownFileMtimes.size;
     } finally {
       metrics.durationMs = Date.now() - startedAt;
+      this.updatePeriodicRescanBackoff(metrics);
       this.lastRescanMetrics = { ...metrics };
       this.logRescanMetrics(metrics);
       this.rescanOverlapSkipsSinceLast = 0;
@@ -392,6 +444,11 @@ export class FileWatcher {
       watchDir: this.watchDir,
       reason,
       periodicRescanMs: this.periodicRescanMs,
+      periodicRescanCurrentMs: this.periodicRescanCurrentMs,
+      periodicRescanNextMs: this.periodicRescanCurrentMs,
+      periodicRescanMaxMs: this.periodicRescanMaxBackoffMs,
+      periodicRescanBackoffReason:
+        this.periodicRescanMs > 0 ? "unchanged" : "disabled",
       durationMs: 0,
       directoriesVisited: 0,
       filesScanned: 0,
@@ -410,6 +467,57 @@ export class FileWatcher {
       overlapSkipsSinceLast: this.rescanOverlapSkipsSinceLast,
       overlapSkipsTotal: this.rescanOverlapSkipsTotal,
     };
+  }
+
+  private updatePeriodicRescanBackoff(
+    metrics: FileWatcherRescanMetrics,
+  ): void {
+    if (metrics.reason !== "periodic" || this.periodicRescanMs <= 0) {
+      metrics.periodicRescanBackoffReason =
+        this.periodicRescanMs > 0 ? "unchanged" : "disabled";
+      metrics.periodicRescanCurrentMs = this.periodicRescanCurrentMs;
+      metrics.periodicRescanNextMs = this.periodicRescanCurrentMs;
+      return;
+    }
+
+    const currentDelayMs = this.periodicRescanCurrentMs;
+    const slowThresholdMs = Math.max(
+      1,
+      Math.floor(currentDelayMs * PERIODIC_RESCAN_BACKOFF_RATIO),
+    );
+    const recoveryThresholdMs = Math.max(
+      1,
+      Math.floor(currentDelayMs * PERIODIC_RESCAN_RECOVERY_RATIO),
+    );
+    let nextDelayMs = currentDelayMs;
+    let reason: FileWatcherBackoffReason = "unchanged";
+
+    if (
+      metrics.overlapSkipsSinceLast > 0 ||
+      metrics.durationMs >= slowThresholdMs
+    ) {
+      nextDelayMs = Math.max(
+        this.periodicRescanMs,
+        currentDelayMs * 2,
+        Math.ceil(metrics.durationMs * 2),
+      );
+      reason = metrics.overlapSkipsSinceLast > 0 ? "overlap" : "slow";
+    } else if (
+      currentDelayMs > this.periodicRescanMs &&
+      metrics.durationMs <= recoveryThresholdMs
+    ) {
+      nextDelayMs = Math.max(
+        this.periodicRescanMs,
+        Math.ceil(currentDelayMs / 2),
+      );
+      reason = nextDelayMs < currentDelayMs ? "recovered" : "unchanged";
+    }
+
+    nextDelayMs = Math.min(this.periodicRescanMaxBackoffMs, nextDelayMs);
+    this.periodicRescanCurrentMs = nextDelayMs;
+    metrics.periodicRescanCurrentMs = currentDelayMs;
+    metrics.periodicRescanNextMs = nextDelayMs;
+    metrics.periodicRescanBackoffReason = reason;
   }
 
   private logRescanMetrics(metrics: FileWatcherRescanMetrics): void {

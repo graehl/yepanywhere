@@ -51,8 +51,8 @@ export interface Config {
   /** pi sessions directory (~/.pi/agent/sessions) */
   piSessionsDir: string;
   /**
-   * Periodic full-tree rescan interval for codex session watcher (ms).
-   * Helps recover from missed fs.watch events on macOS. 0 disables it.
+   * Minimum periodic full-tree rescan interval for codex session watcher (ms).
+   * The watcher backs off above this floor when rescans are slow. 0 disables it.
    */
   codexWatchPeriodicRescanMs: number;
   /**

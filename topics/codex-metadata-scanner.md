@@ -3,7 +3,7 @@
 > The Codex metadata scanner is the YA subsystem that maps date-bucketed Codex
 > rollout files to projects and session summaries by reading rollout head
 > metadata; its current shortcut caches and durable discovery index help common
-> navigation, but adaptive watcher scheduling, reader-side metrics, and
+> navigation, but date-bucket scheduling, reader-side metrics, and
 > same-identity overwrite validation still have known scale gaps.
 
 Topic: codex-metadata-scanner
@@ -107,19 +107,19 @@ discovery must not depend on whole-file zstd decompression.
 
 ## Watcher And Scheduling Gaps
 
-There is not yet an adaptive Codex scanner scheduler.
+There is not yet a date-bucket-aware Codex scanner scheduler.
 
 The server creates a `FileWatcher` for the Codex sessions directory. On
 Windows and macOS, the Codex watcher currently enables a periodic full-tree
-rescan by default because recursive `fs.watch` can miss deep file writes. The
-rescan has an overlap guard, so a second rescan does not start while one is in
-progress, but it does not dynamically back off when a scan is expensive.
+rescan by default because recursive `fs.watch` can miss deep file writes.
+`CODEX_WATCH_PERIODIC_RESCAN_MS` is the minimum interval: periodic rescans use
+self-scheduled timeouts, never overlap, back off when scans are slow or overlap
+with another rescan, and recover toward the configured minimum after cheap
+scans.
 
 Known gaps:
 
-- no duration-based backoff;
 - no scan budget or time slicing;
-- no "scan took as long as the interval, increase interval" policy;
 - no date-bucket high-water mark for routine active-list discovery;
 - no per-scope dirty precision for Codex project lists;
 - no high-water-mark scheduler using discovery shards to scan recent date
@@ -163,8 +163,8 @@ transitions and very large trees, the scanner should gain:
    does not regress to full compressed transcript decompression.
 4. Date-bucket/high-water metrics once routine scans stop walking the whole
    tree.
-5. Adaptive periodic-rescan behavior or a different missed-event recovery
-   strategy that cannot spin indefinitely on very large trees.
+5. Date-bucket or high-water missed-event recovery that avoids full-tree
+   probing for routine cold history.
 
 ## Non-Goals
 

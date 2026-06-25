@@ -449,8 +449,13 @@
 
 .assistant-turn .text-block-assistant {
   --text-block-flow-gutter: clamp(0.45rem, 1.6vw, 0.95rem);
+  --text-block-quote-lane: 34px;
+  --text-block-quote-lane-gap: 0.35rem;
   display: flow-root;
-  padding-right: var(--text-block-flow-gutter);
+  padding-right: calc(
+    var(--text-block-quote-lane) +
+    var(--text-block-quote-lane-gap)
+  );
   font-family: var(--output-prose-font-family);
   font-optical-sizing: var(--output-prose-font-optical-sizing);
   font-variation-settings: var(--output-prose-font-variation-settings);
@@ -483,6 +488,7 @@
 @media (max-width: 700px) {
   .assistant-turn .text-block-assistant {
     --text-block-flow-gutter: 0.35rem;
+    --text-block-quote-lane: 30px;
     display: grid;
     grid-template-areas:
       "content"
@@ -572,21 +578,31 @@
   background: var(--bg-tertiary, #444);
 }
 
-/* Per-paragraph quote circles: an overlay rail over the whole text block, with
-   one circle parked at the end (bottom-right) of each rendered paragraph. The
+/* Per-paragraph quote circles sit in their own reserved right-side lane. The
    rail itself never intercepts pointer events; each circle re-enables them only
    while revealed (hover/focus/always-visible), so text selection is unaffected. */
 .text-block-quote-rail {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--text-block-quote-lane, 34px);
   pointer-events: none;
   z-index: 2;
 }
 
-.text-block-quote-paragraph {
+.text-block-quote-paragraph,
+.text-block-quote-fallback {
   position: absolute;
-  right: 2px;
+  right: 0;
+}
+
+.text-block-quote-paragraph {
   transform: translateY(-100%);
+}
+
+.text-block-quote-fallback {
+  top: 0;
 }
 
 .text-block-copy:focus,
@@ -601,7 +617,12 @@
 }
 
 ::highlight(comment-tint) {
-  background: color-mix(in srgb, var(--app-yep-green) 24%, transparent);
+  background-color: rgba(5, 150, 105, 0.18);
+  background-color: color-mix(
+    in srgb,
+    var(--app-yep-green, #059669) 18%,
+    transparent
+  );
   color: inherit;
 }
 

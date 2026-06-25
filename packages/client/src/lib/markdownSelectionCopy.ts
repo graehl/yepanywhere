@@ -156,8 +156,7 @@ export function getMarkdownSnippetForElement(
   if (!source?.trim()) {
     return null;
   }
-  const range = element.ownerDocument.createRange();
-  range.selectNodeContents(element);
+  const range = createTextContentRange(element);
   return {
     markdown: trimBoundaryNewlines(source),
     selectedText: element.innerText || element.textContent || source,
@@ -185,8 +184,7 @@ export function getMarkdownSnippetForSubElement(
     return null;
   }
   const doc = blockElement.ownerDocument;
-  const range = doc.createRange();
-  range.selectNodeContents(blockElement);
+  const range = createTextContentRange(blockElement);
 
   const beforeRange = doc.createRange();
   beforeRange.selectNodeContents(sourceElement);
@@ -206,6 +204,34 @@ export function getMarkdownSnippetForSubElement(
     sourceElement,
     range,
   };
+}
+
+function createTextContentRange(element: HTMLElement): Range {
+  const range = element.ownerDocument.createRange();
+  const walker = element.ownerDocument.createTreeWalker(
+    element,
+    NodeFilter.SHOW_TEXT,
+    {
+      acceptNode: (node) =>
+        node.textContent && node.textContent.length > 0
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT,
+    },
+  );
+  const first = walker.nextNode();
+  if (!first) {
+    range.selectNodeContents(element);
+    return range;
+  }
+
+  let last = first;
+  for (let next = walker.nextNode(); next; next = walker.nextNode()) {
+    last = next;
+  }
+
+  range.setStart(first, 0);
+  range.setEnd(last, last.textContent?.length ?? 0);
+  return range;
 }
 
 export function getMarkdownForVisibleSelection(

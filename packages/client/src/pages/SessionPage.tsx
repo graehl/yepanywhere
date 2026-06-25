@@ -78,6 +78,7 @@ import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { recordSessionVisit } from "../hooks/useRecentSessions";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
+import type { DraftTextChangeMetadata } from "../lib/commentAnchors";
 import {
   type StreamingMarkdownCallbacks,
   useSession,
@@ -216,19 +217,49 @@ function isSessionSetupTurnText(text: string): boolean {
   );
 }
 
+interface ComposerTransferReplacement {
+  start: number;
+  end: number;
+  replacement: string;
+  nextDraft: string;
+}
+
+function getComposerTransferReplacement(
+  currentDraft: string,
+  text: string,
+): ComposerTransferReplacement {
+  const current = currentDraft.trimEnd();
+  const addition = text.trim();
+  if (!current) {
+    return {
+      start: 0,
+      end: currentDraft.length,
+      replacement: addition,
+      nextDraft: addition,
+    };
+  }
+  if (!addition) {
+    return {
+      start: current.length,
+      end: currentDraft.length,
+      replacement: "",
+      nextDraft: current,
+    };
+  }
+  const replacement = `\n\n${addition}`;
+  return {
+    start: current.length,
+    end: currentDraft.length,
+    replacement,
+    nextDraft: `${current}${replacement}`,
+  };
+}
+
 function appendComposerTransferDraft(
   currentDraft: string,
   text: string,
 ): string {
-  const current = currentDraft.trimEnd();
-  const addition = text.trim();
-  if (!current) {
-    return addition;
-  }
-  if (!addition) {
-    return current;
-  }
-  return `${current}\n\n${addition}`;
+  return getComposerTransferReplacement(currentDraft, text).nextDraft;
 }
 
 function appendSlashCommandDraft(
@@ -829,6 +860,8 @@ function SessionPageContent({
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
   const [composerDraftForAnchors, setComposerDraftForAnchors] = useState("");
+  const [composerDraftChangeForAnchors, setComposerDraftChangeForAnchors] =
+    useState<DraftTextChangeMetadata>({ mayAffectQuoteAnchors: true });
   const [quoteClearSignal, setQuoteClearSignal] = useState(0);
   const pendingMotherComposerTransferRef = useRef<string | null>(null);
   const lastComposerSubmissionRef = useRef<LastComposerSubmission | null>(null);
@@ -2889,6 +2922,14 @@ function SessionPageContent({
     [showToast],
   );
 
+  const handleComposerDraftTextChange = useCallback(
+    (draft: string, metadata: DraftTextChangeMetadata) => {
+      setComposerDraftForAnchors(draft);
+      setComposerDraftChangeForAnchors(metadata);
+    },
+    [],
+  );
+
   const insertQuotedSelection = useCallback(
     (quotedText: string): string | null => {
       const controls = draftControlsRef.current;
@@ -2897,20 +2938,31 @@ function SessionPageContent({
         return null;
       }
       const insertedText = quotedText.trimEnd();
-      const appendedDraft = appendComposerTransferDraft(
-        controls.getDraft(),
+      const currentDraft = controls.getDraft();
+      const transfer = getComposerTransferReplacement(
+        currentDraft,
         insertedText,
       );
-      const nextDraft = quotedText.endsWith("\n")
-        ? `${appendedDraft}\n`
-        : appendedDraft;
-      controls.setDraft(nextDraft);
-      setComposerDraftForAnchors(nextDraft);
+      const replacement = quotedText.endsWith("\n")
+        ? `${transfer.replacement}\n`
+        : transfer.replacement;
+      const nextDraft = `${currentDraft.slice(0, transfer.start)}${replacement}${currentDraft.slice(transfer.end)}`;
+      const undoableDraft = controls.replaceDraftRangeUndoably?.(
+        transfer.start,
+        transfer.end,
+        replacement,
+      );
+      const finalDraft = undoableDraft ?? nextDraft;
+      if (undoableDraft === null || !controls.replaceDraftRangeUndoably) {
+        controls.setDraft(nextDraft);
+      }
+      setComposerDraftForAnchors(finalDraft);
+      setComposerDraftChangeForAnchors({ mayAffectQuoteAnchors: true });
       requestAnimationFrame(() => {
         controls.focus?.();
-        controls.setSelectionRange?.(nextDraft.length, nextDraft.length);
+        controls.setSelectionRange?.(finalDraft.length, finalDraft.length);
       });
-      return nextDraft;
+      return finalDraft;
     },
     [showToast, t],
   );
@@ -4529,6 +4581,7 @@ function SessionPageContent({
                     draftControlsRef.current?.getDraft() ?? ""
                   }
                   composerDraft={composerDraftForAnchors}
+                  composerDraftChange={composerDraftChangeForAnchors}
                   quoteClearSignal={quoteClearSignal}
                   onCancelDeferred={handleCancelDeferred}
                   onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
@@ -4802,7 +4855,7 @@ function SessionPageContent({
                     : `draft-message-${sessionId}`
                 }
                 onDraftControlsReady={handleDraftControlsReady}
-                onDraftTextChange={setComposerDraftForAnchors}
+                onDraftTextChange={handleComposerDraftTextChange}
                 correctionActive={
                   !mainComposerForAside && correctionDraft !== null
                 }

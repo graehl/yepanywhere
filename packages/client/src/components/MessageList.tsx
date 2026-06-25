@@ -17,7 +17,10 @@ import { createPortal } from "react-dom";
 import {
   createCommentAnchor,
   type CommentAnchor,
-  draftContainsAnchorQuote,
+  draftQuoteSignaturesContainAnchor,
+  type DraftTextChangeMetadata,
+  getCommentAnchorRange,
+  getDraftQuoteLineSignatures,
 } from "../lib/commentAnchors";
 import { getShowThinkingSetting } from "../hooks/useModelSettings";
 import { useAlwaysShowQuoteCircles } from "../hooks/useAlwaysShowQuoteCircles";
@@ -73,6 +76,12 @@ import {
 import { CopyTextButton } from "./ui/CopyTextButton";
 
 const EMPTY_TRANSCRIPT_DISPLAY_OBJECTS: readonly TranscriptDisplayObject[] = [];
+const SELECTION_QUOTE_BUTTON_SIZE_PX = 30;
+const SELECTION_QUOTE_BUTTON_GAP_PX = 8;
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
 
 /**
  * Groups consecutive assistant items (text, thinking, tool_call) into turns.
@@ -956,6 +965,7 @@ interface Props {
   /** Read current composer draft for quote tint reconciliation. */
   getComposerDraft?: () => string;
   composerDraft?: string;
+  composerDraftChange?: DraftTextChangeMetadata;
   /** Clear all comment anchors after the quoted turn is sent. */
   quoteClearSignal?: number;
   /** Callback to cancel a deferred message */
@@ -1130,6 +1140,7 @@ export const MessageList = memo(function MessageList({
   onQuoteSelection,
   getComposerDraft,
   composerDraft = "",
+  composerDraftChange,
   quoteClearSignal = 0,
   onCancelDeferred,
   onCorrectLatestUserMessage,
@@ -1185,6 +1196,8 @@ export const MessageList = memo(function MessageList({
   const searchArrowRepeatDirectionRef = useRef<"previous" | "next" | null>(
     null,
   );
+  const selectionPointerStartRef = useRef<{ clientY: number } | null>(null);
+  const quoteInsertionDraftRef = useRef<string | null>(null);
   const [thinkingItemsVisible, setThinkingItemsVisible] = useState(() => {
     // "Show thinking" preference seeds the render gate's default; "default"
     // falls back to the live eye-toggle value. The eye icon still overrides
@@ -1239,6 +1252,7 @@ export const MessageList = memo(function MessageList({
       if (nextDraft === null) {
         return false;
       }
+      quoteInsertionDraftRef.current = nextDraft;
       setCommentAnchors((previous) => [...previous, ...anchors]);
       containerRef.current?.ownerDocument.getSelection()?.removeAllRanges();
       setFloatingQuoteButton(null);
@@ -1271,14 +1285,28 @@ export const MessageList = memo(function MessageList({
     if (commentAnchors.length === 0) {
       return;
     }
-    const draft = getComposerDraft?.() ?? composerDraft;
+    const insertionDraft = quoteInsertionDraftRef.current;
+    if (
+      insertionDraft === null &&
+      composerDraftChange?.mayAffectQuoteAnchors === false
+    ) {
+      return;
+    }
+    const draft = insertionDraft ?? getComposerDraft?.() ?? composerDraft;
+    quoteInsertionDraftRef.current = null;
+    const draftSignatures = getDraftQuoteLineSignatures(draft);
     setCommentAnchors((previous) => {
       const next = previous.filter((anchor) =>
-        draftContainsAnchorQuote(draft, anchor),
+        draftQuoteSignaturesContainAnchor(draftSignatures, anchor),
       );
       return next.length === previous.length ? previous : next;
     });
-  }, [commentAnchors.length, composerDraft, getComposerDraft]);
+  }, [
+    commentAnchors.length,
+    composerDraft,
+    composerDraftChange,
+    getComposerDraft,
+  ]);
 
   useEffect(() => {
     if (quoteClearSignal > 0) {
@@ -1300,11 +1328,15 @@ export const MessageList = memo(function MessageList({
       return;
     }
 
-    const highlight = new Highlight(
-      ...commentAnchors
-        .filter((anchor) => anchor.sourceElement.isConnected)
-        .map((anchor) => anchor.range),
-    );
+    const ranges = commentAnchors
+      .map(getCommentAnchorRange)
+      .filter((range): range is Range => range !== null);
+    if (ranges.length === 0) {
+      CSS.highlights.delete("comment-tint");
+      return;
+    }
+
+    const highlight = new Highlight(...ranges);
     CSS.highlights.set("comment-tint", highlight);
     return () => {
       CSS.highlights.delete("comment-tint");
@@ -1851,7 +1883,11 @@ export const MessageList = memo(function MessageList({
       return;
     }
 
-    const updateFloatingQuoteButton = () => {
+    const updateFloatingQuoteButton = (pointerEnd?: {
+      clientX: number;
+      clientY: number;
+      placeBelow?: boolean;
+    }) => {
       const root = containerRef.current;
       const selection = root?.ownerDocument.getSelection();
       if (
@@ -1866,31 +1902,72 @@ export const MessageList = memo(function MessageList({
       }
 
       const range = selection.getRangeAt(selection.rangeCount - 1);
-      const rect = range.getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0) {
+      const rect = pointerEnd ? null : range.getBoundingClientRect();
+      if (!pointerEnd && rect && rect.width === 0 && rect.height === 0) {
         setFloatingQuoteButton(null);
         return;
       }
       const rootRect = root.getBoundingClientRect();
+      const clientX = pointerEnd?.clientX ?? rect?.right ?? rootRect.left;
+      const clientY = pointerEnd?.clientY ?? rect?.top ?? rootRect.top;
+      const maxTop = Math.max(
+        0,
+        root.scrollHeight - SELECTION_QUOTE_BUTTON_SIZE_PX,
+      );
+      const maxLeft = Math.max(
+        0,
+        root.clientWidth - SELECTION_QUOTE_BUTTON_SIZE_PX,
+      );
       setFloatingQuoteButton({
-        top: rect.top - rootRect.top - 34,
-        left: Math.max(
+        top: clampNumber(
+          pointerEnd?.placeBelow
+            ? clientY - rootRect.top + SELECTION_QUOTE_BUTTON_GAP_PX
+            : clientY -
+                rootRect.top -
+                SELECTION_QUOTE_BUTTON_SIZE_PX -
+                SELECTION_QUOTE_BUTTON_GAP_PX,
           0,
-          Math.min(rect.right - rootRect.left + 8, root.clientWidth - 36),
+          maxTop,
+        ),
+        left: clampNumber(
+          clientX - rootRect.left + SELECTION_QUOTE_BUTTON_GAP_PX,
+          0,
+          maxLeft,
         ),
       });
     };
+    const handlePointerDown = (event: PointerEvent) => {
+      const root = containerRef.current;
+      if (!root?.contains(event.target as Node | null)) {
+        selectionPointerStartRef.current = null;
+        return;
+      }
+      selectionPointerStartRef.current = { clientY: event.clientY };
+    };
+    const handlePointerUp = (event: PointerEvent) => {
+      const start = selectionPointerStartRef.current;
+      selectionPointerStartRef.current = null;
+      window.setTimeout(() => {
+        updateFloatingQuoteButton({
+          clientX: event.clientX,
+          clientY: event.clientY,
+          placeBelow: start ? event.clientY > start.clientY : false,
+        });
+      }, 0);
+    };
+    const updateFromSelectionRange = () => updateFloatingQuoteButton();
 
-    document.addEventListener("selectionchange", updateFloatingQuoteButton);
-    window.addEventListener("resize", updateFloatingQuoteButton);
-    window.addEventListener("scroll", updateFloatingQuoteButton, true);
+    document.addEventListener("selectionchange", updateFromSelectionRange);
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("pointerup", handlePointerUp, true);
+    window.addEventListener("resize", updateFromSelectionRange);
+    window.addEventListener("scroll", updateFromSelectionRange, true);
     return () => {
-      document.removeEventListener(
-        "selectionchange",
-        updateFloatingQuoteButton,
-      );
-      window.removeEventListener("resize", updateFloatingQuoteButton);
-      window.removeEventListener("scroll", updateFloatingQuoteButton, true);
+      document.removeEventListener("selectionchange", updateFromSelectionRange);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("pointerup", handlePointerUp, true);
+      window.removeEventListener("resize", updateFromSelectionRange);
+      window.removeEventListener("scroll", updateFromSelectionRange, true);
     };
   }, [onQuoteSelection]);
 

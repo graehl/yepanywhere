@@ -248,35 +248,36 @@ export const TextBlock = memo(function TextBlock({
       ref={textBlockRef}
       className={`text-block text-block-assistant timeline-item${isStreaming ? " streaming" : ""}`}
     >
-      {onQuoteBlock && paragraphTargets.length > 0 && (
-        <div className="text-block-quote-rail" aria-hidden="true">
-          {paragraphTargets.map((target, index) => (
+      {onQuoteBlock && (
+        <div className="text-block-quote-rail">
+          {paragraphTargets.length > 0 ? (
+            paragraphTargets.map((target, index) => (
+              <button
+                key={index}
+                type="button"
+                className={`text-block-quote text-block-quote-paragraph ${alwaysShowQuoteCircle ? "always-visible" : ""}`}
+                style={{ top: `${target.top + target.height}px` }}
+                onClick={() => quoteParagraph(index)}
+                title={t("sessionQuoteBlock")}
+                aria-label={t("sessionQuoteBlock")}
+              >
+                &gt;
+              </button>
+            ))
+          ) : (
             <button
-              key={index}
               type="button"
-              className={`text-block-quote text-block-quote-paragraph ${alwaysShowQuoteCircle ? "always-visible" : ""}`}
-              style={{ top: `${target.top + target.height}px` }}
-              onClick={() => quoteParagraph(index)}
+              className={`text-block-quote text-block-quote-fallback ${alwaysShowQuoteCircle ? "always-visible" : ""}`}
+              onClick={handleQuoteBlock}
               title={t("sessionQuoteBlock")}
               aria-label={t("sessionQuoteBlock")}
             >
               &gt;
             </button>
-          ))}
+          )}
         </div>
       )}
       <div className="text-block-actions">
-        {onQuoteBlock && paragraphTargets.length === 0 && (
-          <button
-            type="button"
-            className={`text-block-quote ${alwaysShowQuoteCircle ? "always-visible" : ""}`}
-            onClick={handleQuoteBlock}
-            title={t("sessionQuoteBlock")}
-            aria-label={t("sessionQuoteBlock")}
-          >
-            &gt;
-          </button>
-        )}
         {canToggleRendered && (
           <button
             type="button"

@@ -100,6 +100,9 @@ describe("getMarkdownSnippetForSubElement", () => {
     expect(snippet?.markdown).toBe("Second paragraph.");
     expect(snippet?.selectedText).toContain("Second paragraph.");
     expect(snippet?.sourceElement).toBe(content);
+    expect(snippet?.range.startContainer.nodeType).toBe(Node.TEXT_NODE);
+    expect(snippet?.range.endContainer.nodeType).toBe(Node.TEXT_NODE);
+    expect(snippet?.range.toString()).toBe("Second paragraph.");
 
     unregister();
     root.remove();

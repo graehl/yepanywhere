@@ -1,7 +1,7 @@
 import type { SessionIndexListOptions } from "../indexes/types.js";
 import type { SessionSummary } from "../supervisor/types.js";
 
-export const SESSION_AUTO_ARCHIVE_DEFAULT_DAYS = 14;
+export const SESSION_AUTO_ARCHIVE_DEFAULT_DAYS = 0;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

@@ -3,12 +3,26 @@ import { appendFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import * as zlib from "node:zlib";
 import type { UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { encodeProjectId } from "../../src/projects/paths.js";
 import { CodexSessionReader } from "../../src/sessions/codex-reader.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const zstdCompressSync = (
+  zlib as typeof zlib & {
+    zstdCompressSync?: (buffer: Buffer) => Buffer;
+  }
+).zstdCompressSync;
+
+function zstdCompressed(content: string): Buffer {
+  if (!zstdCompressSync) {
+    throw new Error("zstd compression is unavailable in this Node.js");
+  }
+  return zstdCompressSync(Buffer.from(content, "utf-8"));
+}
 
 describe("CodexSessionReader - OSS Support", () => {
   let testDir: string;
@@ -125,6 +139,46 @@ describe("CodexSessionReader - OSS Support", () => {
       "test-project" as UrlProjectId,
     );
     expect(session?.data.provider).toBe("codex-oss");
+  });
+
+  it("loads zstd-compressed rollout files", async () => {
+    const sessionId = "zstd-rollout";
+    const now = new Date().toISOString();
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: now,
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: now,
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: {
+          type: "user_message",
+          message: "Hello compressed history",
+        },
+      }),
+    ];
+
+    await writeFile(
+      join(testDir, `${sessionId}.jsonl.zst`),
+      zstdCompressed(`${lines.join("\n")}\n`),
+    );
+
+    const summaries = await reader.listSessions("test-project" as UrlProjectId);
+    expect(summaries.map((summary) => summary.id)).toContain(sessionId);
+
+    const session = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(session?.summary.title).toBe("Hello compressed history");
+    expect(session?.data.session.entries).toHaveLength(2);
   });
 
   it("identifies session as codex-oss when model_provider is local", async () => {

@@ -16,6 +16,10 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { getLogger } from "../logging/logger.js";
 import type { Project } from "../supervisor/types.js";
+import {
+  isCodexRolloutFileName,
+  preferPlainCodexRollouts,
+} from "../utils/codexRolloutFiles.js";
 import { readFirstLine } from "../utils/jsonl.js";
 import { canonicalizeProjectPath, encodeProjectId } from "./paths.js";
 
@@ -161,7 +165,8 @@ export class CodexSessionScanner {
       return [];
     }
 
-    // Recursively find all .jsonl files
+    // Recursively find all Codex rollout files. Codex may compress cold
+    // rollouts from rollout-*.jsonl to rollout-*.jsonl.zst.
     const files = await this.findJsonlFiles(this.sessionsDir);
 
     getLogger().debug(
@@ -200,7 +205,7 @@ export class CodexSessionScanner {
   }
 
   /**
-   * Recursively find all .jsonl files in a directory.
+   * Recursively find all Codex rollout files in a directory.
    */
   private async findJsonlFiles(dir: string): Promise<string[]> {
     const files: string[] = [];
@@ -213,7 +218,7 @@ export class CodexSessionScanner {
         if (entry.isDirectory()) {
           const subFiles = await this.findJsonlFiles(fullPath);
           files.push(...subFiles);
-        } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+        } else if (entry.isFile() && isCodexRolloutFileName(entry.name)) {
           files.push(fullPath);
         }
       }
@@ -223,7 +228,7 @@ export class CodexSessionScanner {
       );
     }
 
-    return files;
+    return preferPlainCodexRollouts(files);
   }
 
   /**

@@ -262,6 +262,22 @@ describe("Global Sessions Routes", () => {
       ).toMatchObject({ isArchived: true });
     });
 
+    it("keeps old sessions visible by default", async () => {
+      const project = createProject("proj1", "project-one", "/sessions/proj1");
+      const recent = createSession("recent", "proj1", hoursAgo(1));
+      const old = createSession("old", "proj1", hoursAgo(24 * 20));
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [recent, old]);
+
+      const result = await makeRequest();
+
+      expect(result.sessions.map((session) => session.id)).toEqual([
+        "recent",
+        "old",
+      ]);
+    });
+
     it("includes project context on each session", async () => {
       const project = createProject("proj1", "my-project", "/sessions/proj1");
       const session = createSession("sess1", "proj1", minutesAgo(5));
@@ -671,7 +687,7 @@ describe("Global Sessions Routes", () => {
         "/codex/sessions",
         project.id,
         codexReader,
-        expect.objectContaining({ activeAfterMs: expect.any(Number) }),
+        undefined,
       );
       expect(codexReader.listSessions).not.toHaveBeenCalled();
       expect(result.sessions.some((s) => s.id === "codex-sess-1")).toBe(true);
@@ -733,7 +749,7 @@ describe("Global Sessions Routes", () => {
         "/gemini/tmp",
         project.id,
         geminiReader,
-        expect.objectContaining({ activeAfterMs: expect.any(Number) }),
+        undefined,
       );
       expect(geminiReader.listSessions).not.toHaveBeenCalled();
       expect(result.sessions.some((s) => s.id === "gemini-sess-1")).toBe(true);

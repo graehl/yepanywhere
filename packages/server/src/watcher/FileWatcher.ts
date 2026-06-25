@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getLogger } from "../logging/logger.js";
+import { isCodexRolloutFileName } from "../utils/codexRolloutFiles.js";
 import type {
   EventBus,
   FileChangeEvent,
@@ -326,8 +327,8 @@ export class FileWatcher {
   private parseCodexFileType(
     relativePath: string,
   ): FileChangeEvent["fileType"] {
-    // Watching ~/.codex/sessions - relativePath is {year}/{month}/{day}/rollout-*.jsonl
-    if (relativePath.endsWith(".jsonl")) {
+    // Watching ~/.codex/sessions - relativePath is {year}/{month}/{day}/rollout-*.jsonl[.zst]
+    if (isCodexRolloutFileName(path.basename(relativePath))) {
       return "session";
     }
     return "other";

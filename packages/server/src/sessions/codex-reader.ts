@@ -28,6 +28,10 @@ import type {
   Message,
   SessionSummary,
 } from "../supervisor/types.js";
+import {
+  isCodexRolloutFileName,
+  preferPlainCodexRollouts,
+} from "../utils/codexRolloutFiles.js";
 import { readFirstLine, readJsonlLines } from "../utils/jsonl.js";
 import type {
   GetSessionOptions,
@@ -60,6 +64,10 @@ interface CodexSessionFile {
 
 const CODEX_META_READ_MAX_BYTES = 1024 * 1024;
 const CODEX_SCAN_CACHE_TTL_MS = 5000;
+
+function isCompressedCodexSessionFile(filePath: string): boolean {
+  return filePath.endsWith(".jsonl.zst");
+}
 
 interface CodexScanOptions {
   activeAfterMs?: number;
@@ -497,7 +505,12 @@ export class CodexSessionReader implements ISessionReader {
       return cached.entries.slice();
     }
 
-    if (cached && cached.filePath === filePath && cached.size < stats.size) {
+    if (
+      cached &&
+      cached.filePath === filePath &&
+      !isCompressedCodexSessionFile(filePath) &&
+      cached.size < stats.size
+    ) {
       const appended = await this.readFileRange(
         filePath,
         cached.size,
@@ -554,7 +567,7 @@ export class CodexSessionReader implements ISessionReader {
   }
 
   /**
-   * Recursively find all .jsonl files in a directory.
+   * Recursively find all Codex rollout files in a directory.
    */
   private async findJsonlFiles(dir: string): Promise<string[]> {
     const files: string[] = [];
@@ -567,7 +580,7 @@ export class CodexSessionReader implements ISessionReader {
         if (entry.isDirectory()) {
           const subFiles = await this.findJsonlFiles(fullPath);
           files.push(...subFiles);
-        } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+        } else if (entry.isFile() && isCodexRolloutFileName(entry.name)) {
           files.push(fullPath);
         }
       }
@@ -575,7 +588,7 @@ export class CodexSessionReader implements ISessionReader {
       // Ignore errors (permission denied, etc.)
     }
 
-    return files;
+    return preferPlainCodexRollouts(files);
   }
 
   /**

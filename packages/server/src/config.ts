@@ -256,7 +256,7 @@ export function loadConfig(): Config {
   );
   const sessionAutoArchiveDays = Math.max(
     0,
-    parseIntOrDefault(process.env.SESSION_AUTO_ARCHIVE_DAYS, 14),
+    parseIntOrDefault(process.env.SESSION_AUTO_ARCHIVE_DAYS, 0),
   );
   const managedUploadsDir = path.join(dataDir, "uploads");
   const extraAllowedImagePaths =

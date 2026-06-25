@@ -6,10 +6,53 @@
  */
 
 import { open, readFile } from "node:fs/promises";
+import * as zlib from "node:zlib";
+import { promisify } from "node:util";
 
 /** Strip UTF-8 BOM if present (common on Windows). */
 export function stripBom(str: string): string {
   return str.charCodeAt(0) === 0xfeff ? str.slice(1) : str;
+}
+
+type ZstdDecompress = (
+  input: Buffer,
+  callback: (error: Error | null, result: Buffer) => void,
+) => void;
+
+let zstdDecompressAsync:
+  | ((input: Buffer) => Promise<Buffer>)
+  | null
+  | undefined;
+
+function isZstdPath(filePath: string): boolean {
+  return filePath.endsWith(".zst");
+}
+
+function getZstdDecompress(): ((input: Buffer) => Promise<Buffer>) | null {
+  if (zstdDecompressAsync !== undefined) {
+    return zstdDecompressAsync;
+  }
+
+  const candidate = (zlib as typeof zlib & { zstdDecompress?: ZstdDecompress })
+    .zstdDecompress;
+  zstdDecompressAsync =
+    typeof candidate === "function" ? promisify(candidate) : null;
+  return zstdDecompressAsync;
+}
+
+async function readUtf8File(filePath: string): Promise<string> {
+  if (!isZstdPath(filePath)) {
+    return readFile(filePath, "utf-8");
+  }
+
+  const decompress = getZstdDecompress();
+  if (!decompress) {
+    throw new Error("zstd-compressed JSONL is not supported by this Node.js");
+  }
+
+  const raw = await readFile(filePath);
+  const decompressed = await decompress(raw);
+  return decompressed.toString("utf-8");
 }
 
 /**
@@ -21,6 +64,17 @@ export async function readFirstLine(
   filePath: string,
   maxBytes = 4096,
 ): Promise<string | null> {
+  if (isZstdPath(filePath)) {
+    try {
+      const content = stripBom(await readUtf8File(filePath));
+      const nl = content.indexOf("\n");
+      const line = (nl > 0 ? content.slice(0, nl) : content).trim();
+      return line || null;
+    } catch {
+      return null;
+    }
+  }
+
   let fd: Awaited<ReturnType<typeof open>> | null = null;
   try {
     fd = await open(filePath, "r");
@@ -58,6 +112,6 @@ export async function readFirstLine(
  * Read a file and return BOM-stripped lines.
  */
 export async function readJsonlLines(filePath: string): Promise<string[]> {
-  const raw = await readFile(filePath, "utf-8");
+  const raw = await readUtf8File(filePath);
   return stripBom(raw).trim().split("\n");
 }

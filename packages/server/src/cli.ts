@@ -125,7 +125,7 @@ ENVIRONMENT VARIABLES:
   SESSION_INDEX_WRITE_LOCK_STALE_MS
                                 Session index stale lock threshold in ms (default: 10000)
   SESSION_AUTO_ARCHIVE_DAYS
-                                Hide older sessions from default scans (default: 14, 0 = disable)
+                                Hide older sessions from default scans (default: 0 = disabled)
   PROJECT_SCAN_CACHE_TTL_MS
                                 Project scan cache TTL in ms (default: 5000, 0 = rescan every request)
 

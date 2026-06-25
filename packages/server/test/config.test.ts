@@ -156,6 +156,24 @@ describe("loadConfig codex paths", () => {
     expect(config.idleTimeoutMs).toBe(60 * 60 * 1000);
   });
 
+  it("defaults session auto-archive off", async () => {
+    vi.stubEnv("SESSION_AUTO_ARCHIVE_DAYS", "");
+
+    const { loadConfig } = await import("../src/config.js");
+    const config = loadConfig();
+
+    expect(config.sessionAutoArchiveDays).toBe(0);
+  });
+
+  it("preserves an explicit session auto-archive override", async () => {
+    vi.stubEnv("SESSION_AUTO_ARCHIVE_DAYS", "14");
+
+    const { loadConfig } = await import("../src/config.js");
+    const config = loadConfig();
+
+    expect(config.sessionAutoArchiveDays).toBe(14);
+  });
+
   it("preserves an explicit IDLE_TIMEOUT override", async () => {
     vi.stubEnv("IDLE_TIMEOUT", "45");
 

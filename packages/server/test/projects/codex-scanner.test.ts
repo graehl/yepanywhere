@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as zlib from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import { CodexSessionScanner } from "../../src/projects/codex-scanner.js";
 
@@ -19,6 +20,19 @@ function makeSessionMeta(
       ...extra,
     },
   });
+}
+
+const zstdCompressSync = (
+  zlib as typeof zlib & {
+    zstdCompressSync?: (buffer: Buffer) => Buffer;
+  }
+).zstdCompressSync;
+
+function zstdCompressed(content: string): Buffer {
+  if (!zstdCompressSync) {
+    throw new Error("zstd compression is unavailable in this Node.js");
+  }
+  return zstdCompressSync(Buffer.from(content, "utf-8"));
 }
 
 describe("CodexSessionScanner", () => {
@@ -87,6 +101,54 @@ describe("CodexSessionScanner", () => {
     const projectB = projects.find((p) => p.path === "/home/user/project-b");
     expect(projectA?.sessionCount).toBe(2);
     expect(projectB?.sessionCount).toBe(1);
+  });
+
+  it("discovers zstd-compressed rollout files", async () => {
+    const sessionsDir = join(tmpdir(), `codex-scan-${randomUUID()}`);
+    tempDirs.push(sessionsDir);
+
+    const dateDir = join(sessionsDir, "2026", "02", "03");
+    await mkdir(dateDir, { recursive: true });
+
+    const id = randomUUID();
+    await writeFile(
+      join(dateDir, `rollout-${id}.jsonl.zst`),
+      zstdCompressed(
+        `${makeSessionMeta(id, "/home/user/project-zst")}\n{"type":"event_msg","payload":{"type":"user_message","message":"hello"}}\n`,
+      ),
+    );
+
+    const scanner = new CodexSessionScanner({ sessionsDir });
+    const projects = await scanner.listProjects();
+
+    expect(projects).toHaveLength(1);
+    expect(projects[0].path).toBe("/home/user/project-zst");
+    expect(projects[0].sessionCount).toBe(1);
+  });
+
+  it("prefers plain rollouts over compressed siblings", async () => {
+    const sessionsDir = join(tmpdir(), `codex-scan-${randomUUID()}`);
+    tempDirs.push(sessionsDir);
+
+    const dateDir = join(sessionsDir, "2026", "02", "03");
+    await mkdir(dateDir, { recursive: true });
+
+    const id = randomUUID();
+    const rolloutPath = join(dateDir, `rollout-${id}.jsonl`);
+    await writeFile(
+      rolloutPath,
+      `${makeSessionMeta(id, "/home/user/plain-project")}\n`,
+    );
+    await writeFile(
+      `${rolloutPath}.zst`,
+      zstdCompressed(`${makeSessionMeta(id, "/home/user/zst-project")}\n`),
+    );
+
+    const scanner = new CodexSessionScanner({ sessionsDir });
+    const projects = await scanner.listProjects();
+
+    expect(projects).toHaveLength(1);
+    expect(projects[0].path).toBe("/home/user/plain-project");
   });
 
   it("deduplicates mixed-slash Windows cwd variants into one project", async () => {

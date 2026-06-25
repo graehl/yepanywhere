@@ -261,7 +261,7 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
     name: "SESSION_AUTO_ARCHIVE_DAYS",
     group: "Sessions & scanning",
     description:
-      "Days of inactivity before a session is auto-archived. 0 disables.",
+      "Days of inactivity before a session is hidden from default lists. Default 0 disables.",
   },
 
   // Processes & workers

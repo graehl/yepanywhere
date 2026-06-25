@@ -161,10 +161,9 @@ Non-gaps in the same measurement: Theme, Settings Icons, UI size, and Tab Size
 stayed one row. Composer bottom-row overflow already has its own measured
 allocator contract in [composer-bottom-bar-overflow](composer-bottom-bar-overflow.md).
 
-Relevant private task notes: `tasks/021-output-appearance-render-polish.md`
-records the earlier specimen-container-query work; `tasks/027-fork-recap-lifecycle.md`
-records the later UI font/UI size feature that exposed these font-metric
-assumptions.
+These font-metric assumptions were exposed earlier by the output-typography
+specimen container-query work and the later selectable UI font / UI size
+feature in Typography settings — both since landed.
 
 ## Layout Invariant Scheme
 

@@ -240,7 +240,7 @@ What is already in place:
   drain open until all active Grok prompt calls settle.
 - Client provider registry/badges/filter colors/model glyphs are wired.
 - `topics/grok.md` remains the active progress tracker; related reliability
-  context is tracked in `tasks/015-verified-session-liveness.md`.
+  context lives in [`session-liveness.md`](session-liveness.md).
 
 Issues found during takeover:
 
@@ -359,8 +359,8 @@ Near follow-up once the above is green:
 ## Tracking
 
 The checkboxes below live in the committed topic doc and can be updated in
-place. Liveness-specific evidence from the takeover is also mirrored in the
-gitignored umbrella task `tasks/015-verified-session-liveness.md`.
+place. Liveness-specific evidence from the takeover also informs
+[`session-liveness.md`](session-liveness.md).
 
 - [x] Add "grok" / "grok-acp" to `ProviderName` + `ALL_PROVIDERS` (additive)
 - [x] New `grok-acp.ts` minimal ACP-based provider returning the `grok-build` model and streaming normalized events (thinking + tools + approvals)
@@ -381,7 +381,8 @@ gitignored umbrella task `tasks/015-verified-session-liveness.md`.
 - [ ] Docs updates + version pinning note — topic and `CLAUDE.md` provider list updated; broader README/provider capability docs not done
 - [ ] Decision point: promote "grok" to default-enabled once ACP surface proves stable
 
-When the implementation work itself becomes a multi-session effort, a gitignored `tasks/NNN-grok-*.md` can be added then and cross-referenced here.
+A multi-session implementation effort may track itself in a gitignored private
+task file; that file references this committed topic, not the reverse.
 
 ---
 

@@ -157,8 +157,7 @@ evidence. Scope:
   streaming text, a tool round-trip, thinking/reasoning, and a clean
   result/usage tail. Clean up disposable sessions/projects afterward (local
   debug-session hygiene).
-- **Output:** a findings list recorded in this topic (or a gitignored
-  `tasks/NNN-opencode-review.md` if it spans sessions) that re-prioritizes P0/P2
+- **Output:** a findings list recorded in this topic that re-prioritizes P0/P2
   and flags anything that regressed across the version jump.
 
 ### P0 — Make copilot work and report honestly (small; after/with P0r)

@@ -114,9 +114,8 @@ metadata-only parts.
 
 A provider review against opencode 1.17.9 (the prior tables were sampled vs
 1.15.13) closed most rendering/interaction gaps. See
-[`opencode-copilot.md`](opencode-copilot.md) and the gitignored
-`tasks/030-opencode-provider-element-review.md` for the full element list;
-key shape correction and closures:
+[`opencode-copilot.md`](opencode-copilot.md) for the review plan and the full
+element list. Key shape correction and closures:
 
 - **Unified tool part.** 1.16+ streams a tool as a single `type:"tool"` part
   (`callID` + nested `state.{status,input,output,error}`), confirmed via a live

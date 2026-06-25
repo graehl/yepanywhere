@@ -17,8 +17,11 @@ Progress:
   the first adapter.
 - [x] Stop rereading Codex `session_meta` on ordinary append/mtime/size
   changes once the rollout head metadata has been indexed.
-- [ ] Reconcile `.jsonl` and `.jsonl.zst` as two representations of one
-  rollout with explicit transition tests and metrics.
+- [x] Add source-fingerprint and shrink validation so same-representation
+  replacement/truncation refreshes cached head metadata when filesystem
+  evidence makes the cache suspect.
+- [x] Reconcile `.jsonl` and `.jsonl.zst` as two representations of one
+  rollout with explicit transition tests.
 - [x] Add streaming zstd first-line reads, or keep compressed discovery
   explicitly opt-in until that exists.
 - [ ] Add Codex scanner metrics and slow logs.
@@ -63,8 +66,9 @@ The current scanner model does not encode that invariant strongly enough:
 - `SessionIndexService` persists normalized summaries, not a Codex rollout
   metadata catalog.
 - `SessionDiscoveryIndex` now persists stable provider head metadata in
-  provider/root/date shards, but callers still enumerate physical provider
-  files first.
+  provider/root/date shards, plus optional source fingerprints for
+  replacement detection, but callers still enumerate physical provider files
+  first.
 - Full validation still enumerates rollout files and can force metadata reads.
 - Codex file events mark loaded Codex scopes dirty broadly because a raw file
   event does not cheaply identify the project scope.
@@ -151,6 +155,7 @@ interface SessionDiscoveryRecord<TMetadata> {
   metadataByteLength: number;
   fileSize: number;
   fileMtimeMs: number;
+  sourceFingerprint?: SessionDiscoverySourceFingerprint;
   firstSeenAtMs: number;
   lastValidatedAtMs: number;
 }
@@ -207,16 +212,17 @@ the first.
 Acceptance criteria:
 
 - [x] Appending to a known rollout does not reread line 1.
-- [x] Changing mtime/size alone does not reread line 1.
-- Replacing/truncating a rollout causes metadata validation or repair.
+- [x] Changing mtime or append-size growth alone does not reread line 1.
+- [x] Replacing/truncating a rollout causes metadata validation or repair when
+  the file identity changes or the file shrinks below the cached observation.
 - [x] Existing project/session list tests still pass for plain Codex history.
 - [x] Add cache-state tests around the new metadata reader.
 
-Remaining gap: replacement detection is still conservative rather than
-complete. Plain rollout appends are intentionally trusted; a same-path
-replacement with a different first line but a non-shrinking file may keep
-serving cached head metadata until a future explicit validation strategy is
-added.
+Remaining gap: replacement detection is stronger but still not complete.
+Plain rollout appends are intentionally trusted; a same-path overwrite that
+keeps the same file identity and a non-shrinking size can still serve cached
+head metadata until a future explicit validation strategy rereads or hashes
+the head on a bounded schedule.
 
 ## Phase 3: Compression Reconciliation
 
@@ -236,12 +242,14 @@ Rules:
 
 Acceptance criteria:
 
-- A known plain rollout compressed to `.jsonl.zst` remains visible after
-  watcher invalidation and after server restart.
-- A plain+compressed sibling pair lists only one session.
-- Scanner metrics distinguish cache-backed compressed discovery from zstd
+- [x] A known plain rollout compressed to `.jsonl.zst` remains visible after
+  scanner cache reuse and server restart.
+- [ ] Add explicit watcher-invalidation coverage for compression transitions
+  if the watcher reconciliation path changes.
+- [x] A plain+compressed sibling pair lists only one session.
+- [ ] Scanner metrics distinguish cache-backed compressed discovery from zstd
   first-line reads.
-- No default list path does whole-file zstd decompression for metadata.
+- [x] No default list path does whole-file zstd decompression for metadata.
 
 ## Phase 4: Streaming Zstd First-Line Reader
 
@@ -317,6 +325,8 @@ Automated:
 - Unit tests proving append does not reread `session_meta`.
 - Unit tests for server restart reuse of indexed metadata.
 - Unit tests for compressed transition `.jsonl -> .jsonl.zst`.
+- Unit tests for same-path replacement and shrink/truncation cache
+  reconciliation.
 - Unit tests for streaming zstd first-line reads if Phase 4 lands.
 - Existing server tests:
   - `test/projects/codex-scanner.test.ts`
@@ -344,8 +354,9 @@ Manual:
 
 ## Open Questions
 
-- Which file identity fields are portable enough on Windows to detect
-  replacement without excessive stats?
+- Should the `dev`/`ino`/`birthtimeMs` source fingerprint be supplemented with
+  a bounded head hash or validation interval for same-identity, non-shrinking
+  overwrites?
 - Should archived Codex sessions get a separate root in the same index, or a
   separate archive index?
 - What is the right default for `CODEX_WATCH_PERIODIC_RESCAN_MS` after the

@@ -3,8 +3,8 @@
 > The Codex metadata scanner is the YA subsystem that maps date-bucketed Codex
 > rollout files to projects and session summaries by reading rollout head
 > metadata; its current shortcut caches and durable discovery index help common
-> navigation, but watcher scheduling, metrics, and replacement validation still
-> have known scale gaps.
+> navigation, but watcher scheduling, metrics, and same-identity overwrite
+> validation still have known scale gaps.
 
 Topic: codex-metadata-scanner
 
@@ -44,7 +44,9 @@ index:
   directory and active-window scope.
 - `SessionDiscoveryIndex` persists normalized provider head metadata under
   `{dataDir}/indexes/session-discovery/<provider>/<source-root-hash>/...`.
-  Codex uses date-bucket shards such as `2026/06/25.json`.
+  Codex uses date-bucket shards such as `2026/06/25.json` and stores a small
+  source fingerprint to distinguish ordinary append growth from common
+  same-path replacement cases.
 - `ProjectScanner` keeps a short-lived project snapshot and coalesces
   concurrent scans.
 - `SessionIndexService` persists normalized session summaries and avoids
@@ -59,6 +61,13 @@ index now avoids rereading `session_meta` for observed known rollouts, including
 ordinary append/mtime/size changes. It does not change the underlying
 enumeration cost: discovering an uncached or invalidated Codex tree still walks
 provider-owned rollout files.
+
+Cached Codex metadata is treated as suspect and reread when the file identity
+changes for the same representation, when a plain file shrinks below the
+cached observation, or when compressed size changes for an indexed compressed
+rollout. A same-path overwrite that preserves file identity and non-shrinking
+size remains a known gap because stat metadata alone cannot prove line 1
+changed.
 
 The discovery index is derived and non-authoritative. YA must enumerate
 provider files first and then consult the cache only for those observed files.
@@ -121,7 +130,7 @@ The main costs are filesystem and metadata costs, not full transcript parsing:
 - `stat` calls during validation and watcher rescans;
 - first-line reads for new, suspect, or unindexed rollouts;
 - replacement validation gaps for same-path files whose first line changes
-  without truncating below the cached head length;
+  without changing source identity or shrinking below the cached observation;
 - full decompression if compressed files are read without streaming
   first-line support;
 - route fan-out that asks for global, project, inbox, and provider-catalog
@@ -138,11 +147,12 @@ session filtering.
 Before broadening Codex history discovery further, especially around compressed
 transitions and very large trees, the scanner should gain:
 
-1. Replacement/truncation validation rules stronger than the current
-   non-shrinking plain-file assumption.
-2. Compression reconciliation tests and metrics: `.jsonl` and `.jsonl.zst`
-   map to the same
-   logical rollout, with plain-precedence and transition-safe dirty handling.
+1. An explicit validation strategy for same-identity, non-shrinking header
+   overwrites; current source-fingerprint and shrink checks cover common
+   replacement/truncation cases without rereading ordinary appends.
+2. Compression reconciliation metrics: `.jsonl` and `.jsonl.zst` map to the
+   same logical rollout, with plain-precedence and transition-safe dirty
+   handling now covered by tests.
 3. Keep streaming zstd first-line reads covered by tests so scanner discovery
    does not regress to full compressed transcript decompression.
 4. Scanner metrics and slow logs specific to Codex metadata discovery.

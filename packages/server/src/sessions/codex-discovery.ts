@@ -5,6 +5,7 @@ import type { CodexSessionMetaEntry } from "@yep-anywhere/shared";
 import {
   SessionDiscoveryIndex,
   type SessionDiscoveryRecord,
+  type SessionDiscoverySourceFingerprint,
 } from "../indexes/SessionDiscoveryIndex.js";
 import {
   type CodexRolloutDiscoveryIdentity,
@@ -63,12 +64,18 @@ export async function readCodexRolloutMetadata(
     options.sessionsDir,
     options.filePath,
   );
+  const sourceFingerprint = sourceFingerprintFromStats(stats);
   const cached = await options.discoveryIndex?.getRecord<CodexRolloutDiscoveryMetadata>(
     identity.shardKey,
     identity.key,
   );
-  if (cached && isCachedRecordUsable(cached, identity, stats)) {
-    if (shouldRefreshCachedRecord(cached, identity, stats)) {
+  if (
+    cached &&
+    isCachedRecordUsable(cached, identity, stats, sourceFingerprint)
+  ) {
+    if (
+      shouldRefreshCachedRecord(cached, identity, stats, sourceFingerprint)
+    ) {
       await options.discoveryIndex?.upsertRecord(identity.shardKey, {
         key: identity.key,
         relativePath: identity.relativePath,
@@ -77,6 +84,7 @@ export async function readCodexRolloutMetadata(
         metadataByteLength: cached.metadataByteLength,
         fileSize: stats.size,
         fileMtimeMs: stats.mtimeMs,
+        sourceFingerprint,
       });
     }
     return toDiscoveredSession(cached.metadata, options.filePath, stats);
@@ -99,6 +107,7 @@ export async function readCodexRolloutMetadata(
     metadataByteLength: Buffer.byteLength(firstLine, "utf-8") + 1,
     fileSize: stats.size,
     fileMtimeMs: stats.mtimeMs,
+    sourceFingerprint,
   });
 
   return toDiscoveredSession(metadata, options.filePath, stats);
@@ -108,8 +117,17 @@ function isCachedRecordUsable(
   record: SessionDiscoveryRecord<CodexRolloutDiscoveryMetadata>,
   identity: CodexRolloutDiscoveryIdentity,
   stats: Stats,
+  sourceFingerprint: SessionDiscoverySourceFingerprint,
 ): boolean {
   if (!isCodexRolloutDiscoveryMetadata(record.metadata)) return false;
+  const representationChanged =
+    record.representation !== identity.representation;
+  if (
+    !representationChanged &&
+    hasSourceFingerprintChanged(record.sourceFingerprint, sourceFingerprint)
+  ) {
+    return false;
+  }
 
   if (identity.representation === "zstd") {
     if (record.representation === "zstd") {
@@ -118,17 +136,67 @@ function isCachedRecordUsable(
     return true;
   }
 
-  return stats.size >= record.metadataByteLength;
+  const minExpectedSize =
+    record.representation === identity.representation
+      ? Math.max(record.metadataByteLength, record.fileSize)
+      : record.metadataByteLength;
+  return stats.size >= minExpectedSize;
 }
 
 function shouldRefreshCachedRecord(
   record: SessionDiscoveryRecord<CodexRolloutDiscoveryMetadata>,
   identity: CodexRolloutDiscoveryIdentity,
   stats: Stats,
+  sourceFingerprint: SessionDiscoverySourceFingerprint,
 ): boolean {
   if (record.relativePath !== identity.relativePath) return true;
   if (record.representation !== identity.representation) return true;
+  if (!record.sourceFingerprint && hasSourceFingerprint(sourceFingerprint)) {
+    return true;
+  }
   return identity.representation === "zstd" && record.fileSize !== stats.size;
+}
+
+function sourceFingerprintFromStats(
+  stats: Stats,
+): SessionDiscoverySourceFingerprint {
+  const fingerprint: SessionDiscoverySourceFingerprint = {};
+  if (Number.isFinite(stats.dev)) fingerprint.dev = stats.dev;
+  if (Number.isFinite(stats.ino)) fingerprint.ino = stats.ino;
+  if (Number.isFinite(stats.birthtimeMs)) {
+    fingerprint.birthtimeMs = stats.birthtimeMs;
+  }
+  return fingerprint;
+}
+
+function hasSourceFingerprint(
+  fingerprint: SessionDiscoverySourceFingerprint | undefined,
+): boolean {
+  return (
+    fingerprint !== undefined &&
+    (fingerprint.dev !== undefined ||
+      fingerprint.ino !== undefined ||
+      fingerprint.birthtimeMs !== undefined)
+  );
+}
+
+function hasSourceFingerprintChanged(
+  previous: SessionDiscoverySourceFingerprint | undefined,
+  current: SessionDiscoverySourceFingerprint,
+): boolean {
+  if (!previous) return false;
+  return (
+    fingerprintFieldChanged(previous.dev, current.dev) ||
+    fingerprintFieldChanged(previous.ino, current.ino) ||
+    fingerprintFieldChanged(previous.birthtimeMs, current.birthtimeMs)
+  );
+}
+
+function fingerprintFieldChanged(
+  previous: number | undefined,
+  current: number | undefined,
+): boolean {
+  return previous !== undefined && current !== undefined && previous !== current;
 }
 
 function toDiscoveredSession(

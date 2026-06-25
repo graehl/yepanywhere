@@ -283,6 +283,151 @@ describe("CodexSessionScanner", () => {
     );
   });
 
+  it("updates cached metadata when a plain rollout path is replaced", async () => {
+    const sessionsDir = join(tmpdir(), `codex-scan-${randomUUID()}`);
+    const dataDir = join(tmpdir(), `codex-data-${randomUUID()}`);
+    tempDirs.push(sessionsDir, dataDir);
+
+    const dateDir = join(sessionsDir, "2026", "06", "25");
+    await mkdir(dateDir, { recursive: true });
+
+    const id = randomUUID();
+    const sessionPath = join(dateDir, `rollout-${id}.jsonl`);
+    await writeFile(
+      sessionPath,
+      `${makeSessionMeta(id, "/home/user/project-before-replace")}\n`,
+    );
+
+    const scanner = new CodexSessionScanner({ sessionsDir, dataDir });
+    const projects = await scanner.listProjects();
+    expect(projects).toHaveLength(1);
+    expect(projects[0].path).toBe("/home/user/project-before-replace");
+
+    await rm(sessionPath);
+    await writeFile(
+      sessionPath,
+      `${makeSessionMeta(id, "/home/user/project-after-replace", {
+        cli_version: "0.94.0-alpha.10",
+      })}\n`,
+    );
+
+    const restartedScanner = new CodexSessionScanner({ sessionsDir, dataDir });
+    const restartedProjects = await restartedScanner.listProjects();
+    expect(restartedProjects).toHaveLength(1);
+    expect(restartedProjects[0].path).toBe(
+      "/home/user/project-after-replace",
+    );
+  });
+
+  it("rereads cached metadata when a plain rollout shrinks", async () => {
+    const sessionsDir = join(tmpdir(), `codex-scan-${randomUUID()}`);
+    const dataDir = join(tmpdir(), `codex-data-${randomUUID()}`);
+    tempDirs.push(sessionsDir, dataDir);
+
+    const dateDir = join(sessionsDir, "2026", "06", "25");
+    await mkdir(dateDir, { recursive: true });
+
+    const id = randomUUID();
+    const sessionPath = join(dateDir, `rollout-${id}.jsonl`);
+    const beforeMeta = makeSessionMeta(id, "/home/user/project-before-shrink");
+    const largeEvent = JSON.stringify({
+      type: "event_msg",
+      payload: {
+        type: "user_message",
+        message: "x".repeat(5000),
+      },
+    });
+    const beforeContent = `${beforeMeta}\n${largeEvent}\n`;
+    await writeFile(sessionPath, beforeContent);
+
+    const scanner = new CodexSessionScanner({ sessionsDir, dataDir });
+    const projects = await scanner.listProjects();
+    expect(projects).toHaveLength(1);
+    expect(projects[0].path).toBe("/home/user/project-before-shrink");
+
+    const afterMeta = makeSessionMeta(
+      id,
+      "/home/user/project-after-shrink-with-longer-name",
+      { cli_version: "0.94.0-alpha.10" },
+    );
+    const afterContent = `${afterMeta}\n`;
+    expect(Buffer.byteLength(afterContent)).toBeGreaterThanOrEqual(
+      Buffer.byteLength(`${beforeMeta}\n`),
+    );
+    expect(Buffer.byteLength(afterContent)).toBeLessThan(
+      Buffer.byteLength(beforeContent),
+    );
+    await writeFile(sessionPath, afterContent);
+
+    const restartedScanner = new CodexSessionScanner({ sessionsDir, dataDir });
+    const restartedProjects = await restartedScanner.listProjects();
+    expect(restartedProjects).toHaveLength(1);
+    expect(restartedProjects[0].path).toBe(
+      "/home/user/project-after-shrink-with-longer-name",
+    );
+  });
+
+  it("reconciles an indexed plain rollout after zstd compression", async () => {
+    const sessionsDir = join(tmpdir(), `codex-scan-${randomUUID()}`);
+    const dataDir = join(tmpdir(), `codex-data-${randomUUID()}`);
+    tempDirs.push(sessionsDir, dataDir);
+
+    const dateDir = join(sessionsDir, "2026", "06", "25");
+    await mkdir(dateDir, { recursive: true });
+
+    const id = randomUUID();
+    const sessionPath = join(dateDir, `rollout-${id}.jsonl`);
+    const sessionContent = `${makeSessionMeta(
+      id,
+      "/home/user/project-compressed-cache",
+    )}\n{"type":"event_msg","payload":{"type":"user_message","message":"hello"}}\n`;
+    await writeFile(sessionPath, sessionContent);
+
+    const scanner = new CodexSessionScanner({ sessionsDir, dataDir });
+    const projects = await scanner.listProjects();
+    expect(projects).toHaveLength(1);
+    expect(projects[0].path).toBe("/home/user/project-compressed-cache");
+
+    const index = createCodexSessionDiscoveryIndex(dataDir, sessionsDir);
+    expect(index).toBeDefined();
+    if (!index) return;
+
+    const plainIdentity = getCodexRolloutDiscoveryIdentity(
+      sessionsDir,
+      sessionPath,
+    );
+    const shardPath = index.getShardPath(plainIdentity.shardKey);
+
+    await writeFile(`${sessionPath}.zst`, zstdCompressed(sessionContent));
+    await rm(sessionPath);
+
+    const restartedScanner = new CodexSessionScanner({ sessionsDir, dataDir });
+    const restartedProjects = await restartedScanner.listProjects();
+    expect(restartedProjects).toHaveLength(1);
+    expect(restartedProjects[0].path).toBe(
+      "/home/user/project-compressed-cache",
+    );
+
+    const compressedIdentity = getCodexRolloutDiscoveryIdentity(
+      sessionsDir,
+      `${sessionPath}.zst`,
+    );
+    const after = JSON.parse(await readFile(shardPath, "utf-8")) as {
+      records: Record<
+        string,
+        {
+          relativePath: string;
+          representation?: string;
+          metadata: { cwd: string };
+        }
+      >;
+    };
+    const record = after.records[compressedIdentity.key];
+    expect(record?.relativePath).toBe(compressedIdentity.relativePath);
+    expect(record?.representation).toBe("zstd");
+    expect(record?.metadata.cwd).toBe("/home/user/project-compressed-cache");
+  });
+
   it("does not list deleted rollouts from the discovery index", async () => {
     const sessionsDir = join(tmpdir(), `codex-scan-${randomUUID()}`);
     const dataDir = join(tmpdir(), `codex-data-${randomUUID()}`);

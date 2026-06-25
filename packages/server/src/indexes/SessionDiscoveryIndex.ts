@@ -5,6 +5,12 @@ import { getLogger } from "../logging/logger.js";
 
 const CURRENT_VERSION = 1;
 
+export interface SessionDiscoverySourceFingerprint {
+  dev?: number;
+  ino?: number;
+  birthtimeMs?: number;
+}
+
 export interface SessionDiscoveryRecord<TMetadata = unknown> {
   key: string;
   relativePath: string;
@@ -13,6 +19,7 @@ export interface SessionDiscoveryRecord<TMetadata = unknown> {
   metadataByteLength: number;
   fileSize: number;
   fileMtimeMs: number;
+  sourceFingerprint?: SessionDiscoverySourceFingerprint;
   firstSeenAtMs: number;
   lastValidatedAtMs: number;
 }
@@ -44,6 +51,7 @@ export interface UpsertSessionDiscoveryRecord<TMetadata = unknown> {
   metadataByteLength: number;
   fileSize: number;
   fileMtimeMs: number;
+  sourceFingerprint?: SessionDiscoverySourceFingerprint;
   nowMs?: number;
 }
 
@@ -80,8 +88,20 @@ function isValidDiscoveryRecord(
     typeof value.fileSize === "number" &&
     value.fileSize >= 0 &&
     typeof value.fileMtimeMs === "number" &&
+    isValidSourceFingerprint(value.sourceFingerprint) &&
     typeof value.firstSeenAtMs === "number" &&
     typeof value.lastValidatedAtMs === "number"
+  );
+}
+
+function isValidSourceFingerprint(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isObjectRecord(value)) return false;
+  return (
+    (value.dev === undefined || typeof value.dev === "number") &&
+    (value.ino === undefined || typeof value.ino === "number") &&
+    (value.birthtimeMs === undefined ||
+      typeof value.birthtimeMs === "number")
   );
 }
 
@@ -156,6 +176,9 @@ export class SessionDiscoveryIndex {
       metadataByteLength: input.metadataByteLength,
       fileSize: input.fileSize,
       fileMtimeMs: input.fileMtimeMs,
+      ...(input.sourceFingerprint !== undefined
+        ? { sourceFingerprint: input.sourceFingerprint }
+        : {}),
       firstSeenAtMs: existing?.firstSeenAtMs ?? nowMs,
       lastValidatedAtMs: nowMs,
     };

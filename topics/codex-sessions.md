@@ -50,8 +50,9 @@ There are two main YA surfaces over the same rollout tree:
 within a request path, while `SessionIndexService` persists provider-neutral
 session summaries. `SessionDiscoveryIndex` now persists normalized provider
 head metadata for observed rollout files under
-`{dataDir}/indexes/session-discovery/`. These layers reduce duplicate reads,
-but only provider-owned files are authoritative.
+`{dataDir}/indexes/session-discovery/`, including optional source fingerprints
+for replacement detection. These layers reduce duplicate reads, but only
+provider-owned files are authoritative.
 
 ## Compression And Representation
 
@@ -85,9 +86,11 @@ Codex session support is correct for ordinary small local trees, but the
 current shape has important scale and representation gaps:
 
 - The durable `rollout file -> session_meta` catalog exists as a
-  provider-neutral discovery index, but replacement validation is still
-  conservative: a same-path, non-shrinking plain-file replacement can keep
-  cached head metadata until a stronger validation pass exists.
+  provider-neutral discovery index. It now detects common replacement and
+  shrink/truncation cases through source fingerprints and cached file size,
+  but a same-path overwrite that keeps the same file identity and
+  non-shrinking size can still keep cached head metadata until a stronger
+  validation pass exists.
 - `session_meta` is effectively append-immutable, and the Codex adapter now
   reuses cached metadata across ordinary append/mtime/size changes.
 - Recursive discovery is still O(number of rollout files). Date-bucket layout
@@ -106,9 +109,12 @@ current shape has important scale and representation gaps:
 The next durable improvements should build on the provider-neutral discovery
 index without letting it diverge from provider-owned history:
 
-1. Strengthen replacement/truncation detection for cached head metadata.
-2. Reconcile rename/compression/delete events against the canonical stem so a
-   `.jsonl -> .jsonl.zst` transition preserves the session.
+1. Add an explicit validation strategy for same-identity, non-shrinking header
+   overwrites. Current source-fingerprint and shrink checks cover common
+   replacement/truncation cases without rereading ordinary appends.
+2. Add metrics and watcher-path coverage around canonical-stem
+   rename/compression/delete reconciliation; scanner tests now cover a
+   `.jsonl -> .jsonl.zst` transition preserving the session.
 3. Re-read head metadata only when the rollout is new, cached metadata is
    missing or invalid, the file appears replaced/truncated, or an explicit
    validation pass marks the cache suspect.

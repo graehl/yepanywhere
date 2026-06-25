@@ -40,6 +40,11 @@ describe("SessionDiscoveryIndex", () => {
       metadataByteLength: 120,
       fileSize: 500,
       fileMtimeMs: 1234,
+      sourceFingerprint: {
+        dev: 1,
+        ino: 2,
+        birthtimeMs: 3,
+      },
     });
     await index.flush();
 
@@ -61,6 +66,11 @@ describe("SessionDiscoveryIndex", () => {
     expect(record?.metadata.id).toBe("session-1");
     expect(record?.metadata.cwd).toBe("/tmp/project");
     expect(record?.relativePath).toBe("2026/06/25/rollout-1.jsonl");
+    expect(record?.sourceFingerprint).toEqual({
+      dev: 1,
+      ino: 2,
+      birthtimeMs: 3,
+    });
   });
 
   it("ignores malformed shard files", async () => {

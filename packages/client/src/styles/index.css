@@ -3749,6 +3749,15 @@ a.sidebar-nav-item {
   overflow-y: hidden;
 }
 
+.new-session-form .speech-draft-field textarea,
+.fab-input-panel .speech-draft-field textarea {
+  overflow-y: auto;
+}
+
+.message-input-collapsed .speech-draft-field textarea {
+  overflow-y: hidden;
+}
+
 .speech-draft-field.has-interim textarea {
   color: transparent;
   caret-color: var(--text-primary);

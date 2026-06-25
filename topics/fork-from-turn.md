@@ -429,6 +429,36 @@ Wiring: `SessionPage` → `MessageList` (`onForkBeforeUserMessage`,
 `onTrimAnchor`). Fork stays gated by `supportsForkSession` (`SessionPage` passes
 `undefined` otherwise, so the menu omits Fork).
 
+### 4. Range selection from right-scroll turn notches
+
+Add a way to select a contiguous range of turns from the right scrollbar notch
+rail. Gesture is intentionally unresolved: drag, secondary mouse button, and/or
+modifier-key selection are all candidates. The important contract is the
+selection object, not the first gesture: two turn-boundary anchors produce a
+visible selected turn range that can feed downstream actions.
+
+Range-aware fork actions extend, rather than replace, the single-turn fork
+actions:
+
+- **Fork before selected turn with range summary** — fork at the specified
+  before-turn anchor, then submit a generated summary of the selected turn range
+  instead of summarizing all following turns.
+- **Fork after selected turn with range summary** — keep the specified turn
+  through its completed response, then submit a generated summary of the selected
+  turn range instead of summarizing all source history after that turn.
+
+This separates the fork boundary from the summary source range. The fork
+boundary is a single turn boundary; the summary source is the selected range of
+turns. That lets the user preserve the useful prefix while handing the successor
+only the later slice that matters, rather than forcing "everything after the
+anchor" into the summary prompt.
+
+UI convenience: add a toolbar accelerator for the common case **fork after the
+first turn**. It should invoke the same fork-after-summary machinery as the
+notch/menu path, defaulting the boundary to the first completed user turn and
+using the current composer text as summary instructions when present. This is a
+speed path to an existing action, not a separate fork implementation.
+
 ## Fork-send: backgrounded progress and follow
 
 **Status: implemented with the durable pseudo-turn.** Shipped: server-owned

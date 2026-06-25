@@ -10,9 +10,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useProviders } from "../hooks/useProviders";
-import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
-import { helperTargetsToModelOptions } from "../lib/helperTargets";
 import { getRecapModeDescription } from "../lib/recapModes";
 import { RecapAfterSecondsControl } from "./RecapAfterSecondsControl";
 import { Modal } from "./ui/Modal";
@@ -30,7 +28,7 @@ interface SessionRecapModalProps {
   }) => void;
 }
 
-const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork", "native"];
+const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork"];
 type Translate = ReturnType<typeof useI18n>["t"];
 
 function modeLabel(mode: RecapMode, t: Translate): string {
@@ -50,7 +48,6 @@ export function SessionRecapModal({
 }: SessionRecapModalProps) {
   const { t } = useI18n();
   const { providers } = useProviders();
-  const { settings } = useServerSettings();
   const [recapMode, setRecapMode] = useState<RecapMode>("off");
   const [recapAfterSeconds, setRecapAfterSeconds] = useState(
     DEFAULT_RECAP_AFTER_SECONDS,
@@ -78,7 +75,11 @@ export function SessionRecapModal({
       .then((response) => {
         if (cancelled) return;
         const process = response.process;
-        setRecapMode(process?.recapMode ?? "off");
+        setRecapMode(
+          process?.recapMode === "native"
+            ? "off"
+            : (process?.recapMode ?? "off"),
+        );
         setRecapAfterSeconds(
           normalizeRecapAfterSeconds(process?.recapAfterSeconds),
         );
@@ -110,14 +111,10 @@ export function SessionRecapModal({
 
   const providerInfo = providers.find((p) => p.name === processProvider);
   const models = providerInfo?.models ?? [];
-  const helperTargetModelOptions = useMemo(
-    () => helperTargetsToModelOptions(settings?.helperTargets),
-    [settings?.helperTargets],
-  );
   const modeAvailability = useMemo(
     () => ({
       off: true,
-      native: providerInfo?.supportsNativeRecaps === true,
+      native: false,
       fork: providerInfo?.supportsRecaps === true,
       "side-session": providerInfo?.supportsRecaps === true,
     }),
@@ -137,11 +134,15 @@ export function SessionRecapModal({
             ? processModel
             : undefined,
       },
-      ...helperTargetModelOptions,
       ...models,
     ],
-    [helperTargetModelOptions, models, processModel, t],
+    [models, processModel, t],
   );
+  const effectiveHelperSideModel = modelOptions.some(
+    (model) => model.id === helperSideModel,
+  )
+    ? helperSideModel
+    : HELPER_SIDE_MODEL_CHEAPEST;
 
   const save = useCallback(async () => {
     if (!modeAvailability[recapMode]) {
@@ -154,7 +155,7 @@ export function SessionRecapModal({
       const result = await api.setProcessRecapConfig(processId, {
         recapMode,
         recapAfterSeconds,
-        helperSideModel,
+        helperSideModel: effectiveHelperSideModel,
       });
       onSaved({
         recapMode: result.recapMode,
@@ -170,7 +171,7 @@ export function SessionRecapModal({
       setIsSaving(false);
     }
   }, [
-    helperSideModel,
+    effectiveHelperSideModel,
     modeAvailability,
     onClose,
     onSaved,
@@ -217,11 +218,12 @@ export function SessionRecapModal({
           <RecapAfterSecondsControl
             value={recapAfterSeconds}
             disabled={isLoading || isSaving}
+            mode={recapMode}
             onCommit={setRecapAfterSeconds}
           />
         )}
 
-        {(recapMode === "side-session" || recapMode === "fork") && (
+        {recapMode === "side-session" && (
           <label className="settings-item model-settings-item">
             <div className="settings-item-info">
               <strong>{t("helperSideModelTitle")}</strong>
@@ -229,7 +231,7 @@ export function SessionRecapModal({
             </div>
             <select
               className="settings-select"
-              value={helperSideModel}
+              value={effectiveHelperSideModel}
               onChange={(event) => setHelperSideModel(event.target.value)}
               disabled={isLoading || isSaving}
             >

@@ -286,6 +286,18 @@ function parseProviderSessionDefaults(
       parsed.effortLevel = raw.effortLevel as EffortLevel;
     }
   }
+  if ("helperSideModel" in raw) {
+    const helperSideModel = parseOptionalString(raw.helperSideModel, 200);
+    if (helperSideModel === null) return null;
+    if (helperSideModel) {
+      parsed.helperSideModel =
+        helperSideModel === HELPER_SIDE_MODEL_SAME_AS_MAIN
+          ? HELPER_SIDE_MODEL_SAME_AS_MAIN
+          : helperSideModel === HELPER_SIDE_MODEL_CHEAPEST
+            ? HELPER_SIDE_MODEL_CHEAPEST
+            : helperSideModel;
+    }
+  }
 
   return Object.keys(parsed).length > 0 ? parsed : undefined;
 }
@@ -523,28 +535,6 @@ function parseNewSessionDefaults(
     ) {
       parsed.promptSuggestionMode =
         input.promptSuggestionMode as PromptSuggestionMode;
-    }
-  }
-
-  if ("helperSideModel" in input) {
-    if (
-      input.helperSideModel !== undefined &&
-      input.helperSideModel !== null &&
-      input.helperSideModel !== "" &&
-      typeof input.helperSideModel !== "string"
-    ) {
-      return null;
-    }
-    if (
-      typeof input.helperSideModel === "string" &&
-      input.helperSideModel.length > 0
-    ) {
-      parsed.helperSideModel =
-        input.helperSideModel === HELPER_SIDE_MODEL_SAME_AS_MAIN
-          ? HELPER_SIDE_MODEL_SAME_AS_MAIN
-          : input.helperSideModel === HELPER_SIDE_MODEL_CHEAPEST
-            ? HELPER_SIDE_MODEL_CHEAPEST
-            : input.helperSideModel.slice(0, 200);
     }
   }
 

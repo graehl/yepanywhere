@@ -65,7 +65,6 @@ import { getRecapModeDescription } from "../lib/recapModes";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
-import { helperTargetsToModelOptions } from "../lib/helperTargets";
 import {
   clearNewSessionPrefill,
   getNewSessionPrefill,
@@ -138,7 +137,7 @@ interface PendingSpeechFinal {
   metadata?: SpeechTranscriptionResultMetadata;
 }
 
-const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork", "native"];
+const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork"];
 const PROMPT_SUGGESTION_MODE_ORDER: PromptSuggestionMode[] = [
   ...PROMPT_SUGGESTION_MODES,
 ];
@@ -196,12 +195,12 @@ function providerSupportsRecapMode(
   mode: RecapMode,
 ): boolean {
   if (mode === "off") return true;
-  if (mode === "native") return provider?.supportsNativeRecaps === true;
+  if (mode === "native") return false;
   return provider?.supportsRecaps === true;
 }
 
 function getPreferredRecapMode(
-  provider:
+  _provider:
     | {
         supportsRecaps?: boolean;
         supportsNativeRecaps?: boolean;
@@ -213,7 +212,7 @@ function getPreferredRecapMode(
   if (defaults?.recapMode && RECAP_MODE_ORDER.includes(defaults.recapMode)) {
     return defaults.recapMode;
   }
-  return provider?.supportsNativeRecaps ? "native" : "off";
+  return "off";
 }
 
 function resolveRecapMode(
@@ -504,13 +503,9 @@ export function NewSessionForm({
     (p) => p.name === selectedProvider,
   );
   const availableModels: ModelInfo[] = selectedProviderInfo?.models ?? [];
-  const helperTargetModelOptions = useMemo(
-    () => helperTargetsToModelOptions(settings?.helperTargets),
-    [settings?.helperTargets],
-  );
   const helperSelectableModels = useMemo(
-    () => [...helperTargetModelOptions, ...availableModels],
-    [availableModels, helperTargetModelOptions],
+    () => [...availableModels],
+    [availableModels],
   );
   const helperSideModelOptions: FilterOption<string>[] = useMemo(
     () => [
@@ -586,8 +581,7 @@ export function NewSessionForm({
   );
   const availableRecapModes = RECAP_MODE_ORDER;
   const availablePromptSuggestionModes = PROMPT_SUGGESTION_MODE_ORDER;
-  const showHelperSideModel =
-    selectedRecapMode === "side-session" || selectedRecapMode === "fork";
+  const showHelperSideModel = selectedRecapMode === "side-session";
   const sortedProjects = useMemo(
     () => sortProjectsForChooser(projects, recentProjectIds),
     [projects, recentProjectIds],
@@ -826,10 +820,7 @@ export function NewSessionForm({
     );
     setSelectedPromptSuggestionMode(preferredPromptSuggestionMode);
     setHelperSideModel(
-      getDefaultHelperSideModel(
-        [...helperTargetModelOptions, ...initialModels],
-        savedDefaults,
-      ),
+      getDefaultHelperSideModel(initialModels, initialProviderDefaults),
     );
     setMode(savedDefaults?.permissionMode ?? "default");
   }, [
@@ -838,7 +829,6 @@ export function NewSessionForm({
     providersLoading,
     settings,
     settingsLoading,
-    helperTargetModelOptions,
     getLegacyProviderDefaultSeed,
     preferredProvider,
     preferredModel,
@@ -874,6 +864,9 @@ export function NewSessionForm({
     }
     setSelectedThinkingMode(providerDefaults.thinkingMode ?? "off");
     setSelectedEffortLevel(providerDefaults.effortLevel ?? "high");
+    setHelperSideModel(
+      getDefaultHelperSideModel(providerModels, providerDefaults),
+    );
   };
 
   // Build model options for FilterDropdown
@@ -1056,11 +1049,15 @@ export function NewSessionForm({
   // avoid a toast on every click.
   useEffect(() => {
     if (!hasUserCustomizedDefaultsRef.current || !selectedProvider) return;
+    const { helperSideModel: _legacyHelperSideModel, ...baseDefaults } =
+      (newSessionDefaultsRef.current ?? {}) as NonNullable<
+        typeof newSessionDefaultsRef.current
+      > & { helperSideModel?: string };
     void Promise.resolve(
       updateServerSetting("newSessionDefaults", {
         ...withProviderSessionDefaults(
           {
-            ...newSessionDefaultsRef.current,
+            ...baseDefaults,
             provider: selectedProvider ?? undefined,
             // Permission mode is an all-provider preference. Keep an
             // unsupported saved value such as Auto intact while the visible /
@@ -1069,13 +1066,13 @@ export function NewSessionForm({
             recapMode: selectedRecapMode,
             recapAfterSeconds,
             promptSuggestionMode: selectedPromptSuggestionMode,
-            helperSideModel,
           },
           selectedProvider,
           {
             model: selectedModel ?? undefined,
             thinkingMode: selectedThinkingMode,
             effortLevel: selectedEffortLevel,
+            helperSideModel,
           },
           getLegacyProviderDefaultSeed(selectedProvider),
         ),
@@ -2258,7 +2255,6 @@ export function NewSessionForm({
       <ShowThinkingControls
         value={showThinking}
         onChange={(value) => setShowThinking(value)}
-        provider={selectedProvider ?? undefined}
         t={t}
         showLabel={false}
       />
@@ -2319,6 +2315,7 @@ export function NewSessionForm({
         <RecapAfterSecondsControl
           value={recapAfterSeconds}
           disabled={isStarting}
+          mode={selectedRecapMode}
           onCommit={(seconds) => {
             hasUserCustomizedDefaultsRef.current = true;
             setRecapAfterSeconds(seconds);
@@ -2328,22 +2325,22 @@ export function NewSessionForm({
       <p className="recap-mode-caption">
         {getRecapModeDescription(selectedRecapMode, t, recapAfterSeconds)}
       </p>
-      {showHelperSideModel && (
-        <div className="new-session-helper-model">
-          <h3>{t("helperSideModelTitle")}</h3>
-          <FilterDropdown
-            label={t("helperSideModelTitle")}
-            options={helperSideModelOptions}
-            selected={[helperSideModel]}
-            onChange={(selected) => {
-              hasUserCustomizedDefaultsRef.current = true;
-              setHelperSideModel(selected[0] ?? HELPER_SIDE_MODEL_CHEAPEST);
-            }}
-            multiSelect={false}
-            placeholder={t("helperSideModelCheapest")}
-          />
-        </div>
-      )}
+    </div>
+  ) : null;
+  const helperSideModelSection = showHelperSideModel ? (
+    <div className="new-session-helper-section new-session-helper-model-section">
+      <h3>{t("helperSideModelTitle")}</h3>
+      <FilterDropdown
+        label={t("helperSideModelTitle")}
+        options={helperSideModelOptions}
+        selected={[helperSideModel]}
+        onChange={(selected) => {
+          hasUserCustomizedDefaultsRef.current = true;
+          setHelperSideModel(selected[0] ?? HELPER_SIDE_MODEL_CHEAPEST);
+        }}
+        multiSelect={false}
+        placeholder={t("helperSideModelCheapest")}
+      />
     </div>
   ) : null;
   const promptSuggestionSection = selectedProvider ? (
@@ -2424,6 +2421,7 @@ export function NewSessionForm({
         {(providerSection ||
           modelSection ||
           thinkingSection ||
+          helperSideModelSection ||
           recapSection ||
           promptSuggestionSection ||
           permissionSection) && (
@@ -2435,6 +2433,7 @@ export function NewSessionForm({
             {providerSection}
             {modelSection}
             {thinkingSection}
+            {helperSideModelSection}
           </div>
         )}
       </div>

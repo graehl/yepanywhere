@@ -26,10 +26,9 @@ currently selected provider lacks the feature.
 - **Permission mode** — the requested approval policy. A model may hide or
   ignore unsupported modes such as provider-decided `Auto`, but the saved
   default is not a provider/model economics choice.
-- **Recaps** — recap mode, away threshold, and the tailed fallback model belong
-  together. They are presented above AI Provider because they are a standing
-  session-helper choice, not a property of whichever provider button happens to
-  be selected.
+- **Recaps** — recap mode and away threshold belong together. They are
+  presented above AI Provider because they are standing session-helper choices,
+  not properties of whichever provider button happens to be selected.
 - **Prompt suggestions** — expose `Off` / `Native` unconditionally. Launch code
   only enables native provider suggestions when supported, but the default UI
   must not show provider-specific "unsupported" copy in the all-provider area.
@@ -51,6 +50,11 @@ resolved against that provider's available model metadata.
 - **Thinking mode** — `off` / `auto` / `on` changes provider work requested.
 - **Effort level** — effort labels are not comparable across providers; `high`
   on one backend is not a portable meaning or cost on another.
+- **Tailed Recap Model** — tailed recap model ids, costs, and availability are
+  provider-local. The selector is intentionally lower-priority than thinking
+  mode and effort. OpenAI-compatible helper targets stay hidden until
+  [openai-compatible-helper-sessions](openai-compatible-helper-sessions.md)
+  exists.
 
 Switching AI Provider should restore that provider's provider-specific defaults
 without disturbing all-provider defaults. Changing an all-provider default should
@@ -58,27 +62,26 @@ not overwrite per-provider model/thinking/effort choices.
 
 ## Recap fallback semantics
 
-`Forked` is a preference for the higher-fidelity recap path, not permission to
-silently fail when the selected provider or model cannot fork. If fork recap
-generation is unavailable or fails before producing a recap, YA should fall back
-to the tailed helper path when the provider can generate recaps at all.
+`Forked` is a preference for the higher-fidelity recap path. **Tailed Recap
+Model** is the provider-scoped helper model for the tailed path, so it is shown
+with provider-specific defaults when `Tailed` is selected and hidden for `Off`,
+`Native`, and `Forked`.
 
-Because `Forked` can fall back to `Tailed`, the fallback model selector is
-labeled **Tailed Recap Model** and shown whenever a simulated recap mode can use
-it (`Tailed` directly, or `Forked` as fallback). The selector is hidden for
-`Off` and for purely native recap mode.
+`Native` remains a valid internal/future recap mode, but no current backend
+offers a meaningful way to request native recaps. Do not show it in the UI until
+a provider capability makes it real.
 
 ## UI placement
 
 In the session-defaults panel and the new-session form:
 
-1. All-provider defaults: recaps, including **Tailed Recap Model** when
-   applicable; prompt suggestions; permission mode; and show-thinking display
-   policy; forked-session behavior.
+1. All-provider defaults: recaps; prompt suggestions; permission mode;
+   show-thinking display policy; and forked-session behavior.
 2. AI Provider. The selector is the boundary between all-provider defaults above
    and provider-specific defaults below.
 3. Provider-specific defaults for the selected provider: model, service tier,
-   thinking mode, and effort.
+   thinking mode, effort, **Tailed Recap Model**, prompt-cache keepalive,
+   compaction threshold, and other model economics controls.
 
 Permission-mode cards are equal-sized by design. Their captions should fit the
 card grid with short explanatory text:
@@ -101,7 +104,6 @@ interface NewSessionDefaults {
   recapMode?: RecapMode;
   recapAfterSeconds?: number;
   promptSuggestionMode?: PromptSuggestionMode;
-  helperSideModel?: string;
   providers?: Partial<Record<ProviderName, ProviderSessionDefaults>>;
 }
 
@@ -110,6 +112,7 @@ interface ProviderSessionDefaults {
   serviceTier?: string;
   thinkingMode?: ThinkingMode;
   effortLevel?: EffortLevel;
+  helperSideModel?: string;
 }
 ```
 
@@ -122,17 +125,16 @@ read; normalize into the scoped shape on the next save.
 
 1. **Pin this contract.** Create this topic, add the glossary/topic index row,
    and use it as the commit topic for the UI/storage changes.
-2. **Recap UI and fallback.** Move recap controls above AI Provider; show
-   **Tailed Recap Model** for `Tailed` and `Forked`; make `Forked` available
-   whenever the provider can generate recaps; make server fork recap failures
-   fall back to tailed generation.
+2. **Recap UI.** Move recap controls above AI Provider; keep **Tailed Recap
+   Model** in provider-specific defaults after thinking effort; make `Forked`
+   available whenever the provider can generate recaps.
 3. **Prompt suggestions.** Show `Off` / `Native` unconditionally in the
    all-provider defaults area; remove provider-specific unsupported copy; keep
    launch-time native enablement capability-gated.
 4. **Provider-specific defaults.** Add `newSessionDefaults.providers` and wire
-   selected-provider model, thinking mode, and effort through it. Preserve legacy
-   fields and existing saved preferences by seeding the selected provider on
-   read/next save.
+   selected-provider model, thinking mode, effort, and tailed recap model
+   through it. Preserve legacy fields and existing saved preferences by seeding
+   the selected provider on read/next save.
 5. **All-provider placement.** Move permission mode, show-thinking display
    policy, and forked-session behavior out of the AI-provider-specific region.
    Keep show-thinking all-provider/per-install and separate from thinking mode +

@@ -145,14 +145,14 @@ const SHOW_THINKING_VALUES: ShowThinking[] = ["default", "on", "off"];
  * requests are controlled separately by the server. Defaults to "default".
  */
 function loadShowThinking(): ShowThinking {
-  const stored = getServerScoped("showThinking");
+  const stored = getServerScoped("showThinking", LEGACY_KEYS.showThinking);
   return stored && SHOW_THINKING_VALUES.includes(stored as ShowThinking)
     ? (stored as ShowThinking)
     : "default";
 }
 
 function saveShowThinking(value: ShowThinking) {
-  setServerScoped("showThinking", value);
+  setServerScoped("showThinking", value, LEGACY_KEYS.showThinking);
 }
 
 function loadVoiceInputEnabled(): boolean {
@@ -382,9 +382,9 @@ export function useModelSettings() {
     useState<ShowThinking>(loadShowThinking);
   // showThinking is stored under a server-scoped key that needs the installId,
   // which arrives asynchronously after a /api/server-info fetch. The synchronous
-  // useState(loadShowThinking) above therefore runs before installId is known
-  // and (lacking a legacy-key fallback) resolves to "default" on every reload.
-  // Re-read once installId lands, unless the user already changed it this mount.
+  // useState(loadShowThinking) above can run before installId is known, so
+  // re-read once installId lands; if the user already changed it this mount,
+  // commit that explicit choice into the scoped key instead.
   const { installId } = useInstallId();
   const showThinkingTouchedRef = useRef(false);
   const [voiceInputEnabled, setVoiceInputEnabledState] = useState<boolean>(() =>
@@ -443,12 +443,16 @@ export function useModelSettings() {
   ]);
 
   useEffect(() => {
-    if (!installId || showThinkingTouchedRef.current) {
+    if (!installId) {
+      return;
+    }
+    if (showThinkingTouchedRef.current) {
+      saveShowThinking(showThinking);
       return;
     }
     const stored = loadShowThinking();
     setShowThinkingState((prev) => (prev === stored ? prev : stored));
-  }, [installId]);
+  }, [installId, showThinking]);
 
   const setModel = useCallback((m: ModelOption) => {
     setModelState(m);

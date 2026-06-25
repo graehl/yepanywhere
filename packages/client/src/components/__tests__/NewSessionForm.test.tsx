@@ -120,6 +120,7 @@ const {
               model?: string;
               thinkingMode?: "off" | "auto" | "on";
               effortLevel?: "low" | "medium" | "high" | "xhigh" | "max";
+              helperSideModel?: string;
             }
           >
         >;
@@ -1394,6 +1395,9 @@ describe("NewSessionForm", () => {
       screen.getByRole("button", { name: /recapModeSideSession/ }),
     ).toBeDefined();
     expect(
+      screen.queryByRole("button", { name: /recapModeNative/ }),
+    ).toBeNull();
+    expect(
       screen.getByRole("button", {
         name: /promptSuggestionModeNative/,
       }),
@@ -1424,7 +1428,7 @@ describe("NewSessionForm", () => {
     });
   });
 
-  it("offers configured helper targets for side-session recaps", async () => {
+  it("hides configured helper targets until runtime support exists", async () => {
     serverSettingsState.settings = {
       helperTargets: [
         {
@@ -1449,7 +1453,7 @@ describe("NewSessionForm", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /recapModeSideSession/ }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Local vLLM" }));
+    expect(screen.queryByRole("button", { name: "Local vLLM" })).toBeNull();
     fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
       target: { value: "hello" },
     });
@@ -1463,7 +1467,7 @@ describe("NewSessionForm", () => {
         "hello",
         expect.objectContaining({
           recapMode: "side-session",
-          helperSideModel: "helper-target:local-vllm",
+          helperSideModel: "cheapest",
         }),
         undefined,
         expect.any(Number),

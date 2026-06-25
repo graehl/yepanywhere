@@ -549,12 +549,14 @@ describe("Settings Routes", () => {
                 model: "opus",
                 thinkingMode: "on",
                 effortLevel: "high",
+                helperSideModel: "haiku",
               },
               codex: {
                 model: "gpt-5.5",
                 serviceTier: "priority",
                 thinkingMode: "auto",
                 effortLevel: "xhigh",
+                helperSideModel: "helper-target:local-vllm",
               },
             },
           },
@@ -572,16 +574,41 @@ describe("Settings Routes", () => {
               model: "opus",
               thinkingMode: "on",
               effortLevel: "high",
+              helperSideModel: "haiku",
             },
             codex: {
               model: "gpt-5.5",
               serviceTier: "priority",
               thinkingMode: "auto",
               effortLevel: "xhigh",
+              helperSideModel: "helper-target:local-vllm",
             },
           },
         },
       });
+    });
+
+    it("rejects invalid provider-scoped helper model defaults", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          newSessionDefaults: {
+            providers: {
+              claude: { helperSideModel: { id: "haiku" } },
+            },
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      const json = await response.json();
+      expect(json.error).toBe("Invalid newSessionDefaults setting");
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
 
     it("rejects invalid provider-scoped new-session defaults", async () => {

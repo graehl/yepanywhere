@@ -425,7 +425,7 @@ export function withExtendedClaudeContext(
 const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   {
     id: "default",
-    name: "Default (recommended)",
+    name: "Default",
     description: "Claude Code chooses the recommended model for your account",
     contextWindow: getModelContextWindow("default", "claude"),
   },
@@ -457,7 +457,7 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   {
     id: "sonnet[1m]",
     name: "Sonnet 1M",
-    description: "Sonnet with 1M context for long sessions and large codebases",
+    description: "Sonnet with 1M context",
     contextWindow: getModelContextWindow("sonnet[1m]", "claude"),
   },
   {

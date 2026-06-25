@@ -23,10 +23,12 @@ function compactProviderDefaults(
   const compacted: ProviderSessionDefaults = {};
   const model = nonEmpty(defaults.model);
   const serviceTier = nonEmpty(defaults.serviceTier);
+  const helperSideModel = nonEmpty(defaults.helperSideModel);
   if (model) compacted.model = model;
   if (serviceTier) compacted.serviceTier = serviceTier;
   if (defaults.thinkingMode) compacted.thinkingMode = defaults.thinkingMode;
   if (defaults.effortLevel) compacted.effortLevel = defaults.effortLevel;
+  if (helperSideModel) compacted.helperSideModel = helperSideModel;
   return compacted;
 }
 
@@ -49,6 +51,7 @@ export function getProviderSessionDefaults(
       nonEmpty(seed.serviceTier),
     thinkingMode: scoped.thinkingMode ?? seed.thinkingMode ?? undefined,
     effortLevel: scoped.effortLevel ?? seed.effortLevel ?? undefined,
+    helperSideModel: scoped.helperSideModel ?? undefined,
   });
 }
 
@@ -58,13 +61,15 @@ export function withProviderSessionDefaults(
   updates: ProviderSessionDefaults,
   seed: ProviderDefaultSeed = {},
 ): NewSessionDefaults {
+  const { helperSideModel: _legacyHelperSideModel, ...baseDefaults } =
+    (defaults ?? {}) as NewSessionDefaults & { helperSideModel?: string };
   const providerDefaults = compactProviderDefaults({
     ...getProviderSessionDefaults(defaults, providerName, seed),
     ...updates,
   });
 
   return {
-    ...defaults,
+    ...baseDefaults,
     providers: {
       ...defaults?.providers,
       [providerName]: providerDefaults,

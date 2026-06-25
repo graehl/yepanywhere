@@ -97,4 +97,22 @@ describe("RecapAfterSecondsControl", () => {
     expect(input.value).toBe("300");
     expect(onCommit).not.toHaveBeenCalled();
   });
+
+  it("marks the slider with the selected recap mode", () => {
+    const onCommit = vi.fn();
+    const { container } = render(
+      <RecapAfterSecondsControl value={300} mode="fork" onCommit={onCommit} />,
+    );
+
+    expect(container.firstElementChild?.className).toContain(
+      "recap-after-seconds-control--fork",
+    );
+    expect(
+      screen
+        .getByRole<HTMLInputElement>("slider", {
+          name: "recapAfterSecondsAria",
+        })
+        .style.getPropertyValue("--recap-slider-fill"),
+    ).not.toBe("");
+  });
 });

@@ -16,6 +16,8 @@ import { getAllProviders } from "../../providers/registry";
 const DEFAULT_OLLAMA_SYSTEM_PROMPT =
   "You are a helpful coding assistant. You help users with software engineering tasks. You have access to tools for reading files, editing files, running shell commands, and searching code. Use tools when needed to answer questions or make changes. Be concise and direct.";
 const DEFAULT_CLAUDE_LOGIN_COMMAND = "claude auth login --claudeai";
+// Re-enable with topics/openai-compatible-helper-sessions.md.
+const SHOW_HELPER_TARGETS_SETTINGS = false;
 
 interface HelperTargetDraft {
   id?: string;
@@ -824,12 +826,14 @@ export function ProvidersSettings() {
       <p className="settings-section-description">
         {t("providersSectionDescription")}
       </p>
-      <div className="settings-group">
-        <HelperTargetsSettings
-          settings={settings}
-          updateSetting={updateSetting}
-        />
-      </div>
+      {SHOW_HELPER_TARGETS_SETTINGS && (
+        <div className="settings-group">
+          <HelperTargetsSettings
+            settings={settings}
+            updateSetting={updateSetting}
+          />
+        </div>
+      )}
       <div className="settings-group">
         {providerDisplayList.map((provider) => (
           <div key={provider.id} className="settings-item">

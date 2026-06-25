@@ -167,6 +167,7 @@
   /* Brand Colors (theme-agnostic) */
   --app-yep-green: #059669;
   --app-yep-green-dark: #047857;
+  --app-yep-yellow: #f59e0b;
   --app-claude-ivory: #faf9f5;
   --app-claude-slate: #141413;
   --app-claude-orange: #d97706;
@@ -9048,6 +9049,7 @@ a.sidebar-nav-item {
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   gap: 0.75rem 1rem;
   align-items: start;
+  container-type: inline-size;
 }
 
 .settings-session-defaults-panel .new-session-provider-section,
@@ -9057,17 +9059,89 @@ a.sidebar-nav-item {
   margin-bottom: 0;
 }
 
-/* Provider chips read best as one wide row; the model selector and the
-   remaining controls then pack into the multi-column flow at natural
-   width, so the model dropdown no longer spans the whole panel. */
-.settings-session-defaults-panel .session-default-provider-section {
+.settings-session-defaults-panel .session-default-recap-section {
   grid-column: 1 / -1;
 }
 
-/* The thinking defaults panel needs a wide lane so the first row can pack the
-   Show-thinking override immediately after the Thinking controls. */
+.settings-session-defaults-panel .session-default-discovery-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1.75rem;
+}
+
+.settings-session-defaults-panel
+  .session-default-discovery-row
+  .session-default-recap-section {
+  flex: 1 1 36rem;
+  min-width: min(100%, 36rem);
+  container-type: inline-size;
+}
+
+.settings-session-defaults-panel
+  .session-default-discovery-row
+  .session-default-suggestions-section {
+  flex: 0 0 auto;
+  min-width: max-content;
+}
+
+/* Provider chips read best as one wide row. Model is often the only control on
+   its row, so give the dropdown enough width for long provider model names
+   instead of squeezing it into a single narrow grid track. */
+.settings-session-defaults-panel .session-default-provider-section {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border-color);
+  margin-top: 0.15rem;
+  padding-top: 0.75rem;
+}
+
+.settings-session-defaults-panel .session-default-model-section {
+  grid-column: 1 / -1;
+}
+
+/* Provider/model-specific thinking defaults need a wide lane so mode and
+   effort can sit on one compact row when the settings panel has room. */
 .settings-session-defaults-panel .session-default-thinking-section {
   grid-column: 1 / -1;
+}
+
+.settings-session-defaults-panel .session-default-thinking-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.65rem 1rem;
+}
+
+.settings-session-defaults-panel
+  .session-default-thinking-controls
+  .thinking-controls-section--mode {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.settings-session-defaults-panel
+  .session-default-thinking-controls
+  .thinking-controls-section--mode
+  .thinking-toolbar-menu-options {
+  flex-wrap: nowrap;
+}
+
+.settings-session-defaults-panel
+  .session-default-thinking-controls
+  .thinking-controls-section--effort {
+  flex: 1 1 24rem;
+  min-width: min(100%, 18rem);
+  grid-column: auto;
+}
+
+@container (max-width: 24rem) {
+  .settings-session-defaults-panel
+    .session-default-thinking-controls
+    .thinking-controls-section--mode
+    .thinking-toolbar-menu-options {
+    flex-wrap: wrap;
+  }
 }
 
 .session-default-section-description {
@@ -9081,8 +9155,25 @@ a.sidebar-nav-item {
   align-items: stretch;
 }
 
+.settings-session-defaults-panel
+  .session-default-fork-summary-section
+  .settings-item-info
+  strong {
+  font-size: var(--font-size-sm);
+  line-height: 1.25;
+}
+
+@container (min-width: 36rem) {
+  .settings-session-defaults-panel .session-default-fork-summary-section,
+  .settings-session-defaults-panel .session-default-compact-section {
+    grid-column: span 2;
+  }
+}
+
 .session-default-model-section .filter-dropdown-container,
 .session-default-model-section .filter-dropdown-button,
+.session-default-helper-model-section .filter-dropdown-container,
+.session-default-helper-model-section .filter-dropdown-button,
 .new-session-helper-model .filter-dropdown-container,
 .new-session-helper-model .filter-dropdown-button,
 .speech-backend-settings-field .filter-dropdown-container,
@@ -11791,6 +11882,8 @@ a.sidebar-nav-item {
 
 .new-session-model-section .filter-dropdown-container,
 .new-session-model-section .filter-dropdown-button,
+.new-session-helper-model-section .filter-dropdown-container,
+.new-session-helper-model-section .filter-dropdown-button,
 .new-session-speech-field .filter-dropdown-container,
 .new-session-speech-field .filter-dropdown-button {
   width: 100%;
@@ -11978,6 +12071,10 @@ a.sidebar-nav-item {
   background: var(--link-color);
 }
 
+.mode-option-dot.recap-fork {
+  background: var(--app-yep-yellow);
+}
+
 .mode-option-dot.suggestion-off {
   background: var(--text-muted);
 }
@@ -11998,9 +12095,41 @@ a.sidebar-nav-item {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  margin-top: var(--space-2);
+  margin-top: 0;
   color: var(--text-muted);
   font-size: var(--font-size-sm);
+}
+
+.session-default-cache-keepalive-section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.settings-session-defaults-panel .session-default-cache-keepalive-section {
+  grid-column: 1 / -1;
+}
+
+.session-default-cache-keepalive-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.6rem;
+}
+
+.session-default-cache-keepalive-controls .new-session-helper-options {
+  flex-wrap: nowrap;
+}
+
+@container (min-width: 30rem) {
+  .settings-session-defaults-panel .session-default-cache-keepalive-section {
+    grid-template-columns: minmax(12rem, 1fr) max-content;
+    align-items: end;
+  }
+
+  .settings-session-defaults-panel
+    .session-default-cache-keepalive-controls {
+    justify-content: flex-end;
+  }
 }
 
 .prompt-cache-keepalive-cadence input {
@@ -12033,14 +12162,114 @@ a.sidebar-nav-item {
   color: var(--text-muted);
   font-size: var(--font-size-sm);
   max-width: 100%;
+  --recap-mode-color: var(--link-color);
 }
 
 .recap-after-seconds-row {
   width: 100%;
 }
 
+.recap-after-seconds-control input[type="range"] {
+  appearance: none;
+  height: 1.15rem;
+  border-radius: 999px;
+  background: transparent;
+  accent-color: var(--recap-mode-color);
+}
+
+.recap-after-seconds-control input[type="range"]::-webkit-slider-runnable-track {
+  height: 0.36rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--recap-mode-color) 0%,
+    var(--recap-mode-color) var(--recap-slider-fill, 0%),
+    color-mix(in srgb, var(--recap-mode-color) 18%, var(--bg-tertiary))
+      var(--recap-slider-fill, 0%),
+    color-mix(in srgb, var(--recap-mode-color) 18%, var(--bg-tertiary)) 100%
+  );
+}
+
+.recap-after-seconds-control input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: -0.32rem;
+  border: 2px solid var(--bg-surface);
+  border-radius: 999px;
+  background: var(--recap-mode-color);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--recap-mode-color) 55%, transparent);
+}
+
+.recap-after-seconds-control input[type="range"]::-moz-range-track {
+  height: 0.36rem;
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--recap-mode-color) 18%,
+    var(--bg-tertiary)
+  );
+}
+
+.recap-after-seconds-control input[type="range"]::-moz-range-progress {
+  height: 0.36rem;
+  border-radius: 999px;
+  background: var(--recap-mode-color);
+}
+
+.recap-after-seconds-control input[type="range"]::-moz-range-thumb {
+  width: 0.82rem;
+  height: 0.82rem;
+  border: 2px solid var(--bg-surface);
+  border-radius: 999px;
+  background: var(--recap-mode-color);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--recap-mode-color) 55%, transparent);
+}
+
+.recap-after-seconds-control--off {
+  --recap-mode-color: var(--text-muted);
+}
+
+.recap-after-seconds-control--native {
+  --recap-mode-color: var(--success-color);
+}
+
+.recap-after-seconds-control--side-session {
+  --recap-mode-color: var(--link-color);
+}
+
+.recap-after-seconds-control--fork {
+  --recap-mode-color: var(--app-yep-yellow);
+}
+
 .recap-after-seconds-label {
   white-space: nowrap;
+}
+
+.recap-after-seconds-control--inline {
+  display: grid;
+  grid-template-columns: minmax(18ch, 1fr) minmax(14rem, 1.35fr);
+  align-items: center;
+  gap: 0.35rem var(--space-2);
+  max-width: none;
+}
+
+.recap-after-seconds-control--inline .recap-after-seconds-label {
+  min-width: 0;
+  white-space: normal;
+}
+
+.recap-after-seconds-control--inline .recap-after-seconds-row {
+  min-width: 0;
+  max-width: none;
+}
+
+@container (max-width: 33rem) {
+  .recap-after-seconds-control--inline {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 560px) {
@@ -12080,17 +12309,38 @@ a.sidebar-nav-item {
   grid-column: 1 / -1;
 }
 
-.settings-session-defaults-panel .session-default-mode-section .mode-options,
+.settings-session-defaults-panel .session-default-mode-section .mode-options {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
 .new-session-provider-slot .new-session-mode-section .mode-options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   gap: 0.5rem;
 }
 
-.settings-session-defaults-panel .session-default-mode-section .mode-option,
 .new-session-provider-slot .new-session-mode-section .mode-option {
   padding: 0.4rem 0.55rem;
   gap: 0.5rem;
+}
+
+.settings-session-defaults-panel .session-default-mode-section .mode-option {
+  flex: 0 1 auto;
+  min-width: 7.5rem;
+  max-width: 12rem;
+  width: auto;
+  padding: 0.4rem 0.45rem 0.4rem 0.5rem;
+  gap: 0.5rem;
+}
+
+.settings-session-defaults-panel
+  .session-default-mode-section
+  .mode-option-content {
+  min-width: 0;
 }
 
 .settings-session-defaults-panel
@@ -12098,6 +12348,12 @@ a.sidebar-nav-item {
   .mode-option-desc,
 .new-session-provider-slot .new-session-mode-section .mode-option-desc {
   line-height: 1.25;
+}
+
+.settings-session-defaults-panel
+  .session-default-mode-section
+  .mode-option-desc {
+  font-size: var(--font-size-xs);
 }
 
 /* Executor options (Run On section) */

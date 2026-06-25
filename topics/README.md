@@ -22,6 +22,7 @@
 - Emulated slash commands
 - Provider-agnostic /btw asides
 - Side session configuration
+- OpenAI-compatible helper sessions
 - Prompt suggestions
 - Session liveness and queue intent
 - Provider process state machine

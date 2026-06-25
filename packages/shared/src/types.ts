@@ -308,6 +308,8 @@ export interface ProviderSessionDefaults {
   thinkingMode?: ThinkingMode;
   /** Provider-local effort level for new sessions on this provider. */
   effortLevel?: EffortLevel;
+  /** Provider-local helper model for tailed recaps. */
+  helperSideModel?: string;
 }
 
 export interface NewSessionDefaults {
@@ -323,8 +325,6 @@ export interface NewSessionDefaults {
    */
   recapAfterSeconds?: number;
   promptSuggestionMode?: PromptSuggestionMode;
-  /** Provider-mapped helper side model or helper-target:<id>. */
-  helperSideModel?: string;
   /** Provider/model economics defaults keyed by provider. */
   providers?: Partial<Record<ProviderName, ProviderSessionDefaults>>;
 }

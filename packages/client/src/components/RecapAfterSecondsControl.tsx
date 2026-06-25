@@ -2,10 +2,13 @@ import {
   DEFAULT_RECAP_AFTER_SECONDS,
   MAX_RECAP_AFTER_SECONDS,
   MIN_RECAP_AFTER_SECONDS,
+  type RecapMode,
   normalizeRecapAfterSeconds,
 } from "@yep-anywhere/shared";
 import {
   type KeyboardEvent,
+  type ReactNode,
+  type CSSProperties,
   useCallback,
   useEffect,
   useMemo,
@@ -19,6 +22,8 @@ interface RecapAfterSecondsControlProps {
   value?: number;
   disabled?: boolean;
   className?: string;
+  label?: ReactNode;
+  mode?: RecapMode;
   onCommit: (value: number) => void | Promise<void>;
 }
 
@@ -28,6 +33,8 @@ export function RecapAfterSecondsControl({
   value,
   disabled,
   className,
+  label,
+  mode = "side-session",
   onCommit,
 }: RecapAfterSecondsControlProps) {
   const { t } = useI18n();
@@ -101,23 +108,31 @@ export function RecapAfterSecondsControl({
     }
   };
   const sliderValue = Math.min(draftValue, RECAP_AFTER_SECONDS_SLIDER_MAX);
+  const sliderFillPercent =
+    ((sliderValue - MIN_RECAP_AFTER_SECONDS) /
+      (RECAP_AFTER_SECONDS_SLIDER_MAX - MIN_RECAP_AFTER_SECONDS)) *
+    100;
+  const sliderStyle = {
+    "--recap-slider-fill": `${Math.min(100, Math.max(0, sliderFillPercent))}%`,
+  } as CSSProperties;
 
   return (
     <div
       className={
         className
-          ? `recap-after-seconds-control ${className}`
-          : "recap-after-seconds-control"
+          ? `recap-after-seconds-control recap-after-seconds-control--${mode} ${className}`
+          : `recap-after-seconds-control recap-after-seconds-control--${mode}`
       }
     >
       <span className="recap-after-seconds-label">
-        {t("recapAfterSecondsLabel")}
+        {label ?? t("recapAfterSecondsLabel")}
       </span>
       <span className="output-appearance-slider-row recap-after-seconds-row">
         <CommittedRangeInput
           min={MIN_RECAP_AFTER_SECONDS}
           max={RECAP_AFTER_SECONDS_SLIDER_MAX}
           step={1}
+          style={sliderStyle}
           value={sliderValue}
           disabled={disabled}
           aria-label={t("recapAfterSecondsAria")}

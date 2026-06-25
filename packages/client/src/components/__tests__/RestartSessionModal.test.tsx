@@ -22,7 +22,6 @@ const { mockRestartSession, serverSettingsState } = vi.hoisted(() => ({
         recapMode?: "off" | "native" | "side-session" | "fork";
         recapAfterSeconds?: number;
         promptSuggestionMode?: "off" | "native";
-        helperSideModel?: string;
         providers?: Partial<
           Record<
             "claude" | "codex",
@@ -30,6 +29,7 @@ const { mockRestartSession, serverSettingsState } = vi.hoisted(() => ({
               model?: string;
               thinkingMode?: "off" | "auto" | "on";
               effortLevel?: "low" | "medium" | "high" | "xhigh" | "max";
+              helperSideModel?: string;
             }
           >
         >;
@@ -242,7 +242,11 @@ describe("RestartSessionModal", () => {
         model: "sonnet",
         permissionMode: "default",
         recapMode: "side-session",
-        helperSideModel: "haiku",
+        providers: {
+          claude: {
+            helperSideModel: "haiku",
+          },
+        },
       },
     };
 

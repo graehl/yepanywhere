@@ -75,9 +75,9 @@ Undo semantics vary by pane kind, deliberately:
 
 ### Why Providers sub-form undo is deferred (likely never)
 
-The Providers pane is several independent sub-forms (helper-targets
-editor with edit-in-place drafts, Ollama endpoint/prompt, per-provider
-toggles), each with its own draft, validation, and Save lifecycle. The
+The Providers pane is several independent sub-forms (Ollama endpoint/prompt,
+per-provider toggles, and any future helper-targets editor with edit-in-place
+drafts), each with its own draft, validation, and Save lifecycle. The
 header contract is one Undo button in one location, which forces a
 single answer to "undo what?" — and across heterogeneous sub-forms
 there is no honest single answer: reverting *all* sub-forms punishes a

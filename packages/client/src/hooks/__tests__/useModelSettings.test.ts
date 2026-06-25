@@ -130,6 +130,30 @@ describe("useModelSettings speech defaults", () => {
 
     // User's explicit "off" wins over the stored "on".
     expect(result.current.showThinking).toBe("off");
+    expect(
+      window.localStorage.getItem("yep-anywhere-inst-1-show-thinking"),
+    ).toBe("off");
+  });
+
+  it("stores showThinking clicks before installId under the legacy fallback", async () => {
+    const { setCurrentInstallId } = await import("../../lib/storageKeys");
+    const { useModelSettings } = await import("../useModelSettings");
+    const { result, rerender } = renderHook(() => useModelSettings());
+
+    act(() => result.current.setShowThinking("on"));
+
+    expect(result.current.showThinking).toBe("on");
+    expect(window.localStorage.getItem(LEGACY_KEYS.showThinking)).toBe("on");
+
+    act(() => {
+      setCurrentInstallId("inst-1");
+      mocks.installId = "inst-1";
+    });
+    rerender();
+
+    expect(
+      window.localStorage.getItem("yep-anywhere-inst-1-show-thinking"),
+    ).toBe("on");
   });
 
   it("stores the Parakeet model as a browser-local STT choice", async () => {

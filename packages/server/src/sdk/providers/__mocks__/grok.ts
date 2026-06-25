@@ -9,7 +9,7 @@ import type { MockProviderConfig, MockScenario } from "./types.js";
 
 export class MockGrokProvider extends BaseMockProvider {
   readonly name: ProviderName = "grok";
-  readonly displayName = "Grok Build (ACP)";
+  readonly displayName = "Grok Build";
 
   constructor(config: MockProviderConfig = {}) {
     super(config);

@@ -23,7 +23,6 @@ import {
   getDefaultProvider,
 } from "../hooks/useProviders";
 import { useServerSettings } from "../hooks/useServerSettings";
-import { helperTargetsToModelOptions } from "../lib/helperTargets";
 import { getRecapModeDescription } from "../lib/recapModes";
 import type { PermissionMode } from "../types";
 import { useI18n } from "../i18n";
@@ -41,7 +40,7 @@ import { Modal } from "./ui/Modal";
 
 type ThinkingMode = "off" | "auto" | "on";
 
-const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork", "native"];
+const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork"];
 const PROMPT_SUGGESTION_MODE_ORDER: PromptSuggestionMode[] = ["off", "native"];
 
 function parseThinkingOption(option: ThinkingOption | undefined): {
@@ -179,7 +178,7 @@ function providerSupportsRecapMode(
   mode: RecapMode,
 ): boolean {
   if (mode === "off") return true;
-  if (mode === "native") return provider?.supportsNativeRecaps === true;
+  if (mode === "native") return false;
   return provider?.supportsRecaps === true;
 }
 
@@ -193,7 +192,7 @@ function getRestartDefaultRecapMode(params: {
   ) {
     return params.defaults.recapMode;
   }
-  return params.provider?.supportsNativeRecaps ? "native" : "off";
+  return "off";
 }
 
 function providerSupportsPromptSuggestionMode(
@@ -231,10 +230,15 @@ function getRestartDefaultPromptSuggestionMode(params: {
 }
 
 function getRestartDefaultHelperSideModel(params: {
+  provider: ProviderName;
   models: ModelInfo[];
   defaults?: NewSessionDefaults | null;
 }): string {
-  const defaultModel = params.defaults?.helperSideModel;
+  const providerDefaults = getProviderSessionDefaults(
+    params.defaults,
+    params.provider,
+  );
+  const defaultModel = providerDefaults.helperSideModel;
   if (
     defaultModel &&
     (defaultModel === HELPER_SIDE_MODEL_CHEAPEST ||
@@ -329,13 +333,9 @@ export function RestartSessionModal({
     if (selectedProviderModels.length > 0) return selectedProviderModels;
     return [{ id: "default", name: t("processInfoDefaultModel") }];
   }, [selectedProviderModels, t]);
-  const helperTargetModelOptions = useMemo(
-    () => helperTargetsToModelOptions(settings?.helperTargets),
-    [settings?.helperTargets],
-  );
   const helperSelectableModels = useMemo(
-    () => [...helperTargetModelOptions, ...modelOptions],
-    [helperTargetModelOptions, modelOptions],
+    () => [...modelOptions],
+    [modelOptions],
   );
   const [selectedModel, setSelectedModel] = useState<string>(
     getRestartDefaultModel({
@@ -382,6 +382,7 @@ export function RestartSessionModal({
     );
   const [helperSideModel, setHelperSideModel] = useState<string>(() =>
     getRestartDefaultHelperSideModel({
+      provider: selectedProvider,
       models: helperSelectableModels,
       defaults: settings?.newSessionDefaults,
     }),
@@ -492,6 +493,7 @@ export function RestartSessionModal({
     );
     setHelperSideModel(
       getRestartDefaultHelperSideModel({
+        provider: selectedProvider,
         models: helperSelectableModels,
         defaults: settings?.newSessionDefaults,
       }),
@@ -607,7 +609,8 @@ export function RestartSessionModal({
     );
     setHelperSideModel(
       getRestartDefaultHelperSideModel({
-        models: [...helperTargetModelOptions, ...nextModelOptions],
+        provider: providerName,
+        models: nextModelOptions,
         defaults: settings?.newSessionDefaults,
       }),
     );
@@ -946,6 +949,7 @@ export function RestartSessionModal({
             <RecapAfterSecondsControl
               value={recapAfterSeconds}
               disabled={restarting}
+              mode={selectedRecapMode}
               onCommit={(seconds) => {
                 hasUserSelectedHelperConfigRef.current = true;
                 setRecapAfterSeconds(seconds);
@@ -987,8 +991,7 @@ export function RestartSessionModal({
           </div>
         </section>
 
-        {(selectedRecapMode === "side-session" ||
-          selectedRecapMode === "fork") && (
+        {selectedRecapMode === "side-session" && (
           <section className="model-switch-section">
             <div className="model-switch-section-header">
               <strong>{t("helperSideModelTitle")}</strong>

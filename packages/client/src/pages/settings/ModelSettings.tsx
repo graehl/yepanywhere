@@ -49,7 +49,6 @@ import { useI18n } from "../../i18n";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 import { useToastContext } from "../../contexts/ToastContext";
-import { helperTargetsToModelOptions } from "../../lib/helperTargets";
 import {
   FilterDropdown,
   type FilterOption,
@@ -62,7 +61,7 @@ import {
   ThinkingControlsPanel,
 } from "../../components/ThinkingControls";
 
-const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork", "native"];
+const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork"];
 const PROMPT_SUGGESTION_MODE_ORDER: PromptSuggestionMode[] = [
   ...PROMPT_SUGGESTION_MODES,
 ];
@@ -115,7 +114,7 @@ function getPreferredProviderModel(
 }
 
 function getPreferredRecapMode(
-  provider:
+  _provider:
     | {
         supportsRecaps?: boolean;
         supportsNativeRecaps?: boolean;
@@ -127,7 +126,7 @@ function getPreferredRecapMode(
   if (defaults?.recapMode && RECAP_MODE_ORDER.includes(defaults.recapMode)) {
     return defaults.recapMode;
   }
-  return provider?.supportsNativeRecaps ? "native" : "off";
+  return "off";
 }
 
 function getPreferredPromptSuggestionMode(
@@ -261,13 +260,7 @@ export function ModelSettings() {
         effortLevel,
       })
     : ({} satisfies ProviderSessionDefaults);
-  const helperTargetModelOptions = helperTargetsToModelOptions(
-    settings?.helperTargets,
-  );
-  const helperSelectableModels = [
-    ...helperTargetModelOptions,
-    ...selectedModels,
-  ];
+  const helperSelectableModels = selectedModels;
   const selectedRecapMode = getPreferredRecapMode(
     selectedProvider,
     savedDefaults,
@@ -283,7 +276,7 @@ export function ModelSettings() {
   );
   const selectedHelperSideModel = getDefaultHelperSideModel(
     helperSelectableModels,
-    savedDefaults,
+    selectedProviderDefaults,
   );
   const selectedModelInfo =
     selectedModels.find((modelInfo) => modelInfo.id === selectedModel) ?? null;
@@ -407,6 +400,12 @@ export function ModelSettings() {
     }),
     off: t("promptCacheKeepaliveModeOffDescription"),
   };
+  const recapAfterSecondsInlineLabels: Record<RecapMode, string> = {
+    off: t("recapAfterSecondsLabel"),
+    native: t("recapAfterSecondsInlineNative"),
+    "side-session": t("recapAfterSecondsInlineSideSession"),
+    fork: t("recapAfterSecondsInlineFork"),
+  };
   const supportsPermissionMode =
     selectedProvider?.supportsPermissionMode ?? true;
   const supportsThinkingToggle =
@@ -416,8 +415,7 @@ export function ModelSettings() {
     thinkingModeOptions.some((option) => option !== "off");
   const availableRecapModes = RECAP_MODE_ORDER;
   const availablePromptSuggestionModes = PROMPT_SUGGESTION_MODE_ORDER;
-  const showHelperSideModel =
-    selectedRecapMode === "side-session" || selectedRecapMode === "fork";
+  const showHelperSideModel = selectedRecapMode === "side-session";
   const showPromptCacheKeepalive =
     selectedProvider?.promptCacheKeepalive?.supportsNoContextPollutionNudge ===
     true;
@@ -564,88 +562,73 @@ export function ModelSettings() {
     <section className="settings-section">
       <div className="settings-group">
         <div className="settings-session-defaults-panel">
-          <div className="new-session-helper-section session-default-recap-section">
-            <h3>{t("newSessionRecapTitle")}</h3>
-            <div className="new-session-helper-options">
-              {availableRecapModes.map((modeValue) => (
-                <button
-                  key={modeValue}
-                  type="button"
-                  className={`new-session-helper-option ${
-                    selectedRecapMode === modeValue ? "selected" : ""
-                  }`}
-                  onClick={() =>
-                    void updateNewSessionDefaults({ recapMode: modeValue })
-                  }
-                  disabled={settingsLoading}
-                  title={getRecapModeDescription(
-                    modeValue,
-                    t,
-                    selectedRecapAfterSeconds,
-                  )}
-                >
-                  <span className={`mode-option-dot recap-${modeValue}`} />
-                  <span>{recapModeLabels[modeValue]}</span>
-                </button>
-              ))}
-            </div>
-            {selectedRecapMode !== "off" && (
-              <RecapAfterSecondsControl
-                value={selectedRecapAfterSeconds}
-                disabled={settingsLoading}
-                onCommit={(seconds) =>
-                  updateNewSessionDefaults({ recapAfterSeconds: seconds })
-                }
-              />
-            )}
-            <p className="recap-mode-caption">
-              {getRecapModeDescription(
-                selectedRecapMode,
-                t,
-                selectedRecapAfterSeconds,
-              )}
-            </p>
-            {showHelperSideModel && (
-              <div className="new-session-helper-model">
-                <h3>{t("helperSideModelTitle")}</h3>
-                <FilterDropdown
-                  label={t("helperSideModelTitle")}
-                  options={helperSideModelOptions}
-                  selected={[selectedHelperSideModel]}
-                  onChange={(selected) => {
-                    const helperSideModel =
-                      selected[0] ?? HELPER_SIDE_MODEL_CHEAPEST;
-                    void updateNewSessionDefaults({ helperSideModel });
-                  }}
-                  multiSelect={false}
-                  placeholder={t("helperSideModelCheapest")}
-                />
+          <div className="session-default-discovery-row">
+            <div className="new-session-helper-section session-default-recap-section">
+              <h3>{t("newSessionRecapTitle")}</h3>
+              <div className="new-session-helper-options">
+                {availableRecapModes.map((modeValue) => (
+                  <button
+                    key={modeValue}
+                    type="button"
+                    className={`new-session-helper-option ${
+                      selectedRecapMode === modeValue ? "selected" : ""
+                    }`}
+                    onClick={() =>
+                      void updateNewSessionDefaults({ recapMode: modeValue })
+                    }
+                    disabled={settingsLoading}
+                    title={getRecapModeDescription(
+                      modeValue,
+                      t,
+                      selectedRecapAfterSeconds,
+                    )}
+                  >
+                    <span className={`mode-option-dot recap-${modeValue}`} />
+                    <span>{recapModeLabels[modeValue]}</span>
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
-
-          <div className="new-session-helper-section session-default-suggestions-section">
-            <h3>{t("newSessionPromptSuggestionsTitle")}</h3>
-            <div className="new-session-helper-options">
-              {availablePromptSuggestionModes.map((modeValue) => (
-                <button
-                  key={modeValue}
-                  type="button"
-                  className={`new-session-helper-option ${
-                    selectedPromptSuggestionMode === modeValue ? "selected" : ""
-                  }`}
-                  onClick={() =>
-                    void updateNewSessionDefaults({
-                      promptSuggestionMode: modeValue,
-                    })
-                  }
+              {selectedRecapMode !== "off" && (
+                <RecapAfterSecondsControl
+                  value={selectedRecapAfterSeconds}
                   disabled={settingsLoading}
-                  title={promptSuggestionModeDescriptions[modeValue]}
-                >
-                  <span className={`mode-option-dot suggestion-${modeValue}`} />
-                  <span>{promptSuggestionModeLabels[modeValue]}</span>
-                </button>
-              ))}
+                  label={recapAfterSecondsInlineLabels[selectedRecapMode]}
+                  mode={selectedRecapMode}
+                  className="recap-after-seconds-control--inline"
+                  onCommit={(seconds) =>
+                    updateNewSessionDefaults({ recapAfterSeconds: seconds })
+                  }
+                />
+              )}
+            </div>
+
+            <div className="new-session-helper-section session-default-suggestions-section">
+              <h3>{t("newSessionPromptSuggestionsTitle")}</h3>
+              <div className="new-session-helper-options">
+                {availablePromptSuggestionModes.map((modeValue) => (
+                  <button
+                    key={modeValue}
+                    type="button"
+                    className={`new-session-helper-option ${
+                      selectedPromptSuggestionMode === modeValue
+                        ? "selected"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      void updateNewSessionDefaults({
+                        promptSuggestionMode: modeValue,
+                      })
+                    }
+                    disabled={settingsLoading}
+                    title={promptSuggestionModeDescriptions[modeValue]}
+                  >
+                    <span
+                      className={`mode-option-dot suggestion-${modeValue}`}
+                    />
+                    <span>{promptSuggestionModeLabels[modeValue]}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -693,7 +676,6 @@ export function ModelSettings() {
             <ShowThinkingControls
               value={showThinking}
               onChange={setShowThinking}
-              provider={selectedProvider?.name}
               t={t}
               showLabel={false}
             />
@@ -849,73 +831,98 @@ export function ModelSettings() {
             </div>
           )}
 
+          {showHelperSideModel && (
+            <div className="new-session-helper-section session-default-helper-model-section">
+              <h3>{t("helperSideModelTitle")}</h3>
+              <FilterDropdown
+                label={t("helperSideModelTitle")}
+                options={helperSideModelOptions}
+                selected={[selectedHelperSideModel]}
+                onChange={(selected) => {
+                  const helperSideModel =
+                    selected[0] ?? HELPER_SIDE_MODEL_CHEAPEST;
+                  void updateProviderSessionDefaults({ helperSideModel });
+                }}
+                multiSelect={false}
+                placeholder={t("helperSideModelCheapest")}
+              />
+            </div>
+          )}
+
           {showPromptCacheKeepalive && (
             <div className="new-session-helper-section session-default-cache-keepalive-section">
-              <h3>{t("promptCacheKeepaliveTitle")}</h3>
-              <p className="session-default-section-description">
-                {t("promptCacheKeepaliveDescription", {
-                  provider: selectedProvider.displayName,
-                })}
-              </p>
-              <div className="new-session-helper-options">
-                {PROMPT_CACHE_KEEPALIVE_MODE_ORDER.map((modeValue) => (
-                  <button
-                    key={modeValue}
-                    type="button"
-                    className={`new-session-helper-option ${
-                      selectedPromptCacheKeepalive.mode === modeValue
-                        ? "selected"
-                        : ""
-                    }`}
-                    onClick={() =>
-                      void updatePromptCacheKeepalive({ mode: modeValue })
-                    }
-                    disabled={settingsLoading}
-                    title={promptCacheKeepaliveModeDescriptions[modeValue]}
-                  >
-                    <span
-                      className={`mode-option-dot keepalive-${modeValue}`}
-                    />
-                    <span>{promptCacheKeepaliveModeLabels[modeValue]}</span>
-                  </button>
-                ))}
+              <div className="session-default-cache-keepalive-text">
+                <h3>{t("promptCacheKeepaliveTitle")}</h3>
+                <p className="session-default-section-description">
+                  {t("promptCacheKeepaliveDescription", {
+                    provider: selectedProvider.displayName,
+                  })}
+                </p>
               </div>
-              <label className="prompt-cache-keepalive-cadence">
-                <span>{t("promptCacheKeepaliveCadenceLabel")}</span>
-                <input
-                  key={`${selectedProvider.name}-${selectedPromptCacheKeepalive.inactivityMinutes}`}
-                  type="number"
-                  min={1}
-                  max={1440}
-                  step={1}
-                  defaultValue={selectedPromptCacheKeepalive.inactivityMinutes}
-                  disabled={
-                    settingsLoading ||
-                    selectedPromptCacheKeepalive.mode === "off"
-                  }
-                  aria-label={t("promptCacheKeepaliveCadenceAria")}
-                  onBlur={(event) => {
-                    const minutes = normalizeKeepaliveMinutes(
-                      Number(event.currentTarget.value),
-                    );
-                    if (minutes === null) {
-                      event.currentTarget.value = String(
-                        selectedPromptCacheKeepalive.inactivityMinutes,
+              <div className="session-default-cache-keepalive-controls">
+                <div className="new-session-helper-options">
+                  {PROMPT_CACHE_KEEPALIVE_MODE_ORDER.map((modeValue) => (
+                    <button
+                      key={modeValue}
+                      type="button"
+                      className={`new-session-helper-option ${
+                        selectedPromptCacheKeepalive.mode === modeValue
+                          ? "selected"
+                          : ""
+                      }`}
+                      onClick={() =>
+                        void updatePromptCacheKeepalive({ mode: modeValue })
+                      }
+                      disabled={settingsLoading}
+                      title={promptCacheKeepaliveModeDescriptions[modeValue]}
+                    >
+                      <span
+                        className={`mode-option-dot keepalive-${modeValue}`}
+                      />
+                      <span>{promptCacheKeepaliveModeLabels[modeValue]}</span>
+                    </button>
+                  ))}
+                </div>
+                <label className="prompt-cache-keepalive-cadence">
+                  <span>{t("promptCacheKeepaliveCadenceLabel")}</span>
+                  <input
+                    key={`${selectedProvider.name}-${selectedPromptCacheKeepalive.inactivityMinutes}`}
+                    type="number"
+                    min={1}
+                    max={1440}
+                    step={1}
+                    defaultValue={
+                      selectedPromptCacheKeepalive.inactivityMinutes
+                    }
+                    disabled={
+                      settingsLoading ||
+                      selectedPromptCacheKeepalive.mode === "off"
+                    }
+                    aria-label={t("promptCacheKeepaliveCadenceAria")}
+                    onBlur={(event) => {
+                      const minutes = normalizeKeepaliveMinutes(
+                        Number(event.currentTarget.value),
                       );
-                      return;
-                    }
-                    event.currentTarget.value = String(minutes);
-                    if (
-                      minutes !== selectedPromptCacheKeepalive.inactivityMinutes
-                    ) {
-                      void updatePromptCacheKeepalive({
-                        inactivityMinutes: minutes,
-                      });
-                    }
-                  }}
-                />
-                <span>{t("promptCacheKeepaliveCadenceUnit")}</span>
-              </label>
+                      if (minutes === null) {
+                        event.currentTarget.value = String(
+                          selectedPromptCacheKeepalive.inactivityMinutes,
+                        );
+                        return;
+                      }
+                      event.currentTarget.value = String(minutes);
+                      if (
+                        minutes !==
+                        selectedPromptCacheKeepalive.inactivityMinutes
+                      ) {
+                        void updatePromptCacheKeepalive({
+                          inactivityMinutes: minutes,
+                        });
+                      }
+                    }}
+                  />
+                  <span>{t("promptCacheKeepaliveCadenceUnit")}</span>
+                </label>
+              </div>
             </div>
           )}
         </div>
@@ -923,11 +930,6 @@ export function ModelSettings() {
 
       {selectedProvider?.name === "claude" && (
         <div className="settings-group">
-          <div className="model-settings-subsection">
-            <h3>{t("modelSettingsClaudeSectionTitle")}</h3>
-            <p>{t("modelSettingsClaudeSectionDescription")}</p>
-          </div>
-
           <div className="settings-item model-settings-item">
             <div className="settings-item-info">
               <strong>{t("modelSettingsModelTitle")}</strong>

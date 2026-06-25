@@ -56,7 +56,7 @@ describe("GrokACPProvider", () => {
     });
 
     it("should have correct displayName", () => {
-      expect(provider.displayName).toBe("Grok Build (ACP)");
+      expect(provider.displayName).toBe("Grok Build");
     });
 
     it("should report supportsPermissionMode true", () => {

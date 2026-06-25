@@ -1617,7 +1617,7 @@ export class Process {
       text,
       message,
     };
-    for (const waiter of [...this.nativeRecapWaiters]) {
+    for (const waiter of this.nativeRecapWaiters) {
       waiter();
     }
   }
@@ -1759,6 +1759,39 @@ export class Process {
         reason: "recap already in flight",
       };
     }
+    const sinceMs = options?.sinceMs ?? null;
+    if (this._state.type === "in-turn") {
+      this.pendingRecapRequest = { provider, sinceMs };
+      return {
+        supported: true,
+        emitted: false,
+        reason: "recap deferred until turn completes",
+      };
+    }
+
+    return this.generateAndEmitRecap(provider, sinceMs);
+  }
+
+  async requestTailedRecapFallback(
+    provider: AgentProvider,
+    options?: { sinceMs?: number | null },
+  ): Promise<RecapRequestResult> {
+    if (!provider.supportsRecaps || !provider.generateSummary) {
+      return {
+        supported: false,
+        emitted: false,
+        reason: "provider does not support recaps",
+      };
+    }
+
+    if (this.recapInFlight) {
+      return {
+        supported: true,
+        emitted: false,
+        reason: "recap already in flight",
+      };
+    }
+
     const sinceMs = options?.sinceMs ?? null;
     if (this._state.type === "in-turn") {
       this.pendingRecapRequest = { provider, sinceMs };

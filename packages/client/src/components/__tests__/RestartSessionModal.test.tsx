@@ -19,10 +19,20 @@ const { mockRestartSession, serverSettingsState } = vi.hoisted(() => ({
         provider?: "claude" | "codex";
         model?: string;
         permissionMode?: "default";
-        recapMode?: "off" | "native" | "side-session";
+        recapMode?: "off" | "native" | "side-session" | "fork";
         recapAfterSeconds?: number;
         promptSuggestionMode?: "off" | "native";
         helperSideModel?: string;
+        providers?: Partial<
+          Record<
+            "claude" | "codex",
+            {
+              model?: string;
+              thinkingMode?: "off" | "auto" | "on";
+              effortLevel?: "low" | "medium" | "high" | "xhigh" | "max";
+            }
+          >
+        >;
       };
     } | null,
     isLoading: false,
@@ -127,6 +137,55 @@ describe("RestartSessionModal", () => {
           recapAfterSeconds: 300,
           promptSuggestionMode: "off",
           helperSideModel: "cheapest",
+        }),
+      );
+    });
+  });
+
+  it("uses provider-scoped model and thinking defaults for handoff", async () => {
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "codex",
+        permissionMode: "default",
+        providers: {
+          codex: {
+            model: "gpt-5.5",
+            thinkingMode: "auto",
+            effortLevel: "xhigh",
+          },
+        },
+      },
+    };
+
+    render(
+      <RestartSessionModal
+        projectId="proj-1"
+        sessionId="sess-1"
+        provider="codex"
+        models={[
+          { id: "gpt-5.4", name: "GPT-5.4" },
+          { id: "gpt-5.5", name: "GPT-5.5" },
+        ]}
+        currentModel="gpt-5.4"
+        mode="default"
+        thinking="off"
+        onRestarted={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "sessionRestartStart" }),
+    );
+
+    await waitFor(() => {
+      expect(mockRestartSession).toHaveBeenCalledWith(
+        "proj-1",
+        "sess-1",
+        expect.objectContaining({
+          provider: "codex",
+          model: "gpt-5.5",
+          thinking: "auto",
         }),
       );
     });

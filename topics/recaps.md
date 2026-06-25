@@ -103,11 +103,15 @@ the UI does not need to hard-code provider model names.
 
 The UI locations are:
 
-- New-session form: a `Recaps` control alongside provider/model/session
-  defaults. It chooses `Off`, provider-native recaps when supported, or
-  simulated recaps through the shared helper side session.
+- New-session form: a `Recaps` control in the all-provider defaults above the
+  AI Provider boundary. It chooses `Off`, provider-native recaps when supported,
+  or simulated recaps through the shared helper side session or forked fallback
+  path.
 - Settings -> Providers: the default recap mode for future sessions and the
-  shared helper side model, including `Same as main session`.
+  shared helper side model, including `Same as main session`. The helper model
+  selector is labeled `Tailed Recap Model` and appears for both direct tailed
+  recaps and forked recaps, because fork generation falls back to the tailed
+  helper path when the provider cannot fork or returns no fork summary.
 - Existing session menu: a `Recaps...` item for the active process. It changes
   future away-return triggers without restarting the parent session and without
   rewriting prior recap messages.

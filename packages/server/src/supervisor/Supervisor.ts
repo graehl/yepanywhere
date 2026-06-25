@@ -2165,11 +2165,7 @@ export class Supervisor {
       };
     }
     if (typeof provider.forkSession !== "function") {
-      return {
-        supported: false,
-        emitted: false,
-        reason: "provider does not support forked recaps",
-      };
+      return process.requestTailedRecapFallback(provider, { sinceMs });
     }
     if (this.forkedRecapInFlight.has(process.id)) {
       return {
@@ -2237,11 +2233,7 @@ export class Supervisor {
         })
       ).text.trim();
       if (!text) {
-        return {
-          supported: true,
-          emitted: false,
-          reason: "provider returned empty recap",
-        };
+        return process.requestTailedRecapFallback(provider, { sinceMs });
       }
       const lateNativeRecap = process.getNativeRecapSince(sinceMs);
       if (lateNativeRecap) {
@@ -2288,7 +2280,7 @@ export class Supervisor {
         },
         `Forked recap generation failed: ${reason}`,
       );
-      return { supported: true, emitted: false, reason };
+      return process.requestTailedRecapFallback(provider, { sinceMs });
     } finally {
       this.forkedRecapInFlight.delete(process.id);
     }

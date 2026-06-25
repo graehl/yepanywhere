@@ -64,20 +64,21 @@ Emulated or YA-simulated suggestions default off unless the user explicitly
 enables that helper behavior.
 
 Current implementation note: new-session launch, provider defaults, and handoff
-all expose the `Off` / `Native` choice. `Native` is enabled only for providers
-that advertise native prompt suggestions; providers that would need YA-side
-emulation default to `Off`. Handoff carries the live process preference when
-known, so an explicitly disabled session stays disabled in the replacement
-session. The remaining gap is current-session mutation: there is not yet a
-live-session toggle that changes future suggestions without starting a new
+all expose the `Off` / `Native` choice as a standing all-provider preference.
+`Native` is passed to a new provider session only when that provider advertises
+native prompt suggestions; providers that would need YA-side emulation launch as
+`Off` even if the saved default says `Native`. Handoff carries the live process
+preference when known, so an explicitly disabled session stays disabled in the
+replacement session. The remaining gap is current-session mutation: there is not
+yet a live-session toggle that changes future suggestions without starting a new
 session.
 
 ## Simulated Suggestions Gap
 
 YA does not yet implement simulated prompt suggestions for providers without
-native support. For those providers, the new-session UI should avoid implying a
-hidden implementation exists: show `Off` as the only selectable mode and explain
-that the provider does not natively support suggestions.
+native support. For those providers, `Native` in session defaults is only a
+standing preference for providers that can honor it; launch-time resolution must
+fall back to `Off` rather than implying or running a hidden emulation path.
 
 Preferred future shape remains provider-native prediction if an API exposes it,
 ideally by asking the provider to continue from a start-user-turn boundary and

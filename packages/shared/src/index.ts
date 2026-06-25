@@ -53,6 +53,7 @@ export type {
   HelperTargetConfig,
   SlashCommand,
   PermissionMode,
+  ProviderSessionDefaults,
   NewSessionDefaults,
   BusyComposerDefaultAction,
   ClientDefaults,

@@ -126,9 +126,7 @@ export function SessionRecapModal({
     () => ({
       off: true,
       native: providerInfo?.supportsNativeRecaps === true,
-      fork:
-        providerInfo?.supportsRecaps === true &&
-        providerInfo.supportsForkSession === true,
+      fork: providerInfo?.supportsRecaps === true,
       "side-session": providerInfo?.supportsRecaps === true,
     }),
     [providerInfo],
@@ -228,7 +226,7 @@ export function SessionRecapModal({
           />
         )}
 
-        {recapMode === "side-session" && (
+        {(recapMode === "side-session" || recapMode === "fork") && (
           <label className="settings-item model-settings-item">
             <div className="settings-item-info">
               <strong>{t("helperSideModelTitle")}</strong>

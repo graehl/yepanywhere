@@ -300,10 +300,21 @@ export const ALL_PERMISSION_MODES: readonly PermissionMode[] = [
 /**
  * Saved defaults for the new session form.
  */
-export interface NewSessionDefaults {
-  provider?: ProviderName;
+export interface ProviderSessionDefaults {
   model?: string;
   /** Provider-visible service tier. undefined means provider/default behavior. */
+  serviceTier?: string;
+  /** Provider-work thinking mode for new sessions on this provider. */
+  thinkingMode?: ThinkingMode;
+  /** Provider-local effort level for new sessions on this provider. */
+  effortLevel?: EffortLevel;
+}
+
+export interface NewSessionDefaults {
+  provider?: ProviderName;
+  /** @deprecated Use providers[provider].model. Preserved for migration. */
+  model?: string;
+  /** @deprecated Use providers[provider].serviceTier. Preserved for migration. */
   serviceTier?: string;
   permissionMode?: PermissionMode;
   recapMode?: RecapMode;
@@ -314,6 +325,8 @@ export interface NewSessionDefaults {
   promptSuggestionMode?: PromptSuggestionMode;
   /** Provider-mapped helper side model or helper-target:<id>. */
   helperSideModel?: string;
+  /** Provider/model economics defaults keyed by provider. */
+  providers?: Partial<Record<ProviderName, ProviderSessionDefaults>>;
 }
 
 export interface SpeechSmartTurnClientDefault {

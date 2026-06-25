@@ -35,6 +35,7 @@ import {
   resolveSupportedEffortLevel,
   resolveSupportedThinkingMode,
 } from "../lib/effortLevels";
+import { getProviderSessionDefaults } from "../lib/newSessionDefaults";
 import { Modal } from "./ui/Modal";
 
 type ThinkingMode = "off" | "auto" | "on";
@@ -95,20 +96,43 @@ function getRestartDefaultModel(params: {
   defaults?: NewSessionDefaults | null;
 }): string {
   const sessionDefaultModel =
-    params.defaults?.provider === params.provider
-      ? params.defaults.model
-      : undefined;
-  const legacyClaudeFallbackModel =
     params.provider === "claude" ? resolveModel(getModelSetting()) : undefined;
+  const providerDefaults = getProviderSessionDefaults(
+    params.defaults,
+    params.provider,
+    {
+      model: sessionDefaultModel,
+    },
+  );
 
   return (
     getPreferredModelId(
       params.models,
-      sessionDefaultModel ?? legacyClaudeFallbackModel ?? params.currentModel,
+      providerDefaults.model ?? params.currentModel,
     ) ??
     params.currentModel ??
     "default"
   );
+}
+
+function getRestartDefaultThinking(params: {
+  provider: ProviderName;
+  defaults?: NewSessionDefaults | null;
+  currentThinking?: ThinkingOption;
+}): { mode: ThinkingMode; effort: EffortLevel } {
+  const current = parseThinkingOption(params.currentThinking);
+  const providerDefaults = getProviderSessionDefaults(
+    params.defaults,
+    params.provider,
+    {
+      thinkingMode: current.mode,
+      effortLevel: current.effort,
+    },
+  );
+  return {
+    mode: providerDefaults.thinkingMode ?? current.mode,
+    effort: providerDefaults.effortLevel ?? current.effort,
+  };
 }
 
 function getRestartDefaultProvider(params: {
@@ -148,21 +172,13 @@ function getProviderModels(
 
 function providerSupportsRecapMode(
   provider:
-    | Pick<
-        ProviderInfo,
-        "supportsRecaps" | "supportsNativeRecaps" | "supportsForkSession"
-      >
+    | Pick<ProviderInfo, "supportsRecaps" | "supportsNativeRecaps">
     | null
     | undefined,
   mode: RecapMode,
 ): boolean {
   if (mode === "off") return true;
   if (mode === "native") return provider?.supportsNativeRecaps === true;
-  if (mode === "fork") {
-    return (
-      provider?.supportsRecaps === true && provider.supportsForkSession === true
-    );
-  }
   return provider?.supportsRecaps === true;
 }
 
@@ -371,8 +387,13 @@ export function RestartSessionModal({
   );
   const hasUserSelectedHelperConfigRef = useRef(false);
   const initialThinking = useMemo(
-    () => parseThinkingOption(thinking),
-    [thinking],
+    () =>
+      getRestartDefaultThinking({
+        provider: selectedProvider,
+        defaults: settings?.newSessionDefaults,
+        currentThinking: thinking,
+      }),
+    [selectedProvider, settings?.newSessionDefaults, thinking],
   );
   const [thinkingMode, setThinkingMode] = useState<ThinkingMode>(
     initialThinking.mode,
@@ -563,6 +584,13 @@ export function RestartSessionModal({
         defaults: settings?.newSessionDefaults,
       }),
     );
+    const nextThinking = getRestartDefaultThinking({
+      provider: providerName,
+      defaults: settings?.newSessionDefaults,
+      currentThinking: thinking,
+    });
+    setThinkingMode(nextThinking.mode);
+    setEffortLevel(nextThinking.effort);
     setSelectedRecapMode(
       getRestartDefaultRecapMode({
         provider: providerOptions.find((p) => p.name === providerName),
@@ -950,7 +978,8 @@ export function RestartSessionModal({
           </div>
         </section>
 
-        {selectedRecapMode === "side-session" && (
+        {(selectedRecapMode === "side-session" ||
+          selectedRecapMode === "fork") && (
           <section className="model-switch-section">
             <div className="model-switch-section-header">
               <strong>{t("helperSideModelTitle")}</strong>

@@ -30,6 +30,7 @@ const {
   mockAddProject,
   mockCycleThinkingMode,
   mockSetEffortLevel,
+  mockSetShowThinking,
   mockSetSpeechMethod,
   mockSetSpeechSmartTurnSettings,
   mockSetGrokSpeechAudioSettings,
@@ -51,6 +52,7 @@ const {
   mockAddProject: vi.fn(),
   mockCycleThinkingMode: vi.fn(),
   mockSetEffortLevel: vi.fn(),
+  mockSetShowThinking: vi.fn(),
   mockSetSpeechMethod: vi.fn(),
   mockSetSpeechSmartTurnSettings: vi.fn(),
   mockSetGrokSpeechAudioSettings: vi.fn(),
@@ -102,10 +104,20 @@ const {
         provider?: "claude" | "codex";
         model?: string;
         permissionMode?: "default";
-        recapMode?: "off" | "native" | "side-session";
+        recapMode?: "off" | "native" | "side-session" | "fork";
         recapAfterSeconds?: number;
         promptSuggestionMode?: "off" | "native";
         helperSideModel?: string;
+        providers?: Partial<
+          Record<
+            "claude" | "codex",
+            {
+              model?: string;
+              thinkingMode?: "off" | "auto" | "on";
+              effortLevel?: "low" | "medium" | "high" | "xhigh" | "max";
+            }
+          >
+        >;
       };
       helperTargets?: Array<{
         id: string;
@@ -209,7 +221,7 @@ vi.mock("../../hooks/useModelSettings", () => ({
     setThinkingMode: vi.fn(),
     thinkingLevel: modelSettingsState.effortLevel,
     showThinking: "default",
-    setShowThinking: vi.fn(),
+    setShowThinking: mockSetShowThinking,
     voiceInputEnabled: modelSettingsState.voiceInputEnabled,
     speechMethod: modelSettingsState.speechMethod,
     hasStoredSpeechMethod: modelSettingsState.hasStoredSpeechMethod,
@@ -424,6 +436,7 @@ describe("NewSessionForm", () => {
     mockAddProject.mockReset();
     mockCycleThinkingMode.mockReset();
     mockSetEffortLevel.mockReset();
+    mockSetShowThinking.mockReset();
     mockSetSpeechMethod.mockReset();
     mockSetSpeechSmartTurnSettings.mockReset();
     mockSetGrokSpeechAudioSettings.mockReset();
@@ -529,6 +542,64 @@ describe("NewSessionForm", () => {
     });
   });
 
+  it("restores provider-scoped model and thinking defaults on provider switch", async () => {
+    serverSettingsState.settings = {
+      newSessionDefaults: {
+        provider: "claude",
+        permissionMode: "default",
+        providers: {
+          claude: {
+            model: "opus",
+            thinkingMode: "on",
+            effortLevel: "medium",
+          },
+          codex: {
+            model: "gpt-5.3-codex",
+            thinkingMode: "auto",
+            effortLevel: "xhigh",
+          },
+        },
+      },
+    };
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("filter-selected").textContent).toBe("opus");
+      expect(screen.getByRole("radio", { name: "Medium" }).className).toContain(
+        "active",
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Codex" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("filter-selected").textContent).toBe(
+        "gpt-5.3-codex",
+      );
+      expect(
+        screen.getByRole("radio", { name: "modelSettingsThinkingAutoLabel" })
+          .className,
+      ).toContain("active");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Claude" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("filter-selected").textContent).toBe("opus");
+      expect(screen.getByRole("radio", { name: "Medium" }).className).toContain(
+        "active",
+      );
+    });
+  });
+
   it("submits the selected Claude provider and model to startSession", async () => {
     serverSettingsState.settings = {
       newSessionDefaults: {
@@ -589,9 +660,10 @@ describe("NewSessionForm", () => {
     );
   });
 
-  it("shows and updates the initial effort selector when thinking is on", () => {
+  it("shows and updates the initial provider effort selector", async () => {
     modelSettingsState.thinkingMode = "on";
     modelSettingsState.effortLevel = "medium";
+    serverSettingsState.isLoading = false;
 
     render(
       <NewSessionForm
@@ -606,7 +678,21 @@ describe("NewSessionForm", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "Low" }));
 
-    expect(mockSetEffortLevel).toHaveBeenCalledWith("low");
+    await waitFor(() => {
+      expect(mockUpdateSetting).toHaveBeenCalledWith(
+        "newSessionDefaults",
+        expect.objectContaining({
+          provider: "claude",
+          providers: expect.objectContaining({
+            claude: expect.objectContaining({
+              model: "opus",
+              thinkingMode: "on",
+              effortLevel: "low",
+            }),
+          }),
+        }),
+      );
+    });
   });
 
   it("shows the Show-thinking control in session setup", () => {
@@ -620,11 +706,11 @@ describe("NewSessionForm", () => {
       />,
     );
 
-    // The new-session form edits the same persisted thinking setting as the
-    // New Session Defaults page, so the Show-thinking toggle belongs here
-    // alongside the mode control (restored in "new session: restore
-    // Show-thinking control").
-    expect(screen.getByText("modelSettingsThinkingTitle")).toBeDefined();
+    // Provider thinking and Show-thinking are separate sections, but both are
+    // still available during session setup.
+    expect(
+      screen.getAllByText("modelSettingsThinkingTitle").length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText("showThinkingTitle")).toBeDefined();
   });
 
@@ -764,7 +850,7 @@ describe("NewSessionForm", () => {
     expect(screen.queryByRole("button", { name: "HD" })).toBeNull();
   });
 
-  it("orders permission mode last among the config controls", async () => {
+  it("places all-provider controls before provider-specific controls", async () => {
     serverSettingsState.isLoading = false;
 
     const { container } = render(
@@ -782,17 +868,21 @@ describe("NewSessionForm", () => {
       ).toBeDefined();
     });
 
-    // Permission mode is the tallest control, so it anchors the bottom as the
-    // full-width last item rather than sitting above the helper controls.
     const headings = Array.from(
       container.querySelectorAll(".new-session-provider-slot h3"),
       (element) => element.textContent,
     );
     expect(headings.indexOf("newSessionModeTitle")).toBeGreaterThan(
-      headings.indexOf("newSessionRecapTitle"),
-    );
-    expect(headings.indexOf("newSessionModeTitle")).toBeGreaterThan(
       headings.indexOf("newSessionPromptSuggestionsTitle"),
+    );
+    expect(headings.indexOf("showThinkingTitle")).toBeGreaterThan(
+      headings.indexOf("newSessionModeTitle"),
+    );
+    expect(headings.indexOf("newSessionProviderTitle")).toBeGreaterThan(
+      headings.indexOf("showThinkingTitle"),
+    );
+    expect(headings.indexOf("modelSettingsThinkingTitle")).toBeGreaterThan(
+      headings.indexOf("newSessionModelTitle"),
     );
   });
 
@@ -1067,11 +1157,11 @@ describe("NewSessionForm", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Codex" }));
     expect(
-      screen.queryByRole("button", {
+      screen.getByRole("button", {
         name: /promptSuggestionModeNative/,
       }),
-    ).toBeNull();
-    expect(screen.getByText("promptSuggestionNativeUnsupported")).toBeDefined();
+    ).toBeDefined();
+    expect(screen.queryByText("promptSuggestionNativeUnsupported")).toBeNull();
     fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
       target: { value: "hello" },
     });
@@ -1123,13 +1213,10 @@ describe("NewSessionForm", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /promptSuggestionModeOff/ })
+        screen.getByRole("button", { name: /promptSuggestionModeNative/ })
           .className,
       ).toContain("selected");
     });
-    expect(
-      screen.queryByRole("button", { name: /promptSuggestionModeNative/ }),
-    ).toBeNull();
     expect(mockUpdateSetting).toHaveBeenCalledWith(
       "newSessionDefaults",
       expect.objectContaining({
@@ -1137,6 +1224,24 @@ describe("NewSessionForm", () => {
         promptSuggestionMode: "native",
       }),
     );
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    );
+    await waitFor(() => {
+      expect(mockStartSession).toHaveBeenCalledWith(
+        "project-1",
+        "hello",
+        expect.objectContaining({
+          provider: "codex",
+          promptSuggestionMode: "off",
+        }),
+        undefined,
+        expect.any(Number),
+      );
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Claude" }));
 
@@ -1164,10 +1269,10 @@ describe("NewSessionForm", () => {
       screen.getByRole("button", { name: /recapModeSideSession/ }),
     ).toBeDefined();
     expect(
-      screen.queryByRole("button", {
+      screen.getByRole("button", {
         name: /promptSuggestionModeNative/,
       }),
-    ).toBeNull();
+    ).toBeDefined();
 
     fireEvent.click(
       screen.getByRole("button", { name: /recapModeSideSession/ }),

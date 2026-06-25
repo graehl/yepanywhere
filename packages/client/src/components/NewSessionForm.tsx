@@ -57,6 +57,10 @@ import {
   resolveSupportedEffortLevel,
   resolveSupportedThinkingMode,
 } from "../lib/effortLevels";
+import {
+  getProviderSessionDefaults,
+  withProviderSessionDefaults,
+} from "../lib/newSessionDefaults";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
@@ -111,7 +115,10 @@ import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { ProviderBadge } from "./ProviderBadge";
 import { RecapAfterSecondsControl } from "./RecapAfterSecondsControl";
 import { SpeechControlMenu } from "./SpeechControlMenu";
-import { ThinkingControlsPanel } from "./ThinkingControls";
+import {
+  ShowThinkingControls,
+  ThinkingControlsPanel,
+} from "./ThinkingControls";
 import {
   VoiceInputButton,
   type SpeechPendingKind,
@@ -177,31 +184,11 @@ function getPreferredModelId(
   return models[0]?.id ?? null;
 }
 
-function getPreferredProviderModelId(
-  providerName: ProviderName,
-  models: ModelInfo[],
-  defaults?: {
-    provider?: ProviderName;
-    model?: string;
-  } | null,
-) {
-  const sessionDefaultModel =
-    defaults?.provider === providerName ? defaults.model : undefined;
-  const legacyClaudeFallbackModel =
-    providerName === "claude" ? resolveModel(getModelSetting()) : undefined;
-
-  return getPreferredModelId(
-    models,
-    sessionDefaultModel ?? legacyClaudeFallbackModel,
-  );
-}
-
 function providerSupportsRecapMode(
   provider:
     | {
         supportsRecaps?: boolean;
         supportsNativeRecaps?: boolean;
-        supportsForkSession?: boolean;
       }
     | null
     | undefined,
@@ -209,32 +196,38 @@ function providerSupportsRecapMode(
 ): boolean {
   if (mode === "off") return true;
   if (mode === "native") return provider?.supportsNativeRecaps === true;
-  if (mode === "fork") {
-    return (
-      provider?.supportsRecaps === true && provider.supportsForkSession === true
-    );
-  }
   return provider?.supportsRecaps === true;
 }
 
-function getDefaultRecapMode(
+function getPreferredRecapMode(
   provider:
     | {
         supportsRecaps?: boolean;
         supportsNativeRecaps?: boolean;
-        supportsForkSession?: boolean;
       }
     | null
     | undefined,
   defaults?: { recapMode?: RecapMode } | null,
 ): RecapMode {
-  if (
-    defaults?.recapMode &&
-    providerSupportsRecapMode(provider, defaults.recapMode)
-  ) {
+  if (defaults?.recapMode && RECAP_MODE_ORDER.includes(defaults.recapMode)) {
     return defaults.recapMode;
   }
   return provider?.supportsNativeRecaps ? "native" : "off";
+}
+
+function resolveRecapMode(
+  provider:
+    | {
+        supportsRecaps?: boolean;
+        supportsNativeRecaps?: boolean;
+      }
+    | null
+    | undefined,
+  preferredMode: RecapMode,
+): RecapMode {
+  return providerSupportsRecapMode(provider, preferredMode)
+    ? preferredMode
+    : "off";
 }
 
 function providerSupportsPromptSuggestionMode(
@@ -382,6 +375,10 @@ export function NewSessionForm({
     null,
   );
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [selectedThinkingMode, setSelectedThinkingMode] =
+    useState<ThinkingMode>("off");
+  const [selectedEffortLevel, setSelectedEffortLevel] =
+    useState<EffortLevel>("high");
   const [selectedRecapMode, setSelectedRecapMode] = useState<RecapMode>("off");
   const [recapAfterSeconds, setRecapAfterSeconds] = useState(
     DEFAULT_RECAP_AFTER_SECONDS,
@@ -428,15 +425,12 @@ export function NewSessionForm({
     useRef<PendingTextareaSelectionRestore | null>(null);
   const hasInitializedDefaultsRef = useRef(false);
   const hasUserCustomizedDefaultsRef = useRef(false);
-  const preferredPromptSuggestionModeRef = useRef<PromptSuggestionMode>("off");
   const lastSyncedProjectIdRef = useRef<string | null>(null);
 
   // Thinking toggle state
   const {
-    effortLevel,
-    setEffortLevel,
-    thinkingMode,
-    setThinkingMode,
+    effortLevel: legacyEffortLevel,
+    thinkingMode: legacyThinkingMode,
     showThinking,
     setShowThinking,
     voiceInputEnabled,
@@ -464,6 +458,10 @@ export function NewSessionForm({
     isLoading: settingsLoading,
     updateSetting: updateServerSetting,
   } = useServerSettings();
+  const newSessionDefaultsRef = useRef(settings?.newSessionDefaults);
+  useEffect(() => {
+    newSessionDefaultsRef.current = settings?.newSessionDefaults;
+  }, [settings?.newSessionDefaults]);
 
   // Fetch remote executors
   const { executors: remoteExecutors, loading: executorsLoading } =
@@ -556,7 +554,7 @@ export function NewSessionForm({
     [selectedModelInfo, selectedProviderInfo, t],
   );
   const effectiveEffortLevel = resolveSupportedEffortLevel(
-    effortLevel,
+    selectedEffortLevel,
     effortOptions,
   );
   const thinkingModeOptions = useMemo(
@@ -569,7 +567,7 @@ export function NewSessionForm({
     [effortOptions, selectedModelInfo, selectedProviderInfo],
   );
   const effectiveThinkingMode = resolveSupportedThinkingMode(
-    thinkingMode,
+    selectedThinkingMode,
     thinkingModeOptions,
   );
   const showThinkingControls =
@@ -582,15 +580,19 @@ export function NewSessionForm({
   const effectivePermissionMode = permissionModeOptions.includes(mode)
     ? mode
     : "default";
-  const selectedProviderDisplayName =
-    selectedProviderInfo?.displayName ?? selectedProvider ?? "";
-  const availableRecapModes = RECAP_MODE_ORDER.filter((modeValue) =>
-    providerSupportsRecapMode(selectedProviderInfo, modeValue),
+  const getLegacyProviderDefaultSeed = useCallback(
+    (providerName: ProviderName) => ({
+      model:
+        providerName === "claude" ? resolveModel(getModelSetting()) : undefined,
+      thinkingMode: legacyThinkingMode,
+      effortLevel: legacyEffortLevel,
+    }),
+    [legacyEffortLevel, legacyThinkingMode],
   );
-  const availablePromptSuggestionModes = PROMPT_SUGGESTION_MODE_ORDER.filter(
-    (modeValue) =>
-      providerSupportsPromptSuggestionMode(selectedProviderInfo, modeValue),
-  );
+  const availableRecapModes = RECAP_MODE_ORDER;
+  const availablePromptSuggestionModes = PROMPT_SUGGESTION_MODE_ORDER;
+  const showHelperSideModel =
+    selectedRecapMode === "side-session" || selectedRecapMode === "fork";
   const sortedProjects = useMemo(
     () => sortProjectsForChooser(projects, recentProjectIds),
     [projects, recentProjectIds],
@@ -811,26 +813,23 @@ export function NewSessionForm({
         : null;
     const preferredPromptSuggestionMode =
       getPreferredPromptSuggestionMode(savedDefaults);
-    preferredPromptSuggestionModeRef.current = preferredPromptSuggestionMode;
+    const initialProviderDefaults = getProviderSessionDefaults(
+      savedDefaults,
+      initialProvider.name,
+      getLegacyProviderDefaultSeed(initialProvider.name),
+    );
     setSelectedProvider(initialProvider.name);
     setSelectedModel(
       requestedModelId ??
-        getPreferredProviderModelId(
-          initialProvider.name,
-          initialModels,
-          savedDefaults,
-        ),
+        getPreferredModelId(initialModels, initialProviderDefaults.model),
     );
-    setSelectedRecapMode(getDefaultRecapMode(initialProvider, savedDefaults));
+    setSelectedThinkingMode(initialProviderDefaults.thinkingMode ?? "off");
+    setSelectedEffortLevel(initialProviderDefaults.effortLevel ?? "high");
+    setSelectedRecapMode(getPreferredRecapMode(initialProvider, savedDefaults));
     setRecapAfterSeconds(
       normalizeRecapAfterSeconds(savedDefaults?.recapAfterSeconds),
     );
-    setSelectedPromptSuggestionMode(
-      resolvePromptSuggestionMode(
-        initialProvider,
-        preferredPromptSuggestionMode,
-      ),
-    );
+    setSelectedPromptSuggestionMode(preferredPromptSuggestionMode);
     setHelperSideModel(
       getDefaultHelperSideModel(
         [...helperTargetModelOptions, ...initialModels],
@@ -845,6 +844,7 @@ export function NewSessionForm({
     settings,
     settingsLoading,
     helperTargetModelOptions,
+    getLegacyProviderDefaultSeed,
     preferredProvider,
     preferredModel,
   ]);
@@ -865,32 +865,20 @@ export function NewSessionForm({
     setSelectedProvider(providerName);
     const provider = providers.find((p) => p.name === providerName);
     const providerModels = provider?.models ?? [];
+    const providerDefaults = getProviderSessionDefaults(
+      settings?.newSessionDefaults,
+      providerName,
+      getLegacyProviderDefaultSeed(providerName),
+    );
     if (provider?.models && provider.models.length > 0) {
       setSelectedModel(
-        getPreferredProviderModelId(
-          providerName,
-          providerModels,
-          settings?.newSessionDefaults,
-        ),
+        getPreferredModelId(providerModels, providerDefaults.model),
       );
     } else {
       setSelectedModel(null);
     }
-    setSelectedRecapMode(
-      getDefaultRecapMode(provider, settings?.newSessionDefaults),
-    );
-    setSelectedPromptSuggestionMode(
-      resolvePromptSuggestionMode(
-        provider,
-        preferredPromptSuggestionModeRef.current,
-      ),
-    );
-    setHelperSideModel(
-      getDefaultHelperSideModel(
-        [...helperTargetModelOptions, ...providerModels],
-        settings?.newSessionDefaults,
-      ),
-    );
+    setSelectedThinkingMode(providerDefaults.thinkingMode ?? "off");
+    setSelectedEffortLevel(providerDefaults.effortLevel ?? "high");
   };
 
   // Build model options for FilterDropdown
@@ -1075,25 +1063,39 @@ export function NewSessionForm({
     if (!hasUserCustomizedDefaultsRef.current || !selectedProvider) return;
     void Promise.resolve(
       updateServerSetting("newSessionDefaults", {
-        provider: selectedProvider ?? undefined,
-        model: selectedModel ?? undefined,
-        permissionMode: effectivePermissionMode,
-        recapMode: selectedRecapMode,
-        recapAfterSeconds,
-        promptSuggestionMode: preferredPromptSuggestionModeRef.current,
-        helperSideModel,
+        ...withProviderSessionDefaults(
+          {
+            ...newSessionDefaultsRef.current,
+            provider: selectedProvider ?? undefined,
+            permissionMode: effectivePermissionMode,
+            recapMode: selectedRecapMode,
+            recapAfterSeconds,
+            promptSuggestionMode: selectedPromptSuggestionMode,
+            helperSideModel,
+          },
+          selectedProvider,
+          {
+            model: selectedModel ?? undefined,
+            thinkingMode: selectedThinkingMode,
+            effortLevel: selectedEffortLevel,
+          },
+          getLegacyProviderDefaultSeed(selectedProvider),
+        ),
       }),
     ).catch((err) => {
       console.error("Failed to save new session defaults:", err);
     });
   }, [
     effectivePermissionMode,
+    getLegacyProviderDefaultSeed,
     helperSideModel,
     recapAfterSeconds,
     selectedModel,
+    selectedEffortLevel,
     selectedProvider,
     selectedPromptSuggestionMode,
     selectedRecapMode,
+    selectedThinkingMode,
     updateServerSetting,
   ]);
 
@@ -1152,6 +1154,14 @@ export function NewSessionForm({
         effectiveThinkingMode,
         effectiveEffortLevel,
       );
+      const effectiveRecapMode = resolveRecapMode(
+        selectedProviderInfo,
+        selectedRecapMode,
+      );
+      const effectivePromptSuggestionMode = resolvePromptSuggestionMode(
+        selectedProviderInfo,
+        selectedPromptSuggestionMode,
+      );
       // Display preference for thinking rows; sent for compatibility while the
       // server requests provider summaries independently.
       const showThinking = getShowThinkingSetting();
@@ -1162,9 +1172,9 @@ export function NewSessionForm({
         showThinking,
         provider: selectedProvider ?? undefined,
         executor: selectedExecutor ?? undefined,
-        recapMode: selectedRecapMode,
+        recapMode: effectiveRecapMode,
         recapAfterSeconds,
-        promptSuggestionMode: selectedPromptSuggestionMode,
+        promptSuggestionMode: effectivePromptSuggestionMode,
         helperSideModel,
       };
       logSessionUiTrace("new-session-submit", {
@@ -1175,9 +1185,9 @@ export function NewSessionForm({
         thinking,
         provider: selectedProvider ?? null,
         executor: selectedExecutor ?? null,
-        recapMode: selectedRecapMode,
+        recapMode: effectiveRecapMode,
         recapAfterSeconds,
-        promptSuggestionMode: selectedPromptSuggestionMode,
+        promptSuggestionMode: effectivePromptSuggestionMode,
         helperSideModel,
         textLength: trimmedMessage.length,
         pendingFileCount: pendingFiles.length,
@@ -2085,21 +2095,6 @@ export function NewSessionForm({
           })}
         </div>
       )}
-      {showThinkingControls && (
-        <ThinkingControlsPanel
-          mode={effectiveThinkingMode}
-          modeOptions={thinkingModeOptions}
-          onSetMode={setThinkingMode}
-          level={effectiveEffortLevel}
-          effortOptions={effortOptions}
-          onSetEffort={setEffortLevel}
-          showThinking={showThinking}
-          onSetShowThinking={setShowThinking}
-          provider={selectedProvider ?? undefined}
-          t={t}
-          className="thinking-controls-panel--inline new-session-thinking-controls"
-        />
-      )}
     </>
   );
 
@@ -2259,6 +2254,46 @@ export function NewSessionForm({
   const modelSection = modelField ? (
     <div className="new-session-model-section">{modelField}</div>
   ) : null;
+  const showThinkingSection = (
+    <div className="new-session-helper-section new-session-show-thinking-section">
+      <h3>{t("showThinkingTitle")}</h3>
+      <ShowThinkingControls
+        value={showThinking}
+        onChange={(value) => setShowThinking(value)}
+        provider={selectedProvider ?? undefined}
+        t={t}
+        showLabel={false}
+      />
+    </div>
+  );
+  const thinkingSection = showThinkingControls ? (
+    <div className="new-session-helper-section new-session-thinking-section">
+      <h3>{t("modelSettingsThinkingTitle")}</h3>
+      <ThinkingControlsPanel
+        mode={effectiveThinkingMode}
+        modeOptions={thinkingModeOptions}
+        onSetMode={(nextMode) => {
+          hasUserCustomizedDefaultsRef.current = true;
+          setSelectedThinkingMode(nextMode);
+        }}
+        level={effectiveEffortLevel}
+        effortOptions={effortOptions}
+        onSetEffort={(nextEffort) => {
+          hasUserCustomizedDefaultsRef.current = true;
+          setSelectedEffortLevel(nextEffort);
+        }}
+        onSetEffortMode={(nextEffort) => {
+          hasUserCustomizedDefaultsRef.current = true;
+          setSelectedEffortLevel(nextEffort);
+          setSelectedThinkingMode("on");
+        }}
+        showThinkingControl={false}
+        provider={selectedProvider ?? undefined}
+        t={t}
+        className="thinking-controls-panel--inline new-session-thinking-controls"
+      />
+    </div>
+  ) : null;
   const recapSection = selectedProvider ? (
     <div className="new-session-helper-section">
       <h3>{t("newSessionRecapTitle")}</h3>
@@ -2292,7 +2327,7 @@ export function NewSessionForm({
           }}
         />
       )}
-      {selectedRecapMode === "side-session" && (
+      {showHelperSideModel && (
         <div className="new-session-helper-model">
           <h3>{t("helperSideModelTitle")}</h3>
           <FilterDropdown
@@ -2323,7 +2358,6 @@ export function NewSessionForm({
             }`}
             onClick={() => {
               hasUserCustomizedDefaultsRef.current = true;
-              preferredPromptSuggestionModeRef.current = modeValue;
               setSelectedPromptSuggestionMode(modeValue);
             }}
             disabled={isStarting}
@@ -2334,15 +2368,6 @@ export function NewSessionForm({
           </button>
         ))}
       </div>
-      {availablePromptSuggestionModes.length === 1 &&
-        availablePromptSuggestionModes[0] === "off" &&
-        selectedProviderDisplayName && (
-          <p className="new-session-helper-note">
-            {t("promptSuggestionNativeUnsupported", {
-              provider: selectedProviderDisplayName,
-            })}
-          </p>
-        )}
     </div>
   ) : null;
   const permissionSection = supportsPermissionMode ? (
@@ -2397,15 +2422,18 @@ export function NewSessionForm({
         <aside className="new-session-project-slot">{projectChooser}</aside>
         {(providerSection ||
           modelSection ||
+          thinkingSection ||
           recapSection ||
           promptSuggestionSection ||
           permissionSection) && (
           <div className="new-session-provider-slot">
-            {providerSection}
-            {modelSection}
             {recapSection}
             {promptSuggestionSection}
             {permissionSection}
+            {showThinkingSection}
+            {providerSection}
+            {modelSection}
+            {thinkingSection}
           </div>
         )}
       </div>

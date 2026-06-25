@@ -920,6 +920,111 @@ describe("Supervisor", () => {
     });
   });
 
+  describe("recaps", () => {
+    it("falls back to tailed recap generation when forked recap cannot fork", async () => {
+      const generateSummary = vi.fn(async (request) => ({
+        text:
+          request.strategy === "side-session"
+            ? request.recentAssistantText.join(" | ")
+            : "",
+      }));
+      const startSession = vi.fn(
+        async (options: Parameters<AgentProvider["startSession"]>[0]) => {
+          const queue = new MessageQueue();
+          let aborted = false;
+
+          async function* iterator() {
+            yield {
+              type: "system" as const,
+              subtype: "init" as const,
+              session_id: options.resumeSessionId ?? "recap-fallback-session",
+            };
+            yield {
+              type: "assistant" as const,
+              message: { content: "assistant after start" },
+            };
+            yield {
+              type: "result" as const,
+              session_id: options.resumeSessionId ?? "recap-fallback-session",
+            };
+            while (!aborted) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+            }
+          }
+
+          return {
+            iterator: iterator(),
+            queue,
+            abort: () => {
+              aborted = true;
+            },
+          };
+        },
+      );
+      const provider: AgentProvider = {
+        name: "claude",
+        displayName: "Claude",
+        supportsPermissionMode: true,
+        supportsThinkingToggle: true,
+        supportsSlashCommands: true,
+        supportsSteering: false,
+        supportsRecaps: true,
+        isInstalled: async () => true,
+        isAuthenticated: async () => true,
+        getAuthStatus: async () => ({
+          installed: true,
+          authenticated: true,
+          enabled: true,
+        }),
+        getAvailableModels: async () => [],
+        startSession,
+        generateSummary,
+      };
+      const supervisorWithProvider = new Supervisor({
+        provider,
+        idleTimeoutMs: 100,
+      });
+
+      const process = await supervisorWithProvider.startSession(
+        "/tmp/test",
+        { text: "hi" },
+        undefined,
+        { providerName: "claude", recapMode: "fork" },
+      );
+      if (!("id" in process)) {
+        throw new Error("expected immediate process");
+      }
+      await vi.waitFor(() => expect(process.state.type).toBe("idle"));
+
+      const result = await (
+        supervisorWithProvider as unknown as {
+          requestForkedRecap: (
+            process: typeof process,
+            provider: AgentProvider,
+            sinceMs: number | null,
+          ) => Promise<{
+            supported: boolean;
+            emitted: boolean;
+            text?: string;
+          }>;
+        }
+      ).requestForkedRecap(process, provider, Date.now() - 1_000);
+
+      expect(result).toMatchObject({
+        supported: true,
+        emitted: true,
+        text: "assistant after start",
+      });
+      expect(generateSummary).toHaveBeenCalledWith({
+        purpose: "recap",
+        strategy: "side-session",
+        recentAssistantText: ["assistant after start"],
+        model: "cheapest",
+      });
+      await process.abort();
+    });
+  });
+
   describe("prompt suggestion options", () => {
     it("passes native prompt suggestions only for supporting providers", async () => {
       const startedOptions: Array<

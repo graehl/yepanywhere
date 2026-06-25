@@ -531,6 +531,82 @@ describe("Settings Routes", () => {
       });
     });
 
+    it("accepts provider-scoped new-session defaults", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          newSessionDefaults: {
+            provider: "codex",
+            model: "legacy-codex",
+            serviceTier: "legacy-priority",
+            providers: {
+              claude: {
+                model: "opus",
+                thinkingMode: "on",
+                effortLevel: "high",
+              },
+              codex: {
+                model: "gpt-5.5",
+                serviceTier: "priority",
+                thinkingMode: "auto",
+                effortLevel: "xhigh",
+              },
+            },
+          },
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        newSessionDefaults: {
+          provider: "codex",
+          model: "legacy-codex",
+          serviceTier: "legacy-priority",
+          providers: {
+            claude: {
+              model: "opus",
+              thinkingMode: "on",
+              effortLevel: "high",
+            },
+            codex: {
+              model: "gpt-5.5",
+              serviceTier: "priority",
+              thinkingMode: "auto",
+              effortLevel: "xhigh",
+            },
+          },
+        },
+      });
+    });
+
+    it("rejects invalid provider-scoped new-session defaults", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          newSessionDefaults: {
+            providers: {
+              claude: { effortLevel: "extreme" },
+            },
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      const json = await response.json();
+      expect(json.error).toBe("Invalid newSessionDefaults setting");
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("rejects invalid prompt-cache keepalive settings", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,

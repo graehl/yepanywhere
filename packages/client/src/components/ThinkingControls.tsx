@@ -111,6 +111,7 @@ interface ThinkingControlsPanelProps {
   level: EffortLevel;
   effortOptions: EffortLevelOption[];
   onSetEffort: (level: EffortLevel) => void;
+  onSetEffortMode?: (level: EffortLevel) => void;
   showThinking?: ShowThinking;
   onSetShowThinking?: (value: ShowThinking) => void;
   showThinkingControl?: boolean;
@@ -120,6 +121,7 @@ interface ThinkingControlsPanelProps {
   /** Called after any selection — popover mounts use this to close. */
   onSelect?: () => void;
   optionRole?: "radio" | "menuitemradio";
+  showLabel?: boolean;
   className?: string;
 }
 
@@ -169,6 +171,80 @@ function ThinkingChoiceButton({
   );
 }
 
+interface ShowThinkingControlsProps {
+  value: ShowThinking;
+  onChange?: (value: ShowThinking) => void;
+  provider?: string | null;
+  t: ReturnType<typeof useI18n>["t"];
+  onSelect?: () => void;
+  optionRole?: "radio" | "menuitemradio";
+  showLabel?: boolean;
+  className?: string;
+}
+
+export function ShowThinkingControls({
+  value,
+  onChange,
+  provider,
+  t,
+  onSelect,
+  optionRole = "radio",
+  showLabel = true,
+  className,
+}: ShowThinkingControlsProps) {
+  const effectiveShow = effectiveShowThinking(value, provider);
+  const inheritsDefault = value === "default";
+  const showThinkingLabel = (v: "on" | "off") =>
+    v === "on" ? t("showThinkingOn") : t("showThinkingOff");
+  const after = () => onSelect?.();
+
+  return (
+    <div
+      className={`thinking-toolbar-menu-section thinking-controls-section thinking-controls-section--show-thinking ${className ?? ""}`.trim()}
+    >
+      {showLabel && (
+        <div
+          className="thinking-toolbar-menu-label"
+          title={t("showThinkingHint")}
+        >
+          {t("showThinkingTitle")}
+        </div>
+      )}
+      <div className="thinking-toolbar-menu-options" role="group">
+        {SHOW_THINKING_CHOICES.map((v) => {
+          const isExplicit = value === v;
+          const isDefaultHere = inheritsDefault && effectiveShow === v;
+          return (
+            <ThinkingChoiceButton
+              key={v}
+              optionRole={optionRole}
+              checked={isExplicit || isDefaultHere}
+              className={`thinking-toolbar-option ${isExplicit ? "active" : ""} ${
+                isDefaultHere ? "is-default" : ""
+              }`.trim()}
+              title={
+                isDefaultHere
+                  ? `${t("showThinkingDefault")} — ${
+                      v === "on"
+                        ? t("showThinkingDefaultShown")
+                        : t("showThinkingDefaultHidden")
+                    }`
+                  : undefined
+              }
+              onClick={() => {
+                onChange?.(v);
+                after();
+              }}
+            >
+              {showThinkingLabel(v)}
+            </ThinkingChoiceButton>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Shared thinking-controls layout: mode, effort, and optionally
  * "Show thinking". The display preference is omitted from model/session setup
@@ -181,6 +257,7 @@ export function ThinkingControlsPanel({
   level,
   effortOptions,
   onSetEffort,
+  onSetEffortMode,
   showThinking = "default",
   onSetShowThinking,
   showThinkingControl = true,
@@ -200,14 +277,6 @@ export function ThinkingControlsPanel({
       : m === "auto"
         ? t("modelSettingsThinkingAutoLabel")
         : t("modelSettingsThinkingOnLabel");
-  const showThinkingLabel = (v: "on" | "off") =>
-    v === "on" ? t("showThinkingOn") : t("showThinkingOff");
-  // Which On/Off the un-overridden "default" currently behaves as.
-  const effectiveShow = showThinkingControl
-    ? effectiveShowThinking(showThinking, provider)
-    : "off";
-  const inheritsDefault = showThinkingControl && showThinking === "default";
-
   const after = () => onSelect?.();
 
   return (
@@ -235,45 +304,14 @@ export function ThinkingControlsPanel({
         </div>
       </div>
       {showThinkingControl && (
-        <div className="thinking-toolbar-menu-section thinking-controls-section thinking-controls-section--show-thinking">
-          <div
-            className="thinking-toolbar-menu-label"
-            title={t("showThinkingHint")}
-          >
-            {t("showThinkingTitle")}
-          </div>
-          <div className="thinking-toolbar-menu-options" role="group">
-            {SHOW_THINKING_CHOICES.map((v) => {
-              const isExplicit = showThinking === v;
-              const isDefaultHere = inheritsDefault && effectiveShow === v;
-              return (
-                <ThinkingChoiceButton
-                  key={v}
-                  optionRole={optionRole}
-                  checked={isExplicit || isDefaultHere}
-                  className={`thinking-toolbar-option ${isExplicit ? "active" : ""} ${
-                    isDefaultHere ? "is-default" : ""
-                  }`.trim()}
-                  title={
-                    isDefaultHere
-                      ? `${t("showThinkingDefault")} — ${
-                          v === "on"
-                            ? t("showThinkingDefaultShown")
-                            : t("showThinkingDefaultHidden")
-                        }`
-                      : undefined
-                  }
-                  onClick={() => {
-                    onSetShowThinking?.(v);
-                    after();
-                  }}
-                >
-                  {showThinkingLabel(v)}
-                </ThinkingChoiceButton>
-              );
-            })}
-          </div>
-        </div>
+        <ShowThinkingControls
+          value={showThinking}
+          onChange={onSetShowThinking}
+          provider={provider}
+          t={t}
+          onSelect={onSelect}
+          optionRole={optionRole}
+        />
       )}
       {showEffort && (
         <div className="thinking-toolbar-menu-section thinking-controls-section thinking-controls-section--effort">
@@ -294,8 +332,12 @@ export function ThinkingControlsPanel({
                 }`}
                 title={option.description}
                 onClick={() => {
-                  onSetEffort(option.value);
-                  onSetMode("on");
+                  if (onSetEffortMode) {
+                    onSetEffortMode(option.value);
+                  } else {
+                    onSetEffort(option.value);
+                    onSetMode("on");
+                  }
                   after();
                 }}
               >

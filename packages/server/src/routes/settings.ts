@@ -9,6 +9,7 @@ import {
   type BusyComposerDefaultAction,
   type ClientDefaults,
   type CollapsedComposerButtonPreference,
+  type EffortLevel,
   type GrokSpeechAudioClientDefault,
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
@@ -25,11 +26,13 @@ import {
   PROMPT_SUGGESTION_MODES,
   type PromptSuggestionMode,
   type ProviderName,
+  type ProviderSessionDefaults,
   RECAP_MODES,
   type RecapMode,
   clampRecapAfterSeconds,
   type SessionToolbarVisibilityClientDefaults,
   type SpeechSmartTurnClientDefault,
+  type ThinkingMode,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import {
@@ -98,6 +101,18 @@ const SPEECH_CLIENT_DEFAULT_KEYS = [
   "speechSmartTurnSettings",
   "grokSpeechAudioSettings",
 ] as const;
+const THINKING_MODES = [
+  "off",
+  "auto",
+  "on",
+] as const satisfies readonly ThinkingMode[];
+const EFFORT_LEVELS = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const satisfies readonly EffortLevel[];
 const MAX_SPEECH_SMART_TURN_TIMEOUT_MS = 10000;
 
 export interface SettingsRoutesDeps {
@@ -217,6 +232,62 @@ function parseHelperTargets(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function parseOptionalString(
+  value: unknown,
+  maxLength: number,
+): string | undefined | null {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") return null;
+  return value.length > 0 ? value.slice(0, maxLength) : undefined;
+}
+
+function parseProviderSessionDefaults(
+  raw: unknown,
+): ProviderSessionDefaults | undefined | null {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  if (!isRecord(raw)) return null;
+
+  const parsed: ProviderSessionDefaults = {};
+  if ("model" in raw) {
+    const model = parseOptionalString(raw.model, 200);
+    if (model === null) return null;
+    if (model) parsed.model = model;
+  }
+  if ("serviceTier" in raw) {
+    const serviceTier = parseOptionalString(raw.serviceTier, 64);
+    if (serviceTier === null) return null;
+    if (serviceTier) parsed.serviceTier = serviceTier;
+  }
+  if ("thinkingMode" in raw) {
+    if (
+      raw.thinkingMode !== undefined &&
+      raw.thinkingMode !== null &&
+      raw.thinkingMode !== "" &&
+      !THINKING_MODES.includes(raw.thinkingMode as ThinkingMode)
+    ) {
+      return null;
+    }
+    if (typeof raw.thinkingMode === "string" && raw.thinkingMode.length > 0) {
+      parsed.thinkingMode = raw.thinkingMode as ThinkingMode;
+    }
+  }
+  if ("effortLevel" in raw) {
+    if (
+      raw.effortLevel !== undefined &&
+      raw.effortLevel !== null &&
+      raw.effortLevel !== "" &&
+      !EFFORT_LEVELS.includes(raw.effortLevel as EffortLevel)
+    ) {
+      return null;
+    }
+    if (typeof raw.effortLevel === "string" && raw.effortLevel.length > 0) {
+      parsed.effortLevel = raw.effortLevel as EffortLevel;
+    }
+  }
+
+  return Object.keys(parsed).length > 0 ? parsed : undefined;
 }
 
 const MAX_FILE_ACCESS_CUSTOM_ENTRIES = 100;
@@ -373,17 +444,15 @@ function parseNewSessionDefaults(
   }
 
   if ("model" in input) {
-    if (
-      input.model !== undefined &&
-      input.model !== null &&
-      input.model !== "" &&
-      typeof input.model !== "string"
-    ) {
-      return null;
-    }
-    if (typeof input.model === "string" && input.model.length > 0) {
-      parsed.model = input.model;
-    }
+    const model = parseOptionalString(input.model, 200);
+    if (model === null) return null;
+    if (model) parsed.model = model;
+  }
+
+  if ("serviceTier" in input) {
+    const serviceTier = parseOptionalString(input.serviceTier, 64);
+    if (serviceTier === null) return null;
+    if (serviceTier) parsed.serviceTier = serviceTier;
   }
 
   if ("permissionMode" in input) {
@@ -476,6 +545,36 @@ function parseNewSessionDefaults(
           : input.helperSideModel === HELPER_SIDE_MODEL_CHEAPEST
             ? HELPER_SIDE_MODEL_CHEAPEST
             : input.helperSideModel.slice(0, 200);
+    }
+  }
+
+  if ("providers" in input) {
+    if (
+      input.providers !== undefined &&
+      input.providers !== null &&
+      input.providers !== "" &&
+      !isRecord(input.providers)
+    ) {
+      return null;
+    }
+    if (isRecord(input.providers)) {
+      const providers: NonNullable<NewSessionDefaults["providers"]> = {};
+      for (const [providerName, rawDefaults] of Object.entries(
+        input.providers,
+      )) {
+        if (!ALL_PROVIDERS.includes(providerName as ProviderName)) {
+          return null;
+        }
+        const parsedProviderDefaults =
+          parseProviderSessionDefaults(rawDefaults);
+        if (parsedProviderDefaults === null) return null;
+        if (parsedProviderDefaults) {
+          providers[providerName as ProviderName] = parsedProviderDefaults;
+        }
+      }
+      if (Object.keys(providers).length > 0) {
+        parsed.providers = providers;
+      }
     }
   }
 

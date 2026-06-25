@@ -5,6 +5,10 @@
 > self-contained todo snapshot. This topic frames the problem and its
 > constraints; it does not commit to an implementation.
 
+Status: Direction chosen. Reconstruct task state server-side as a transient
+fold over provider events, inject `_taskSnapshot` into selected task tool inputs,
+and keep the client as a pure renderer.
+
 For some time the agent's task list arrived as a self-contained snapshot: the
 `TodoWrite` tool's result carried the entire list (`newTodos: [{content,
 status, ...}]`) on every change, so a single renderer could draw the whole list
@@ -116,6 +120,23 @@ into Edit. The client stays a pure renderer.
   off-window creations resolve; this is free only because the full array is
   transiently in memory at that moment anyway.
 
+Chosen shape:
+
+- Cold/reload history: run the task fold over the full normalized `Message[]`
+  before `tailCompactions`, `tailTurns`, or `afterMessageId` slicing. Do not
+  persist the fold result; it is request-local.
+- Live SDK stream: keep a small task map inside the already-live stream
+  augmenter and inject the same `_taskSnapshot` shape as events arrive. The map
+  is scoped to the live provider process/view path and is discarded with it.
+- Snapshot placement: inject the latest surviving snapshot onto the relevant
+  `TaskUpdate` event, and onto `TaskCreate` only until a later update supersedes
+  it. This bounds wire size while still giving a tail-loaded client a resolved
+  checklist even when the matching `TaskCreate` rows are outside the returned
+  window.
+- Client rendering: register `TaskCreate` / `TaskUpdate` renderers that read
+  `_taskSnapshot` when present and otherwise fall back to concise one-line
+  event renderings.
+
 ### Persisted/cached reconstruction
 
 Maintain the resolved list incrementally on the write path (the live stream
@@ -142,7 +163,8 @@ reconstruction at all.
 - **Snapshot granularity.** Inject the resolved list into *every* task event,
   or only the latest surviving one (render the current list once, near the
   bottom, rather than re-drawing it at each historical `TaskUpdate`)? Affects
-  wire size and how history reads.
+  wire size and how history reads. Current direction: latest surviving snapshot
+  only.
 - **Off-window creations under the tail default.** If reconstruction runs
   server-side over the full array before slicing, this is handled; if any part
   is client-side, how does it resolve subjects for tasks created before the
@@ -152,10 +174,13 @@ reconstruction at all.
   `TaskList` result is a free full snapshot to resync from. Worth defining how
   much of this robustness is in scope vs. trusting the event stream.
 - **Live vs. reload parity.** Whatever owns reconstruction has to behave
-  identically on the streaming path and the cold GET path.
+  identically on the streaming path and the cold GET path. Current direction:
+  shared fold helpers, with request-local cold state and live-path scoped state.
 - **Provider scope.** This is a Claude-shape problem today. Does the chosen
   representation generalize to other providers' task/plan constructs (cf.
-  `UpdatePlan`), or is it Claude-specific?
+  `UpdatePlan`), or is it Claude-specific? Codex subagents are a related
+  example of cross-message, id-correlated rendering, but they should normalize
+  into an expandable agent-work view rather than this checklist UI.
 
 ## Related
 
@@ -164,5 +189,8 @@ reconstruction at all.
   problem would likely reuse.
 - [`ui-architecture.md`](ui-architecture.md) — rendering-boundary and
   shared-view decisions.
+- [`../docs/tactical/020-codex-subagent-rendering.md`](../docs/tactical/020-codex-subagent-rendering.md)
+  — a related provider-specific event-folding problem: Codex `spawn_agent`
+  output ids map parent rows to child rollout sessions.
 - [`cost-efficiency.md`](cost-efficiency.md) / [`memory-growth.md`](memory-growth.md)
   — the memory-conservative posture the constraints above derive from.

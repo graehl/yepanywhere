@@ -41,6 +41,7 @@ import {
   type StreamCoordinator,
   createStreamCoordinator,
 } from "./stream-coordinator.js";
+import { createTaskListAugmenter } from "./task-list-augments.js";
 import type {
   EditInputWithAugment,
   ExitPlanModeInput,
@@ -131,6 +132,7 @@ export async function createStreamAugmenter(
   let coordinator: StreamCoordinator | null = null;
   let coordinatorInitPromise: Promise<StreamCoordinator> | null = null;
   let currentStreamingMessageId: string | null = null;
+  const taskListAugmenter = createTaskListAugmenter();
 
   const getCoordinator = async (): Promise<StreamCoordinator> => {
     if (coordinator) return coordinator;
@@ -471,6 +473,7 @@ export async function createStreamAugmenter(
       await augmentEditInputs(message);
       await augmentWriteInputs(message);
       await augmentExitPlanMode(message);
+      taskListAugmenter.processMessage(message);
 
       // Process text deltas for streaming markdown
       const textDelta =

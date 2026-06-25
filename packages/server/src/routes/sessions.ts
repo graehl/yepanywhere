@@ -70,6 +70,10 @@ import {
   sliceAtUserTurnBoundary,
 } from "../sessions/pagination.js";
 import {
+  augmentTaskListSnapshots,
+  pruneTaskListSnapshotsToLatest,
+} from "../augments/task-list-augments.js";
+import {
   augmentEditToolUses,
   augmentPersistedSessionMessages,
 } from "../sessions/persisted-augments.js";
@@ -2484,13 +2488,18 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       deps.sessionMetadataService?.getRecapMessages?.(sessionId) ?? [];
     const recapCursor = findDurableRecapCursor(afterMessageId, recapMessages);
     const providerAfterMessageId = recapCursor ? undefined : afterMessageId;
+    const primaryReaderAfterMessageId =
+      isClaudeSdkProviderName(project.provider) ||
+      isClaudeSdkProviderName(metadataProvider)
+        ? undefined
+        : providerAfterMessageId;
 
     // Always try to read from disk first (even for owned sessions)
     const reader = deps.readerFactory(project);
     let loadedSession = await reader.getSession(
       sessionId,
       project.id,
-      providerAfterMessageId,
+      primaryReaderAfterMessageId,
       {
         // Only include orphaned tool info if:
         // 1. We previously owned this session (not external)
@@ -2603,6 +2612,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     let session = loadedSession ? normalizeSession(loadedSession) : null;
     const normalizedMessageCount = session?.messages.length ?? 0;
     const normalizeEndMs = performance.now();
+    if (session && isClaudeSdkProviderName(session.provider)) {
+      augmentTaskListSnapshots(session.messages);
+    }
     let incrementalAnchorFound = false;
     if (session && providerAfterMessageId) {
       const sliced = sliceAfterMessageIdWithMatch(
@@ -2775,6 +2787,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       );
       session = { ...session, messages: sliced.messages };
       paginationInfo = sliced.pagination;
+    }
+    if (isClaudeSdkProviderName(session.provider)) {
+      pruneTaskListSnapshotsToLatest(session.messages);
     }
     const sliceEndMs = performance.now();
 

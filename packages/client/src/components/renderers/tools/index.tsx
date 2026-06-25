@@ -164,6 +164,7 @@ import { grepRenderer } from "./GrepRenderer";
 import { killShellRenderer } from "./KillShellRenderer";
 import { readRenderer } from "./ReadRenderer";
 import { taskOutputRenderer } from "./TaskOutputRenderer";
+import { taskCreateRenderer, taskUpdateRenderer } from "./TaskListRenderer";
 import { taskRenderer } from "./TaskRenderer";
 import { todoWriteRenderer } from "./TodoWriteRenderer";
 import { updatePlanRenderer } from "./UpdatePlanRenderer";
@@ -181,6 +182,8 @@ toolRegistry.register(writeRenderer);
 toolRegistry.register(globRenderer);
 toolRegistry.register(grepRenderer);
 toolRegistry.register(todoWriteRenderer);
+toolRegistry.register(taskCreateRenderer);
+toolRegistry.register(taskUpdateRenderer);
 
 // Tier 3: Less common tools
 toolRegistry.register(taskRenderer);

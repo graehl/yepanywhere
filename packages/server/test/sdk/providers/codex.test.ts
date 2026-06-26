@@ -21,6 +21,7 @@ import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -40,8 +41,35 @@ vi.mock("../../../src/sdk/messageLogger.js", () => ({
   logSDKMessage: vi.fn(),
 }));
 
+// Scrub the agentctl session-env bridge variables this process may have
+// inherited (e.g. when `pnpm test` runs inside a YA-managed shell). The
+// app-server lifecycle tests assert the provider installs its OWN bridge; an
+// ambient BASH_ENV would be chained as YEP_ORIGINAL_BASH_ENV into every probe
+// shell the fake Codex spawns and break them.
+const HERMETIC_BRIDGE_ENV_KEYS = [
+  "BASH_ENV",
+  "YEP_ORIGINAL_BASH_ENV",
+  "AGENTCTL_SESSION_ID",
+] as const;
+const savedBridgeEnv = new Map<string, string | undefined>();
+
 beforeEach(() => {
   vi.mocked(logSDKMessage).mockClear();
+  savedBridgeEnv.clear();
+  for (const key of HERMETIC_BRIDGE_ENV_KEYS) {
+    savedBridgeEnv.set(key, process.env[key]);
+    delete process.env[key];
+  }
+});
+
+afterEach(() => {
+  for (const [key, value] of savedBridgeEnv) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
 });
 
 function createFakeCodexCommand(

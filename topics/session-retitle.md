@@ -1,8 +1,9 @@
 # Session Retitle
 
-> Session retitle is the proposed explicit, user-confirmed title editing flow
-> that combines manual rename, LLM-generated title suggestions, and unchanged
-> recent-session navigation without silently applying generated text.
+> Session retitle is the explicit, user-confirmed title editing flow that
+> combines manual rename and one-click LLM-generated titles behind a dedicated
+> button, keeping the title tap itself on recent-session navigation so a
+> generated rewrite is never applied by accident.
 
 Topic: session-retitle
 
@@ -17,10 +18,12 @@ Related topics: [recaps](recaps.md), [side-session-config](side-session-config.m
 - The existing session-menu **Rename** entry remains manual rename. It does not
   start the generated-retitle helper flow, but it should share the same
   temporary confirm and dismiss controls as the retitle surface.
-- Left-clicking the non-menu title text is the proposed entry point for retitle
-  or rename. The small chevron may keep the current recent-sessions dropdown
-  behavior, because it is the existing rarely used route to the same navigation
-  affordance.
+- Tapping the non-menu title text opens the recent-sessions dropdown (session
+  navigation); the small chevron beside it does the same and stays as the
+  dropdown affordance. The title tap must never start a generated retitle: it
+  is a large, frequently-tapped target (especially on mobile), so wiring it to
+  an automatic LLM rewrite is too easy to trigger by accident. Generated
+  retitle has its own dedicated button instead (see One-Shot Apply).
 - Escape, an `X` button, or losing interest in the helper proposal must leave
   the current title unchanged.
 
@@ -49,10 +52,10 @@ retitle:
 
 ## Generated Retitle Flow
 
-Generated retitle is a separate helper action, not the current **Rename** menu
-entry. The title-text click may enter a compact title-edit surface with a
-visible helper affordance, or it may directly start a one-shot proposal
-generation if that is the chosen final UX.
+Generated retitle is a separate helper action, distinct from the **Rename**
+menu entry (which stays a manual typed edit). It is reached only through the
+dedicated generated-title button in the header, which enters a compact
+title-edit surface and starts a one-shot generate-and-apply.
 
 Generation prompt shape:
 
@@ -113,16 +116,18 @@ on hover so the user can inspect what YA asked the provider to do.
 
 ## One-Shot Apply
 
-The compact generated-title button beside the recent-session chevron generates
-and applies a new title in one click. It enters the same retitle surface as the
-normal proposal flow, immediately arms the deferred generated-title accept path,
-and shows the generating placeholder until the helper returns. The generated
-text replaces the whole current title because there is no active caret or text
-selection before the one-shot action starts.
+The compact generated-title button sits after the recent-session chevron and
+generates and applies a new title in one click. It enters the retitle surface,
+immediately arms the deferred generated-title accept path, and shows the
+generating placeholder (with its `X` escape hatch) until the helper returns. The
+generated text replaces the whole current title because there is no active caret
+or text selection before the one-shot action starts.
 
-This remains distinct from clicking the title text: title text starts the normal
-generated proposal flow and does not update metadata until the user accepts the
-suggestion.
+This button is the only pointer entry to generated retitle. The title tap and
+the chevron both open recent sessions instead, so an LLM rewrite is never
+started by the navigation gesture; manual **Rename** from the session menu
+stays the typed-edit path. The button only renders for providers that advertise
+transcript forks (`supportsForkFromTurn`).
 
 ## Helper Model Notes
 
@@ -142,8 +147,9 @@ retitle-only helper configuration.
 - A manual hard-confirm while generation is pending invalidates the helper
   result; the late proposal must not overwrite the saved title.
 - Manual **Rename** opens the edit surface without starting generation.
-- Title-text click and chevron click diverge as designed: title text enters the
-  retitle/rename flow, while chevron opens recent sessions.
+- Title-text tap and chevron tap both open recent sessions; the dedicated
+  generated-title button is the only pointer entry that starts generated
+  retitle, and the title tap never starts it.
 - `Esc` and `X` exit either manual or generated retitle mode without changing
   session metadata.
 - Stopped mixed-provider sessions use the provider found by transcript readers,

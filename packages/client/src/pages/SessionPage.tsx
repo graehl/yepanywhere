@@ -4175,38 +4175,14 @@ function SessionPageContent({
                 <>
                   <button
                     type="button"
-                    className="session-title session-title-retitle-trigger"
-                    onClick={() => handleStartRetitleTitle()}
+                    className="session-title session-title-recent-trigger"
+                    onClick={() => setShowRecentSessions(!showRecentSessions)}
                     title={titleTooltip}
+                    aria-haspopup="menu"
+                    aria-expanded={showRecentSessions}
                   >
                     <span className="session-title-text">{displayTitle}</span>
                   </button>
-                  {supportsForkFromTurn && (
-                    <button
-                      type="button"
-                      className="session-title-generate-trigger"
-                      onClick={handleGenerateAndApplyTitle}
-                      title={t("sessionGenerateNewTitle")}
-                      aria-label={t("sessionGenerateNewTitle")}
-                    >
-                      <svg
-                        className="session-title-generate-icon"
-                        width="15"
-                        height="15"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.75"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z" />
-                        <path d="m11 8 4 4-4 4" />
-                        <path d="M8 12h7" />
-                      </svg>
-                    </button>
-                  )}
                   <button
                     type="button"
                     className={`session-title-chevron-trigger${
@@ -4240,6 +4216,32 @@ function SessionPageContent({
                       <polyline points="6 9 12 15 18 9" />
                     </svg>
                   </button>
+                  {supportsForkFromTurn && (
+                    <button
+                      type="button"
+                      className="session-title-generate-trigger"
+                      onClick={handleGenerateAndApplyTitle}
+                      title={t("sessionGenerateNewTitle")}
+                      aria-label={t("sessionGenerateNewTitle")}
+                    >
+                      <svg
+                        className="session-title-generate-icon"
+                        width="15"
+                        height="15"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z" />
+                        <path d="m11 8 4 4-4 4" />
+                        <path d="M8 12h7" />
+                      </svg>
+                    </button>
+                  )}
                   <RecentSessionsDropdown
                     currentSessionId={sessionId}
                     isOpen={showRecentSessions}

@@ -14,6 +14,12 @@ Progress:
 - [x] 2026-05-31: Wired existing `/api/sessions`, `/api/inbox`, and
   `/api/processes` fetch paths to report lifecycle snapshots into the store
   as shadow state. No visible UI consumers have moved yet.
+- [x] 2026-06-26: Noted dependency on the connection-readiness fix. The
+  snapshot reporters here inherit Race A — they only populate the store if
+  their underlying fetches actually fire. That race is now fixed at the
+  transport boundary; see
+  [021](021-client-connection-readiness-vs-state-consistency.md) for the
+  relationship and the Tier 1 implementation.
 
 ## Context
 

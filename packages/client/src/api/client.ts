@@ -35,7 +35,11 @@ import type {
   UserMessageMetadata,
 } from "@yep-anywhere/shared";
 import { authEvents } from "../lib/authEvents";
-import { getGlobalConnection, isRemoteClient } from "../lib/connection";
+import {
+  getGlobalConnection,
+  isRemoteClient,
+  whenConnectionReady,
+} from "../lib/connection";
 import type {
   AgentSession,
   InputRequest,
@@ -233,12 +237,15 @@ export async function fetchJSON<T>(
     return globalConn.fetch<T>(path, options);
   }
 
-  // In remote client mode, we MUST have a SecureConnection
-  // If we reach this point, it means authentication hasn't completed yet
+  // In remote client mode we MUST have a SecureConnection. If it isn't ready
+  // yet (initial connect or a reconnect still in progress), wait for it rather
+  // than failing the request outright — otherwise hooks that fetch on mount
+  // race the handshake, throw, and never retry. Rejects on teardown or timeout
+  // so genuine "not connected" states still surface. See
+  // docs/tactical/021-client-connection-readiness-vs-state-consistency.md.
   if (isRemoteClient()) {
-    throw new Error(
-      "Remote client requires SecureConnection - not authenticated",
-    );
+    const readyConn = await whenConnectionReady();
+    return readyConn.fetch<T>(path, options);
   }
 
   const headers: Record<string, string> = {

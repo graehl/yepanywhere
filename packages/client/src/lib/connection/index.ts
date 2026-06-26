@@ -47,6 +47,14 @@ export function isRemoteClient(): boolean {
 }
 
 /**
+ * Default time {@link whenConnectionReady} waits for the relay connection
+ * before rejecting. The relay handshake (WebSocket + pairing + SRP) is usually
+ * a few seconds; this bounds the wait so callers still surface an error rather
+ * than hanging forever if the connection never establishes.
+ */
+export const CONNECTION_READY_TIMEOUT_MS = 15_000;
+
+/**
  * Global connection for remote mode.
  *
  * When set, this connection is used for all API calls instead of
@@ -57,10 +65,37 @@ export function isRemoteClient(): boolean {
 let globalConnection: Connection | null = null;
 
 /**
+ * Waiters queued by {@link whenConnectionReady} while no connection is set.
+ * Resolved when a connection next becomes available, or rejected when the
+ * connection is torn down.
+ */
+let connectionReadyWaiters: Array<{
+  resolve: (conn: Connection) => void;
+  reject: (err: Error) => void;
+}> = [];
+
+/**
  * Set the global connection (for remote mode).
+ *
+ * Passing a connection resolves any outstanding {@link whenConnectionReady}
+ * waiters. Passing `null` rejects them: both call sites that clear the
+ * connection (intentional disconnect and provider unmount) are genuine
+ * teardowns — transient reconnects keep the singleton set — so it is safe to
+ * fail outstanding waiters immediately instead of letting them hang until the
+ * timeout.
  */
 export function setGlobalConnection(connection: Connection | null): void {
   globalConnection = connection;
+
+  const waiters = connectionReadyWaiters;
+  connectionReadyWaiters = [];
+  if (connection) {
+    for (const waiter of waiters) waiter.resolve(connection);
+  } else {
+    for (const waiter of waiters) {
+      waiter.reject(new Error("Connection closed before it became ready"));
+    }
+  }
 }
 
 /**
@@ -75,6 +110,49 @@ export function getGlobalConnection(): Connection | null {
  */
 export function isRemoteMode(): boolean {
   return globalConnection !== null;
+}
+
+/**
+ * Resolve once the global (relay) connection is established.
+ *
+ * Returns the current connection immediately if one is already set; otherwise
+ * waits for the next connection, rejecting if the connection is torn down or
+ * `timeoutMs` elapses first.
+ *
+ * This lets API calls that fire during the connect/reconnect window wait for
+ * the connection instead of failing outright. See
+ * docs/tactical/021-client-connection-readiness-vs-state-consistency.md.
+ */
+export function whenConnectionReady(
+  timeoutMs: number = CONNECTION_READY_TIMEOUT_MS,
+): Promise<Connection> {
+  if (globalConnection) {
+    return Promise.resolve(globalConnection);
+  }
+
+  return new Promise<Connection>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout>;
+
+    const waiter = {
+      resolve: (conn: Connection) => {
+        clearTimeout(timer);
+        resolve(conn);
+      },
+      reject: (err: Error) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    };
+
+    timer = setTimeout(() => {
+      connectionReadyWaiters = connectionReadyWaiters.filter(
+        (w) => w !== waiter,
+      );
+      reject(new Error(`Timed out after ${timeoutMs}ms waiting for connection`));
+    }, timeoutMs);
+
+    connectionReadyWaiters.push(waiter);
+  });
 }
 
 /**

@@ -413,6 +413,10 @@ export interface AppSessionSummary {
   approvalPolicy?: string;
   /** Sandbox policy from turn_context */
   sandboxPolicy?: SessionSandboxPolicy;
+  /** YA's effective project/working directory for this session. */
+  workingProjectId?: UrlProjectId;
+  /** Provider transcript project when it differs from the effective project. */
+  transcriptProjectId?: UrlProjectId;
 }
 
 /**
@@ -436,6 +440,10 @@ export interface SessionMetadataPayload
   promptSuggestionMode?: PromptSuggestionMode;
   /** Browser-away duration before YA asks the live process for a recap. */
   recapAfterSeconds?: number;
+  /** YA's effective project/working directory for this session. */
+  workingProjectId?: UrlProjectId;
+  /** Provider transcript project when it differs from the effective project. */
+  transcriptProjectId?: UrlProjectId;
 }
 
 /**

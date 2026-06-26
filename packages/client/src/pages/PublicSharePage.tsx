@@ -394,6 +394,12 @@ export function PublicSharePage() {
       if (!anchor) {
         return;
       }
+      if (anchor.getAttribute("data-ya-private-project-file-link") === "true") {
+        event.preventDefault();
+        event.stopPropagation();
+        setLinkNotice(t("publicShareLocalFileLinksUnavailable"));
+        return;
+      }
       const href = anchor?.getAttribute("href");
       if (!href) {
         return;

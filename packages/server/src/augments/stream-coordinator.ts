@@ -13,6 +13,7 @@ import {
   createAugmentGenerator,
 } from "./augment-generator.js";
 import { BlockDetector } from "./block-detector.js";
+import type { SafeMarkdownRenderOptions } from "./safe-markdown.js";
 
 export type { Augment, AugmentGeneratorConfig };
 
@@ -26,6 +27,11 @@ export interface StreamCoordinator {
   onChunk(chunk: string): Promise<StreamChunkResult>;
   flush(): Promise<{ augments: Augment[]; pendingHtml: string }>;
   reset(): void; // Reset state for new stream
+}
+
+export interface StreamCoordinatorOptions
+  extends Partial<AugmentGeneratorConfig> {
+  safeMarkdownOptions?: SafeMarkdownRenderOptions;
 }
 
 /**
@@ -62,13 +68,14 @@ const STREAMING_CODE_LIVE_RENDER_MAX_CHARS = 24_000;
  * @returns Promise that resolves to a StreamCoordinator
  */
 export async function createStreamCoordinator(
-  config?: Partial<AugmentGeneratorConfig>,
+  config?: StreamCoordinatorOptions,
 ): Promise<StreamCoordinator> {
   const mergedConfig: AugmentGeneratorConfig = {
     languages: config?.languages ?? DEFAULT_CONFIG.languages,
   };
 
   const generator = await createAugmentGenerator(mergedConfig);
+  const safeMarkdownOptions = config?.safeMarkdownOptions;
   let detector = new BlockDetector();
   let blockIndex = 0;
 
@@ -80,7 +87,11 @@ export async function createStreamCoordinator(
       // Process completed blocks into augments
       const augments: Augment[] = [];
       for (const block of completedBlocks) {
-        const augment = await generator.processBlock(block, blockIndex);
+        const augment = await generator.processBlock(
+          block,
+          blockIndex,
+          safeMarkdownOptions,
+        );
         augments.push(augment);
         blockIndex++;
       }
@@ -120,6 +131,7 @@ export async function createStreamCoordinator(
         const streamingAugment = generator.renderStreamingList(
           streamingList,
           blockIndex,
+          safeMarkdownOptions,
         );
         augments.push(streamingAugment);
         // Don't render pending as inline text - it's being rendered as a list
@@ -147,7 +159,11 @@ export async function createStreamCoordinator(
       // Process final blocks into augments
       const augments: Augment[] = [];
       for (const block of finalBlocks) {
-        const augment = await generator.processBlock(block, blockIndex);
+        const augment = await generator.processBlock(
+          block,
+          blockIndex,
+          safeMarkdownOptions,
+        );
         augments.push(augment);
         blockIndex++;
       }

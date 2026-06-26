@@ -86,6 +86,10 @@ export interface SessionMetadataChangedEvent {
   promptSuggestionMode?: PromptSuggestionMode;
   recapAfterSeconds?: number;
   transcriptDisplayObjects?: TranscriptDisplayObject[];
+  /** YA's effective project/working directory for this session, if changed. */
+  projectId?: UrlProjectId;
+  /** Provider transcript project when it differs from the effective project. */
+  transcriptProjectId?: UrlProjectId | null;
   timestamp: string;
 }
 

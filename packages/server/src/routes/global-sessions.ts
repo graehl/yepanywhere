@@ -327,10 +327,10 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
     // Get all projects
     const allProjects = await deps.scanner.listProjects();
 
-    // Filter to single project if projectId query param provided
-    const projects = filterProjectId
-      ? allProjects.filter((p) => p.id === filterProjectId)
-      : allProjects;
+    const projectsById = new Map(allProjects.map((p) => [p.id, p]));
+    // Project filtering applies to the effective YA project after session
+    // metadata is read, so scan every transcript project and filter below.
+    const projects = allProjects;
 
     // Build project options for filter dropdown (from all projects, sorted by name)
     const projectOptions: ProjectOption[] = allProjects
@@ -367,6 +367,12 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
               deps.sessionMetadataService.getRecapMessages(session.id),
             )
           : session;
+        const effectiveProjectId = metadata?.workingProjectId ?? session.projectId;
+        if (filterProjectId && effectiveProjectId !== filterProjectId) {
+          continue;
+        }
+        const effectiveProject = projectsById.get(effectiveProjectId) ?? project;
+
         const isArchived =
           metadata?.isArchived ??
           overlaidSession.isArchived ??
@@ -437,7 +443,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           const customTitleMatch = customTitle
             ?.toLowerCase()
             .includes(searchQuery);
-          const projectNameMatch = project.name
+          const projectNameMatch = effectiveProject.name
             .toLowerCase()
             .includes(searchQuery);
           const initialPromptMatch = initialPrompt
@@ -463,8 +469,8 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           messageCount: overlaidSession.messageCount,
           provider: overlaidSession.provider,
           model: overlaidSession.model,
-          projectId: overlaidSession.projectId,
-          projectName: project.name,
+          projectId: effectiveProjectId,
+          projectName: effectiveProject.name,
           ownership,
           pendingInputType,
           activity,

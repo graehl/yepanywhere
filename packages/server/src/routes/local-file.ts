@@ -36,6 +36,14 @@ function isHtmlPath(filePath: string): boolean {
   return ext === ".html" || ext === ".htm";
 }
 
+function getLocalFileContentType(filePath: string): string | null {
+  const ext = extname(filePath).toLowerCase();
+  if (LOCAL_MEDIA_EXTENSIONS.has(ext)) {
+    return null;
+  }
+  return LOCAL_FILE_CONTENT_TYPES[ext] ?? "text/plain; charset=utf-8";
+}
+
 function escapeHtml(text: string): string {
   return text
     .replaceAll("&", "&amp;")
@@ -137,7 +145,7 @@ function rewriteHtmlLocalReference(
     return localMediaHref(resolvedReference.filePath);
   }
 
-  if (LOCAL_FILE_CONTENT_TYPES[ext]) {
+  if (getLocalFileContentType(resolvedReference.filePath)) {
     const rewrittenHref = localFileHref(resolvedReference.filePath, {
       renderMarkdown: isMarkdownPath(resolvedReference.filePath),
     });
@@ -308,9 +316,12 @@ ${bodyHtml}
  * Create routes for serving local files from allowed paths.
  *
  * Security: Only serves files that:
- * 1. Have a recognized extension
+ * 1. Are not handled by the media route
  * 2. Resolve (after symlink resolution) to a path under an allowed prefix
  * 3. Are regular files (not directories, devices, etc.)
+ *
+ * Unknown non-media extensions are served as text/plain with nosniff so source
+ * files and logs do not fail just because the extension map is incomplete.
  */
 export function createLocalFileRoutes(deps: LocalFileDeps) {
   const routes = new Hono();
@@ -332,8 +343,7 @@ export function createLocalFileRoutes(deps: LocalFileDeps) {
       return c.json({ error: "Path must be absolute" }, 400);
     }
 
-    const ext = extname(filePath).toLowerCase();
-    const contentType = LOCAL_FILE_CONTENT_TYPES[ext];
+    const contentType = getLocalFileContentType(filePath);
     if (!contentType) {
       return c.json({ error: "Not a supported local file" }, 415);
     }

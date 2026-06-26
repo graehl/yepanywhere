@@ -50,10 +50,10 @@ import type { ModelInfoService } from "../services/ModelInfoService.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession, cloneCodexSession } from "../sessions/fork.js";
-import { GeminiSessionReader } from "../sessions/gemini-reader.js";
+import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
 import { buildDag } from "../sessions/dag.js";
 import { GrokSessionReader } from "../sessions/grok-reader.js";
-import { PiSessionReader } from "../sessions/pi-reader.js";
+import type { PiSessionReader } from "../sessions/pi-reader.js";
 import { extractLastAgentExcerpt } from "../sessions/agent-excerpt.js";
 import { normalizeSession } from "../sessions/normalization.js";
 import {
@@ -80,8 +80,9 @@ import {
 import {
   type ProviderResolutionDeps,
   findSessionSummaryAcrossProviders,
+  getSessionSources,
 } from "../sessions/provider-resolution.js";
-import type { ISessionReader } from "../sessions/types.js";
+import type { ISessionReader, LoadedSession } from "../sessions/types.js";
 import { getProvider } from "../sdk/providers/index.js";
 import { getStaticSlashCommandsForProvider } from "../sdk/providers/staticSlashCommands.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
@@ -598,10 +599,9 @@ async function resolveSessionReaderForAgentContent({
   sessionId: string;
   projectId: UrlProjectId;
 }): Promise<ISessionReader> {
-  const metadataProvider =
-    deps.sessionMetadataService?.getProvider(sessionId) as
-      | ProviderName
-      | undefined;
+  const metadataProvider = deps.sessionMetadataService?.getProvider(
+    sessionId,
+  ) as ProviderName | undefined;
   const resolved = await findSessionSummaryAcrossProviders(
     project,
     sessionId,
@@ -1939,24 +1939,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         })
       : null);
 
-  const getGrokReader = (projectPath: string): GrokSessionReader | null =>
-    deps.grokReaderFactory?.(projectPath) ??
-    (deps.grokSessionsDir
-      ? new GrokSessionReader({
-          sessionsDir: deps.grokSessionsDir,
-          projectPath,
-        })
-      : null);
-
-  const getPiReader = (projectPath: string): PiSessionReader | null =>
-    deps.piReaderFactory?.(projectPath) ??
-    (deps.piSessionsDir
-      ? new PiSessionReader({
-          sessionsDir: deps.piSessionsDir,
-          projectPath,
-        })
-      : null);
-
   let unscopedGrokReader: GrokSessionReader | null | undefined;
   const getUnscopedGrokReader = (): GrokSessionReader | null => {
     if (unscopedGrokReader !== undefined) {
@@ -1994,6 +1976,67 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     return `/api/projects/${canonicalProjectId}/sessions/${encodeURIComponent(
       sessionId,
     )}${suffix}${search}`;
+  };
+
+  const buildSessionProjectRedirectPath = (
+    canonicalProjectId: UrlProjectId,
+    sessionId: string,
+    suffix: string,
+    requestUrl: string,
+  ): string => {
+    const search = new URL(requestUrl).search;
+    return `/api/projects/${canonicalProjectId}/sessions/${encodeURIComponent(
+      sessionId,
+    )}${suffix}${search}`;
+  };
+
+  const resolveSessionProjectRouting = async (
+    requestProjectId: UrlProjectId,
+    sessionId: string,
+  ): Promise<
+    | { error: string; status: 404 }
+    | {
+        redirectProjectId: UrlProjectId;
+      }
+    | {
+        transcriptProject: Project;
+        transcriptProjectId: UrlProjectId;
+        workingProject: Project;
+        workingProjectId: UrlProjectId;
+      }
+  > => {
+    const workingProjectId =
+      deps.sessionMetadataService?.getMetadata(sessionId)?.workingProjectId;
+    if (workingProjectId && workingProjectId !== requestProjectId) {
+      return { redirectProjectId: workingProjectId };
+    }
+
+    const workingProject =
+      await deps.scanner.getOrCreateProject(requestProjectId);
+    if (!workingProject) {
+      return { error: "Project not found", status: 404 };
+    }
+
+    const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
+    const transcriptProjectId =
+      metadata?.workingProjectId === requestProjectId &&
+      metadata.transcriptProjectId
+        ? metadata.transcriptProjectId
+        : requestProjectId;
+    const transcriptProject =
+      transcriptProjectId === requestProjectId
+        ? workingProject
+        : await deps.scanner.getOrCreateProject(transcriptProjectId);
+    if (!transcriptProject) {
+      return { error: "Transcript project not found", status: 404 };
+    }
+
+    return {
+      transcriptProject,
+      transcriptProjectId,
+      workingProject,
+      workingProjectId: requestProjectId,
+    };
   };
 
   const getGlobalInstructions = (): string | undefined =>
@@ -2051,6 +2094,46 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
   };
 
+  const getProviderResolutionDeps = () => ({
+    readerFactory: deps.readerFactory,
+    codexSessionsDir: deps.codexSessionsDir,
+    codexReaderFactory: deps.codexReaderFactory,
+    geminiSessionsDir: deps.geminiSessionsDir,
+    geminiReaderFactory: deps.geminiReaderFactory,
+    geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
+    grokSessionsDir: deps.grokSessionsDir,
+    grokReaderFactory: deps.grokReaderFactory,
+    piSessionsDir: deps.piSessionsDir,
+    piReaderFactory: deps.piReaderFactory,
+  });
+
+  const loadProviderSession = async (
+    project: Project,
+    sessionId: string,
+    projectId: UrlProjectId,
+    preferredProvider: ProviderName | undefined,
+    afterMessageId?: string,
+    options?: { includeOrphans?: boolean },
+  ): Promise<LoadedSession | null> => {
+    for (const source of getSessionSources(
+      project,
+      getProviderResolutionDeps(),
+      preferredProvider,
+    )) {
+      const loaded = await source.reader.getSession(
+        sessionId,
+        projectId,
+        afterMessageId,
+        options,
+      );
+      if (loaded) {
+        return loaded;
+      }
+    }
+
+    return null;
+  };
+
   const loadRestartSourceSession = async (
     project: Project,
     sessionId: string,
@@ -2062,18 +2145,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       project,
       sessionId,
       projectId,
-      {
-        readerFactory: deps.readerFactory,
-        codexSessionsDir: deps.codexSessionsDir,
-        codexReaderFactory: deps.codexReaderFactory,
-        geminiSessionsDir: deps.geminiSessionsDir,
-        geminiReaderFactory: deps.geminiReaderFactory,
-        geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
-        grokSessionsDir: deps.grokSessionsDir,
-        grokReaderFactory: deps.grokReaderFactory,
-        piSessionsDir: deps.piSessionsDir,
-        piReaderFactory: deps.piReaderFactory,
-      },
+      getProviderResolutionDeps(),
       preferredProvider,
     );
 
@@ -2197,16 +2269,30 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
-    const project = await deps.scanner.getOrCreateProject(projectId);
-    if (!project) {
-      return c.json({ error: "Project not found" }, 404);
+    const routing = await resolveSessionProjectRouting(
+      projectId as UrlProjectId,
+      c.req.param("sessionId"),
+    );
+    if ("redirectProjectId" in routing) {
+      return c.redirect(
+        buildSessionProjectRedirectPath(
+          routing.redirectProjectId,
+          c.req.param("sessionId"),
+          "",
+          c.req.url,
+        ),
+        307,
+      );
+    }
+    if ("error" in routing) {
+      return c.json({ error: routing.error }, routing.status);
     }
 
     const reader = await resolveSessionReaderForAgentContent({
       deps,
-      project,
+      project: routing.transcriptProject,
       sessionId: c.req.param("sessionId"),
-      projectId: projectId as UrlProjectId,
+      projectId: routing.transcriptProjectId,
     });
     const mappings = await reader.getAgentMappings();
 
@@ -2226,16 +2312,30 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         return c.json({ error: "Invalid project ID format" }, 400);
       }
 
-      const project = await deps.scanner.getOrCreateProject(projectId);
-      if (!project) {
-        return c.json({ error: "Project not found" }, 404);
+      const routing = await resolveSessionProjectRouting(
+        projectId as UrlProjectId,
+        c.req.param("sessionId"),
+      );
+      if ("redirectProjectId" in routing) {
+        return c.redirect(
+          buildSessionProjectRedirectPath(
+            routing.redirectProjectId,
+            c.req.param("sessionId"),
+            "",
+            c.req.url,
+          ),
+          307,
+        );
+      }
+      if ("error" in routing) {
+        return c.json({ error: routing.error }, routing.status);
       }
 
       const reader = await resolveSessionReaderForAgentContent({
         deps,
-        project,
+        project: routing.transcriptProject,
         sessionId: c.req.param("sessionId"),
-        projectId: projectId as UrlProjectId,
+        projectId: routing.transcriptProjectId,
       });
       const agentSession = await reader.getAgentSession(agentId);
 
@@ -2244,7 +2344,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
 
       // Add server-rendered HTML to text blocks for markdown display
-      await augmentTextBlocks(agentSession.messages);
+      await augmentTextBlocks(agentSession.messages, {
+        projectFileLinks: {
+          projectId: routing.workingProjectId,
+          projectPath: routing.workingProject.path,
+        },
+      });
 
       return c.json(agentSession);
     },
@@ -2261,10 +2366,27 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
-    const project = await deps.scanner.getOrCreateProject(projectId);
-    if (!project) {
-      return c.json({ error: "Project not found" }, 404);
+    const routing = await resolveSessionProjectRouting(
+      projectId as UrlProjectId,
+      sessionId,
+    );
+    if ("redirectProjectId" in routing) {
+      return c.redirect(
+        buildSessionProjectRedirectPath(
+          routing.redirectProjectId,
+          sessionId,
+          "/metadata",
+          c.req.url,
+        ),
+        307,
+      );
     }
+    if ("error" in routing) {
+      return c.json({ error: routing.error }, routing.status);
+    }
+    const project = routing.workingProject;
+    const transcriptProject = routing.transcriptProject;
+    const transcriptProjectId = routing.transcriptProjectId;
 
     // Check if session is actively owned by a process
     const process = deps.supervisor.getProcessForSession(sessionId);
@@ -2306,9 +2428,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       process?.provider ?? metadataProvider ?? project.provider,
     );
     const sessionSummaryResult = await findSessionSummaryAcrossProviders(
-      project,
+      transcriptProject,
       sessionId,
-      projectId as UrlProjectId,
+      transcriptProjectId,
       {
         readerFactory: deps.readerFactory,
         codexSessionsDir: deps.codexSessionsDir,
@@ -2361,7 +2483,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const response = {
       session: {
         id: sessionId,
-        projectId: projectId as UrlProjectId,
+        projectId: routing.workingProjectId,
         title: sessionSummary?.title ?? null,
         fullTitle: sessionSummary?.fullTitle ?? null,
         createdAt: sessionSummary?.createdAt ?? new Date().toISOString(),
@@ -2393,6 +2515,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           metadata?.heartbeatForceAfterMinutes ?? undefined,
         promptSuggestionMode: metadata?.promptSuggestionMode,
         recapAfterSeconds: metadata?.recapAfterSeconds,
+        workingProjectId: metadata?.workingProjectId,
+        transcriptProjectId: metadata?.transcriptProjectId,
         transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
         lastSeenAt,
         hasUnread,
@@ -2404,6 +2528,100 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     } satisfies SessionMetadataResponse;
 
     return c.json(response);
+  });
+
+  // PUT /api/projects/:projectId/sessions/:sessionId/project
+  // Reclassify a session under a different YA project without sending any
+  // provider-visible turn. The provider transcript remains under
+  // transcriptProjectId; relative file links and UI routing use projectId.
+  routes.put("/projects/:projectId/sessions/:sessionId/project", async (c) => {
+    const projectId = c.req.param("projectId");
+    const sessionId = c.req.param("sessionId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+    if (!deps.sessionMetadataService) {
+      return c.json({ error: "Session metadata service unavailable" }, 503);
+    }
+
+    let body: { projectId?: unknown };
+    try {
+      body = await c.req.json<{ projectId?: unknown }>();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const targetProjectId = body.projectId;
+    if (
+      typeof targetProjectId !== "string" ||
+      !isUrlProjectId(targetProjectId)
+    ) {
+      return c.json({ error: "Invalid target project ID format" }, 400);
+    }
+
+    const targetProject =
+      await deps.scanner.getOrCreateProject(targetProjectId);
+    if (!targetProject) {
+      return c.json({ error: "Target project not found" }, 404);
+    }
+
+    const metadata = deps.sessionMetadataService.getMetadata(sessionId);
+    const process = deps.supervisor.getProcessForSession(sessionId);
+    const transcriptProjectId =
+      metadata?.transcriptProjectId ??
+      process?.projectId ??
+      (projectId as UrlProjectId);
+    const transcriptProject =
+      transcriptProjectId === targetProjectId
+        ? targetProject
+        : await deps.scanner.getOrCreateProject(transcriptProjectId);
+    if (!transcriptProject) {
+      return c.json({ error: "Transcript project not found" }, 404);
+    }
+
+    if (!process) {
+      const metadataProvider =
+        (metadata?.provider as ProviderName | undefined) ??
+        (deps.sessionMetadataService.getProvider(sessionId) as
+          | ProviderName
+          | undefined);
+      const summary = await findSessionSummaryAcrossProviders(
+        transcriptProject,
+        sessionId,
+        transcriptProjectId,
+        getProviderResolutionDeps(),
+        metadataProvider,
+      );
+      if (!summary) {
+        return c.json({ error: "Session not found" }, 404);
+      }
+    }
+
+    const storedWorkingProjectId =
+      targetProjectId === transcriptProjectId ? undefined : targetProjectId;
+    const storedTranscriptProjectId =
+      targetProjectId === transcriptProjectId ? undefined : transcriptProjectId;
+
+    await deps.sessionMetadataService.setWorkingProject(
+      sessionId,
+      storedWorkingProjectId,
+      storedTranscriptProjectId,
+    );
+
+    deps.eventBus?.emit({
+      type: "session-metadata-changed",
+      sessionId,
+      projectId: targetProjectId,
+      transcriptProjectId: storedTranscriptProjectId ?? null,
+      timestamp: new Date().toISOString(),
+    });
+
+    return c.json({
+      updated: true,
+      projectId: targetProjectId,
+      transcriptProjectId: storedTranscriptProjectId ?? null,
+    });
   });
 
   // POST /api/projects/:projectId/sessions/:sessionId/refresh-preview
@@ -2420,10 +2638,26 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       if (!isUrlProjectId(projectId)) {
         return c.json({ error: "Invalid project ID format" }, 400);
       }
-      const project = await deps.scanner.getOrCreateProject(projectId);
-      if (!project) {
-        return c.json({ error: "Project not found" }, 404);
+      const routing = await resolveSessionProjectRouting(
+        projectId as UrlProjectId,
+        sessionId,
+      );
+      if ("redirectProjectId" in routing) {
+        return c.redirect(
+          buildSessionProjectRedirectPath(
+            routing.redirectProjectId,
+            sessionId,
+            "/refresh-preview",
+            c.req.url,
+          ),
+          307,
+        );
       }
+      if ("error" in routing) {
+        return c.json({ error: routing.error }, routing.status);
+      }
+      const transcriptProject = routing.transcriptProject;
+      const transcriptProjectId = routing.transcriptProjectId;
       const metadataProvider = deps.sessionMetadataService?.getProvider(
         sessionId,
       ) as ProviderName | undefined;
@@ -2432,21 +2666,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       let lastAgentText: string | undefined;
       if (recapMessages.length > 0) {
         const summaryResult = await findSessionSummaryAcrossProviders(
-          project,
+          transcriptProject,
           sessionId,
-          projectId as UrlProjectId,
-          {
-            readerFactory: deps.readerFactory,
-            codexSessionsDir: deps.codexSessionsDir,
-            codexReaderFactory: deps.codexReaderFactory,
-            geminiSessionsDir: deps.geminiSessionsDir,
-            geminiReaderFactory: deps.geminiReaderFactory,
-            geminiHashToCwd: deps.geminiScanner?.getHashToCwd(),
-            grokSessionsDir: deps.grokSessionsDir,
-            grokReaderFactory: deps.grokReaderFactory,
-            piSessionsDir: deps.piSessionsDir,
-            piReaderFactory: deps.piReaderFactory,
-          },
+          transcriptProjectId,
+          getProviderResolutionDeps(),
           metadataProvider,
         );
         if (summaryResult?.summary) {
@@ -2460,15 +2683,15 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       // Claude uses the fast reverse-scan when there is no durable overlay to
       // compare; every other provider goes through the cross-provider load +
       // normalize, then a shared extractor on the uniform message form.
-      const reader = deps.readerFactory(project);
+      const reader = deps.readerFactory(transcriptProject);
       lastAgentText ??= reader.getLastAgentExcerpt
         ? await reader.getLastAgentExcerpt(sessionId)
         : undefined;
       if (lastAgentText === undefined) {
         const normalized = await loadRestartSourceSession(
-          project,
+          transcriptProject,
           sessionId,
-          projectId as UrlProjectId,
+          transcriptProjectId,
           metadataProvider,
         );
         if (normalized) {
@@ -2479,7 +2702,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         deps.eventBus?.emit({
           type: "session-updated",
           sessionId,
-          projectId: projectId as UrlProjectId,
+          projectId: routing.workingProjectId,
           lastAgentText,
           timestamp: new Date().toISOString(),
         });
@@ -2519,11 +2742,28 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Invalid project ID format" }, 400);
     }
 
-    // Use getOrCreateProject to support Codex projects that may not be in the scan cache yet
-    const project = await deps.scanner.getOrCreateProject(projectId);
-    if (!project) {
-      return c.json({ error: "Project not found" }, 404);
+    const routing = await resolveSessionProjectRouting(
+      projectId as UrlProjectId,
+      sessionId,
+    );
+    if ("redirectProjectId" in routing) {
+      return c.redirect(
+        buildSessionProjectRedirectPath(
+          routing.redirectProjectId,
+          sessionId,
+          "",
+          c.req.url,
+        ),
+        307,
+      );
     }
+    if ("error" in routing) {
+      return c.json({ error: routing.error }, routing.status);
+    }
+    const project = routing.workingProject;
+    const effectiveProjectId = routing.workingProjectId;
+    const transcriptProject = routing.transcriptProject;
+    const transcriptProjectId = routing.transcriptProjectId;
     const projectResolvedMs = performance.now();
 
     // Check if session is actively owned by a process
@@ -2548,11 +2788,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         ? undefined
         : providerAfterMessageId;
 
-    // Always try to read from disk first (even for owned sessions)
-    const reader = deps.readerFactory(project);
-    let loadedSession = await reader.getSession(
+    const loadedSession = await loadProviderSession(
+      transcriptProject,
       sessionId,
-      project.id,
+      transcriptProjectId,
+      metadataProvider ?? process?.provider,
       primaryReaderAfterMessageId,
       {
         // Only include orphaned tool info if:
@@ -2562,104 +2802,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         includeOrphans: wasEverOwned && !process,
       },
     );
-
-    // For Claude projects, also check for Codex sessions if primary reader didn't find it
-    // This handles mixed projects that have sessions from multiple providers
-    if (
-      !loadedSession &&
-      project.provider === "claude" &&
-      (deps.codexReaderFactory || deps.codexSessionsDir)
-    ) {
-      const codexReader =
-        deps.codexReaderFactory?.(project.path) ??
-        (deps.codexSessionsDir
-          ? new CodexSessionReader({
-              sessionsDir: deps.codexSessionsDir,
-              projectPath: project.path,
-            })
-          : null);
-      if (codexReader) {
-        loadedSession = await codexReader.getSession(
-          sessionId,
-          project.id,
-          providerAfterMessageId,
-          { includeOrphans: wasEverOwned && !process },
-        );
-      }
-    }
-
-    // For Claude/Codex projects, also check for Gemini sessions if still not found
-    // This handles mixed projects that have sessions from multiple providers
-    if (
-      !loadedSession &&
-      (project.provider === "claude" || project.provider === "codex") &&
-      (deps.geminiReaderFactory || deps.geminiSessionsDir)
-    ) {
-      const geminiReader =
-        deps.geminiReaderFactory?.(project.path) ??
-        (deps.geminiSessionsDir
-          ? new GeminiSessionReader({
-              sessionsDir: deps.geminiSessionsDir,
-              projectPath: project.path,
-              hashToCwd: deps.geminiScanner?.getHashToCwd(),
-            })
-          : null);
-      if (geminiReader) {
-        loadedSession = await geminiReader.getSession(
-          sessionId,
-          project.id,
-          providerAfterMessageId,
-          { includeOrphans: wasEverOwned && !process },
-        );
-      }
-    }
-
-    // For mixed-provider projects, consult the OpenCode reader for any
-    // OpenCode-native id (ses_*), not just sessions YA itself recorded as
-    // opencode. A TUI- or externally-owned 1.16+ session has no YA metadata, so
-    // gating on metadataProvider alone 404'd it even though the reader can load
-    // it from opencode.db. The ses_* shape gate keeps non-opencode ids (UUIDs)
-    // from triggering a wasted `opencode export` fallback. (The summary/list
-    // path already resolves opencode unconditionally via getSessionSources.)
-    if (
-      !loadedSession &&
-      (metadataProvider === "opencode" || sessionId.startsWith("ses_"))
-    ) {
-      const opencodeReader = deps.readerFactory({
-        ...project,
-        provider: "opencode",
-      });
-      loadedSession = await opencodeReader.getSession(
-        sessionId,
-        project.id,
-        providerAfterMessageId,
-        { includeOrphans: wasEverOwned && !process },
-      );
-    }
-
-    if (!loadedSession) {
-      const grokReader = getGrokReader(project.path);
-      if (grokReader) {
-        loadedSession = await grokReader.getSession(
-          sessionId,
-          project.id,
-          providerAfterMessageId,
-          { includeOrphans: wasEverOwned && !process },
-        );
-      }
-    }
-
-    if (!loadedSession) {
-      const piReader = getPiReader(project.path);
-      if (piReader) {
-        loadedSession = await piReader.getSession(
-          sessionId,
-          project.id,
-          providerAfterMessageId,
-          { includeOrphans: wasEverOwned && !process },
-        );
-      }
-    }
 
     const readEndMs = performance.now();
 
@@ -2754,7 +2896,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         return c.json({
           session: {
             id: sessionId,
-            projectId,
+            projectId: effectiveProjectId,
             title: null,
             createdAt: new Date().toISOString(),
             updatedAt: newSessionUpdatedAt,
@@ -2771,6 +2913,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             heartbeatForceAfterMinutes: metadata?.heartbeatForceAfterMinutes,
             promptSuggestionMode: metadata?.promptSuggestionMode,
             recapAfterSeconds: metadata?.recapAfterSeconds,
+            workingProjectId: metadata?.workingProjectId,
+            transcriptProjectId: metadata?.transcriptProjectId,
             transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
             lastSeenAt: lastSeenEntry?.timestamp,
             hasUnread,
@@ -2861,7 +3005,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (publicShare) {
       await augmentEditToolUses(session.messages);
     } else {
-      await augmentPersistedSessionMessages(session.messages);
+      await augmentPersistedSessionMessages(session.messages, {
+        projectFileLinks: {
+          projectId: effectiveProjectId,
+          projectPath: project.path,
+        },
+      });
     }
     if (!beforeMessageId) {
       session = applyRecapOverlayToSession(session, recapMessages);
@@ -2911,7 +3060,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           normalizedMessageCount,
           owned: Boolean(process),
           processState: process?.state.type ?? null,
-          projectId,
+          projectId: effectiveProjectId,
+          transcriptProjectId,
           provider: session.provider,
           publicShare,
           returnedMessageCount: session.messages.length,
@@ -2935,6 +3085,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     return c.json({
       session: {
         ...sessionMetadata,
+        projectId: effectiveProjectId,
         ownership,
         contextUsage,
         customTitle: metadata?.customTitle,
@@ -2948,6 +3099,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         heartbeatForceAfterMinutes: metadata?.heartbeatForceAfterMinutes,
         promptSuggestionMode: metadata?.promptSuggestionMode,
         recapAfterSeconds: metadata?.recapAfterSeconds,
+        workingProjectId: metadata?.workingProjectId,
+        transcriptProjectId: metadata?.transcriptProjectId,
         transcriptDisplayObjects: metadata?.transcriptDisplayObjects,
         // Model comes from the session reader (extracted from JSONL)
         model: session.model,

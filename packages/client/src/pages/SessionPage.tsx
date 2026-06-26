@@ -72,7 +72,7 @@ import {
   getThinkingSetting,
   getShowThinkingSetting,
 } from "../hooks/useModelSettings";
-import { useProject } from "../hooks/useProjects";
+import { useProject, useProjects } from "../hooks/useProjects";
 import { useProviders } from "../hooks/useProviders";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { recordSessionVisit } from "../hooks/useRecentSessions";
@@ -119,7 +119,7 @@ import {
   resolveComposerSlashTurn,
 } from "../lib/slashCommands";
 import { generateUUID } from "../lib/uuid";
-import type { Message } from "../types";
+import type { Message, Project } from "../types";
 import { getSessionDisplayTitle } from "../utils";
 
 const PENDING_ELSEWHERE_DISMISS_KEY_PREFIX =
@@ -705,6 +705,7 @@ function SessionPageContent({
     useNavigationLayout();
   const basePath = useRemoteBasePath();
   const { project } = useProject(projectId);
+  const { projects } = useProjects();
   const navigate = useNavigate();
   const location = useLocation();
   // Get initial status and title from navigation state (passed by NewSessionPage)
@@ -1566,6 +1567,11 @@ function SessionPageContent({
   // Recent sessions dropdown state
   const [showRecentSessions, setShowRecentSessions] = useState(false);
   const titleRowRef = useRef<HTMLDivElement>(null);
+  const [showProjectReclassifyMenu, setShowProjectReclassifyMenu] =
+    useState(false);
+  const [isReclassifyingProject, setIsReclassifyingProject] = useState(false);
+  const projectBreadcrumbRef = useRef<HTMLAnchorElement>(null);
+  const projectReclassifyMenuRef = useRef<HTMLDivElement>(null);
 
   // Local metadata state (for optimistic updates)
   // Reset when session changes to avoid showing stale data from previous session
@@ -1611,6 +1617,108 @@ function SessionPageContent({
     setLocalPromptSuggestionMode(undefined);
     setLocalHasUnread(undefined);
   }, [sessionId]);
+
+  const projectReclassifyOptions = useMemo(
+    () =>
+      projects
+        .filter((candidate) => candidate.id !== projectId)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [projectId, projects],
+  );
+
+  useEffect(() => {
+    if (!showProjectReclassifyMenu) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (
+        projectBreadcrumbRef.current?.contains(target) ||
+        projectReclassifyMenuRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setShowProjectReclassifyMenu(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowProjectReclassifyMenu(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showProjectReclassifyMenu]);
+
+  const handleProjectBreadcrumbContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (projectReclassifyOptions.length === 0) {
+        return;
+      }
+      setShowRecentSessions(false);
+      setShowProjectReclassifyMenu(true);
+    },
+    [projectReclassifyOptions.length],
+  );
+
+  const handleReclassifySessionProject = useCallback(
+    async (targetProject: Project) => {
+      if (targetProject.id === projectId || isReclassifyingProject) {
+        return;
+      }
+
+      setIsReclassifyingProject(true);
+      try {
+        const result = await api.reclassifySessionProject(
+          projectId,
+          actualSessionId,
+          targetProject.id,
+        );
+        activityBus.emitLocal("session-metadata-changed", {
+          type: "session-metadata-changed",
+          sessionId: actualSessionId,
+          projectId: result.projectId,
+          transcriptProjectId: result.transcriptProjectId,
+          timestamp: new Date().toISOString(),
+        });
+        setShowProjectReclassifyMenu(false);
+        showToast(
+          t("sessionReclassifiedProject", { project: targetProject.name }),
+          "success",
+        );
+        navigate(
+          `${basePath}/projects/${result.projectId}/sessions/${actualSessionId}${location.search}`,
+          {
+            replace: true,
+            state: location.state,
+          },
+        );
+      } catch (err) {
+        console.error("Failed to move session to project:", err);
+        showToast(t("sessionReclassifyProjectFailed"), "error");
+      } finally {
+        setIsReclassifyingProject(false);
+      }
+    },
+    [
+      actualSessionId,
+      basePath,
+      isReclassifyingProject,
+      location.search,
+      location.state,
+      navigate,
+      projectId,
+      showToast,
+      t,
+    ],
+  );
 
   // Record session visit for recents tracking
   useEffect(() => {
@@ -3996,16 +4104,54 @@ function SessionPageContent({
             )}
             {/* Project breadcrumb */}
             {project?.name && (
-              <Link
-                to={`${basePath}/sessions?project=${projectId}`}
-                className="project-breadcrumb"
-                title={project.name}
-                aria-label={project.name}
-              >
-                {project.name.length > 12
-                  ? `${project.name.slice(0, 12)}...`
-                  : project.name}
-              </Link>
+              <div className="project-breadcrumb-wrapper">
+                <Link
+                  ref={projectBreadcrumbRef}
+                  to={`${basePath}/sessions?project=${projectId}`}
+                  className="project-breadcrumb"
+                  title={project.name}
+                  aria-label={project.name}
+                  onContextMenu={handleProjectBreadcrumbContextMenu}
+                >
+                  {project.name.length > 12
+                    ? `${project.name.slice(0, 12)}...`
+                    : project.name}
+                </Link>
+                {showProjectReclassifyMenu && (
+                  <div
+                    ref={projectReclassifyMenuRef}
+                    className="project-reclassify-menu"
+                    role="menu"
+                    aria-label={t("sessionReclassifyProjectMenu")}
+                  >
+                    <div className="project-reclassify-title">
+                      {t("sessionReclassifyProjectMenu")}
+                    </div>
+                    <div className="project-reclassify-list">
+                      {projectReclassifyOptions.map((candidate) => (
+                        <button
+                          key={candidate.id}
+                          type="button"
+                          className="project-reclassify-option"
+                          role="menuitem"
+                          disabled={isReclassifyingProject}
+                          onClick={() =>
+                            void handleReclassifySessionProject(candidate)
+                          }
+                          title={candidate.path}
+                        >
+                          <span className="project-reclassify-name">
+                            {candidate.name}
+                          </span>
+                          <span className="project-reclassify-path">
+                            {candidate.path}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
             <div ref={titleRowRef} className="session-title-row">
               {isStarred && (

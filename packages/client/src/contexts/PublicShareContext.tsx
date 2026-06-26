@@ -298,6 +298,16 @@ export function rewritePublicShareLocalAppLinks(
   context: PublicShareContextValue,
   currentHref = window.location.href,
 ): void {
+  for (const anchor of Array.from(
+    root.querySelectorAll<HTMLAnchorElement>(
+      'a[data-ya-private-project-file-link="true"]',
+    ),
+  )) {
+    const replacement = anchor.ownerDocument.createElement("code");
+    replacement.textContent = anchor.textContent ?? "";
+    anchor.replaceWith(replacement);
+  }
+
   for (const anchor of Array.from(root.querySelectorAll("a[href]"))) {
     const href = anchor.getAttribute("href");
     if (!href) {

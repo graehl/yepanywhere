@@ -42,6 +42,7 @@ import {
   createStreamCoordinator,
 } from "./stream-coordinator.js";
 import { createTaskListAugmenter } from "./task-list-augments.js";
+import type { SafeMarkdownRenderOptions } from "./safe-markdown.js";
 import type {
   EditInputWithAugment,
   ExitPlanModeInput,
@@ -73,6 +74,8 @@ export interface StreamAugmenterConfig {
   onPending: (data: PendingData) => void;
   /** Handle augmentation errors (optional, defaults to silent) */
   onError?: (error: unknown, context: string) => void;
+  /** Markdown renderer context for authenticated project-scoped links. */
+  safeMarkdownOptions?: SafeMarkdownRenderOptions;
 }
 
 /** Stream augmenter instance */
@@ -126,7 +129,7 @@ export interface StreamAugmenter {
 export async function createStreamAugmenter(
   config: StreamAugmenterConfig,
 ): Promise<StreamAugmenter> {
-  const { onMarkdownAugment, onPending, onError } = config;
+  const { onMarkdownAugment, onPending, onError, safeMarkdownOptions } = config;
 
   // Create StreamCoordinator lazily to avoid initialization overhead
   let coordinator: StreamCoordinator | null = null;
@@ -137,7 +140,7 @@ export async function createStreamAugmenter(
   const getCoordinator = async (): Promise<StreamCoordinator> => {
     if (coordinator) return coordinator;
     if (!coordinatorInitPromise) {
-      coordinatorInitPromise = createStreamCoordinator();
+      coordinatorInitPromise = createStreamCoordinator({ safeMarkdownOptions });
     }
     coordinator = await coordinatorInitPromise;
     return coordinator;
@@ -446,7 +449,10 @@ export async function createStreamAugmenter(
     if (!textToRender) return;
 
     try {
-      const html = await renderMarkdownToHtml(textToRender);
+      const html = await renderMarkdownToHtml(
+        textToRender,
+        safeMarkdownOptions,
+      );
       onMarkdownAugment({
         messageId: message.uuid as string,
         html,

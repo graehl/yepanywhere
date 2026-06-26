@@ -17,6 +17,7 @@ import {
   augmentTextBlocks,
   renderMarkdownToHtml,
 } from "../augments/markdown-augments.js";
+import type { SafeMarkdownRenderOptions } from "../augments/safe-markdown.js";
 import type { Message } from "../supervisor/types.js";
 
 /**
@@ -278,9 +279,10 @@ export async function augmentExitPlanModeAndReadResults(
  */
 export async function augmentPersistedSessionMessages(
   messages: Message[],
+  safeMarkdownOptions?: SafeMarkdownRenderOptions,
 ): Promise<void> {
   await augmentEditToolUses(messages);
   await augmentWriteToolUses(messages);
-  await augmentTextBlocks(messages);
+  await augmentTextBlocks(messages, safeMarkdownOptions);
   await augmentExitPlanModeAndReadResults(messages);
 }

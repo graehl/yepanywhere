@@ -738,6 +738,156 @@ describe("Sessions metadata route", () => {
     }
   });
 
+  it("reclassifies a session without moving the provider transcript", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "ya-reclassify-"));
+    const workingProjectPath = join(tempDir, "working-project");
+    await mkdir(workingProjectPath, { recursive: true });
+    await writeFile(join(workingProjectPath, "README.md"), "# Working\n");
+
+    const transcriptProject: Project = {
+      ...createProject(),
+      path: join(tempDir, "transcript-project"),
+      sessionDir: join(tempDir, "transcript-project", ".claude-sessions"),
+    };
+    const workingProject: Project = {
+      ...createProject(),
+      id: "proj-2" as UrlProjectId,
+      path: workingProjectPath,
+      name: "working-project",
+      sessionDir: join(workingProjectPath, ".claude-sessions"),
+    };
+    let metadata: {
+      workingProjectId?: UrlProjectId;
+      transcriptProjectId?: UrlProjectId;
+    } = {};
+    const setWorkingProject = vi.fn(
+      async (
+        _sessionId: string,
+        workingProjectId: UrlProjectId | undefined,
+        transcriptProjectId: UrlProjectId | undefined,
+      ) => {
+        metadata = { workingProjectId, transcriptProjectId };
+      },
+    );
+    const emit = vi.fn();
+    const reader = {
+      getSessionSummary: vi.fn(async (_sessionId: string, projectId) =>
+        projectId === transcriptProject.id ? createSummary() : null,
+      ),
+      getSession: vi.fn(async (_sessionId: string, projectId) =>
+        projectId === transcriptProject.id
+          ? createLoadedGrokSession({}, [
+              {
+                uuid: "assistant-1",
+                type: "assistant",
+                timestamp: "2026-03-10T09:46:00.000Z",
+                message: {
+                  role: "assistant",
+                  content: [
+                    {
+                      type: "text",
+                      text: "See `README.md`.",
+                    },
+                  ],
+                },
+              },
+            ])
+          : null,
+      ),
+    } as unknown as ISessionReader;
+
+    try {
+      const routes = createSessionsRoutes({
+        supervisor: {
+          getProcessForSession: vi.fn(() => null),
+          wasEverOwned: vi.fn(() => false),
+        } as unknown as SessionsDeps["supervisor"],
+        scanner: {
+          getOrCreateProject: vi.fn(async (projectId: UrlProjectId) =>
+            projectId === workingProject.id
+              ? workingProject
+              : projectId === transcriptProject.id
+                ? transcriptProject
+                : null,
+          ),
+        } as unknown as SessionsDeps["scanner"],
+        readerFactory: vi.fn(() => reader),
+        eventBus: {
+          emit,
+        } as unknown as NonNullable<SessionsDeps["eventBus"]>,
+        sessionMetadataService: {
+          getMetadata: vi.fn(() => metadata),
+          getProvider: vi.fn(() => "grok"),
+          getRecapMessages: vi.fn(() => []),
+          setWorkingProject,
+        } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+      });
+
+      const moveResponse = await routes.request(
+        `/projects/${transcriptProject.id}/sessions/sess-1/project`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: workingProject.id }),
+        },
+      );
+      expect(moveResponse.status).toBe(200);
+      expect(await moveResponse.json()).toMatchObject({
+        updated: true,
+        projectId: workingProject.id,
+        transcriptProjectId: transcriptProject.id,
+      });
+      expect(setWorkingProject).toHaveBeenCalledWith(
+        "sess-1",
+        workingProject.id,
+        transcriptProject.id,
+      );
+      expect(emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "session-metadata-changed",
+          sessionId: "sess-1",
+          projectId: workingProject.id,
+          transcriptProjectId: transcriptProject.id,
+        }),
+      );
+
+      const staleResponse = await routes.request(
+        `/projects/${transcriptProject.id}/sessions/sess-1`,
+      );
+      expect(staleResponse.status).toBe(307);
+      expect(staleResponse.headers.get("location")).toBe(
+        `/api/projects/${workingProject.id}/sessions/sess-1`,
+      );
+
+      const detailResponse = await routes.request(
+        `/projects/${workingProject.id}/sessions/sess-1`,
+      );
+      expect(detailResponse.status).toBe(200);
+      const detail = await detailResponse.json();
+      expect(detail.session).toMatchObject({
+        id: "sess-1",
+        projectId: workingProject.id,
+        workingProjectId: workingProject.id,
+        transcriptProjectId: transcriptProject.id,
+      });
+      expect(reader.getSessionSummary).toHaveBeenCalledWith(
+        "sess-1",
+        transcriptProject.id,
+      );
+      expect(reader.getSession).toHaveBeenCalledWith(
+        "sess-1",
+        transcriptProject.id,
+        undefined,
+        { includeOrphans: false },
+      );
+      expect(
+        detail.messages[0].message.content[0]._html as string,
+      ).toContain(`data-ya-project-id="${workingProject.id}"`);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps persisted provider when metadata refresh misses the session summary", async () => {
     const project = createProject();
 

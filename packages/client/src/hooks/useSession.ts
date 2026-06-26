@@ -1230,6 +1230,14 @@ export function useSession(
           ...(event.transcriptDisplayObjects !== undefined && {
             transcriptDisplayObjects: event.transcriptDisplayObjects,
           }),
+          ...(event.projectId !== undefined && {
+            projectId: event.projectId,
+            workingProjectId:
+              event.transcriptProjectId === null ? undefined : event.projectId,
+          }),
+          ...(event.transcriptProjectId !== undefined && {
+            transcriptProjectId: event.transcriptProjectId ?? undefined,
+          }),
         };
       });
       if (event.recapAfterSeconds !== undefined) {

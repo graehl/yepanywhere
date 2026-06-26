@@ -51,13 +51,16 @@ describe("Local file routes", () => {
 
     const htmlPath = path.join(allowedDir, "README.print.html");
     const imagePath = path.join(allowedDir, "views", "shot.png");
+    const sourcePath = path.join(allowedDir, "src", "app.ts");
     await mkdir(path.dirname(imagePath), { recursive: true });
+    await mkdir(path.dirname(sourcePath), { recursive: true });
     const pdfPath = path.join(allowedDir, "README.pdf");
     await writeFile(
       htmlPath,
-      `<!doctype html><base href="file://${allowedDir}/"><title>Readme</title><img src="views/shot.png"><a href="README.pdf">PDF</a><a href="#local">Local</a>`,
+      `<!doctype html><base href="file://${allowedDir}/"><title>Readme</title><img src="views/shot.png"><a href="README.pdf">PDF</a><a href="src/app.ts">Source</a><a href="#local">Local</a>`,
     );
     await writeFile(imagePath, "png");
+    await writeFile(sourcePath, "export const ok = true;\n");
     await writeFile(pdfPath, "%PDF-1.4\n");
 
     const routes = createLocalFileRoutes({ allowedPaths: [allowedDir] });
@@ -78,6 +81,9 @@ describe("Local file routes", () => {
     expect(html).toContain(
       `href="/api/local-file?path=${encodeURIComponent(pdfPath)}"`,
     );
+    expect(html).toContain(
+      `href="/api/local-file?path=${encodeURIComponent(sourcePath)}"`,
+    );
     expect(html).toContain('href="#local"');
 
     const pdfResponse = await routes.request(
@@ -86,6 +92,29 @@ describe("Local file routes", () => {
     expect(pdfResponse.status).toBe(200);
     expect(pdfResponse.headers.get("content-type")).toBe("application/pdf");
     expect(await pdfResponse.text()).toBe("%PDF-1.4\n");
+  });
+
+  it("serves source files as plain text when the extension map is incomplete", async () => {
+    const allowedDir = path.join(tempDir, "allowed");
+    await mkdir(allowedDir, { recursive: true });
+
+    const filePath = path.join(allowedDir, "safe-markdown.ts");
+    await writeFile(filePath, "export const route = 'local-file';\n");
+
+    const routes = createLocalFileRoutes({
+      allowedPaths: [allowedDir],
+    });
+
+    const response = await routes.request(
+      `/?path=${encodeURIComponent(filePath)}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await response.text()).toBe("export const route = 'local-file';\n");
   });
 
   it("renders Markdown files with relative images when requested", async () => {

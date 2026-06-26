@@ -237,9 +237,12 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       const isStarred = metadata?.isStarred;
       const parentSessionId =
         metadata?.parentSessionId ?? overlaidSession.parentSessionId;
+      const effectiveProjectId =
+        metadata?.workingProjectId ?? overlaidSession.projectId;
 
       return {
         ...overlaidSession,
+        projectId: effectiveProjectId,
         ownership,
         pendingInputType,
         activity,
@@ -428,7 +431,11 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     // Add missing owned sessions (new sessions that don't have user/assistant messages yet)
     sessions = addMissingOwnedSessions(sessions, projectId);
 
-    return c.json({ sessions: enrichSessions(sessions) });
+    const enriched = enrichSessions(sessions).filter(
+      (session) => session.projectId === projectId,
+    );
+
+    return c.json({ sessions: enriched });
   });
 
   return routes;

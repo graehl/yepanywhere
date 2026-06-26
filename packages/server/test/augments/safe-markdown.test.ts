@@ -53,6 +53,41 @@ describe("renderSafeMarkdown — math", () => {
     expect(html).toContain("<code>code</code>");
   });
 
+  it("links existing project files in assistant inline code", () => {
+    const html = renderSafeMarkdown(
+      "See `topics/security.md:12` and `topics/missing.md`.",
+      {
+        projectFileLinks: {
+          projectId: "project-1",
+          projectPath: "/workspace/project",
+          fileExists: (_absolutePath, relativePath) =>
+            relativePath === "topics/security.md",
+        },
+      },
+    );
+
+    expect(html).toContain(
+      'href="/projects/project-1/file?path=topics%2Fsecurity.md&amp;line=12"',
+    );
+    expect(html).toContain('class="fixed-font-file-link"');
+    expect(html).toContain('data-ya-resource="project-file"');
+    expect(html).toContain('data-ya-project-id="project-1"');
+    expect(html).toContain('data-ya-path="topics/security.md"');
+    expect(html).toContain('data-ya-line="12"');
+    expect(html).toContain('data-ya-private-project-file-link="true"');
+    expect(html).toContain("<code>topics/security.md:12</code>");
+    expect(html).toContain("<code>topics/missing.md</code>");
+    expect(html).not.toContain("topics%2Fmissing.md");
+  });
+
+  it("leaves inline code unlinked without authenticated project context", () => {
+    const html = renderSafeMarkdown("See `topics/security.md`.");
+
+    expect(html).toContain("<code>topics/security.md</code>");
+    expect(html).not.toContain("/projects/");
+    expect(html).not.toContain("fixed-font-file-link");
+  });
+
   it("strips inline HTML in surrounding prose", () => {
     const html = renderSafeMarkdown("plain <script>bad()</script> $y$ end");
     expect(html).not.toContain("<script>");

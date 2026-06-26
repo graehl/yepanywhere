@@ -105,6 +105,12 @@ export function createSessionSubscription(
     if (augmenter) return augmenter;
     if (!augmenterPromise) {
       augmenterPromise = createStreamAugmenter({
+        safeMarkdownOptions: {
+          projectFileLinks: {
+            projectId: process.projectId,
+            projectPath: process.projectPath,
+          },
+        },
         onMarkdownAugment: (data) => {
           if (!completed) emit("markdown-augment", data);
         },

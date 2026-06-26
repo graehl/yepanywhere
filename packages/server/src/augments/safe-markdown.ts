@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { isAbsolute, normalize, posix, win32 } from "node:path";
 import { parseLineColumn } from "@yep-anywhere/shared";
 import katex from "katex";
@@ -44,9 +45,21 @@ export interface SafeMarkdownRenderOptions {
    * not run the React inline-preview hydrator.
    */
   inlineLocalImages?: boolean;
+  /**
+   * Project context for turning assistant inline-code filename references into
+   * authenticated project-file viewer links. Omit for public shares.
+   */
+  projectFileLinks?: ProjectFileLinkOptions;
 }
 
 let activeRenderOptions: SafeMarkdownRenderOptions = {};
+let projectFileCodeLinkCache = new Map<string, ProjectFileCodeLink | null>();
+
+export interface ProjectFileLinkOptions {
+  projectId: string;
+  projectPath: string;
+  fileExists?: (absolutePath: string, relativePath: string) => boolean;
+}
 
 interface LocalPathReference {
   filePath: string;
@@ -57,6 +70,13 @@ interface LocalPathReference {
 interface LocalResourceAttributeOptions {
   mediaType?: "image" | "video";
   renderMarkdown?: boolean;
+}
+
+interface ProjectFileCodeLink {
+  absolutePath: string;
+  columnNumber?: number;
+  lineNumber?: number;
+  relativePath: string;
 }
 
 function stripHrefSuffix(href: string): string {
@@ -128,6 +148,52 @@ function isMarkdownExtension(ext: string): boolean {
 
 function isWindowsDriveAbsolutePath(path: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(path);
+}
+
+function getProjectPathFlavor(path: string): "posix" | "windows" {
+  return isWindowsDriveAbsolutePath(path) || path.includes("\\")
+    ? "windows"
+    : "posix";
+}
+
+function isProjectAbsolutePath(
+  path: string,
+  flavor: "posix" | "windows",
+): boolean {
+  return flavor === "windows" ? win32.isAbsolute(path) : posix.isAbsolute(path);
+}
+
+function resolveProjectPath(
+  basePath: string,
+  path: string,
+  flavor: "posix" | "windows",
+): string {
+  return flavor === "windows"
+    ? win32.resolve(basePath, path)
+    : posix.resolve(basePath, path.replaceAll("\\", "/"));
+}
+
+function relativeProjectPath(
+  fromPath: string,
+  toPath: string,
+  flavor: "posix" | "windows",
+): string {
+  return flavor === "windows"
+    ? win32.relative(fromPath, toPath)
+    : posix.relative(fromPath, toPath);
+}
+
+function isPathInsideProject(
+  absolutePath: string,
+  projectRoot: string,
+  flavor: "posix" | "windows",
+): boolean {
+  const relativePath = relativeProjectPath(projectRoot, absolutePath, flavor);
+  return (
+    relativePath !== "" &&
+    !relativePath.startsWith("..") &&
+    !isProjectAbsolutePath(relativePath, flavor)
+  );
 }
 
 function resolveLocalRelativePath(
@@ -217,6 +283,135 @@ function renderLocalFileLink(
     renderMarkdown: options.renderMarkdown,
   });
   return `<a href="${apiUrl}"${titleAttr} ${resourceAttrs}>${labelHtml}</a>`;
+}
+
+function defaultProjectFileExists(absolutePath: string): boolean {
+  try {
+    return statSync(absolutePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function resolveProjectFileCodeReference(
+  text: string,
+  options: ProjectFileLinkOptions,
+): ProjectFileCodeLink | null {
+  const trimmed = text.trim();
+  if (
+    !trimmed ||
+    trimmed.includes("\n") ||
+    trimmed.startsWith("#") ||
+    trimmed.startsWith("//")
+  ) {
+    return null;
+  }
+
+  const parsed = parseLocalPathReference(trimmed);
+  const filePath = parsed.filePath;
+  if (
+    !filePath ||
+    filePath === "." ||
+    filePath.endsWith("/") ||
+    filePath.endsWith("\\") ||
+    (/^[a-z][a-z0-9+.-]*:/i.test(filePath) &&
+      !isWindowsDriveAbsolutePath(filePath))
+  ) {
+    return null;
+  }
+
+  const cacheKey = `${options.projectId}\0${options.projectPath}\0${trimmed}`;
+  if (projectFileCodeLinkCache.has(cacheKey)) {
+    return projectFileCodeLinkCache.get(cacheKey) ?? null;
+  }
+
+  const flavor = getProjectPathFlavor(options.projectPath);
+  const projectRoot = resolveProjectPath(options.projectPath, "", flavor);
+  const absolutePath = isProjectAbsolutePath(filePath, flavor)
+    ? resolveProjectPath(filePath, "", flavor)
+    : resolveProjectPath(projectRoot, filePath, flavor);
+
+  if (!isPathInsideProject(absolutePath, projectRoot, flavor)) {
+    projectFileCodeLinkCache.set(cacheKey, null);
+    return null;
+  }
+
+  const relativePath = relativeProjectPath(
+    projectRoot,
+    absolutePath,
+    flavor,
+  ).replaceAll("\\", "/");
+  if (!relativePath || relativePath.startsWith("..")) {
+    projectFileCodeLinkCache.set(cacheKey, null);
+    return null;
+  }
+
+  const exists = options.fileExists
+    ? options.fileExists(absolutePath, relativePath)
+    : defaultProjectFileExists(absolutePath);
+  if (!exists) {
+    projectFileCodeLinkCache.set(cacheKey, null);
+    return null;
+  }
+
+  const target: ProjectFileCodeLink = {
+    absolutePath,
+    relativePath,
+    lineNumber: parsed.lineNumber,
+    columnNumber: parsed.columnNumber,
+  };
+  projectFileCodeLinkCache.set(cacheKey, target);
+  return target;
+}
+
+function projectFileViewerHref(
+  projectId: string,
+  target: ProjectFileCodeLink,
+): string {
+  const params = new URLSearchParams({ path: target.relativePath });
+  if (target.lineNumber !== undefined) {
+    params.set("line", String(target.lineNumber));
+  }
+  if (target.columnNumber !== undefined) {
+    params.set("column", String(target.columnNumber));
+  }
+  return `/projects/${encodeURIComponent(projectId)}/file?${params}`;
+}
+
+function renderProjectFileCodeLink(text: string): string | null {
+  const options = activeRenderOptions.projectFileLinks;
+  if (!options) {
+    return null;
+  }
+
+  const target = resolveProjectFileCodeReference(text, options);
+  if (!target) {
+    return null;
+  }
+
+  const attributes: Array<[string, string]> = [
+    ["class", "fixed-font-file-link"],
+    ["href", projectFileViewerHref(options.projectId, target)],
+    ["data-ya-resource", "project-file"],
+    ["data-ya-project-id", options.projectId],
+    ["data-ya-path", target.relativePath],
+    ["data-ya-private-project-file-link", "true"],
+    [
+      "title",
+      `${target.relativePath}${target.lineNumber !== undefined ? `:${target.lineNumber}` : ""}\nClick to view, or use a browser link gesture to open this file`,
+    ],
+  ];
+  if (target.lineNumber !== undefined) {
+    attributes.push(["data-ya-line", String(target.lineNumber)]);
+  }
+  if (target.columnNumber !== undefined) {
+    attributes.push(["data-ya-column", String(target.columnNumber)]);
+  }
+
+  const attrs = attributes
+    .map(([name, value]) => `${name}="${escapeHtml(value)}"`)
+    .join(" ");
+  return `<a ${attrs}><code>${escapeHtml(text)}</code></a>`;
 }
 
 /**
@@ -341,6 +536,7 @@ const MARKDOWN_SANITIZE_OPTIONS = {
       "data-ya-resource",
       "data-ya-path",
       "data-ya-project-id",
+      "data-ya-private-project-file-link",
       "data-ya-line",
       "data-ya-line-end",
       "data-ya-column",
@@ -417,6 +613,11 @@ const renderer: RendererObject<string, string> = {
     const escapedHref = escapeHtml(safeHref);
     const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
     return `<a href="${escapedHref}"${titleAttr}>${renderedText}</a>`;
+  },
+  codespan({ text }: Tokens.Codespan) {
+    return (
+      renderProjectFileCodeLink(text) ?? `<code>${escapeHtml(text)}</code>`
+    );
   },
   image({ href, title, text }: Tokens.Image) {
     const localPath = resolveLocalMarkdownHref(href);
@@ -576,6 +777,7 @@ export function renderSafeMarkdown(
   options: SafeMarkdownRenderOptions = {},
 ): string {
   activeRenderOptions = options;
+  projectFileCodeLinkCache = new Map();
   katexBuffer = [];
   try {
     const rendered = markdownRenderer.parse(markdown, { async: false });
@@ -588,6 +790,7 @@ export function renderSafeMarkdown(
     return substituted.trim();
   } finally {
     katexBuffer = [];
+    projectFileCodeLinkCache = new Map();
     activeRenderOptions = {};
   }
 }

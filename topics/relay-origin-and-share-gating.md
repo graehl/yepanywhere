@@ -63,6 +63,14 @@ Markdown/HTML sources. Frozen snapshot shares should eventually capture an
 immutable manifest of linked files and render assets; live shares may refresh
 that manifest only from deliberate share-visible content.
 
+Broadcast share links do not gain access merely because authenticated assistant
+Markdown rendered an inline-code project filename as a file-viewer link. Those
+private project-file anchors are omitted or stripped in public-share views, so
+the public transcript shows the filename as text/code rather than a clickable
+file-viewer route. A future explicit share mode may expose all linked project
+files, but that is a new capability and must be modeled as such rather than
+falling out of ordinary broadcast-share rendering.
+
 ## Future E2E Direction
 
 A relay-operator-private public share design needs encryption before relay

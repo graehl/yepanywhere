@@ -273,7 +273,7 @@ function getSourceForGroup(
   }
 }
 
-function getSessionSources(
+export function getSessionSources(
   project: Project,
   deps: ProviderResolutionDeps,
   preferredProvider?: ProviderName | string,

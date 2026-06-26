@@ -60,6 +60,12 @@ These run unconditionally and are not user-configurable:
   previews hydrate those local image references through embedded bounded media
   blobs when present, falling back to the share-scoped relay route rather than
   navigating to authenticated local file APIs.
+- **Assistant inline-code project file links** — when authenticated session
+  Markdown renders with project context, inline-code filename references such
+  as `` `topics/security.md` `` link to the project file viewer only if the
+  target currently exists under the project root. The Markdown parser's
+  existing `codespan` token is the detection boundary; YA does not reparse raw
+  assistant Markdown for this.
 - **Line numbers** — shown in the plain-text fallback path (no Shiki highlight).
 
 ## File Content Viewer Contract

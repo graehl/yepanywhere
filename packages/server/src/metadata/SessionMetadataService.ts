@@ -12,6 +12,7 @@ import {
   type ProviderName,
   type PromptSuggestionMode,
   type TranscriptDisplayObject,
+  type UrlProjectId,
   normalizeRecapAfterSeconds,
   sanitizeSessionTitle,
 } from "@yep-anywhere/shared";
@@ -54,6 +55,10 @@ export interface SessionMetadata {
   promptSuggestionMode?: PromptSuggestionMode;
   /** Browser-away duration before YA asks the live process for a recap. */
   recapAfterSeconds?: number;
+  /** YA's effective project/working directory for this session. */
+  workingProjectId?: UrlProjectId;
+  /** Provider transcript project when it differs from the effective project. */
+  transcriptProjectId?: UrlProjectId;
 }
 
 export interface SessionMetadataState {
@@ -346,6 +351,25 @@ export class SessionMetadataService {
   }
 
   /**
+   * Set YA's effective project for a session without modifying provider state.
+   *
+   * `transcriptProjectId` is only needed when the provider transcript still
+   * lives under a different project than `workingProjectId`.
+   */
+  async setWorkingProject(
+    sessionId: string,
+    workingProjectId: UrlProjectId | undefined,
+    transcriptProjectId: UrlProjectId | undefined,
+  ): Promise<void> {
+    this.updateSessionMetadata(sessionId, (metadata) => ({
+      ...metadata,
+      workingProjectId,
+      transcriptProjectId: workingProjectId ? transcriptProjectId : undefined,
+    }));
+    await this.save();
+  }
+
+  /**
    * Get the provider for a session.
    * Returns undefined if the provider was never explicitly saved.
    */
@@ -525,6 +549,12 @@ export class SessionMetadataService {
     }
     if (updated.recapAfterSeconds !== undefined) {
       cleaned.recapAfterSeconds = updated.recapAfterSeconds;
+    }
+    if (updated.workingProjectId) {
+      cleaned.workingProjectId = updated.workingProjectId;
+    }
+    if (updated.transcriptProjectId) {
+      cleaned.transcriptProjectId = updated.transcriptProjectId;
     }
 
     if (Object.keys(cleaned).length === 0) {

@@ -58,7 +58,11 @@ export interface AugmentGenerator {
     block: StreamingCodeBlock,
     blockIndex: number,
   ): Promise<Augment>; // Render incomplete code block optimistically
-  renderStreamingList(block: StreamingList, blockIndex: number): Augment; // Render incomplete list optimistically
+  renderStreamingList(
+    block: StreamingList,
+    blockIndex: number,
+    safeMarkdownOptions?: SafeMarkdownRenderOptions,
+  ): Augment; // Render incomplete list optimistically
 }
 
 /**
@@ -118,13 +122,20 @@ export async function createAugmentGenerator(
       return { blockIndex, html, type: "code" };
     },
 
-    renderStreamingList(block: StreamingList, blockIndex: number): Augment {
-      const html = renderMarkdownBlock({
-        type: "list",
-        content: block.content,
-        startOffset: block.startOffset,
-        endOffset: block.startOffset + block.content.length,
-      });
+    renderStreamingList(
+      block: StreamingList,
+      blockIndex: number,
+      safeMarkdownOptions?: SafeMarkdownRenderOptions,
+    ): Augment {
+      const html = renderMarkdownBlock(
+        {
+          type: "list",
+          content: block.content,
+          startOffset: block.startOffset,
+          endOffset: block.startOffset + block.content.length,
+        },
+        safeMarkdownOptions,
+      );
       return { blockIndex, html, type: "list" };
     },
   };

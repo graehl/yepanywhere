@@ -63,6 +63,18 @@ describe("rewritePublicShareLocalAppHref", () => {
     );
   });
 
+  it("strips private project-file inline-code links from public shares", () => {
+    const root = document.createElement("div");
+    root.innerHTML = `<p>See <a class="fixed-font-file-link" data-ya-private-project-file-link="true" data-ya-resource="project-file" data-ya-project-id="${projectId}" data-ya-path="topics/security.md" href="/projects/${projectId}/file?path=topics%2Fsecurity.md"><code>topics/security.md</code></a>.</p>`;
+
+    rewritePublicShareLocalAppLinks(root, context, shareUrl);
+
+    expect(root.querySelector("a")).toBeNull();
+    expect(root.querySelector("code")?.textContent).toBe("topics/security.md");
+    expect(root.innerHTML).not.toContain("/projects/");
+    expect(root.innerHTML).not.toContain("data-ya-private-project-file-link");
+  });
+
   it("rewrites local-file links under the shared project root", () => {
     const rewritten = rewritePublicShareLocalAppHref(
       "https://ya.graehl.org/api/local-file?path=%2Flocal%2Fgraehl%2Fyepanywhere%2Fui-report%2FREADME.md&render=1&line=8&lineEnd=12",

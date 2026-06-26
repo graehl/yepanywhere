@@ -30,6 +30,7 @@ import type {
   ThinkingOption,
   TranscriptDisplayObject,
   UploadedFile,
+  UrlProjectId,
   UserQuestionAnswers,
   UserMessageMetadata,
 } from "@yep-anywhere/shared";
@@ -518,6 +519,20 @@ export const api = {
     fetchJSON<SessionMetadataResponse>(
       `/projects/${projectId}/sessions/${sessionId}/metadata`,
     ),
+
+  reclassifySessionProject: (
+    projectId: string,
+    sessionId: string,
+    targetProjectId: string,
+  ) =>
+    fetchJSON<{
+      updated: boolean;
+      projectId: UrlProjectId;
+      transcriptProjectId: UrlProjectId | null;
+    }>(`/projects/${projectId}/sessions/${sessionId}/project`, {
+      method: "PUT",
+      body: JSON.stringify({ projectId: targetProjectId }),
+    }),
 
   /**
    * Recompute the hover-card recent-activity excerpt for a non-running session

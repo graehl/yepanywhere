@@ -107,6 +107,7 @@ export async function augmentTextBlocks(
     message?: { content?: unknown };
     content?: unknown;
   }>,
+  safeMarkdownOptions?: SafeMarkdownRenderOptions,
 ): Promise<void> {
   // Process all messages in parallel
   const messagePromises = messages.map(async (msg) => {
@@ -118,12 +119,12 @@ export async function augmentTextBlocks(
     if (typeof content === "string") {
       if (!content.trim()) return;
       try {
-        const html = await renderMarkdownToHtml(content);
+        const html = await renderMarkdownToHtml(content, safeMarkdownOptions);
         (msg as { _html?: string })._html = html;
         if (msg.message && typeof msg.message === "object") {
           (msg.message as { _html?: string })._html = html;
         }
-      } catch (_err) {
+      } catch {
         // Ignore errors during augmentation
       }
       return;
@@ -139,9 +140,12 @@ export async function augmentTextBlocks(
         block.text.trim() !== ""
       ) {
         try {
-          const html = await renderMarkdownToHtml(block.text);
+          const html = await renderMarkdownToHtml(
+            block.text,
+            safeMarkdownOptions,
+          );
           (block as { _html?: string })._html = html;
-        } catch (_err) {
+        } catch {
           // Ignore errors during augmentation
         }
       }

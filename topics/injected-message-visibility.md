@@ -76,9 +76,26 @@ from the default view. The compact-summary text remains semantic context for
 server-side restart/fork summarization when a selected window includes it, but
 it is not a user-authored request.
 
-Remaining Part 2 scope: skill contents and resume-from-full init text can still
-render as normal turns. They predate the compaction work and need their own
-classification, not a local CSS hide.
+### Claude slash-command skill body (landed 2026-06-26)
+
+Claude can persist a skill-backed slash command as adjacent rows:
+
+- a `user` row containing only `<command-message>`, `<command-name>`, and
+  `<command-args>` XML tags;
+- a following `user` row with `isMeta: true` and text-block content beginning
+  `Base directory for this skill: ...`, followed by the skill body and
+  `ARGUMENTS: ...`.
+
+YA now treats that pair as one collapsed local-command system item. The
+one-line header is the echoed slash command (for example
+`/harsh-review last 10 commits`); the injected skill body remains available as
+expandable detail, but does not render as a user bubble. Server-side user-turn
+slicing also treats the skill body as synthetic, and fork-after source
+validation rejects the body as a selected user-authored request.
+
+Remaining Part 2 scope: resume-from-full init text can still render as normal
+turns. It predates the compaction work and needs its own classification, not a
+local CSS hide.
 
 ## "Show hidden" — future exploration (no implementation yet)
 

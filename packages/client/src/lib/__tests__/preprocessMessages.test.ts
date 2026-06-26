@@ -645,6 +645,67 @@ describe("preprocessMessages", () => {
     });
   });
 
+  it("collapses Claude slash-command skill bodies into command details", () => {
+    const skillBody = [
+      {
+        type: "text",
+        text:
+          "Base directory for this skill: /home/graehl/.claude/skills/harsh-review\n\n" +
+          "# Harsh review\n\nFirst classify each changed artifact.\n\n" +
+          "ARGUMENTS: last 10 commits",
+      },
+    ];
+    const messages: Message[] = [
+      {
+        uuid: "command",
+        type: "user",
+        promptId: "prompt-1",
+        message: {
+          role: "user",
+          content:
+            "<command-message>harsh-review</command-message>\n" +
+            "<command-name>/harsh-review</command-name>\n" +
+            "<command-args>last 10 commits</command-args>",
+        },
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        uuid: "skill-body",
+        type: "user",
+        isMeta: true,
+        parentUuid: "command",
+        promptId: "prompt-1",
+        message: {
+          role: "user",
+          content: skillBody,
+        },
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        uuid: "assistant-1",
+        type: "assistant",
+        message: { role: "assistant", content: "Reviewed." },
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      type: "system",
+      id: "command",
+      subtype: "local_command",
+      content: "/harsh-review last 10 commits",
+      sourceMessages: [
+        expect.objectContaining({ uuid: "command" }),
+        expect.objectContaining({ uuid: "skill-body" }),
+      ],
+      details: [skillBody],
+    });
+    expect(items[1]).toMatchObject({ type: "text", text: "Reviewed." });
+  });
+
   it("collapses Claude compact summaries into one compact system item", () => {
     const messages: Message[] = [
       {

@@ -278,6 +278,62 @@ describe("MessageList", () => {
     expect(screen.getByText(/compactMetadata/)).toBeTruthy();
   });
 
+  it("renders slash-command skill text as collapsed command details", () => {
+    const { container } = render(
+      <MessageList
+        messages={[
+          {
+            type: "user",
+            uuid: "command",
+            promptId: "prompt-1",
+            message: {
+              role: "user",
+              content:
+                "<command-message>harsh-review</command-message>\n" +
+                "<command-name>/harsh-review</command-name>\n" +
+                "<command-args>last 10 commits</command-args>",
+            },
+          },
+          {
+            type: "user",
+            uuid: "skill-body",
+            isMeta: true,
+            parentUuid: "command",
+            promptId: "prompt-1",
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text:
+                    "Base directory for this skill: /home/graehl/.claude/skills/harsh-review\n\n" +
+                    "# Harsh review\n\nFirst classify each changed artifact.",
+                },
+              ],
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("/harsh-review last 10 commits")).toBeTruthy();
+    expect(
+      container.querySelector("[data-render-type='user_prompt']"),
+    ).toBeNull();
+
+    const commandDetails = container.querySelector(
+      "details.system-message-local-command",
+    ) as HTMLDetailsElement | null;
+    expect(commandDetails).toBeTruthy();
+    expect(commandDetails?.open).toBe(false);
+
+    const summary = commandDetails?.querySelector("summary");
+    expect(summary).toBeTruthy();
+    fireEvent.click(summary as HTMLElement);
+    expect(commandDetails?.open).toBe(true);
+    expect(screen.getByText(/First classify each changed artifact/)).toBeTruthy();
+  });
+
   it("passes display text without uploaded-file metadata to correction", () => {
     const onCorrect = vi.fn();
 

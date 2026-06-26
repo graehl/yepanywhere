@@ -98,6 +98,28 @@ function getMessageContentArray(m: Message): unknown[] | undefined {
   return Array.isArray(content) ? content : undefined;
 }
 
+function getTextContent(m: Message): string | undefined {
+  const text = getMessageText(m);
+  if (text !== undefined) {
+    return text;
+  }
+  const content = getMessageContentArray(m);
+  if (!content) {
+    return undefined;
+  }
+  const textBlocks = content
+    .map((block) =>
+      block &&
+      typeof block === "object" &&
+      (block as { type?: unknown }).type === "text" &&
+      typeof (block as { text?: unknown }).text === "string"
+        ? (block as { text: string }).text
+        : "",
+    )
+    .filter(Boolean);
+  return textBlocks.length > 0 ? textBlocks.join("\n") : undefined;
+}
+
 function hasOnlyToolResultContent(m: Message): boolean {
   const content = getMessageContentArray(m);
   return (
@@ -112,14 +134,31 @@ function hasOnlyToolResultContent(m: Message): boolean {
   );
 }
 
+function isSlashCommandSkillBody(m: Message): boolean {
+  if ((m as { isMeta?: unknown }).isMeta !== true) {
+    return false;
+  }
+  return (
+    getTextContent(m)
+      ?.trimStart()
+      .startsWith("Base directory for this skill:") === true
+  );
+}
+
 function isLocalCommandTranscriptText(text: string): boolean {
   const trimmed = text.trim();
+  const commandNameMatch = /<command-name>[\s\S]*<\/command-name>/.test(
+    trimmed,
+  );
+  const commandRemainder = trimmed
+    .replace(/<command-name>[\s\S]*?<\/command-name>/g, "")
+    .replace(/<command-message>[\s\S]*?<\/command-message>/g, "")
+    .replace(/<command-args>[\s\S]*?<\/command-args>/g, "")
+    .trim();
   return (
     /^<local-command-caveat>[\s\S]*<\/local-command-caveat>$/.test(trimmed) ||
     /^<local-command-stdout>[\s\S]*<\/local-command-stdout>$/.test(trimmed) ||
-    /^<command-name>[\s\S]*<\/command-name>\s*<command-message>[\s\S]*<\/command-message>\s*<command-args>[\s\S]*<\/command-args>$/.test(
-      trimmed,
-    )
+    (commandNameMatch && commandRemainder === "")
   );
 }
 
@@ -129,6 +168,10 @@ function isSyntheticUserTurn(m: Message): boolean {
   }
 
   if (hasOnlyToolResultContent(m)) {
+    return true;
+  }
+
+  if (isSlashCommandSkillBody(m)) {
     return true;
   }
 

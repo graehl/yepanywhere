@@ -868,6 +868,38 @@ function messageHasToolResult(message: Message): boolean {
   );
 }
 
+function messageTextContent(message: Message): string | undefined {
+  const content = messageContent(message);
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+  const textBlocks = content
+    .map((block) =>
+      !!block &&
+      typeof block === "object" &&
+      (block as ContentBlock).type === "text" &&
+      typeof (block as { text?: unknown }).text === "string"
+        ? (block as { text: string }).text
+        : "",
+    )
+    .filter(Boolean);
+  return textBlocks.length > 0 ? textBlocks.join("\n") : undefined;
+}
+
+function isSlashCommandSkillBodyUserMessage(message: Message): boolean {
+  if ((message as { isMeta?: unknown }).isMeta !== true) {
+    return false;
+  }
+  return (
+    messageTextContent(message)
+      ?.trimStart()
+      .startsWith("Base directory for this skill:") === true
+  );
+}
+
 function isRestartInternalCompactCommand(message: Message): boolean {
   if (messageRole(message) !== "user" || messageHasToolResult(message)) {
     return false;
@@ -1420,7 +1452,11 @@ function isCompactSummaryUserMessage(message: Message): boolean {
 }
 
 function isUserAuthoredRequest(message: Message): boolean {
-  return isHumanUserMessage(message) && !isCompactSummaryUserMessage(message);
+  return (
+    isHumanUserMessage(message) &&
+    !isCompactSummaryUserMessage(message) &&
+    !isSlashCommandSkillBodyUserMessage(message)
+  );
 }
 
 function resolveForkAfterBoundary(

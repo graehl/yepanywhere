@@ -2468,6 +2468,65 @@ describe("Sessions metadata route", () => {
     expect(generateSummary).not.toHaveBeenCalled();
   });
 
+  it("rejects slash-command skill bodies as fork-after source turns", async () => {
+    const project = createProject();
+    const forkSession = vi.fn();
+    const generateSummary = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({
+          id: "proc-source",
+          provider: "claude",
+          state: { type: "idle", since: new Date() },
+          getMessageHistory: vi.fn(() => [
+            {
+              type: "user",
+              uuid: "skill-body",
+              isMeta: true,
+              message: {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      "Base directory for this skill: /home/graehl/.claude/skills/harsh-review\n\n" +
+                      "# Harsh review\n\nFirst classify each changed artifact.",
+                  },
+                ],
+              },
+            },
+          ]),
+        })),
+        supportsForkSession: vi.fn(() => true),
+        forkSession,
+        generateSummary,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as SessionsDeps["scanner"],
+      sessionMetadataService: {
+        getProvider: vi.fn(() => "claude"),
+        getTranscriptDisplayObjects: vi.fn(() => []),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(
+      `/projects/${project.id}/sessions/sess-1/fork-summary`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceMessageId: "skill-body" }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "sourceMessageId must identify a user-authored request",
+    });
+    expect(forkSession).not.toHaveBeenCalled();
+    expect(generateSummary).not.toHaveBeenCalled();
+  });
+
   it("rejects an in-progress fork boundary before creating helper work", async () => {
     const project = createProject();
     const forkSession = vi.fn();

@@ -359,7 +359,7 @@ describe("sliceAtUserTurnBoundary", () => {
     } satisfies PaginationInfo);
   });
 
-  it("does not count compact summaries or local command wrappers as turns", () => {
+  it("does not count compact summaries, command wrappers, or skill bodies as turns", () => {
     const messages = [
       msg("user", "u1"),
       msg("assistant", "a1"),
@@ -394,6 +394,34 @@ describe("sliceAtUserTurnBoundary", () => {
         message: {
           role: "user",
           content: "<local-command-stdout>Compacted </local-command-stdout>",
+        },
+      },
+      {
+        type: "user",
+        uuid: "skill-command",
+        message: {
+          role: "user",
+          content:
+            "<command-message>harsh-review</command-message>\n" +
+            "<command-name>/harsh-review</command-name>\n" +
+            "<command-args>last 10 commits</command-args>",
+        },
+      },
+      {
+        type: "user",
+        uuid: "skill-body",
+        parentUuid: "skill-command",
+        isMeta: true,
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text:
+                "Base directory for this skill: /home/graehl/.claude/skills/harsh-review\n\n" +
+                "# Harsh review\n\nFirst classify each changed artifact.",
+            },
+          ],
         },
       },
       msg("user", "u2"),

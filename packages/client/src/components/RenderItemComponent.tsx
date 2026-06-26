@@ -141,7 +141,7 @@ function buildDebugSnapshot(
   };
 }
 
-function compactDetailToText(detail: string | ContentBlock[]): string {
+function systemDetailToText(detail: string | ContentBlock[]): string {
   if (typeof detail === "string") {
     return detail;
   }
@@ -160,7 +160,7 @@ function compactDetailToText(detail: string | ContentBlock[]): string {
     .join("\n");
 }
 
-function CompactBoundarySystemMessage({
+function CollapsibleSystemMessage({
   item,
   icon,
 }: {
@@ -168,13 +168,21 @@ function CompactBoundarySystemMessage({
   icon: string;
 }) {
   const details = (item.details ?? [])
-    .map(compactDetailToText)
+    .map(systemDetailToText)
     .map((text) => text.trim())
     .filter(Boolean);
+  const variantClass =
+    item.subtype === "compact_boundary"
+      ? "system-message-compact-boundary"
+      : "system-message-local-command";
+  const summaryClass =
+    item.subtype === "compact_boundary"
+      ? "system-message-summary system-message-compact-summary"
+      : "system-message-summary system-message-local-command-summary";
 
   if (details.length === 0) {
     return (
-      <div className="system-message system-message-compact-boundary">
+      <div className={`system-message ${variantClass}`}>
         <span className="system-message-icon">{icon}</span>
         <span className="system-message-text">{item.content}</span>
       </div>
@@ -182,19 +190,21 @@ function CompactBoundarySystemMessage({
   }
 
   return (
-    <details className="system-message system-message-compact-boundary system-message-compact-boundary--details">
-      <summary className="system-message-compact-summary">
+    <details
+      className={`system-message ${variantClass} ${variantClass}--details system-message--details`}
+    >
+      <summary className={summaryClass}>
         <span className="collapsible__icon" aria-hidden="true">
           ▸
         </span>
         <span className="system-message-icon">{icon}</span>
         <span className="system-message-text">{item.content}</span>
       </summary>
-      <div className="system-message-compact-details">
+      <div className="system-message-details">
         {details.map((detail, index) => (
           <pre
-            className="system-message-compact-detail"
-            key={`${item.id}-compact-detail-${index}`}
+            className="system-message-detail"
+            key={`${item.id}-system-detail-${index}`}
           >
             {detail}
           </pre>
@@ -358,8 +368,8 @@ export const RenderItemComponent = memo(function RenderItemComponent({
               : isSubagentActivity
                 ? "↳"
                 : "⟳";
-        if (item.subtype === "compact_boundary") {
-          return <CompactBoundarySystemMessage item={item} icon={icon} />;
+        if (item.subtype === "compact_boundary" || isLocalCommand) {
+          return <CollapsibleSystemMessage item={item} icon={icon} />;
         }
         return (
           <div

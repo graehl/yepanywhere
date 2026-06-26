@@ -7279,15 +7279,16 @@ a.sidebar-nav-item {
   font-style: italic;
 }
 
-.system-message-compact-boundary {
+.system-message-compact-boundary,
+.system-message-local-command {
   max-width: min(100%, 980px);
 }
 
-.system-message.system-message-compact-boundary--details {
+.system-message.system-message--details {
   display: block;
 }
 
-.system-message-compact-summary {
+.system-message-summary {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -7296,28 +7297,26 @@ a.sidebar-nav-item {
   list-style: none;
 }
 
-.system-message-compact-summary::-webkit-details-marker {
+.system-message-summary::-webkit-details-marker {
   display: none;
 }
 
-.system-message-compact-summary .collapsible__icon {
+.system-message-summary .collapsible__icon {
   opacity: 0.72;
 }
 
-.system-message-compact-boundary[open]
-  .system-message-compact-summary
-  .collapsible__icon {
+.system-message--details[open] .system-message-summary .collapsible__icon {
   transform: rotate(90deg);
 }
 
-.system-message-compact-details {
+.system-message-details {
   display: grid;
   gap: 8px;
   margin-top: 10px;
   padding-left: 30px;
 }
 
-.system-message-compact-detail {
+.system-message-detail {
   margin: 0;
   padding: 8px 10px;
   border-radius: 4px;

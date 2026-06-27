@@ -20,8 +20,8 @@ import { MessageList } from "../MessageList";
 
 vi.mock("../../i18n", () => ({
   useI18n: () => ({
-    t: (key: string) =>
-      ({
+    t: (key: string, params?: Record<string, unknown>) => {
+      const translations: Record<string, string> = {
         processingThinkingTranscriptHide:
           "Hide thinking transcript rows (display only; the agent keeps working)",
         processingThinkingTranscriptShowHidden:
@@ -34,9 +34,22 @@ vi.mock("../../i18n", () => ({
         sessionQueuedInlineEditLabel: "Edit queued message text",
         sessionQueuedInlineSave: "Save edit",
         sessionQueuedInlineCancel: "Cancel edit (Esc)",
+        projectQueueAttachmentOnly: "Attachment-only message",
+        projectQueueInlineStatusQueued: "Project Queue (#{position})",
+        projectQueueInlineStatusDispatching:
+          "Project Queue sending (#{position})",
+        projectQueueInlineStatusFailed: "Project Queue failed (#{position})",
+        projectQueueInlineCopy: "Copy Project Queue message",
+        projectQueueInlineCancel: "Cancel Project Queue item",
+        projectQueueCancel: "Cancel",
         userPromptCopyAction: "Copy message text",
         userPromptEditAction: "Edit latest message",
-      })[key] ?? key,
+      };
+      const value = translations[key] ?? key;
+      return value.replace(/\{(\w+)\}/g, (_, param: string) =>
+        String(params?.[param] ?? `{${param}}`),
+      );
+    },
   }),
 }));
 
@@ -822,6 +835,73 @@ describe("MessageList", () => {
     expect(screen.getByText("Patient (waiting, 3m ago)")).toBeTruthy();
     expect(screen.getByText("Queued (next regular)")).toBeTruthy();
     expect(screen.getByText("Queued regular (#2)")).toBeTruthy();
+  });
+
+  it("renders project queue messages below normal queued messages with project position", () => {
+    const { container } = render(
+      <MessageList
+        messages={[]}
+        pendingMessages={[
+          {
+            tempId: "temp-pending",
+            content: "still posting",
+            timestamp: "2026-04-25T00:00:00.000Z",
+            clientOrder: 2,
+          },
+        ]}
+        deferredMessages={[
+          {
+            tempId: "temp-queued",
+            content: "already queued",
+            timestamp: "2026-04-25T00:00:10.000Z",
+          },
+        ]}
+        projectQueueMessages={[
+          {
+            id: "project-queue-2",
+            content: "project queued",
+            timestamp: "2026-04-25T00:00:05.000Z",
+            status: "queued",
+            projectPosition: 2,
+          },
+        ]}
+      />,
+    );
+
+    const prompts = Array.from(
+      container.querySelectorAll(".message-user-prompt"),
+    ).map((node) => node.textContent);
+    expect(prompts).toEqual([
+      "still posting",
+      "already queued",
+      "project queued",
+    ]);
+    expect(screen.getByText("Project Queue (#2)")).toBeTruthy();
+  });
+
+  it("cancels inline project queue messages", () => {
+    const onCancelProjectQueueMessage = vi.fn();
+    render(
+      <MessageList
+        messages={[]}
+        projectQueueMessages={[
+          {
+            id: "project-queue-1",
+            content: "project queued",
+            timestamp: "2026-04-25T00:00:05.000Z",
+            status: "queued",
+            projectPosition: 1,
+          },
+        ]}
+        onCancelProjectQueueMessage={onCancelProjectQueueMessage}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Cancel Project Queue item" }),
+    );
+
+    expect(onCancelProjectQueueMessage).toHaveBeenCalledWith("project-queue-1");
   });
 
   it("keeps the latest stale message age visible in the right rail", () => {

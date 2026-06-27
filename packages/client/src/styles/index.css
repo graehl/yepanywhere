@@ -5659,6 +5659,23 @@ a.sidebar-nav-item {
   white-space: pre-wrap;
 }
 
+.project-queue-inline-message-bubble {
+  border-left-color: var(--project-queue-action-bg);
+}
+
+.project-queue-inline-message-status {
+  color: var(--project-queue-action-bg);
+}
+
+.project-queue-inline-message-error {
+  color: var(--error-color);
+  font-size: var(--font-size-xs);
+}
+
+.project-queue-inline-message-cancel {
+  color: var(--project-queue-action-bg);
+}
+
 .deferred-message-edit {
   appearance: none;
   border-top: 0;
@@ -14866,6 +14883,24 @@ a.sidebar-nav-item {
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--warning-color) 20%, transparent);
   color: var(--warning-color);
+  flex-shrink: 0;
+}
+
+.session-project-queue-badge {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  min-width: 20px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(
+    in srgb,
+    var(--project-queue-action-bg) 18%,
+    transparent
+  );
+  color: var(--project-queue-action-bg);
+  border: 1px solid
+    color-mix(in srgb, var(--project-queue-action-bg) 34%, transparent);
+  text-align: center;
   flex-shrink: 0;
 }
 

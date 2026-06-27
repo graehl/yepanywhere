@@ -86,6 +86,7 @@ interface SessionListItemProps {
 
   // For sidebar compact mode
   hasDraft?: boolean;
+  hasProjectQueue?: boolean;
 
   /** Base path prefix for relay mode (e.g., "/remote/my-server") */
   basePath?: string;
@@ -177,6 +178,7 @@ export function SessionListItem({
   onNavigate,
   // Sidebar
   hasDraft = false,
+  hasProjectQueue = false,
   // Relay mode
   basePath = "",
   // New session detection
@@ -780,6 +782,14 @@ export function SessionListItem({
                 )}
                 {visibleTitle}
                 {hasDraft && <span className="session-draft-badge">Draft</span>}
+                {hasProjectQueue && (
+                  <span
+                    className="session-project-queue-badge"
+                    title={t("projectQueueSidebarBadge")}
+                  >
+                    Q
+                  </span>
+                )}
                 {isArchived && (
                   <span className="session-archived-badge">Archived</span>
                 )}
@@ -867,6 +877,14 @@ export function SessionListItem({
                   {visibleTitle}
                 </span>
                 {hasDraft && <span className="session-draft-badge">Draft</span>}
+                {hasProjectQueue && (
+                  <span
+                    className="session-project-queue-badge"
+                    title={t("projectQueueSidebarBadge")}
+                  >
+                    Q
+                  </span>
+                )}
               </span>
               {showProjectName && projectName && (
                 <span className="session-list-item__project-compact">

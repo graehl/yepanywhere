@@ -91,9 +91,9 @@ color, not the normal per-session queue color. Each inline item should display
 its Project Queue position within the project backlog so users can distinguish
 local session queue order from project-wide queue order.
 
-Inline rendering is a visibility mirror only. The projects page remains the
-authoritative queue manager for cross-project inspection, edit, cancel, and
-retry.
+Inline rendering is a visibility and cancel mirror for items that target the
+current session. The projects page remains the authoritative queue manager for
+cross-project inspection, edit, and retry.
 
 ## Attachments
 

@@ -22,6 +22,10 @@ Progress:
       capability.
 - [x] Use project active-count summaries as a Project Queue visibility
       fallback when exact active sibling session ids are not locally known.
+- [x] Render existing-session Project Queue items inline in the target session
+      with purple queue styling, project-wide position, and cancel controls.
+- [x] Show a purple `Q` badge on sidebar session rows that have targeted
+      Project Queue items.
 
 Latest update:
 
@@ -72,6 +76,11 @@ Latest update:
   composers now use project active-count summaries in addition to exact active
   inbox session ids, so an inactive current session can still show Project
   Queue when another session in the project is already active.
+- 2026-06-27: Landed the inline visibility slice: session transcripts now show
+  Project Queue items targeting the current session below normal queued
+  messages, with Project Queue purple styling, true project-backlog position,
+  copy/cancel actions, and a purple `Q` badge in the sidebar for targeted
+  sessions.
 
 ## Context
 
@@ -397,8 +406,10 @@ Configuration split:
       `projectQueue`.
 - [x] Use project active-count summaries so the affordance still appears when
       another active project session is not present in local inbox tiers.
-- [ ] Render Project Queue items inline in the target session with purple
+- [x] Render Project Queue items inline in the target session with purple
       styling and project-queue position.
+- [x] Show a Project Queue badge on sidebar session rows with targeted queue
+      items.
 - [ ] Add durable pre-session attachment staging for new-session Project Queue.
 
 ## Tests

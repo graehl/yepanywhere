@@ -4,6 +4,7 @@ import type { GlobalSessionItem } from "../api/client";
 import { useInboxContext } from "../contexts/InboxContext";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useDrafts, useNewSessionDraft } from "../hooks/useDrafts";
+import { useProjectQueues } from "../hooks/useProjectQueues";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
@@ -444,6 +445,29 @@ export function Sidebar({
     [olderSessionRecords],
   );
 
+  const sidebarProjectIds = useMemo(
+    () => [
+      ...new Set(
+        [...filteredStarredSessions, ...recentDaySessions, ...olderSessions]
+          .map((session) => session.projectId)
+          .filter(Boolean),
+      ),
+    ],
+    [filteredStarredSessions, recentDaySessions, olderSessions],
+  );
+  const sidebarProjectQueues = useProjectQueues(sidebarProjectIds);
+  const projectQueuedSessionIds = useMemo(() => {
+    const sessionIds = new Set<string>();
+    for (const items of Object.values(sidebarProjectQueues.queuesByProject)) {
+      for (const item of items) {
+        if (item.target.type === "existing-session") {
+          sessionIds.add(item.target.sessionId);
+        }
+      }
+    }
+    return sessionIds;
+  }, [sidebarProjectQueues.queuesByProject]);
+
   // Client-side heuristic for "obvious duplicate title" sessions (general, no hardcoded strings).
   // Within each section we group by (provider, project, normalized title).
   // In a dup cluster, we keep the *best* one visible (prefer higher messageCount, then more recent activity)
@@ -558,6 +582,7 @@ export function Sidebar({
       basePath={basePath}
       messageCount={session.messageCount}
       hasDraft={drafts.has(session.id)}
+      hasProjectQueue={projectQueuedSessionIds.has(session.id)}
       publicShareControlsVisible={publicShareControlsVisible}
     />
   );

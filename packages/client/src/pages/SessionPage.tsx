@@ -2,6 +2,7 @@ import type {
   AppContentBlock,
   PromptSuggestionMode,
   ProviderName,
+  ProjectQueueItemSummary,
   PublicSessionShareSessionStatusResponse,
   ThinkingOption,
   TranscriptDisplayObject,
@@ -135,6 +136,7 @@ const BTW_ASIDE_PREVIEW_MAX_LENGTH = 700;
 const BTW_ASIDE_PROMPT_MARKER = "[YA /btw aside]";
 const CLAUDE_HANDOFF_REQUIRED_MESSAGE =
   "Claude session cannot be safely resumed because the Claude SDK recorded an API-error response as the latest assistant message. Start a handoff session instead.";
+const EMPTY_PROJECT_QUEUE_ITEMS: readonly ProjectQueueItemSummary[] = [];
 const BTW_ASIDE_FORK_PROVIDERS = new Set<ProviderName>([
   "claude",
   "codex",
@@ -846,8 +848,37 @@ function SessionPageContent({
     : null;
   const currentSessionIsProjectActive =
     status.owner === "self" || status.owner === "external";
-  const projectQueueItemCount =
-    projectQueues.queuesByProject[projectId]?.length ?? 0;
+  const projectQueueItemsForProject =
+    projectQueues.queuesByProject[projectId] ?? EMPTY_PROJECT_QUEUE_ITEMS;
+  const projectQueueItemCount = projectQueueItemsForProject.length;
+  const inlineProjectQueueMessages = useMemo(
+    () =>
+      projectQueueItemsForProject.flatMap((item, index) => {
+        if (
+          item.target.type !== "existing-session" ||
+          item.target.sessionId !== sessionId
+        ) {
+          return [];
+        }
+        return [
+          {
+            id: item.id,
+            content:
+              item.message.text ||
+              item.messagePreview ||
+              t("projectQueueAttachmentOnly"),
+            timestamp: item.createdAt,
+            status: item.status,
+            projectPosition: index + 1,
+            attachmentCount: item.attachmentCount,
+            attachments: item.message.attachments,
+            lastError: item.lastError,
+            isMutating: projectQueues.mutatingItemId === item.id,
+          },
+        ];
+      }),
+    [projectQueueItemsForProject, projectQueues.mutatingItemId, sessionId, t],
+  );
   const showProjectQueueAction = shouldShowProjectQueueAffordance({
     projectId,
     currentSessionId: sessionId,
@@ -2515,6 +2546,22 @@ function SessionPageContent({
       showToast(t("projectQueueSubmitFailed", { message: errorMsg }), "error");
     }
   };
+
+  const handleCancelProjectQueueItem = useCallback(
+    async (itemId: string) => {
+      try {
+        await projectQueues.deleteItem(projectId, itemId);
+      } catch (err) {
+        console.error("Failed to cancel Project Queue item:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(
+          t("projectQueueInlineCancelFailed", { message: errorMsg }),
+          "error",
+        );
+      }
+    },
+    [projectId, projectQueues.deleteItem, showToast, t],
+  );
 
   const handleCancelDeferred = useCallback(
     async (tempId: string) => {
@@ -4839,6 +4886,7 @@ function SessionPageContent({
                   scrollTrigger={scrollTrigger}
                   pendingMessages={pendingMessages}
                   deferredMessages={deferredMessages}
+                  projectQueueMessages={inlineProjectQueueMessages}
                   btwAsides={historyBtwAsides}
                   onFocusBtwAside={setFocusedBtwAsideId}
                   onDoneBtwAside={handleDoneBtwAside}
@@ -4853,6 +4901,7 @@ function SessionPageContent({
                   composerDraftChange={composerDraftChangeForAnchors}
                   quoteClearSignal={quoteClearSignal}
                   onCancelDeferred={handleCancelDeferred}
+                  onCancelProjectQueueMessage={handleCancelProjectQueueItem}
                   onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
                   onTrimBeforeUserMessage={trimClientFromUserMessage}
                   onForkBeforeUserMessage={

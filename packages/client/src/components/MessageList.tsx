@@ -1,5 +1,6 @@
 import type {
   MarkdownAugment,
+  ProjectQueueItemStatus,
   TranscriptDisplayObject,
   UploadedFile,
   UserMessageMetadata,
@@ -828,6 +829,18 @@ interface DeferredMessage {
   attachments?: UploadedFile[];
 }
 
+interface InlineProjectQueueMessage {
+  id: string;
+  content: string;
+  timestamp: string;
+  status: ProjectQueueItemStatus;
+  projectPosition: number;
+  attachmentCount?: number;
+  attachments?: UploadedFile[];
+  lastError?: string;
+  isMutating?: boolean;
+}
+
 interface ComposerTailLanePosition {
   regularIndex?: number;
   patientIndex?: number;
@@ -885,6 +898,12 @@ type ComposerTailItem =
       message: DeferredMessage;
       deferredIndex: number;
       sourceIndex: number;
+    }
+  | {
+      kind: "project-queue";
+      key: string;
+      message: InlineProjectQueueMessage;
+      sourceIndex: number;
     };
 
 function compareComposerTailItems(
@@ -895,11 +914,16 @@ function compareComposerTailItems(
   // render before server-queued deferred messages, and deferred messages
   // preserve the server's authoritative queue order rather than being re-sorted.
   if (left.kind !== right.kind) {
-    return left.kind === "pending" ? -1 : 1;
+    const laneRank = { pending: 0, deferred: 1, "project-queue": 2 };
+    return laneRank[left.kind] - laneRank[right.kind];
   }
 
   if (left.kind === "deferred" && right.kind === "deferred") {
     return left.deferredIndex - right.deferredIndex;
+  }
+
+  if (left.kind === "project-queue" && right.kind === "project-queue") {
+    return left.message.projectPosition - right.message.projectPosition;
   }
 
   const leftOrder =
@@ -960,6 +984,8 @@ interface Props {
   pendingMessages?: PendingMessage[];
   /** Deferred messages queued server-side (shown as "Queued") */
   deferredMessages?: DeferredMessage[];
+  /** Project Queue items targeting this session (shown below local queue). */
+  projectQueueMessages?: InlineProjectQueueMessage[];
   /** YA-owned /btw cards that have entered the scrollback timeline. */
   btwAsides?: BtwAsideTimelineItem[];
   /** Focus this /btw aside for follow-up turns. */
@@ -982,6 +1008,8 @@ interface Props {
   quoteClearSignal?: number;
   /** Callback to cancel a deferred message */
   onCancelDeferred?: (tempId: string) => void;
+  /** Callback to cancel a Project Queue item */
+  onCancelProjectQueueMessage?: (itemId: string) => void;
   /** Callback to correct the latest actually-sent user message */
   onCorrectLatestUserMessage?: (messageId: string, content: string) => void;
   /** Callback to aggressively reload the client transcript from a user turn */
@@ -1143,6 +1171,7 @@ export const MessageList = memo(function MessageList({
   scrollTrigger = 0,
   pendingMessages = [],
   deferredMessages = [],
+  projectQueueMessages = [],
   btwAsides = [],
   onFocusBtwAside,
   onDoneBtwAside,
@@ -1155,6 +1184,7 @@ export const MessageList = memo(function MessageList({
   composerDraftChange,
   quoteClearSignal = 0,
   onCancelDeferred,
+  onCancelProjectQueueMessage,
   onCorrectLatestUserMessage,
   onTrimBeforeUserMessage,
   onForkBeforeUserMessage,
@@ -2031,12 +2061,21 @@ export const MessageList = memo(function MessageList({
     for (const deferred of deferredMessages) {
       includeTimestamp(parseTimestampMs(deferred.timestamp));
     }
+    for (const projectQueue of projectQueueMessages) {
+      includeTimestamp(parseTimestampMs(projectQueue.timestamp));
+    }
     for (const aside of btwAsides) {
       includeTimestamp(parseTimestampMs(aside.historyAt ?? aside.updatedAt));
     }
 
     return latest;
-  }, [displayRenderItems, pendingMessages, deferredMessages, btwAsides]);
+  }, [
+    displayRenderItems,
+    pendingMessages,
+    deferredMessages,
+    projectQueueMessages,
+    btwAsides,
+  ]);
   const composerTailItems = useMemo(() => {
     let sourceIndex = 0;
     const items: ComposerTailItem[] = [];
@@ -2058,9 +2097,17 @@ export const MessageList = memo(function MessageList({
         sourceIndex: sourceIndex++,
       });
     });
+    for (const projectQueue of projectQueueMessages) {
+      items.push({
+        kind: "project-queue",
+        key: `project-queue-${projectQueue.id}`,
+        message: projectQueue,
+        sourceIndex: sourceIndex++,
+      });
+    }
 
     return items.sort(compareComposerTailItems);
-  }, [pendingMessages, deferredMessages]);
+  }, [pendingMessages, deferredMessages, projectQueueMessages]);
   const composerTailLanePositions = useMemo(() => {
     const positions = new Map<string, ComposerTailLanePosition>();
     let regularIndex = 0;
@@ -3291,6 +3338,116 @@ export const MessageList = memo(function MessageList({
                         showTextLabel
                         onClick={(event) => event.stopPropagation()}
                       />
+                    </div>
+                  </div>
+                </div>
+                <MessageAge timestampMs={timestampMs} nowMs={nowMs} />
+              </div>
+            );
+          }
+
+          if (tailItem.kind === "project-queue") {
+            const projectQueue = tailItem.message;
+            const projectQueueStatus =
+              projectQueue.status === "dispatching"
+                ? t("projectQueueInlineStatusDispatching", {
+                    position: projectQueue.projectPosition,
+                  })
+                : projectQueue.status === "failed"
+                  ? t("projectQueueInlineStatusFailed", {
+                      position: projectQueue.projectPosition,
+                    })
+                  : t("projectQueueInlineStatusQueued", {
+                      position: projectQueue.projectPosition,
+                    });
+            return (
+              <div
+                key={tailItem.key}
+                className={`deferred-message project-queue-inline-message message-render-row ${
+                  timestampMs !== null ? "has-message-age" : ""
+                } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
+              >
+                <div className="message-render-content">
+                  <div className="message-user-prompt deferred-message-bubble project-queue-inline-message-bubble">
+                    {projectQueue.content}
+                  </div>
+                  {projectQueue.attachments?.length ? (
+                    <div className="attachment-list deferred-message-attachments-list">
+                      {projectQueue.attachments.map((file) => (
+                        <AttachmentChip
+                          key={file.id}
+                          attachmentId={file.id}
+                          originalName={file.originalName}
+                          path={file.path}
+                          mimeType={file.mimeType}
+                          sizeLabel={formatSize(file.size)}
+                          imageWidth={file.width}
+                          imageHeight={file.height}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="deferred-message-footer">
+                    <span className="deferred-message-status project-queue-inline-message-status">
+                      {projectQueueStatus}
+                    </span>
+                    {projectQueue.attachmentCount &&
+                    !projectQueue.attachments?.length ? (
+                      <span
+                        className="deferred-message-attachments"
+                        title={`${projectQueue.attachmentCount} attachment${
+                          projectQueue.attachmentCount === 1 ? "" : "s"
+                        } queued`}
+                        role="img"
+                        aria-label={`${projectQueue.attachmentCount} attachment${
+                          projectQueue.attachmentCount === 1 ? "" : "s"
+                        } queued`}
+                      >
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                        </svg>
+                        <span>{projectQueue.attachmentCount}</span>
+                      </span>
+                    ) : null}
+                    {projectQueue.lastError && (
+                      <span className="project-queue-inline-message-error">
+                        {projectQueue.lastError}
+                      </span>
+                    )}
+                    <div className="deferred-message-actions">
+                      <CopyTextButton
+                        text={projectQueue.content}
+                        label={t("projectQueueInlineCopy")}
+                        className="deferred-message-action deferred-message-action-copy"
+                        showTextLabel
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                      {projectQueue.status !== "dispatching" &&
+                        onCancelProjectQueueMessage && (
+                          <button
+                            type="button"
+                            className="deferred-message-action deferred-message-action-cancel project-queue-inline-message-cancel"
+                            disabled={projectQueue.isMutating}
+                            onClick={() =>
+                              onCancelProjectQueueMessage(projectQueue.id)
+                            }
+                            aria-label={t("projectQueueInlineCancel")}
+                            title={t("projectQueueInlineCancel")}
+                          >
+                            <XIcon />
+                            <span>{t("projectQueueCancel")}</span>
+                          </button>
+                        )}
                     </div>
                   </div>
                 </div>

@@ -20,6 +20,7 @@ const {
   mockToggleExpanded,
   mockWindowOpen,
   newSessionDraftState,
+  projectQueuesState,
   starredSessionsState,
 } = vi.hoisted(() => ({
   globalSessionsState: {
@@ -44,6 +45,12 @@ const {
   newSessionDraftState: {
     hasDraft: false,
   },
+  projectQueuesState: {
+    queuesByProject: {} as Record<
+      string,
+      Array<{ target: { type: string; sessionId?: string } }>
+    >,
+  },
 }));
 
 vi.mock("../../contexts/RemoteConnectionContext", () => ({
@@ -59,6 +66,20 @@ vi.mock("../../contexts/InboxContext", () => ({
 vi.mock("../../hooks/useDrafts", () => ({
   useDrafts: () => new Set<string>(),
   useNewSessionDraft: () => newSessionDraftState.hasDraft,
+}));
+
+vi.mock("../../hooks/useProjectQueues", () => ({
+  useProjectQueues: () => ({
+    queuesByProject: projectQueuesState.queuesByProject,
+    items: Object.values(projectQueuesState.queuesByProject).flat(),
+    loading: false,
+    error: null,
+    mutatingItemId: null,
+    refetch: vi.fn(),
+    updateItem: vi.fn(),
+    deleteItem: vi.fn(),
+    retryItem: vi.fn(),
+  }),
 }));
 
 vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
@@ -168,10 +189,17 @@ vi.mock("../SessionListItem", () => ({
   SessionListItem: ({
     sessionId,
     title,
+    hasProjectQueue,
   }: {
     sessionId: string;
     title: string;
-  }) => <li data-testid={`session-${sessionId}`}>{title}</li>,
+    hasProjectQueue?: boolean;
+  }) => (
+    <li data-testid={`session-${sessionId}`}>
+      {title}
+      {hasProjectQueue ? <span>Q</span> : null}
+    </li>
+  ),
 }));
 
 function makeSession(
@@ -230,6 +258,7 @@ describe("Sidebar collapsed toggle", () => {
     starredSessionsState.hasMore = false;
     starredSessionsState.loadMore = mockStarredLoadMore;
     newSessionDraftState.hasDraft = false;
+    projectQueuesState.queuesByProject = {};
     vi.stubGlobal("open", mockWindowOpen);
   });
 
@@ -321,6 +350,32 @@ describe("Sidebar collapsed toggle", () => {
 
     expect(screen.getByText("Session 13")).toBeDefined();
     expect(screen.queryByText("Show more")).toBeNull();
+  });
+
+  it("marks sidebar rows that have Project Queue items", () => {
+    globalSessionsState.sessions = [
+      makeSession("queued-session", new Date().toISOString()),
+      makeSession("plain-session", new Date(Date.now() - 60_000).toISOString()),
+    ];
+    projectQueuesState.queuesByProject = {
+      "project-1": [
+        {
+          target: {
+            type: "existing-session",
+            sessionId: "queued-session",
+          },
+        },
+      ],
+    };
+
+    renderSidebar();
+
+    expect(screen.getByTestId("session-queued-session").textContent).toContain(
+      "Q",
+    );
+    expect(
+      screen.getByTestId("session-plain-session").textContent,
+    ).not.toContain("Q");
   });
 
   it("keeps the highest-message duplicate session visible", () => {

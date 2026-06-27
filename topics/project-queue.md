@@ -55,6 +55,10 @@ UI copy must not promise perfect detection of all outside provider activity.
 The toolbar affordance is YA-novel behavior, so it is hidden/default-off unless
 the user opts into showing the Project Queue button.
 
+Project Queue UI must also be capability-gated on `/api/version` advertising
+`projectQueue`. Treat missing capabilities as unsupported so newer remote
+clients do not show Project Queue entry points against older servers.
+
 When the button is visible by user preference, the UI should still suppress it
 when Project Queue adds no useful semantics:
 

@@ -29,6 +29,9 @@ const apiMock = vi.hoisted(() => ({
   deleteProjectQueueItem: vi.fn(),
   retryProjectQueueItem: vi.fn(),
 }));
+const versionMock = vi.hoisted(() => ({
+  version: { capabilities: ["projectQueue"] as string[] },
+}));
 
 vi.mock("../../api/client", () => ({
   api: apiMock,
@@ -36,6 +39,10 @@ vi.mock("../../api/client", () => ({
 
 vi.mock("../../lib/activityBus", () => ({
   activityBus: { on: busMock.on },
+}));
+
+vi.mock("../useVersion", () => ({
+  useVersion: () => ({ version: versionMock.version }),
 }));
 
 import { useProjectQueues } from "../useProjectQueues";
@@ -62,6 +69,7 @@ function makeItem(
 }
 
 beforeEach(() => {
+  versionMock.version = { capabilities: ["projectQueue"] };
   busMock.reset();
   busMock.on.mockClear();
   apiMock.getProjectQueue.mockReset();
@@ -75,6 +83,17 @@ afterEach(() => {
 });
 
 describe("useProjectQueues", () => {
+  it("stays idle without the project queue server capability", async () => {
+    versionMock.version = { capabilities: [] };
+
+    const { result } = renderHook(() => useProjectQueues(["project-1"]));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(apiMock.getProjectQueue).not.toHaveBeenCalled();
+    expect(result.current.items).toEqual([]);
+  });
+
   it("fetches queues for the supplied projects", async () => {
     apiMock.getProjectQueue.mockImplementation(async (projectId: string) => ({
       projectId,
@@ -155,7 +174,10 @@ describe("useProjectQueues", () => {
       await result.current.retryItem("project-1", "2");
     });
 
-    expect(apiMock.retryProjectQueueItem).toHaveBeenCalledWith("project-1", "2");
+    expect(apiMock.retryProjectQueueItem).toHaveBeenCalledWith(
+      "project-1",
+      "2",
+    );
     expect(result.current.items.map((item) => item.id)).toEqual(["2"]);
   });
 

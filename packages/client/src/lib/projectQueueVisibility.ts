@@ -1,9 +1,21 @@
+export const PROJECT_QUEUE_CAPABILITY = "projectQueue";
+
+export interface ProjectQueueCapabilitySource {
+  capabilities?: readonly string[];
+}
+
 export interface ProjectQueueAffordanceState {
   projectId?: string | null;
   currentSessionId?: string | null;
   currentSessionHasSessionQueueBacklog?: boolean;
   activeProjectSessionIds?: readonly string[];
   projectQueueItemCount?: number | null;
+}
+
+export function serverSupportsProjectQueue(
+  version: ProjectQueueCapabilitySource | null | undefined,
+): boolean {
+  return version?.capabilities?.includes(PROJECT_QUEUE_CAPABILITY) ?? false;
 }
 
 export function shouldShowProjectQueueAffordance({

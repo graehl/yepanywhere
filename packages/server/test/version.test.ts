@@ -320,6 +320,12 @@ describe("GET /version", () => {
     expect(json.voiceBackendCapabilities).toEqual({});
   });
 
+  it("advertises Project Queue support as a server capability", async () => {
+    const { getServerCapabilities } = await importVersion();
+
+    expect(getServerCapabilities()).toContain("projectQueue");
+  });
+
   it("reports update-available for stale bridge binaries", async () => {
     mockFetch(() => new Response(null, { status: 204 }));
 

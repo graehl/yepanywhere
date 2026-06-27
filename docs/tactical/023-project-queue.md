@@ -18,6 +18,8 @@ Progress:
 - [x] Add in-place editing for queued/failed projects-page queue items.
 - [x] Document Project Queue semantics in `topics/project-queue.md`.
 - [x] Suppress Project Queue buttons when normal send/queue is equivalent.
+- [x] Gate Project Queue UI and fetches on the server `projectQueue`
+      capability.
 
 Latest update:
 
@@ -60,6 +62,10 @@ Latest update:
   normal send or normal session queue is equivalent. Inline session rendering
   with project-queue position and durable new-session attachment staging remain
   required before the feature is complete.
+- 2026-06-27: Landed the compatibility gate: `/api/version` now advertises the
+  `projectQueue` capability, project-queue API fetches stay idle without that
+  capability, and runtime/settings entry points hide when a newer remote client
+  is connected to an older server.
 
 ## Context
 
@@ -381,6 +387,8 @@ Configuration split:
 - [x] Add project-queue submission from `MessageInput`.
 - [x] Add text-only Project Queue submission from `NewSessionForm`.
 - [x] Hide the Project Queue action when normal send/queue is equivalent.
+- [x] Hide Project Queue runtime/settings UI unless `/api/version` advertises
+      `projectQueue`.
 - [ ] Render Project Queue items inline in the target session with purple
       styling and project-queue position.
 - [ ] Add durable pre-session attachment staging for new-session Project Queue.

@@ -49,7 +49,7 @@ const {
       current: "test",
       latest: null,
       updateAvailable: false,
-      capabilities: ["voiceInput"],
+      capabilities: ["voiceInput", "projectQueue"],
       voiceBackends: [] as string[],
       voiceBackendCapabilities: {} as Record<
         string,
@@ -519,7 +519,7 @@ describe("MessageInput", () => {
       current: "test",
       latest: null,
       updateAvailable: false,
-      capabilities: ["voiceInput"],
+      capabilities: ["voiceInput", "projectQueue"],
       voiceBackends: [],
       voiceBackendCapabilities: {},
       clientDefaults: undefined,
@@ -2456,6 +2456,21 @@ describe("MessageInput", () => {
     );
 
     expectSubmission(onProjectQueue, "project-wide later", "deferred");
+  });
+
+  it("hides the project queue action without server capability", () => {
+    versionState.version = {
+      ...versionState.version,
+      capabilities: ["voiceInput"],
+    };
+    const onProjectQueue = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), { onProjectQueue });
+
+    fireEvent.change(textarea, { target: { value: "project-wide later" } });
+
+    expect(
+      screen.queryByRole("button", { name: "Queue for Project Queue" }),
+    ).toBe(null);
   });
 
   it("keeps the project queue toolbar action hidden by visibility", () => {

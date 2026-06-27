@@ -1,5 +1,5 @@
 import type { ClientDefaults } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { api } from "../api/client";
 import {
   type DefaultedBooleanRecord,
@@ -7,6 +7,7 @@ import {
   resolveDefaultedBooleanRecord,
   setDefaultedBooleanRecordValue,
 } from "../lib/defaultedStorage";
+import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import { UI_KEYS } from "../lib/storageKeys";
 import { useVersion } from "./useVersion";
 
@@ -209,6 +210,14 @@ function saveClientDefaultVisibility(
 export function useSessionToolbarVisibility() {
   const { version } = useVersion();
   const visibility = useSyncExternalStore(subscribe, getSnapshot);
+  const effectiveVisibility = useMemo<SessionToolbarVisibility>(
+    () => ({
+      ...visibility,
+      projectQueue:
+        visibility.projectQueue && serverSupportsProjectQueue(version),
+    }),
+    [version, visibility],
+  );
 
   useEffect(() => {
     if (!version) return;
@@ -232,7 +241,7 @@ export function useSessionToolbarVisibility() {
   }, []);
 
   return {
-    visibility,
+    visibility: effectiveVisibility,
     setControlVisible,
     resetVisibility,
   };

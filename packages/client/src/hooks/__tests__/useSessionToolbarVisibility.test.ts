@@ -179,6 +179,7 @@ describe("useSessionToolbarVisibility", () => {
   it("can reveal Project Queue from server client defaults", async () => {
     stubToolbarLayout(false);
     mocks.version = {
+      capabilities: ["projectQueue"],
       clientDefaults: {
         sessionToolbarVisibility: {
           projectQueue: true,
@@ -193,6 +194,27 @@ describe("useSessionToolbarVisibility", () => {
 
     await waitFor(() => {
       expect(result.current.visibility.projectQueue).toBe(true);
+    });
+  });
+
+  it("masks Project Queue visibility without server capability", async () => {
+    stubToolbarLayout(false);
+    mocks.version = {
+      capabilities: [],
+      clientDefaults: {
+        sessionToolbarVisibility: {
+          projectQueue: true,
+        },
+      },
+    };
+    const { useSessionToolbarVisibility } = await import(
+      "../useSessionToolbarVisibility"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarVisibility());
+
+    await waitFor(() => {
+      expect(result.current.visibility.projectQueue).toBe(false);
     });
   });
 

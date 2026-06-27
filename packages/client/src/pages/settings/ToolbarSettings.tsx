@@ -9,7 +9,9 @@ import {
   useSessionToolbarVisibility,
 } from "../../hooks/useSessionToolbarVisibility";
 import { useServerSettings } from "../../hooks/useServerSettings";
+import { useVersion } from "../../hooks/useVersion";
 import { useI18n } from "../../i18n";
+import { serverSupportsProjectQueue } from "../../lib/projectQueueVisibility";
 import { useSettingsPaneTitle } from "./SettingsPaneTitleContext";
 import { useSettingsUndoBaseline } from "./SettingsUndoContext";
 
@@ -33,6 +35,8 @@ export function ToolbarSettings() {
     resetVisibility,
   } = useSessionToolbarVisibility();
   const { settings, error, updateSettings } = useServerSettings();
+  const { version } = useVersion();
+  const supportsProjectQueue = serverSupportsProjectQueue(version);
 
   const busyComposerDefaultAction =
     settings?.clientDefaults?.busyComposerDefaultAction ?? "steer";
@@ -145,12 +149,14 @@ export function ToolbarSettings() {
       title: t("appearanceToolbarSteerNowTitle"),
       description: t("appearanceToolbarSteerNowDescription"),
     },
-    {
+  ];
+  if (supportsProjectQueue) {
+    toolbarControls.push({
       key: "projectQueue",
       title: t("appearanceToolbarProjectQueueTitle"),
       description: t("appearanceToolbarProjectQueueDescription"),
-    },
-  ];
+    });
+  }
 
   return (
     <section className="settings-section">

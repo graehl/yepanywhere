@@ -142,6 +142,7 @@ const {
   },
   versionState: {
     version: null as {
+      capabilities?: string[];
       voiceBackends?: string[];
       voiceBackendCapabilities?: Record<
         string,
@@ -331,8 +332,7 @@ vi.mock("../../contexts/InboxContext", () => ({
     refetch: vi.fn(),
     totalNeedsAttention: inboxState.needsAttention.length,
     totalActive: inboxState.active.length,
-    totalItems:
-      inboxState.needsAttention.length + inboxState.active.length,
+    totalItems: inboxState.needsAttention.length + inboxState.active.length,
     enabled: true,
     setEnabled: vi.fn(),
   }),
@@ -538,7 +538,7 @@ describe("NewSessionForm", () => {
     voicePropsState.current = null;
     draftKeys.length = 0;
     remoteBasePathState.basePath = "";
-    versionState.version = null;
+    versionState.version = { capabilities: ["projectQueue"] };
     modelSettingsState.voiceInputEnabled = true;
     modelSettingsState.speechMethod = "browser-native";
     modelSettingsState.hasStoredSpeechMethod = false;
@@ -841,7 +841,9 @@ describe("NewSessionForm", () => {
 
   it("queues a new session through Project Queue when the toolbar action is visible", async () => {
     toolbarVisibilityState.projectQueue = true;
-    inboxState.active = [{ sessionId: "session-active", projectId: "project-1" }];
+    inboxState.active = [
+      { sessionId: "session-active", projectId: "project-1" },
+    ];
     serverSettingsState.isLoading = false;
 
     render(
@@ -889,6 +891,27 @@ describe("NewSessionForm", () => {
 
   it("hides the new-session Project Queue action when the project is inactive", () => {
     toolbarVisibilityState.projectQueue = true;
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "toolbarProjectQueueLabel" }),
+    ).toBe(null);
+  });
+
+  it("hides the new-session Project Queue action without server capability", () => {
+    toolbarVisibilityState.projectQueue = true;
+    versionState.version = { capabilities: [] };
+    inboxState.active = [
+      { sessionId: "session-active", projectId: "project-1" },
+    ];
     serverSettingsState.isLoading = false;
 
     render(

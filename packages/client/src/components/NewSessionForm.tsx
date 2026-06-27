@@ -66,7 +66,10 @@ import {
 } from "../lib/newSessionDefaults";
 import { getRecapModeDescription } from "../lib/recapModes";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
-import { shouldShowProjectQueueAffordance } from "../lib/projectQueueVisibility";
+import {
+  serverSupportsProjectQueue,
+  shouldShowProjectQueueAffordance,
+} from "../lib/projectQueueVisibility";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import {
@@ -452,6 +455,7 @@ export function NewSessionForm({
 
   // Server version for voiceBackends advertisement
   const { version: versionInfo } = useVersion();
+  const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const { hasBrowserXaiSttApiKey } = useBrowserXaiSttApiKey();
 
   // Toast for error messages
@@ -661,11 +665,13 @@ export function NewSessionForm({
   const projectQueueItemCount = projectQueueTargetProjectId
     ? (projectQueues.queuesByProject[projectQueueTargetProjectId]?.length ?? 0)
     : 0;
-  const showProjectQueueAction = shouldShowProjectQueueAffordance({
-    projectId: projectQueueTargetProjectId,
-    activeProjectSessionIds,
-    projectQueueItemCount,
-  });
+  const showProjectQueueAction =
+    supportsProjectQueue &&
+    shouldShowProjectQueueAffordance({
+      projectId: projectQueueTargetProjectId,
+      activeProjectSessionIds,
+      projectQueueItemCount,
+    });
   const isDetachedProject =
     !hasCustomProjectPath && currentProjectSelection === null;
   const projectSummaryTitle =
@@ -1130,7 +1136,8 @@ export function NewSessionForm({
     trimmedProjectInput: string,
   ): Promise<string | null> => {
     let resolvedProjectId =
-      trimmedProjectInput && currentProjectSelection?.path === trimmedProjectInput
+      trimmedProjectInput &&
+      currentProjectSelection?.path === trimmedProjectInput
         ? currentProjectSelection.id
         : (findProjectByInput(projects, trimmedProjectInput)?.id ?? null);
 

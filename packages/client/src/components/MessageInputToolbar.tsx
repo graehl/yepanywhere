@@ -47,6 +47,7 @@ import {
 } from "../lib/messageAge";
 import { normalizeProviderKey } from "../lib/modelIndicatorText";
 import { getPermissionModeOptions } from "../lib/permissionModes";
+import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import {
   SESSION_ISEARCH_GUIDE_EVENT,
   type SessionIsearchGuideState,
@@ -1912,6 +1913,7 @@ export function MessageInputToolbar({
     setSpeechSmartTurnSettings,
   } = useModelSettings();
   const { version: versionInfo } = useVersion();
+  const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const { providers } = useProviders();
   const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
   const renderMode = useOptionalRenderModeContext();
@@ -2485,13 +2487,14 @@ export function MessageInputToolbar({
               alternate: sendAlternate,
             }
           : null,
-        projectQueue: onProjectQueue
-          ? {
-              onProjectQueue,
-              canSend,
-              tooltip: t("toolbarProjectQueueTooltip"),
-            }
-          : null,
+        projectQueue:
+          supportsProjectQueue && onProjectQueue
+            ? {
+                onProjectQueue,
+                canSend,
+                tooltip: t("toolbarProjectQueueTooltip"),
+              }
+            : null,
       }}
     />
   );

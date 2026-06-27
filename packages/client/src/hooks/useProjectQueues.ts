@@ -6,6 +6,8 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import { activityBus } from "../lib/activityBus";
+import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
+import { useVersion } from "./useVersion";
 
 export interface UseProjectQueuesResult {
   queuesByProject: Record<string, ProjectQueueItemSummary[]>;
@@ -41,6 +43,8 @@ function flattenQueues(
 export function useProjectQueues(
   projectIds: readonly string[],
 ): UseProjectQueuesResult {
+  const { version } = useVersion();
+  const enabled = serverSupportsProjectQueue(version);
   const normalizedProjectIds = useMemo(
     () => uniqueProjectIds(projectIds),
     [projectIds],
@@ -61,7 +65,7 @@ export function useProjectQueues(
 
   const fetchQueues = useCallback(async () => {
     const ids = projectIdsRef.current;
-    if (ids.length === 0) {
+    if (!enabled || ids.length === 0) {
       setQueuesByProject({});
       setError(null);
       setLoading(false);
@@ -86,7 +90,7 @@ export function useProjectQueues(
       hasResolvedInitialFetchRef.current = true;
       setLoading(false);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     hasResolvedInitialFetchRef.current = false;
@@ -94,6 +98,7 @@ export function useProjectQueues(
   }, [fetchQueues, projectIdsKey]);
 
   useEffect(() => {
+    if (!enabled) return;
     const handleQueueChanged = (event: ProjectQueueChangedEvent) => {
       if (!projectIdsRef.current.includes(event.projectId)) return;
       setQueuesByProject((current) => ({
@@ -117,7 +122,7 @@ export function useProjectQueues(
       unsubscribeReconnect();
       unsubscribeRefresh();
     };
-  }, [fetchQueues]);
+  }, [enabled, fetchQueues]);
 
   const updateItem = useCallback(
     async (
@@ -181,7 +186,10 @@ export function useProjectQueues(
     }
   }, []);
 
-  const items = useMemo(() => flattenQueues(queuesByProject), [queuesByProject]);
+  const items = useMemo(
+    () => flattenQueues(queuesByProject),
+    [queuesByProject],
+  );
 
   return {
     queuesByProject,

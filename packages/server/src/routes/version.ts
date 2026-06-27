@@ -217,7 +217,7 @@ export interface VersionInfo {
 export const RESUME_PROTOCOL_VERSION = 3;
 
 /** Base capabilities always advertised. */
-const BASE_CAPABILITIES = ["git-status"];
+const BASE_CAPABILITIES = ["git-status", "projectQueue"];
 
 export type DeviceBridgeState =
   | "available"

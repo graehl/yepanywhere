@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { shouldShowProjectQueueAffordance } from "../projectQueueVisibility";
+import {
+  PROJECT_QUEUE_CAPABILITY,
+  serverSupportsProjectQueue,
+  shouldShowProjectQueueAffordance,
+} from "../projectQueueVisibility";
+
+describe("serverSupportsProjectQueue", () => {
+  it("requires the explicit server capability", () => {
+    expect(serverSupportsProjectQueue(null)).toBe(false);
+    expect(serverSupportsProjectQueue({ capabilities: [] })).toBe(false);
+    expect(
+      serverSupportsProjectQueue({
+        capabilities: [PROJECT_QUEUE_CAPABILITY],
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("shouldShowProjectQueueAffordance", () => {
   it("hides without a known project", () => {

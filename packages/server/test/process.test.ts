@@ -1790,6 +1790,71 @@ describe("Process", () => {
       await process.abort();
     });
 
+    it("promotes patient deferred messages one per boundary, not all at once", async () => {
+      const controller = createControllableIterator();
+      const queue = new MessageQueue();
+      const process = new Process(controller.iterator, {
+        projectPath: "/test",
+        projectId: "proj-1" as UrlProjectId,
+        sessionId: "sess-1",
+        provider: "claude",
+        idleTimeoutMs: 100,
+        queue,
+      });
+
+      process.deferMessage(
+        {
+          text: "first patient",
+          tempId: "temp-1",
+          metadata: { deliveryIntent: "patient" },
+        },
+        { promoteIfReady: true },
+      );
+      process.deferMessage(
+        {
+          text: "second patient",
+          tempId: "temp-2",
+          metadata: { deliveryIntent: "patient" },
+        },
+        { promoteIfReady: true },
+      );
+
+      // Move to a verified-idle boundary so the patient path can run.
+      controller.push({ type: "result", session_id: "sess-1" });
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+      expect(process.getDeferredQueueSummary()).toHaveLength(2);
+
+      // First boundary: exactly one message is promoted, delivered verbatim
+      // (no `--------` join), with the second still deferred.
+      expect(
+        process.promoteEligiblePatientDeferredMessages({
+          quietSinceMs: Date.now() - 30_000,
+        }),
+      ).toMatchObject({ promoted: true });
+      expect(process.state.type).toBe("in-turn");
+      expect(process.getDeferredQueueSummary()).toMatchObject([
+        { tempId: "temp-2", content: "second patient" },
+      ]);
+      const firstTurn = await queue[Symbol.asyncIterator]().next();
+      expect(firstTurn.value?.message.content).toBe("first patient");
+
+      // That turn completes -> idle again -> the second promotes on its own
+      // boundary, again verbatim.
+      controller.push({ type: "result", session_id: "sess-1" });
+      await waitFor(() => expect(process.state.type).toBe("idle"));
+      expect(
+        process.promoteEligiblePatientDeferredMessages({
+          quietSinceMs: Date.now() - 30_000,
+        }),
+      ).toMatchObject({ promoted: true });
+      expect(process.getDeferredQueueSummary()).toEqual([]);
+      const secondTurn = await queue[Symbol.asyncIterator]().next();
+      expect(secondTurn.value?.message.content).toBe("second patient");
+
+      controller.finish();
+      await process.abort();
+    });
+
     it("promotes one verbatim deferred turn per delivery boundary", async () => {
       const controller = createControllableIterator();
       const queue = new MessageQueue();

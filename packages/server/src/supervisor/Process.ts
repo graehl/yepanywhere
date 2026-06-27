@@ -3259,9 +3259,15 @@ export class Process {
 
   /**
    * Promote patient deferred entries whose own patience window has elapsed
-   * since the session became verifiably quiet. Entries still waiting report
-   * the shortest remaining wait so the caller can schedule a precise
-   * re-check instead of polling.
+   * since the session became verifiably quiet. Only the leading join group is
+   * promoted per call — one verbatim provider turn when the batch window is 0
+   * (the common case). Bursting every ripe entry in a single pass would let the
+   * provider queue's iterator re-splice them into one `--------`-joined turn,
+   * defeating the batch-window setting; instead each promoted turn flips the
+   * process back in-turn, and the Supervisor re-arms this check on the next
+   * fresh idle boundary so the rest deliver one-per-"fully done" boundary (see
+   * observeProcessEvents). Entries still waiting report the shortest remaining
+   * wait so the caller can schedule a precise re-check instead of polling.
    */
   promoteEligiblePatientDeferredMessages(options: {
     /** Server-clock ms when the current verified-quiet period began. */
@@ -3301,42 +3307,40 @@ export class Process {
       return { promoted: false, nextPatienceMsRemaining };
     }
 
-    // Partition the eligible entries into join groups (compose-time gaps
-    // within the window). With the default window of 0 every entry is its own
-    // verbatim provider message. All groups are queued in this same pass —
-    // unlike the after-turn path — so quiet-window scheduling is unchanged.
+    // Promote only the leading join group this pass. Compose-time gaps within
+    // the window join into one turn; with the default window of 0 that is a
+    // single verbatim provider message. The remaining ripe entries are left in
+    // the queue and delivered one-per-boundary: queuePreparedMessage flips the
+    // process back in-turn for this turn, and when it finishes the Supervisor
+    // re-arms this check on the fresh idle boundary (observeProcessEvents). That
+    // is what makes "fully done" + "never batch" pop one message at a time.
     const { joinWindowSeconds } = this.resolveDeferredDelivery();
-    const promotedEntries = new Set<DeferredQueueEntry>();
-    let rest = eligible;
-    while (rest.length > 0) {
-      const group = this.leadingJoinGroup(rest, joinWindowSeconds);
-      rest = rest.slice(group.length);
-      const anchors = this.deferredComposeAnchors(group);
-      const providerMessages = group.map((entry, index) =>
-        this.prepareProviderMessage(entry.message, anchors[index]),
-      );
-      const providerTurn =
-        providerMessages.length === 1
-          ? providerMessages[0]!
-          : this.concatMessages(providerMessages);
-      const result = this.queuePreparedMessage(providerTurn, {
-        allowSteer: false,
-      });
-      if (!result.success) break;
-      for (const entry of group) {
-        promotedEntries.add(entry);
-      }
-    }
+    const group = this.leadingJoinGroup(eligible, joinWindowSeconds);
+    const anchors = this.deferredComposeAnchors(group);
+    const providerMessages = group.map((entry, index) =>
+      this.prepareProviderMessage(entry.message, anchors[index]),
+    );
+    const providerTurn =
+      providerMessages.length === 1
+        ? providerMessages[0]!
+        : this.concatMessages(providerMessages);
+    const result = this.queuePreparedMessage(providerTurn, {
+      allowSteer: false,
+    });
 
-    if (promotedEntries.size === 0) {
+    if (!result.success) {
       this.emitDeferredQueueChange("queued", eligible[0]?.message.tempId);
       return { promoted: false, nextPatienceMsRemaining };
     }
 
+    const promotedEntries = new Set<DeferredQueueEntry>(group);
     this.deferredQueue = this.deferredQueue.filter(
       (entry) => !promotedEntries.has(entry),
     );
-    this.emitDeferredQueueChange("promoted");
+    this.emitDeferredQueueChange(
+      "promoted",
+      group.length === 1 ? group[0]!.message.tempId : undefined,
+    );
     return { promoted: true, nextPatienceMsRemaining };
   }
 

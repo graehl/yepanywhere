@@ -1,6 +1,7 @@
 import type {
   ProjectQueueChangedEvent,
   ProjectQueueItemSummary,
+  UpdateProjectQueueItemRequest,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
@@ -13,6 +14,11 @@ export interface UseProjectQueuesResult {
   error: Error | null;
   mutatingItemId: string | null;
   refetch: () => Promise<void>;
+  updateItem: (
+    projectId: string,
+    itemId: string,
+    request: UpdateProjectQueueItemRequest,
+  ) => Promise<void>;
   deleteItem: (projectId: string, itemId: string) => Promise<void>;
   retryItem: (projectId: string, itemId: string) => Promise<void>;
 }
@@ -113,6 +119,34 @@ export function useProjectQueues(
     };
   }, [fetchQueues]);
 
+  const updateItem = useCallback(
+    async (
+      projectId: string,
+      itemId: string,
+      request: UpdateProjectQueueItemRequest,
+    ) => {
+      setMutatingItemId(itemId);
+      setError(null);
+      try {
+        const response = await api.updateProjectQueueItem(
+          projectId,
+          itemId,
+          request,
+        );
+        setQueuesByProject((current) => ({
+          ...current,
+          [response.queue.projectId]: response.queue.items,
+        }));
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error(String(err)));
+        throw err;
+      } finally {
+        setMutatingItemId(null);
+      }
+    },
+    [],
+  );
+
   const deleteItem = useCallback(async (projectId: string, itemId: string) => {
     setMutatingItemId(itemId);
     setError(null);
@@ -156,6 +190,7 @@ export function useProjectQueues(
     error,
     mutatingItemId,
     refetch: fetchQueues,
+    updateItem,
     deleteItem,
     retryItem,
   };

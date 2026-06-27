@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import type { ProjectQueueItemSummary } from "@yep-anywhere/shared";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
@@ -43,6 +49,7 @@ function renderSection(
   handlers = {
     onDeleteItem: vi.fn(),
     onRetryItem: vi.fn(),
+    onUpdateItem: vi.fn(),
   },
 ) {
   render(
@@ -56,6 +63,7 @@ function renderSection(
           mutatingItemId={null}
           onDeleteItem={handlers.onDeleteItem}
           onRetryItem={handlers.onRetryItem}
+          onUpdateItem={handlers.onUpdateItem}
         />
       </MemoryRouter>
     </I18nProvider>,
@@ -96,6 +104,24 @@ describe("ProjectQueueSection", () => {
     expect(handlers.onRetryItem).toHaveBeenCalledWith("project-1", "2");
   });
 
+  it("edits queued item text", async () => {
+    const handlers = renderSection([makeItem("4")]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByLabelText("Project Queue message"), {
+      target: { value: "Edited queued work" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(handlers.onUpdateItem).toHaveBeenCalledWith(
+        "project-1",
+        "4",
+        { text: "Edited queued work" },
+      ),
+    );
+  });
+
   it("disables cancellation while dispatching", () => {
     renderSection([makeItem("3", "dispatching")]);
 
@@ -103,6 +129,7 @@ describe("ProjectQueueSection", () => {
       (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     expect(screen.getByText("Sending")).toBeTruthy();
   });
 });

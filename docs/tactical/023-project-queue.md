@@ -15,6 +15,7 @@ Progress:
 - [x] Add `useProjectQueues` and focused projects-page display tests.
 - [x] Add an optional toolbar affordance, hidden by default.
 - [x] Add UI visibility-default tests for the toolbar affordance.
+- [x] Add in-place editing for queued/failed projects-page queue items.
 
 Latest update:
 
@@ -46,6 +47,10 @@ Latest update:
   project queue, and new-session forms can queue text-only new-session starts
   when a real project is selected or typed. New-session attachments remain on
   the normal start path until there is durable pre-session attachment staging.
+- 2026-06-27: Landed the projects-page edit slice: `useProjectQueues` now
+  exposes the server `PATCH` route, and queued/failed Project Queue rows can
+  switch into a compact editor that saves updated text while preserving the
+  rest of the stored message payload. Dispatching rows stay read-only.
 
 ## Context
 
@@ -357,7 +362,7 @@ Configuration split:
 - [x] Support cancel/delete and retry.
 - [x] Keep copy i18n-ready through `useI18n().t(...)`.
 - [x] Add focused hook, component, and page tests.
-- [ ] Support in-place edit for queued/failed item text.
+- [x] Support in-place edit for queued/failed item text.
 - [ ] Verify on a narrow viewport.
 
 ### 5. Composer And New-Session Entry Points

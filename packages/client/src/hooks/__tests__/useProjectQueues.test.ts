@@ -25,6 +25,7 @@ const busMock = vi.hoisted(() => {
 
 const apiMock = vi.hoisted(() => ({
   getProjectQueue: vi.fn(),
+  updateProjectQueueItem: vi.fn(),
   deleteProjectQueueItem: vi.fn(),
   retryProjectQueueItem: vi.fn(),
 }));
@@ -64,6 +65,7 @@ beforeEach(() => {
   busMock.reset();
   busMock.on.mockClear();
   apiMock.getProjectQueue.mockReset();
+  apiMock.updateProjectQueueItem.mockReset();
   apiMock.deleteProjectQueueItem.mockReset();
   apiMock.retryProjectQueueItem.mockReset();
 });
@@ -155,5 +157,43 @@ describe("useProjectQueues", () => {
 
     expect(apiMock.retryProjectQueueItem).toHaveBeenCalledWith("project-1", "2");
     expect(result.current.items.map((item) => item.id)).toEqual(["2"]);
+  });
+
+  it("replaces state from update responses", async () => {
+    apiMock.getProjectQueue.mockResolvedValue({
+      projectId: PROJECT_ID,
+      items: [makeItem("1")],
+    });
+    apiMock.updateProjectQueueItem.mockResolvedValue({
+      item: makeItem("1", PROJECT_ID),
+      queue: {
+        projectId: PROJECT_ID,
+        items: [
+          {
+            ...makeItem("1", PROJECT_ID),
+            messagePreview: "Edited message",
+            message: { text: "Edited message" },
+          },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => useProjectQueues(["project-1"]));
+
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    await act(async () => {
+      await result.current.updateItem("project-1", "1", {
+        message: { text: "Edited message" },
+      });
+    });
+
+    expect(apiMock.updateProjectQueueItem).toHaveBeenCalledWith(
+      "project-1",
+      "1",
+      { message: { text: "Edited message" } },
+    );
+    expect(result.current.items).toMatchObject([
+      { id: "1", messagePreview: "Edited message" },
+    ]);
   });
 });

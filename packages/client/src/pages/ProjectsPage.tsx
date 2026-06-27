@@ -1,3 +1,4 @@
+import type { ProjectQueueMessage } from "@yep-anywhere/shared";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -144,6 +145,18 @@ export function ProjectsPage() {
     }
   };
 
+  const handleUpdateQueueItem = async (
+    projectId: string,
+    itemId: string,
+    message: ProjectQueueMessage,
+  ) => {
+    try {
+      await projectQueues.updateItem(projectId, itemId, { message });
+    } catch {
+      // The hook exposes the error in the queue section.
+    }
+  };
+
   if (loading) return <div className="loading">{t("projectsLoading")}</div>;
   if (error) {
     return (
@@ -238,6 +251,7 @@ export function ProjectsPage() {
             basePath={basePath}
             onDeleteItem={handleDeleteQueueItem}
             onRetryItem={handleRetryQueueItem}
+            onUpdateItem={handleUpdateQueueItem}
           />
 
           {isEmpty ? (

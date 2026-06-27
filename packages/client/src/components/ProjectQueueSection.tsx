@@ -1,4 +1,8 @@
-import type { ProjectQueueItemSummary } from "@yep-anywhere/shared";
+import type {
+  ProjectQueueItemSummary,
+  ProjectQueueMessage,
+} from "@yep-anywhere/shared";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "../i18n";
 import type { Project } from "../types";
@@ -14,6 +18,11 @@ interface ProjectQueueSectionProps {
   basePath?: string;
   onDeleteItem: (projectId: string, itemId: string) => void;
   onRetryItem: (projectId: string, itemId: string) => void;
+  onUpdateItem: (
+    projectId: string,
+    itemId: string,
+    message: ProjectQueueMessage,
+  ) => Promise<void> | void;
 }
 
 function formatRelativeTime(timestamp: string, t: Translate): string {
@@ -62,10 +71,20 @@ export function ProjectQueueSection({
   basePath = "",
   onDeleteItem,
   onRetryItem,
+  onUpdateItem,
 }: ProjectQueueSectionProps) {
   const { t } = useI18n();
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
   const projectById = new Map(projects.map((project) => [project.id, project]));
   const hasContent = items.length > 0;
+
+  useEffect(() => {
+    if (!editingItemId) return;
+    if (items.some((item) => item.id === editingItemId)) return;
+    setEditingItemId(null);
+    setEditText("");
+  }, [editingItemId, items]);
 
   if (!hasContent && !error) return null;
 
@@ -95,6 +114,24 @@ export function ProjectQueueSection({
             const project = projectById.get(item.projectId);
             const isMutating = mutatingItemId === item.id;
             const isDispatching = item.status === "dispatching";
+            const isEditing = editingItemId === item.id;
+            const canEdit = item.status === "queued" || item.status === "failed";
+            const canSaveEdit =
+              !isMutating &&
+              (editText.trim().length > 0 ||
+                (item.message.attachments?.length ?? 0) > 0);
+            const handleEditSubmit = async (
+              event: FormEvent<HTMLFormElement>,
+            ) => {
+              event.preventDefault();
+              if (!canSaveEdit) return;
+              await onUpdateItem(item.projectId, item.id, {
+                ...item.message,
+                text: editText,
+              });
+              setEditingItemId(null);
+              setEditText("");
+            };
             return (
               <li
                 key={item.id}
@@ -120,9 +157,43 @@ export function ProjectQueueSection({
                       {formatRelativeTime(item.createdAt, t)}
                     </span>
                   </div>
-                  <div className="project-queue-item__preview">
-                    {item.messagePreview || t("projectQueueAttachmentOnly")}
-                  </div>
+                  {isEditing ? (
+                    <form
+                      className="project-queue-item__edit"
+                      onSubmit={handleEditSubmit}
+                    >
+                      <textarea
+                        value={editText}
+                        onChange={(event) => setEditText(event.target.value)}
+                        aria-label={t("projectQueueEditMessageLabel")}
+                        disabled={isMutating}
+                        rows={3}
+                      />
+                      <div className="project-queue-item__edit-actions">
+                        <button
+                          type="submit"
+                          disabled={!canSaveEdit}
+                          className="project-queue-item__save"
+                        >
+                          {t("projectQueueSave")}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isMutating}
+                          onClick={() => {
+                            setEditingItemId(null);
+                            setEditText("");
+                          }}
+                        >
+                          {t("projectQueueDiscard")}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="project-queue-item__preview">
+                      {item.messagePreview || t("projectQueueAttachmentOnly")}
+                    </div>
+                  )}
                   {item.lastError && (
                     <div className="project-queue-item__error">
                       {item.lastError}
@@ -137,13 +208,25 @@ export function ProjectQueueSection({
                     {statusLabel(item.status, t)}
                   </span>
                   <div className="project-queue-item__actions">
-                    {item.status === "failed" && (
+                    {item.status === "failed" && !isEditing && (
                       <button
                         type="button"
                         onClick={() => onRetryItem(item.projectId, item.id)}
                         disabled={isMutating}
                       >
                         {t("projectQueueRetry")}
+                      </button>
+                    )}
+                    {canEdit && !isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingItemId(item.id);
+                          setEditText(item.message.text);
+                        }}
+                        disabled={isMutating}
+                      >
+                        {t("projectQueueEdit")}
                       </button>
                     )}
                     <button

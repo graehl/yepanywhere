@@ -54,6 +54,7 @@ vi.mock("../../hooks/useProjectQueues", () => ({
     error: null,
     mutatingItemId: null,
     refetch: vi.fn(),
+    updateItem: vi.fn(),
     deleteItem: vi.fn(),
     retryItem: vi.fn(),
   }),

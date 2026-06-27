@@ -1129,6 +1129,39 @@ textarea {
   -webkit-line-clamp: 2;
 }
 
+.project-queue-item__edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: 0.35rem;
+}
+
+.project-queue-item__edit textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 4.75rem;
+  padding: 0.45rem 0.55rem;
+  resize: vertical;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+}
+
+.project-queue-item__edit textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--provider-codex) 35%, transparent);
+  outline-offset: 1px;
+}
+
+.project-queue-item__edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
 .project-queue-item__side {
   display: flex;
   align-items: center;
@@ -1160,7 +1193,8 @@ textarea {
   gap: var(--space-1);
 }
 
-.project-queue-item__actions button {
+.project-queue-item__actions button,
+.project-queue-item__edit-actions button {
   min-height: 28px;
   padding: 0.25rem 0.55rem;
   border: 1px solid var(--border-input);
@@ -1171,13 +1205,15 @@ textarea {
   cursor: pointer;
 }
 
-.project-queue-item__actions button:hover:not(:disabled) {
+.project-queue-item__actions button:hover:not(:disabled),
+.project-queue-item__edit-actions button:hover:not(:disabled) {
   border-color: var(--text-muted);
   background: var(--bg-hover);
   color: var(--text-primary);
 }
 
-.project-queue-item__actions button:disabled {
+.project-queue-item__actions button:disabled,
+.project-queue-item__edit-actions button:disabled {
   cursor: default;
   opacity: 0.45;
 }

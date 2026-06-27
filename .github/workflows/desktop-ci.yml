@@ -176,7 +176,7 @@ jobs:
           args: >-
             ${{ matrix.args }}
             ${{ matrix.platform == 'macos-latest' && env.HAS_MACOS_SIGNING != 'true' && '--no-sign' || '' }}
-            ${{ env.HAS_UPDATER_KEY == 'true' && '--config ''{"bundle":{"createUpdaterArtifacts":"v2"}}''' || '' }}
+            ${{ env.HAS_UPDATER_KEY == 'true' && '--config ''{"bundle":{"createUpdaterArtifacts":true}}''' || '' }}
             ${{ matrix.platform == 'windows-latest' && secrets.AZURE_CLIENT_SECRET != '' && '--config ''{"bundle":{"windows":{"signCommand":"trusted-signing-cli -e https://eus.codesigning.azure.net -a kylegraehl -c jstorrent-profile %1"}}}''' || '' }}
 
       # --- Diagnose flaky DMG bundling ---

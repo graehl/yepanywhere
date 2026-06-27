@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.5] - 2026-06-27
+
+### Fixed
+- Task and plan lists no longer render an undersized in-progress indicator.
+- Patient message queue no longer merges multiple queued messages into a single turn.
+
+### Changed
+- Release builds are pinned to the macOS 26 CI runner image for reproducible signing and notarization.
+
 ## [0.0.4] - 2026-06-27
 
 ### Added

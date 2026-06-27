@@ -545,10 +545,22 @@ function parsePowerShellGetContentCommand(
     return null;
   }
 
-  if (
-    tokens.some((token) => token === "|" || token === "&&" || token === ";")
-  ) {
+  // Compound commands aren't simple reads. A single pipe into Select-Object is
+  // handled below (Codex emits `Get-Content … | Select-Object -Skip -First` for
+  // partial reads, the PowerShell analogue of `sed -n`).
+  if (tokens.some((token) => token === "&&" || token === ";")) {
     return null;
+  }
+
+  const pipeIndex = tokens.indexOf("|");
+  const getContentTokens =
+    pipeIndex === -1 ? tokens : tokens.slice(0, pipeIndex);
+  let selectWindow: { skip: number; first?: number } | null = null;
+  if (pipeIndex !== -1) {
+    selectWindow = parseSelectObjectWindow(tokens.slice(pipeIndex + 1));
+    if (!selectWindow) {
+      return null;
+    }
   }
 
   const flagsWithValue = new Set([
@@ -565,13 +577,13 @@ function parsePowerShellGetContentCommand(
   let filePath = "";
   let totalCount: number | undefined;
 
-  for (let i = 1; i < tokens.length; i++) {
-    const token = tokens[i];
+  for (let i = 1; i < getContentTokens.length; i++) {
+    const token = getContentTokens[i];
     if (!token) continue;
     const normalized = token.toLowerCase();
 
     if (normalized === "-path" || normalized === "-literalpath") {
-      const next = tokens[i + 1];
+      const next = getContentTokens[i + 1];
       if (!next || next.startsWith("-")) {
         return null;
       }
@@ -591,7 +603,7 @@ function parsePowerShellGetContentCommand(
     }
 
     if (normalized === "-totalcount" || normalized === "-head") {
-      const next = tokens[i + 1];
+      const next = getContentTokens[i + 1];
       const parsed = next ? Number.parseInt(next, 10) : Number.NaN;
       if (!Number.isFinite(parsed) || parsed < 0) {
         return null;
@@ -638,12 +650,87 @@ function parsePowerShellGetContentCommand(
     return null;
   }
 
+  if (selectWindow) {
+    const startLine = selectWindow.skip + 1;
+    return {
+      filePath,
+      startLine,
+      ...(selectWindow.first !== undefined && selectWindow.first > 0
+        ? { endLine: selectWindow.skip + selectWindow.first }
+        : {}),
+      stripLineNumbers: false,
+    };
+  }
+
   return {
     filePath,
     ...(totalCount !== undefined && totalCount > 0
       ? { startLine: 1, endLine: totalCount }
       : {}),
     stripLineNumbers: false,
+  };
+}
+
+// Parses the tail of a `Get-Content … | Select-Object …` pipeline. Only the
+// line-window flags `-Skip`/`-First` (and their inline `-Skip:N` forms) are
+// recognized; any other token disqualifies the pipeline so we don't mislabel a
+// real transform as a read.
+function parseSelectObjectWindow(
+  tokens: string[],
+): { skip: number; first?: number } | null {
+  if (tokens[0]?.toLowerCase() !== "select-object") {
+    return null;
+  }
+
+  let skip: number | undefined;
+  let first: number | undefined;
+
+  for (let i = 1; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (!token) continue;
+    const normalized = token.toLowerCase();
+
+    if (normalized === "-skip" || normalized === "-first") {
+      const next = tokens[i + 1];
+      const parsed = next ? Number.parseInt(next, 10) : Number.NaN;
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return null;
+      }
+      if (normalized === "-skip") {
+        skip = parsed;
+      } else {
+        first = parsed;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (normalized.startsWith("-skip:") || normalized.startsWith("-first:")) {
+      const prefixLength = normalized.startsWith("-skip:")
+        ? "-skip:".length
+        : "-first:".length;
+      const parsed = Number.parseInt(token.slice(prefixLength), 10);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return null;
+      }
+      if (normalized.startsWith("-skip:")) {
+        skip = parsed;
+      } else {
+        first = parsed;
+      }
+      continue;
+    }
+
+    return null;
+  }
+
+  if (skip === undefined && first === undefined) {
+    return null;
+  }
+
+  return {
+    skip: skip ?? 0,
+    ...(first !== undefined ? { first } : {}),
   };
 }
 

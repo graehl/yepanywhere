@@ -100,7 +100,15 @@ export interface ProjectQueueChangedEvent {
   type: "project-queue-changed";
   projectId: UrlProjectId;
   items: ProjectQueueItemSummary[];
-  reason: "created" | "updated" | "deleted" | "retry";
+  reason:
+    | "created"
+    | "updated"
+    | "deleted"
+    | "retry"
+    | "dispatching"
+    | "released"
+    | "promoted"
+    | "failed";
   itemId?: string;
   timestamp: string;
 }

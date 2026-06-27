@@ -301,6 +301,21 @@ function summarizeItem(item: ProjectQueueItem): ProjectQueueItemSummary {
   };
 }
 
+function cloneItem(item: ProjectQueueItem): ProjectQueueItem {
+  return {
+    ...item,
+    target: { ...item.target },
+    message: {
+      ...item.message,
+      ...(item.message.attachments
+        ? { attachments: item.message.attachments.map((file) => ({ ...file })) }
+        : {}),
+      ...(item.message.metadata ? { metadata: { ...item.message.metadata } } : {}),
+    },
+    ...(item.createdFrom ? { createdFrom: { ...item.createdFrom } } : {}),
+  };
+}
+
 export class ProjectQueueService {
   private dataDir: string;
   private filePath: string;
@@ -365,6 +380,29 @@ export class ProjectQueueService {
   listAll(): ProjectQueueItemSummary[] {
     this.ensureInitialized();
     return this.state.items.map(summarizeItem);
+  }
+
+  getProjectIdsWithDispatchableItems(): UrlProjectId[] {
+    this.ensureInitialized();
+    const projectIds = new Set<UrlProjectId>();
+    for (const item of this.state.items) {
+      if (projectIds.has(item.projectId)) continue;
+      const first = this.state.items.find(
+        (candidate) => candidate.projectId === item.projectId,
+      );
+      if (first?.status === "queued") {
+        projectIds.add(item.projectId);
+      }
+    }
+    return [...projectIds];
+  }
+
+  hasDispatchableItem(projectId: UrlProjectId): boolean {
+    this.ensureInitialized();
+    return (
+      this.state.items.find((item) => item.projectId === projectId)?.status ===
+      "queued"
+    );
   }
 
   async createItem(params: {
@@ -432,6 +470,11 @@ export class ProjectQueueService {
       this.ensureInitialized();
       const index = this.findProjectItemIndex(projectId, itemId);
       if (index === -1) return false;
+      if (this.state.items[index]?.status === "dispatching") {
+        throw new ProjectQueueValidationError(
+          "Cannot delete an item while it is dispatching",
+        );
+      }
       this.state.items.splice(index, 1);
       await this.save();
       this.emitChange(projectId, "deleted", itemId);
@@ -448,6 +491,11 @@ export class ProjectQueueService {
       const index = this.findProjectItemIndex(projectId, itemId);
       if (index === -1) return null;
       const existing = this.state.items[index]!;
+      if (existing.status === "dispatching") {
+        throw new ProjectQueueValidationError(
+          "Cannot retry an item while it is dispatching",
+        );
+      }
       const updated: ProjectQueueItem = {
         ...existing,
         status: "queued",
@@ -457,6 +505,95 @@ export class ProjectQueueService {
       this.state.items[index] = updated;
       await this.save();
       this.emitChange(projectId, "retry", itemId);
+      return summarizeItem(updated);
+    });
+  }
+
+  async claimNextDispatchableItem(
+    projectId: UrlProjectId,
+  ): Promise<ProjectQueueItem | null> {
+    return this.withMutation(async () => {
+      this.ensureInitialized();
+      const index = this.state.items.findIndex(
+        (item) => item.projectId === projectId,
+      );
+      if (index === -1) return null;
+      const existing = this.state.items[index]!;
+      if (existing.status !== "queued") return null;
+      const now = new Date().toISOString();
+      const updated: ProjectQueueItem = {
+        ...existing,
+        status: "dispatching",
+        lastError: undefined,
+        lastAttemptAt: now,
+        updatedAt: now,
+      };
+      this.state.items[index] = updated;
+      await this.save();
+      this.emitChange(projectId, "dispatching", updated.id);
+      return cloneItem(updated);
+    });
+  }
+
+  async releaseDispatchingItem(
+    projectId: UrlProjectId,
+    itemId: string,
+  ): Promise<ProjectQueueItemSummary | null> {
+    return this.withMutation(async () => {
+      this.ensureInitialized();
+      const index = this.findProjectItemIndex(projectId, itemId);
+      if (index === -1) return null;
+      const existing = this.state.items[index]!;
+      if (existing.status !== "dispatching") return null;
+      const updated: ProjectQueueItem = {
+        ...existing,
+        status: "queued",
+        lastError: undefined,
+        updatedAt: new Date().toISOString(),
+      };
+      this.state.items[index] = updated;
+      await this.save();
+      this.emitChange(projectId, "released", itemId);
+      return summarizeItem(updated);
+    });
+  }
+
+  async completeDispatch(
+    projectId: UrlProjectId,
+    itemId: string,
+  ): Promise<boolean> {
+    return this.withMutation(async () => {
+      this.ensureInitialized();
+      const index = this.findProjectItemIndex(projectId, itemId);
+      if (index === -1) return false;
+      this.state.items.splice(index, 1);
+      await this.save();
+      this.emitChange(projectId, "promoted", itemId);
+      return true;
+    });
+  }
+
+  async failDispatch(
+    projectId: UrlProjectId,
+    itemId: string,
+    error: string,
+  ): Promise<ProjectQueueItemSummary | null> {
+    return this.withMutation(async () => {
+      this.ensureInitialized();
+      const index = this.findProjectItemIndex(projectId, itemId);
+      if (index === -1) return null;
+      const existing = this.state.items[index]!;
+      const now = new Date().toISOString();
+      const updated: ProjectQueueItem = {
+        ...existing,
+        status: "failed",
+        lastError: error,
+        lastAttemptAt: now,
+        updatedAt: now,
+      };
+      this.state.items[index] = updated;
+      await this.save();
+      this.emitChange(projectId, "failed", itemId);
       return summarizeItem(updated);
     });
   }

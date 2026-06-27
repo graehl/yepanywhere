@@ -180,4 +180,38 @@ describe("ProjectQueueService", () => {
     expect(service.listProject(projectId).items.map((item) => item.message.text))
       .toEqual(["message 0", "message 1", "message 2", "message 3", "message 4"]);
   });
+
+  it("guards dispatching items from user-facing mutations", async () => {
+    const service = await createService();
+    const created = await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "dispatch me" },
+      },
+    });
+
+    const claimed = await service.claimNextDispatchableItem(projectId);
+
+    expect(claimed?.id).toBe(created.id);
+    expect(service.listProject(projectId).items[0]).toMatchObject({
+      id: created.id,
+      status: "dispatching",
+    });
+    await expect(
+      service.updateItem(projectId, created.id, {
+        message: { text: "changed" },
+      }),
+    ).rejects.toBeInstanceOf(ProjectQueueValidationError);
+    await expect(service.deleteItem(projectId, created.id)).rejects.toBeInstanceOf(
+      ProjectQueueValidationError,
+    );
+    await expect(service.retryItem(projectId, created.id)).rejects.toBeInstanceOf(
+      ProjectQueueValidationError,
+    );
+
+    await service.releaseDispatchingItem(projectId, created.id);
+    expect(service.listProject(projectId).items[0]?.status).toBe("queued");
+  });
 });

@@ -5,7 +5,10 @@ import type {
   AppSession,
   UrlProjectId,
 } from "@yep-anywhere/shared";
-import { DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES } from "@yep-anywhere/shared";
+import {
+  DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
+  buildEffectiveAgentContext,
+} from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { join } from "node:path";
@@ -103,6 +106,7 @@ import { CodexUpdateChecker } from "./services/CodexUpdateChecker.js";
 import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersService.js";
 import type { ModelInfoService } from "./services/ModelInfoService.js";
 import type { NetworkBindingService } from "./services/NetworkBindingService.js";
+import { ProjectQueueScheduler } from "./services/ProjectQueueScheduler.js";
 import type { ProjectQueueService } from "./services/ProjectQueueService.js";
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
@@ -709,6 +713,48 @@ export function createApp(options: AppOptions): AppResult {
         getSessionSummary,
       })
     : undefined;
+
+  if (options.eventBus && options.projectQueueService) {
+    new ProjectQueueScheduler({
+      eventBus: options.eventBus,
+      projectQueueService: options.projectQueueService,
+      supervisor,
+      externalTracker,
+      getGlobalInstructions: () =>
+        buildEffectiveAgentContext({
+          globalInstructions:
+            options.serverSettingsService?.getSetting("globalInstructions"),
+          hints: options.serverSettingsService?.getSetting("agentContextHints"),
+        }),
+      onSessionStarted: async ({ item, process }) => {
+        if (item.target.type !== "new-session") return;
+        const metadata = options.sessionMetadataService;
+        if (!metadata) return;
+
+        const provider = item.target.provider ?? process.provider;
+        if (provider) {
+          await metadata.setProvider(process.sessionId, provider);
+        }
+        if (item.target.executor) {
+          await metadata.setExecutor(process.sessionId, item.target.executor);
+        }
+        if (item.message.text.trim()) {
+          await metadata.setInitialPrompt(process.sessionId, item.message.text);
+        }
+        if (item.target.model) {
+          await metadata.setRequestedModel(process.sessionId, item.target.model);
+        }
+        await metadata.updateMetadata(process.sessionId, {
+          ...(process.promptSuggestionMode !== undefined
+            ? { promptSuggestionMode: process.promptSuggestionMode }
+            : {}),
+          ...(process.recapAfterSeconds !== undefined
+            ? { recapAfterSeconds: process.recapAfterSeconds }
+            : {}),
+        });
+      },
+    });
+  }
 
   // Create PushNotifier if push notifications are enabled
   // This sends push notifications when sessions need user input

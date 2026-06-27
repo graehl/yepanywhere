@@ -42,6 +42,14 @@ export {
   ProjectQueueValidationError,
   type ProjectQueueServiceOptions,
 } from "./ProjectQueueService.js";
+export {
+  ProjectQueueScheduler,
+  type ProjectIdleStatus,
+  type ProjectQueueExternalTracker,
+  type ProjectQueueProcessSnapshot,
+  type ProjectQueueSchedulerOptions,
+  type ProjectQueueSupervisor,
+} from "./ProjectQueueScheduler.js";
 
 export {
   SharingService,

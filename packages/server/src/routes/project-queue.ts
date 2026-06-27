@@ -1,5 +1,6 @@
 import {
   type CreateProjectQueueItemRequest,
+  type ProjectQueueItemSummary,
   type UpdateProjectQueueItemRequest,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
@@ -131,12 +132,20 @@ export function createProjectQueueRoutes(deps: ProjectQueueRoutesDeps): Hono {
       return c.json({ error: resolved.error }, resolved.status);
     }
 
-    const deleted = await deps.projectQueueService.deleteItem(
-      resolved.project.id,
-      c.req.param("itemId"),
-    );
-    if (!deleted) {
-      return c.json({ error: "Project queue item not found" }, 404);
+    let deleted: boolean;
+    try {
+      deleted = await deps.projectQueueService.deleteItem(
+        resolved.project.id,
+        c.req.param("itemId"),
+      );
+      if (!deleted) {
+        return c.json({ error: "Project queue item not found" }, 404);
+      }
+    } catch (error) {
+      if (error instanceof ProjectQueueValidationError) {
+        return c.json(validationError(error.message), 400);
+      }
+      throw error;
     }
     return c.json({
       deleted: true,
@@ -150,12 +159,20 @@ export function createProjectQueueRoutes(deps: ProjectQueueRoutesDeps): Hono {
       return c.json({ error: resolved.error }, resolved.status);
     }
 
-    const item = await deps.projectQueueService.retryItem(
-      resolved.project.id,
-      c.req.param("itemId"),
-    );
-    if (!item) {
-      return c.json({ error: "Project queue item not found" }, 404);
+    let item: ProjectQueueItemSummary | null;
+    try {
+      item = await deps.projectQueueService.retryItem(
+        resolved.project.id,
+        c.req.param("itemId"),
+      );
+      if (!item) {
+        return c.json({ error: "Project queue item not found" }, 404);
+      }
+    } catch (error) {
+      if (error instanceof ProjectQueueValidationError) {
+        return c.json(validationError(error.message), 400);
+      }
+      throw error;
     }
     return c.json({
       item,

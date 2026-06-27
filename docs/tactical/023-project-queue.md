@@ -8,11 +8,12 @@ Progress:
 - [x] Add project-queue CRUD APIs.
 - [x] Add shared API types, client wrappers, activity event type, and focused
       server tests.
-- [ ] Add project-idle promotion logic with bounded scheduling.
+- [x] Add project-idle promotion logic with bounded scheduling.
+- [x] Add focused server tests for idle gating, dispatch handoff, and failure
+      persistence.
 - [ ] Show project queues on the projects page.
 - [ ] Add an optional toolbar affordance, hidden by default.
-- [ ] Add tests for idle gating, projects-page display, and UI visibility
-      defaults.
+- [ ] Add tests for projects-page display and UI visibility defaults.
 
 Latest update:
 
@@ -22,6 +23,15 @@ Latest update:
   CRUD routes are mounted at `/api/projects/:projectId/queue`; mutations emit
   `project-queue-changed`; client API wrappers are available. Idle promotion
   and projects-page UI are still pending.
+- 2026-06-27: Landed the idle-gated promotion slice:
+  `ProjectQueueScheduler` wakes from project-queue, process/session, external
+  ownership, and worker-queue events; uses per-project one-shot grace timers;
+  claims the first queued item only after the project is idle; re-checks idle
+  after claim; dispatches through `Supervisor.resumeSession` or
+  `Supervisor.startSession`; removes successfully handed-off items; and
+  persists failed dispatches at the head of the queue. Projects-page UI,
+  `useProjectQueue`, and hidden-by-default toolbar entry points are still
+  pending.
 
 ## Context
 
@@ -320,12 +330,12 @@ Configuration split:
 
 ### 3. Idle Gate And Promotion
 
-- Add event-driven project-idle evaluation to the server.
-- Reuse existing process, external tracker, worker queue, and deferred-queue
-  signals.
-- Add bounded one-shot scheduling only while queue items exist.
-- Dispatch through existing create/resume/queue paths.
-- Persist failed dispatches instead of dropping items.
+- [x] Add event-driven project-idle evaluation to the server.
+- [x] Reuse existing process, external tracker, worker queue, and
+      deferred-queue signals.
+- [x] Add bounded one-shot scheduling only while queue items exist.
+- [x] Dispatch through existing create/resume paths.
+- [x] Persist failed dispatches instead of dropping items.
 
 ### 4. Projects Page UI
 

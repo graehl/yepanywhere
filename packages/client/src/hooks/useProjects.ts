@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { Project } from "../types";
-import { type SessionStatusEvent, useFileActivity } from "./useFileActivity";
+import { useFileActivity } from "./useFileActivity";
 
 const REFETCH_DEBOUNCE_MS = 500;
 
@@ -141,17 +141,12 @@ export function useProjects() {
     }, REFETCH_DEBOUNCE_MS);
   }, [fetch]);
 
-  // Handle session status changes - refetch to update active counts
-  const handleSessionStatusChange = useCallback(
-    (_event: SessionStatusEvent) => {
-      debouncedRefetch();
-    },
-    [debouncedRefetch],
-  );
-
-  // Subscribe to session status changes
+  // Subscribe to activity that can change live project counts.
   useFileActivity({
-    onSessionStatusChange: handleSessionStatusChange,
+    onProcessStateChange: debouncedRefetch,
+    onSessionStatusChange: debouncedRefetch,
+    onSessionCreated: debouncedRefetch,
+    onReconnect: fetch,
   });
 
   // Cleanup debounce timer

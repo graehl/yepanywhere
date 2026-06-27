@@ -75,6 +75,51 @@ describe("Projects Routes", () => {
     });
   });
 
+  it("enriches single-project responses with live activity counts", async () => {
+    const project = {
+      ...createProject(),
+      id: toUrlProjectId("/tmp/project"),
+    };
+    const routes = createProjectsRoutes({
+      scanner: {
+        getOrCreateProject: vi.fn(async () => project),
+      } as unknown as ProjectScanner,
+      readerFactory: vi.fn(),
+      supervisor: {
+        getAllProcesses: vi.fn(() => [
+          { projectId: project.id },
+          { projectId: project.id },
+          { projectId: toUrlProjectId("/tmp/other") },
+        ]),
+      } as unknown as Parameters<typeof createProjectsRoutes>[0]["supervisor"],
+      externalTracker: {
+        getExternalSessions: vi.fn(() => ["external-1", "external-2"]),
+        getExternalSessionInfoWithUrlId: vi
+          .fn()
+          .mockResolvedValueOnce({
+            projectId: project.id,
+            lastActivity: new Date("2026-03-10T09:47:00.000Z"),
+          })
+          .mockResolvedValueOnce({
+            projectId: toUrlProjectId("/tmp/other"),
+            lastActivity: new Date("2026-03-10T09:48:00.000Z"),
+          }),
+      } as unknown as Parameters<
+        typeof createProjectsRoutes
+      >[0]["externalTracker"],
+    });
+
+    const response = await routes.request(`/${project.id}`);
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    expect(json.project).toMatchObject({
+      id: project.id,
+      activeOwnedCount: 2,
+      activeExternalCount: 1,
+    });
+  });
+
   it("hides a project from YA lists", async () => {
     const project = {
       ...createProject(),

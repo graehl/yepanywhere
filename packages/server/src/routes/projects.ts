@@ -304,7 +304,19 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       return c.json({ error: "Project not found" }, 404);
     }
 
-    return c.json({ project });
+    const activityCounts = await getProjectActivityCounts(
+      deps.supervisor,
+      deps.externalTracker,
+    );
+    const counts = activityCounts.get(project.id);
+
+    return c.json({
+      project: {
+        ...project,
+        activeOwnedCount: counts?.activeOwnedCount ?? 0,
+        activeExternalCount: counts?.activeExternalCount ?? 0,
+      },
+    });
   });
 
   // POST /api/projects - Add a project by path

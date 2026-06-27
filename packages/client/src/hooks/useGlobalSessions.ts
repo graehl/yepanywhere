@@ -14,7 +14,8 @@ import {
   type SessionUpdatedEvent,
   useFileActivity,
 } from "./useFileActivity";
-import { reportGlobalSessionLifecycleSnapshots } from "../lib/sessionLifecycleApiSnapshots";
+import { reportGlobalSessionsCollectionSnapshot } from "../lib/sessionCollectionExternalStore";
+import type { SessionCollectionQueryDescriptor } from "../lib/sessionCollectionStore";
 
 const REFETCH_DEBOUNCE_MS = 500;
 
@@ -36,6 +37,23 @@ const DEFAULT_STATS: GlobalSessionStats = {
   providerCounts: {},
   executorCounts: {},
 };
+
+function createCollectionQueryDescriptor(options: {
+  projectId?: string | null;
+  searchQuery?: string;
+  limit?: number;
+  includeArchived?: boolean;
+  starred?: boolean;
+}): SessionCollectionQueryDescriptor {
+  return {
+    scope: "global-sessions",
+    projectId: options.projectId ?? null,
+    searchQuery: options.searchQuery || undefined,
+    limit: options.limit,
+    includeArchived: options.includeArchived,
+    starred: options.starred,
+  };
+}
 
 export function reconcileGlobalSessionsProcessState(
   sessions: GlobalSessionItem[],
@@ -155,7 +173,21 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
         statsPromise,
       ]);
 
-      reportGlobalSessionLifecycleSnapshots(data.sessions, requestStartedAt);
+      reportGlobalSessionsCollectionSnapshot(
+        {
+          query: createCollectionQueryDescriptor({
+            projectId,
+            searchQuery,
+            limit,
+            includeArchived,
+            starred,
+          }),
+          sessions: data.sessions,
+          hasMore: data.hasMore,
+          mode: "replace",
+        },
+        requestStartedAt,
+      );
 
       if (!hasInitialLoadRef.current || optionsChanged) {
         setSessions(data.sessions);
@@ -213,7 +245,21 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
         includeStats: false,
       });
 
-      reportGlobalSessionLifecycleSnapshots(data.sessions, requestStartedAt);
+      reportGlobalSessionsCollectionSnapshot(
+        {
+          query: createCollectionQueryDescriptor({
+            projectId,
+            searchQuery,
+            limit,
+            includeArchived,
+            starred,
+          }),
+          sessions: data.sessions,
+          hasMore: data.hasMore,
+          mode: "append",
+        },
+        requestStartedAt,
+      );
 
       setSessions((prev) => {
         // Deduplicate when appending

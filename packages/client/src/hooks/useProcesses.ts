@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJSON } from "../api/client";
-import { reportProcessLifecycleSnapshots } from "../lib/sessionLifecycleApiSnapshots";
 import type {
   AgentActivity,
   ContextUsage,
@@ -59,11 +58,9 @@ export function useProcesses() {
 
   const fetchProcesses = useCallback(async () => {
     try {
-      const requestStartedAt = Date.now();
       const data = await fetchJSON<ProcessesResponse>(
         "/processes?includeTerminated=true",
       );
-      reportProcessLifecycleSnapshots(data.processes, requestStartedAt);
       setProcesses(data.processes);
       setTerminatedProcesses(data.terminatedProcesses ?? []);
       setError(null);

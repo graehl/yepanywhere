@@ -1,6 +1,14 @@
 # Client Session Lifecycle Store
 
-Status: Proposed
+Status: Superseded by
+[`006-client-session-collection-store.md`](006-client-session-collection-store.md)
+
+2026-06-27 note: the initial shadow `sessionLifecycle*` implementation had no
+production UI consumers and overlapped with the broader collection-store model.
+It was removed in favor of one normalized session collection that owns basic
+session facts, lifecycle fields, and list projections together. Keep this doc as
+historical context for the race-policy reasoning; do not reintroduce a separate
+parallel lifecycle store.
 
 Progress:
 

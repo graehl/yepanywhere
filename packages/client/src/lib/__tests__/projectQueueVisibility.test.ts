@@ -1,0 +1,58 @@
+import { describe, expect, it } from "vitest";
+import { shouldShowProjectQueueAffordance } from "../projectQueueVisibility";
+
+describe("shouldShowProjectQueueAffordance", () => {
+  it("hides without a known project", () => {
+    expect(shouldShowProjectQueueAffordance({ projectId: null })).toBe(false);
+  });
+
+  it("shows when project queue backlog exists", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        projectQueueItemCount: 1,
+      }),
+    ).toBe(true);
+  });
+
+  it("hides when normal send is equivalent", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
+        activeProjectSessionIds: [],
+      }),
+    ).toBe(false);
+  });
+
+  it("hides when normal session queue is equivalent", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
+        activeProjectSessionIds: ["session-1"],
+      }),
+    ).toBe(false);
+  });
+
+  it("shows when the current active session already has backlog", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
+        currentSessionHasSessionQueueBacklog: true,
+        activeProjectSessionIds: ["session-1"],
+      }),
+    ).toBe(true);
+  });
+
+  it("shows when other project sessions are active", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
+        activeProjectSessionIds: ["session-2"],
+      }),
+    ).toBe(true);
+  });
+});

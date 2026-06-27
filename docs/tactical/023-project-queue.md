@@ -16,6 +16,8 @@ Progress:
 - [x] Add an optional toolbar affordance, hidden by default.
 - [x] Add UI visibility-default tests for the toolbar affordance.
 - [x] Add in-place editing for queued/failed projects-page queue items.
+- [x] Document Project Queue semantics in `topics/project-queue.md`.
+- [x] Suppress Project Queue buttons when normal send/queue is equivalent.
 
 Latest update:
 
@@ -51,6 +53,13 @@ Latest update:
   exposes the server `PATCH` route, and queued/failed Project Queue rows can
   switch into a compact editor that saves updated text while preserving the
   rest of the stored message payload. Dispatching rows stay read-only.
+- 2026-06-27: Landed the semantics and smart-visibility slices:
+  `topics/project-queue.md` now defines project-wide ordering and UI semantics,
+  the scheduler points at that contract, and session/new-session Project Queue
+  buttons are suppressed when the selected project is inactive, empty, and
+  normal send or normal session queue is equivalent. Inline session rendering
+  with project-queue position and durable new-session attachment staging remain
+  required before the feature is complete.
 
 ## Context
 
@@ -371,6 +380,9 @@ Configuration split:
 - [x] Add the optional toolbar icon/button and preview wiring.
 - [x] Add project-queue submission from `MessageInput`.
 - [x] Add text-only Project Queue submission from `NewSessionForm`.
+- [x] Hide the Project Queue action when normal send/queue is equivalent.
+- [ ] Render Project Queue items inline in the target session with purple
+      styling and project-queue position.
 - [ ] Add durable pre-session attachment staging for new-session Project Queue.
 
 ## Tests

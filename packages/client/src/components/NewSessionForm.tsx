@@ -29,6 +29,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { type UploadedFile, api } from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
+import { useInboxContext } from "../contexts/InboxContext";
 import { useToastContext } from "../contexts/ToastContext";
 import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useConnection } from "../hooks/useConnection";
@@ -38,6 +39,7 @@ import {
   getShowThinkingSetting,
   useModelSettings,
 } from "../hooks/useModelSettings";
+import { useProjectQueues } from "../hooks/useProjectQueues";
 import {
   getAvailableProviders,
   getDefaultProvider,
@@ -64,6 +66,7 @@ import {
 } from "../lib/newSessionDefaults";
 import { getRecapModeDescription } from "../lib/recapModes";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
+import { shouldShowProjectQueueAffordance } from "../lib/projectQueueVisibility";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import {
@@ -398,6 +401,7 @@ export function NewSessionForm({
   >({});
   const [attachmentQuality] = useAttachmentUploadQuality();
   const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
+  const { needsAttention, active } = useInboxContext();
   const [interimTranscript, setInterimTranscript] = useState("");
   const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
     null,
@@ -636,6 +640,32 @@ export function NewSessionForm({
   const hasCustomProjectPath =
     Boolean(activeProjectSearchQuery) && exactProjectMatch === null;
   const currentProjectSelection = exactProjectMatch ?? selectedProject ?? null;
+  const projectQueueTargetProjectId =
+    !hasCustomProjectPath && normalizedProjectInput && currentProjectSelection
+      ? currentProjectSelection.id
+      : null;
+  const projectQueueProjectIds = useMemo(
+    () => (projectQueueTargetProjectId ? [projectQueueTargetProjectId] : []),
+    [projectQueueTargetProjectId],
+  );
+  const projectQueues = useProjectQueues(projectQueueProjectIds);
+  const activeProjectSessionIds = useMemo(
+    () =>
+      projectQueueTargetProjectId
+        ? [...needsAttention, ...active]
+            .filter((item) => item.projectId === projectQueueTargetProjectId)
+            .map((item) => item.sessionId)
+        : [],
+    [active, needsAttention, projectQueueTargetProjectId],
+  );
+  const projectQueueItemCount = projectQueueTargetProjectId
+    ? (projectQueues.queuesByProject[projectQueueTargetProjectId]?.length ?? 0)
+    : 0;
+  const showProjectQueueAction = shouldShowProjectQueueAffordance({
+    projectId: projectQueueTargetProjectId,
+    activeProjectSessionIds,
+    projectQueueItemCount,
+  });
   const isDetachedProject =
     !hasCustomProjectPath && currentProjectSelection === null;
   const projectSummaryTitle =
@@ -1847,9 +1877,12 @@ export function NewSessionForm({
 
   const hasContent = message.trim() || pendingFiles.length > 0;
   const canStart = Boolean(hasContent);
-  const hasProjectQueueTargetProject = Boolean(normalizedProjectInput);
+  const hasProjectQueueTargetProject = Boolean(projectQueueTargetProjectId);
   const canQueueProjectSession = Boolean(
-    message.trim() && pendingFiles.length === 0 && hasProjectQueueTargetProject,
+    showProjectQueueAction &&
+      message.trim() &&
+      pendingFiles.length === 0 &&
+      hasProjectQueueTargetProject,
   );
   const projectQueueNewSessionTitle =
     pendingFiles.length > 0
@@ -2125,7 +2158,7 @@ export function NewSessionForm({
           />
         </div>
         <div className="new-session-form-toolbar-actions">
-          {toolbarVisibility.projectQueue && (
+          {toolbarVisibility.projectQueue && showProjectQueueAction && (
             <button
               type="button"
               onClick={handleQueueProjectSession}

@@ -49,6 +49,7 @@ import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import type { ModalAnchorRect } from "../components/ui/Modal";
 import { ViewerCountIndicator } from "../components/ViewerCountIndicator";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
+import { useInboxContext } from "../contexts/InboxContext";
 import { RenderModeProvider } from "../contexts/RenderModeContext";
 import { SessionMetadataProvider } from "../contexts/SessionMetadataContext";
 import {
@@ -72,6 +73,7 @@ import {
   getThinkingSetting,
   getShowThinkingSetting,
 } from "../hooks/useModelSettings";
+import { useProjectQueues } from "../hooks/useProjectQueues";
 import { useProject, useProjects } from "../hooks/useProjects";
 import { useProviders } from "../hooks/useProviders";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
@@ -103,6 +105,7 @@ import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { resolveSessionProviderCapabilities } from "../lib/providerCapabilities";
+import { shouldShowProjectQueueAffordance } from "../lib/projectQueueVisibility";
 import {
   getEstimatedServerOffsetMs,
   getServerClockTimestamp,
@@ -706,6 +709,9 @@ function SessionPageContent({
   const basePath = useRemoteBasePath();
   const { project } = useProject(projectId);
   const { projects } = useProjects();
+  const { needsAttention, active } = useInboxContext();
+  const projectQueueProjectIds = useMemo(() => [projectId], [projectId]);
+  const projectQueues = useProjectQueues(projectQueueProjectIds);
   const navigate = useNavigate();
   const location = useLocation();
   // Get initial status and title from navigation state (passed by NewSessionPage)
@@ -827,6 +833,22 @@ function SessionPageContent({
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
   const { status: publicShareGlobalStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
+  });
+  const activeProjectSessionIds = useMemo(
+    () =>
+      [...needsAttention, ...active]
+        .filter((item) => item.projectId === projectId)
+        .map((item) => item.sessionId),
+    [active, needsAttention, projectId],
+  );
+  const projectQueueItemCount =
+    projectQueues.queuesByProject[projectId]?.length ?? 0;
+  const showProjectQueueAction = shouldShowProjectQueueAffordance({
+    projectId,
+    currentSessionId: sessionId,
+    currentSessionHasSessionQueueBacklog: deferredMessages.length > 0,
+    activeProjectSessionIds,
+    projectQueueItemCount,
   });
 
   // Session connection bar state for active session update streams
@@ -5067,7 +5089,9 @@ function SessionPageContent({
                     : undefined
                 }
                 onProjectQueue={
-                  !mainComposerForAside ? handleProjectQueue : undefined
+                  !mainComposerForAside && showProjectQueueAction
+                    ? handleProjectQueue
+                    : undefined
                 }
                 primaryActionKind={
                   mainComposerForAside ? "send" : primaryComposerAction

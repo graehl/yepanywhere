@@ -46,6 +46,8 @@ const {
   remoteBasePathState,
   filterDropdownState,
   toolbarVisibilityState,
+  inboxState,
+  projectQueueState,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockUpdateSetting: vi.fn(),
@@ -155,6 +157,13 @@ const {
   },
   toolbarVisibilityState: {
     projectQueue: false,
+  },
+  inboxState: {
+    needsAttention: [] as Array<{ sessionId: string; projectId: string }>,
+    active: [] as Array<{ sessionId: string; projectId: string }>,
+  },
+  projectQueueState: {
+    byProject: {} as Record<string, unknown[]>,
   },
 }));
 
@@ -300,6 +309,55 @@ vi.mock("../../hooks/useSessionToolbarVisibility", () => ({
       projectQueue: toolbarVisibilityState.projectQueue,
     },
   }),
+}));
+
+vi.mock("../../contexts/InboxContext", () => ({
+  useInboxContext: () => ({
+    needsAttention: inboxState.needsAttention,
+    active: inboxState.active,
+    recentActivity: [],
+    unread8h: [],
+    unread24h: [],
+    inbox: {
+      needsAttention: inboxState.needsAttention,
+      active: inboxState.active,
+      recentActivity: [],
+      unread8h: [],
+      unread24h: [],
+    },
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+    refetch: vi.fn(),
+    totalNeedsAttention: inboxState.needsAttention.length,
+    totalActive: inboxState.active.length,
+    totalItems:
+      inboxState.needsAttention.length + inboxState.active.length,
+    enabled: true,
+    setEnabled: vi.fn(),
+  }),
+}));
+
+vi.mock("../../hooks/useProjectQueues", () => ({
+  useProjectQueues: (projectIds: string[]) => {
+    const queuesByProject = Object.fromEntries(
+      projectIds.map((projectId) => [
+        projectId,
+        projectQueueState.byProject[projectId] ?? [],
+      ]),
+    );
+    return {
+      queuesByProject,
+      items: Object.values(queuesByProject).flat(),
+      loading: false,
+      error: null,
+      mutatingItemId: null,
+      refetch: vi.fn(),
+      updateItem: vi.fn(),
+      deleteItem: vi.fn(),
+      retryItem: vi.fn(),
+    };
+  },
 }));
 
 vi.mock("../../hooks/useVersion", () => ({
@@ -458,6 +516,9 @@ describe("NewSessionForm", () => {
     serverSettingsState.isLoading = true;
     filterDropdownState.selected = [];
     toolbarVisibilityState.projectQueue = false;
+    inboxState.needsAttention = [];
+    inboxState.active = [];
+    projectQueueState.byProject = {};
     modelSettingsState.thinkingMode = "off";
     modelSettingsState.effortLevel = "high";
     mockNavigate.mockReset();
@@ -780,6 +841,7 @@ describe("NewSessionForm", () => {
 
   it("queues a new session through Project Queue when the toolbar action is visible", async () => {
     toolbarVisibilityState.projectQueue = true;
+    inboxState.active = [{ sessionId: "session-active", projectId: "project-1" }];
     serverSettingsState.isLoading = false;
 
     render(
@@ -823,6 +885,23 @@ describe("NewSessionForm", () => {
     );
     expect(mockStartSession).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("hides the new-session Project Queue action when the project is inactive", () => {
+    toolbarVisibilityState.projectQueue = true;
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "toolbarProjectQueueLabel" }),
+    ).toBe(null);
   });
 
   it("hides the new-session Project Queue action by default", () => {

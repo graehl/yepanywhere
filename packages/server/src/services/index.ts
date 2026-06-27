@@ -38,6 +38,12 @@ export {
 } from "./ServerSettingsService.js";
 
 export {
+  ProjectQueueService,
+  ProjectQueueValidationError,
+  type ProjectQueueServiceOptions,
+} from "./ProjectQueueService.js";
+
+export {
   SharingService,
   type SharingConfig,
   type SharingServiceOptions,

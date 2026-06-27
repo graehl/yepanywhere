@@ -4,6 +4,7 @@ import type {
   BrowserProfilesResponse,
   ClientDefaults,
   ConnectionsResponse,
+  CreateProjectQueueItemRequest,
   CreatePublicSessionShareRequest,
   CreatePublicSessionShareResponse,
   DeviceInfo,
@@ -15,6 +16,8 @@ import type {
   ModelInfo,
   NewSessionDefaults,
   PendingInputType,
+  ProjectQueueItemSummary,
+  ProjectQueueResponse,
   PromptSuggestionMode,
   PromptCacheKeepaliveSettings,
   ProviderInfo,
@@ -29,6 +32,7 @@ import type {
   SlashCommand,
   ThinkingOption,
   TranscriptDisplayObject,
+  UpdateProjectQueueItemRequest,
   UploadedFile,
   UrlProjectId,
   UserQuestionAnswers,
@@ -551,6 +555,50 @@ export const api = {
       `/projects/${projectId}/sessions/${sessionId}/refresh-preview`,
       { method: "POST" },
     ),
+
+  getProjectQueue: (projectId: string) =>
+    fetchJSON<ProjectQueueResponse>(`/projects/${projectId}/queue`),
+
+  createProjectQueueItem: (
+    projectId: string,
+    request: CreateProjectQueueItemRequest,
+  ) =>
+    fetchJSON<{
+      item: ProjectQueueItemSummary;
+      queue: ProjectQueueResponse;
+    }>(`/projects/${projectId}/queue`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
+  updateProjectQueueItem: (
+    projectId: string,
+    itemId: string,
+    request: UpdateProjectQueueItemRequest,
+  ) =>
+    fetchJSON<{
+      item: ProjectQueueItemSummary;
+      queue: ProjectQueueResponse;
+    }>(`/projects/${projectId}/queue/${encodeURIComponent(itemId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(request),
+    }),
+
+  deleteProjectQueueItem: (projectId: string, itemId: string) =>
+    fetchJSON<{
+      deleted: boolean;
+      queue: ProjectQueueResponse;
+    }>(`/projects/${projectId}/queue/${encodeURIComponent(itemId)}`, {
+      method: "DELETE",
+    }),
+
+  retryProjectQueueItem: (projectId: string, itemId: string) =>
+    fetchJSON<{
+      item: ProjectQueueItemSummary;
+      queue: ProjectQueueResponse;
+    }>(`/projects/${projectId}/queue/${encodeURIComponent(itemId)}/retry`, {
+      method: "POST",
+    }),
 
   /**
    * Get agent session content for lazy-loading completed Tasks.

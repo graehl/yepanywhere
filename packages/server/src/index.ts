@@ -65,6 +65,7 @@ import {
   InstallService,
   ModelInfoService,
   NetworkBindingService,
+  ProjectQueueService,
   PublicShareService,
   RelayClientService,
   ServerSettingsService,
@@ -343,6 +344,10 @@ const sessionMetadataService = new SessionMetadataService({
 const projectMetadataService = new ProjectMetadataService({
   dataDir: config.dataDir,
 });
+const projectQueueService = new ProjectQueueService({
+  dataDir: config.dataDir,
+  eventBus,
+});
 const sessionIndexService = new SessionIndexService({
   projectsDir: config.claudeProjectsDir,
   dataDir: path.join(config.dataDir, "indexes"),
@@ -441,6 +446,8 @@ async function startServer() {
   markStartup("sessionMetadataService initialized");
   await projectMetadataService.initialize();
   markStartup("projectMetadataService initialized");
+  await projectQueueService.initialize();
+  markStartup("projectQueueService initialized");
   await sessionIndexService.initialize();
   markStartup("sessionIndexService initialized");
   await pushService.initialize();
@@ -624,6 +631,7 @@ async function startServer() {
     notificationService,
     sessionMetadataService,
     projectMetadataService,
+    projectQueueService,
     sessionIndexService,
     projectScanCacheTtlMs: config.projectScanCacheTtlMs,
     sessionAutoArchiveDays: config.sessionAutoArchiveDays,

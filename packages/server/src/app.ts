@@ -64,6 +64,7 @@ import { createInboxRoutes } from "./routes/inbox.js";
 import { createNetworkBindingRoutes } from "./routes/network-binding.js";
 import { createOnboardingRoutes } from "./routes/onboarding.js";
 import { createProcessesRoutes } from "./routes/processes.js";
+import { createProjectQueueRoutes } from "./routes/project-queue.js";
 import { createProjectsRoutes } from "./routes/projects.js";
 import { createProvidersRoutes } from "./routes/providers.js";
 import { createCodexUpdateRoutes } from "./routes/codex-updates.js";
@@ -102,6 +103,7 @@ import { CodexUpdateChecker } from "./services/CodexUpdateChecker.js";
 import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersService.js";
 import type { ModelInfoService } from "./services/ModelInfoService.js";
 import type { NetworkBindingService } from "./services/NetworkBindingService.js";
+import type { ProjectQueueService } from "./services/ProjectQueueService.js";
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
 import type { SharingService } from "./services/SharingService.js";
@@ -144,6 +146,8 @@ export interface AppOptions {
   sessionMetadataService?: SessionMetadataService;
   /** ProjectMetadataService for persisting added projects */
   projectMetadataService?: ProjectMetadataService;
+  /** Durable project-scoped message queue service */
+  projectQueueService?: ProjectQueueService;
   /** SessionIndexService for caching session summaries */
   sessionIndexService?: SessionIndexService;
   /** Project scanner cache TTL in ms (0 = rescan every request). */
@@ -867,6 +871,15 @@ export function createApp(options: AppOptions): AppResult {
       sessionAutoArchiveDays: options.sessionAutoArchiveDays,
     }),
   );
+  if (options.projectQueueService) {
+    app.route(
+      "/api/projects",
+      createProjectQueueRoutes({
+        scanner,
+        projectQueueService: options.projectQueueService,
+      }),
+    );
+  }
   app.route(
     "/api",
     createSessionsRoutes({

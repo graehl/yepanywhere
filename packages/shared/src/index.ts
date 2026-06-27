@@ -163,6 +163,20 @@ export {
 } from "./projectId.js";
 
 export type {
+  CreateProjectQueueItemRequest,
+  ProjectQueueChangedEvent,
+  ProjectQueueClientSource,
+  ProjectQueueCreatedFrom,
+  ProjectQueueItem,
+  ProjectQueueItemStatus,
+  ProjectQueueItemSummary,
+  ProjectQueueMessage,
+  ProjectQueueResponse,
+  ProjectQueueTarget,
+  UpdateProjectQueueItemRequest,
+} from "./project-queue.js";
+
+export type {
   UploadedFile,
   UploadStartMessage,
   UploadEndMessage,

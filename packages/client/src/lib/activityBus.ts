@@ -2,6 +2,7 @@ import type {
   AgentActivity,
   ContextUsage,
   PendingInputType,
+  ProjectQueueChangedEvent,
   PromptSuggestionMode,
   TranscriptDisplayObject,
   UrlProjectId,
@@ -185,6 +186,7 @@ interface ActivityEventMap {
   "session-updated": SessionUpdatedEvent;
   "session-seen": SessionSeenEvent;
   "process-state-changed": ProcessStateEvent;
+  "project-queue-changed": ProjectQueueChangedEvent;
   "session-metadata-changed": SessionMetadataChangedEvent;
   // Connection events
   "browser-tab-connected": BrowserTabConnectedEvent;
@@ -439,6 +441,7 @@ class ActivityBus {
       "session-updated",
       "session-seen",
       "process-state-changed",
+      "project-queue-changed",
       "session-metadata-changed",
       "browser-tab-connected",
       "browser-tab-disconnected",

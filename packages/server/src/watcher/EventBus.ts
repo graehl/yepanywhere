@@ -6,6 +6,7 @@ import type {
   AgentActivity,
   ContextUsage,
   PendingInputType,
+  ProjectQueueChangedEvent,
   PromptSuggestionMode,
   TranscriptDisplayObject,
   UrlProjectId,
@@ -255,6 +256,7 @@ export type BusEvent =
   | QueuePositionChangedEvent
   | QueueRequestRemovedEvent
   | WorkerActivityEvent
+  | ProjectQueueChangedEvent
   | SessionMetadataChangedEvent
   | SessionAbortedEvent
   | SessionUpdatedEvent

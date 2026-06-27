@@ -179,6 +179,7 @@
   --provider-grok: #111827;
   --provider-opencode: #9333ea;
   --provider-pi: #0d9488;
+  --project-queue-action-bg: #7c3aed;
 
   /* Semantic Colors */
   --thinking-color: var(--app-claude-orange);
@@ -5340,8 +5341,23 @@ a.sidebar-nav-item {
 }
 
 .send-button.project-queue-button {
-  background: var(--provider-codex);
+  background: var(--project-queue-action-bg);
   color: white;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--project-queue-action-bg) 52%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--project-queue-action-bg) 16%, transparent);
+}
+
+.send-button.project-queue-button:hover:not(:disabled) {
+  opacity: 1;
+  background: color-mix(in srgb, var(--project-queue-action-bg) 88%, white);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--project-queue-action-bg) 68%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--project-queue-action-bg) 22%, transparent);
+}
+
+.send-button.project-queue-button:disabled {
+  box-shadow: none;
 }
 
 .send-button.patient-queue-action {

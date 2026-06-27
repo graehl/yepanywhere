@@ -4,10 +4,10 @@ import type { GlobalSessionItem } from "../api/client";
 import { useInboxContext } from "../contexts/InboxContext";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useDrafts, useNewSessionDraft } from "../hooks/useDrafts";
-import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
+import { useSidebarSessionFeeds } from "../hooks/useSidebarSessionFeeds";
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
@@ -43,10 +43,9 @@ const DEFAULT_SECTION_EXPANSION = {
 
 /**
  * A session is "active" while its agent is mid-turn or waiting on input. Active
- * sessions are pinned above idle rows and are deliberately never sorted or
- * deduped: their updatedAt churns every few seconds during a turn, so any
- * recency sort would reshuffle them constantly. They instead ride the stable
- * order that useGlobalSessions already preserves across refetches.
+ * sessions are pinned above idle rows and are deliberately sorted by the time
+ * they became active rather than by updatedAt. Their updatedAt churns every few
+ * seconds during a turn, so recency ordering would reshuffle them constantly.
  */
 function isActiveSession(session: GlobalSessionItem): boolean {
   return session.activity === "in-turn" || session.activity === "waiting-input";
@@ -196,32 +195,18 @@ export function Sidebar({
   });
   const publicShareControlsVisible = publicShareStatus?.canCreate ?? false;
 
-  // Fetch global sessions for sidebar (non-starred only for recent/older sections)
   const {
-    loading: globalLoading,
-    hasMore: hasMoreGlobalSessions,
-    loadMore: loadMoreGlobalSessions,
-  } = useGlobalSessions({
-    limit: SIDEBAR_SESSION_PAGE_SIZE,
-    includeStats: false,
-  });
-
-  // Fetch starred sessions separately to ensure we get ALL starred sessions
-  const {
-    loading: starredLoading,
-    hasMore: hasMoreStarredSessions,
-    loadMore: loadMoreStarredSessions,
-  } = useGlobalSessions({
-    starred: true,
-    limit: SIDEBAR_SESSION_PAGE_SIZE,
-    includeStats: false,
-  });
+    loading: sessionsLoading,
+    hasMoreGlobalSessions,
+    loadMoreGlobalSessions,
+    hasMoreStarredSessions,
+    loadMoreStarredSessions,
+  } = useSidebarSessionFeeds(SIDEBAR_SESSION_PAGE_SIZE);
 
   const starredSessionRecords = useStarredSessionRecords();
   const recentSessionRecords = useRecentSessionRecords();
   const olderSessionRecords = useOlderSessionRecords();
 
-  const sessionsLoading = globalLoading || starredLoading;
   const hasNewSessionDraft = useNewSessionDraft();
 
   // Server capabilities for feature gating

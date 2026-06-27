@@ -77,7 +77,7 @@ export interface GlobalSessionsCollectionSnapshot {
   query: SessionCollectionQueryDescriptor;
   sessions: readonly GlobalSessionItem[];
   hasMore: boolean;
-  mode?: "replace" | "append";
+  mode?: "replace" | "append" | "prepend";
 }
 
 export function createEmptySessionCollectionState(): SessionCollectionState {
@@ -401,13 +401,19 @@ function upsertQuery(
   }
 
   const incomingIds = snapshot.sessions.map((session) => session.id);
-  const ids =
-    snapshot.mode === "append" && existing
-      ? [
-          ...existing.ids,
-          ...incomingIds.filter((id) => !existing.ids.includes(id)),
-        ]
-      : incomingIds;
+  let ids = incomingIds;
+  if (snapshot.mode === "append" && existing) {
+    ids = [
+      ...existing.ids,
+      ...incomingIds.filter((id) => !existing.ids.includes(id)),
+    ];
+  } else if (snapshot.mode === "prepend" && existing) {
+    const incomingIdSet = new Set(incomingIds);
+    ids = [
+      ...incomingIds,
+      ...existing.ids.filter((id) => !incomingIdSet.has(id)),
+    ];
+  }
 
   const queries = new Map(state.queries);
   queries.set(key, {
@@ -597,6 +603,13 @@ export function selectSessionCollectionRecord(
   sessionId: string | null | undefined,
 ): SessionCollectionRecord | undefined {
   return sessionId ? state.entities.get(sessionId) : undefined;
+}
+
+export function selectSessionCollectionQueryState(
+  state: SessionCollectionState,
+  query: SessionCollectionQueryDescriptor,
+): SessionCollectionQueryState | undefined {
+  return state.queries.get(createGlobalSessionsQueryKey(query));
 }
 
 function updatedAtMs(record: SessionCollectionRecord): number {

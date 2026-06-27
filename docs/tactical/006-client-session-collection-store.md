@@ -1,6 +1,7 @@
 # Client Session Collection Store
 
-Status: Sidebar and Global Sessions migrated / inventory consumers next
+Status: Sidebar and Global Sessions feed-backed / dropdown and inventory
+consumers next
 
 ## Progress
 
@@ -19,6 +20,14 @@ Status: Sidebar and Global Sessions migrated / inventory consumers next
   `useGlobalSessions` event handlers now report created/metadata events into
   the collection directly, so starred rows and newly-created rows do not depend
   solely on a later server broadcast or REST recovery snapshot.
+- 2026-06-27: Added rowless session feed hooks and migrated Sidebar plus Global
+  Sessions fetch ownership to them. `useGlobalSessions` is now only a temporary
+  compatibility wrapper over the feed and collection rows; it no longer owns a
+  private mutable row array.
+
+Follow-on: `024-session-collection-feed-hooks.md` tracks the next cleanup:
+move the Recent Sessions dropdown off the compatibility wrapper, then retire
+row-returning `useGlobalSessions` entirely.
 
 ## Context
 
@@ -159,6 +168,9 @@ not a plain projection.
 5. [x] Move Global Sessions page next. Keep pagination/query ids server-owned.
 6. [ ] Keep InboxContext and Agents page as server-owned inventories initially,
    but let them report snapshots into the collection store.
+7. [ ] Retire row-returning `useGlobalSessions` in favor of purpose-built feed
+   hooks. Partially implemented; see
+   `024-session-collection-feed-hooks.md`.
 
 ## Non-Goals
 
@@ -171,6 +183,8 @@ not a plain projection.
   snapshots.
 - Do not move inbox tier membership into the collection store.
 - Do not rewrite session detail transcript state.
+- Do not solve feed-hook readiness/pagination cleanup in this doc; that is the
+  follow-on tracked in `024-session-collection-feed-hooks.md`.
 
 ## Verification Checklist
 
@@ -182,8 +196,8 @@ not a plain projection.
   for recent/older selectors.
 - A stale snapshot cannot undo a newer metadata event.
 - Query result ids update without duplicating row objects.
-- Existing `useGlobalSessions` behavior remains unchanged while shadow wiring
-  is active.
+- `useGlobalSessions` remains as a compatibility wrapper only; migrated
+  surfaces should use rowless feed hooks plus collection selectors.
 - Sidebar active rows remain pinned above idle rows and do not reshuffle merely
   because `updatedAt` advances during an active turn.
 - Global Sessions renders rows from the collection query for its current

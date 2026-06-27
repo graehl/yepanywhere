@@ -61,9 +61,14 @@ vi.mock("../../hooks/useDrafts", () => ({
   useNewSessionDraft: () => newSessionDraftState.hasDraft,
 }));
 
-vi.mock("../../hooks/useGlobalSessions", () => ({
-  useGlobalSessions: (options?: { starred?: boolean }) =>
-    options?.starred ? starredSessionsState : globalSessionsState,
+vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
+  useSidebarSessionFeeds: () => ({
+    loading: globalSessionsState.loading || starredSessionsState.loading,
+    hasMoreGlobalSessions: globalSessionsState.hasMore,
+    loadMoreGlobalSessions: globalSessionsState.loadMore,
+    hasMoreStarredSessions: starredSessionsState.hasMore,
+    loadMoreStarredSessions: starredSessionsState.loadMore,
+  }),
 }));
 
 vi.mock("../../lib/sessionCollectionExternalStore", () => {

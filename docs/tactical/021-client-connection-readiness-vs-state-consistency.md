@@ -34,6 +34,11 @@ Progress:
   `InboxContext`'s now-redundant `isRemoteConnectionReady` gate (its tests
   assert the old behavior — separate cleanup), and `usePublicShareStatus`
   (already self-revalidates via polling).
+- [x] 2026-06-27: Applied this readiness principle to the session collection
+  feed cleanup. `024-session-collection-feed-hooks.md` owns that follow-on:
+  `useGlobalSessionsFeed` now waits for remote secure-connection readiness
+  before fetching or publishing snapshots, while the collection store remains
+  transport agnostic.
 
 ## Why this doc exists
 
@@ -307,4 +312,7 @@ through a Tier 2 refetch.
    separate change).
 4. Continue 005 on top, now that snapshot reporters fire reliably. The churny
    live surfaces heal via events/005, not a Tier 2 refetch.
-5. Cosmetic: notification test-row layout, tracked independently.
+5. Retire row-returning session hooks through purpose-built feed hooks that own
+   readiness/fetch/pagination without exposing rows. See
+   [024](024-session-collection-feed-hooks.md).
+6. Cosmetic: notification test-row layout, tracked independently.

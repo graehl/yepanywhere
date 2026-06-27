@@ -21,11 +21,13 @@ import {
   selectOlderSessionRecords,
   selectRecentSessionRecords,
   selectSessionCollectionQueryRecords,
+  selectSessionCollectionQueryState,
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
   type GlobalSessionsCollectionSnapshot,
   type SessionCollectionQueryDescriptor,
   type SessionCollectionRecord,
+  type SessionCollectionQueryState,
   type SessionCollectionState,
 } from "./sessionCollectionStore";
 
@@ -188,6 +190,17 @@ export function useSessionCollectionQueryRecords(
   const key = createGlobalSessionsQueryKey(query);
   return useMemo(
     () => selectSessionCollectionQueryRecords(state, query),
+    [state, key, query],
+  );
+}
+
+export function useSessionCollectionQueryState(
+  query: SessionCollectionQueryDescriptor,
+): SessionCollectionQueryState | undefined {
+  const state = useSessionCollectionState();
+  const key = createGlobalSessionsQueryKey(query);
+  return useMemo(
+    () => selectSessionCollectionQueryState(state, query),
     [state, key, query],
   );
 }

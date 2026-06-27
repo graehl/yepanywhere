@@ -10,6 +10,7 @@ import {
   createEmptySessionCollectionState,
   createGlobalSessionsQueryKey,
   selectRecentSessionRecords,
+  selectSessionCollectionQueryState,
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
 } from "../sessionCollectionStore";
@@ -354,6 +355,43 @@ describe("sessionCollectionStore", () => {
     expect(selectSessionCollectionRecord(state, "starred")).toMatchObject({
       id: "starred",
       isStarred: true,
+    });
+  });
+
+  it("prepends optimistic query ids without duplicating existing rows", () => {
+    const query = {
+      scope: "global-sessions" as const,
+      limit: 50,
+    };
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptySessionCollectionState(),
+      {
+        query,
+        sessions: [globalSession("existing")],
+        hasMore: true,
+      },
+      100,
+    );
+
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query,
+        sessions: [
+          globalSession("new"),
+          globalSession("existing", {
+            updatedAt: "2026-06-27T11:30:00.000Z",
+          }),
+        ],
+        hasMore: true,
+        mode: "prepend",
+      },
+      200,
+    );
+
+    expect(selectSessionCollectionQueryState(state, query)).toMatchObject({
+      ids: ["new", "existing"],
+      hasMore: true,
     });
   });
 });

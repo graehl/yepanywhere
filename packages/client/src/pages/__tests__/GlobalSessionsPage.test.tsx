@@ -91,8 +91,11 @@ vi.mock("../../hooks/useDrafts", () => ({
   useDrafts: () => new Set<string>(),
 }));
 
-vi.mock("../../hooks/useGlobalSessions", () => ({
-  useGlobalSessions: () => globalSessionsState,
+vi.mock("../../hooks/useGlobalSessionsFeed", () => ({
+  useGlobalSessionsFeed: () => ({
+    query: { scope: "global-sessions" },
+    ...globalSessionsState,
+  }),
 }));
 
 vi.mock("../../lib/sessionCollectionExternalStore", () => ({

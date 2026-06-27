@@ -11,7 +11,7 @@ import {
 import { PageHeader } from "../components/PageHeader";
 import { SessionListItem } from "../components/SessionListItem";
 import { useDrafts } from "../hooks/useDrafts";
-import { useGlobalSessions } from "../hooks/useGlobalSessions";
+import { useGlobalSessionsFeed } from "../hooks/useGlobalSessionsFeed";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
@@ -20,7 +20,6 @@ import { MainContent, useNavigationLayout } from "../layouts";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
 import { useSessionCollectionQueryRecords } from "../lib/sessionCollectionExternalStore";
-import { createGlobalSessionsCollectionQueryDescriptor } from "../lib/sessionCollectionStore";
 import { getSessionDisplayTitle } from "../utils";
 
 // Long-press threshold for entering selection mode on mobile
@@ -227,28 +226,18 @@ export function GlobalSessionsPage() {
   // Include archived sessions when archived filter is selected
   const includeArchived = statusFilters.includes("archived");
 
-  const globalSessionsQuery = useMemo(
-    () =>
-      createGlobalSessionsCollectionQueryDescriptor({
-        projectId: projectFilter,
-        searchQuery,
-        includeArchived,
-      }),
-    [projectFilter, searchQuery, includeArchived],
-  );
-  const sessionRecords = useSessionCollectionQueryRecords(globalSessionsQuery);
+  const feed = useGlobalSessionsFeed({
+    projectId: projectFilter,
+    searchQuery,
+    includeArchived,
+    includeStats: !projectFilter,
+  });
+  const sessionRecords = useSessionCollectionQueryRecords(feed.query);
   const sessions = useMemo(
     () => sessionCollectionRecordsToGlobalSessionItems(sessionRecords),
     [sessionRecords],
   );
-
-  const { stats, projects, loading, error, hasMore, loadMore } =
-    useGlobalSessions({
-      projectId: projectFilter,
-      searchQuery,
-      includeArchived,
-      includeStats: !projectFilter,
-    });
+  const { stats, projects, loading, error, hasMore, loadMore } = feed;
 
   // Filter sessions based on status and provider filters (client-side)
   const filteredSessions = useMemo(() => {

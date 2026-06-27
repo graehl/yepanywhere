@@ -210,10 +210,12 @@ interface CodexForkAnchor {
 }
 
 /**
- * When enabled, declare Codex session originator as "Codex Desktop"
- * when initializing app-server sessions.
+ * When enabled, declare Codex session originator as "Codex Desktop" when
+ * initializing app-server sessions. Disabled by default so we report
+ * "yep-anywhere" as the originator, making Yep Anywhere usage visible in the
+ * Codex/ChatGPT token-usage UI.
  */
-const DECLARE_CODEX_ORIGINATOR = true;
+const DECLARE_CODEX_ORIGINATOR = false;
 const DECLARED_CODEX_ORIGINATOR = "Codex Desktop";
 const YEP_ANYWHERE_ORIGINATOR = "yep-anywhere";
 

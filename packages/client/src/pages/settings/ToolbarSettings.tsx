@@ -145,6 +145,11 @@ export function ToolbarSettings() {
       title: t("appearanceToolbarSteerNowTitle"),
       description: t("appearanceToolbarSteerNowDescription"),
     },
+    {
+      key: "projectQueue",
+      title: t("appearanceToolbarProjectQueueTitle"),
+      description: t("appearanceToolbarProjectQueueDescription"),
+    },
   ];
 
   return (

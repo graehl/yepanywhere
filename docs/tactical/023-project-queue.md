@@ -13,8 +13,8 @@ Progress:
       persistence.
 - [x] Show project queues on the projects page.
 - [x] Add `useProjectQueues` and focused projects-page display tests.
-- [ ] Add an optional toolbar affordance, hidden by default.
-- [ ] Add UI visibility-default tests for the toolbar affordance.
+- [x] Add an optional toolbar affordance, hidden by default.
+- [x] Add UI visibility-default tests for the toolbar affordance.
 
 Latest update:
 
@@ -39,6 +39,13 @@ Latest update:
   projects page now shows a Project Queue section for queued/dispatching/failed
   items and project-card queue-count badges. Hidden-by-default toolbar and
   new-session creation affordances remain pending.
+- 2026-06-27: Landed the opt-in composer slice: `projectQueue` is a
+  hidden-by-default session toolbar visibility key accepted by server client
+  defaults, the settings preview can reveal the purple Project Queue button,
+  session composers can queue existing-session messages through the durable
+  project queue, and new-session forms can queue text-only new-session starts
+  when a real project is selected or typed. New-session attachments remain on
+  the normal start path until there is durable pre-session attachment staging.
 
 ## Context
 
@@ -355,10 +362,11 @@ Configuration split:
 
 ### 5. Composer And New-Session Entry Points
 
-- Add the `projectQueue` toolbar visibility key, default false.
-- Add the optional toolbar icon/button and preview wiring.
-- Add project-queue submission from `MessageInput`.
-- Add `Start after project idle` from `NewSessionForm`.
+- [x] Add the `projectQueue` toolbar visibility key, default false.
+- [x] Add the optional toolbar icon/button and preview wiring.
+- [x] Add project-queue submission from `MessageInput`.
+- [x] Add text-only Project Queue submission from `NewSessionForm`.
+- [ ] Add durable pre-session attachment staging for new-session Project Queue.
 
 ## Tests
 

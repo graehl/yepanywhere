@@ -1279,6 +1279,13 @@ textarea {
   align-items: center;
 }
 
+.new-session-form-toolbar-actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 /* Toolbar button (attach, voice) */
 .toolbar-button {
   display: flex;
@@ -5293,6 +5300,11 @@ a.sidebar-nav-item {
 
 .send-button.queue-button {
   background: var(--attention-color);
+  color: white;
+}
+
+.send-button.project-queue-button {
+  background: var(--provider-codex);
   color: white;
 }
 
@@ -11933,6 +11945,12 @@ a.sidebar-nav-item {
 }
 
 .new-session-submit-button {
+  width: var(--composer-primary-control-size);
+  height: var(--composer-primary-control-size);
+  border-radius: var(--radius-lg);
+}
+
+.new-session-project-queue-button {
   width: var(--composer-primary-control-size);
   height: var(--composer-primary-control-size);
   border-radius: var(--radius-lg);

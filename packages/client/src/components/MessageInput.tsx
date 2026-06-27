@@ -291,6 +291,8 @@ interface Props {
   onSend: (text: string, metadata?: MessageSubmissionMetadata) => void;
   /** Queue a deferred message (sent when agent's turn ends). Only provided when agent is running. */
   onQueue?: (text: string, metadata?: MessageSubmissionMetadata) => void;
+  /** Queue through the project-level idle gate. Hidden unless opted in. */
+  onProjectQueue?: (text: string, metadata?: MessageSubmissionMetadata) => void;
   disabled?: boolean;
   placeholder?: string;
   mode?: PermissionMode;
@@ -395,6 +397,7 @@ interface Props {
 export function MessageInput({
   onSend,
   onQueue,
+  onProjectQueue,
   disabled,
   placeholder,
   mode = "default",
@@ -1045,6 +1048,35 @@ export function MessageInput({
     patientQueueEnabled,
     attachments.length,
     buildSubmissionMetadata,
+    resetCompositionMetadata,
+  ]);
+
+  const handleProjectQueue = useCallback(() => {
+    if (!onProjectQueue) return;
+
+    // Stop voice recording and get any pending interim text
+    const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
+
+    let finalText = controls.getDraft().trimEnd();
+    if (pendingVoice) {
+      finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
+    }
+
+    const hasContent = finalText.trim() || attachments.length > 0;
+    if (hasContent && !disabled) {
+      const metadata = buildSubmissionMetadata("deferred");
+      controls.clearInput();
+      resetCompositionMetadata();
+      setInterimTranscript("");
+      onProjectQueue(finalText.trim(), metadata);
+      textareaRef.current?.focus();
+    }
+  }, [
+    attachments.length,
+    buildSubmissionMetadata,
+    controls,
+    disabled,
+    onProjectQueue,
     resetCompositionMetadata,
   ]);
 
@@ -2189,6 +2221,11 @@ export function MessageInput({
                   : handleSubmit
             }
             onQueue={onQueue ? handleQueue : undefined}
+            onProjectQueue={
+              onProjectQueue && !forkSummaryMode
+                ? handleProjectQueue
+                : undefined
+            }
             onSteer={hasActiveDualActions ? handleSteer : undefined}
             primaryActionKind={effectivePrimaryActionKind}
             sendOverride={

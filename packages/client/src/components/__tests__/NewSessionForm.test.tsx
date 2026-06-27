@@ -27,6 +27,7 @@ const {
   mockUpdateSetting,
   mockStartSession,
   mockStartDetachedSession,
+  mockCreateProjectQueueItem,
   mockAddProject,
   mockCycleThinkingMode,
   mockSetEffortLevel,
@@ -44,11 +45,13 @@ const {
   versionState,
   remoteBasePathState,
   filterDropdownState,
+  toolbarVisibilityState,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockUpdateSetting: vi.fn(),
   mockStartSession: vi.fn(),
   mockStartDetachedSession: vi.fn(),
+  mockCreateProjectQueueItem: vi.fn(),
   mockAddProject: vi.fn(),
   mockCycleThinkingMode: vi.fn(),
   mockSetEffortLevel: vi.fn(),
@@ -150,6 +153,9 @@ const {
   filterDropdownState: {
     selected: [] as string[],
   },
+  toolbarVisibilityState: {
+    projectQueue: false,
+  },
 }));
 
 vi.mock("react-router-dom", async () => {
@@ -172,6 +178,7 @@ vi.mock("../../api/client", () => ({
     createDetachedSession: vi.fn(),
     createSession: vi.fn(),
     queueMessage: vi.fn(),
+    createProjectQueueItem: mockCreateProjectQueueItem,
   },
 }));
 
@@ -284,6 +291,14 @@ vi.mock("../../hooks/useServerSettings", () => ({
     updateSettings: vi.fn(),
     updateSetting: mockUpdateSetting,
     refetch: vi.fn(),
+  }),
+}));
+
+vi.mock("../../hooks/useSessionToolbarVisibility", () => ({
+  useSessionToolbarVisibility: () => ({
+    visibility: {
+      projectQueue: toolbarVisibilityState.projectQueue,
+    },
   }),
 }));
 
@@ -442,12 +457,14 @@ describe("NewSessionForm", () => {
     serverSettingsState.settings = null;
     serverSettingsState.isLoading = true;
     filterDropdownState.selected = [];
+    toolbarVisibilityState.projectQueue = false;
     modelSettingsState.thinkingMode = "off";
     modelSettingsState.effortLevel = "high";
     mockNavigate.mockReset();
     mockUpdateSetting.mockReset();
     mockStartSession.mockReset();
     mockStartDetachedSession.mockReset();
+    mockCreateProjectQueueItem.mockReset();
     mockAddProject.mockReset();
     mockCycleThinkingMode.mockReset();
     mockSetEffortLevel.mockReset();
@@ -485,6 +502,20 @@ describe("NewSessionForm", () => {
       projectId: "detached-project",
       permissionMode: "default",
       modeVersion: 0,
+    });
+    mockCreateProjectQueueItem.mockResolvedValue({
+      item: {
+        id: "queue-1",
+        projectId: "project-1",
+        target: { type: "new-session" },
+        messagePreview: "Queued work",
+        message: { text: "Queued work" },
+        createdAt: "2026-06-27T00:00:00.000Z",
+        updatedAt: "2026-06-27T00:00:00.000Z",
+        status: "queued",
+        attachmentCount: 0,
+      },
+      queue: { projectId: "project-1", items: [] },
     });
     mockAddProject.mockResolvedValue({
       project: {
@@ -745,6 +776,67 @@ describe("NewSessionForm", () => {
         }),
       }),
     );
+  });
+
+  it("queues a new session through Project Queue when the toolbar action is visible", async () => {
+    toolbarVisibilityState.projectQueue = true;
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "queued project work" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "toolbarProjectQueueLabel" }),
+    );
+
+    await waitFor(() => {
+      expect(mockCreateProjectQueueItem).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockCreateProjectQueueItem).toHaveBeenCalledWith(
+      "project-1",
+      expect.objectContaining({
+        target: expect.objectContaining({
+          type: "new-session",
+          mode: "default",
+          model: "opus",
+          provider: "claude",
+        }),
+        message: expect.objectContaining({
+          text: "queued project work",
+          mode: "default",
+          metadata: expect.objectContaining({
+            deliveryIntent: "deferred",
+            clientTimestamp: expect.any(Number),
+          }),
+        }),
+        createdFrom: { client: "new-session" },
+      }),
+    );
+    expect(mockStartSession).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("hides the new-session Project Queue action by default", () => {
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "toolbarProjectQueueLabel" }),
+    ).toBe(null);
   });
 
   it("shows and updates the initial provider effort selector", async () => {

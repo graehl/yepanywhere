@@ -76,6 +76,7 @@ const SESSION_TOOLBAR_VISIBILITY_CLIENT_DEFAULT_KEYS = [
   "btw",
   "nudge",
   "sessionStatus",
+  "projectQueue",
 ] as const satisfies readonly (keyof SessionToolbarVisibilityClientDefaults)[];
 const CLIENT_DEFAULT_KEYS = [
   "speech",

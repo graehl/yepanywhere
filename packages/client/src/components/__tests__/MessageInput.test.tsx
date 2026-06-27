@@ -191,6 +191,7 @@ vi.mock("../../hooks/useSessionToolbarVisibility", () => ({
       btw: true,
       nudge: true,
       sessionStatus: true,
+      projectQueue: true,
     },
     setControlVisible: vi.fn(),
     resetVisibility: vi.fn(),
@@ -224,6 +225,9 @@ vi.mock("../../i18n", () => ({
             "Steer now interrupts in-flight generation without ending the turn.",
           toolbarOverflowMenu: "More toolbar controls",
           toolbarQueuePrimaryActionLabel: "Queue from primary action",
+          toolbarProjectQueueLabel: "Queue for Project Queue",
+          toolbarProjectQueueTooltip:
+            "Send after all sessions in this project are idle",
           toolbarLivenessVerifiedProgress: "Verified progress",
           toolbarLivenessVerifiedIdle: "Verified idle",
           toolbarRelativeAgeNow: "now",
@@ -445,6 +449,7 @@ const toolbarVisibility: MessageInputToolbarViewProps["visibility"] = {
   btw: false,
   nudge: false,
   sessionStatus: false,
+  projectQueue: false,
 };
 
 const toolbarT = ((key: string, params?: Record<string, string>) => {
@@ -461,6 +466,9 @@ const toolbarT = ((key: string, params?: Record<string, string>) => {
     toolbarKeyboardShortcutsAria: "Session keyboard shortcuts",
     toolbarQueueLabel: "Queue message",
     toolbarQueueTooltip: "Queue for the next regular delivery\nCtrl+Enter",
+    toolbarProjectQueueLabel: "Queue for Project Queue",
+    toolbarProjectQueueTooltip:
+      "Send after all sessions in this project are idle",
     toolbarSteerTooltip: "Steer current turn\nEnter",
     toolbarSend: "Send",
     toolbarOverflowMenu: "More toolbar controls",
@@ -2436,6 +2444,105 @@ describe("MessageInput", () => {
 
     expect(onSend).not.toHaveBeenCalled();
     expectSubmission(onQueue, "queue from primary", "deferred");
+  });
+
+  it("routes the explicit project queue action with deferred metadata", () => {
+    const onProjectQueue = vi.fn();
+    const textarea = renderMessageInput(vi.fn(), { onProjectQueue });
+
+    fireEvent.change(textarea, { target: { value: "project-wide later" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Queue for Project Queue" }),
+    );
+
+    expectSubmission(onProjectQueue, "project-wide later", "deferred");
+  });
+
+  it("keeps the project queue toolbar action hidden by visibility", () => {
+    render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={{ ...toolbarVisibility, projectQueue: false }}
+        attachmentControl={{ attachmentCount: 0 }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{
+          send: {
+            onSend: vi.fn(),
+            canSend: true,
+            primaryActionKind: "send",
+            primaryActionLabel: "Send",
+            tooltip: "Send",
+            icon: "↑",
+          },
+          projectQueue: {
+            onProjectQueue: vi.fn(),
+            canSend: true,
+            tooltip: "Project Queue",
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Queue for Project Queue" }),
+    ).toBe(null);
+  });
+
+  it("renders the project queue toolbar action when visible", () => {
+    const onProjectQueue = vi.fn();
+    render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={{ ...toolbarVisibility, projectQueue: true }}
+        attachmentControl={{ attachmentCount: 0 }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{
+          send: {
+            onSend: vi.fn(),
+            canSend: true,
+            primaryActionKind: "send",
+            primaryActionLabel: "Send",
+            tooltip: "Send",
+            icon: "↑",
+          },
+          projectQueue: {
+            onProjectQueue,
+            canSend: true,
+            tooltip: "Project Queue",
+          },
+        }}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Queue for Project Queue" }),
+    );
+
+    expect(onProjectQueue).toHaveBeenCalledTimes(1);
   });
 
   it("renders context usage as passive status chrome", () => {

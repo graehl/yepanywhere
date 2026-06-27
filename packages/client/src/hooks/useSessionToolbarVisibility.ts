@@ -24,6 +24,7 @@ export interface SessionToolbarVisibility {
   btw: boolean;
   nudge: boolean;
   sessionStatus: boolean;
+  projectQueue: boolean;
 }
 
 export type SessionToolbarVisibilityKey = keyof SessionToolbarVisibility;
@@ -45,6 +46,7 @@ export const DEFAULT_SESSION_TOOLBAR_VISIBILITY: SessionToolbarVisibility = {
   btw: false,
   nudge: false,
   sessionStatus: true,
+  projectQueue: false,
 };
 
 const MOBILE_SESSION_TOOLBAR_VISIBILITY_DEFAULTS: Partial<SessionToolbarVisibility> =

@@ -250,6 +250,8 @@ export interface MessageInputToolbarProps {
   onSend?: () => void;
   /** Queue a deferred message. Only provided when agent is running. */
   onQueue?: () => void;
+  /** Queue through the project-level idle gate. Hidden unless opted in. */
+  onProjectQueue?: () => void;
   /** Steer the current turn. Used as the alternate action when Enter queues. */
   onSteer?: () => void;
   primaryActionKind?: "send" | "steer" | "queue";
@@ -579,6 +581,12 @@ interface ToolbarSendControl {
   };
 }
 
+interface ToolbarProjectQueueControl {
+  onProjectQueue: () => void;
+  canSend?: boolean;
+  tooltip: string;
+}
+
 interface ToolbarStopControl {
   onStop: () => void;
   title: string;
@@ -594,6 +602,7 @@ interface ToolbarActionsControl {
   contextWindow?: number;
   btw?: ToolbarBtwControl | null;
   stop?: ToolbarStopControl | null;
+  projectQueue?: ToolbarProjectQueueControl | null;
   send?: ToolbarSendControl | null;
 }
 
@@ -823,6 +832,9 @@ export function MessageInputToolbarView({
   const showLastActivityChip = statusControl?.showLastActivityChip ?? false;
   const showSendButton = !!actionsControl.send?.onSend;
   const showStopButton = !!actionsControl.stop;
+  const showProjectQueueButton = !!(
+    visibility.projectQueue && actionsControl.projectQueue?.onProjectQueue
+  );
   const selectedSpeechMethod = speechControl?.selectedMethod;
   const queueControl = actionsControl.send?.queue;
   const canToggleSteerNow = !!(
@@ -1725,7 +1737,7 @@ export function MessageInputToolbarView({
             <span className="stop-icon" />
           </button>
         )}
-        {showSendButton && actionsControl.send ? (
+        {(showProjectQueueButton || showSendButton) && actionsControl.send ? (
           <>
             {canToggleSteerNow && actionsControl.send && (
               <label
@@ -1790,20 +1802,39 @@ export function MessageInputToolbarView({
                 </span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={actionsControl.send?.onSend}
-              disabled={actionsControl.disabled || !actionsControl.send.canSend}
-              className={`send-button send-button-with-help ${
-                actionsControl.send.primaryActionKind === "queue"
-                  ? "queue-mode"
-                  : ""
-              }`}
-              aria-label={actionsControl.send.primaryActionLabel}
-              data-tooltip={actionsControl.send.tooltip}
-            >
-              <span className="send-icon">{actionsControl.send.icon}</span>
-            </button>
+            {showProjectQueueButton && actionsControl.projectQueue && (
+              <button
+                type="button"
+                onClick={actionsControl.projectQueue.onProjectQueue}
+                disabled={
+                  actionsControl.disabled ||
+                  !actionsControl.projectQueue.canSend
+                }
+                className="send-button project-queue-button"
+                aria-label={t("toolbarProjectQueueLabel")}
+                title={actionsControl.projectQueue.tooltip}
+              >
+                <span className="send-icon">⇥</span>
+              </button>
+            )}
+            {showSendButton && (
+              <button
+                type="button"
+                onClick={actionsControl.send?.onSend}
+                disabled={
+                  actionsControl.disabled || !actionsControl.send.canSend
+                }
+                className={`send-button send-button-with-help ${
+                  actionsControl.send.primaryActionKind === "queue"
+                    ? "queue-mode"
+                    : ""
+                }`}
+                aria-label={actionsControl.send.primaryActionLabel}
+                data-tooltip={actionsControl.send.tooltip}
+              >
+                <span className="send-icon">{actionsControl.send.icon}</span>
+              </button>
+            )}
           </>
         ) : null}
       </div>
@@ -1855,6 +1886,7 @@ export function MessageInputToolbar({
   onStop,
   onSend,
   onQueue,
+  onProjectQueue,
   onSteer,
   primaryActionKind,
   sendOverride,
@@ -2451,6 +2483,13 @@ export function MessageInputToolbar({
                 queueTooltip,
               },
               alternate: sendAlternate,
+            }
+          : null,
+        projectQueue: onProjectQueue
+          ? {
+              onProjectQueue,
+              canSend,
+              tooltip: t("toolbarProjectQueueTooltip"),
             }
           : null,
       }}

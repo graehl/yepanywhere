@@ -165,6 +165,37 @@ describe("useSessionToolbarVisibility", () => {
     expect(result.current.visibility.waveform).toBe(true);
   });
 
+  it("keeps Project Queue hidden by default", async () => {
+    stubToolbarLayout(false);
+    const { DEFAULT_SESSION_TOOLBAR_VISIBILITY, useSessionToolbarVisibility } =
+      await import("../useSessionToolbarVisibility");
+
+    const { result } = renderHook(() => useSessionToolbarVisibility());
+
+    expect(DEFAULT_SESSION_TOOLBAR_VISIBILITY.projectQueue).toBe(false);
+    expect(result.current.visibility.projectQueue).toBe(false);
+  });
+
+  it("can reveal Project Queue from server client defaults", async () => {
+    stubToolbarLayout(false);
+    mocks.version = {
+      clientDefaults: {
+        sessionToolbarVisibility: {
+          projectQueue: true,
+        },
+      },
+    };
+    const { useSessionToolbarVisibility } = await import(
+      "../useSessionToolbarVisibility"
+    );
+
+    const { result } = renderHook(() => useSessionToolbarVisibility());
+
+    await waitFor(() => {
+      expect(result.current.visibility.projectQueue).toBe(true);
+    });
+  });
+
   it("stores only explicit toolbar choices and reset returns to default", async () => {
     stubToolbarLayout(false);
     const { useSessionToolbarVisibility } = await import(

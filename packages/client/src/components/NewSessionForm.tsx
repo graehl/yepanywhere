@@ -50,6 +50,7 @@ import {
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
 import { useServerSettings } from "../hooks/useServerSettings";
+import { useSessionToolbarVisibility } from "../hooks/useSessionToolbarVisibility";
 import { useI18n } from "../i18n";
 import {
   getEffortLevelOptions,
@@ -396,6 +397,7 @@ export function NewSessionForm({
     Record<string, { uploaded: number; total: number }>
   >({});
   const [attachmentQuality] = useAttachmentUploadQuality();
+  const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
   const [interimTranscript, setInterimTranscript] = useState("");
   const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
     null,
@@ -1094,6 +1096,25 @@ export function NewSessionForm({
     updateServerSetting,
   ]);
 
+  const resolveProjectIdForSubmission = async (
+    trimmedProjectInput: string,
+  ): Promise<string | null> => {
+    let resolvedProjectId =
+      trimmedProjectInput && currentProjectSelection?.path === trimmedProjectInput
+        ? currentProjectSelection.id
+        : (findProjectByInput(projects, trimmedProjectInput)?.id ?? null);
+
+    if (trimmedProjectInput && !resolvedProjectId) {
+      const addProjectResult = await api.addProject(trimmedProjectInput);
+      resolvedProjectId = addProjectResult.project.id ?? null;
+      if (!resolvedProjectId) return null;
+      lastSyncedProjectIdRef.current = resolvedProjectId;
+      onProjectChange?.(resolvedProjectId);
+    }
+
+    return resolvedProjectId;
+  };
+
   const handleStartSession = async (messageOverride?: unknown) => {
     const override =
       typeof messageOverride === "string" ? messageOverride : undefined;
@@ -1124,18 +1145,8 @@ export function NewSessionForm({
     setIsStarting(true);
 
     try {
-      let resolvedProjectId = trimmedProjectInput
-        ? currentProjectSelection?.path === trimmedProjectInput
-          ? currentProjectSelection.id
-          : findProjectByInput(projects, trimmedProjectInput)?.id
-        : null;
-
-      if (trimmedProjectInput && !resolvedProjectId) {
-        const addProjectResult = await api.addProject(trimmedProjectInput);
-        resolvedProjectId = addProjectResult.project.id;
-        lastSyncedProjectIdRef.current = resolvedProjectId;
-        onProjectChange?.(resolvedProjectId);
-      }
+      let resolvedProjectId =
+        await resolveProjectIdForSubmission(trimmedProjectInput);
 
       let sessionId: string;
       let processId: string;
@@ -1425,6 +1436,96 @@ export function NewSessionForm({
         }
       }
       showToast(errorMessage, "error");
+    }
+  };
+
+  const handleQueueProjectSession = async (messageOverride?: unknown) => {
+    const override =
+      typeof messageOverride === "string" ? messageOverride : undefined;
+    const pendingVoice =
+      override === undefined
+        ? (voiceButtonRef.current?.stopAndFinalize() ?? "")
+        : "";
+
+    let finalMessage = (override ?? message).trimEnd();
+    if (pendingVoice) {
+      finalMessage = finalMessage
+        ? `${finalMessage} ${pendingVoice}`
+        : pendingVoice;
+    }
+
+    const trimmedMessage = finalMessage.trim();
+    const trimmedProjectInput = normalizeProjectInput(projectInput);
+    if (!trimmedMessage || pendingFiles.length > 0 || isStarting) return;
+
+    const actionAtMs = Date.now();
+    const clientTimestamp = getServerClockTimestamp(actionAtMs);
+    const submittedAt = new Date(clientTimestamp).toISOString();
+
+    setInterimTranscript("");
+    setIsStarting(true);
+
+    try {
+      const resolvedProjectId =
+        await resolveProjectIdForSubmission(trimmedProjectInput);
+      if (!resolvedProjectId) {
+        throw new Error(t("projectQueueNewSessionNeedsProject"));
+      }
+
+      const sessionMode = effectivePermissionMode;
+      const thinking = toThinkingOption(
+        effectiveThinkingMode,
+        effectiveEffortLevel,
+      );
+      const showThinking = getShowThinkingSetting();
+
+      await api.createProjectQueueItem(resolvedProjectId, {
+        target: {
+          type: "new-session",
+          mode: sessionMode,
+          model: selectedModel ?? undefined,
+          thinking,
+          showThinking,
+          provider: selectedProvider ?? undefined,
+          executor: selectedExecutor ?? undefined,
+          title: trimmedMessage,
+        },
+        message: {
+          text: trimmedMessage,
+          mode: sessionMode,
+          metadata: {
+            deliveryIntent: "deferred",
+            clientTimestamp,
+            composition: {
+              submittedAt,
+              typingEndedAt: submittedAt,
+            },
+          },
+        },
+        createdFrom: {
+          client: "new-session",
+        },
+      });
+
+      logSessionUiTrace("new-session-project-queued", {
+        projectId: resolvedProjectId,
+        mode: sessionMode,
+        model: selectedModel ?? null,
+        thinking,
+        provider: selectedProvider ?? null,
+        executor: selectedExecutor ?? null,
+        textLength: trimmedMessage.length,
+        uploadWaitMs: Date.now() - actionAtMs,
+      });
+      draftControls.clearDraft();
+      setIsStarting(false);
+      showToast(t("projectQueueNewSessionQueuedToast"), "success");
+    } catch (err) {
+      console.error("Failed to queue project session:", err);
+      draftControls.restoreFromStorage();
+      setIsStarting(false);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      showToast(t("projectQueueSubmitFailed", { message: errorMsg }), "error");
     }
   };
 
@@ -1746,6 +1847,16 @@ export function NewSessionForm({
 
   const hasContent = message.trim() || pendingFiles.length > 0;
   const canStart = Boolean(hasContent);
+  const hasProjectQueueTargetProject = Boolean(normalizedProjectInput);
+  const canQueueProjectSession = Boolean(
+    message.trim() && pendingFiles.length === 0 && hasProjectQueueTargetProject,
+  );
+  const projectQueueNewSessionTitle =
+    pendingFiles.length > 0
+      ? t("projectQueueNewSessionAttachmentsUnsupported")
+      : hasProjectQueueTargetProject
+        ? t("toolbarProjectQueueTooltip")
+        : t("projectQueueNewSessionNeedsProject");
   const interimDisplayTranscript = interimTranscript.trim();
   // The inline mirror previews speech in place at the insertion point: streaming
   // interim text, otherwise the pending-state label (Listening…/Transcribing…/
@@ -2013,33 +2124,47 @@ export function NewSessionForm({
             }
           />
         </div>
-        <button
-          type="button"
-          onClick={handleStartSession}
-          disabled={isStarting || !canStart}
-          className="send-button new-session-submit-button"
-          aria-label={t("newSessionStartAction")}
-        >
-          {isStarting ? (
-            <span className="send-spinner" />
-          ) : (
-            <svg
-              className="send-icon new-session-submit-icon"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.25"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+        <div className="new-session-form-toolbar-actions">
+          {toolbarVisibility.projectQueue && (
+            <button
+              type="button"
+              onClick={handleQueueProjectSession}
+              disabled={isStarting || !canQueueProjectSession}
+              className="send-button project-queue-button new-session-project-queue-button"
+              aria-label={t("toolbarProjectQueueLabel")}
+              title={projectQueueNewSessionTitle}
             >
-              <path d="M12 19V5" />
-              <path d="m5 12 7-7 7 7" />
-            </svg>
+              <span className="send-icon">⇥</span>
+            </button>
           )}
-        </button>
+          <button
+            type="button"
+            onClick={handleStartSession}
+            disabled={isStarting || !canStart}
+            className="send-button new-session-submit-button"
+            aria-label={t("newSessionStartAction")}
+          >
+            {isStarting ? (
+              <span className="send-spinner" />
+            ) : (
+              <svg
+                className="send-icon new-session-submit-icon"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.25"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 19V5" />
+                <path d="m5 12 7-7 7 7" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
       {pendingFiles.length > 0 && (
         <div className="pending-files-list">

@@ -360,6 +360,7 @@ export interface SessionToolbarVisibilityClientDefaults {
   btw?: boolean;
   nudge?: boolean;
   sessionStatus?: boolean;
+  projectQueue?: boolean;
 }
 
 export type BusyComposerDefaultAction = "steer" | "queue";

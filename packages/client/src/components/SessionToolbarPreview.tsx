@@ -155,6 +155,11 @@ export function SessionToolbarPreview() {
                 queueTooltip: t("toolbarQueueTooltip"),
               },
             },
+            projectQueue: {
+              onProjectQueue: noop,
+              canSend: true,
+              tooltip: t("toolbarProjectQueueTooltip"),
+            },
           }}
         />
       </div>

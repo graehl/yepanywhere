@@ -2395,6 +2395,98 @@ function SessionPageContent({
     }
   };
 
+  const handleProjectQueue = async (
+    text: string,
+    metadata?: MessageSubmissionMetadata,
+  ) => {
+    const prepared = prepareComposerSubmission(text);
+    if (!prepared) {
+      return;
+    }
+    const { outgoingText, slashCommand } = prepared;
+    const thinking = prepared.thinking ?? getThinkingSetting();
+    const showThinking = getShowThinkingSetting();
+    const actionAtMs = Date.now();
+    const clientTimestamp = getServerClockTimestamp(actionAtMs);
+
+    const currentAttachments = [...attachments];
+    const pendingAtSendTime = [...pendingUploadsRef.current.values()];
+    if (pendingAtSendTime.length > 0) {
+      setAttachments([]);
+      const results = await Promise.all(pendingAtSendTime);
+      for (const result of results) {
+        if (result) currentAttachments.push(result);
+      }
+      const sentIds = new Set(currentAttachments.map((a) => a.id));
+      setAttachments((prev) => prev.filter((a) => !sentIds.has(a.id)));
+    } else {
+      setAttachments([]);
+    }
+
+    try {
+      logSessionUiTrace("composer-project-queue-start", {
+        sessionId,
+        projectId,
+        permissionMode,
+        thinking,
+        slashCommand: slashCommand ?? null,
+        textLength: outgoingText.length,
+        attachmentCount: currentAttachments.length,
+        clientTimestamp,
+        serverOffsetMs: getEstimatedServerOffsetMs(),
+      });
+      const requestSentAtMs = Date.now();
+      await api.createProjectQueueItem(projectId, {
+        target: {
+          type: "existing-session",
+          sessionId,
+          mode: permissionMode,
+          model: session?.model ?? getModelSetting(),
+          thinking,
+          showThinking,
+          provider: effectiveProvider,
+          executor: session?.executor,
+        },
+        message: {
+          text: outgoingText,
+          mode: permissionMode,
+          ...(currentAttachments.length > 0
+            ? { attachments: currentAttachments }
+            : {}),
+          metadata: {
+            ...metadata,
+            deliveryIntent: "deferred",
+            clientTimestamp,
+          },
+        },
+        createdFrom: {
+          sessionId,
+          client: "toolbar",
+        },
+      });
+      logSessionUiTrace("composer-project-queue-result", {
+        sessionId,
+        projectId,
+        uploadWaitMs: requestSentAtMs - actionAtMs,
+      });
+      draftControlsRef.current?.clearDraft();
+      setCorrectionDraft(null);
+      clearQuoteAnchors();
+      showToast(t("projectQueueSessionQueuedToast"), "success");
+    } catch (err) {
+      console.error("Failed to queue project message:", err);
+      logSessionUiTrace("composer-project-queue-error", {
+        sessionId,
+        projectId,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      draftControlsRef.current?.restoreFromStorage();
+      setAttachments(currentAttachments);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      showToast(t("projectQueueSubmitFailed", { message: errorMsg }), "error");
+    }
+  };
+
   const handleCancelDeferred = useCallback(
     async (tempId: string) => {
       // No optimistic removal: the chip disappears when the server's next
@@ -4973,6 +5065,9 @@ function SessionPageContent({
                   !mainComposerForAside && shouldDeferMessages
                     ? handleQueue
                     : undefined
+                }
+                onProjectQueue={
+                  !mainComposerForAside ? handleProjectQueue : undefined
                 }
                 primaryActionKind={
                   mainComposerForAside ? "send" : primaryComposerAction

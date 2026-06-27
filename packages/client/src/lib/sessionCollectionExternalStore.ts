@@ -136,6 +136,24 @@ export function reportGlobalSessionsCollectionSnapshot(
   );
 }
 
+export function reportSessionCollectionCreated(
+  event: SessionCreatedEvent,
+  observedAt = Date.now(),
+): void {
+  updateSnapshot((current) =>
+    applySessionCollectionCreated(current, event, observedAt),
+  );
+}
+
+export function reportSessionCollectionMetadataChanged(
+  event: SessionMetadataChangedEvent,
+  observedAt = Date.now(),
+): void {
+  updateSnapshot((current) =>
+    applySessionCollectionMetadataChanged(current, event, observedAt),
+  );
+}
+
 export function useSessionCollectionState(): SessionCollectionState {
   return useSyncExternalStore(
     subscribeSessionCollection,

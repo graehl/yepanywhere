@@ -14,7 +14,11 @@ import {
   type SessionUpdatedEvent,
   useFileActivity,
 } from "./useFileActivity";
-import { reportGlobalSessionsCollectionSnapshot } from "../lib/sessionCollectionExternalStore";
+import {
+  reportGlobalSessionsCollectionSnapshot,
+  reportSessionCollectionCreated,
+  reportSessionCollectionMetadataChanged,
+} from "../lib/sessionCollectionExternalStore";
 import { createGlobalSessionsCollectionQueryDescriptor } from "../lib/sessionCollectionStore";
 
 const REFETCH_DEBOUNCE_MS = 500;
@@ -325,6 +329,8 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
   // Handle new session created
   const handleSessionCreated = useCallback(
     (event: SessionCreatedEvent) => {
+      reportSessionCollectionCreated(event);
+
       // If we have a project filter, only add sessions from that project
       if (projectId && event.session.projectId !== projectId) return;
 
@@ -382,6 +388,8 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
   // Handle session metadata changes
   const handleSessionMetadataChange = useCallback(
     (event: SessionMetadataChangedEvent) => {
+      reportSessionCollectionMetadataChanged(event);
+
       setSessions((prev) => {
         const updated = prev.map((session) => {
           if (session.id !== event.sessionId) return session;

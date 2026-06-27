@@ -15,6 +15,10 @@ Status: Sidebar and Global Sessions migrated / inventory consumers next
 - 2026-06-27: Migrated the Global Sessions page to query-backed collection
   records while keeping `useGlobalSessions` as the server fetch, stats,
   project-list, and pagination owner.
+- 2026-06-27: Closed the first sidebar migration gap: local row actions and
+  `useGlobalSessions` event handlers now report created/metadata events into
+  the collection directly, so starred rows and newly-created rows do not depend
+  solely on a later server broadcast or REST recovery snapshot.
 
 ## Context
 
@@ -185,3 +189,8 @@ not a plain projection.
 - Global Sessions renders rows from the collection query for its current
   server request shape, while filters and pagination still follow the existing
   page behavior.
+- Starring from a list row emits a local metadata event after the API succeeds,
+  letting the collection move the row into starred projections immediately.
+- A hook-observed `session-created` event reports the entity into the
+  collection directly, and an older empty `/api/sessions` snapshot does not
+  remove it.

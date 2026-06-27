@@ -276,6 +276,12 @@ export function SessionListItem({
     setLocalIsStarred(newStarred);
     try {
       await api.updateSessionMetadata(sessionId, { starred: newStarred });
+      activityBus.emitLocal("session-metadata-changed", {
+        type: "session-metadata-changed",
+        sessionId,
+        starred: newStarred,
+        timestamp: new Date().toISOString(),
+      });
       onToggleStar?.();
     } catch (err) {
       console.error("Failed to update star status:", err);
@@ -288,6 +294,12 @@ export function SessionListItem({
     setLocalIsArchived(newArchived);
     try {
       await api.updateSessionMetadata(sessionId, { archived: newArchived });
+      activityBus.emitLocal("session-metadata-changed", {
+        type: "session-metadata-changed",
+        sessionId,
+        archived: newArchived,
+        timestamp: new Date().toISOString(),
+      });
       onToggleArchive?.();
     } catch (err) {
       console.error("Failed to update archive status:", err);

@@ -45,6 +45,8 @@ vi.mock("../activityBus", () => ({
 
 import {
   reportGlobalSessionsCollectionSnapshot,
+  reportSessionCollectionCreated,
+  reportSessionCollectionMetadataChanged,
   resetSessionCollectionStoreForTests,
   useRecentSessionRecords,
   useSessionCollectionRecord,
@@ -135,5 +137,82 @@ describe("sessionCollectionExternalStore", () => {
 
     expect(recent.result.current).toEqual([]);
     expect(starred.result.current.map((s) => s.id)).toEqual(["session-1"]);
+  });
+
+  it("reports local metadata changes to derived projections", () => {
+    const starred = renderHook(() => useStarredSessionRecords());
+    const recent = renderHook(() =>
+      useRecentSessionRecords(Date.parse("2026-06-27T12:00:00.000Z")),
+    );
+
+    act(() => {
+      reportGlobalSessionsCollectionSnapshot(
+        {
+          query: { scope: "global-sessions", limit: 50 },
+          sessions: [globalSession("session-1")],
+          hasMore: false,
+        },
+        100,
+      );
+    });
+
+    act(() => {
+      reportSessionCollectionMetadataChanged(
+        {
+          type: "session-metadata-changed",
+          sessionId: "session-1",
+          starred: true,
+          timestamp: "2026-06-27T12:00:01.000Z",
+        },
+        200,
+      );
+    });
+
+    expect(recent.result.current).toEqual([]);
+    expect(starred.result.current.map((s) => s.id)).toEqual(["session-1"]);
+  });
+
+  it("keeps locally created sessions through older empty snapshots", () => {
+    const recent = renderHook(() =>
+      useRecentSessionRecords(Date.parse("2026-06-27T12:00:00.000Z")),
+    );
+
+    act(() => {
+      reportSessionCollectionCreated(
+        {
+          type: "session-created",
+          session: {
+            id: "new-session",
+            projectId: PROJECT_ID,
+            title: null,
+            fullTitle: null,
+            createdAt: RECENT,
+            updatedAt: RECENT,
+            messageCount: 0,
+            ownership: { owner: "self", processId: "process-1" },
+            provider: "claude",
+            activity: "in-turn",
+          },
+          timestamp: RECENT,
+        },
+        200,
+      );
+    });
+
+    expect(recent.result.current.map((s) => s.id)).toEqual(["new-session"]);
+
+    act(() => {
+      reportGlobalSessionsCollectionSnapshot(
+        {
+          query: { scope: "global-sessions", limit: 50 },
+          sessions: [],
+          hasMore: false,
+          mode: "replace",
+        },
+        100,
+      );
+    });
+
+    expect(recent.result.current.map((s) => s.id)).toEqual(["new-session"]);
   });
 });

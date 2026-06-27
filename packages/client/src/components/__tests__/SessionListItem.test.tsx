@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../api/client";
 import { DEFAULT_HOVERCARD_SHOW_DELAY_MS } from "../../hooks/useHoverCardAppearance";
 import { I18nProvider } from "../../i18n";
+import { activityBus } from "../../lib/activityBus";
 import { SessionListItem } from "../SessionListItem";
 
 const mockWindowOpen = vi.fn();
@@ -509,6 +510,48 @@ describe("SessionListItem links", () => {
     });
 
     expect(screen.queryByText("Menu open prompt")).toBeNull();
+  });
+
+  it("emits a local metadata event after starring from the menu", async () => {
+    const updateSpy = vi
+      .spyOn(api, "updateSessionMetadata")
+      .mockResolvedValue({ updated: true });
+    const emitSpy = vi.spyOn(activityBus, "emitLocal");
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="Star me"
+              provider="claude"
+              isStarred={false}
+              mode="compact"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByLabelText("Session options"));
+    fireEvent.click(screen.getByRole("button", { name: "Star" }));
+
+    await waitFor(() => {
+      expect(updateSpy).toHaveBeenCalledWith("session-1", { starred: true });
+      expect(emitSpy).toHaveBeenCalledWith(
+        "session-metadata-changed",
+        expect.objectContaining({
+          type: "session-metadata-changed",
+          sessionId: "session-1",
+          starred: true,
+        }),
+      );
+    });
+
+    updateSpy.mockRestore();
+    emitSpy.mockRestore();
   });
 
   it("refreshes the preview on hover, before the show delay elapses", () => {

@@ -11,10 +11,14 @@ const {
   mockSetNewSessionPrefill,
   globalSessionsState,
   mockLoadMore,
+  sessionCollectionState,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockSetNewSessionPrefill: vi.fn(),
   mockLoadMore: vi.fn(),
+  sessionCollectionState: {
+    records: [] as unknown[],
+  },
   globalSessionsState: {
     sessions: [] as unknown[],
     stats: {
@@ -74,7 +78,13 @@ vi.mock("../../components/PageHeader", () => ({
 }));
 
 vi.mock("../../components/SessionListItem", () => ({
-  SessionListItem: () => <div>session-item</div>,
+  SessionListItem: ({
+    sessionId,
+    title,
+  }: {
+    sessionId: string;
+    title: string;
+  }) => <div data-testid={`session-${sessionId}`}>{title}</div>,
 }));
 
 vi.mock("../../hooks/useDrafts", () => ({
@@ -83,6 +93,10 @@ vi.mock("../../hooks/useDrafts", () => ({
 
 vi.mock("../../hooks/useGlobalSessions", () => ({
   useGlobalSessions: () => globalSessionsState,
+}));
+
+vi.mock("../../lib/sessionCollectionExternalStore", () => ({
+  useSessionCollectionQueryRecords: () => sessionCollectionState.records,
 }));
 
 vi.mock("../../hooks/useRemoteBasePath", () => ({
@@ -158,9 +172,29 @@ vi.mock("../../lib/newSessionPrefill", () => ({
   setNewSessionPrefill: mockSetNewSessionPrefill,
 }));
 
+function makeSessionRecord(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    title: `Session ${id}`,
+    fullTitle: `Session ${id}`,
+    createdAt: "2026-04-21T00:00:00.000Z",
+    updatedAt: "2026-04-21T00:00:00.000Z",
+    messageCount: 1,
+    provider: "claude",
+    projectId: "project-1",
+    projectName: "Alpha",
+    ownership: { owner: "none" },
+    isArchived: false,
+    isStarred: false,
+    observedAt: 1,
+    ...overrides,
+  };
+}
+
 describe("GlobalSessionsPage", () => {
   beforeEach(() => {
     globalSessionsState.sessions = [];
+    sessionCollectionState.records = [];
     globalSessionsState.projects = [
       {
         id: "project-1",
@@ -230,6 +264,22 @@ describe("GlobalSessionsPage", () => {
     expect(mockSetNewSessionPrefill).toHaveBeenCalledWith("fix login flow");
     expect(mockNavigate).toHaveBeenCalledWith(
       "/new-session?projectId=project-1",
+    );
+  });
+
+  it("renders sessions from collection query records", () => {
+    globalSessionsState.sessions = [];
+    sessionCollectionState.records = [
+      makeSessionRecord("collection-only", {
+        title: "Collection row",
+        fullTitle: "Collection row",
+      }),
+    ];
+
+    renderPage("/sessions");
+
+    expect(screen.getByTestId("session-collection-only").textContent).toBe(
+      "Collection row",
     );
   });
 });

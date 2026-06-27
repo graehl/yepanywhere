@@ -87,6 +87,23 @@ export function createEmptySessionCollectionState(): SessionCollectionState {
   };
 }
 
+export function createGlobalSessionsCollectionQueryDescriptor(options: {
+  projectId?: string | null;
+  searchQuery?: string;
+  limit?: number;
+  includeArchived?: boolean;
+  starred?: boolean;
+}): SessionCollectionQueryDescriptor {
+  return {
+    scope: "global-sessions",
+    projectId: options.projectId ?? null,
+    searchQuery: options.searchQuery || undefined,
+    limit: options.limit,
+    includeArchived: options.includeArchived,
+    starred: options.starred,
+  };
+}
+
 export function createGlobalSessionsQueryKey(
   descriptor: SessionCollectionQueryDescriptor,
 ): string {

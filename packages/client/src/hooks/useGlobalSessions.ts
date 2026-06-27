@@ -15,7 +15,7 @@ import {
   useFileActivity,
 } from "./useFileActivity";
 import { reportGlobalSessionsCollectionSnapshot } from "../lib/sessionCollectionExternalStore";
-import type { SessionCollectionQueryDescriptor } from "../lib/sessionCollectionStore";
+import { createGlobalSessionsCollectionQueryDescriptor } from "../lib/sessionCollectionStore";
 
 const REFETCH_DEBOUNCE_MS = 500;
 
@@ -37,23 +37,6 @@ const DEFAULT_STATS: GlobalSessionStats = {
   providerCounts: {},
   executorCounts: {},
 };
-
-function createCollectionQueryDescriptor(options: {
-  projectId?: string | null;
-  searchQuery?: string;
-  limit?: number;
-  includeArchived?: boolean;
-  starred?: boolean;
-}): SessionCollectionQueryDescriptor {
-  return {
-    scope: "global-sessions",
-    projectId: options.projectId ?? null,
-    searchQuery: options.searchQuery || undefined,
-    limit: options.limit,
-    includeArchived: options.includeArchived,
-    starred: options.starred,
-  };
-}
 
 export function reconcileGlobalSessionsProcessState(
   sessions: GlobalSessionItem[],
@@ -175,7 +158,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
 
       reportGlobalSessionsCollectionSnapshot(
         {
-          query: createCollectionQueryDescriptor({
+          query: createGlobalSessionsCollectionQueryDescriptor({
             projectId,
             searchQuery,
             limit,
@@ -247,7 +230,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
 
       reportGlobalSessionsCollectionSnapshot(
         {
-          query: createCollectionQueryDescriptor({
+          query: createGlobalSessionsCollectionQueryDescriptor({
             projectId,
             searchQuery,
             limit,

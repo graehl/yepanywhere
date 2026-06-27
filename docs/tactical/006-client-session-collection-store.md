@@ -1,6 +1,6 @@
 # Client Session Collection Store
 
-Status: Sidebar consumer migrated / Global Sessions next
+Status: Sidebar and Global Sessions migrated / inventory consumers next
 
 ## Progress
 
@@ -12,6 +12,9 @@ Status: Sidebar consumer migrated / Global Sessions next
 - 2026-06-27: Migrated the sidebar's Starred, Last 24 Hours, and Older
   buckets to collection selectors while keeping the existing
   `useGlobalSessions` hooks mounted as fetch/pagination feeders.
+- 2026-06-27: Migrated the Global Sessions page to query-backed collection
+  records while keeping `useGlobalSessions` as the server fetch, stats,
+  project-list, and pagination owner.
 
 ## Context
 
@@ -149,7 +152,7 @@ not a plain projection.
    shadow state.
 4. [x] Move the sidebar to collection selectors first. It has the clearest
    projection bugs and the fewest filter dimensions.
-5. [ ] Move Global Sessions page next. Keep pagination/query ids server-owned.
+5. [x] Move Global Sessions page next. Keep pagination/query ids server-owned.
 6. [ ] Keep InboxContext and Agents page as server-owned inventories initially,
    but let them report snapshots into the collection store.
 
@@ -179,3 +182,6 @@ not a plain projection.
   is active.
 - Sidebar active rows remain pinned above idle rows and do not reshuffle merely
   because `updatedAt` advances during an active turn.
+- Global Sessions renders rows from the collection query for its current
+  server request shape, while filters and pagination still follow the existing
+  page behavior.

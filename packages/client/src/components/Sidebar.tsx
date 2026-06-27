@@ -13,12 +13,12 @@ import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
+import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
 import {
   useOlderSessionRecords,
   useRecentSessionRecords,
   useStarredSessionRecords,
 } from "../lib/sessionCollectionExternalStore";
-import type { SessionCollectionRecord } from "../lib/sessionCollectionStore";
 import { UI_KEYS } from "../lib/storageKeys";
 import { getSessionDisplayTitle } from "../utils";
 import { AgentsNavItem } from "./AgentsNavItem";
@@ -40,53 +40,6 @@ const DEFAULT_SECTION_EXPANSION = {
   recentDay: true,
   older: true,
 };
-
-function collectionRecordToGlobalSessionItem(
-  record: SessionCollectionRecord,
-): GlobalSessionItem | null {
-  const updatedAt = record.updatedAt ?? record.createdAt;
-  const createdAt = record.createdAt ?? updatedAt;
-  if (!record.provider || !record.projectId || !createdAt || !updatedAt) {
-    return null;
-  }
-
-  return {
-    id: record.id,
-    title: record.title ?? null,
-    fullTitle: record.fullTitle ?? null,
-    createdAt,
-    updatedAt,
-    messageCount: record.messageCount ?? 0,
-    provider: record.provider,
-    model: record.model,
-    projectId: record.projectId,
-    projectName: record.projectName ?? record.projectId,
-    ownership: record.ownership ?? { owner: "none" },
-    pendingInputType: record.pendingInputType,
-    activity: record.activity,
-    hasUnread: record.hasUnread,
-    customTitle: record.customTitle,
-    isArchived: record.isArchived,
-    isStarred: record.isStarred,
-    parentSessionId: record.parentSessionId,
-    initialPrompt: record.initialPrompt,
-    executor: record.executor,
-    lastAgentText: record.lastAgentText,
-  };
-}
-
-function collectionRecordsToGlobalSessionItems(
-  records: readonly SessionCollectionRecord[],
-): GlobalSessionItem[] {
-  const sessions: GlobalSessionItem[] = [];
-  for (const record of records) {
-    const session = collectionRecordToGlobalSessionItem(record);
-    if (session) {
-      sessions.push(session);
-    }
-  }
-  return sessions;
-}
 
 /**
  * A session is "active" while its agent is mid-turn or waiting on input. Active
@@ -492,17 +445,17 @@ export function Sidebar({
   );
 
   const filteredStarredSessions = useMemo(
-    () => collectionRecordsToGlobalSessionItems(starredSessionRecords),
+    () => sessionCollectionRecordsToGlobalSessionItems(starredSessionRecords),
     [starredSessionRecords],
   );
 
   const recentDaySessions = useMemo(
-    () => collectionRecordsToGlobalSessionItems(recentSessionRecords),
+    () => sessionCollectionRecordsToGlobalSessionItems(recentSessionRecords),
     [recentSessionRecords],
   );
 
   const olderSessions = useMemo(
-    () => collectionRecordsToGlobalSessionItems(olderSessionRecords),
+    () => sessionCollectionRecordsToGlobalSessionItems(olderSessionRecords),
     [olderSessionRecords],
   );
 

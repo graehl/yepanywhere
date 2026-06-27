@@ -18,6 +18,9 @@ import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
+import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
+import { useSessionCollectionQueryRecords } from "../lib/sessionCollectionExternalStore";
+import { createGlobalSessionsCollectionQueryDescriptor } from "../lib/sessionCollectionStore";
 import { getSessionDisplayTitle } from "../utils";
 
 // Long-press threshold for entering selection mode on mobile
@@ -224,7 +227,22 @@ export function GlobalSessionsPage() {
   // Include archived sessions when archived filter is selected
   const includeArchived = statusFilters.includes("archived");
 
-  const { sessions, stats, projects, loading, error, hasMore, loadMore } =
+  const globalSessionsQuery = useMemo(
+    () =>
+      createGlobalSessionsCollectionQueryDescriptor({
+        projectId: projectFilter,
+        searchQuery,
+        includeArchived,
+      }),
+    [projectFilter, searchQuery, includeArchived],
+  );
+  const sessionRecords = useSessionCollectionQueryRecords(globalSessionsQuery);
+  const sessions = useMemo(
+    () => sessionCollectionRecordsToGlobalSessionItems(sessionRecords),
+    [sessionRecords],
+  );
+
+  const { stats, projects, loading, error, hasMore, loadMore } =
     useGlobalSessions({
       projectId: projectFilter,
       searchQuery,

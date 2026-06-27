@@ -125,6 +125,9 @@ export class ProjectQueueScheduler {
   async getProjectIdleStatus(
     projectId: UrlProjectId,
   ): Promise<ProjectIdleStatus> {
+    // Project Queue ordering and UI semantics are documented in
+    // topics/project-queue.md. In particular, per-session queues must drain
+    // before a project-level queue item can promote.
     const blockers: string[] = [];
 
     for (const process of this.supervisor.getAllProcesses()) {

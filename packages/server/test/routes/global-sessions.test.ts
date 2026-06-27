@@ -78,6 +78,7 @@ describe("Global Sessions Routes", () => {
       state: { type: string };
       permissionMode: string;
       modeVersion: number;
+      isRetainingProviderWork?: () => boolean;
     }
   >;
   let unreadMap: Map<string, boolean>;
@@ -780,6 +781,46 @@ describe("Global Sessions Routes", () => {
         modeVersion: 1,
       });
       expect(result.sessions[0].activity).toBe("in-turn");
+    });
+
+    it("reports idle process retaining provider background work as in-turn", async () => {
+      const project = createProject("proj1", "project", "/sessions/proj1");
+      const session = createSession("sess1", "proj1", minutesAgo(5));
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+      processMap.set("sess1", {
+        id: "proc-1",
+        getPendingInputRequest: () => null,
+        state: { type: "idle" },
+        permissionMode: "default",
+        modeVersion: 1,
+        isRetainingProviderWork: () => true,
+      });
+
+      const result = await makeRequest();
+
+      expect(result.sessions[0].activity).toBe("in-turn");
+    });
+
+    it("reports idle process without provider retention as inactive", async () => {
+      const project = createProject("proj1", "project", "/sessions/proj1");
+      const session = createSession("sess1", "proj1", minutesAgo(5));
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+      processMap.set("sess1", {
+        id: "proc-1",
+        getPendingInputRequest: () => null,
+        state: { type: "idle" },
+        permissionMode: "default",
+        modeVersion: 1,
+        isRetainingProviderWork: () => false,
+      });
+
+      const result = await makeRequest();
+
+      expect(result.sessions[0].activity).toBeUndefined();
     });
 
     it("enriches with external ownership", async () => {

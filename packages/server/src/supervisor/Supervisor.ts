@@ -3471,10 +3471,16 @@ export class Supervisor {
                 ? "tool-approval"
                 : "user-question";
           }
+          // A turn that settles to idle while the provider still has background
+          // work retained should report as active, not idle.
+          const activity: AgentActivity =
+            event.state.type === "idle" && process.isRetainingProviderWork()
+              ? "in-turn"
+              : event.state.type;
           this.emitAgentActivityChange(
             process.sessionId,
             process.projectId,
-            event.state.type,
+            activity,
             pendingInputType,
           );
         }
@@ -3827,8 +3833,19 @@ export class Supervisor {
   private handleProviderRetentionChanged(processHolder: {
     process: Process | null;
   }): void {
-    processHolder.process?.handleProviderRetentionChanged();
+    const process = processHolder.process;
+    process?.handleProviderRetentionChanged();
     this.emitWorkerActivity();
+    // Background work starting/finishing flips an idle session between active
+    // and truly idle without a state-change event. Surface that so inbox/sidebar
+    // activity indicators update live rather than only on the next refresh.
+    if (process && process.state.type === "idle") {
+      this.emitAgentActivityChange(
+        process.sessionId,
+        process.projectId,
+        process.isRetainingProviderWork() ? "in-turn" : "idle",
+      );
+    }
   }
 
   private processHasActiveWork(process: Process): boolean {

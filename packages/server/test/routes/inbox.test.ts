@@ -69,7 +69,11 @@ describe("Inbox Routes", () => {
   let codexSessionsByPath: Map<string, SessionSummary[]>;
   let processMap: Map<
     string,
-    { getPendingInputRequest: () => unknown; state: { type: string } }
+    {
+      getPendingInputRequest: () => unknown;
+      state: { type: string };
+      isRetainingProviderWork?: () => boolean;
+    }
   >;
   let unreadMap: Map<string, boolean>;
 
@@ -186,6 +190,64 @@ describe("Inbox Routes", () => {
       expect(result.active).toHaveLength(1);
       expect(result.active[0].sessionId).toBe("sess1");
       expect(result.active[0].activity).toBe("in-turn");
+    });
+
+    it("categorizes idle process retaining provider background work into active", async () => {
+      const project = createProject("proj1", "myproject", "/sessions/proj1");
+      // Updated recently enough that, without the retention check, it would
+      // otherwise fall into recentActivity.
+      const session = createSession("sess1", "proj1", minutesAgo(2));
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+
+      // Idle process, but the provider is still keeping background work alive.
+      processMap.set("sess1", {
+        getPendingInputRequest: () => null,
+        state: { type: "idle" },
+        isRetainingProviderWork: () => true,
+      });
+
+      const result = await makeRequest({
+        scanner: mockScanner,
+        readerFactory: mockReaderFactory,
+        supervisor: mockSupervisor,
+        notificationService: mockNotificationService,
+        sessionIndexService: mockSessionIndexService,
+      });
+
+      expect(result.active).toHaveLength(1);
+      expect(result.active[0].sessionId).toBe("sess1");
+      expect(result.active[0].activity).toBe("in-turn");
+      expect(result.recentActivity).toHaveLength(0);
+    });
+
+    it("categorizes idle process without provider retention into recentActivity", async () => {
+      const project = createProject("proj1", "myproject", "/sessions/proj1");
+      const session = createSession("sess1", "proj1", minutesAgo(2));
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+
+      // Idle process with no retained background work stays inactive.
+      processMap.set("sess1", {
+        getPendingInputRequest: () => null,
+        state: { type: "idle" },
+        isRetainingProviderWork: () => false,
+      });
+
+      const result = await makeRequest({
+        scanner: mockScanner,
+        readerFactory: mockReaderFactory,
+        supervisor: mockSupervisor,
+        notificationService: mockNotificationService,
+        sessionIndexService: mockSessionIndexService,
+      });
+
+      expect(result.active).toHaveLength(0);
+      expect(result.recentActivity).toHaveLength(1);
+      expect(result.recentActivity[0].sessionId).toBe("sess1");
+      expect(result.recentActivity[0].activity).toBeUndefined();
     });
 
     it("categorizes session updated in last 30 minutes into recentActivity", async () => {

@@ -440,6 +440,50 @@ describe("Process", () => {
       }
     });
 
+    it("reports retained-idle as in-turn activity in getInfo", async () => {
+      vi.useFakeTimers();
+      try {
+        let providerRetention: ProviderRetentionSnapshot = {
+          retained: true,
+          reasons: ["stop-hook-background-tasks:1"],
+          backgroundTaskCount: 1,
+          sessionCronCount: 0,
+          liveTaskCount: 0,
+        };
+        const controller = createControllableIterator();
+        const process = new Process(controller.iterator, {
+          projectPath: "/test",
+          projectId: "proj-1" as UrlProjectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          idleTimeoutMs: 100,
+          abortFn: vi.fn(),
+          getProviderRetentionFn: () => providerRetention,
+        });
+
+        controller.push({
+          type: "system",
+          subtype: "init",
+          session_id: "sess-1",
+        });
+        controller.push({ type: "result", session_id: "sess-1" });
+        await vi.advanceTimersByTimeAsync(0);
+
+        // Idle process, but the provider is still retaining background work:
+        // surface it as active so inbox/sidebar match the session page.
+        expect(process.state.type).toBe("idle");
+        expect(process.isRetainingProviderWork()).toBe(true);
+        expect(process.getInfo().state).toBe("in-turn");
+
+        // Once retention clears it falls back to plain idle.
+        providerRetention = { retained: false, reasons: [] };
+        expect(process.isRetainingProviderWork()).toBe(false);
+        expect(process.getInfo().state).toBe("idle");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("wakes retained idle on provider work before an immediate idle reap", async () => {
       vi.useFakeTimers();
       try {

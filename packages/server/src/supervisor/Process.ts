@@ -821,6 +821,19 @@ export class Process {
     );
   }
 
+  /**
+   * True when the process has settled to idle but the provider is still keeping
+   * background work alive (background tasks / session crons). Such a session is
+   * genuinely active — the liveness snapshot reports it as
+   * "verified-waiting-provider" — so inbox/sidebar surfaces should treat it as
+   * "in-turn" rather than idle.
+   */
+  isRetainingProviderWork(): boolean {
+    return (
+      this._state.type === "idle" && this.getProviderRetentionSnapshot().retained
+    );
+  }
+
   handleProviderRetentionChanged(): void {
     this.emit({ type: "liveness-update" });
     if (this._state.type === "idle") {
@@ -1482,7 +1495,8 @@ export class Process {
     } else if (this._state.type === "waiting-input") {
       activity = "waiting-input";
     } else if (this._state.type === "idle") {
-      activity = "idle";
+      // Idle but with provider-retained background work counts as active.
+      activity = this.isRetainingProviderWork() ? "in-turn" : "idle";
     } else {
       activity = "in-turn";
     }

@@ -432,6 +432,10 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           const state = process.state.type;
           if (state === "in-turn" || state === "waiting-input") {
             activity = state;
+          } else if (state === "idle" && process.isRetainingProviderWork()) {
+            // Idle but the provider still has background tasks/crons running —
+            // surface as active so the sidebar shows the activity indicator.
+            activity = "in-turn";
           }
         }
 

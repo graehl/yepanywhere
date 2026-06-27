@@ -3,7 +3,8 @@
  *
  * Tiers (in priority order):
  * 1. needsAttention - Sessions with pendingInputType set (tool-approval or user-question)
- * 2. active - Sessions with processState === 'running' but no pending input
+ * 2. active - In-turn sessions (or idle sessions still retaining provider
+ *    background work) without pending input
  * 3. recentActivity - Sessions updated in the last 30 minutes (not in tiers 1-2)
  * 4. unread8h - Sessions with hasUnread and updatedAt within 8 hours (not in tiers 1-3)
  * 5. unread24h - Sessions with hasUnread and updatedAt within 24 hours (not in tiers 1-4)
@@ -170,6 +171,11 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
           const state = process.state.type;
           if (state === "in-turn" || state === "waiting-input") {
             activity = state;
+          } else if (state === "idle" && process.isRetainingProviderWork()) {
+            // Idle but the provider still has background tasks/crons running.
+            // Surface as active so the session lands in the "Active" tier
+            // instead of "Recent Activity", matching the session page.
+            activity = "in-turn";
           }
         }
 

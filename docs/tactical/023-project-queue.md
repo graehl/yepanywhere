@@ -11,9 +11,10 @@ Progress:
 - [x] Add project-idle promotion logic with bounded scheduling.
 - [x] Add focused server tests for idle gating, dispatch handoff, and failure
       persistence.
-- [ ] Show project queues on the projects page.
+- [x] Show project queues on the projects page.
+- [x] Add `useProjectQueues` and focused projects-page display tests.
 - [ ] Add an optional toolbar affordance, hidden by default.
-- [ ] Add tests for projects-page display and UI visibility defaults.
+- [ ] Add UI visibility-default tests for the toolbar affordance.
 
 Latest update:
 
@@ -32,6 +33,12 @@ Latest update:
   persists failed dispatches at the head of the queue. Projects-page UI,
   `useProjectQueue`, and hidden-by-default toolbar entry points are still
   pending.
+- 2026-06-27: Landed the projects-page display slice: `useProjectQueues`
+  fetches project-scoped server queues, refreshes from `project-queue-changed`
+  and reconnect/visibility events, and exposes delete/retry mutations. The
+  projects page now shows a Project Queue section for queued/dispatching/failed
+  items and project-card queue-count badges. Hidden-by-default toolbar and
+  new-session creation affordances remain pending.
 
 ## Context
 
@@ -326,7 +333,7 @@ Configuration split:
 - [x] Add `project-queue-changed` EventBus event.
 - [x] Forward the event through the existing activity stream.
 - [x] Add client API methods.
-- [ ] Add a `useProjectQueue` hook for UI consumers.
+- [x] Add a `useProjectQueues` hook for UI consumers.
 
 ### 3. Idle Gate And Promotion
 
@@ -339,10 +346,12 @@ Configuration split:
 
 ### 4. Projects Page UI
 
-- Add a project queue section and project-card count badges.
-- Support cancel/delete and retry.
-- Keep copy i18n-ready through `useI18n().t(...)`.
-- Verify on a narrow viewport.
+- [x] Add a project queue section and project-card count badges.
+- [x] Support cancel/delete and retry.
+- [x] Keep copy i18n-ready through `useI18n().t(...)`.
+- [x] Add focused hook, component, and page tests.
+- [ ] Support in-place edit for queued/failed item text.
+- [ ] Verify on a narrow viewport.
 
 ### 5. Composer And New-Session Entry Points
 

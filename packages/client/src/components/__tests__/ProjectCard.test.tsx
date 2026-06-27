@@ -45,4 +45,21 @@ describe("ProjectCard", () => {
 
     expect(onDeleteProject).toHaveBeenCalledWith(project);
   });
+
+  it("shows a project queue count badge", () => {
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ProjectCard
+            project={project}
+            needsAttentionCount={0}
+            thinkingCount={0}
+            queueCount={2}
+          />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTitle("Project Queue items: 2").textContent).toBe("2");
+  });
 });

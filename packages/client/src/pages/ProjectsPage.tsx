@@ -3,7 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectCard } from "../components/ProjectCard";
+import { ProjectQueueSection } from "../components/ProjectQueueSection";
 import { useInboxContext } from "../contexts/InboxContext";
+import { useProjectQueues } from "../hooks/useProjectQueues";
 import { useProjects } from "../hooks/useProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
@@ -47,6 +49,26 @@ export function ProjectsPage() {
     }
     return counts;
   }, [active]);
+
+  const projectIds = useMemo(
+    () => projects.map((project) => project.id),
+    [projects],
+  );
+  const projectQueues = useProjectQueues(projectIds);
+  const queueCountByProject = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const [projectId, items] of Object.entries(
+      projectQueues.queuesByProject,
+    )) {
+      const visibleCount = items.filter(
+        (item) => item.status === "queued" || item.status === "failed",
+      ).length;
+      if (visibleCount > 0) {
+        counts.set(projectId, visibleCount);
+      }
+    }
+    return counts;
+  }, [projectQueues.queuesByProject]);
 
   // Sort projects: those needing attention first, then by recency
   const sortedProjects = useMemo(() => {
@@ -103,6 +125,22 @@ export function ProjectsPage() {
       );
     } finally {
       setDeletingProjectId(null);
+    }
+  };
+
+  const handleDeleteQueueItem = async (projectId: string, itemId: string) => {
+    try {
+      await projectQueues.deleteItem(projectId, itemId);
+    } catch {
+      // The hook exposes the error in the queue section.
+    }
+  };
+
+  const handleRetryQueueItem = async (projectId: string, itemId: string) => {
+    try {
+      await projectQueues.retryItem(projectId, itemId);
+    } catch {
+      // The hook exposes the error in the queue section.
     }
   };
 
@@ -191,6 +229,17 @@ export function ProjectsPage() {
             <div className="add-project-error">{deleteError}</div>
           )}
 
+          <ProjectQueueSection
+            projects={projects}
+            items={projectQueues.items}
+            loading={projectQueues.loading}
+            error={projectQueues.error}
+            mutatingItemId={projectQueues.mutatingItemId}
+            basePath={basePath}
+            onDeleteItem={handleDeleteQueueItem}
+            onRetryItem={handleRetryQueueItem}
+          />
+
           {isEmpty ? (
             <div className="inbox-empty">
               <svg
@@ -217,6 +266,7 @@ export function ProjectsPage() {
                   project={project}
                   needsAttentionCount={attentionByProject.get(project.id) ?? 0}
                   thinkingCount={thinkingByProject.get(project.id) ?? 0}
+                  queueCount={queueCountByProject.get(project.id) ?? 0}
                   basePath={basePath}
                   onDeleteProject={handleDeleteProject}
                   isDeleting={deletingProjectId === project.id}

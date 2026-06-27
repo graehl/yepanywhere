@@ -10,6 +10,8 @@ interface ProjectCardProps {
   needsAttentionCount: number;
   /** Number of sessions actively thinking (running, no pending input) */
   thinkingCount: number;
+  /** Number of queued/failed Project Queue items in this project */
+  queueCount?: number;
   /** Base path prefix for relay mode (e.g., "/remote/my-server") */
   basePath?: string;
   /** Called when the user asks to remove the project from YA lists */
@@ -44,6 +46,7 @@ export function ProjectCard({
   project,
   needsAttentionCount,
   thinkingCount,
+  queueCount = 0,
   basePath = "",
   onDeleteProject,
   isDeleting = false,
@@ -74,6 +77,14 @@ export function ProjectCard({
             {needsAttentionCount > 0 && (
               <span className="project-card__attention-badge">
                 {needsAttentionCount}
+              </span>
+            )}
+            {queueCount > 0 && (
+              <span
+                className="project-card__queue-badge"
+                title={t("projectCardQueueCount", { count: queueCount })}
+              >
+                {queueCount}
               </span>
             )}
             {project.name}

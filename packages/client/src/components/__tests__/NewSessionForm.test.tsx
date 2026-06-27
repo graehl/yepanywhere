@@ -889,6 +889,24 @@ describe("NewSessionForm", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it("shows the new-session Project Queue action from project active counts", () => {
+    toolbarVisibilityState.projectQueue = true;
+    serverSettingsState.isLoading = false;
+    const activeProject = { ...chooserProjects[0], activeOwnedCount: 1 };
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={activeProject}
+        projects={[activeProject, chooserProjects[1]]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "toolbarProjectQueueLabel" }),
+    ).toBeTruthy();
+  });
+
   it("hides the new-session Project Queue action when the project is inactive", () => {
     toolbarVisibilityState.projectQueue = true;
     serverSettingsState.isLoading = false;

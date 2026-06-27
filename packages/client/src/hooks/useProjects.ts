@@ -3,6 +3,8 @@ import { api } from "../api/client";
 import type { Project } from "../types";
 import { type SessionStatusEvent, useFileActivity } from "./useFileActivity";
 
+const REFETCH_DEBOUNCE_MS = 500;
+
 /**
  * Fetch a single project by ID.
  */
@@ -11,6 +13,42 @@ export function useProject(projectId: string | undefined) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const loadedProjectIdRef = useRef<string | undefined>(undefined);
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refreshProject = useCallback(
+    (changedProjectId?: string) => {
+      if (!projectId || (changedProjectId && changedProjectId !== projectId)) {
+        return;
+      }
+      if (refetchTimerRef.current) {
+        clearTimeout(refetchTimerRef.current);
+      }
+      const targetProjectId = projectId;
+      refetchTimerRef.current = setTimeout(() => {
+        api
+          .getProject(targetProjectId)
+          .then((data) => {
+            if (loadedProjectIdRef.current === targetProjectId) {
+              setProject(data.project);
+              setError(null);
+            }
+          })
+          .catch((err) => {
+            if (loadedProjectIdRef.current === targetProjectId) {
+              setError(err instanceof Error ? err : new Error(String(err)));
+            }
+          });
+      }, REFETCH_DEBOUNCE_MS);
+    },
+    [projectId],
+  );
+
+  useFileActivity({
+    onProcessStateChange: (event) => refreshProject(event.projectId),
+    onSessionStatusChange: (event) => refreshProject(event.projectId),
+    onSessionCreated: (event) => refreshProject(event.session.projectId),
+    onReconnect: () => refreshProject(),
+  });
 
   useEffect(() => {
     if (!projectId) {
@@ -48,13 +86,19 @@ export function useProject(projectId: string | undefined) {
     };
   }, [projectId]);
 
+  useEffect(() => {
+    return () => {
+      if (refetchTimerRef.current) {
+        clearTimeout(refetchTimerRef.current);
+      }
+    };
+  }, []);
+
   return useMemo(
     () => ({ project, loading, error }),
     [project, loading, error],
   );
 }
-
-const REFETCH_DEBOUNCE_MS = 500;
 
 export function useProjects() {
   const [projects, setProjects] = useState<Project[]>([]);

@@ -841,13 +841,20 @@ function SessionPageContent({
         .map((item) => item.sessionId),
     [active, needsAttention, projectId],
   );
+  const projectActiveSessionCount = project
+    ? project.activeOwnedCount + project.activeExternalCount
+    : null;
+  const currentSessionIsProjectActive =
+    status.owner === "self" || status.owner === "external";
   const projectQueueItemCount =
     projectQueues.queuesByProject[projectId]?.length ?? 0;
   const showProjectQueueAction = shouldShowProjectQueueAffordance({
     projectId,
     currentSessionId: sessionId,
+    currentSessionIsActive: currentSessionIsProjectActive,
     currentSessionHasSessionQueueBacklog: deferredMessages.length > 0,
     activeProjectSessionIds,
+    projectActiveSessionCount,
     projectQueueItemCount,
   });
 

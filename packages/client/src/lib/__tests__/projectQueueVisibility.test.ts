@@ -51,6 +51,17 @@ describe("shouldShowProjectQueueAffordance", () => {
     ).toBe(false);
   });
 
+  it("hides when project active count only reflects the current active session", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
+        currentSessionIsActive: true,
+        projectActiveSessionCount: 1,
+      }),
+    ).toBe(false);
+  });
+
   it("shows when the current active session already has backlog", () => {
     expect(
       shouldShowProjectQueueAffordance({
@@ -58,6 +69,25 @@ describe("shouldShowProjectQueueAffordance", () => {
         currentSessionId: "session-1",
         currentSessionHasSessionQueueBacklog: true,
         activeProjectSessionIds: ["session-1"],
+      }),
+    ).toBe(true);
+  });
+
+  it("shows when project active count indicates another active session", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
+        currentSessionIsActive: false,
+        projectActiveSessionCount: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
+        currentSessionIsActive: true,
+        projectActiveSessionCount: 2,
       }),
     ).toBe(true);
   });

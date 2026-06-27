@@ -7,8 +7,10 @@ export interface ProjectQueueCapabilitySource {
 export interface ProjectQueueAffordanceState {
   projectId?: string | null;
   currentSessionId?: string | null;
+  currentSessionIsActive?: boolean;
   currentSessionHasSessionQueueBacklog?: boolean;
   activeProjectSessionIds?: readonly string[];
+  projectActiveSessionCount?: number | null;
   projectQueueItemCount?: number | null;
 }
 
@@ -21,21 +23,30 @@ export function serverSupportsProjectQueue(
 export function shouldShowProjectQueueAffordance({
   projectId,
   currentSessionId,
+  currentSessionIsActive = false,
   currentSessionHasSessionQueueBacklog = false,
   activeProjectSessionIds = [],
+  projectActiveSessionCount = null,
   projectQueueItemCount = 0,
 }: ProjectQueueAffordanceState): boolean {
   if (!projectId) return false;
   if ((projectQueueItemCount ?? 0) > 0) return true;
 
-  let currentSessionIsActive = false;
+  let knownCurrentSessionIsActive = currentSessionIsActive;
   for (const activeSessionId of activeProjectSessionIds) {
     if (activeSessionId === currentSessionId) {
-      currentSessionIsActive = true;
+      knownCurrentSessionIsActive = true;
       continue;
     }
     return true;
   }
 
-  return currentSessionIsActive && currentSessionHasSessionQueueBacklog;
+  if (projectActiveSessionCount !== null) {
+    const currentActiveCount = knownCurrentSessionIsActive ? 1 : 0;
+    if (projectActiveSessionCount > currentActiveCount) {
+      return true;
+    }
+  }
+
+  return knownCurrentSessionIsActive && currentSessionHasSessionQueueBacklog;
 }

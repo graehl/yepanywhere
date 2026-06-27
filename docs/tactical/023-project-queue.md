@@ -20,6 +20,8 @@ Progress:
 - [x] Suppress Project Queue buttons when normal send/queue is equivalent.
 - [x] Gate Project Queue UI and fetches on the server `projectQueue`
       capability.
+- [x] Use project active-count summaries as a Project Queue visibility
+      fallback when exact active sibling session ids are not locally known.
 
 Latest update:
 
@@ -66,6 +68,10 @@ Latest update:
   `projectQueue` capability, project-queue API fetches stay idle without that
   capability, and runtime/settings entry points hide when a newer remote client
   is connected to an older server.
+- 2026-06-27: Fixed a restart-era visibility gap: session and new-session
+  composers now use project active-count summaries in addition to exact active
+  inbox session ids, so an inactive current session can still show Project
+  Queue when another session in the project is already active.
 
 ## Context
 
@@ -389,6 +395,8 @@ Configuration split:
 - [x] Hide the Project Queue action when normal send/queue is equivalent.
 - [x] Hide Project Queue runtime/settings UI unless `/api/version` advertises
       `projectQueue`.
+- [x] Use project active-count summaries so the affordance still appears when
+      another active project session is not present in local inbox tiers.
 - [ ] Render Project Queue items inline in the target session with purple
       styling and project-queue position.
 - [ ] Add durable pre-session attachment staging for new-session Project Queue.

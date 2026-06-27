@@ -77,6 +77,12 @@ New-session Project Queue follows the same rule: hide when the selected project
 is idle and has no Project Queue backlog; show when the project has active work
 or existing Project Queue backlog.
 
+UI visibility should use both exact active session ids, when available, and
+project-level active-count summaries. The count fallback covers cases such as a
+fresh client after server restart where a project is known active but the
+current session composer has not yet seen every active sibling session in its
+local inbox tiers.
+
 ## Inline Rendering
 
 Session views should render Project Queue items that target the current session

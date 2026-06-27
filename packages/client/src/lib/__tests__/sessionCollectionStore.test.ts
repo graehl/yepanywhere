@@ -260,6 +260,57 @@ describe("sessionCollectionStore", () => {
     ]);
   });
 
+  it("moves newly active starred rows to the end of the active block", () => {
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptySessionCollectionState(),
+      {
+        query: { scope: "global-sessions", starred: true, limit: 50 },
+        sessions: [
+          globalSession("active-a", {
+            activity: "in-turn",
+            ownership: { owner: "self", processId: "process-a" },
+            isStarred: true,
+            updatedAt: "2026-06-27T11:00:00.000Z",
+          }),
+          globalSession("idle-b", {
+            isStarred: true,
+            updatedAt: "2026-06-27T11:30:00.000Z",
+          }),
+          globalSession("idle-c", {
+            isStarred: true,
+            updatedAt: "2026-06-27T11:15:00.000Z",
+          }),
+        ],
+        hasMore: false,
+      },
+      100,
+    );
+
+    expect(selectStarredSessionRecords(state).map((s) => s.id)).toEqual([
+      "active-a",
+      "idle-b",
+      "idle-c",
+    ]);
+
+    state = applySessionCollectionProcessStateChanged(
+      state,
+      {
+        type: "process-state-changed",
+        projectId: PROJECT_ID,
+        sessionId: "idle-b",
+        activity: "in-turn",
+        timestamp: "2026-06-27T11:45:00.000Z",
+      },
+      200,
+    );
+
+    expect(selectStarredSessionRecords(state).map((s) => s.id)).toEqual([
+      "active-a",
+      "idle-b",
+      "idle-c",
+    ]);
+  });
+
   it("pins newly active recent rows above idle rows", () => {
     let state = applyGlobalSessionsCollectionSnapshot(
       createEmptySessionCollectionState(),

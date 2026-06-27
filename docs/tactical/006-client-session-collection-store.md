@@ -195,6 +195,8 @@ not a plain projection.
   feed hooks plus collection selectors.
 - Sidebar active rows remain pinned above idle rows and do not reshuffle merely
   because `updatedAt` advances during an active turn.
+- A sidebar row that changes from idle to active joins the end of the active
+  block instead of jumping above already-active rows.
 - Global Sessions renders rows from the collection query for its current
   server request shape, while filters and pagination still follow the existing
   page behavior.

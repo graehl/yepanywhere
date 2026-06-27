@@ -32,8 +32,9 @@ What the user wants, stated as the target:
    top of the Last 24 Hours section.
 3. **Active sessions have no meaningful internal ordering — and that's fine.**
    The user explicitly does *not* want active rows sorted by any churning key.
-   A brand-new session may appear at the top; an already-active session simply
-   stays where it is. "Stable" beats "ranked."
+   Existing active rows keep their relative order. When an idle row becomes
+   active, it moves only far enough to join the end of the active block; it
+   must not jump ahead of already-active rows. "Stable" beats "ranked."
 4. **Idle sessions sort by recency and may be deduped where that section
    supports deduping.** Below the active group, idle sessions are ordered
    most-recent-first. Last 24 Hours and Older idle rows run through the
@@ -64,9 +65,10 @@ After the sidebar moved to the session collection store, the same rule is owned
 by `selectRecentSessionRecords` and `selectStarredSessionRecords`
 (`packages/client/src/lib/sessionCollectionStore.ts`). The selectors record
 when a row enters active state (`activeStartedAt`) and sort active rows by that
-stable timestamp, while idle rows sort by `updatedAt`. A brand-new active
-session may appear at the top; an already-active session must not move merely
-because its `updatedAt` advances.
+stable timestamp ascending, while idle rows sort by `updatedAt`. A newly
+active row therefore joins after already-active rows instead of becoming the
+top row. An already-active session must not move merely because its `updatedAt`
+advances.
 
 ## Why active rows must skip the duplicate-title grouping
 
@@ -89,7 +91,7 @@ first:
 ```js
 const active = records
   .filter((record) => isActiveActivity(record.activity))
-  .sort(byActiveStartedAtDesc);
+  .sort(byActiveStartedAtAsc);
 const idle = records
   .filter((record) => !isActiveActivity(record.activity))
   .sort(byUpdatedAtDesc);
@@ -120,6 +122,8 @@ The **Older** section needs no active handling: an active session has a fresh
 - An active session's row position must not change due to its own `updatedAt`
   advancing. Only a real set change (a session entering/leaving the active
   group, or a brand-new session) may move active rows.
+- A session entering active state joins the end of the active block. It must not
+  jump above rows that were already active.
 - Active sessions are never hidden behind the duplicate-title `(N hidden)`
   expander, regardless of shared titles or `messageCount`.
 - Active sessions render above idle sessions in Starred and Last 24 Hours.
@@ -145,3 +149,8 @@ After the session collection migration, Starred briefly regressed the same
 contract by sorting all starred rows by `updatedAt`. Active starred rows could
 therefore trade places during a turn. The selector now uses the same active-
 first stable ordering as Last 24 Hours.
+
+The next refinement closed a more subtle jump: sorting active rows by
+`activeStartedAt` descending made every idle-to-active transition become the top
+row in its section. The stable contract is active-first partitioning, not
+"newest active wins", so active rows now sort by `activeStartedAt` ascending.

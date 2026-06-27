@@ -627,17 +627,17 @@ function activeStartedAtMs(record: SessionCollectionRecord): number {
   return record.activeStartedAt ?? record.eventCreatedAt ?? record.observedAt;
 }
 
-function byActiveStartedAtDesc(
+function byActiveStartedAtAsc(
   a: SessionCollectionRecord,
   b: SessionCollectionRecord,
 ): number {
-  return activeStartedAtMs(b) - activeStartedAtMs(a);
+  return activeStartedAtMs(a) - activeStartedAtMs(b);
 }
 
 function orderActiveFirst(records: SessionCollectionRecord[]) {
   const active = records
     .filter((record) => isActiveActivity(record.activity))
-    .sort(byActiveStartedAtDesc);
+    .sort(byActiveStartedAtAsc);
   const idle = records
     .filter((record) => !isActiveActivity(record.activity))
     .sort(byUpdatedAtDesc);

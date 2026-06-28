@@ -415,6 +415,7 @@ Configuration split:
 - [x] Show a Project Queue badge on sidebar session rows with targeted queue
       items.
 - [ ] Add durable pre-session attachment staging for new-session Project Queue.
+      See `028-pre-session-attachment-staging.md`.
 
 ## Tests
 

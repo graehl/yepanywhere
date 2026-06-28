@@ -147,6 +147,11 @@ surface a cleanup affordance (per-session and per-project clear; age/size
 pruning) rather than building eager retention now. Record here so the trigger is
 not reinvented.
 
+Pre-session attachment staging is tracked separately in
+`docs/tactical/028-pre-session-attachment-staging.md`. That plan uses the YA
+data dir only as a temporary staging area before a real session exists; it does
+not change this topic's final attachment storage behavior.
+
 ## See also
 
 - [[security]] — local-file / local-image serve allowlist and the

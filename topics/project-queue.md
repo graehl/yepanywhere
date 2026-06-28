@@ -110,7 +110,9 @@ client also cannot persist browser `File` objects, blob URLs, or in-flight
 upload handles in the server queue file.
 
 The missing capability is a server-owned staging area for attachments before a
-session exists. A future implementation should upload files to durable
-project-scoped or queue-item-scoped staging storage, persist only server-owned
-`UploadedFile` references in the Project Queue item, and move or attach those
-references when the queued new session is promoted.
+session exists. The current tactical plan is
+`docs/tactical/028-pre-session-attachment-staging.md`: upload pre-session files
+to a temporary YA data-dir staging area, persist only server-owned staged
+references in new-session Project Queue items, and materialize those files into
+the normal final session attachment destination when the queued new session is
+promoted.

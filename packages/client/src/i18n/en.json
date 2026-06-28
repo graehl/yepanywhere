@@ -420,6 +420,7 @@
   "sessionUploading": "Uploading...",
   "sessionSendFailed": "Failed to send message: {message}",
   "sessionQueueFailed": "Failed to queue message: {message}",
+  "sessionThinkingChangeFailed": "Failed to change thinking: {message}",
   "sessionDeferredCancelFailed": "Failed to cancel queued message: {message}",
   "sessionDeferredEditFailed": "Failed to edit queued message: {message}",
   "sessionDeferredSteerFailed": "Failed to steer queued message: {message}",

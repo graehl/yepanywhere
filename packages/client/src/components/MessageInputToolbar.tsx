@@ -213,6 +213,13 @@ export interface MessageInputToolbarProps {
   /** Provider/model context used by the thinking effort chooser. */
   thinkingProvider?: string;
   thinkingModel?: string;
+  /** Live process thinking selection for owned active sessions. */
+  liveThinkingSelection?: {
+    mode: ThinkingMode;
+    level: EffortLevel;
+    onSetMode: (mode: ThinkingMode) => void;
+    onSetEffort: (level: EffortLevel) => void;
+  };
   /**
    * YA model id (launch alias) used to key the context quick-edit's per-model
    * compaction threshold. Distinct from `thinkingModel` (the reported model);
@@ -461,6 +468,7 @@ interface ToolbarThinkingControl {
   effortOptions: EffortLevelOption[];
   onSetMode: (mode: ThinkingMode) => void;
   onSetEffort: (level: EffortLevel) => void;
+  onSetEffortMode?: (level: EffortLevel) => void;
   onToggleEnabled: () => void;
   /** "Show thinking" preference (default/on/off); all providers. */
   showThinking: ShowThinking;
@@ -791,6 +799,7 @@ function ThinkingToolbarControl({
             level={control.level}
             effortOptions={control.effortOptions}
             onSetEffort={control.onSetEffort}
+            onSetEffortMode={control.onSetEffortMode}
             showThinking={control.showThinking}
             onSetShowThinking={control.onSetShowThinking}
             provider={control.provider}
@@ -1869,6 +1878,7 @@ export function MessageInputToolbar({
   btwToolbarMode,
   thinkingProvider,
   thinkingModel,
+  liveThinkingSelection,
   contextRequestedModel,
   heartbeatEnabled = false,
   onToggleHeartbeat,
@@ -1930,6 +1940,12 @@ export function MessageInputToolbar({
   const toolbarLeftRef = useRef<HTMLDivElement | null>(null);
   const toolbarStatusRef = useRef<HTMLDivElement | null>(null);
   const toolbarActionsRef = useRef<HTMLDivElement | null>(null);
+  const selectedThinkingMode = liveThinkingSelection?.mode ?? thinkingMode;
+  const selectedThinkingLevel = liveThinkingSelection?.level ?? thinkingLevel;
+  const setSelectedThinkingMode =
+    liveThinkingSelection?.onSetMode ?? setThinkingMode;
+  const setSelectedEffortLevel =
+    liveThinkingSelection?.onSetEffort ?? setEffortLevel;
   const [isCompactStatusMode, setIsCompactStatusMode] = useState(() =>
     typeof window === "undefined"
       ? false
@@ -1970,8 +1986,9 @@ export function MessageInputToolbar({
     ],
   );
   const effectiveThinkingLevel = useMemo(
-    () => resolveSupportedEffortLevel(thinkingLevel, thinkingEffortOptions),
-    [thinkingEffortOptions, thinkingLevel],
+    () =>
+      resolveSupportedEffortLevel(selectedThinkingLevel, thinkingEffortOptions),
+    [selectedThinkingLevel, thinkingEffortOptions],
   );
   const thinkingModeOptions = useMemo(
     () =>
@@ -1990,8 +2007,9 @@ export function MessageInputToolbar({
     ],
   );
   const effectiveThinkingMode = useMemo(
-    () => resolveSupportedThinkingMode(thinkingMode, thinkingModeOptions),
-    [thinkingMode, thinkingModeOptions],
+    () =>
+      resolveSupportedThinkingMode(selectedThinkingMode, thinkingModeOptions),
+    [selectedThinkingMode, thinkingModeOptions],
   );
   const permissionModeOptions = useMemo(
     () =>
@@ -2158,8 +2176,21 @@ export function MessageInputToolbar({
     )
       ? lastNonOffThinkingModeRef.current
       : (thinkingModeOptions.find((option) => option !== "off") ?? "auto");
-    setThinkingMode(effectiveThinkingMode === "off" ? nextEnabledMode : "off");
-  }, [effectiveThinkingMode, setThinkingMode, thinkingModeOptions]);
+    setSelectedThinkingMode(
+      effectiveThinkingMode === "off" ? nextEnabledMode : "off",
+    );
+  }, [effectiveThinkingMode, setSelectedThinkingMode, thinkingModeOptions]);
+  const setSelectedThinkingEffortMode = useCallback(
+    (level: EffortLevel) => {
+      if (liveThinkingSelection) {
+        liveThinkingSelection.onSetEffort(level);
+        return;
+      }
+      setSelectedEffortLevel(level);
+      setSelectedThinkingMode("on");
+    },
+    [liveThinkingSelection, setSelectedEffortLevel, setSelectedThinkingMode],
+  );
 
   useLayoutEffect(() => {
     const compactStatusQuery = getCompactStatusMatchMedia();
@@ -2353,8 +2384,9 @@ export function MessageInputToolbar({
               modeOptions: thinkingModeOptions,
               level: effectiveThinkingLevel,
               effortOptions: thinkingEffortOptions,
-              onSetMode: setThinkingMode,
-              onSetEffort: setEffortLevel,
+              onSetMode: setSelectedThinkingMode,
+              onSetEffort: setSelectedEffortLevel,
+              onSetEffortMode: setSelectedThinkingEffortMode,
               onToggleEnabled: toggleThinkingEnabled,
               showThinking,
               onSetShowThinking: setShowThinking ?? (() => {}),

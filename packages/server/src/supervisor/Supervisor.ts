@@ -333,7 +333,7 @@ export interface ModelSettings {
   model?: string;
   /** Provider-visible service tier. undefined means provider/default behavior. */
   serviceTier?: string;
-  /** Thinking configuration. undefined = thinking disabled */
+  /** Thinking configuration. undefined = thinking disabled for new sessions. */
   thinking?: ThinkingConfig;
   /** Effort level for response quality. undefined = SDK default */
   effort?: EffortLevel;
@@ -2468,12 +2468,19 @@ export class Supervisor {
     const isActiveSteeringMessage =
       message.metadata?.deliveryIntent === "steer" &&
       process.state.type === "in-turn";
+    const hasExplicitThinkingSettings =
+      modelSettings?.thinking !== undefined ||
+      modelSettings?.effort !== undefined;
     const requestedThinking = isActiveSteeringMessage
       ? process.thinking
-      : modelSettings?.thinking;
+      : hasExplicitThinkingSettings
+        ? modelSettings?.thinking
+        : process.thinking;
     const requestedEffort = isActiveSteeringMessage
       ? process.effort
-      : modelSettings?.effort;
+      : hasExplicitThinkingSettings
+        ? modelSettings?.effort
+        : process.effort;
     const requestedServiceTier = isActiveSteeringMessage
       ? process.serviceTier
       : (modelSettings?.serviceTier ?? process.serviceTier);

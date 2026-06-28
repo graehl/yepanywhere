@@ -208,6 +208,18 @@ vi.mock("../../hooks/useVersion", () => ({
   }),
 }));
 
+vi.mock("../../hooks/useProviders", () => ({
+  useProviders: () => ({
+    providers: [
+      {
+        name: "claude",
+        displayName: "Claude",
+        models: [{ id: "test-model", name: "Test Model" }],
+      },
+    ],
+  }),
+}));
+
 vi.mock("../../hooks/useRemoteBasePath", () => ({
   useRemoteBasePath: () => remoteBasePathState.basePath,
 }));
@@ -224,6 +236,23 @@ vi.mock("../../i18n", () => ({
           toolbarSteerNowTooltip:
             "Steer now interrupts in-flight generation without ending the turn.",
           toolbarOverflowMenu: "More toolbar controls",
+          toolbarThinkingTitle: `Click to choose thinking mode. Current: ${params?.current ?? ""}`,
+          toolbarThinkingAppliesNextTurn: "Applies next turn",
+          newSessionThinkingOff: "Thinking off",
+          newSessionThinkingAuto: "Thinking auto",
+          newSessionThinkingOn: `Thinking on ${params?.level ?? ""}`,
+          modelSettingsThinkingOffLabel: "Off",
+          modelSettingsThinkingAutoLabel: "Auto",
+          modelSettingsThinkingOnLabel: "On",
+          effortLevelLowLabel: "Low",
+          effortLevelMediumLabel: "Medium",
+          effortLevelHighLabel: "High",
+          effortLevelMaxLabel: "Max",
+          effortLevelExtraHighShortLabel: "XHigh",
+          effortLevelLowDescription: "Fastest responses",
+          effortLevelMediumDescription: "Moderate reasoning",
+          effortLevelHighDescription: "Deep reasoning",
+          effortLevelMaxDescription: "Maximum effort",
           toolbarQueuePrimaryActionLabel: "Queue from primary action",
           toolbarProjectQueueLabel: "Queue for Project Queue",
           toolbarProjectQueueTooltip:
@@ -742,6 +771,32 @@ describe("MessageInput", () => {
     );
 
     expect(onToggleEnabled).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses live thinking selection instead of stored defaults in the toolbar", () => {
+    const onSetMode = vi.fn();
+    renderMessageInput(vi.fn(), {
+      supportsThinkingToggle: true,
+      thinkingProvider: "claude",
+      thinkingModel: "test-model",
+      liveThinkingSelection: {
+        mode: "on",
+        level: "xhigh",
+        onSetMode,
+        onSetEffort: vi.fn(),
+      },
+    });
+
+    const button = screen.getByRole("button", {
+      name: /Current: Thinking on/i,
+    });
+    expect(button.textContent).toContain("XHigh");
+
+    fireEvent.click(button);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Auto" }));
+
+    expect(onSetMode).toHaveBeenCalledWith("auto");
+    expect(mockSetThinkingMode).not.toHaveBeenCalled();
   });
 
   it("selects direct Grok streaming by default when Grok STT is enabled", () => {

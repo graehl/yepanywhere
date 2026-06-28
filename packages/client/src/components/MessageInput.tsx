@@ -3,7 +3,9 @@ import {
   type BusyComposerDefaultAction,
   clampPatientPatienceSeconds,
   type CollapsedComposerButtonPreference,
+  type EffortLevel,
   type SessionLivenessSnapshot,
+  type ThinkingMode,
   type UploadedFile,
   type UserMessageCompositionMetadata,
   type UserMessageDeliveryIntent,
@@ -357,6 +359,13 @@ interface Props {
   /** Provider/model context used by the thinking effort chooser. */
   thinkingProvider?: string;
   thinkingModel?: string;
+  /** Live process thinking selection for owned active sessions. */
+  liveThinkingSelection?: {
+    mode: ThinkingMode;
+    level: EffortLevel;
+    onSetMode: (mode: ThinkingMode) => void;
+    onSetEffort: (level: EffortLevel) => void;
+  };
   /** YA model id for the context quick-edit's per-model threshold keying. */
   contextRequestedModel?: string;
   /** Whether heartbeat turns are currently enabled for this session */
@@ -438,6 +447,7 @@ export function MessageInput({
   btwToolbarMode,
   thinkingProvider,
   thinkingModel,
+  liveThinkingSelection,
   contextRequestedModel,
   heartbeatEnabled = false,
   patientQueuePatienceSeconds,
@@ -2200,6 +2210,7 @@ export function MessageInput({
             btwToolbarMode={btwToolbarMode}
             thinkingProvider={thinkingProvider}
             thinkingModel={thinkingModel}
+            liveThinkingSelection={liveThinkingSelection}
             contextRequestedModel={contextRequestedModel}
             heartbeatEnabled={heartbeatEnabled}
             onToggleHeartbeat={onToggleHeartbeat}

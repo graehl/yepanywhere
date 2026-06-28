@@ -1,9 +1,11 @@
 import type {
   AppContentBlock,
+  EffortLevel,
   PromptSuggestionMode,
   ProviderName,
   ProjectQueueItemSummary,
   PublicSessionShareSessionStatusResponse,
+  ThinkingMode,
   ThinkingOption,
   TranscriptDisplayObject,
   UploadedFile,
@@ -107,6 +109,11 @@ import {
 import { buildCorrectionText } from "../lib/correctionText";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
+import {
+  liveThinkingSelectionFromProcess,
+  thinkingOptionFromProcess,
+  thinkingOptionFromSelection,
+} from "../lib/liveThinkingConfig";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
 import { resolveSessionProviderCapabilities } from "../lib/providerCapabilities";
@@ -1078,6 +1085,29 @@ function SessionPageContent({
   const { generallySupportsSteering, supportsSteerNow } = providerCapabilities;
   const currentOwnedProcessId =
     status.owner === "self" ? status.processId : undefined;
+  const liveThinkingSelection = useMemo(() => {
+    if (status.owner !== "self" || !liveModelConfig) {
+      return null;
+    }
+    return liveThinkingSelectionFromProcess(
+      liveModelConfig.thinking,
+      liveModelConfig.effort,
+      currentProviderInfo,
+    );
+  }, [currentProviderInfo, liveModelConfig, status.owner]);
+  const getImplicitComposerThinking = useCallback(() => {
+    if (status.owner === "self") {
+      if (!liveModelConfig) {
+        return undefined;
+      }
+      return thinkingOptionFromProcess(
+        liveModelConfig.thinking,
+        liveModelConfig.effort,
+        currentProviderInfo,
+      );
+    }
+    return getThinkingSetting();
+  }, [currentProviderInfo, liveModelConfig, status.owner]);
 
   // "Fork before…": real prefix fork up to the message before this user
   // turn; the fork opens cold with an empty composer (rewind-and-continue).
@@ -2024,7 +2054,7 @@ function SessionPageContent({
       return;
     }
     const { outgoingText, slashCommand } = prepared;
-    const thinking = prepared.thinking ?? getThinkingSetting();
+    const thinking = prepared.thinking ?? getImplicitComposerThinking();
     // Display preference for thinking rows; sent for compatibility while the
     // server requests provider summaries independently.
     const showThinking = getShowThinkingSetting();
@@ -2302,7 +2332,7 @@ function SessionPageContent({
       return;
     }
     const { outgoingText, slashCommand } = prepared;
-    const thinking = prepared.thinking ?? getThinkingSetting();
+    const thinking = prepared.thinking ?? getImplicitComposerThinking();
     // Display preference for thinking rows; sent for compatibility while the
     // server requests provider summaries independently.
     const showThinking = getShowThinkingSetting();
@@ -2494,7 +2524,7 @@ function SessionPageContent({
       return;
     }
     const { outgoingText, slashCommand } = prepared;
-    const thinking = prepared.thinking ?? getThinkingSetting();
+    const thinking = prepared.thinking ?? getImplicitComposerThinking();
     const showThinking = getShowThinkingSetting();
     const actionAtMs = Date.now();
     const clientTimestamp = getServerClockTimestamp(actionAtMs);
@@ -2698,7 +2728,7 @@ function SessionPageContent({
         );
       }
       if (status.owner === "self") {
-        if (status.processId !== next.processId) {
+        if (currentOwnedProcessId !== next.processId) {
           setStatus((prev) =>
             prev.owner === "self"
               ? { ...prev, processId: next.processId }
@@ -2708,7 +2738,68 @@ function SessionPageContent({
         }
       }
     },
-    [reconnectStream, setSessionModel, showToast, status.owner, t],
+    [
+      reconnectStream,
+      setSessionModel,
+      showToast,
+      currentOwnedProcessId,
+      status.owner,
+      t,
+    ],
+  );
+
+  const handleLiveThinkingChange = useCallback(
+    async (mode: ThinkingMode, effortLevel: EffortLevel) => {
+      if (status.owner !== "self" || !currentOwnedProcessId) {
+        return;
+      }
+      try {
+        const result = await api.setProcessConfig(currentOwnedProcessId, {
+          thinking: thinkingOptionFromSelection(mode, effortLevel),
+          showThinking: getShowThinkingSetting(),
+        });
+        setLiveModelConfig((prev) => ({
+          model: result.model ?? prev?.model,
+          requestedModel: result.model ?? prev?.requestedModel,
+          thinking: result.thinking,
+          effort: result.effort,
+          promptSuggestionMode: prev?.promptSuggestionMode,
+        }));
+        if (result.processId !== currentOwnedProcessId) {
+          setStatus((prev) =>
+            prev.owner === "self"
+              ? { ...prev, processId: result.processId }
+              : { owner: "self", processId: result.processId },
+          );
+          reconnectStream();
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error("Failed to change thinking:", err);
+        showToast(
+          t("sessionThinkingChangeFailed", { message: errorMsg }),
+          "error",
+        );
+      }
+    },
+    [currentOwnedProcessId, reconnectStream, showToast, status.owner, t],
+  );
+
+  const handleSetLiveThinkingMode = useCallback(
+    (mode: ThinkingMode) => {
+      void handleLiveThinkingChange(
+        mode,
+        liveThinkingSelection?.effortLevel ?? "high",
+      );
+    },
+    [handleLiveThinkingChange, liveThinkingSelection],
+  );
+
+  const handleSetLiveThinkingEffort = useCallback(
+    (effortLevel: EffortLevel) => {
+      void handleLiveThinkingChange("on", effortLevel);
+    },
+    [handleLiveThinkingChange],
   );
 
   const handleCompactSession = useCallback(
@@ -5132,6 +5223,16 @@ function SessionPageContent({
                     onSelectSlashCommand={handleToolbarSlashCommand}
                     thinkingProvider={effectiveProvider}
                     thinkingModel={liveBadgeModel}
+                    liveThinkingSelection={
+                      liveThinkingSelection
+                        ? {
+                            mode: liveThinkingSelection.mode,
+                            level: liveThinkingSelection.effortLevel,
+                            onSetMode: handleSetLiveThinkingMode,
+                            onSetEffort: handleSetLiveThinkingEffort,
+                          }
+                        : undefined
+                    }
                     contextRequestedModel={liveModelConfig?.requestedModel}
                     heartbeatEnabled={heartbeatTurnsEnabled}
                     onToggleHeartbeat={handleToggleHeartbeat}
@@ -5254,6 +5355,16 @@ function SessionPageContent({
                 btwToolbarMode={btwToolbarMode}
                 thinkingProvider={effectiveProvider}
                 thinkingModel={liveBadgeModel}
+                liveThinkingSelection={
+                  liveThinkingSelection
+                    ? {
+                        mode: liveThinkingSelection.mode,
+                        level: liveThinkingSelection.effortLevel,
+                        onSetMode: handleSetLiveThinkingMode,
+                        onSetEffort: handleSetLiveThinkingEffort,
+                      }
+                    : undefined
+                }
                 contextRequestedModel={liveModelConfig?.requestedModel}
                 heartbeatEnabled={heartbeatTurnsEnabled}
                 onToggleHeartbeat={handleToggleHeartbeat}

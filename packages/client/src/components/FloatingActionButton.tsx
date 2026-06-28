@@ -72,8 +72,7 @@ export function FloatingActionButton() {
   const fabVisibility = useFabVisibility();
   const { floatingActionButtonEnabled } = useFloatingActionButtonEnabled();
   const [isExpanded, setIsExpanded] = useState(false);
-  const [message, setMessage, draftControls] =
-    useDraftPersistence(fabDraftKey);
+  const [message, setMessage, draftControls] = useDraftPersistence(fabDraftKey);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
     null,
@@ -212,7 +211,7 @@ export function FloatingActionButton() {
       if (!trimmed) return;
 
       // Store the message for NewSessionForm to pick up
-      setNewSessionPrefill(trimmed);
+      setNewSessionPrefill(clientSummarySourceKey, trimmed);
       draftControls.clearDraft();
       setIsExpanded(false);
 

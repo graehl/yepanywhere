@@ -122,6 +122,7 @@ vi.mock("../../hooks/useProjectQueues", () => ({
 }));
 
 vi.mock("../../lib/clientSummaryStore", () => ({
+  useClientSummarySourceKey: () => "host:test",
   useSessionCollectionQueryRecords: () => sessionCollectionState.records,
   useProjectQueuedSessionIds: () => sessionCollectionState.queuedSessionIds,
   useDraftSessionIds: () => new Set<string>(),
@@ -200,7 +201,10 @@ vi.mock("../../lib/newSessionPrefill", () => ({
   setNewSessionPrefill: mockSetNewSessionPrefill,
 }));
 
-function makeSessionRecord(id: string, overrides: Record<string, unknown> = {}) {
+function makeSessionRecord(
+  id: string,
+  overrides: Record<string, unknown> = {},
+) {
   return {
     id,
     title: `Session ${id}`,
@@ -291,7 +295,10 @@ describe("GlobalSessionsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "New Session" }));
 
-    expect(mockSetNewSessionPrefill).toHaveBeenCalledWith("fix login flow");
+    expect(mockSetNewSessionPrefill).toHaveBeenCalledWith(
+      "host:test",
+      "fix login flow",
+    );
     expect(mockNavigate).toHaveBeenCalledWith(
       "/new-session?projectId=project-1",
     );

@@ -60,6 +60,10 @@ Progress:
   feedback drafts and AskUserQuestion "Other" drafts now key localStorage by
   encoded source key plus session id, and their hooks reload when the current
   source changes.
+- [x] 2026-06-28: Scoped remaining host-sensitive browser handoff state.
+  One-shot new-session prefill now uses a source-keyed sessionStorage slot, and
+  pending-elsewhere warning dismissals now key localStorage by source plus
+  session id.
 
 This doc tracks the next widening of the client summary store. The normalized
 `ClientSummaryState` shape stays the same, but the store is no longer a single
@@ -241,6 +245,9 @@ durability without scanning every localStorage key on each badge refresh:
 - new-session and FAB composer draft keys include the encoded source key;
 - tool approval feedback and AskUserQuestion "Other" draft keys include the
   encoded source key and session id;
+- one-shot new-session prefill keys include the encoded source key;
+- pending-elsewhere warning dismissal keys include the encoded source key and
+  session id;
 - each source has a compact draft index, and badge scans read only that index;
 - the local compatibility scan reads old `draft-message-*` body keys only for
   `local` and backfills the local index.
@@ -288,6 +295,10 @@ Automated tests:
 - tool approval feedback and AskUserQuestion "Other" drafts are keyed by source,
   and switching hosts hides another host's prompt-panel draft while preserving
   it for switch-back.
+- one-shot new-session prefill is keyed by source, so a queued prompt from one
+  host is invisible to another host's new-session form.
+- pending-elsewhere warning dismissals are keyed by source and session, so a
+  dismissal on one host cannot suppress the same session id on another host.
 
 Manual test:
 

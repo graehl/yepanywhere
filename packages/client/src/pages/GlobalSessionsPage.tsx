@@ -20,6 +20,7 @@ import { MainContent, useNavigationLayout } from "../layouts";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
 import {
+  useClientSummarySourceKey,
   useDraftSessionIds,
   useProjectQueuedSessionIds,
   useSessionCollectionQueryRecords,
@@ -123,6 +124,7 @@ export function GlobalSessionsPage() {
     useNavigationLayout();
   const basePath = useRemoteBasePath();
   const navigate = useNavigate();
+  const clientSummarySourceKey = useClientSummarySourceKey();
   const [searchParams, setSearchParams] = useSearchParams();
   const { settings: serverSettings } = useServerSettings();
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
@@ -310,7 +312,8 @@ export function GlobalSessionsPage() {
   // Keep the queue feed mounted for the visible result projects. Badge
   // rendering reads from the shared store selector below.
   useProjectQueues(filteredProjectIds);
-  const projectQueuedSessionIds = useProjectQueuedSessionIds(filteredProjectIds);
+  const projectQueuedSessionIds =
+    useProjectQueuedSessionIds(filteredProjectIds);
 
   // Build status filter options with global counts from server
   // When filtering by project, we don't have global stats, so omit counts
@@ -744,12 +747,18 @@ export function GlobalSessionsPage() {
   const handleStartProjectSession = useCallback(() => {
     if (!projectFilter) return;
     if (projectScopedSearchText) {
-      setNewSessionPrefill(projectScopedSearchText);
+      setNewSessionPrefill(clientSummarySourceKey, projectScopedSearchText);
     }
     navigate(
       `${basePath}/new-session?projectId=${encodeURIComponent(projectFilter)}`,
     );
-  }, [basePath, navigate, projectFilter, projectScopedSearchText]);
+  }, [
+    basePath,
+    clientSummarySourceKey,
+    navigate,
+    projectFilter,
+    projectScopedSearchText,
+  ]);
 
   // Clear all filters
   const clearFilters = () => {

@@ -108,6 +108,7 @@ import { buildCorrectionText } from "../lib/correctionText";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { preprocessMessages } from "../lib/preprocessMessages";
+import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
 import { resolveSessionProviderCapabilities } from "../lib/providerCapabilities";
 import { shouldShowProjectQueueAffordance } from "../lib/projectQueueVisibility";
 import {
@@ -133,8 +134,6 @@ import { generateUUID } from "../lib/uuid";
 import type { Message, Project } from "../types";
 import { getSessionDisplayTitle } from "../utils";
 
-const PENDING_ELSEWHERE_DISMISS_KEY_PREFIX =
-  "yepanywhere:pending-elsewhere-dismissed:";
 const PUBLIC_SHARE_STATUS_POLL_MS = 5000;
 const PUBLIC_SHARE_INITIAL_PROMPT_MAX_LENGTH = 700;
 const BTW_ASIDE_POLL_MS = 1500;
@@ -855,8 +854,7 @@ function SessionPageContent({
   const { status: publicShareGlobalStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
   });
-  const projectQueueBlockingCount =
-    project?.projectQueueBlockingCount ?? null;
+  const projectQueueBlockingCount = project?.projectQueueBlockingCount ?? null;
   const currentSessionBlocksProjectQueue =
     status.owner === "external" ||
     processState === "in-turn" ||
@@ -3732,8 +3730,9 @@ function SessionPageContent({
     pendingToolCall != null &&
     pendingElsewhereDismissedToolId === pendingToolCall.id;
   const pendingElsewhereDismissKey = useMemo(
-    () => `${PENDING_ELSEWHERE_DISMISS_KEY_PREFIX}${actualSessionId}`,
-    [actualSessionId],
+    () =>
+      createPendingElsewhereDismissKey(clientSummarySourceKey, actualSessionId),
+    [actualSessionId, clientSummarySourceKey],
   );
 
   // Compute display title - priority:

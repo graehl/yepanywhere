@@ -1,16 +1,35 @@
-const NEW_SESSION_PREFILL_KEY = "new-session-prefill";
+import type { ClientSummarySourceKey } from "./clientSummaryStore";
 
-export function getNewSessionPrefill(): string | null {
+const NEW_SESSION_PREFILL_KEY_PREFIX = "new-session-prefill:";
+
+function encodePrefillKeyPart(value: string): string {
+  return encodeURIComponent(value);
+}
+
+export function createNewSessionPrefillKey(
+  sourceKey: ClientSummarySourceKey,
+): string {
+  return `${NEW_SESSION_PREFILL_KEY_PREFIX}${encodePrefillKeyPart(sourceKey)}`;
+}
+
+export function getNewSessionPrefill(
+  sourceKey: ClientSummarySourceKey,
+): string | null {
   if (typeof window === "undefined") return null;
-  return sessionStorage.getItem(NEW_SESSION_PREFILL_KEY);
+  return sessionStorage.getItem(createNewSessionPrefillKey(sourceKey));
 }
 
-export function clearNewSessionPrefill(): void {
+export function clearNewSessionPrefill(
+  sourceKey: ClientSummarySourceKey,
+): void {
   if (typeof window === "undefined") return;
-  sessionStorage.removeItem(NEW_SESSION_PREFILL_KEY);
+  sessionStorage.removeItem(createNewSessionPrefillKey(sourceKey));
 }
 
-export function setNewSessionPrefill(text: string): void {
+export function setNewSessionPrefill(
+  sourceKey: ClientSummarySourceKey,
+  text: string,
+): void {
   if (typeof window === "undefined") return;
-  sessionStorage.setItem(NEW_SESSION_PREFILL_KEY, text);
+  sessionStorage.setItem(createNewSessionPrefillKey(sourceKey), text);
 }

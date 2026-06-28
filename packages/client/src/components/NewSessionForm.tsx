@@ -1018,17 +1018,17 @@ export function NewSessionForm({
 
   // Check for opt-in new-session prefill on mount.
   useEffect(() => {
-    const prefill = getNewSessionPrefill();
+    const prefill = getNewSessionPrefill(clientSummarySourceKey);
     if (prefill) {
       setMessage(prefill);
-      clearNewSessionPrefill();
+      clearNewSessionPrefill(clientSummarySourceKey);
       // Focus and move cursor to end
       if (textareaRef.current) {
         textareaRef.current.focus();
         textareaRef.current.setSelectionRange(prefill.length, prefill.length);
       }
     }
-  }, [setMessage]);
+  }, [clientSummarySourceKey, setMessage]);
 
   const handleProjectInputKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {

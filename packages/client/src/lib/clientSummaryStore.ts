@@ -160,7 +160,7 @@ export function setCurrentClientSummarySourceKey(
   }
 }
 
-export function getCurrentClientSummaryStore(): StoreApi<ClientSummaryState> {
+function getCurrentClientSummaryStore(): StoreApi<ClientSummaryState> {
   return getClientSummaryStoreForSource(currentClientSummarySourceKey);
 }
 
@@ -453,12 +453,10 @@ export function subscribeClientSummary(
   };
 }
 
-export function getClientSummarySnapshot(): ClientSummaryState {
-  return getCurrentClientSummaryStore().getState();
-}
-
-export function getClientSummaryServerSnapshot(): ClientSummaryState {
-  return getCurrentClientSummaryStore().getState();
+export function getClientSummarySnapshotForSource(
+  sourceKey: ClientSummarySourceKey,
+): ClientSummaryState {
+  return getClientSummaryStoreForSource(sourceKey).getState();
 }
 
 export function reportGlobalSessionsCollectionSnapshot(
@@ -734,8 +732,10 @@ export function resetClientSummaryStoreForTests(): void {
     }
     activityBusUnsubscribers = null;
   }
+  activityBusSubscriptionSourceKey = null;
   if (draftDecorationRelease) {
     draftDecorationRelease();
     draftDecorationRelease = null;
   }
+  draftDecorationSubscriptionSourceKey = null;
 }

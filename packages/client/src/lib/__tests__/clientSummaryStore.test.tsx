@@ -48,7 +48,7 @@ vi.mock("../activityBus", () => ({
 
 import {
   createClientSummaryHostSourceKey,
-  getClientSummarySnapshot,
+  getClientSummarySnapshotForSource,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   reportDraftSessionIdsSnapshot,
   reportGlobalSessionsCollectionSnapshot,
@@ -539,9 +539,9 @@ describe("clientSummaryStore", () => {
       );
     });
 
-    const before = getClientSummarySnapshot().sessions.entities.get(
-      "session-a",
-    );
+    const before = getClientSummarySnapshotForSource(
+      SOURCE_KEY,
+    ).sessions.entities.get("session-a");
     expect(before).toBeDefined();
 
     act(() => {
@@ -557,9 +557,8 @@ describe("clientSummaryStore", () => {
       );
     });
 
-    expect(getClientSummarySnapshot().sessions.entities.get("session-a")).toBe(
-      before,
-    );
+    const after = getClientSummarySnapshotForSource(SOURCE_KEY);
+    expect(after.sessions.entities.get("session-a")).toBe(before);
   });
 
   it("does not rerender selected record hooks for unrelated record updates", () => {
@@ -643,9 +642,11 @@ describe("clientSummaryStore", () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect([
-      ...getClientSummarySnapshot().localDecorations.draftSessionIds,
-    ]).toEqual(["session-a", "session-b"]);
+    const snapshot = getClientSummarySnapshotForSource(SOURCE_KEY);
+    expect([...snapshot.localDecorations.draftSessionIds]).toEqual([
+      "session-a",
+      "session-b",
+    ]);
   });
 
   it("keeps legacy local draft ids out of remote sources", () => {

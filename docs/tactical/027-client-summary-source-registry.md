@@ -1,6 +1,6 @@
 # Client Summary Source Registry
 
-Status: In progress.
+Status: Implemented.
 
 Progress:
 
@@ -32,6 +32,10 @@ Progress:
   source-keyed reporter supplies draft ids, which keeps the path clean for the
   planned server-authoritative draft migration without adding a temporary
   scoped localStorage format.
+- [x] 2026-06-28: Removed the remaining unscoped store/snapshot compatibility
+  exports. The mutable current-store lookup is now module-internal, the old
+  current-source snapshot helpers are gone, and tests/debug reads use
+  `getClientSummarySnapshotForSource(sourceKey)` instead.
 
 This doc tracks the next widening of the client summary store. The normalized
 `ClientSummaryState` shape stays the same, but the store is no longer a single
@@ -224,7 +228,7 @@ Do not let source-global draft scans contaminate per-host session cards.
    projects, and project queue feed hooks.
 4. [x] Scope activity-bus reductions and local mutation reporters.
 5. [x] Scope or quarantine local draft decorations.
-6. [ ] Remove any compatibility default that allowed unscoped summary writes.
+6. [x] Remove any compatibility default that allowed unscoped summary writes.
 
 ## Verification
 

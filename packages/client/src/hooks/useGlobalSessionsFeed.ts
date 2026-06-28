@@ -127,6 +127,8 @@ export function useGlobalSessionsFeed(
   );
   const queryKey = useMemo(() => createGlobalSessionsQueryKey(query), [query]);
   const sourceKey = useClientSummarySourceKey();
+  const sourceKeyRef = useRef(sourceKey);
+  sourceKeyRef.current = sourceKey;
   const queryState = useSessionCollectionQueryState(query);
   const queryRecords = useSessionCollectionQueryRecords(query);
 
@@ -148,6 +150,20 @@ export function useGlobalSessionsFeed(
   const lastFetchKeyRef = useRef<string | null>(null);
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestSequenceRef = useRef(0);
+
+  useEffect(() => {
+    requestSequenceRef.current += 1;
+    if (refetchTimerRef.current) {
+      clearTimeout(refetchTimerRef.current);
+      refetchTimerRef.current = null;
+    }
+    lastFetchKeyRef.current = null;
+    projectsRef.current = [];
+    setStats(DEFAULT_GLOBAL_SESSION_STATS);
+    setProjects([]);
+    setError(null);
+    setLoading(!queryStateRef.current);
+  }, [sourceKey]);
 
   const fetch = useCallback(async () => {
     if (!readyRef.current) {
@@ -241,10 +257,10 @@ export function useGlobalSessionsFeed(
       return;
     }
 
+    const requestSourceKey = sourceKey;
     try {
       setError(null);
       const requestStartedAt = Date.now();
-      const requestSourceKey = sourceKey;
       const data = await api.getGlobalSessions({
         project: projectId ?? undefined,
         q: searchQuery || undefined,
@@ -266,7 +282,9 @@ export function useGlobalSessionsFeed(
         requestStartedAt,
       );
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      if (sourceKeyRef.current === requestSourceKey) {
+        setError(err instanceof Error ? err : new Error(String(err)));
+      }
     }
   }, [
     fetch,

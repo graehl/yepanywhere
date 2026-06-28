@@ -20,6 +20,7 @@ export function useProject(projectId: string | undefined) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const loadedProjectIdRef = useRef<string | undefined>(undefined);
+  const loadedSourceKeyRef = useRef<string | null>(null);
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refreshProject = useCallback(
@@ -37,7 +38,10 @@ export function useProject(projectId: string | undefined) {
         api
           .getProject(targetProjectId)
           .then((data) => {
-            if (loadedProjectIdRef.current === targetProjectId) {
+            if (
+              loadedProjectIdRef.current === targetProjectId &&
+              loadedSourceKeyRef.current === requestSourceKey
+            ) {
               reportProjectCollectionSnapshot(
                 requestSourceKey,
                 { project: data.project },
@@ -47,7 +51,10 @@ export function useProject(projectId: string | undefined) {
             }
           })
           .catch((err) => {
-            if (loadedProjectIdRef.current === targetProjectId) {
+            if (
+              loadedProjectIdRef.current === targetProjectId &&
+              loadedSourceKeyRef.current === requestSourceKey
+            ) {
               setError(err instanceof Error ? err : new Error(String(err)));
             }
           });
@@ -67,14 +74,23 @@ export function useProject(projectId: string | undefined) {
     if (!projectId) {
       setLoading(false);
       loadedProjectIdRef.current = undefined;
+      loadedSourceKeyRef.current = null;
       return;
     }
 
-    // Reset when switching projects
-    if (loadedProjectIdRef.current !== projectId) {
+    // Reset when switching projects or backend sources.
+    if (
+      loadedProjectIdRef.current !== projectId ||
+      loadedSourceKeyRef.current !== sourceKey
+    ) {
+      if (refetchTimerRef.current) {
+        clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = null;
+      }
       setLoading(true);
       setError(null);
       loadedProjectIdRef.current = projectId;
+      loadedSourceKeyRef.current = sourceKey;
     }
 
     let cancelled = false;

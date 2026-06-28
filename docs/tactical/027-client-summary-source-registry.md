@@ -36,6 +36,17 @@ Progress:
   exports. The mutable current-store lookup is now module-internal, the old
   current-source snapshot helpers are gone, and tests/debug reads use
   `getClientSummarySnapshotForSource(sourceKey)` instead.
+- [x] 2026-06-28: Replaced the temporary remote-draft quarantine with
+  source-scoped local draft storage. The composer keeps localStorage durability
+  for unreliable networks, remote draft body keys include the source key, and a
+  per-source draft index lets badge decoration avoid enumerating all
+  localStorage keys. Legacy `draft-message-*` body keys remain local-only and
+  backfill the local index.
+- [x] 2026-06-28: Added sidebar-level source-switch regression coverage and
+  reset source-sensitive fetch-hook bookkeeping. Sidebar now has a component
+  test for current-source rows plus draft badges across host switches, and
+  inbox/global-session/project hooks clear local loading/order refs when the
+  source changes so stale responses cannot mutate current-source bookkeeping.
 
 This doc tracks the next widening of the client summary store. The normalized
 `ClientSummaryState` shape stays the same, but the store is no longer a single
@@ -206,16 +217,20 @@ about multiple hosts unless they write shared summary state.
 
 ## Local Decorations
 
-Draft badges currently scan `draft-message-*` keys from localStorage. That is
-also a source boundary. The registry keeps draft decoration state per source,
-but the legacy scanner is quarantined to the `local` source:
+Draft badges currently derive from localStorage. That is also a source
+boundary. The registry keeps draft decoration state per source, and draft
+storage uses a source-scoped index so hosted remotes can retain offline draft
+durability without scanning every localStorage key on each badge refresh:
 
-- source-keyed draft reporters may populate any source;
-- the compatibility scan reads old `draft-message-*` keys only for `local`;
-- remote sources wait for the planned server-authoritative draft feed instead
-  of adding a temporary scoped localStorage key format.
+- local legacy body keys stay in the old `draft-message-<sessionId>` format
+  and are compatible with older clients;
+- source-scoped remote body keys include the encoded source key and session id;
+- each source has a compact draft index, and badge scans read only that index;
+- the local compatibility scan reads old `draft-message-*` body keys only for
+  `local` and backfills the local index.
 
-Do not let source-global draft scans contaminate per-host session cards.
+Server-authoritative drafts can still replace or supplement this later, but do
+not let source-global draft scans contaminate per-host session cards.
 
 ## Implementation Chunks
 
@@ -227,7 +242,7 @@ Do not let source-global draft scans contaminate per-host session cards.
 3. [x] Require source keys on REST snapshot reporters and migrate sessions, inbox,
    projects, and project queue feed hooks.
 4. [x] Scope activity-bus reductions and local mutation reporters.
-5. [x] Scope or quarantine local draft decorations.
+5. [x] Scope local draft decorations with per-source localStorage indexes.
 6. [x] Remove any compatibility default that allowed unscoped summary writes.
 
 ## Verification
@@ -243,6 +258,10 @@ Automated tests:
 - activity-bus events reduce into their connect-time source;
 - hook subscriptions resubscribe on source changes and do not keep rendering
   records from the previous source.
+- Sidebar renders only the current source's session rows and draft badges when
+  switching from `host:macbook` to `host:winnative` and back;
+- source-sensitive fetch-hook bookkeeping (such as inbox stable tier order)
+  resets on source changes and ignores late stale responses for local UI refs.
 
 Manual test:
 

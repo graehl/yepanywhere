@@ -1,6 +1,10 @@
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
+import {
+  createClientSummaryHostSourceKey,
+  resetClientSummaryStoreForTests,
+  setCurrentClientSummarySourceKey,
+} from "../../lib/clientSummaryStore";
 import {
   InboxProvider,
   type InboxResponse,
@@ -33,14 +37,28 @@ vi.mock("../RemoteConnectionContext", () => ({
 }));
 
 function InboxConsumer() {
-  const { error, loading, totalItems } = useInboxContext();
+  const { error, loading, needsAttention, totalItems } = useInboxContext();
   return (
     <div>
       <span data-testid="loading">{String(loading)}</span>
       <span data-testid="error">{error?.message ?? ""}</span>
       <span data-testid="total">{String(totalItems)}</span>
+      <span data-testid="needs">
+        {needsAttention.map((item) => item.sessionTitle).join("|")}
+      </span>
     </div>
   );
+}
+
+function emptyInbox(overrides: Partial<InboxResponse> = {}): InboxResponse {
+  return {
+    needsAttention: [],
+    active: [],
+    recentActivity: [],
+    unread8h: [],
+    unread24h: [],
+    ...overrides,
+  };
 }
 
 describe("InboxProvider", () => {
@@ -78,21 +96,19 @@ describe("InboxProvider", () => {
   });
 
   it("fetches once the remote connection becomes available", async () => {
-    mockGetInbox.mockResolvedValue({
-      needsAttention: [],
-      active: [
-        {
-          sessionId: "session-1",
-          projectId: "project-1",
-          projectName: "Project",
-          sessionTitle: "Session 1",
-          updatedAt: "2026-06-28T00:00:00.000Z",
-        },
-      ],
-      recentActivity: [],
-      unread8h: [],
-      unread24h: [],
-    });
+    mockGetInbox.mockResolvedValue(
+      emptyInbox({
+        active: [
+          {
+            sessionId: "session-1",
+            projectId: "project-1",
+            projectName: "Project",
+            sessionTitle: "Session 1",
+            updatedAt: "2026-06-28T00:00:00.000Z",
+          },
+        ],
+      }),
+    );
 
     const view = render(
       <InboxProvider>
@@ -114,6 +130,82 @@ describe("InboxProvider", () => {
     });
     await waitFor(() => {
       expect(view.getByTestId("total").textContent).toBe("1");
+    });
+  });
+
+  it("resets stable inbox ordering when the summary source changes", async () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    const winnative = createClientSummaryHostSourceKey("winnative");
+    remoteState.connection = { connection: {} };
+    mockGetInbox
+      .mockResolvedValueOnce(
+        emptyInbox({
+          needsAttention: [
+            {
+              sessionId: "shared-session",
+              projectId: "project-1",
+              projectName: "Project",
+              sessionTitle: "Mac shared",
+              updatedAt: "2026-06-28T00:00:00.000Z",
+            },
+            {
+              sessionId: "mac-other",
+              projectId: "project-1",
+              projectName: "Project",
+              sessionTitle: "Mac other",
+              updatedAt: "2026-06-28T00:00:00.000Z",
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        emptyInbox({
+          needsAttention: [
+            {
+              sessionId: "win-new",
+              projectId: "project-1",
+              projectName: "Project",
+              sessionTitle: "Win new",
+              updatedAt: "2026-06-28T00:00:00.000Z",
+            },
+            {
+              sessionId: "shared-session",
+              projectId: "project-1",
+              projectName: "Project",
+              sessionTitle: "Win shared",
+              updatedAt: "2026-06-28T00:00:00.000Z",
+            },
+          ],
+        }),
+      );
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    const view = render(
+      <InboxProvider>
+        <InboxConsumer />
+      </InboxProvider>,
+    );
+
+    await waitFor(() => {
+      expect(view.getByTestId("needs").textContent).toBe(
+        "Mac shared|Mac other",
+      );
+    });
+
+    act(() => {
+      setCurrentClientSummarySourceKey(winnative);
+    });
+
+    await waitFor(() => {
+      expect(mockGetInbox).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(view.getByTestId("needs").textContent).toBe(
+        "Win new|Win shared",
+      );
     });
   });
 });

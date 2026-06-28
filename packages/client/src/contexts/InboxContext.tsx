@@ -165,6 +165,8 @@ export function InboxProvider({
 }: InboxProviderProps) {
   const remoteConnection = useOptionalRemoteConnection();
   const sourceKey = useClientSummarySourceKey();
+  const sourceKeyRef = useRef(sourceKey);
+  sourceKeyRef.current = sourceKey;
   const inbox = useInboxResponseSnapshot();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -185,6 +187,23 @@ export function InboxProvider({
   // Track enabled state in ref for callbacks
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
+
+  useEffect(() => {
+    tierOrderRef.current = createEmptyTierOrder();
+    hasInitialLoadRef.current = false;
+    latestAcceptedRequestStartedAtRef.current = 0;
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    setError(null);
+    setLoading(
+      enabledRef.current &&
+        isRemoteConnectionReady &&
+        window.location.pathname !== "/login" &&
+        !authEvents.loginRequired,
+    );
+  }, [isRemoteConnectionReady, sourceKey]);
 
   /**
    * Fetches inbox data and applies stable ordering.
@@ -207,6 +226,10 @@ export function InboxProvider({
       const requestSourceKey = sourceKey;
       try {
         const data = await api.getInbox();
+        if (sourceKeyRef.current !== requestSourceKey) {
+          reportInboxCollectionSnapshot(requestSourceKey, data, requestStartedAt);
+          return;
+        }
         const nextInbox =
           !hasInitialLoadRef.current || forceFullSort
             ? data
@@ -226,11 +249,16 @@ export function InboxProvider({
         hasInitialLoadRef.current = true;
         setError(null);
       } catch (err) {
-        if (requestStartedAt >= latestAcceptedRequestStartedAtRef.current) {
+        if (
+          sourceKeyRef.current === requestSourceKey &&
+          requestStartedAt >= latestAcceptedRequestStartedAtRef.current
+        ) {
           setError(err instanceof Error ? err : new Error(String(err)));
         }
       } finally {
-        setLoading(false);
+        if (sourceKeyRef.current === requestSourceKey) {
+          setLoading(false);
+        }
       }
     },
     [isRemoteConnectionReady, sourceKey],

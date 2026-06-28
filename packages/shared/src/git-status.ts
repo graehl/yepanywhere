@@ -78,6 +78,7 @@ export interface GitPullResult {
 export type GitPushStatus =
   | "pushed"
   | "published"
+  | "up-to-date"
   | "busy"
   | "no-upstream"
   | "rejected"

@@ -234,13 +234,17 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         return c.json(result);
       }
 
-      await runGit(project.path, pushArgs, {
+      const pushResult = await runGit(project.path, pushArgs, {
         timeout: 60_000,
         disableTerminalPrompt: true,
       });
 
       const result: GitPushResult = {
-        status: status.upstream ? "pushed" : "published",
+        status: status.upstream
+          ? isPushAlreadyUpToDateOutput(pushResult)
+            ? "up-to-date"
+            : "pushed"
+          : "published",
         checkedRemoteAt: getCheckedRemoteAt(project.path),
         gitStatus: await getGitStatusWithRemoteCheckTime(project.path),
       };
@@ -500,6 +504,13 @@ function isPushRejectedError(err: unknown): boolean {
     output.includes("non-fast-forward") ||
     output.includes("fetch first")
   );
+}
+
+function isPushAlreadyUpToDateOutput(result: {
+  stdout: string;
+  stderr: string;
+}): boolean {
+  return `${result.stdout}\n${result.stderr}`.includes("Everything up-to-date");
 }
 
 /** Parse `git diff --numstat` output into a map of path → {added, deleted} */

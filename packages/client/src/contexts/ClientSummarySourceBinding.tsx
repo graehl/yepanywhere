@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import {
   createClientSummaryDirectSourceKey,
   createClientSummaryHostSourceKey,
+  getCurrentClientSummarySourceKey,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY,
   setCurrentClientSummarySourceKey,
@@ -104,6 +105,10 @@ export function ClientSummarySourceBinding(): null {
       }),
     [location.pathname, remote?.currentDirectUrl, remote?.currentHostId],
   );
+
+  if (getCurrentClientSummarySourceKey() !== sourceKey) {
+    setCurrentClientSummarySourceKey(sourceKey);
+  }
 
   useLayoutEffect(() => {
     setCurrentClientSummarySourceKey(sourceKey);

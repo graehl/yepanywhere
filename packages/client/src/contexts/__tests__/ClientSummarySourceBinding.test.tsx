@@ -1,9 +1,24 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import {
+  ClientSummarySourceBinding,
   resolveClientSummarySourceKey,
   type ClientSummarySourceRemoteState,
 } from "../ClientSummarySourceBinding";
 import { saveHost, type SavedHost } from "../../lib/hostStorage";
+import {
+  createClientSummaryHostSourceKey,
+  resetClientSummaryStoreForTests,
+  setCurrentClientSummarySourceKey,
+  useClientSummarySourceKey,
+} from "../../lib/clientSummaryStore";
+
+let remoteState: ClientSummarySourceRemoteState | null = null;
+
+vi.mock("../RemoteConnectionContext", () => ({
+  useOptionalRemoteConnection: () => remoteState,
+}));
 
 const CREATED_AT = "2026-06-28T00:00:00.000Z";
 
@@ -41,7 +56,10 @@ function remote(
 }
 
 afterEach(() => {
+  cleanup();
   localStorage.clear();
+  remoteState = null;
+  resetClientSummaryStoreForTests();
 });
 
 describe("resolveClientSummarySourceKey", () => {
@@ -113,5 +131,31 @@ describe("resolveClientSummarySourceKey", () => {
         remote: remote({ currentHostId: "host-macbook" }),
       }),
     ).toBe("remote:none");
+  });
+});
+
+describe("ClientSummarySourceBinding", () => {
+  function SourceProbe() {
+    return <div data-testid="source">{useClientSummarySourceKey()}</div>;
+  }
+
+  it("publishes URL-derived relay sources before children render", () => {
+    saveHost(relayHost("host-macbook", "macbook"));
+    saveHost(relayHost("host-winnative", "winnative"));
+    setCurrentClientSummarySourceKey(
+      createClientSummaryHostSourceKey("host-macbook"),
+    );
+    remoteState = remote({ currentHostId: "host-macbook" });
+
+    render(
+      <MemoryRouter initialEntries={["/winnative/sessions"]}>
+        <ClientSummarySourceBinding />
+        <SourceProbe />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("source").textContent).toBe(
+      "host:host-winnative",
+    );
   });
 });

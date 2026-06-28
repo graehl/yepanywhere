@@ -9,9 +9,15 @@ import {
   vi,
 } from "vitest";
 import {
+  __resetSessionLoadCacheForTest,
   isSessionLoadCacheEnabled,
   useSessionMessages,
 } from "../useSessionMessages";
+import {
+  createClientSummaryHostSourceKey,
+  resetClientSummaryStoreForTests,
+  setCurrentClientSummarySourceKey,
+} from "../../lib/clientSummaryStore";
 
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -29,14 +35,16 @@ import { getStreamingEnabled } from "../useStreamingEnabled";
 
 describe("useSessionMessages cache", () => {
   beforeEach(() => {
+    resetClientSummaryStoreForTests();
+    __resetSessionLoadCacheForTest();
     (getStreamingEnabled as Mock).mockReturnValue(true);
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
-    delete (globalThis as { __YA_SESSION_LOAD_CACHE__?: unknown })
-      .__YA_SESSION_LOAD_CACHE__;
+    __resetSessionLoadCacheForTest();
+    resetClientSummaryStoreForTests();
   });
 
   it("keeps the session load cache dev-only and explicit opt-in", () => {
@@ -232,6 +240,94 @@ describe("useSessionMessages cache", () => {
       second.result.current.messages.map((message) => message.uuid),
     ).toEqual(["msg-1", "msg-2"]);
     expect(second.result.current.pagination?.totalMessageCount).toBe(1);
+  });
+
+  it("does not reuse warm cached messages across summary sources", async () => {
+    vi.stubEnv("VITE_SESSION_LOAD_CACHE", "true");
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    const winnative = createClientSummaryHostSourceKey("winnative");
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "mac-msg",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "mac" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:01:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "win-msg",
+          type: "user",
+          timestamp: "2026-05-04T00:01:00.000Z",
+          message: { role: "user", content: "win" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    const first = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    expect(first.result.current.messages.map((message) => message.uuid)).toEqual(
+      ["mac-msg"],
+    );
+    first.unmount();
+
+    act(() => {
+      setCurrentClientSummarySourceKey(winnative);
+    });
+
+    const second = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    expect(second.result.current.loading).toBe(true);
+    expect(second.result.current.messages).toEqual([]);
+    await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+    expect(
+      second.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["win-msg"]);
   });
 
   it("does not use durable recap overlays as warm-cache cursors", async () => {

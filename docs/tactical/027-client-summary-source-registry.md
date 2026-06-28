@@ -47,6 +47,11 @@ Progress:
   test for current-source rows plus draft badges across host switches, and
   inbox/global-session/project hooks clear local loading/order refs when the
   source changes so stale responses cannot mutate current-source bookkeeping.
+- [x] 2026-06-28: Scoped the dev opt-in session warm-load cache by summary
+  source. When `VITE_SESSION_LOAD_CACHE=true`, cached transcript data now uses
+  the current `ClientSummarySourceKey` in addition to project/session ids, so
+  same-id sessions on different hosted remotes cannot warm-render one another's
+  messages after a host switch.
 
 This doc tracks the next widening of the client summary store. The normalized
 `ClientSummaryState` shape stays the same, but the store is no longer a single
@@ -262,6 +267,9 @@ Automated tests:
   switching from `host:macbook` to `host:winnative` and back;
 - source-sensitive fetch-hook bookkeeping (such as inbox stable tier order)
   resets on source changes and ignores late stale responses for local UI refs.
+- the dev opt-in session warm-load cache is keyed by source, project, session,
+  and tail variant, so same-id sessions on different hosted remotes do not
+  share cached transcript data.
 
 Manual test:
 

@@ -15,6 +15,8 @@ import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { getProvider } from "../providers/registry";
 import { getStreamingEnabled } from "./useStreamingEnabled";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
+import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
+import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 
 /** Content from a subagent (Task tool) */
 export interface AgentContent {
@@ -134,11 +136,24 @@ function getSessionLoadCache(): Map<string, SessionLoadCacheEntry> {
   return globalCache.__YA_SESSION_LOAD_CACHE__;
 }
 
-function getSessionLoadCacheKey(projectId: string, sessionId: string): string {
-  return `${projectId}:${sessionId}`;
+function encodeCacheKeyPart(value: string): string {
+  return encodeURIComponent(value);
+}
+
+function getSessionLoadCacheKey(
+  sourceKey: ClientSummarySourceKey,
+  projectId: string,
+  sessionId: string,
+): string {
+  return [
+    encodeCacheKeyPart(sourceKey),
+    encodeCacheKeyPart(projectId),
+    encodeCacheKeyPart(sessionId),
+  ].join(":");
 }
 
 function getSessionLoadVariantKey(options: {
+  sourceKey: ClientSummarySourceKey;
   projectId: string;
   sessionId: string;
   tailTurns?: number;
@@ -151,11 +166,20 @@ function getSessionLoadVariantKey(options: {
     .filter(Boolean)
     .join("&");
   return variant
-    ? `${options.projectId}:${options.sessionId}?${variant}`
-    : getSessionLoadCacheKey(options.projectId, options.sessionId);
+    ? `${getSessionLoadCacheKey(
+        options.sourceKey,
+        options.projectId,
+        options.sessionId,
+      )}?${variant}`
+    : getSessionLoadCacheKey(
+        options.sourceKey,
+        options.projectId,
+        options.sessionId,
+      );
 }
 
 function readSessionLoadCache(
+  sourceKey: ClientSummarySourceKey,
   projectId: string,
   sessionId: string,
   tailTurns?: number,
@@ -164,11 +188,18 @@ function readSessionLoadCache(
   if (!isSessionLoadCacheEnabled()) return undefined;
   if (typeof window === "undefined") return undefined;
   return getSessionLoadCache().get(
-    getSessionLoadVariantKey({ projectId, sessionId, tailTurns, tailFrom }),
+    getSessionLoadVariantKey({
+      sourceKey,
+      projectId,
+      sessionId,
+      tailTurns,
+      tailFrom,
+    }),
   );
 }
 
 function writeSessionLoadCache(
+  sourceKey: ClientSummarySourceKey,
   projectId: string,
   sessionId: string,
   entry: SessionLoadCacheEntry,
@@ -178,9 +209,20 @@ function writeSessionLoadCache(
   if (!isSessionLoadCacheEnabled()) return;
   if (typeof window === "undefined") return;
   getSessionLoadCache().set(
-    getSessionLoadVariantKey({ projectId, sessionId, tailTurns, tailFrom }),
+    getSessionLoadVariantKey({
+      sourceKey,
+      projectId,
+      sessionId,
+      tailTurns,
+      tailFrom,
+    }),
     cloneForCache(entry),
   );
+}
+
+export function __resetSessionLoadCacheForTest(): void {
+  delete (globalThis as typeof globalThis & SessionLoadCacheGlobal)
+    .__YA_SESSION_LOAD_CACHE__;
 }
 
 function usesApproxMessageDedup(provider?: string): boolean {
@@ -289,7 +331,9 @@ export function useSessionMessages(
     onLoadComplete,
     onLoadError,
   } = options;
+  const sourceKey = useClientSummarySourceKey();
   const cachedLoad = readSessionLoadCache(
+    sourceKey,
     projectId,
     sessionId,
     tailTurns,
@@ -475,6 +519,7 @@ export function useSessionMessages(
   // replacing the cached transcript.
   useEffect(() => {
     const warmLoad = readSessionLoadCache(
+      sourceKey,
       projectId,
       sessionId,
       tailTurns,
@@ -581,6 +626,7 @@ export function useSessionMessages(
         });
 
         writeSessionLoadCache(
+          sourceKey,
           projectId,
           sessionId,
           {
@@ -614,6 +660,7 @@ export function useSessionMessages(
   }, [
     projectId,
     sessionId,
+    sourceKey,
     tailTurns,
     tailFrom,
     onLoadComplete,

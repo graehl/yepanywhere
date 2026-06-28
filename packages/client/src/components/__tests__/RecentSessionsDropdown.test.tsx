@@ -19,7 +19,7 @@ vi.mock("../../hooks/useGlobalSessionsFeed", () => ({
   }),
 }));
 
-vi.mock("../../lib/sessionCollectionExternalStore", () => ({
+vi.mock("../../lib/clientSummaryStore", () => ({
   useSessionCollectionQueryRecords: () => globalSessionsState.sessions,
 }));
 

@@ -15,7 +15,7 @@ import {
   applySessionCollectionCreated,
   applySessionCollectionMetadataChanged,
   applySessionCollectionProcessStateChanged,
-  createEmptySessionCollectionState,
+  createEmptyClientSummaryState,
   createGlobalSessionsQueryKey,
   selectRecentSessionRecords,
   selectProjectCollectionRecord,
@@ -25,7 +25,7 @@ import {
   selectSessionCollectionQueryState,
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
-} from "../sessionCollectionStore";
+} from "../clientSummaryState";
 import { sessionCollectionRecordToGlobalSessionItem } from "../sessionCollectionRecords";
 
 const PROJECT_ID = "project-1" as UrlProjectId;
@@ -111,10 +111,10 @@ function queueItem(
   };
 }
 
-describe("sessionCollectionStore", () => {
+describe("clientSummaryState", () => {
   it("keeps an event-created entity when an older snapshot omits it", () => {
     let state = applySessionCollectionCreated(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       createdEvent("new-session"),
       200,
     );
@@ -141,7 +141,7 @@ describe("sessionCollectionStore", () => {
 
   it("uses project names from session-created events", () => {
     const state = applySessionCollectionCreated(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       createdEvent("new-session", { projectName: "Readable Project" }),
       200,
     );
@@ -157,7 +157,7 @@ describe("sessionCollectionStore", () => {
 
   it("does not use encoded project ids as created event project names", () => {
     const state = applySessionCollectionCreated(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       createdEvent("new-session"),
       200,
     );
@@ -173,7 +173,7 @@ describe("sessionCollectionStore", () => {
 
   it("moves starred rows between derived projections from one entity", () => {
     let state = applyGlobalSessionsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       {
         query: { scope: "global-sessions", limit: 50 },
         sessions: [globalSession("session-1")],
@@ -206,7 +206,7 @@ describe("sessionCollectionStore", () => {
 
   it("keeps active recent rows stable when updatedAt changes", () => {
     let state = applyGlobalSessionsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       {
         query: { scope: "global-sessions", limit: 50 },
         sessions: [
@@ -260,7 +260,7 @@ describe("sessionCollectionStore", () => {
 
   it("keeps active starred rows stable when updatedAt changes", () => {
     let state = applyGlobalSessionsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       {
         query: { scope: "global-sessions", starred: true, limit: 50 },
         sessions: [
@@ -318,7 +318,7 @@ describe("sessionCollectionStore", () => {
 
   it("pins active starred rows above idle starred rows", () => {
     const state = applyGlobalSessionsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       {
         query: { scope: "global-sessions", starred: true, limit: 50 },
         sessions: [
@@ -346,7 +346,7 @@ describe("sessionCollectionStore", () => {
 
   it("moves newly active starred rows to the end of the active block", () => {
     let state = applyGlobalSessionsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       {
         query: { scope: "global-sessions", starred: true, limit: 50 },
         sessions: [
@@ -397,7 +397,7 @@ describe("sessionCollectionStore", () => {
 
   it("pins newly active recent rows above idle rows", () => {
     let state = applyGlobalSessionsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       {
         query: { scope: "global-sessions", limit: 50 },
         sessions: [
@@ -433,7 +433,7 @@ describe("sessionCollectionStore", () => {
 
   it("does not let an older snapshot undo newer metadata", () => {
     let state = applyGlobalSessionsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       {
         query: { scope: "global-sessions", limit: 50 },
         sessions: [globalSession("session-1", { isStarred: false })],
@@ -473,7 +473,7 @@ describe("sessionCollectionStore", () => {
       limit: 50,
     };
     const state = applyGlobalSessionsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       {
         query,
         sessions: [globalSession("starred", { isStarred: true })],
@@ -499,7 +499,7 @@ describe("sessionCollectionStore", () => {
       limit: 50,
     };
     let state = applyGlobalSessionsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       {
         query,
         sessions: [globalSession("existing")],
@@ -532,7 +532,7 @@ describe("sessionCollectionStore", () => {
 
   it("stores project list snapshots as ordered query ids", () => {
     const state = applyProjectsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       {
         projects: [
           project("project-b", { lastActivity: "2026-06-27T11:30:00.000Z" }),
@@ -554,7 +554,7 @@ describe("sessionCollectionStore", () => {
 
   it("stores single project snapshots without replacing project list membership", () => {
     let state = applyProjectsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       { projects: [project("project-a")] },
       100,
     );
@@ -579,7 +579,7 @@ describe("sessionCollectionStore", () => {
 
   it("preserves unchanged project record identity on unrelated updates", () => {
     let state = applyProjectsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       { projects: [project("project-a"), project("project-b")] },
       100,
     );
@@ -601,7 +601,7 @@ describe("sessionCollectionStore", () => {
 
   it("does not let an older single project snapshot undo a newer match", () => {
     let state = applyProjectCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       { project: project("project-a", { name: "Current Project" }) },
       100,
     );
@@ -624,7 +624,7 @@ describe("sessionCollectionStore", () => {
 
   it("does not let an older project list snapshot reorder a newer match", () => {
     let state = applyProjectsCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       { projects: [project("project-a"), project("project-b")] },
       100,
     );
@@ -648,7 +648,7 @@ describe("sessionCollectionStore", () => {
 
   it("stores project queue snapshots and selects targeted sessions", () => {
     const state = applyProjectQueueCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       {
         projectId: PROJECT_ID,
         items: [
@@ -671,7 +671,7 @@ describe("sessionCollectionStore", () => {
 
   it("preserves unchanged project queue items after matching updates", () => {
     let state = applyProjectQueueCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       { projectId: PROJECT_ID, items: [queueItem("1")] },
       100,
     );
@@ -694,7 +694,7 @@ describe("sessionCollectionStore", () => {
 
   it("does not let older project queue snapshots undo newer queue facts", () => {
     let state = applyProjectQueueCollectionSnapshot(
-      createEmptySessionCollectionState(),
+      createEmptyClientSummaryState(),
       { projectId: PROJECT_ID, items: [queueItem("1")] },
       100,
     );

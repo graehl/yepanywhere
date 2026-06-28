@@ -26,7 +26,7 @@ vi.mock("../useFileActivity", () => ({
   useFileActivity: mocks.useFileActivity,
 }));
 
-import { resetSessionCollectionStoreForTests } from "../../lib/sessionCollectionExternalStore";
+import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
 import { useProject, useProjects } from "../useProjects";
 
 const RECENT = "2026-06-27T11:00:00.000Z";
@@ -46,7 +46,7 @@ function project(id: string, overrides: Partial<Project> = {}): Project {
 }
 
 beforeEach(() => {
-  resetSessionCollectionStoreForTests();
+  resetClientSummaryStoreForTests();
   mocks.getProject.mockReset();
   mocks.getProjects.mockReset();
   mocks.activityBusOn.mockClear();
@@ -55,7 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  resetSessionCollectionStoreForTests();
+  resetClientSummaryStoreForTests();
 });
 
 describe("useProjects", () => {

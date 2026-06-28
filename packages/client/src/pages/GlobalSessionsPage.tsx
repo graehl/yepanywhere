@@ -23,7 +23,7 @@ import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionColl
 import {
   useProjectQueuedSessionIds,
   useSessionCollectionQueryRecords,
-} from "../lib/sessionCollectionExternalStore";
+} from "../lib/clientSummaryStore";
 import { getSessionDisplayTitle } from "../utils";
 
 // Long-press threshold for entering selection mode on mobile

@@ -13,12 +13,12 @@ import {
   reportSessionCollectionMetadataChanged,
   useSessionCollectionQueryRecords,
   useSessionCollectionQueryState,
-} from "../lib/sessionCollectionExternalStore";
+} from "../lib/clientSummaryStore";
 import {
   createGlobalSessionsCollectionQueryDescriptor,
   createGlobalSessionsQueryKey,
   type SessionCollectionQueryDescriptor,
-} from "../lib/sessionCollectionStore";
+} from "../lib/clientSummaryState";
 import {
   type ProcessStateEvent,
   type SessionCreatedEvent,

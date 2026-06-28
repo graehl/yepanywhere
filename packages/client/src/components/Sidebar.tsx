@@ -20,7 +20,7 @@ import {
   useProjectQueuedSessionIds,
   useRecentSessionRecords,
   useStarredSessionRecords,
-} from "../lib/sessionCollectionExternalStore";
+} from "../lib/clientSummaryStore";
 import { UI_KEYS } from "../lib/storageKeys";
 import { getSessionDisplayTitle } from "../utils";
 import { AgentsNavItem } from "./AgentsNavItem";

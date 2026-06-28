@@ -32,6 +32,10 @@ in another, and a stale response can undo a newer activity event. The global
 store should be the center of gravity for shared summary facts so UI features
 compose from the same records and projections.
 
+The code uses the `clientSummary` name for this widened store shell. "Summary"
+is intentional: it is a shared cache for coarse server-visible facts, not a home
+for full session message data or provider transcript payloads.
+
 ## Boundary
 
 The store owns coarse summary state:
@@ -136,10 +140,12 @@ When new slices are added, add tests for:
 
 ## Current Direction
 
-The first widened-store step migrated the existing session collection store to
-Zustand. The next slice added project summary records and project-list
-membership to the same store, with `useProjects` and `useProject` feeding
-snapshots while keeping request lifecycle local.
+The first widened-store step migrated the existing session collection substrate
+to Zustand, then renamed the aggregate shell to `clientSummaryState` /
+`clientSummaryStore` once project and queue slices made the older name too
+narrow. The next slice added project summary records and project-list membership
+to the same store, with `useProjects` and `useProject` feeding snapshots while
+keeping request lifecycle local.
 
 The next slice added project queue summaries. `useProjectQueues` remains the
 feed/mutation hook, but queue snapshots, mutation responses, and

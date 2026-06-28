@@ -26,7 +26,7 @@ import {
   applySessionCollectionSeen,
   applySessionCollectionStatusChanged,
   applySessionCollectionUpdated,
-  createEmptySessionCollectionState,
+  createEmptyClientSummaryState,
   createGlobalSessionsQueryKey,
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
@@ -46,25 +46,25 @@ import {
   type SessionCollectionQueryDescriptor,
   type SessionCollectionRecord,
   type SessionCollectionQueryState,
-  type SessionCollectionState,
-} from "./sessionCollectionStore";
+  type ClientSummaryState,
+} from "./clientSummaryState";
 
 type StoreListener = () => void;
 type BusUnsubscribe = () => void;
 
-const sessionCollectionStore = createStore<SessionCollectionState>(() =>
-  createEmptySessionCollectionState(),
+const clientSummaryStore = createStore<ClientSummaryState>(() =>
+  createEmptyClientSummaryState(),
 );
 let mountedConsumerCount = 0;
 let activityBusUnsubscribers: BusUnsubscribe[] | null = null;
 
 function updateSnapshot(
-  update: (current: SessionCollectionState) => SessionCollectionState,
+  update: (current: ClientSummaryState) => ClientSummaryState,
 ): void {
-  const current = sessionCollectionStore.getState();
+  const current = clientSummaryStore.getState();
   const next = update(current);
   if (next !== current) {
-    sessionCollectionStore.setState(next, true);
+    clientSummaryStore.setState(next, true);
   }
 }
 
@@ -146,15 +146,15 @@ function retainActivityBusSubscription(): () => void {
   };
 }
 
-function useSessionCollectionActivitySubscription(): void {
+function useClientSummaryActivitySubscription(): void {
   useEffect(() => retainActivityBusSubscription(), []);
 }
 
-export function subscribeSessionCollection(
+export function subscribeClientSummary(
   listener: StoreListener,
 ): () => void {
   const releaseActivityBus = retainActivityBusSubscription();
-  const unsubscribe = sessionCollectionStore.subscribe(() => listener());
+  const unsubscribe = clientSummaryStore.subscribe(() => listener());
 
   return () => {
     unsubscribe();
@@ -162,12 +162,12 @@ export function subscribeSessionCollection(
   };
 }
 
-export function getSessionCollectionSnapshot(): SessionCollectionState {
-  return sessionCollectionStore.getState();
+export function getClientSummarySnapshot(): ClientSummaryState {
+  return clientSummaryStore.getState();
 }
 
-export function getSessionCollectionServerSnapshot(): SessionCollectionState {
-  return sessionCollectionStore.getState();
+export function getClientSummaryServerSnapshot(): ClientSummaryState {
+  return clientSummaryStore.getState();
 }
 
 export function reportGlobalSessionsCollectionSnapshot(
@@ -224,16 +224,16 @@ export function reportSessionCollectionMetadataChanged(
   );
 }
 
-export function useSessionCollectionState(): SessionCollectionState {
-  useSessionCollectionActivitySubscription();
-  return useStore(sessionCollectionStore);
+export function useClientSummaryState(): ClientSummaryState {
+  useClientSummaryActivitySubscription();
+  return useStore(clientSummaryStore);
 }
 
 export function useSessionCollectionRecord(
   sessionId: string | null | undefined,
 ): SessionCollectionRecord | undefined {
-  useSessionCollectionActivitySubscription();
-  return useStore(sessionCollectionStore, (state) =>
+  useClientSummaryActivitySubscription();
+  return useStore(clientSummaryStore, (state) =>
     selectSessionCollectionRecord(state, sessionId),
   );
 }
@@ -241,23 +241,23 @@ export function useSessionCollectionRecord(
 export function useProjectCollectionRecord(
   projectId: string | null | undefined,
 ): ProjectCollectionRecord | undefined {
-  useSessionCollectionActivitySubscription();
-  return useStore(sessionCollectionStore, (state) =>
+  useClientSummaryActivitySubscription();
+  return useStore(clientSummaryStore, (state) =>
     selectProjectCollectionRecord(state, projectId),
   );
 }
 
 export function useProjectCollectionRecords(): ProjectCollectionRecord[] {
-  const state = useSessionCollectionState();
+  const state = useClientSummaryState();
   return useMemo(() => selectProjectCollectionRecords(state), [state]);
 }
 
 export function useProjectQueueItemsByProject(
   projectIds: readonly string[],
 ): Record<string, readonly ProjectQueueItemSummary[]> {
-  useSessionCollectionActivitySubscription();
+  useClientSummaryActivitySubscription();
   const byProject = useStore(
-    sessionCollectionStore,
+    clientSummaryStore,
     (state) => state.projectQueues.byProject,
   );
   const projectIdsKey = projectIds.join("\0");
@@ -266,7 +266,7 @@ export function useProjectQueueItemsByProject(
     () =>
       selectProjectQueueItemsByProject(
         {
-          ...sessionCollectionStore.getState(),
+          ...clientSummaryStore.getState(),
           projectQueues: { byProject },
         },
         selectedProjectIds,
@@ -278,9 +278,9 @@ export function useProjectQueueItemsByProject(
 export function useProjectQueuedSessionIds(
   projectIds: readonly string[],
 ): ReadonlySet<string> {
-  useSessionCollectionActivitySubscription();
+  useClientSummaryActivitySubscription();
   const byProject = useStore(
-    sessionCollectionStore,
+    clientSummaryStore,
     (state) => state.projectQueues.byProject,
   );
   const projectIdsKey = projectIds.join("\0");
@@ -289,7 +289,7 @@ export function useProjectQueuedSessionIds(
     () =>
       selectProjectQueuedSessionIds(
         {
-          ...sessionCollectionStore.getState(),
+          ...clientSummaryStore.getState(),
           projectQueues: { byProject },
         },
         selectedProjectIds,
@@ -299,24 +299,24 @@ export function useProjectQueuedSessionIds(
 }
 
 export function useStarredSessionRecords(): SessionCollectionRecord[] {
-  const state = useSessionCollectionState();
+  const state = useClientSummaryState();
   return useMemo(() => selectStarredSessionRecords(state), [state]);
 }
 
 export function useRecentSessionRecords(now?: number): SessionCollectionRecord[] {
-  const state = useSessionCollectionState();
+  const state = useClientSummaryState();
   return useMemo(() => selectRecentSessionRecords(state, now), [state, now]);
 }
 
 export function useOlderSessionRecords(now?: number): SessionCollectionRecord[] {
-  const state = useSessionCollectionState();
+  const state = useClientSummaryState();
   return useMemo(() => selectOlderSessionRecords(state, now), [state, now]);
 }
 
 export function useSessionCollectionQueryRecords(
   query: SessionCollectionQueryDescriptor,
 ): SessionCollectionRecord[] {
-  const state = useSessionCollectionState();
+  const state = useClientSummaryState();
   const key = createGlobalSessionsQueryKey(query);
   return useMemo(
     () => selectSessionCollectionQueryRecords(state, query),
@@ -327,14 +327,14 @@ export function useSessionCollectionQueryRecords(
 export function useSessionCollectionQueryState(
   query: SessionCollectionQueryDescriptor,
 ): SessionCollectionQueryState | undefined {
-  useSessionCollectionActivitySubscription();
-  return useStore(sessionCollectionStore, (state) =>
+  useClientSummaryActivitySubscription();
+  return useStore(clientSummaryStore, (state) =>
     selectSessionCollectionQueryState(state, query),
   );
 }
 
-export function resetSessionCollectionStoreForTests(): void {
-  sessionCollectionStore.setState(createEmptySessionCollectionState(), true);
+export function resetClientSummaryStoreForTests(): void {
+  clientSummaryStore.setState(createEmptyClientSummaryState(), true);
   mountedConsumerCount = 0;
   if (activityBusUnsubscribers) {
     for (const unsubscribe of activityBusUnsubscribers) {

@@ -47,16 +47,16 @@ vi.mock("../activityBus", () => ({
 }));
 
 import {
-  getSessionCollectionSnapshot,
+  getClientSummarySnapshot,
   reportGlobalSessionsCollectionSnapshot,
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
-  resetSessionCollectionStoreForTests,
+  resetClientSummaryStoreForTests,
   useProjectQueuedSessionIds,
   useRecentSessionRecords,
   useSessionCollectionRecord,
   useStarredSessionRecords,
-} from "../sessionCollectionExternalStore";
+} from "../clientSummaryStore";
 
 const PROJECT_ID = "project-1" as UrlProjectId;
 const RECENT = "2026-06-27T11:00:00.000Z";
@@ -101,18 +101,18 @@ function queueItem(
 }
 
 beforeEach(() => {
-  resetSessionCollectionStoreForTests();
+  resetClientSummaryStoreForTests();
   mockActivityBus.listeners.clear();
   mockActivityBus.on.mockClear();
 });
 
 afterEach(() => {
   cleanup();
-  resetSessionCollectionStoreForTests();
+  resetClientSummaryStoreForTests();
   mockActivityBus.listeners.clear();
 });
 
-describe("sessionCollectionExternalStore", () => {
+describe("clientSummaryStore", () => {
   it("subscribes to activityBus once while hooks are mounted", () => {
     const first = renderHook(() => useRecentSessionRecords());
     expect(mockActivityBus.on).toHaveBeenCalledTimes(7);
@@ -251,7 +251,7 @@ describe("sessionCollectionExternalStore", () => {
       );
     });
 
-    const before = getSessionCollectionSnapshot().entities.get("session-a");
+    const before = getClientSummarySnapshot().entities.get("session-a");
     expect(before).toBeDefined();
 
     act(() => {
@@ -266,7 +266,7 @@ describe("sessionCollectionExternalStore", () => {
       );
     });
 
-    expect(getSessionCollectionSnapshot().entities.get("session-a")).toBe(
+    expect(getClientSummarySnapshot().entities.get("session-a")).toBe(
       before,
     );
   });

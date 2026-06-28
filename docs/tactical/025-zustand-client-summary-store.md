@@ -46,6 +46,11 @@ Latest update:
   decoration path. The page keeps a queue feed mounted for the current result
   projects and passes `hasProjectQueue` from the shared targeted-session
   selector into both visible and hidden-duplicate session cards.
+- 2026-06-28: Renamed the widened store shell from the old session collection
+  naming to `clientSummaryState` / `clientSummaryStore`. Session-specific
+  record, query, and reducer helpers keep their names, but aggregate state and
+  store APIs now use `ClientSummaryState` so the "no transcript/message data"
+  boundary is explicit before Inbox and draft data are added.
 
 ## Context
 
@@ -244,8 +249,8 @@ Selectors should:
 ## Initial Migration Plan
 
 1. [x] Add the Zustand dependency to `@yep-anywhere/client`.
-2. [x] Port `sessionCollectionExternalStore` to a Zustand store module.
-   - Keep `SessionCollectionState` and the pure reducer helpers initially.
+2. [x] Port `clientSummaryStore` to a Zustand store module.
+   - Keep `ClientSummaryState` and the pure reducer helpers initially.
    - Expose actions like `reportGlobalSessionsCollectionSnapshot`,
      `reportSessionCollectionCreated`, and
      `reportSessionCollectionMetadataChanged`.
@@ -285,7 +290,7 @@ After the no-behavior-change port:
 
 ## Verification Checklist
 
-- Current session collection reducer tests still pass after the Zustand port.
+- Current client summary reducer tests still pass after the Zustand port.
 - A stale `/api/sessions` snapshot cannot remove a session created by a newer
   `session-created` event.
 - Starring and archiving still update sidebar/global projections immediately

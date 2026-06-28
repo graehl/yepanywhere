@@ -92,7 +92,7 @@ vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
   }),
 }));
 
-vi.mock("../../lib/sessionCollectionExternalStore", () => {
+vi.mock("../../lib/clientSummaryStore", () => {
   const recordUpdatedAtMs = (session: Record<string, unknown>): number =>
     typeof session.updatedAt === "string"
       ? Date.parse(session.updatedAt) || 0

@@ -5,7 +5,7 @@ import {
   reportProjectsCollectionSnapshot,
   useProjectCollectionRecord,
   useProjectCollectionRecords,
-} from "../lib/sessionCollectionExternalStore";
+} from "../lib/clientSummaryStore";
 import { useFileActivity } from "./useFileActivity";
 
 const REFETCH_DEBOUNCE_MS = 500;

@@ -11,7 +11,7 @@ import {
 } from "../lib/btwAsideSessions";
 import { toBrowserAppHref } from "../lib/appHref";
 import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
-import { useSessionCollectionQueryRecords } from "../lib/sessionCollectionExternalStore";
+import { useSessionCollectionQueryRecords } from "../lib/clientSummaryStore";
 import { ProviderBadge } from "./ProviderBadge";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 

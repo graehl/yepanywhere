@@ -63,7 +63,7 @@ return [...newSessions, ...filtered];
 
 After the sidebar moved to the session collection store, the same rule is owned
 by `selectRecentSessionRecords` and `selectStarredSessionRecords`
-(`packages/client/src/lib/sessionCollectionStore.ts`). The selectors record
+(`packages/client/src/lib/clientSummaryState.ts`). The selectors record
 when a row enters active state (`activeStartedAt`) and sort active rows by that
 stable timestamp ascending, while idle rows sort by `updatedAt`. A newly
 active row therefore joins after already-active rows instead of becoming the

@@ -9,7 +9,7 @@ import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import {
   reportProjectQueueCollectionSnapshot,
   useProjectQueueItemsByProject,
-} from "../lib/sessionCollectionExternalStore";
+} from "../lib/clientSummaryStore";
 import { useVersion } from "./useVersion";
 
 export interface UseProjectQueuesResult {

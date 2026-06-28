@@ -45,7 +45,7 @@ vi.mock("../useVersion", () => ({
   useVersion: () => ({ version: versionMock.version }),
 }));
 
-import { resetSessionCollectionStoreForTests } from "../../lib/sessionCollectionExternalStore";
+import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
 import { useProjectQueues } from "../useProjectQueues";
 
 const PROJECT_ID = "project-1" as ProjectQueueItemSummary["projectId"];
@@ -70,7 +70,7 @@ function makeItem(
 }
 
 beforeEach(() => {
-  resetSessionCollectionStoreForTests();
+  resetClientSummaryStoreForTests();
   versionMock.version = { capabilities: ["projectQueue"] };
   busMock.reset();
   busMock.on.mockClear();
@@ -82,7 +82,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  resetSessionCollectionStoreForTests();
+  resetClientSummaryStoreForTests();
 });
 
 describe("useProjectQueues", () => {

@@ -99,7 +99,7 @@ export interface ProjectQueueCollectionState {
   byProject: ReadonlyMap<string, ProjectQueueCollectionRecord>;
 }
 
-export interface SessionCollectionState {
+export interface ClientSummaryState {
   entities: ReadonlyMap<string, SessionCollectionRecord>;
   queries: ReadonlyMap<string, SessionCollectionQueryState>;
   projects: ProjectCollectionState;
@@ -126,7 +126,7 @@ export interface ProjectQueueCollectionSnapshot extends ProjectQueueResponse {}
 const ALL_PROJECTS_QUERY_KEY = "all-projects";
 const EMPTY_PROJECT_QUEUE_ITEMS: readonly ProjectQueueItemSummary[] = [];
 
-export function createEmptySessionCollectionState(): SessionCollectionState {
+export function createEmptyClientSummaryState(): ClientSummaryState {
   return {
     entities: new Map(),
     queries: new Map(),
@@ -172,7 +172,7 @@ export function createGlobalSessionsQueryKey(
 }
 
 function getRecord(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   sessionId: string,
 ): SessionCollectionRecord {
   return (
@@ -184,9 +184,9 @@ function getRecord(
 }
 
 function putRecord(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   record: SessionCollectionRecord,
-): SessionCollectionState {
+): ClientSummaryState {
   const entities = new Map(state.entities);
   entities.set(record.id, record);
   return {
@@ -231,10 +231,10 @@ function projectFieldsEqual(
 }
 
 function putProjectRecord(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   project: Project,
   observedAt: number,
-): SessionCollectionState {
+): ClientSummaryState {
   const existing = state.projects.entities.get(project.id);
   if (existing) {
     if (observedAt < (existing.snapshotObservedAt ?? NO_OBSERVATION)) {
@@ -277,10 +277,10 @@ function putProjectRecord(
 }
 
 function putProjectsQuery(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   projects: readonly Project[],
   requestStartedAt: number,
-): SessionCollectionState {
+): ClientSummaryState {
   const existing = state.projects.queries.get(ALL_PROJECTS_QUERY_KEY);
   if (existing && requestStartedAt < existing.requestStartedAt) {
     return state;
@@ -359,10 +359,10 @@ function projectQueueItemsEqual(
 }
 
 function putProjectQueueSnapshot(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   snapshot: ProjectQueueCollectionSnapshot,
   observedAt: number,
-): SessionCollectionState {
+): ClientSummaryState {
   const existing = state.projectQueues.byProject.get(snapshot.projectId);
   if (existing) {
     if (observedAt < (existing.snapshotObservedAt ?? NO_OBSERVATION)) {
@@ -586,10 +586,10 @@ function withUnreadField(
 }
 
 function upsertSnapshotRecord(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   row: GlobalSessionItem,
   requestStartedAt: number,
-): SessionCollectionState {
+): ClientSummaryState {
   let record = getRecord(state, row.id);
 
   record = withContentFields(
@@ -654,10 +654,10 @@ function upsertSnapshotRecord(
 }
 
 function upsertQuery(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   snapshot: GlobalSessionsCollectionSnapshot,
   requestStartedAt: number,
-): SessionCollectionState {
+): ClientSummaryState {
   const key = createGlobalSessionsQueryKey(snapshot.query);
   const existing = state.queries.get(key);
   if (existing && requestStartedAt < existing.requestStartedAt) {
@@ -696,10 +696,10 @@ function upsertQuery(
 }
 
 export function applyGlobalSessionsCollectionSnapshot(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   snapshot: GlobalSessionsCollectionSnapshot,
   requestStartedAt = Date.now(),
-): SessionCollectionState {
+): ClientSummaryState {
   let next = state;
   for (const row of snapshot.sessions) {
     next = upsertSnapshotRecord(next, row, requestStartedAt);
@@ -708,10 +708,10 @@ export function applyGlobalSessionsCollectionSnapshot(
 }
 
 export function applyProjectsCollectionSnapshot(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   snapshot: ProjectsCollectionSnapshot,
   requestStartedAt = Date.now(),
-): SessionCollectionState {
+): ClientSummaryState {
   let next = state;
   for (const project of snapshot.projects) {
     next = putProjectRecord(next, project, requestStartedAt);
@@ -720,26 +720,26 @@ export function applyProjectsCollectionSnapshot(
 }
 
 export function applyProjectCollectionSnapshot(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   snapshot: ProjectCollectionSnapshot,
   requestStartedAt = Date.now(),
-): SessionCollectionState {
+): ClientSummaryState {
   return putProjectRecord(state, snapshot.project, requestStartedAt);
 }
 
 export function applyProjectQueueCollectionSnapshot(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   snapshot: ProjectQueueCollectionSnapshot,
   requestStartedAt = Date.now(),
-): SessionCollectionState {
+): ClientSummaryState {
   return putProjectQueueSnapshot(state, snapshot, requestStartedAt);
 }
 
 export function applyProjectQueueCollectionChanged(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   event: ProjectQueueChangedEvent,
   observedAt = Date.now(),
-): SessionCollectionState {
+): ClientSummaryState {
   return putProjectQueueSnapshot(
     state,
     { projectId: event.projectId, items: event.items },
@@ -748,10 +748,10 @@ export function applyProjectQueueCollectionChanged(
 }
 
 export function applySessionCollectionCreated(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   event: SessionCreatedEvent,
   observedAt = Date.now(),
-): SessionCollectionState {
+): ClientSummaryState {
   const session = event.session;
   let record = getRecord(state, session.id);
 
@@ -811,10 +811,10 @@ export function applySessionCollectionCreated(
 }
 
 export function applySessionCollectionUpdated(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   event: SessionUpdatedEvent,
   observedAt = Date.now(),
-): SessionCollectionState {
+): ClientSummaryState {
   const record = withContentFields(
     getRecord(state, event.sessionId),
     {
@@ -830,10 +830,10 @@ export function applySessionCollectionUpdated(
 }
 
 export function applySessionCollectionMetadataChanged(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   event: SessionMetadataChangedEvent,
   observedAt = Date.now(),
-): SessionCollectionState {
+): ClientSummaryState {
   const record = withMetadataFields(
     getRecord(state, event.sessionId),
     {
@@ -853,10 +853,10 @@ export function applySessionCollectionMetadataChanged(
 }
 
 export function applySessionCollectionStatusChanged(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   event: SessionStatusEvent,
   observedAt = Date.now(),
-): SessionCollectionState {
+): ClientSummaryState {
   let record = getRecord(state, event.sessionId);
   record = withProjectFields(record, { projectId: event.projectId }, observedAt);
   record = withLifecycleFields(
@@ -872,10 +872,10 @@ export function applySessionCollectionStatusChanged(
 }
 
 export function applySessionCollectionProcessStateChanged(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   event: ProcessStateEvent,
   observedAt = Date.now(),
-): SessionCollectionState {
+): ClientSummaryState {
   let record = getRecord(state, event.sessionId);
   record = withProjectFields(record, { projectId: event.projectId }, observedAt);
   record = withLifecycleFields(
@@ -890,10 +890,10 @@ export function applySessionCollectionProcessStateChanged(
 }
 
 export function applySessionCollectionSeen(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   event: SessionSeenEvent,
   observedAt = Date.now(),
-): SessionCollectionState {
+): ClientSummaryState {
   const record = withUnreadField(
     getRecord(state, event.sessionId),
     false,
@@ -903,28 +903,28 @@ export function applySessionCollectionSeen(
 }
 
 export function selectSessionCollectionRecord(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   sessionId: string | null | undefined,
 ): SessionCollectionRecord | undefined {
   return sessionId ? state.entities.get(sessionId) : undefined;
 }
 
 export function selectSessionCollectionQueryState(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   query: SessionCollectionQueryDescriptor,
 ): SessionCollectionQueryState | undefined {
   return state.queries.get(createGlobalSessionsQueryKey(query));
 }
 
 export function selectProjectCollectionRecord(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   projectId: string | null | undefined,
 ): ProjectCollectionRecord | undefined {
   return projectId ? state.projects.entities.get(projectId) : undefined;
 }
 
 export function selectProjectCollectionRecords(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
 ): ProjectCollectionRecord[] {
   const queryState = state.projects.queries.get(ALL_PROJECTS_QUERY_KEY);
   if (!queryState) {
@@ -938,7 +938,7 @@ export function selectProjectCollectionRecords(
 }
 
 export function selectProjectQueueItems(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   projectId: string | null | undefined,
 ): readonly ProjectQueueItemSummary[] {
   return projectId
@@ -948,7 +948,7 @@ export function selectProjectQueueItems(
 }
 
 export function selectProjectQueueItemsByProject(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   projectIds: readonly string[],
 ): Record<string, readonly ProjectQueueItemSummary[]> {
   const result: Record<string, readonly ProjectQueueItemSummary[]> = {};
@@ -962,7 +962,7 @@ export function selectProjectQueueItemsByProject(
 }
 
 export function selectProjectQueuedSessionIds(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   projectIds: readonly string[],
 ): ReadonlySet<string> {
   const sessionIds = new Set<string>();
@@ -1011,7 +1011,7 @@ function orderActiveFirst(records: SessionCollectionRecord[]) {
 }
 
 export function selectStarredSessionRecords(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
 ): SessionCollectionRecord[] {
   return orderActiveFirst(
     Array.from(state.entities.values()).filter(
@@ -1021,7 +1021,7 @@ export function selectStarredSessionRecords(
 }
 
 export function selectRecentSessionRecords(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   now = Date.now(),
 ): SessionCollectionRecord[] {
   const oneDayAgo = now - 24 * 60 * 60 * 1000;
@@ -1036,7 +1036,7 @@ export function selectRecentSessionRecords(
 }
 
 export function selectOlderSessionRecords(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   now = Date.now(),
 ): SessionCollectionRecord[] {
   const oneDayAgo = now - 24 * 60 * 60 * 1000;
@@ -1051,7 +1051,7 @@ export function selectOlderSessionRecords(
 }
 
 export function selectSessionCollectionQueryRecords(
-  state: SessionCollectionState,
+  state: ClientSummaryState,
   query: SessionCollectionQueryDescriptor,
 ): SessionCollectionRecord[] {
   const key = createGlobalSessionsQueryKey(query);

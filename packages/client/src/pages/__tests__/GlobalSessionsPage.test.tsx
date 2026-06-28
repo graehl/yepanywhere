@@ -125,7 +125,7 @@ vi.mock("../../hooks/useProjectQueues", () => ({
   },
 }));
 
-vi.mock("../../lib/sessionCollectionExternalStore", () => ({
+vi.mock("../../lib/clientSummaryStore", () => ({
   useSessionCollectionQueryRecords: () => sessionCollectionState.records,
   useProjectQueuedSessionIds: () => sessionCollectionState.queuedSessionIds,
 }));

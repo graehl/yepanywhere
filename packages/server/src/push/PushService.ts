@@ -176,7 +176,10 @@ export class PushService {
    * Get notification settings.
    */
   getNotificationSettings(): NotificationSettings {
-    return this.state.settings ?? DEFAULT_NOTIFICATION_SETTINGS;
+    return {
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      ...this.state.settings,
+    };
   }
 
   /**
@@ -203,7 +206,7 @@ export class PushService {
    * Check if a specific notification type is enabled.
    */
   isNotificationTypeEnabled(
-    type: "toolApproval" | "userQuestion" | "sessionHalted",
+    type: keyof NotificationSettings,
   ): boolean {
     const settings = this.getNotificationSettings();
     return settings[type];

@@ -6,6 +6,8 @@ export interface NotificationSettings {
   toolApproval: boolean;
   userQuestion: boolean;
   sessionHalted: boolean;
+  projectInactive: boolean;
+  yaInactive: boolean;
 }
 
 interface NotificationSettingsState {

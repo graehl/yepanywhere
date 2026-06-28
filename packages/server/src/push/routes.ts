@@ -214,6 +214,8 @@ export function createPushRoutes(deps: PushRoutesDeps): Hono {
       "toolApproval",
       "userQuestion",
       "sessionHalted",
+      "projectInactive",
+      "yaInactive",
     ] as const;
     const updates: Partial<NotificationSettings> = {};
 

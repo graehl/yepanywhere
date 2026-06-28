@@ -61,3 +61,4 @@
 - client-global-store - Zustand-backed coarse client summary store for sessions, projects, queues, and inbox projections.
 - source-control-basic-actions - Narrow Source Control page expansion with split diff, recent commits, and explicit remote actions.
 - draft-attachment-staging - Draft envelope, staged attachment storage, and materialization support for composer attachments.
+- inactivity-push-notifications - Default-off push settings and server-side inactive project / YA notification edges.

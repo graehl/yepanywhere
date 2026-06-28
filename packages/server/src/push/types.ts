@@ -31,6 +31,10 @@ export interface NotificationSettings {
   userQuestion: boolean;
   /** Send notifications when sessions halt/complete */
   sessionHalted: boolean;
+  /** Send notifications when a project becomes fully inactive */
+  projectInactive: boolean;
+  /** Send notifications when all YA-managed work becomes inactive */
+  yaInactive: boolean;
 }
 
 /** Default notification settings for new or missing preference files. */
@@ -38,6 +42,8 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   toolApproval: true,
   userQuestion: true,
   sessionHalted: false,
+  projectInactive: false,
+  yaInactive: false,
 };
 
 /** Subscription storage state */
@@ -47,7 +53,7 @@ export interface SubscriptionState {
   /** Map of browserProfileId -> subscription info */
   subscriptions: Record<string, StoredSubscription>;
   /** Server-side notification type settings */
-  settings?: NotificationSettings;
+  settings?: Partial<NotificationSettings>;
 }
 
 /** Push notification payload types */

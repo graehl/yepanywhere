@@ -1273,6 +1273,8 @@ export const api = {
         toolApproval: boolean;
         userQuestion: boolean;
         sessionHalted: boolean;
+        projectInactive: boolean;
+        yaInactive: boolean;
       };
     }>("/push/settings"),
 
@@ -1281,6 +1283,8 @@ export const api = {
       toolApproval: boolean;
       userQuestion: boolean;
       sessionHalted: boolean;
+      projectInactive: boolean;
+      yaInactive: boolean;
     }>,
   ) =>
     fetchJSON<{
@@ -1288,6 +1292,8 @@ export const api = {
         toolApproval: boolean;
         userQuestion: boolean;
         sessionHalted: boolean;
+        projectInactive: boolean;
+        yaInactive: boolean;
       };
     }>("/push/settings", {
       method: "PUT",

@@ -161,6 +161,8 @@ describe("PushService", () => {
         toolApproval: true,
         userQuestion: true,
         sessionHalted: false,
+        projectInactive: false,
+        yaInactive: false,
       });
       expect(pushService.isNotificationTypeEnabled("sessionHalted")).toBe(
         false,
@@ -177,6 +179,57 @@ describe("PushService", () => {
       await newService.initialize();
 
       expect(newService.isNotificationTypeEnabled("sessionHalted")).toBe(true);
+    });
+
+    it("merges new default settings into older persisted settings", async () => {
+      await fs.writeFile(
+        path.join(tempDir, "push-subscriptions.json"),
+        JSON.stringify(
+          {
+            version: 1,
+            subscriptions: {},
+            settings: {
+              toolApproval: false,
+              userQuestion: true,
+              sessionHalted: false,
+            },
+          },
+          null,
+          2,
+        ),
+      );
+
+      const newService = new PushService({
+        dataDir: tempDir,
+        vapidKeys,
+      });
+      await newService.initialize();
+
+      expect(newService.getNotificationSettings()).toEqual({
+        toolApproval: false,
+        userQuestion: true,
+        sessionHalted: false,
+        projectInactive: false,
+        yaInactive: false,
+      });
+    });
+
+    it("persists explicit inactivity settings", async () => {
+      await pushService.setNotificationSettings({
+        projectInactive: true,
+        yaInactive: true,
+      });
+
+      const newService = new PushService({
+        dataDir: tempDir,
+        vapidKeys,
+      });
+      await newService.initialize();
+
+      expect(newService.isNotificationTypeEnabled("projectInactive")).toBe(
+        true,
+      );
+      expect(newService.isNotificationTypeEnabled("yaInactive")).toBe(true);
     });
   });
 

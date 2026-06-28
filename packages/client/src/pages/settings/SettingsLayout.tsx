@@ -68,6 +68,34 @@ export function shouldUseSettingsTwoColumn(availableWidth: number): boolean {
   return availableWidth >= SETTINGS_TWO_COLUMN_MIN_WIDTH;
 }
 
+interface SettingsDetailNavigationState {
+  settingsDetailOpenedFromList?: true;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object";
+}
+
+export function createSettingsDetailNavigationState(
+  openedFromList: boolean,
+): SettingsDetailNavigationState | undefined {
+  return openedFromList ? { settingsDetailOpenedFromList: true } : undefined;
+}
+
+export function shouldPopSettingsDetailBack(state: unknown): boolean {
+  return isRecord(state) && state.settingsDetailOpenedFromList === true;
+}
+
+export function shouldReplaceSettingsCategoryNavigation({
+  currentCategory,
+  useTwoColumnSettings,
+}: {
+  currentCategory: string | undefined;
+  useTwoColumnSettings: boolean;
+}): boolean {
+  return useTwoColumnSettings && !!currentCategory;
+}
+
 function getInitialSettingsWidth(): number {
   return typeof window === "undefined" ? 1200 : window.innerWidth;
 }
@@ -205,17 +233,39 @@ export function SettingsLayout() {
     scrollSettingsToTop();
   }, [location.key, scrollSettingsToTop]);
 
+  const navigateToSettingsRoot = () => {
+    if (shouldPopSettingsDetailBack(location.state)) {
+      navigate(-1);
+    } else {
+      navigate(`${basePath}/settings`, { replace: !!category });
+    }
+    scrollSettingsToTop();
+  };
+
   const handleSettingsTitleClick = () => {
-    navigate(`${basePath}/settings`);
+    if (category) {
+      navigateToSettingsRoot();
+      return;
+    }
+
+    navigate(`${basePath}/settings`, { replace: true });
     scrollSettingsToTop();
   };
 
   const handleCategoryClick = (categoryId: string) => {
-    navigate(`${basePath}/settings/${categoryId}`);
+    const openedFromList =
+      !category || shouldPopSettingsDetailBack(location.state);
+    navigate(`${basePath}/settings/${categoryId}`, {
+      replace: shouldReplaceSettingsCategoryNavigation({
+        currentCategory: category,
+        useTwoColumnSettings,
+      }),
+      state: createSettingsDetailNavigationState(openedFromList),
+    });
   };
 
   const handleBack = () => {
-    navigate(`${basePath}/settings`);
+    navigateToSettingsRoot();
   };
 
   const CategoryComponent = effectiveCategory

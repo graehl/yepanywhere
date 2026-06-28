@@ -1,34 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { useDraftSessionIds } from "../lib/clientSummaryStore";
 
-const DRAFT_KEY_PREFIX = "draft-message-";
 const NEW_SESSION_DRAFT_KEY = "draft-new-session";
 const NEW_SESSION_DRAFT_KEY_PREFIX = "draft-new-session-";
-
-/**
- * Scan all localStorage keys to find sessions with non-empty drafts.
- * Iterates keys by prefix rather than checking per-session — fast when
- * total localStorage key count is small (typically ~10-20 keys).
- *
- * This is the only function that touches storage directly. To migrate
- * to IndexedDB or another backend, replace this function.
- */
-function scanDrafts(): Set<string> {
-  const result = new Set<string>();
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith(DRAFT_KEY_PREFIX)) {
-        const value = localStorage.getItem(key);
-        if (value?.trim()) {
-          result.add(key.slice(DRAFT_KEY_PREFIX.length));
-        }
-      }
-    }
-  } catch {
-    // localStorage might be unavailable
-  }
-  return result;
-}
 
 /**
  * Returns `prev` if both sets contain the same elements, otherwise `next`.
@@ -44,36 +18,12 @@ export function setsEqual<T>(prev: Set<T>, next: Set<T>): Set<T> {
 
 /**
  * Hook to track which sessions have draft messages in localStorage.
- * Returns a Set of session IDs with non-empty drafts.
+ * Returns session IDs with non-empty drafts.
  *
- * Listens for cross-tab storage events and polls every 1s for same-tab changes.
+ * The client summary store owns the mounted storage listener and polling feed.
  */
-export function useDrafts(): Set<string> {
-  const [drafts, setDrafts] = useState(scanDrafts);
-
-  const scan = useCallback(() => {
-    setDrafts((prev) => setsEqual(prev, scanDrafts()));
-  }, []);
-
-  // Listen for storage events (changes from other tabs)
-  useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key?.startsWith(DRAFT_KEY_PREFIX)) {
-        scan();
-      }
-    };
-
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, [scan]);
-
-  // Poll for same-tab changes (storage event doesn't fire for same-tab)
-  useEffect(() => {
-    const interval = setInterval(scan, 1000);
-    return () => clearInterval(interval);
-  }, [scan]);
-
-  return drafts;
+export function useDrafts(): ReadonlySet<string> {
+  return useDraftSessionIds();
 }
 
 /**

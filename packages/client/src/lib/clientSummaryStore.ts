@@ -15,6 +15,7 @@ import {
   type SessionUpdatedEvent,
 } from "./activityBus";
 import {
+  applyDraftSessionIdsSnapshot,
   applyGlobalSessionsCollectionSnapshot,
   applyProjectCollectionSnapshot,
   applyProjectsCollectionSnapshot,
@@ -28,6 +29,7 @@ import {
   applySessionCollectionUpdated,
   createEmptyClientSummaryState,
   createGlobalSessionsQueryKey,
+  selectDraftSessionIds,
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
   selectProjectQueuedSessionIds,
@@ -48,15 +50,24 @@ import {
   type SessionCollectionQueryState,
   type ClientSummaryState,
 } from "./clientSummaryState";
+import {
+  isSessionDraftStorageKey,
+  scanSessionDraftIds,
+} from "./sessionDraftStorage";
 
 type StoreListener = () => void;
 type BusUnsubscribe = () => void;
+type ReleaseSubscription = () => void;
+
+const DRAFT_DECORATION_SCAN_INTERVAL_MS = 1000;
 
 const clientSummaryStore = createStore<ClientSummaryState>(() =>
   createEmptyClientSummaryState(),
 );
 let mountedConsumerCount = 0;
 let activityBusUnsubscribers: BusUnsubscribe[] | null = null;
+let mountedDraftDecorationConsumerCount = 0;
+let draftDecorationRelease: ReleaseSubscription | null = null;
 
 function updateSnapshot(
   update: (current: ClientSummaryState) => ClientSummaryState,
@@ -148,6 +159,78 @@ function retainActivityBusSubscription(): () => void {
 
 function useClientSummaryActivitySubscription(): void {
   useEffect(() => retainActivityBusSubscription(), []);
+}
+
+export function reportDraftSessionIdsSnapshot(
+  draftSessionIds: ReadonlySet<string>,
+  observedAt = Date.now(),
+): void {
+  updateSnapshot((current) =>
+    applyDraftSessionIdsSnapshot(current, draftSessionIds, observedAt),
+  );
+}
+
+function scanDraftSessionIdsIntoStore(): void {
+  reportDraftSessionIdsSnapshot(scanSessionDraftIds());
+}
+
+function startDraftDecorationSubscription(): void {
+  if (draftDecorationRelease) {
+    return;
+  }
+
+  scanDraftSessionIdsIntoStore();
+
+  if (typeof window === "undefined") {
+    draftDecorationRelease = () => {};
+    return;
+  }
+
+  const handleStorage = (event: StorageEvent) => {
+    if (isSessionDraftStorageKey(event.key)) {
+      scanDraftSessionIdsIntoStore();
+    }
+  };
+
+  window.addEventListener("storage", handleStorage);
+  const interval = window.setInterval(
+    scanDraftSessionIdsIntoStore,
+    DRAFT_DECORATION_SCAN_INTERVAL_MS,
+  );
+
+  draftDecorationRelease = () => {
+    window.removeEventListener("storage", handleStorage);
+    window.clearInterval(interval);
+  };
+}
+
+function stopDraftDecorationSubscriptionIfIdle(): void {
+  if (mountedDraftDecorationConsumerCount > 0 || !draftDecorationRelease) {
+    return;
+  }
+
+  draftDecorationRelease();
+  draftDecorationRelease = null;
+}
+
+function retainDraftDecorationSubscription(): () => void {
+  mountedDraftDecorationConsumerCount += 1;
+  startDraftDecorationSubscription();
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    mountedDraftDecorationConsumerCount = Math.max(
+      0,
+      mountedDraftDecorationConsumerCount - 1,
+    );
+    stopDraftDecorationSubscriptionIfIdle();
+  };
+}
+
+function useDraftDecorationSubscription(): void {
+  useEffect(() => retainDraftDecorationSubscription(), []);
 }
 
 export function subscribeClientSummary(
@@ -298,6 +381,11 @@ export function useProjectQueuedSessionIds(
   );
 }
 
+export function useDraftSessionIds(): ReadonlySet<string> {
+  useDraftDecorationSubscription();
+  return useStore(clientSummaryStore, selectDraftSessionIds);
+}
+
 export function useStarredSessionRecords(): SessionCollectionRecord[] {
   const state = useClientSummaryState();
   return useMemo(() => selectStarredSessionRecords(state), [state]);
@@ -336,10 +424,15 @@ export function useSessionCollectionQueryState(
 export function resetClientSummaryStoreForTests(): void {
   clientSummaryStore.setState(createEmptyClientSummaryState(), true);
   mountedConsumerCount = 0;
+  mountedDraftDecorationConsumerCount = 0;
   if (activityBusUnsubscribers) {
     for (const unsubscribe of activityBusUnsubscribers) {
       unsubscribe();
     }
     activityBusUnsubscribers = null;
+  }
+  if (draftDecorationRelease) {
+    draftDecorationRelease();
+    draftDecorationRelease = null;
   }
 }

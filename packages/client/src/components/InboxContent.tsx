@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import { type InboxItem, useInboxContext } from "../contexts/InboxContext";
-import { useDrafts } from "../hooks/useDrafts";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
-import { useProjectQueuedSessionIds } from "../lib/clientSummaryStore";
+import {
+  useDraftSessionIds,
+  useProjectQueuedSessionIds,
+} from "../lib/clientSummaryStore";
 import type { Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { SessionListItem } from "./SessionListItem";
@@ -73,7 +75,7 @@ interface InboxSectionProps {
   /** Base path prefix for relay mode (e.g., "/remote/my-server") */
   basePath?: string;
   /** Set of session IDs that have unsent drafts */
-  drafts: Set<string>;
+  drafts: ReadonlySet<string>;
   /** Set of session IDs targeted by Project Queue items */
   projectQueuedSessionIds: ReadonlySet<string>;
   /** Whether public share creation controls should be exposed */
@@ -243,8 +245,7 @@ export function InboxContent({
 
   const isEmpty = totalItems === 0 && !loading;
 
-  // Track which sessions have unsent drafts
-  const drafts = useDrafts();
+  const drafts = useDraftSessionIds();
 
   // Build project options for FilterDropdown
   const projectOptions: FilterOption<string>[] = projects

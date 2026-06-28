@@ -53,10 +53,6 @@ vi.mock("../../contexts/InboxContext", () => ({
   }),
 }));
 
-vi.mock("../../hooks/useDrafts", () => ({
-  useDrafts: () => draftSessionIds,
-}));
-
 vi.mock("../../hooks/useProjectQueues", () => ({
   useProjectQueues: (projectIds: string[]) => {
     mockUseProjectQueues(projectIds);
@@ -75,6 +71,7 @@ vi.mock("../../hooks/useProjectQueues", () => ({
 }));
 
 vi.mock("../../lib/clientSummaryStore", () => ({
+  useDraftSessionIds: () => draftSessionIds,
   useProjectQueuedSessionIds: (projectIds: string[]) => {
     mockUseProjectQueuedSessionIds(projectIds);
     return queuedSessionIds;

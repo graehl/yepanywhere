@@ -20,7 +20,7 @@ Progress:
       decoration facts.
 - [x] Move Inbox Project Queue badges to store-owned queue/session decoration
       facts.
-- [ ] Move draft badges into store-owned local decorations.
+- [x] Move session draft badges into store-owned local decorations.
 - [ ] Migrate Inbox to feed snapshots plus store selectors.
 - [ ] Audit and retire long-tail hooks that privately own row-like session,
       project, or queue data.
@@ -55,9 +55,14 @@ Latest update:
 - 2026-06-28: Migrated Inbox `Q` badges to the shared Project Queue decoration
   path. `InboxContent` keeps queue feeds mounted for the currently visible
   projects and reads targeted existing-session ids from the client summary
-  store, matching Sidebar and All Sessions. Draft badges intentionally still
-  use the existing mounted localStorage scan until local decorations are moved
-  into the store with bounded polling ownership.
+  store, matching Sidebar and All Sessions. Session draft badges were left for
+  the next local-decoration slice.
+- 2026-06-28: Moved session draft badge ids into client-summary local
+  decorations. The store wrapper owns the mounted `draft-message-*`
+  localStorage scan and tears down its storage listener plus 1s polling interval
+  when no draft-decoration consumer remains. Sidebar, Inbox, and All Sessions
+  now read draft badge ids from `useDraftSessionIds`; the new-session draft
+  nav badge remains a separate form-level hook.
 
 ## Context
 
@@ -288,11 +293,10 @@ After the no-behavior-change port:
    - `/api/inbox` owns tier membership;
    - the store owns partial session facts and tier ids;
    - `InboxContent` renders via selectors.
-2. Move draft badges into store-owned local decorations.
-3. Enrich `/api/sessions` or reduce project-queue events enough for Sidebar and
+2. Enrich `/api/sessions` or reduce project-queue events enough for Sidebar and
    All Sessions to show targeted queue badges without extra per-surface queue
    fetches.
-4. Audit Agents, Projects, New Session, and Session Page for hook-local summary
+3. Audit Agents, Projects, New Session, and Session Page for hook-local summary
    facts that should be store-fed instead.
 
 ## Verification Checklist

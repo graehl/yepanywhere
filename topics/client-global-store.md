@@ -154,9 +154,15 @@ queue feed mounted for visible projects and reads `Q` badges from a store-owned
 targeted-session selector.
 
 All Sessions and Inbox now use the same Project Queue decoration path for
-visible session cards. The next likely slice is draft badges: move the mounted
-localStorage draft scan into store-owned local decorations with explicit
-teardown, then retire one-off local badge reads where they are no longer needed.
+visible session cards. Session draft badges also read from client-summary local
+decorations: the store wrapper owns the mounted `draft-message-*` localStorage
+scan and tears down its storage listener plus polling interval when the last
+draft-decoration consumer unmounts.
+
+The next likely slice is Inbox data migration: keep `InboxContext` or a
+purpose-built feed hook focused on readiness/loading/error, report `/api/inbox`
+snapshots into the client summary store, and render tier rows from selectors
+instead of hook-local arrays.
 
 This should reduce the long tail of hooks that each own partial session/project
 truth and make future UI affordances appear consistently across Sidebar, Inbox,

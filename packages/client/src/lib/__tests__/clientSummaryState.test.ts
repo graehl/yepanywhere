@@ -7,6 +7,7 @@ import type { GlobalSessionItem } from "../../api/client";
 import type { Project as GlobalProject } from "../../types";
 import type { SessionCreatedEvent } from "../activityBus";
 import {
+  applyDraftSessionIdsSnapshot,
   applyGlobalSessionsCollectionSnapshot,
   applyProjectCollectionSnapshot,
   applyProjectsCollectionSnapshot,
@@ -17,6 +18,7 @@ import {
   applySessionCollectionProcessStateChanged,
   createEmptyClientSummaryState,
   createGlobalSessionsQueryKey,
+  selectDraftSessionIds,
   selectRecentSessionRecords,
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
@@ -718,6 +720,37 @@ describe("clientSummaryState", () => {
 
     expect(selectProjectQueueItems(state, PROJECT_ID)).toMatchObject([
       { id: "2", status: "failed" },
+    ]);
+  });
+
+  it("stores local draft session ids as stable decorations", () => {
+    let state = applyDraftSessionIdsSnapshot(
+      createEmptyClientSummaryState(),
+      new Set(["session-a"]),
+      100,
+    );
+    const before = selectDraftSessionIds(state);
+
+    expect([...before]).toEqual(["session-a"]);
+
+    const unchanged = applyDraftSessionIdsSnapshot(
+      state,
+      new Set(["session-a"]),
+      200,
+    );
+
+    expect(unchanged).toBe(state);
+    expect(selectDraftSessionIds(unchanged)).toBe(before);
+
+    state = applyDraftSessionIdsSnapshot(
+      state,
+      new Set(["session-a", "session-b"]),
+      300,
+    );
+
+    expect([...selectDraftSessionIds(state)]).toEqual([
+      "session-a",
+      "session-b",
     ]);
   });
 });

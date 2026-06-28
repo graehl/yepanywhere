@@ -99,11 +99,17 @@ export interface ProjectQueueCollectionState {
   byProject: ReadonlyMap<string, ProjectQueueCollectionRecord>;
 }
 
+export interface LocalDecorationState {
+  draftSessionIds: ReadonlySet<string>;
+  draftObservedAt?: number;
+}
+
 export interface ClientSummaryState {
   entities: ReadonlyMap<string, SessionCollectionRecord>;
   queries: ReadonlyMap<string, SessionCollectionQueryState>;
   projects: ProjectCollectionState;
   projectQueues: ProjectQueueCollectionState;
+  localDecorations: LocalDecorationState;
 }
 
 export interface GlobalSessionsCollectionSnapshot {
@@ -136,6 +142,9 @@ export function createEmptyClientSummaryState(): ClientSummaryState {
     },
     projectQueues: {
       byProject: new Map(),
+    },
+    localDecorations: {
+      draftSessionIds: new Set(),
     },
   };
 }
@@ -356,6 +365,20 @@ function projectQueueItemsEqual(
       item.lastAttemptAt === other.lastAttemptAt
     );
   });
+}
+
+function stringSetsEqual(
+  a: ReadonlySet<string>,
+  b: ReadonlySet<string>,
+): boolean {
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  for (const value of a) {
+    if (!b.has(value)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function putProjectQueueSnapshot(
@@ -747,6 +770,25 @@ export function applyProjectQueueCollectionChanged(
   );
 }
 
+export function applyDraftSessionIdsSnapshot(
+  state: ClientSummaryState,
+  draftSessionIds: ReadonlySet<string>,
+  observedAt = Date.now(),
+): ClientSummaryState {
+  if (stringSetsEqual(state.localDecorations.draftSessionIds, draftSessionIds)) {
+    return state;
+  }
+
+  return {
+    ...state,
+    localDecorations: {
+      ...state.localDecorations,
+      draftSessionIds: new Set(draftSessionIds),
+      draftObservedAt: observedAt,
+    },
+  };
+}
+
 export function applySessionCollectionCreated(
   state: ClientSummaryState,
   event: SessionCreatedEvent,
@@ -975,6 +1017,12 @@ export function selectProjectQueuedSessionIds(
     }
   }
   return sessionIds;
+}
+
+export function selectDraftSessionIds(
+  state: ClientSummaryState,
+): ReadonlySet<string> {
+  return state.localDecorations.draftSessionIds;
 }
 
 function updatedAtMs(record: SessionCollectionRecord): number {

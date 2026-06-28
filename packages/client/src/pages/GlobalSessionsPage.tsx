@@ -10,7 +10,6 @@ import {
 } from "../components/FilterDropdown";
 import { PageHeader } from "../components/PageHeader";
 import { SessionListItem } from "../components/SessionListItem";
-import { useDrafts } from "../hooks/useDrafts";
 import { useGlobalSessionsFeed } from "../hooks/useGlobalSessionsFeed";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
@@ -21,6 +20,7 @@ import { MainContent, useNavigationLayout } from "../layouts";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
 import {
+  useDraftSessionIds,
   useProjectQueuedSessionIds,
   useSessionCollectionQueryRecords,
 } from "../lib/clientSummaryStore";
@@ -298,8 +298,7 @@ export function GlobalSessionsPage() {
     });
   }, [sessions, statusFilters, providerFilters, executorFilters, ageFilter]);
 
-  // Track which sessions have unsent drafts
-  const drafts = useDrafts();
+  const drafts = useDraftSessionIds();
   const filteredProjectIds = useMemo(
     () => [
       ...new Set(

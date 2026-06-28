@@ -64,7 +64,6 @@ vi.mock("../../contexts/InboxContext", () => ({
 }));
 
 vi.mock("../../hooks/useDrafts", () => ({
-  useDrafts: () => new Set<string>(),
   useNewSessionDraft: () => newSessionDraftState.hasDraft,
 }));
 
@@ -101,6 +100,7 @@ vi.mock("../../lib/clientSummaryStore", () => {
     session.activity === "in-turn" || session.activity === "waiting-input";
 
   return {
+    useDraftSessionIds: () => new Set<string>(),
     useStarredSessionRecords: () =>
       starredSessionsState.sessions.filter((session) => !session.isArchived),
     useRecentSessionRecords: () => {

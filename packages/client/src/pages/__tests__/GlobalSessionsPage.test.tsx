@@ -97,10 +97,6 @@ vi.mock("../../components/SessionListItem", () => ({
   ),
 }));
 
-vi.mock("../../hooks/useDrafts", () => ({
-  useDrafts: () => new Set<string>(),
-}));
-
 vi.mock("../../hooks/useGlobalSessionsFeed", () => ({
   useGlobalSessionsFeed: () => ({
     query: { scope: "global-sessions" },
@@ -128,6 +124,7 @@ vi.mock("../../hooks/useProjectQueues", () => ({
 vi.mock("../../lib/clientSummaryStore", () => ({
   useSessionCollectionQueryRecords: () => sessionCollectionState.records,
   useProjectQueuedSessionIds: () => sessionCollectionState.queuedSessionIds,
+  useDraftSessionIds: () => new Set<string>(),
 }));
 
 vi.mock("../../hooks/useRemoteBasePath", () => ({

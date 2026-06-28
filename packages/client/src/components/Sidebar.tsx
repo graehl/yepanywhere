@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
 import { useInboxContext } from "../contexts/InboxContext";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
-import { useDrafts, useNewSessionDraft } from "../hooks/useDrafts";
+import { useNewSessionDraft } from "../hooks/useDrafts";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
@@ -16,6 +16,7 @@ import { toBrowserAppHref } from "../lib/appHref";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
 import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
 import {
+  useDraftSessionIds,
   useOlderSessionRecords,
   useProjectQueuedSessionIds,
   useRecentSessionRecords,
@@ -539,8 +540,7 @@ export function Sidebar({
     return { visibleOlder: visible, hiddenOlder: hidden };
   }, [groupDuplicateSessions, olderSessions]);
 
-  // Track which sessions have unsent drafts in localStorage
-  const drafts = useDrafts();
+  const drafts = useDraftSessionIds();
 
   // Single source of truth for a compact sidebar session row, so the six
   // section render sites (starred / recent / older, each with a hidden-dups

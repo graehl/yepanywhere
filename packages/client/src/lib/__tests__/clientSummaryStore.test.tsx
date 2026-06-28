@@ -52,6 +52,7 @@ import {
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
   resetClientSummaryStoreForTests,
+  useDraftSessionIds,
   useProjectQueuedSessionIds,
   useRecentSessionRecords,
   useSessionCollectionRecord,
@@ -110,6 +111,8 @@ afterEach(() => {
   cleanup();
   resetClientSummaryStoreForTests();
   mockActivityBus.listeners.clear();
+  localStorage.clear();
+  vi.useRealTimers();
 });
 
 describe("clientSummaryStore", () => {
@@ -325,5 +328,33 @@ describe("clientSummaryStore", () => {
     });
 
     expect([...selected.result.current]).toEqual(["session-a"]);
+  });
+
+  it("polls local draft ids only while draft decorations are mounted", () => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    localStorage.setItem("draft-message-session-a", "draft text");
+
+    const selected = renderHook(() => useDraftSessionIds());
+
+    expect([...selected.result.current]).toEqual(["session-a"]);
+
+    act(() => {
+      localStorage.setItem("draft-message-session-b", "more draft text");
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect([...selected.result.current]).toEqual(["session-a", "session-b"]);
+
+    selected.unmount();
+
+    act(() => {
+      localStorage.setItem("draft-message-session-c", "stale after unmount");
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect([
+      ...getClientSummarySnapshot().localDecorations.draftSessionIds,
+    ]).toEqual(["session-a", "session-b"]);
   });
 });

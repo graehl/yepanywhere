@@ -254,7 +254,9 @@ describe("clientSummaryStore", () => {
       );
     });
 
-    const before = getClientSummarySnapshot().entities.get("session-a");
+    const before = getClientSummarySnapshot().sessions.entities.get(
+      "session-a",
+    );
     expect(before).toBeDefined();
 
     act(() => {
@@ -269,7 +271,7 @@ describe("clientSummaryStore", () => {
       );
     });
 
-    expect(getClientSummarySnapshot().entities.get("session-a")).toBe(
+    expect(getClientSummarySnapshot().sessions.entities.get("session-a")).toBe(
       before,
     );
   });

@@ -485,7 +485,7 @@ describe("clientSummaryState", () => {
     );
 
     const key = createGlobalSessionsQueryKey(query);
-    expect(state.queries.get(key)).toMatchObject({
+    expect(state.sessions.queries.get(key)).toMatchObject({
       ids: ["starred"],
       hasMore: true,
     });

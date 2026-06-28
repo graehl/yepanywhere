@@ -99,14 +99,18 @@ export interface ProjectQueueCollectionState {
   byProject: ReadonlyMap<string, ProjectQueueCollectionRecord>;
 }
 
+export interface SessionCollectionState {
+  entities: ReadonlyMap<string, SessionCollectionRecord>;
+  queries: ReadonlyMap<string, SessionCollectionQueryState>;
+}
+
 export interface LocalDecorationState {
   draftSessionIds: ReadonlySet<string>;
   draftObservedAt?: number;
 }
 
 export interface ClientSummaryState {
-  entities: ReadonlyMap<string, SessionCollectionRecord>;
-  queries: ReadonlyMap<string, SessionCollectionQueryState>;
+  sessions: SessionCollectionState;
   projects: ProjectCollectionState;
   projectQueues: ProjectQueueCollectionState;
   localDecorations: LocalDecorationState;
@@ -134,8 +138,10 @@ const EMPTY_PROJECT_QUEUE_ITEMS: readonly ProjectQueueItemSummary[] = [];
 
 export function createEmptyClientSummaryState(): ClientSummaryState {
   return {
-    entities: new Map(),
-    queries: new Map(),
+    sessions: {
+      entities: new Map(),
+      queries: new Map(),
+    },
     projects: {
       entities: new Map(),
       queries: new Map(),
@@ -185,7 +191,7 @@ function getRecord(
   sessionId: string,
 ): SessionCollectionRecord {
   return (
-    state.entities.get(sessionId) ?? {
+    state.sessions.entities.get(sessionId) ?? {
       id: sessionId,
       observedAt: NO_OBSERVATION,
     }
@@ -196,11 +202,14 @@ function putRecord(
   state: ClientSummaryState,
   record: SessionCollectionRecord,
 ): ClientSummaryState {
-  const entities = new Map(state.entities);
+  const entities = new Map(state.sessions.entities);
   entities.set(record.id, record);
   return {
     ...state,
-    entities,
+    sessions: {
+      ...state.sessions,
+      entities,
+    },
   };
 }
 
@@ -682,7 +691,7 @@ function upsertQuery(
   requestStartedAt: number,
 ): ClientSummaryState {
   const key = createGlobalSessionsQueryKey(snapshot.query);
-  const existing = state.queries.get(key);
+  const existing = state.sessions.queries.get(key);
   if (existing && requestStartedAt < existing.requestStartedAt) {
     return state;
   }
@@ -702,7 +711,7 @@ function upsertQuery(
     ];
   }
 
-  const queries = new Map(state.queries);
+  const queries = new Map(state.sessions.queries);
   queries.set(key, {
     key,
     descriptor: snapshot.query,
@@ -714,7 +723,10 @@ function upsertQuery(
 
   return {
     ...state,
-    queries,
+    sessions: {
+      ...state.sessions,
+      queries,
+    },
   };
 }
 
@@ -948,14 +960,14 @@ export function selectSessionCollectionRecord(
   state: ClientSummaryState,
   sessionId: string | null | undefined,
 ): SessionCollectionRecord | undefined {
-  return sessionId ? state.entities.get(sessionId) : undefined;
+  return sessionId ? state.sessions.entities.get(sessionId) : undefined;
 }
 
 export function selectSessionCollectionQueryState(
   state: ClientSummaryState,
   query: SessionCollectionQueryDescriptor,
 ): SessionCollectionQueryState | undefined {
-  return state.queries.get(createGlobalSessionsQueryKey(query));
+  return state.sessions.queries.get(createGlobalSessionsQueryKey(query));
 }
 
 export function selectProjectCollectionRecord(
@@ -1062,7 +1074,7 @@ export function selectStarredSessionRecords(
   state: ClientSummaryState,
 ): SessionCollectionRecord[] {
   return orderActiveFirst(
-    Array.from(state.entities.values()).filter(
+    Array.from(state.sessions.entities.values()).filter(
       (record) => record.isStarred === true && record.isArchived !== true,
     ),
   );
@@ -1073,7 +1085,7 @@ export function selectRecentSessionRecords(
   now = Date.now(),
 ): SessionCollectionRecord[] {
   const oneDayAgo = now - 24 * 60 * 60 * 1000;
-  const records = Array.from(state.entities.values()).filter(
+  const records = Array.from(state.sessions.entities.values()).filter(
     (record) =>
       record.isStarred !== true &&
       record.isArchived !== true &&
@@ -1088,7 +1100,7 @@ export function selectOlderSessionRecords(
   now = Date.now(),
 ): SessionCollectionRecord[] {
   const oneDayAgo = now - 24 * 60 * 60 * 1000;
-  return Array.from(state.entities.values())
+  return Array.from(state.sessions.entities.values())
     .filter(
       (record) =>
         record.isStarred !== true &&
@@ -1103,13 +1115,13 @@ export function selectSessionCollectionQueryRecords(
   query: SessionCollectionQueryDescriptor,
 ): SessionCollectionRecord[] {
   const key = createGlobalSessionsQueryKey(query);
-  const queryState = state.queries.get(key);
+  const queryState = state.sessions.queries.get(key);
   if (!queryState) {
     return [];
   }
 
   return queryState.ids.flatMap((id) => {
-    const record = state.entities.get(id);
+    const record = state.sessions.entities.get(id);
     return record ? [record] : [];
   });
 }

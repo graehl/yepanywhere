@@ -21,6 +21,7 @@ Progress:
 - [x] Move Inbox Project Queue badges to store-owned queue/session decoration
       facts.
 - [x] Move session draft badges into store-owned local decorations.
+- [x] Nest session entities and queries under `sessions`.
 - [ ] Migrate Inbox to feed snapshots plus store selectors.
 - [ ] Audit and retire long-tail hooks that privately own row-like session,
       project, or queue data.
@@ -63,6 +64,11 @@ Latest update:
   when no draft-decoration consumer remains. Sidebar, Inbox, and All Sessions
   now read draft badge ids from `useDraftSessionIds`; the new-session draft
   nav badge remains a separate form-level hook.
+- 2026-06-28: Nested the original session collection state under
+  `ClientSummaryState.sessions`. The session reducer and selector names stay
+  session-specific, but the aggregate state shape now matches the documented
+  `{ sessions, projects, projectQueues, localDecorations }` layout before Inbox
+  tier membership is added.
 
 ## Context
 
@@ -141,8 +147,9 @@ may report summary facts into the store when those facts are useful elsewhere.
 
 ## Target Shape
 
-The current session collection can evolve into a broader summary store without
-duplicating project facts on every session record:
+The broader summary store keeps session, project, queue, and local-decoration
+facts in separate slices without duplicating project facts on every session
+record:
 
 ```ts
 interface ClientSummaryState {

@@ -159,6 +159,10 @@ decorations: the store wrapper owns the mounted `draft-message-*` localStorage
 scan and tears down its storage listener plus polling interval when the last
 draft-decoration consumer unmounts.
 
+The original session collection fields are now nested under `sessions`, matching
+the documented normalized shape. The remaining major missing slice is Inbox tier
+membership.
+
 The next likely slice is Inbox data migration: keep `InboxContext` or a
 purpose-built feed hook focused on readiness/loading/error, report `/api/inbox`
 snapshots into the client summary store, and render tier rows from selectors

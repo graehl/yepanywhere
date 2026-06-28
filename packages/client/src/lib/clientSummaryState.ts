@@ -505,6 +505,14 @@ function upsertInboxItemRecord(
     observedAt,
   );
 
+  record = withMetadataFields(
+    record,
+    {
+      customTitle: item.customTitle,
+    },
+    observedAt,
+  );
+
   const inferredActivity =
     item.activity ??
     (item.pendingInputType
@@ -1181,6 +1189,7 @@ function sessionRecordToInboxItem(
     projectName: record.projectName ?? "",
     sessionTitle: record.title ?? null,
     updatedAt: record.updatedAt,
+    customTitle: record.customTitle,
     pendingInputType: record.pendingInputType,
     activity: record.activity,
     hasUnread: record.hasUnread,

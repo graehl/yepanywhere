@@ -10,6 +10,7 @@ import {
   useProjectQueuedSessionIds,
 } from "../lib/clientSummaryStore";
 import type { Project } from "../types";
+import { getSessionDisplayTitle } from "../utils";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { SessionListItem } from "./SessionListItem";
 
@@ -113,7 +114,11 @@ function InboxSection({
                 key={item.sessionId}
                 sessionId={item.sessionId}
                 projectId={item.projectId}
-                title={item.sessionTitle}
+                title={getSessionDisplayTitle({
+                  customTitle: item.customTitle,
+                  title: item.sessionTitle,
+                })}
+                hasCustomTitle={!!item.customTitle}
                 projectName={item.projectName}
                 updatedAt={item.updatedAt}
                 hasUnread={item.hasUnread}

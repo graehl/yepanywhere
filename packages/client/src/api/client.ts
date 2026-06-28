@@ -74,6 +74,7 @@ export interface InboxItem {
   projectName: string;
   sessionTitle: string | null;
   updatedAt: string;
+  customTitle?: string;
   pendingInputType?: PendingInputType;
   activity?: AgentActivity;
   hasUnread?: boolean;

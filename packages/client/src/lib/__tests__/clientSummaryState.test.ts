@@ -591,6 +591,10 @@ describe("clientSummaryState", () => {
       pendingInputType: "tool-approval",
       hasUnread: true,
     });
+    expect(selectInboxResponse(state).needsAttention[0]).toMatchObject({
+      sessionId: "needs",
+      sessionTitle: "Session needs",
+    });
     expect(selectSessionCollectionRecord(state, "active")).toMatchObject({
       id: "active",
       activity: "in-turn",
@@ -613,6 +617,34 @@ describe("clientSummaryState", () => {
       "needs",
       "active",
     ]);
+  });
+
+  it("preserves custom titles from inbox snapshots", () => {
+    const state = applyInboxCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        needsAttention: [
+          inboxItem("custom", {
+            sessionTitle: "Server Display Title",
+            customTitle: "Renamed Session",
+          }),
+        ],
+        active: [],
+        recentActivity: [],
+        unread8h: [],
+        unread24h: [],
+      },
+      100,
+    );
+
+    expect(selectSessionCollectionRecord(state, "custom")).toMatchObject({
+      title: "Server Display Title",
+      customTitle: "Renamed Session",
+    });
+    expect(selectInboxResponse(state).needsAttention[0]).toMatchObject({
+      sessionTitle: "Server Display Title",
+      customTitle: "Renamed Session",
+    });
   });
 
   it("clears older active lifecycle when a newer inbox row is no longer active", () => {

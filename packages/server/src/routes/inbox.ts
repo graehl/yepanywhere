@@ -61,6 +61,7 @@ export interface InboxItem {
   projectName: string;
   sessionTitle: string;
   updatedAt: string;
+  customTitle?: string;
   pendingInputType?: PendingInputType;
   activity?: AgentActivity;
   hasUnread?: boolean;
@@ -214,6 +215,7 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
         title: item.session.title,
       }),
       updatedAt: item.session.updatedAt,
+      customTitle: item.customTitle,
       pendingInputType: item.pendingInputType,
       activity: item.activity,
       hasUnread: item.hasUnread,

@@ -100,11 +100,13 @@ vi.mock("../FilterDropdown", () => ({
 
 vi.mock("../SessionListItem", () => ({
   SessionListItem: ({
+    hasCustomTitle,
     hasDraft,
     hasProjectQueue,
     sessionId,
     title,
   }: {
+    hasCustomTitle?: boolean;
     hasDraft?: boolean;
     hasProjectQueue?: boolean;
     sessionId: string;
@@ -112,6 +114,7 @@ vi.mock("../SessionListItem", () => ({
   }) => (
     <li data-testid={`session-${sessionId}`}>
       {title}
+      {hasCustomTitle ? <span>Custom</span> : null}
       {hasDraft ? <span>Draft</span> : null}
       {hasProjectQueue ? <span>Q</span> : null}
     </li>
@@ -199,5 +202,27 @@ describe("InboxContent", () => {
     expect(mockUseProjectQueuedSessionIds).toHaveBeenCalledWith(["project-1"]);
     expect(screen.getByTestId("session-visible-session")).toBeTruthy();
     expect(screen.queryByTestId("session-hidden-session")).toBe(null);
+  });
+
+  it("renders custom titles from inbox-only rows", () => {
+    inboxState.needsAttention = [
+      {
+        ...makeInboxItem("renamed-session", "project-1"),
+        sessionTitle: "Generated title",
+        customTitle: "Renamed title",
+      },
+    ];
+
+    render(<InboxContent />);
+
+    expect(screen.getByTestId("session-renamed-session").textContent).toContain(
+      "Renamed title",
+    );
+    expect(screen.getByTestId("session-renamed-session").textContent).toContain(
+      "Custom",
+    );
+    expect(
+      screen.getByTestId("session-renamed-session").textContent,
+    ).not.toContain("Generated title");
   });
 });

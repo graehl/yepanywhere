@@ -11,6 +11,7 @@ import {
   reportGlobalSessionsCollectionSnapshot,
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
+  useClientSummarySourceKey,
   useSessionCollectionQueryRecords,
   useSessionCollectionQueryState,
 } from "../lib/clientSummaryStore";
@@ -125,6 +126,7 @@ export function useGlobalSessionsFeed(
     [projectId, searchQuery, limit, includeArchived, starred],
   );
   const queryKey = useMemo(() => createGlobalSessionsQueryKey(query), [query]);
+  const sourceKey = useClientSummarySourceKey();
   const queryState = useSessionCollectionQueryState(query);
   const queryRecords = useSessionCollectionQueryRecords(query);
 
@@ -166,6 +168,7 @@ export function useGlobalSessionsFeed(
 
     const requestId = ++requestSequenceRef.current;
     const requestStartedAt = Date.now();
+    const requestSourceKey = sourceKey;
     const queryForRequest = query;
 
     try {
@@ -186,6 +189,7 @@ export function useGlobalSessionsFeed(
       ]);
 
       reportGlobalSessionsCollectionSnapshot(
+        requestSourceKey,
         {
           query: queryForRequest,
           sessions: data.sessions,
@@ -219,6 +223,7 @@ export function useGlobalSessionsFeed(
     includeArchived,
     starred,
     includeStats,
+    sourceKey,
   ]);
 
   const loadMore = useCallback(async () => {
@@ -239,6 +244,7 @@ export function useGlobalSessionsFeed(
     try {
       setError(null);
       const requestStartedAt = Date.now();
+      const requestSourceKey = sourceKey;
       const data = await api.getGlobalSessions({
         project: projectId ?? undefined,
         q: searchQuery || undefined,
@@ -250,6 +256,7 @@ export function useGlobalSessionsFeed(
       });
 
       reportGlobalSessionsCollectionSnapshot(
+        requestSourceKey,
         {
           query,
           sessions: data.sessions,
@@ -261,7 +268,16 @@ export function useGlobalSessionsFeed(
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     }
-  }, [fetch, query, projectId, searchQuery, limit, includeArchived, starred]);
+  }, [
+    fetch,
+    query,
+    projectId,
+    searchQuery,
+    limit,
+    includeArchived,
+    starred,
+    sourceKey,
+  ]);
 
   const debouncedRefetch = useCallback(() => {
     if (!readyRef.current) {
@@ -304,6 +320,7 @@ export function useGlobalSessionsFeed(
       }
 
       reportGlobalSessionsCollectionSnapshot(
+        sourceKey,
         {
           query,
           sessions: [
@@ -315,7 +332,15 @@ export function useGlobalSessionsFeed(
         observedAt,
       );
     },
-    [projectId, starred, includeArchived, searchQuery, debouncedRefetch, query],
+    [
+      projectId,
+      starred,
+      includeArchived,
+      searchQuery,
+      debouncedRefetch,
+      query,
+      sourceKey,
+    ],
   );
 
   const handleSessionMetadataChange = useCallback(

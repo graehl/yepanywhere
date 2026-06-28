@@ -8,6 +8,7 @@ import { activityBus } from "../lib/activityBus";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import {
   reportProjectQueueCollectionSnapshot,
+  useClientSummarySourceKey,
   useProjectQueueItemsByProject,
 } from "../lib/clientSummaryStore";
 import { useVersion } from "./useVersion";
@@ -47,6 +48,7 @@ export function useProjectQueues(
   projectIds: readonly string[],
 ): UseProjectQueuesResult {
   const { version } = useVersion();
+  const sourceKey = useClientSummarySourceKey();
   const enabled = serverSupportsProjectQueue(version);
   const normalizedProjectIds = useMemo(
     () => uniqueProjectIds(projectIds),
@@ -78,12 +80,17 @@ export function useProjectQueues(
     setLoading(!hasResolvedInitialFetchRef.current);
     setError(null);
     const requestStartedAt = Date.now();
+    const requestSourceKey = sourceKey;
     try {
       const responses = await Promise.all(
         ids.map((projectId) => api.getProjectQueue(projectId)),
       );
       for (const response of responses) {
-        reportProjectQueueCollectionSnapshot(response, requestStartedAt);
+        reportProjectQueueCollectionSnapshot(
+          requestSourceKey,
+          response,
+          requestStartedAt,
+        );
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -91,7 +98,7 @@ export function useProjectQueues(
       hasResolvedInitialFetchRef.current = true;
       setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, sourceKey]);
 
   useEffect(() => {
     hasResolvedInitialFetchRef.current = false;
@@ -121,13 +128,14 @@ export function useProjectQueues(
     ) => {
       setMutatingItemId(itemId);
       setError(null);
+      const requestSourceKey = sourceKey;
       try {
         const response = await api.updateProjectQueueItem(
           projectId,
           itemId,
           request,
         );
-        reportProjectQueueCollectionSnapshot(response.queue);
+        reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)));
         throw err;
@@ -135,36 +143,38 @@ export function useProjectQueues(
         setMutatingItemId(null);
       }
     },
-    [],
+    [sourceKey],
   );
 
   const deleteItem = useCallback(async (projectId: string, itemId: string) => {
     setMutatingItemId(itemId);
     setError(null);
+    const requestSourceKey = sourceKey;
     try {
       const response = await api.deleteProjectQueueItem(projectId, itemId);
-      reportProjectQueueCollectionSnapshot(response.queue);
+      reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
       throw err;
     } finally {
       setMutatingItemId(null);
     }
-  }, []);
+  }, [sourceKey]);
 
   const retryItem = useCallback(async (projectId: string, itemId: string) => {
     setMutatingItemId(itemId);
     setError(null);
+    const requestSourceKey = sourceKey;
     try {
       const response = await api.retryProjectQueueItem(projectId, itemId);
-      reportProjectQueueCollectionSnapshot(response.queue);
+      reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
       throw err;
     } finally {
       setMutatingItemId(null);
     }
-  }, []);
+  }, [sourceKey]);
 
   const items = useMemo(
     () => flattenQueues(enabled ? storedQueuesByProject : {}),

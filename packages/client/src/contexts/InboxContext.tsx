@@ -21,6 +21,7 @@ import { authEvents } from "../lib/authEvents";
 import { isRemoteClient } from "../lib/connection";
 import {
   reportInboxCollectionSnapshot,
+  useClientSummarySourceKey,
   useInboxResponseSnapshot,
 } from "../lib/clientSummaryStore";
 import { INBOX_TIERS, type InboxTier } from "../lib/inboxTiers";
@@ -163,6 +164,7 @@ export function InboxProvider({
   initialEnabled = true,
 }: InboxProviderProps) {
   const remoteConnection = useOptionalRemoteConnection();
+  const sourceKey = useClientSummarySourceKey();
   const inbox = useInboxResponseSnapshot();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -202,6 +204,7 @@ export function InboxProvider({
       }
 
       const requestStartedAt = Date.now();
+      const requestSourceKey = sourceKey;
       try {
         const data = await api.getInbox();
         const nextInbox =
@@ -213,7 +216,11 @@ export function InboxProvider({
           return;
         }
 
-        reportInboxCollectionSnapshot(nextInbox, requestStartedAt);
+        reportInboxCollectionSnapshot(
+          requestSourceKey,
+          nextInbox,
+          requestStartedAt,
+        );
         tierOrderRef.current = extractTierOrder(nextInbox);
         latestAcceptedRequestStartedAtRef.current = requestStartedAt;
         hasInitialLoadRef.current = true;
@@ -226,7 +233,7 @@ export function InboxProvider({
         setLoading(false);
       }
     },
-    [isRemoteConnectionReady],
+    [isRemoteConnectionReady, sourceKey],
   );
 
   /**

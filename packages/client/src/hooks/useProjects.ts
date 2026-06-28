@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import {
   reportProjectCollectionSnapshot,
   reportProjectsCollectionSnapshot,
+  useClientSummarySourceKey,
   useProjectCollectionRecord,
   useProjectCollectionRecords,
 } from "../lib/clientSummaryStore";
@@ -14,6 +15,7 @@ const REFETCH_DEBOUNCE_MS = 500;
  * Fetch a single project by ID.
  */
 export function useProject(projectId: string | undefined) {
+  const sourceKey = useClientSummarySourceKey();
   const project = useProjectCollectionRecord(projectId) ?? null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -29,6 +31,7 @@ export function useProject(projectId: string | undefined) {
         clearTimeout(refetchTimerRef.current);
       }
       const targetProjectId = projectId;
+      const requestSourceKey = sourceKey;
       refetchTimerRef.current = setTimeout(() => {
         const requestStartedAt = Date.now();
         api
@@ -36,6 +39,7 @@ export function useProject(projectId: string | undefined) {
           .then((data) => {
             if (loadedProjectIdRef.current === targetProjectId) {
               reportProjectCollectionSnapshot(
+                requestSourceKey,
                 { project: data.project },
                 requestStartedAt,
               );
@@ -49,7 +53,7 @@ export function useProject(projectId: string | undefined) {
           });
       }, REFETCH_DEBOUNCE_MS);
     },
-    [projectId],
+    [projectId, sourceKey],
   );
 
   useFileActivity({
@@ -75,12 +79,14 @@ export function useProject(projectId: string | undefined) {
 
     let cancelled = false;
     const requestStartedAt = Date.now();
+    const requestSourceKey = sourceKey;
 
     api
       .getProject(projectId)
       .then((data) => {
         if (!cancelled) {
           reportProjectCollectionSnapshot(
+            requestSourceKey,
             { project: data.project },
             requestStartedAt,
           );
@@ -97,7 +103,7 @@ export function useProject(projectId: string | undefined) {
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, sourceKey]);
 
   useEffect(() => {
     return () => {
@@ -114,11 +120,13 @@ export function useProject(projectId: string | undefined) {
 }
 
 export function useProjects() {
+  const sourceKey = useClientSummarySourceKey();
   const projects = useProjectCollectionRecords();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasFetchedRef = useRef(false);
+  const fetchedSourceKeyRef = useRef<string | null>(null);
   const hasResolvedInitialFetchRef = useRef(false);
 
   const fetch = useCallback(async () => {
@@ -127,9 +135,11 @@ export function useProjects() {
     setLoading(!hasResolvedInitialFetchRef.current);
     setError(null);
     const requestStartedAt = Date.now();
+    const requestSourceKey = sourceKey;
     try {
       const data = await api.getProjects();
       reportProjectsCollectionSnapshot(
+        requestSourceKey,
         { projects: data.projects },
         requestStartedAt,
       );
@@ -139,14 +149,18 @@ export function useProjects() {
       hasResolvedInitialFetchRef.current = true;
       setLoading(false);
     }
-  }, []);
+  }, [sourceKey]);
 
   // Initial fetch - only once (avoid StrictMode double-fetch)
   useEffect(() => {
-    if (hasFetchedRef.current) return;
+    if (hasFetchedRef.current && fetchedSourceKeyRef.current === sourceKey) {
+      return;
+    }
     hasFetchedRef.current = true;
+    fetchedSourceKeyRef.current = sourceKey;
+    hasResolvedInitialFetchRef.current = false;
     fetch();
-  }, [fetch]);
+  }, [fetch, sourceKey]);
 
   // Debounced refetch for status change events
   const debouncedRefetch = useCallback(() => {

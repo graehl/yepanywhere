@@ -49,6 +49,7 @@ vi.mock("../activityBus", () => ({
 import {
   createClientSummaryHostSourceKey,
   getClientSummarySnapshot,
+  LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
   reportGlobalSessionsCollectionSnapshot,
   reportInboxCollectionSnapshot,
   reportSessionCollectionCreated,
@@ -70,6 +71,7 @@ import {
 
 const PROJECT_ID = "project-1" as UrlProjectId;
 const RECENT = "2026-06-27T11:00:00.000Z";
+const SOURCE_KEY = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
 
 function globalSession(
   id: string,
@@ -161,6 +163,7 @@ describe("clientSummaryStore", () => {
 
     act(() => {
       reportGlobalSessionsCollectionSnapshot(
+        SOURCE_KEY,
         {
           query: { scope: "global-sessions", limit: 50 },
           sessions: [globalSession("session-1")],
@@ -200,6 +203,7 @@ describe("clientSummaryStore", () => {
 
     act(() => {
       reportGlobalSessionsCollectionSnapshot(
+        macbook,
         {
           query: { scope: "global-sessions", limit: 50 },
           sessions: [globalSession("mac-session")],
@@ -224,6 +228,55 @@ describe("clientSummaryStore", () => {
     expect(recent.result.current.map((s) => s.id)).toEqual(["mac-session"]);
   });
 
+  it("keeps late source-keyed snapshots out of the visible current source", () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    const winnative = createClientSummaryHostSourceKey("winnative");
+
+    act(() => {
+      setCurrentClientSummarySourceKey(winnative);
+    });
+
+    const recent = renderHook(() =>
+      useRecentSessionRecords(Date.parse("2026-06-27T12:00:00.000Z")),
+    );
+
+    act(() => {
+      reportGlobalSessionsCollectionSnapshot(
+        macbook,
+        {
+          query: { scope: "global-sessions", limit: 50 },
+          sessions: [globalSession("late-mac-session")],
+          hasMore: false,
+        },
+        100,
+      );
+    });
+
+    expect(recent.result.current).toEqual([]);
+
+    act(() => {
+      reportGlobalSessionsCollectionSnapshot(
+        winnative,
+        {
+          query: { scope: "global-sessions", limit: 50 },
+          sessions: [globalSession("win-session")],
+          hasMore: false,
+        },
+        110,
+      );
+    });
+
+    expect(recent.result.current.map((s) => s.id)).toEqual(["win-session"]);
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    expect(recent.result.current.map((s) => s.id)).toEqual([
+      "late-mac-session",
+    ]);
+  });
+
   it("rerenders current-source hooks when the source changes", () => {
     const macbook = createClientSummaryHostSourceKey("macbook");
     const winnative = createClientSummaryHostSourceKey("winnative");
@@ -231,6 +284,7 @@ describe("clientSummaryStore", () => {
     act(() => {
       setCurrentClientSummarySourceKey(macbook);
       reportGlobalSessionsCollectionSnapshot(
+        macbook,
         {
           query: { scope: "global-sessions", limit: 50 },
           sessions: [
@@ -274,6 +328,7 @@ describe("clientSummaryStore", () => {
 
     act(() => {
       reportInboxCollectionSnapshot(
+        SOURCE_KEY,
         {
           needsAttention: [
             inboxItem("needs", { pendingInputType: "user-question" }),
@@ -311,6 +366,7 @@ describe("clientSummaryStore", () => {
 
     act(() => {
       reportInboxCollectionSnapshot(
+        SOURCE_KEY,
         {
           needsAttention: [
             inboxItem("needs", { pendingInputType: "tool-approval" }),
@@ -347,6 +403,7 @@ describe("clientSummaryStore", () => {
 
     act(() => {
       reportGlobalSessionsCollectionSnapshot(
+        SOURCE_KEY,
         {
           query: { scope: "global-sessions", limit: 50 },
           sessions: [globalSession("session-1")],
@@ -403,6 +460,7 @@ describe("clientSummaryStore", () => {
 
     act(() => {
       reportGlobalSessionsCollectionSnapshot(
+        SOURCE_KEY,
         {
           query: { scope: "global-sessions", limit: 50 },
           sessions: [],
@@ -419,6 +477,7 @@ describe("clientSummaryStore", () => {
   it("preserves unchanged record objects after unrelated updates", () => {
     act(() => {
       reportGlobalSessionsCollectionSnapshot(
+        SOURCE_KEY,
         {
           query: { scope: "global-sessions", limit: 50 },
           sessions: [globalSession("session-a"), globalSession("session-b")],
@@ -453,6 +512,7 @@ describe("clientSummaryStore", () => {
   it("does not rerender selected record hooks for unrelated record updates", () => {
     act(() => {
       reportGlobalSessionsCollectionSnapshot(
+        SOURCE_KEY,
         {
           query: { scope: "global-sessions", limit: 50 },
           sessions: [globalSession("session-a"), globalSession("session-b")],

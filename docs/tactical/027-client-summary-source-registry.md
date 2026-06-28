@@ -14,6 +14,12 @@ Progress:
   route changes bind the requested `host:<id>` before the new connection
   finishes; saved direct connections bind `host:<id>`; unsaved direct
   connections fall back to `direct:<normalized-ws-url>`.
+- [x] 2026-06-28: Required source keys on REST snapshot reporters and migrated
+  global sessions, inbox, projects, and project queue feeds to capture the
+  request source before awaiting API responses. Queue mutation responses also
+  write back to the source active when the mutation started. Added coverage for
+  late source-keyed snapshots staying invisible to the current host until that
+  source is selected again.
 
 This doc tracks the next widening of the client summary store. The normalized
 `ClientSummaryState` shape stays the same, but the store is no longer a single
@@ -201,7 +207,7 @@ Do not let source-global draft scans contaminate per-host session cards.
    current-source hook resubscription.
 2. [x] Add remote/local source binding and make current-source selectors switch to
    the requested host immediately during host changes.
-3. [ ] Require source keys on REST snapshot reporters and migrate sessions, inbox,
+3. [x] Require source keys on REST snapshot reporters and migrate sessions, inbox,
    projects, and project queue feed hooks.
 4. [ ] Scope activity-bus reductions and local mutation reporters.
 5. [ ] Scope or quarantine local draft decorations.

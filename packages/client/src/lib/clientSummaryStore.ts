@@ -376,46 +376,51 @@ export function getClientSummaryServerSnapshot(): ClientSummaryState {
 }
 
 export function reportGlobalSessionsCollectionSnapshot(
+  sourceKey: ClientSummarySourceKey,
   input: GlobalSessionsCollectionSnapshot,
   requestStartedAt = Date.now(),
 ): void {
-  updateCurrentSnapshot((current) =>
+  updateStoreSnapshot(getClientSummaryStoreForSource(sourceKey), (current) =>
     applyGlobalSessionsCollectionSnapshot(current, input, requestStartedAt),
   );
 }
 
 export function reportInboxCollectionSnapshot(
+  sourceKey: ClientSummarySourceKey,
   input: InboxCollectionSnapshot,
   requestStartedAt = Date.now(),
 ): void {
-  updateCurrentSnapshot((current) =>
+  updateStoreSnapshot(getClientSummaryStoreForSource(sourceKey), (current) =>
     applyInboxCollectionSnapshot(current, input, requestStartedAt),
   );
 }
 
 export function reportProjectsCollectionSnapshot(
+  sourceKey: ClientSummarySourceKey,
   input: ProjectsCollectionSnapshot,
   requestStartedAt = Date.now(),
 ): void {
-  updateCurrentSnapshot((current) =>
+  updateStoreSnapshot(getClientSummaryStoreForSource(sourceKey), (current) =>
     applyProjectsCollectionSnapshot(current, input, requestStartedAt),
   );
 }
 
 export function reportProjectCollectionSnapshot(
+  sourceKey: ClientSummarySourceKey,
   input: ProjectCollectionSnapshot,
   requestStartedAt = Date.now(),
 ): void {
-  updateCurrentSnapshot((current) =>
+  updateStoreSnapshot(getClientSummaryStoreForSource(sourceKey), (current) =>
     applyProjectCollectionSnapshot(current, input, requestStartedAt),
   );
 }
 
 export function reportProjectQueueCollectionSnapshot(
+  sourceKey: ClientSummarySourceKey,
   input: ProjectQueueCollectionSnapshot,
   requestStartedAt = Date.now(),
 ): void {
-  updateCurrentSnapshot((current) =>
+  updateStoreSnapshot(getClientSummaryStoreForSource(sourceKey), (current) =>
     applyProjectQueueCollectionSnapshot(current, input, requestStartedAt),
   );
 }

@@ -18,8 +18,9 @@ Progress:
       decoration facts.
 - [x] Move All Sessions Project Queue badges to store-owned queue/session
       decoration facts.
-- [ ] Move remaining session-card Project Queue badges to store-owned
-      decoration facts, starting with Inbox.
+- [x] Move Inbox Project Queue badges to store-owned queue/session decoration
+      facts.
+- [ ] Move draft badges into store-owned local decorations.
 - [ ] Migrate Inbox to feed snapshots plus store selectors.
 - [ ] Audit and retire long-tail hooks that privately own row-like session,
       project, or queue data.
@@ -51,6 +52,12 @@ Latest update:
   record, query, and reducer helpers keep their names, but aggregate state and
   store APIs now use `ClientSummaryState` so the "no transcript/message data"
   boundary is explicit before Inbox and draft data are added.
+- 2026-06-28: Migrated Inbox `Q` badges to the shared Project Queue decoration
+  path. `InboxContent` keeps queue feeds mounted for the currently visible
+  projects and reads targeted existing-session ids from the client summary
+  store, matching Sidebar and All Sessions. Draft badges intentionally still
+  use the existing mounted localStorage scan until local decorations are moved
+  into the store with bounded polling ownership.
 
 ## Context
 
@@ -271,7 +278,7 @@ Selectors should:
 7. [x] Add project-queue snapshots/events and migrate Sidebar queue
    decorations.
 8. [x] Migrate All Sessions queue decorations.
-9. [ ] Migrate remaining session-card queue decorations.
+9. [x] Migrate Inbox session-card queue decorations.
 
 ## Follow-On Slices
 

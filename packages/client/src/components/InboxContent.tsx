@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { type InboxItem, useInboxContext } from "../contexts/InboxContext";
 import { useDrafts } from "../hooks/useDrafts";
+import { useProjectQueues } from "../hooks/useProjectQueues";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
 import { useI18n } from "../i18n";
+import { useProjectQueuedSessionIds } from "../lib/clientSummaryStore";
 import type { Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { SessionListItem } from "./SessionListItem";
@@ -72,6 +74,8 @@ interface InboxSectionProps {
   basePath?: string;
   /** Set of session IDs that have unsent drafts */
   drafts: Set<string>;
+  /** Set of session IDs targeted by Project Queue items */
+  projectQueuedSessionIds: ReadonlySet<string>;
   /** Whether public share creation controls should be exposed */
   publicShareControlsVisible: boolean;
 }
@@ -82,6 +86,7 @@ function InboxSection({
   hideProjectName,
   basePath = "",
   drafts,
+  projectQueuedSessionIds,
   publicShareControlsVisible,
 }: InboxSectionProps) {
   const { t } = useI18n();
@@ -122,6 +127,7 @@ function InboxSection({
                 }
                 basePath={basePath}
                 hasDraft={drafts.has(item.sessionId)}
+                hasProjectQueue={projectQueuedSessionIds.has(item.sessionId)}
                 publicShareControlsVisible={publicShareControlsVisible}
               />
             );
@@ -211,6 +217,29 @@ export function InboxContent({
     unread8h,
     unread24h,
   };
+
+  const visibleProjectIds = useMemo(
+    () =>
+      [
+        ...new Set(
+          [
+            ...needsAttention,
+            ...active,
+            ...recentActivity,
+            ...unread8h,
+            ...unread24h,
+          ]
+            .map((item) => item.projectId)
+            .filter(Boolean),
+        ),
+      ],
+    [needsAttention, active, recentActivity, unread8h, unread24h],
+  );
+  // Keep the queue feed mounted for visible inbox projects. Badge rendering
+  // reads from the shared client summary store selector below.
+  useProjectQueues(visibleProjectIds);
+  const projectQueuedSessionIds =
+    useProjectQueuedSessionIds(visibleProjectIds);
 
   const isEmpty = totalItems === 0 && !loading;
 
@@ -313,6 +342,7 @@ export function InboxContent({
                 hideProjectName={!!projectId}
                 basePath={basePath}
                 drafts={drafts}
+                projectQueuedSessionIds={projectQueuedSessionIds}
                 publicShareControlsVisible={publicShareControlsVisible}
               />
             ))}

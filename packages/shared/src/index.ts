@@ -100,11 +100,14 @@ export {
 export type {
   GitFileChange,
   GitRecentCommit,
+  GitRemoteCheckResult,
+  GitRemoteCheckStatus,
   GitStatusInfo,
 } from "./git-status.js";
 export {
   GIT_STATUS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_STATUS_REMOTE_CHECK_CAPABILITY,
 } from "./git-status.js";
 
 export type {

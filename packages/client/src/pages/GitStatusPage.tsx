@@ -1,17 +1,14 @@
 import type {
   GitFileChange,
+  GitRemoteCheckResult,
   GitRecentCommit,
   GitStatusInfo,
 } from "@yep-anywhere/shared";
-import { GIT_STATUS_ENHANCED_CAPABILITY } from "@yep-anywhere/shared";
 import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+  GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_STATUS_REMOTE_CHECK_CAPABILITY,
+} from "@yep-anywhere/shared";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
@@ -20,6 +17,7 @@ import { Modal } from "../components/ui/Modal";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useGitStatus } from "../hooks/useGitStatus";
 import { useProject, useProjects } from "../hooks/useProjects";
+import { useRelativeNow } from "../hooks/useRelativeNow";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
@@ -55,7 +53,10 @@ export function GitStatusPage() {
   } = useVersion();
   const supportsEnhancedGitStatus =
     version?.capabilities?.includes(GIT_STATUS_ENHANCED_CAPABILITY) ?? false;
-  const { gitStatus, loading, error } = useGitStatus(
+  const supportsRemoteCheck =
+    version?.capabilities?.includes(GIT_STATUS_REMOTE_CHECK_CAPABILITY) ??
+    false;
+  const { gitStatus, loading, error, refetch } = useGitStatus(
     supportsEnhancedGitStatus ? effectiveProjectId : undefined,
   );
 
@@ -114,6 +115,8 @@ export function GitStatusPage() {
               status={gitStatus}
               projectId={effectiveProjectId}
               isWideScreen={isWideScreen}
+              supportsRemoteCheck={supportsRemoteCheck}
+              onRefreshStatus={refetch}
               t={t as never}
             />
           ) : null}
@@ -140,14 +143,23 @@ function GitStatusContent({
   status,
   projectId,
   isWideScreen,
+  supportsRemoteCheck,
+  onRefreshStatus,
   t,
 }: {
   status: GitStatusInfo;
   projectId: string;
   isWideScreen: boolean;
+  supportsRemoteCheck: boolean;
+  onRefreshStatus: () => Promise<void>;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   const [selectedFile, setSelectedFile] = useState<GitFileChange | null>(null);
+  const [remoteCheckResult, setRemoteCheckResult] =
+    useState<GitRemoteCheckResult | null>(null);
+  const [isCheckingRemote, setIsCheckingRemote] = useState(false);
+  const [remoteCheckError, setRemoteCheckError] = useState<string | null>(null);
+  const nowMs = useRelativeNow();
 
   const { stagedFiles, unstagedFiles, untrackedFiles, allFiles } =
     useMemo(() => {
@@ -175,6 +187,36 @@ function GitStatusContent({
       return isWideScreen ? (allFiles[0] ?? null) : null;
     });
   }, [allFiles, isWideScreen]);
+
+  useEffect(() => {
+    setRemoteCheckResult(null);
+    setRemoteCheckError(null);
+    setIsCheckingRemote(false);
+  }, [projectId]);
+
+  const handleCheckRemote = useCallback(async () => {
+    if (!supportsRemoteCheck || isCheckingRemote) return;
+
+    setIsCheckingRemote(true);
+    setRemoteCheckResult(null);
+    setRemoteCheckError(null);
+    try {
+      const result = await api.checkGitRemote(projectId);
+      setRemoteCheckResult(result);
+      if (result.status === "checked") {
+        await onRefreshStatus();
+      }
+    } catch (err) {
+      setRemoteCheckError(
+        err instanceof Error ? err.message : t("gitStatusRemoteCheckFailed"),
+      );
+    } finally {
+      setIsCheckingRemote(false);
+    }
+  }, [isCheckingRemote, onRefreshStatus, projectId, supportsRemoteCheck, t]);
+
+  const checkedRemoteAt =
+    remoteCheckResult?.checkedRemoteAt ?? status.checkedRemoteAt ?? null;
 
   return (
     <div className="git-status">
@@ -211,12 +253,37 @@ function GitStatusContent({
                 {status.behind > 0 && ` ↓${status.behind}`}
               </span>
             )}
+            <span className="git-remote-check-time">
+              {t("gitStatusLastCheckedRemote", {
+                time: formatRemoteCheckTime(checkedRemoteAt, nowMs, t),
+              })}
+            </span>
             <span
               className={`git-clean-badge ${status.isClean ? "git-clean" : "git-dirty"}`}
             >
               {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
             </span>
+            {supportsRemoteCheck && (
+              <button
+                type="button"
+                className="git-remote-check-button"
+                onClick={handleCheckRemote}
+                disabled={isCheckingRemote}
+              >
+                {isCheckingRemote
+                  ? t("gitStatusCheckingRemote")
+                  : t("gitStatusCheckRemote")}
+              </button>
+            )}
           </div>
+
+          {(remoteCheckResult || remoteCheckError) && (
+            <div
+              className={`git-remote-check-message ${remoteCheckResult ? `git-remote-check-message-${remoteCheckResult.status}` : "git-remote-check-message-failed"}`}
+            >
+              {remoteCheckError ?? getRemoteCheckMessage(remoteCheckResult, t)}
+            </div>
+          )}
 
           <div className="git-status-file-pane">
             {status.isClean ? (
@@ -257,11 +324,7 @@ function GitStatusContent({
         </div>
 
         {isWideScreen && !status.isClean && (
-          <GitDiffPreview
-            file={selectedFile}
-            projectId={projectId}
-            t={t}
-          />
+          <GitDiffPreview file={selectedFile} projectId={projectId} t={t} />
         )}
       </div>
 
@@ -664,6 +727,64 @@ function formatCommitDateTime(value: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+function formatRemoteCheckTime(
+  value: string | null,
+  nowMs: number,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
+  if (!value) {
+    return t("gitStatusRemoteNever");
+  }
+
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return value;
+  }
+
+  const elapsedMs = Math.max(0, nowMs - timestamp);
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+
+  if (elapsedMs < minuteMs) {
+    return t("gitStatusRemoteJustNow");
+  }
+  if (elapsedMs < hourMs) {
+    return t("gitStatusRemoteMinutesAgo", {
+      count: Math.floor(elapsedMs / minuteMs),
+    });
+  }
+  if (elapsedMs < dayMs) {
+    return t("gitStatusRemoteHoursAgo", {
+      count: Math.floor(elapsedMs / hourMs),
+    });
+  }
+  return new Date(timestamp).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function getRemoteCheckMessage(
+  result: GitRemoteCheckResult | null,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
+  switch (result?.status) {
+    case "checked":
+      return t("gitStatusRemoteCheckSuccess");
+    case "busy":
+      return t("gitStatusRemoteCheckBusy");
+    case "not-a-git-repo":
+      return t("gitStatusRemoteCheckNotRepo");
+    case "failed":
+      return t("gitStatusRemoteCheckFailed");
+    default:
+      return "";
+  }
 }
 
 /** Render syntax-highlighted diff HTML from server */

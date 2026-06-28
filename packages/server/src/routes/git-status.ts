@@ -4,6 +4,7 @@ import { extname, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
   type GitFileChange,
+  type GitRemoteCheckResult,
   type GitRecentCommit,
   type GitStatusInfo,
   type PatchHunk,
@@ -29,7 +30,11 @@ const NOT_A_GIT_REPO: GitStatusInfo = {
   isClean: true,
   files: [],
   recentCommits: [],
+  checkedRemoteAt: null,
 };
+
+const remoteCheckedAtByProjectPath = new Map<string, string>();
+const gitOperationsByProjectPath = new Set<string>();
 
 export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
   const routes = new Hono();
@@ -47,13 +52,76 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     }
 
     try {
-      const result = await getGitStatus(project.path);
+      const result = await getGitStatusWithRemoteCheckTime(project.path);
       return c.json(result);
     } catch (err) {
       if (isNotGitRepoError(err)) {
         return c.json(NOT_A_GIT_REPO);
       }
       return c.json({ error: "Failed to get git status" }, 500);
+    }
+  });
+
+  /**
+   * POST /:projectId/git/check-remote
+   * Explicitly fetch remote refs and update the last-checked timestamp.
+   */
+  routes.post("/:projectId/git/check-remote", async (c) => {
+    const projectId = c.req.param("projectId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    const checkedRemoteAt = getCheckedRemoteAt(project.path);
+    if (gitOperationsByProjectPath.has(project.path)) {
+      const result: GitRemoteCheckResult = {
+        status: "busy",
+        checkedRemoteAt,
+        gitStatus: await getGitStatusSnapshot(project.path),
+      };
+      return c.json(result);
+    }
+
+    gitOperationsByProjectPath.add(project.path);
+    try {
+      await runGit(project.path, ["fetch"], {
+        timeout: 30_000,
+        disableTerminalPrompt: true,
+      });
+      const nextCheckedRemoteAt = new Date().toISOString();
+      remoteCheckedAtByProjectPath.set(project.path, nextCheckedRemoteAt);
+
+      const result: GitRemoteCheckResult = {
+        status: "checked",
+        checkedRemoteAt: nextCheckedRemoteAt,
+        gitStatus: await getGitStatusWithRemoteCheckTime(project.path),
+      };
+      return c.json(result);
+    } catch (err) {
+      if (isNotGitRepoError(err)) {
+        const result: GitRemoteCheckResult = {
+          status: "not-a-git-repo",
+          checkedRemoteAt: null,
+          gitStatus: NOT_A_GIT_REPO,
+        };
+        return c.json(result);
+      }
+
+      const result: GitRemoteCheckResult = {
+        status: "failed",
+        checkedRemoteAt: getCheckedRemoteAt(project.path),
+        gitStatus: await getGitStatusSnapshot(project.path),
+        detail: getGitErrorDetail(err),
+      };
+      return c.json(result);
+    } finally {
+      gitOperationsByProjectPath.delete(project.path);
     }
   });
 
@@ -200,17 +268,60 @@ async function getFileVersions(
 async function runGit(
   cwd: string,
   args: string[],
+  options?: { timeout?: number; disableTerminalPrompt?: boolean },
 ): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync("git", ["-C", cwd, ...args], {
     maxBuffer: 1024 * 1024,
-    timeout: 10_000,
+    timeout: options?.timeout ?? 10_000,
+    ...(options?.disableTerminalPrompt
+      ? { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } }
+      : {}),
   });
+}
+
+function getCheckedRemoteAt(projectPath: string): string | null {
+  return remoteCheckedAtByProjectPath.get(projectPath) ?? null;
+}
+
+async function getGitStatusWithRemoteCheckTime(
+  projectPath: string,
+): Promise<GitStatusInfo> {
+  return getGitStatus(projectPath, getCheckedRemoteAt(projectPath));
+}
+
+async function getGitStatusSnapshot(
+  projectPath: string,
+): Promise<GitStatusInfo> {
+  try {
+    return await getGitStatusWithRemoteCheckTime(projectPath);
+  } catch (err) {
+    if (isNotGitRepoError(err)) {
+      return NOT_A_GIT_REPO;
+    }
+    return {
+      ...NOT_A_GIT_REPO,
+      checkedRemoteAt: getCheckedRemoteAt(projectPath),
+    };
+  }
+}
+
+function getGitErrorDetail(err: unknown): string | undefined {
+  if (!err || typeof err !== "object") {
+    return undefined;
+  }
+
+  const gitError = err as {
+    message?: string;
+    stderr?: string;
+    stdout?: string;
+  };
+  const detail = gitError.stderr || gitError.stdout || gitError.message;
+  return detail?.trim().slice(0, 1200) || undefined;
 }
 
 function isNotGitRepoError(err: unknown): boolean {
   if (err && typeof err === "object") {
     const e = err as { code?: number | string; stderr?: string };
-    if (e.code === 128) return true;
     if (
       typeof e.stderr === "string" &&
       e.stderr.includes("not a git repository")
@@ -249,7 +360,10 @@ function statusChar(xy: string | undefined, index: 0 | 1): string | null {
   return ch && ch !== "." ? ch : null;
 }
 
-async function getGitStatus(projectPath: string): Promise<GitStatusInfo> {
+async function getGitStatus(
+  projectPath: string,
+  checkedRemoteAt: string | null,
+): Promise<GitStatusInfo> {
   // Run local read-only commands in parallel.
   const [statusResult, numstatUnstaged, numstatStaged, logResult] =
     await Promise.all([
@@ -400,6 +514,7 @@ async function getGitStatus(projectPath: string): Promise<GitStatusInfo> {
     isClean: files.length === 0,
     files,
     recentCommits,
+    checkedRemoteAt,
   };
 }
 

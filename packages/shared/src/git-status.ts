@@ -1,5 +1,6 @@
 export const GIT_STATUS_CAPABILITY = "git-status";
 export const GIT_STATUS_ENHANCED_CAPABILITY = "git-status-enhanced";
+export const GIT_STATUS_REMOTE_CHECK_CAPABILITY = "git-status-remote-check";
 
 export interface GitFileChange {
   /** Relative file path within the repo */
@@ -46,4 +47,19 @@ export interface GitStatusInfo {
   files: GitFileChange[];
   /** Recent commits on the current HEAD */
   recentCommits?: GitRecentCommit[];
+  /** Last successful explicit remote check, if known by this server */
+  checkedRemoteAt?: string | null;
+}
+
+export type GitRemoteCheckStatus =
+  | "checked"
+  | "busy"
+  | "not-a-git-repo"
+  | "failed";
+
+export interface GitRemoteCheckResult {
+  status: GitRemoteCheckStatus;
+  checkedRemoteAt: string | null;
+  gitStatus?: GitStatusInfo;
+  detail?: string;
 }

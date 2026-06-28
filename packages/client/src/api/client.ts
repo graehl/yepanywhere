@@ -10,6 +10,7 @@ import type {
   DeviceInfo,
   EnrichedRecentEntry,
   FileContentResponse,
+  GitRemoteCheckResult,
   FreezePublicSessionLiveSharesResponse,
   GitStatusInfo,
   HelperTargetConfig,
@@ -1342,6 +1343,11 @@ export const api = {
   // Git status API
   getGitStatus: (projectId: string) =>
     fetchJSON<GitStatusInfo>(`/projects/${projectId}/git`),
+
+  checkGitRemote: (projectId: string) =>
+    fetchJSON<GitRemoteCheckResult>(`/projects/${projectId}/git/check-remote`, {
+      method: "POST",
+    }),
 
   getGitDiff: (
     projectId: string,

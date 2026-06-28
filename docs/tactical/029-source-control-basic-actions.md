@@ -7,9 +7,11 @@ Progress:
 - [ ] Confirm server API shape for explicit remote operations.
 - [x] 2026-06-28: Add recent local commit history to the source-control data
       model.
-- [ ] Add explicit remote-check state and timestamp.
+- [x] 2026-06-28: Add explicit `Check remote` state, timestamp, capability,
+      fetch-on-click endpoint, and per-project remote operation guard.
 - [ ] Add pull/push/publish server actions with concise result mapping.
-- [ ] Add a per-project git operation guard.
+- [x] 2026-06-28: Add a per-project git operation guard for remote-touching
+      source-control actions.
 - [x] 2026-06-28: Replace the wide-browser diff modal with a split-pane
       viewer.
 - [x] 2026-06-28: Keep the modal path for narrow/mobile layouts.

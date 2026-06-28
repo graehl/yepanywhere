@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import {
   GIT_STATUS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_STATUS_REMOTE_CHECK_CAPABILITY,
   type ClientDefaults,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -224,6 +225,7 @@ export const RESUME_PROTOCOL_VERSION = 3;
 const BASE_CAPABILITIES = [
   GIT_STATUS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_STATUS_REMOTE_CHECK_CAPABILITY,
   "projectQueue",
 ];
 

@@ -11,13 +11,16 @@ const {
   mockSetNewSessionPrefill,
   globalSessionsState,
   mockLoadMore,
+  mockUseProjectQueues,
   sessionCollectionState,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockSetNewSessionPrefill: vi.fn(),
   mockLoadMore: vi.fn(),
+  mockUseProjectQueues: vi.fn(),
   sessionCollectionState: {
     records: [] as unknown[],
+    queuedSessionIds: new Set<string>(),
   },
   globalSessionsState: {
     sessions: [] as unknown[],
@@ -81,10 +84,17 @@ vi.mock("../../components/SessionListItem", () => ({
   SessionListItem: ({
     sessionId,
     title,
+    hasProjectQueue,
   }: {
     sessionId: string;
     title: string;
-  }) => <div data-testid={`session-${sessionId}`}>{title}</div>,
+    hasProjectQueue?: boolean;
+  }) => (
+    <div data-testid={`session-${sessionId}`}>
+      {title}
+      {hasProjectQueue ? <span>Q</span> : null}
+    </div>
+  ),
 }));
 
 vi.mock("../../hooks/useDrafts", () => ({
@@ -98,8 +108,26 @@ vi.mock("../../hooks/useGlobalSessionsFeed", () => ({
   }),
 }));
 
+vi.mock("../../hooks/useProjectQueues", () => ({
+  useProjectQueues: (projectIds: string[]) => {
+    mockUseProjectQueues(projectIds);
+    return {
+      queuesByProject: {},
+      items: [],
+      loading: false,
+      error: null,
+      mutatingItemId: null,
+      refetch: vi.fn(),
+      updateItem: vi.fn(),
+      deleteItem: vi.fn(),
+      retryItem: vi.fn(),
+    };
+  },
+}));
+
 vi.mock("../../lib/sessionCollectionExternalStore", () => ({
   useSessionCollectionQueryRecords: () => sessionCollectionState.records,
+  useProjectQueuedSessionIds: () => sessionCollectionState.queuedSessionIds,
 }));
 
 vi.mock("../../hooks/useRemoteBasePath", () => ({
@@ -198,6 +226,7 @@ describe("GlobalSessionsPage", () => {
   beforeEach(() => {
     globalSessionsState.sessions = [];
     sessionCollectionState.records = [];
+    sessionCollectionState.queuedSessionIds = new Set<string>();
     globalSessionsState.projects = [
       {
         id: "project-1",
@@ -214,6 +243,7 @@ describe("GlobalSessionsPage", () => {
     mockNavigate.mockReset();
     mockSetNewSessionPrefill.mockReset();
     mockLoadMore.mockReset();
+    mockUseProjectQueues.mockReset();
   });
 
   afterEach(() => {
@@ -284,5 +314,29 @@ describe("GlobalSessionsPage", () => {
     expect(screen.getByTestId("session-collection-only").textContent).toBe(
       "Collection row",
     );
+  });
+
+  it("marks sessions with project queue items from store decorations", () => {
+    sessionCollectionState.records = [
+      makeSessionRecord("queued-session", {
+        title: "Queued row",
+        fullTitle: "Queued row",
+      }),
+      makeSessionRecord("plain-session", {
+        title: "Plain row",
+        fullTitle: "Plain row",
+      }),
+    ];
+    sessionCollectionState.queuedSessionIds = new Set(["queued-session"]);
+
+    renderPage("/sessions");
+
+    expect(mockUseProjectQueues).toHaveBeenCalledWith(["project-1"]);
+    expect(screen.getByTestId("session-queued-session").textContent).toContain(
+      "Q",
+    );
+    expect(
+      screen.getByTestId("session-plain-session").textContent,
+    ).not.toContain("Q");
   });
 });

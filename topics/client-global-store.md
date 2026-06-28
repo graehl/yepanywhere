@@ -147,8 +147,9 @@ feed/mutation hook, but queue snapshots, mutation responses, and
 queue feed mounted for visible projects and reads `Q` badges from a store-owned
 targeted-session selector.
 
-The next likely slice is shared session-card decoration rollout: make All
-Sessions and Inbox read the same `Q` / draft badge facts from selectors, then
+All Sessions now uses the same Project Queue decoration path for visible and
+hidden-duplicate session cards. The next likely slice is Inbox, then draft
+badges: make those surfaces read the same `Q` / draft facts from selectors, then
 retire one-off local badge scans where they are no longer needed.
 
 This should reduce the long tail of hooks that each own partial session/project

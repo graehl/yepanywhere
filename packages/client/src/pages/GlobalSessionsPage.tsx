@@ -12,6 +12,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SessionListItem } from "../components/SessionListItem";
 import { useDrafts } from "../hooks/useDrafts";
 import { useGlobalSessionsFeed } from "../hooks/useGlobalSessionsFeed";
+import { useProjectQueues } from "../hooks/useProjectQueues";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
@@ -19,7 +20,10 @@ import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
-import { useSessionCollectionQueryRecords } from "../lib/sessionCollectionExternalStore";
+import {
+  useProjectQueuedSessionIds,
+  useSessionCollectionQueryRecords,
+} from "../lib/sessionCollectionExternalStore";
 import { getSessionDisplayTitle } from "../utils";
 
 // Long-press threshold for entering selection mode on mobile
@@ -296,6 +300,18 @@ export function GlobalSessionsPage() {
 
   // Track which sessions have unsent drafts
   const drafts = useDrafts();
+  const filteredProjectIds = useMemo(
+    () => [
+      ...new Set(
+        filteredSessions.map((session) => session.projectId).filter(Boolean),
+      ),
+    ],
+    [filteredSessions],
+  );
+  // Keep the queue feed mounted for the visible result projects. Badge
+  // rendering reads from the shared store selector below.
+  useProjectQueues(filteredProjectIds);
+  const projectQueuedSessionIds = useProjectQueuedSessionIds(filteredProjectIds);
 
   // Build status filter options with global counts from server
   // When filtering by project, we don't have global stats, so omit counts
@@ -1028,6 +1044,7 @@ export function GlobalSessionsPage() {
                       // userTurnCount / systemTurnCount will be populated when
                       // the index summaries cache them (see SessionIndexService)
                       hasDraft={drafts.has(session.id)}
+                      hasProjectQueue={projectQueuedSessionIds.has(session.id)}
                       publicShareControlsVisible={publicShareControlsVisible}
                     />
                   </div>
@@ -1105,6 +1122,9 @@ export function GlobalSessionsPage() {
                             basePath={basePath}
                             messageCount={session.messageCount}
                             hasDraft={drafts.has(session.id)}
+                            hasProjectQueue={projectQueuedSessionIds.has(
+                              session.id,
+                            )}
                           />
                         </div>
                       ))}

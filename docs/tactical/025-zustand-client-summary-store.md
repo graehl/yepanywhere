@@ -16,8 +16,10 @@ Progress:
 - [x] Add the project-queue slice after the project slice is stable.
 - [x] Move Sidebar Project Queue badges to store-owned queue/session
       decoration facts.
-- [ ] Move remaining session-card Project Queue badges to store-owned
+- [x] Move All Sessions Project Queue badges to store-owned queue/session
       decoration facts.
+- [ ] Move remaining session-card Project Queue badges to store-owned
+      decoration facts, starting with Inbox.
 - [ ] Migrate Inbox to feed snapshots plus store selectors.
 - [ ] Audit and retire long-tail hooks that privately own row-like session,
       project, or queue data.
@@ -40,6 +42,10 @@ Latest update:
   feed store-owned queue records. Sidebar keeps the queue feed mounted for its
   visible projects and reads `Q` badges from a store selector of targeted
   existing-session ids.
+- 2026-06-28: Migrated All Sessions cards to the same store-owned Project Queue
+  decoration path. The page keeps a queue feed mounted for the current result
+  projects and passes `hasProjectQueue` from the shared targeted-session
+  selector into both visible and hidden-duplicate session cards.
 
 ## Context
 
@@ -259,20 +265,21 @@ Selectors should:
    snapshots through it.
 7. [x] Add project-queue snapshots/events and migrate Sidebar queue
    decorations.
-8. [ ] Migrate remaining session-card queue decorations.
+8. [x] Migrate All Sessions queue decorations.
+9. [ ] Migrate remaining session-card queue decorations.
 
 ## Follow-On Slices
 
 After the no-behavior-change port:
 
-1. Enrich `/api/sessions` or reduce project-queue events enough for All Sessions
-   and Sidebar to show targeted queue badges without extra per-surface fetches.
-2. Migrate All Sessions session cards to the store-owned Project Queue
-   decoration selector.
-3. Migrate Inbox to a feed-plus-store model:
+1. Migrate Inbox to a feed-plus-store model:
    - `/api/inbox` owns tier membership;
    - the store owns partial session facts and tier ids;
    - `InboxContent` renders via selectors.
+2. Move draft badges into store-owned local decorations.
+3. Enrich `/api/sessions` or reduce project-queue events enough for Sidebar and
+   All Sessions to show targeted queue badges without extra per-surface queue
+   fetches.
 4. Audit Agents, Projects, New Session, and Session Page for hook-local summary
    facts that should be store-fed instead.
 

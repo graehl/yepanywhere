@@ -5,6 +5,7 @@ import type {
   ProviderName,
   ProjectQueueItemSummary,
   PublicSessionShareSessionStatusResponse,
+  StagedAttachmentRef,
   ThinkingMode,
   ThinkingOption,
   TranscriptDisplayObject,
@@ -82,7 +83,14 @@ import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { recordSessionVisit } from "../hooks/useRecentSessions";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
+import { useVersion } from "../hooks/useVersion";
 import type { DraftTextChangeMetadata } from "../lib/commentAnchors";
+import type { DraftAttachmentState } from "../lib/draftEnvelope";
+import {
+  deleteDraftAttachmentRef,
+  materializeDraftAttachmentsForSession,
+  validateDraftAttachmentRefs,
+} from "../lib/draftAttachmentStaging";
 import {
   type StreamingMarkdownCallbacks,
   useSession,
@@ -117,7 +125,10 @@ import {
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { createPendingElsewhereDismissKey } from "../lib/sessionUiStorageKeys";
 import { resolveSessionProviderCapabilities } from "../lib/providerCapabilities";
-import { shouldShowProjectQueueAffordance } from "../lib/projectQueueVisibility";
+import {
+  serverSupportsProjectQueue,
+  shouldShowProjectQueueAffordance,
+} from "../lib/projectQueueVisibility";
 import {
   createSessionDraftStorageKey,
   saveSessionDraft,
@@ -155,6 +166,43 @@ const BTW_ASIDE_FORK_PROVIDERS = new Set<ProviderName>([
   "codex",
   "codex-oss",
 ]);
+
+type ComposerUploadedAttachment = UploadedFile & { previewUrl?: string };
+type ComposerStagedAttachment = StagedAttachmentRef & { previewUrl?: string };
+type ComposerAttachment = ComposerUploadedAttachment | ComposerStagedAttachment;
+
+function isComposerStagedAttachment(
+  attachment: ComposerAttachment,
+): attachment is ComposerStagedAttachment {
+  return "batchId" in attachment;
+}
+
+function toPersistedStagedAttachmentRef(
+  attachment: ComposerStagedAttachment,
+): StagedAttachmentRef {
+  return {
+    id: attachment.id,
+    batchId: attachment.batchId,
+    originalName: attachment.originalName,
+    name: attachment.name,
+    size: attachment.size,
+    mimeType: attachment.mimeType,
+    ...(attachment.width !== undefined ? { width: attachment.width } : {}),
+    ...(attachment.height !== undefined ? { height: attachment.height } : {}),
+    createdAt: attachment.createdAt,
+    updatedAt: attachment.updatedAt,
+  };
+}
+
+function revokeAttachmentPreviewUrls(
+  attachmentsToRevoke: readonly ComposerAttachment[],
+): void {
+  for (const attachment of attachmentsToRevoke) {
+    if (attachment.previewUrl) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+  }
+}
 
 interface PreparedComposerSubmission {
   outgoingText: string;
@@ -977,13 +1025,16 @@ function SessionPageContent({
   );
   const attemptedForkSummaryAutoOpenRef = useRef<Set<string>>(new Set());
   // File attachment state
-  const [attachments, setAttachments] = useState<UploadedFile[]>([]);
+  const [attachments, setAttachmentsState] = useState<ComposerAttachment[]>([]);
+  const attachmentsRef = useRef<ComposerAttachment[]>([]);
+  const draftAttachmentBatchIdRef = useRef<string | null>(null);
+  const draftAttachmentHydrationRef = useRef(0);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
   const [attachmentQuality] = useAttachmentUploadQuality();
   // Track in-flight upload promises so handleSend can wait for them
-  const pendingUploadsRef = useRef<Map<string, Promise<UploadedFile | null>>>(
-    new Map(),
-  );
+  const pendingUploadsRef = useRef<
+    Map<string, Promise<ComposerAttachment | null>>
+  >(new Map());
   const { showToast } = useToastContext();
   const updateTranscriptDisplayObjectsForSession = useCallback(
     (
@@ -1023,6 +1074,119 @@ function SessionPageContent({
 
   // Connection for uploads (uses WebSocket when enabled)
   const connection = useConnection();
+  const { version: versionInfo } = useVersion();
+  const stagedAttachmentUploadsEnabled =
+    serverSupportsProjectQueue(versionInfo);
+
+  const writeDraftAttachmentState = useCallback(
+    (nextAttachments: readonly ComposerAttachment[]) => {
+      const stagedRefs = nextAttachments
+        .filter(isComposerStagedAttachment)
+        .map(toPersistedStagedAttachmentRef);
+      if (stagedRefs.length === 0) {
+        draftAttachmentBatchIdRef.current = null;
+        draftControlsRef.current?.setAttachmentState(null);
+        return;
+      }
+
+      const batchId = stagedRefs[0]?.batchId;
+      if (!batchId) {
+        draftControlsRef.current?.setAttachmentState(null);
+        return;
+      }
+
+      draftAttachmentBatchIdRef.current = batchId;
+      draftControlsRef.current?.setAttachmentState({
+        batchId,
+        refs: stagedRefs,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    [],
+  );
+
+  const setComposerAttachments = useCallback(
+    (
+      updater:
+        | ComposerAttachment[]
+        | ((previous: readonly ComposerAttachment[]) => ComposerAttachment[]),
+      options?: {
+        persistDraft?: boolean;
+        revokeRemovedPreviewUrls?: boolean;
+      },
+    ) => {
+      const previous = attachmentsRef.current;
+      const next = typeof updater === "function" ? updater(previous) : updater;
+
+      if (options?.revokeRemovedPreviewUrls) {
+        const nextIds = new Set(next.map((attachment) => attachment.id));
+        revokeAttachmentPreviewUrls(
+          previous.filter((attachment) => !nextIds.has(attachment.id)),
+        );
+      }
+
+      attachmentsRef.current = next;
+      setAttachmentsState(next);
+      if (options?.persistDraft !== false) {
+        writeDraftAttachmentState(next);
+      }
+    },
+    [writeDraftAttachmentState],
+  );
+
+  useEffect(() => {
+    return () => {
+      revokeAttachmentPreviewUrls(attachmentsRef.current);
+    };
+  }, []);
+
+  const ensureDraftAttachmentBatchId = useCallback(() => {
+    const existing =
+      draftControlsRef.current?.getAttachmentState()?.batchId ??
+      draftAttachmentBatchIdRef.current;
+    if (existing) {
+      draftAttachmentBatchIdRef.current = existing;
+      return existing;
+    }
+    const batchId = generateUUID();
+    draftAttachmentBatchIdRef.current = batchId;
+    return batchId;
+  }, []);
+
+  const materializeComposerAttachments = useCallback(
+    async (
+      composerAttachments: readonly ComposerAttachment[],
+    ): Promise<UploadedFile[]> => {
+      const uploadedFiles = composerAttachments.filter(
+        (attachment): attachment is ComposerUploadedAttachment =>
+          !isComposerStagedAttachment(attachment),
+      );
+      const stagedRefs = composerAttachments
+        .filter(isComposerStagedAttachment)
+        .map(toPersistedStagedAttachmentRef);
+      if (stagedRefs.length === 0) {
+        return uploadedFiles;
+      }
+
+      const batchId = stagedRefs[0]?.batchId;
+      if (!batchId || stagedRefs.some((ref) => ref.batchId !== batchId)) {
+        throw new Error("Draft attachments are split across staging batches");
+      }
+
+      const materializedFiles = await materializeDraftAttachmentsForSession(
+        connection,
+        projectId,
+        sessionId,
+        {
+          batchId,
+          refs: stagedRefs,
+          updatedAt: new Date().toISOString(),
+        },
+      );
+      return [...uploadedFiles, ...materializedFiles];
+    },
+    [connection, projectId, sessionId],
+  );
 
   const supportsManualCompact =
     status.owner === "self" && slashCommands.includes("compact");
@@ -1894,19 +2058,25 @@ function SessionPageContent({
 
   useEffect(() => {
     setCorrectionDraft(null);
+    setComposerAttachments([], {
+      persistDraft: false,
+      revokeRemovedPreviewUrls: true,
+    });
     setBtwAsides([]);
     btwAsidesRef.current = [];
     setFocusedBtwAsideId(null);
     hydratedBtwSessionIdsRef.current.clear();
     lastComposerSubmissionRef.current = null;
     lastSentComposerSubmissionRef.current = null;
-  }, [sessionId]);
+    draftAttachmentBatchIdRef.current = null;
+    draftAttachmentHydrationRef.current += 1;
+  }, [sessionId, setComposerAttachments]);
 
   const handleCancelCorrection = useCallback(() => {
     setCorrectionDraft(null);
     draftControlsRef.current?.clearDraft();
-    setAttachments([]);
-  }, []);
+    setComposerAttachments([], { revokeRemovedPreviewUrls: true });
+  }, [setComposerAttachments]);
 
   const handleCorrectLatestUserMessage = useCallback(
     (messageId: string, content: string) => {
@@ -1922,10 +2092,10 @@ function SessionPageContent({
       }
 
       draftControls.setDraft(content);
-      setAttachments([]);
+      setComposerAttachments([], { revokeRemovedPreviewUrls: true });
       setCorrectionDraft({ messageId, originalText: content });
     },
-    [showToast, t],
+    [setComposerAttachments, showToast, t],
   );
 
   const getOutgoingMessageText = useCallback(
@@ -2045,6 +2215,49 @@ function SessionPageContent({
     enabled: status.owner !== "external",
   });
 
+  const collectComposerAttachmentsForSubmission = useCallback(
+    async (options?: { pendingMessageId?: string }) => {
+      const currentAttachments = [...attachmentsRef.current];
+      const pendingAtSendTime = [...pendingUploadsRef.current.values()];
+      const pendingMessageId = options?.pendingMessageId;
+      const showUploadStatus =
+        !!pendingMessageId && pendingAtSendTime.length > 0;
+
+      if (showUploadStatus) {
+        updatePendingMessage(pendingMessageId, {
+          status: t("sessionUploading"),
+        });
+      }
+
+      try {
+        if (pendingAtSendTime.length > 0) {
+          setComposerAttachments([], { persistDraft: false });
+          const results = await Promise.all(pendingAtSendTime);
+          for (const result of results) {
+            if (result) currentAttachments.push(result);
+          }
+
+          const sentIds = new Set(
+            currentAttachments.map((attachment) => attachment.id),
+          );
+          setComposerAttachments(
+            (prev) => prev.filter((attachment) => !sentIds.has(attachment.id)),
+            { persistDraft: false },
+          );
+        } else {
+          setComposerAttachments([], { persistDraft: false });
+        }
+      } finally {
+        if (showUploadStatus && pendingMessageId) {
+          updatePendingMessage(pendingMessageId, { status: undefined });
+        }
+      }
+
+      return currentAttachments;
+    },
+    [setComposerAttachments, t, updatePendingMessage],
+  );
+
   const handleSend = async (
     text: string,
     metadata?: MessageSubmissionMetadata,
@@ -2086,33 +2299,19 @@ function SessionPageContent({
       serverOffsetMs: getEstimatedServerOffsetMs(),
     });
 
-    // Capture already-completed attachments
-    const currentAttachments = [...attachments];
-
-    // Wait for any in-flight uploads to complete before sending
-    const pendingAtSendTime = [...pendingUploadsRef.current.values()];
-    if (pendingAtSendTime.length > 0) {
-      updatePendingMessage(tempId, { status: t("sessionUploading") });
-      setAttachments([]); // Clear input area immediately
-      const results = await Promise.all(pendingAtSendTime);
-      for (const result of results) {
-        if (result) currentAttachments.push(result);
-      }
-      // Remove uploaded files that handleAttach added to state during the wait
-      // (they're already captured in currentAttachments). Preserve any new uploads
-      // started after send was clicked.
-      const sentIds = new Set(currentAttachments.map((a) => a.id));
-      setAttachments((prev) => prev.filter((a) => !sentIds.has(a.id)));
-      updatePendingMessage(tempId, { status: undefined });
-    } else {
-      setAttachments([]);
-    }
-
-    if (currentAttachments.length > 0) {
-      updatePendingMessage(tempId, { attachments: currentAttachments });
-    }
+    let currentAttachments = [...attachmentsRef.current];
+    let uploadedAttachments: UploadedFile[] = [];
 
     try {
+      currentAttachments = await collectComposerAttachmentsForSubmission({
+        pendingMessageId: tempId,
+      });
+      uploadedAttachments =
+        await materializeComposerAttachments(currentAttachments);
+      if (uploadedAttachments.length > 0) {
+        updatePendingMessage(tempId, { attachments: uploadedAttachments });
+      }
+
       const requestSentAtMs = Date.now();
       if (status.owner === "none") {
         // Resume the session with current permission mode and model settings
@@ -2133,7 +2332,7 @@ function SessionPageContent({
             provider: effectiveProvider,
             executor: session?.executor,
           },
-          currentAttachments.length > 0 ? currentAttachments : undefined,
+          uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
           tempId,
           clientTimestamp,
           metadata,
@@ -2172,7 +2371,7 @@ function SessionPageContent({
           sessionId,
           outgoingText,
           permissionMode,
-          currentAttachments.length > 0 ? currentAttachments : undefined,
+          uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
           tempId,
           thinking,
           undefined, // deferred
@@ -2219,6 +2418,7 @@ function SessionPageContent({
       // Success - clear the draft from localStorage
       rememberSentSubmission(text, tempId);
       draftControlsRef.current?.clearDraft();
+      revokeAttachmentPreviewUrls(currentAttachments);
       setCorrectionDraft(null);
       clearQuoteAnchors();
     } catch (err) {
@@ -2250,7 +2450,7 @@ function SessionPageContent({
               provider: effectiveProvider,
               executor: session?.executor,
             },
-            currentAttachments.length > 0 ? currentAttachments : undefined,
+            uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
             tempId,
             clientTimestamp,
             metadata,
@@ -2284,6 +2484,7 @@ function SessionPageContent({
           });
           rememberSentSubmission(text, tempId);
           draftControlsRef.current?.clearDraft();
+          revokeAttachmentPreviewUrls(currentAttachments);
           setCorrectionDraft(null);
           clearQuoteAnchors();
           return;
@@ -2303,7 +2504,7 @@ function SessionPageContent({
       // Remove from pending queue and restore draft on error
       removePendingMessage(tempId);
       draftControlsRef.current?.restoreFromStorage();
-      setAttachments(currentAttachments); // Restore attachments on error
+      setComposerAttachments(currentAttachments, { persistDraft: false });
       setProcessState("idle");
       const errorMsg =
         finalError instanceof Error ? finalError.message : String(finalError);
@@ -2359,30 +2560,19 @@ function SessionPageContent({
       serverOffsetMs: getEstimatedServerOffsetMs(),
     });
 
-    // Capture already-completed attachments
-    const currentAttachments = [...attachments];
-
-    // Wait for any in-flight uploads to complete before queuing
-    const pendingAtSendTime = [...pendingUploadsRef.current.values()];
-    if (pendingAtSendTime.length > 0) {
-      setAttachments([]);
-      const results = await Promise.all(pendingAtSendTime);
-      for (const result of results) {
-        if (result) currentAttachments.push(result);
-      }
-      const sentIds = new Set(currentAttachments.map((a) => a.id));
-      setAttachments((prev) => prev.filter((a) => !sentIds.has(a.id)));
-    } else {
-      setAttachments([]);
-    }
+    let currentAttachments = [...attachmentsRef.current];
+    let uploadedAttachments: UploadedFile[] = [];
 
     try {
+      currentAttachments = await collectComposerAttachmentsForSubmission();
+      uploadedAttachments =
+        await materializeComposerAttachments(currentAttachments);
       const requestSentAtMs = Date.now();
       const result = await api.queueMessage(
         sessionId,
         outgoingText,
         permissionMode,
-        currentAttachments.length > 0 ? currentAttachments : undefined,
+        uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
         tempId,
         thinking,
         true, // deferred
@@ -2430,6 +2620,7 @@ function SessionPageContent({
         };
       }
       draftControlsRef.current?.clearDraft();
+      revokeAttachmentPreviewUrls(currentAttachments);
       setCorrectionDraft(null);
       clearQuoteAnchors();
     } catch (err) {
@@ -2461,7 +2652,7 @@ function SessionPageContent({
               provider: effectiveProvider,
               executor: session?.executor,
             },
-            currentAttachments.length > 0 ? currentAttachments : undefined,
+            uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
             tempId,
             clientTimestamp,
             metadata,
@@ -2480,6 +2671,7 @@ function SessionPageContent({
           });
           rememberSentSubmission(text, tempId);
           draftControlsRef.current?.clearDraft();
+          revokeAttachmentPreviewUrls(currentAttachments);
           setCorrectionDraft(null);
           clearQuoteAnchors();
           return;
@@ -2496,7 +2688,7 @@ function SessionPageContent({
       }
 
       draftControlsRef.current?.restoreFromStorage();
-      setAttachments(currentAttachments);
+      setComposerAttachments(currentAttachments, { persistDraft: false });
       const errorMsg =
         finalError instanceof Error ? finalError.message : String(finalError);
       if (
@@ -2529,21 +2721,13 @@ function SessionPageContent({
     const actionAtMs = Date.now();
     const clientTimestamp = getServerClockTimestamp(actionAtMs);
 
-    const currentAttachments = [...attachments];
-    const pendingAtSendTime = [...pendingUploadsRef.current.values()];
-    if (pendingAtSendTime.length > 0) {
-      setAttachments([]);
-      const results = await Promise.all(pendingAtSendTime);
-      for (const result of results) {
-        if (result) currentAttachments.push(result);
-      }
-      const sentIds = new Set(currentAttachments.map((a) => a.id));
-      setAttachments((prev) => prev.filter((a) => !sentIds.has(a.id)));
-    } else {
-      setAttachments([]);
-    }
+    let currentAttachments = [...attachmentsRef.current];
+    let uploadedAttachments: UploadedFile[] = [];
 
     try {
+      currentAttachments = await collectComposerAttachmentsForSubmission();
+      uploadedAttachments =
+        await materializeComposerAttachments(currentAttachments);
       logSessionUiTrace("composer-project-queue-start", {
         sessionId,
         projectId,
@@ -2551,7 +2735,7 @@ function SessionPageContent({
         thinking,
         slashCommand: slashCommand ?? null,
         textLength: outgoingText.length,
-        attachmentCount: currentAttachments.length,
+        attachmentCount: uploadedAttachments.length,
         clientTimestamp,
         serverOffsetMs: getEstimatedServerOffsetMs(),
       });
@@ -2570,8 +2754,8 @@ function SessionPageContent({
         message: {
           text: outgoingText,
           mode: permissionMode,
-          ...(currentAttachments.length > 0
-            ? { attachments: currentAttachments }
+          ...(uploadedAttachments.length > 0
+            ? { attachments: uploadedAttachments }
             : {}),
           metadata: {
             ...metadata,
@@ -2590,6 +2774,7 @@ function SessionPageContent({
         uploadWaitMs: requestSentAtMs - actionAtMs,
       });
       draftControlsRef.current?.clearDraft();
+      revokeAttachmentPreviewUrls(currentAttachments);
       setCorrectionDraft(null);
       clearQuoteAnchors();
       showToast(t("projectQueueSessionQueuedToast"), "success");
@@ -2601,7 +2786,7 @@ function SessionPageContent({
         message: err instanceof Error ? err.message : String(err),
       });
       draftControlsRef.current?.restoreFromStorage();
-      setAttachments(currentAttachments);
+      setComposerAttachments(currentAttachments, { persistDraft: false });
       const errorMsg = err instanceof Error ? err.message : String(err);
       showToast(t("projectQueueSubmitFailed", { message: errorMsg }), "error");
     }
@@ -2685,12 +2870,12 @@ function SessionPageContent({
     ) {
       void handleCancelDeferred(lastSubmission.tempId);
       draftControls.setDraft(lastSubmission.text);
-      setAttachments([]);
+      setComposerAttachments([], { revokeRemovedPreviewUrls: true });
       return true;
     }
 
     draftControls.setDraft(lastSubmission.text);
-    setAttachments([]);
+    setComposerAttachments([], { revokeRemovedPreviewUrls: true });
     setCorrectionDraft({
       messageId:
         lastSubmission.kind === "sent"
@@ -2699,7 +2884,7 @@ function SessionPageContent({
       originalText: lastSubmission.text,
     });
     return true;
-  }, [deferredMessages, handleCancelDeferred]);
+  }, [deferredMessages, handleCancelDeferred, setComposerAttachments]);
 
   const handleModelChanged = useCallback(
     (next: {
@@ -3383,17 +3568,89 @@ function SessionPageContent({
     [applyMotherComposerTransfer, mainComposerForAside],
   );
 
+  const hydrateDraftAttachments = useCallback(
+    async (controls = draftControlsRef.current) => {
+      if (
+        mainComposerForAside ||
+        !controls ||
+        !stagedAttachmentUploadsEnabled
+      ) {
+        return;
+      }
+
+      const state = controls.getAttachmentState();
+      if (!state) {
+        setComposerAttachments([], {
+          persistDraft: false,
+          revokeRemovedPreviewUrls: true,
+        });
+        return;
+      }
+
+      const hydrationId = draftAttachmentHydrationRef.current + 1;
+      draftAttachmentHydrationRef.current = hydrationId;
+
+      try {
+        const refs = await validateDraftAttachmentRefs(connection, state);
+        if (draftAttachmentHydrationRef.current !== hydrationId) {
+          return;
+        }
+        const nextState: DraftAttachmentState | null =
+          refs.length > 0
+            ? {
+                batchId: refs[0]?.batchId ?? state.batchId,
+                refs,
+                updatedAt: new Date().toISOString(),
+              }
+            : null;
+        draftAttachmentBatchIdRef.current = nextState?.batchId ?? null;
+        controls.setAttachmentState(nextState);
+        setComposerAttachments(refs, {
+          persistDraft: false,
+          revokeRemovedPreviewUrls: true,
+        });
+      } catch (err) {
+        if (draftAttachmentHydrationRef.current !== hydrationId) {
+          return;
+        }
+        console.warn(
+          "[SessionPage] Failed to validate draft attachments:",
+          err,
+        );
+        controls.setAttachmentState(null);
+        setComposerAttachments([], {
+          persistDraft: false,
+          revokeRemovedPreviewUrls: true,
+        });
+        showToast(t("sessionDraftAttachmentsUnavailable"), "info");
+      }
+    },
+    [
+      connection,
+      mainComposerForAside,
+      setComposerAttachments,
+      showToast,
+      stagedAttachmentUploadsEnabled,
+      t,
+    ],
+  );
+
   const handleDraftControlsReady = useCallback(
     (controls: DraftControls) => {
       draftControlsRef.current = controls;
       flushPendingMotherComposerTransfer(controls);
+      void hydrateDraftAttachments(controls);
     },
-    [flushPendingMotherComposerTransfer],
+    [flushPendingMotherComposerTransfer, hydrateDraftAttachments],
   );
 
   useEffect(() => {
     flushPendingMotherComposerTransfer();
   }, [flushPendingMotherComposerTransfer]);
+
+  useEffect(() => {
+    void hydrateDraftAttachments();
+  }, [hydrateDraftAttachments, sessionDraftKey]);
 
   const transferBtwTurnToMotherComposer = useCallback(
     (text: string) => {
@@ -3704,8 +3961,12 @@ function SessionPageContent({
   // so handleSend can wait for in-flight uploads before sending
   const handleAttach = useCallback(
     (files: File[]) => {
+      const draftBatchId = stagedAttachmentUploadsEnabled
+        ? ensureDraftAttachmentBatchId()
+        : null;
       for (const file of files) {
         const tempId = generateUUID();
+        let previewUrl: string | undefined;
 
         // Add to progress tracking
         setUploadProgress((prev) => [
@@ -3728,6 +3989,46 @@ function SessionPageContent({
               )
             : { file };
           const uploadFile = preparedImage.file;
+          if (stagedAttachmentUploadsEnabled && draftBatchId) {
+            previewUrl = uploadFile.type.startsWith("image/")
+              ? URL.createObjectURL(uploadFile)
+              : undefined;
+            const stagedRef = await connection.uploadStagedAttachment(
+              uploadFile,
+              {
+                batchId: draftBatchId,
+                onProgress: (bytesUploaded) => {
+                  setUploadProgress((prev) =>
+                    prev.map((p) =>
+                      p.fileId === tempId
+                        ? {
+                            ...p,
+                            bytesUploaded,
+                            percent: Math.round(
+                              (bytesUploaded / uploadFile.size) * 100,
+                            ),
+                          }
+                        : p,
+                    ),
+                  );
+                },
+                ...(preparedImage.width !== undefined &&
+                preparedImage.height !== undefined
+                  ? {
+                      imageDimensions: {
+                        width: preparedImage.width,
+                        height: preparedImage.height,
+                      },
+                    }
+                  : {}),
+              },
+            );
+            return {
+              ...stagedRef,
+              ...(previewUrl ? { previewUrl } : {}),
+            } satisfies ComposerStagedAttachment;
+          }
+
           return connection.upload(projectId, sessionId, uploadFile, {
             onProgress: (bytesUploaded) => {
               setUploadProgress((prev) =>
@@ -3757,7 +4058,10 @@ function SessionPageContent({
         })()
           .then(
             (uploaded) => {
-              if (uploaded.mimeType.startsWith("image/")) {
+              if (
+                !isComposerStagedAttachment(uploaded) &&
+                uploaded.mimeType.startsWith("image/")
+              ) {
                 void storeUploadedAttachmentPreview(uploaded, file).catch(
                   (err) => {
                     console.warn(
@@ -3767,10 +4071,13 @@ function SessionPageContent({
                   },
                 );
               }
-              setAttachments((prev) => [...prev, uploaded]);
+              setComposerAttachments((prev) => [...prev, uploaded]);
               return uploaded;
             },
             (err) => {
+              if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+              }
               console.error("Upload failed:", err);
               const errorMsg =
                 err instanceof Error ? err.message : t("sessionShareFailed");
@@ -3781,7 +4088,7 @@ function SessionPageContent({
                 }),
                 "error",
               );
-              return null as UploadedFile | null;
+              return null as ComposerAttachment | null;
             },
           )
           .finally(() => {
@@ -3794,12 +4101,42 @@ function SessionPageContent({
         pendingUploadsRef.current.set(tempId, uploadPromise);
       }
     },
-    [projectId, sessionId, showToast, connection, t, attachmentQuality],
+    [
+      attachmentQuality,
+      connection,
+      ensureDraftAttachmentBatchId,
+      projectId,
+      sessionId,
+      setComposerAttachments,
+      showToast,
+      stagedAttachmentUploadsEnabled,
+      t,
+    ],
   );
 
-  const handleRemoveAttachment = useCallback((id: string) => {
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
-  }, []);
+  const handleRemoveAttachment = useCallback(
+    (id: string) => {
+      const removed = attachmentsRef.current.find(
+        (attachment) => attachment.id === id,
+      );
+      setComposerAttachments(
+        (prev) => prev.filter((attachment) => attachment.id !== id),
+        { revokeRemovedPreviewUrls: true },
+      );
+
+      if (removed && isComposerStagedAttachment(removed)) {
+        deleteDraftAttachmentRef(connection, removed.batchId, removed.id).catch(
+          (err) => {
+            console.warn(
+              "[SessionPage] Failed to delete staged attachment:",
+              err,
+            );
+          },
+        );
+      }
+    },
+    [connection, setComposerAttachments],
+  );
 
   // Check if pending request is an AskUserQuestion
   const isAskUserQuestion = pendingInputRequest?.toolName === "AskUserQuestion";

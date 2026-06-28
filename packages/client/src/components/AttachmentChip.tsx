@@ -12,7 +12,7 @@ const HOVER_PREVIEW_LINGER_MS = 450;
 export interface AttachmentChipProps {
   attachmentId?: string;
   originalName: string;
-  path: string;
+  path?: string;
   mimeType: string;
   sizeLabel: string;
   imageWidth?: number;
@@ -63,7 +63,8 @@ export function formatAttachmentName(name: string): string {
   return `${trimmed.slice(0, ATTACHMENT_NAME_SOFT_LIMIT).replace(/[ -_]+$/u, "")}...`;
 }
 
-function getUploadUrl(filePath: string): string | null {
+function getUploadUrl(filePath: string | undefined): string | null {
+  if (!filePath) return null;
   const parts = filePath.split("/");
   if (parts.length < 3) return null;
 
@@ -86,7 +87,7 @@ function getUploadUrl(filePath: string): string | null {
 
 function useCachedAttachmentImage(
   attachmentId: string,
-  path: string,
+  path: string | undefined,
   remotePreviewEnabled: boolean,
   previewUrl?: string,
 ): {
@@ -122,6 +123,21 @@ function useCachedAttachmentImage(
     setCachePreviewHeight(null);
 
     if (previewUrl) {
+      setLoading(false);
+      setRemoteEnabled(false);
+      return () => {
+        if (previewUrlRef.current) {
+          URL.revokeObjectURL(previewUrlRef.current);
+          previewUrlRef.current = null;
+        }
+        if (fullUrlRef.current) {
+          URL.revokeObjectURL(fullUrlRef.current);
+          fullUrlRef.current = null;
+        }
+      };
+    }
+
+    if (!path) {
       setLoading(false);
       setRemoteEnabled(false);
       return () => {
@@ -213,7 +229,7 @@ function NonImageAttachmentChip({
       <span className="attachment-chip-icon" aria-hidden="true">
         📎
       </span>
-      <span className="attachment-name" title={path}>
+      <span className="attachment-name" title={path ?? originalName}>
         {formatAttachmentName(originalName)}
       </span>
       <span className="attachment-size">{sizeLabel}</span>
@@ -245,7 +261,7 @@ function ImageAttachmentChip({
   const [showModal, setShowModal] = useState(false);
   const [showHoverPreview, setShowHoverPreview] = useState(false);
   const hoverTimerRef = useRef<number | null>(null);
-  const cacheKey = attachmentId ?? path;
+  const cacheKey = attachmentId ?? path ?? originalName;
   const {
     previewUrl: imagePreviewUrl,
     fullUrl,
@@ -324,7 +340,7 @@ function ImageAttachmentChip({
               <span className="attachment-preview-fallback">📎</span>
             )}
           </span>
-          <span className="attachment-name" title={path}>
+          <span className="attachment-name" title={path ?? originalName}>
             {formatAttachmentName(originalName)}
           </span>
           <span className="attachment-size">{sizeLabel}</span>

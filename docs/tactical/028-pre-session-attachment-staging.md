@@ -18,7 +18,8 @@ Implementation progress:
 - [x] Implement staged upload APIs for direct and relay transports.
 - [x] Add staged-ref validation, deletion, and draft-to-session materialization
       APIs.
-- [ ] Wire staged materialization into normal sends and queue handoff.
+- [x] Wire staged materialization into existing-session normal sends and
+      per-session deferred queue submissions.
 - [ ] Persist staged attachment refs in Project Queue items.
 
 ## Context
@@ -404,21 +405,24 @@ Shared/client:
 ### 3. Composer Draft Attachments
 
 - [x] Add server APIs to validate and delete staged draft refs.
-- [ ] Upload selected/pasted composer files to staging.
-- [ ] Persist completed staged refs into the draft envelope.
-- [ ] Rehydrate chips from staged refs after refresh by validating them with the
-      server.
-- [ ] Delete staged refs on chip removal.
+- [x] Existing-session composer: upload selected/pasted files to staging.
+- [x] Existing-session composer: persist completed staged refs into the draft
+      envelope.
+- [x] Existing-session composer: rehydrate chips from staged refs after refresh
+      by validating them with the server.
+- [x] Existing-session composer: delete staged refs on chip removal.
+- [ ] New-session composer: upload selected/pasted files to staging.
 - [ ] Warn only for attachment states that are not yet durable.
 
 ### 4. Send And Queue Materialization
 
 - [x] Add idempotent draft-to-session materialization service and HTTP API.
-- [ ] Materialize staged refs before existing-session sends.
+- [x] Materialize staged refs before existing-session sends.
 - [ ] Materialize staged refs for normal new-session starts after session
       creation and before first-message send.
-- [ ] Preserve failure recovery behavior for draft text and staged refs.
-- [ ] Materialize at existing per-session deferred queue acceptance where needed.
+- [x] Preserve failure recovery behavior for existing-session draft text and
+      staged refs.
+- [x] Materialize before existing per-session deferred queue submissions.
 
 ### 5. Project Queue Attachments
 

@@ -6,7 +6,6 @@ import {
   type EffortLevel,
   type SessionLivenessSnapshot,
   type ThinkingMode,
-  type UploadedFile,
   type UserMessageCompositionMetadata,
   type UserMessageDeliveryIntent,
   type UserMessageSpeechMetadata,
@@ -78,6 +77,17 @@ export interface UploadProgress {
   bytesUploaded: number;
   totalBytes: number;
   percent: number;
+}
+
+export interface MessageInputAttachment {
+  id: string;
+  originalName: string;
+  path?: string;
+  mimeType: string;
+  size: number;
+  width?: number;
+  height?: number;
+  previewUrl?: string;
 }
 
 export interface MessageSubmissionMetadata {
@@ -327,7 +337,7 @@ interface Props {
   /** Session ID for uploads (required to enable attach button) */
   sessionId?: string;
   /** Completed file attachments */
-  attachments?: UploadedFile[];
+  attachments?: MessageInputAttachment[];
   /** Callback when user selects files to attach */
   onAttach?: (files: File[]) => void;
   /** Callback when user removes an attachment */
@@ -2126,6 +2136,7 @@ export function MessageInput({
                   sizeLabel={formatSize(file.size)}
                   imageWidth={file.width}
                   imageHeight={file.height}
+                  previewUrl={file.previewUrl}
                   onRemove={
                     onRemoveAttachment
                       ? () => onRemoveAttachment(file.id)

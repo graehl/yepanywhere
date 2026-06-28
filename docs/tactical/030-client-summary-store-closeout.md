@@ -17,6 +17,9 @@ Historical setup docs:
   closed. Its broad migration checklist has been distilled into this doc.
 - [`027-client-summary-source-registry.md`](027-client-summary-source-registry.md)
   covers the per-source registry and source-scoped draft/handoff storage.
+- [`031-client-query-controller.md`](031-client-query-controller.md) tracks the
+  proposed shared fetch/query lifecycle layer for summary feeds, starting with
+  Sidebar/global-session coverage.
 
 ## Boundary
 

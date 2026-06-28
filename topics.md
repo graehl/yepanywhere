@@ -62,3 +62,5 @@
 - source-control-basic-actions - Narrow Source Control page expansion with split diff, recent commits, and explicit remote actions.
 - draft-attachment-staging - Draft envelope, staged attachment storage, and materialization support for composer attachments.
 - inactivity-push-notifications - Default-off push settings and server-side inactive project / YA notification edges.
+- client-query-controller - Source-scoped client fetch lifecycle, coverage-aware
+  dedupe, and retained summary feed queries.

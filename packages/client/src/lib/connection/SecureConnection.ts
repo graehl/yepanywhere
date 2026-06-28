@@ -20,6 +20,7 @@ import type {
   SrpClientProof,
   SrpSessionResume,
   SrpSessionResumeInit,
+  StagedAttachmentRef,
   UploadedFile,
   YepMessage,
 } from "@yep-anywhere/shared";
@@ -1540,6 +1541,13 @@ export class SecureConnection implements Connection {
     options?: UploadOptions,
   ): Promise<UploadedFile> {
     return this.protocol.upload(projectId, sessionId, file, options);
+  }
+
+  async uploadStagedAttachment(
+    file: File,
+    options?: UploadOptions & { batchId?: string },
+  ): Promise<StagedAttachmentRef> {
+    return this.protocol.uploadStagedAttachment(file, options);
   }
 
   /**

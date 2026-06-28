@@ -18,7 +18,7 @@ import type {
   DeviceWebRTCAnswer,
   DeviceWebRTCOffer,
 } from "./devices.js";
-import type { UploadedFile } from "./upload.js";
+import type { StagedAttachmentRef, UploadedFile } from "./upload.js";
 
 // Re-export OriginMetadata for convenience
 export type { OriginMetadata } from "./connection.js";
@@ -204,6 +204,25 @@ export interface RelayUploadStart {
   height?: number;
 }
 
+/** Client -> Server: Start a draft-staged file upload */
+export interface RelayStagedUploadStart {
+  type: "staged_upload_start";
+  /** Client-generated upload ID */
+  uploadId: string;
+  /** Optional existing draft staging batch ID */
+  batchId?: string;
+  /** Original filename */
+  filename: string;
+  /** Total file size in bytes */
+  size: number;
+  /** MIME type */
+  mimeType: string;
+  /** Image width in pixels, if known */
+  width?: number;
+  /** Image height in pixels, if known */
+  height?: number;
+}
+
 /** Client -> Server: Upload chunk */
 export interface RelayUploadChunk {
   type: "upload_chunk";
@@ -236,8 +255,12 @@ export interface RelayUploadComplete {
   type: "upload_complete";
   /** Upload ID */
   uploadId: string;
-  /** Uploaded file metadata */
-  file: UploadedFile;
+  /** Uploaded file metadata for session-scoped uploads */
+  file?: UploadedFile;
+  /** Draft-staged attachment ref for staged uploads */
+  stagedRef?: StagedAttachmentRef;
+  /** Draft staging batch ID for staged uploads */
+  batchId?: string;
 }
 
 /** Server -> Client: Upload failed */
@@ -259,6 +282,7 @@ export type RemoteClientMessage =
   | RelaySubscribe
   | RelayUnsubscribe
   | RelayUploadStart
+  | RelayStagedUploadStart
   | RelayUploadChunk
   | RelayUploadEnd
   | RelaySpeechControl

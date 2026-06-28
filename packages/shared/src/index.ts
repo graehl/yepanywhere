@@ -464,6 +464,7 @@ export type {
   RelayUnsubscribe,
   RelayEvent,
   RelayUploadStart,
+  RelayStagedUploadStart,
   RelayUploadChunk,
   RelayUploadEnd,
   RelayUploadProgress,

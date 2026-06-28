@@ -9,9 +9,11 @@ import {
   UploadError,
   type WebSocketFactory,
   type WebSocketLike,
+  buildStagedUploadUrl,
   buildUploadUrl,
   fileToChunks,
   uploadChunks,
+  uploadStagedChunks,
 } from "./upload";
 
 /** Mock WebSocket for testing */
@@ -104,6 +106,17 @@ describe("uploadChunks", () => {
     path: "/uploads/uuid-123_test.txt",
     size: 100,
     mimeType: "text/plain",
+  };
+
+  const testStagedRef = {
+    id: "staged-123",
+    batchId: "batch-123",
+    name: "staged-123_test.txt",
+    originalName: "test.txt",
+    size: 100,
+    mimeType: "text/plain",
+    createdAt: "2026-06-28T00:00:00.000Z",
+    updatedAt: "2026-06-28T00:00:00.000Z",
   };
 
   async function* testChunks(): AsyncGenerator<Uint8Array> {
@@ -260,6 +273,35 @@ describe("uploadChunks", () => {
 
     const result = await uploadPromise;
     expect(result).toEqual(testFile);
+  });
+
+  it("sends batch id and resolves with staged ref for staged uploads", async () => {
+    const uploadPromise = uploadStagedChunks(
+      "ws://test/staging",
+      { ...testMetadata, batchId: "batch-123" },
+      testChunks(),
+      {},
+      createMockWebSocket,
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const startMsg = JSON.parse(mockWs.sentMessages[0] as string);
+    expect(startMsg).toEqual({
+      type: "start",
+      batchId: "batch-123",
+      name: "test.txt",
+      size: 100,
+      mimeType: "text/plain",
+    });
+
+    mockWs.simulateMessage({
+      type: "complete",
+      batchId: "batch-123",
+      stagedRef: testStagedRef,
+    });
+
+    await expect(uploadPromise).resolves.toEqual(testStagedRef);
   });
 
   it("rejects with UploadError on error message", async () => {
@@ -425,6 +467,15 @@ describe("buildUploadUrl", () => {
     const url = buildUploadUrl("proj-123", "sess-456");
     expect(url).toBe(
       "wss://myapp.com:8080/api/projects/proj-123/sessions/sess-456/upload/ws",
+    );
+  });
+
+  it("builds staged upload URLs", () => {
+    expect(buildStagedUploadUrl("https://example.com")).toBe(
+      "wss://example.com/api/attachments/staging/drafts/upload/ws",
+    );
+    expect(buildStagedUploadUrl("http://localhost:3000")).toBe(
+      "ws://localhost:3000/api/attachments/staging/drafts/upload/ws",
     );
   });
 });

@@ -78,6 +78,7 @@ import {
   registerSpeechBackends,
 } from "./services/voice/registry.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
+import { AttachmentStagingService } from "./uploads/AttachmentStagingService.js";
 import { UploadManager } from "./uploads/manager.js";
 import {
   EventBus,
@@ -119,12 +120,14 @@ process.on("unhandledRejection", (reason) => {
 });
 
 const config = loadConfig();
+const ATTACHMENT_STAGING_CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 // Track services for graceful shutdown (set after createApp)
 let supervisorForShutdown:
   | Awaited<ReturnType<typeof createApp>>["supervisor"]
   | null = null;
 let deviceBridgeForShutdown: DeviceBridgeService | null = null;
+let attachmentStagingCleanupTimer: ReturnType<typeof setInterval> | null = null;
 let isShuttingDown = false;
 
 /**
@@ -139,6 +142,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
   isShuttingDown = true;
 
   console.log(`[Shutdown] Received ${signal}, cleaning up...`);
+
+  if (attachmentStagingCleanupTimer) {
+    clearInterval(attachmentStagingCleanupTimer);
+    attachmentStagingCleanupTimer = null;
+  }
 
   if (supervisorForShutdown) {
     const processes = supervisorForShutdown.getAllProcesses();
@@ -394,6 +402,20 @@ const publicShareService = new PublicShareService({
   dataDir: config.dataDir,
 });
 const modelInfoService = new ModelInfoService({ dataDir: config.dataDir });
+const attachmentStagingService = new AttachmentStagingService({
+  dataDir: config.dataDir,
+  maxUploadSizeBytes: config.maxUploadSizeBytes,
+});
+
+function startAttachmentStagingCleanup(): void {
+  if (attachmentStagingCleanupTimer) return;
+  attachmentStagingCleanupTimer = setInterval(() => {
+    attachmentStagingService.cleanupStaleDraftAttachments().catch((error) => {
+      console.error("[AttachmentStagingService] TTL cleanup failed:", error);
+    });
+  }, ATTACHMENT_STAGING_CLEANUP_INTERVAL_MS);
+  attachmentStagingCleanupTimer.unref?.();
+}
 
 async function startServer() {
   const startupStart = Date.now();
@@ -448,6 +470,9 @@ async function startServer() {
   markStartup("projectMetadataService initialized");
   await projectQueueService.initialize();
   markStartup("projectQueueService initialized");
+  await attachmentStagingService.initialize();
+  startAttachmentStagingCleanup();
+  markStartup("attachmentStagingService initialized");
   await sessionIndexService.initialize();
   markStartup("sessionIndexService initialized");
   await pushService.initialize();
@@ -651,6 +676,7 @@ async function startServer() {
     serverPort: effectiveServerPort,
     installId: installService.getInstallId(),
     dataDir: config.dataDir,
+    attachmentStagingService,
     networkBindingService,
     networkBindingCallbackHolder,
     connectedBrowsers: connectedBrowsersService,
@@ -709,6 +735,7 @@ async function startServer() {
     scanner,
     upgradeWebSocket,
     maxUploadSizeBytes: config.maxUploadSizeBytes,
+    attachmentStagingService,
   });
   app.route("/api", uploadRoutes);
   markStartup("upload routes mounted");
@@ -739,6 +766,7 @@ async function startServer() {
     supervisor,
     eventBus,
     uploadManager: wsRelayUploadManager,
+    attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
     connectedBrowsers: connectedBrowsersService,
@@ -759,6 +787,7 @@ async function startServer() {
     supervisor,
     eventBus,
     uploadManager: wsRelayUploadManager,
+    attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
     connectedBrowsers: connectedBrowsersService,

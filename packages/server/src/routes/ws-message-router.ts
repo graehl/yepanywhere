@@ -8,6 +8,7 @@ import {
 } from "@yep-anywhere/shared";
 import { decompressGzip, decryptBinaryEnvelopeRaw } from "../crypto/index.js";
 import type { UploadManager } from "../uploads/manager.js";
+import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
 import type {
   ConnectionState,
   HandleMessageOptions,
@@ -26,6 +27,7 @@ interface DecodeFrameDeps {
   uploads: Map<string, RelayUploadState>;
   send: SendFn;
   uploadManager: UploadManager;
+  attachmentStagingService?: AttachmentStagingService;
   routeClientMessage: (msg: RemoteClientMessage) => Promise<void>;
   handleSpeechAudio?: (payload: Uint8Array) => Promise<void> | void;
   handleBinaryUploadChunk: (
@@ -33,6 +35,7 @@ interface DecodeFrameDeps {
     payload: Uint8Array,
     send: SendFn,
     uploadManager: UploadManager,
+    attachmentStagingService?: AttachmentStagingService,
   ) => Promise<void>;
 }
 
@@ -52,6 +55,7 @@ export async function decodeFrameToParsedMessage(
     uploads,
     send,
     uploadManager,
+    attachmentStagingService,
     routeClientMessage,
     handleSpeechAudio,
     handleBinaryUploadChunk,
@@ -92,7 +96,13 @@ export async function decodeFrameToParsedMessage(
         const { format, payload } = result;
 
         if (format === BinaryFormat.BINARY_UPLOAD) {
-          await handleBinaryUploadChunk(uploads, payload, send, uploadManager);
+          await handleBinaryUploadChunk(
+            uploads,
+            payload,
+            send,
+            uploadManager,
+            attachmentStagingService,
+          );
           return null;
         }
 
@@ -201,7 +211,13 @@ export async function decodeFrameToParsedMessage(
       connState.useBinaryFrames = true;
 
       if (format === BinaryFormat.BINARY_UPLOAD) {
-        await handleBinaryUploadChunk(uploads, payload, send, uploadManager);
+        await handleBinaryUploadChunk(
+          uploads,
+          payload,
+          send,
+          uploadManager,
+          attachmentStagingService,
+        );
         return null;
       }
 
@@ -279,6 +295,9 @@ interface MessageRouteHandlers {
   onUploadStart: (
     msg: RemoteClientMessage & { type: "upload_start" },
   ) => Promise<void>;
+  onStagedUploadStart: (
+    msg: RemoteClientMessage & { type: "staged_upload_start" },
+  ) => Promise<void>;
   onUploadChunk: (
     msg: RemoteClientMessage & { type: "upload_chunk" },
   ) => Promise<void>;
@@ -299,6 +318,7 @@ function getMessageId(msg: RemoteClientMessage): string | undefined {
     case "subscribe":
       return msg.subscriptionId;
     case "upload_start":
+    case "staged_upload_start":
     case "upload_chunk":
     case "upload_end":
       return msg.uploadId;
@@ -334,6 +354,9 @@ export async function routeClientMessageSafely(
         break;
       case "upload_start":
         await handlers.onUploadStart(msg);
+        break;
+      case "staged_upload_start":
+        await handlers.onStagedUploadStart(msg);
         break;
       case "upload_chunk":
         await handlers.onUploadChunk(msg);

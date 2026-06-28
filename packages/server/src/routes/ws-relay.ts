@@ -15,6 +15,7 @@ import type {
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import type { SpeechBackendRegistry } from "../services/voice/registry.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
+import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
 import type { UploadManager } from "../uploads/manager.js";
 import type { EventBus, FocusedSessionWatchManager } from "../watcher/index.js";
 import {
@@ -50,6 +51,8 @@ export interface WsRelayDeps {
   eventBus: EventBus;
   /** Upload manager for handling file uploads */
   uploadManager: UploadManager;
+  /** Attachment staging service for draft-staged uploads */
+  attachmentStagingService?: AttachmentStagingService;
   /** Remote access service for SRP authentication (optional) */
   remoteAccessService?: RemoteAccessService;
   /** Remote session service for session persistence (optional) */
@@ -85,6 +88,8 @@ export interface AcceptRelayConnectionDeps {
   eventBus: EventBus;
   /** Upload manager for handling file uploads */
   uploadManager: UploadManager;
+  /** Attachment staging service for draft-staged uploads */
+  attachmentStagingService?: AttachmentStagingService;
   /** Remote access service for SRP authentication */
   remoteAccessService: RemoteAccessService;
   /** Remote session service for session persistence */
@@ -202,6 +207,7 @@ export function createWsRelayRoutes(
     supervisor,
     eventBus,
     uploadManager,
+    attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
     connectedBrowsers,
@@ -220,6 +226,7 @@ export function createWsRelayRoutes(
     supervisor,
     eventBus,
     uploadManager,
+    attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
     connectedBrowsers,
@@ -348,9 +355,11 @@ export function createWsRelayRoutes(
         cleanupConnectionState(connState);
 
         // Clean up all uploads
-        cleanupUploads(uploads, uploadManager).catch((err) => {
-          console.error("[WS Relay] Error cleaning up uploads:", err);
-        });
+        cleanupUploads(uploads, uploadManager, attachmentStagingService).catch(
+          (err) => {
+            console.error("[WS Relay] Error cleaning up uploads:", err);
+          },
+        );
 
         // Clean up emulator streaming sessions
         cleanupDeviceSessions(deviceSessions, deviceBridgeService);
@@ -394,6 +403,7 @@ export function createAcceptRelayConnection(
     supervisor,
     eventBus,
     uploadManager,
+    attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
     connectedBrowsers,
@@ -412,6 +422,7 @@ export function createAcceptRelayConnection(
     supervisor,
     eventBus,
     uploadManager,
+    attachmentStagingService,
     remoteAccessService,
     remoteSessionService,
     connectedBrowsers,
@@ -485,9 +496,11 @@ export function createAcceptRelayConnection(
       clearInterval(pingInterval);
       cleanupConnectionState(connState);
 
-      cleanupUploads(uploads, uploadManager).catch((err) => {
-        console.error("[WS Relay] Error cleaning up uploads:", err);
-      });
+      cleanupUploads(uploads, uploadManager, attachmentStagingService).catch(
+        (err) => {
+          console.error("[WS Relay] Error cleaning up uploads:", err);
+        },
+      );
 
       // Clean up emulator streaming sessions
       cleanupDeviceSessions(deviceSessions, deviceBridgeService);

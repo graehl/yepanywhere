@@ -50,6 +50,8 @@ export interface StagedAttachmentRef {
 /** Client -> Server: Start upload */
 export interface UploadStartMessage {
   type: "start";
+  /** Draft staging batch id. Only used by draft-staged upload endpoints. */
+  batchId?: string;
   /** Original filename */
   name: string;
   /** Expected total size in bytes */
@@ -78,11 +80,22 @@ export interface UploadProgressMessage {
   bytesReceived: number;
 }
 
-/** Server -> Client: Upload complete */
-export interface UploadCompleteMessage {
+/** Server -> Client: Session-scoped upload complete */
+export interface UploadFileCompleteMessage {
   type: "complete";
   file: UploadedFile;
 }
+
+/** Server -> Client: Draft-staged upload complete */
+export interface UploadStagedCompleteMessage {
+  type: "complete";
+  stagedRef: StagedAttachmentRef;
+  batchId: string;
+}
+
+export type UploadCompleteMessage =
+  | UploadFileCompleteMessage
+  | UploadStagedCompleteMessage;
 
 /** Server -> Client: Error occurred */
 export interface UploadErrorMessage {

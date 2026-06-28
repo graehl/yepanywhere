@@ -307,11 +307,14 @@ export async function fetchJSON<T>(
 
 // Re-export upload functions
 export {
+  buildStagedUploadUrl,
   buildUploadUrl,
   fileToChunks,
   UploadError,
   uploadChunks,
   uploadFile,
+  uploadStagedChunks,
+  uploadStagedFile,
   type UploadOptions,
 } from "./upload";
 

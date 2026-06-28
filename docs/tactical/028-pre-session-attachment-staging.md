@@ -15,7 +15,7 @@ Implementation progress:
 
 - [x] Add draft envelope helpers and update draft persistence.
 - [x] Add `AttachmentStagingService`.
-- [ ] Implement staged upload APIs for direct and relay transports.
+- [x] Implement staged upload APIs for direct and relay transports.
 - [ ] Materialize staged attachments for normal sends and queue handoff.
 - [ ] Persist staged attachment refs in Project Queue items.
 
@@ -393,10 +393,10 @@ Shared/client:
 
 - [x] Add shared staged attachment ref types.
 - [x] Add `AttachmentStagingService`.
-- [ ] Add staging upload API/transport support for direct and relay clients.
+- [x] Add staging upload API/transport support for direct and relay clients.
 - [x] Add expected-size verification and partial cleanup.
 - [x] Add required startup draft TTL cleanup and reusable cleanup method.
-- [ ] Wire fixed-cadence draft TTL cleanup in the server runtime.
+- [x] Wire fixed-cadence draft TTL cleanup in the server runtime.
 
 ### 3. Composer Draft Attachments
 

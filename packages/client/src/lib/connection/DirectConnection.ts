@@ -1,5 +1,5 @@
-import type { UploadedFile } from "@yep-anywhere/shared";
-import { uploadFile } from "../../api/upload";
+import type { StagedAttachmentRef, UploadedFile } from "@yep-anywhere/shared";
+import { uploadFile, uploadStagedFile } from "../../api/upload";
 import { authEvents } from "../authEvents";
 import type {
   Connection,
@@ -131,6 +131,13 @@ export class DirectConnection implements Connection {
     options?: UploadOptions,
   ): Promise<UploadedFile> {
     return uploadFile(projectId, sessionId, file, options);
+  }
+
+  async uploadStagedAttachment(
+    file: File,
+    options?: UploadOptions & { batchId?: string },
+  ): Promise<StagedAttachmentRef> {
+    return uploadStagedFile(file, options);
   }
 }
 

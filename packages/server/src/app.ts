@@ -101,6 +101,7 @@ import type {
   RealClaudeSDKInterface,
 } from "./sdk/types.js";
 import type { PublicShareService } from "./services/PublicShareService.js";
+import { AttachmentStagingService } from "./uploads/AttachmentStagingService.js";
 import type { BrowserProfileService } from "./services/BrowserProfileService.js";
 import { CodexUpdateChecker } from "./services/CodexUpdateChecker.js";
 import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersService.js";
@@ -170,6 +171,8 @@ export interface AppOptions {
   recentsService?: RecentsService;
   /** Maximum upload file size in bytes. 0 = unlimited */
   maxUploadSizeBytes?: number;
+  /** Attachment staging service for draft attachments. */
+  attachmentStagingService?: AttachmentStagingService;
   /** Maximum queue size for pending requests. 0 = unlimited */
   maxQueueSize?: number;
   /** AuthService for cookie-based auth (optional) */
@@ -281,6 +284,12 @@ export function createApp(options: AppOptions): AppResult {
   configureProviderRuntime({ codexCliPath: options.codexCliPath });
 
   const app = new Hono<{ Bindings: HttpBindings }>();
+  const attachmentStagingService =
+    options.attachmentStagingService ??
+    new AttachmentStagingService({
+      dataDir: options.dataDir,
+      maxUploadSizeBytes: options.maxUploadSizeBytes,
+    });
 
   // Compress API responses (gzip/deflate). Large session payloads — multi-MB
   // Codex transcripts — otherwise cross slow first-mile links uncompressed:
@@ -1350,6 +1359,7 @@ export function createApp(options: AppOptions): AppResult {
         scanner,
         upgradeWebSocket: options.upgradeWebSocket,
         maxUploadSizeBytes: options.maxUploadSizeBytes,
+        attachmentStagingService,
       }),
     );
   }

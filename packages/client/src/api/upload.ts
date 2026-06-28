@@ -1,6 +1,7 @@
 import type {
   UploadCancelMessage,
   UploadEndMessage,
+  StagedAttachmentRef,
   UploadServerMessage,
   UploadStartMessage,
   UploadedFile,
@@ -41,6 +42,32 @@ export class UploadError extends Error {
     super(message);
     this.name = "UploadError";
   }
+}
+
+interface UploadMetadata {
+  batchId?: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  width?: number;
+  height?: number;
+}
+
+function resolveUploadedFile(msg: UploadServerMessage): UploadedFile {
+  if (msg.type === "complete" && "file" in msg) {
+    return msg.file;
+  }
+  throw new UploadError("Upload completed without file metadata", "UPLOAD_ERROR");
+}
+
+function resolveStagedAttachment(msg: UploadServerMessage): StagedAttachmentRef {
+  if (msg.type === "complete" && "stagedRef" in msg) {
+    return msg.stagedRef;
+  }
+  throw new UploadError(
+    "Upload completed without staged attachment metadata",
+    "UPLOAD_ERROR",
+  );
 }
 
 /**
@@ -121,26 +148,21 @@ function createUploadRateLimiter(maxBytesPerSecond: number | undefined): {
  * @param createWebSocket - WebSocket factory (defaults to browser WebSocket)
  * @returns Promise resolving to UploadedFile on success
  */
-export async function uploadChunks(
+async function uploadChunksWithCompletion<T>(
   url: string,
-  metadata: {
-    name: string;
-    size: number;
-    mimeType: string;
-    width?: number;
-    height?: number;
-  },
+  metadata: UploadMetadata,
   chunks: AsyncIterable<Uint8Array>,
   options: UploadOptions = {},
   createWebSocket: WebSocketFactory = (u) => new WebSocket(u) as WebSocketLike,
-): Promise<UploadedFile> {
+  resolveComplete: (msg: UploadServerMessage) => T,
+): Promise<T> {
   const { onProgress, signal } = options;
   const rateLimiter = createUploadRateLimiter(options.maxBytesPerSecond);
   console.log("[Upload] Starting upload to:", url);
   const endCriticalOperation =
     connectionManager.beginCriticalOperation("upload");
 
-  return new Promise<UploadedFile>((resolve, reject) => {
+  return new Promise<T>((resolve, reject) => {
     // Early abort check
     if (signal?.aborted) {
       reject(new UploadError("Upload aborted", "ABORTED"));
@@ -189,7 +211,11 @@ export async function uploadChunks(
             resolved = true;
             cleanup();
             ws.close(1000, "Upload complete");
-            resolve(msg.file);
+            try {
+              resolve(resolveComplete(msg));
+            } catch (error) {
+              reject(error);
+            }
             break;
           }
           case "error": {
@@ -235,6 +261,7 @@ export async function uploadChunks(
         // Send start message
         const startMsg: UploadStartMessage = {
           type: "start",
+          ...(metadata.batchId !== undefined ? { batchId: metadata.batchId } : {}),
           name: metadata.name,
           size: metadata.size,
           mimeType: metadata.mimeType,
@@ -277,6 +304,40 @@ export async function uploadChunks(
     ws.addEventListener("error", errorHandler);
     ws.addEventListener("close", closeHandler);
   }).finally(endCriticalOperation);
+}
+
+export async function uploadChunks(
+  url: string,
+  metadata: UploadMetadata,
+  chunks: AsyncIterable<Uint8Array>,
+  options: UploadOptions = {},
+  createWebSocket: WebSocketFactory = (u) => new WebSocket(u) as WebSocketLike,
+): Promise<UploadedFile> {
+  return uploadChunksWithCompletion(
+    url,
+    metadata,
+    chunks,
+    options,
+    createWebSocket,
+    resolveUploadedFile,
+  );
+}
+
+export async function uploadStagedChunks(
+  url: string,
+  metadata: UploadMetadata,
+  chunks: AsyncIterable<Uint8Array>,
+  options: UploadOptions = {},
+  createWebSocket: WebSocketFactory = (u) => new WebSocket(u) as WebSocketLike,
+): Promise<StagedAttachmentRef> {
+  return uploadChunksWithCompletion(
+    url,
+    metadata,
+    chunks,
+    options,
+    createWebSocket,
+    resolveStagedAttachment,
+  );
 }
 
 /**
@@ -326,6 +387,18 @@ export function buildUploadUrl(
   return `${protocol}//${host}/api/projects/${projectId}/sessions/${sessionId}/upload/ws`;
 }
 
+export function buildStagedUploadUrl(baseUrl?: string): string {
+  if (baseUrl) {
+    const url = new URL(baseUrl);
+    const protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${url.host}/api/attachments/staging/drafts/upload/ws`;
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const host = window.location.host;
+  return `${protocol}//${host}/api/attachments/staging/drafts/upload/ws`;
+}
+
 /**
  * High-level upload function for browser use.
  * Converts File to chunks and calls uploadChunks.
@@ -361,4 +434,30 @@ export async function uploadFile(
   const chunks = fileToChunks(file, chunkSize);
 
   return uploadChunks(url, metadata, chunks, restOptions);
+}
+
+export async function uploadStagedFile(
+  file: File,
+  options: UploadOptions & { batchId?: string } = {},
+): Promise<StagedAttachmentRef> {
+  const { chunkSize = DEFAULT_CHUNK_SIZE, batchId, ...restOptions } = options;
+
+  const url = buildStagedUploadUrl();
+
+  const metadata = {
+    ...(batchId !== undefined ? { batchId } : {}),
+    name: file.name,
+    size: file.size,
+    mimeType: file.type || "application/octet-stream",
+    ...(options.imageDimensions?.width !== undefined
+      ? { width: options.imageDimensions.width }
+      : {}),
+    ...(options.imageDimensions?.height !== undefined
+      ? { height: options.imageDimensions.height }
+      : {}),
+  };
+
+  const chunks = fileToChunks(file, chunkSize);
+
+  return uploadStagedChunks(url, metadata, chunks, restOptions);
 }

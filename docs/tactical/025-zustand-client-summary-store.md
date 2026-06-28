@@ -1,6 +1,7 @@
 # Zustand Client Summary Store
 
-Status: In Progress.
+Status: Implemented. Long-tail cleanup is tracked in
+[`026-client-summary-long-tail.md`](026-client-summary-long-tail.md).
 
 Progress:
 
@@ -23,8 +24,8 @@ Progress:
 - [x] Move session draft badges into store-owned local decorations.
 - [x] Nest session entities and queries under `sessions`.
 - [x] Migrate Inbox to feed snapshots plus store selectors.
-- [ ] Audit and retire long-tail hooks that privately own row-like session,
-      project, or queue data.
+- [x] Move long-tail tracking to
+      [`026-client-summary-long-tail.md`](026-client-summary-long-tail.md).
 
 Latest update:
 
@@ -75,6 +76,11 @@ Latest update:
   now report ordered tier ids plus partial session facts into the store.
   Existing consumers keep using `useInboxContext` while its row arrays are
   selected from shared summary state.
+- 2026-06-28: Moved remaining cleanup tracking to
+  [`026-client-summary-long-tail.md`](026-client-summary-long-tail.md). This
+  doc now covers the store substrate and completed slice migrations; `026`
+  tracks selector narrowing, hook retirement, settings, processes, recent
+  visits, and targeted feed cleanup.
 
 ## Context
 
@@ -135,6 +141,7 @@ The store is a coarse client summary cache. It should contain:
   active counts, Project Queue blocking count;
 - project queue summaries: queued/dispatching/failed item summaries by project;
 - inbox tier membership as ordered session ids, when the inbox is migrated;
+- shared settings and client defaults that multiple surfaces render or mutate;
 - lightweight session decorations derived from other summary slices, such as
   targeted Project Queue item count or draft presence.
 
@@ -303,7 +310,9 @@ Selectors should:
 
 ## Follow-On Slices
 
-After the no-behavior-change port:
+Further cleanup is tracked in
+[`026-client-summary-long-tail.md`](026-client-summary-long-tail.md). The next
+known themes are:
 
 1. Enrich `/api/sessions` or reduce project-queue events enough for Sidebar and
    All Sessions to show targeted queue badges without extra per-surface queue

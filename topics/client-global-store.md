@@ -12,6 +12,7 @@ See also:
 - [`project-queue.md`](project-queue.md)
 - [`sidebar-session-ordering.md`](sidebar-session-ordering.md)
 - [`../docs/tactical/025-zustand-client-summary-store.md`](../docs/tactical/025-zustand-client-summary-store.md)
+- [`../docs/tactical/026-client-summary-long-tail.md`](../docs/tactical/026-client-summary-long-tail.md)
 
 ## Purpose
 
@@ -44,6 +45,7 @@ The store owns coarse summary state:
 - project summaries and project list membership;
 - project queue summaries;
 - inbox tier membership;
+- shared settings snapshots, once migrated;
 - local lightweight decorations such as draft badges;
 - observation timestamps for stale snapshot protection.
 
@@ -65,6 +67,7 @@ summary updates into the store.
 The store is fed by multiple inputs:
 
 - REST snapshots from sessions, projects, inbox, and project queue APIs;
+- settings API snapshots and successful settings mutations, once migrated;
 - activity-bus events;
 - successful local actions such as star/archive/rename and queue mutations;
 - local browser facts such as draft presence, where appropriate.
@@ -169,7 +172,9 @@ but accepted `/api/inbox` snapshots report partial session facts plus tier ids
 into the store. Existing consumers still read through `useInboxContext`, whose
 arrays are selected from the shared store.
 
-The next likely work is cleanup: audit long-tail hooks and pages that still own
-row-like session/project truth, replace direct row returns with feed controls
-plus store selectors where practical, and add narrower selectors for hot
-surfaces if broad context/store subscriptions become noisy.
+The next likely work is tracked in
+[`026-client-summary-long-tail.md`](../docs/tactical/026-client-summary-long-tail.md):
+audit long-tail hooks and pages that still own row-like session/project truth,
+replace direct row returns with feed controls plus store selectors where
+practical, and add narrower selectors for hot surfaces if broad context/store
+subscriptions become noisy.

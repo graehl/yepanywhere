@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
+  draftStorageValueForText,
+  hasDraftContentValue,
+  readDraftTextValue,
+} from "../lib/draftEnvelope";
+import {
+  createSessionDraftStorageKey,
   removeSessionDraft,
   saveSessionDraft,
   updateSessionDraftIndex,
@@ -53,8 +59,9 @@ function saveToStorage(
   }
 
   try {
-    if (value) {
-      localStorage.setItem(key, value);
+    const nextValue = draftStorageValueForText(value, localStorage.getItem(key));
+    if (nextValue) {
+      localStorage.setItem(key, nextValue);
     } else {
       localStorage.removeItem(key);
     }
@@ -79,6 +86,36 @@ function removeFromStorage(
   }
 }
 
+function readStorageText(key: string): string {
+  try {
+    return readDraftTextValue(localStorage.getItem(key));
+  } catch {
+    return "";
+  }
+}
+
+function hasStorageDraftContent(key: string): boolean {
+  try {
+    return hasDraftContentValue(localStorage.getItem(key));
+  } catch {
+    return false;
+  }
+}
+
+function updateStoredSessionDraftIndex(
+  sessionDraft: UseDraftPersistenceOptions["sessionDraft"],
+): void {
+  if (!sessionDraft) return;
+  try {
+    updateSessionDraftIndex(
+      sessionDraft,
+      localStorage.getItem(createSessionDraftStorageKey(sessionDraft)),
+    );
+  } catch {
+    updateSessionDraftIndex(sessionDraft, "");
+  }
+}
+
 /**
  * Hook for persisting draft text to localStorage.
  * Supports failure recovery by keeping localStorage until explicitly cleared.
@@ -90,13 +127,7 @@ export function useDraftPersistence(
   key: string,
   options?: UseDraftPersistenceOptions,
 ): [string, (value: string) => void, DraftControls] {
-  const [value, setValueInternal] = useState(() => {
-    try {
-      return localStorage.getItem(key) ?? "";
-    } catch {
-      return "";
-    }
-  });
+  const [value, setValueInternal] = useState(() => readStorageText(key));
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyRef = useRef(key);
@@ -127,27 +158,28 @@ export function useDraftPersistence(
       pendingValueRef.current = null;
     }
     if (sessionDraftChanged && previousSessionDraft) {
-      updateSessionDraftIndex(previousSessionDraft, previousValue);
+      updateStoredSessionDraftIndex(previousSessionDraft);
     }
 
     keyRef.current = key;
     sessionDraftRef.current = options?.sessionDraft;
 
     try {
-      const stored = localStorage.getItem(key);
+      const hasStoredDraft = hasStorageDraftContent(key);
       if (
         (keyChanged || sessionDraftChanged) &&
         options?.preserveValueOnKeyChange &&
         previousValue &&
-        !stored
+        !hasStoredDraft
       ) {
         saveToStorage(key, previousValue, options.sessionDraft);
         valueRef.current = previousValue;
         setValueInternal(previousValue);
         return;
       }
-      valueRef.current = stored ?? "";
-      setValueInternal(stored ?? "");
+      const storedText = readStorageText(key);
+      valueRef.current = storedText;
+      setValueInternal(storedText);
     } catch {
       valueRef.current = "";
       setValueInternal("");
@@ -261,14 +293,9 @@ export function useDraftPersistence(
   // Restore from localStorage (for failure recovery)
   const restoreFromStorage = useCallback(() => {
     try {
-      const stored = localStorage.getItem(keyRef.current);
-      if (stored) {
-        valueRef.current = stored;
-        setValueInternal(stored);
-      } else {
-        valueRef.current = "";
-        setValueInternal("");
-      }
+      const storedText = readStorageText(keyRef.current);
+      valueRef.current = storedText;
+      setValueInternal(storedText);
     } catch {
       // Ignore errors
     }

@@ -12,6 +12,12 @@ import {
   scanSessionDraftIds,
 } from "../sessionDraftStorage";
 
+function readStoredText(key: string): string | null {
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  return (JSON.parse(raw) as { text?: string }).text ?? null;
+}
+
 afterEach(() => {
   localStorage.clear();
 });
@@ -26,7 +32,7 @@ describe("sessionDraftStorage", () => {
       "draft text",
     );
 
-    expect(localStorage.getItem("draft-message-session-a")).toBe("draft text");
+    expect(readStoredText("draft-message-session-a")).toBe("draft text");
     expect([...scanSessionDraftIds(LOCAL_CLIENT_SUMMARY_SOURCE_KEY)]).toEqual([
       "session-a",
     ]);
@@ -61,6 +67,43 @@ describe("sessionDraftStorage", () => {
     expect(localStorage.getItem("draft-index-message:direct%3Aws%3A%2F%2Fexample%2Fws")).toBe(
       null,
     );
+  });
+
+  it("keeps attachment-only envelopes in the index", () => {
+    const sourceKey = asClientSummarySourceKey("direct:ws://example/ws");
+    const key = createSessionDraftStorageKey({
+      sourceKey,
+      sessionId: "session-a",
+    });
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        version: 1,
+        text: "",
+        attachments: {
+          batchId: "batch-a",
+          updatedAt: "2026-06-28T00:00:00.000Z",
+          refs: [
+            {
+              id: "file-a",
+              batchId: "batch-a",
+              originalName: "screenshot.png",
+              name: "uuid_screenshot.png",
+              size: 123,
+              mimeType: "image/png",
+              createdAt: "2026-06-28T00:00:00.000Z",
+              updatedAt: "2026-06-28T00:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    );
+    localStorage.setItem(
+      "draft-index-message:direct%3Aws%3A%2F%2Fexample%2Fws",
+      '["session-a"]',
+    );
+
+    expect([...scanSessionDraftIds(sourceKey)]).toEqual(["session-a"]);
   });
 
   it("builds encoded remote body keys", () => {

@@ -1,4 +1,8 @@
 import type { ClientSummarySourceKey } from "./clientSummaryStore";
+import {
+  draftStorageValueForText,
+  hasDraftContentValue,
+} from "./draftEnvelope";
 
 export const SESSION_DRAFT_KEY_PREFIX = "draft-message-";
 const LOCAL_CLIENT_SUMMARY_SOURCE_VALUE = "local";
@@ -81,7 +85,7 @@ export function updateSessionDraftIndex(
   value: string | null | undefined,
 ): void {
   const sessionIds = readDraftIndex(reference.sourceKey);
-  if (value?.trim()) {
+  if (hasDraftContentValue(value)) {
     sessionIds.add(reference.sessionId);
   } else {
     sessionIds.delete(reference.sessionId);
@@ -93,17 +97,19 @@ export function saveSessionDraft(
   reference: SessionDraftReference,
   value: string,
 ): void {
+  let storedValue: string | null = null;
   try {
     const key = createSessionDraftStorageKey(reference);
-    if (value) {
-      localStorage.setItem(key, value);
+    storedValue = draftStorageValueForText(value, localStorage.getItem(key));
+    if (storedValue) {
+      localStorage.setItem(key, storedValue);
     } else {
       localStorage.removeItem(key);
     }
   } catch {
     // localStorage might be full or unavailable.
   }
-  updateSessionDraftIndex(reference, value);
+  updateSessionDraftIndex(reference, storedValue ?? value);
 }
 
 export function removeSessionDraft(reference: SessionDraftReference): void {
@@ -126,7 +132,7 @@ export function scanSessionDraftIds(
       const value = localStorage.getItem(
         createSessionDraftStorageKey({ sourceKey, sessionId }),
       );
-      if (value?.trim()) {
+      if (hasDraftContentValue(value)) {
         result.add(sessionId);
       } else {
         updateSessionDraftIndex({ sourceKey, sessionId }, "");
@@ -148,7 +154,7 @@ export function scanSessionDraftIds(
         continue;
       }
       const value = localStorage.getItem(key);
-      if (value?.trim()) {
+      if (hasDraftContentValue(value)) {
         const sessionId = key.slice(SESSION_DRAFT_KEY_PREFIX.length);
         result.add(sessionId);
         updateSessionDraftIndex({ sourceKey, sessionId }, value);

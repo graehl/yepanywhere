@@ -60,3 +60,4 @@
 - project-queue - Server-owned project-level queued messages, idle promotion, and hidden-by-default UI surfaces.
 - client-global-store - Zustand-backed coarse client summary store for sessions, projects, queues, and inbox projections.
 - source-control-basic-actions - Narrow Source Control page expansion with split diff, recent commits, and explicit remote actions.
+- draft-attachment-staging - Draft envelope, staged attachment storage, and materialization support for composer attachments.

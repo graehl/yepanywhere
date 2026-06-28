@@ -4,6 +4,10 @@ import {
   useClientSummarySourceKey,
   useDraftSessionIds,
 } from "../lib/clientSummaryStore";
+import {
+  hasDraftContentValue,
+  readDraftTextValue,
+} from "../lib/draftEnvelope";
 
 const NEW_SESSION_DRAFT_KEY_PREFIX = "draft-new-session:";
 const FAB_DRAFT_KEY_PREFIX = "fab-draft:";
@@ -93,7 +97,7 @@ function checkNewSessionDraft(
   try {
     return getNewSessionDraftKeys(sourceKey, projectId).some((key) => {
       const value = localStorage.getItem(key);
-      return !!value?.trim();
+      return hasDraftContentValue(value);
     });
   } catch {
     return false;
@@ -129,7 +133,7 @@ export function createQuestionOtherDraftKey(
 
 function readStringDraft(key: string): string {
   try {
-    return localStorage.getItem(key) ?? "";
+    return readDraftTextValue(localStorage.getItem(key));
   } catch {
     return "";
   }

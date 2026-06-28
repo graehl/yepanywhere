@@ -158,6 +158,52 @@ describe("useNewSessionDraft", () => {
 
     expect(result.current).toBe(true);
   });
+
+  it("detects attachment-only new-session draft envelopes", () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+    localStorage.setItem(
+      createNewSessionDraftKey(macbook),
+      JSON.stringify({
+        version: 1,
+        text: "",
+        attachments: {
+          batchId: "batch-a",
+          updatedAt: "2026-06-28T00:00:00.000Z",
+          refs: [
+            {
+              id: "file-a",
+              batchId: "batch-a",
+              originalName: "screenshot.png",
+              name: "uuid_screenshot.png",
+              size: 123,
+              mimeType: "image/png",
+              createdAt: "2026-06-28T00:00:00.000Z",
+              updatedAt: "2026-06-28T00:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    );
+
+    const { result } = renderHook(() => useNewSessionDraft());
+
+    expect(result.current).toBe(true);
+  });
+
+  it("ignores malformed new-session draft envelopes", () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+    localStorage.setItem(createNewSessionDraftKey(macbook), '{"version":1,');
+
+    const { result } = renderHook(() => useNewSessionDraft());
+
+    expect(result.current).toBe(false);
+  });
 });
 
 describe("useToolApprovalFeedbackDraft", () => {

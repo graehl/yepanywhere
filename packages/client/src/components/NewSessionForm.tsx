@@ -1968,11 +1968,24 @@ export function NewSessionForm({
 
     const trimmedMessage = finalMessage.trim();
     const trimmedProjectInput = normalizeProjectInput(projectInput);
-    if (!trimmedMessage || pendingFiles.length > 0 || isStarting) return;
+    const stagedRefs = pendingFiles
+      .filter(isPendingStagedFile)
+      .map(toPersistedStagedAttachmentRef);
+    const canQueueAttachments = stagedRefs.length === pendingFiles.length;
+    if (!trimmedMessage || !canQueueAttachments || isStarting) return;
 
     const actionAtMs = Date.now();
     const clientTimestamp = getServerClockTimestamp(actionAtMs);
     const submittedAt = new Date(clientTimestamp).toISOString();
+    const firstStagedRef = stagedRefs[0];
+    const stagedAttachments =
+      firstStagedRef
+        ? {
+            batchId: firstStagedRef.batchId,
+            refs: stagedRefs,
+            updatedAt: new Date().toISOString(),
+          }
+        : undefined;
 
     setInterimTranscript("");
     setIsStarting(true);
@@ -2005,6 +2018,7 @@ export function NewSessionForm({
         message: {
           text: trimmedMessage,
           mode: sessionMode,
+          ...(stagedAttachments ? { stagedAttachments } : {}),
           metadata: {
             deliveryIntent: "deferred",
             clientTimestamp,
@@ -2027,7 +2041,12 @@ export function NewSessionForm({
         provider: selectedProvider ?? null,
         executor: selectedExecutor ?? null,
         textLength: trimmedMessage.length,
+        attachmentCount: stagedRefs.length,
         uploadWaitMs: Date.now() - actionAtMs,
+      });
+      setPendingFiles([], {
+        persistDraft: false,
+        revokeRemovedPreviewUrls: true,
       });
       draftControls.clearDraft();
       setIsStarting(false);
@@ -2353,15 +2372,17 @@ export function NewSessionForm({
   const hasContent = message.trim() || pendingFiles.length > 0;
   const canStart = Boolean(hasContent);
   const hasProjectQueueTargetProject = Boolean(projectQueueTargetProjectId);
+  const pendingFilesReadyForProjectQueue =
+    pendingFiles.length === 0 || pendingFiles.every(isPendingStagedFile);
   const canQueueProjectSession = Boolean(
     showProjectQueueAction &&
       message.trim() &&
-      pendingFiles.length === 0 &&
+      pendingFilesReadyForProjectQueue &&
       hasProjectQueueTargetProject,
   );
   const projectQueueNewSessionTitle =
-    pendingFiles.length > 0
-      ? t("projectQueueNewSessionAttachmentsUnsupported")
+    !pendingFilesReadyForProjectQueue
+      ? t("projectQueueNewSessionAttachmentsPreparing")
       : hasProjectQueueTargetProject
         ? t("toolbarProjectQueueTooltip")
         : t("projectQueueNewSessionNeedsProject");

@@ -189,6 +189,7 @@ export type {
   ProjectQueueItemSummary,
   ProjectQueueMessage,
   ProjectQueueResponse,
+  ProjectQueueStagedAttachments,
   ProjectQueueTarget,
   UpdateProjectQueueItemRequest,
 } from "./project-queue.js";

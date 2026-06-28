@@ -294,6 +294,9 @@ export function createApp(options: AppOptions): AppResult {
       dataDir: options.dataDir,
       maxUploadSizeBytes: options.maxUploadSizeBytes,
     });
+  options.projectQueueService?.setAttachmentStagingService(
+    attachmentStagingService,
+  );
 
   // Compress API responses (gzip/deflate). Large session payloads — multi-MB
   // Codex transcripts — otherwise cross slow first-mile links uncompressed:
@@ -732,6 +735,7 @@ export function createApp(options: AppOptions): AppResult {
       eventBus: options.eventBus,
       projectQueueService: options.projectQueueService,
       supervisor,
+      attachmentStagingService,
       externalTracker,
       getGlobalInstructions: () =>
         buildEffectiveAgentContext({

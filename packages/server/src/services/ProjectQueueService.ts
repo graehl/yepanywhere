@@ -12,15 +12,18 @@ import {
   type ProjectQueueItemSummary,
   type ProjectQueueMessage,
   type ProjectQueueResponse,
+  type ProjectQueueStagedAttachments,
   type ProjectQueueTarget,
   type ProviderName,
   type ShowThinking,
+  type StagedAttachmentRef,
   type ThinkingOption,
   type UpdateProjectQueueItemRequest,
   type UploadedFile,
   type UrlProjectId,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
+import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
 import type { EventBus } from "../watcher/EventBus.js";
 
 const CURRENT_VERSION = 1;
@@ -34,6 +37,7 @@ interface ProjectQueueState {
 export interface ProjectQueueServiceOptions {
   dataDir: string;
   eventBus?: EventBus;
+  attachmentStagingService?: AttachmentStagingService;
 }
 
 export class ProjectQueueValidationError extends Error {
@@ -54,6 +58,10 @@ function optionalString(value: unknown, field: string): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed || undefined;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function optionalProvider(value: unknown): ProviderName | undefined {
@@ -147,6 +155,125 @@ function normalizeUploadedFile(value: unknown, index: number): UploadedFile {
   };
 }
 
+function normalizeStagedAttachmentRef(
+  value: unknown,
+  index: number,
+  batchId: string,
+): StagedAttachmentRef {
+  if (!isRecord(value)) {
+    throw new ProjectQueueValidationError(
+      `message.stagedAttachments.refs[${index}] must be an object`,
+    );
+  }
+
+  const id = optionalString(
+    value.id,
+    `message.stagedAttachments.refs[${index}].id`,
+  );
+  const refBatchId = optionalString(
+    value.batchId,
+    `message.stagedAttachments.refs[${index}].batchId`,
+  );
+  const originalName = optionalString(
+    value.originalName,
+    `message.stagedAttachments.refs[${index}].originalName`,
+  );
+  const name = optionalString(
+    value.name,
+    `message.stagedAttachments.refs[${index}].name`,
+  );
+  const mimeType = optionalString(
+    value.mimeType,
+    `message.stagedAttachments.refs[${index}].mimeType`,
+  );
+  const createdAt = optionalString(
+    value.createdAt,
+    `message.stagedAttachments.refs[${index}].createdAt`,
+  );
+  const updatedAt = optionalString(
+    value.updatedAt,
+    `message.stagedAttachments.refs[${index}].updatedAt`,
+  );
+  if (
+    !id ||
+    !refBatchId ||
+    refBatchId !== batchId ||
+    !originalName ||
+    !name ||
+    !mimeType ||
+    !createdAt ||
+    !updatedAt
+  ) {
+    throw new ProjectQueueValidationError(
+      `message.stagedAttachments.refs[${index}] is missing required fields`,
+    );
+  }
+  if (typeof value.size !== "number" || !Number.isFinite(value.size)) {
+    throw new ProjectQueueValidationError(
+      `message.stagedAttachments.refs[${index}].size must be a number`,
+    );
+  }
+
+  const width =
+    typeof value.width === "number" && Number.isFinite(value.width)
+      ? value.width
+      : undefined;
+  const height =
+    typeof value.height === "number" && Number.isFinite(value.height)
+      ? value.height
+      : undefined;
+
+  return {
+    id,
+    batchId: refBatchId,
+    originalName,
+    name,
+    size: value.size,
+    mimeType,
+    ...(width !== undefined ? { width } : {}),
+    ...(height !== undefined ? { height } : {}),
+    createdAt,
+    updatedAt,
+  };
+}
+
+function normalizeStagedAttachments(
+  value: unknown,
+): ProjectQueueStagedAttachments {
+  if (!isRecord(value)) {
+    throw new ProjectQueueValidationError(
+      "message.stagedAttachments must be an object",
+    );
+  }
+  const batchId = optionalString(
+    value.batchId,
+    "message.stagedAttachments.batchId",
+  );
+  const updatedAt = optionalString(
+    value.updatedAt,
+    "message.stagedAttachments.updatedAt",
+  );
+  if (!batchId || !updatedAt) {
+    throw new ProjectQueueValidationError(
+      "message.stagedAttachments is missing required fields",
+    );
+  }
+  if (!Array.isArray(value.refs)) {
+    throw new ProjectQueueValidationError(
+      "message.stagedAttachments.refs must be an array",
+    );
+  }
+  const refs = value.refs.map((ref, index) =>
+    normalizeStagedAttachmentRef(ref, index, batchId),
+  );
+  if (refs.length === 0) {
+    throw new ProjectQueueValidationError(
+      "message.stagedAttachments.refs must not be empty",
+    );
+  }
+  return { batchId, refs, updatedAt };
+}
+
 function normalizeMessage(raw: unknown): ProjectQueueMessage {
   if (!isRecord(raw)) {
     throw new ProjectQueueValidationError("message must be an object");
@@ -166,15 +293,20 @@ function normalizeMessage(raw: unknown): ProjectQueueMessage {
               "message.attachments must be an array",
             );
           })();
-  if (!text.trim() && !attachments?.length) {
+  const stagedAttachments =
+    raw.stagedAttachments === undefined
+      ? undefined
+      : normalizeStagedAttachments(raw.stagedAttachments);
+  if (!text.trim() && !attachments?.length && !stagedAttachments?.refs.length) {
     throw new ProjectQueueValidationError(
-      "message.text or message.attachments is required",
+      "message.text, message.attachments, or message.stagedAttachments is required",
     );
   }
 
   return {
     text,
     ...(attachments?.length ? { attachments } : {}),
+    ...(stagedAttachments ? { stagedAttachments } : {}),
     ...(mode ? { mode } : {}),
     ...(isRecord(raw.metadata) ? { metadata: raw.metadata } : {}),
   };
@@ -280,7 +412,9 @@ function normalizeProjectQueueItem(raw: unknown): ProjectQueueItem | null {
 }
 
 function summarizeItem(item: ProjectQueueItem): ProjectQueueItemSummary {
-  const attachmentCount = item.message.attachments?.length ?? 0;
+  const attachmentCount =
+    (item.message.attachments?.length ?? 0) +
+    (item.message.stagedAttachments?.refs.length ?? 0);
   const previewText = item.message.text.trim();
   return {
     id: item.id,
@@ -310,6 +444,16 @@ function cloneItem(item: ProjectQueueItem): ProjectQueueItem {
       ...(item.message.attachments
         ? { attachments: item.message.attachments.map((file) => ({ ...file })) }
         : {}),
+      ...(item.message.stagedAttachments
+        ? {
+            stagedAttachments: {
+              ...item.message.stagedAttachments,
+              refs: item.message.stagedAttachments.refs.map((ref) => ({
+                ...ref,
+              })),
+            },
+          }
+        : {}),
       ...(item.message.metadata ? { metadata: { ...item.message.metadata } } : {}),
     },
     ...(item.createdFrom ? { createdFrom: { ...item.createdFrom } } : {}),
@@ -322,10 +466,18 @@ export class ProjectQueueService {
   private state: ProjectQueueState = { version: CURRENT_VERSION, items: [] };
   private initialized = false;
   private mutationQueue: Promise<void> = Promise.resolve();
+  private attachmentStagingService?: AttachmentStagingService;
 
   constructor(private options: ProjectQueueServiceOptions) {
     this.dataDir = options.dataDir;
     this.filePath = path.join(this.dataDir, "project-queues.json");
+    this.attachmentStagingService = options.attachmentStagingService;
+  }
+
+  setAttachmentStagingService(
+    attachmentStagingService: AttachmentStagingService | undefined,
+  ): void {
+    this.attachmentStagingService = attachmentStagingService;
   }
 
   async initialize(): Promise<void> {
@@ -413,12 +565,17 @@ export class ProjectQueueService {
     return this.withMutation(async () => {
       this.ensureInitialized();
       const now = new Date().toISOString();
+      const itemId = randomUUID();
+      const message = await this.prepareMessageForItem(
+        itemId,
+        normalizeMessage(params.request.message),
+      );
       const item: ProjectQueueItem = {
-        id: randomUUID(),
+        id: itemId,
         projectId: params.projectId,
         projectPath: params.projectPath,
         target: normalizeTarget(params.request.target),
-        message: normalizeMessage(params.request.message),
+        message,
         createdAt: now,
         updatedAt: now,
         createdFrom: normalizeCreatedFrom(params.request.createdFrom),
@@ -452,7 +609,13 @@ export class ProjectQueueService {
           ? { target: normalizeTarget(request.target) }
           : {}),
         ...(request.message !== undefined
-          ? { message: normalizeMessage(request.message) }
+          ? {
+              message: await this.prepareMessageForItem(
+                existing.id,
+                normalizeMessage(request.message),
+                existing.message.stagedAttachments,
+              ),
+            }
           : {}),
         status: existing.status === "failed" ? "queued" : existing.status,
         lastError: undefined,
@@ -460,6 +623,13 @@ export class ProjectQueueService {
       };
       this.state.items[index] = updated;
       await this.save();
+      if (request.message !== undefined) {
+        await this.cleanupReplacedQueueAttachments(
+          existing.id,
+          existing.message.stagedAttachments,
+          updated.message.stagedAttachments,
+        );
+      }
       this.emitChange(projectId, "updated", itemId);
       return summarizeItem(updated);
     });
@@ -475,8 +645,9 @@ export class ProjectQueueService {
           "Cannot delete an item while it is dispatching",
         );
       }
-      this.state.items.splice(index, 1);
+      const [deleted] = this.state.items.splice(index, 1);
       await this.save();
+      await this.cleanupQueueAttachments(deleted);
       this.emitChange(projectId, "deleted", itemId);
       return true;
     });
@@ -566,8 +737,9 @@ export class ProjectQueueService {
       this.ensureInitialized();
       const index = this.findProjectItemIndex(projectId, itemId);
       if (index === -1) return false;
-      this.state.items.splice(index, 1);
+      const [completed] = this.state.items.splice(index, 1);
       await this.save();
+      await this.cleanupQueueAttachments(completed);
       this.emitChange(projectId, "promoted", itemId);
       return true;
     });
@@ -633,6 +805,96 @@ export class ProjectQueueService {
     await fs.mkdir(this.dataDir, { recursive: true });
     await fs.writeFile(tmpPath, JSON.stringify(this.state, null, 2));
     await fs.rename(tmpPath, this.filePath);
+  }
+
+  private async prepareMessageForItem(
+    itemId: string,
+    message: ProjectQueueMessage,
+    existingStagedAttachments?: ProjectQueueStagedAttachments,
+  ): Promise<ProjectQueueMessage> {
+    if (!message.stagedAttachments) {
+      return message;
+    }
+    const stagedAttachments = await this.prepareStagedAttachmentsForItem(
+      itemId,
+      message.stagedAttachments,
+      existingStagedAttachments,
+    );
+    return {
+      ...message,
+      stagedAttachments,
+    };
+  }
+
+  private async prepareStagedAttachmentsForItem(
+    itemId: string,
+    stagedAttachments: ProjectQueueStagedAttachments,
+    existingStagedAttachments?: ProjectQueueStagedAttachments,
+  ): Promise<ProjectQueueStagedAttachments> {
+    const staging = this.attachmentStagingService;
+    if (!staging) {
+      throw new ProjectQueueValidationError(
+        "message.stagedAttachments is not supported",
+      );
+    }
+
+    const refsMatchExisting =
+      existingStagedAttachments !== undefined &&
+      existingStagedAttachments.batchId === stagedAttachments.batchId &&
+      existingStagedAttachments.refs.length === stagedAttachments.refs.length &&
+      existingStagedAttachments.refs.every(
+        (ref, index) => ref.id === stagedAttachments.refs[index]?.id,
+      );
+
+    try {
+      const refs = refsMatchExisting
+        ? await staging.validateQueueRefs(itemId, stagedAttachments.refs)
+        : await staging.transferDraftAttachmentsToQueue({
+            batchId: stagedAttachments.batchId,
+            queueItemId: itemId,
+            refs: stagedAttachments.refs,
+          });
+      const batchId = refs[0]?.batchId ?? stagedAttachments.batchId;
+      return {
+        batchId,
+        refs,
+        updatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      throw new ProjectQueueValidationError(
+        `message.stagedAttachments is invalid: ${errorMessage(error)}`,
+      );
+    }
+  }
+
+  private async cleanupQueueAttachments(
+    item: ProjectQueueItem | undefined,
+  ): Promise<void> {
+    if (!item?.message.stagedAttachments || !this.attachmentStagingService) {
+      return;
+    }
+    await this.attachmentStagingService.deleteQueueAttachments(item.id);
+  }
+
+  private async cleanupReplacedQueueAttachments(
+    itemId: string,
+    previous: ProjectQueueStagedAttachments | undefined,
+    next: ProjectQueueStagedAttachments | undefined,
+  ): Promise<void> {
+    if (!previous || !this.attachmentStagingService) {
+      return;
+    }
+    const keptIds = new Set(next?.refs.map((ref) => ref.id) ?? []);
+    for (const ref of previous.refs) {
+      if (keptIds.has(ref.id)) continue;
+      const record = this.attachmentStagingService.getRecord(ref.id);
+      if (
+        record?.owner.type === "project-queue" &&
+        record.owner.queueItemId === itemId
+      ) {
+        await this.attachmentStagingService.deleteAttachment(ref.id);
+      }
+    }
   }
 
   private emitChange(

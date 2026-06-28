@@ -2,6 +2,7 @@ import {
   type PermissionMode,
   type ProjectQueueItem,
   type ProviderName,
+  type UploadedFile,
   type UrlProjectId,
   thinkingOptionToConfig,
 } from "@yep-anywhere/shared";
@@ -9,6 +10,7 @@ import { getLogger } from "../logging/logger.js";
 import type { UserMessage } from "../sdk/types.js";
 import type { BusEvent, EventBus } from "../watcher/EventBus.js";
 import type { ModelSettings } from "../supervisor/Supervisor.js";
+import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
 import type { ProjectQueueService } from "./ProjectQueueService.js";
 import {
   getProjectWorkIdleStatus,
@@ -44,6 +46,11 @@ export interface ProjectQueueSupervisor extends ProjectWorkSupervisor {
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
   ): Promise<ProjectQueueDispatchResult>;
+  createSession(
+    projectPath: string,
+    permissionMode?: PermissionMode,
+    modelSettings?: ModelSettings,
+  ): Promise<ProjectQueueDispatchResult>;
   resumeSession(
     sessionId: string,
     projectPath: string,
@@ -61,6 +68,7 @@ export interface ProjectQueueSchedulerOptions {
   projectQueueService: ProjectQueueService;
   supervisor: ProjectQueueSupervisor;
   eventBus: EventBus;
+  attachmentStagingService?: AttachmentStagingService;
   externalTracker?: ProjectQueueExternalTracker;
   idleGraceMs?: number;
   getGlobalInstructions?: () => string | undefined;
@@ -234,24 +242,16 @@ export class ProjectQueueScheduler {
   }
 
   private async dispatchItem(item: ProjectQueueItem): Promise<void> {
-    const userMessage = this.toUserMessage(item);
     const permissionMode = item.message.mode ?? item.target.mode;
     const modelSettings = this.toModelSettings(item);
     const result =
       item.target.type === "existing-session"
-        ? await this.supervisor.resumeSession(
-            item.target.sessionId,
-            item.projectPath,
-            userMessage,
+        ? await this.dispatchExistingSessionItem(
+            item,
             permissionMode,
             modelSettings,
           )
-        : await this.supervisor.startSession(
-            item.projectPath,
-            userMessage,
-            permissionMode,
-            modelSettings,
-          );
+        : await this.dispatchNewSessionItem(item, permissionMode, modelSettings);
 
     if (isQueueFullResult(result)) {
       throw new Error(`Worker queue is full (${result.maxQueueSize})`);
@@ -262,12 +262,100 @@ export class ProjectQueueScheduler {
     }
   }
 
-  private toUserMessage(item: ProjectQueueItem): UserMessage {
+  private async dispatchExistingSessionItem(
+    item: ProjectQueueItem,
+    permissionMode: PermissionMode | undefined,
+    modelSettings: ModelSettings,
+  ): Promise<ProjectQueueDispatchResult> {
+    if (item.target.type !== "existing-session") {
+      throw new Error("Project queue item target changed during dispatch");
+    }
+    const stagedAttachments = await this.materializeStagedAttachments(
+      item,
+      item.target.sessionId,
+    );
+    return this.supervisor.resumeSession(
+      item.target.sessionId,
+      item.projectPath,
+      this.toUserMessage(item, stagedAttachments),
+      permissionMode,
+      modelSettings,
+    );
+  }
+
+  private async dispatchNewSessionItem(
+    item: ProjectQueueItem,
+    permissionMode: PermissionMode | undefined,
+    modelSettings: ModelSettings,
+  ): Promise<ProjectQueueDispatchResult> {
+    if (!item.message.stagedAttachments) {
+      return this.supervisor.startSession(
+        item.projectPath,
+        this.toUserMessage(item),
+        permissionMode,
+        modelSettings,
+      );
+    }
+
+    const created = await this.supervisor.createSession(
+      item.projectPath,
+      permissionMode,
+      modelSettings,
+    );
+    if (isQueueFullResult(created)) {
+      return created;
+    }
+    if (isQueuedResult(created)) {
+      throw new Error(
+        "Worker queue deferred a create-only session before staged attachments could be materialized",
+      );
+    }
+
+    const stagedAttachments = await this.materializeStagedAttachments(
+      item,
+      created.sessionId,
+    );
+    return this.supervisor.resumeSession(
+      created.sessionId,
+      item.projectPath,
+      this.toUserMessage(item, stagedAttachments),
+      permissionMode,
+      modelSettings,
+    );
+  }
+
+  private async materializeStagedAttachments(
+    item: ProjectQueueItem,
+    sessionId: string,
+  ): Promise<UploadedFile[]> {
+    const stagedAttachments = item.message.stagedAttachments;
+    if (!stagedAttachments) {
+      return [];
+    }
+    if (!this.options.attachmentStagingService) {
+      throw new Error("Attachment staging service is unavailable");
+    }
+    return this.options.attachmentStagingService.materializeQueueAttachmentsForSession(
+      {
+        queueItemId: item.id,
+        refs: stagedAttachments.refs,
+        projectPath: item.projectPath,
+        sessionId,
+      },
+    );
+  }
+
+  private toUserMessage(
+    item: ProjectQueueItem,
+    stagedAttachments: readonly UploadedFile[] = [],
+  ): UserMessage {
+    const attachments =
+      item.message.attachments || stagedAttachments.length > 0
+        ? [...(item.message.attachments ?? []), ...stagedAttachments]
+        : undefined;
     return {
       text: item.message.text,
-      ...(item.message.attachments
-        ? { attachments: item.message.attachments }
-        : {}),
+      ...(attachments ? { attachments } : {}),
       ...(item.message.mode ? { mode: item.message.mode } : {}),
       ...(item.message.metadata ? { metadata: item.message.metadata } : {}),
     };

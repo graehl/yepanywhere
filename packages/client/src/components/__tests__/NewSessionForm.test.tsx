@@ -1061,6 +1061,62 @@ describe("NewSessionForm", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it("queues staged new-session files through Project Queue", async () => {
+    toolbarVisibilityState.projectQueue = true;
+    inboxState.active = [
+      { sessionId: "session-active", projectId: "project-1" },
+    ];
+    serverSettingsState.isLoading = false;
+    mockUploadStagedAttachment.mockResolvedValue(stagedRef);
+    const { container } = render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("missing file input");
+    fireEvent.change(input, {
+      target: {
+        files: [new File(["hello"], "notes.txt", { type: "text/plain" })],
+      },
+    });
+    await waitFor(() => {
+      expect(draftAttachmentState.value?.refs).toEqual([stagedRef]);
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "queued project work with file" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "toolbarProjectQueueLabel" }),
+    );
+
+    await waitFor(() => {
+      expect(mockCreateProjectQueueItem).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockCreateProjectQueueItem).toHaveBeenCalledWith(
+      "project-1",
+      expect.objectContaining({
+        message: expect.objectContaining({
+          text: "queued project work with file",
+          stagedAttachments: {
+            batchId: stagedRef.batchId,
+            refs: [stagedRef],
+            updatedAt: expect.any(String),
+          },
+        }),
+      }),
+    );
+    expect(mockCreateSession).not.toHaveBeenCalled();
+    expect(mockQueueMessage).not.toHaveBeenCalled();
+    expect(draftAttachmentState.value).toBe(null);
+  });
+
   it("shows the new-session Project Queue action from project blocking counts", () => {
     toolbarVisibilityState.projectQueue = true;
     serverSettingsState.isLoading = false;

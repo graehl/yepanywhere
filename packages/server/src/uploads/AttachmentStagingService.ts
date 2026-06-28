@@ -572,42 +572,36 @@ export class AttachmentStagingService {
         record.owner.batchId === params.batchId
       );
     });
-    const targetDir = await getProjectAttachmentUploadDir(
-      params.projectPath,
-      params.sessionId,
-    );
-    const files: UploadedFile[] = [];
+    return this.materializeRecordsForSession(records, {
+      projectPath: params.projectPath,
+      sessionId: params.sessionId,
+    });
+  }
 
-    for (const record of records) {
-      const targetPath = join(targetDir, record.name);
-      let finalStats = await stat(targetPath).catch((error) => {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-        throw error;
-      });
-      if (!finalStats) {
-        await copyFile(record.path, targetPath);
-        finalStats = await stat(targetPath);
-      }
-
-      if (!finalStats.isFile() || finalStats.size !== record.size) {
-        throw new Error(
-          `Final attachment path has unexpected size: ${record.name}`,
-        );
-      }
-
-      files.push({
-        id: record.id,
-        originalName: record.originalName,
-        name: record.name,
-        path: targetPath,
-        size: record.size,
-        mimeType: record.mimeType,
-        ...(record.width !== undefined ? { width: record.width } : {}),
-        ...(record.height !== undefined ? { height: record.height } : {}),
-      });
+  async materializeQueueAttachmentsForSession(params: {
+    queueItemId: string;
+    refs: readonly StagedAttachmentRef[];
+    projectPath: string;
+    sessionId: string;
+  }): Promise<UploadedFile[]> {
+    await this.ensureInitialized();
+    if (!isSafeUploadPathSegment(params.queueItemId)) {
+      throw new Error("Invalid queue item id");
+    }
+    if (!isSafeUploadPathSegment(params.sessionId)) {
+      throw new Error("Invalid session id");
     }
 
-    return files;
+    const records = await this.getValidatedRecords(params.refs, (record) => {
+      return (
+        record.owner.type === "project-queue" &&
+        record.owner.queueItemId === params.queueItemId
+      );
+    });
+    return this.materializeRecordsForSession(records, {
+      projectPath: params.projectPath,
+      sessionId: params.sessionId,
+    });
   }
 
   async cleanupStaleDraftAttachments(nowMs = this.now()): Promise<number> {
@@ -728,6 +722,48 @@ export class AttachmentStagingService {
       records.push(record);
     }
     return records;
+  }
+
+  private async materializeRecordsForSession(
+    records: readonly StagedAttachmentRecord[],
+    params: { projectPath: string; sessionId: string },
+  ): Promise<UploadedFile[]> {
+    const targetDir = await getProjectAttachmentUploadDir(
+      params.projectPath,
+      params.sessionId,
+    );
+    const files: UploadedFile[] = [];
+
+    for (const record of records) {
+      const targetPath = join(targetDir, record.name);
+      let finalStats = await stat(targetPath).catch((error) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
+      });
+      if (!finalStats) {
+        await copyFile(record.path, targetPath);
+        finalStats = await stat(targetPath);
+      }
+
+      if (!finalStats.isFile() || finalStats.size !== record.size) {
+        throw new Error(
+          `Final attachment path has unexpected size: ${record.name}`,
+        );
+      }
+
+      files.push({
+        id: record.id,
+        originalName: record.originalName,
+        name: record.name,
+        path: targetPath,
+        size: record.size,
+        mimeType: record.mimeType,
+        ...(record.width !== undefined ? { width: record.width } : {}),
+        ...(record.height !== undefined ? { height: record.height } : {}),
+      });
+    }
+
+    return files;
   }
 
   private async pruneInvalidRecords(): Promise<void> {

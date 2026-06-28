@@ -1,4 +1,8 @@
-import { toUrlProjectId, type UrlProjectId } from "@yep-anywhere/shared";
+import {
+  type StagedAttachmentRef,
+  toUrlProjectId,
+  type UrlProjectId,
+} from "@yep-anywhere/shared";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -7,7 +11,24 @@ import {
   ProjectQueueService,
   ProjectQueueValidationError,
 } from "../../src/services/ProjectQueueService.js";
+import { AttachmentStagingService } from "../../src/uploads/index.js";
 import { EventBus } from "../../src/watcher/EventBus.js";
+
+async function completeDraftUpload(
+  service: AttachmentStagingService,
+  content: Buffer,
+  batchId = "batch-a",
+): Promise<{ batchId: string; ref: StagedAttachmentRef }> {
+  const started = await service.startDraftUpload({
+    batchId,
+    originalName: "queued.txt",
+    size: content.length,
+    mimeType: "text/plain",
+  });
+  await service.writeChunk(started.uploadId, content);
+  const ref = await service.completeUpload(started.uploadId);
+  return { batchId: started.batchId, ref };
+}
 
 describe("ProjectQueueService", () => {
   let testDir: string;
@@ -22,8 +43,15 @@ describe("ProjectQueueService", () => {
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
-  async function createService(eventBus?: EventBus): Promise<ProjectQueueService> {
-    const service = new ProjectQueueService({ dataDir: testDir, eventBus });
+  async function createService(
+    eventBus?: EventBus,
+    attachmentStagingService?: AttachmentStagingService,
+  ): Promise<ProjectQueueService> {
+    const service = new ProjectQueueService({
+      dataDir: testDir,
+      eventBus,
+      attachmentStagingService,
+    });
     await service.initialize();
     return service;
   }
@@ -91,6 +119,49 @@ describe("ProjectQueueService", () => {
       `retry:${created.id}:1`,
       `deleted:${created.id}:0`,
     ]);
+  });
+
+  it("transfers staged draft attachments to queue ownership and deletes them on cancel", async () => {
+    const stagingService = new AttachmentStagingService({
+      stagingRoot: path.join(testDir, "staging"),
+    });
+    const { batchId, ref } = await completeDraftUpload(
+      stagingService,
+      Buffer.from("queued attachment"),
+    );
+    const service = await createService(undefined, stagingService);
+
+    const created = await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: { type: "new-session", provider: "claude" },
+        message: {
+          text: "start later with files",
+          stagedAttachments: {
+            batchId,
+            refs: [ref],
+            updatedAt: "2026-06-28T00:00:00.000Z",
+          },
+        },
+        createdFrom: { client: "new-session" },
+      },
+    });
+
+    expect(created.attachmentCount).toBe(1);
+    expect(created.message.stagedAttachments?.refs).toMatchObject([
+      { id: ref.id, batchId },
+    ]);
+    expect(stagingService.getRecord(ref.id)?.owner).toEqual({
+      type: "project-queue",
+      queueItemId: created.id,
+    });
+    await expect(stagingService.listDraftAttachments(batchId)).resolves.toEqual(
+      [],
+    );
+
+    await expect(service.deleteItem(projectId, created.id)).resolves.toBe(true);
+    expect(stagingService.getRecord(ref.id)).toBeNull();
   });
 
   it("rejects empty messages", async () => {

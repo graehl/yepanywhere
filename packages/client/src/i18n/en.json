@@ -232,6 +232,7 @@
   "projectQueueNewSessionQueuedToast": "Queued new session for Project Queue.",
   "projectQueueNewSessionNeedsProject": "Choose a project to use Project Queue.",
   "projectQueueNewSessionAttachmentsUnsupported": "Project Queue for new sessions does not support attachments yet.",
+  "projectQueueNewSessionAttachmentsPreparing": "Wait for attachments to finish uploading.",
   "projectQueueInlineStatusQueued": "Project Queue (#{position})",
   "projectQueueInlineStatusDispatching": "Project Queue sending (#{position})",
   "projectQueueInlineStatusFailed": "Project Queue failed (#{position})",

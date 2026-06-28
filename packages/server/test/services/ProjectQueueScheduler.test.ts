@@ -1,4 +1,8 @@
-import { toUrlProjectId, type UrlProjectId } from "@yep-anywhere/shared";
+import {
+  type StagedAttachmentRef,
+  toUrlProjectId,
+  type UrlProjectId,
+} from "@yep-anywhere/shared";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -13,6 +17,7 @@ import {
   type ProjectQueueSupervisor,
 } from "../../src/services/ProjectQueueScheduler.js";
 import { ProjectQueueService } from "../../src/services/ProjectQueueService.js";
+import { AttachmentStagingService } from "../../src/uploads/index.js";
 import { EventBus } from "../../src/watcher/EventBus.js";
 
 const PROJECT_PATH = "/tmp/project-queue-scheduler";
@@ -37,6 +42,21 @@ async function waitFor(
     }
   }
   if (lastError) throw lastError;
+}
+
+async function completeDraftUpload(
+  service: AttachmentStagingService,
+  content: Buffer,
+): Promise<{ batchId: string; ref: StagedAttachmentRef }> {
+  const started = await service.startDraftUpload({
+    batchId: "batch-a",
+    originalName: "queued.txt",
+    size: content.length,
+    mimeType: "text/plain",
+  });
+  await service.writeChunk(started.uploadId, content);
+  const ref = await service.completeUpload(started.uploadId);
+  return { batchId: started.batchId, ref };
 }
 
 function createProcess(
@@ -74,8 +94,10 @@ class FakeSupervisor implements ProjectQueueSupervisor {
     message: UserMessage;
   }[] = [];
   startCalls: { projectPath: string; message: UserMessage }[] = [];
+  createCalls: { projectPath: string }[] = [];
   resumeError: Error | null = null;
   startError: Error | null = null;
+  createError: Error | null = null;
 
   constructor(private projectId: UrlProjectId) {}
 
@@ -96,6 +118,19 @@ class FakeSupervisor implements ProjectQueueSupervisor {
     const process = createProcess(this.projectId, {
       id: `started-${this.startCalls.length}`,
       sessionId: `new-session-${this.startCalls.length}`,
+    });
+    this.processes.push(process);
+    return process;
+  }
+
+  async createSession(
+    projectPath: string,
+  ): Promise<ProjectQueueDispatchResult> {
+    this.createCalls.push({ projectPath });
+    if (this.createError) throw this.createError;
+    const process = createProcess(this.projectId, {
+      id: `created-${this.createCalls.length}`,
+      sessionId: `created-session-${this.createCalls.length}`,
     });
     this.processes.push(process);
     return process;
@@ -178,6 +213,76 @@ describe("ProjectQueueScheduler", () => {
       message: { text: "run after idle  " },
     });
     expect(service.listProject(projectId).items).toEqual([]);
+  });
+
+  it("materializes staged attachments before promoting a queued new session", async () => {
+    scheduler.dispose();
+    const projectPath = path.join(testDir, "project");
+    const stagingService = new AttachmentStagingService({
+      stagingRoot: path.join(testDir, "staging"),
+    });
+    service.setAttachmentStagingService(stagingService);
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      attachmentStagingService: stagingService,
+      idleGraceMs: 1,
+    });
+    const { batchId, ref } = await completeDraftUpload(
+      stagingService,
+      Buffer.from("queued attachment"),
+    );
+
+    await service.createItem({
+      projectId,
+      projectPath,
+      request: {
+        target: { type: "new-session", provider: "claude" },
+        message: {
+          text: "start later with file",
+          stagedAttachments: {
+            batchId,
+            refs: [ref],
+            updatedAt: "2026-06-28T00:00:00.000Z",
+          },
+        },
+      },
+    });
+
+    await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1));
+
+    expect(supervisor.startCalls).toHaveLength(0);
+    expect(supervisor.createCalls).toEqual([{ projectPath }]);
+    expect(supervisor.resumeCalls[0]).toMatchObject({
+      sessionId: "created-session-1",
+      projectPath,
+      message: {
+        text: "start later with file",
+        attachments: [
+          {
+            id: ref.id,
+            originalName: "queued.txt",
+            path: path.join(
+              projectPath,
+              ".attachments",
+              "created-session-1",
+              ref.name,
+            ),
+          },
+        ],
+      },
+    });
+    await expect(
+      fs.readFile(
+        path.join(projectPath, ".attachments", "created-session-1", ref.name),
+        "utf-8",
+      ),
+    ).resolves.toBe("queued attachment");
+    await waitFor(() => {
+      expect(service.listProject(projectId).items).toEqual([]);
+      expect(stagingService.getRecord(ref.id)).toBeNull();
+    });
   });
 
   it("waits for an active owned process to become verified idle", async () => {

@@ -1,6 +1,8 @@
 # Draft Attachment Staging
 
-Status: Partially implemented.
+Status: Partially implemented. Draft staging, send materialization, and Project
+Queue staged refs are implemented; navigation-guard narrowing and manual
+remote/mobile verification remain.
 
 Design decisions captured here:
 
@@ -22,7 +24,10 @@ Implementation progress:
       per-session deferred queue submissions.
 - [x] Wire staged materialization into normal new-session starts after session
       creation.
-- [ ] Persist staged attachment refs in Project Queue items.
+- [x] Persist staged attachment refs in Project Queue items.
+- [x] Transfer draft-owned refs to queue ownership on Project Queue creation.
+- [x] Materialize queue-owned refs during Project Queue promotion.
+- [x] Delete queue-owned refs on queue item deletion or successful promotion.
 
 ## Context
 
@@ -428,11 +433,11 @@ Shared/client:
 
 ### 5. Project Queue Attachments
 
-- [ ] Extend Project Queue message shape to persist staged attachment refs.
-- [ ] Transfer staged refs from draft-owned to queue-owned on queue creation.
-- [ ] Materialize staged refs during Project Queue promotion.
-- [ ] Delete staged refs when queued items are deleted or successfully promoted.
-- [ ] Keep Project Queue attachment controls behind the existing Project Queue
+- [x] Extend Project Queue message shape to persist staged attachment refs.
+- [x] Transfer staged refs from draft-owned to queue-owned on queue creation.
+- [x] Materialize staged refs during Project Queue promotion.
+- [x] Delete staged refs when queued items are deleted or successfully promoted.
+- [x] Keep Project Queue attachment controls behind the existing Project Queue
       capability gate for the bundled release.
 
 ### 6. Verification

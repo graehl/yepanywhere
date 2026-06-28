@@ -4,7 +4,7 @@ import type {
   ShowThinking,
   ThinkingOption,
 } from "./types.js";
-import type { UploadedFile } from "./upload.js";
+import type { StagedAttachmentRef, UploadedFile } from "./upload.js";
 import type { UrlProjectId } from "./projectId.js";
 import type { UserMessageMetadata } from "./user-message-metadata.js";
 
@@ -18,8 +18,15 @@ export type ProjectQueueClientSource =
 export interface ProjectQueueMessage {
   text: string;
   attachments?: UploadedFile[];
+  stagedAttachments?: ProjectQueueStagedAttachments;
   mode?: PermissionMode;
   metadata?: UserMessageMetadata;
+}
+
+export interface ProjectQueueStagedAttachments {
+  batchId: string;
+  refs: StagedAttachmentRef[];
+  updatedAt: string;
 }
 
 export type ProjectQueueTarget =

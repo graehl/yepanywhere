@@ -316,6 +316,44 @@ describe("AttachmentStagingService", () => {
     );
   });
 
+  it("materializes queue-owned attachments for a session", async () => {
+    const service = new AttachmentStagingService({ stagingRoot });
+    const { batchId, ref } = await completeDraftUpload(
+      service,
+      Buffer.from("queued session attachment"),
+    );
+    const queueRefs = await service.transferDraftAttachmentsToQueue({
+      batchId,
+      queueItemId: "queue-item-a",
+      refs: [ref],
+    });
+    const projectPath = join(stagingRoot, "project");
+
+    const files = await service.materializeQueueAttachmentsForSession({
+      queueItemId: "queue-item-a",
+      refs: queueRefs,
+      projectPath,
+      sessionId: "session-a",
+    });
+
+    expect(files).toEqual([
+      {
+        id: ref.id,
+        originalName: ref.originalName,
+        name: ref.name,
+        path: join(projectPath, ".attachments", "session-a", ref.name),
+        size: ref.size,
+        mimeType: ref.mimeType,
+      },
+    ]);
+    await expect(readFile(files[0]?.path ?? "", "utf-8")).resolves.toBe(
+      "queued session attachment",
+    );
+    await expect(service.listQueueAttachments("queue-item-a")).resolves.toEqual(
+      queueRefs,
+    );
+  });
+
   it("cleans stale draft-owned records but keeps queue-owned records", async () => {
     let now = Date.parse("2026-06-28T00:00:00.000Z");
     const service = new AttachmentStagingService({

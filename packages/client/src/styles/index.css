@@ -908,10 +908,14 @@ textarea {
   height: 20px;
   padding: 0 6px;
   border: 1px solid
-    color-mix(in srgb, var(--provider-codex) 45%, var(--border-color));
+    color-mix(in srgb, var(--project-queue-action-bg) 45%, var(--border-color));
   border-radius: 10px;
-  background: color-mix(in srgb, var(--provider-codex) 12%, var(--bg-surface));
-  color: var(--provider-codex);
+  background: color-mix(
+    in srgb,
+    var(--project-queue-action-bg) 12%,
+    var(--bg-surface)
+  );
+  color: var(--project-queue-action-bg);
   font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
@@ -1039,10 +1043,17 @@ textarea {
   flex-shrink: 0;
   min-width: max-content;
   padding: 0.2rem 0.45rem;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid
+    color-mix(in srgb, var(--project-queue-action-bg) 38%, var(--border-subtle));
   border-radius: 999px;
-  color: var(--text-muted);
+  background: color-mix(
+    in srgb,
+    var(--project-queue-action-bg) 10%,
+    transparent
+  );
+  color: var(--project-queue-action-bg);
   font-size: var(--font-size-xs);
+  font-weight: 600;
 }
 
 .project-queue-section__error,
@@ -1068,7 +1079,7 @@ textarea {
   align-items: center;
   padding: var(--space-2);
   border: 1px solid var(--border-subtle);
-  border-left: 3px solid var(--provider-codex);
+  border-left: 3px solid var(--project-queue-action-bg);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
 }
@@ -1078,7 +1089,7 @@ textarea {
 }
 
 .project-queue-item--dispatching {
-  border-left-color: var(--success-color);
+  border-left-color: var(--project-queue-action-bg);
 }
 
 .project-queue-item__main {
@@ -1153,7 +1164,8 @@ textarea {
 }
 
 .project-queue-item__edit textarea:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--provider-codex) 35%, transparent);
+  outline: 2px solid
+    color-mix(in srgb, var(--project-queue-action-bg) 35%, transparent);
   outline-offset: 1px;
 }
 
@@ -1173,8 +1185,12 @@ textarea {
   min-width: max-content;
   padding: 0.2rem 0.45rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--provider-codex) 10%, var(--bg-surface));
-  color: var(--provider-codex);
+  background: color-mix(
+    in srgb,
+    var(--project-queue-action-bg) 10%,
+    var(--bg-surface)
+  );
+  color: var(--project-queue-action-bg);
   font-size: var(--font-size-xs);
   font-weight: 600;
 }
@@ -1185,8 +1201,12 @@ textarea {
 }
 
 .project-queue-item__status--dispatching {
-  background: color-mix(in srgb, var(--success-color) 10%, var(--bg-surface));
-  color: var(--success-color);
+  background: color-mix(
+    in srgb,
+    var(--project-queue-action-bg) 16%,
+    var(--bg-surface)
+  );
+  color: var(--project-queue-action-bg);
 }
 
 .project-queue-item__actions {

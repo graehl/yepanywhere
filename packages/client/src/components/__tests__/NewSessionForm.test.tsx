@@ -889,10 +889,13 @@ describe("NewSessionForm", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it("shows the new-session Project Queue action from project active counts", () => {
+  it("shows the new-session Project Queue action from project blocking counts", () => {
     toolbarVisibilityState.projectQueue = true;
     serverSettingsState.isLoading = false;
-    const activeProject = { ...chooserProjects[0], activeOwnedCount: 1 };
+    const activeProject = {
+      ...chooserProjects[0],
+      projectQueueBlockingCount: 1,
+    };
 
     render(
       <NewSessionForm

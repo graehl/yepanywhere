@@ -23,6 +23,7 @@ import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
 import { applyRecapOverlayToSummary } from "../sessions/recap-overlays.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
+import type { Process } from "../supervisor/Process.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type {
   AgentActivity,
@@ -68,6 +69,39 @@ export interface ProjectsDeps {
 interface ProjectActivityCounts {
   activeOwnedCount: number;
   activeExternalCount: number;
+  projectQueueBlockingCount: number;
+}
+
+function emptyProjectActivityCounts(): ProjectActivityCounts {
+  return {
+    activeOwnedCount: 0,
+    activeExternalCount: 0,
+    projectQueueBlockingCount: 0,
+  };
+}
+
+function getMutableProjectActivityCounts(
+  counts: Map<string, ProjectActivityCounts>,
+  projectId: string,
+): ProjectActivityCounts {
+  const existing = counts.get(projectId);
+  if (existing) return existing;
+  const created = emptyProjectActivityCounts();
+  counts.set(projectId, created);
+  return created;
+}
+
+function processBlocksProjectQueue(process: Process): boolean {
+  const stateType = process.state.type;
+  return (
+    stateType === "in-turn" ||
+    stateType === "waiting-input" ||
+    process.isRetainingProviderWork() ||
+    process.queueDepth > 0 ||
+    process.getDeferredQueueSummary().length > 0 ||
+    process.getPendingInputRequest() !== null ||
+    process.getLivenessSnapshot().derivedStatus !== "verified-idle"
+  );
 }
 
 /**
@@ -83,12 +117,19 @@ async function getProjectActivityCounts(
   // Count owned sessions from Supervisor (uses base64url projectId)
   if (supervisor) {
     for (const process of supervisor.getAllProcesses()) {
-      const existing = counts.get(process.projectId) || {
-        activeOwnedCount: 0,
-        activeExternalCount: 0,
-      };
+      const existing = getMutableProjectActivityCounts(counts, process.projectId);
       existing.activeOwnedCount++;
-      counts.set(process.projectId, existing);
+      if (processBlocksProjectQueue(process)) {
+        existing.projectQueueBlockingCount++;
+      }
+    }
+
+    for (const request of supervisor.getQueueInfo()) {
+      const existing = getMutableProjectActivityCounts(
+        counts,
+        request.projectId,
+      );
+      existing.projectQueueBlockingCount++;
     }
   }
 
@@ -98,12 +139,9 @@ async function getProjectActivityCounts(
       const info =
         await externalTracker.getExternalSessionInfoWithUrlId(sessionId);
       if (info) {
-        const existing = counts.get(info.projectId) || {
-          activeOwnedCount: 0,
-          activeExternalCount: 0,
-        };
+        const existing = getMutableProjectActivityCounts(counts, info.projectId);
         existing.activeExternalCount++;
-        counts.set(info.projectId, existing);
+        existing.projectQueueBlockingCount++;
       }
     }
   }
@@ -273,6 +311,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         ...project,
         activeOwnedCount: counts?.activeOwnedCount ?? 0,
         activeExternalCount: counts?.activeExternalCount ?? 0,
+        projectQueueBlockingCount: counts?.projectQueueBlockingCount ?? 0,
       };
     });
 
@@ -315,6 +354,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         ...project,
         activeOwnedCount: counts?.activeOwnedCount ?? 0,
         activeExternalCount: counts?.activeExternalCount ?? 0,
+        projectQueueBlockingCount: counts?.projectQueueBlockingCount ?? 0,
       },
     });
   });

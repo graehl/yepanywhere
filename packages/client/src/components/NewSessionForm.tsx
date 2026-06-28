@@ -665,16 +665,14 @@ export function NewSessionForm({
   const projectQueueItemCount = projectQueueTargetProjectId
     ? (projectQueues.queuesByProject[projectQueueTargetProjectId]?.length ?? 0)
     : 0;
-  const projectActiveSessionCount = currentProjectSelection
-    ? currentProjectSelection.activeOwnedCount +
-      currentProjectSelection.activeExternalCount
-    : null;
+  const projectQueueBlockingCount =
+    currentProjectSelection?.projectQueueBlockingCount ?? null;
   const showProjectQueueAction =
     supportsProjectQueue &&
     shouldShowProjectQueueAffordance({
       projectId: projectQueueTargetProjectId,
       activeProjectSessionIds,
-      projectActiveSessionCount,
+      projectQueueBlockingCount,
       projectQueueItemCount,
     });
   const isDetachedProject =

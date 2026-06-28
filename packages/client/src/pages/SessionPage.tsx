@@ -843,11 +843,16 @@ function SessionPageContent({
         .map((item) => item.sessionId),
     [active, needsAttention, projectId],
   );
-  const projectActiveSessionCount = project
-    ? project.activeOwnedCount + project.activeExternalCount
-    : null;
-  const currentSessionIsProjectActive =
-    status.owner === "self" || status.owner === "external";
+  const projectQueueBlockingCount =
+    project?.projectQueueBlockingCount ?? null;
+  const currentSessionBlocksProjectQueue =
+    status.owner === "external" ||
+    processState === "in-turn" ||
+    processState === "waiting-input" ||
+    pendingInputRequest !== null ||
+    (sessionLiveness !== null &&
+      sessionLiveness.derivedStatus !== "verified-idle") ||
+    deferredMessages.length > 0;
   const projectQueueItemsForProject =
     projectQueues.queuesByProject[projectId] ?? EMPTY_PROJECT_QUEUE_ITEMS;
   const projectQueueItemCount = projectQueueItemsForProject.length;
@@ -882,10 +887,10 @@ function SessionPageContent({
   const showProjectQueueAction = shouldShowProjectQueueAffordance({
     projectId,
     currentSessionId: sessionId,
-    currentSessionIsActive: currentSessionIsProjectActive,
+    currentSessionBlocksProjectQueue,
     currentSessionHasSessionQueueBacklog: deferredMessages.length > 0,
     activeProjectSessionIds,
-    projectActiveSessionCount,
+    projectQueueBlockingCount,
     projectQueueItemCount,
   });
 

@@ -176,5 +176,6 @@ export interface Project {
   sessionCountsByProvider?: Partial<Record<ProviderName, number>>;
   activeOwnedCount: number;
   activeExternalCount: number;
+  projectQueueBlockingCount?: number;
   lastActivity: string | null;
 }

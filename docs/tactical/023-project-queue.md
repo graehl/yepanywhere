@@ -20,7 +20,7 @@ Progress:
 - [x] Suppress Project Queue buttons when normal send/queue is equivalent.
 - [x] Gate Project Queue UI and fetches on the server `projectQueue`
       capability.
-- [x] Use project active-count summaries as a Project Queue visibility
+- [x] Use project queue-blocking summaries as a Project Queue visibility
       fallback when exact active sibling session ids are not locally known.
 - [x] Render existing-session Project Queue items inline in the target session
       with purple queue styling, project-wide position, and cancel controls.
@@ -73,14 +73,18 @@ Latest update:
   capability, and runtime/settings entry points hide when a newer remote client
   is connected to an older server.
 - 2026-06-27: Fixed a restart-era visibility gap: session and new-session
-  composers now use project active-count summaries in addition to exact active
-  inbox session ids, so an inactive current session can still show Project
-  Queue when another session in the project is already active.
+  composers now use project queue-blocking summaries in addition to exact
+  active inbox session ids, so an inactive current session can still show
+  Project Queue when another session in the project is already active.
 - 2026-06-27: Landed the inline visibility slice: session transcripts now show
   Project Queue items targeting the current session below normal queued
   messages, with Project Queue purple styling, true project-backlog position,
   copy/cancel actions, and a purple `Q` badge in the sidebar for targeted
   sessions.
+- 2026-06-28: Tightened composer visibility to use server-reported
+  `projectQueueBlockingCount` instead of owned-session counts. Idle retained
+  YA processes still count as server-owned sessions, but no longer make the
+  advanced Project Queue action appear when the project has no blocking work.
 
 ## Context
 
@@ -404,7 +408,7 @@ Configuration split:
 - [x] Hide the Project Queue action when normal send/queue is equivalent.
 - [x] Hide Project Queue runtime/settings UI unless `/api/version` advertises
       `projectQueue`.
-- [x] Use project active-count summaries so the affordance still appears when
+- [x] Use project queue-blocking summaries so the affordance still appears when
       another active project session is not present in local inbox tiers.
 - [x] Render Project Queue items inline in the target session with purple
       styling and project-queue position.

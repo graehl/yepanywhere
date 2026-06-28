@@ -35,6 +35,34 @@ function createSummary(): SessionSummary {
   };
 }
 
+function createProcess(
+  projectId: UrlProjectId,
+  options: {
+    state?: { type: "idle" | "in-turn" | "waiting-input" };
+    queueDepth?: number;
+    retainingProviderWork?: boolean;
+    deferredQueueDepth?: number;
+    pendingInput?: unknown;
+    livenessStatus?: string;
+  } = {},
+) {
+  return {
+    projectId,
+    state: options.state ?? { type: "idle" },
+    queueDepth: options.queueDepth ?? 0,
+    isRetainingProviderWork: vi.fn(
+      () => options.retainingProviderWork ?? false,
+    ),
+    getDeferredQueueSummary: vi.fn(() =>
+      Array.from({ length: options.deferredQueueDepth ?? 0 }, () => ({})),
+    ),
+    getPendingInputRequest: vi.fn(() => options.pendingInput ?? null),
+    getLivenessSnapshot: vi.fn(() => ({
+      derivedStatus: options.livenessStatus ?? "verified-idle",
+    })),
+  };
+}
+
 describe("Projects Routes", () => {
   it("lists mixed-provider sessions through the shared provider resolver", async () => {
     const project = createProject();
@@ -87,10 +115,13 @@ describe("Projects Routes", () => {
       readerFactory: vi.fn(),
       supervisor: {
         getAllProcesses: vi.fn(() => [
-          { projectId: project.id },
-          { projectId: project.id },
-          { projectId: toUrlProjectId("/tmp/other") },
+          createProcess(project.id),
+          createProcess(project.id, { state: { type: "in-turn" } }),
+          createProcess(toUrlProjectId("/tmp/other"), {
+            state: { type: "in-turn" },
+          }),
         ]),
+        getQueueInfo: vi.fn(() => []),
       } as unknown as Parameters<typeof createProjectsRoutes>[0]["supervisor"],
       externalTracker: {
         getExternalSessions: vi.fn(() => ["external-1", "external-2"]),
@@ -117,6 +148,7 @@ describe("Projects Routes", () => {
       id: project.id,
       activeOwnedCount: 2,
       activeExternalCount: 1,
+      projectQueueBlockingCount: 2,
     });
   });
 

@@ -7,10 +7,10 @@ export interface ProjectQueueCapabilitySource {
 export interface ProjectQueueAffordanceState {
   projectId?: string | null;
   currentSessionId?: string | null;
-  currentSessionIsActive?: boolean;
+  currentSessionBlocksProjectQueue?: boolean;
   currentSessionHasSessionQueueBacklog?: boolean;
   activeProjectSessionIds?: readonly string[];
-  projectActiveSessionCount?: number | null;
+  projectQueueBlockingCount?: number | null;
   projectQueueItemCount?: number | null;
 }
 
@@ -23,30 +23,31 @@ export function serverSupportsProjectQueue(
 export function shouldShowProjectQueueAffordance({
   projectId,
   currentSessionId,
-  currentSessionIsActive = false,
+  currentSessionBlocksProjectQueue = false,
   currentSessionHasSessionQueueBacklog = false,
   activeProjectSessionIds = [],
-  projectActiveSessionCount = null,
+  projectQueueBlockingCount = null,
   projectQueueItemCount = 0,
 }: ProjectQueueAffordanceState): boolean {
   if (!projectId) return false;
   if ((projectQueueItemCount ?? 0) > 0) return true;
 
-  let knownCurrentSessionIsActive = currentSessionIsActive;
+  let knownCurrentSessionBlocksProjectQueue =
+    currentSessionBlocksProjectQueue || currentSessionHasSessionQueueBacklog;
   for (const activeSessionId of activeProjectSessionIds) {
     if (activeSessionId === currentSessionId) {
-      knownCurrentSessionIsActive = true;
+      knownCurrentSessionBlocksProjectQueue = true;
       continue;
     }
     return true;
   }
 
-  if (projectActiveSessionCount !== null) {
-    const currentActiveCount = knownCurrentSessionIsActive ? 1 : 0;
-    if (projectActiveSessionCount > currentActiveCount) {
+  if (projectQueueBlockingCount !== null) {
+    const currentBlockingCount = knownCurrentSessionBlocksProjectQueue ? 1 : 0;
+    if (projectQueueBlockingCount > currentBlockingCount) {
       return true;
     }
   }
 
-  return knownCurrentSessionIsActive && currentSessionHasSessionQueueBacklog;
+  return currentSessionHasSessionQueueBacklog;
 }

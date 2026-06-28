@@ -51,13 +51,24 @@ describe("shouldShowProjectQueueAffordance", () => {
     ).toBe(false);
   });
 
-  it("hides when project active count only reflects the current active session", () => {
+  it("hides when project blocking count only reflects the current session", () => {
     expect(
       shouldShowProjectQueueAffordance({
         projectId: "project-1",
         currentSessionId: "session-1",
-        currentSessionIsActive: true,
-        projectActiveSessionCount: 1,
+        currentSessionBlocksProjectQueue: true,
+        projectQueueBlockingCount: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("hides when the project has no queue-blocking work", () => {
+    expect(
+      shouldShowProjectQueueAffordance({
+        projectId: "project-1",
+        currentSessionId: "session-1",
+        activeProjectSessionIds: [],
+        projectQueueBlockingCount: 0,
       }),
     ).toBe(false);
   });
@@ -73,21 +84,21 @@ describe("shouldShowProjectQueueAffordance", () => {
     ).toBe(true);
   });
 
-  it("shows when project active count indicates another active session", () => {
+  it("shows when project blocking count indicates another blocker", () => {
     expect(
       shouldShowProjectQueueAffordance({
         projectId: "project-1",
         currentSessionId: "session-1",
-        currentSessionIsActive: false,
-        projectActiveSessionCount: 1,
+        currentSessionBlocksProjectQueue: false,
+        projectQueueBlockingCount: 1,
       }),
     ).toBe(true);
     expect(
       shouldShowProjectQueueAffordance({
         projectId: "project-1",
         currentSessionId: "session-1",
-        currentSessionIsActive: true,
-        projectActiveSessionCount: 2,
+        currentSessionBlocksProjectQueue: true,
+        projectQueueBlockingCount: 2,
       }),
     ).toBe(true);
   });

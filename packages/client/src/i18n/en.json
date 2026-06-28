@@ -830,6 +830,8 @@
   "gitStatusUntitledCommit": "(no subject)",
   "gitStatusDiffPreview": "Diff preview",
   "gitStatusSelectFileForDiff": "Select a file to preview changes",
+  "gitStatusUpgradeRequiredTitle": "Source Control needs a server update",
+  "gitStatusUpgradeRequiredDescription": "This browser has a newer Source Control page, but this yepanywhere server does not advertise support for it. Upgrade the yepanywhere server, then reload this page.",
   "fabPlaceholder": "Start a new session...",
   "fabGoToNewSession": "Go to new session",
   "fabClose": "Close",

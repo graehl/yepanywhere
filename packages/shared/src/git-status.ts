@@ -1,3 +1,6 @@
+export const GIT_STATUS_CAPABILITY = "git-status";
+export const GIT_STATUS_ENHANCED_CAPABILITY = "git-status-enhanced";
+
 export interface GitFileChange {
   /** Relative file path within the repo */
   path: string;

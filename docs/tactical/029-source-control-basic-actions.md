@@ -13,6 +13,9 @@ Progress:
 - [x] 2026-06-28: Replace the wide-browser diff modal with a split-pane
       viewer.
 - [x] 2026-06-28: Keep the modal path for narrow/mobile layouts.
+- [x] 2026-06-28: Add the `git-status-enhanced` capability gate so a newer
+      frontend disables this page with an upgrade message when talking to an
+      older server.
 - [ ] Add focused server and client tests.
 
 ## Context
@@ -38,6 +41,8 @@ Improve the existing Source Control page with a narrow, explicit remote-action
 surface:
 
 - keep status polling local-only;
+- require an explicit `git-status-enhanced` server capability for the enhanced
+  page;
 - do not periodically fetch or prompt for periodic remote refresh;
 - add a manual "Check remote" action that runs fetch on click;
 - add pull and push buttons that perform remote work only on click;

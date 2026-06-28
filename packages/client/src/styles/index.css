@@ -16520,6 +16520,30 @@ body:has(.session-page)
   border-radius: var(--radius-md);
 }
 
+.git-status-upgrade {
+  display: flex;
+  max-width: 640px;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-6) auto;
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.git-status-upgrade h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.git-status-upgrade p {
+  margin: 0;
+  line-height: 1.45;
+}
+
 .git-status-empty {
   color: var(--text-muted);
   font-style: italic;

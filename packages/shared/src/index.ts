@@ -102,6 +102,10 @@ export type {
   GitRecentCommit,
   GitStatusInfo,
 } from "./git-status.js";
+export {
+  GIT_STATUS_CAPABILITY,
+  GIT_STATUS_ENHANCED_CAPABILITY,
+} from "./git-status.js";
 
 export type {
   SessionActiveWorkKind,

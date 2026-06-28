@@ -3,7 +3,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import type { ClientDefaults } from "@yep-anywhere/shared";
+import {
+  GIT_STATUS_CAPABILITY,
+  GIT_STATUS_ENHANCED_CAPABILITY,
+  type ClientDefaults,
+} from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type {
   SpeechBackendCapabilities,
@@ -217,7 +221,11 @@ export interface VersionInfo {
 export const RESUME_PROTOCOL_VERSION = 3;
 
 /** Base capabilities always advertised. */
-const BASE_CAPABILITIES = ["git-status", "projectQueue"];
+const BASE_CAPABILITIES = [
+  GIT_STATUS_CAPABILITY,
+  GIT_STATUS_ENHANCED_CAPABILITY,
+  "projectQueue",
+];
 
 export type DeviceBridgeState =
   | "available"

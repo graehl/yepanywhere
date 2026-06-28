@@ -1,3 +1,4 @@
+import { GIT_STATUS_ENHANCED_CAPABILITY } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
@@ -724,7 +725,7 @@ export function Sidebar({
               onClick={onNavigate}
               basePath={basePath}
             />
-            {capabilities.includes("git-status") && (
+            {capabilities.includes(GIT_STATUS_ENHANCED_CAPABILITY) && (
               <SidebarNavItem
                 to="/git-status"
                 icon={SidebarIcons.sourceControl}

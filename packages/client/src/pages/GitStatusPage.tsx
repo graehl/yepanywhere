@@ -3,6 +3,7 @@ import type {
   GitRecentCommit,
   GitStatusInfo,
 } from "@yep-anywhere/shared";
+import { GIT_STATUS_ENHANCED_CAPABILITY } from "@yep-anywhere/shared";
 import {
   memo,
   useCallback,
@@ -19,6 +20,7 @@ import { Modal } from "../components/ui/Modal";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useGitStatus } from "../hooks/useGitStatus";
 import { useProject, useProjects } from "../hooks/useProjects";
+import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
 
@@ -46,7 +48,16 @@ export function GitStatusPage() {
   const { projects, loading: projectsLoading } = useProjects();
   const effectiveProjectId = projectId || projects[0]?.id;
   const { project } = useProject(effectiveProjectId);
-  const { gitStatus, loading, error } = useGitStatus(effectiveProjectId);
+  const {
+    version,
+    loading: versionLoading,
+    error: versionError,
+  } = useVersion();
+  const supportsEnhancedGitStatus =
+    version?.capabilities?.includes(GIT_STATUS_ENHANCED_CAPABILITY) ?? false;
+  const { gitStatus, loading, error } = useGitStatus(
+    supportsEnhancedGitStatus ? effectiveProjectId : undefined,
+  );
 
   useDocumentTitle(project?.name, t("gitStatusTitle"));
 
@@ -82,7 +93,15 @@ export function GitStatusPage() {
 
       <main className="page-scroll-container">
         <div className="page-content-inner">
-          {loading || projectsLoading ? (
+          {versionLoading || projectsLoading ? (
+            <div className="loading">{t("gitStatusLoading")}</div>
+          ) : versionError ? (
+            <div className="error">
+              {t("gitStatusErrorPrefix")} {versionError.message}
+            </div>
+          ) : !supportsEnhancedGitStatus ? (
+            <GitStatusUpgradeRequired t={t as never} />
+          ) : loading ? (
             <div className="loading">{t("gitStatusLoading")}</div>
           ) : error ? (
             <div className="error">
@@ -101,6 +120,19 @@ export function GitStatusPage() {
         </div>
       </main>
     </MainContent>
+  );
+}
+
+function GitStatusUpgradeRequired({
+  t,
+}: {
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  return (
+    <div className="git-status-upgrade">
+      <h2>{t("gitStatusUpgradeRequiredTitle")}</h2>
+      <p>{t("gitStatusUpgradeRequiredDescription")}</p>
+    </div>
   );
 }
 

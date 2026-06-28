@@ -226,7 +226,7 @@ export function NotificationsSettings() {
     message: string;
   } | null>(null);
 
-  // Header undo for the three server-side notification toggles. Push/browser
+  // Header undo for the server-side notification toggles. Push/browser
   // subscription state is device-permission-bound and not snapshot-undoable.
   const undoState = useMemo(
     () =>
@@ -235,6 +235,8 @@ export function NotificationsSettings() {
             toolApproval: settings.toolApproval,
             userQuestion: settings.userQuestion,
             sessionHalted: settings.sessionHalted,
+            projectInactive: settings.projectInactive,
+            yaInactive: settings.yaInactive,
           }
         : null,
     [settings],
@@ -244,6 +246,8 @@ export function NotificationsSettings() {
       void updateSetting("toolApproval", snapshot.toolApproval);
       void updateSetting("userQuestion", snapshot.userQuestion);
       void updateSetting("sessionHalted", snapshot.sessionHalted);
+      void updateSetting("projectInactive", snapshot.projectInactive);
+      void updateSetting("yaInactive", snapshot.yaInactive);
     },
     [updateSetting],
   );
@@ -429,6 +433,40 @@ export function NotificationsSettings() {
                 onChange={(e) =>
                   updateSetting("sessionHalted", e.target.checked)
                 }
+                disabled={settingsLoading || !hasSubscriptions}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <strong>{t("notificationsProjectInactiveTitle")}</strong>
+              <p>{t("notificationsProjectInactiveDescription")}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={settings?.projectInactive ?? false}
+                onChange={(e) =>
+                  updateSetting("projectInactive", e.target.checked)
+                }
+                disabled={settingsLoading || !hasSubscriptions}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <strong>{t("notificationsYaInactiveTitle")}</strong>
+              <p>{t("notificationsYaInactiveDescription")}</p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={settings?.yaInactive ?? false}
+                onChange={(e) => updateSetting("yaInactive", e.target.checked)}
                 disabled={settingsLoading || !hasSubscriptions}
               />
               <span className="toggle-slider" />

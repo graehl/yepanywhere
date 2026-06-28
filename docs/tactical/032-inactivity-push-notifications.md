@@ -1,6 +1,6 @@
 # Inactivity Push Notifications
 
-Status: In Progress.
+Status: Push Complete. Desktop notification UX is deferred.
 
 Progress:
 
@@ -14,6 +14,10 @@ Progress:
   with one-shot dirty rechecks, failed Project Queue semantics, connected
   browser suppression, project/YA coalescing, service-worker display/click
   handling, app mounting, and focused tests. Settings UI toggles remain open.
+- [x] 2026-06-28: Added Settings -> Notifications toggles and English i18n
+  copy for `projectInactive` and `yaInactive`, included both fields in the
+  header undo snapshot, and kept the toggles disabled until at least one push
+  subscription exists.
 
 ## Context
 
@@ -330,7 +334,7 @@ server-side toggles. Add the new fields there when implementing.
 - [x] Merge default push settings with persisted settings on read.
 - [x] Extend `/api/push/settings` validation to accept the new keys.
 - [x] Add client API/hook fields for the two toggles.
-- [ ] Add client UI/i18n fields for the two toggles.
+- [x] Add client UI/i18n fields for the two toggles.
 - [x] Add push payload types for project and YA inactivity.
 - [x] Add service-worker rendering and click handling for the new payloads.
 - [x] Add an event-driven inactivity notifier service with one-shot dirty

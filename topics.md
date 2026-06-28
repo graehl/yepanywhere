@@ -58,3 +58,4 @@
 - codex-sessions - Codex rollout storage, compression representation, and YA's durable read assumptions.
 - codex-metadata-scanner - Codex rollout head-metadata discovery, current cache layers, and scanner performance gaps.
 - project-queue - Server-owned project-level queued messages, idle promotion, and hidden-by-default UI surfaces.
+- client-global-store - Zustand-backed coarse client summary store for sessions, projects, queues, and inbox projections.

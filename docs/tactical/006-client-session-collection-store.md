@@ -1,6 +1,6 @@
 # Client Session Collection Store
 
-Status: Row-returning global session hook retired / inventory consumers next
+Status: Row-returning global session hook retired / Zustand follow-on planned
 
 ## Progress
 
@@ -24,6 +24,13 @@ Status: Row-returning global session hook retired / inventory consumers next
 - 2026-06-27: Migrated the Recent Sessions dropdown to the feed-plus-collection
   pattern and deleted the row-returning `useGlobalSessions` compatibility
   wrapper. `024-session-collection-feed-hooks.md` is now complete.
+- 2026-06-28: Chose a Zustand follow-on for the broader client summary store.
+  This doc remains the session data-model history; the substrate and
+  project/queue expansion plan lives in
+  `025-zustand-client-summary-store.md`.
+- 2026-06-28: Ported the existing session collection external-store shell to
+  Zustand while preserving the public hook/reporting surface and lazy activity
+  bus subscription behavior.
 
 ## Context
 

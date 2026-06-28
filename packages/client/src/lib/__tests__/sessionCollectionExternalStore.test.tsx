@@ -44,6 +44,7 @@ vi.mock("../activityBus", () => ({
 }));
 
 import {
+  getSessionCollectionSnapshot,
   reportGlobalSessionsCollectionSnapshot,
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
@@ -214,5 +215,72 @@ describe("sessionCollectionExternalStore", () => {
     });
 
     expect(recent.result.current.map((s) => s.id)).toEqual(["new-session"]);
+  });
+
+  it("preserves unchanged record objects after unrelated updates", () => {
+    act(() => {
+      reportGlobalSessionsCollectionSnapshot(
+        {
+          query: { scope: "global-sessions", limit: 50 },
+          sessions: [globalSession("session-a"), globalSession("session-b")],
+          hasMore: false,
+        },
+        100,
+      );
+    });
+
+    const before = getSessionCollectionSnapshot().entities.get("session-a");
+    expect(before).toBeDefined();
+
+    act(() => {
+      reportSessionCollectionMetadataChanged(
+        {
+          type: "session-metadata-changed",
+          sessionId: "session-b",
+          starred: true,
+          timestamp: "2026-06-27T12:00:01.000Z",
+        },
+        200,
+      );
+    });
+
+    expect(getSessionCollectionSnapshot().entities.get("session-a")).toBe(
+      before,
+    );
+  });
+
+  it("does not rerender selected record hooks for unrelated record updates", () => {
+    act(() => {
+      reportGlobalSessionsCollectionSnapshot(
+        {
+          query: { scope: "global-sessions", limit: 50 },
+          sessions: [globalSession("session-a"), globalSession("session-b")],
+          hasMore: false,
+        },
+        100,
+      );
+    });
+
+    let renders = 0;
+    const selected = renderHook(() => {
+      renders += 1;
+      return useSessionCollectionRecord("session-a");
+    });
+    const before = selected.result.current;
+
+    act(() => {
+      reportSessionCollectionMetadataChanged(
+        {
+          type: "session-metadata-changed",
+          sessionId: "session-b",
+          starred: true,
+          timestamp: "2026-06-27T12:00:01.000Z",
+        },
+        200,
+      );
+    });
+
+    expect(selected.result.current).toBe(before);
+    expect(renders).toBe(1);
   });
 });

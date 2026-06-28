@@ -1,4 +1,6 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo } from "react";
+import { useStore } from "zustand";
+import { createStore } from "zustand/vanilla";
 import {
   activityBus,
   type ProcessStateEvent,
@@ -34,21 +36,20 @@ import {
 type StoreListener = () => void;
 type BusUnsubscribe = () => void;
 
-let snapshot: SessionCollectionState = createEmptySessionCollectionState();
-const listeners = new Set<StoreListener>();
+const sessionCollectionStore = createStore<SessionCollectionState>(() =>
+  createEmptySessionCollectionState(),
+);
+let mountedConsumerCount = 0;
 let activityBusUnsubscribers: BusUnsubscribe[] | null = null;
-
-function notifyListeners(): void {
-  for (const listener of listeners) {
-    listener();
-  }
-}
 
 function updateSnapshot(
   update: (current: SessionCollectionState) => SessionCollectionState,
 ): void {
-  snapshot = update(snapshot);
-  notifyListeners();
+  const current = sessionCollectionStore.getState();
+  const next = update(current);
+  if (next !== current) {
+    sessionCollectionStore.setState(next, true);
+  }
 }
 
 function reduceProcessStateChanged(event: ProcessStateEvent): void {
@@ -99,7 +100,7 @@ function startActivityBusSubscription(): void {
 }
 
 function stopActivityBusSubscriptionIfIdle(): void {
-  if (listeners.size > 0 || !activityBusUnsubscribers) {
+  if (mountedConsumerCount > 0 || !activityBusUnsubscribers) {
     return;
   }
 
@@ -109,24 +110,41 @@ function stopActivityBusSubscriptionIfIdle(): void {
   activityBusUnsubscribers = null;
 }
 
-export function subscribeSessionCollection(
-  listener: StoreListener,
-): () => void {
-  listeners.add(listener);
+function retainActivityBusSubscription(): () => void {
+  mountedConsumerCount += 1;
   startActivityBusSubscription();
 
+  let released = false;
   return () => {
-    listeners.delete(listener);
+    if (released) return;
+    released = true;
+    mountedConsumerCount = Math.max(0, mountedConsumerCount - 1);
     stopActivityBusSubscriptionIfIdle();
   };
 }
 
+function useSessionCollectionActivitySubscription(): void {
+  useEffect(() => retainActivityBusSubscription(), []);
+}
+
+export function subscribeSessionCollection(
+  listener: StoreListener,
+): () => void {
+  const releaseActivityBus = retainActivityBusSubscription();
+  const unsubscribe = sessionCollectionStore.subscribe(() => listener());
+
+  return () => {
+    unsubscribe();
+    releaseActivityBus();
+  };
+}
+
 export function getSessionCollectionSnapshot(): SessionCollectionState {
-  return snapshot;
+  return sessionCollectionStore.getState();
 }
 
 export function getSessionCollectionServerSnapshot(): SessionCollectionState {
-  return snapshot;
+  return sessionCollectionStore.getState();
 }
 
 export function reportGlobalSessionsCollectionSnapshot(
@@ -157,30 +175,32 @@ export function reportSessionCollectionMetadataChanged(
 }
 
 export function useSessionCollectionState(): SessionCollectionState {
-  return useSyncExternalStore(
-    subscribeSessionCollection,
-    getSessionCollectionSnapshot,
-    getSessionCollectionServerSnapshot,
-  );
+  useSessionCollectionActivitySubscription();
+  return useStore(sessionCollectionStore);
 }
 
 export function useSessionCollectionRecord(
   sessionId: string | null | undefined,
 ): SessionCollectionRecord | undefined {
-  const state = useSessionCollectionState();
-  return selectSessionCollectionRecord(state, sessionId);
+  useSessionCollectionActivitySubscription();
+  return useStore(sessionCollectionStore, (state) =>
+    selectSessionCollectionRecord(state, sessionId),
+  );
 }
 
 export function useStarredSessionRecords(): SessionCollectionRecord[] {
-  return selectStarredSessionRecords(useSessionCollectionState());
+  const state = useSessionCollectionState();
+  return useMemo(() => selectStarredSessionRecords(state), [state]);
 }
 
 export function useRecentSessionRecords(now?: number): SessionCollectionRecord[] {
-  return selectRecentSessionRecords(useSessionCollectionState(), now);
+  const state = useSessionCollectionState();
+  return useMemo(() => selectRecentSessionRecords(state, now), [state, now]);
 }
 
 export function useOlderSessionRecords(now?: number): SessionCollectionRecord[] {
-  return selectOlderSessionRecords(useSessionCollectionState(), now);
+  const state = useSessionCollectionState();
+  return useMemo(() => selectOlderSessionRecords(state, now), [state, now]);
 }
 
 export function useSessionCollectionQueryRecords(
@@ -197,17 +217,15 @@ export function useSessionCollectionQueryRecords(
 export function useSessionCollectionQueryState(
   query: SessionCollectionQueryDescriptor,
 ): SessionCollectionQueryState | undefined {
-  const state = useSessionCollectionState();
-  const key = createGlobalSessionsQueryKey(query);
-  return useMemo(
-    () => selectSessionCollectionQueryState(state, query),
-    [state, key, query],
+  useSessionCollectionActivitySubscription();
+  return useStore(sessionCollectionStore, (state) =>
+    selectSessionCollectionQueryState(state, query),
   );
 }
 
 export function resetSessionCollectionStoreForTests(): void {
-  snapshot = createEmptySessionCollectionState();
-  listeners.clear();
+  sessionCollectionStore.setState(createEmptySessionCollectionState(), true);
+  mountedConsumerCount = 0;
   if (activityBusUnsubscribers) {
     for (const unsubscribe of activityBusUnsubscribers) {
       unsubscribe();

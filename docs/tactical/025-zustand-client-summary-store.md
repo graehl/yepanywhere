@@ -1,0 +1,291 @@
+# Zustand Client Summary Store
+
+Status: In Progress.
+
+Progress:
+
+- [x] Add Zustand as the client store substrate.
+- [x] Port the existing session collection store to Zustand with no intended UI
+      behavior changes.
+- [x] Preserve the existing session collection hook surface while the substrate
+      changes.
+- [x] Add initial selector identity and selected-record render-isolation tests
+      before widening the store.
+- [ ] Add project and project-queue slices after the session slice is stable.
+- [ ] Move session-card Project Queue badges to store-owned queue/session
+      decoration facts.
+- [ ] Migrate Inbox to feed snapshots plus store selectors.
+- [ ] Audit and retire long-tail hooks that privately own row-like session,
+      project, or queue data.
+
+Latest update:
+
+- 2026-06-28: Added `zustand` to the client and ported the existing
+  session-collection external-store shell to a vanilla Zustand store. The public
+  hook/reporting surface stayed intact, activity-bus subscriptions remain lazy,
+  and selected-record hooks now use a record-level selector. Added focused tests
+  for unchanged record identity and no rerender on unrelated record updates.
+
+## Context
+
+`006-client-session-collection-store.md` and
+`024-session-collection-feed-hooks.md` moved Sidebar, Global Sessions, and
+Recent Sessions toward a normalized session collection:
+
+- feed hooks own fetch readiness, REST requests, pagination, loading, and error
+  state;
+- the collection owns session facts, observation timestamps, query ids, and
+  derived projections;
+- UI surfaces render rows from collection selectors, not hook-local arrays.
+
+That fixed the first split-brain session bugs, but newer Project Queue work shows
+the next consistency boundary:
+
+- Project Queue `Q` badges are currently sidebar-only because only Sidebar maps
+  project queue items back to targeted session ids.
+- Inbox still renders from `InboxContext` local row arrays.
+- project data (`activeOwnedCount`, `activeExternalCount`,
+  `projectQueueBlockingCount`) is fetched and cached by project hooks, not the
+  collection.
+- several surfaces need "what sessions/projects are active or blocking?" facts,
+  and one-off hooks keep recreating partial views of the same server state.
+
+The current hand-rolled external store proved the data model. Once it broadens
+from sessions into projects, queues, inbox projections, and decorations, the
+subscription plumbing itself becomes a risk. Zustand gives selector-oriented
+React subscriptions without bringing in a request cache or a full Redux-style
+framework.
+
+## Decision
+
+Use Zustand as the substrate for the coarse client summary store.
+
+Do not use React Query as the canonical row/session/project source. React Query
+could manage request lifecycle someday, but query-keyed HTTP caches would still
+need to report every result into a normalized client store. The hard problem
+here is not generic HTTP caching. It is reconciling REST snapshots, activity-bus
+events, successful local actions, local-only draft facts, and remote-readiness
+gates into one stable projection.
+
+The first implementation should be boring: migrate the existing session
+collection from `useSyncExternalStore` plumbing to Zustand while preserving
+current behavior and most public hooks. Do not add project/queue features in the
+same patch that changes the store substrate.
+
+## Store Boundary
+
+The store is a coarse client summary cache. It should contain:
+
+- session summary records: title, project, provider, model, counts, ownership,
+  activity, pending-input type, unread, star/archive metadata, hover excerpt;
+- session query membership: all sessions, starred, project-filtered,
+  search-filtered, recent/sidebar projections;
+- project summary records: id, path, name, session counts, last activity,
+  active counts, Project Queue blocking count;
+- project queue summaries: queued/dispatching/failed item summaries by project;
+- inbox tier membership as ordered session ids, when the inbox is migrated;
+- lightweight session decorations derived from other summary slices, such as
+  targeted Project Queue item count or draft presence.
+
+The store should not contain:
+
+- full session messages;
+- raw JSONL or provider-native transcript payloads;
+- rendered transcript display objects for a session detail page;
+- streaming deltas or in-flight transcript chunks;
+- composer text, form drafts, or attachment upload internals;
+- large file contents or preview bodies;
+- arbitrary per-page UI state such as selected filters, expanded panels, or
+  scroll position.
+
+Session detail pages can keep their heavier live transcript state local. They
+may report summary facts into the store when those facts are useful elsewhere.
+
+## Target Shape
+
+The current session collection can evolve into a broader summary store without
+duplicating project facts on every session record:
+
+```ts
+interface ClientSummaryState {
+  sessions: {
+    entities: Map<string, SessionSummaryRecord>;
+    queries: Map<string, SessionQueryState>;
+  };
+  projects: {
+    entities: Map<string, ProjectSummaryRecord>;
+    queries: Map<string, ProjectQueryState>;
+  };
+  projectQueues: {
+    byProject: Map<string, ProjectQueueSummaryState>;
+  };
+  inbox: {
+    tiers: Record<InboxTier, string[]>;
+    requestStartedAt?: number;
+    fetchedAt?: number;
+  };
+  localDecorations: {
+    draftSessionIds: Set<string>;
+  };
+}
+```
+
+Exact names can change during implementation. The important rule is ownership:
+session facts live on session records, project facts live on project records,
+and project-queue facts live in a project queue slice. Session-card selectors can
+compose across slices to produce badges.
+
+Example selector concepts:
+
+```ts
+useSessionRecord(sessionId);
+useSessionQueryRecords(query);
+useProjectRecord(projectId);
+useProjectQueueSummary(projectId);
+useSessionCardDecorations(sessionId);
+```
+
+Selectors should usually return existing records, primitive values, ordered ids,
+or memoized arrays. Selectors that allocate fresh objects/arrays on every store
+change are not acceptable for hot row surfaces.
+
+## Feed Ownership
+
+Feed hooks remain the right layer for request lifecycle:
+
+- connection readiness, including remote secure-connection readiness;
+- initial fetch, refetch, and pagination;
+- loading and error state;
+- request start timestamps used for stale-snapshot protection;
+- reporting snapshots into the store.
+
+The store itself should not know whether the client is local or remote. It
+reduces snapshots and events that actually arrive.
+
+Target feed shape:
+
+```ts
+const feed = useGlobalSessionsFeed(options);
+const rows = useSessionQueryRecords(feed.query);
+```
+
+Feed hooks may return control state and query descriptors. They should not return
+authoritative row arrays for UI rendering.
+
+## Activity And Snapshot Inputs
+
+The existing session collection already reduces:
+
+- `session-created`;
+- `session-updated`;
+- `session-metadata-changed`;
+- `session-status-changed`;
+- `process-state-changed`;
+- `session-seen`;
+- `/api/sessions` snapshots.
+
+The widened store should add:
+
+- `/api/projects` and `/api/projects/:id` snapshots;
+- `/api/inbox` snapshots, with tier ids and partial session upserts;
+- `/api/projects/:projectId/queue` snapshots;
+- `project-queue-changed` events;
+- successful queue mutation responses;
+- successful project/session metadata actions;
+- draft localStorage scans or events, when draft badges are migrated.
+
+Snapshots may fill missing fields, but must not overwrite field groups observed
+from newer events or local successful actions.
+
+## Performance Contract
+
+Zustand removes the custom subscription plumbing, but it does not remove the
+need for disciplined structural sharing.
+
+Reducers/actions should:
+
+- replace only changed record objects;
+- replace only maps whose contents changed;
+- keep query id arrays stable when membership and order did not change;
+- preserve project queue arrays when a `project-queue-changed` event carries the
+  same item summaries;
+- avoid rebuilding all session rows when one activity field changes.
+
+Selectors should:
+
+- use `Object.is` equality by default;
+- return existing record objects, primitive values, or stable arrays;
+- use shallow equality only for deliberate small composite values;
+- avoid inline allocation for hot list rows;
+- prefer row components subscribing to their own record/decorations when list
+  churn becomes measurable.
+
+## Initial Migration Plan
+
+1. [x] Add the Zustand dependency to `@yep-anywhere/client`.
+2. [x] Port `sessionCollectionExternalStore` to a Zustand store module.
+   - Keep `SessionCollectionState` and the pure reducer helpers initially.
+   - Expose actions like `reportGlobalSessionsCollectionSnapshot`,
+     `reportSessionCollectionCreated`, and
+     `reportSessionCollectionMetadataChanged`.
+   - Subscribe to the same activity-bus session events.
+3. [x] Preserve existing public hooks where practical:
+   - `useSessionCollectionRecord`;
+   - `useStarredSessionRecords`;
+   - `useRecentSessionRecords`;
+   - `useOlderSessionRecords`;
+   - `useSessionCollectionQueryRecords`;
+   - `useSessionCollectionQueryState`.
+4. [ ] Verify Sidebar, Global Sessions, and Recent Sessions still behave the same
+   beyond focused unit/type/lint coverage.
+5. [x] Add initial tests for selector stability and selected-record render
+   isolation.
+6. Only after that, add project/project-queue slices and migrate surfaces.
+
+## Follow-On Slices
+
+After the no-behavior-change port:
+
+1. Add a project slice and make `useProjects` / `useProject` feed snapshots into
+   it. Existing hook names can stay as compatibility selectors while callers
+   migrate.
+2. Add a project-queue slice that reduces queue snapshots and
+   `project-queue-changed`.
+3. Move the sidebar `Q` badge source from local `useProjectQueues(projectIds)`
+   derivation to store-owned queue/session decoration selectors.
+4. Enrich `/api/sessions` or reduce project-queue events enough for All Sessions
+   and Sidebar to show targeted queue badges without extra per-surface fetches.
+5. Migrate Inbox to a feed-plus-store model:
+   - `/api/inbox` owns tier membership;
+   - the store owns partial session facts and tier ids;
+   - `InboxContent` renders via selectors.
+6. Audit Agents, Projects, New Session, and Session Page for hook-local summary
+   facts that should be store-fed instead.
+
+## Verification Checklist
+
+- Current session collection reducer tests still pass after the Zustand port.
+- A stale `/api/sessions` snapshot cannot remove a session created by a newer
+  `session-created` event.
+- Starring and archiving still update sidebar/global projections immediately
+  after successful local actions.
+- A change to session A does not change session B's record object identity.
+- A change to project A does not change project B's record object identity.
+- A session row subscribed to session A does not re-render for an unrelated
+  session B update.
+- Query selectors keep array identity when ids and referenced records did not
+  change.
+- Remote relay feeds do not publish authoritative empty snapshots before the
+  secure connection is ready.
+- Project Queue `Q` badges show consistently on Sidebar, Inbox, and All Sessions
+  once the queue/decorations slice is in place.
+
+## Non-Goals
+
+- Do not move transcript messages into the global store.
+- Do not introduce React Query as part of this migration.
+- Do not rewrite every data hook in the Zustand port.
+- Do not make activity-bus events durable. REST snapshots remain the recovery
+  path for missed events.
+- Do not move page-local UI state into the store unless it is truly shared
+  summary state.

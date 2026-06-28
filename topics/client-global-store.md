@@ -13,6 +13,7 @@ See also:
 - [`sidebar-session-ordering.md`](sidebar-session-ordering.md)
 - [`../docs/tactical/025-zustand-client-summary-store.md`](../docs/tactical/025-zustand-client-summary-store.md)
 - [`../docs/tactical/026-client-summary-long-tail.md`](../docs/tactical/026-client-summary-long-tail.md)
+- [`../docs/tactical/027-client-summary-source-registry.md`](../docs/tactical/027-client-summary-source-registry.md)
 
 ## Purpose
 
@@ -36,6 +37,11 @@ compose from the same records and projections.
 The code uses the `clientSummary` name for this widened store shell. "Summary"
 is intentional: it is a shared cache for coarse server-visible facts, not a home
 for full session message data or provider transcript payloads.
+
+In hosted remote mode, each connected backend host has its own summary cache.
+Default hooks read from the current host's cache; future multi-host views must
+use explicit cross-source selectors instead of making ordinary session surfaces
+aggregate by accident.
 
 ## Boundary
 
@@ -64,6 +70,18 @@ summary updates into the store.
 
 ## Source Model
 
+The store is per backend source. A source is the YA server that produced the
+facts, such as:
+
+- `local`;
+- `host:<SavedHost.id>` for saved relay/direct remote hosts;
+- `direct:<normalized-ws-url>` for unsaved direct remote fallbacks;
+- `remote:none` while a hosted client is unauthenticated or switching hosts.
+
+`ClientSummaryState` remains normalized per source. The registry above it maps
+source keys to Zustand store instances. Current UI hooks select from the current
+source only.
+
 The store is fed by multiple inputs:
 
 - REST snapshots from sessions, projects, inbox, and project queue APIs;
@@ -74,16 +92,20 @@ The store is fed by multiple inputs:
 
 REST snapshots are authoritative for what they queried, but they are not allowed
 to overwrite newer field groups observed from events or local successful
-actions. Missed activity events are healed by later REST snapshots.
+actions within the same source. Missed activity events are healed by later REST
+snapshots for that source.
 
 The activity bus remains the fast event transport. The global store does not
-replace it and does not make events durable.
+replace it and does not make events durable. Activity events that reduce into
+summary state must carry or capture their backend source so a host switch cannot
+apply an old host event to the new host's cache.
 
 ## Fetch Model
 
 Feed hooks own fetch mechanics:
 
 - remote connection readiness;
+- current summary source key capture;
 - pagination;
 - loading and error state;
 - request start timestamps;
@@ -100,9 +122,14 @@ The UI should not render authoritative session/project row arrays returned
 directly from data hooks. Feed hooks may expose query descriptors and controls;
 selectors return the shared records/projections.
 
+Feed hooks that publish snapshots capture the current source key when starting a
+request and pass that key to report functions. A late response from
+`host:macbook` updates the MacBook cache, even if the visible current source has
+since changed to `host:winnative`.
+
 ## Shape
 
-The store should remain normalized:
+Each per-source store should remain normalized:
 
 ```ts
 {
@@ -123,17 +150,28 @@ The store should remain normalized:
 }
 ```
 
+The source registry wraps this shape:
+
+```ts
+Map<ClientSummarySourceKey, StoreApi<ClientSummaryState>>
+```
+
 Do not copy project facts onto every session. Compose them at selector time.
 For example, a session card can read its session record, its project record, the
 project queue summary, and local draft state to produce badges.
 
 ## Performance Contract
 
-The store may be global internally, but components should subscribe narrowly.
+The registry may be global internally, but components should subscribe narrowly
+to the current source's store.
 
 Selectors should return stable values whenever the selected data did not change.
 Hot row surfaces should not subscribe to the whole store. Updates should replace
 only changed records and changed query membership arrays.
+
+Changing the current source key must cause current-source hooks to resubscribe
+to the new source's store. They must not keep rendering records from the
+previous host while the new host is connecting or loading.
 
 When new slices are added, add tests for:
 
@@ -173,8 +211,9 @@ into the store. Existing consumers still read through `useInboxContext`, whose
 arrays are selected from the shared store.
 
 The next likely work is tracked in
-[`026-client-summary-long-tail.md`](../docs/tactical/026-client-summary-long-tail.md):
-audit long-tail hooks and pages that still own row-like session/project truth,
-replace direct row returns with feed controls plus store selectors where
-practical, and add narrower selectors for hot surfaces if broad context/store
-subscriptions become noisy.
+[`027-client-summary-source-registry.md`](../docs/tactical/027-client-summary-source-registry.md):
+move the singleton Zustand store to a per-backend-source registry so hosted
+remote host switches cannot leak Sidebar, Inbox, Project, or queue summary data
+between machines. After that source boundary is in place,
+[`026-client-summary-long-tail.md`](../docs/tactical/026-client-summary-long-tail.md)
+continues the selector narrowing and hook retirement work.

@@ -47,12 +47,14 @@ vi.mock("../activityBus", () => ({
 }));
 
 import {
+  createClientSummaryHostSourceKey,
   getClientSummarySnapshot,
   reportGlobalSessionsCollectionSnapshot,
   reportInboxCollectionSnapshot,
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
   resetClientSummaryStoreForTests,
+  setCurrentClientSummarySourceKey,
   useActiveAgentCount,
   useActiveProjectSessionIds,
   useDraftSessionIds,
@@ -182,6 +184,89 @@ describe("clientSummaryStore", () => {
 
     expect(recent.result.current).toEqual([]);
     expect(starred.result.current.map((s) => s.id)).toEqual(["session-1"]);
+  });
+
+  it("isolates current-source session data across host switches", () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    const winnative = createClientSummaryHostSourceKey("winnative");
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    const recent = renderHook(() =>
+      useRecentSessionRecords(Date.parse("2026-06-27T12:00:00.000Z")),
+    );
+
+    act(() => {
+      reportGlobalSessionsCollectionSnapshot(
+        {
+          query: { scope: "global-sessions", limit: 50 },
+          sessions: [globalSession("mac-session")],
+          hasMore: false,
+        },
+        100,
+      );
+    });
+
+    expect(recent.result.current.map((s) => s.id)).toEqual(["mac-session"]);
+
+    act(() => {
+      setCurrentClientSummarySourceKey(winnative);
+    });
+
+    expect(recent.result.current).toEqual([]);
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    expect(recent.result.current.map((s) => s.id)).toEqual(["mac-session"]);
+  });
+
+  it("rerenders current-source hooks when the source changes", () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    const winnative = createClientSummaryHostSourceKey("winnative");
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+      reportGlobalSessionsCollectionSnapshot(
+        {
+          query: { scope: "global-sessions", limit: 50 },
+          sessions: [
+            globalSession("session-a", {
+              projectName: "Mac Project",
+            }),
+          ],
+          hasMore: false,
+        },
+        100,
+      );
+    });
+
+    let renders = 0;
+    const selected = renderHook(() => {
+      renders += 1;
+      return useSessionCollectionRecord("session-a")?.projectName ?? null;
+    });
+
+    expect(selected.result.current).toBe("Mac Project");
+    const initialRenders = renders;
+
+    act(() => {
+      setCurrentClientSummarySourceKey(winnative);
+    });
+
+    expect(selected.result.current).toBeNull();
+    expect(renders).toBeGreaterThan(initialRenders);
+    const afterWinnativeRenders = renders;
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    expect(selected.result.current).toBe("Mac Project");
+    expect(renders).toBeGreaterThan(afterWinnativeRenders);
   });
 
   it("reports inbox snapshots to React selectors", () => {

@@ -89,6 +89,29 @@ Enable storing multiple SRP sessions and switching between hosts (desktop, pi, l
 
 ---
 
+### Phase 8: Client Summary Source Isolation (planned)
+
+URL-based host switching and saved-host storage are in place, but the client
+summary cache is currently shared across all remote hosts in a browser tab.
+Store-backed surfaces such as Sidebar can therefore show sessions from the
+previous host while the newly requested host is connecting or loading.
+
+The planned fix is tracked in
+[`../tactical/027-client-summary-source-registry.md`](../tactical/027-client-summary-source-registry.md):
+
+- keep the current normalized `ClientSummaryState` shape;
+- maintain one Zustand store per backend source (`local`, `host:<id>`, direct
+  fallback, or `remote:none`);
+- make current-host hooks read only the current source's store;
+- require source keys on snapshot/report writers so late responses from one
+  host update that host's cache, not the visible current host;
+- scope activity-bus reductions and local decorations to the producing source.
+
+This phase should land before more UI surfaces migrate onto the client summary
+store.
+
+---
+
 ## Testing Checklist
 
 - [ ] Fresh install: Login page shows empty, can add relay host
@@ -98,6 +121,8 @@ Enable storing multiple SRP sessions and switching between hosts (desktop, pi, l
 - [ ] Delete host: Removes from list
 - [ ] URL routing: `/remote/desktop/projects` connects to "desktop"
 - [ ] Multi-tab: Two tabs open to different hosts work independently
+- [ ] Same-tab switch: Navigating from one saved relay host to another does
+      not show sessions, inbox counts, or queue badges from the previous host
 - [ ] Bookmarks: Saved URL auto-connects to correct host
 - [ ] Switch host: Settings link goes to host picker
 - [ ] Status indicators: Shows online/offline for relay hosts

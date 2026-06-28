@@ -2,9 +2,9 @@ import type {
   ProjectQueueChangedEvent,
   ProjectQueueItemSummary,
 } from "@yep-anywhere/shared";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useStore } from "zustand";
-import { createStore } from "zustand/vanilla";
+import { createStore, type StoreApi } from "zustand/vanilla";
 import {
   activityBus,
   type ProcessStateEvent,
@@ -70,58 +70,163 @@ type ReleaseSubscription = () => void;
 
 const DRAFT_DECORATION_SCAN_INTERVAL_MS = 1000;
 
-const clientSummaryStore = createStore<ClientSummaryState>(() =>
-  createEmptyClientSummaryState(),
-);
+export type ClientSummarySourceKey = string & {
+  readonly __brand: "ClientSummarySourceKey";
+};
+
+export function asClientSummarySourceKey(
+  value: string,
+): ClientSummarySourceKey {
+  return value as ClientSummarySourceKey;
+}
+
+export function createClientSummaryHostSourceKey(
+  savedHostId: string,
+): ClientSummarySourceKey {
+  return asClientSummarySourceKey(`host:${savedHostId}`);
+}
+
+export function createClientSummaryDirectSourceKey(
+  normalizedWsUrl: string,
+): ClientSummarySourceKey {
+  return asClientSummarySourceKey(`direct:${normalizedWsUrl}`);
+}
+
+export const LOCAL_CLIENT_SUMMARY_SOURCE_KEY =
+  asClientSummarySourceKey("local");
+
+export const REMOTE_NONE_CLIENT_SUMMARY_SOURCE_KEY =
+  asClientSummarySourceKey("remote:none");
+
+const clientSummaryStoresBySource = new Map<
+  ClientSummarySourceKey,
+  StoreApi<ClientSummaryState>
+>();
+const currentSourceKeyListeners = new Set<StoreListener>();
+let currentClientSummarySourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
 let mountedConsumerCount = 0;
 let activityBusUnsubscribers: BusUnsubscribe[] | null = null;
 let mountedDraftDecorationConsumerCount = 0;
 let draftDecorationRelease: ReleaseSubscription | null = null;
 
-function updateSnapshot(
-  update: (current: ClientSummaryState) => ClientSummaryState,
+function createClientSummaryStore(): StoreApi<ClientSummaryState> {
+  return createStore<ClientSummaryState>(() => createEmptyClientSummaryState());
+}
+
+export function getClientSummaryStoreForSource(
+  key: ClientSummarySourceKey,
+): StoreApi<ClientSummaryState> {
+  let store = clientSummaryStoresBySource.get(key);
+  if (!store) {
+    store = createClientSummaryStore();
+    clientSummaryStoresBySource.set(key, store);
+  }
+  return store;
+}
+
+export function getCurrentClientSummarySourceKey(): ClientSummarySourceKey {
+  return currentClientSummarySourceKey;
+}
+
+function subscribeClientSummarySourceKey(
+  listener: StoreListener,
+): () => void {
+  currentSourceKeyListeners.add(listener);
+  return () => {
+    currentSourceKeyListeners.delete(listener);
+  };
+}
+
+export function useClientSummarySourceKey(): ClientSummarySourceKey {
+  return useSyncExternalStore(
+    subscribeClientSummarySourceKey,
+    getCurrentClientSummarySourceKey,
+    getCurrentClientSummarySourceKey,
+  );
+}
+
+export function setCurrentClientSummarySourceKey(
+  key: ClientSummarySourceKey,
 ): void {
-  const current = clientSummaryStore.getState();
-  const next = update(current);
-  if (next !== current) {
-    clientSummaryStore.setState(next, true);
+  if (key === currentClientSummarySourceKey) {
+    return;
+  }
+
+  currentClientSummarySourceKey = key;
+  for (const listener of Array.from(currentSourceKeyListeners)) {
+    listener();
   }
 }
 
+export function getCurrentClientSummaryStore(): StoreApi<ClientSummaryState> {
+  return getClientSummaryStoreForSource(currentClientSummarySourceKey);
+}
+
+function useCurrentClientSummaryStore(): StoreApi<ClientSummaryState> {
+  const sourceKey = useClientSummarySourceKey();
+  return useMemo(() => getClientSummaryStoreForSource(sourceKey), [sourceKey]);
+}
+
+export function clearClientSummarySource(key: ClientSummarySourceKey): void {
+  const store = clientSummaryStoresBySource.get(key);
+  store?.setState(createEmptyClientSummaryState(), true);
+}
+
+function updateStoreSnapshot(
+  store: StoreApi<ClientSummaryState>,
+  update: (current: ClientSummaryState) => ClientSummaryState,
+): void {
+  const current = store.getState();
+  const next = update(current);
+  if (next !== current) {
+    store.setState(next, true);
+  }
+}
+
+function updateCurrentSnapshot(
+  update: (current: ClientSummaryState) => ClientSummaryState,
+): void {
+  updateStoreSnapshot(getCurrentClientSummaryStore(), update);
+}
+
 function reduceProcessStateChanged(event: ProcessStateEvent): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applySessionCollectionProcessStateChanged(current, event),
   );
 }
 
 function reduceSessionStatusChanged(event: SessionStatusEvent): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applySessionCollectionStatusChanged(current, event),
   );
 }
 
 function reduceSessionSeen(event: SessionSeenEvent): void {
-  updateSnapshot((current) => applySessionCollectionSeen(current, event));
+  updateCurrentSnapshot((current) => applySessionCollectionSeen(current, event));
 }
 
 function reduceSessionUpdated(event: SessionUpdatedEvent): void {
-  updateSnapshot((current) => applySessionCollectionUpdated(current, event));
+  updateCurrentSnapshot((current) =>
+    applySessionCollectionUpdated(current, event),
+  );
 }
 
 function reduceSessionMetadataChanged(
   event: SessionMetadataChangedEvent,
 ): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applySessionCollectionMetadataChanged(current, event),
   );
 }
 
 function reduceSessionCreated(event: SessionCreatedEvent): void {
-  updateSnapshot((current) => applySessionCollectionCreated(current, event));
+  updateCurrentSnapshot((current) =>
+    applySessionCollectionCreated(current, event),
+  );
 }
 
 function reduceProjectQueueChanged(event: ProjectQueueChangedEvent): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applyProjectQueueCollectionChanged(current, event),
   );
 }
@@ -174,7 +279,7 @@ export function reportDraftSessionIdsSnapshot(
   draftSessionIds: ReadonlySet<string>,
   observedAt = Date.now(),
 ): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applyDraftSessionIdsSnapshot(current, draftSessionIds, observedAt),
   );
 }
@@ -246,27 +351,35 @@ export function subscribeClientSummary(
   listener: StoreListener,
 ): () => void {
   const releaseActivityBus = retainActivityBusSubscription();
-  const unsubscribe = clientSummaryStore.subscribe(() => listener());
+  let currentStore = getCurrentClientSummaryStore();
+  let unsubscribeStore = currentStore.subscribe(() => listener());
+  const unsubscribeSourceKey = subscribeClientSummarySourceKey(() => {
+    unsubscribeStore();
+    currentStore = getCurrentClientSummaryStore();
+    unsubscribeStore = currentStore.subscribe(() => listener());
+    listener();
+  });
 
   return () => {
-    unsubscribe();
+    unsubscribeSourceKey();
+    unsubscribeStore();
     releaseActivityBus();
   };
 }
 
 export function getClientSummarySnapshot(): ClientSummaryState {
-  return clientSummaryStore.getState();
+  return getCurrentClientSummaryStore().getState();
 }
 
 export function getClientSummaryServerSnapshot(): ClientSummaryState {
-  return clientSummaryStore.getState();
+  return getCurrentClientSummaryStore().getState();
 }
 
 export function reportGlobalSessionsCollectionSnapshot(
   input: GlobalSessionsCollectionSnapshot,
   requestStartedAt = Date.now(),
 ): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applyGlobalSessionsCollectionSnapshot(current, input, requestStartedAt),
   );
 }
@@ -275,7 +388,7 @@ export function reportInboxCollectionSnapshot(
   input: InboxCollectionSnapshot,
   requestStartedAt = Date.now(),
 ): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applyInboxCollectionSnapshot(current, input, requestStartedAt),
   );
 }
@@ -284,7 +397,7 @@ export function reportProjectsCollectionSnapshot(
   input: ProjectsCollectionSnapshot,
   requestStartedAt = Date.now(),
 ): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applyProjectsCollectionSnapshot(current, input, requestStartedAt),
   );
 }
@@ -293,7 +406,7 @@ export function reportProjectCollectionSnapshot(
   input: ProjectCollectionSnapshot,
   requestStartedAt = Date.now(),
 ): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applyProjectCollectionSnapshot(current, input, requestStartedAt),
   );
 }
@@ -302,7 +415,7 @@ export function reportProjectQueueCollectionSnapshot(
   input: ProjectQueueCollectionSnapshot,
   requestStartedAt = Date.now(),
 ): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applyProjectQueueCollectionSnapshot(current, input, requestStartedAt),
   );
 }
@@ -311,7 +424,7 @@ export function reportSessionCollectionCreated(
   event: SessionCreatedEvent,
   observedAt = Date.now(),
 ): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applySessionCollectionCreated(current, event, observedAt),
   );
 }
@@ -320,21 +433,23 @@ export function reportSessionCollectionMetadataChanged(
   event: SessionMetadataChangedEvent,
   observedAt = Date.now(),
 ): void {
-  updateSnapshot((current) =>
+  updateCurrentSnapshot((current) =>
     applySessionCollectionMetadataChanged(current, event, observedAt),
   );
 }
 
 export function useClientSummaryState(): ClientSummaryState {
   useClientSummaryActivitySubscription();
-  return useStore(clientSummaryStore);
+  const store = useCurrentClientSummaryStore();
+  return useStore(store);
 }
 
 export function useSessionCollectionRecord(
   sessionId: string | null | undefined,
 ): SessionCollectionRecord | undefined {
   useClientSummaryActivitySubscription();
-  return useStore(clientSummaryStore, (state) =>
+  const store = useCurrentClientSummaryStore();
+  return useStore(store, (state) =>
     selectSessionCollectionRecord(state, sessionId),
   );
 }
@@ -343,7 +458,8 @@ export function useProjectCollectionRecord(
   projectId: string | null | undefined,
 ): ProjectCollectionRecord | undefined {
   useClientSummaryActivitySubscription();
-  return useStore(clientSummaryStore, (state) =>
+  const store = useCurrentClientSummaryStore();
+  return useStore(store, (state) =>
     selectProjectCollectionRecord(state, projectId),
   );
 }
@@ -357,22 +473,20 @@ export function useProjectQueueItemsByProject(
   projectIds: readonly string[],
 ): Record<string, readonly ProjectQueueItemSummary[]> {
   useClientSummaryActivitySubscription();
-  const byProject = useStore(
-    clientSummaryStore,
-    (state) => state.projectQueues.byProject,
-  );
+  const store = useCurrentClientSummaryStore();
+  const byProject = useStore(store, (state) => state.projectQueues.byProject);
   const projectIdsKey = projectIds.join("\0");
   const selectedProjectIds = useMemo(() => [...projectIds], [projectIdsKey]);
   return useMemo(
     () =>
       selectProjectQueueItemsByProject(
         {
-          ...clientSummaryStore.getState(),
+          ...store.getState(),
           projectQueues: { byProject },
         },
         selectedProjectIds,
       ),
-    [byProject, selectedProjectIds],
+    [store, byProject, selectedProjectIds],
   );
 }
 
@@ -380,28 +494,27 @@ export function useProjectQueuedSessionIds(
   projectIds: readonly string[],
 ): ReadonlySet<string> {
   useClientSummaryActivitySubscription();
-  const byProject = useStore(
-    clientSummaryStore,
-    (state) => state.projectQueues.byProject,
-  );
+  const store = useCurrentClientSummaryStore();
+  const byProject = useStore(store, (state) => state.projectQueues.byProject);
   const projectIdsKey = projectIds.join("\0");
   const selectedProjectIds = useMemo(() => [...projectIds], [projectIdsKey]);
   return useMemo(
     () =>
       selectProjectQueuedSessionIds(
         {
-          ...clientSummaryStore.getState(),
+          ...store.getState(),
           projectQueues: { byProject },
         },
         selectedProjectIds,
       ),
-    [byProject, selectedProjectIds],
+    [store, byProject, selectedProjectIds],
   );
 }
 
 export function useDraftSessionIds(): ReadonlySet<string> {
   useDraftDecorationSubscription();
-  return useStore(clientSummaryStore, selectDraftSessionIds);
+  const store = useCurrentClientSummaryStore();
+  return useStore(store, selectDraftSessionIds);
 }
 
 export function useInboxResponseSnapshot(): InboxCollectionSnapshot {
@@ -411,16 +524,17 @@ export function useInboxResponseSnapshot(): InboxCollectionSnapshot {
 
 export function useInboxCounts(): InboxCounts {
   useClientSummaryActivitySubscription();
+  const store = useCurrentClientSummaryStore();
   const needsAttention = useStore(
-    clientSummaryStore,
+    store,
     (state) => state.inbox.tiers.needsAttention.length,
   );
   const active = useStore(
-    clientSummaryStore,
+    store,
     (state) => state.inbox.tiers.active.length,
   );
   const total = useStore(
-    clientSummaryStore,
+    store,
     (state) => selectInboxCounts(state).total,
   );
   return useMemo(
@@ -431,32 +545,28 @@ export function useInboxCounts(): InboxCounts {
 
 export function useInboxCountsByProject(): ReadonlyMap<string, InboxCounts> {
   useClientSummaryActivitySubscription();
-  const tiers = useStore(clientSummaryStore, (state) => state.inbox.tiers);
-  const entities = useStore(
-    clientSummaryStore,
-    (state) => state.sessions.entities,
-  );
+  const store = useCurrentClientSummaryStore();
+  const tiers = useStore(store, (state) => state.inbox.tiers);
+  const entities = useStore(store, (state) => state.sessions.entities);
   return useMemo(() => {
-    const state = clientSummaryStore.getState();
+    const state = store.getState();
     return selectInboxCountsByProject({
       ...state,
       sessions: { ...state.sessions, entities },
       inbox: { ...state.inbox, tiers },
     });
-  }, [tiers, entities]);
+  }, [store, tiers, entities]);
 }
 
 export function useActiveProjectSessionIds(
   projectId: string | null | undefined,
 ): readonly string[] {
   useClientSummaryActivitySubscription();
-  const tiers = useStore(clientSummaryStore, (state) => state.inbox.tiers);
-  const entities = useStore(
-    clientSummaryStore,
-    (state) => state.sessions.entities,
-  );
+  const store = useCurrentClientSummaryStore();
+  const tiers = useStore(store, (state) => state.inbox.tiers);
+  const entities = useStore(store, (state) => state.sessions.entities);
   return useMemo(() => {
-    const state = clientSummaryStore.getState();
+    const state = store.getState();
     return selectActiveProjectSessionIds(
       {
         ...state,
@@ -465,17 +575,19 @@ export function useActiveProjectSessionIds(
       },
       projectId,
     );
-  }, [tiers, entities, projectId]);
+  }, [store, tiers, entities, projectId]);
 }
 
 export function useActiveAgentCount(): number {
   useClientSummaryActivitySubscription();
-  return useStore(clientSummaryStore, selectActiveAgentCount);
+  const store = useCurrentClientSummaryStore();
+  return useStore(store, selectActiveAgentCount);
 }
 
 export function useHasActiveAgents(): boolean {
   useClientSummaryActivitySubscription();
-  return useStore(clientSummaryStore, selectHasActiveAgents);
+  const store = useCurrentClientSummaryStore();
+  return useStore(store, selectHasActiveAgents);
 }
 
 export function useStarredSessionRecords(): SessionCollectionRecord[] {
@@ -508,13 +620,19 @@ export function useSessionCollectionQueryState(
   query: SessionCollectionQueryDescriptor,
 ): SessionCollectionQueryState | undefined {
   useClientSummaryActivitySubscription();
-  return useStore(clientSummaryStore, (state) =>
+  const store = useCurrentClientSummaryStore();
+  return useStore(store, (state) =>
     selectSessionCollectionQueryState(state, query),
   );
 }
 
 export function resetClientSummaryStoreForTests(): void {
-  clientSummaryStore.setState(createEmptyClientSummaryState(), true);
+  for (const store of clientSummaryStoresBySource.values()) {
+    store.setState(createEmptyClientSummaryState(), true);
+  }
+  clientSummaryStoresBySource.clear();
+  currentClientSummarySourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
+  currentSourceKeyListeners.clear();
   mountedConsumerCount = 0;
   mountedDraftDecorationConsumerCount = 0;
   if (activityBusUnsubscribers) {

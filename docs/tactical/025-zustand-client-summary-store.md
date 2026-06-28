@@ -1,7 +1,9 @@
 # Zustand Client Summary Store
 
 Status: Implemented. Long-tail cleanup is tracked in
-[`026-client-summary-long-tail.md`](026-client-summary-long-tail.md).
+[`026-client-summary-long-tail.md`](026-client-summary-long-tail.md). The next
+store-boundary expansion is the per-source registry tracked in
+[`027-client-summary-source-registry.md`](027-client-summary-source-registry.md).
 
 Progress:
 
@@ -81,6 +83,11 @@ Latest update:
   doc now covers the store substrate and completed slice migrations; `026`
   tracks selector narrowing, hook retirement, settings, processes, recent
   visits, and targeted feed cleanup.
+- 2026-06-28: Identified hosted multi-host source isolation as the next store
+  boundary. `ClientSummaryState` remains the per-source normalized shape, but
+  the singleton Zustand store should become a registry keyed by backend source
+  before more UI surfaces migrate onto it. See
+  [`027-client-summary-source-registry.md`](027-client-summary-source-registry.md).
 
 ## Context
 
@@ -163,7 +170,8 @@ may report summary facts into the store when those facts are useful elsewhere.
 
 The broader summary store keeps session, project, queue, and local-decoration
 facts in separate slices without duplicating project facts on every session
-record:
+record. This is the shape of one backend source's cache; the source registry
+planned in `027` keeps multiple instances of this same shape:
 
 ```ts
 interface ClientSummaryState {

@@ -8,13 +8,24 @@ The goal is not to move every hook into the store. The goal is to make shared
 summary facts come from one normalized client cache while keeping fetch
 lifecycle, page UI state, and heavy transcript state in the right places.
 
+Immediate prerequisite: the store must become source-scoped before more
+long-tail migration. Hosted remote clients can switch between multiple backend
+hosts in one tab, so a singleton summary cache can leak rows from one machine
+into another machine's Sidebar or pages. The source-registry work is tracked in
+[`027-client-summary-source-registry.md`](027-client-summary-source-registry.md).
+
 ## Target Invariant
 
 Shared summary facts are read from `clientSummaryStore`.
 
+In hosted remote mode, "shared" means shared within the current backend source,
+not across every saved host. Current-source selectors must not render stale
+records from the previous host while a new host is connecting or loading.
+
 Feed hooks own:
 
 - remote/local readiness gates;
+- current summary source key capture;
 - targeted REST requests;
 - loading and error state;
 - pagination and mutation control state;
@@ -272,6 +283,11 @@ and narrows several consumers that currently subscribe to full inbox row arrays.
   for Project Queue visibility. The remaining `useInboxContext` production
   consumer is `InboxContent`, with `InboxContext` still owning the `/api/inbox`
   feed.
+- 2026-06-28: Paused further long-tail migration behind the source-registry
+  prerequisite in `027-client-summary-source-registry.md`. The next store
+  substrate change keeps the current `ClientSummaryState` shape but creates
+  one cache per backend source so hosted remote host switches cannot render
+  sessions from the previous machine.
 
 ## Verification Checklist
 
@@ -286,3 +302,15 @@ For each long-tail chunk:
 - tests cover unchanged record identity or selected-hook render isolation when
   a chunk touches hot row surfaces;
 - no transcript/message/composer state moves into the global store.
+
+## Immediate Next Chunk
+
+Implement the client summary source registry from
+[`027-client-summary-source-registry.md`](027-client-summary-source-registry.md)
+before continuing queue selector cleanup or settings migration.
+
+Reason: moving more surfaces onto an unscoped singleton store would increase
+the blast radius of the multi-host leakage bug. The registry keeps the current
+`ClientSummaryState` shape but creates one store per backend source, so the
+existing selector migration can continue without mixing MacBook, WinNative, Pi,
+or local summaries.

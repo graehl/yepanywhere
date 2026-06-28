@@ -97,6 +97,8 @@ vi.mock("../../hooks/useProjects", () => ({
 vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
   SIDEBAR_SESSION_FEED_LIMIT: 50,
   useSidebarSessionFeeds: () => ({
+    globalQuery: { scope: "global-sessions" },
+    starredQuery: { scope: "global-sessions", starred: true },
     loading: globalSessionsState.loading || starredSessionsState.loading,
     hasMoreGlobalSessions: globalSessionsState.hasMore,
     loadMoreGlobalSessions: globalSessionsState.loadMore,
@@ -106,13 +108,6 @@ vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
 }));
 
 vi.mock("../../lib/clientSummaryStore", () => {
-  const recordUpdatedAtMs = (session: Record<string, unknown>): number =>
-    typeof session.updatedAt === "string"
-      ? Date.parse(session.updatedAt) || 0
-      : 0;
-  const isActiveRecord = (session: Record<string, unknown>): boolean =>
-    session.activity === "in-turn" || session.activity === "waiting-input";
-
   return {
     useDraftSessionIds: () => new Set<string>(),
     useInboxCounts: () => ({
@@ -120,33 +115,10 @@ vi.mock("../../lib/clientSummaryStore", () => {
       active: 0,
       total: 0,
     }),
-    useStarredSessionRecords: () =>
-      starredSessionsState.sessions.filter((session) => !session.isArchived),
-    useRecentSessionRecords: () => {
-      const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-      const sessions = globalSessionsState.sessions.filter(
-        (session) =>
-          !session.isStarred &&
-          !session.isArchived &&
-          recordUpdatedAtMs(session) >= oneDayAgo,
-      );
-      const active = sessions.filter(isActiveRecord);
-      const idle = sessions
-        .filter((session) => !isActiveRecord(session))
-        .sort((a, b) => recordUpdatedAtMs(b) - recordUpdatedAtMs(a));
-      return [...active, ...idle];
-    },
-    useOlderSessionRecords: () => {
-      const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-      return globalSessionsState.sessions
-        .filter(
-          (session) =>
-            !session.isStarred &&
-            !session.isArchived &&
-            recordUpdatedAtMs(session) < oneDayAgo,
-        )
-        .sort((a, b) => recordUpdatedAtMs(b) - recordUpdatedAtMs(a));
-    },
+    useSessionCollectionQueryRecords: (query: { starred?: boolean }) =>
+      query.starred
+        ? starredSessionsState.sessions
+        : globalSessionsState.sessions,
     useKnownProjectQueueItems: () =>
       Object.values(projectQueuesState.queuesByProject).flat(),
     useProjectQueuedSessionIds: () => {
@@ -562,7 +534,7 @@ describe("Sidebar collapsed toggle", () => {
 
   it("collapses and expands the starred bucket", () => {
     starredSessionsState.sessions = [
-      makeSession("starred", new Date().toISOString()),
+      makeSession("starred", new Date().toISOString(), { isStarred: true }),
     ];
 
     render(
@@ -597,7 +569,7 @@ describe("Sidebar collapsed toggle", () => {
   it("initializes sidebar section collapse state from localStorage", () => {
     const now = Date.now();
     starredSessionsState.sessions = [
-      makeSession("starred", new Date(now).toISOString()),
+      makeSession("starred", new Date(now).toISOString(), { isStarred: true }),
     ];
     globalSessionsState.sessions = [
       makeSession("recent", new Date(now).toISOString()),

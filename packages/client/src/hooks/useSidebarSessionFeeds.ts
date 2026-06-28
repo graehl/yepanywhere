@@ -1,8 +1,11 @@
 import { useGlobalSessionsFeed } from "./useGlobalSessionsFeed";
+import type { SessionCollectionQueryDescriptor } from "../lib/clientSummaryState";
 
 export const SIDEBAR_SESSION_FEED_LIMIT = 50;
 
 export interface SidebarSessionFeeds {
+  globalQuery: SessionCollectionQueryDescriptor;
+  starredQuery: SessionCollectionQueryDescriptor;
   loading: boolean;
   hasMoreGlobalSessions: boolean;
   loadMoreGlobalSessions: () => Promise<void>;
@@ -40,6 +43,8 @@ export function useSidebarSessionFeeds(
   });
 
   return {
+    globalQuery: globalFeed.query,
+    starredQuery: starredFeed.query,
     loading: globalFeed.loading || starredFeed.loading,
     hasMoreGlobalSessions: globalFeed.hasMore,
     loadMoreGlobalSessions: globalFeed.loadMore,

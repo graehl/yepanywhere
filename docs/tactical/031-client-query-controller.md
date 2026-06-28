@@ -25,6 +25,9 @@ requires this data coverage" without duplicate requests.
 - 2026-06-28: Mounted Sidebar session feed coverage from `NavigationLayout`, so
   the app shell retains Sidebar's global and starred session queries
   independently of the visual Sidebar branch.
+- 2026-06-28: Corrected Sidebar rendering to use retained query memberships
+  for Starred, Recent, and Older sections instead of broad "all known entity"
+  projections that varied with fetch completion order.
 
 ## Context
 

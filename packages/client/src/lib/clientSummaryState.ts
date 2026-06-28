@@ -1374,8 +1374,16 @@ function orderActiveFirst(records: SessionCollectionRecord[]) {
 export function selectStarredSessionRecords(
   state: ClientSummaryState,
 ): SessionCollectionRecord[] {
+  return selectStarredSessionRecordsFromRecords(
+    Array.from(state.sessions.entities.values()),
+  );
+}
+
+export function selectStarredSessionRecordsFromRecords(
+  records: readonly SessionCollectionRecord[],
+): SessionCollectionRecord[] {
   return orderActiveFirst(
-    Array.from(state.sessions.entities.values()).filter(
+    records.filter(
       (record) => record.isStarred === true && record.isArchived !== true,
     ),
   );
@@ -1385,23 +1393,43 @@ export function selectRecentSessionRecords(
   state: ClientSummaryState,
   now = Date.now(),
 ): SessionCollectionRecord[] {
+  return selectRecentSessionRecordsFromRecords(
+    Array.from(state.sessions.entities.values()),
+    now,
+  );
+}
+
+export function selectRecentSessionRecordsFromRecords(
+  records: readonly SessionCollectionRecord[],
+  now = Date.now(),
+): SessionCollectionRecord[] {
   const oneDayAgo = now - 24 * 60 * 60 * 1000;
-  const records = Array.from(state.sessions.entities.values()).filter(
+  const filtered = records.filter(
     (record) =>
       record.isStarred !== true &&
       record.isArchived !== true &&
       updatedAtMs(record) >= oneDayAgo,
   );
 
-  return orderActiveFirst(records);
+  return orderActiveFirst(filtered);
 }
 
 export function selectOlderSessionRecords(
   state: ClientSummaryState,
   now = Date.now(),
 ): SessionCollectionRecord[] {
+  return selectOlderSessionRecordsFromRecords(
+    Array.from(state.sessions.entities.values()),
+    now,
+  );
+}
+
+export function selectOlderSessionRecordsFromRecords(
+  records: readonly SessionCollectionRecord[],
+  now = Date.now(),
+): SessionCollectionRecord[] {
   const oneDayAgo = now - 24 * 60 * 60 * 1000;
-  return Array.from(state.sessions.entities.values())
+  return [...records]
     .filter(
       (record) =>
         record.isStarred !== true &&

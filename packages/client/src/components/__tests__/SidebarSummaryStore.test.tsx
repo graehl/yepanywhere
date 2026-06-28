@@ -77,6 +77,8 @@ vi.mock("../../hooks/useServerSettings", () => ({
 vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
   SIDEBAR_SESSION_FEED_LIMIT: 50,
   useSidebarSessionFeeds: () => ({
+    globalQuery: { scope: "global-sessions" },
+    starredQuery: { scope: "global-sessions", starred: true },
     loading: false,
     hasMoreGlobalSessions: false,
     loadMoreGlobalSessions: vi.fn(),
@@ -197,7 +199,7 @@ describe("Sidebar client summary source registry", () => {
       reportGlobalSessionsCollectionSnapshot(
         macbook,
         {
-          query: { scope: "global-sessions", limit: 50 },
+          query: { scope: "global-sessions" },
           sessions: [session("mac-session", "MacBook session")],
           hasMore: false,
         },
@@ -206,7 +208,7 @@ describe("Sidebar client summary source registry", () => {
       reportGlobalSessionsCollectionSnapshot(
         winnative,
         {
-          query: { scope: "global-sessions", limit: 50 },
+          query: { scope: "global-sessions" },
           sessions: [session("win-session", "WinNative session")],
           hasMore: false,
         },

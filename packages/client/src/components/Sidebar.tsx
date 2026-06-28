@@ -24,14 +24,17 @@ import { isNearScrollEnd } from "../lib/predictiveScroll";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
 import {
+  selectOlderSessionRecordsFromRecords,
+  selectRecentSessionRecordsFromRecords,
+  selectStarredSessionRecordsFromRecords,
+} from "../lib/clientSummaryState";
+import {
   useDraftSessionIds,
   useInboxCounts,
   useKnownProjectQueueItems,
-  useOlderSessionRecords,
   useProjectQueuedSessionIds,
   useProjectQueueSidebarCount,
-  useRecentSessionRecords,
-  useStarredSessionRecords,
+  useSessionCollectionQueryRecords,
 } from "../lib/clientSummaryStore";
 import { UI_KEYS } from "../lib/storageKeys";
 import { getSessionDisplayTitle } from "../utils";
@@ -227,6 +230,8 @@ export function Sidebar({
   const publicShareControlsVisible = publicShareStatus?.canCreate ?? false;
 
   const {
+    globalQuery,
+    starredQuery,
     loading: sessionsLoading,
     hasMoreGlobalSessions,
     loadMoreGlobalSessions,
@@ -234,9 +239,20 @@ export function Sidebar({
     loadMoreStarredSessions,
   } = useSidebarSessionFeeds(SIDEBAR_SESSION_FEED_LIMIT);
 
-  const starredSessionRecords = useStarredSessionRecords();
-  const recentSessionRecords = useRecentSessionRecords();
-  const olderSessionRecords = useOlderSessionRecords();
+  const globalQueryRecords = useSessionCollectionQueryRecords(globalQuery);
+  const starredQueryRecords = useSessionCollectionQueryRecords(starredQuery);
+  const starredSessionRecords = useMemo(
+    () => selectStarredSessionRecordsFromRecords(starredQueryRecords),
+    [starredQueryRecords],
+  );
+  const recentSessionRecords = useMemo(
+    () => selectRecentSessionRecordsFromRecords(globalQueryRecords),
+    [globalQueryRecords],
+  );
+  const olderSessionRecords = useMemo(
+    () => selectOlderSessionRecordsFromRecords(globalQueryRecords),
+    [globalQueryRecords],
+  );
 
   const hasNewSessionDraft = useNewSessionDraft();
 

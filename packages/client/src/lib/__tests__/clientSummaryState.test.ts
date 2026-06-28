@@ -27,14 +27,17 @@ import {
   selectInboxCountsByProject,
   selectInboxResponse,
   selectRecentSessionRecords,
+  selectRecentSessionRecordsFromRecords,
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
   selectProjectQueuedSessionIds,
   selectProjectQueueItems,
   selectProjectQueueSidebarCount,
+  selectSessionCollectionQueryRecords,
   selectSessionCollectionQueryState,
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
+  selectStarredSessionRecordsFromRecords,
 } from "../clientSummaryState";
 import { sessionCollectionRecordToGlobalSessionItem } from "../sessionCollectionRecords";
 
@@ -224,6 +227,52 @@ describe("clientSummaryState", () => {
     expect(selectStarredSessionRecords(state).map((s) => s.id)).toEqual([
       "session-1",
     ]);
+  });
+
+  it("projects sidebar sections from explicit query memberships", () => {
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        query: { scope: "global-sessions" },
+        sessions: [
+          globalSession("recent-unstarred"),
+          globalSession("recent-starred", { isStarred: true }),
+        ],
+        hasMore: true,
+      },
+      100,
+    );
+
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query: { scope: "global-sessions", starred: true },
+        sessions: [
+          globalSession("recent-starred", { isStarred: true }),
+          globalSession("older-starred", {
+            isStarred: true,
+            updatedAt: "2026-06-20T11:00:00.000Z",
+          }),
+        ],
+        hasMore: false,
+      },
+      200,
+    );
+
+    const globalRecords = selectSessionCollectionQueryRecords(state, {
+      scope: "global-sessions",
+    });
+    const starredRecords = selectSessionCollectionQueryRecords(state, {
+      scope: "global-sessions",
+      starred: true,
+    });
+
+    expect(
+      selectRecentSessionRecordsFromRecords(globalRecords, NOW).map((s) => s.id),
+    ).toEqual(["recent-unstarred"]);
+    expect(
+      selectStarredSessionRecordsFromRecords(starredRecords).map((s) => s.id),
+    ).toEqual(["recent-starred", "older-starred"]);
   });
 
   it("keeps active recent rows stable when updatedAt changes", () => {

@@ -188,6 +188,7 @@ export type {
 } from "./project-queue.js";
 
 export type {
+  StagedAttachmentRef,
   UploadedFile,
   UploadStartMessage,
   UploadEndMessage,

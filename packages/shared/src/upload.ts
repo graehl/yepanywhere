@@ -23,6 +23,30 @@ export interface UploadedFile {
   height?: number;
 }
 
+/** Server-staged attachment metadata safe to persist in browser drafts/queues. */
+export interface StagedAttachmentRef {
+  /** Unique staged attachment identifier */
+  id: string;
+  /** Draft or staging batch identifier */
+  batchId: string;
+  /** Original filename from client */
+  originalName: string;
+  /** Sanitized filename on disk (UUID prefix + sanitized original) */
+  name: string;
+  /** File size in bytes */
+  size: number;
+  /** MIME type */
+  mimeType: string;
+  /** Image width in pixels, if known */
+  width?: number;
+  /** Image height in pixels, if known */
+  height?: number;
+  /** Creation timestamp */
+  createdAt: string;
+  /** Last update timestamp */
+  updatedAt: string;
+}
+
 /** Client -> Server: Start upload */
 export interface UploadStartMessage {
   type: "start";

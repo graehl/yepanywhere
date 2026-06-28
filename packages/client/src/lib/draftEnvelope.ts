@@ -1,21 +1,10 @@
-export const DRAFT_ENVELOPE_VERSION = 1;
+import type { StagedAttachmentRef } from "@yep-anywhere/shared";
 
-export interface StagedDraftAttachmentRef {
-  id: string;
-  batchId: string;
-  originalName: string;
-  name: string;
-  size: number;
-  mimeType: string;
-  width?: number;
-  height?: number;
-  createdAt: string;
-  updatedAt: string;
-}
+export const DRAFT_ENVELOPE_VERSION = 1;
 
 export interface DraftAttachmentState {
   batchId: string;
-  refs: StagedDraftAttachmentRef[];
+  refs: StagedAttachmentRef[];
   updatedAt: string;
 }
 
@@ -45,7 +34,7 @@ function optionalFiniteNumber(value: unknown): number | undefined {
 
 function normalizeAttachmentRef(
   value: unknown,
-): StagedDraftAttachmentRef | null {
+): StagedAttachmentRef | null {
   if (!isRecord(value)) return null;
 
   const id = nonEmptyString(value.id);
@@ -98,7 +87,7 @@ function normalizeAttachmentState(value: unknown): DraftAttachmentState | null {
 
   const refs = value.refs
     .map(normalizeAttachmentRef)
-    .filter((ref): ref is StagedDraftAttachmentRef => ref !== null);
+    .filter((ref): ref is StagedAttachmentRef => ref !== null);
   if (refs.length === 0) {
     return null;
   }

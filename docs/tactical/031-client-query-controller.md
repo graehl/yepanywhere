@@ -28,6 +28,10 @@ requires this data coverage" without duplicate requests.
 - 2026-06-28: Corrected Sidebar rendering to use retained query memberships
   for Starred, Recent, and Older sections instead of broad "all known entity"
   projections that varied with fetch completion order.
+- 2026-06-28: Fixed the remaining active-session race by allowing older full
+  session snapshots to backfill missing fields left by newer partial live
+  updates. The timestamp guards still protect newer values, but no longer keep
+  active starred records too incomplete for Sidebar row rendering.
 
 ## Context
 

@@ -588,6 +588,14 @@ function isActiveActivity(activity: AgentActivity | undefined): boolean {
   return activity === "in-turn" || activity === "waiting-input";
 }
 
+function canApplyObservedField<T>(
+  currentValue: T | undefined,
+  nextValue: T | undefined,
+  isFresh: boolean,
+): nextValue is T {
+  return nextValue !== undefined && (isFresh || currentValue === undefined);
+}
+
 function withContentFields(
   record: SessionCollectionRecord,
   fields: {
@@ -606,28 +614,50 @@ function withContentFields(
   if (Object.values(fields).every((value) => value === undefined)) {
     return record;
   }
-  if (observedAt < (record.contentObservedAt ?? NO_OBSERVATION)) {
-    return record;
-  }
+  const isFresh = observedAt >= (record.contentObservedAt ?? NO_OBSERVATION);
 
   return {
     ...record,
-    ...(fields.title !== undefined ? { title: fields.title } : {}),
-    ...(fields.fullTitle !== undefined ? { fullTitle: fields.fullTitle } : {}),
-    ...(fields.createdAt !== undefined ? { createdAt: fields.createdAt } : {}),
-    ...(fields.updatedAt !== undefined ? { updatedAt: fields.updatedAt } : {}),
-    ...(fields.messageCount !== undefined
+    ...(canApplyObservedField(record.title, fields.title, isFresh)
+      ? { title: fields.title }
+      : {}),
+    ...(canApplyObservedField(record.fullTitle, fields.fullTitle, isFresh)
+      ? { fullTitle: fields.fullTitle }
+      : {}),
+    ...(canApplyObservedField(record.createdAt, fields.createdAt, isFresh)
+      ? { createdAt: fields.createdAt }
+      : {}),
+    ...(canApplyObservedField(record.updatedAt, fields.updatedAt, isFresh)
+      ? { updatedAt: fields.updatedAt }
+      : {}),
+    ...(canApplyObservedField(
+      record.messageCount,
+      fields.messageCount,
+      isFresh,
+    )
       ? { messageCount: fields.messageCount }
       : {}),
-    ...(fields.provider !== undefined ? { provider: fields.provider } : {}),
-    ...(fields.model !== undefined ? { model: fields.model } : {}),
-    ...(fields.initialPrompt !== undefined
+    ...(canApplyObservedField(record.provider, fields.provider, isFresh)
+      ? { provider: fields.provider }
+      : {}),
+    ...(canApplyObservedField(record.model, fields.model, isFresh)
+      ? { model: fields.model }
+      : {}),
+    ...(canApplyObservedField(
+      record.initialPrompt,
+      fields.initialPrompt,
+      isFresh,
+    )
       ? { initialPrompt: fields.initialPrompt }
       : {}),
-    ...(fields.lastAgentText !== undefined
+    ...(canApplyObservedField(
+      record.lastAgentText,
+      fields.lastAgentText,
+      isFresh,
+    )
       ? { lastAgentText: fields.lastAgentText }
       : {}),
-    contentObservedAt: observedAt,
+    ...(isFresh ? { contentObservedAt: observedAt } : {}),
     observedAt: Math.max(record.observedAt, observedAt),
   };
 }
@@ -646,24 +676,30 @@ function withMetadataFields(
   if (Object.values(fields).every((value) => value === undefined)) {
     return record;
   }
-  if (observedAt < (record.metadataObservedAt ?? NO_OBSERVATION)) {
-    return record;
-  }
+  const isFresh = observedAt >= (record.metadataObservedAt ?? NO_OBSERVATION);
 
   return {
     ...record,
-    ...(fields.customTitle !== undefined
+    ...(canApplyObservedField(record.customTitle, fields.customTitle, isFresh)
       ? { customTitle: fields.customTitle }
       : {}),
-    ...(fields.isArchived !== undefined
+    ...(canApplyObservedField(record.isArchived, fields.isArchived, isFresh)
       ? { isArchived: fields.isArchived }
       : {}),
-    ...(fields.isStarred !== undefined ? { isStarred: fields.isStarred } : {}),
-    ...(fields.parentSessionId !== undefined
+    ...(canApplyObservedField(record.isStarred, fields.isStarred, isFresh)
+      ? { isStarred: fields.isStarred }
+      : {}),
+    ...(canApplyObservedField(
+      record.parentSessionId,
+      fields.parentSessionId,
+      isFresh,
+    )
       ? { parentSessionId: fields.parentSessionId }
       : {}),
-    ...(fields.executor !== undefined ? { executor: fields.executor } : {}),
-    metadataObservedAt: observedAt,
+    ...(canApplyObservedField(record.executor, fields.executor, isFresh)
+      ? { executor: fields.executor }
+      : {}),
+    ...(isFresh ? { metadataObservedAt: observedAt } : {}),
     observedAt: Math.max(record.observedAt, observedAt),
   };
 }
@@ -679,17 +715,17 @@ function withProjectFields(
   if (Object.values(fields).every((value) => value === undefined)) {
     return record;
   }
-  if (observedAt < (record.projectObservedAt ?? NO_OBSERVATION)) {
-    return record;
-  }
+  const isFresh = observedAt >= (record.projectObservedAt ?? NO_OBSERVATION);
 
   return {
     ...record,
-    ...(fields.projectId !== undefined ? { projectId: fields.projectId } : {}),
-    ...(fields.projectName !== undefined
+    ...(canApplyObservedField(record.projectId, fields.projectId, isFresh)
+      ? { projectId: fields.projectId }
+      : {}),
+    ...(canApplyObservedField(record.projectName, fields.projectName, isFresh)
       ? { projectName: fields.projectName }
       : {}),
-    projectObservedAt: observedAt,
+    ...(isFresh ? { projectObservedAt: observedAt } : {}),
     observedAt: Math.max(record.observedAt, observedAt),
   };
 }

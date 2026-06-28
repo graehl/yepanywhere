@@ -17,6 +17,7 @@ import {
   applySessionCollectionCreated,
   applySessionCollectionMetadataChanged,
   applySessionCollectionProcessStateChanged,
+  applySessionCollectionUpdated,
   createEmptyClientSummaryState,
   createGlobalSessionsQueryKey,
   selectActiveAgentCount,
@@ -178,6 +179,72 @@ describe("clientSummaryState", () => {
 
     expect(record?.projectName).toBe("Readable Project");
     expect(item?.projectName).toBe("Readable Project");
+  });
+
+  it("backfills missing fields from older full snapshots after partial live updates", () => {
+    let state = applySessionCollectionProcessStateChanged(
+      createEmptyClientSummaryState(),
+      {
+        type: "process-state-changed",
+        sessionId: "active-starred",
+        projectId: PROJECT_ID,
+        activity: "in-turn",
+        timestamp: RECENT,
+      },
+      200,
+    );
+
+    state = applySessionCollectionUpdated(
+      state,
+      {
+        type: "session-updated",
+        sessionId: "active-starred",
+        projectId: PROJECT_ID,
+        title: "Live title",
+        updatedAt: RECENT,
+        messageCount: 2,
+        timestamp: RECENT,
+      },
+      200,
+    );
+
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query: { scope: "global-sessions", starred: true },
+        sessions: [
+          globalSession("active-starred", {
+            title: "Snapshot title",
+            fullTitle: "Snapshot full title",
+            messageCount: 10,
+            isStarred: true,
+          }),
+        ],
+        hasMore: false,
+      },
+      100,
+    );
+
+    const [record] = selectStarredSessionRecordsFromRecords(
+      selectSessionCollectionQueryRecords(state, {
+        scope: "global-sessions",
+        starred: true,
+      }),
+    );
+    const item = record
+      ? sessionCollectionRecordToGlobalSessionItem(record)
+      : null;
+
+    expect(record).toMatchObject({
+      id: "active-starred",
+      title: "Live title",
+      provider: "claude",
+      createdAt: RECENT,
+      isStarred: true,
+      activity: "in-turn",
+    });
+    expect(record?.messageCount).toBe(2);
+    expect(item?.id).toBe("active-starred");
   });
 
   it("does not use encoded project ids as created event project names", () => {

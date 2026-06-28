@@ -44,7 +44,11 @@ import {
 } from "./projects/gemini-scanner.js";
 import { GROK_SESSIONS_DIR, PI_SESSIONS_DIR } from "./projects/paths.js";
 import { ProjectScanner } from "./projects/scanner.js";
-import { PushNotifier, type PushService } from "./push/index.js";
+import {
+  InactivityPushNotifier,
+  PushNotifier,
+  type PushService,
+} from "./push/index.js";
 import { createPushRoutes } from "./push/routes.js";
 import type { RecentsService } from "./recents/index.js";
 import type {
@@ -772,6 +776,17 @@ export function createApp(options: AppOptions): AppResult {
       eventBus: options.eventBus,
       pushService: options.pushService,
       supervisor,
+      connectedBrowsers: options.connectedBrowsers,
+    });
+  }
+
+  if (options.eventBus && options.pushService && options.projectQueueService) {
+    new InactivityPushNotifier({
+      eventBus: options.eventBus,
+      pushService: options.pushService,
+      supervisor,
+      projectQueueService: options.projectQueueService,
+      externalTracker,
       connectedBrowsers: options.connectedBrowsers,
     });
   }

@@ -60,6 +60,8 @@ export interface SubscriptionState {
 export type PushPayloadType =
   | "pending-input"
   | "session-halted"
+  | "project-inactive"
+  | "ya-inactive"
   | "dismiss"
   | "test";
 
@@ -93,6 +95,20 @@ export interface SessionHaltedPayload extends BasePushPayload {
   duration: number;
 }
 
+/** Notification for a project becoming inactive after active work drains. */
+export interface ProjectInactivePayload extends BasePushPayload {
+  type: "project-inactive";
+  projectId: string;
+  projectName: string;
+  failedProjectQueueCount?: number;
+}
+
+/** Notification for the whole YA instance becoming inactive. */
+export interface YaInactivePayload extends BasePushPayload {
+  type: "ya-inactive";
+  projectCount?: number;
+}
+
 /** Dismiss notification on other devices */
 export interface DismissPayload extends BasePushPayload {
   type: "dismiss";
@@ -116,6 +132,8 @@ export interface TestPayload extends BasePushPayload {
 export type PushPayload =
   | PendingInputPayload
   | SessionHaltedPayload
+  | ProjectInactivePayload
+  | YaInactivePayload
   | DismissPayload
   | TestPayload;
 

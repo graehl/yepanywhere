@@ -331,6 +331,41 @@ describe("PushService", () => {
       );
     });
 
+    it("should request high urgency delivery for inactivity notifications", async () => {
+      vi.mocked(webPush.sendNotification).mockResolvedValue({
+        statusCode: 201,
+        body: "",
+        headers: {},
+      });
+
+      await pushService.subscribe("profile-1", mockSubscription);
+
+      await pushService.sendToBrowserProfile("profile-1", {
+        type: "project-inactive",
+        projectId: "project-1",
+        projectName: "Project",
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(webPush.sendNotification).toHaveBeenCalledWith(
+        mockSubscription,
+        expect.stringContaining('"type":"project-inactive"'),
+        { urgency: "high" },
+      );
+
+      await pushService.sendToBrowserProfile("profile-1", {
+        type: "ya-inactive",
+        projectCount: 1,
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(webPush.sendNotification).toHaveBeenCalledWith(
+        mockSubscription,
+        expect.stringContaining('"type":"ya-inactive"'),
+        { urgency: "high" },
+      );
+    });
+
     it("should honor explicit test delivery urgency", async () => {
       vi.mocked(webPush.sendNotification).mockResolvedValue({
         statusCode: 201,

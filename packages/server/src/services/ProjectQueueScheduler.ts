@@ -10,23 +10,25 @@ import type { UserMessage } from "../sdk/types.js";
 import type { BusEvent, EventBus } from "../watcher/EventBus.js";
 import type { ModelSettings } from "../supervisor/Supervisor.js";
 import type { ProjectQueueService } from "./ProjectQueueService.js";
+import {
+  getProjectWorkIdleStatus,
+  type ProjectWorkExternalTracker,
+  type ProjectWorkIdleStatus,
+  type ProjectWorkProcessSnapshot,
+  type ProjectWorkSupervisor,
+} from "./projectWorkIdle.js";
 
 const DEFAULT_IDLE_GRACE_MS = 1000;
 
-export interface ProjectQueueProcessSnapshot {
+export interface ProjectQueueProcessSnapshot
+  extends ProjectWorkProcessSnapshot {
   id: string;
   sessionId: string;
   projectId: UrlProjectId;
   projectPath: string;
-  state: { type: string };
-  queueDepth: number;
   provider: ProviderName;
   promptSuggestionMode?: ModelSettings["promptSuggestionMode"];
   recapAfterSeconds?: number;
-  isRetainingProviderWork(): boolean;
-  getPendingInputRequest(): unknown;
-  getDeferredQueueSummary(): readonly unknown[];
-  getLivenessSnapshot(): { derivedStatus: string };
 }
 
 export type ProjectQueueDispatchResult =
@@ -34,9 +36,8 @@ export type ProjectQueueDispatchResult =
   | { queued: true; queueId: string; position: number }
   | { error: "queue_full"; maxQueueSize: number };
 
-export interface ProjectQueueSupervisor {
+export interface ProjectQueueSupervisor extends ProjectWorkSupervisor {
   getAllProcesses(): ProjectQueueProcessSnapshot[];
-  getQueueInfo(): { projectId: UrlProjectId }[];
   startSession(
     projectPath: string,
     message: UserMessage,
@@ -52,17 +53,9 @@ export interface ProjectQueueSupervisor {
   ): Promise<ProjectQueueDispatchResult>;
 }
 
-export interface ProjectQueueExternalTracker {
-  getExternalSessions(): string[];
-  getExternalSessionInfoWithUrlId(
-    sessionId: string,
-  ): Promise<{ projectId: UrlProjectId; lastActivity: Date } | null>;
-}
+export type ProjectQueueExternalTracker = ProjectWorkExternalTracker;
 
-export interface ProjectIdleStatus {
-  idle: boolean;
-  blockers: string[];
-}
+export type ProjectIdleStatus = ProjectWorkIdleStatus;
 
 export interface ProjectQueueSchedulerOptions {
   projectQueueService: ProjectQueueService;
@@ -128,49 +121,10 @@ export class ProjectQueueScheduler {
     // Project Queue ordering and UI semantics are documented in
     // topics/project-queue.md. In particular, per-session queues must drain
     // before a project-level queue item can promote.
-    const blockers: string[] = [];
-
-    for (const process of this.supervisor.getAllProcesses()) {
-      if (process.projectId !== projectId) continue;
-      const stateType = process.state.type;
-      if (stateType === "in-turn" || stateType === "waiting-input") {
-        blockers.push(`${process.sessionId}:${stateType}`);
-      }
-      if (process.isRetainingProviderWork()) {
-        blockers.push(`${process.sessionId}:provider-retained`);
-      }
-      if (process.queueDepth > 0) {
-        blockers.push(`${process.sessionId}:direct-queue`);
-      }
-      if (process.getDeferredQueueSummary().length > 0) {
-        blockers.push(`${process.sessionId}:deferred-queue`);
-      }
-      if (process.getPendingInputRequest()) {
-        blockers.push(`${process.sessionId}:pending-input`);
-      }
-      const liveness = process.getLivenessSnapshot();
-      if (liveness.derivedStatus !== "verified-idle") {
-        blockers.push(`${process.sessionId}:liveness-${liveness.derivedStatus}`);
-      }
-    }
-
-    for (const request of this.supervisor.getQueueInfo()) {
-      if (request.projectId === projectId) {
-        blockers.push("worker-queue");
-      }
-    }
-
-    if (this.externalTracker) {
-      for (const sessionId of this.externalTracker.getExternalSessions()) {
-        const info =
-          await this.externalTracker.getExternalSessionInfoWithUrlId(sessionId);
-        if (info?.projectId === projectId) {
-          blockers.push(`${sessionId}:external`);
-        }
-      }
-    }
-
-    return { idle: blockers.length === 0, blockers };
+    return getProjectWorkIdleStatus(projectId, {
+      supervisor: this.supervisor,
+      externalTracker: this.externalTracker,
+    });
   }
 
   private readonly handleEvent = (event: BusEvent): void => {

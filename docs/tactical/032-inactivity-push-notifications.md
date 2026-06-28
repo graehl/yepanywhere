@@ -9,6 +9,11 @@ Progress:
   `push-subscriptions.json` settings on read, accepted the new keys through
   `/api/push/settings`, and added focused service/route tests. No UI toggles
   or notification sends are wired yet.
+- [x] 2026-06-28: Added typed `project-inactive` and `ya-inactive` push
+  payloads, high-urgency delivery, an event-driven `InactivityPushNotifier`
+  with one-shot dirty rechecks, failed Project Queue semantics, connected
+  browser suppression, project/YA coalescing, service-worker display/click
+  handling, app mounting, and focused tests. Settings UI toggles remain open.
 
 ## Context
 
@@ -54,10 +59,10 @@ Relevant standing contracts:
   their own, so a project with only failed queue items can be inactive.
 - Queued or dispatching Project Queue items do block inactivity because they may
   still run automatically.
-- Notification clicks should open a project-level surface, not a session. The
-  current `/projects/:projectId` route redirects to the global sessions view, so
-  implementation should either add a real project-focused route or target
-  `/projects` with enough query/highlight state to make the project obvious.
+- Notification clicks should open a project-level surface, not a session.
+  Current implementation opens `/projects?project=<projectId>` for project
+  inactivity and `/projects` for YA inactivity; a later UI slice can teach the
+  Projects page to visibly highlight that query target.
 - Use the same Web Push delivery urgency as existing session notifications.
 - Coalesce project and global notifications so one quiet boundary does not send
   both "Project inactive" and "YA inactive" to the same device.
@@ -284,11 +289,9 @@ when both `sessionId` and `projectId` exist. For project/global inactivity:
 - YA inactive should open the main projects page.
 
 Because `/projects/:projectId` currently redirects away from a project-specific
-view, choose one of these implementation paths:
-
-1. Add a real project-focused route or query handling, then open that URL.
-2. Open `/projects` and optionally add query/highlight support such as
-   `/projects?project=<projectId>`.
+view, the service worker opens `/projects?project=<projectId>`. The query is
+currently a durable target hint for the next UI slice rather than a visible
+highlight.
 
 Do not open a random last session from the project. The notification means the
 project is quiet, not that a specific session needs attention.
@@ -317,8 +320,8 @@ server-side toggles. Add the new fields there when implementing.
   Queue failure notification?
 - Should multiple project inactive edges in one debounce batch get separate
   pushes or a plural summary when YA itself is still active?
-- Should a project-specific route be built now, or should the first slice open
-  the existing Projects page with a query/highlight?
+- Should the Projects page visibly highlight `?project=<projectId>` from a
+  project-inactive click, or is opening the Projects surface enough?
 
 ## Implementation Checklist
 
@@ -328,14 +331,14 @@ server-side toggles. Add the new fields there when implementing.
 - [x] Extend `/api/push/settings` validation to accept the new keys.
 - [x] Add client API/hook fields for the two toggles.
 - [ ] Add client UI/i18n fields for the two toggles.
-- [ ] Add push payload types for project and YA inactivity.
-- [ ] Add service-worker rendering and click handling for the new payloads.
-- [ ] Add an event-driven inactivity notifier service with one-shot dirty
+- [x] Add push payload types for project and YA inactivity.
+- [x] Add service-worker rendering and click handling for the new payloads.
+- [x] Add an event-driven inactivity notifier service with one-shot dirty
       rechecks and clean disposal.
-- [ ] Reuse connected-browser-profile suppression from current push sends.
-- [ ] Coalesce project and YA inactive notifications in the same debounce
+- [x] Reuse connected-browser-profile suppression from current push sends.
+- [x] Coalesce project and YA inactive notifications in the same debounce
       batch.
-- [ ] Mount the service from `app.ts` near `PushNotifier`.
+- [x] Mount the service from `app.ts` near `PushNotifier`.
 
 ## Test Plan
 

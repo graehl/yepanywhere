@@ -9,6 +9,8 @@
  * Payload types (from server):
  * - pending-input: Session needs approval or user question
  * - session-halted: Session stopped working
+ * - project-inactive: Project has no remaining active/background work
+ * - ya-inactive: All YA-managed work is inactive
  * - dismiss: Close notification on other devices
  * - test: Test notification
  */
@@ -16,7 +18,7 @@
 // Version constant for controlled updates
 // Increment this when making intentional SW changes
 // Browsers reinstall SW only when file content changes
-const SW_VERSION = "1.0.5";
+const SW_VERSION = "1.0.6";
 void SW_VERSION;
 const FRONTEND_RELOAD_QUERY_PARAM = "__ya_reload";
 
@@ -250,6 +252,7 @@ self.addEventListener("push", (event) => {
     swLog("info", "Push received", {
       type: data.type,
       sessionId: data.sessionId,
+      projectId: data.projectId,
     }).then(() => handlePush(data)),
   );
 });
@@ -327,6 +330,14 @@ async function handlePush(data) {
     return showSessionHaltedNotification(data);
   }
 
+  if (data.type === "project-inactive") {
+    return showProjectInactiveNotification(data);
+  }
+
+  if (data.type === "ya-inactive") {
+    return showYaInactiveNotification(data);
+  }
+
   console.warn("[SW] Unknown push type:", data.type);
 }
 
@@ -375,8 +386,38 @@ function showSessionHaltedNotification(data) {
   return self.registration.showNotification(title, options);
 }
 
+function showProjectInactiveNotification(data) {
+  const title = data.projectName || "Yep Anywhere";
+  const options = {
+    body: "Project is inactive",
+    tag: `project-inactive-${data.projectId}`,
+    icon: assetUrl("icon-192.png"),
+    badge: assetUrl("badge-96.png"),
+    data: {
+      target: "project",
+      projectId: data.projectId,
+    },
+  };
+
+  return self.registration.showNotification(title, options);
+}
+
+function showYaInactiveNotification() {
+  const options = {
+    body: "All projects are inactive",
+    tag: "ya-inactive",
+    icon: assetUrl("icon-192.png"),
+    badge: assetUrl("badge-96.png"),
+    data: {
+      target: "projects",
+    },
+  };
+
+  return self.registration.showNotification("Yep Anywhere", options);
+}
+
 /**
- * Handle notification clicks - always open the session
+ * Handle notification clicks.
  */
 self.addEventListener("notificationclick", (event) => {
   const notification = event.notification;
@@ -388,9 +429,21 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 async function handleNotificationClick(data) {
-  const { sessionId, projectId } = data;
+  const { sessionId, projectId, target } = data;
 
-  await swLog("info", "Notification clicked", { sessionId, projectId });
+  await swLog("info", "Notification clicked", {
+    sessionId,
+    projectId,
+    target,
+  });
+
+  if (target === "project") {
+    return openProject(projectId);
+  }
+
+  if (target === "projects") {
+    return openProjects();
+  }
 
   return openSession(sessionId, projectId);
 }
@@ -406,11 +459,46 @@ async function openSession(sessionId, projectId) {
   if (sessionId && projectId) {
     path = `./projects/${encodeURIComponent(projectId)}/sessions/${sessionId}`;
   }
+  return openAppPath(path, {
+    sessionId,
+    projectId,
+    matchClient: (client) => sessionId && client.url.includes(sessionId),
+  });
+}
+
+async function openProject(projectId) {
+  const path = projectId
+    ? `./projects?project=${encodeURIComponent(projectId)}`
+    : "./projects";
+  return openAppPath(path, {
+    projectId,
+    matchClient: (client) =>
+      isProjectsPageUrl(client.url) ||
+      (projectId && client.url.includes(`project=${encodeURIComponent(projectId)}`)),
+  });
+}
+
+async function openProjects() {
+  return openAppPath("./projects", {
+    matchClient: (client) => isProjectsPageUrl(client.url),
+  });
+}
+
+function isProjectsPageUrl(url) {
+  try {
+    return new URL(url).pathname.endsWith("/projects");
+  } catch {
+    return false;
+  }
+}
+
+async function openAppPath(path, context) {
   const url = new URL(path, self.registration.scope).href;
+  const { matchClient, ...logContext } = context;
 
-  await swLog("info", "Opening session URL", { url, sessionId, projectId });
+  await swLog("info", "Opening app URL", { url, ...logContext });
 
-  // Try to focus an existing window with this session, or open a new one
+  // Try to focus an existing matching window, or open a new one.
   // includeUncontrolled: true ensures we find windows that haven't been claimed yet
   const clients = await self.clients.matchAll({
     type: "window",
@@ -424,9 +512,8 @@ async function openSession(sessionId, projectId) {
 
   // Look for an existing window we can focus
   for (const client of clients) {
-    // If already on this session, just focus
-    if (sessionId && client.url.includes(sessionId)) {
-      await swLog("info", "Focusing existing session window");
+    if (matchClient?.(client)) {
+      await swLog("info", "Focusing existing matching window");
       return client.focus();
     }
   }

@@ -75,6 +75,7 @@ vi.mock("../../hooks/useServerSettings", () => ({
 }));
 
 vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
+  SIDEBAR_SESSION_FEED_LIMIT: 50,
   useSidebarSessionFeeds: () => ({
     loading: false,
     hasMoreGlobalSessions: false,

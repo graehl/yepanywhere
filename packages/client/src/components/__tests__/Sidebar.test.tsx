@@ -95,6 +95,7 @@ vi.mock("../../hooks/useProjects", () => ({
 }));
 
 vi.mock("../../hooks/useSidebarSessionFeeds", () => ({
+  SIDEBAR_SESSION_FEED_LIMIT: 50,
   useSidebarSessionFeeds: () => ({
     loading: globalSessionsState.loading || starredSessionsState.loading,
     hasMoreGlobalSessions: globalSessionsState.hasMore,

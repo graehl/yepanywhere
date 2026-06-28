@@ -313,6 +313,7 @@ vi.mock("../../hooks/useSessionToolbarVisibility", () => ({
 }));
 
 vi.mock("../../lib/clientSummaryStore", () => ({
+  useClientSummarySourceKey: () => "host:test",
   useActiveProjectSessionIds: (projectId: string | null | undefined) => {
     if (!projectId) return [];
     return [...inboxState.needsAttention, ...inboxState.active]
@@ -1251,7 +1252,9 @@ describe("NewSessionForm", () => {
       />,
     );
 
-    expect(new Set(draftKeys)).toEqual(new Set(["draft-new-session"]));
+    expect(new Set(draftKeys)).toEqual(
+      new Set(["draft-new-session:host%3Atest"]),
+    );
   });
 
   it("resolves a typed project path before starting the session", async () => {

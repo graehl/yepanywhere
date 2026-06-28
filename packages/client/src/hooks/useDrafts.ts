@@ -1,8 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
-import { useDraftSessionIds } from "../lib/clientSummaryStore";
+import {
+  type ClientSummarySourceKey,
+  useClientSummarySourceKey,
+  useDraftSessionIds,
+} from "../lib/clientSummaryStore";
 
-const NEW_SESSION_DRAFT_KEY = "draft-new-session";
-const NEW_SESSION_DRAFT_KEY_PREFIX = "draft-new-session-";
+const NEW_SESSION_DRAFT_KEY_PREFIX = "draft-new-session:";
+const FAB_DRAFT_KEY_PREFIX = "fab-draft:";
+
+function encodeDraftKeyPart(value: string): string {
+  return encodeURIComponent(value);
+}
+
+export function createNewSessionDraftKey(
+  sourceKey: ClientSummarySourceKey,
+  projectId?: string,
+): string {
+  const base = `${NEW_SESSION_DRAFT_KEY_PREFIX}${encodeDraftKeyPart(sourceKey)}`;
+  return projectId ? `${base}:${encodeDraftKeyPart(projectId)}` : base;
+}
+
+export function createFabDraftKey(sourceKey: ClientSummarySourceKey): string {
+  return `${FAB_DRAFT_KEY_PREFIX}${encodeDraftKeyPart(sourceKey)}`;
+}
 
 /**
  * Returns `prev` if both sets contain the same elements, otherwise `next`.
@@ -31,13 +51,14 @@ export function useDrafts(): ReadonlySet<string> {
  * Listens for storage events and polls for same-tab changes.
  */
 export function useNewSessionDraft(projectId?: string): boolean {
+  const sourceKey = useClientSummarySourceKey();
   const [hasDraft, setHasDraft] = useState(() =>
-    checkNewSessionDraft(projectId),
+    checkNewSessionDraft(sourceKey, projectId),
   );
 
   const check = useCallback(() => {
-    setHasDraft(checkNewSessionDraft(projectId));
-  }, [projectId]);
+    setHasDraft(checkNewSessionDraft(sourceKey, projectId));
+  }, [projectId, sourceKey]);
 
   // Re-check when projectId changes
   useEffect(() => {
@@ -47,14 +68,14 @@ export function useNewSessionDraft(projectId?: string): boolean {
   // Listen for storage events (changes from other tabs)
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
-      if (getNewSessionDraftKeys(projectId).includes(e.key ?? "")) {
+      if (getNewSessionDraftKeys(sourceKey, projectId).includes(e.key ?? "")) {
         check();
       }
     };
 
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, [check, projectId]);
+  }, [check, projectId, sourceKey]);
 
   // Poll for same-tab changes (storage event doesn't fire for same-tab)
   useEffect(() => {
@@ -65,9 +86,12 @@ export function useNewSessionDraft(projectId?: string): boolean {
   return hasDraft;
 }
 
-function checkNewSessionDraft(projectId: string | undefined): boolean {
+function checkNewSessionDraft(
+  sourceKey: ClientSummarySourceKey,
+  projectId: string | undefined,
+): boolean {
   try {
-    return getNewSessionDraftKeys(projectId).some((key) => {
+    return getNewSessionDraftKeys(sourceKey, projectId).some((key) => {
       const value = localStorage.getItem(key);
       return !!value?.trim();
     });
@@ -76,10 +100,14 @@ function checkNewSessionDraft(projectId: string | undefined): boolean {
   }
 }
 
-function getNewSessionDraftKeys(projectId: string | undefined): string[] {
+function getNewSessionDraftKeys(
+  sourceKey: ClientSummarySourceKey,
+  projectId: string | undefined,
+): string[] {
+  const sharedKey = createNewSessionDraftKey(sourceKey);
   return projectId
-    ? [NEW_SESSION_DRAFT_KEY, `${NEW_SESSION_DRAFT_KEY_PREFIX}${projectId}`]
-    : [NEW_SESSION_DRAFT_KEY];
+    ? [sharedKey, createNewSessionDraftKey(sourceKey, projectId)]
+    : [sharedKey];
 }
 
 // Tool prompt draft storage keys

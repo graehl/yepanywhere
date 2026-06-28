@@ -204,26 +204,6 @@ export function getOrCreateBrowserProfileId(): string {
 }
 
 // ============================================================================
-// Dynamic Key Builders (for session/project-specific keys)
-// ============================================================================
-
-export const KEY_BUILDERS = {
-  /** Draft message for an existing session */
-  draftMessage: (installId: string, sessionId: string) =>
-    `yep-anywhere-${installId}-draft-${sessionId}`,
-
-  /** Draft for a new session in a project */
-  newSessionDraft: (installId: string, projectId: string) =>
-    `yep-anywhere-${installId}-new-session-draft-${projectId}`,
-
-  /** FAB draft content */
-  fabDraft: (installId: string) => `yep-anywhere-${installId}-fab-draft`,
-
-  /** FAB prefill content */
-  fabPrefill: (installId: string) => `yep-anywhere-${installId}-fab-prefill`,
-} as const;
-
-// ============================================================================
 // Special Keys (not scoped, handle their own structure)
 // ============================================================================
 
@@ -253,11 +233,6 @@ export const LEGACY_KEYS = {
   browserProfileId: "yep-anywhere-device-id",
   notifyInApp: "yep-anywhere-notify-in-app",
   recentProject: "yep-anywhere-recent-project",
-  // Draft keys had different prefixes
-  draftMessagePrefix: "draft-message-",
-  newSessionDraftPrefix: "draft-new-session-",
-  fabDraft: "fab-draft",
-  fabPrefill: "fab-prefill",
 } as const;
 
 /** Keys that need renaming (old name -> new name in UI_KEYS) */
@@ -322,55 +297,6 @@ export function migrateLegacySettings(installId: string): boolean {
         migrated = true;
       }
       localStorage.removeItem(oldKey);
-    }
-  }
-
-  // Migrate FAB keys
-  const fabMigrations: Array<{
-    legacy: string;
-    builder: "fabDraft" | "fabPrefill";
-  }> = [
-    { legacy: LEGACY_KEYS.fabDraft, builder: "fabDraft" },
-    { legacy: LEGACY_KEYS.fabPrefill, builder: "fabPrefill" },
-  ];
-
-  for (const { legacy, builder } of fabMigrations) {
-    const value = localStorage.getItem(legacy);
-    if (value !== null) {
-      const newKey = KEY_BUILDERS[builder](installId);
-      if (localStorage.getItem(newKey) === null) {
-        localStorage.setItem(newKey, value);
-        migrated = true;
-      }
-      localStorage.removeItem(legacy);
-    }
-  }
-
-  // Migrate draft keys (draft-message-* and draft-new-session-*)
-  const allKeys = Object.keys(localStorage);
-  for (const key of allKeys) {
-    if (key.startsWith(LEGACY_KEYS.draftMessagePrefix)) {
-      const sessionId = key.slice(LEGACY_KEYS.draftMessagePrefix.length);
-      const value = localStorage.getItem(key);
-      if (value !== null) {
-        const newKey = KEY_BUILDERS.draftMessage(installId, sessionId);
-        if (localStorage.getItem(newKey) === null) {
-          localStorage.setItem(newKey, value);
-          migrated = true;
-        }
-        localStorage.removeItem(key);
-      }
-    } else if (key.startsWith(LEGACY_KEYS.newSessionDraftPrefix)) {
-      const projectId = key.slice(LEGACY_KEYS.newSessionDraftPrefix.length);
-      const value = localStorage.getItem(key);
-      if (value !== null) {
-        const newKey = KEY_BUILDERS.newSessionDraft(installId, projectId);
-        if (localStorage.getItem(newKey) === null) {
-          localStorage.setItem(newKey, value);
-          migrated = true;
-        }
-        localStorage.removeItem(key);
-      }
     }
   }
 

@@ -4,11 +4,13 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
+import { createFabDraftKey } from "../hooks/useDrafts";
 import { useFabVisibility } from "../hooks/useFabVisibility";
 import { useFloatingActionButtonEnabled } from "../hooks/useFloatingActionButtonEnabled";
 import { setRecentProjectId } from "../hooks/useRecentProject";
@@ -16,6 +18,7 @@ import { setNewSessionPrefill } from "../lib/newSessionPrefill";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { generateUUID } from "../lib/uuid";
+import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
   clearSpeechInsertionRangeReplacement,
   createSpeechInsertionRange,
@@ -42,8 +45,6 @@ import {
   type VoiceInputButtonRef,
 } from "./VoiceInputButton";
 
-const FAB_DRAFT_KEY = "fab-draft";
-
 function createSpeechTargetId(): string {
   return `speech-target-${generateUUID()}`;
 }
@@ -63,11 +64,16 @@ export function FloatingActionButton() {
   const navigate = useNavigate();
   const location = useLocation();
   const basePath = useRemoteBasePath();
+  const clientSummarySourceKey = useClientSummarySourceKey();
+  const fabDraftKey = useMemo(
+    () => createFabDraftKey(clientSummarySourceKey),
+    [clientSummarySourceKey],
+  );
   const fabVisibility = useFabVisibility();
   const { floatingActionButtonEnabled } = useFloatingActionButtonEnabled();
   const [isExpanded, setIsExpanded] = useState(false);
   const [message, setMessage, draftControls] =
-    useDraftPersistence(FAB_DRAFT_KEY);
+    useDraftPersistence(fabDraftKey);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
     null,
@@ -477,10 +483,10 @@ export function FloatingActionButton() {
   const getTranscriptionContext =
     useCallback((): SpeechTranscriptionContext => {
       return {
-        draftKey: FAB_DRAFT_KEY,
+        draftKey: fabDraftKey,
         speechTargetId: activeSpeechTargetIdRef.current ?? undefined,
       };
-    }, []);
+    }, [fabDraftKey]);
 
   // Hide (but don't unmount) when not visible, on new-session page, or while
   // supervising an active session. On session pages it duplicates the sidebar

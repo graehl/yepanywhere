@@ -52,6 +52,10 @@ Progress:
   the current `ClientSummarySourceKey` in addition to project/session ids, so
   same-id sessions on different hosted remotes cannot warm-render one another's
   messages after a host switch.
+- [x] 2026-06-28: Scoped new-session and FAB composer drafts by summary source.
+  These drafts are crash/refresh recovery for the current UI format, not an
+  upgrade-durable data store, so draft-specific legacy migrations were removed
+  instead of carrying old draft keys forward.
 
 This doc tracks the next widening of the client summary store. The normalized
 `ClientSummaryState` shape stays the same, but the store is no longer a single
@@ -230,12 +234,15 @@ durability without scanning every localStorage key on each badge refresh:
 - local legacy body keys stay in the old `draft-message-<sessionId>` format
   and are compatible with older clients;
 - source-scoped remote body keys include the encoded source key and session id;
+- new-session and FAB composer draft keys include the encoded source key;
 - each source has a compact draft index, and badge scans read only that index;
 - the local compatibility scan reads old `draft-message-*` body keys only for
   `local` and backfills the local index.
 
-Server-authoritative drafts can still replace or supplement this later, but do
-not let source-global draft scans contaminate per-host session cards.
+Drafts are intended to survive refreshes, browser crashes, and unloads within a
+compatible client format. They are not upgrade-durable data. Server-authoritative
+drafts can still replace or supplement this later, but do not let source-global
+draft scans contaminate per-host session cards.
 
 ## Implementation Chunks
 
@@ -270,6 +277,8 @@ Automated tests:
 - the dev opt-in session warm-load cache is keyed by source, project, session,
   and tail variant, so same-id sessions on different hosted remotes do not
   share cached transcript data.
+- new-session and FAB composer drafts are keyed by source, and switching hosts
+  hides another host's unsent new-session prompt.
 
 Manual test:
 

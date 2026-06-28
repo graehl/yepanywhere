@@ -33,6 +33,7 @@ import { useToastContext } from "../contexts/ToastContext";
 import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useConnection } from "../hooks/useConnection";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
+import { createNewSessionDraftKey } from "../hooks/useDrafts";
 import {
   getModelSetting,
   getShowThinkingSetting,
@@ -69,7 +70,10 @@ import {
   serverSupportsProjectQueue,
   shouldShowProjectQueueAffordance,
 } from "../lib/projectQueueVisibility";
-import { useActiveProjectSessionIds } from "../lib/clientSummaryStore";
+import {
+  useActiveProjectSessionIds,
+  useClientSummarySourceKey,
+} from "../lib/clientSummaryStore";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import {
@@ -148,7 +152,6 @@ const RECAP_MODE_ORDER: RecapMode[] = ["off", "side-session", "fork"];
 const PROMPT_SUGGESTION_MODE_ORDER: PromptSuggestionMode[] = [
   ...PROMPT_SUGGESTION_MODES,
 ];
-const NEW_SESSION_DRAFT_KEY = "draft-new-session";
 const QUICK_PROJECT_COUNT = 10;
 const PROJECT_SUGGESTION_COUNT = 10;
 
@@ -374,9 +377,13 @@ export function NewSessionForm({
   const { t } = useI18n();
   const navigate = useNavigate();
   const basePath = useRemoteBasePath();
-  const [message, setMessage, draftControls] = useDraftPersistence(
-    NEW_SESSION_DRAFT_KEY,
+  const clientSummarySourceKey = useClientSummarySourceKey();
+  const newSessionDraftKey = useMemo(
+    () => createNewSessionDraftKey(clientSummarySourceKey),
+    [clientSummarySourceKey],
   );
+  const [message, setMessage, draftControls] =
+    useDraftPersistence(newSessionDraftKey);
   const [mode, setMode] = useState<PermissionMode>("default");
   const [selectedProvider, setSelectedProvider] = useState<ProviderName | null>(
     null,
@@ -1968,11 +1975,11 @@ export function NewSessionForm({
       }
       return {
         projectId,
-        draftKey: NEW_SESSION_DRAFT_KEY,
+        draftKey: newSessionDraftKey,
         clientTurnId: speechTurnIdRef.current,
         speechTargetId: activeSpeechTargetIdRef.current ?? undefined,
       };
-    }, [projectId]);
+    }, [projectId, newSessionDraftKey]);
   // Shared input area with toolbar (textarea + attach/voice on left, send on right)
   const inputArea = (
     <>

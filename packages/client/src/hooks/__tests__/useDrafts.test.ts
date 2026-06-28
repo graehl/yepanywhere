@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 
-import { cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setsEqual, useNewSessionDraft } from "../useDrafts";
+import {
+  createNewSessionDraftKey,
+  setsEqual,
+  useNewSessionDraft,
+} from "../useDrafts";
+import {
+  createClientSummaryHostSourceKey,
+  resetClientSummaryStoreForTests,
+  setCurrentClientSummarySourceKey,
+} from "../../lib/clientSummaryStore";
 
 beforeEach(() => {
+  resetClientSummaryStoreForTests();
   const store = new Map<string, string>();
   const localStorageMock = {
     get length() {
@@ -34,6 +44,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetClientSummaryStoreForTests();
   vi.clearAllMocks();
 });
 
@@ -94,16 +105,50 @@ describe("setsEqual", () => {
 });
 
 describe("useNewSessionDraft", () => {
-  it("detects the shared new-session draft key", () => {
-    localStorage.setItem("draft-new-session", "draft the migration plan");
+  it("detects the current source's shared new-session draft key", () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+    localStorage.setItem(
+      createNewSessionDraftKey(macbook),
+      "draft the migration plan",
+    );
 
     const { result } = renderHook(() => useNewSessionDraft());
 
     expect(result.current).toBe(true);
   });
 
-  it("still detects legacy project-scoped new-session draft keys", () => {
-    localStorage.setItem("draft-new-session-project-1", "draft the fix");
+  it("keeps new-session drafts invisible across source switches", () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    const winnative = createClientSummaryHostSourceKey("winnative");
+    localStorage.setItem(createNewSessionDraftKey(macbook), "mac draft");
+
+    act(() => {
+      setCurrentClientSummarySourceKey(winnative);
+    });
+
+    const { result } = renderHook(() => useNewSessionDraft());
+
+    expect(result.current).toBe(false);
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    expect(result.current).toBe(true);
+  });
+
+  it("detects project-scoped new-session draft keys within the current source", () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+    localStorage.setItem(
+      createNewSessionDraftKey(macbook, "project-1"),
+      "draft the fix",
+    );
 
     const { result } = renderHook(() => useNewSessionDraft("project-1"));
 

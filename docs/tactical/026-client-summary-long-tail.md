@@ -84,7 +84,7 @@ current endpoint is measurably wasteful or makes ownership confusing.
 | Surface | Current source | Target source | Status |
 | --- | --- | --- | --- |
 | Sidebar sessions | `useSidebarSessionFeeds` feeds, store selectors render rows | Store selectors for rows, badges, counts; feeds return controls only | Mostly migrated |
-| Sidebar inbox badge | `useInboxContext().totalNeedsAttention` | `useInboxCounts()` selector | Pending |
+| Sidebar inbox badge | `useInboxCounts()` selector | `useInboxCounts()` selector | Migrated |
 | Sidebar queue/draft badges | Queue feed plus store selectors; draft selector | Store selectors | Migrated |
 | All Sessions rows | `useGlobalSessionsFeed` plus store query selector | Store query selector | Migrated |
 | All Sessions stats/filter options | Feed-local stats/project options from `/api/sessions` | Keep feed-local unless shared elsewhere | Acceptable |
@@ -99,7 +99,7 @@ current endpoint is measurably wasteful or makes ownership confusing.
 | Session Page transcript | `useSession`, `useSessionMessages`, streams | Keep local; report summary facts as needed | Keep local |
 | Session Page project queue affordances | Broad inbox arrays plus queue hook data | active-session and queue selectors by project | Pending |
 | Session Page metadata actions | Direct API calls and local state | Shared mutation helpers that report store updates | Pending |
-| Agents nav badge | `useGlobalActiveAgents` fetches full inbox | Active-agent selector or narrow feed | Pending |
+| Agents nav badge | `useGlobalActiveAgents` wrapper over store selector | Active-agent selector | Migrated |
 | Agents page process rows | `useProcesses` polling | Keep feed-local or future `processes` slice | Open |
 | Settings pages/hooks | Independent settings hooks | Candidate `settings` slice fed by snapshots/mutations | Open |
 
@@ -119,9 +119,9 @@ Add purpose-built selectors/hooks for facts currently pulled through broad
 
 Candidate consumers:
 
-- `AgentsNavItem` / `useGlobalActiveAgents`;
-- `useNeedsAttentionBadge`;
-- Sidebar inbox badge;
+- `AgentsNavItem` / `useGlobalActiveAgents` (migrated);
+- `useNeedsAttentionBadge` (migrated);
+- Sidebar inbox badge (migrated);
 - `ProjectsPage`;
 - `NewSessionForm`;
 - `SessionPage`.
@@ -241,14 +241,14 @@ consumer appears, migrate that consumer to session-summary selectors first.
 
 Replace broad inbox context consumers with purpose selectors:
 
-1. Add reducer/selectors/hooks for inbox counts, counts by project, and active
-   session ids by project.
-2. Migrate `useGlobalActiveAgents` or replace it at `AgentsNavItem`.
-3. Migrate `useNeedsAttentionBadge` and Sidebar inbox badge.
-4. Migrate `ProjectsPage`, `NewSessionForm`, and `SessionPage` from
+1. [x] Add reducer/selectors/hooks for inbox counts, counts by project, and
+   active session ids by project.
+2. [x] Migrate `useGlobalActiveAgents` or replace it at `AgentsNavItem`.
+3. [x] Migrate `useNeedsAttentionBadge` and Sidebar inbox badge.
+4. [ ] Migrate `ProjectsPage`, `NewSessionForm`, and `SessionPage` from
    `useInboxContext` row arrays to targeted selectors.
-5. Keep `InboxContext` as the fetch/lifecycle provider and compatibility layer
-   for `InboxContent`.
+5. [ ] Keep `InboxContext` as the fetch/lifecycle provider and compatibility
+   layer for `InboxContent`.
 
 This is the highest-value cleanup because it removes duplicate inbox fetching
 and narrows several consumers that currently subscribe to full inbox row arrays.
@@ -260,6 +260,12 @@ and narrows several consumers that currently subscribe to full inbox row arrays.
   shape, and Inbox tier migration landed. Remaining work is long-tail
   migration, selector narrowing, and optional new slices rather than store
   substrate work.
+- 2026-06-28: Added targeted inbox selector hooks for counts, per-project
+  counts, active project session ids, and active-agent presence. Migrated
+  `useGlobalActiveAgents`, `useNeedsAttentionBadge`, and the Sidebar inbox
+  badge off broad `useInboxContext` consumption; `ProjectsPage`,
+  `NewSessionForm`, and `SessionPage` still need the project-scoped selector
+  migration.
 
 ## Verification Checklist
 

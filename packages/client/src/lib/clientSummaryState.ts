@@ -110,6 +110,12 @@ export interface InboxCollectionState {
   fetchedAt?: number;
 }
 
+export interface InboxCounts {
+  needsAttention: number;
+  active: number;
+  total: number;
+}
+
 export interface SessionCollectionState {
   entities: ReadonlyMap<string, SessionCollectionRecord>;
   queries: ReadonlyMap<string, SessionCollectionQueryState>;
@@ -149,6 +155,10 @@ export interface InboxCollectionSnapshot extends InboxResponse {}
 
 const ALL_PROJECTS_QUERY_KEY = "all-projects";
 const EMPTY_PROJECT_QUEUE_ITEMS: readonly ProjectQueueItemSummary[] = [];
+const ACTIVE_INBOX_TIERS: readonly InboxTier[] = [
+  "needsAttention",
+  "active",
+];
 
 export function createEmptyClientSummaryState(): ClientSummaryState {
   return {
@@ -1199,6 +1209,81 @@ export function selectInboxResponse(state: ClientSummaryState): InboxResponse {
     unread8h: selectInboxTierItems(state, "unread8h"),
     unread24h: selectInboxTierItems(state, "unread24h"),
   };
+}
+
+export function selectInboxCounts(state: ClientSummaryState): InboxCounts {
+  return {
+    needsAttention: state.inbox.tiers.needsAttention.length,
+    active: state.inbox.tiers.active.length,
+    total: INBOX_TIERS.reduce(
+      (total, tier) => total + state.inbox.tiers[tier].length,
+      0,
+    ),
+  };
+}
+
+function incrementInboxProjectCount(
+  countsByProject: Map<string, InboxCounts>,
+  projectId: string,
+  tier: InboxTier,
+): void {
+  const current =
+    countsByProject.get(projectId) ??
+    ({
+      needsAttention: 0,
+      active: 0,
+      total: 0,
+    } satisfies InboxCounts);
+
+  countsByProject.set(projectId, {
+    needsAttention:
+      current.needsAttention + (tier === "needsAttention" ? 1 : 0),
+    active: current.active + (tier === "active" ? 1 : 0),
+    total: current.total + 1,
+  });
+}
+
+export function selectInboxCountsByProject(
+  state: ClientSummaryState,
+): ReadonlyMap<string, InboxCounts> {
+  const countsByProject = new Map<string, InboxCounts>();
+  for (const tier of INBOX_TIERS) {
+    for (const sessionId of state.inbox.tiers[tier]) {
+      const projectId = state.sessions.entities.get(sessionId)?.projectId;
+      if (projectId) {
+        incrementInboxProjectCount(countsByProject, projectId, tier);
+      }
+    }
+  }
+  return countsByProject;
+}
+
+export function selectActiveProjectSessionIds(
+  state: ClientSummaryState,
+  projectId: string | null | undefined,
+): string[] {
+  if (!projectId) {
+    return [];
+  }
+
+  const sessionIds: string[] = [];
+  for (const tier of ACTIVE_INBOX_TIERS) {
+    for (const sessionId of state.inbox.tiers[tier]) {
+      const record = state.sessions.entities.get(sessionId);
+      if (record?.projectId === projectId) {
+        sessionIds.push(sessionId);
+      }
+    }
+  }
+  return sessionIds;
+}
+
+export function selectActiveAgentCount(state: ClientSummaryState): number {
+  return state.inbox.tiers.active.length;
+}
+
+export function selectHasActiveAgents(state: ClientSummaryState): boolean {
+  return selectActiveAgentCount(state) > 0;
 }
 
 function updatedAtMs(record: SessionCollectionRecord): number {

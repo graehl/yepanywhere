@@ -19,7 +19,12 @@ import {
   applySessionCollectionProcessStateChanged,
   createEmptyClientSummaryState,
   createGlobalSessionsQueryKey,
+  selectActiveAgentCount,
+  selectActiveProjectSessionIds,
   selectDraftSessionIds,
+  selectHasActiveAgents,
+  selectInboxCounts,
+  selectInboxCountsByProject,
   selectInboxResponse,
   selectRecentSessionRecords,
   selectProjectCollectionRecord,
@@ -590,6 +595,24 @@ describe("clientSummaryState", () => {
       id: "active",
       activity: "in-turn",
     });
+    expect(selectInboxCounts(state)).toEqual({
+      needsAttention: 1,
+      active: 1,
+      total: 3,
+    });
+    expect(selectActiveAgentCount(state)).toBe(1);
+    expect(selectHasActiveAgents(state)).toBe(true);
+
+    const countsByProject = selectInboxCountsByProject(state);
+    expect(countsByProject.get(PROJECT_ID)).toEqual({
+      needsAttention: 1,
+      active: 1,
+      total: 3,
+    });
+    expect(selectActiveProjectSessionIds(state, PROJECT_ID)).toEqual([
+      "needs",
+      "active",
+    ]);
   });
 
   it("clears older active lifecycle when a newer inbox row is no longer active", () => {

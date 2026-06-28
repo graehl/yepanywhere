@@ -53,7 +53,12 @@ import {
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
   resetClientSummaryStoreForTests,
+  useActiveAgentCount,
+  useActiveProjectSessionIds,
   useDraftSessionIds,
+  useHasActiveAgents,
+  useInboxCounts,
+  useInboxCountsByProject,
   useInboxResponseSnapshot,
   useProjectQueuedSessionIds,
   useRecentSessionRecords,
@@ -210,6 +215,43 @@ describe("clientSummaryStore", () => {
         activity: "in-turn",
       },
     ]);
+  });
+
+  it("reports inbox snapshots to targeted count selectors", () => {
+    const counts = renderHook(() => useInboxCounts());
+    const byProject = renderHook(() => useInboxCountsByProject());
+    const activeIds = renderHook(() => useActiveProjectSessionIds(PROJECT_ID));
+    const activeCount = renderHook(() => useActiveAgentCount());
+    const hasActive = renderHook(() => useHasActiveAgents());
+
+    act(() => {
+      reportInboxCollectionSnapshot(
+        {
+          needsAttention: [
+            inboxItem("needs", { pendingInputType: "tool-approval" }),
+          ],
+          active: [inboxItem("active")],
+          recentActivity: [inboxItem("recent")],
+          unread8h: [],
+          unread24h: [],
+        },
+        100,
+      );
+    });
+
+    expect(counts.result.current).toEqual({
+      needsAttention: 1,
+      active: 1,
+      total: 3,
+    });
+    expect(byProject.result.current.get(PROJECT_ID)).toEqual({
+      needsAttention: 1,
+      active: 1,
+      total: 3,
+    });
+    expect(activeIds.result.current).toEqual(["needs", "active"]);
+    expect(activeCount.result.current).toBe(1);
+    expect(hasActive.result.current).toBe(true);
   });
 
   it("reports local metadata changes to derived projections", () => {

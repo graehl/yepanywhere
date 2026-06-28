@@ -30,7 +30,12 @@ import {
   applySessionCollectionUpdated,
   createEmptyClientSummaryState,
   createGlobalSessionsQueryKey,
+  selectActiveAgentCount,
+  selectActiveProjectSessionIds,
   selectDraftSessionIds,
+  selectHasActiveAgents,
+  selectInboxCounts,
+  selectInboxCountsByProject,
   selectInboxResponse,
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
@@ -43,6 +48,7 @@ import {
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
   type GlobalSessionsCollectionSnapshot,
+  type InboxCounts,
   type InboxCollectionSnapshot,
   type ProjectCollectionRecord,
   type ProjectCollectionSnapshot,
@@ -401,6 +407,75 @@ export function useDraftSessionIds(): ReadonlySet<string> {
 export function useInboxResponseSnapshot(): InboxCollectionSnapshot {
   const state = useClientSummaryState();
   return useMemo(() => selectInboxResponse(state), [state]);
+}
+
+export function useInboxCounts(): InboxCounts {
+  useClientSummaryActivitySubscription();
+  const needsAttention = useStore(
+    clientSummaryStore,
+    (state) => state.inbox.tiers.needsAttention.length,
+  );
+  const active = useStore(
+    clientSummaryStore,
+    (state) => state.inbox.tiers.active.length,
+  );
+  const total = useStore(
+    clientSummaryStore,
+    (state) => selectInboxCounts(state).total,
+  );
+  return useMemo(
+    () => ({ needsAttention, active, total }),
+    [needsAttention, active, total],
+  );
+}
+
+export function useInboxCountsByProject(): ReadonlyMap<string, InboxCounts> {
+  useClientSummaryActivitySubscription();
+  const tiers = useStore(clientSummaryStore, (state) => state.inbox.tiers);
+  const entities = useStore(
+    clientSummaryStore,
+    (state) => state.sessions.entities,
+  );
+  return useMemo(() => {
+    const state = clientSummaryStore.getState();
+    return selectInboxCountsByProject({
+      ...state,
+      sessions: { ...state.sessions, entities },
+      inbox: { ...state.inbox, tiers },
+    });
+  }, [tiers, entities]);
+}
+
+export function useActiveProjectSessionIds(
+  projectId: string | null | undefined,
+): readonly string[] {
+  useClientSummaryActivitySubscription();
+  const tiers = useStore(clientSummaryStore, (state) => state.inbox.tiers);
+  const entities = useStore(
+    clientSummaryStore,
+    (state) => state.sessions.entities,
+  );
+  return useMemo(() => {
+    const state = clientSummaryStore.getState();
+    return selectActiveProjectSessionIds(
+      {
+        ...state,
+        sessions: { ...state.sessions, entities },
+        inbox: { ...state.inbox, tiers },
+      },
+      projectId,
+    );
+  }, [tiers, entities, projectId]);
+}
+
+export function useActiveAgentCount(): number {
+  useClientSummaryActivitySubscription();
+  return useStore(clientSummaryStore, selectActiveAgentCount);
+}
+
+export function useHasActiveAgents(): boolean {
+  useClientSummaryActivitySubscription();
+  return useStore(clientSummaryStore, selectHasActiveAgents);
 }
 
 export function useStarredSessionRecords(): SessionCollectionRecord[] {

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useInboxContext } from "../contexts/InboxContext";
+import { useInboxCounts } from "../lib/clientSummaryStore";
 import { useTabTitleActivityPreference } from "./useTabTitleActivityPreference";
 
 // Regex to match and strip existing badge prefix like "(3) "
@@ -54,13 +54,13 @@ export function getTabTitleActivityFrame(
  * This hook works independently of useDocumentTitle - it observes title changes
  * and prepends/updates indicators as needed.
  *
- * Uses InboxContext for data - no independent fetching.
+ * Uses client summary inbox counts - no independent fetching.
  */
 export function useNeedsAttentionBadge() {
   const activityStartedAtRef = useRef<number | null>(null);
-  const { totalNeedsAttention: count, totalActive } = useInboxContext();
+  const { needsAttention: count, active } = useInboxCounts();
   const { tabTitleActivityEnabled } = useTabTitleActivityPreference();
-  const showSessionActivity = tabTitleActivityEnabled && totalActive > 0;
+  const showSessionActivity = tabTitleActivityEnabled && active > 0;
 
   useEffect(() => {
     return () => {

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
-import { useInboxContext } from "../contexts/InboxContext";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useNewSessionDraft } from "../hooks/useDrafts";
 import { useProjectQueues } from "../hooks/useProjectQueues";
@@ -17,6 +16,7 @@ import { isNearScrollEnd } from "../lib/predictiveScroll";
 import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
 import {
   useDraftSessionIds,
+  useInboxCounts,
   useOlderSessionRecords,
   useProjectQueuedSessionIds,
   useRecentSessionRecords,
@@ -217,7 +217,7 @@ export function Sidebar({
   const capabilities = versionInfo?.capabilities ?? [];
 
   // Global inbox count. Title badge updates are owned by the app shell.
-  const { totalNeedsAttention: inboxCount } = useInboxContext();
+  const { needsAttention: inboxCount } = useInboxCounts();
   const newSessionPath = "/new-session";
   const newSessionHref = `${basePath}${newSessionPath}`;
   const expandedSidebarNewSessionHref = toBrowserAppHref(

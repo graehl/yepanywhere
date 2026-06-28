@@ -10,18 +10,19 @@ import {
   useNeedsAttentionBadge,
 } from "../useNeedsAttentionBadge";
 
-const { inboxState, preferenceState } = vi.hoisted(() => ({
-  inboxState: {
-    totalNeedsAttention: 0,
-    totalActive: 0,
+const { inboxCounts, preferenceState } = vi.hoisted(() => ({
+  inboxCounts: {
+    needsAttention: 0,
+    active: 0,
+    total: 0,
   },
   preferenceState: {
     tabTitleActivityEnabled: false,
   },
 }));
 
-vi.mock("../../contexts/InboxContext", () => ({
-  useInboxContext: () => inboxState,
+vi.mock("../../lib/clientSummaryStore", () => ({
+  useInboxCounts: () => inboxCounts,
 }));
 
 vi.mock("../useTabTitleActivityPreference", () => ({
@@ -31,8 +32,9 @@ vi.mock("../useTabTitleActivityPreference", () => ({
 describe("tab title indicators", () => {
   beforeEach(() => {
     document.title = "Project - Session";
-    inboxState.totalNeedsAttention = 0;
-    inboxState.totalActive = 0;
+    inboxCounts.needsAttention = 0;
+    inboxCounts.active = 0;
+    inboxCounts.total = 0;
     preferenceState.tabTitleActivityEnabled = false;
   });
 
@@ -63,7 +65,8 @@ describe("tab title indicators", () => {
   });
 
   it("shows all-session activity when enabled and sessions are active", () => {
-    inboxState.totalActive = 1;
+    inboxCounts.active = 1;
+    inboxCounts.total = 1;
     preferenceState.tabTitleActivityEnabled = true;
 
     renderHook(() => useNeedsAttentionBadge());
@@ -73,7 +76,8 @@ describe("tab title indicators", () => {
 
   it("animates all-session activity on the configured cadence", () => {
     vi.useFakeTimers();
-    inboxState.totalActive = 1;
+    inboxCounts.active = 1;
+    inboxCounts.total = 1;
     preferenceState.tabTitleActivityEnabled = true;
 
     renderHook(() => useNeedsAttentionBadge());
@@ -88,7 +92,8 @@ describe("tab title indicators", () => {
   });
 
   it("does not show activity while disabled", () => {
-    inboxState.totalActive = 1;
+    inboxCounts.active = 1;
+    inboxCounts.total = 1;
     preferenceState.tabTitleActivityEnabled = false;
 
     renderHook(() => useNeedsAttentionBadge());

@@ -57,12 +57,6 @@ vi.mock("../../contexts/RemoteConnectionContext", () => ({
   useOptionalRemoteConnection: () => mockRemoteConnectionState.value,
 }));
 
-vi.mock("../../contexts/InboxContext", () => ({
-  useInboxContext: () => ({
-    totalNeedsAttention: 0,
-  }),
-}));
-
 vi.mock("../../hooks/useDrafts", () => ({
   useNewSessionDraft: () => newSessionDraftState.hasDraft,
 }));
@@ -101,6 +95,11 @@ vi.mock("../../lib/clientSummaryStore", () => {
 
   return {
     useDraftSessionIds: () => new Set<string>(),
+    useInboxCounts: () => ({
+      needsAttention: 0,
+      active: 0,
+      total: 0,
+    }),
     useStarredSessionRecords: () =>
       starredSessionsState.sessions.filter((session) => !session.isArchived),
     useRecentSessionRecords: () => {

@@ -26,6 +26,12 @@ Progress:
   changes, so stale callbacks reduce into their original source instead of the
   visible host. `reportSessionCollectionCreated` and
   `reportSessionCollectionMetadataChanged` now require source keys.
+- [x] 2026-06-28: Quarantined legacy draft decorations. Draft presence reports
+  now require a source key, while the old `draft-message-*` localStorage scanner
+  only populates the `local` source. Remote sources stay empty unless a
+  source-keyed reporter supplies draft ids, which keeps the path clean for the
+  planned server-authoritative draft migration without adding a temporary
+  scoped localStorage format.
 
 This doc tracks the next widening of the client summary store. The normalized
 `ClientSummaryState` shape stays the same, but the store is no longer a single
@@ -197,12 +203,13 @@ about multiple hosts unless they write shared summary state.
 ## Local Decorations
 
 Draft badges currently scan `draft-message-*` keys from localStorage. That is
-also a source boundary. The registry can initially keep draft decoration state
-per source, but the scanner must eventually become source-aware:
+also a source boundary. The registry keeps draft decoration state per source,
+but the legacy scanner is quarantined to the `local` source:
 
-- preferred new key: `draft-message:<sourceKey>:<sessionId>` or equivalent;
-- compatibility: optionally read old `draft-message-*` keys only for `local`,
-  or migrate them when a session is opened under a known source.
+- source-keyed draft reporters may populate any source;
+- the compatibility scan reads old `draft-message-*` keys only for `local`;
+- remote sources wait for the planned server-authoritative draft feed instead
+  of adding a temporary scoped localStorage key format.
 
 Do not let source-global draft scans contaminate per-host session cards.
 
@@ -216,7 +223,7 @@ Do not let source-global draft scans contaminate per-host session cards.
 3. [x] Require source keys on REST snapshot reporters and migrate sessions, inbox,
    projects, and project queue feed hooks.
 4. [x] Scope activity-bus reductions and local mutation reporters.
-5. [ ] Scope or quarantine local draft decorations.
+5. [x] Scope or quarantine local draft decorations.
 6. [ ] Remove any compatibility default that allowed unscoped summary writes.
 
 ## Verification

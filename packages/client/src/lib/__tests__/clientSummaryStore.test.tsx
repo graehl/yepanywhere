@@ -50,6 +50,7 @@ import {
   createClientSummaryHostSourceKey,
   getClientSummarySnapshot,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+  reportDraftSessionIdsSnapshot,
   reportGlobalSessionsCollectionSnapshot,
   reportInboxCollectionSnapshot,
   reportSessionCollectionCreated,
@@ -645,5 +646,69 @@ describe("clientSummaryStore", () => {
     expect([
       ...getClientSummarySnapshot().localDecorations.draftSessionIds,
     ]).toEqual(["session-a", "session-b"]);
+  });
+
+  it("keeps legacy local draft ids out of remote sources", () => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    localStorage.setItem("draft-message-session-a", "draft text");
+    const macbook = createClientSummaryHostSourceKey("macbook");
+
+    let renders = 0;
+    const selected = renderHook(() => {
+      renders += 1;
+      return useDraftSessionIds();
+    });
+
+    expect([...selected.result.current]).toEqual(["session-a"]);
+    const initialRenders = renders;
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    expect([...selected.result.current]).toEqual([]);
+    expect(renders).toBeGreaterThan(initialRenders);
+    const afterMacbookRenders = renders;
+
+    act(() => {
+      localStorage.setItem("draft-message-session-b", "remote should ignore");
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect([...selected.result.current]).toEqual([]);
+
+    act(() => {
+      setCurrentClientSummarySourceKey(LOCAL_CLIENT_SUMMARY_SOURCE_KEY);
+    });
+
+    expect([...selected.result.current]).toEqual([
+      "session-a",
+      "session-b",
+    ]);
+    expect(renders).toBeGreaterThan(afterMacbookRenders);
+  });
+
+  it("preserves source-keyed remote draft reports", () => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    localStorage.setItem("draft-message-local-session", "local draft");
+    const macbook = createClientSummaryHostSourceKey("macbook");
+
+    act(() => {
+      reportDraftSessionIdsSnapshot(macbook, new Set(["remote-session"]), 100);
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    const selected = renderHook(() => useDraftSessionIds());
+
+    expect([...selected.result.current]).toEqual(["remote-session"]);
+
+    act(() => {
+      localStorage.setItem("draft-message-other-session", "local only");
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect([...selected.result.current]).toEqual(["remote-session"]);
   });
 });

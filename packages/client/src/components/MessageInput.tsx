@@ -27,6 +27,7 @@ import {
 } from "../hooks/useDraftPersistence";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
+import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import type { BtwToolbarMode } from "../lib/btwAsideRouting";
 import {
   getDraftTextChangeMetadata,
@@ -303,6 +304,10 @@ interface Props {
   isThinking?: boolean;
   onStop?: () => void;
   draftKey: string; // localStorage key for draft persistence
+  draftIndex?: {
+    sourceKey: ClientSummarySourceKey;
+    sessionId: string;
+  };
   /** Collapse to single-line but keep visible and focusable (for when approval panel is showing) */
   collapsed?: boolean;
   /** Callback to receive draft controls for success/failure handling */
@@ -407,6 +412,7 @@ export function MessageInput({
   isThinking,
   onStop,
   draftKey,
+  draftIndex,
   collapsed: externalCollapsed,
   onDraftControlsReady,
   onDraftTextChange,
@@ -447,7 +453,9 @@ export function MessageInput({
   onForkSummaryShortcut,
 }: Props) {
   const { t } = useI18n();
-  const [text, setText, controls] = useDraftPersistence(draftKey);
+  const [text, setText, controls] = useDraftPersistence(draftKey, {
+    sessionDraft: draftIndex,
+  });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);

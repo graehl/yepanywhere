@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
+import {
+  removeSessionDraft,
+  saveSessionDraft,
+  updateSessionDraftIndex,
+} from "../lib/sessionDraftStorage";
 
 export interface DraftControls {
   /** Return the current in-memory draft value */
@@ -28,10 +34,24 @@ export interface DraftControls {
 export interface UseDraftPersistenceOptions {
   /** Keep the current in-memory draft when switching to a new storage key that has no draft yet. */
   preserveValueOnKeyChange?: boolean;
+  /** Source-scoped session draft metadata for efficient badge indexing. */
+  sessionDraft?: {
+    sourceKey: ClientSummarySourceKey;
+    sessionId: string;
+  };
 }
 
 /** Save a value to localStorage immediately */
-function saveToStorage(key: string, value: string): void {
+function saveToStorage(
+  key: string,
+  value: string,
+  sessionDraft?: UseDraftPersistenceOptions["sessionDraft"],
+): void {
+  if (sessionDraft) {
+    saveSessionDraft(sessionDraft, value);
+    return;
+  }
+
   try {
     if (value) {
       localStorage.setItem(key, value);
@@ -40,6 +60,22 @@ function saveToStorage(key: string, value: string): void {
     }
   } catch {
     // localStorage might be full or unavailable
+  }
+}
+
+function removeFromStorage(
+  key: string,
+  sessionDraft?: UseDraftPersistenceOptions["sessionDraft"],
+): void {
+  if (sessionDraft) {
+    removeSessionDraft(sessionDraft);
+    return;
+  }
+
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // localStorage might be unavailable.
   }
 }
 
@@ -64,6 +100,7 @@ export function useDraftPersistence(
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyRef = useRef(key);
+  const sessionDraftRef = useRef(options?.sessionDraft);
   // Track pending value so we can flush on unmount/beforeunload
   const pendingValueRef = useRef<string | null>(null);
   const valueRef = useRef(value);
@@ -75,25 +112,36 @@ export function useDraftPersistence(
   // Update keyRef when key changes
   useEffect(() => {
     const previousKey = keyRef.current;
+    const previousSessionDraft = sessionDraftRef.current;
     const previousValue = pendingValueRef.current ?? valueRef.current;
     const keyChanged = previousKey !== key;
+    const sessionDraftChanged =
+      previousSessionDraft?.sourceKey !== options?.sessionDraft?.sourceKey ||
+      previousSessionDraft?.sessionId !== options?.sessionDraft?.sessionId;
 
-    if (keyChanged && pendingValueRef.current !== null) {
-      saveToStorage(previousKey, pendingValueRef.current);
+    if (
+      (keyChanged || sessionDraftChanged) &&
+      pendingValueRef.current !== null
+    ) {
+      saveToStorage(previousKey, pendingValueRef.current, previousSessionDraft);
       pendingValueRef.current = null;
+    }
+    if (sessionDraftChanged && previousSessionDraft) {
+      updateSessionDraftIndex(previousSessionDraft, previousValue);
     }
 
     keyRef.current = key;
+    sessionDraftRef.current = options?.sessionDraft;
 
     try {
       const stored = localStorage.getItem(key);
       if (
-        keyChanged &&
+        (keyChanged || sessionDraftChanged) &&
         options?.preserveValueOnKeyChange &&
         previousValue &&
         !stored
       ) {
-        saveToStorage(key, previousValue);
+        saveToStorage(key, previousValue, options.sessionDraft);
         valueRef.current = previousValue;
         setValueInternal(previousValue);
         return;
@@ -104,7 +152,12 @@ export function useDraftPersistence(
       valueRef.current = "";
       setValueInternal("");
     }
-  }, [key, options?.preserveValueOnKeyChange]);
+  }, [
+    key,
+    options?.preserveValueOnKeyChange,
+    options?.sessionDraft?.sourceKey,
+    options?.sessionDraft?.sessionId,
+  ]);
 
   // Flush pending value to localStorage
   const flushPending = useCallback(() => {
@@ -113,7 +166,11 @@ export function useDraftPersistence(
       timeoutRef.current = null;
     }
     if (pendingValueRef.current !== null) {
-      saveToStorage(keyRef.current, pendingValueRef.current);
+      saveToStorage(
+        keyRef.current,
+        pendingValueRef.current,
+        sessionDraftRef.current,
+      );
       pendingValueRef.current = null;
     }
   }, []);
@@ -151,7 +208,7 @@ export function useDraftPersistence(
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-    saveToStorage(keyRef.current, newValue);
+    saveToStorage(keyRef.current, newValue, sessionDraftRef.current);
   }, []);
 
   // Read the current in-memory value for UI actions that append to the draft.
@@ -167,13 +224,17 @@ export function useDraftPersistence(
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-    saveToStorage(keyRef.current, newValue);
+    saveToStorage(keyRef.current, newValue, sessionDraftRef.current);
   }, []);
 
   // Clear input state only (for optimistic UI on submit)
   const clearInput = useCallback(() => {
     if (pendingValueRef.current !== null) {
-      saveToStorage(keyRef.current, pendingValueRef.current);
+      saveToStorage(
+        keyRef.current,
+        pendingValueRef.current,
+        sessionDraftRef.current,
+      );
     }
     valueRef.current = "";
     setValueInternal("");
@@ -194,11 +255,7 @@ export function useDraftPersistence(
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-    try {
-      localStorage.removeItem(keyRef.current);
-    } catch {
-      // Ignore errors
-    }
+    removeFromStorage(keyRef.current, sessionDraftRef.current);
   }, []);
 
   // Restore from localStorage (for failure recovery)
@@ -222,7 +279,11 @@ export function useDraftPersistence(
     return () => {
       // Flush any pending value before unmount (handles HMR and navigation)
       if (pendingValueRef.current !== null) {
-        saveToStorage(keyRef.current, pendingValueRef.current);
+        saveToStorage(
+          keyRef.current,
+          pendingValueRef.current,
+          sessionDraftRef.current,
+        );
       }
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);

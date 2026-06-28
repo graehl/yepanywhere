@@ -94,7 +94,10 @@ import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
 } from "../lib/btwAsideSessions";
-import { useActiveProjectSessionIds } from "../lib/clientSummaryStore";
+import {
+  useActiveProjectSessionIds,
+  useClientSummarySourceKey,
+} from "../lib/clientSummaryStore";
 import { activityBus } from "../lib/activityBus";
 import {
   getRecallSubmissionAfterQueuedCancel,
@@ -107,6 +110,10 @@ import { prepareImageUpload } from "../lib/imageAttachmentResize";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { resolveSessionProviderCapabilities } from "../lib/providerCapabilities";
 import { shouldShowProjectQueueAffordance } from "../lib/projectQueueVisibility";
+import {
+  createSessionDraftStorageKey,
+  saveSessionDraft,
+} from "../lib/sessionDraftStorage";
 import {
   getEstimatedServerOffsetMs,
   getServerClockTimestamp,
@@ -712,6 +719,18 @@ function SessionPageContent({
   const { project } = useProject(projectId);
   const { projects } = useProjects();
   const activeProjectSessionIds = useActiveProjectSessionIds(projectId);
+  const clientSummarySourceKey = useClientSummarySourceKey();
+  const sessionDraftReference = useMemo(
+    () => ({
+      sourceKey: clientSummarySourceKey,
+      sessionId,
+    }),
+    [clientSummarySourceKey, sessionId],
+  );
+  const sessionDraftKey = useMemo(
+    () => createSessionDraftStorageKey(sessionDraftReference),
+    [sessionDraftReference],
+  );
   const projectQueueProjectIds = useMemo(() => [projectId], [projectId]);
   const projectQueues = useProjectQueues(projectQueueProjectIds);
   const navigate = useNavigate();
@@ -1456,7 +1475,13 @@ function SessionPageContent({
         });
         if (prefill.trim()) {
           try {
-            localStorage.setItem(`draft-message-${result.sessionId}`, prefill);
+            saveSessionDraft(
+              {
+                sourceKey: clientSummarySourceKey,
+                sessionId: result.sessionId,
+              },
+              prefill,
+            );
           } catch {
             // localStorage unavailable/full — fork still proceeds, just no seed.
           }
@@ -1472,7 +1497,16 @@ function SessionPageContent({
         );
       }
     },
-    [messages, projectId, actualSessionId, navigate, basePath, showToast, t],
+    [
+      messages,
+      projectId,
+      actualSessionId,
+      navigate,
+      basePath,
+      showToast,
+      t,
+      clientSummarySourceKey,
+    ],
   );
   const copyUserMessage = useCallback(
     (messageId: string) => {
@@ -5173,7 +5207,12 @@ function SessionPageContent({
                 draftKey={
                   mainComposerForAside && focusedBtwAside
                     ? `draft-btw-${focusedBtwAside.sessionId ?? focusedBtwAside.id}`
-                    : `draft-message-${sessionId}`
+                    : sessionDraftKey
+                }
+                draftIndex={
+                  mainComposerForAside && focusedBtwAside
+                    ? undefined
+                    : sessionDraftReference
                 }
                 onDraftControlsReady={handleDraftControlsReady}
                 onDraftTextChange={handleComposerDraftTextChange}

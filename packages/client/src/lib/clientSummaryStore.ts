@@ -340,11 +340,7 @@ export function reportDraftSessionIdsSnapshot(
 }
 
 function scanDraftSessionIdsIntoStore(sourceKey: ClientSummarySourceKey): void {
-  if (sourceKey !== LOCAL_CLIENT_SUMMARY_SOURCE_KEY) {
-    return;
-  }
-
-  reportDraftSessionIdsSnapshot(sourceKey, scanSessionDraftIds());
+  reportDraftSessionIdsSnapshot(sourceKey, scanSessionDraftIds(sourceKey));
 }
 
 function startDraftDecorationSubscription(
@@ -360,10 +356,7 @@ function startDraftDecorationSubscription(
   draftDecorationSubscriptionSourceKey = sourceKey;
   scanDraftSessionIdsIntoStore(sourceKey);
 
-  if (
-    typeof window === "undefined" ||
-    sourceKey !== LOCAL_CLIENT_SUMMARY_SOURCE_KEY
-  ) {
+  if (typeof window === "undefined") {
     draftDecorationRelease = () => {};
     return;
   }

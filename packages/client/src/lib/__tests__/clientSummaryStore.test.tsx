@@ -50,7 +50,6 @@ import {
   createClientSummaryHostSourceKey,
   getClientSummarySnapshotForSource,
   LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
-  reportDraftSessionIdsSnapshot,
   reportGlobalSessionsCollectionSnapshot,
   reportInboxCollectionSnapshot,
   reportSessionCollectionCreated,
@@ -69,6 +68,7 @@ import {
   useSessionCollectionRecord,
   useStarredSessionRecords,
 } from "../clientSummaryStore";
+import { saveSessionDraft } from "../sessionDraftStorage";
 
 const PROJECT_ID = "project-1" as UrlProjectId;
 const RECENT = "2026-06-27T11:00:00.000Z";
@@ -690,14 +690,17 @@ describe("clientSummaryStore", () => {
     expect(renders).toBeGreaterThan(afterMacbookRenders);
   });
 
-  it("preserves source-keyed remote draft reports", () => {
+  it("preserves indexed source-keyed remote draft storage", () => {
     vi.useFakeTimers();
     localStorage.clear();
     localStorage.setItem("draft-message-local-session", "local draft");
     const macbook = createClientSummaryHostSourceKey("macbook");
 
     act(() => {
-      reportDraftSessionIdsSnapshot(macbook, new Set(["remote-session"]), 100);
+      saveSessionDraft(
+        { sourceKey: macbook, sessionId: "remote-session" },
+        "remote draft",
+      );
       setCurrentClientSummarySourceKey(macbook);
     });
 
@@ -711,5 +714,35 @@ describe("clientSummaryStore", () => {
     });
 
     expect([...selected.result.current]).toEqual(["remote-session"]);
+  });
+
+  it("loads indexed remote draft ids for the current source", () => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    const winnative = createClientSummaryHostSourceKey("winnative");
+
+    saveSessionDraft(
+      { sourceKey: macbook, sessionId: "mac-draft-session" },
+      "mac draft",
+    );
+    saveSessionDraft(
+      { sourceKey: winnative, sessionId: "win-draft-session" },
+      "win draft",
+    );
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    const selected = renderHook(() => useDraftSessionIds());
+
+    expect([...selected.result.current]).toEqual(["mac-draft-session"]);
+
+    act(() => {
+      setCurrentClientSummarySourceKey(winnative);
+    });
+
+    expect([...selected.result.current]).toEqual(["win-draft-session"]);
   });
 });

@@ -2,6 +2,7 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { asClientSummarySourceKey } from "../../lib/clientSummaryStore";
 import { useDraftPersistence } from "../useDraftPersistence";
 
 function installLocalStorageMock(): Map<string, string> {
@@ -16,6 +17,10 @@ function installLocalStorageMock(): Map<string, string> {
       removeItem: vi.fn((key: string) => {
         store.delete(key);
       }),
+      key: vi.fn((index: number) => [...store.keys()][index] ?? null),
+      get length() {
+        return store.size;
+      },
     },
   });
   return store;
@@ -64,5 +69,36 @@ describe("useDraftPersistence", () => {
     });
 
     expect(window.localStorage.getItem("draft-test")).toBe("blur save");
+  });
+
+  it("updates source draft indexes for session drafts", () => {
+    const sourceKey = asClientSummarySourceKey("host:macbook");
+    const { result } = renderHook(() =>
+      useDraftPersistence("draft-message:host%3Amacbook:session-a", {
+        sessionDraft: { sourceKey, sessionId: "session-a" },
+      }),
+    );
+
+    act(() => {
+      result.current[1]("indexed draft");
+    });
+
+    expect(
+      window.localStorage.getItem("draft-message:host%3Amacbook:session-a"),
+    ).toBe("indexed draft");
+    expect(window.localStorage.getItem("draft-index-message:host%3Amacbook")).toBe(
+      '["session-a"]',
+    );
+
+    act(() => {
+      result.current[2].clearDraft();
+    });
+
+    expect(
+      window.localStorage.getItem("draft-message:host%3Amacbook:session-a"),
+    ).toBe(null);
+    expect(window.localStorage.getItem("draft-index-message:host%3Amacbook")).toBe(
+      null,
+    );
   });
 });

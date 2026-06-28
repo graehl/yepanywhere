@@ -92,12 +92,12 @@ current endpoint is measurably wasteful or makes ownership confusing.
 | Inbox rows | `InboxContext` selects store rows | Direct selectors or compatibility context while feed remains mounted | Mostly migrated |
 | Inbox queue/draft badges | Store selectors | Store selectors | Migrated |
 | Projects page rows | `useProjects` feeds store project records | Store project selectors | Migrated |
-| Projects page active/attention counts | Broad `useInboxContext` arrays | `useInboxCountsByProject()` or targeted selectors | Pending |
+| Projects page active/attention counts | `useInboxCountsByProject()` selector | `useInboxCountsByProject()` selector | Migrated |
 | Projects page queue counts | `useProjectQueues` return data | Store queue count selectors | Pending |
 | New Session project chooser | `useProjects`, `useProject`, `useRecentSessions` | Store project selectors; possible recent-visit slice | Partial |
-| New Session queue visibility | Broad `useInboxContext` arrays plus queue hook data | active-session and queue selectors by project | Pending |
+| New Session queue visibility | `useActiveProjectSessionIds()` plus queue hook data | active-session and queue selectors by project | Partial |
 | Session Page transcript | `useSession`, `useSessionMessages`, streams | Keep local; report summary facts as needed | Keep local |
-| Session Page project queue affordances | Broad inbox arrays plus queue hook data | active-session and queue selectors by project | Pending |
+| Session Page project queue affordances | `useActiveProjectSessionIds()` plus queue hook data | active-session and queue selectors by project | Partial |
 | Session Page metadata actions | Direct API calls and local state | Shared mutation helpers that report store updates | Pending |
 | Agents nav badge | `useGlobalActiveAgents` wrapper over store selector | Active-agent selector | Migrated |
 | Agents page process rows | `useProcesses` polling | Keep feed-local or future `processes` slice | Open |
@@ -122,9 +122,9 @@ Candidate consumers:
 - `AgentsNavItem` / `useGlobalActiveAgents` (migrated);
 - `useNeedsAttentionBadge` (migrated);
 - Sidebar inbox badge (migrated);
-- `ProjectsPage`;
-- `NewSessionForm`;
-- `SessionPage`.
+- `ProjectsPage` (migrated);
+- `NewSessionForm` (migrated for active session ids);
+- `SessionPage` (migrated for active session ids).
 
 Expected result: fewer independent `api.getInbox()` calls and fewer broad
 context subscriptions for components that only need counts or ids.
@@ -245,9 +245,9 @@ Replace broad inbox context consumers with purpose selectors:
    active session ids by project.
 2. [x] Migrate `useGlobalActiveAgents` or replace it at `AgentsNavItem`.
 3. [x] Migrate `useNeedsAttentionBadge` and Sidebar inbox badge.
-4. [ ] Migrate `ProjectsPage`, `NewSessionForm`, and `SessionPage` from
+4. [x] Migrate `ProjectsPage`, `NewSessionForm`, and `SessionPage` from
    `useInboxContext` row arrays to targeted selectors.
-5. [ ] Keep `InboxContext` as the fetch/lifecycle provider and compatibility
+5. [x] Keep `InboxContext` as the fetch/lifecycle provider and compatibility
    layer for `InboxContent`.
 
 This is the highest-value cleanup because it removes duplicate inbox fetching
@@ -266,6 +266,12 @@ and narrows several consumers that currently subscribe to full inbox row arrays.
   badge off broad `useInboxContext` consumption; `ProjectsPage`,
   `NewSessionForm`, and `SessionPage` still need the project-scoped selector
   migration.
+- 2026-06-28: Migrated the project-scoped inbox consumers. `ProjectsPage`
+  now reads per-project inbox counts from the client summary store, while
+  `NewSessionForm` and `SessionPage` use active project session id selectors
+  for Project Queue visibility. The remaining `useInboxContext` production
+  consumer is `InboxContent`, with `InboxContext` still owning the `/api/inbox`
+  feed.
 
 ## Verification Checklist
 

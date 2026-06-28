@@ -312,30 +312,13 @@ vi.mock("../../hooks/useSessionToolbarVisibility", () => ({
   }),
 }));
 
-vi.mock("../../contexts/InboxContext", () => ({
-  useInboxContext: () => ({
-    needsAttention: inboxState.needsAttention,
-    active: inboxState.active,
-    recentActivity: [],
-    unread8h: [],
-    unread24h: [],
-    inbox: {
-      needsAttention: inboxState.needsAttention,
-      active: inboxState.active,
-      recentActivity: [],
-      unread8h: [],
-      unread24h: [],
-    },
-    loading: false,
-    error: null,
-    refresh: vi.fn(),
-    refetch: vi.fn(),
-    totalNeedsAttention: inboxState.needsAttention.length,
-    totalActive: inboxState.active.length,
-    totalItems: inboxState.needsAttention.length + inboxState.active.length,
-    enabled: true,
-    setEnabled: vi.fn(),
-  }),
+vi.mock("../../lib/clientSummaryStore", () => ({
+  useActiveProjectSessionIds: (projectId: string | null | undefined) => {
+    if (!projectId) return [];
+    return [...inboxState.needsAttention, ...inboxState.active]
+      .filter((item) => item.projectId === projectId)
+      .map((item) => item.sessionId);
+  },
 }));
 
 vi.mock("../../hooks/useProjectQueues", () => ({

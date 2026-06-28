@@ -5,18 +5,18 @@ import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectCard } from "../components/ProjectCard";
 import { ProjectQueueSection } from "../components/ProjectQueueSection";
-import { useInboxContext } from "../contexts/InboxContext";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import { useProjects } from "../hooks/useProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
+import { useInboxCountsByProject } from "../lib/clientSummaryStore";
 import type { Project } from "../types";
 
 export function ProjectsPage() {
   const { t } = useI18n();
   const { projects, loading, error, refetch } = useProjects();
-  const { needsAttention, active } = useInboxContext();
+  const inboxCountsByProject = useInboxCountsByProject();
   const [showAddForm, setShowAddForm] = useState(false);
   const [newProjectPath, setNewProjectPath] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
@@ -30,26 +30,6 @@ export function ProjectsPage() {
 
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
-
-  // Count needs-attention items per project (client-side filter - free)
-  const attentionByProject = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const item of needsAttention) {
-      const current = counts.get(item.projectId) ?? 0;
-      counts.set(item.projectId, current + 1);
-    }
-    return counts;
-  }, [needsAttention]);
-
-  // Count actively-thinking sessions per project (from inbox "active" tier)
-  const thinkingByProject = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const item of active) {
-      const current = counts.get(item.projectId) ?? 0;
-      counts.set(item.projectId, current + 1);
-    }
-    return counts;
-  }, [active]);
 
   const projectIds = useMemo(
     () => projects.map((project) => project.id),
@@ -74,8 +54,8 @@ export function ProjectsPage() {
   // Sort projects: those needing attention first, then by recency
   const sortedProjects = useMemo(() => {
     return [...projects].sort((a, b) => {
-      const aNeeds = attentionByProject.get(a.id) ?? 0;
-      const bNeeds = attentionByProject.get(b.id) ?? 0;
+      const aNeeds = inboxCountsByProject.get(a.id)?.needsAttention ?? 0;
+      const bNeeds = inboxCountsByProject.get(b.id)?.needsAttention ?? 0;
 
       // Projects needing attention come first
       if (aNeeds > 0 && bNeeds === 0) return -1;
@@ -86,7 +66,7 @@ export function ProjectsPage() {
       const bTime = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
       return bTime - aTime;
     });
-  }, [projects, attentionByProject]);
+  }, [projects, inboxCountsByProject]);
 
   const handleAddProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -278,8 +258,12 @@ export function ProjectsPage() {
                 <ProjectCard
                   key={project.id}
                   project={project}
-                  needsAttentionCount={attentionByProject.get(project.id) ?? 0}
-                  thinkingCount={thinkingByProject.get(project.id) ?? 0}
+                  needsAttentionCount={
+                    inboxCountsByProject.get(project.id)?.needsAttention ?? 0
+                  }
+                  thinkingCount={
+                    inboxCountsByProject.get(project.id)?.active ?? 0
+                  }
                   queueCount={queueCountByProject.get(project.id) ?? 0}
                   basePath={basePath}
                   onDeleteProject={handleDeleteProject}

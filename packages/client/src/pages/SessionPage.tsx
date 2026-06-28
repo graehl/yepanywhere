@@ -50,7 +50,6 @@ import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import type { ModalAnchorRect } from "../components/ui/Modal";
 import { ViewerCountIndicator } from "../components/ViewerCountIndicator";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
-import { useInboxContext } from "../contexts/InboxContext";
 import { RenderModeProvider } from "../contexts/RenderModeContext";
 import { SessionMetadataProvider } from "../contexts/SessionMetadataContext";
 import {
@@ -95,6 +94,7 @@ import {
   buildBtwAsideParentHref,
   getBtwAsideSessionDisplayTitle,
 } from "../lib/btwAsideSessions";
+import { useActiveProjectSessionIds } from "../lib/clientSummaryStore";
 import { activityBus } from "../lib/activityBus";
 import {
   getRecallSubmissionAfterQueuedCancel,
@@ -711,7 +711,7 @@ function SessionPageContent({
   const basePath = useRemoteBasePath();
   const { project } = useProject(projectId);
   const { projects } = useProjects();
-  const { needsAttention, active } = useInboxContext();
+  const activeProjectSessionIds = useActiveProjectSessionIds(projectId);
   const projectQueueProjectIds = useMemo(() => [projectId], [projectId]);
   const projectQueues = useProjectQueues(projectQueueProjectIds);
   const navigate = useNavigate();
@@ -836,13 +836,6 @@ function SessionPageContent({
   const { status: publicShareGlobalStatus } = usePublicShareStatus({
     poll: publicSharesEnabled,
   });
-  const activeProjectSessionIds = useMemo(
-    () =>
-      [...needsAttention, ...active]
-        .filter((item) => item.projectId === projectId)
-        .map((item) => item.sessionId),
-    [active, needsAttention, projectId],
-  );
   const projectQueueBlockingCount =
     project?.projectQueueBlockingCount ?? null;
   const currentSessionBlocksProjectQueue =

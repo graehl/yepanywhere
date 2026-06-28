@@ -29,7 +29,6 @@ import {
 import { useNavigate } from "react-router-dom";
 import { type UploadedFile, api } from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
-import { useInboxContext } from "../contexts/InboxContext";
 import { useToastContext } from "../contexts/ToastContext";
 import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useConnection } from "../hooks/useConnection";
@@ -70,6 +69,7 @@ import {
   serverSupportsProjectQueue,
   shouldShowProjectQueueAffordance,
 } from "../lib/projectQueueVisibility";
+import { useActiveProjectSessionIds } from "../lib/clientSummaryStore";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import { logSessionUiTrace } from "../lib/diagnostics/uiTrace";
 import {
@@ -404,7 +404,6 @@ export function NewSessionForm({
   >({});
   const [attachmentQuality] = useAttachmentUploadQuality();
   const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
-  const { needsAttention, active } = useInboxContext();
   const [interimTranscript, setInterimTranscript] = useState("");
   const [speechPending, setSpeechPending] = useState<SpeechPendingKind | null>(
     null,
@@ -653,14 +652,8 @@ export function NewSessionForm({
     [projectQueueTargetProjectId],
   );
   const projectQueues = useProjectQueues(projectQueueProjectIds);
-  const activeProjectSessionIds = useMemo(
-    () =>
-      projectQueueTargetProjectId
-        ? [...needsAttention, ...active]
-            .filter((item) => item.projectId === projectQueueTargetProjectId)
-            .map((item) => item.sessionId)
-        : [],
-    [active, needsAttention, projectQueueTargetProjectId],
+  const activeProjectSessionIds = useActiveProjectSessionIds(
+    projectQueueTargetProjectId,
   );
   const projectQueueItemCount = projectQueueTargetProjectId
     ? (projectQueues.queuesByProject[projectQueueTargetProjectId]?.length ?? 0)

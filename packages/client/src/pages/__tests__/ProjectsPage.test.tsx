@@ -21,6 +21,10 @@ const state = vi.hoisted(() => ({
     },
   ],
   queueItems: [] as ProjectQueueItemSummary[],
+  inboxCountsByProject: new Map<
+    string,
+    { needsAttention: number; active: number; total: number }
+  >(),
 }));
 
 vi.mock("../../api/client", () => ({
@@ -30,11 +34,8 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
-vi.mock("../../contexts/InboxContext", () => ({
-  useInboxContext: () => ({
-    needsAttention: [],
-    active: [],
-  }),
+vi.mock("../../lib/clientSummaryStore", () => ({
+  useInboxCountsByProject: () => state.inboxCountsByProject,
 }));
 
 vi.mock("../../hooks/useProjects", () => ({
@@ -97,6 +98,7 @@ function makeItem(status: ProjectQueueItemSummary["status"]) {
 describe("ProjectsPage", () => {
   beforeEach(() => {
     state.queueItems = [makeItem("queued")];
+    state.inboxCountsByProject = new Map();
   });
 
   afterEach(() => {

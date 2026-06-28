@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import type {
+  StagedAttachmentRef,
   UploadServerMessage,
   UploadStartMessage,
+  UrlProjectId,
 } from "@yep-anywhere/shared";
+import { toUrlProjectId } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -21,9 +24,26 @@ describe("staged upload direct route", () => {
   let server: ReturnType<typeof serve> | null;
   let port: number;
   let stagingService: AttachmentStagingService;
+  let projectPath: string;
+  let projectId: UrlProjectId;
+
+  async function completeStagedUpload(
+    content: string,
+  ): Promise<StagedAttachmentRef> {
+    const started = await stagingService.startDraftUpload({
+      batchId: "batch-a",
+      originalName: "draft.txt",
+      size: Buffer.byteLength(content),
+      mimeType: "text/plain",
+    });
+    await stagingService.writeChunk(started.uploadId, Buffer.from(content));
+    return stagingService.completeUpload(started.uploadId);
+  }
 
   beforeEach(async () => {
     testDir = join(tmpdir(), `staged-upload-route-${randomUUID()}`);
+    projectPath = join(testDir, "project");
+    projectId = toUrlProjectId(projectPath);
     server = null;
     stagingService = new AttachmentStagingService({
       stagingRoot: join(testDir, "staging"),
@@ -35,7 +55,20 @@ describe("staged upload direct route", () => {
       "/api",
       createUploadRoutes({
         scanner: {
-          getOrCreateProject: async () => null,
+          getOrCreateProject: async (requestedProjectId: string) =>
+            requestedProjectId === projectId
+              ? {
+                  id: projectId,
+                  path: projectPath,
+                  name: "project",
+                  sessionCount: 0,
+                  sessionDir: join(testDir, "sessions"),
+                  activeOwnedCount: 0,
+                  activeExternalCount: 0,
+                  lastActivity: null,
+                  provider: "claude",
+                }
+              : null,
         } as unknown as ProjectScanner,
         upgradeWebSocket,
         attachmentStagingService: stagingService,
@@ -109,6 +142,68 @@ describe("staged upload direct route", () => {
     });
     await expect(stagingService.listDraftAttachments("batch-a")).resolves.toEqual(
       [complete.stagedRef],
+    );
+  });
+
+  it("validates draft-staged refs over HTTP", async () => {
+    const ref = await completeStagedUpload("validate");
+
+    const response = await fetch(
+      `http://localhost:${port}/api/attachments/staging/drafts/batch-a/validate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refs: [ref] }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ refs: [ref] });
+  });
+
+  it("deletes draft-staged refs over HTTP", async () => {
+    const ref = await completeStagedUpload("delete");
+
+    const response = await fetch(
+      `http://localhost:${port}/api/attachments/staging/drafts/batch-a/${ref.id}`,
+      { method: "DELETE" },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ deleted: true });
+    await expect(stagingService.listDraftAttachments("batch-a")).resolves.toEqual(
+      [],
+    );
+  });
+
+  it("materializes draft-staged refs into session uploads over HTTP", async () => {
+    const ref = await completeStagedUpload("materialize");
+
+    const response = await fetch(
+      `http://localhost:${port}/api/projects/${projectId}/sessions/session-a/attachments/staging/materialize`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId: "batch-a", refs: [ref] }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      files: Array<{ path: string; name: string }>;
+    };
+    expect(body.files).toEqual([
+      expect.objectContaining({
+        id: ref.id,
+        originalName: "draft.txt",
+        name: ref.name,
+        path: join(projectPath, ".attachments", "session-a", ref.name),
+        size: ref.size,
+        mimeType: "text/plain",
+      }),
+    ]);
+    await expect(readFile(body.files[0]?.path ?? "", "utf-8")).resolves.toBe(
+      "materialize",
     );
   });
 });

@@ -170,6 +170,26 @@ describe("AttachmentStagingService", () => {
     await expect(service.listDraftAttachments(batchId)).resolves.toEqual([]);
   });
 
+  it("deletes only draft-owned staged attachments by draft batch", async () => {
+    const service = new AttachmentStagingService({ stagingRoot });
+    const { batchId, ref } = await completeDraftUpload(
+      service,
+      Buffer.from("delete draft"),
+    );
+    await service.transferDraftAttachmentsToQueue({
+      batchId,
+      queueItemId: "queue-item-a",
+      refs: [ref],
+    });
+
+    await expect(service.deleteDraftAttachment(batchId, ref.id)).resolves.toBe(
+      false,
+    );
+    await expect(service.listQueueAttachments("queue-item-a")).resolves.toEqual([
+      expect.objectContaining({ id: ref.id }),
+    ]);
+  });
+
   it("transfers draft attachments to queue ownership", async () => {
     const service = new AttachmentStagingService({ stagingRoot });
     const { batchId, ref } = await completeDraftUpload(
@@ -194,6 +214,86 @@ describe("AttachmentStagingService", () => {
       queueItemId: "queue-item-a",
     });
     expect(record?.path).toContain(join("queue", "queue-item-a"));
+  });
+
+  it("materializes draft attachments into final session attachments", async () => {
+    const service = new AttachmentStagingService({ stagingRoot });
+    const { batchId, ref } = await completeDraftUpload(
+      service,
+      Buffer.from("session attachment"),
+    );
+    const projectPath = join(stagingRoot, "project");
+
+    const files = await service.materializeDraftAttachmentsForSession({
+      batchId,
+      refs: [ref],
+      projectPath,
+      sessionId: "session-a",
+    });
+
+    expect(files).toEqual([
+      {
+        id: ref.id,
+        originalName: ref.originalName,
+        name: ref.name,
+        path: join(projectPath, ".attachments", "session-a", ref.name),
+        size: ref.size,
+        mimeType: ref.mimeType,
+      },
+    ]);
+    await expect(readFile(files[0]?.path ?? "", "utf-8")).resolves.toBe(
+      "session attachment",
+    );
+    await expect(service.listDraftAttachments(batchId)).resolves.toEqual([ref]);
+
+    await expect(
+      service.materializeDraftAttachmentsForSession({
+        batchId,
+        refs: [ref],
+        projectPath,
+        sessionId: "session-a",
+      }),
+    ).resolves.toEqual(files);
+  });
+
+  it("fails materialization when the staged file is missing", async () => {
+    const service = new AttachmentStagingService({ stagingRoot });
+    const { batchId, ref } = await completeDraftUpload(
+      service,
+      Buffer.from("gone"),
+    );
+    const record = service.getRecord(ref.id);
+    await rm(record?.path ?? "", { force: true });
+
+    await expect(
+      service.materializeDraftAttachmentsForSession({
+        batchId,
+        refs: [ref],
+        projectPath: join(stagingRoot, "project"),
+        sessionId: "session-a",
+      }),
+    ).rejects.toThrow("Staged attachment is missing or invalid");
+  });
+
+  it("fails materialization when a final attachment has the wrong size", async () => {
+    const service = new AttachmentStagingService({ stagingRoot });
+    const { batchId, ref } = await completeDraftUpload(
+      service,
+      Buffer.from("expected"),
+    );
+    const projectPath = join(stagingRoot, "project");
+    const finalDir = join(projectPath, ".attachments", "session-a");
+    await mkdir(finalDir, { recursive: true });
+    await writeFile(join(finalDir, ref.name), "wrong size");
+
+    await expect(
+      service.materializeDraftAttachmentsForSession({
+        batchId,
+        refs: [ref],
+        projectPath,
+        sessionId: "session-a",
+      }),
+    ).rejects.toThrow("Final attachment path has unexpected size");
   });
 
   it("deletes queue-owned attachments by queue item", async () => {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { type WriteStream, createWriteStream } from "node:fs";
 import {
+  copyFile,
   mkdir,
   readdir,
   readFile,
@@ -10,9 +11,10 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import type { StagedAttachmentRef } from "@yep-anywhere/shared";
+import type { StagedAttachmentRef, UploadedFile } from "@yep-anywhere/shared";
 import { getDataDir } from "../config.js";
 import {
+  getProjectAttachmentUploadDir,
   isSafeUploadPathSegment,
   sanitizeFilename,
 } from "./manager.js";
@@ -452,6 +454,31 @@ export class AttachmentStagingService {
     return true;
   }
 
+  async deleteDraftAttachment(batchId: string, id: string): Promise<boolean> {
+    await this.ensureInitialized();
+    if (!isSafeUploadPathSegment(batchId)) {
+      throw new Error("Invalid staging batch id");
+    }
+    if (!isSafeUploadPathSegment(id)) {
+      throw new Error("Invalid staged attachment id");
+    }
+
+    const record = this.records.get(id);
+    if (!record) {
+      return false;
+    }
+    if (record.owner.type !== "draft" || record.owner.batchId !== batchId) {
+      return false;
+    }
+
+    await rm(record.path, { force: true }).catch(() => {});
+    await this.withMutation(async () => {
+      this.records.delete(id);
+      await this.saveIndex();
+    });
+    return true;
+  }
+
   async deleteQueueAttachments(queueItemId: string): Promise<number> {
     await this.ensureInitialized();
     if (!isSafeUploadPathSegment(queueItemId)) {
@@ -523,6 +550,64 @@ export class AttachmentStagingService {
     });
 
     return movedRecords.map(toRef);
+  }
+
+  async materializeDraftAttachmentsForSession(params: {
+    batchId: string;
+    refs: readonly StagedAttachmentRef[];
+    projectPath: string;
+    sessionId: string;
+  }): Promise<UploadedFile[]> {
+    await this.ensureInitialized();
+    if (!isSafeUploadPathSegment(params.batchId)) {
+      throw new Error("Invalid staging batch id");
+    }
+    if (!isSafeUploadPathSegment(params.sessionId)) {
+      throw new Error("Invalid session id");
+    }
+
+    const records = await this.getValidatedRecords(params.refs, (record) => {
+      return (
+        record.owner.type === "draft" &&
+        record.owner.batchId === params.batchId
+      );
+    });
+    const targetDir = await getProjectAttachmentUploadDir(
+      params.projectPath,
+      params.sessionId,
+    );
+    const files: UploadedFile[] = [];
+
+    for (const record of records) {
+      const targetPath = join(targetDir, record.name);
+      let finalStats = await stat(targetPath).catch((error) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
+      });
+      if (!finalStats) {
+        await copyFile(record.path, targetPath);
+        finalStats = await stat(targetPath);
+      }
+
+      if (!finalStats.isFile() || finalStats.size !== record.size) {
+        throw new Error(
+          `Final attachment path has unexpected size: ${record.name}`,
+        );
+      }
+
+      files.push({
+        id: record.id,
+        originalName: record.originalName,
+        name: record.name,
+        path: targetPath,
+        size: record.size,
+        mimeType: record.mimeType,
+        ...(record.width !== undefined ? { width: record.width } : {}),
+        ...(record.height !== undefined ? { height: record.height } : {}),
+      });
+    }
+
+    return files;
   }
 
   async cleanupStaleDraftAttachments(nowMs = this.now()): Promise<number> {

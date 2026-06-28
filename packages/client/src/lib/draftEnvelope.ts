@@ -161,6 +161,12 @@ export function readDraftTextValue(raw: string | null | undefined): string {
   return readDraftEnvelopeValue(raw).envelope?.text ?? "";
 }
 
+export function readDraftAttachmentStateValue(
+  raw: string | null | undefined,
+): DraftAttachmentState | null {
+  return readDraftEnvelopeValue(raw).envelope?.attachments ?? null;
+}
+
 export function serializeDraftEnvelope(
   envelope: DraftEnvelopeV1,
 ): string | null {
@@ -179,5 +185,19 @@ export function draftStorageValueForText(
     version: DRAFT_ENVELOPE_VERSION,
     text,
     ...(existing?.attachments ? { attachments: existing.attachments } : {}),
+  });
+}
+
+export function draftStorageValueForAttachments(
+  attachments: DraftAttachmentState | null | undefined,
+  existingRaw?: string | null,
+): string | null {
+  const existing = readDraftEnvelopeValue(existingRaw).envelope;
+  const nextAttachments =
+    attachments && attachments.refs.length > 0 ? attachments : undefined;
+  return serializeDraftEnvelope({
+    version: DRAFT_ENVELOPE_VERSION,
+    text: existing?.text ?? "",
+    ...(nextAttachments ? { attachments: nextAttachments } : {}),
   });
 }

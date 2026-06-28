@@ -11,6 +11,13 @@ function readStoredText(key: string): string | null {
   return (JSON.parse(raw) as { text?: string }).text ?? null;
 }
 
+function readStoredAttachmentCount(key: string): number {
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return 0;
+  const parsed = JSON.parse(raw) as { attachments?: { refs?: unknown[] } };
+  return parsed.attachments?.refs?.length ?? 0;
+}
+
 function installLocalStorageMock(): Map<string, string> {
   const store = new Map<string, string>();
   Object.defineProperty(window, "localStorage", {
@@ -116,6 +123,44 @@ describe("useDraftPersistence", () => {
     });
 
     expect(window.localStorage.getItem("draft-test")).toBe(null);
+  });
+
+  it("persists attachment state in the same draft envelope", () => {
+    const { result } = renderHook(() => useDraftPersistence("draft-test"));
+    const attachmentState = {
+      batchId: "batch-a",
+      updatedAt: "2026-06-28T00:00:00.000Z",
+      refs: [
+        {
+          id: "file-a",
+          batchId: "batch-a",
+          originalName: "screenshot.png",
+          name: "uuid_screenshot.png",
+          size: 123,
+          mimeType: "image/png",
+          createdAt: "2026-06-28T00:00:00.000Z",
+          updatedAt: "2026-06-28T00:00:00.000Z",
+        },
+      ],
+    };
+
+    act(() => {
+      result.current[1]("draft text");
+    });
+    act(() => {
+      result.current[2].setAttachmentState(attachmentState);
+    });
+
+    expect(readStoredText("draft-test")).toBe("draft text");
+    expect(readStoredAttachmentCount("draft-test")).toBe(1);
+    expect(result.current[2].getAttachmentState()).toEqual(attachmentState);
+
+    act(() => {
+      result.current[2].setAttachmentState(null);
+    });
+
+    expect(readStoredText("draft-test")).toBe("draft text");
+    expect(readStoredAttachmentCount("draft-test")).toBe(0);
   });
 
   it("updates source draft indexes for session drafts", () => {

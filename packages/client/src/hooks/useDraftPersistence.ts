@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
+  type DraftAttachmentState,
+  draftStorageValueForAttachments,
   draftStorageValueForText,
   hasDraftContentValue,
+  readDraftAttachmentStateValue,
   readDraftTextValue,
 } from "../lib/draftEnvelope";
 import {
@@ -15,8 +18,12 @@ import {
 export interface DraftControls {
   /** Return the current in-memory draft value */
   getDraft: () => string;
+  /** Read the current staged attachment state from localStorage. */
+  getAttachmentState: () => DraftAttachmentState | null;
   /** Replace input state and localStorage immediately */
   setDraft: (value: string) => void;
+  /** Replace staged attachment state in the draft envelope. */
+  setAttachmentState: (value: DraftAttachmentState | null) => void;
   /** Replace one draft range through the owning textarea when available. */
   replaceDraftRangeUndoably?: (
     start: number,
@@ -70,6 +77,35 @@ function saveToStorage(
   }
 }
 
+function saveAttachmentStateToStorage(
+  key: string,
+  value: DraftAttachmentState | null,
+  sessionDraft?: UseDraftPersistenceOptions["sessionDraft"],
+): void {
+  const storageKey = sessionDraft
+    ? createSessionDraftStorageKey(sessionDraft)
+    : key;
+  let nextValue: string | null = null;
+
+  try {
+    nextValue = draftStorageValueForAttachments(
+      value,
+      localStorage.getItem(storageKey),
+    );
+    if (nextValue) {
+      localStorage.setItem(storageKey, nextValue);
+    } else {
+      localStorage.removeItem(storageKey);
+    }
+  } catch {
+    // localStorage might be full or unavailable.
+  }
+
+  if (sessionDraft) {
+    updateSessionDraftIndex(sessionDraft, nextValue);
+  }
+}
+
 function removeFromStorage(
   key: string,
   sessionDraft?: UseDraftPersistenceOptions["sessionDraft"],
@@ -91,6 +127,14 @@ function readStorageText(key: string): string {
     return readDraftTextValue(localStorage.getItem(key));
   } catch {
     return "";
+  }
+}
+
+function readStorageAttachmentState(key: string): DraftAttachmentState | null {
+  try {
+    return readDraftAttachmentStateValue(localStorage.getItem(key));
+  } catch {
+    return null;
   }
 }
 
@@ -246,6 +290,11 @@ export function useDraftPersistence(
   // Read the current in-memory value for UI actions that append to the draft.
   const getDraft = useCallback(() => valueRef.current, []);
 
+  const getAttachmentState = useCallback(
+    () => readStorageAttachmentState(keyRef.current),
+    [],
+  );
+
   // Replace the draft immediately. This is used when another UI action, such
   // as editing a queued message, needs to take over the composer.
   const setDraft = useCallback((newValue: string) => {
@@ -258,6 +307,17 @@ export function useDraftPersistence(
     }
     saveToStorage(keyRef.current, newValue, sessionDraftRef.current);
   }, []);
+
+  const setAttachmentState = useCallback(
+    (newValue: DraftAttachmentState | null) => {
+      saveAttachmentStateToStorage(
+        keyRef.current,
+        newValue,
+        sessionDraftRef.current,
+      );
+    },
+    [],
+  );
 
   // Clear input state only (for optimistic UI on submit)
   const clearInput = useCallback(() => {
@@ -321,7 +381,9 @@ export function useDraftPersistence(
   const controls = useMemo(
     () => ({
       getDraft,
+      getAttachmentState,
       setDraft,
+      setAttachmentState,
       flushDraft: flushPending,
       clearInput,
       clearDraft,
@@ -329,7 +391,9 @@ export function useDraftPersistence(
     }),
     [
       getDraft,
+      getAttachmentState,
       setDraft,
+      setAttachmentState,
       flushPending,
       clearInput,
       clearDraft,

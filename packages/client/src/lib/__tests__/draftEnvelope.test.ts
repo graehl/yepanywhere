@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  draftStorageValueForAttachments,
   draftStorageValueForText,
   hasDraftContentValue,
+  readDraftAttachmentStateValue,
   readDraftEnvelopeValue,
   readDraftTextValue,
 } from "../draftEnvelope";
@@ -61,6 +63,27 @@ describe("draftEnvelope", () => {
 
     expect(next?.text).toBe("with text");
     expect(next?.attachments?.refs).toHaveLength(1);
+  });
+
+  it("preserves existing text when writing draft attachments", () => {
+    const withText = draftStorageValueForText("draft text");
+    const attachments = readDraftEnvelopeValue(attachmentEnvelope).envelope
+      ?.attachments;
+    const nextRaw = draftStorageValueForAttachments(attachments, withText);
+    const next = readDraftEnvelopeValue(nextRaw).envelope;
+
+    expect(next?.text).toBe("draft text");
+    expect(next?.attachments?.refs).toHaveLength(1);
+    expect(readDraftAttachmentStateValue(nextRaw)?.batchId).toBe("batch-a");
+  });
+
+  it("removes attachment state while preserving text", () => {
+    const withText = draftStorageValueForText("draft text", attachmentEnvelope);
+    const nextRaw = draftStorageValueForAttachments(null, withText);
+    const next = readDraftEnvelopeValue(nextRaw).envelope;
+
+    expect(next?.text).toBe("draft text");
+    expect(next?.attachments).toBeUndefined();
   });
 
   it("removes empty text-only drafts", () => {

@@ -16,7 +16,9 @@ Implementation progress:
 - [x] Add draft envelope helpers and update draft persistence.
 - [x] Add `AttachmentStagingService`.
 - [x] Implement staged upload APIs for direct and relay transports.
-- [ ] Materialize staged attachments for normal sends and queue handoff.
+- [x] Add staged-ref validation, deletion, and draft-to-session materialization
+      APIs.
+- [ ] Wire staged materialization into normal sends and queue handoff.
 - [ ] Persist staged attachment refs in Project Queue items.
 
 ## Context
@@ -200,10 +202,11 @@ Input:
 
 Output:
 
-- files copied or moved into the current final attachment destination for that
-  project/session;
+- files copied into the current final attachment destination for that
+  project/session while the browser draft still needs failure recovery;
 - `UploadedFile[]` whose `path` points to the final provider-readable file;
-- staged records deleted or marked consumed after successful handoff.
+- staged records deleted or marked consumed after successful message handoff or
+  queue promotion.
 
 The function should be idempotent enough for normal retries. If a final file
 already exists with the expected name and size, reuse it rather than creating a
@@ -400,6 +403,7 @@ Shared/client:
 
 ### 3. Composer Draft Attachments
 
+- [x] Add server APIs to validate and delete staged draft refs.
 - [ ] Upload selected/pasted composer files to staging.
 - [ ] Persist completed staged refs into the draft envelope.
 - [ ] Rehydrate chips from staged refs after refresh by validating them with the
@@ -409,6 +413,7 @@ Shared/client:
 
 ### 4. Send And Queue Materialization
 
+- [x] Add idempotent draft-to-session materialization service and HTTP API.
 - [ ] Materialize staged refs before existing-session sends.
 - [ ] Materialize staged refs for normal new-session starts after session
       creation and before first-message send.

@@ -7,6 +7,7 @@ import {
   type UploadErrorMessage,
   type UploadProgressMessage,
   type UploadServerMessage,
+  type StagedAttachmentRef,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
 import type { Context } from "hono";
@@ -34,6 +35,33 @@ export interface UploadDeps {
   /** Maximum upload file size in bytes. 0 = unlimited */
   maxUploadSizeBytes?: number;
   attachmentStagingService?: AttachmentStagingService;
+}
+
+interface DraftAttachmentRefsBody {
+  refs?: StagedAttachmentRef[];
+}
+
+interface MaterializeDraftAttachmentsBody extends DraftAttachmentRefsBody {
+  batchId?: string;
+}
+
+function stagingRouteErrorStatus(error: unknown): 400 | 404 | 409 | 500 {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("Invalid ")) return 400;
+  if (message.includes("not found")) return 404;
+  if (message.includes("missing or invalid")) return 409;
+  if (message.includes("unexpected size")) return 409;
+  return 500;
+}
+
+function stagingRouteErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Attachment staging failed";
+}
+
+function isStagedAttachmentRefArray(
+  value: unknown,
+): value is StagedAttachmentRef[] {
+  return Array.isArray(value);
 }
 
 export function createUploadRoutes(deps: UploadDeps): Hono {
@@ -375,6 +403,111 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
         },
       ),
     ),
+  );
+
+  // POST endpoint: /attachments/staging/drafts/:batchId/validate
+  routes.post("/attachments/staging/drafts/:batchId/validate", async (c) => {
+    if (!deps.attachmentStagingService) {
+      return c.json({ error: "Attachment staging is unavailable" }, 404);
+    }
+
+    let body: DraftAttachmentRefsBody;
+    try {
+      body = await c.req.json<DraftAttachmentRefsBody>();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    if (!isStagedAttachmentRefArray(body.refs)) {
+      return c.json({ error: "refs must be an array" }, 400);
+    }
+
+    try {
+      const refs = await deps.attachmentStagingService.validateDraftRefs(
+        c.req.param("batchId"),
+        body.refs,
+      );
+      return c.json({ refs });
+    } catch (error) {
+      return c.json(
+        { error: stagingRouteErrorMessage(error) },
+        stagingRouteErrorStatus(error),
+      );
+    }
+  });
+
+  // DELETE endpoint: /attachments/staging/drafts/:batchId/:attachmentId
+  routes.delete("/attachments/staging/drafts/:batchId/:attachmentId", async (c) => {
+    if (!deps.attachmentStagingService) {
+      return c.json({ error: "Attachment staging is unavailable" }, 404);
+    }
+
+    try {
+      const deleted = await deps.attachmentStagingService.deleteDraftAttachment(
+        c.req.param("batchId"),
+        c.req.param("attachmentId"),
+      );
+      if (!deleted) {
+        return c.json({ error: "Staged attachment not found" }, 404);
+      }
+      return c.json({ deleted });
+    } catch (error) {
+      return c.json(
+        { error: stagingRouteErrorMessage(error) },
+        stagingRouteErrorStatus(error),
+      );
+    }
+  });
+
+  // POST endpoint: /projects/:projectId/sessions/:sessionId/attachments/staging/materialize
+  routes.post(
+    "/projects/:projectId/sessions/:sessionId/attachments/staging/materialize",
+    async (c) => {
+      if (!deps.attachmentStagingService) {
+        return c.json({ error: "Attachment staging is unavailable" }, 404);
+      }
+
+      const projectId = c.req.param("projectId") as string;
+      const sessionId = c.req.param("sessionId") as string;
+      if (!isUrlProjectId(projectId)) {
+        return c.json({ error: "Invalid project ID" }, 400);
+      }
+
+      let body: MaterializeDraftAttachmentsBody;
+      try {
+        body = await c.req.json<MaterializeDraftAttachmentsBody>();
+      } catch {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+      if (!body.batchId) {
+        return c.json({ error: "batchId is required" }, 400);
+      }
+      if (!isStagedAttachmentRefArray(body.refs)) {
+        return c.json({ error: "refs must be an array" }, 400);
+      }
+
+      const project = await deps.scanner.getOrCreateProject(projectId);
+      if (!project) {
+        return c.json({ error: "Unknown project" }, 404);
+      }
+
+      try {
+        const files =
+          await deps.attachmentStagingService.materializeDraftAttachmentsForSession(
+            {
+              batchId: body.batchId,
+              refs: body.refs,
+              projectPath: project.path,
+              sessionId,
+            },
+          );
+        return c.json({ files });
+      } catch (error) {
+        return c.json(
+          { error: stagingRouteErrorMessage(error) },
+          stagingRouteErrorStatus(error),
+        );
+      }
+    },
   );
 
   // GET endpoint: /projects/:projectId/sessions/:sessionId/upload/:filename

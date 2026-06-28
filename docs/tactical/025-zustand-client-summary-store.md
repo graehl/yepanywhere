@@ -1,9 +1,11 @@
 # Zustand Client Summary Store
 
-Status: Implemented. Long-tail cleanup is tracked in
-[`026-client-summary-long-tail.md`](026-client-summary-long-tail.md). The next
-store-boundary expansion is the per-source registry tracked in
+Status: Implemented. Historical long-tail migration notes live in
+[`026-client-summary-long-tail.md`](026-client-summary-long-tail.md). The
+per-source registry is implemented in
 [`027-client-summary-source-registry.md`](027-client-summary-source-registry.md).
+Active close-out tracking lives in
+[`030-client-summary-store-closeout.md`](030-client-summary-store-closeout.md).
 
 Progress:
 

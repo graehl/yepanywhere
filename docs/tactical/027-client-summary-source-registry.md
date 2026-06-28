@@ -1,6 +1,7 @@
 # Client Summary Source Registry
 
-Status: Implemented.
+Status: Implemented. Active close-out tracking lives in
+[`030-client-summary-store-closeout.md`](030-client-summary-store-closeout.md).
 
 Progress:
 

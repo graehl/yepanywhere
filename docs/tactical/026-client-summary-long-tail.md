@@ -1,17 +1,27 @@
 # Client Summary Long Tail
 
-Status: Tracking.
+Status: Closed. Active close-out tracking moved to
+[`030-client-summary-store-closeout.md`](030-client-summary-store-closeout.md).
 
-This doc tracks the incremental cleanup after the client summary store became
-the shared home for session, project, queue, inbox, and draft summary facts.
-The goal is not to move every hook into the store. The goal is to make shared
-summary facts come from one normalized client cache while keeping fetch
-lifecycle, page UI state, and heavy transcript state in the right places.
+This doc is the historical long-tail migration plan after the client summary
+store became the shared home for session, project, queue, inbox, and draft
+summary facts. The broad migration has been completed or narrowed into a small
+close-out list. Continue from
+[`030-client-summary-store-closeout.md`](030-client-summary-store-closeout.md)
+instead of treating this file as the active task list.
 
-Immediate prerequisite: the store must become source-scoped before more
-long-tail migration. Hosted remote clients can switch between multiple backend
-hosts in one tab, so a singleton summary cache can leak rows from one machine
-into another machine's Sidebar or pages. The source-registry work is tracked in
+Closure summary:
+
+- shared session, project, inbox, queue, and draft summary facts now live in the
+  source-scoped `clientSummaryStore`;
+- feed hooks still own readiness, fetch, loading, error, pagination, and
+  mutation-control state;
+- heavy session transcript, stream, liveness, pending-input, and process-detail
+  state intentionally stays local to session/process hooks;
+- remaining active work is limited to shared mutation helpers and narrow
+  selector cleanup, tracked in `030`.
+
+The source-registry work is implemented in
 [`027-client-summary-source-registry.md`](027-client-summary-source-registry.md).
 
 ## Target Invariant

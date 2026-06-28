@@ -178,82 +178,82 @@ function GitStatusContent({
 
   return (
     <div className="git-status">
-      <div className="git-status-overview">
-        <div className="git-status-branch">
-          <span className="git-branch-icon">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <line x1="6" y1="3" x2="6" y2="15" />
-              <circle cx="18" cy="6" r="3" />
-              <circle cx="6" cy="18" r="3" />
-              <path d="M18 9a9 9 0 0 1-9 9" />
-            </svg>
-          </span>
-          <span className="git-branch-name">
-            {status.branch ?? t("gitStatusDetachedHead")}
-          </span>
-          {status.upstream && (
-            <span className="git-upstream"> → {status.upstream}</span>
-          )}
-          {(status.ahead > 0 || status.behind > 0) && (
-            <span className="git-ahead-behind">
-              {status.ahead > 0 && ` ↑${status.ahead}`}
-              {status.behind > 0 && ` ↓${status.behind}`}
-            </span>
-          )}
-          <span
-            className={`git-clean-badge ${status.isClean ? "git-clean" : "git-dirty"}`}
-          >
-            {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
-          </span>
-        </div>
-
-        <GitRecentCommits commits={status.recentCommits ?? []} t={t} />
-      </div>
-
       <div className="git-status-workspace">
-        <div className="git-status-file-pane">
-          {status.isClean ? (
-            <div className="git-status-empty">
-              {t("gitStatusWorkingTreeClean")}
-            </div>
-          ) : (
-            <>
-              {stagedFiles.length > 0 && (
-                <GitFileSection
-                  title={t("gitStatusStaged")}
-                  files={stagedFiles}
-                  selectedFile={selectedFile}
-                  onFileClick={setSelectedFile}
-                />
-              )}
-              {unstagedFiles.length > 0 && (
-                <GitFileSection
-                  title={t("gitStatusChanges")}
-                  files={unstagedFiles}
-                  selectedFile={selectedFile}
-                  onFileClick={setSelectedFile}
-                />
-              )}
-              {untrackedFiles.length > 0 && (
-                <GitFileSection
-                  title={t("gitStatusUntracked")}
-                  files={untrackedFiles}
-                  selectedFile={selectedFile}
-                  onFileClick={setSelectedFile}
-                />
-              )}
-            </>
-          )}
+        <div className="git-status-left-pane">
+          <div className="git-status-branch">
+            <span className="git-branch-icon">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <line x1="6" y1="3" x2="6" y2="15" />
+                <circle cx="18" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                <path d="M18 9a9 9 0 0 1-9 9" />
+              </svg>
+            </span>
+            <span className="git-branch-name">
+              {status.branch ?? t("gitStatusDetachedHead")}
+            </span>
+            {status.upstream && (
+              <span className="git-upstream"> → {status.upstream}</span>
+            )}
+            {(status.ahead > 0 || status.behind > 0) && (
+              <span className="git-ahead-behind">
+                {status.ahead > 0 && ` ↑${status.ahead}`}
+                {status.behind > 0 && ` ↓${status.behind}`}
+              </span>
+            )}
+            <span
+              className={`git-clean-badge ${status.isClean ? "git-clean" : "git-dirty"}`}
+            >
+              {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
+            </span>
+          </div>
+
+          <div className="git-status-file-pane">
+            {status.isClean ? (
+              <div className="git-status-empty">
+                {t("gitStatusWorkingTreeClean")}
+              </div>
+            ) : (
+              <>
+                {stagedFiles.length > 0 && (
+                  <GitFileSection
+                    title={t("gitStatusStaged")}
+                    files={stagedFiles}
+                    selectedFile={selectedFile}
+                    onFileClick={setSelectedFile}
+                  />
+                )}
+                {unstagedFiles.length > 0 && (
+                  <GitFileSection
+                    title={t("gitStatusChanges")}
+                    files={unstagedFiles}
+                    selectedFile={selectedFile}
+                    onFileClick={setSelectedFile}
+                  />
+                )}
+                {untrackedFiles.length > 0 && (
+                  <GitFileSection
+                    title={t("gitStatusUntracked")}
+                    files={untrackedFiles}
+                    selectedFile={selectedFile}
+                    onFileClick={setSelectedFile}
+                  />
+                )}
+              </>
+            )}
+          </div>
+
+          <GitRecentCommits commits={status.recentCommits ?? []} t={t} />
         </div>
 
         {isWideScreen && !status.isClean && (

@@ -16,6 +16,8 @@ Progress:
 - [x] 2026-06-28: Add the `git-status-enhanced` capability gate so a newer
       frontend disables this page with an upgrade message when talking to an
       older server.
+- [x] 2026-06-28: Move recent commits into the left Source Control column with
+      a contained scroll area, leaving the right column for the diff preview.
 - [ ] Add focused server and client tests.
 
 ## Context

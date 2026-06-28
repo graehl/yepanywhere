@@ -5,7 +5,7 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import type { GlobalSessionItem } from "../api/client";
-import type { SessionStatus } from "../types";
+import type { Project, SessionStatus } from "../types";
 import type {
   ProcessStateEvent,
   SessionCreatedEvent,
@@ -68,9 +68,27 @@ export interface SessionCollectionQueryState {
   fetchedAt: number;
 }
 
+export interface ProjectCollectionRecord extends Project {
+  observedAt: number;
+  snapshotObservedAt?: number;
+}
+
+export interface ProjectCollectionQueryState {
+  key: string;
+  ids: string[];
+  requestStartedAt: number;
+  fetchedAt: number;
+}
+
+export interface ProjectCollectionState {
+  entities: ReadonlyMap<string, ProjectCollectionRecord>;
+  queries: ReadonlyMap<string, ProjectCollectionQueryState>;
+}
+
 export interface SessionCollectionState {
   entities: ReadonlyMap<string, SessionCollectionRecord>;
   queries: ReadonlyMap<string, SessionCollectionQueryState>;
+  projects: ProjectCollectionState;
 }
 
 export interface GlobalSessionsCollectionSnapshot {
@@ -80,10 +98,24 @@ export interface GlobalSessionsCollectionSnapshot {
   mode?: "replace" | "append" | "prepend";
 }
 
+export interface ProjectsCollectionSnapshot {
+  projects: readonly Project[];
+}
+
+export interface ProjectCollectionSnapshot {
+  project: Project;
+}
+
+const ALL_PROJECTS_QUERY_KEY = "all-projects";
+
 export function createEmptySessionCollectionState(): SessionCollectionState {
   return {
     entities: new Map(),
     queries: new Map(),
+    projects: {
+      entities: new Map(),
+      queries: new Map(),
+    },
   };
 }
 
@@ -139,6 +171,138 @@ function putRecord(
   return {
     ...state,
     entities,
+  };
+}
+
+function providerCountsEqual(
+  a: Project["sessionCountsByProvider"],
+  b: Project["sessionCountsByProvider"],
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => {
+    const provider = key as ProviderName;
+    return a[provider] === b[provider];
+  });
+}
+
+function projectFieldsEqual(
+  record: ProjectCollectionRecord,
+  project: Project,
+): boolean {
+  return (
+    record.id === project.id &&
+    record.path === project.path &&
+    record.name === project.name &&
+    record.sessionCount === project.sessionCount &&
+    providerCountsEqual(
+      record.sessionCountsByProvider,
+      project.sessionCountsByProvider,
+    ) &&
+    record.activeOwnedCount === project.activeOwnedCount &&
+    record.activeExternalCount === project.activeExternalCount &&
+    record.projectQueueBlockingCount === project.projectQueueBlockingCount &&
+    record.lastActivity === project.lastActivity
+  );
+}
+
+function putProjectRecord(
+  state: SessionCollectionState,
+  project: Project,
+  observedAt: number,
+): SessionCollectionState {
+  const existing = state.projects.entities.get(project.id);
+  if (existing) {
+    if (observedAt < (existing.snapshotObservedAt ?? NO_OBSERVATION)) {
+      return state;
+    }
+    if (projectFieldsEqual(existing, project)) {
+      if (observedAt === existing.snapshotObservedAt) {
+        return state;
+      }
+      const entities = new Map(state.projects.entities);
+      entities.set(project.id, {
+        ...existing,
+        observedAt: Math.max(existing.observedAt, observedAt),
+        snapshotObservedAt: observedAt,
+      });
+      return {
+        ...state,
+        projects: {
+          ...state.projects,
+          entities,
+        },
+      };
+    }
+  }
+
+  const entities = new Map(state.projects.entities);
+  entities.set(project.id, {
+    ...project,
+    observedAt: Math.max(existing?.observedAt ?? NO_OBSERVATION, observedAt),
+    snapshotObservedAt: observedAt,
+  });
+
+  return {
+    ...state,
+    projects: {
+      ...state.projects,
+      entities,
+    },
+  };
+}
+
+function putProjectsQuery(
+  state: SessionCollectionState,
+  projects: readonly Project[],
+  requestStartedAt: number,
+): SessionCollectionState {
+  const existing = state.projects.queries.get(ALL_PROJECTS_QUERY_KEY);
+  if (existing && requestStartedAt < existing.requestStartedAt) {
+    return state;
+  }
+
+  const ids = projects.map((project) => project.id);
+  if (
+    existing &&
+    existing.ids.length === ids.length &&
+    existing.ids.every((id, index) => id === ids[index])
+  ) {
+    if (requestStartedAt === existing.requestStartedAt) {
+      return state;
+    }
+    const queries = new Map(state.projects.queries);
+    queries.set(ALL_PROJECTS_QUERY_KEY, {
+      ...existing,
+      requestStartedAt,
+      fetchedAt: Date.now(),
+    });
+    return {
+      ...state,
+      projects: {
+        ...state.projects,
+        queries,
+      },
+    };
+  }
+
+  const queries = new Map(state.projects.queries);
+  queries.set(ALL_PROJECTS_QUERY_KEY, {
+    key: ALL_PROJECTS_QUERY_KEY,
+    ids,
+    requestStartedAt,
+    fetchedAt: Date.now(),
+  });
+
+  return {
+    ...state,
+    projects: {
+      ...state.projects,
+      queries,
+    },
   };
 }
 
@@ -443,6 +607,26 @@ export function applyGlobalSessionsCollectionSnapshot(
   return upsertQuery(next, snapshot, requestStartedAt);
 }
 
+export function applyProjectsCollectionSnapshot(
+  state: SessionCollectionState,
+  snapshot: ProjectsCollectionSnapshot,
+  requestStartedAt = Date.now(),
+): SessionCollectionState {
+  let next = state;
+  for (const project of snapshot.projects) {
+    next = putProjectRecord(next, project, requestStartedAt);
+  }
+  return putProjectsQuery(next, snapshot.projects, requestStartedAt);
+}
+
+export function applyProjectCollectionSnapshot(
+  state: SessionCollectionState,
+  snapshot: ProjectCollectionSnapshot,
+  requestStartedAt = Date.now(),
+): SessionCollectionState {
+  return putProjectRecord(state, snapshot.project, requestStartedAt);
+}
+
 export function applySessionCollectionCreated(
   state: SessionCollectionState,
   event: SessionCreatedEvent,
@@ -610,6 +794,27 @@ export function selectSessionCollectionQueryState(
   query: SessionCollectionQueryDescriptor,
 ): SessionCollectionQueryState | undefined {
   return state.queries.get(createGlobalSessionsQueryKey(query));
+}
+
+export function selectProjectCollectionRecord(
+  state: SessionCollectionState,
+  projectId: string | null | undefined,
+): ProjectCollectionRecord | undefined {
+  return projectId ? state.projects.entities.get(projectId) : undefined;
+}
+
+export function selectProjectCollectionRecords(
+  state: SessionCollectionState,
+): ProjectCollectionRecord[] {
+  const queryState = state.projects.queries.get(ALL_PROJECTS_QUERY_KEY);
+  if (!queryState) {
+    return [];
+  }
+
+  return queryState.ids.flatMap((id) => {
+    const record = state.projects.entities.get(id);
+    return record ? [record] : [];
+  });
 }
 
 function updatedAtMs(record: SessionCollectionRecord): number {

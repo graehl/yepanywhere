@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { Project } from "../types";
+import {
+  reportProjectCollectionSnapshot,
+  reportProjectsCollectionSnapshot,
+  useProjectCollectionRecord,
+  useProjectCollectionRecords,
+} from "../lib/sessionCollectionExternalStore";
 import { useFileActivity } from "./useFileActivity";
 
 const REFETCH_DEBOUNCE_MS = 500;
@@ -9,7 +14,7 @@ const REFETCH_DEBOUNCE_MS = 500;
  * Fetch a single project by ID.
  */
 export function useProject(projectId: string | undefined) {
-  const [project, setProject] = useState<Project | null>(null);
+  const project = useProjectCollectionRecord(projectId) ?? null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const loadedProjectIdRef = useRef<string | undefined>(undefined);
@@ -25,11 +30,15 @@ export function useProject(projectId: string | undefined) {
       }
       const targetProjectId = projectId;
       refetchTimerRef.current = setTimeout(() => {
+        const requestStartedAt = Date.now();
         api
           .getProject(targetProjectId)
           .then((data) => {
             if (loadedProjectIdRef.current === targetProjectId) {
-              setProject(data.project);
+              reportProjectCollectionSnapshot(
+                { project: data.project },
+                requestStartedAt,
+              );
               setError(null);
             }
           })
@@ -52,8 +61,8 @@ export function useProject(projectId: string | undefined) {
 
   useEffect(() => {
     if (!projectId) {
-      setProject(null);
       setLoading(false);
+      loadedProjectIdRef.current = undefined;
       return;
     }
 
@@ -65,12 +74,16 @@ export function useProject(projectId: string | undefined) {
     }
 
     let cancelled = false;
+    const requestStartedAt = Date.now();
 
     api
       .getProject(projectId)
       .then((data) => {
         if (!cancelled) {
-          setProject(data.project);
+          reportProjectCollectionSnapshot(
+            { project: data.project },
+            requestStartedAt,
+          );
           setLoading(false);
         }
       })
@@ -101,7 +114,7 @@ export function useProject(projectId: string | undefined) {
 }
 
 export function useProjects() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const projects = useProjectCollectionRecords();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -113,9 +126,13 @@ export function useProjects() {
     // events so pages don't bounce back to their initial loading state.
     setLoading(!hasResolvedInitialFetchRef.current);
     setError(null);
+    const requestStartedAt = Date.now();
     try {
       const data = await api.getProjects();
-      setProjects(data.projects);
+      reportProjectsCollectionSnapshot(
+        { projects: data.projects },
+        requestStartedAt,
+      );
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {

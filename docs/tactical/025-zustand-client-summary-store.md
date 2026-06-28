@@ -11,7 +11,9 @@ Progress:
       changes.
 - [x] Add initial selector identity and selected-record render-isolation tests
       before widening the store.
-- [ ] Add project and project-queue slices after the session slice is stable.
+- [x] Add the initial project slice and feed `useProjects` / `useProject`
+      snapshots into it.
+- [ ] Add the project-queue slice after the project slice is stable.
 - [ ] Move session-card Project Queue badges to store-owned queue/session
       decoration facts.
 - [ ] Migrate Inbox to feed snapshots plus store selectors.
@@ -25,6 +27,11 @@ Latest update:
   hook/reporting surface stayed intact, activity-bus subscriptions remain lazy,
   and selected-record hooks now use a record-level selector. Added focused tests
   for unchanged record identity and no rerender on unrelated record updates.
+- 2026-06-28: Added a project summary slice inside the same Zustand-backed
+  collection store. `useProjects` and `useProject` now keep their loading/error
+  lifecycle local but report `/api/projects` and `/api/projects/:id` snapshots
+  into the shared store, with stale-response protection for project records and
+  project-list ordering.
 
 ## Context
 
@@ -236,26 +243,26 @@ Selectors should:
    - `useOlderSessionRecords`;
    - `useSessionCollectionQueryRecords`;
    - `useSessionCollectionQueryState`.
-4. [ ] Verify Sidebar, Global Sessions, and Recent Sessions still behave the same
+4. [x] Verify Sidebar, Global Sessions, and Recent Sessions still behave the same
    beyond focused unit/type/lint coverage.
 5. [x] Add initial tests for selector stability and selected-record render
    isolation.
-6. Only after that, add project/project-queue slices and migrate surfaces.
+6. [x] Add the initial project slice and route `useProjects` / `useProject`
+   snapshots through it.
+7. [ ] Add project-queue snapshots/events and migrate session-card queue
+   decorations.
 
 ## Follow-On Slices
 
 After the no-behavior-change port:
 
-1. Add a project slice and make `useProjects` / `useProject` feed snapshots into
-   it. Existing hook names can stay as compatibility selectors while callers
-   migrate.
-2. Add a project-queue slice that reduces queue snapshots and
+1. Add a project-queue slice that reduces queue snapshots and
    `project-queue-changed`.
-3. Move the sidebar `Q` badge source from local `useProjectQueues(projectIds)`
+2. Move the sidebar `Q` badge source from local `useProjectQueues(projectIds)`
    derivation to store-owned queue/session decoration selectors.
-4. Enrich `/api/sessions` or reduce project-queue events enough for All Sessions
+3. Enrich `/api/sessions` or reduce project-queue events enough for All Sessions
    and Sidebar to show targeted queue badges without extra per-surface fetches.
-5. Migrate Inbox to a feed-plus-store model:
+4. Migrate Inbox to a feed-plus-store model:
    - `/api/inbox` owns tier membership;
    - the store owns partial session facts and tier ids;
    - `InboxContent` renders via selectors.

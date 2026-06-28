@@ -1,15 +1,20 @@
 import type { UrlProjectId } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import type { GlobalSessionItem } from "../../api/client";
+import type { Project as GlobalProject } from "../../types";
 import type { SessionCreatedEvent } from "../activityBus";
 import {
   applyGlobalSessionsCollectionSnapshot,
+  applyProjectCollectionSnapshot,
+  applyProjectsCollectionSnapshot,
   applySessionCollectionCreated,
   applySessionCollectionMetadataChanged,
   applySessionCollectionProcessStateChanged,
   createEmptySessionCollectionState,
   createGlobalSessionsQueryKey,
   selectRecentSessionRecords,
+  selectProjectCollectionRecord,
+  selectProjectCollectionRecords,
   selectSessionCollectionQueryState,
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
@@ -61,6 +66,23 @@ function createdEvent(
       ...overrides,
     },
     timestamp: RECENT,
+  };
+}
+
+function project(
+  id: string,
+  overrides: Partial<GlobalProject> = {},
+): GlobalProject {
+  return {
+    id,
+    path: `/tmp/${id}`,
+    name: `Project ${id}`,
+    sessionCount: 1,
+    activeOwnedCount: 0,
+    activeExternalCount: 0,
+    projectQueueBlockingCount: 0,
+    lastActivity: RECENT,
+    ...overrides,
   };
 }
 
@@ -481,5 +503,121 @@ describe("sessionCollectionStore", () => {
       ids: ["new", "existing"],
       hasMore: true,
     });
+  });
+
+  it("stores project list snapshots as ordered query ids", () => {
+    const state = applyProjectsCollectionSnapshot(
+      createEmptySessionCollectionState(),
+      {
+        projects: [
+          project("project-b", { lastActivity: "2026-06-27T11:30:00.000Z" }),
+          project("project-a", { lastActivity: "2026-06-27T11:00:00.000Z" }),
+        ],
+      },
+      100,
+    );
+
+    expect(selectProjectCollectionRecords(state).map((p) => p.id)).toEqual([
+      "project-b",
+      "project-a",
+    ]);
+    expect(selectProjectCollectionRecord(state, "project-a")).toMatchObject({
+      id: "project-a",
+      name: "Project project-a",
+    });
+  });
+
+  it("stores single project snapshots without replacing project list membership", () => {
+    let state = applyProjectsCollectionSnapshot(
+      createEmptySessionCollectionState(),
+      { projects: [project("project-a")] },
+      100,
+    );
+    state = applyProjectCollectionSnapshot(
+      state,
+      {
+        project: project("project-b", {
+          name: "Detached Project",
+          sessionCount: 0,
+        }),
+      },
+      200,
+    );
+
+    expect(selectProjectCollectionRecord(state, "project-b")).toMatchObject({
+      name: "Detached Project",
+    });
+    expect(selectProjectCollectionRecords(state).map((p) => p.id)).toEqual([
+      "project-a",
+    ]);
+  });
+
+  it("preserves unchanged project record identity on unrelated updates", () => {
+    let state = applyProjectsCollectionSnapshot(
+      createEmptySessionCollectionState(),
+      { projects: [project("project-a"), project("project-b")] },
+      100,
+    );
+    const before = selectProjectCollectionRecord(state, "project-a");
+
+    state = applyProjectCollectionSnapshot(
+      state,
+      {
+        project: project("project-b", {
+          activeOwnedCount: 1,
+          projectQueueBlockingCount: 1,
+        }),
+      },
+      200,
+    );
+
+    expect(selectProjectCollectionRecord(state, "project-a")).toBe(before);
+  });
+
+  it("does not let an older single project snapshot undo a newer match", () => {
+    let state = applyProjectCollectionSnapshot(
+      createEmptySessionCollectionState(),
+      { project: project("project-a", { name: "Current Project" }) },
+      100,
+    );
+
+    state = applyProjectCollectionSnapshot(
+      state,
+      { project: project("project-a", { name: "Current Project" }) },
+      200,
+    );
+    state = applyProjectCollectionSnapshot(
+      state,
+      { project: project("project-a", { name: "Stale Project" }) },
+      150,
+    );
+
+    expect(selectProjectCollectionRecord(state, "project-a")).toMatchObject({
+      name: "Current Project",
+    });
+  });
+
+  it("does not let an older project list snapshot reorder a newer match", () => {
+    let state = applyProjectsCollectionSnapshot(
+      createEmptySessionCollectionState(),
+      { projects: [project("project-a"), project("project-b")] },
+      100,
+    );
+
+    state = applyProjectsCollectionSnapshot(
+      state,
+      { projects: [project("project-a"), project("project-b")] },
+      200,
+    );
+    state = applyProjectsCollectionSnapshot(
+      state,
+      { projects: [project("project-b"), project("project-a")] },
+      150,
+    );
+
+    expect(selectProjectCollectionRecords(state).map((p) => p.id)).toEqual([
+      "project-a",
+      "project-b",
+    ]);
   });
 });

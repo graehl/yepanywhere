@@ -137,9 +137,13 @@ When new slices are added, add tests for:
 ## Current Direction
 
 The first widened-store step migrated the existing session collection store to
-Zustand without adding project or queue behavior. After that, add project and
-project-queue slices, then migrate queue badges and Inbox to selectors from the
-shared store.
+Zustand. The next slice added project summary records and project-list
+membership to the same store, with `useProjects` and `useProject` feeding
+snapshots while keeping request lifecycle local.
+
+The next likely slice is project queue summaries and session-card decorations:
+reduce queue snapshots/events into the store, then make Sidebar, Inbox, and All
+Sessions read the same `Q` / draft badge facts from selectors.
 
 This should reduce the long tail of hooks that each own partial session/project
 truth and make future UI affordances appear consistently across Sidebar, Inbox,

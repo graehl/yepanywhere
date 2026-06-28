@@ -12,6 +12,8 @@ import {
 } from "./activityBus";
 import {
   applyGlobalSessionsCollectionSnapshot,
+  applyProjectCollectionSnapshot,
+  applyProjectsCollectionSnapshot,
   applySessionCollectionCreated,
   applySessionCollectionMetadataChanged,
   applySessionCollectionProcessStateChanged,
@@ -20,6 +22,8 @@ import {
   applySessionCollectionUpdated,
   createEmptySessionCollectionState,
   createGlobalSessionsQueryKey,
+  selectProjectCollectionRecord,
+  selectProjectCollectionRecords,
   selectOlderSessionRecords,
   selectRecentSessionRecords,
   selectSessionCollectionQueryRecords,
@@ -27,6 +31,9 @@ import {
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
   type GlobalSessionsCollectionSnapshot,
+  type ProjectCollectionRecord,
+  type ProjectCollectionSnapshot,
+  type ProjectsCollectionSnapshot,
   type SessionCollectionQueryDescriptor,
   type SessionCollectionRecord,
   type SessionCollectionQueryState,
@@ -156,6 +163,24 @@ export function reportGlobalSessionsCollectionSnapshot(
   );
 }
 
+export function reportProjectsCollectionSnapshot(
+  input: ProjectsCollectionSnapshot,
+  requestStartedAt = Date.now(),
+): void {
+  updateSnapshot((current) =>
+    applyProjectsCollectionSnapshot(current, input, requestStartedAt),
+  );
+}
+
+export function reportProjectCollectionSnapshot(
+  input: ProjectCollectionSnapshot,
+  requestStartedAt = Date.now(),
+): void {
+  updateSnapshot((current) =>
+    applyProjectCollectionSnapshot(current, input, requestStartedAt),
+  );
+}
+
 export function reportSessionCollectionCreated(
   event: SessionCreatedEvent,
   observedAt = Date.now(),
@@ -186,6 +211,20 @@ export function useSessionCollectionRecord(
   return useStore(sessionCollectionStore, (state) =>
     selectSessionCollectionRecord(state, sessionId),
   );
+}
+
+export function useProjectCollectionRecord(
+  projectId: string | null | undefined,
+): ProjectCollectionRecord | undefined {
+  useSessionCollectionActivitySubscription();
+  return useStore(sessionCollectionStore, (state) =>
+    selectProjectCollectionRecord(state, projectId),
+  );
+}
+
+export function useProjectCollectionRecords(): ProjectCollectionRecord[] {
+  const state = useSessionCollectionState();
+  return useMemo(() => selectProjectCollectionRecords(state), [state]);
 }
 
 export function useStarredSessionRecords(): SessionCollectionRecord[] {

@@ -1,0 +1,77 @@
+name: Deploy Latest Remote Client
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions:
+  contents: read
+  deployments: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: latest-remote-client
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    environment:
+      name: latest-remote-client
+      url: https://latest.yepanywhere.com/
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout CI head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @yep-anywhere/shared build
+
+      - name: Build remote client
+        run: |
+          pnpm --filter @yep-anywhere/client exec tsc
+          pnpm --filter @yep-anywhere/client exec vite build --config vite.config.remote.ts --base /
+
+      - name: Prepare Cloudflare Pages output
+        run: |
+          cp packages/client/dist-remote/remote.html packages/client/dist-remote/index.html
+          rm -f packages/client/dist-remote/404.html
+          test -f packages/client/dist-remote/index.html
+
+      - name: Install Wrangler
+        run: npm ci --prefix sharing-worker
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          sharing-worker/node_modules/.bin/wrangler pages deploy packages/client/dist-remote \
+            --project-name "$CLOUDFLARE_PAGES_PROJECT_NAME" \
+            --branch main \
+            --commit-hash "$HEAD_SHA" \
+            --commit-dirty=false

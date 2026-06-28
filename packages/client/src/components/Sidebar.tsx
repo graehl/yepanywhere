@@ -12,7 +12,10 @@ import { useProjects } from "../hooks/useProjects";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
-import { useSidebarSessionFeeds } from "../hooks/useSidebarSessionFeeds";
+import {
+  SIDEBAR_SESSION_FEED_LIMIT,
+  useSidebarSessionFeeds,
+} from "../hooks/useSidebarSessionFeeds";
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from "../hooks/useSidebarWidth";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
@@ -44,7 +47,6 @@ import { YepAnywhereLogo } from "./YepAnywhereLogo";
 
 const SWIPE_THRESHOLD = 50; // Minimum distance to trigger close
 const SWIPE_ENGAGE_THRESHOLD = 15; // Minimum horizontal distance before swipe engages
-const SIDEBAR_SESSION_PAGE_SIZE = 50;
 
 const DEFAULT_SECTION_EXPANSION = {
   projectQueue: true,
@@ -230,7 +232,7 @@ export function Sidebar({
     loadMoreGlobalSessions,
     hasMoreStarredSessions,
     loadMoreStarredSessions,
-  } = useSidebarSessionFeeds(SIDEBAR_SESSION_PAGE_SIZE);
+  } = useSidebarSessionFeeds(SIDEBAR_SESSION_FEED_LIMIT);
 
   const starredSessionRecords = useStarredSessionRecords();
   const recentSessionRecords = useRecentSessionRecords();

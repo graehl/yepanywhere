@@ -12,6 +12,7 @@ import {
   MIN_CONTENT_WIDTH,
   useSidebarWidth,
 } from "../hooks/useSidebarWidth";
+import { useRetainSidebarSessionFeeds } from "../hooks/useSidebarSessionFeeds";
 
 export interface NavigationLayoutContext {
   /** Open the mobile sidebar */
@@ -60,6 +61,8 @@ function responsiveLayoutStateEquals(
  * Renders the Sidebar once so it persists across route changes.
  */
 export function NavigationLayout() {
+  useRetainSidebarSessionFeeds();
+
   // Extract sessionId from URL for highlighting in sidebar (works for session pages)
   const { sessionId } = useParams<{ sessionId?: string }>();
   const location = useLocation();

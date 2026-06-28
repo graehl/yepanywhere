@@ -1,5 +1,7 @@
 import { useGlobalSessionsFeed } from "./useGlobalSessionsFeed";
 
+export const SIDEBAR_SESSION_FEED_LIMIT = 50;
+
 export interface SidebarSessionFeeds {
   loading: boolean;
   hasMoreGlobalSessions: boolean;
@@ -8,7 +10,24 @@ export interface SidebarSessionFeeds {
   loadMoreStarredSessions: () => Promise<void>;
 }
 
-export function useSidebarSessionFeeds(limit: number): SidebarSessionFeeds {
+export function useRetainSidebarSessionFeeds(
+  limit = SIDEBAR_SESSION_FEED_LIMIT,
+): void {
+  useGlobalSessionsFeed({
+    limit,
+    includeStats: false,
+  });
+
+  useGlobalSessionsFeed({
+    starred: true,
+    limit,
+    includeStats: false,
+  });
+}
+
+export function useSidebarSessionFeeds(
+  limit = SIDEBAR_SESSION_FEED_LIMIT,
+): SidebarSessionFeeds {
   const globalFeed = useGlobalSessionsFeed({
     limit,
     includeStats: false,

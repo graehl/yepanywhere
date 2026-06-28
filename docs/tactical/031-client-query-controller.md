@@ -1,6 +1,6 @@
 # Client Query Controller
 
-Status: Proposed, global-session feed migration landed 2026-06-28.
+Status: Proposed, Sidebar retainer landed 2026-06-28.
 
 This note tracks the next data-fetching cleanup after the client summary store
 work. The immediate forcing bug is Sidebar session coverage: after a browser
@@ -22,6 +22,9 @@ requires this data coverage" without duplicate requests.
 - 2026-06-28: Moved `useGlobalSessionsFeed` onto the controller. Global-session
   list requests now use coverage-aware dedupe, stats fetches use a separate
   query key, and rows still normalize into `clientSummaryStore`.
+- 2026-06-28: Mounted Sidebar session feed coverage from `NavigationLayout`, so
+  the app shell retains Sidebar's global and starred session queries
+  independently of the visual Sidebar branch.
 
 ## Context
 
@@ -324,7 +327,7 @@ Acceptance:
 
 ### 4. Add Sidebar Data Retainer
 
-Status: Direct bug closure.
+Status: Completed 2026-06-28.
 
 Mount a retainer in the navigation/app shell so Sidebar's required coverage is
 ensured independently of the current page and visual sidebar state.

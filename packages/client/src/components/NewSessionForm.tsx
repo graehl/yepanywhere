@@ -74,6 +74,10 @@ import {
   validateDraftAttachmentRefs,
 } from "../lib/draftAttachmentStaging";
 import {
+  hasAttachmentNavigationRisk,
+  useAttachmentNavigationGuard,
+} from "../lib/attachmentNavigationGuard";
+import {
   serverSupportsProjectQueue,
   shouldShowProjectQueueAffordance,
 } from "../lib/projectQueueVisibility";
@@ -2374,6 +2378,18 @@ export function NewSessionForm({
   const hasProjectQueueTargetProject = Boolean(projectQueueTargetProjectId);
   const pendingFilesReadyForProjectQueue =
     pendingFiles.length === 0 || pendingFiles.every(isPendingStagedFile);
+  const stagedPendingFileRefs = pendingFiles
+    .filter(isPendingStagedFile)
+    .map(toPersistedStagedAttachmentRef);
+  const attachmentNavigationGuardActive = hasAttachmentNavigationRisk({
+    pendingUploadCount: pendingFiles.filter(
+      (file) => file.kind === "uploading",
+    ).length,
+    transientAttachmentCount: pendingFiles.filter(isPendingLocalFile).length,
+    stagedRefs: stagedPendingFileRefs,
+    draftState: draftControls.getAttachmentState(),
+  });
+  useAttachmentNavigationGuard(attachmentNavigationGuardActive);
   const canQueueProjectSession = Boolean(
     showProjectQueueAction &&
       message.trim() &&

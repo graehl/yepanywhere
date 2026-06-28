@@ -1,8 +1,8 @@
 # Draft Attachment Staging
 
-Status: Partially implemented. Draft staging, send materialization, and Project
-Queue staged refs are implemented; navigation-guard narrowing and manual
-remote/mobile verification remain.
+Status: Partially implemented. Draft staging, send materialization, Project
+Queue staged refs, and navigation-guard narrowing are implemented; manual
+remote/mobile verification remains.
 
 Design decisions captured here:
 
@@ -28,6 +28,8 @@ Implementation progress:
 - [x] Transfer draft-owned refs to queue ownership on Project Queue creation.
 - [x] Materialize queue-owned refs during Project Queue promotion.
 - [x] Delete queue-owned refs on queue item deletion or successful promotion.
+- [x] Narrow attachment navigation warnings to states that can still lose
+      attachment intent.
 
 ## Context
 
@@ -419,7 +421,7 @@ Shared/client:
       by validating them with the server.
 - [x] Existing-session composer: delete staged refs on chip removal.
 - [x] New-session composer: upload selected/pasted files to staging.
-- [ ] Warn only for attachment states that are not yet durable.
+- [x] Warn only for attachment states that are not yet durable.
 
 ### 4. Send And Queue Materialization
 

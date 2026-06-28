@@ -92,6 +92,10 @@ import {
   validateDraftAttachmentRefs,
 } from "../lib/draftAttachmentStaging";
 import {
+  hasAttachmentNavigationRisk,
+  useAttachmentNavigationGuard,
+} from "../lib/attachmentNavigationGuard";
+import {
   type StreamingMarkdownCallbacks,
   useSession,
 } from "../hooks/useSession";
@@ -1077,6 +1081,19 @@ function SessionPageContent({
   const { version: versionInfo } = useVersion();
   const stagedAttachmentUploadsEnabled =
     serverSupportsProjectQueue(versionInfo);
+  const stagedComposerAttachmentRefs = attachments
+    .filter(isComposerStagedAttachment)
+    .map(toPersistedStagedAttachmentRef);
+  const attachmentNavigationGuardActive = hasAttachmentNavigationRisk({
+    pendingUploadCount: uploadProgress.length,
+    transientAttachmentCount: stagedAttachmentUploadsEnabled
+      ? 0
+      : attachments.filter((attachment) => !isComposerStagedAttachment(attachment))
+          .length,
+    stagedRefs: stagedComposerAttachmentRefs,
+    draftState: draftControlsRef.current?.getAttachmentState() ?? null,
+  });
+  useAttachmentNavigationGuard(attachmentNavigationGuardActive);
 
   const writeDraftAttachmentState = useCallback(
     (nextAttachments: readonly ComposerAttachment[]) => {

@@ -70,8 +70,8 @@ vi.mock("../../hooks/useDrafts", () => ({
 
 vi.mock("../../hooks/useProjectQueues", () => ({
   useProjectQueues: () => ({
-    queuesByProject: projectQueuesState.queuesByProject,
-    items: Object.values(projectQueuesState.queuesByProject).flat(),
+    queuesByProject: {},
+    items: [],
     loading: false,
     error: null,
     mutatingItemId: null,
@@ -127,6 +127,20 @@ vi.mock("../../lib/sessionCollectionExternalStore", () => {
             recordUpdatedAtMs(session) < oneDayAgo,
         )
         .sort((a, b) => recordUpdatedAtMs(b) - recordUpdatedAtMs(a));
+    },
+    useProjectQueuedSessionIds: () => {
+      const sessionIds = new Set<string>();
+      for (const items of Object.values(projectQueuesState.queuesByProject)) {
+        for (const item of items) {
+          if (
+            item.target.type === "existing-session" &&
+            item.target.sessionId
+          ) {
+            sessionIds.add(item.target.sessionId);
+          }
+        }
+      }
+      return sessionIds;
     },
   };
 });

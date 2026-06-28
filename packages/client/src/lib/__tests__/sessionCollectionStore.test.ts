@@ -1,4 +1,7 @@
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import type {
+  ProjectQueueItemSummary,
+  UrlProjectId,
+} from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import type { GlobalSessionItem } from "../../api/client";
 import type { Project as GlobalProject } from "../../types";
@@ -7,6 +10,8 @@ import {
   applyGlobalSessionsCollectionSnapshot,
   applyProjectCollectionSnapshot,
   applyProjectsCollectionSnapshot,
+  applyProjectQueueCollectionChanged,
+  applyProjectQueueCollectionSnapshot,
   applySessionCollectionCreated,
   applySessionCollectionMetadataChanged,
   applySessionCollectionProcessStateChanged,
@@ -15,6 +20,8 @@ import {
   selectRecentSessionRecords,
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
+  selectProjectQueuedSessionIds,
+  selectProjectQueueItems,
   selectSessionCollectionQueryState,
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
@@ -82,6 +89,24 @@ function project(
     activeExternalCount: 0,
     projectQueueBlockingCount: 0,
     lastActivity: RECENT,
+    ...overrides,
+  };
+}
+
+function queueItem(
+  id: string,
+  overrides: Partial<ProjectQueueItemSummary> = {},
+): ProjectQueueItemSummary {
+  return {
+    id,
+    projectId: PROJECT_ID,
+    target: { type: "existing-session", sessionId: `session-${id}` },
+    messagePreview: `Message ${id}`,
+    message: { text: `Message ${id}` },
+    createdAt: `2026-06-27T11:00:0${id}.000Z`,
+    updatedAt: `2026-06-27T11:00:0${id}.000Z`,
+    status: "queued",
+    attachmentCount: 0,
     ...overrides,
   };
 }
@@ -618,6 +643,81 @@ describe("sessionCollectionStore", () => {
     expect(selectProjectCollectionRecords(state).map((p) => p.id)).toEqual([
       "project-a",
       "project-b",
+    ]);
+  });
+
+  it("stores project queue snapshots and selects targeted sessions", () => {
+    const state = applyProjectQueueCollectionSnapshot(
+      createEmptySessionCollectionState(),
+      {
+        projectId: PROJECT_ID,
+        items: [
+          queueItem("1"),
+          queueItem("2", {
+            target: { type: "new-session", title: "New queued session" },
+          }),
+        ],
+      },
+      100,
+    );
+
+    expect(
+      selectProjectQueueItems(state, PROJECT_ID).map((item) => item.id),
+    ).toEqual(["1", "2"]);
+    expect([...selectProjectQueuedSessionIds(state, [PROJECT_ID])]).toEqual([
+      "session-1",
+    ]);
+  });
+
+  it("preserves unchanged project queue items after matching updates", () => {
+    let state = applyProjectQueueCollectionSnapshot(
+      createEmptySessionCollectionState(),
+      { projectId: PROJECT_ID, items: [queueItem("1")] },
+      100,
+    );
+    const before = selectProjectQueueItems(state, PROJECT_ID);
+
+    state = applyProjectQueueCollectionChanged(
+      state,
+      {
+        type: "project-queue-changed",
+        projectId: PROJECT_ID,
+        items: [queueItem("1")],
+        reason: "updated",
+        timestamp: RECENT,
+      },
+      200,
+    );
+
+    expect(selectProjectQueueItems(state, PROJECT_ID)).toBe(before);
+  });
+
+  it("does not let older project queue snapshots undo newer queue facts", () => {
+    let state = applyProjectQueueCollectionSnapshot(
+      createEmptySessionCollectionState(),
+      { projectId: PROJECT_ID, items: [queueItem("1")] },
+      100,
+    );
+
+    state = applyProjectQueueCollectionChanged(
+      state,
+      {
+        type: "project-queue-changed",
+        projectId: PROJECT_ID,
+        items: [queueItem("2", { status: "failed" })],
+        reason: "failed",
+        timestamp: RECENT,
+      },
+      200,
+    );
+    state = applyProjectQueueCollectionSnapshot(
+      state,
+      { projectId: PROJECT_ID, items: [queueItem("1")] },
+      150,
+    );
+
+    expect(selectProjectQueueItems(state, PROJECT_ID)).toMatchObject([
+      { id: "2", status: "failed" },
     ]);
   });
 });

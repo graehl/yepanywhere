@@ -141,9 +141,15 @@ Zustand. The next slice added project summary records and project-list
 membership to the same store, with `useProjects` and `useProject` feeding
 snapshots while keeping request lifecycle local.
 
-The next likely slice is project queue summaries and session-card decorations:
-reduce queue snapshots/events into the store, then make Sidebar, Inbox, and All
-Sessions read the same `Q` / draft badge facts from selectors.
+The next slice added project queue summaries. `useProjectQueues` remains the
+feed/mutation hook, but queue snapshots, mutation responses, and
+`project-queue-changed` events now reduce into the shared store. Sidebar keeps a
+queue feed mounted for visible projects and reads `Q` badges from a store-owned
+targeted-session selector.
+
+The next likely slice is shared session-card decoration rollout: make All
+Sessions and Inbox read the same `Q` / draft badge facts from selectors, then
+retire one-off local badge scans where they are no longer needed.
 
 This should reduce the long tail of hooks that each own partial session/project
 truth and make future UI affordances appear consistently across Sidebar, Inbox,

@@ -1,3 +1,7 @@
+import type {
+  ProjectQueueChangedEvent,
+  ProjectQueueItemSummary,
+} from "@yep-anywhere/shared";
 import { useEffect, useMemo } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
@@ -14,6 +18,8 @@ import {
   applyGlobalSessionsCollectionSnapshot,
   applyProjectCollectionSnapshot,
   applyProjectsCollectionSnapshot,
+  applyProjectQueueCollectionChanged,
+  applyProjectQueueCollectionSnapshot,
   applySessionCollectionCreated,
   applySessionCollectionMetadataChanged,
   applySessionCollectionProcessStateChanged,
@@ -24,6 +30,8 @@ import {
   createGlobalSessionsQueryKey,
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
+  selectProjectQueuedSessionIds,
+  selectProjectQueueItemsByProject,
   selectOlderSessionRecords,
   selectRecentSessionRecords,
   selectSessionCollectionQueryRecords,
@@ -33,6 +41,7 @@ import {
   type GlobalSessionsCollectionSnapshot,
   type ProjectCollectionRecord,
   type ProjectCollectionSnapshot,
+  type ProjectQueueCollectionSnapshot,
   type ProjectsCollectionSnapshot,
   type SessionCollectionQueryDescriptor,
   type SessionCollectionRecord,
@@ -91,6 +100,12 @@ function reduceSessionCreated(event: SessionCreatedEvent): void {
   updateSnapshot((current) => applySessionCollectionCreated(current, event));
 }
 
+function reduceProjectQueueChanged(event: ProjectQueueChangedEvent): void {
+  updateSnapshot((current) =>
+    applyProjectQueueCollectionChanged(current, event),
+  );
+}
+
 function startActivityBusSubscription(): void {
   if (activityBusUnsubscribers) {
     return;
@@ -103,6 +118,7 @@ function startActivityBusSubscription(): void {
     activityBus.on("session-updated", reduceSessionUpdated),
     activityBus.on("session-metadata-changed", reduceSessionMetadataChanged),
     activityBus.on("session-created", reduceSessionCreated),
+    activityBus.on("project-queue-changed", reduceProjectQueueChanged),
   ];
 }
 
@@ -181,6 +197,15 @@ export function reportProjectCollectionSnapshot(
   );
 }
 
+export function reportProjectQueueCollectionSnapshot(
+  input: ProjectQueueCollectionSnapshot,
+  requestStartedAt = Date.now(),
+): void {
+  updateSnapshot((current) =>
+    applyProjectQueueCollectionSnapshot(current, input, requestStartedAt),
+  );
+}
+
 export function reportSessionCollectionCreated(
   event: SessionCreatedEvent,
   observedAt = Date.now(),
@@ -225,6 +250,52 @@ export function useProjectCollectionRecord(
 export function useProjectCollectionRecords(): ProjectCollectionRecord[] {
   const state = useSessionCollectionState();
   return useMemo(() => selectProjectCollectionRecords(state), [state]);
+}
+
+export function useProjectQueueItemsByProject(
+  projectIds: readonly string[],
+): Record<string, readonly ProjectQueueItemSummary[]> {
+  useSessionCollectionActivitySubscription();
+  const byProject = useStore(
+    sessionCollectionStore,
+    (state) => state.projectQueues.byProject,
+  );
+  const projectIdsKey = projectIds.join("\0");
+  const selectedProjectIds = useMemo(() => [...projectIds], [projectIdsKey]);
+  return useMemo(
+    () =>
+      selectProjectQueueItemsByProject(
+        {
+          ...sessionCollectionStore.getState(),
+          projectQueues: { byProject },
+        },
+        selectedProjectIds,
+      ),
+    [byProject, selectedProjectIds],
+  );
+}
+
+export function useProjectQueuedSessionIds(
+  projectIds: readonly string[],
+): ReadonlySet<string> {
+  useSessionCollectionActivitySubscription();
+  const byProject = useStore(
+    sessionCollectionStore,
+    (state) => state.projectQueues.byProject,
+  );
+  const projectIdsKey = projectIds.join("\0");
+  const selectedProjectIds = useMemo(() => [...projectIds], [projectIdsKey]);
+  return useMemo(
+    () =>
+      selectProjectQueuedSessionIds(
+        {
+          ...sessionCollectionStore.getState(),
+          projectQueues: { byProject },
+        },
+        selectedProjectIds,
+      ),
+    [byProject, selectedProjectIds],
+  );
 }
 
 export function useStarredSessionRecords(): SessionCollectionRecord[] {

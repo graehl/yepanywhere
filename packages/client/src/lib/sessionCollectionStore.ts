@@ -2,6 +2,9 @@ import type {
   AgentActivity,
   PendingInputType,
   ProviderName,
+  ProjectQueueChangedEvent,
+  ProjectQueueItemSummary,
+  ProjectQueueResponse,
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import type { GlobalSessionItem } from "../api/client";
@@ -85,10 +88,22 @@ export interface ProjectCollectionState {
   queries: ReadonlyMap<string, ProjectCollectionQueryState>;
 }
 
+export interface ProjectQueueCollectionRecord {
+  projectId: string;
+  items: readonly ProjectQueueItemSummary[];
+  observedAt: number;
+  snapshotObservedAt?: number;
+}
+
+export interface ProjectQueueCollectionState {
+  byProject: ReadonlyMap<string, ProjectQueueCollectionRecord>;
+}
+
 export interface SessionCollectionState {
   entities: ReadonlyMap<string, SessionCollectionRecord>;
   queries: ReadonlyMap<string, SessionCollectionQueryState>;
   projects: ProjectCollectionState;
+  projectQueues: ProjectQueueCollectionState;
 }
 
 export interface GlobalSessionsCollectionSnapshot {
@@ -106,7 +121,10 @@ export interface ProjectCollectionSnapshot {
   project: Project;
 }
 
+export interface ProjectQueueCollectionSnapshot extends ProjectQueueResponse {}
+
 const ALL_PROJECTS_QUERY_KEY = "all-projects";
+const EMPTY_PROJECT_QUEUE_ITEMS: readonly ProjectQueueItemSummary[] = [];
 
 export function createEmptySessionCollectionState(): SessionCollectionState {
   return {
@@ -115,6 +133,9 @@ export function createEmptySessionCollectionState(): SessionCollectionState {
     projects: {
       entities: new Map(),
       queries: new Map(),
+    },
+    projectQueues: {
+      byProject: new Map(),
     },
   };
 }
@@ -302,6 +323,85 @@ function putProjectsQuery(
     projects: {
       ...state.projects,
       queries,
+    },
+  };
+}
+
+function normalizedJsonEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function projectQueueItemsEqual(
+  a: readonly ProjectQueueItemSummary[],
+  b: readonly ProjectQueueItemSummary[],
+): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
+    if (!other) return false;
+    return (
+      item.id === other.id &&
+      item.projectId === other.projectId &&
+      normalizedJsonEqual(item.target, other.target) &&
+      item.messagePreview === other.messagePreview &&
+      normalizedJsonEqual(item.message, other.message) &&
+      item.createdAt === other.createdAt &&
+      item.updatedAt === other.updatedAt &&
+      normalizedJsonEqual(item.createdFrom, other.createdFrom) &&
+      item.status === other.status &&
+      item.attachmentCount === other.attachmentCount &&
+      item.lastError === other.lastError &&
+      item.lastAttemptAt === other.lastAttemptAt
+    );
+  });
+}
+
+function putProjectQueueSnapshot(
+  state: SessionCollectionState,
+  snapshot: ProjectQueueCollectionSnapshot,
+  observedAt: number,
+): SessionCollectionState {
+  const existing = state.projectQueues.byProject.get(snapshot.projectId);
+  if (existing) {
+    if (observedAt < (existing.snapshotObservedAt ?? NO_OBSERVATION)) {
+      return state;
+    }
+
+    if (projectQueueItemsEqual(existing.items, snapshot.items)) {
+      if (observedAt === existing.snapshotObservedAt) {
+        return state;
+      }
+      const byProject = new Map(state.projectQueues.byProject);
+      byProject.set(snapshot.projectId, {
+        ...existing,
+        observedAt: Math.max(existing.observedAt, observedAt),
+        snapshotObservedAt: observedAt,
+      });
+      return {
+        ...state,
+        projectQueues: {
+          ...state.projectQueues,
+          byProject,
+        },
+      };
+    }
+  }
+
+  const byProject = new Map(state.projectQueues.byProject);
+  byProject.set(snapshot.projectId, {
+    projectId: snapshot.projectId,
+    items: snapshot.items,
+    observedAt: Math.max(existing?.observedAt ?? NO_OBSERVATION, observedAt),
+    snapshotObservedAt: observedAt,
+  });
+
+  return {
+    ...state,
+    projectQueues: {
+      ...state.projectQueues,
+      byProject,
     },
   };
 }
@@ -627,6 +727,26 @@ export function applyProjectCollectionSnapshot(
   return putProjectRecord(state, snapshot.project, requestStartedAt);
 }
 
+export function applyProjectQueueCollectionSnapshot(
+  state: SessionCollectionState,
+  snapshot: ProjectQueueCollectionSnapshot,
+  requestStartedAt = Date.now(),
+): SessionCollectionState {
+  return putProjectQueueSnapshot(state, snapshot, requestStartedAt);
+}
+
+export function applyProjectQueueCollectionChanged(
+  state: SessionCollectionState,
+  event: ProjectQueueChangedEvent,
+  observedAt = Date.now(),
+): SessionCollectionState {
+  return putProjectQueueSnapshot(
+    state,
+    { projectId: event.projectId, items: event.items },
+    observedAt,
+  );
+}
+
 export function applySessionCollectionCreated(
   state: SessionCollectionState,
   event: SessionCreatedEvent,
@@ -815,6 +935,46 @@ export function selectProjectCollectionRecords(
     const record = state.projects.entities.get(id);
     return record ? [record] : [];
   });
+}
+
+export function selectProjectQueueItems(
+  state: SessionCollectionState,
+  projectId: string | null | undefined,
+): readonly ProjectQueueItemSummary[] {
+  return projectId
+    ? (state.projectQueues.byProject.get(projectId)?.items ??
+        EMPTY_PROJECT_QUEUE_ITEMS)
+    : EMPTY_PROJECT_QUEUE_ITEMS;
+}
+
+export function selectProjectQueueItemsByProject(
+  state: SessionCollectionState,
+  projectIds: readonly string[],
+): Record<string, readonly ProjectQueueItemSummary[]> {
+  const result: Record<string, readonly ProjectQueueItemSummary[]> = {};
+  for (const projectId of projectIds) {
+    const record = state.projectQueues.byProject.get(projectId);
+    if (record) {
+      result[projectId] = record.items;
+    }
+  }
+  return result;
+}
+
+export function selectProjectQueuedSessionIds(
+  state: SessionCollectionState,
+  projectIds: readonly string[],
+): ReadonlySet<string> {
+  const sessionIds = new Set<string>();
+  for (const projectId of projectIds) {
+    const items = selectProjectQueueItems(state, projectId);
+    for (const item of items) {
+      if (item.target.type === "existing-session") {
+        sessionIds.add(item.target.sessionId);
+      }
+    }
+  }
+  return sessionIds;
 }
 
 function updatedAtMs(record: SessionCollectionRecord): number {

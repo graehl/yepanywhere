@@ -17,6 +17,7 @@ import { isNearScrollEnd } from "../lib/predictiveScroll";
 import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
 import {
   useOlderSessionRecords,
+  useProjectQueuedSessionIds,
   useRecentSessionRecords,
   useStarredSessionRecords,
 } from "../lib/sessionCollectionExternalStore";
@@ -455,18 +456,10 @@ export function Sidebar({
     ],
     [filteredStarredSessions, recentDaySessions, olderSessions],
   );
-  const sidebarProjectQueues = useProjectQueues(sidebarProjectIds);
-  const projectQueuedSessionIds = useMemo(() => {
-    const sessionIds = new Set<string>();
-    for (const items of Object.values(sidebarProjectQueues.queuesByProject)) {
-      for (const item of items) {
-        if (item.target.type === "existing-session") {
-          sessionIds.add(item.target.sessionId);
-        }
-      }
-    }
-    return sessionIds;
-  }, [sidebarProjectQueues.queuesByProject]);
+  // Keep the queue feed mounted for the visible projects. Badge rendering reads
+  // from the shared store selector below rather than this hook's return value.
+  useProjectQueues(sidebarProjectIds);
+  const projectQueuedSessionIds = useProjectQueuedSessionIds(sidebarProjectIds);
 
   // Client-side heuristic for "obvious duplicate title" sessions (general, no hardcoded strings).
   // Within each section we group by (provider, project, normalized title).

@@ -1,5 +1,8 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import type {
+  ProjectQueueItemSummary,
+  UrlProjectId,
+} from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GlobalSessionItem } from "../../api/client";
 
@@ -49,6 +52,7 @@ import {
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
   resetSessionCollectionStoreForTests,
+  useProjectQueuedSessionIds,
   useRecentSessionRecords,
   useSessionCollectionRecord,
   useStarredSessionRecords,
@@ -78,6 +82,24 @@ function globalSession(
   };
 }
 
+function queueItem(
+  id: string,
+  overrides: Partial<ProjectQueueItemSummary> = {},
+): ProjectQueueItemSummary {
+  return {
+    id,
+    projectId: PROJECT_ID,
+    target: { type: "existing-session", sessionId: `session-${id}` },
+    messagePreview: `Message ${id}`,
+    message: { text: `Message ${id}` },
+    createdAt: RECENT,
+    updatedAt: RECENT,
+    status: "queued",
+    attachmentCount: 0,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   resetSessionCollectionStoreForTests();
   mockActivityBus.listeners.clear();
@@ -93,15 +115,15 @@ afterEach(() => {
 describe("sessionCollectionExternalStore", () => {
   it("subscribes to activityBus once while hooks are mounted", () => {
     const first = renderHook(() => useRecentSessionRecords());
-    expect(mockActivityBus.on).toHaveBeenCalledTimes(6);
-    expect(mockActivityBus.listenerCount()).toBe(6);
+    expect(mockActivityBus.on).toHaveBeenCalledTimes(7);
+    expect(mockActivityBus.listenerCount()).toBe(7);
 
     const second = renderHook(() => useSessionCollectionRecord("session-1"));
-    expect(mockActivityBus.on).toHaveBeenCalledTimes(6);
-    expect(mockActivityBus.listenerCount()).toBe(6);
+    expect(mockActivityBus.on).toHaveBeenCalledTimes(7);
+    expect(mockActivityBus.listenerCount()).toBe(7);
 
     first.unmount();
-    expect(mockActivityBus.listenerCount()).toBe(6);
+    expect(mockActivityBus.listenerCount()).toBe(7);
 
     second.unmount();
     expect(mockActivityBus.listenerCount()).toBe(0);
@@ -282,5 +304,26 @@ describe("sessionCollectionExternalStore", () => {
 
     expect(selected.result.current).toBe(before);
     expect(renders).toBe(1);
+  });
+
+  it("applies project queue events to targeted session selectors", () => {
+    const selected = renderHook(() => useProjectQueuedSessionIds([PROJECT_ID]));
+    expect([...selected.result.current]).toEqual([]);
+
+    act(() => {
+      mockActivityBus.emit("project-queue-changed", {
+        type: "project-queue-changed",
+        projectId: PROJECT_ID,
+        items: [
+          queueItem("queue-1", {
+            target: { type: "existing-session", sessionId: "session-a" },
+          }),
+        ],
+        reason: "created",
+        timestamp: "2026-06-27T12:00:01.000Z",
+      });
+    });
+
+    expect([...selected.result.current]).toEqual(["session-a"]);
   });
 });

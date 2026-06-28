@@ -4,6 +4,7 @@ import { extname, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
   type GitFileChange,
+  type GitRecentCommit,
   type GitStatusInfo,
   type PatchHunk,
   isUrlProjectId,
@@ -27,6 +28,7 @@ const NOT_A_GIT_REPO: GitStatusInfo = {
   behind: 0,
   isClean: true,
   files: [],
+  recentCommits: [],
 };
 
 export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
@@ -248,21 +250,32 @@ function statusChar(xy: string | undefined, index: 0 | 1): string | null {
 }
 
 async function getGitStatus(projectPath: string): Promise<GitStatusInfo> {
-  // Run all three commands in parallel
-  const [statusResult, numstatUnstaged, numstatStaged] = await Promise.all([
-    runGit(projectPath, ["status", "--porcelain=v2", "--branch"]),
-    runGit(projectPath, ["diff", "--numstat"]).catch(() => ({
-      stdout: "",
-      stderr: "",
-    })),
-    runGit(projectPath, ["diff", "--cached", "--numstat"]).catch(() => ({
-      stdout: "",
-      stderr: "",
-    })),
-  ]);
+  // Run local read-only commands in parallel.
+  const [statusResult, numstatUnstaged, numstatStaged, logResult] =
+    await Promise.all([
+      runGit(projectPath, ["status", "--porcelain=v2", "--branch"]),
+      runGit(projectPath, ["diff", "--numstat"]).catch(() => ({
+        stdout: "",
+        stderr: "",
+      })),
+      runGit(projectPath, ["diff", "--cached", "--numstat"]).catch(() => ({
+        stdout: "",
+        stderr: "",
+      })),
+      runGit(projectPath, [
+        "log",
+        "-n",
+        "5",
+        "--format=%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1e",
+      ]).catch(() => ({
+        stdout: "",
+        stderr: "",
+      })),
+    ]);
 
   const unstagedStats = parseNumstat(numstatUnstaged.stdout);
   const stagedStats = parseNumstat(numstatStaged.stdout);
+  const recentCommits = parseRecentCommits(logResult.stdout);
 
   let branch: string | null = null;
   let upstream: string | null = null;
@@ -386,5 +399,33 @@ async function getGitStatus(projectPath: string): Promise<GitStatusInfo> {
     behind,
     isClean: files.length === 0,
     files,
+    recentCommits,
   };
+}
+
+function parseRecentCommits(output: string): GitRecentCommit[] {
+  const commits: GitRecentCommit[] = [];
+
+  for (const rawRecord of output.split("\x1e")) {
+    const record = rawRecord.replace(/^\n/, "").replace(/\n$/, "");
+    if (!record) continue;
+
+    const [hash, shortHash, authorName, authorDate, ...subjectParts] =
+      record.split("\x1f");
+    const subject = subjectParts.join("\x1f");
+
+    if (!hash || !shortHash || !authorName || !authorDate) {
+      continue;
+    }
+
+    commits.push({
+      hash,
+      shortHash,
+      authorName,
+      authorDate,
+      subject,
+    });
+  }
+
+  return commits;
 }

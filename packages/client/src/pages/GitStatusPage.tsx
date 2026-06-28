@@ -1,5 +1,16 @@
-import type { GitFileChange } from "@yep-anywhere/shared";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import type {
+  GitFileChange,
+  GitRecentCommit,
+  GitStatusInfo,
+} from "@yep-anywhere/shared";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
@@ -48,7 +59,10 @@ export function GitStatusPage() {
   }
 
   return (
-    <MainContent isWideScreen={isWideScreen}>
+    <MainContent
+      isWideScreen={isWideScreen}
+      innerClassName="source-control-main-content"
+    >
       <PageHeader
         title={project?.name ?? t("gitStatusTitle")}
         titleElement={
@@ -80,6 +94,7 @@ export function GitStatusPage() {
             <GitStatusContent
               status={gitStatus}
               projectId={effectiveProjectId}
+              isWideScreen={isWideScreen}
               t={t as never}
             />
           ) : null}
@@ -92,89 +107,133 @@ export function GitStatusPage() {
 function GitStatusContent({
   status,
   projectId,
+  isWideScreen,
   t,
 }: {
-  status: import("@yep-anywhere/shared").GitStatusInfo;
+  status: GitStatusInfo;
   projectId: string;
+  isWideScreen: boolean;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   const [selectedFile, setSelectedFile] = useState<GitFileChange | null>(null);
 
-  const stagedFiles = status.files.filter((f) => f.staged);
-  const unstagedFiles = status.files.filter(
-    (f) => !f.staged && f.status !== "?",
-  );
-  const untrackedFiles = status.files.filter((f) => f.status === "?");
+  const { stagedFiles, unstagedFiles, untrackedFiles, allFiles } =
+    useMemo(() => {
+      const staged = status.files.filter((f) => f.staged);
+      const unstaged = status.files.filter(
+        (f) => !f.staged && f.status !== "?",
+      );
+      const untracked = status.files.filter((f) => f.status === "?");
+      return {
+        stagedFiles: staged,
+        unstagedFiles: unstaged,
+        untrackedFiles: untracked,
+        allFiles: [...staged, ...unstaged, ...untracked],
+      };
+    }, [status.files]);
+
+  useEffect(() => {
+    setSelectedFile((current) => {
+      if (allFiles.length === 0) {
+        return null;
+      }
+      if (current && allFiles.some((file) => isSameGitFile(file, current))) {
+        return current;
+      }
+      return isWideScreen ? (allFiles[0] ?? null) : null;
+    });
+  }, [allFiles, isWideScreen]);
 
   return (
     <div className="git-status">
-      <div className="git-status-branch">
-        <span className="git-branch-icon">
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <line x1="6" y1="3" x2="6" y2="15" />
-            <circle cx="18" cy="6" r="3" />
-            <circle cx="6" cy="18" r="3" />
-            <path d="M18 9a9 9 0 0 1-9 9" />
-          </svg>
-        </span>
-        <span className="git-branch-name">
-          {status.branch ?? t("gitStatusDetachedHead")}
-        </span>
-        {status.upstream && (
-          <span className="git-upstream"> → {status.upstream}</span>
-        )}
-        {(status.ahead > 0 || status.behind > 0) && (
-          <span className="git-ahead-behind">
-            {status.ahead > 0 && ` ↑${status.ahead}`}
-            {status.behind > 0 && ` ↓${status.behind}`}
+      <div className="git-status-overview">
+        <div className="git-status-branch">
+          <span className="git-branch-icon">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="6" y1="3" x2="6" y2="15" />
+              <circle cx="18" cy="6" r="3" />
+              <circle cx="6" cy="18" r="3" />
+              <path d="M18 9a9 9 0 0 1-9 9" />
+            </svg>
           </span>
-        )}
-        <span
-          className={`git-clean-badge ${status.isClean ? "git-clean" : "git-dirty"}`}
-        >
-          {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
-        </span>
+          <span className="git-branch-name">
+            {status.branch ?? t("gitStatusDetachedHead")}
+          </span>
+          {status.upstream && (
+            <span className="git-upstream"> → {status.upstream}</span>
+          )}
+          {(status.ahead > 0 || status.behind > 0) && (
+            <span className="git-ahead-behind">
+              {status.ahead > 0 && ` ↑${status.ahead}`}
+              {status.behind > 0 && ` ↓${status.behind}`}
+            </span>
+          )}
+          <span
+            className={`git-clean-badge ${status.isClean ? "git-clean" : "git-dirty"}`}
+          >
+            {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
+          </span>
+        </div>
+
+        <GitRecentCommits commits={status.recentCommits} t={t} />
       </div>
 
-      {status.isClean ? (
-        <div className="git-status-empty">{t("gitStatusWorkingTreeClean")}</div>
-      ) : (
-        <>
-          {stagedFiles.length > 0 && (
-            <GitFileSection
-              title={t("gitStatusStaged")}
-              files={stagedFiles}
-              onFileClick={setSelectedFile}
-            />
+      <div className="git-status-workspace">
+        <div className="git-status-file-pane">
+          {status.isClean ? (
+            <div className="git-status-empty">
+              {t("gitStatusWorkingTreeClean")}
+            </div>
+          ) : (
+            <>
+              {stagedFiles.length > 0 && (
+                <GitFileSection
+                  title={t("gitStatusStaged")}
+                  files={stagedFiles}
+                  selectedFile={selectedFile}
+                  onFileClick={setSelectedFile}
+                />
+              )}
+              {unstagedFiles.length > 0 && (
+                <GitFileSection
+                  title={t("gitStatusChanges")}
+                  files={unstagedFiles}
+                  selectedFile={selectedFile}
+                  onFileClick={setSelectedFile}
+                />
+              )}
+              {untrackedFiles.length > 0 && (
+                <GitFileSection
+                  title={t("gitStatusUntracked")}
+                  files={untrackedFiles}
+                  selectedFile={selectedFile}
+                  onFileClick={setSelectedFile}
+                />
+              )}
+            </>
           )}
-          {unstagedFiles.length > 0 && (
-            <GitFileSection
-              title={t("gitStatusChanges")}
-              files={unstagedFiles}
-              onFileClick={setSelectedFile}
-            />
-          )}
-          {untrackedFiles.length > 0 && (
-            <GitFileSection
-              title={t("gitStatusUntracked")}
-              files={untrackedFiles}
-              onFileClick={setSelectedFile}
-            />
-          )}
-        </>
-      )}
+        </div>
 
-      {selectedFile && (
+        {isWideScreen && !status.isClean && (
+          <GitDiffPreview
+            file={selectedFile}
+            projectId={projectId}
+            t={t}
+          />
+        )}
+      </div>
+
+      {!isWideScreen && selectedFile && (
         <GitDiffModal
           file={selectedFile}
           projectId={projectId}
@@ -189,10 +248,12 @@ function GitStatusContent({
 function GitFileSection({
   title,
   files,
+  selectedFile,
   onFileClick,
 }: {
   title: string;
   files: GitFileChange[];
+  selectedFile: GitFileChange | null;
   onFileClick: (file: GitFileChange) => void;
 }) {
   return (
@@ -205,6 +266,9 @@ function GitFileSection({
           <GitFileItem
             key={`${file.path}-${file.staged}`}
             file={file}
+            isSelected={
+              selectedFile ? isSameGitFile(file, selectedFile) : false
+            }
             onClick={onFileClick}
           />
         ))}
@@ -215,42 +279,117 @@ function GitFileSection({
 
 function GitFileItem({
   file,
+  isSelected,
   onClick,
 }: {
   file: GitFileChange;
+  isSelected: boolean;
   onClick: (file: GitFileChange) => void;
 }) {
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard nav not needed for file list
-    <li
-      className="git-file-item git-file-item-clickable"
-      onClick={() => onClick(file)}
-    >
-      <span
-        className={`git-status-badge git-status-${file.status.toLowerCase()}`}
+    <li className="git-file-list-row">
+      <button
+        type="button"
+        className={`git-file-item git-file-item-clickable ${isSelected ? "git-file-item-selected" : ""}`}
+        onClick={() => onClick(file)}
+        aria-current={isSelected ? "true" : undefined}
       >
-        {file.status}
-      </span>
-      <span className="git-file-path">
-        {file.origPath ? (
-          <>
-            {file.origPath} → {file.path}
-          </>
-        ) : (
-          file.path
-        )}
-      </span>
-      {(file.linesAdded !== null || file.linesDeleted !== null) && (
-        <span className="git-line-counts">
-          {file.linesAdded !== null && (
-            <span className="git-lines-added">+{file.linesAdded}</span>
-          )}
-          {file.linesDeleted !== null && (
-            <span className="git-lines-deleted">-{file.linesDeleted}</span>
+        <span
+          className={`git-status-badge git-status-${file.status.toLowerCase()}`}
+        >
+          {file.status}
+        </span>
+        <span className="git-file-path">
+          {file.origPath ? (
+            <>
+              {file.origPath} → {file.path}
+            </>
+          ) : (
+            file.path
           )}
         </span>
-      )}
+        {(file.linesAdded !== null || file.linesDeleted !== null) && (
+          <span className="git-line-counts">
+            {file.linesAdded !== null && (
+              <span className="git-lines-added">+{file.linesAdded}</span>
+            )}
+            {file.linesDeleted !== null && (
+              <span className="git-lines-deleted">-{file.linesDeleted}</span>
+            )}
+          </span>
+        )}
+      </button>
     </li>
+  );
+}
+
+function GitRecentCommits({
+  commits,
+  t,
+}: {
+  commits: GitRecentCommit[];
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  return (
+    <section className="git-recent-commits" aria-labelledby="git-recent-title">
+      <h3 id="git-recent-title" className="git-recent-title">
+        {t("gitStatusRecentCommits")}
+      </h3>
+      {commits.length === 0 ? (
+        <div className="git-recent-empty">{t("gitStatusNoRecentCommits")}</div>
+      ) : (
+        <ol className="git-recent-list">
+          {commits.map((commit) => (
+            <li key={commit.hash} className="git-recent-item">
+              <span className="git-recent-subject">
+                {commit.subject || t("gitStatusUntitledCommit")}
+              </span>
+              <span className="git-recent-meta">
+                <span className="git-recent-hash">{commit.shortHash}</span>
+                <span className="git-recent-author">{commit.authorName}</span>
+                <time
+                  dateTime={commit.authorDate}
+                  title={formatCommitDateTime(commit.authorDate)}
+                >
+                  {formatCommitDate(commit.authorDate)}
+                </time>
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function GitDiffPreview({
+  file,
+  projectId,
+  t,
+}: {
+  file: GitFileChange | null;
+  projectId: string;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  const fileName = file ? file.path.split("/").pop() || file.path : null;
+
+  return (
+    <section className="git-diff-preview-pane">
+      <div className="git-diff-preview-header">
+        <h3 className="git-diff-preview-title">
+          {fileName ?? t("gitStatusDiffPreview")}
+        </h3>
+      </div>
+      <div className="git-diff-preview-body">
+        {file ? (
+          <GitDiffBody file={file} projectId={projectId} t={t} />
+        ) : (
+          <div className="git-diff-placeholder">
+            {t("gitStatusSelectFileForDiff")}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -265,6 +404,24 @@ function GitDiffModal({
   t: (key: string, vars?: Record<string, string | number>) => string;
   onClose: () => void;
 }) {
+  const fileName = file.path.split("/").pop() || file.path;
+
+  return (
+    <Modal title={fileName} onClose={onClose}>
+      <GitDiffBody file={file} projectId={projectId} t={t} />
+    </Modal>
+  );
+}
+
+function GitDiffBody({
+  file,
+  projectId,
+  t,
+}: {
+  file: GitFileChange;
+  projectId: string;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
   const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -272,6 +429,7 @@ function GitDiffModal({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setDiffResult(null);
     setError(null);
 
     api
@@ -298,27 +456,26 @@ function GitDiffModal({
     };
   }, [projectId, file.path, file.staged, file.status, t]);
 
-  const fileName = file.path.split("/").pop() || file.path;
-
   return (
-    <Modal title={fileName} onClose={onClose}>
-      {loading ? (
+    <>
+      {loading && (
         <div className="git-diff-loading">{t("gitStatusLoadingDiff")}</div>
-      ) : error ? (
-        <div className="git-diff-error">{error}</div>
-      ) : diffResult ? (
-        <GitDiffModalContent
+      )}
+      {!loading && error && <div className="git-diff-error">{error}</div>}
+      {!loading && !error && diffResult && (
+        <GitDiffContent
+          key={gitFileKey(file)}
           file={file}
           projectId={projectId}
           diffResult={diffResult}
           t={t}
         />
-      ) : null}
-    </Modal>
+      )}
+    </>
   );
 }
 
-function GitDiffModalContent({
+function GitDiffContent({
   file,
   projectId,
   diffResult,
@@ -445,6 +602,36 @@ function GitDiffModalContent({
       )}
     </div>
   );
+}
+
+function isSameGitFile(left: GitFileChange, right: GitFileChange): boolean {
+  return gitFileKey(left) === gitFileKey(right);
+}
+
+function gitFileKey(file: GitFileChange): string {
+  return `${file.path}\0${file.staged ? "1" : "0"}\0${file.status}`;
+}
+
+function formatCommitDate(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return value;
+  }
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatCommitDateTime(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return value;
+  }
+  return new Date(timestamp).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
 /** Render syntax-highlighted diff HTML from server */

@@ -13,6 +13,19 @@ export interface GitFileChange {
   origPath?: string;
 }
 
+export interface GitRecentCommit {
+  /** Full commit hash */
+  hash: string;
+  /** Short commit hash for display */
+  shortHash: string;
+  /** Commit subject line */
+  subject: string;
+  /** Author display name */
+  authorName: string;
+  /** Author timestamp as an ISO 8601 string */
+  authorDate: string;
+}
+
 export interface GitStatusInfo {
   /** Whether the project path is a git repository */
   isGitRepo: boolean;
@@ -28,4 +41,6 @@ export interface GitStatusInfo {
   isClean: boolean;
   /** Changed files with status and line counts */
   files: GitFileChange[];
+  /** Recent commits on the current HEAD */
+  recentCommits: GitRecentCommit[];
 }

@@ -97,7 +97,11 @@ export {
   DEFAULT_PROVIDER,
 } from "./types.js";
 
-export type { GitStatusInfo, GitFileChange } from "./git-status.js";
+export type {
+  GitFileChange,
+  GitRecentCommit,
+  GitStatusInfo,
+} from "./git-status.js";
 
 export type {
   SessionActiveWorkKind,

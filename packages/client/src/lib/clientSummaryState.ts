@@ -104,6 +104,12 @@ export interface ProjectQueueCollectionState {
   byProject: ReadonlyMap<string, ProjectQueueCollectionRecord>;
 }
 
+export interface ProjectQueueCountSource {
+  id: string;
+  projectQueueCount?: number;
+  snapshotObservedAt?: number;
+}
+
 export interface InboxCollectionState {
   tiers: Record<InboxTier, readonly string[]>;
   requestStartedAt?: number;
@@ -1153,6 +1159,43 @@ export function selectProjectQueueItemsByProject(
     }
   }
   return result;
+}
+
+function countVisibleProjectQueueItems(
+  items: readonly ProjectQueueItemSummary[],
+): number {
+  return items.filter(
+    (item) => item.status === "queued" || item.status === "failed",
+  ).length;
+}
+
+export function selectProjectQueueSidebarCount(
+  state: ClientSummaryState,
+  projects: readonly ProjectQueueCountSource[],
+): number {
+  const projectIds = new Set<string>();
+  let total = 0;
+
+  for (const project of projects) {
+    projectIds.add(project.id);
+    const queueRecord = state.projectQueues.byProject.get(project.id);
+    const projectObservedAt =
+      project.snapshotObservedAt ?? Number.NEGATIVE_INFINITY;
+
+    if (queueRecord && queueRecord.observedAt >= projectObservedAt) {
+      total += countVisibleProjectQueueItems(queueRecord.items);
+    } else {
+      total += project.projectQueueCount ?? 0;
+    }
+  }
+
+  for (const [projectId, queueRecord] of state.projectQueues.byProject) {
+    if (!projectIds.has(projectId)) {
+      total += countVisibleProjectQueueItems(queueRecord.items);
+    }
+  }
+
+  return total;
 }
 
 export function selectProjectQueuedSessionIds(

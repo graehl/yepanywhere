@@ -20,8 +20,11 @@ const {
   mockToggleExpanded,
   mockWindowOpen,
   newSessionDraftState,
+  projectQueueSidebarCountState,
   projectQueuesState,
+  projectsState,
   starredSessionsState,
+  versionState,
 } = vi.hoisted(() => ({
   globalSessionsState: {
     sessions: [] as Array<Record<string, unknown>>,
@@ -45,11 +48,20 @@ const {
   newSessionDraftState: {
     hasDraft: false,
   },
+  projectQueueSidebarCountState: {
+    count: 0,
+  },
   projectQueuesState: {
     queuesByProject: {} as Record<
       string,
       Array<{ target: { type: string; sessionId?: string } }>
     >,
+  },
+  projectsState: {
+    projects: [] as Array<Record<string, unknown>>,
+  },
+  versionState: {
+    capabilities: [] as string[],
   },
 }));
 
@@ -72,6 +84,15 @@ vi.mock("../../hooks/useProjectQueues", () => ({
     updateItem: vi.fn(),
     deleteItem: vi.fn(),
     retryItem: vi.fn(),
+  }),
+}));
+
+vi.mock("../../hooks/useProjects", () => ({
+  useProjects: () => ({
+    projects: projectsState.projects,
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
   }),
 }));
 
@@ -141,6 +162,7 @@ vi.mock("../../lib/clientSummaryStore", () => {
       }
       return sessionIds;
     },
+    useProjectQueueSidebarCount: () => projectQueueSidebarCountState.count,
   };
 });
 
@@ -165,7 +187,7 @@ vi.mock("../../hooks/useServerSettings", () => ({
 vi.mock("../../hooks/useVersion", () => ({
   useVersion: () => ({
     version: {
-      capabilities: [],
+      capabilities: versionState.capabilities,
     },
   }),
 }));
@@ -181,6 +203,7 @@ vi.mock("../../i18n", () => ({
           sidebarInbox: "Inbox",
           sidebarAllSessions: "All Sessions",
           sidebarProjects: "Projects",
+          projectCardQueueCount: "Project Queue items: {count}",
           sidebarSettings: "Settings",
           sidebarSwitchHost: "Switch Host",
           sidebarSectionStarred: "Starred",
@@ -272,6 +295,9 @@ describe("Sidebar collapsed toggle", () => {
     starredSessionsState.loadMore = mockStarredLoadMore;
     newSessionDraftState.hasDraft = false;
     projectQueuesState.queuesByProject = {};
+    projectQueueSidebarCountState.count = 0;
+    projectsState.projects = [];
+    versionState.capabilities = [];
     vi.stubGlobal("open", mockWindowOpen);
   });
 
@@ -389,6 +415,20 @@ describe("Sidebar collapsed toggle", () => {
     expect(
       screen.getByTestId("session-plain-session").textContent,
     ).not.toContain("Q");
+  });
+
+  it("shows the Project Queue count on the Projects nav item", () => {
+    versionState.capabilities = ["projectQueue"];
+    projectQueueSidebarCountState.count = 3;
+
+    renderSidebar();
+
+    const projectsLink = screen.getByRole("link", { name: /Projects/i });
+    expect(projectsLink.textContent).toContain("3");
+    const badge = projectsLink.querySelector(".sidebar-nav-badge");
+    expect(badge?.classList.contains("sidebar-nav-badge--projectQueue")).toBe(
+      true,
+    );
   });
 
   it("keeps the highest-message duplicate session visible", () => {

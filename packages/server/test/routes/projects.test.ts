@@ -64,6 +64,65 @@ function createProcess(
 }
 
 describe("Projects Routes", () => {
+  it("enriches project list responses with Project Queue counts", async () => {
+    const project = createProject();
+    const routes = createProjectsRoutes({
+      scanner: {
+        listProjects: vi.fn(async () => [project]),
+      } as unknown as ProjectScanner,
+      readerFactory: vi.fn(),
+      projectQueueService: {
+        listAll: vi.fn(() => [
+          {
+            id: "queue-1",
+            projectId: project.id,
+            target: { type: "new-session" },
+            messagePreview: "Queued session",
+            message: { text: "Queued session" },
+            createdAt: "2026-03-10T09:45:00.000Z",
+            updatedAt: "2026-03-10T09:45:00.000Z",
+            status: "queued",
+            attachmentCount: 0,
+          },
+          {
+            id: "queue-2",
+            projectId: project.id,
+            target: { type: "existing-session", sessionId: "sess-1" },
+            messagePreview: "Sending now",
+            message: { text: "Sending now" },
+            createdAt: "2026-03-10T09:46:00.000Z",
+            updatedAt: "2026-03-10T09:46:00.000Z",
+            status: "dispatching",
+            attachmentCount: 0,
+          },
+          {
+            id: "queue-3",
+            projectId: project.id,
+            target: { type: "existing-session", sessionId: "sess-2" },
+            messagePreview: "Needs retry",
+            message: { text: "Needs retry" },
+            createdAt: "2026-03-10T09:47:00.000Z",
+            updatedAt: "2026-03-10T09:47:00.000Z",
+            status: "failed",
+            attachmentCount: 0,
+          },
+        ]),
+        listProject: vi.fn(),
+      } as unknown as Parameters<
+        typeof createProjectsRoutes
+      >[0]["projectQueueService"],
+    });
+
+    const response = await routes.request("/");
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    expect(json.projects[0]).toMatchObject({
+      id: project.id,
+      projectQueueCount: 2,
+    });
+  });
+
   it("lists mixed-provider sessions through the shared provider resolver", async () => {
     const project = createProject();
     const summary = createSummary();

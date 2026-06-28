@@ -47,6 +47,15 @@ vi.mock("../../hooks/useProjectQueues", () => ({
   }),
 }));
 
+vi.mock("../../hooks/useProjects", () => ({
+  useProjects: () => ({
+    projects: [],
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+}));
+
 vi.mock("../../hooks/usePublicShareStatus", () => ({
   usePublicShareStatus: () => ({
     status: null,

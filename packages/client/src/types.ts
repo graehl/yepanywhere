@@ -177,5 +177,6 @@ export interface Project {
   activeOwnedCount: number;
   activeExternalCount: number;
   projectQueueBlockingCount?: number;
+  projectQueueCount?: number;
   lastActivity: string | null;
 }

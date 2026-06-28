@@ -13600,6 +13600,10 @@ a.sidebar-nav-item {
   margin-left: auto;
 }
 
+.sidebar-nav-badge--projectQueue {
+  background: var(--project-queue-action-bg);
+}
+
 /* ==========================================================================
    Inbox Page
    ========================================================================== */

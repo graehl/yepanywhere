@@ -31,6 +31,7 @@ import {
   selectProjectCollectionRecords,
   selectProjectQueuedSessionIds,
   selectProjectQueueItems,
+  selectProjectQueueSidebarCount,
   selectSessionCollectionQueryState,
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
@@ -852,6 +853,72 @@ describe("clientSummaryState", () => {
     expect([...selectProjectQueuedSessionIds(state, [PROJECT_ID])]).toEqual([
       "session-1",
     ]);
+  });
+
+  it("selects sidebar Project Queue counts from project fallbacks and queue snapshots", () => {
+    let state = applyProjectsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        projects: [
+          project("project-1", { projectQueueCount: 2 }),
+          project("project-2", { projectQueueCount: 4 }),
+        ],
+      },
+      200,
+    );
+
+    state = applyProjectQueueCollectionSnapshot(
+      state,
+      {
+        projectId: "project-1" as UrlProjectId,
+        items: [
+          queueItem("1"),
+          queueItem("2", { status: "dispatching" }),
+          queueItem("3", { status: "failed" }),
+        ],
+      },
+      250,
+    );
+    state = applyProjectQueueCollectionSnapshot(
+      state,
+      {
+        projectId: "project-3" as UrlProjectId,
+        items: [queueItem("4", { projectId: "project-3" as UrlProjectId })],
+      },
+      260,
+    );
+
+    expect(
+      selectProjectQueueSidebarCount(
+        state,
+        selectProjectCollectionRecords(state),
+      ),
+    ).toBe(7);
+  });
+
+  it("lets fresh project fallback counts override stale queue snapshots", () => {
+    let state = applyProjectQueueCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        projectId: PROJECT_ID,
+        items: [queueItem("1"), queueItem("2")],
+      },
+      100,
+    );
+    state = applyProjectsCollectionSnapshot(
+      state,
+      {
+        projects: [project(PROJECT_ID, { projectQueueCount: 0 })],
+      },
+      200,
+    );
+
+    expect(
+      selectProjectQueueSidebarCount(
+        state,
+        selectProjectCollectionRecords(state),
+      ),
+    ).toBe(0);
   });
 
   it("preserves unchanged project queue items after matching updates", () => {

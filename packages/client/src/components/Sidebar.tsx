@@ -5,6 +5,7 @@ import type { GlobalSessionItem } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useNewSessionDraft } from "../hooks/useDrafts";
 import { useProjectQueues } from "../hooks/useProjectQueues";
+import { useProjects } from "../hooks/useProjects";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
@@ -14,12 +15,14 @@ import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
+import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
 import {
   useDraftSessionIds,
   useInboxCounts,
   useOlderSessionRecords,
   useProjectQueuedSessionIds,
+  useProjectQueueSidebarCount,
   useRecentSessionRecords,
   useStarredSessionRecords,
 } from "../lib/clientSummaryStore";
@@ -216,9 +219,12 @@ export function Sidebar({
   // Server capabilities for feature gating
   const { version: versionInfo } = useVersion();
   const capabilities = versionInfo?.capabilities ?? [];
+  const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
 
   // Global inbox count. Title badge updates are owned by the app shell.
   const { needsAttention: inboxCount } = useInboxCounts();
+  const { projects } = useProjects();
+  const projectQueueSidebarCount = useProjectQueueSidebarCount(projects);
   const newSessionPath = "/new-session";
   const newSessionHref = `${basePath}${newSessionPath}`;
   const expandedSidebarNewSessionHref = toBrowserAppHref(
@@ -722,6 +728,11 @@ export function Sidebar({
               to="/projects"
               icon={SidebarIcons.projects}
               label={t("sidebarProjects")}
+              badge={supportsProjectQueue ? projectQueueSidebarCount : 0}
+              badgeVariant="projectQueue"
+              badgeTitle={t("projectCardQueueCount", {
+                count: projectQueueSidebarCount,
+              })}
               onClick={onNavigate}
               basePath={basePath}
             />

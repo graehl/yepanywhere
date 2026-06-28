@@ -40,6 +40,7 @@ import {
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
   selectProjectQueuedSessionIds,
+  selectProjectQueueSidebarCount,
   selectProjectQueueItemsByProject,
   selectOlderSessionRecords,
   selectRecentSessionRecords,
@@ -52,6 +53,7 @@ import {
   type InboxCollectionSnapshot,
   type ProjectCollectionRecord,
   type ProjectCollectionSnapshot,
+  type ProjectQueueCountSource,
   type ProjectQueueCollectionSnapshot,
   type ProjectsCollectionSnapshot,
   type SessionCollectionQueryDescriptor,
@@ -571,6 +573,42 @@ export function useProjectQueueItemsByProject(
         selectedProjectIds,
       ),
     [store, byProject, selectedProjectIds],
+  );
+}
+
+export function useProjectQueueSidebarCount(
+  projects: readonly ProjectQueueCountSource[],
+): number {
+  useClientSummaryActivitySubscription();
+  const store = useCurrentClientSummaryStore();
+  const byProject = useStore(store, (state) => state.projectQueues.byProject);
+  const projectsKey = projects
+    .map(
+      (project) =>
+        `${project.id}:${project.projectQueueCount ?? 0}:${
+          project.snapshotObservedAt ?? ""
+        }`,
+    )
+    .join("\0");
+  const selectedProjects = useMemo(
+    () =>
+      projects.map((project) => ({
+        id: project.id,
+        projectQueueCount: project.projectQueueCount,
+        snapshotObservedAt: project.snapshotObservedAt,
+      })),
+    [projects, projectsKey],
+  );
+  return useMemo(
+    () =>
+      selectProjectQueueSidebarCount(
+        {
+          ...store.getState(),
+          projectQueues: { byProject },
+        },
+        selectedProjects,
+      ),
+    [store, byProject, selectedProjects],
   );
 }
 

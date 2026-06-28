@@ -912,6 +912,7 @@ export function createApp(options: AppOptions): AppResult {
       notificationService: options.notificationService,
       sessionMetadataService: options.sessionMetadataService,
       projectMetadataService: options.projectMetadataService,
+      projectQueueService: options.projectQueueService,
       sessionIndexService: options.sessionIndexService,
       codexScanner,
       codexSessionsDir: CODEX_SESSIONS_DIR,

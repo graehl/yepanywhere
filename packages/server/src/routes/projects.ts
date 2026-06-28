@@ -1,5 +1,9 @@
 import { homedir } from "node:os";
-import { isUrlProjectId, toUrlProjectId } from "@yep-anywhere/shared";
+import {
+  isUrlProjectId,
+  toUrlProjectId,
+  type ProjectQueueItemSummary,
+} from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
 import type {
@@ -21,6 +25,7 @@ import { listSessionsAcrossProviders } from "../sessions/provider-resolution.js"
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
+import type { ProjectQueueService } from "../services/ProjectQueueService.js";
 import { applyRecapOverlayToSummary } from "../sessions/recap-overlays.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Process } from "../supervisor/Process.js";
@@ -43,6 +48,7 @@ export interface ProjectsDeps {
   sessionMetadataService?: SessionMetadataService;
   /** ProjectMetadataService for persisting added projects */
   projectMetadataService?: ProjectMetadataService;
+  projectQueueService?: Pick<ProjectQueueService, "listAll" | "listProject">;
   sessionIndexService?: SessionIndexService;
   /** Codex scanner for checking if a project has Codex sessions */
   codexScanner?: CodexSessionScanner;
@@ -102,6 +108,29 @@ function processBlocksProjectQueue(process: Process): boolean {
     process.getPendingInputRequest() !== null ||
     process.getLivenessSnapshot().derivedStatus !== "verified-idle"
   );
+}
+
+function isVisibleProjectQueueItem(item: ProjectQueueItemSummary): boolean {
+  return item.status === "queued" || item.status === "failed";
+}
+
+function countVisibleProjectQueueItems(
+  items: readonly ProjectQueueItemSummary[],
+): number {
+  return items.filter(isVisibleProjectQueueItem).length;
+}
+
+function getProjectQueueCounts(
+  projectQueueService: ProjectsDeps["projectQueueService"],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  if (!projectQueueService) return counts;
+
+  for (const item of projectQueueService.listAll()) {
+    if (!isVisibleProjectQueueItem(item)) continue;
+    counts.set(item.projectId, (counts.get(item.projectId) ?? 0) + 1);
+  }
+  return counts;
 }
 
 /**
@@ -303,6 +332,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       deps.supervisor,
       deps.externalTracker,
     );
+    const projectQueueCounts = getProjectQueueCounts(deps.projectQueueService);
 
     // Enrich projects with active counts (all keyed by UrlProjectId now)
     const projects = rawProjects.map((project) => {
@@ -312,6 +342,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         activeOwnedCount: counts?.activeOwnedCount ?? 0,
         activeExternalCount: counts?.activeExternalCount ?? 0,
         projectQueueBlockingCount: counts?.projectQueueBlockingCount ?? 0,
+        projectQueueCount: projectQueueCounts.get(project.id) ?? 0,
       };
     });
 
@@ -348,6 +379,11 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       deps.externalTracker,
     );
     const counts = activityCounts.get(project.id);
+    const projectQueueCount = deps.projectQueueService
+      ? countVisibleProjectQueueItems(
+          deps.projectQueueService.listProject(project.id).items,
+        )
+      : 0;
 
     return c.json({
       project: {
@@ -355,6 +391,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         activeOwnedCount: counts?.activeOwnedCount ?? 0,
         activeExternalCount: counts?.activeExternalCount ?? 0,
         projectQueueBlockingCount: counts?.projectQueueBlockingCount ?? 0,
+        projectQueueCount,
       },
     });
   });

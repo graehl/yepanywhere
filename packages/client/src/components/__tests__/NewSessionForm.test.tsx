@@ -1059,6 +1059,53 @@ describe("NewSessionForm", () => {
     expect(shortcutNames()).toEqual(["newSessionProjectDetached", "Beta"]);
   });
 
+  it("closes the project chooser when interacting outside it", () => {
+    const { container } = render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    fireEvent.click(
+      container.querySelector(".new-session-project-summary") as HTMLElement,
+    );
+
+    expect(container.querySelector("#new-session-project-panel")).not.toBeNull();
+
+    fireEvent.pointerDown(screen.getByPlaceholderText("newSessionPlaceholder"));
+
+    expect(container.querySelector("#new-session-project-panel")).toBeNull();
+  });
+
+  it("keeps the project chooser open while typing a custom path", () => {
+    const { container } = render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    const projectInput = screen.getByPlaceholderText(
+      "newSessionProjectPathPlaceholder",
+    ) as HTMLInputElement;
+
+    fireEvent.click(
+      container.querySelector(".new-session-project-summary") as HTMLElement,
+    );
+    fireEvent.pointerDown(projectInput);
+    fireEvent.focus(projectInput);
+    fireEvent.change(projectInput, {
+      target: { value: "/Users/kgraehl/code/yepanywhere" },
+    });
+
+    expect(container.querySelector("#new-session-project-panel")).not.toBeNull();
+    expect(screen.getByText("newSessionProjectUseTypedPath")).toBeDefined();
+    expect(screen.getByText("/Users/kgraehl/code/yepanywhere")).toBeDefined();
+  });
+
   it("uses visit recency and shows more than four project shortcuts", () => {
     const manyProjects = [
       ...chooserProjects,

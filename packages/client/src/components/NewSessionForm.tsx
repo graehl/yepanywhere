@@ -422,6 +422,7 @@ export function NewSessionForm({
     () => selectedProject?.path ?? "",
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const projectChooserRef = useRef<HTMLDivElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
@@ -884,6 +885,33 @@ export function NewSessionForm({
     lastSyncedProjectIdRef.current = nextProjectId;
     setProjectInput((prev) => prev || (selectedProject?.path ?? ""));
   }, [projectId, selectedProject]);
+
+  useEffect(() => {
+    if (!isProjectChooserExpanded) return;
+
+    const closeIfOutsideProjectChooser = (target: EventTarget | null) => {
+      if (!(target instanceof Node)) return;
+      const projectChooser = projectChooserRef.current;
+      if (projectChooser && !projectChooser.contains(target)) {
+        setIsProjectChooserExpanded(false);
+      }
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      closeIfOutsideProjectChooser(event.target);
+    };
+
+    const handleFocusIn = (event: FocusEvent) => {
+      closeIfOutsideProjectChooser(event.target);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("focusin", handleFocusIn, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("focusin", handleFocusIn, true);
+    };
+  }, [isProjectChooserExpanded]);
 
   // When provider changes, reset model based on user settings
   const handleProviderSelect = (providerName: ProviderName) => {
@@ -2263,6 +2291,7 @@ export function NewSessionForm({
 
   const projectChooser = (
     <div
+      ref={projectChooserRef}
       className={`new-session-project-chooser ${isProjectChooserExpanded ? "expanded" : ""}`}
     >
       <div className="new-session-project-controls">

@@ -118,4 +118,20 @@ describe("ProjectsPage", () => {
     expect(screen.getByText("Queued project work")).toBeTruthy();
     expect(screen.getByTitle("Project Queue items: 1").textContent).toBe("1");
   });
+
+  it("highlights a queue item from the query string", () => {
+    render(
+      <I18nProvider>
+        <MemoryRouter initialEntries={["/projects?queueItem=queue-1"]}>
+          <ProjectsPage />
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    const highlighted = document.querySelector(
+      '[data-project-queue-item-id="queue-1"]',
+    );
+    expect(highlighted?.classList.contains("project-queue-item--highlighted"))
+      .toBe(true);
+  });
 });

@@ -51,6 +51,7 @@ function renderSection(
     onRetryItem: vi.fn(),
     onUpdateItem: vi.fn(),
   },
+  highlightedItemId?: string,
 ) {
   render(
     <I18nProvider>
@@ -61,6 +62,7 @@ function renderSection(
           loading={false}
           error={null}
           mutatingItemId={null}
+          highlightedItemId={highlightedItemId}
           onDeleteItem={handlers.onDeleteItem}
           onRetryItem={handlers.onRetryItem}
           onUpdateItem={handlers.onUpdateItem}
@@ -102,6 +104,16 @@ describe("ProjectQueueSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(handlers.onRetryItem).toHaveBeenCalledWith("project-1", "2");
+  });
+
+  it("highlights a linked queue item", () => {
+    renderSection([makeItem("1"), makeItem("2")], undefined, "2");
+
+    const highlighted = document.querySelector(
+      '[data-project-queue-item-id="2"]',
+    );
+    expect(highlighted?.classList.contains("project-queue-item--highlighted"))
+      .toBe(true);
   });
 
   it("edits queued item text", async () => {

@@ -1092,6 +1092,16 @@ textarea {
   border-left-color: var(--project-queue-action-bg);
 }
 
+.project-queue-item--highlighted {
+  border-color: color-mix(
+    in srgb,
+    var(--project-queue-action-bg) 62%,
+    var(--border-subtle)
+  );
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--project-queue-action-bg) 18%, transparent);
+}
+
 .project-queue-item__main {
   min-width: 0;
 }
@@ -1915,6 +1925,76 @@ a.sidebar-nav-item {
 
 .sidebar-session-list li {
   position: relative;
+}
+
+.sidebar-project-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.sidebar-project-queue-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.625rem;
+  padding: 0.45rem 0.875rem;
+  color: var(--text-primary);
+  text-decoration: none;
+  border-left: 2px solid var(--project-queue-action-bg);
+  transition: background 0.15s;
+}
+
+.sidebar-project-queue-item:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar-project-queue-item--failed {
+  border-left-color: var(--error-color);
+}
+
+.sidebar-project-queue-item__main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.sidebar-project-queue-item__title,
+.sidebar-project-queue-item__project {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-project-queue-item__title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.sidebar-project-queue-item__project {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.sidebar-project-queue-item__status {
+  flex-shrink: 0;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid
+    color-mix(in srgb, var(--project-queue-action-bg) 32%, transparent);
+  border-radius: 999px;
+  color: var(--project-queue-action-bg);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.sidebar-project-queue-item--failed .sidebar-project-queue-item__status {
+  border-color: color-mix(in srgb, var(--error-color) 32%, transparent);
+  color: var(--error-color);
 }
 
 /* Sidebar Activity Badges */

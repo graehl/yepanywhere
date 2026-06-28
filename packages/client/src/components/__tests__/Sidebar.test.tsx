@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { ProjectQueueItemSummary } from "@yep-anywhere/shared";
 import {
   cleanup,
   fireEvent,
@@ -52,10 +53,7 @@ const {
     count: 0,
   },
   projectQueuesState: {
-    queuesByProject: {} as Record<
-      string,
-      Array<{ target: { type: string; sessionId?: string } }>
-    >,
+    queuesByProject: {} as Record<string, ProjectQueueItemSummary[]>,
   },
   projectsState: {
     projects: [] as Array<Record<string, unknown>>,
@@ -75,8 +73,8 @@ vi.mock("../../hooks/useDrafts", () => ({
 
 vi.mock("../../hooks/useProjectQueues", () => ({
   useProjectQueues: () => ({
-    queuesByProject: {},
-    items: [],
+    queuesByProject: projectQueuesState.queuesByProject,
+    items: Object.values(projectQueuesState.queuesByProject).flat(),
     loading: false,
     error: null,
     mutatingItemId: null,
@@ -148,6 +146,8 @@ vi.mock("../../lib/clientSummaryStore", () => {
         )
         .sort((a, b) => recordUpdatedAtMs(b) - recordUpdatedAtMs(a));
     },
+    useKnownProjectQueueItems: () =>
+      Object.values(projectQueuesState.queuesByProject).flat(),
     useProjectQueuedSessionIds: () => {
       const sessionIds = new Set<string>();
       for (const items of Object.values(projectQueuesState.queuesByProject)) {
@@ -204,6 +204,7 @@ vi.mock("../../i18n", () => ({
           sidebarAllSessions: "All Sessions",
           sidebarProjects: "Projects",
           projectCardQueueCount: "Project Queue items: {count}",
+          sidebarSectionPendingSessions: "Pending Sessions",
           sidebarSettings: "Settings",
           sidebarSwitchHost: "Switch Host",
           sidebarSectionStarred: "Starred",
@@ -212,6 +213,10 @@ vi.mock("../../i18n", () => ({
           sidebarSectionExpand: "Expand",
           sidebarSectionCollapse: "Collapse",
           sidebarEmpty: "No sessions yet",
+          projectQueueStatusQueued: "Queued",
+          projectQueueStatusFailed: "Failed",
+          projectQueueTargetNewSession: "New session",
+          projectQueueUnknownProject: "Unknown project",
         }) as Record<string, string>
       )[key] ?? key,
   }),
@@ -255,6 +260,24 @@ function makeSession(
     provider: "claude",
     isArchived: false,
     isStarred: false,
+    ...overrides,
+  };
+}
+
+function makeProjectQueueItem(
+  id: string,
+  overrides: Partial<ProjectQueueItemSummary> = {},
+): ProjectQueueItemSummary {
+  return {
+    id,
+    projectId: "project-1" as ProjectQueueItemSummary["projectId"],
+    target: { type: "new-session", title: `Pending ${id}` },
+    messagePreview: `Pending ${id}`,
+    message: { text: `Pending ${id}` },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    status: "queued",
+    attachmentCount: 0,
     ...overrides,
   };
 }
@@ -398,12 +421,12 @@ describe("Sidebar collapsed toggle", () => {
     ];
     projectQueuesState.queuesByProject = {
       "project-1": [
-        {
+        makeProjectQueueItem("queue-session", {
           target: {
             type: "existing-session",
             sessionId: "queued-session",
           },
-        },
+        }),
       ],
     };
 
@@ -428,6 +451,32 @@ describe("Sidebar collapsed toggle", () => {
     const badge = projectsLink.querySelector(".sidebar-nav-badge");
     expect(badge?.classList.contains("sidebar-nav-badge--projectQueue")).toBe(
       true,
+    );
+  });
+
+  it("links pending new-session Project Queue items to the Projects page", () => {
+    projectsState.projects = [
+      {
+        id: "project-1",
+        name: "Alpha",
+        projectQueueCount: 1,
+      },
+    ];
+    projectQueuesState.queuesByProject = {
+      "project-1": [
+        makeProjectQueueItem("queue-new-session", {
+          target: { type: "new-session", title: "Queued launch" },
+          messagePreview: "Queued launch",
+        }),
+      ],
+    };
+
+    renderSidebar();
+
+    expect(screen.getByText("Pending Sessions")).toBeDefined();
+    const link = screen.getByRole("link", { name: /Queued launch/i });
+    expect(link.getAttribute("href")).toBe(
+      "/remote/test/projects?queueItem=queue-new-session",
     );
   });
 

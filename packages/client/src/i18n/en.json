@@ -19,6 +19,7 @@
   "sidebarDevices": "Devices",
   "sidebarSettings": "Settings",
   "sidebarSwitchHost": "Switch Host",
+  "sidebarSectionPendingSessions": "Pending Sessions",
   "sidebarSectionStarred": "Starred",
   "sidebarSectionLast24Hours": "Last 24 Hours",
   "sidebarSectionOlder": "Older",

@@ -2,7 +2,7 @@ import type {
   ProjectQueueItemSummary,
   ProjectQueueMessage,
 } from "@yep-anywhere/shared";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useI18n } from "../i18n";
 import type { Project } from "../types";
@@ -15,6 +15,7 @@ interface ProjectQueueSectionProps {
   loading: boolean;
   error: Error | null;
   mutatingItemId: string | null;
+  highlightedItemId?: string | null;
   basePath?: string;
   onDeleteItem: (projectId: string, itemId: string) => void;
   onRetryItem: (projectId: string, itemId: string) => void;
@@ -68,6 +69,7 @@ export function ProjectQueueSection({
   loading,
   error,
   mutatingItemId,
+  highlightedItemId,
   basePath = "",
   onDeleteItem,
   onRetryItem,
@@ -76,6 +78,7 @@ export function ProjectQueueSection({
   const { t } = useI18n();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const highlightedItemRef = useRef<HTMLLIElement | null>(null);
   const projectById = new Map(projects.map((project) => [project.id, project]));
   const hasContent = items.length > 0;
 
@@ -85,6 +88,14 @@ export function ProjectQueueSection({
     setEditingItemId(null);
     setEditText("");
   }, [editingItemId, items]);
+
+  useEffect(() => {
+    if (!highlightedItemId) return;
+    highlightedItemRef.current?.scrollIntoView?.({
+      block: "center",
+      behavior: "smooth",
+    });
+  }, [highlightedItemId, items]);
 
   if (!hasContent && !error) return null;
 
@@ -115,6 +126,7 @@ export function ProjectQueueSection({
             const isMutating = mutatingItemId === item.id;
             const isDispatching = item.status === "dispatching";
             const isEditing = editingItemId === item.id;
+            const isHighlighted = highlightedItemId === item.id;
             const canEdit = item.status === "queued" || item.status === "failed";
             const canSaveEdit =
               !isMutating &&
@@ -135,7 +147,11 @@ export function ProjectQueueSection({
             return (
               <li
                 key={item.id}
-                className={`project-queue-item project-queue-item--${item.status}`}
+                ref={isHighlighted ? highlightedItemRef : undefined}
+                className={`project-queue-item project-queue-item--${item.status}${
+                  isHighlighted ? " project-queue-item--highlighted" : ""
+                }`}
+                data-project-queue-item-id={item.id}
               >
                 <div className="project-queue-item__main">
                   <div className="project-queue-item__meta">

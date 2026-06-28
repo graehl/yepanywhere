@@ -1,6 +1,6 @@
 import type { ProjectQueueMessage } from "@yep-anywhere/shared";
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
 import { ProjectCard } from "../components/ProjectCard";
@@ -26,7 +26,9 @@ export function ProjectsPage() {
     null,
   );
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const basePath = useRemoteBasePath();
+  const highlightedQueueItemId = searchParams.get("queueItem");
 
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
@@ -228,6 +230,7 @@ export function ProjectsPage() {
             loading={projectQueues.loading}
             error={projectQueues.error}
             mutatingItemId={projectQueues.mutatingItemId}
+            highlightedItemId={highlightedQueueItemId}
             basePath={basePath}
             onDeleteItem={handleDeleteQueueItem}
             onRetryItem={handleRetryQueueItem}

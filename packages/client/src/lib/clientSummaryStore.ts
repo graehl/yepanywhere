@@ -612,6 +612,22 @@ export function useProjectQueueSidebarCount(
   );
 }
 
+export function useKnownProjectQueueItems(): readonly ProjectQueueItemSummary[] {
+  useClientSummaryActivitySubscription();
+  const store = useCurrentClientSummaryStore();
+  const byProject = useStore(store, (state) => state.projectQueues.byProject);
+  return useMemo(
+    () =>
+      [...byProject.values()]
+        .flatMap((record) => record.items)
+        .sort((a, b) => {
+          const created = a.createdAt.localeCompare(b.createdAt);
+          return created !== 0 ? created : a.id.localeCompare(b.id);
+        }),
+    [byProject],
+  );
+}
+
 export function useProjectQueuedSessionIds(
   projectIds: readonly string[],
 ): ReadonlySet<string> {

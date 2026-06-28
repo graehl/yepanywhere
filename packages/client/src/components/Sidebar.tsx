@@ -1,4 +1,7 @@
-import { GIT_STATUS_ENHANCED_CAPABILITY } from "@yep-anywhere/shared";
+import {
+  GIT_STATUS_ENHANCED_CAPABILITY,
+  type ProjectQueueItemSummary,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
@@ -20,6 +23,7 @@ import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionColl
 import {
   useDraftSessionIds,
   useInboxCounts,
+  useKnownProjectQueueItems,
   useOlderSessionRecords,
   useProjectQueuedSessionIds,
   useProjectQueueSidebarCount,
@@ -43,9 +47,14 @@ const SWIPE_ENGAGE_THRESHOLD = 15; // Minimum horizontal distance before swipe e
 const SIDEBAR_SESSION_PAGE_SIZE = 50;
 
 const DEFAULT_SECTION_EXPANSION = {
+  projectQueue: true,
   starred: true,
   recentDay: true,
   older: true,
+};
+
+type SidebarPendingProjectQueueItem = ProjectQueueItemSummary & {
+  target: Extract<ProjectQueueItemSummary["target"], { type: "new-session" }>;
 };
 
 /**
@@ -56,6 +65,15 @@ const DEFAULT_SECTION_EXPANSION = {
  */
 function isActiveSession(session: GlobalSessionItem): boolean {
   return session.activity === "in-turn" || session.activity === "waiting-input";
+}
+
+function isSidebarPendingProjectQueueItem(
+  item: ProjectQueueItemSummary,
+): item is SidebarPendingProjectQueueItem {
+  return (
+    item.target.type === "new-session" &&
+    (item.status === "queued" || item.status === "failed")
+  );
 }
 
 type SidebarSectionKey = keyof typeof DEFAULT_SECTION_EXPANSION;
@@ -84,6 +102,10 @@ function loadSidebarSectionExpansion(): SidebarSectionExpansion {
     }
     const value = parsed as Partial<Record<SidebarSectionKey, unknown>>;
     return {
+      projectQueue:
+        typeof value.projectQueue === "boolean"
+          ? value.projectQueue
+          : DEFAULT_SECTION_EXPANSION.projectQueue,
       starred:
         typeof value.starred === "boolean"
           ? value.starred
@@ -243,6 +265,7 @@ export function Sidebar({
   const [sectionExpansion, setSectionExpansion] = useState(
     loadSidebarSectionExpansion,
   );
+  const projectQueueExpanded = sectionExpansion.projectQueue;
   const starredExpanded = sectionExpansion.starred;
   const recentDayExpanded = sectionExpansion.recentDay;
   const olderExpanded = sectionExpansion.older;
@@ -305,6 +328,7 @@ export function Sidebar({
     starredSessionRecords.length,
     recentSessionRecords.length,
     olderSessionRecords.length,
+    projectQueueExpanded,
     starredExpanded,
     recentDayExpanded,
     olderExpanded,
@@ -464,10 +488,30 @@ export function Sidebar({
     ],
     [filteredStarredSessions, recentDaySessions, olderSessions],
   );
-  // Keep the queue feed mounted for the visible projects. Badge rendering reads
-  // from the shared store selector below rather than this hook's return value.
-  useProjectQueues(sidebarProjectIds);
+  const projectQueueProjectIds = useMemo(
+    () =>
+      projects
+        .filter((project) => (project.projectQueueCount ?? 0) > 0)
+        .map((project) => project.id),
+    [projects],
+  );
+  const sidebarQueueProjectIds = useMemo(
+    () => [...new Set([...sidebarProjectIds, ...projectQueueProjectIds])],
+    [projectQueueProjectIds, sidebarProjectIds],
+  );
+  // Keep the queue feed mounted for visible session rows and projects that
+  // report queue work. Badge rendering itself uses the shared count selector.
+  useProjectQueues(sidebarQueueProjectIds);
   const projectQueuedSessionIds = useProjectQueuedSessionIds(sidebarProjectIds);
+  const knownProjectQueueItems = useKnownProjectQueueItems();
+  const projectNameById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
+  const pendingProjectQueueItems = useMemo(
+    () => knownProjectQueueItems.filter(isSidebarPendingProjectQueueItem),
+    [knownProjectQueueItems],
+  );
 
   // Client-side heuristic for "obvious duplicate title" sessions (general, no hardcoded strings).
   // Within each section we group by (provider, project, normalized title).
@@ -791,6 +835,63 @@ export function Sidebar({
             )}
           </SidebarNavSection>
 
+          {pendingProjectQueueItems.length > 0 && (
+            <div className="sidebar-section">
+              <SidebarSectionHeader
+                title={t("sidebarSectionPendingSessions")}
+                expanded={projectQueueExpanded}
+                onToggle={() =>
+                  setSidebarSectionExpanded("projectQueue", (prev) => !prev)
+                }
+                controlsId="sidebar-project-queue-list"
+                expandLabel={t("sidebarSectionExpand")}
+                collapseLabel={t("sidebarSectionCollapse")}
+              />
+              {projectQueueExpanded && (
+                <ul
+                  id="sidebar-project-queue-list"
+                  className="sidebar-project-queue-list"
+                >
+                  {pendingProjectQueueItems.map((item) => {
+                    const itemTitle =
+                      item.target.title ||
+                      item.messagePreview ||
+                      t("projectQueueTargetNewSession");
+                    const projectName =
+                      projectNameById.get(item.projectId) ??
+                      t("projectQueueUnknownProject");
+                    return (
+                      <li key={item.id}>
+                        <Link
+                          to={`${basePath}/projects?queueItem=${encodeURIComponent(
+                            item.id,
+                          )}`}
+                          className={`sidebar-project-queue-item sidebar-project-queue-item--${item.status}`}
+                          onClick={onNavigate}
+                          title={itemTitle}
+                        >
+                          <span className="sidebar-project-queue-item__main">
+                            <span className="sidebar-project-queue-item__title">
+                              {itemTitle}
+                            </span>
+                            <span className="sidebar-project-queue-item__project">
+                              {projectName}
+                            </span>
+                          </span>
+                          <span className="sidebar-project-queue-item__status">
+                            {item.status === "failed"
+                              ? t("projectQueueStatusFailed")
+                              : t("projectQueueStatusQueued")}
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+
           {/* Global sessions list */}
           {filteredStarredSessions.length > 0 && (
             <div className="sidebar-section">
@@ -893,6 +994,7 @@ export function Sidebar({
           )}
 
           {filteredStarredSessions.length === 0 &&
+            pendingProjectQueueItems.length === 0 &&
             recentActive.length === 0 &&
             visibleRecent.length === 0 &&
             visibleOlder.length === 0 && (

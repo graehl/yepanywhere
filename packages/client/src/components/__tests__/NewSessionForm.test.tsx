@@ -27,8 +27,14 @@ const {
   mockUpdateSetting,
   mockStartSession,
   mockStartDetachedSession,
+  mockCreateSession,
+  mockCreateDetachedSession,
+  mockQueueMessage,
   mockCreateProjectQueueItem,
   mockAddProject,
+  mockUpload,
+  mockUploadStagedAttachment,
+  mockConnectionFetch,
   mockCycleThinkingMode,
   mockSetEffortLevel,
   mockSetShowThinking,
@@ -48,13 +54,20 @@ const {
   toolbarVisibilityState,
   inboxState,
   projectQueueState,
+  draftAttachmentState,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockUpdateSetting: vi.fn(),
   mockStartSession: vi.fn(),
   mockStartDetachedSession: vi.fn(),
+  mockCreateSession: vi.fn(),
+  mockCreateDetachedSession: vi.fn(),
+  mockQueueMessage: vi.fn(),
   mockCreateProjectQueueItem: vi.fn(),
   mockAddProject: vi.fn(),
+  mockUpload: vi.fn(),
+  mockUploadStagedAttachment: vi.fn(),
+  mockConnectionFetch: vi.fn(),
   mockCycleThinkingMode: vi.fn(),
   mockSetEffortLevel: vi.fn(),
   mockSetShowThinking: vi.fn(),
@@ -166,6 +179,24 @@ const {
   projectQueueState: {
     byProject: {} as Record<string, unknown[]>,
   },
+  draftAttachmentState: {
+    value: null as null | {
+      batchId: string;
+      refs: Array<{
+        id: string;
+        batchId: string;
+        originalName: string;
+        name: string;
+        size: number;
+        mimeType: string;
+        width?: number;
+        height?: number;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+      updatedAt: string;
+    },
+  },
 }));
 
 vi.mock("react-router-dom", async () => {
@@ -185,16 +216,19 @@ vi.mock("../../api/client", () => ({
     addProject: mockAddProject,
     startSession: mockStartSession,
     startDetachedSession: mockStartDetachedSession,
-    createDetachedSession: vi.fn(),
-    createSession: vi.fn(),
-    queueMessage: vi.fn(),
+    createDetachedSession: mockCreateDetachedSession,
+    createSession: mockCreateSession,
+    queueMessage: mockQueueMessage,
     createProjectQueueItem: mockCreateProjectQueueItem,
   },
 }));
 
 vi.mock("../../hooks/useConnection", () => ({
   useConnection: () => ({
-    upload: vi.fn(),
+    upload: mockUpload,
+    uploadStagedAttachment: mockUploadStagedAttachment,
+    fetch: mockConnectionFetch,
+    mode: "direct",
   }),
 }));
 
@@ -207,15 +241,30 @@ vi.mock("../../hooks/useDraftPersistence", () => ({
       (nextValue: string) => setValue(nextValue),
       [],
     );
+    const getAttachmentState = useCallback(
+      () => draftAttachmentState.value,
+      [],
+    );
+    const setAttachmentState = useCallback(
+      (nextValue: typeof draftAttachmentState.value) => {
+        draftAttachmentState.value = nextValue;
+      },
+      [],
+    );
     const flushDraft = useCallback(() => {}, []);
     const clearInput = useCallback(() => setValue(""), []);
-    const clearDraft = useCallback(() => setValue(""), []);
+    const clearDraft = useCallback(() => {
+      setValue("");
+      draftAttachmentState.value = null;
+    }, []);
     const restoreFromStorage = useCallback(() => {}, []);
 
     const controls = useMemo(
       () => ({
         getDraft,
+        getAttachmentState,
         setDraft,
+        setAttachmentState,
         flushDraft,
         clearInput,
         clearDraft,
@@ -225,8 +274,10 @@ vi.mock("../../hooks/useDraftPersistence", () => ({
         clearDraft,
         clearInput,
         flushDraft,
+        getAttachmentState,
         getDraft,
         restoreFromStorage,
+        setAttachmentState,
         setDraft,
       ],
     );
@@ -463,6 +514,26 @@ const chooserProjects = [
   },
 ] as const;
 
+const stagedRef = {
+  id: "staged-file-1",
+  batchId: "batch-new-session",
+  originalName: "notes.txt",
+  name: "staged-file-1_notes.txt",
+  size: 5,
+  mimeType: "text/plain",
+  createdAt: "2026-06-28T00:00:00.000Z",
+  updatedAt: "2026-06-28T00:00:00.000Z",
+};
+
+const materializedFile = {
+  id: "staged-file-1",
+  originalName: "notes.txt",
+  name: "staged-file-1_notes.txt",
+  path: "/tmp/alpha/.attachments/session-created/staged-file-1_notes.txt",
+  size: 5,
+  mimeType: "text/plain",
+};
+
 describe("NewSessionForm", () => {
   beforeEach(() => {
     providersState.providers = [
@@ -509,8 +580,14 @@ describe("NewSessionForm", () => {
     mockUpdateSetting.mockReset();
     mockStartSession.mockReset();
     mockStartDetachedSession.mockReset();
+    mockCreateSession.mockReset();
+    mockCreateDetachedSession.mockReset();
+    mockQueueMessage.mockReset();
     mockCreateProjectQueueItem.mockReset();
     mockAddProject.mockReset();
+    mockUpload.mockReset();
+    mockUploadStagedAttachment.mockReset();
+    mockConnectionFetch.mockReset();
     mockCycleThinkingMode.mockReset();
     mockSetEffortLevel.mockReset();
     mockSetShowThinking.mockReset();
@@ -521,6 +598,7 @@ describe("NewSessionForm", () => {
     mockVoiceCancelProcessing.mockReset();
     voicePropsState.current = null;
     draftKeys.length = 0;
+    draftAttachmentState.value = null;
     remoteBasePathState.basePath = "";
     versionState.version = { capabilities: ["projectQueue"] };
     modelSettingsState.voiceInputEnabled = true;
@@ -547,6 +625,25 @@ describe("NewSessionForm", () => {
       projectId: "detached-project",
       permissionMode: "default",
       modeVersion: 0,
+    });
+    mockCreateSession.mockResolvedValue({
+      sessionId: "session-created",
+      processId: "process-created",
+      projectId: "project-1",
+      permissionMode: "default",
+      modeVersion: 0,
+      serverTimestamp: 1000,
+    });
+    mockCreateDetachedSession.mockResolvedValue({
+      sessionId: "session-detached-created",
+      processId: "process-detached-created",
+      projectId: "detached-project",
+      permissionMode: "default",
+      modeVersion: 0,
+      serverTimestamp: 1000,
+    });
+    mockQueueMessage.mockResolvedValue({
+      serverTimestamp: 1001,
     });
     mockCreateProjectQueueItem.mockResolvedValue({
       item: {
@@ -823,6 +920,97 @@ describe("NewSessionForm", () => {
     );
   });
 
+  it("stages selected new-session files into the draft envelope", async () => {
+    serverSettingsState.isLoading = false;
+    mockUploadStagedAttachment.mockResolvedValue(stagedRef);
+    const { container } = render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("missing file input");
+    const file = new File(["hello"], "notes.txt", { type: "text/plain" });
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(mockUploadStagedAttachment).toHaveBeenCalledTimes(1);
+      expect(draftAttachmentState.value?.refs).toEqual([stagedRef]);
+    });
+    expect(screen.getByText("notes.txt")).toBeTruthy();
+  });
+
+  it("materializes staged new-session files after creating the session", async () => {
+    serverSettingsState.isLoading = false;
+    mockUploadStagedAttachment.mockResolvedValue(stagedRef);
+    mockConnectionFetch.mockResolvedValue({ files: [materializedFile] });
+    const { container } = render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("missing file input");
+    const file = new File(["hello"], "notes.txt", { type: "text/plain" });
+
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => {
+      expect(draftAttachmentState.value?.refs).toEqual([stagedRef]);
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
+      target: { value: "start with file" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "newSessionStartAction" }),
+    );
+
+    await waitFor(() => {
+      expect(mockQueueMessage).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockCreateSession).toHaveBeenCalledWith(
+      "project-1",
+      expect.objectContaining({
+        provider: "claude",
+        model: "opus",
+      }),
+    );
+    expect(mockConnectionFetch).toHaveBeenCalledWith(
+      "/projects/project-1/sessions/session-created/attachments/staging/materialize",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          batchId: "batch-new-session",
+          refs: [stagedRef],
+        }),
+      },
+    );
+    expect(mockQueueMessage).toHaveBeenCalledWith(
+      "session-created",
+      "start with file",
+      "default",
+      [materializedFile],
+      undefined,
+      "off",
+      undefined,
+      expect.any(Number),
+      undefined,
+      undefined,
+      "default",
+    );
+    expect(draftAttachmentState.value).toBe(null);
+  });
+
   it("queues a new session through Project Queue when the toolbar action is visible", async () => {
     toolbarVisibilityState.projectQueue = true;
     inboxState.active = [
@@ -1072,7 +1260,9 @@ describe("NewSessionForm", () => {
       container.querySelector(".new-session-project-summary") as HTMLElement,
     );
 
-    expect(container.querySelector("#new-session-project-panel")).not.toBeNull();
+    expect(
+      container.querySelector("#new-session-project-panel"),
+    ).not.toBeNull();
 
     fireEvent.pointerDown(screen.getByPlaceholderText("newSessionPlaceholder"));
 
@@ -1101,7 +1291,9 @@ describe("NewSessionForm", () => {
       target: { value: "/Users/kgraehl/code/yepanywhere" },
     });
 
-    expect(container.querySelector("#new-session-project-panel")).not.toBeNull();
+    expect(
+      container.querySelector("#new-session-project-panel"),
+    ).not.toBeNull();
     expect(screen.getByText("newSessionProjectUseTypedPath")).toBeDefined();
     expect(screen.getByText("/Users/kgraehl/code/yepanywhere")).toBeDefined();
   });

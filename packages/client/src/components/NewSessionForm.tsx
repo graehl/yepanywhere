@@ -8,6 +8,7 @@ import {
   type PromptSuggestionMode,
   type ProviderName,
   type RecapMode,
+  type StagedAttachmentRef,
   type ThinkingMode,
   type ThinkingOption,
   normalizeRecapAfterSeconds,
@@ -66,6 +67,12 @@ import {
 } from "../lib/newSessionDefaults";
 import { getRecapModeDescription } from "../lib/recapModes";
 import { prepareImageUpload } from "../lib/imageAttachmentResize";
+import type { DraftAttachmentState } from "../lib/draftEnvelope";
+import {
+  deleteDraftAttachmentRef,
+  materializeDraftAttachmentsForSession,
+  validateDraftAttachmentRefs,
+} from "../lib/draftAttachmentStaging";
 import {
   serverSupportsProjectQueue,
   shouldShowProjectQueueAffordance,
@@ -136,11 +143,28 @@ import {
   type VoiceInputButtonRef,
 } from "./VoiceInputButton";
 
-interface PendingFile {
+interface PendingLocalFile {
+  kind: "local";
   id: string;
   file: File;
   previewUrl?: string;
 }
+
+interface PendingUploadingFile {
+  kind: "uploading";
+  id: string;
+  originalName: string;
+  size: number;
+  mimeType: string;
+  previewUrl?: string;
+}
+
+type PendingStagedFile = StagedAttachmentRef & {
+  kind: "staged";
+  previewUrl?: string;
+};
+
+type PendingFile = PendingLocalFile | PendingUploadingFile | PendingStagedFile;
 
 interface PendingSpeechFinal {
   timer: ReturnType<typeof setTimeout>;
@@ -178,6 +202,47 @@ function toThinkingOption(
   if (mode === "off") return "off";
   if (mode === "auto") return "auto";
   return `on:${effort}`;
+}
+
+function isPendingLocalFile(file: PendingFile): file is PendingLocalFile {
+  return file.kind === "local";
+}
+
+function isPendingStagedFile(file: PendingFile): file is PendingStagedFile {
+  return file.kind === "staged";
+}
+
+function getPendingFileName(file: PendingFile): string {
+  return isPendingLocalFile(file) ? file.file.name : file.originalName;
+}
+
+function getPendingFileSize(file: PendingFile): number {
+  return isPendingLocalFile(file) ? file.file.size : file.size;
+}
+
+function toPersistedStagedAttachmentRef(
+  attachment: PendingStagedFile,
+): StagedAttachmentRef {
+  return {
+    id: attachment.id,
+    batchId: attachment.batchId,
+    originalName: attachment.originalName,
+    name: attachment.name,
+    size: attachment.size,
+    mimeType: attachment.mimeType,
+    ...(attachment.width !== undefined ? { width: attachment.width } : {}),
+    ...(attachment.height !== undefined ? { height: attachment.height } : {}),
+    createdAt: attachment.createdAt,
+    updatedAt: attachment.updatedAt,
+  };
+}
+
+function revokePendingFilePreviewUrls(files: readonly PendingFile[]): void {
+  for (const file of files) {
+    if (file.previewUrl) {
+      URL.revokeObjectURL(file.previewUrl);
+    }
+  }
 }
 
 function getPreferredModelId(
@@ -404,7 +469,14 @@ export function NewSessionForm({
   );
   // null = local, string = remote host
   const [selectedExecutor, setSelectedExecutor] = useState<string | null>(null);
-  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [pendingFiles, setPendingFilesState] = useState<PendingFile[]>([]);
+  const pendingFilesRef = useRef<PendingFile[]>([]);
+  const draftAttachmentBatchIdRef = useRef<string | null>(null);
+  const draftAttachmentHydrationRef = useRef(0);
+  const pendingStagedUploadsRef = useRef<
+    Map<string, Promise<PendingStagedFile | null>>
+  >(new Map());
+  const removedPendingUploadIdsRef = useRef<Set<string>>(new Set());
   const [isStarting, setIsStarting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<
     Record<string, { uploaded: number; total: number }>
@@ -467,6 +539,331 @@ export function NewSessionForm({
 
   // Toast for error messages
   const { showToast } = useToastContext();
+
+  const writeDraftAttachmentState = useCallback(
+    (nextFiles: readonly PendingFile[]) => {
+      const stagedRefs = nextFiles
+        .filter(isPendingStagedFile)
+        .map(toPersistedStagedAttachmentRef);
+      if (stagedRefs.length === 0) {
+        if (!nextFiles.some((file) => file.kind === "uploading")) {
+          draftAttachmentBatchIdRef.current = null;
+        }
+        draftControls.setAttachmentState(null);
+        return;
+      }
+
+      const batchId = stagedRefs[0]?.batchId;
+      if (!batchId) {
+        draftControls.setAttachmentState(null);
+        return;
+      }
+
+      draftAttachmentBatchIdRef.current = batchId;
+      draftControls.setAttachmentState({
+        batchId,
+        refs: stagedRefs,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    [draftControls],
+  );
+
+  const setPendingFiles = useCallback(
+    (
+      updater:
+        | PendingFile[]
+        | ((previous: readonly PendingFile[]) => readonly PendingFile[]),
+      options?: {
+        persistDraft?: boolean;
+        revokeRemovedPreviewUrls?: boolean;
+      },
+    ) => {
+      const previous = pendingFilesRef.current;
+      const nextValue =
+        typeof updater === "function" ? updater(previous) : updater;
+      if (nextValue === previous) {
+        return;
+      }
+      const next = [...nextValue];
+
+      if (options?.revokeRemovedPreviewUrls) {
+        const nextIds = new Set(next.map((file) => file.id));
+        revokePendingFilePreviewUrls(
+          previous.filter((file) => !nextIds.has(file.id)),
+        );
+      }
+
+      pendingFilesRef.current = next;
+      setPendingFilesState(next);
+      if (options?.persistDraft !== false) {
+        writeDraftAttachmentState(next);
+      }
+    },
+    [writeDraftAttachmentState],
+  );
+
+  useEffect(() => {
+    return () => {
+      revokePendingFilePreviewUrls(pendingFilesRef.current);
+    };
+  }, []);
+
+  const ensureDraftAttachmentBatchId = useCallback(() => {
+    const existing =
+      draftControls.getAttachmentState()?.batchId ??
+      draftAttachmentBatchIdRef.current;
+    if (existing) {
+      draftAttachmentBatchIdRef.current = existing;
+      return existing;
+    }
+    const batchId = generateUUID();
+    draftAttachmentBatchIdRef.current = batchId;
+    return batchId;
+  }, [draftControls]);
+
+  const hydrateDraftAttachments = useCallback(async () => {
+    if (!supportsProjectQueue) {
+      return;
+    }
+
+    const state = draftControls.getAttachmentState();
+    if (!state) {
+      setPendingFiles(
+        (prev) =>
+          prev.some(isPendingStagedFile)
+            ? prev.filter((file) => !isPendingStagedFile(file))
+            : prev,
+        {
+          persistDraft: false,
+          revokeRemovedPreviewUrls: true,
+        },
+      );
+      return;
+    }
+
+    if (
+      pendingFilesRef.current.some(
+        (file) => file.kind === "uploading" || isPendingStagedFile(file),
+      )
+    ) {
+      return;
+    }
+
+    const hydrationId = draftAttachmentHydrationRef.current + 1;
+    draftAttachmentHydrationRef.current = hydrationId;
+
+    try {
+      const refs = await validateDraftAttachmentRefs(connection, state);
+      if (draftAttachmentHydrationRef.current !== hydrationId) {
+        return;
+      }
+
+      const nextState: DraftAttachmentState | null =
+        refs.length > 0
+          ? {
+              batchId: refs[0]?.batchId ?? state.batchId,
+              refs,
+              updatedAt: new Date().toISOString(),
+            }
+          : null;
+      draftAttachmentBatchIdRef.current = nextState?.batchId ?? null;
+      draftControls.setAttachmentState(nextState);
+      setPendingFiles(
+        (prev) => [
+          ...prev.filter((file) => !isPendingStagedFile(file)),
+          ...refs.map(
+            (ref): PendingStagedFile => ({
+              ...ref,
+              kind: "staged",
+            }),
+          ),
+        ],
+        {
+          persistDraft: false,
+          revokeRemovedPreviewUrls: true,
+        },
+      );
+    } catch (err) {
+      if (draftAttachmentHydrationRef.current !== hydrationId) {
+        return;
+      }
+      console.warn(
+        "[NewSessionForm] Failed to validate draft attachments:",
+        err,
+      );
+      draftControls.setAttachmentState(null);
+      setPendingFiles(
+        (prev) =>
+          prev.some(isPendingStagedFile)
+            ? prev.filter((file) => !isPendingStagedFile(file))
+            : prev,
+        {
+          persistDraft: false,
+          revokeRemovedPreviewUrls: true,
+        },
+      );
+      showToast(t("sessionDraftAttachmentsUnavailable"), "info");
+    }
+  }, [
+    connection,
+    draftControls,
+    setPendingFiles,
+    showToast,
+    supportsProjectQueue,
+    t,
+  ]);
+
+  useEffect(() => {
+    void hydrateDraftAttachments();
+  }, [hydrateDraftAttachments, newSessionDraftKey]);
+
+  const addPendingFiles = useCallback(
+    (files: readonly File[]) => {
+      if (files.length === 0) {
+        return;
+      }
+
+      const batchId = supportsProjectQueue
+        ? ensureDraftAttachmentBatchId()
+        : null;
+
+      if (!batchId) {
+        const localFiles = files.map(
+          (file): PendingLocalFile => ({
+            kind: "local",
+            id: `pending-${generateUUID()}`,
+            file,
+            previewUrl: file.type.startsWith("image/")
+              ? URL.createObjectURL(file)
+              : undefined,
+          }),
+        );
+        setPendingFiles((prev) => [...prev, ...localFiles]);
+        return;
+      }
+
+      for (const file of files) {
+        const tempId = `pending-${generateUUID()}`;
+        const previewUrl = file.type.startsWith("image/")
+          ? URL.createObjectURL(file)
+          : undefined;
+        const uploadingFile: PendingUploadingFile = {
+          kind: "uploading",
+          id: tempId,
+          originalName: file.name,
+          size: file.size,
+          mimeType: file.type || "application/octet-stream",
+          ...(previewUrl ? { previewUrl } : {}),
+        };
+        setPendingFiles((prev) => [...prev, uploadingFile]);
+
+        const uploadPromise = (async () => {
+          const preparedImage = file.type.startsWith("image/")
+            ? await prepareImageUpload(
+                file,
+                getAttachmentUploadLongEdgePx(attachmentQuality),
+              )
+            : { file };
+          const uploadFile = preparedImage.file;
+          const stagedRef = await connection.uploadStagedAttachment(
+            uploadFile,
+            {
+              batchId,
+              onProgress: (bytesUploaded) => {
+                setUploadProgress((prev) => ({
+                  ...prev,
+                  [tempId]: {
+                    uploaded: bytesUploaded,
+                    total: uploadFile.size,
+                  },
+                }));
+              },
+              ...(preparedImage.width !== undefined &&
+              preparedImage.height !== undefined
+                ? {
+                    imageDimensions: {
+                      width: preparedImage.width,
+                      height: preparedImage.height,
+                    },
+                  }
+                : {}),
+            },
+          );
+          return {
+            ...stagedRef,
+            kind: "staged",
+            ...(previewUrl ? { previewUrl } : {}),
+          } satisfies PendingStagedFile;
+        })()
+          .then(
+            (stagedFile) => {
+              const wasRemoved =
+                removedPendingUploadIdsRef.current.delete(tempId) ||
+                !pendingFilesRef.current.some((item) => item.id === tempId);
+              if (wasRemoved) {
+                if (previewUrl) {
+                  URL.revokeObjectURL(previewUrl);
+                }
+                void deleteDraftAttachmentRef(
+                  connection,
+                  stagedFile.batchId,
+                  stagedFile.id,
+                ).catch((err) => {
+                  console.warn(
+                    "[NewSessionForm] Failed to delete staged attachment:",
+                    err,
+                  );
+                });
+                return null;
+              }
+
+              setPendingFiles((prev) =>
+                prev.map((item) => (item.id === tempId ? stagedFile : item)),
+              );
+              return stagedFile;
+            },
+            (err) => {
+              const wasRemoved =
+                removedPendingUploadIdsRef.current.delete(tempId) ||
+                !pendingFilesRef.current.some((item) => item.id === tempId);
+              if (!wasRemoved) {
+                console.error("Failed to upload staged file:", err);
+                const uploadMessage =
+                  err instanceof Error ? err.message : String(err);
+                showToast(
+                  t("newSessionUploadError", { message: uploadMessage }),
+                  "error",
+                );
+                setPendingFiles(
+                  (prev) => prev.filter((item) => item.id !== tempId),
+                  { revokeRemovedPreviewUrls: true },
+                );
+              }
+              return null;
+            },
+          )
+          .finally(() => {
+            setUploadProgress((prev) => {
+              const { [tempId]: _removed, ...rest } = prev;
+              return rest;
+            });
+            pendingStagedUploadsRef.current.delete(tempId);
+          });
+
+        pendingStagedUploadsRef.current.set(tempId, uploadPromise);
+      }
+    },
+    [
+      attachmentQuality,
+      connection,
+      ensureDraftAttachmentBatchId,
+      setPendingFiles,
+      showToast,
+      supportsProjectQueue,
+      t,
+    ],
+  );
 
   // Fetch available providers
   const { providers, loading: providersLoading } = useProviders();
@@ -1084,26 +1481,29 @@ export function NewSessionForm({
     const files = e.target.files;
     if (!files?.length) return;
 
-    const newPendingFiles: PendingFile[] = Array.from(files).map((file) => ({
-      id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      file,
-      previewUrl: file.type.startsWith("image/")
-        ? URL.createObjectURL(file)
-        : undefined,
-    }));
-
-    setPendingFiles((prev) => [...prev, ...newPendingFiles]);
+    addPendingFiles(Array.from(files));
     e.target.value = ""; // Reset for re-selection
   };
 
   const handleRemoveFile = (id: string) => {
-    setPendingFiles((prev) => {
-      const file = prev.find((f) => f.id === id);
-      if (file?.previewUrl) {
-        URL.revokeObjectURL(file.previewUrl);
-      }
-      return prev.filter((f) => f.id !== id);
+    const removed = pendingFilesRef.current.find((file) => file.id === id);
+    if (removed?.kind === "uploading") {
+      removedPendingUploadIdsRef.current.add(id);
+    }
+    setPendingFiles((prev) => prev.filter((file) => file.id !== id), {
+      revokeRemovedPreviewUrls: true,
     });
+
+    if (removed && isPendingStagedFile(removed)) {
+      deleteDraftAttachmentRef(connection, removed.batchId, removed.id).catch(
+        (err) => {
+          console.warn(
+            "[NewSessionForm] Failed to delete staged attachment:",
+            err,
+          );
+        },
+      );
+    }
   };
 
   const handleModeSelect = (selectedMode: PermissionMode) => {
@@ -1182,6 +1582,89 @@ export function NewSessionForm({
 
     return resolvedProjectId;
   };
+
+  const resolvePendingAttachmentsForSession = useCallback(
+    async (activeProjectId: string, sessionId: string) => {
+      const pendingUploads = [...pendingStagedUploadsRef.current.values()];
+      if (pendingUploads.length > 0) {
+        await Promise.all(pendingUploads);
+      }
+
+      const currentFiles = pendingFilesRef.current;
+      const uploadedFiles: UploadedFile[] = [];
+      const localFiles = currentFiles.filter(isPendingLocalFile);
+      for (const pendingFile of localFiles) {
+        try {
+          const preparedImage = pendingFile.file.type.startsWith("image/")
+            ? await prepareImageUpload(
+                pendingFile.file,
+                getAttachmentUploadLongEdgePx(attachmentQuality),
+              )
+            : { file: pendingFile.file };
+          const uploadFile = preparedImage.file;
+          const uploadedFile = await connection.upload(
+            activeProjectId,
+            sessionId,
+            uploadFile,
+            {
+              onProgress: (bytesUploaded) => {
+                setUploadProgress((prev) => ({
+                  ...prev,
+                  [pendingFile.id]: {
+                    uploaded: bytesUploaded,
+                    total: uploadFile.size,
+                  },
+                }));
+              },
+              ...(preparedImage.width !== undefined &&
+              preparedImage.height !== undefined
+                ? {
+                    imageDimensions: {
+                      width: preparedImage.width,
+                      height: preparedImage.height,
+                    },
+                  }
+                : {}),
+            },
+          );
+          uploadedFiles.push(uploadedFile);
+        } catch (uploadErr) {
+          console.error("Failed to upload file:", uploadErr);
+          const uploadMessage =
+            uploadErr instanceof Error ? uploadErr.message : "";
+          showToast(
+            t("newSessionUploadError", { message: uploadMessage }),
+            "error",
+          );
+        }
+      }
+
+      const stagedRefs = currentFiles
+        .filter(isPendingStagedFile)
+        .map(toPersistedStagedAttachmentRef);
+      if (stagedRefs.length === 0) {
+        return uploadedFiles;
+      }
+
+      const batchId = stagedRefs[0]?.batchId;
+      if (!batchId || stagedRefs.some((ref) => ref.batchId !== batchId)) {
+        throw new Error("Draft attachments are split across staging batches");
+      }
+
+      const materializedFiles = await materializeDraftAttachmentsForSession(
+        connection,
+        activeProjectId,
+        sessionId,
+        {
+          batchId,
+          refs: stagedRefs,
+          updatedAt: new Date().toISOString(),
+        },
+      );
+      return [...uploadedFiles, ...materializedFiles];
+    },
+    [attachmentQuality, connection, showToast, t],
+  );
 
   const handleStartSession = async (messageOverride?: unknown) => {
     const override =
@@ -1299,53 +1782,15 @@ export function NewSessionForm({
           estimatedServerOffsetMs: createTiming?.serverOffsetMs ?? null,
         });
 
-        // Step 2: Upload files to the real session folder
-        for (const pendingFile of pendingFiles) {
-          try {
-            const preparedImage = pendingFile.file.type.startsWith("image/")
-              ? await prepareImageUpload(
-                  pendingFile.file,
-                  getAttachmentUploadLongEdgePx(attachmentQuality),
-                )
-              : { file: pendingFile.file };
-            const uploadFile = preparedImage.file;
-            const uploadedFile = await connection.upload(
-              activeProjectId,
-              sessionId,
-              uploadFile,
-              {
-                onProgress: (bytesUploaded) => {
-                  setUploadProgress((prev) => ({
-                    ...prev,
-                    [pendingFile.id]: {
-                      uploaded: bytesUploaded,
-                      total: uploadFile.size,
-                    },
-                  }));
-                },
-                ...(preparedImage.width !== undefined &&
-                preparedImage.height !== undefined
-                  ? {
-                      imageDimensions: {
-                        width: preparedImage.width,
-                        height: preparedImage.height,
-                      },
-                    }
-                  : {}),
-              },
-            );
-            uploadedFiles.push(uploadedFile);
-          } catch (uploadErr) {
-            console.error("Failed to upload file:", uploadErr);
-            const uploadMessage =
-              uploadErr instanceof Error ? uploadErr.message : "";
-            showToast(
-              t("newSessionUploadError", { message: uploadMessage }),
-              "error",
-            );
-            // Continue with other files
-          }
-        }
+        // Step 2: Materialize staged draft refs, or use the legacy final
+        // session upload fallback for files selected before capability support
+        // was known.
+        uploadedFiles.push(
+          ...(await resolvePendingAttachmentsForSession(
+            activeProjectId,
+            sessionId,
+          )),
+        );
 
         // Step 3: Send the first message with attachments
         const queueRequestSentAtMs = Date.now();
@@ -1434,11 +1879,10 @@ export function NewSessionForm({
       }
 
       // Clean up preview URLs
-      for (const pf of pendingFiles) {
-        if (pf.previewUrl) {
-          URL.revokeObjectURL(pf.previewUrl);
-        }
-      }
+      setPendingFiles([], {
+        persistDraft: false,
+        revokeRemovedPreviewUrls: true,
+      });
 
       draftControls.clearDraft();
       // Pass initial status so SessionPage can connect SSE immediately
@@ -1678,14 +2122,7 @@ export function NewSessionForm({
 
     if (files.length > 0) {
       e.preventDefault();
-      const newPendingFiles: PendingFile[] = files.map((file) => ({
-        id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        file,
-        previewUrl: file.type.startsWith("image/")
-          ? URL.createObjectURL(file)
-          : undefined,
-      }));
-      setPendingFiles((prev) => [...prev, ...newPendingFiles]);
+      addPendingFiles(files);
     }
   };
 
@@ -2241,6 +2678,8 @@ export function NewSessionForm({
         <div className="pending-files-list">
           {pendingFiles.map((pf) => {
             const progress = uploadProgress[pf.id];
+            const fileName = getPendingFileName(pf);
+            const fileSize = getPendingFileSize(pf);
             return (
               <div key={pf.id} className="pending-file-chip">
                 {pf.previewUrl && (
@@ -2251,11 +2690,11 @@ export function NewSessionForm({
                   />
                 )}
                 <div className="pending-file-info">
-                  <span className="pending-file-name">{pf.file.name}</span>
+                  <span className="pending-file-name">{fileName}</span>
                   <span className="pending-file-size">
                     {progress
                       ? `${Math.round((progress.uploaded / progress.total) * 100)}%`
-                      : formatSize(pf.file.size)}
+                      : formatSize(fileSize)}
                   </span>
                 </div>
                 {!isStarting && (
@@ -2264,7 +2703,7 @@ export function NewSessionForm({
                     className="pending-file-remove"
                     onClick={() => handleRemoveFile(pf.id)}
                     aria-label={t("newSessionRemoveFile", {
-                      name: pf.file.name,
+                      name: fileName,
                     })}
                   >
                     <svg

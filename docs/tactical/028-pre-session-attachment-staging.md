@@ -20,6 +20,8 @@ Implementation progress:
       APIs.
 - [x] Wire staged materialization into existing-session normal sends and
       per-session deferred queue submissions.
+- [x] Wire staged materialization into normal new-session starts after session
+      creation.
 - [ ] Persist staged attachment refs in Project Queue items.
 
 ## Context
@@ -411,17 +413,17 @@ Shared/client:
 - [x] Existing-session composer: rehydrate chips from staged refs after refresh
       by validating them with the server.
 - [x] Existing-session composer: delete staged refs on chip removal.
-- [ ] New-session composer: upload selected/pasted files to staging.
+- [x] New-session composer: upload selected/pasted files to staging.
 - [ ] Warn only for attachment states that are not yet durable.
 
 ### 4. Send And Queue Materialization
 
 - [x] Add idempotent draft-to-session materialization service and HTTP API.
 - [x] Materialize staged refs before existing-session sends.
-- [ ] Materialize staged refs for normal new-session starts after session
+- [x] Materialize staged refs for normal new-session starts after session
       creation and before first-message send.
-- [x] Preserve failure recovery behavior for existing-session draft text and
-      staged refs.
+- [x] Preserve failure recovery behavior for existing/new-session draft text
+      and staged refs.
 - [x] Materialize before existing per-session deferred queue submissions.
 
 ### 5. Project Queue Attachments

@@ -285,7 +285,7 @@ function GitStatusContent({
     try {
       const result = await api.pushGit(projectId);
       setPushResult(result);
-      if (result.status === "pushed") {
+      if (result.status === "pushed" || result.status === "published") {
         await onRefreshStatus();
       }
     } catch (err) {
@@ -939,6 +939,8 @@ function getPushMessage(
   switch (result?.status) {
     case "pushed":
       return t("gitStatusPushSuccess");
+    case "published":
+      return t("gitStatusPushPublished");
     case "busy":
       return t("gitStatusPushBusy");
     case "no-upstream":
@@ -1010,7 +1012,8 @@ function getGitActionMessageClass({
   if (
     remoteCheckResult?.status === "checked" ||
     pullResult?.status === "pulled" ||
-    pushResult?.status === "pushed"
+    pushResult?.status === "pushed" ||
+    pushResult?.status === "published"
   ) {
     return "git-status-action-message-success";
   }

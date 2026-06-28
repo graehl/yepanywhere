@@ -13,7 +13,8 @@ Progress:
       result mapping.
 - [x] 2026-06-28: Add a click-only `Push` action for branches with upstream,
       with concise result mapping.
-- [ ] Add publish branch action with concise result mapping.
+- [x] 2026-06-28: Extend `Push` to publish a named no-upstream branch to
+      `origin` with `git push -u origin HEAD`.
 - [x] 2026-06-28: Add a per-project git operation guard for remote-touching
       source-control actions.
 - [x] 2026-06-28: Replace the wide-browser diff modal with a split-pane
@@ -85,7 +86,7 @@ Wide browser layout:
 
 - top summary bar: branch, upstream, ahead/behind, clean/dirty, last remote
   check;
-- action group: Check remote, Pull, Push, optional Publish branch;
+- action group: Check remote, Pull, Push;
 - left pane: changed files grouped by staged/unstaged/untracked, as today;
 - right pane: selected file diff preview, persistent on wide browser layouts;
 - lower or side context: recent commits on the current branch.
@@ -109,8 +110,7 @@ Remote state is only refreshed by explicit operations:
 
 - Check remote;
 - Pull;
-- Push, when the implementation chooses to fetch as part of the operation;
-- Publish branch, if added.
+- Push, when the implementation chooses to fetch as part of the operation.
 
 Track the last successful remote check as an in-memory server fact keyed by
 project path or project id. Include it in the status response or in remote
@@ -131,7 +131,6 @@ Candidate routes:
 - `POST /:projectId/git/check-remote`
 - `POST /:projectId/git/pull`
 - `POST /:projectId/git/push`
-- `POST /:projectId/git/publish`
 
 Candidate local history route or status extension:
 
@@ -213,21 +212,17 @@ Other expected pull outcomes:
 
 Push means "try to push the current branch now".
 
-The first implementation validates that the current branch already has an
-upstream, then runs a normal `git push` on click with terminal prompts disabled
-and a timeout. It does not publish branches without upstream.
+The first implementation runs a normal `git push` on click for a branch with an
+upstream. For a named branch with no upstream and an `origin` remote, the same
+Push action publishes it with `git push -u origin HEAD`. It does not publish
+detached HEADs or guess a remote other than `origin`.
 
 If the remote has newer commits, let git reject it and map that to:
 
 > Push rejected; remote has newer commits.
 
-For a branch without upstream, either:
-
-- show a separate "Publish branch" button; or
-- make Push open a small confirmation that clearly names the remote and branch.
-
-Prefer the separate Publish branch button if this is implemented in the first
-pass. It keeps "Push" from silently creating upstream state.
+If Push cannot infer the simple branch-to-`origin` publish case, map that to a
+short "Push needs attention" result and let the user resolve it in a session.
 
 ## Operation Guard
 
@@ -236,8 +231,7 @@ remote-touching git action should run for a project at a time:
 
 - check remote;
 - pull;
-- push;
-- publish.
+- push.
 
 If another operation is already running, return a structured "busy" result.
 The client should disable buttons while its own operation is pending, but the

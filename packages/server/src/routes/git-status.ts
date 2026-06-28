@@ -192,7 +192,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
 
   /**
    * POST /:projectId/git/push
-   * Push the current branch only when it already has an upstream.
+   * Push the current branch, publishing to origin for simple no-upstream cases.
    */
   routes.post("/:projectId/git/push", async (c) => {
     const projectId = c.req.param("projectId");
@@ -219,7 +219,13 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     gitOperationsByProjectPath.add(project.path);
     try {
       const status = await getGitStatusWithRemoteCheckTime(project.path);
-      if (!status.upstream) {
+      const pushArgs = status.upstream
+        ? ["push"]
+        : status.branch && (await hasGitRemote(project.path, "origin"))
+          ? ["push", "-u", "origin", "HEAD"]
+          : null;
+
+      if (!pushArgs) {
         const result: GitPushResult = {
           status: "no-upstream",
           checkedRemoteAt,
@@ -228,13 +234,13 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
         return c.json(result);
       }
 
-      await runGit(project.path, ["push"], {
+      await runGit(project.path, pushArgs, {
         timeout: 60_000,
         disableTerminalPrompt: true,
       });
 
       const result: GitPushResult = {
-        status: "pushed",
+        status: status.upstream ? "pushed" : "published",
         checkedRemoteAt: getCheckedRemoteAt(project.path),
         gitStatus: await getGitStatusWithRemoteCheckTime(project.path),
       };
@@ -453,6 +459,18 @@ function getGitErrorDetail(err: unknown): string | undefined {
   };
   const detail = gitError.stderr || gitError.stdout || gitError.message;
   return detail?.trim().slice(0, 1200) || undefined;
+}
+
+async function hasGitRemote(
+  projectPath: string,
+  remoteName: string,
+): Promise<boolean> {
+  try {
+    await runGit(projectPath, ["remote", "get-url", remoteName]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isNotGitRepoError(err: unknown): boolean {

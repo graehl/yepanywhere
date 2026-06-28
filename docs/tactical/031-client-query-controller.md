@@ -1,6 +1,6 @@
 # Client Query Controller
 
-Status: Proposed, first implementation slice landed 2026-06-28.
+Status: Proposed, global-session feed migration landed 2026-06-28.
 
 This note tracks the next data-fetching cleanup after the client summary store
 work. The immediate forcing bug is Sidebar session coverage: after a browser
@@ -19,6 +19,9 @@ requires this data coverage" without duplicate requests.
 - 2026-06-28: Added the minimal client query controller scaffold and focused
   unit tests. No feed has been migrated yet, so there is no user-visible
   behavior change in this slice.
+- 2026-06-28: Moved `useGlobalSessionsFeed` onto the controller. Global-session
+  list requests now use coverage-aware dedupe, stats fetches use a separate
+  query key, and rows still normalize into `clientSummaryStore`.
 
 ## Context
 
@@ -295,7 +298,7 @@ Acceptance:
 
 ### 3. Move Global Sessions Feed Onto The Controller
 
-Status: Highest-value behavior fix.
+Status: Completed 2026-06-28.
 
 Refactor `useGlobalSessionsFeed` so it asks the controller to ensure row
 coverage and publishes accepted snapshots into `clientSummaryStore`.

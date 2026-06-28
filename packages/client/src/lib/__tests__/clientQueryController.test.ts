@@ -102,6 +102,33 @@ describe("clientQueryController", () => {
     expect(applySnapshot).toHaveBeenCalledTimes(1);
   });
 
+  it("forces a new request even when compatible coverage is fresh", async () => {
+    const fetcher = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce("first")
+      .mockResolvedValueOnce("second");
+    const applySnapshot = vi.fn();
+
+    await ensureClientQuery({
+      sourceKey: SOURCE_A,
+      key: "global",
+      coverage: { minRows: 100 },
+      fetcher,
+      applySnapshot,
+    });
+    await ensureClientQuery({
+      sourceKey: SOURCE_A,
+      key: "global",
+      coverage: { minRows: 50 },
+      force: true,
+      fetcher,
+      applySnapshot,
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(applySnapshot).toHaveBeenCalledTimes(2);
+  });
+
   it("fetches again when cached coverage is insufficient", async () => {
     const fetcher = vi
       .fn<() => Promise<string>>()

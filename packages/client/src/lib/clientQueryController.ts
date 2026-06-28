@@ -33,6 +33,7 @@ export interface EnsureClientQueryOptions<T> {
   key: ClientQueryKey | unknown;
   coverage?: ClientQueryCoverage;
   staleTimeMs?: number;
+  force?: boolean;
   fetcher: (context: ClientQueryRequestContext) => Promise<T>;
   applySnapshot?: (
     result: T,
@@ -249,13 +250,15 @@ export function ensureClientQuery<T>(
   const requestedCoverage = normalizeCoverage(options.coverage);
   const entry = getOrCreateEntry(options.sourceKey, key);
 
-  if (isFresh(entry, requestedCoverage, options.staleTimeMs)) {
+  if (!options.force && isFresh(entry, requestedCoverage, options.staleTimeMs)) {
     return Promise.resolve();
   }
 
-  for (const inFlight of entry.inFlights) {
-    if (coverageSatisfies(inFlight.coverage, requestedCoverage)) {
-      return inFlight.promise;
+  if (!options.force) {
+    for (const inFlight of entry.inFlights) {
+      if (coverageSatisfies(inFlight.coverage, requestedCoverage)) {
+        return inFlight.promise;
+      }
     }
   }
 

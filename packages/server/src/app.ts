@@ -989,6 +989,7 @@ export function createApp(options: AppOptions): AppResult {
         }
       },
       sessionIndexService: options.sessionIndexService,
+      sessionMetadataService: options.sessionMetadataService,
     }),
   );
 

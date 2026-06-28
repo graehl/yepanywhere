@@ -64,3 +64,5 @@
 - inactivity-push-notifications - Default-off push settings and server-side inactive project / YA notification edges.
 - client-query-controller - Source-scoped client fetch lifecycle, coverage-aware
   dedupe, and retained summary feed queries.
+- session-initial-load-performance - Long-session initial render progress,
+  chunking, and transcript mount cost experiments.

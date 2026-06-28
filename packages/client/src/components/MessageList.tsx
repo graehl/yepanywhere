@@ -79,6 +79,59 @@ import { CopyTextButton } from "./ui/CopyTextButton";
 const EMPTY_TRANSCRIPT_DISPLAY_OBJECTS: readonly TranscriptDisplayObject[] = [];
 const SELECTION_QUOTE_BUTTON_SIZE_PX = 30;
 const SELECTION_QUOTE_BUTTON_GAP_PX = 8;
+const PROGRESSIVE_INITIAL_RENDER_ITEM_TARGET = 120;
+const PROGRESSIVE_RENDER_ITEM_BATCH_TARGET = 90;
+const PROGRESSIVE_RENDER_BATCH_DELAY_MS = 32;
+const PROGRESSIVE_RENDER_REVEAL_DELAY_MS = 180;
+
+type ProgressiveTimelineEntry =
+  | { kind: "turn"; group: { items: readonly unknown[] } }
+  | { kind: "btw" };
+
+function getProgressiveTimelineEntryWeight(
+  entry: ProgressiveTimelineEntry,
+): number {
+  return entry.kind === "turn" ? Math.max(1, entry.group.items.length) : 1;
+}
+
+function getTailEntryCountForRenderItemTarget(
+  entries: readonly ProgressiveTimelineEntry[],
+  targetItems: number,
+): number {
+  let count = 0;
+  let itemCount = 0;
+  for (
+    let index = entries.length - 1;
+    index >= 0 && itemCount < targetItems;
+    index -= 1
+  ) {
+    const entry = entries[index];
+    if (!entry) break;
+    count += 1;
+    itemCount += getProgressiveTimelineEntryWeight(entry);
+  }
+  return Math.max(1, count);
+}
+
+function getNextProgressiveEntryCount(
+  entries: readonly ProgressiveTimelineEntry[],
+  currentCount: number,
+  targetItems: number,
+): number {
+  let count = Math.min(entries.length, Math.max(0, currentCount));
+  let itemCount = 0;
+  for (
+    let index = entries.length - count - 1;
+    index >= 0 && itemCount < targetItems;
+    index -= 1
+  ) {
+    const entry = entries[index];
+    if (!entry) break;
+    count += 1;
+    itemCount += getProgressiveTimelineEntryWeight(entry);
+  }
+  return Math.min(entries.length, Math.max(1, count));
+}
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -1032,6 +1085,10 @@ interface Props {
   onLoadOlderMessages?: () => void;
   /** Whether the client transcript is intentionally loaded from a recent tail */
   clientTailActive?: boolean;
+  /** Render the recent transcript tail first, then hydrate older rows in batches. */
+  progressiveRenderEnabled?: boolean;
+  /** Stable identity for one progressive initial-render cycle. */
+  progressiveRenderKey?: string;
   getForkSummaryTargetHref?: (targetSessionId: string) => string;
   onCancelForkSummary?: (objectId: string) => void;
   onToggleForkSummaryAutoOpen?: (objectId: string, value: boolean) => void;
@@ -1196,6 +1253,8 @@ export const MessageList = memo(function MessageList({
   loadingOlder = false,
   onLoadOlderMessages,
   clientTailActive = false,
+  progressiveRenderEnabled = false,
+  progressiveRenderKey,
   getForkSummaryTargetHref,
   onCancelForkSummary,
   onToggleForkSummaryAutoOpen,
@@ -1214,6 +1273,8 @@ export const MessageList = memo(function MessageList({
   const programmaticScrollReleaseRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const progressiveActiveRenderKeyRef = useRef<string | null>(null);
+  const progressiveCompletedRenderKeyRef = useRef<string | null>(null);
   const previousRenderItemsRef = useRef<RenderItem[]>([]);
   const previousThinkingTextLengthsRef = useRef<Map<string, number> | null>(
     null,
@@ -2250,6 +2311,153 @@ export const MessageList = memo(function MessageList({
       return left.ordinal - right.ordinal;
     });
   }, [btwAsides, visibleTurnGroups]);
+  const progressiveRenderAllowed =
+    progressiveRenderEnabled &&
+    !userTurnSearch.active &&
+    visibleTimelineEntries.length > 0;
+  const progressiveRenderCycleKey = progressiveRenderKey ?? "default";
+  const progressiveInitialEntryCount = useMemo(
+    () =>
+      progressiveRenderAllowed
+        ? getTailEntryCountForRenderItemTarget(
+            visibleTimelineEntries,
+            PROGRESSIVE_INITIAL_RENDER_ITEM_TARGET,
+          )
+        : visibleTimelineEntries.length,
+    [progressiveRenderAllowed, visibleTimelineEntries],
+  );
+  const [progressiveEntryCount, setProgressiveEntryCount] = useState<
+    number | null
+  >(null);
+  const [progressiveRenderStateKey, setProgressiveRenderStateKey] = useState<
+    string | null
+  >(null);
+  const [progressiveRenderRevealed, setProgressiveRenderRevealed] =
+    useState(false);
+  const progressiveEntryCountForCycle =
+    progressiveRenderStateKey === progressiveRenderCycleKey
+      ? progressiveEntryCount
+      : null;
+  const progressiveRenderRevealedForCycle =
+    progressiveRenderStateKey === progressiveRenderCycleKey
+      ? progressiveRenderRevealed
+      : false;
+  const progressiveRenderAlreadyCompleted =
+    progressiveRenderAllowed &&
+    progressiveCompletedRenderKeyRef.current === progressiveRenderCycleKey;
+  const progressiveRevealActive =
+    progressiveRenderAllowed &&
+    !progressiveRenderAlreadyCompleted &&
+    !progressiveRenderRevealedForCycle;
+  const effectiveProgressiveEntryCount = progressiveRevealActive
+    ? Math.min(
+        visibleTimelineEntries.length,
+        progressiveEntryCountForCycle ?? progressiveInitialEntryCount,
+      )
+    : visibleTimelineEntries.length;
+  const progressiveTimelineEntries = useMemo(() => {
+    if (!progressiveRevealActive) {
+      return visibleTimelineEntries;
+    }
+    return visibleTimelineEntries.slice(-effectiveProgressiveEntryCount);
+  }, [
+    effectiveProgressiveEntryCount,
+    progressiveRevealActive,
+    visibleTimelineEntries,
+  ]);
+  const progressiveRenderPercent = progressiveRevealActive
+    ? Math.max(
+        1,
+        Math.min(
+          100,
+          Math.round(
+            (effectiveProgressiveEntryCount / visibleTimelineEntries.length) *
+              100,
+          ),
+        ),
+      )
+    : 100;
+  useEffect(() => {
+    if (!progressiveRenderAllowed) {
+      progressiveActiveRenderKeyRef.current = null;
+      setProgressiveRenderStateKey(null);
+      setProgressiveEntryCount(null);
+      setProgressiveRenderRevealed(true);
+      return;
+    }
+
+    if (
+      progressiveCompletedRenderKeyRef.current === progressiveRenderCycleKey
+    ) {
+      progressiveActiveRenderKeyRef.current = null;
+      setProgressiveRenderStateKey(progressiveRenderCycleKey);
+      setProgressiveEntryCount(visibleTimelineEntries.length);
+      setProgressiveRenderRevealed(true);
+      return;
+    }
+
+    if (progressiveActiveRenderKeyRef.current === progressiveRenderCycleKey) {
+      return;
+    }
+
+    progressiveActiveRenderKeyRef.current = progressiveRenderCycleKey;
+    setProgressiveRenderStateKey(progressiveRenderCycleKey);
+    setProgressiveEntryCount(progressiveInitialEntryCount);
+    setProgressiveRenderRevealed(false);
+  }, [
+    progressiveInitialEntryCount,
+    progressiveRenderAllowed,
+    progressiveRenderCycleKey,
+    visibleTimelineEntries.length,
+  ]);
+  useEffect(() => {
+    if (
+      !progressiveRevealActive ||
+      effectiveProgressiveEntryCount >= visibleTimelineEntries.length
+    ) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setProgressiveEntryCount((current) =>
+        getNextProgressiveEntryCount(
+          visibleTimelineEntries,
+          current ?? progressiveInitialEntryCount,
+          PROGRESSIVE_RENDER_ITEM_BATCH_TARGET,
+        ),
+      );
+    }, PROGRESSIVE_RENDER_BATCH_DELAY_MS);
+
+    return () => clearTimeout(timer);
+  }, [
+    effectiveProgressiveEntryCount,
+    progressiveInitialEntryCount,
+    progressiveRevealActive,
+    visibleTimelineEntries,
+  ]);
+  useEffect(() => {
+    if (
+      !progressiveRevealActive ||
+      effectiveProgressiveEntryCount < visibleTimelineEntries.length
+    ) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      progressiveCompletedRenderKeyRef.current = progressiveRenderCycleKey;
+      progressiveActiveRenderKeyRef.current = null;
+      setProgressiveRenderStateKey(progressiveRenderCycleKey);
+      setProgressiveEntryCount(visibleTimelineEntries.length);
+      setProgressiveRenderRevealed(true);
+    }, PROGRESSIVE_RENDER_REVEAL_DELAY_MS);
+
+    return () => clearTimeout(timer);
+  }, [
+    effectiveProgressiveEntryCount,
+    progressiveRevealActive,
+    progressiveRenderCycleKey,
+    visibleTimelineEntries.length,
+  ]);
 
   const getThinkingItemExpanded = useCallback(
     (item: RenderItem) =>
@@ -3107,7 +3315,13 @@ export const MessageList = memo(function MessageList({
       {followButtonTarget && followButton
         ? createPortal(followButton, followButtonTarget)
         : followButton}
-      <div className="message-list" ref={containerRef}>
+      <div
+        className={`message-list${
+          progressiveRevealActive ? " message-list-progressive-hydrating" : ""
+        }`}
+        ref={containerRef}
+        aria-busy={progressiveRevealActive ? true : undefined}
+      >
         {floatingQuoteButton && (
           <button
             type="button"
@@ -3123,6 +3337,29 @@ export const MessageList = memo(function MessageList({
           >
             &gt;
           </button>
+        )}
+        {progressiveRevealActive && (
+          <div className="session-render-progress loading" role="status">
+            <div>{t("sessionLoading")}</div>
+            <div className="loading-detail session-render-progress-label">
+              {t("sessionProgressiveRenderingStatus", {
+                percent: progressiveRenderPercent,
+              })}
+            </div>
+            <div
+              className="session-render-progress-bar"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progressiveRenderPercent}
+              aria-label={t("sessionProgressiveRenderingAriaLabel")}
+            >
+              <div
+                className="session-render-progress-fill"
+                style={{ width: `${progressiveRenderPercent}%` }}
+              />
+            </div>
+          </div>
         )}
         {(hasOlderMessages || clientTailActive) && (
           <div className="load-older-messages">
@@ -3149,7 +3386,7 @@ export const MessageList = memo(function MessageList({
             )}
           </div>
         )}
-        {visibleTimelineEntries.map((entry) => {
+        {progressiveTimelineEntries.map((entry) => {
           if (entry.kind === "btw") {
             return (
               <BtwAsideTimelineCard

@@ -681,6 +681,12 @@ body {
   opacity: 0;
 }
 
+.loading-detail {
+  margin-top: 0.5rem;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
 @keyframes delayed-fade-in {
   0%,
   99% {
@@ -7649,6 +7655,50 @@ a.sidebar-nav-item {
 .load-older-status {
   color: var(--text-muted);
   font-size: var(--font-size-sm);
+}
+
+.session-render-progress {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 2rem;
+  text-align: center;
+  background: linear-gradient(
+    to bottom,
+    var(--bg-primary) 0%,
+    color-mix(in srgb, var(--bg-primary) 92%, transparent) 82%,
+    transparent 100%
+  );
+  color: var(--text-muted);
+}
+
+.session-render-progress.loading {
+  opacity: 1;
+  animation: none;
+  color: var(--text-primary);
+}
+
+.session-render-progress-bar {
+  width: min(340px, 74vw);
+  height: 8px;
+  margin: 0.75rem auto 0;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border-color) 45%, transparent);
+}
+
+.session-render-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary-color);
+  transition: width 0.16s ease-out;
+}
+
+.message-list-progressive-hydrating > :not(.session-render-progress) {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* ==========================================================================

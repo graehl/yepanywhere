@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { type PaginationInfo, api } from "../api/client";
 import {
   getMessageTimestampMs,
@@ -44,12 +44,31 @@ export interface SessionLoadResult {
   }> | null;
 }
 
+export type SessionLoadProgressStage =
+  | "idle"
+  | "fetching"
+  | "loaded"
+  | "preparing"
+  | "rendering"
+  | "complete"
+  | "error";
+
+export interface SessionLoadProgress {
+  stage: SessionLoadProgressStage;
+  messageCount?: number;
+  totalMessageCount?: number;
+  hasOlderMessages?: boolean;
+  updatedAtMs: number;
+}
+
 /** Options for useSessionMessages */
 export interface UseSessionMessagesOptions {
   projectId: string;
   sessionId: string;
   tailTurns?: number;
   tailFrom?: string;
+  /** Enable opt-in progress paint yields for large initial transcript loads */
+  detailedLoadingProgress?: boolean;
   /** Called when initial load completes with session data */
   onLoadComplete?: (result: SessionLoadResult) => void;
   /** Called on load error */
@@ -66,6 +85,8 @@ export interface UseSessionMessagesResult {
   toolUseToAgent: Map<string, string>;
   /** Whether initial load is in progress */
   loading: boolean;
+  /** Fine-grained initial load progress for opt-in display */
+  sessionLoadProgress: SessionLoadProgress;
   /** Session data from initial load */
   session: SessionMetadata | null;
   /** Set session data (for stream connected event) */
@@ -311,6 +332,27 @@ function isEmptyAssistantContent(message: Message): boolean {
   });
 }
 
+function createSessionLoadProgress(
+  stage: SessionLoadProgressStage,
+  details: Omit<SessionLoadProgress, "stage" | "updatedAtMs"> = {},
+): SessionLoadProgress {
+  return {
+    stage,
+    ...details,
+    updatedAtMs: Date.now(),
+  };
+}
+
+function yieldForSessionLoadingProgressPaint(
+  enabled: boolean | undefined,
+): Promise<void> {
+  if (!enabled) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 /**
  * Hook for managing session messages with stream buffering.
  *
@@ -328,6 +370,7 @@ export function useSessionMessages(
     sessionId,
     tailTurns,
     tailFrom,
+    detailedLoadingProgress,
     onLoadComplete,
     onLoadError,
   } = options;
@@ -351,6 +394,17 @@ export function useSessionMessages(
     () => new Map(cachedLoad?.toolUseToAgentEntries ?? []),
   );
   const [loading, setLoading] = useState(!cachedLoad);
+  const [, startSessionLoadTransition] = useTransition();
+  const [sessionLoadProgress, setSessionLoadProgress] =
+    useState<SessionLoadProgress>(() =>
+      cachedLoad
+        ? createSessionLoadProgress("complete", {
+            messageCount: cachedLoad.messages.length,
+            totalMessageCount: cachedLoad.pagination?.totalMessageCount,
+            hasOlderMessages: cachedLoad.pagination?.hasOlderMessages,
+          })
+        : createSessionLoadProgress("idle"),
+    );
   const [session, setSession] = useState<SessionMetadata | null>(
     () => cachedLoad?.session ?? null,
   );
@@ -535,6 +589,13 @@ export function useSessionMessages(
     initialLoadCompleteRef.current = false;
     streamBufferRef.current = [];
     if (warmLoad) {
+      setSessionLoadProgress(
+        createSessionLoadProgress("complete", {
+          messageCount: warmLoad.messages.length,
+          totalMessageCount: warmLoad.pagination?.totalMessageCount,
+          hasOlderMessages: warmLoad.pagination?.hasOlderMessages,
+        }),
+      );
       maxPersistedTimestampMsRef.current = warmLoad.maxPersistedTimestampMs;
       providerRef.current = warmLoad.session.provider;
       lastMessageIdRef.current = warmLoad.lastMessageId;
@@ -545,6 +606,7 @@ export function useSessionMessages(
       setPagination(warmLoad.pagination);
       setLoading(false);
     } else {
+      setSessionLoadProgress(createSessionLoadProgress("fetching"));
       maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
       providerRef.current = undefined;
       lastMessageIdRef.current = undefined;
@@ -561,17 +623,31 @@ export function useSessionMessages(
         tailTurns,
         tailFrom,
       })
-      .then((data) => {
+      .then(async (data) => {
         markReloadPerfPhase("session_initial_load_data_ready", {
           messages: data.messages.length,
           provider: data.session.provider,
           totalMessages: data.pagination?.totalMessageCount,
           hasOlderMessages: data.pagination?.hasOlderMessages,
         });
+        setSessionLoadProgress(
+          createSessionLoadProgress("loaded", {
+            messageCount: data.messages.length,
+            totalMessageCount: data.pagination?.totalMessageCount,
+            hasOlderMessages: data.pagination?.hasOlderMessages,
+          }),
+        );
         setSession(data.session);
         providerRef.current = data.session.provider;
 
         // Tag messages from JSONL as authoritative
+        setSessionLoadProgress(
+          createSessionLoadProgress("preparing", {
+            messageCount: data.messages.length,
+            totalMessageCount: data.pagination?.totalMessageCount,
+            hasOlderMessages: data.pagination?.hasOlderMessages,
+          }),
+        );
         const taggedMessages = data.messages.map((m) => ({
           ...m,
           _source: "jsonl" as const,
@@ -599,14 +675,14 @@ export function useSessionMessages(
                 approxDedupOptions(data.session.provider),
               )
             : taggedMessages;
-        setMessages(loadedMessages);
-        setPagination(data.pagination ?? warmLoad?.pagination);
-        markReloadPerfPhase("session_initial_messages_state_queued", {
-          messages: taggedMessages.length,
-          totalMessages: loadedMessages.length,
-          provider: data.session.provider,
-        });
-
+        setSessionLoadProgress(
+          createSessionLoadProgress("rendering", {
+            messageCount: loadedMessages.length,
+            totalMessageCount: data.pagination?.totalMessageCount,
+            hasOlderMessages: data.pagination?.hasOlderMessages,
+          }),
+        );
+        await yieldForSessionLoadingProgressPaint(detailedLoadingProgress);
         // Update lastMessageIdRef synchronously to avoid race condition:
         // stream "connected" event calls fetchNewMessages() immediately, but the
         // useEffect that normally updates lastMessageIdRef runs asynchronously.
@@ -616,14 +692,39 @@ export function useSessionMessages(
           lastMessageIdRef.current = lastJsonlId;
         }
 
-        // Mark ready and flush buffer
-        initialLoadCompleteRef.current = true;
-        flushBuffer();
+        const nextPagination = data.pagination ?? warmLoad?.pagination;
+        const revealInitialTranscript = () => {
+          setMessages(loadedMessages);
+          setPagination(nextPagination);
+          markReloadPerfPhase("session_initial_messages_state_queued", {
+            messages: taggedMessages.length,
+            totalMessages: loadedMessages.length,
+            provider: data.session.provider,
+          });
 
-        setLoading(false);
-        markReloadPerfPhase("session_initial_load_complete", {
-          messages: taggedMessages.length,
-        });
+          // Mark ready and flush buffer after the REST snapshot has been queued
+          // so buffered stream events merge on top of the loaded transcript.
+          initialLoadCompleteRef.current = true;
+          flushBuffer();
+
+          setLoading(false);
+          setSessionLoadProgress(
+            createSessionLoadProgress("complete", {
+              messageCount: loadedMessages.length,
+              totalMessageCount: data.pagination?.totalMessageCount,
+              hasOlderMessages: data.pagination?.hasOlderMessages,
+            }),
+          );
+          markReloadPerfPhase("session_initial_load_complete", {
+            messages: taggedMessages.length,
+          });
+        };
+
+        if (detailedLoadingProgress) {
+          startSessionLoadTransition(revealInitialTranscript);
+        } else {
+          revealInitialTranscript();
+        }
 
         writeSessionLoadCache(
           sourceKey,
@@ -654,6 +755,7 @@ export function useSessionMessages(
         markReloadPerfPhase("session_initial_load_error", {
           message: err instanceof Error ? err.message : String(err),
         });
+        setSessionLoadProgress(createSessionLoadProgress("error"));
         setLoading(false);
         onLoadError?.(err);
       });
@@ -663,6 +765,8 @@ export function useSessionMessages(
     sourceKey,
     tailTurns,
     tailFrom,
+    detailedLoadingProgress,
+    startSessionLoadTransition,
     onLoadComplete,
     onLoadError,
     flushBuffer,
@@ -863,6 +967,7 @@ export function useSessionMessages(
     agentContent,
     toolUseToAgent,
     loading,
+    sessionLoadProgress,
     session,
     setSession,
     handleStreamingUpdate,

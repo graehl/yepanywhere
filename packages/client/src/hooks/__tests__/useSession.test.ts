@@ -121,6 +121,11 @@ vi.mock("../useSessionMessages", () => ({
     agentContent: {},
     toolUseToAgent: new Map(),
     loading: false,
+    sessionLoadProgress: {
+      stage: "complete",
+      messageCount: sessionMessagesMock.messages.length,
+      updatedAtMs: 0,
+    },
     session: {
       id: "sess-1",
       projectId: "proj-1",

@@ -34,6 +34,9 @@ vi.mock("../../i18n", () => ({
         sessionQueuedInlineEditLabel: "Edit queued message text",
         sessionQueuedInlineSave: "Save edit",
         sessionQueuedInlineCancel: "Cancel edit (Esc)",
+        sessionLoading: "Loading session...",
+        sessionProgressiveRenderingAriaLabel: "Transcript rendering progress",
+        sessionProgressiveRenderingStatus: "Rendering transcript {percent}%",
         projectQueueAttachmentOnly: "Attachment-only message",
         projectQueueInlineStatusQueued: "Project Queue (#{position})",
         projectQueueInlineStatusDispatching:
@@ -266,7 +269,8 @@ describe("MessageList", () => {
             uuid: "compact-stdout",
             message: {
               role: "user",
-              content: "<local-command-stdout>Compacted </local-command-stdout>",
+              content:
+                "<local-command-stdout>Compacted </local-command-stdout>",
             },
           },
         ]}
@@ -289,6 +293,67 @@ describe("MessageList", () => {
     expect(compactDetails?.open).toBe(true);
     expect(screen.getByText(/hidden detail/)).toBeTruthy();
     expect(screen.getByText(/compactMetadata/)).toBeTruthy();
+  });
+
+  it("does not restart progressive loading after the session is revealed", async () => {
+    vi.useFakeTimers();
+    const messages = [
+      userMessage("user-1", "first request"),
+      assistantMessage("assistant-1", "first response"),
+    ];
+    const { container, rerender } = render(
+      <MessageList
+        messages={messages}
+        progressiveRenderEnabled
+        progressiveRenderKey="session-1"
+      />,
+    );
+
+    expect(container.querySelector(".session-render-progress")).not.toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(container.querySelector(".session-render-progress")).toBeNull();
+
+    await act(async () => {
+      rerender(
+        <MessageList
+          messages={messages}
+          composerDraft="typing should not restart loading"
+          progressiveRenderEnabled
+          progressiveRenderKey="session-1"
+        />,
+      );
+    });
+
+    expect(container.querySelector(".session-render-progress")).toBeNull();
+
+    await act(async () => {
+      rerender(
+        <MessageList
+          messages={[...messages, userMessage("user-2", "second request")]}
+          composerDraft="typing should not restart loading"
+          progressiveRenderEnabled
+          progressiveRenderKey="session-1"
+        />,
+      );
+    });
+
+    expect(container.querySelector(".session-render-progress")).toBeNull();
+
+    await act(async () => {
+      rerender(
+        <MessageList
+          messages={messages}
+          progressiveRenderEnabled
+          progressiveRenderKey="session-2"
+        />,
+      );
+    });
+
+    expect(container.querySelector(".session-render-progress")).not.toBeNull();
   });
 
   it("renders slash-command skill text as collapsed command details", () => {
@@ -344,7 +409,9 @@ describe("MessageList", () => {
     expect(summary).toBeTruthy();
     fireEvent.click(summary as HTMLElement);
     expect(commandDetails?.open).toBe(true);
-    expect(screen.getByText(/First classify each changed artifact/)).toBeTruthy();
+    expect(
+      screen.getByText(/First classify each changed artifact/),
+    ).toBeTruthy();
   });
 
   it("passes display text without uploaded-file metadata to correction", () => {

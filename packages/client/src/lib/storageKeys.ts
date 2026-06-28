@@ -78,6 +78,7 @@ export const UI_KEYS = {
   alwaysShowQuoteCircles: "yep-anywhere-always-show-quote-circles",
   sessionThinkingVisible: "yep-anywhere-session-thinking-visible",
   sessionThinkingLatestOnly: "yep-anywhere-session-thinking-latest-only",
+  sessionLoadingProgress: "yep-anywhere-session-loading-progress-enabled",
   stableToolPreviewRendering:
     "yep-anywhere-stable-tool-preview-rendering-enabled",
   // Preserve the first-shipped key; true now means previews start expanded.

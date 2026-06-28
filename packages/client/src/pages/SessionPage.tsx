@@ -83,6 +83,8 @@ import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { recordSessionVisit } from "../hooks/useRecentSessions";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
+import { useSessionLoadingProgress } from "../hooks/useSessionLoadingProgress";
+import type { SessionLoadProgress } from "../hooks/useSessionMessages";
 import { useVersion } from "../hooks/useVersion";
 import type { DraftTextChangeMetadata } from "../lib/commentAnchors";
 import type { DraftAttachmentState } from "../lib/draftEnvelope";
@@ -763,6 +765,30 @@ function SessionPageInvalidRoute() {
   return <div className="error">{t("sessionInvalidUrl")}</div>;
 }
 
+function getSessionLoadingProgressText(
+  progress: SessionLoadProgress,
+  t: ReturnType<typeof useI18n>["t"],
+): string | null {
+  switch (progress.stage) {
+    case "fetching":
+      return t("sessionLoadingFetching");
+    case "loaded":
+      return t("sessionLoadingLoadedMessages", {
+        count: progress.messageCount ?? 0,
+      });
+    case "preparing":
+      return t("sessionLoadingPreparingTranscript");
+    case "rendering":
+      return t("sessionLoadingRenderingTranscript", {
+        count: progress.messageCount ?? 0,
+      });
+    case "idle":
+    case "complete":
+    case "error":
+      return null;
+  }
+}
+
 function SessionPageContent({
   projectId,
   sessionId,
@@ -811,6 +837,14 @@ function SessionPageContent({
   const clientTailActive =
     clientTailParams.tailTurns !== undefined ||
     clientTailParams.tailFrom !== undefined;
+  const { sessionLoadingProgressEnabled } = useSessionLoadingProgress();
+  const sessionOptions = useMemo(
+    () => ({
+      ...clientTailParams,
+      detailedLoadingProgress: sessionLoadingProgressEnabled,
+    }),
+    [clientTailParams, sessionLoadingProgressEnabled],
+  );
 
   const updateClientTailParams = useCallback(
     (update: { tailTurns?: number; tailFrom?: string }) => {
@@ -876,6 +910,7 @@ function SessionPageContent({
     actualSessionId,
     permissionMode,
     loading,
+    sessionLoadProgress,
     error,
     sessionUpdatesConnected,
     lastStreamActivityAt,
@@ -902,8 +937,11 @@ function SessionPageContent({
     sessionId,
     initialStatus,
     streamingMarkdownCallbacks,
-    clientTailParams,
+    sessionOptions,
   );
+  const sessionLoadingProgressText = sessionLoadingProgressEnabled
+    ? getSessionLoadingProgressText(sessionLoadProgress, t)
+    : null;
 
   // Developer mode settings
   const { showConnectionBars } = useDeveloperMode();
@@ -5339,7 +5377,14 @@ function SessionPageContent({
       >
         <main className="session-messages">
           {loading ? (
-            <div className="loading">{t("sessionLoading")}</div>
+            <div className="loading">
+              <div>{t("sessionLoading")}</div>
+              {sessionLoadingProgressText && (
+                <div className="loading-detail">
+                  {sessionLoadingProgressText}
+                </div>
+              )}
+            </div>
           ) : (
             <SessionMetadataProvider
               projectId={projectId}
@@ -5393,6 +5438,8 @@ function SessionPageContent({
                   loadingOlder={loadingOlder}
                   onLoadOlderMessages={loadOlderMessages}
                   clientTailActive={clientTailActive}
+                  progressiveRenderEnabled={sessionLoadingProgressEnabled}
+                  progressiveRenderKey={sessionId}
                   getForkSummaryTargetHref={getForkSummaryTargetHref}
                   onCancelForkSummary={(objectId) => {
                     void cancelForkSummaryJob(objectId);

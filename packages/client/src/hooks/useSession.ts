@@ -478,7 +478,11 @@ export function useSession(
     recapAfterSeconds?: number;
   },
   streamingMarkdownCallbacks?: StreamingMarkdownCallbacks,
-  options?: { tailTurns?: number; tailFrom?: string },
+  options?: {
+    tailTurns?: number;
+    tailFrom?: string;
+    detailedLoadingProgress?: boolean;
+  },
 ) {
   // Use initial status if provided (from navigation state) to connect stream immediately
   const [status, setStatus] = useState<SessionStatus>(
@@ -827,6 +831,7 @@ export function useSession(
     agentContent,
     toolUseToAgent,
     loading,
+    sessionLoadProgress,
     session,
     setSession,
     handleStreamingUpdate,
@@ -845,6 +850,7 @@ export function useSession(
     sessionId,
     tailTurns: options?.tailTurns,
     tailFrom: options?.tailFrom,
+    detailedLoadingProgress: options?.detailedLoadingProgress,
     onLoadComplete: handleLoadComplete,
     onLoadError: handleLoadError,
   });
@@ -2018,6 +2024,7 @@ export function useSession(
     permissionMode: localMode, // UI-selected mode (sent with next message)
     modeVersion,
     loading,
+    sessionLoadProgress,
     error,
     connected,
     sessionWatchConnected,

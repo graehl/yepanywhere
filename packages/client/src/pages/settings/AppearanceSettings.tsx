@@ -75,6 +75,7 @@ import {
   type SettingsIconStyle,
   useSettingsIconStyle,
 } from "../../hooks/useSettingsIconStyle";
+import { useSessionLoadingProgress } from "../../hooks/useSessionLoadingProgress";
 import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewRendering";
 import { useStreamingEnabled } from "../../hooks/useStreamingEnabled";
 import { TAB_SIZES, useTabSize } from "../../hooks/useTabSize";
@@ -194,6 +195,8 @@ export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const { settingsIconStyle, setSettingsIconStyle } = useSettingsIconStyle();
   const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
+  const { sessionLoadingProgressEnabled, setSessionLoadingProgressEnabled } =
+    useSessionLoadingProgress();
   const { stableToolPreviewRendering, setStableToolPreviewRendering } =
     useStableToolPreviewRendering();
   const { inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault } =
@@ -234,6 +237,7 @@ export function AppearanceSettings() {
       theme,
       settingsIconStyle,
       streamingEnabled,
+      sessionLoadingProgressEnabled,
       stableToolPreviewRendering,
       inlineMediaExpandedByDefault,
       alwaysShowQuoteCircles,
@@ -263,6 +267,7 @@ export function AppearanceSettings() {
       theme,
       settingsIconStyle,
       streamingEnabled,
+      sessionLoadingProgressEnabled,
       stableToolPreviewRendering,
       inlineMediaExpandedByDefault,
       alwaysShowQuoteCircles,
@@ -296,6 +301,7 @@ export function AppearanceSettings() {
       setTheme(snapshot.theme);
       setSettingsIconStyle(snapshot.settingsIconStyle);
       setStreamingEnabled(snapshot.streamingEnabled);
+      setSessionLoadingProgressEnabled(snapshot.sessionLoadingProgressEnabled);
       setStableToolPreviewRendering(snapshot.stableToolPreviewRendering);
       setInlineMediaExpandedByDefault(snapshot.inlineMediaExpandedByDefault);
       setAlwaysShowQuoteCircles(snapshot.alwaysShowQuoteCircles);
@@ -348,6 +354,7 @@ export function AppearanceSettings() {
       setTheme,
       setSettingsIconStyle,
       setStreamingEnabled,
+      setSessionLoadingProgressEnabled,
       setStableToolPreviewRendering,
       setInlineMediaExpandedByDefault,
       setAlwaysShowQuoteCircles,
@@ -1285,6 +1292,22 @@ export function AppearanceSettings() {
               type="checkbox"
               checked={streamingEnabled}
               onChange={(e) => setStreamingEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceSessionLoadingProgressTitle")}</strong>
+            <p>{t("appearanceSessionLoadingProgressDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={sessionLoadingProgressEnabled}
+              onChange={(e) =>
+                setSessionLoadingProgressEnabled(e.target.checked)
+              }
             />
             <span className="toggle-slider" />
           </label>

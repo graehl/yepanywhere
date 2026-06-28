@@ -373,6 +373,8 @@ export interface DurableRecapMessage extends AppMessageExtensions {
 export interface AppSessionSummary {
   id: string;
   projectId: UrlProjectId;
+  /** Human-readable project basename for display; projectId remains canonical. */
+  projectName?: string;
   title: string | null;
   fullTitle: string | null;
   createdAt: string;

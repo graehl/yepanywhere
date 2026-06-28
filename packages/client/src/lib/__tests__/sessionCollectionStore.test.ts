@@ -14,6 +14,7 @@ import {
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
 } from "../sessionCollectionStore";
+import { sessionCollectionRecordToGlobalSessionItem } from "../sessionCollectionRecords";
 
 const PROJECT_ID = "project-1" as UrlProjectId;
 const NOW = Date.parse("2026-06-27T12:00:00.000Z");
@@ -40,7 +41,10 @@ function globalSession(
   };
 }
 
-function createdEvent(id: string): SessionCreatedEvent {
+function createdEvent(
+  id: string,
+  overrides: Partial<SessionCreatedEvent["session"]> = {},
+): SessionCreatedEvent {
   return {
     type: "session-created",
     session: {
@@ -54,6 +58,7 @@ function createdEvent(id: string): SessionCreatedEvent {
       ownership: { owner: "self", processId: "process-1" },
       provider: "claude",
       activity: "in-turn",
+      ...overrides,
     },
     timestamp: RECENT,
   };
@@ -85,6 +90,38 @@ describe("sessionCollectionStore", () => {
     expect(selectRecentSessionRecords(state, NOW).map((s) => s.id)).toEqual([
       "new-session",
     ]);
+  });
+
+  it("uses project names from session-created events", () => {
+    const state = applySessionCollectionCreated(
+      createEmptySessionCollectionState(),
+      createdEvent("new-session", { projectName: "Readable Project" }),
+      200,
+    );
+
+    const record = selectSessionCollectionRecord(state, "new-session");
+    const item = record
+      ? sessionCollectionRecordToGlobalSessionItem(record)
+      : null;
+
+    expect(record?.projectName).toBe("Readable Project");
+    expect(item?.projectName).toBe("Readable Project");
+  });
+
+  it("does not use encoded project ids as created event project names", () => {
+    const state = applySessionCollectionCreated(
+      createEmptySessionCollectionState(),
+      createdEvent("new-session"),
+      200,
+    );
+
+    const record = selectSessionCollectionRecord(state, "new-session");
+    const item = record
+      ? sessionCollectionRecordToGlobalSessionItem(record)
+      : null;
+
+    expect(record?.projectName).toBeUndefined();
+    expect(item?.projectName).toBe("");
   });
 
   it("moves starred rows between derived projections from one entity", () => {

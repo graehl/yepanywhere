@@ -72,6 +72,8 @@ export interface SessionSandboxPolicy {
 export interface SessionSummary {
   id: string;
   projectId: UrlProjectId;
+  /** Human-readable project basename for display; projectId remains canonical. */
+  projectName?: string;
   title: string | null; // first 120 chars of first user message (truncated with ...)
   fullTitle: string | null; // complete first user message (for hover tooltip)
   createdAt: string; // ISO timestamp

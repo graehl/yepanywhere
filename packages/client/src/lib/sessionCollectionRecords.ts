@@ -20,7 +20,7 @@ export function sessionCollectionRecordToGlobalSessionItem(
     provider: record.provider,
     model: record.model,
     projectId: record.projectId,
-    projectName: record.projectName ?? record.projectId,
+    projectName: record.projectName ?? "",
     ownership: record.ownership ?? { owner: "none" },
     pendingInputType: record.pendingInputType,
     activity: record.activity,

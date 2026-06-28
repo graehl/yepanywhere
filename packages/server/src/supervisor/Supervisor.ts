@@ -15,6 +15,7 @@ import {
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
 import type { SessionMetadataService } from "../metadata/index.js";
+import { getProjectName } from "../projects/paths.js";
 import { getProvider } from "../sdk/providers/index.js";
 import type {
   AgentProvider,
@@ -3713,6 +3714,7 @@ export class Supervisor {
     const session: SessionSummary = {
       id: process.sessionId,
       projectId: process.projectId,
+      projectName: getProjectName(process.projectPath),
       title: optimistic.title,
       fullTitle: optimistic.fullTitle,
       createdAt: now,

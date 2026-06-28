@@ -71,7 +71,7 @@ function sessionCreatedEventToGlobalSessionItem(
   projects: readonly ProjectOption[],
 ): GlobalSessionItem {
   const project = projects.find((p) => p.id === event.session.projectId);
-  const projectName = project?.name ?? event.session.projectId;
+  const projectName = event.session.projectName ?? project?.name ?? "";
 
   return {
     id: event.session.id,

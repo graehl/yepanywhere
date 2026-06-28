@@ -5,7 +5,11 @@ import {
   type UrlProjectId,
   asDirProjectId,
 } from "@yep-anywhere/shared";
-import { encodeProjectId } from "../projects/paths.js";
+import {
+  decodeProjectId,
+  encodeProjectId,
+  getProjectName,
+} from "../projects/paths.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { readFirstLine } from "../utils/jsonl.js";
 import { BatchProcessor } from "../watcher/BatchProcessor.js";
@@ -39,6 +43,10 @@ interface ExternalSessionInfo {
 
 /** Default grace period after abort before external detection resumes (30 seconds) */
 const DEFAULT_ABORT_GRACE_MS = 30000;
+
+function getProjectNameForProjectId(projectId: UrlProjectId): string {
+  return getProjectName(decodeProjectId(projectId));
+}
 
 export interface ExternalSessionTrackerOptions {
   eventBus: EventBus;
@@ -162,7 +170,11 @@ export class ExternalSessionTracker {
 
             const event: SessionCreatedEvent = {
               type: "session-created",
-              session: summary,
+              session: {
+                ...summary,
+                projectName:
+                  summary.projectName ?? getProjectNameForProjectId(projectId),
+              },
               timestamp: now,
             };
             this.eventBus.emit(event);
@@ -522,6 +534,7 @@ export class ExternalSessionTracker {
       const summary: SessionSummary = {
         id: sessionId,
         projectId,
+        projectName: getProjectNameForProjectId(projectId),
         title: null,
         fullTitle: null,
         createdAt: meta.timestamp,
@@ -617,6 +630,7 @@ export class ExternalSessionTracker {
       const summary: SessionSummary = {
         id: meta.id,
         projectId,
+        projectName: getProjectName(meta.cwd),
         title: null,
         fullTitle: null,
         createdAt: meta.timestamp,

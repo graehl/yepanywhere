@@ -482,7 +482,7 @@ export function applySessionCollectionCreated(
     record,
     {
       projectId: session.projectId,
-      projectName: session.projectId,
+      projectName: session.projectName ?? record.projectName,
     },
     observedAt,
   );

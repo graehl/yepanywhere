@@ -1,6 +1,7 @@
 export const GIT_STATUS_CAPABILITY = "git-status";
 export const GIT_STATUS_ENHANCED_CAPABILITY = "git-status-enhanced";
 export const GIT_STATUS_REMOTE_CHECK_CAPABILITY = "git-status-remote-check";
+export const GIT_STATUS_PULL_CAPABILITY = "git-status-pull";
 
 export interface GitFileChange {
   /** Relative file path within the repo */
@@ -59,6 +60,15 @@ export type GitRemoteCheckStatus =
 
 export interface GitRemoteCheckResult {
   status: GitRemoteCheckStatus;
+  checkedRemoteAt: string | null;
+  gitStatus?: GitStatusInfo;
+  detail?: string;
+}
+
+export type GitPullStatus = "pulled" | "busy" | "not-a-git-repo" | "failed";
+
+export interface GitPullResult {
+  status: GitPullStatus;
   checkedRemoteAt: string | null;
   gitStatus?: GitStatusInfo;
   detail?: string;

@@ -9,7 +9,9 @@ Progress:
       model.
 - [x] 2026-06-28: Add explicit `Check remote` state, timestamp, capability,
       fetch-on-click endpoint, and per-project remote operation guard.
-- [ ] Add pull/push/publish server actions with concise result mapping.
+- [x] 2026-06-28: Add a click-only fast-forward `Pull` action with concise
+      result mapping.
+- [ ] Add push/publish server actions with concise result mapping.
 - [x] 2026-06-28: Add a per-project git operation guard for remote-touching
       source-control actions.
 - [x] 2026-06-28: Replace the wide-browser diff modal with a split-pane
@@ -168,14 +170,25 @@ the client receives user-facing categories rather than raw command output.
 
 Pull means "try a safe fast-forward pull now".
 
-On click:
+The first implementation uses `git pull --ff-only` directly with terminal
+prompts disabled. It is intentionally click-only and lets Git decide whether a
+dirty working tree can be updated safely. A later refinement can split this
+into explicit fetch and fast-forward steps if the extra result precision is
+worth the complexity.
+
+First implementation on click:
 
 1. Validate project and repository state.
-2. Refuse detached HEAD, missing upstream, or in-progress merge/rebase states.
-3. Run `git fetch <remote>` with a timeout.
-4. Run a fast-forward update, preferably with explicit steps rather than opaque
-   `git pull` behavior.
-5. Refresh and return a status snapshot.
+2. Run `git pull --ff-only` with terminal prompts disabled and a timeout.
+3. Refresh and return a status snapshot.
+
+Refined implementation, if needed:
+
+1. Refuse detached HEAD, missing upstream, or in-progress merge/rebase states.
+2. Run `git fetch <remote>` with a timeout.
+3. Run a fast-forward update with explicit steps rather than opaque `git pull`
+   behavior.
+4. Refresh and return a status snapshot.
 
 Do not pre-refuse only because the worktree is dirty. Git can fast-forward with
 local uncommitted changes when the incoming changes do not overlap. Let git

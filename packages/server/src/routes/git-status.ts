@@ -4,6 +4,7 @@ import { extname, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
   type GitFileChange,
+  type GitPullResult,
   type GitRemoteCheckResult,
   type GitRecentCommit,
   type GitStatusInfo,
@@ -114,6 +115,69 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       }
 
       const result: GitRemoteCheckResult = {
+        status: "failed",
+        checkedRemoteAt: getCheckedRemoteAt(project.path),
+        gitStatus: await getGitStatusSnapshot(project.path),
+        detail: getGitErrorDetail(err),
+      };
+      return c.json(result);
+    } finally {
+      gitOperationsByProjectPath.delete(project.path);
+    }
+  });
+
+  /**
+   * POST /:projectId/git/pull
+   * Try a safe fast-forward pull without opening interactive prompts.
+   */
+  routes.post("/:projectId/git/pull", async (c) => {
+    const projectId = c.req.param("projectId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    const checkedRemoteAt = getCheckedRemoteAt(project.path);
+    if (gitOperationsByProjectPath.has(project.path)) {
+      const result: GitPullResult = {
+        status: "busy",
+        checkedRemoteAt,
+        gitStatus: await getGitStatusSnapshot(project.path),
+      };
+      return c.json(result);
+    }
+
+    gitOperationsByProjectPath.add(project.path);
+    try {
+      await runGit(project.path, ["pull", "--ff-only"], {
+        timeout: 60_000,
+        disableTerminalPrompt: true,
+      });
+      const nextCheckedRemoteAt = new Date().toISOString();
+      remoteCheckedAtByProjectPath.set(project.path, nextCheckedRemoteAt);
+
+      const result: GitPullResult = {
+        status: "pulled",
+        checkedRemoteAt: nextCheckedRemoteAt,
+        gitStatus: await getGitStatusWithRemoteCheckTime(project.path),
+      };
+      return c.json(result);
+    } catch (err) {
+      if (isNotGitRepoError(err)) {
+        const result: GitPullResult = {
+          status: "not-a-git-repo",
+          checkedRemoteAt: null,
+          gitStatus: NOT_A_GIT_REPO,
+        };
+        return c.json(result);
+      }
+
+      const result: GitPullResult = {
         status: "failed",
         checkedRemoteAt: getCheckedRemoteAt(project.path),
         gitStatus: await getGitStatusSnapshot(project.path),

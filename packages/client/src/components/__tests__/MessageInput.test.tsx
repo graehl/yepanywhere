@@ -2560,6 +2560,37 @@ describe("MessageInput", () => {
     expect(onProjectQueue).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the render mode toolbar action hidden by visibility", () => {
+    render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={{ ...toolbarVisibility, renderMode: false }}
+        attachmentControl={{ attachmentCount: 0 }}
+        renderModeControl={{
+          state: "rendered",
+          title: "Show source",
+          onToggle: vi.fn(),
+        }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{}}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Show source" })).toBe(null);
+  });
+
   it("renders context usage as passive status chrome", () => {
     const { container } = render(
       <MessageInputToolbarView

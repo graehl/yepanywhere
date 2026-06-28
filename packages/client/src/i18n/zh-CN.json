@@ -115,7 +115,7 @@
   "appearanceToolbarThinkingTitle": "思考开关",
   "appearanceToolbarThinkingDescription": "显示思考模式快速开关。",
   "appearanceToolbarRenderModeTitle": "渲染模式",
-  "appearanceToolbarRenderModeDescription": "显示渲染/源码模式切换。",
+  "appearanceToolbarRenderModeDescription": "显示渲染/源码模式工具栏按钮。",
   "appearanceToolbarMicrophoneTitle": "麦克风",
   "appearanceToolbarMicrophoneDescription": "可用时显示语音输入和 STT 后端控件。",
   "appearanceToolbarShortcutsTitle": "快捷键帮助",

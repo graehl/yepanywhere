@@ -46,6 +46,17 @@ describe("useSessionToolbarVisibility", () => {
     vi.unstubAllGlobals();
   });
 
+  it("keeps the render mode toolbar control hidden by default", async () => {
+    stubToolbarLayout(false);
+    const { DEFAULT_SESSION_TOOLBAR_VISIBILITY, useSessionToolbarVisibility } =
+      await import("../useSessionToolbarVisibility");
+
+    const { result } = renderHook(() => useSessionToolbarVisibility());
+
+    expect(DEFAULT_SESSION_TOOLBAR_VISIBILITY.renderMode).toBe(false);
+    expect(result.current.visibility.renderMode).toBe(false);
+  });
+
   it("ignores persisted model indicator visibility from old settings", async () => {
     window.localStorage.setItem(
       UI_KEYS.sessionToolbarVisibility,

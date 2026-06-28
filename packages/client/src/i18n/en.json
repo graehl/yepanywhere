@@ -158,7 +158,7 @@
   "appearanceToolbarThinkingTitle": "Thinking Toggle",
   "appearanceToolbarThinkingDescription": "Show the thinking mode quick toggle.",
   "appearanceToolbarRenderModeTitle": "Render Mode",
-  "appearanceToolbarRenderModeDescription": "Show the rendered/source mode toggle.",
+  "appearanceToolbarRenderModeDescription": "Show the rendered/source toolbar button.",
   "appearanceToolbarMicrophoneTitle": "Microphone",
   "appearanceToolbarMicrophoneDescription": "Show voice input and STT backend controls when available.",
   "appearanceToolbarWaveformTitle": "Live Microphone Waveform",

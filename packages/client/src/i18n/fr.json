@@ -115,7 +115,7 @@
   "appearanceToolbarThinkingTitle": "Bascule de réflexion",
   "appearanceToolbarThinkingDescription": "Afficher la bascule rapide du mode de réflexion.",
   "appearanceToolbarRenderModeTitle": "Mode de rendu",
-  "appearanceToolbarRenderModeDescription": "Afficher la bascule du mode rendu/source.",
+  "appearanceToolbarRenderModeDescription": "Afficher le bouton rendu/source dans la barre d'outils.",
   "appearanceToolbarMicrophoneTitle": "Micro",
   "appearanceToolbarMicrophoneDescription": "Afficher la saisie vocale et les contrôles du backend STT lorsqu'ils sont disponibles.",
   "appearanceToolbarShortcutsTitle": "Aide des raccourcis",

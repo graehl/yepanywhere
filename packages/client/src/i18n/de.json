@@ -115,7 +115,7 @@
   "appearanceToolbarThinkingTitle": "Denkmodus-Umschalter",
   "appearanceToolbarThinkingDescription": "Schnellumschalter für den Denkmodus anzeigen.",
   "appearanceToolbarRenderModeTitle": "Render-Modus",
-  "appearanceToolbarRenderModeDescription": "Umschalter zwischen gerenderter Ansicht und Quellansicht anzeigen.",
+  "appearanceToolbarRenderModeDescription": "Schaltfläche für gerenderte Ansicht/Quellansicht in der Werkzeugleiste anzeigen.",
   "appearanceToolbarMicrophoneTitle": "Mikrofon",
   "appearanceToolbarMicrophoneDescription": "Spracheingabe und STT-Backend-Steuerelemente anzeigen, wenn verfügbar.",
   "appearanceToolbarShortcutsTitle": "Tastenkürzel-Hilfe",

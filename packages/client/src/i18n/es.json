@@ -115,7 +115,7 @@
   "appearanceToolbarThinkingTitle": "Alternador de pensamiento",
   "appearanceToolbarThinkingDescription": "Mostrar el alternador rápido del modo de pensamiento.",
   "appearanceToolbarRenderModeTitle": "Modo de renderizado",
-  "appearanceToolbarRenderModeDescription": "Mostrar el alternador de modo renderizado/fuente.",
+  "appearanceToolbarRenderModeDescription": "Mostrar el botón de modo renderizado/fuente en la barra de herramientas.",
   "appearanceToolbarMicrophoneTitle": "Micrófono",
   "appearanceToolbarMicrophoneDescription": "Mostrar la entrada de voz y los controles del backend STT cuando estén disponibles.",
   "appearanceToolbarShortcutsTitle": "Ayuda de atajos",

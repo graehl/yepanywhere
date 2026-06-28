@@ -115,7 +115,7 @@
   "appearanceToolbarThinkingTitle": "Thinking トグル",
   "appearanceToolbarThinkingDescription": "Thinking モードのクイックトグルを表示します。",
   "appearanceToolbarRenderModeTitle": "レンダーモード",
-  "appearanceToolbarRenderModeDescription": "レンダー/ソースモードのトグルを表示します。",
+  "appearanceToolbarRenderModeDescription": "レンダー/ソースモードのツールバーボタンを表示します。",
   "appearanceToolbarMicrophoneTitle": "マイク",
   "appearanceToolbarMicrophoneDescription": "利用可能な場合に音声入力と STT バックエンドのコントロールを表示します。",
   "appearanceToolbarShortcutsTitle": "ショートカットヘルプ",

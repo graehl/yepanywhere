@@ -106,6 +106,7 @@ const currentSourceKeyListeners = new Set<StoreListener>();
 let currentClientSummarySourceKey = LOCAL_CLIENT_SUMMARY_SOURCE_KEY;
 let mountedConsumerCount = 0;
 let activityBusUnsubscribers: BusUnsubscribe[] | null = null;
+let activityBusSubscriptionSourceKey: ClientSummarySourceKey | null = null;
 let mountedDraftDecorationConsumerCount = 0;
 let draftDecorationRelease: ReleaseSubscription | null = null;
 
@@ -189,66 +190,112 @@ function updateCurrentSnapshot(
   updateStoreSnapshot(getCurrentClientSummaryStore(), update);
 }
 
-function reduceProcessStateChanged(event: ProcessStateEvent): void {
-  updateCurrentSnapshot((current) =>
+function updateSourceSnapshot(
+  sourceKey: ClientSummarySourceKey,
+  update: (current: ClientSummaryState) => ClientSummaryState,
+): void {
+  updateStoreSnapshot(getClientSummaryStoreForSource(sourceKey), update);
+}
+
+function reduceProcessStateChanged(
+  sourceKey: ClientSummarySourceKey,
+  event: ProcessStateEvent,
+): void {
+  updateSourceSnapshot(sourceKey, (current) =>
     applySessionCollectionProcessStateChanged(current, event),
   );
 }
 
-function reduceSessionStatusChanged(event: SessionStatusEvent): void {
-  updateCurrentSnapshot((current) =>
+function reduceSessionStatusChanged(
+  sourceKey: ClientSummarySourceKey,
+  event: SessionStatusEvent,
+): void {
+  updateSourceSnapshot(sourceKey, (current) =>
     applySessionCollectionStatusChanged(current, event),
   );
 }
 
-function reduceSessionSeen(event: SessionSeenEvent): void {
-  updateCurrentSnapshot((current) => applySessionCollectionSeen(current, event));
+function reduceSessionSeen(
+  sourceKey: ClientSummarySourceKey,
+  event: SessionSeenEvent,
+): void {
+  updateSourceSnapshot(sourceKey, (current) =>
+    applySessionCollectionSeen(current, event),
+  );
 }
 
-function reduceSessionUpdated(event: SessionUpdatedEvent): void {
-  updateCurrentSnapshot((current) =>
+function reduceSessionUpdated(
+  sourceKey: ClientSummarySourceKey,
+  event: SessionUpdatedEvent,
+): void {
+  updateSourceSnapshot(sourceKey, (current) =>
     applySessionCollectionUpdated(current, event),
   );
 }
 
 function reduceSessionMetadataChanged(
+  sourceKey: ClientSummarySourceKey,
   event: SessionMetadataChangedEvent,
 ): void {
-  updateCurrentSnapshot((current) =>
+  updateSourceSnapshot(sourceKey, (current) =>
     applySessionCollectionMetadataChanged(current, event),
   );
 }
 
-function reduceSessionCreated(event: SessionCreatedEvent): void {
-  updateCurrentSnapshot((current) =>
+function reduceSessionCreated(
+  sourceKey: ClientSummarySourceKey,
+  event: SessionCreatedEvent,
+): void {
+  updateSourceSnapshot(sourceKey, (current) =>
     applySessionCollectionCreated(current, event),
   );
 }
 
-function reduceProjectQueueChanged(event: ProjectQueueChangedEvent): void {
-  updateCurrentSnapshot((current) =>
+function reduceProjectQueueChanged(
+  sourceKey: ClientSummarySourceKey,
+  event: ProjectQueueChangedEvent,
+): void {
+  updateSourceSnapshot(sourceKey, (current) =>
     applyProjectQueueCollectionChanged(current, event),
   );
 }
 
-function startActivityBusSubscription(): void {
+function startActivityBusSubscription(sourceKey: ClientSummarySourceKey): void {
   if (activityBusUnsubscribers) {
-    return;
+    if (activityBusSubscriptionSourceKey === sourceKey) {
+      return;
+    }
+    stopActivityBusSubscription();
   }
 
   activityBusUnsubscribers = [
-    activityBus.on("process-state-changed", reduceProcessStateChanged),
-    activityBus.on("session-status-changed", reduceSessionStatusChanged),
-    activityBus.on("session-seen", reduceSessionSeen),
-    activityBus.on("session-updated", reduceSessionUpdated),
-    activityBus.on("session-metadata-changed", reduceSessionMetadataChanged),
-    activityBus.on("session-created", reduceSessionCreated),
-    activityBus.on("project-queue-changed", reduceProjectQueueChanged),
+    activityBus.on("process-state-changed", (event) =>
+      reduceProcessStateChanged(sourceKey, event),
+    ),
+    activityBus.on("session-status-changed", (event) =>
+      reduceSessionStatusChanged(sourceKey, event),
+    ),
+    activityBus.on("session-seen", (event) =>
+      reduceSessionSeen(sourceKey, event),
+    ),
+    activityBus.on("session-updated", (event) =>
+      reduceSessionUpdated(sourceKey, event),
+    ),
+    activityBus.on("session-metadata-changed", (event) =>
+      reduceSessionMetadataChanged(sourceKey, event),
+    ),
+    activityBus.on("session-created", (event) =>
+      reduceSessionCreated(sourceKey, event),
+    ),
+    activityBus.on("project-queue-changed", (event) =>
+      reduceProjectQueueChanged(sourceKey, event),
+    ),
   ];
+  activityBusSubscriptionSourceKey = sourceKey;
 }
 
-function stopActivityBusSubscriptionIfIdle(): void {
-  if (mountedConsumerCount > 0 || !activityBusUnsubscribers) {
+function stopActivityBusSubscription(): void {
+  if (!activityBusUnsubscribers) {
     return;
   }
 
@@ -256,11 +303,22 @@ function stopActivityBusSubscriptionIfIdle(): void {
     unsubscribe();
   }
   activityBusUnsubscribers = null;
+  activityBusSubscriptionSourceKey = null;
 }
 
-function retainActivityBusSubscription(): () => void {
+function stopActivityBusSubscriptionIfIdle(): void {
+  if (mountedConsumerCount > 0) {
+    return;
+  }
+
+  stopActivityBusSubscription();
+}
+
+function retainActivityBusSubscription(
+  sourceKey: ClientSummarySourceKey,
+): () => void {
   mountedConsumerCount += 1;
-  startActivityBusSubscription();
+  startActivityBusSubscription(sourceKey);
 
   let released = false;
   return () => {
@@ -272,7 +330,8 @@ function retainActivityBusSubscription(): () => void {
 }
 
 function useClientSummaryActivitySubscription(): void {
-  useEffect(() => retainActivityBusSubscription(), []);
+  const sourceKey = useClientSummarySourceKey();
+  useEffect(() => retainActivityBusSubscription(sourceKey), [sourceKey]);
 }
 
 export function reportDraftSessionIdsSnapshot(
@@ -350,10 +409,16 @@ function useDraftDecorationSubscription(): void {
 export function subscribeClientSummary(
   listener: StoreListener,
 ): () => void {
-  const releaseActivityBus = retainActivityBusSubscription();
+  let releaseActivityBus = retainActivityBusSubscription(
+    getCurrentClientSummarySourceKey(),
+  );
   let currentStore = getCurrentClientSummaryStore();
   let unsubscribeStore = currentStore.subscribe(() => listener());
   const unsubscribeSourceKey = subscribeClientSummarySourceKey(() => {
+    releaseActivityBus();
+    releaseActivityBus = retainActivityBusSubscription(
+      getCurrentClientSummarySourceKey(),
+    );
     unsubscribeStore();
     currentStore = getCurrentClientSummaryStore();
     unsubscribeStore = currentStore.subscribe(() => listener());
@@ -426,19 +491,21 @@ export function reportProjectQueueCollectionSnapshot(
 }
 
 export function reportSessionCollectionCreated(
+  sourceKey: ClientSummarySourceKey,
   event: SessionCreatedEvent,
   observedAt = Date.now(),
 ): void {
-  updateCurrentSnapshot((current) =>
+  updateSourceSnapshot(sourceKey, (current) =>
     applySessionCollectionCreated(current, event, observedAt),
   );
 }
 
 export function reportSessionCollectionMetadataChanged(
+  sourceKey: ClientSummarySourceKey,
   event: SessionMetadataChangedEvent,
   observedAt = Date.now(),
 ): void {
-  updateCurrentSnapshot((current) =>
+  updateSourceSnapshot(sourceKey, (current) =>
     applySessionCollectionMetadataChanged(current, event, observedAt),
   );
 }

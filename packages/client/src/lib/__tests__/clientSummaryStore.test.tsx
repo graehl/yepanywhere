@@ -323,6 +323,55 @@ describe("clientSummaryStore", () => {
     expect(renders).toBeGreaterThan(afterWinnativeRenders);
   });
 
+  it("reduces stale activity callbacks into their retained source", () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    const winnative = createClientSummaryHostSourceKey("winnative");
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    const selected = renderHook(() =>
+      useSessionCollectionRecord("stale-event-session"),
+    );
+    const staleCreatedCallbacks = [
+      ...(mockActivityBus.listeners.get("session-created") ?? []),
+    ];
+    expect(staleCreatedCallbacks).toHaveLength(1);
+
+    act(() => {
+      setCurrentClientSummarySourceKey(winnative);
+    });
+
+    act(() => {
+      for (const callback of staleCreatedCallbacks) {
+        callback({
+          type: "session-created",
+          session: {
+            id: "stale-event-session",
+            projectId: PROJECT_ID,
+            title: "Stale event",
+            fullTitle: "Stale event",
+            createdAt: RECENT,
+            updatedAt: RECENT,
+            messageCount: 1,
+            ownership: { owner: "none" },
+            provider: "claude",
+          },
+          timestamp: RECENT,
+        });
+      }
+    });
+
+    expect(selected.result.current).toBeUndefined();
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    expect(selected.result.current?.id).toBe("stale-event-session");
+  });
+
   it("reports inbox snapshots to React selectors", () => {
     const inbox = renderHook(() => useInboxResponseSnapshot());
 
@@ -415,6 +464,7 @@ describe("clientSummaryStore", () => {
 
     act(() => {
       reportSessionCollectionMetadataChanged(
+        SOURCE_KEY,
         {
           type: "session-metadata-changed",
           sessionId: "session-1",
@@ -436,6 +486,7 @@ describe("clientSummaryStore", () => {
 
     act(() => {
       reportSessionCollectionCreated(
+        SOURCE_KEY,
         {
           type: "session-created",
           session: {
@@ -494,6 +545,7 @@ describe("clientSummaryStore", () => {
 
     act(() => {
       reportSessionCollectionMetadataChanged(
+        SOURCE_KEY,
         {
           type: "session-metadata-changed",
           sessionId: "session-b",
@@ -531,6 +583,7 @@ describe("clientSummaryStore", () => {
 
     act(() => {
       reportSessionCollectionMetadataChanged(
+        SOURCE_KEY,
         {
           type: "session-metadata-changed",
           sessionId: "session-b",

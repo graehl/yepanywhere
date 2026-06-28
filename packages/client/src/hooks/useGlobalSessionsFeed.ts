@@ -308,7 +308,7 @@ export function useGlobalSessionsFeed(
   const handleSessionCreated = useCallback(
     (event: SessionCreatedEvent) => {
       const observedAt = Date.now();
-      reportSessionCollectionCreated(event, observedAt);
+      reportSessionCollectionCreated(sourceKey, event, observedAt);
 
       if (projectId && event.session.projectId !== projectId) return;
       if (starred && !event.session.isStarred) return;
@@ -345,7 +345,7 @@ export function useGlobalSessionsFeed(
 
   const handleSessionMetadataChange = useCallback(
     (event: SessionMetadataChangedEvent) => {
-      reportSessionCollectionMetadataChanged(event);
+      reportSessionCollectionMetadataChanged(sourceKey, event);
 
       if (
         searchQuery ||
@@ -356,7 +356,7 @@ export function useGlobalSessionsFeed(
         debouncedRefetch();
       }
     },
-    [debouncedRefetch, projectId, searchQuery],
+    [debouncedRefetch, projectId, searchQuery, sourceKey],
   );
 
   useFileActivity({

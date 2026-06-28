@@ -20,6 +20,12 @@ Progress:
   write back to the source active when the mutation started. Added coverage for
   late source-keyed snapshots staying invisible to the current host until that
   source is selected again.
+- [x] 2026-06-28: Scoped client-summary activity-bus reductions and local
+  session mutation reporters. The lazy store-owned activity listener captures
+  its retained source key and is replaced when the current-source subscription
+  changes, so stale callbacks reduce into their original source instead of the
+  visible host. `reportSessionCollectionCreated` and
+  `reportSessionCollectionMetadataChanged` now require source keys.
 
 This doc tracks the next widening of the client summary store. The normalized
 `ClientSummaryState` shape stays the same, but the store is no longer a single
@@ -209,7 +215,7 @@ Do not let source-global draft scans contaminate per-host session cards.
    the requested host immediately during host changes.
 3. [x] Require source keys on REST snapshot reporters and migrate sessions, inbox,
    projects, and project queue feed hooks.
-4. [ ] Scope activity-bus reductions and local mutation reporters.
+4. [x] Scope activity-bus reductions and local mutation reporters.
 5. [ ] Scope or quarantine local draft decorations.
 6. [ ] Remove any compatibility default that allowed unscoped summary writes.
 

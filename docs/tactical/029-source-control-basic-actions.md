@@ -11,7 +11,9 @@ Progress:
       fetch-on-click endpoint, and per-project remote operation guard.
 - [x] 2026-06-28: Add a click-only fast-forward `Pull` action with concise
       result mapping.
-- [ ] Add push/publish server actions with concise result mapping.
+- [x] 2026-06-28: Add a click-only `Push` action for branches with upstream,
+      with concise result mapping.
+- [ ] Add publish branch action with concise result mapping.
 - [x] 2026-06-28: Add a per-project git operation guard for remote-touching
       source-control actions.
 - [x] 2026-06-28: Replace the wide-browser diff modal with a split-pane
@@ -211,8 +213,11 @@ Other expected pull outcomes:
 
 Push means "try to push the current branch now".
 
-For a branch with upstream, run a normal push on click. If the remote has newer
-commits, let git reject it and map that to:
+The first implementation validates that the current branch already has an
+upstream, then runs a normal `git push` on click with terminal prompts disabled
+and a timeout. It does not publish branches without upstream.
+
+If the remote has newer commits, let git reject it and map that to:
 
 > Push rejected; remote has newer commits.
 

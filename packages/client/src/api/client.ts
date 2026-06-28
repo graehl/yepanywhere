@@ -11,6 +11,7 @@ import type {
   EnrichedRecentEntry,
   FileContentResponse,
   GitPullResult,
+  GitPushResult,
   GitRemoteCheckResult,
   FreezePublicSessionLiveSharesResponse,
   GitStatusInfo,
@@ -1355,6 +1356,11 @@ export const api = {
 
   pullGit: (projectId: string) =>
     fetchJSON<GitPullResult>(`/projects/${projectId}/git/pull`, {
+      method: "POST",
+    }),
+
+  pushGit: (projectId: string) =>
+    fetchJSON<GitPushResult>(`/projects/${projectId}/git/push`, {
       method: "POST",
     }),
 

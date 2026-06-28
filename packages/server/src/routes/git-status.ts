@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import {
   type GitFileChange,
   type GitPullResult,
+  type GitPushResult,
   type GitRemoteCheckResult,
   type GitRecentCommit,
   type GitStatusInfo,
@@ -179,6 +180,77 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
 
       const result: GitPullResult = {
         status: "failed",
+        checkedRemoteAt: getCheckedRemoteAt(project.path),
+        gitStatus: await getGitStatusSnapshot(project.path),
+        detail: getGitErrorDetail(err),
+      };
+      return c.json(result);
+    } finally {
+      gitOperationsByProjectPath.delete(project.path);
+    }
+  });
+
+  /**
+   * POST /:projectId/git/push
+   * Push the current branch only when it already has an upstream.
+   */
+  routes.post("/:projectId/git/push", async (c) => {
+    const projectId = c.req.param("projectId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    const checkedRemoteAt = getCheckedRemoteAt(project.path);
+    if (gitOperationsByProjectPath.has(project.path)) {
+      const result: GitPushResult = {
+        status: "busy",
+        checkedRemoteAt,
+        gitStatus: await getGitStatusSnapshot(project.path),
+      };
+      return c.json(result);
+    }
+
+    gitOperationsByProjectPath.add(project.path);
+    try {
+      const status = await getGitStatusWithRemoteCheckTime(project.path);
+      if (!status.upstream) {
+        const result: GitPushResult = {
+          status: "no-upstream",
+          checkedRemoteAt,
+          gitStatus: status,
+        };
+        return c.json(result);
+      }
+
+      await runGit(project.path, ["push"], {
+        timeout: 60_000,
+        disableTerminalPrompt: true,
+      });
+
+      const result: GitPushResult = {
+        status: "pushed",
+        checkedRemoteAt: getCheckedRemoteAt(project.path),
+        gitStatus: await getGitStatusWithRemoteCheckTime(project.path),
+      };
+      return c.json(result);
+    } catch (err) {
+      if (isNotGitRepoError(err)) {
+        const result: GitPushResult = {
+          status: "not-a-git-repo",
+          checkedRemoteAt: null,
+          gitStatus: NOT_A_GIT_REPO,
+        };
+        return c.json(result);
+      }
+
+      const result: GitPushResult = {
+        status: isPushRejectedError(err) ? "rejected" : "failed",
         checkedRemoteAt: getCheckedRemoteAt(project.path),
         gitStatus: await getGitStatusSnapshot(project.path),
         detail: getGitErrorDetail(err),
@@ -393,6 +465,23 @@ function isNotGitRepoError(err: unknown): boolean {
       return true;
   }
   return false;
+}
+
+function isPushRejectedError(err: unknown): boolean {
+  if (!err || typeof err !== "object") {
+    return false;
+  }
+
+  const gitError = err as {
+    stderr?: string;
+    stdout?: string;
+  };
+  const output = `${gitError.stderr ?? ""}\n${gitError.stdout ?? ""}`;
+  return (
+    output.includes("[rejected]") ||
+    output.includes("non-fast-forward") ||
+    output.includes("fetch first")
+  );
 }
 
 /** Parse `git diff --numstat` output into a map of path → {added, deleted} */

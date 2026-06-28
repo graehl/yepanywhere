@@ -101,6 +101,8 @@ export type {
   GitFileChange,
   GitPullResult,
   GitPullStatus,
+  GitPushResult,
+  GitPushStatus,
   GitRecentCommit,
   GitRemoteCheckResult,
   GitRemoteCheckStatus,
@@ -110,6 +112,7 @@ export {
   GIT_STATUS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_PULL_CAPABILITY,
+  GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
 } from "./git-status.js";
 

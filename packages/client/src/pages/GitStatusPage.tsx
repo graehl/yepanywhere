@@ -1,6 +1,7 @@
 import type {
   GitFileChange,
   GitPullResult,
+  GitPushResult,
   GitRemoteCheckResult,
   GitRecentCommit,
   GitStatusInfo,
@@ -8,6 +9,7 @@ import type {
 import {
   GIT_STATUS_ENHANCED_CAPABILITY,
   GIT_STATUS_PULL_CAPABILITY,
+  GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
 } from "@yep-anywhere/shared";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -60,6 +62,8 @@ export function GitStatusPage() {
     false;
   const supportsPull =
     version?.capabilities?.includes(GIT_STATUS_PULL_CAPABILITY) ?? false;
+  const supportsPush =
+    version?.capabilities?.includes(GIT_STATUS_PUSH_CAPABILITY) ?? false;
   const { gitStatus, loading, error, refetch } = useGitStatus(
     supportsEnhancedGitStatus ? effectiveProjectId : undefined,
   );
@@ -121,6 +125,7 @@ export function GitStatusPage() {
               isWideScreen={isWideScreen}
               supportsRemoteCheck={supportsRemoteCheck}
               supportsPull={supportsPull}
+              supportsPush={supportsPush}
               onRefreshStatus={refetch}
               t={t as never}
             />
@@ -150,6 +155,7 @@ function GitStatusContent({
   isWideScreen,
   supportsRemoteCheck,
   supportsPull,
+  supportsPush,
   onRefreshStatus,
   t,
 }: {
@@ -158,6 +164,7 @@ function GitStatusContent({
   isWideScreen: boolean;
   supportsRemoteCheck: boolean;
   supportsPull: boolean;
+  supportsPush: boolean;
   onRefreshStatus: () => Promise<void>;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
@@ -169,6 +176,9 @@ function GitStatusContent({
   const [pullResult, setPullResult] = useState<GitPullResult | null>(null);
   const [isPulling, setIsPulling] = useState(false);
   const [pullError, setPullError] = useState<string | null>(null);
+  const [pushResult, setPushResult] = useState<GitPushResult | null>(null);
+  const [isPushing, setIsPushing] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
   const nowMs = useRelativeNow();
 
   const { stagedFiles, unstagedFiles, untrackedFiles, allFiles } =
@@ -205,9 +215,12 @@ function GitStatusContent({
     setPullResult(null);
     setPullError(null);
     setIsPulling(false);
+    setPushResult(null);
+    setPushError(null);
+    setIsPushing(false);
   }, [projectId]);
 
-  const isGitActionRunning = isCheckingRemote || isPulling;
+  const isGitActionRunning = isCheckingRemote || isPulling || isPushing;
 
   const handleCheckRemote = useCallback(async () => {
     if (!supportsRemoteCheck || isGitActionRunning) return;
@@ -217,6 +230,8 @@ function GitStatusContent({
     setRemoteCheckError(null);
     setPullResult(null);
     setPullError(null);
+    setPushResult(null);
+    setPushError(null);
     try {
       const result = await api.checkGitRemote(projectId);
       setRemoteCheckResult(result);
@@ -240,6 +255,8 @@ function GitStatusContent({
     setPullError(null);
     setRemoteCheckResult(null);
     setRemoteCheckError(null);
+    setPushResult(null);
+    setPushError(null);
     try {
       const result = await api.pullGit(projectId);
       setPullResult(result);
@@ -255,7 +272,33 @@ function GitStatusContent({
     }
   }, [isGitActionRunning, onRefreshStatus, projectId, supportsPull, t]);
 
+  const handlePush = useCallback(async () => {
+    if (!supportsPush || isGitActionRunning) return;
+
+    setIsPushing(true);
+    setPushResult(null);
+    setPushError(null);
+    setRemoteCheckResult(null);
+    setRemoteCheckError(null);
+    setPullResult(null);
+    setPullError(null);
+    try {
+      const result = await api.pushGit(projectId);
+      setPushResult(result);
+      if (result.status === "pushed") {
+        await onRefreshStatus();
+      }
+    } catch (err) {
+      setPushError(
+        err instanceof Error ? err.message : t("gitStatusPushFailed"),
+      );
+    } finally {
+      setIsPushing(false);
+    }
+  }, [isGitActionRunning, onRefreshStatus, projectId, supportsPush, t]);
+
   const checkedRemoteAt =
+    pushResult?.checkedRemoteAt ??
     pullResult?.checkedRemoteAt ??
     remoteCheckResult?.checkedRemoteAt ??
     status.checkedRemoteAt ??
@@ -265,6 +308,8 @@ function GitStatusContent({
     remoteCheckError,
     pullResult,
     pullError,
+    pushResult,
+    pushError,
     t,
   });
   const gitActionMessageClass = getGitActionMessageClass({
@@ -272,6 +317,8 @@ function GitStatusContent({
     remoteCheckError,
     pullResult,
     pullError,
+    pushResult,
+    pushError,
   });
 
   return (
@@ -319,7 +366,7 @@ function GitStatusContent({
             >
               {status.isClean ? t("gitStatusClean") : t("gitStatusDirty")}
             </span>
-            {(supportsPull || supportsRemoteCheck) && (
+            {(supportsPull || supportsPush || supportsRemoteCheck) && (
               <div className="git-status-actions">
                 {supportsPull && (
                   <button
@@ -329,6 +376,16 @@ function GitStatusContent({
                     disabled={isGitActionRunning}
                   >
                     {isPulling ? t("gitStatusPulling") : t("gitStatusPull")}
+                  </button>
+                )}
+                {supportsPush && (
+                  <button
+                    type="button"
+                    className="git-status-action-button"
+                    onClick={handlePush}
+                    disabled={isGitActionRunning}
+                  >
+                    {isPushing ? t("gitStatusPushing") : t("gitStatusPush")}
                   </button>
                 )}
                 {supportsRemoteCheck && (
@@ -875,17 +932,43 @@ function getPullMessage(
   }
 }
 
+function getPushMessage(
+  result: GitPushResult | null,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
+  switch (result?.status) {
+    case "pushed":
+      return t("gitStatusPushSuccess");
+    case "busy":
+      return t("gitStatusPushBusy");
+    case "no-upstream":
+      return t("gitStatusPushNoUpstream");
+    case "rejected":
+      return t("gitStatusPushRejected");
+    case "not-a-git-repo":
+      return t("gitStatusPushNotRepo");
+    case "failed":
+      return t("gitStatusPushFailed");
+    default:
+      return "";
+  }
+}
+
 function getGitActionMessage({
   remoteCheckResult,
   remoteCheckError,
   pullResult,
   pullError,
+  pushResult,
+  pushError,
   t,
 }: {
   remoteCheckResult: GitRemoteCheckResult | null;
   remoteCheckError: string | null;
   pullResult: GitPullResult | null;
   pullError: string | null;
+  pushResult: GitPushResult | null;
+  pushError: string | null;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }): string {
   if (remoteCheckError) {
@@ -894,11 +977,17 @@ function getGitActionMessage({
   if (pullError) {
     return pullError;
   }
+  if (pushError) {
+    return pushError;
+  }
   if (remoteCheckResult) {
     return getRemoteCheckMessage(remoteCheckResult, t);
   }
   if (pullResult) {
     return getPullMessage(pullResult, t);
+  }
+  if (pushResult) {
+    return getPushMessage(pushResult, t);
   }
   return "";
 }
@@ -908,19 +997,31 @@ function getGitActionMessageClass({
   remoteCheckError,
   pullResult,
   pullError,
+  pushResult,
+  pushError,
 }: {
   remoteCheckResult: GitRemoteCheckResult | null;
   remoteCheckError: string | null;
   pullResult: GitPullResult | null;
   pullError: string | null;
+  pushResult: GitPushResult | null;
+  pushError: string | null;
 }): string {
   if (
     remoteCheckResult?.status === "checked" ||
-    pullResult?.status === "pulled"
+    pullResult?.status === "pulled" ||
+    pushResult?.status === "pushed"
   ) {
     return "git-status-action-message-success";
   }
-  if (remoteCheckResult || remoteCheckError || pullResult || pullError) {
+  if (
+    remoteCheckResult ||
+    remoteCheckError ||
+    pullResult ||
+    pullError ||
+    pushResult ||
+    pushError
+  ) {
     return "git-status-action-message-warning";
   }
   return "";

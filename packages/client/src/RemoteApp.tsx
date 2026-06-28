@@ -25,6 +25,7 @@ import { FloatingActionButton } from "./components/FloatingActionButton";
 import { HostOfflineModal } from "./components/HostOfflineModal";
 import { ReloadBanner } from "./components/ReloadBanner";
 import { RemoteCompatibilityNotices } from "./components/RemoteCompatibilityNotices";
+import { ClientSummarySourceBinding } from "./contexts/ClientSummarySourceBinding";
 import { InboxProvider } from "./contexts/InboxContext";
 import {
   RemoteConnectionProvider,
@@ -223,6 +224,7 @@ export function RemoteApp({ children }: Props) {
   return (
     <ToastProvider>
       <RemoteConnectionProvider>
+        <ClientSummarySourceBinding />
         <InboxProvider>
           <SchemaValidationProvider>
             <RemoteAppInner>{children}</RemoteAppInner>

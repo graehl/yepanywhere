@@ -9,6 +9,11 @@ Progress:
   selector hooks subscribe to the current source's Zustand store, test reset
   clears the full registry, and focused tests cover host switch invisibility,
   switch-back preservation, and current-source hook rerenders.
+- [x] 2026-06-28: Added the remote/local source binding. Local app mounts bind
+  `local`; remote login/unknown-host states bind `remote:none`; saved relay
+  route changes bind the requested `host:<id>` before the new connection
+  finishes; saved direct connections bind `host:<id>`; unsaved direct
+  connections fall back to `direct:<normalized-ws-url>`.
 
 This doc tracks the next widening of the client summary store. The normalized
 `ClientSummaryState` shape stays the same, but the store is no longer a single
@@ -194,7 +199,7 @@ Do not let source-global draft scans contaminate per-host session cards.
 1. [x] Add the source-key registry and current-source subscription layer. Keep
    `ClientSummaryState` unchanged. Update tests for source switching and
    current-source hook resubscription.
-2. [ ] Add remote/local source binding and make current-source selectors switch to
+2. [x] Add remote/local source binding and make current-source selectors switch to
    the requested host immediately during host changes.
 3. [ ] Require source keys on REST snapshot reporters and migrate sessions, inbox,
    projects, and project queue feed hooks.

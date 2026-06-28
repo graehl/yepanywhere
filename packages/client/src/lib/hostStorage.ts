@@ -166,6 +166,12 @@ export function getHostById(id: string): SavedHost | undefined {
   return data.hosts.find((h) => h.id === id);
 }
 
+/** Find a direct host by WebSocket URL */
+export function getHostByDirectWsUrl(wsUrl: string): SavedHost | undefined {
+  const data = loadSavedHosts();
+  return data.hosts.find((h) => h.mode === "direct" && h.wsUrl === wsUrl);
+}
+
 /** Create a new relay host (doesn't save yet - call saveHost to persist) */
 export function createRelayHost(params: {
   relayUrl: string;

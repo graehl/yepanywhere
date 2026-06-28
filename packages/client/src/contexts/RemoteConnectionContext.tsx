@@ -37,6 +37,7 @@ import {
 import type { Connection } from "../lib/connection/types";
 import {
   clearRelayHostSession,
+  getHostByDirectWsUrl,
   getHostById,
   updateHostSession,
   upsertRelayHost,
@@ -112,6 +113,8 @@ interface RemoteConnectionState {
   currentHostId: string | null;
   /** Relay username of the current host (derived from currentHostId) */
   currentRelayUsername: string | null;
+  /** Direct WebSocket URL for direct connections without a saved host */
+  currentDirectUrl: string | null;
   /** Set the current host ID (called by RelayConnectionGate after connect) */
   setCurrentHostId: (hostId: string | null) => void;
   /** Whether user intentionally disconnected (prevents auto-redirect) */
@@ -288,6 +291,7 @@ export function RemoteConnectionProvider({ children }: Props) {
     useState<AutoResumeError | null>(null);
   // Track current host ID for multi-host support
   const [currentHostId, setCurrentHostIdState] = useState<string | null>(null);
+  const [currentDirectUrl, setCurrentDirectUrl] = useState<string | null>(null);
   // Keep currentHostId in a ref so handleSessionEstablished always has latest value
   const currentHostIdRef = useRef<string | null>(null);
   const setCurrentHostId = useCallback((hostId: string | null) => {
@@ -341,6 +345,7 @@ export function RemoteConnectionProvider({ children }: Props) {
       setIsConnecting(true);
       setError(null);
       setIsIntentionalDisconnect(false);
+      setCurrentDirectUrl(wsUrl);
       rememberMeRef.current = rememberMe;
 
       try {
@@ -372,6 +377,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         const message =
           err instanceof Error ? err.message : "Connection failed";
         setError(message);
+        setCurrentDirectUrl(null);
         throw err;
       } finally {
         setIsConnecting(false);
@@ -389,6 +395,7 @@ export function RemoteConnectionProvider({ children }: Props) {
 
       setIsConnecting(true);
       setError(null);
+      setCurrentDirectUrl(currentStored.wsUrl);
       rememberMeRef.current = true; // If resuming, we want to keep remembering
 
       try {
@@ -410,6 +417,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         const message =
           err instanceof Error ? err.message : "Session resume failed";
         setError(message);
+        setCurrentDirectUrl(null);
         throw err;
       } finally {
         setIsConnecting(false);
@@ -433,6 +441,7 @@ export function RemoteConnectionProvider({ children }: Props) {
       setIsConnecting(true);
       setError(null);
       setIsIntentionalDisconnect(false);
+      setCurrentDirectUrl(null);
       rememberMeRef.current = rememberMe;
       onStatusChange?.("connecting_relay");
 
@@ -577,6 +586,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         // Clear host ID and optionally mark as intentional disconnect
         // Use isIntentional=false for programmatic host switches (e.g., browser back/forward)
         setCurrentHostId(null);
+        setCurrentDirectUrl(null);
         setIsIntentionalDisconnect(isIntentional);
       });
     },
@@ -621,6 +631,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         let conn: SecureConnection;
 
         if (currentStored.mode === "relay") {
+          setCurrentDirectUrl(null);
           // Relay mode: reconnect through relay, then resume SRP session
           console.log("[RemoteConnection] Auto-resume via relay");
           const relayUrl = currentStored.wsUrl;
@@ -701,6 +712,7 @@ export function RemoteConnectionProvider({ children }: Props) {
             handleDisconnect,
           );
         } else {
+          setCurrentDirectUrl(currentStored.wsUrl);
           // Direct mode: just create connection and resume
           conn = SecureConnection.forResumeOnly(
             storedSession,
@@ -726,11 +738,18 @@ export function RemoteConnectionProvider({ children }: Props) {
             });
             setCurrentHostId(host.id);
           }
+        } else if (currentStored.wsUrl) {
+          const host = getHostByDirectWsUrl(currentStored.wsUrl);
+          setCurrentHostId(host?.id ?? null);
         }
         // Set global connection BEFORE setConnection to avoid race condition
         setGlobalConnection(conn);
         setConnection(conn);
       } catch (err) {
+        if (currentStored.mode !== "relay") {
+          setCurrentHostId(null);
+          setCurrentDirectUrl(null);
+        }
         const message = err instanceof Error ? err.message : String(err);
         console.log(
           "[RemoteConnection] Auto-resume failed, user will need to re-authenticate:",
@@ -856,6 +875,7 @@ export function RemoteConnectionProvider({ children }: Props) {
     autoResumeError,
     currentHostId,
     currentRelayUsername,
+    currentDirectUrl,
     setCurrentHostId,
     isIntentionalDisconnect,
     connect,

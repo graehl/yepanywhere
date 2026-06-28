@@ -8,6 +8,7 @@ import { FloatingActionButton } from "./components/FloatingActionButton";
 import { ReloadBanner } from "./components/ReloadBanner";
 import { OnboardingWizard } from "./components/onboarding";
 import { AuthProvider } from "./contexts/AuthContext";
+import { ClientSummarySourceBinding } from "./contexts/ClientSummarySourceBinding";
 import { InboxProvider } from "./contexts/InboxContext";
 import { SchemaValidationProvider } from "./contexts/SchemaValidationContext";
 import { ToastProvider } from "./contexts/ToastContext";
@@ -98,6 +99,7 @@ export function App({ children }: Props) {
     <I18nProvider>
       <ToastProvider>
         <AuthProvider>
+          <ClientSummarySourceBinding />
           <InboxProvider>
             <SchemaValidationProvider>
               <AppContent>{children}</AppContent>

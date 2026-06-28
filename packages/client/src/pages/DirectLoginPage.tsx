@@ -23,6 +23,7 @@ export function DirectLoginPage() {
     storedUsername,
     hasStoredSession,
     resumeSession,
+    setCurrentHostId,
   } = useRemoteConnection();
 
   // Form state - pre-fill from stored credentials
@@ -88,6 +89,26 @@ export function DirectLoginPage() {
       wsUrl = `${wsUrl.replace(/\/$/, "")}/api/ws`;
     }
 
+    let rememberedHostId: string | null = null;
+    if (rememberMe) {
+      const existing = loadSavedHosts().hosts.find(
+        (h) => h.mode === "direct" && h.wsUrl === wsUrl,
+      );
+      const host =
+        existing ??
+        createDirectHost({
+          wsUrl,
+          srpUsername: username.trim(),
+        });
+      if (!existing) {
+        saveHost(host);
+      }
+      rememberedHostId = host.id;
+      setCurrentHostId(host.id);
+    } else {
+      setCurrentHostId(null);
+    }
+
     try {
       // If we have a stored session and credentials match, try to resume
       if (
@@ -100,22 +121,10 @@ export function DirectLoginPage() {
       } else {
         await connect(wsUrl, username.trim(), password, rememberMe);
       }
-
-      // Save host for quick reconnect (if rememberMe is enabled)
-      if (rememberMe) {
-        const existing = loadSavedHosts().hosts.find(
-          (h) => h.mode === "direct" && h.wsUrl === wsUrl,
-        );
-        if (!existing) {
-          const newHost = createDirectHost({
-            wsUrl,
-            srpUsername: username.trim(),
-          });
-          saveHost(newHost);
-        }
-      }
+      setCurrentHostId(rememberedHostId);
       // On success, the RemoteApp will render the main app instead of login
     } catch {
+      setCurrentHostId(null);
       // Error is already set in context
     }
   };

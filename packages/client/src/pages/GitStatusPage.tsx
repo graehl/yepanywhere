@@ -185,7 +185,7 @@ function GitStatusContent({
           </span>
         </div>
 
-        <GitRecentCommits commits={status.recentCommits} t={t} />
+        <GitRecentCommits commits={status.recentCommits ?? []} t={t} />
       </div>
 
       <div className="git-status-workspace">

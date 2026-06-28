@@ -42,5 +42,5 @@ export interface GitStatusInfo {
   /** Changed files with status and line counts */
   files: GitFileChange[];
   /** Recent commits on the current HEAD */
-  recentCommits: GitRecentCommit[];
+  recentCommits?: GitRecentCommit[];
 }

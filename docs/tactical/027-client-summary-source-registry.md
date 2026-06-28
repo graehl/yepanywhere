@@ -56,6 +56,10 @@ Progress:
   These drafts are crash/refresh recovery for the current UI format, not an
   upgrade-durable data store, so draft-specific legacy migrations were removed
   instead of carrying old draft keys forward.
+- [x] 2026-06-28: Scoped prompt-panel drafts by summary source. Tool approval
+  feedback drafts and AskUserQuestion "Other" drafts now key localStorage by
+  encoded source key plus session id, and their hooks reload when the current
+  source changes.
 
 This doc tracks the next widening of the client summary store. The normalized
 `ClientSummaryState` shape stays the same, but the store is no longer a single
@@ -235,6 +239,8 @@ durability without scanning every localStorage key on each badge refresh:
   and are compatible with older clients;
 - source-scoped remote body keys include the encoded source key and session id;
 - new-session and FAB composer draft keys include the encoded source key;
+- tool approval feedback and AskUserQuestion "Other" draft keys include the
+  encoded source key and session id;
 - each source has a compact draft index, and badge scans read only that index;
 - the local compatibility scan reads old `draft-message-*` body keys only for
   `local` and backfills the local index.
@@ -279,6 +285,9 @@ Automated tests:
   share cached transcript data.
 - new-session and FAB composer drafts are keyed by source, and switching hosts
   hides another host's unsent new-session prompt.
+- tool approval feedback and AskUserQuestion "Other" drafts are keyed by source,
+  and switching hosts hides another host's prompt-panel draft while preserving
+  it for switch-back.
 
 Manual test:
 

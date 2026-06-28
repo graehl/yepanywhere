@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createNewSessionDraftKey,
+  createQuestionOtherDraftKey,
+  createToolApprovalFeedbackDraftKey,
   setsEqual,
   useNewSessionDraft,
+  useQuestionOtherDrafts,
+  useToolApprovalFeedbackDraft,
 } from "../useDrafts";
 import {
   createClientSummaryHostSourceKey,
@@ -153,5 +157,114 @@ describe("useNewSessionDraft", () => {
     const { result } = renderHook(() => useNewSessionDraft("project-1"));
 
     expect(result.current).toBe(true);
+  });
+});
+
+describe("useToolApprovalFeedbackDraft", () => {
+  it("keeps feedback drafts invisible across source switches", async () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    const winnative = createClientSummaryHostSourceKey("winnative");
+    const sessionId = "session-1";
+    localStorage.setItem(
+      createToolApprovalFeedbackDraftKey(macbook, sessionId),
+      "mac feedback",
+    );
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    const { result } = renderHook(() =>
+      useToolApprovalFeedbackDraft(sessionId),
+    );
+
+    expect(result.current[0]).toBe("mac feedback");
+
+    act(() => {
+      setCurrentClientSummarySourceKey(winnative);
+    });
+
+    await waitFor(() => {
+      expect(result.current[0]).toBe("");
+    });
+
+    act(() => {
+      result.current[1]("win feedback");
+    });
+
+    expect(
+      localStorage.getItem(
+        createToolApprovalFeedbackDraftKey(winnative, sessionId),
+      ),
+    ).toBe("win feedback");
+    expect(
+      localStorage.getItem(
+        createToolApprovalFeedbackDraftKey(macbook, sessionId),
+      ),
+    ).toBe("mac feedback");
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    await waitFor(() => {
+      expect(result.current[0]).toBe("mac feedback");
+    });
+  });
+});
+
+describe("useQuestionOtherDrafts", () => {
+  it("keeps question other drafts invisible across source switches", async () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+    const winnative = createClientSummaryHostSourceKey("winnative");
+    const sessionId = "session-1";
+    localStorage.setItem(
+      createQuestionOtherDraftKey(macbook, sessionId),
+      JSON.stringify({ "Choose deployment": "mac answer" }),
+    );
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    const { result } = renderHook(() => useQuestionOtherDrafts(sessionId));
+
+    expect(result.current[0]).toEqual({ "Choose deployment": "mac answer" });
+
+    act(() => {
+      setCurrentClientSummarySourceKey(winnative);
+    });
+
+    await waitFor(() => {
+      expect(result.current[0]).toEqual({});
+    });
+
+    act(() => {
+      result.current[1]("Choose deployment", "win answer");
+    });
+
+    expect(
+      JSON.parse(
+        localStorage.getItem(
+          createQuestionOtherDraftKey(winnative, sessionId),
+        ) ?? "{}",
+      ),
+    ).toEqual({ "Choose deployment": "win answer" });
+    expect(
+      JSON.parse(
+        localStorage.getItem(createQuestionOtherDraftKey(macbook, sessionId)) ??
+          "{}",
+      ),
+    ).toEqual({ "Choose deployment": "mac answer" });
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+    });
+
+    await waitFor(() => {
+      expect(result.current[0]).toEqual({
+        "Choose deployment": "mac answer",
+      });
+    });
   });
 });

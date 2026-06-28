@@ -110,12 +110,47 @@ function getNewSessionDraftKeys(
     : [sharedKey];
 }
 
-// Tool prompt draft storage keys
-const TOOL_PROMPT_DRAFT_PREFIX = "draft-tool-prompt-";
+const TOOL_APPROVAL_FEEDBACK_DRAFT_KEY_PREFIX = "draft-tool-approval-feedback:";
+const QUESTION_OTHER_DRAFT_KEY_PREFIX = "draft-question-other:";
+
+export function createToolApprovalFeedbackDraftKey(
+  sourceKey: ClientSummarySourceKey,
+  sessionId: string,
+): string {
+  return `${TOOL_APPROVAL_FEEDBACK_DRAFT_KEY_PREFIX}${encodeDraftKeyPart(sourceKey)}:${encodeDraftKeyPart(sessionId)}`;
+}
+
+export function createQuestionOtherDraftKey(
+  sourceKey: ClientSummarySourceKey,
+  sessionId: string,
+): string {
+  return `${QUESTION_OTHER_DRAFT_KEY_PREFIX}${encodeDraftKeyPart(sourceKey)}:${encodeDraftKeyPart(sessionId)}`;
+}
+
+function readStringDraft(key: string): string {
+  try {
+    return localStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function readQuestionOtherDrafts(key: string): Record<string, string> {
+  try {
+    const stored = localStorage.getItem(key);
+    if (!stored) return {};
+    const parsed: unknown = JSON.parse(stored);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, string>)
+      : {};
+  } catch {
+    return {};
+  }
+}
 
 /**
  * Hook to persist draft text for tool approval feedback.
- * Keyed by sessionId, not by specific tool call.
+ * Keyed by source and sessionId, not by specific tool call.
  *
  * @param sessionId - The session ID
  * @returns [value, setValue, clearValue] tuple
@@ -123,15 +158,14 @@ const TOOL_PROMPT_DRAFT_PREFIX = "draft-tool-prompt-";
 export function useToolApprovalFeedbackDraft(
   sessionId: string,
 ): [string, (value: string) => void, () => void] {
-  const key = `${TOOL_PROMPT_DRAFT_PREFIX}${sessionId}-toolApprovalFeedback`;
+  const sourceKey = useClientSummarySourceKey();
+  const key = createToolApprovalFeedbackDraftKey(sourceKey, sessionId);
 
-  const [value, setValueState] = useState<string>(() => {
-    try {
-      return localStorage.getItem(key) ?? "";
-    } catch {
-      return "";
-    }
-  });
+  const [value, setValueState] = useState<string>(() => readStringDraft(key));
+
+  useEffect(() => {
+    setValueState(readStringDraft(key));
+  }, [key]);
 
   const setValue = useCallback(
     (newValue: string) => {
@@ -163,7 +197,7 @@ export function useToolApprovalFeedbackDraft(
 
 /**
  * Hook to persist "Other" text inputs for AskUserQuestion panels.
- * Stores a map of question text -> otherText, keyed by sessionId.
+ * Stores a map of question text -> otherText, keyed by source and sessionId.
  *
  * For multi-stage questions (multiple tabs), each question's "Other"
  * input is stored separately under the same session key. When navigating
@@ -179,18 +213,16 @@ export function useQuestionOtherDrafts(
   (question: string, value: string) => void,
   () => void,
 ] {
-  const key = `${TOOL_PROMPT_DRAFT_PREFIX}${sessionId}-questionOther`;
+  const sourceKey = useClientSummarySourceKey();
+  const key = createQuestionOtherDraftKey(sourceKey, sessionId);
 
   const [otherTexts, setOtherTextsState] = useState<Record<string, string>>(
-    () => {
-      try {
-        const stored = localStorage.getItem(key);
-        return stored ? JSON.parse(stored) : {};
-      } catch {
-        return {};
-      }
-    },
+    () => readQuestionOtherDrafts(key),
   );
+
+  useEffect(() => {
+    setOtherTextsState(readQuestionOtherDrafts(key));
+  }, [key]);
 
   const setOtherText = useCallback(
     (question: string, value: string) => {

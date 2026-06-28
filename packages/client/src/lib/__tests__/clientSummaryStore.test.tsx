@@ -4,7 +4,7 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GlobalSessionItem } from "../../api/client";
+import type { GlobalSessionItem, InboxItem } from "../../api/client";
 
 type MockActivityCallback = (event: unknown) => void;
 
@@ -49,10 +49,12 @@ vi.mock("../activityBus", () => ({
 import {
   getClientSummarySnapshot,
   reportGlobalSessionsCollectionSnapshot,
+  reportInboxCollectionSnapshot,
   reportSessionCollectionCreated,
   reportSessionCollectionMetadataChanged,
   resetClientSummaryStoreForTests,
   useDraftSessionIds,
+  useInboxResponseSnapshot,
   useProjectQueuedSessionIds,
   useRecentSessionRecords,
   useSessionCollectionRecord,
@@ -79,6 +81,18 @@ function globalSession(
     ownership: { owner: "none" },
     isArchived: false,
     isStarred: false,
+    ...overrides,
+  };
+}
+
+function inboxItem(id: string, overrides: Partial<InboxItem> = {}): InboxItem {
+  return {
+    sessionId: id,
+    projectId: PROJECT_ID,
+    projectName: "Project",
+    sessionTitle: `Session ${id}`,
+    updatedAt: RECENT,
+    hasUnread: false,
     ...overrides,
   };
 }
@@ -163,6 +177,39 @@ describe("clientSummaryStore", () => {
 
     expect(recent.result.current).toEqual([]);
     expect(starred.result.current.map((s) => s.id)).toEqual(["session-1"]);
+  });
+
+  it("reports inbox snapshots to React selectors", () => {
+    const inbox = renderHook(() => useInboxResponseSnapshot());
+
+    act(() => {
+      reportInboxCollectionSnapshot(
+        {
+          needsAttention: [
+            inboxItem("needs", { pendingInputType: "user-question" }),
+          ],
+          active: [inboxItem("active")],
+          recentActivity: [],
+          unread8h: [],
+          unread24h: [],
+        },
+        100,
+      );
+    });
+
+    expect(inbox.result.current.needsAttention).toMatchObject([
+      {
+        sessionId: "needs",
+        pendingInputType: "user-question",
+        activity: "waiting-input",
+      },
+    ]);
+    expect(inbox.result.current.active).toMatchObject([
+      {
+        sessionId: "active",
+        activity: "in-turn",
+      },
+    ]);
   });
 
   it("reports local metadata changes to derived projections", () => {

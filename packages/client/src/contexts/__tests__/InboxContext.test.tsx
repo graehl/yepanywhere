@@ -1,5 +1,6 @@
-import { render, waitFor } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
 import {
   InboxProvider,
   type InboxResponse,
@@ -44,6 +45,7 @@ function InboxConsumer() {
 
 describe("InboxProvider", () => {
   beforeEach(() => {
+    resetClientSummaryStoreForTests();
     mockGetInbox.mockReset();
     mockGetInbox.mockResolvedValue({
       needsAttention: [],
@@ -57,8 +59,10 @@ describe("InboxProvider", () => {
   });
 
   afterEach(() => {
+    cleanup();
     remoteState.connection = null;
     vi.clearAllMocks();
+    resetClientSummaryStoreForTests();
   });
 
   it("does not fetch before remote connection is ready", async () => {
@@ -74,6 +78,22 @@ describe("InboxProvider", () => {
   });
 
   it("fetches once the remote connection becomes available", async () => {
+    mockGetInbox.mockResolvedValue({
+      needsAttention: [],
+      active: [
+        {
+          sessionId: "session-1",
+          projectId: "project-1",
+          projectName: "Project",
+          sessionTitle: "Session 1",
+          updatedAt: "2026-06-28T00:00:00.000Z",
+        },
+      ],
+      recentActivity: [],
+      unread8h: [],
+      unread24h: [],
+    });
+
     const view = render(
       <InboxProvider>
         <InboxConsumer />
@@ -91,6 +111,9 @@ describe("InboxProvider", () => {
 
     await waitFor(() => {
       expect(mockGetInbox).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(view.getByTestId("total").textContent).toBe("1");
     });
   });
 });

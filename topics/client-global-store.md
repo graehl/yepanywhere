@@ -160,14 +160,16 @@ scan and tears down its storage listener plus polling interval when the last
 draft-decoration consumer unmounts.
 
 The original session collection fields are now nested under `sessions`, matching
-the documented normalized shape. The remaining major missing slice is Inbox tier
-membership.
+the documented normalized shape.
 
-The next likely slice is Inbox data migration: keep `InboxContext` or a
-purpose-built feed hook focused on readiness/loading/error, report `/api/inbox`
-snapshots into the client summary store, and render tier rows from selectors
-instead of hook-local arrays.
+Inbox tier membership now lives in the summary store as ordered session ids.
+`InboxContext` remains the feed/lifecycle boundary for remote readiness,
+loading/error, stable tier ordering, debounced refetch, and refresh controls,
+but accepted `/api/inbox` snapshots report partial session facts plus tier ids
+into the store. Existing consumers still read through `useInboxContext`, whose
+arrays are selected from the shared store.
 
-This should reduce the long tail of hooks that each own partial session/project
-truth and make future UI affordances appear consistently across Sidebar, Inbox,
-All Sessions, and related pages.
+The next likely work is cleanup: audit long-tail hooks and pages that still own
+row-like session/project truth, replace direct row returns with feed controls
+plus store selectors where practical, and add narrower selectors for hot
+surfaces if broad context/store subscriptions become noisy.

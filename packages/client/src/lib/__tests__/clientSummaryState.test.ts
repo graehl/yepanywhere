@@ -3,12 +3,13 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
-import type { GlobalSessionItem } from "../../api/client";
+import type { GlobalSessionItem, InboxItem } from "../../api/client";
 import type { Project as GlobalProject } from "../../types";
 import type { SessionCreatedEvent } from "../activityBus";
 import {
   applyDraftSessionIdsSnapshot,
   applyGlobalSessionsCollectionSnapshot,
+  applyInboxCollectionSnapshot,
   applyProjectCollectionSnapshot,
   applyProjectsCollectionSnapshot,
   applyProjectQueueCollectionChanged,
@@ -19,6 +20,7 @@ import {
   createEmptyClientSummaryState,
   createGlobalSessionsQueryKey,
   selectDraftSessionIds,
+  selectInboxResponse,
   selectRecentSessionRecords,
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
@@ -51,6 +53,18 @@ function globalSession(
     ownership: { owner: "none" },
     isArchived: false,
     isStarred: false,
+    ...overrides,
+  };
+}
+
+function inboxItem(id: string, overrides: Partial<InboxItem> = {}): InboxItem {
+  return {
+    sessionId: id,
+    projectId: PROJECT_ID,
+    projectName: "Project",
+    sessionTitle: `Session ${id}`,
+    updatedAt: RECENT,
+    hasUnread: false,
     ...overrides,
   };
 }
@@ -530,6 +544,120 @@ describe("clientSummaryState", () => {
       ids: ["new", "existing"],
       hasMore: true,
     });
+  });
+
+  it("stores inbox tier ids and upserts partial session facts", () => {
+    const state = applyInboxCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        needsAttention: [
+          inboxItem("needs", {
+            pendingInputType: "tool-approval",
+            hasUnread: true,
+          }),
+        ],
+        active: [
+          inboxItem("active", {
+            activity: "in-turn",
+            updatedAt: "2026-06-27T11:05:00.000Z",
+          }),
+        ],
+        recentActivity: [inboxItem("recent")],
+        unread8h: [],
+        unread24h: [],
+      },
+      100,
+    );
+
+    const inbox = selectInboxResponse(state);
+    expect(inbox.needsAttention.map((item) => item.sessionId)).toEqual([
+      "needs",
+    ]);
+    expect(inbox.active.map((item) => item.sessionId)).toEqual(["active"]);
+    expect(inbox.recentActivity.map((item) => item.sessionId)).toEqual([
+      "recent",
+    ]);
+    expect(selectSessionCollectionRecord(state, "needs")).toMatchObject({
+      id: "needs",
+      title: "Session needs",
+      projectId: PROJECT_ID,
+      projectName: "Project",
+      activity: "waiting-input",
+      pendingInputType: "tool-approval",
+      hasUnread: true,
+    });
+    expect(selectSessionCollectionRecord(state, "active")).toMatchObject({
+      id: "active",
+      activity: "in-turn",
+    });
+  });
+
+  it("clears older active lifecycle when a newer inbox row is no longer active", () => {
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [
+          globalSession("session-1", {
+            activity: "in-turn",
+            ownership: { owner: "self", processId: "process-1" },
+          }),
+        ],
+        hasMore: false,
+      },
+      100,
+    );
+
+    state = applyInboxCollectionSnapshot(
+      state,
+      {
+        needsAttention: [],
+        active: [],
+        recentActivity: [inboxItem("session-1")],
+        unread8h: [],
+        unread24h: [],
+      },
+      200,
+    );
+
+    expect(selectSessionCollectionRecord(state, "session-1")?.activity).toBe(
+      undefined,
+    );
+    expect(selectInboxResponse(state).recentActivity[0]).toMatchObject({
+      sessionId: "session-1",
+      activity: undefined,
+    });
+  });
+
+  it("does not let an older inbox snapshot reorder newer tier membership", () => {
+    let state = applyInboxCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        needsAttention: [],
+        active: [inboxItem("current")],
+        recentActivity: [],
+        unread8h: [],
+        unread24h: [],
+      },
+      200,
+    );
+
+    state = applyInboxCollectionSnapshot(
+      state,
+      {
+        needsAttention: [],
+        active: [inboxItem("stale")],
+        recentActivity: [],
+        unread8h: [],
+        unread24h: [],
+      },
+      100,
+    );
+
+    expect(
+      selectInboxResponse(state).active.map((item) => item.sessionId),
+    ).toEqual(["current"]);
+    expect(selectSessionCollectionRecord(state, "stale")).toBeUndefined();
   });
 
   it("stores project list snapshots as ordered query ids", () => {

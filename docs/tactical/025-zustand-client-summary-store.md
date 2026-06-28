@@ -22,7 +22,7 @@ Progress:
       facts.
 - [x] Move session draft badges into store-owned local decorations.
 - [x] Nest session entities and queries under `sessions`.
-- [ ] Migrate Inbox to feed snapshots plus store selectors.
+- [x] Migrate Inbox to feed snapshots plus store selectors.
 - [ ] Audit and retire long-tail hooks that privately own row-like session,
       project, or queue data.
 
@@ -69,6 +69,12 @@ Latest update:
   session-specific, but the aggregate state shape now matches the documented
   `{ sessions, projects, projectQueues, localDecorations }` layout before Inbox
   tier membership is added.
+- 2026-06-28: Migrated Inbox tier membership into the client summary store.
+  `InboxContext` still owns remote readiness, loading/error, stable tier order,
+  debounced refetch, and refresh controls, but accepted `/api/inbox` snapshots
+  now report ordered tier ids plus partial session facts into the store.
+  Existing consumers keep using `useInboxContext` while its row arrays are
+  selected from shared summary state.
 
 ## Context
 
@@ -87,7 +93,8 @@ the next consistency boundary:
 
 - Project Queue `Q` badges are currently sidebar-only because only Sidebar maps
   project queue items back to targeted session ids.
-- Inbox still renders from `InboxContext` local row arrays.
+- Inbox renders from `InboxContext`, but that context now selects rows from the
+  shared client summary store instead of owning local row arrays.
 - project data (`activeOwnedCount`, `activeExternalCount`,
   `projectQueueBlockingCount`) is fetched and cached by project hooks, not the
   collection.
@@ -291,20 +298,20 @@ Selectors should:
    decorations.
 8. [x] Migrate All Sessions queue decorations.
 9. [x] Migrate Inbox session-card queue decorations.
+10. [x] Migrate Inbox tier membership and partial row facts into the client
+    summary store while keeping `InboxContext` as the feed/lifecycle owner.
 
 ## Follow-On Slices
 
 After the no-behavior-change port:
 
-1. Migrate Inbox to a feed-plus-store model:
-   - `/api/inbox` owns tier membership;
-   - the store owns partial session facts and tier ids;
-   - `InboxContent` renders via selectors.
-2. Enrich `/api/sessions` or reduce project-queue events enough for Sidebar and
+1. Enrich `/api/sessions` or reduce project-queue events enough for Sidebar and
    All Sessions to show targeted queue badges without extra per-surface queue
    fetches.
-3. Audit Agents, Projects, New Session, and Session Page for hook-local summary
+2. Audit Agents, Projects, New Session, and Session Page for hook-local summary
    facts that should be store-fed instead.
+3. Split purpose-built selectors out of broad context/store hooks for hot
+   surfaces when row render churn becomes measurable.
 
 ## Verification Checklist
 

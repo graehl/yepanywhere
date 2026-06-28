@@ -1,7 +1,8 @@
 /**
- * InboxContext - Single source of truth for inbox data.
+ * InboxContext - Fetch lifecycle and compatibility context for inbox data.
  *
- * Consolidates inbox fetching to avoid multiple hooks making duplicate requests.
+ * Consolidates inbox fetching, reports accepted snapshots into the client
+ * summary store, and exposes store-selected rows to existing consumers.
  * Supports an `enabled` option to pause fetching when inbox UI is not visible.
  */
 
@@ -18,24 +19,19 @@ import { type InboxItem, type InboxResponse, api } from "../api/client";
 import { useFileActivity } from "../hooks/useFileActivity";
 import { authEvents } from "../lib/authEvents";
 import { isRemoteClient } from "../lib/connection";
+import {
+  reportInboxCollectionSnapshot,
+  useInboxResponseSnapshot,
+} from "../lib/clientSummaryStore";
+import { INBOX_TIERS, type InboxTier } from "../lib/inboxTiers";
 import { useOptionalRemoteConnection } from "./RemoteConnectionContext";
 
 // Re-export types for consumers
 export type { InboxItem, InboxResponse } from "../api/client";
+export { INBOX_TIERS, type InboxTier } from "../lib/inboxTiers";
 
 // Debounce interval for refetch on SSE events (prevents rapid refetches)
 const REFETCH_DEBOUNCE_MS = 500;
-
-/** The five tier keys in priority order */
-export const INBOX_TIERS = [
-  "needsAttention",
-  "active",
-  "recentActivity",
-  "unread8h",
-  "unread24h",
-] as const;
-
-export type InboxTier = (typeof INBOX_TIERS)[number];
 
 /**
  * Tracks the stable order of session IDs within each tier.
@@ -121,14 +117,6 @@ function createEmptyTierOrder(): TierOrder {
   };
 }
 
-const EMPTY_INBOX: InboxResponse = {
-  needsAttention: [],
-  active: [],
-  recentActivity: [],
-  unread8h: [],
-  unread24h: [],
-};
-
 interface InboxContextValue {
   /** Sessions requiring immediate user input (tool approval or question) */
   needsAttention: InboxItem[];
@@ -175,7 +163,7 @@ export function InboxProvider({
   initialEnabled = true,
 }: InboxProviderProps) {
   const remoteConnection = useOptionalRemoteConnection();
-  const [inbox, setInbox] = useState<InboxResponse>(EMPTY_INBOX);
+  const inbox = useInboxResponseSnapshot();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [enabled, setEnabled] = useState(initialEnabled);
@@ -187,6 +175,9 @@ export function InboxProvider({
   const tierOrderRef = useRef<TierOrder>(createEmptyTierOrder());
   // Track if we've done the initial load (determines whether to use stable ordering)
   const hasInitialLoadRef = useRef(false);
+  // Track accepted responses so an older overlapping request cannot perturb the
+  // stable tier order after a newer request already won.
+  const latestAcceptedRequestStartedAtRef = useRef(0);
   // Debounce timer for SSE-triggered refetches
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track enabled state in ref for callbacks
@@ -210,25 +201,27 @@ export function InboxProvider({
         return;
       }
 
+      const requestStartedAt = Date.now();
       try {
         const data = await api.getInbox();
+        const nextInbox =
+          !hasInitialLoadRef.current || forceFullSort
+            ? data
+            : mergeWithStableOrder(data, tierOrderRef.current);
 
-        if (!hasInitialLoadRef.current || forceFullSort) {
-          // Initial load or explicit refresh: use server's sort order
-          setInbox(data);
-          tierOrderRef.current = extractTierOrder(data);
-          hasInitialLoadRef.current = true;
-        } else {
-          // Subsequent fetches: merge with stable ordering
-          const mergedData = mergeWithStableOrder(data, tierOrderRef.current);
-          setInbox(mergedData);
-          // Update tier order to include any new items
-          tierOrderRef.current = extractTierOrder(mergedData);
+        if (requestStartedAt < latestAcceptedRequestStartedAtRef.current) {
+          return;
         }
 
+        reportInboxCollectionSnapshot(nextInbox, requestStartedAt);
+        tierOrderRef.current = extractTierOrder(nextInbox);
+        latestAcceptedRequestStartedAtRef.current = requestStartedAt;
+        hasInitialLoadRef.current = true;
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)));
+        if (requestStartedAt >= latestAcceptedRequestStartedAtRef.current) {
+          setError(err instanceof Error ? err : new Error(String(err)));
+        }
       } finally {
         setLoading(false);
       }

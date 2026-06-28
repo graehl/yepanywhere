@@ -17,6 +17,7 @@ import {
 import {
   applyDraftSessionIdsSnapshot,
   applyGlobalSessionsCollectionSnapshot,
+  applyInboxCollectionSnapshot,
   applyProjectCollectionSnapshot,
   applyProjectsCollectionSnapshot,
   applyProjectQueueCollectionChanged,
@@ -30,6 +31,7 @@ import {
   createEmptyClientSummaryState,
   createGlobalSessionsQueryKey,
   selectDraftSessionIds,
+  selectInboxResponse,
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
   selectProjectQueuedSessionIds,
@@ -41,6 +43,7 @@ import {
   selectSessionCollectionRecord,
   selectStarredSessionRecords,
   type GlobalSessionsCollectionSnapshot,
+  type InboxCollectionSnapshot,
   type ProjectCollectionRecord,
   type ProjectCollectionSnapshot,
   type ProjectQueueCollectionSnapshot,
@@ -262,6 +265,15 @@ export function reportGlobalSessionsCollectionSnapshot(
   );
 }
 
+export function reportInboxCollectionSnapshot(
+  input: InboxCollectionSnapshot,
+  requestStartedAt = Date.now(),
+): void {
+  updateSnapshot((current) =>
+    applyInboxCollectionSnapshot(current, input, requestStartedAt),
+  );
+}
+
 export function reportProjectsCollectionSnapshot(
   input: ProjectsCollectionSnapshot,
   requestStartedAt = Date.now(),
@@ -384,6 +396,11 @@ export function useProjectQueuedSessionIds(
 export function useDraftSessionIds(): ReadonlySet<string> {
   useDraftDecorationSubscription();
   return useStore(clientSummaryStore, selectDraftSessionIds);
+}
+
+export function useInboxResponseSnapshot(): InboxCollectionSnapshot {
+  const state = useClientSummaryState();
+  return useMemo(() => selectInboxResponse(state), [state]);
 }
 
 export function useStarredSessionRecords(): SessionCollectionRecord[] {

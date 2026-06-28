@@ -7,7 +7,7 @@ import type {
   ProjectQueueResponse,
   UrlProjectId,
 } from "@yep-anywhere/shared";
-import type { GlobalSessionItem } from "../api/client";
+import type { GlobalSessionItem, InboxItem, InboxResponse } from "../api/client";
 import type { Project, SessionStatus } from "../types";
 import type {
   ProcessStateEvent,
@@ -17,6 +17,11 @@ import type {
   SessionStatusEvent,
   SessionUpdatedEvent,
 } from "./activityBus";
+import {
+  createEmptyInboxTierRecord,
+  INBOX_TIERS,
+  type InboxTier,
+} from "./inboxTiers";
 
 const NO_OBSERVATION = Number.NEGATIVE_INFINITY;
 
@@ -99,6 +104,12 @@ export interface ProjectQueueCollectionState {
   byProject: ReadonlyMap<string, ProjectQueueCollectionRecord>;
 }
 
+export interface InboxCollectionState {
+  tiers: Record<InboxTier, readonly string[]>;
+  requestStartedAt?: number;
+  fetchedAt?: number;
+}
+
 export interface SessionCollectionState {
   entities: ReadonlyMap<string, SessionCollectionRecord>;
   queries: ReadonlyMap<string, SessionCollectionQueryState>;
@@ -113,6 +124,7 @@ export interface ClientSummaryState {
   sessions: SessionCollectionState;
   projects: ProjectCollectionState;
   projectQueues: ProjectQueueCollectionState;
+  inbox: InboxCollectionState;
   localDecorations: LocalDecorationState;
 }
 
@@ -133,6 +145,8 @@ export interface ProjectCollectionSnapshot {
 
 export interface ProjectQueueCollectionSnapshot extends ProjectQueueResponse {}
 
+export interface InboxCollectionSnapshot extends InboxResponse {}
+
 const ALL_PROJECTS_QUERY_KEY = "all-projects";
 const EMPTY_PROJECT_QUEUE_ITEMS: readonly ProjectQueueItemSummary[] = [];
 
@@ -148,6 +162,9 @@ export function createEmptyClientSummaryState(): ClientSummaryState {
     },
     projectQueues: {
       byProject: new Map(),
+    },
+    inbox: {
+      tiers: createEmptyInboxTierRecord(() => []),
     },
     localDecorations: {
       draftSessionIds: new Set(),
@@ -376,6 +393,20 @@ function projectQueueItemsEqual(
   });
 }
 
+function inboxTierIdsEqual(
+  a: Record<InboxTier, readonly string[]>,
+  b: Record<InboxTier, readonly string[]>,
+): boolean {
+  return INBOX_TIERS.every((tier) => {
+    const aIds = a[tier];
+    const bIds = b[tier];
+    return (
+      aIds.length === bIds.length &&
+      aIds.every((id, index) => id === bIds[index])
+    );
+  });
+}
+
 function stringSetsEqual(
   a: ReadonlySet<string>,
   b: ReadonlySet<string>,
@@ -434,6 +465,89 @@ function putProjectQueueSnapshot(
     projectQueues: {
       ...state.projectQueues,
       byProject,
+    },
+  };
+}
+
+function upsertInboxItemRecord(
+  state: ClientSummaryState,
+  item: InboxItem,
+  tier: InboxTier,
+  observedAt: number,
+): ClientSummaryState {
+  let record = getRecord(state, item.sessionId);
+
+  record = withContentFields(
+    record,
+    {
+      title: item.sessionTitle,
+      updatedAt: item.updatedAt,
+    },
+    observedAt,
+  );
+
+  record = withProjectFields(
+    record,
+    {
+      projectId: item.projectId,
+      projectName: item.projectName,
+    },
+    observedAt,
+  );
+
+  const inferredActivity =
+    item.activity ??
+    (item.pendingInputType
+      ? "waiting-input"
+      : tier === "active"
+        ? "in-turn"
+        : null);
+  record = withLifecycleFields(
+    record,
+    {
+      activity: inferredActivity,
+      pendingInputType: item.pendingInputType,
+    },
+    observedAt,
+  );
+
+  record = withUnreadField(record, item.hasUnread, observedAt);
+
+  return putRecord(state, record);
+}
+
+function putInboxSnapshot(
+  state: ClientSummaryState,
+  snapshot: InboxCollectionSnapshot,
+  requestStartedAt: number,
+): ClientSummaryState {
+  if (
+    state.inbox.requestStartedAt !== undefined &&
+    requestStartedAt < state.inbox.requestStartedAt
+  ) {
+    return state;
+  }
+
+  let next = state;
+  const tiers = createEmptyInboxTierRecord<string[]>(() => []);
+  for (const tier of INBOX_TIERS) {
+    for (const item of snapshot[tier]) {
+      tiers[tier].push(item.sessionId);
+      next = upsertInboxItemRecord(next, item, tier, requestStartedAt);
+    }
+  }
+
+  const stableTiers = inboxTierIdsEqual(next.inbox.tiers, tiers)
+    ? next.inbox.tiers
+    : tiers;
+
+  return {
+    ...next,
+    inbox: {
+      ...next.inbox,
+      tiers: stableTiers,
+      requestStartedAt,
+      fetchedAt: Date.now(),
     },
   };
 }
@@ -782,6 +896,14 @@ export function applyProjectQueueCollectionChanged(
   );
 }
 
+export function applyInboxCollectionSnapshot(
+  state: ClientSummaryState,
+  snapshot: InboxCollectionSnapshot,
+  requestStartedAt = Date.now(),
+): ClientSummaryState {
+  return putInboxSnapshot(state, snapshot, requestStartedAt);
+}
+
 export function applyDraftSessionIdsSnapshot(
   state: ClientSummaryState,
   draftSessionIds: ReadonlySet<string>,
@@ -1035,6 +1157,48 @@ export function selectDraftSessionIds(
   state: ClientSummaryState,
 ): ReadonlySet<string> {
   return state.localDecorations.draftSessionIds;
+}
+
+function sessionRecordToInboxItem(
+  record: SessionCollectionRecord,
+): InboxItem | null {
+  if (!record.projectId || !record.updatedAt) {
+    return null;
+  }
+  return {
+    sessionId: record.id,
+    projectId: record.projectId,
+    projectName: record.projectName ?? "",
+    sessionTitle: record.title ?? null,
+    updatedAt: record.updatedAt,
+    pendingInputType: record.pendingInputType,
+    activity: record.activity,
+    hasUnread: record.hasUnread,
+  };
+}
+
+export function selectInboxTierItems(
+  state: ClientSummaryState,
+  tier: InboxTier,
+): InboxItem[] {
+  return state.inbox.tiers[tier].flatMap((sessionId) => {
+    const record = state.sessions.entities.get(sessionId);
+    if (!record) {
+      return [];
+    }
+    const item = sessionRecordToInboxItem(record);
+    return item ? [item] : [];
+  });
+}
+
+export function selectInboxResponse(state: ClientSummaryState): InboxResponse {
+  return {
+    needsAttention: selectInboxTierItems(state, "needsAttention"),
+    active: selectInboxTierItems(state, "active"),
+    recentActivity: selectInboxTierItems(state, "recentActivity"),
+    unread8h: selectInboxTierItems(state, "unread8h"),
+    unread24h: selectInboxTierItems(state, "unread24h"),
+  };
 }
 
 function updatedAtMs(record: SessionCollectionRecord): number {

@@ -1,6 +1,6 @@
 # Session Page Request Dedupe
 
-Status: Settings-feed migration implemented 2026-06-29.
+Status: Session-page census added 2026-06-29.
 Topic: client-query-controller
 
 ## Problem
@@ -70,3 +70,43 @@ session page reload on `https://localhost:3400`, with request counts grouped by
 method, path, query string, and initiator. That will separate remaining true
 duplicates from distinct collection/detail requests that look similar in the
 Network name column.
+
+## Request Census
+
+A lightweight Playwright counter now lives at:
+
+```bash
+pnpm --filter client request:census -- --url 'https://127.0.0.1:3400/projects/L1VzZXJzL2tncmFlaGwvY29kZS95ZXBhbnl3aGVyZQ/sessions/019f1250-a644-7970-bb90-a7ea07f2b4ca'
+```
+
+Use `--json` when a machine-readable result is easier to diff.
+
+Observed on 2026-06-29 after an 8s post-DOMContentLoaded window:
+
+- 19 grouped same-origin API keys.
+- 4 duplicate full API keys:
+  - `GET /api/settings` twice. This is no longer just multiple
+    `useServerSettings` consumers; the dev service-worker registration gate
+    also calls `api.getServerSettings()` outside the retained hook.
+  - `GET /api/public-shares/status` twice. `usePublicShareStatus` is still
+    hook-local and mounted by both SessionPage and Sidebar on this route.
+  - `GET /api/dev/status` twice. `useReloadNotifications` performs an initial
+    dev-status read and then a near-immediate server sync path.
+  - `GET /api/inbox` twice in the 8s window. The first request is initial load;
+    the second is a delayed retained refresh from live activity. This one needs
+    classification before changing behavior, because Inbox is intentionally a
+    live collection.
+- The high-value collection feeds are no longer duplicated in this smoke:
+  `/api/project-queue`, `/api/projects`, the project detail, session detail,
+  and each distinct `/api/sessions?...` feed each appeared once.
+
+Likely next cleanup order:
+
+1. Move `usePublicShareStatus` onto the retained query controller and replace
+   per-hook polling with one retained owner or an event-driven refresh path.
+2. Share the dev service-worker settings gate with the server-settings retained
+   snapshot, or move that gate behind an app-level settings read.
+3. Classify the delayed Inbox refresh and decide whether it represents useful
+   live catch-up or an avoidable initial-load event.
+4. Coalesce `useReloadNotifications` dev-status reads. This is dev-only, so it
+   is lower user-impact than the public-share/status path.

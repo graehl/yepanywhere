@@ -69,6 +69,10 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   consumers now share one `/api/settings` GET, reconnect/refresh revalidation
   coalesces, secure remote clients wait for connection readiness, and
   successful PUT responses update every mounted consumer.
+- 2026-06-29: Added a Playwright request census script for session-page reload
+  debugging. `pnpm --filter client request:census -- --url <url>` groups
+  requests by method, full path/query, and resource type so duplicate-looking
+  DevTools rows can be separated from real duplicate keys.
 
 ## Context
 

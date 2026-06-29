@@ -32,6 +32,7 @@ import {
   GENERATED_TITLE_LENGTH_STEP,
   useGeneratedTitleLength,
 } from "../../hooks/useGeneratedTitleLength";
+import { useGeneratedTitleEnabled } from "../../hooks/useGeneratedTitleEnabled";
 import { useInlineMedia } from "../../hooks/useInlineMedia";
 import {
   DEFAULT_OUTPUT_FIXED_FONT_SIZE_OFFSET_PX,
@@ -156,6 +157,8 @@ export function AppearanceSettings() {
   } = useHoverCardAppearance();
   const { generatedTitleLength, setGeneratedTitleLength } =
     useGeneratedTitleLength();
+  const { generatedTitleEnabled, setGeneratedTitleEnabled } =
+    useGeneratedTitleEnabled();
   // Estimated visible request lines at the chosen height. Uses the with-reply
   // case — the conservative estimate shown when a recent reply is also present.
   const hoverCardHeightLines = estimateHoverCardPromptLines(
@@ -236,6 +239,7 @@ export function AppearanceSettings() {
       contentMaxWidth,
       hoverCardShowDelayMs,
       hoverCardMaxHeightPx,
+      generatedTitleEnabled,
       generatedTitleLength,
       theme,
       settingsIconStyle,
@@ -267,6 +271,7 @@ export function AppearanceSettings() {
       contentMaxWidth,
       hoverCardShowDelayMs,
       hoverCardMaxHeightPx,
+      generatedTitleEnabled,
       generatedTitleLength,
       theme,
       settingsIconStyle,
@@ -302,6 +307,7 @@ export function AppearanceSettings() {
       setContentMaxWidth(snapshot.contentMaxWidth);
       setHoverCardShowDelayMs(snapshot.hoverCardShowDelayMs);
       setHoverCardMaxHeightPx(snapshot.hoverCardMaxHeightPx);
+      setGeneratedTitleEnabled(snapshot.generatedTitleEnabled);
       setGeneratedTitleLength(snapshot.generatedTitleLength);
       setTheme(snapshot.theme);
       setSettingsIconStyle(snapshot.settingsIconStyle);
@@ -356,6 +362,7 @@ export function AppearanceSettings() {
       setContentMaxWidth,
       setHoverCardShowDelayMs,
       setHoverCardMaxHeightPx,
+      setGeneratedTitleEnabled,
       setGeneratedTitleLength,
       setTheme,
       setSettingsIconStyle,
@@ -697,58 +704,78 @@ export function AppearanceSettings() {
             ))}
           </div>
         </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceGeneratedTitleLengthTitle")}</strong>
-            <p>{t("appearanceGeneratedTitleLengthDescription")}</p>
-          </div>
-          <div className="settings-item-actions">
-            <CommittedRangeInput
-              min={GENERATED_TITLE_LENGTH_MIN}
-              max={GENERATED_TITLE_LENGTH_MAX}
-              step={GENERATED_TITLE_LENGTH_STEP}
-              value={generatedTitleLength}
-              onDraftChange={(value) =>
-                setGeneratedTitleLengthDraft(String(value))
-              }
-              onCommit={setGeneratedTitleLength}
-              aria-label={t("appearanceGeneratedTitleLengthTitle")}
-            />
-            <span className="settings-input-unit">
+        <div className="settings-item-group generated-title-settings">
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <strong>{t("appearanceGeneratedTitlesTitle")}</strong>
+              <p>{t("appearanceGeneratedTitlesDescription")}</p>
+            </div>
+            <label className="toggle-switch">
               <input
-                type="number"
-                className="settings-input-small"
-                min={GENERATED_TITLE_LENGTH_MIN}
-                max={GENERATED_TITLE_LENGTH_MAX}
-                step={GENERATED_TITLE_LENGTH_STEP}
-                value={generatedTitleLengthDraft}
-                onChange={(e) => setGeneratedTitleLengthDraft(e.target.value)}
-                onBlur={commitGeneratedTitleLength}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    commitGeneratedTitleLength();
-                    e.currentTarget.blur();
-                  }
-                }}
-                aria-label={t("appearanceGeneratedTitleLengthTitle")}
+                type="checkbox"
+                checked={generatedTitleEnabled}
+                onChange={(e) => setGeneratedTitleEnabled(e.target.checked)}
               />
-              {t("appearanceGeneratedTitleLengthUnit")}
-            </span>
-            <button
-              type="button"
-              className="settings-inline-x"
-              onClick={() => {
-                setGeneratedTitleLength(DEFAULT_GENERATED_TITLE_LENGTH);
-                setGeneratedTitleLengthDraft(
-                  String(DEFAULT_GENERATED_TITLE_LENGTH),
-                );
-              }}
-              aria-label={t("appearanceGeneratedTitleLengthReset")}
-              title={t("appearanceGeneratedTitleLengthReset")}
-            >
-              ×
-            </button>
+              <span className="toggle-slider" />
+            </label>
           </div>
+          {generatedTitleEnabled && (
+            <div className="settings-item generated-title-length-item">
+              <div className="settings-item-info">
+                <strong>{t("appearanceGeneratedTitleLengthTitle")}</strong>
+                <p>{t("appearanceGeneratedTitleLengthDescription")}</p>
+              </div>
+              <div className="settings-item-actions">
+                <CommittedRangeInput
+                  min={GENERATED_TITLE_LENGTH_MIN}
+                  max={GENERATED_TITLE_LENGTH_MAX}
+                  step={GENERATED_TITLE_LENGTH_STEP}
+                  value={generatedTitleLength}
+                  onDraftChange={(value) =>
+                    setGeneratedTitleLengthDraft(String(value))
+                  }
+                  onCommit={setGeneratedTitleLength}
+                  aria-label={t("appearanceGeneratedTitleLengthTitle")}
+                />
+                <span className="settings-input-unit">
+                  <input
+                    type="number"
+                    className="settings-input-small"
+                    min={GENERATED_TITLE_LENGTH_MIN}
+                    max={GENERATED_TITLE_LENGTH_MAX}
+                    step={GENERATED_TITLE_LENGTH_STEP}
+                    value={generatedTitleLengthDraft}
+                    onChange={(e) =>
+                      setGeneratedTitleLengthDraft(e.target.value)
+                    }
+                    onBlur={commitGeneratedTitleLength}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        commitGeneratedTitleLength();
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    aria-label={t("appearanceGeneratedTitleLengthTitle")}
+                  />
+                  {t("appearanceGeneratedTitleLengthUnit")}
+                </span>
+                <button
+                  type="button"
+                  className="settings-inline-x"
+                  onClick={() => {
+                    setGeneratedTitleLength(DEFAULT_GENERATED_TITLE_LENGTH);
+                    setGeneratedTitleLengthDraft(
+                      String(DEFAULT_GENERATED_TITLE_LENGTH),
+                    );
+                  }}
+                  aria-label={t("appearanceGeneratedTitleLengthReset")}
+                  title={t("appearanceGeneratedTitleLengthReset")}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         <div className="settings-item">
           <div className="settings-item-info">

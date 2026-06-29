@@ -70,6 +70,7 @@ import { useDeveloperMode } from "../hooks/useDeveloperMode";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import type { DraftControls } from "../hooks/useDraftPersistence";
 import { useEngagementTracking } from "../hooks/useEngagementTracking";
+import { useGeneratedTitleEnabled } from "../hooks/useGeneratedTitleEnabled";
 import { useGeneratedTitleLength } from "../hooks/useGeneratedTitleLength";
 import {
   getModelSetting,
@@ -966,6 +967,7 @@ function SessionPageContent({
   // Developer mode settings
   const { showConnectionBars } = useDeveloperMode();
   const { generatedTitleLength } = useGeneratedTitleLength();
+  const { generatedTitleEnabled } = useGeneratedTitleEnabled();
   const { settings: serverSettings } = useServerSettings();
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
   const { status: publicShareGlobalStatus } = usePublicShareStatus({
@@ -5068,7 +5070,7 @@ function SessionPageContent({
                       <polyline points="6 9 12 15 18 9" />
                     </svg>
                   </button>
-                  {supportsForkFromTurn && (
+                  {supportsForkFromTurn && generatedTitleEnabled && (
                     <button
                       type="button"
                       className="session-title-generate-trigger"

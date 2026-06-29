@@ -110,6 +110,8 @@
   "appearanceContentWidthDescription": "Maximum width for wide-screen messages and page content, in pixels.",
   "appearanceContentWidthReset": "Reset",
   "appearanceContentWidthUnit": "px",
+  "appearanceGeneratedTitlesTitle": "Generated Titles",
+  "appearanceGeneratedTitlesDescription": "Show a button by the session title that generates a short title using the agent. Off by default since it consumes tokens.",
   "appearanceGeneratedTitleLengthTitle": "Generated Title Length",
   "appearanceGeneratedTitleLengthDescription": "Target character count for generated session titles.",
   "appearanceGeneratedTitleLengthUnit": "chars",

@@ -9099,6 +9099,19 @@ a.sidebar-nav-item {
   margin-bottom: 0;
 }
 
+/* Groups an enable/disable toggle with its dependent sub-setting(s). The
+   dependent rows render below the toggle and are nested via a left accent. */
+.settings-item-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings-item-group .generated-title-length-item {
+  margin-left: var(--space-3);
+  border-left: 2px solid var(--border-subtle);
+}
+
 .settings-subsection-heading {
   display: flex;
   flex-direction: column;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type PaginationInfo, api } from "../api/client";
 import {
   getMessageTimestampMs,
@@ -394,7 +394,6 @@ export function useSessionMessages(
     () => new Map(cachedLoad?.toolUseToAgentEntries ?? []),
   );
   const [loading, setLoading] = useState(!cachedLoad);
-  const [, startSessionLoadTransition] = useTransition();
   const [sessionLoadProgress, setSessionLoadProgress] =
     useState<SessionLoadProgress>(() =>
       cachedLoad
@@ -720,11 +719,7 @@ export function useSessionMessages(
           });
         };
 
-        if (detailedLoadingProgress) {
-          startSessionLoadTransition(revealInitialTranscript);
-        } else {
-          revealInitialTranscript();
-        }
+        revealInitialTranscript();
 
         writeSessionLoadCache(
           sourceKey,
@@ -766,7 +761,6 @@ export function useSessionMessages(
     tailTurns,
     tailFrom,
     detailedLoadingProgress,
-    startSessionLoadTransition,
     onLoadComplete,
     onLoadError,
     flushBuffer,

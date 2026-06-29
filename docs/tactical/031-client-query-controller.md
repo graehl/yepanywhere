@@ -73,6 +73,10 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   debugging. `pnpm --filter client request:census -- --url <url>` groups
   requests by method, full path/query, and resource type so duplicate-looking
   DevTools rows can be separated from real duplicate keys.
+- 2026-06-29: Moved `usePublicShareStatus` onto a source-keyed retained query
+  with a small shared status snapshot store. Initial status reads and
+  wake/reconnect refreshes now share in-flight work, and `poll: true` retains
+  one source-level poll owner instead of starting one timer per hook instance.
 
 ## Context
 
@@ -126,7 +130,7 @@ Audited 2026-06-28. This is the starting map for migration priority.
 | `useServerSettings` | `/api/settings` | Source-keyed retained query plus a small shared settings snapshot store. Initial GETs and reconnect/refresh revalidation share in-flight work; successful PUT responses update the shared snapshot. | Completed config-feed target. Keep mutations hook-local. |
 | `useVersion` | `/api/version` | Module-level shared in-flight promise for non-fresh requests, but no source scoping and no retained cache entry. Pending speech backend polling is bespoke. | Maybe later. Existing dedupe is useful but source-blind in hosted remote scenarios. |
 | `useProviders` | `/api/providers` | Module-level TTL cache and shared in-flight promise. No source scoping. | Maybe later. Existing shape is close to a generic query entry but must become source-aware first. |
-| `usePublicShareStatus` | `/api/public-shares/status` | Hook-local fetch and optional 5s poll. Multiple mounted consumers can duplicate polling. | Candidate only if duplicate polling becomes noisy; keep out of first slice. |
+| `usePublicShareStatus` | `/api/public-shares/status` | Source-keyed retained query plus a small shared status snapshot store. Initial reads and wake/reconnect refreshes share in-flight work; `poll: true` now retains one source-level poll owner instead of one timer per hook. | Completed config/live-status target. A server activity event could later replace the remaining single poll owner. |
 | `useRecentSessions` | `/api/recents` plus mutations | Hook-local rows with optimistic local move/clear. Not currently normalized into `clientSummaryStore`. | Maybe later as a recent-visits membership slice; not needed for Sidebar bug. |
 | `useSessionMessages` / `useSession` | `/api/projects/:projectId/sessions/:sessionId` plus stream endpoints | Specialized transcript logic: source-scoped dev warm cache, JSONL cursoring, stream buffering, replay dedupe, incremental message merge, older-page loading, pending-input/session metadata integration. | Deliberately not a controller target. Keep specialized. |
 

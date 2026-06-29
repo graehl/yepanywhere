@@ -47,9 +47,13 @@ function parseArgs(argv) {
         options.headless = false;
         break;
       case "--help":
+        printUsage();
+        process.exit(0);
+        break;
       case "-h":
         printUsage();
         process.exit(0);
+        break;
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }

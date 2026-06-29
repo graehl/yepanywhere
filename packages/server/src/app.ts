@@ -71,7 +71,10 @@ import { createInboxRoutes } from "./routes/inbox.js";
 import { createNetworkBindingRoutes } from "./routes/network-binding.js";
 import { createOnboardingRoutes } from "./routes/onboarding.js";
 import { createProcessesRoutes } from "./routes/processes.js";
-import { createProjectQueueRoutes } from "./routes/project-queue.js";
+import {
+  createGlobalProjectQueueRoutes,
+  createProjectQueueRoutes,
+} from "./routes/project-queue.js";
 import { createProjectsRoutes } from "./routes/projects.js";
 import { createProvidersRoutes } from "./routes/providers.js";
 import { createCodexUpdateRoutes } from "./routes/codex-updates.js";
@@ -947,6 +950,12 @@ export function createApp(options: AppOptions): AppResult {
     }),
   );
   if (options.projectQueueService) {
+    app.route(
+      "/api/project-queue",
+      createGlobalProjectQueueRoutes({
+        projectQueueService: options.projectQueueService,
+      }),
+    );
     app.route(
       "/api/projects",
       createProjectQueueRoutes({

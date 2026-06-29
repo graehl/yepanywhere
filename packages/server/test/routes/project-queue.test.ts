@@ -4,7 +4,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
-import { createProjectQueueRoutes } from "../../src/routes/project-queue.js";
+import {
+  createGlobalProjectQueueRoutes,
+  createProjectQueueRoutes,
+} from "../../src/routes/project-queue.js";
 import { ProjectQueueService } from "../../src/services/ProjectQueueService.js";
 import type { Project } from "../../src/supervisor/types.js";
 
@@ -43,6 +46,12 @@ describe("Project Queue Routes", () => {
           id === projectId ? project : null,
         ),
       } as unknown as ProjectScanner,
+      projectQueueService: service,
+    });
+  }
+
+  function createGlobalRoutes() {
+    return createGlobalProjectQueueRoutes({
       projectQueueService: service,
     });
   }
@@ -110,5 +119,40 @@ describe("Project Queue Routes", () => {
     expect(await response.json()).toMatchObject({
       error: "Invalid project queue request",
     });
+  });
+
+  it("lists project queue items globally", async () => {
+    const otherProjectId = toUrlProjectId("/tmp/project-queue-route-other");
+    await service.createItem({
+      projectId,
+      projectPath: project.path,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "first queued item" },
+      },
+    });
+    await service.createItem({
+      projectId: otherProjectId,
+      projectPath: "/tmp/project-queue-route-other",
+      request: {
+        target: { type: "new-session", title: "Start later" },
+        message: { text: "second queued item" },
+      },
+    });
+
+    const response = await createGlobalRoutes().request("/");
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.items).toMatchObject([
+      {
+        projectId,
+        messagePreview: "first queued item",
+      },
+      {
+        projectId: otherProjectId,
+        messagePreview: "second queued item",
+      },
+    ]);
   });
 });

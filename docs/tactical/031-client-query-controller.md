@@ -108,7 +108,7 @@ Audited 2026-06-28. This is the starting map for migration priority.
 | `useProject` | `/api/projects/:id` | Source-scoped detail snapshot reporting plus retained query lifecycle. Refresh/reconnect revalidate the retained detail query; process/session events revalidate only when they match the selected project. | Completed retained-revalidation target. |
 | `InboxContext` | `/api/inbox` | App-scoped singleton feed owner. Stable tier ordering and source-scoped snapshot reporting stay provider-owned; readiness, retained query lifecycle, and wake/reconnect/activity refetch now go through `useRetainedClientQuery`. | Completed second retained-revalidation target. Keep tier-order policy local. |
 | `useProcesses` | `/api/processes?includeTerminated=true` | Source-keyed process snapshot plus retained controller query. Revalidates on readiness, refresh/reconnect, process/session events, and patches metadata titles locally. Previously used hook-local rows plus a fixed 30s poll. | Completed first retained-revalidation target. A process summary store slice can wait. |
-| `useProjectQueues` | `/api/projects/:id/queue` for each visible project | Source-scoped queue snapshots and mutation reporting, but each mounted consumer batches its own project ids and request lifecycle. Reconnect/refresh refetches are hook-local. | Good second-wave target. Needs per-project keying rather than one broad array key. |
+| `useProjectQueues` | `/api/project-queue` for the global queue feed; `/api/projects/:id/queue` for mutations | Source-scoped global queue snapshots plus per-project mutation reporting. Retained query lifecycle now owns wake/reconnect refetches, so Projects does not fan out across every project. | Completed adjacent retained-revalidation target. Keep mutations project-scoped. |
 | `useServerSettings` | `/api/settings` | Pure hook-local fetch/mutation state. Uses `useBackgroundRevalidation` for quiet reconnect/refresh updates. No source-key capture or shared in-flight cache. | Candidate after summary feeds, especially if settings become store-backed. |
 | `useVersion` | `/api/version` | Module-level shared in-flight promise for non-fresh requests, but no source scoping and no retained cache entry. Pending speech backend polling is bespoke. | Maybe later. Existing dedupe is useful but source-blind in hosted remote scenarios. |
 | `useProviders` | `/api/providers` | Module-level TTL cache and shared in-flight promise. No source scoping. | Maybe later. Existing shape is close to a generic query entry but must become source-aware first. |
@@ -564,12 +564,13 @@ Acceptance:
 
 ### 8. Move Adjacent Summary Feeds Opportunistically
 
-Status: Follow-on.
+Status: Project queues complete; remaining adjacent feeds are follow-on.
 
 After global sessions, processes, inbox, and projects prove the controller
 shape, migrate only feeds that get a clear simplification:
 
-- project queues;
+- project queues: completed with a global `/api/project-queue` feed query and
+  project-scoped mutation responses;
 - server settings;
 - version/provider catalog if their existing module-level caches can be
   replaced with the generic controller cleanly.
@@ -608,6 +609,8 @@ Acceptance:
   coalesced retained-query refresh.
 - Verify Inbox uses the same retained refresh path while preserving stable tier
   ordering and manual server-sort refresh.
+- Verify Project Queue feed refreshes through one global retained query rather
+  than one request per project on the Projects page.
 - Verify project list/detail feeds use retained refresh while preserving shared
   project record updates and detail-event filtering.
 - Verify star/archive/read mutations update store-backed surfaces immediately

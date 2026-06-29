@@ -187,6 +187,7 @@ export type {
   ProjectQueueItem,
   ProjectQueueItemStatus,
   ProjectQueueItemSummary,
+  ProjectQueueListResponse,
   ProjectQueueMessage,
   ProjectQueueResponse,
   ProjectQueueStagedAttachments,

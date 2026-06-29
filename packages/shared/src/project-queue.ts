@@ -92,6 +92,10 @@ export interface ProjectQueueResponse {
   items: ProjectQueueItemSummary[];
 }
 
+export interface ProjectQueueListResponse {
+  items: ProjectQueueItemSummary[];
+}
+
 export interface CreateProjectQueueItemRequest {
   target: ProjectQueueTarget;
   message: ProjectQueueMessage;

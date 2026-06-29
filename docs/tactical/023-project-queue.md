@@ -32,7 +32,8 @@ Latest update:
 - 2026-06-27: Landed the first server/API slice: `ProjectQueueService`
   persists `project-queues.json` with serialized mutations and atomic writes;
   malformed persisted items are ignored; `dispatching` items reload as queued;
-  CRUD routes are mounted at `/api/projects/:projectId/queue`; mutations emit
+  CRUD routes are mounted at `/api/projects/:projectId/queue`; the global list
+  route is mounted at `/api/project-queue`; mutations emit
   `project-queue-changed`; client API wrappers are available. Idle promotion
   and projects-page UI are still pending.
 - 2026-06-27: Landed the idle-gated promotion slice:
@@ -203,6 +204,7 @@ Notes:
 Add project-scoped CRUD endpoints, mounted near existing project routes:
 
 ```http
+GET    /api/project-queue
 GET    /api/projects/:projectId/queue
 POST   /api/projects/:projectId/queue
 PATCH  /api/projects/:projectId/queue/:itemId

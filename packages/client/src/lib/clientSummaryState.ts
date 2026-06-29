@@ -4,6 +4,7 @@ import type {
   ProviderName,
   ProjectQueueChangedEvent,
   ProjectQueueItemSummary,
+  ProjectQueueListResponse,
   ProjectQueueResponse,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -181,6 +182,9 @@ export interface ProjectCollectionSnapshot {
 }
 
 export interface ProjectQueueCollectionSnapshot extends ProjectQueueResponse {}
+
+export interface ProjectQueueGlobalCollectionSnapshot
+  extends ProjectQueueListResponse {}
 
 export interface InboxCollectionSnapshot extends InboxResponse {}
 
@@ -505,6 +509,53 @@ function putProjectQueueSnapshot(
     ...state,
     projectQueues: {
       ...state.projectQueues,
+      byProject,
+    },
+  };
+}
+
+function putProjectQueueGlobalSnapshot(
+  state: ClientSummaryState,
+  snapshot: ProjectQueueGlobalCollectionSnapshot,
+  observedAt: number,
+): ClientSummaryState {
+  const bySnapshotProject = new Map<UrlProjectId, ProjectQueueItemSummary[]>();
+  for (const item of snapshot.items) {
+    const items = bySnapshotProject.get(item.projectId);
+    if (items) {
+      items.push(item);
+    } else {
+      bySnapshotProject.set(item.projectId, [item]);
+    }
+  }
+
+  let next = state;
+  for (const [projectId, items] of bySnapshotProject) {
+    next = putProjectQueueSnapshot(next, { projectId, items }, observedAt);
+  }
+
+  let byProject: Map<string, ProjectQueueCollectionRecord> | null = null;
+  for (const [projectId, existing] of next.projectQueues.byProject) {
+    if (bySnapshotProject.has(projectId as UrlProjectId)) {
+      continue;
+    }
+    if ((existing.snapshotObservedAt ?? NO_OBSERVATION) > observedAt) {
+      continue;
+    }
+    if (!byProject) {
+      byProject = new Map(next.projectQueues.byProject);
+    }
+    byProject.delete(projectId);
+  }
+
+  if (!byProject) {
+    return next;
+  }
+
+  return {
+    ...next,
+    projectQueues: {
+      ...next.projectQueues,
       byProject,
     },
   };
@@ -1013,6 +1064,14 @@ export function applyProjectQueueCollectionSnapshot(
   requestStartedAt = Date.now(),
 ): ClientSummaryState {
   return putProjectQueueSnapshot(state, snapshot, requestStartedAt);
+}
+
+export function applyProjectQueueGlobalCollectionSnapshot(
+  state: ClientSummaryState,
+  snapshot: ProjectQueueGlobalCollectionSnapshot,
+  requestStartedAt = Date.now(),
+): ClientSummaryState {
+  return putProjectQueueGlobalSnapshot(state, snapshot, requestStartedAt);
 }
 
 export function applyProjectQueueCollectionChanged(

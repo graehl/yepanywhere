@@ -25,12 +25,19 @@ const busMock = vi.hoisted(() => {
 
 const apiMock = vi.hoisted(() => ({
   getProjectQueue: vi.fn(),
+  getProjectQueueItems: vi.fn(),
   updateProjectQueueItem: vi.fn(),
   deleteProjectQueueItem: vi.fn(),
   retryProjectQueueItem: vi.fn(),
 }));
 const versionMock = vi.hoisted(() => ({
   version: { capabilities: ["projectQueue"] as string[] },
+}));
+const connectionMock = vi.hoisted(() => ({
+  isRemoteClient: vi.fn(() => false),
+  remoteState: {
+    connection: null as { connection: object | null } | null,
+  },
 }));
 
 vi.mock("../../api/client", () => ({
@@ -41,10 +48,19 @@ vi.mock("../../lib/activityBus", () => ({
   activityBus: { on: busMock.on },
 }));
 
+vi.mock("../../lib/connection", () => ({
+  isRemoteClient: connectionMock.isRemoteClient,
+}));
+
+vi.mock("../../contexts/RemoteConnectionContext", () => ({
+  useOptionalRemoteConnection: () => connectionMock.remoteState.connection,
+}));
+
 vi.mock("../useVersion", () => ({
   useVersion: () => ({ version: versionMock.version }),
 }));
 
+import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
 import { useProjectQueues } from "../useProjectQueues";
 
@@ -71,17 +87,23 @@ function makeItem(
 
 beforeEach(() => {
   resetClientSummaryStoreForTests();
+  resetClientQueryControllerForTests();
   versionMock.version = { capabilities: ["projectQueue"] };
   busMock.reset();
   busMock.on.mockClear();
   apiMock.getProjectQueue.mockReset();
+  apiMock.getProjectQueueItems.mockReset();
   apiMock.updateProjectQueueItem.mockReset();
   apiMock.deleteProjectQueueItem.mockReset();
   apiMock.retryProjectQueueItem.mockReset();
+  connectionMock.isRemoteClient.mockReset();
+  connectionMock.isRemoteClient.mockReturnValue(false);
+  connectionMock.remoteState.connection = null;
 });
 
 afterEach(() => {
   cleanup();
+  resetClientQueryControllerForTests();
   resetClientSummaryStoreForTests();
 });
 
@@ -94,19 +116,17 @@ describe("useProjectQueues", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(apiMock.getProjectQueue).not.toHaveBeenCalled();
+    expect(apiMock.getProjectQueueItems).not.toHaveBeenCalled();
     expect(result.current.items).toEqual([]);
   });
 
-  it("fetches queues for the supplied projects", async () => {
-    apiMock.getProjectQueue.mockImplementation(async (projectId: string) => ({
-      projectId,
+  it("fetches all queue items once for the supplied projects", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
       items: [
-        makeItem(
-          projectId === "project-1" ? "1" : "2",
-          projectId === "project-1" ? PROJECT_ID : PROJECT_ID_2,
-        ),
+        makeItem("1", PROJECT_ID),
+        makeItem("2", PROJECT_ID_2),
       ],
-    }));
+    });
 
     const { result } = renderHook(() =>
       useProjectQueues(["project-1", "project-2"]),
@@ -114,14 +134,13 @@ describe("useProjectQueues", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(apiMock.getProjectQueue).toHaveBeenCalledWith("project-1");
-    expect(apiMock.getProjectQueue).toHaveBeenCalledWith("project-2");
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+    expect(apiMock.getProjectQueue).not.toHaveBeenCalled();
     expect(result.current.items.map((item) => item.id)).toEqual(["1", "2"]);
   });
 
   it("updates a project queue from activity events", async () => {
-    apiMock.getProjectQueue.mockResolvedValue({
-      projectId: PROJECT_ID,
+    apiMock.getProjectQueueItems.mockResolvedValue({
       items: [makeItem("1")],
     });
 
@@ -147,8 +166,7 @@ describe("useProjectQueues", () => {
   });
 
   it("replaces state from delete and retry responses", async () => {
-    apiMock.getProjectQueue.mockResolvedValue({
-      projectId: PROJECT_ID,
+    apiMock.getProjectQueueItems.mockResolvedValue({
       items: [makeItem("1")],
     });
     apiMock.deleteProjectQueueItem.mockResolvedValue({
@@ -185,8 +203,7 @@ describe("useProjectQueues", () => {
   });
 
   it("replaces state from update responses", async () => {
-    apiMock.getProjectQueue.mockResolvedValue({
-      projectId: PROJECT_ID,
+    apiMock.getProjectQueueItems.mockResolvedValue({
       items: [makeItem("1")],
     });
     apiMock.updateProjectQueueItem.mockResolvedValue({

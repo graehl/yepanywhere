@@ -1,5 +1,6 @@
 import {
   type CreateProjectQueueItemRequest,
+  type ProjectQueueListResponse,
   type ProjectQueueItemSummary,
   type UpdateProjectQueueItemRequest,
   isUrlProjectId,
@@ -17,8 +18,28 @@ export interface ProjectQueueRoutesDeps {
   projectQueueService: ProjectQueueService;
 }
 
+export type GlobalProjectQueueRoutesDeps = Pick<
+  ProjectQueueRoutesDeps,
+  "projectQueueService"
+>;
+
 function validationError(message: string) {
   return { error: "Invalid project queue request", reason: message };
+}
+
+export function createGlobalProjectQueueRoutes(
+  deps: GlobalProjectQueueRoutesDeps,
+): Hono {
+  const routes = new Hono();
+
+  routes.get("/", async (c) => {
+    const response: ProjectQueueListResponse = {
+      items: deps.projectQueueService.listAll(),
+    };
+    return c.json(response);
+  });
+
+  return routes;
 }
 
 export function createProjectQueueRoutes(deps: ProjectQueueRoutesDeps): Hono {

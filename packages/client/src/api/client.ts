@@ -20,6 +20,7 @@ import type {
   NewSessionDefaults,
   PendingInputType,
   ProjectQueueItemSummary,
+  ProjectQueueListResponse,
   ProjectQueueResponse,
   PromptSuggestionMode,
   PromptCacheKeepaliveSettings,
@@ -565,6 +566,9 @@ export const api = {
 
   getProjectQueue: (projectId: string) =>
     fetchJSON<ProjectQueueResponse>(`/projects/${projectId}/queue`),
+
+  getProjectQueueItems: () =>
+    fetchJSON<ProjectQueueListResponse>("/project-queue"),
 
   createProjectQueueItem: (
     projectId: string,

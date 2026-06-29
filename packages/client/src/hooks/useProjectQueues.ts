@@ -2,15 +2,19 @@ import type {
   ProjectQueueItemSummary,
   UpdateProjectQueueItemRequest,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { api } from "../api/client";
-import { activityBus } from "../lib/activityBus";
+import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { createClientQueryKey } from "../lib/clientQueryController";
+import { isRemoteClient } from "../lib/connection";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import {
   reportProjectQueueCollectionSnapshot,
+  reportProjectQueueGlobalCollectionSnapshot,
   useClientSummarySourceKey,
   useProjectQueueItemsByProject,
 } from "../lib/clientSummaryStore";
+import { useRetainedClientQuery } from "./useRetainedClientQuery";
 import { useVersion } from "./useVersion";
 
 export interface UseProjectQueuesResult {
@@ -44,81 +48,48 @@ function flattenQueues(
     });
 }
 
+const PROJECT_QUEUE_QUERY_KEY = createClientQueryKey({
+  endpoint: "project-queue",
+});
+const PROJECT_QUEUE_REVALIDATE_EVENTS = ["refresh", "reconnect"] as const;
+
 export function useProjectQueues(
   projectIds: readonly string[],
 ): UseProjectQueuesResult {
   const { version } = useVersion();
   const sourceKey = useClientSummarySourceKey();
+  const remoteConnection = useOptionalRemoteConnection();
   const enabled = serverSupportsProjectQueue(version);
+  const ready =
+    !isRemoteClient() ||
+    (remoteConnection !== null && remoteConnection.connection !== null);
   const normalizedProjectIds = useMemo(
     () => uniqueProjectIds(projectIds),
     [projectIds],
   );
-  const projectIdsKey = normalizedProjectIds.join("\0");
-  const projectIdsRef = useRef(normalizedProjectIds);
-  const hasResolvedInitialFetchRef = useRef(false);
   const storedQueuesByProject = useProjectQueueItemsByProject(
     normalizedProjectIds,
   );
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
   const [mutatingItemId, setMutatingItemId] = useState<string | null>(null);
-
-  useEffect(() => {
-    projectIdsRef.current = normalizedProjectIds;
-  }, [normalizedProjectIds]);
-
-  const fetchQueues = useCallback(async () => {
-    const ids = projectIdsRef.current;
-    if (!enabled || ids.length === 0) {
-      setError(null);
-      setLoading(false);
-      hasResolvedInitialFetchRef.current = true;
-      return;
-    }
-
-    setLoading(!hasResolvedInitialFetchRef.current);
-    setError(null);
-    const requestStartedAt = Date.now();
-    const requestSourceKey = sourceKey;
-    try {
-      const responses = await Promise.all(
-        ids.map((projectId) => api.getProjectQueue(projectId)),
+  const [mutationError, setMutationError] = useState<Error | null>(null);
+  const queryEnabled = enabled && normalizedProjectIds.length > 0;
+  const hasData = Object.keys(storedQueuesByProject).length > 0;
+  const { loading, error: queryError, refetch } = useRetainedClientQuery({
+    sourceKey,
+    key: PROJECT_QUEUE_QUERY_KEY,
+    enabled: queryEnabled,
+    ready,
+    hasData,
+    revalidateOn: PROJECT_QUEUE_REVALIDATE_EVENTS,
+    fetcher: () => api.getProjectQueueItems(),
+    applySnapshot: (data, context) => {
+      reportProjectQueueGlobalCollectionSnapshot(
+        context.sourceKey,
+        data,
+        context.requestStartedAt,
       );
-      for (const response of responses) {
-        reportProjectQueueCollectionSnapshot(
-          requestSourceKey,
-          response,
-          requestStartedAt,
-        );
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      hasResolvedInitialFetchRef.current = true;
-      setLoading(false);
-    }
-  }, [enabled, sourceKey]);
-
-  useEffect(() => {
-    hasResolvedInitialFetchRef.current = false;
-    void fetchQueues();
-  }, [fetchQueues, projectIdsKey]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    const handleRefresh = () => {
-      void fetchQueues();
-    };
-
-    const unsubscribeReconnect = activityBus.on("reconnect", handleRefresh);
-    const unsubscribeRefresh = activityBus.on("refresh", handleRefresh);
-
-    return () => {
-      unsubscribeReconnect();
-      unsubscribeRefresh();
-    };
-  }, [enabled, fetchQueues]);
+    },
+  });
 
   const updateItem = useCallback(
     async (
@@ -127,7 +98,7 @@ export function useProjectQueues(
       request: UpdateProjectQueueItemRequest,
     ) => {
       setMutatingItemId(itemId);
-      setError(null);
+      setMutationError(null);
       const requestSourceKey = sourceKey;
       try {
         const response = await api.updateProjectQueueItem(
@@ -137,7 +108,7 @@ export function useProjectQueues(
         );
         reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
       } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)));
+        setMutationError(err instanceof Error ? err : new Error(String(err)));
         throw err;
       } finally {
         setMutatingItemId(null);
@@ -148,13 +119,13 @@ export function useProjectQueues(
 
   const deleteItem = useCallback(async (projectId: string, itemId: string) => {
     setMutatingItemId(itemId);
-    setError(null);
+    setMutationError(null);
     const requestSourceKey = sourceKey;
     try {
       const response = await api.deleteProjectQueueItem(projectId, itemId);
       reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      setMutationError(err instanceof Error ? err : new Error(String(err)));
       throw err;
     } finally {
       setMutatingItemId(null);
@@ -163,18 +134,23 @@ export function useProjectQueues(
 
   const retryItem = useCallback(async (projectId: string, itemId: string) => {
     setMutatingItemId(itemId);
-    setError(null);
+    setMutationError(null);
     const requestSourceKey = sourceKey;
     try {
       const response = await api.retryProjectQueueItem(projectId, itemId);
       reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      setMutationError(err instanceof Error ? err : new Error(String(err)));
       throw err;
     } finally {
       setMutatingItemId(null);
     }
   }, [sourceKey]);
+
+  const refetchQueues = useCallback(async () => {
+    setMutationError(null);
+    await refetch();
+  }, [refetch]);
 
   const items = useMemo(
     () => flattenQueues(enabled ? storedQueuesByProject : {}),
@@ -185,9 +161,9 @@ export function useProjectQueues(
     queuesByProject: enabled ? storedQueuesByProject : {},
     items,
     loading,
-    error,
+    error: mutationError ?? queryError,
     mutatingItemId,
-    refetch: fetchQueues,
+    refetch: refetchQueues,
     updateItem,
     deleteItem,
     retryItem,

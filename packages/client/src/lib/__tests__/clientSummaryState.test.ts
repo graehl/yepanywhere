@@ -14,6 +14,7 @@ import {
   applyProjectsCollectionSnapshot,
   applyProjectQueueCollectionChanged,
   applyProjectQueueCollectionSnapshot,
+  applyProjectQueueGlobalCollectionSnapshot,
   applySessionCollectionCreated,
   applySessionCollectionMetadataChanged,
   applySessionCollectionProcessStateChanged,
@@ -1134,6 +1135,49 @@ describe("clientSummaryState", () => {
       { projectId: PROJECT_ID, items: [queueItem("1")] },
       150,
     );
+
+    expect(selectProjectQueueItems(state, PROJECT_ID)).toMatchObject([
+      { id: "2", status: "failed" },
+    ]);
+  });
+
+  it("replaces project queues from a global queue snapshot", () => {
+    const otherProjectId = "project-2" as UrlProjectId;
+    let state = applyProjectQueueCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        projectId: otherProjectId,
+        items: [queueItem("2", { projectId: otherProjectId })],
+      },
+      100,
+    );
+
+    state = applyProjectQueueGlobalCollectionSnapshot(
+      state,
+      { items: [queueItem("1")] },
+      200,
+    );
+
+    expect(
+      selectProjectQueueItems(state, PROJECT_ID).map((item) => item.id),
+    ).toEqual(["1"]);
+    expect(selectProjectQueueItems(state, otherProjectId)).toEqual([]);
+  });
+
+  it("keeps newer project queue facts after an older global snapshot", () => {
+    let state = applyProjectQueueCollectionChanged(
+      createEmptyClientSummaryState(),
+      {
+        type: "project-queue-changed",
+        projectId: PROJECT_ID,
+        items: [queueItem("2", { status: "failed" })],
+        reason: "failed",
+        timestamp: RECENT,
+      },
+      200,
+    );
+
+    state = applyProjectQueueGlobalCollectionSnapshot(state, { items: [] }, 150);
 
     expect(selectProjectQueueItems(state, PROJECT_ID)).toMatchObject([
       { id: "2", status: "failed" },

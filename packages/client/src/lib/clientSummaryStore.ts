@@ -22,6 +22,7 @@ import {
   applyProjectsCollectionSnapshot,
   applyProjectQueueCollectionChanged,
   applyProjectQueueCollectionSnapshot,
+  applyProjectQueueGlobalCollectionSnapshot,
   applySessionCollectionCreated,
   applySessionCollectionMetadataChanged,
   applySessionCollectionProcessStateChanged,
@@ -55,6 +56,7 @@ import {
   type ProjectCollectionSnapshot,
   type ProjectQueueCountSource,
   type ProjectQueueCollectionSnapshot,
+  type ProjectQueueGlobalCollectionSnapshot,
   type ProjectsCollectionSnapshot,
   type SessionCollectionQueryDescriptor,
   type SessionCollectionRecord,
@@ -501,6 +503,16 @@ export function reportProjectQueueCollectionSnapshot(
 ): void {
   updateStoreSnapshot(getClientSummaryStoreForSource(sourceKey), (current) =>
     applyProjectQueueCollectionSnapshot(current, input, requestStartedAt),
+  );
+}
+
+export function reportProjectQueueGlobalCollectionSnapshot(
+  sourceKey: ClientSummarySourceKey,
+  input: ProjectQueueGlobalCollectionSnapshot,
+  requestStartedAt = Date.now(),
+): void {
+  updateStoreSnapshot(getClientSummaryStoreForSource(sourceKey), (current) =>
+    applyProjectQueueGlobalCollectionSnapshot(current, input, requestStartedAt),
   );
 }
 

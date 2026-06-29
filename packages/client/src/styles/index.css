@@ -7696,7 +7696,7 @@ a.sidebar-nav-item {
 }
 
 .message-list-progressive-hydrating > :not(.session-render-progress) {
-  visibility: hidden;
+  display: none;
   pointer-events: none;
   user-select: none;
 }

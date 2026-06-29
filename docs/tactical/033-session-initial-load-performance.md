@@ -206,6 +206,38 @@ Open details:
 - Avoid row-height changes above a scrolled-back reader unless the user asked
   for older content.
 
+### Hydration Visibility Experiment
+
+2026-06-28 follow-up measurement on the observed session used a mobile-shaped
+Chromium viewport (`456x1024`) with 4x CPU throttling and the progress setting
+forced on in the browser harness. The harness measured time from navigation to
+progress bar display, progress reaching 100%, and the overlay being removed
+with 1,162 rendered rows present.
+
+| Variant | Progress shown | 100% | Reveal | Long-task total | Worst long task |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Previous `visibility: hidden` | 2.19-2.25 s | 5.67-6.01 s | 6.05-6.49 s | 3.9-4.2 s | 582-590 ms |
+| Hydration rows `display: none` | 1.61-1.62 s | 3.86-3.94 s | 4.18-4.30 s | 3.1-3.6 s | 473-524 ms |
+| Hydration rows `content-visibility: hidden` | 1.80 s | 5.28 s | 5.72 s | 4.6 s | 558 ms |
+| `display: none` plus direct-child `content-visibility: auto` after reveal | 1.48 s | 3.83 s | 4.07 s | 2.8 s | 461 ms |
+
+Interpretation:
+
+- `visibility: hidden` still pays style/layout for hidden rows during every
+  batch, so it improves perceived status but leaves much of the layout cost in
+  the chunk loop.
+- `display: none` during hydration was the best low-risk change. It reduced
+  measured reveal time by roughly 1.9-2.2 seconds versus the previous rule.
+- Adding `content-visibility: auto` after reveal helped only slightly beyond
+  `display: none` and carries more risk around scroll height, browser
+  find-in-page, quote selection, and search anchors. Keep that as a future
+  virtualization-like experiment rather than the immediate tactical change.
+- After applying the `display: none` rule in the real stylesheet, a follow-up
+  implementation check measured progress shown at 1.96 s, 100% at 4.22 s, and
+  reveal at 4.72 s. That run still improved total reveal time versus the
+  previous baseline, but had a larger worst RAF gap (949 ms), so manual mobile
+  feel should be checked before treating this as settled.
+
 ### Stronger Default Tail Bound
 
 For sessions where compact boundaries do not bound the tail enough, add a

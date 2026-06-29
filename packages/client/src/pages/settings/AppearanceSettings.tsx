@@ -561,7 +561,7 @@ export function AppearanceSettings() {
             ))}
           </div>
         </div>
-        <div className="settings-item">
+        <div className="settings-item settings-item--wide-control">
           <div className="settings-item-info">
             <strong>{t("appearanceSettingsIconStyleTitle")}</strong>
             <p>{t("appearanceSettingsIconStyleDescription")}</p>
@@ -597,7 +597,7 @@ export function AppearanceSettings() {
             })}
           </div>
         </div>
-        <div className="settings-item">
+        <div className="settings-item settings-item--wide-control">
           <div className="settings-item-info">
             <strong>{t("appearanceContentWidthTitle")}</strong>
             <p>{t("appearanceContentWidthDescription")}</p>
@@ -646,7 +646,7 @@ export function AppearanceSettings() {
             </button>
           </div>
         </div>
-        <div className="settings-item">
+        <div className="settings-item settings-item--wide-control">
           <div className="settings-item-info">
             <strong>{t("appearanceOutputToolPreviewLinesLabel")}</strong>
           </div>
@@ -720,7 +720,7 @@ export function AppearanceSettings() {
             </label>
           </div>
           {generatedTitleEnabled && (
-            <div className="settings-item-group-row settings-item-group-row--field">
+            <div className="settings-item-group-row settings-item-group-row--field settings-item-group-row--wide-control">
               <div className="settings-item-info">
                 <strong>{t("appearanceGeneratedTitleLengthTitle")}</strong>
                 <p>{t("appearanceGeneratedTitleLengthDescription")}</p>
@@ -777,7 +777,7 @@ export function AppearanceSettings() {
             </div>
           )}
         </div>
-        <div className="settings-item">
+        <div className="settings-item settings-item--wide-control">
           <div className="settings-item-info">
             <strong>{t("appearanceHoverCardDelayTitle")}</strong>
             <p>{t("appearanceHoverCardDelayDescription")}</p>
@@ -826,7 +826,7 @@ export function AppearanceSettings() {
             </button>
           </div>
         </div>
-        <div className="settings-item">
+        <div className="settings-item settings-item--wide-control">
           <div className="settings-item-info">
             <strong>{t("appearanceHoverCardHeightTitle")}</strong>
             <p>{t("appearanceHoverCardHeightDescription")}</p>

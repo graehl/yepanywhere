@@ -9093,6 +9093,7 @@ a.sidebar-nav-item {
   flex-direction: column;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
+  container-type: inline-size;
 }
 
 .settings-group:last-child {
@@ -10047,6 +10048,38 @@ a.sidebar-nav-item {
   gap: var(--space-2);
   flex-shrink: 0;
   flex-wrap: wrap;
+}
+
+@container (max-width: 36rem) {
+  .settings-item--wide-control,
+  .settings-item-group-row--wide-control {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  .settings-item--wide-control > .settings-item-info,
+  .settings-item-group-row--wide-control > .settings-item-info {
+    width: 100%;
+    flex: 0 1 auto;
+  }
+
+  .settings-item--wide-control > .font-size-selector,
+  .settings-item--wide-control > .settings-item-actions,
+  .settings-item-group-row--wide-control > .settings-item-actions {
+    align-self: flex-end;
+    justify-content: flex-end;
+    width: fit-content;
+  }
+
+  .settings-item--wide-control > .font-size-selector {
+    max-width: min(100%, 20rem);
+  }
+
+  .settings-item--wide-control > .settings-item-actions,
+  .settings-item-group-row--wide-control > .settings-item-actions {
+    max-width: min(100%, 16rem);
+  }
 }
 
 /* Keep a number input and its unit together as one wrap unit, so a narrow

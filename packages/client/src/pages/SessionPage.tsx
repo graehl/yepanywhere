@@ -789,6 +789,8 @@ function getSessionLoadingProgressText(
   }
 }
 
+const SESSION_LOADING_PROGRESS_DETAILS_DELAY_MS = 1500;
+
 function SessionPageContent({
   projectId,
   sessionId,
@@ -838,6 +840,22 @@ function SessionPageContent({
     clientTailParams.tailTurns !== undefined ||
     clientTailParams.tailFrom !== undefined;
   const { sessionLoadingProgressEnabled } = useSessionLoadingProgress();
+  const [
+    sessionLoadingProgressDetailsVisible,
+    setSessionLoadingProgressDetailsVisible,
+  ] = useState(false);
+  useEffect(() => {
+    setSessionLoadingProgressDetailsVisible(false);
+    if (!sessionLoadingProgressEnabled) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setSessionLoadingProgressDetailsVisible(true);
+    }, SESSION_LOADING_PROGRESS_DETAILS_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [clientTailParams, projectId, sessionId, sessionLoadingProgressEnabled]);
   const sessionOptions = useMemo(
     () => ({
       ...clientTailParams,
@@ -939,9 +957,10 @@ function SessionPageContent({
     streamingMarkdownCallbacks,
     sessionOptions,
   );
-  const sessionLoadingProgressText = sessionLoadingProgressEnabled
-    ? getSessionLoadingProgressText(sessionLoadProgress, t)
-    : null;
+  const sessionLoadingProgressText =
+    sessionLoadingProgressEnabled && sessionLoadingProgressDetailsVisible
+      ? getSessionLoadingProgressText(sessionLoadProgress, t)
+      : null;
 
   // Developer mode settings
   const { showConnectionBars } = useDeveloperMode();
@@ -5439,6 +5458,9 @@ function SessionPageContent({
                   onLoadOlderMessages={loadOlderMessages}
                   clientTailActive={clientTailActive}
                   progressiveRenderEnabled={sessionLoadingProgressEnabled}
+                  progressiveRenderStatusVisible={
+                    sessionLoadingProgressDetailsVisible
+                  }
                   progressiveRenderKey={sessionId}
                   getForkSummaryTargetHref={getForkSummaryTargetHref}
                   onCancelForkSummary={(objectId) => {

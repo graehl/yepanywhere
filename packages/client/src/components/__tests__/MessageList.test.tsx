@@ -356,6 +356,25 @@ describe("MessageList", () => {
     expect(container.querySelector(".session-render-progress")).not.toBeNull();
   });
 
+  it("can hide progressive details while hydrating", () => {
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "first request"),
+          assistantMessage("assistant-1", "first response"),
+        ]}
+        progressiveRenderEnabled
+        progressiveRenderKey="session-1"
+        progressiveRenderStatusVisible={false}
+      />,
+    );
+
+    expect(container.querySelector(".session-render-progress")).not.toBeNull();
+    expect(screen.getByText("Loading session...")).toBeTruthy();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.queryByText(/Rendering transcript/)).toBeNull();
+  });
+
   it("renders slash-command skill text as collapsed command details", () => {
     const { container } = render(
       <MessageList

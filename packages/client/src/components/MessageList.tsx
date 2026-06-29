@@ -1087,6 +1087,8 @@ interface Props {
   clientTailActive?: boolean;
   /** Render the recent transcript tail first, then hydrate older rows in batches. */
   progressiveRenderEnabled?: boolean;
+  /** Show detailed progressive render text and progress bar while hydrating. */
+  progressiveRenderStatusVisible?: boolean;
   /** Stable identity for one progressive initial-render cycle. */
   progressiveRenderKey?: string;
   getForkSummaryTargetHref?: (targetSessionId: string) => string;
@@ -1254,6 +1256,7 @@ export const MessageList = memo(function MessageList({
   onLoadOlderMessages,
   clientTailActive = false,
   progressiveRenderEnabled = false,
+  progressiveRenderStatusVisible = true,
   progressiveRenderKey,
   getForkSummaryTargetHref,
   onCancelForkSummary,
@@ -3341,24 +3344,28 @@ export const MessageList = memo(function MessageList({
         {progressiveRevealActive && (
           <div className="session-render-progress loading" role="status">
             <div>{t("sessionLoading")}</div>
-            <div className="loading-detail session-render-progress-label">
-              {t("sessionProgressiveRenderingStatus", {
-                percent: progressiveRenderPercent,
-              })}
-            </div>
-            <div
-              className="session-render-progress-bar"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={progressiveRenderPercent}
-              aria-label={t("sessionProgressiveRenderingAriaLabel")}
-            >
-              <div
-                className="session-render-progress-fill"
-                style={{ width: `${progressiveRenderPercent}%` }}
-              />
-            </div>
+            {progressiveRenderStatusVisible && (
+              <>
+                <div className="loading-detail session-render-progress-label">
+                  {t("sessionProgressiveRenderingStatus", {
+                    percent: progressiveRenderPercent,
+                  })}
+                </div>
+                <div
+                  className="session-render-progress-bar"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progressiveRenderPercent}
+                  aria-label={t("sessionProgressiveRenderingAriaLabel")}
+                >
+                  <div
+                    className="session-render-progress-fill"
+                    style={{ width: `${progressiveRenderPercent}%` }}
+                  />
+                </div>
+              </>
+            )}
           </div>
         )}
         {(hasOlderMessages || clientTailActive) && (

@@ -59,6 +59,11 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   reducer. Global-session rows are named as fuller snapshots, Inbox rows as
   partial snapshots, and activity-bus reducers as partial events so freshness
   guards no longer hide which paths can only observe part of a session row.
+- 2026-06-29: Documented the session-page duplicate-request follow-up in
+  `034-session-page-request-dedupe.md` and closed the first retained-query
+  fan-out gap. Forced retained revalidation now bypasses fresh cache entries
+  but still shares compatible in-flight requests, so multiple mounted consumers
+  of the same source/key do not duplicate refresh/reconnect fetches.
 
 ## Context
 
@@ -123,7 +128,9 @@ Findings:
 - The next shared gap was retained-query revalidation. The controller can dedupe
   an `ensureClientQuery` call; `useRetainedClientQuery` is now the first
   React-facing layer that centralizes activity-bus refresh, reconnect,
-  debounce, readiness, and forced refetch for a retained feed.
+  debounce, readiness, and forced refetch for a retained feed. Forced
+  revalidation still bypasses fresh cache entries, but no longer bypasses
+  compatible in-flight requests.
 - Several hooks already solve one query-cache concern locally, but each solves a
   different subset: in-flight dedupe, TTL, debounce, stale response protection,
   or background revalidation.

@@ -139,6 +139,34 @@ describe("useProjectQueues", () => {
     expect(result.current.items.map((item) => item.id)).toEqual(["1", "2"]);
   });
 
+  it("shares manual refetches across mounted consumers", async () => {
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [makeItem("1", PROJECT_ID)],
+      })
+      .mockResolvedValueOnce({
+        items: [makeItem("2", PROJECT_ID)],
+      });
+
+    const first = renderHook(() => useProjectQueues(["project-1"]));
+    const second = renderHook(() => useProjectQueues(["project-1"]));
+
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await Promise.all([
+        first.result.current.refetch(),
+        second.result.current.refetch(),
+      ]);
+    });
+
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2);
+    expect(first.result.current.items.map((item) => item.id)).toEqual(["2"]);
+    expect(second.result.current.items.map((item) => item.id)).toEqual(["2"]);
+  });
+
   it("updates a project queue from activity events", async () => {
     apiMock.getProjectQueueItems.mockResolvedValue({
       items: [makeItem("1")],

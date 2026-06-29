@@ -1,6 +1,9 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
+import {
+  getClientQueryState,
+  resetClientQueryControllerForTests,
+} from "../../lib/clientQueryController";
 import {
   asClientSummarySourceKey,
   type ClientSummarySourceKey,
@@ -35,6 +38,22 @@ vi.mock("../../lib/activityBus", () => ({
 }));
 
 const SOURCE = asClientSummarySourceKey("host:test");
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 async function settle() {
   await act(async () => {
@@ -130,6 +149,39 @@ describe("useRetainedClientQuery", () => {
     });
     await settle();
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares a forced refresh across mounted retained consumers", async () => {
+    const revalidation = deferred<string>();
+    const fetcher = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce("loaded")
+      .mockReturnValueOnce(revalidation.promise);
+    renderRetainedQuery({ fetcher });
+    renderRetainedQuery({ fetcher });
+
+    await settle();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      busMock.emit("refresh");
+      await vi.advanceTimersByTimeAsync(50);
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(getClientQueryState(SOURCE, { endpoint: "test" })).toMatchObject({
+      inFlight: true,
+      stale: true,
+    });
+
+    revalidation.resolve("updated");
+    await settle();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(getClientQueryState(SOURCE, { endpoint: "test" })).toMatchObject({
+      inFlight: false,
+      stale: false,
+    });
   });
 
   it("keeps background revalidation errors quiet after data has loaded", async () => {

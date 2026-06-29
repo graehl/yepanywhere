@@ -129,6 +129,58 @@ describe("clientQueryController", () => {
     expect(applySnapshot).toHaveBeenCalledTimes(2);
   });
 
+  it("shares compatible in-flight requests even when force is set", async () => {
+    const revalidation = deferred<string>();
+    const fetcher = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce("first")
+      .mockReturnValueOnce(revalidation.promise);
+    const applySnapshot = vi.fn();
+
+    await ensureClientQuery({
+      sourceKey: SOURCE_A,
+      key: "global",
+      coverage: { minRows: 100 },
+      fetcher,
+      applySnapshot,
+    });
+
+    const forcedLarge = ensureClientQuery({
+      sourceKey: SOURCE_A,
+      key: "global",
+      coverage: { minRows: 100 },
+      force: true,
+      fetcher,
+      applySnapshot,
+    });
+    const forcedSmall = ensureClientQuery({
+      sourceKey: SOURCE_A,
+      key: "global",
+      coverage: { minRows: 50 },
+      force: true,
+      fetcher,
+      applySnapshot,
+    });
+
+    expect(forcedSmall).toBe(forcedLarge);
+    await Promise.resolve();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(getClientQueryState(SOURCE_A, "global")).toMatchObject({
+      inFlight: true,
+      stale: true,
+    });
+
+    revalidation.resolve("second");
+    await Promise.all([forcedLarge, forcedSmall]);
+
+    expect(applySnapshot).toHaveBeenCalledTimes(2);
+    expect(getClientQueryState(SOURCE_A, "global")).toMatchObject({
+      coverage: { minRows: 100 },
+      inFlight: false,
+      stale: false,
+    });
+  });
+
   it("fetches again when cached coverage is insufficient", async () => {
     const fetcher = vi
       .fn<() => Promise<string>>()

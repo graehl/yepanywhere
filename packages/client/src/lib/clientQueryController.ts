@@ -245,6 +245,15 @@ function isFresh(
   return staleTimeMs === undefined || Date.now() - entry.fetchedAt <= staleTimeMs;
 }
 
+function markStaleForForcedFetch(entry: ClientQueryEntry): void {
+  if (entry.stale) {
+    return;
+  }
+  entry.staleVersion += 1;
+  entry.stale = true;
+  emitChange();
+}
+
 export function ensureClientQuery<T>(
   options: EnsureClientQueryOptions<T>,
 ): Promise<void> {
@@ -256,12 +265,14 @@ export function ensureClientQuery<T>(
     return Promise.resolve();
   }
 
-  if (!options.force) {
-    for (const inFlight of entry.inFlights) {
-      if (coverageSatisfies(inFlight.coverage, requestedCoverage)) {
-        return inFlight.promise;
-      }
+  for (const inFlight of entry.inFlights) {
+    if (coverageSatisfies(inFlight.coverage, requestedCoverage)) {
+      return inFlight.promise;
     }
+  }
+
+  if (options.force) {
+    markStaleForForcedFetch(entry);
   }
 
   const requestStartedAt = Date.now();

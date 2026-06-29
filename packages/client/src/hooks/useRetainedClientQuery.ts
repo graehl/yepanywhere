@@ -3,7 +3,6 @@ import { activityBus, type ActivityEventType } from "../lib/activityBus";
 import {
   createClientQueryKey,
   ensureClientQuery,
-  invalidateClientQuery,
   retainClientQuery,
   type ClientQueryCoverage,
   type ClientQueryRequestContext,
@@ -128,9 +127,6 @@ export function useRetainedClientQuery<T>({
       }
 
       try {
-        if (force) {
-          invalidateClientQuery(sourceKey, queryKey);
-        }
         await ensureClientQuery({
           sourceKey,
           key: queryKey,
@@ -175,7 +171,6 @@ export function useRetainedClientQuery<T>({
     if (!enabled) {
       return;
     }
-    invalidateClientQuery(sourceKey, queryKey);
     if (timerRef.current) {
       clearTimeout(timerRef.current);
     }
@@ -183,7 +178,7 @@ export function useRetainedClientQuery<T>({
       timerRef.current = null;
       void run({ force: true, background: true });
     }, debounceMs);
-  }, [debounceMs, enabled, run, sourceKey, queryKey]);
+  }, [debounceMs, enabled, run]);
 
   useEffect(() => {
     if (!enabled || revalidateEvents.length === 0) {

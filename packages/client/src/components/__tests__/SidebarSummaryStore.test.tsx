@@ -142,7 +142,8 @@ vi.mock("../SessionListItem", () => ({
   ),
 }));
 
-const RECENT = "2026-06-28T11:00:00.000Z";
+const RECENT_MS = Date.now() - 60_000;
+const RECENT = new Date(RECENT_MS).toISOString();
 
 function session(
   id: string,
@@ -319,7 +320,7 @@ describe("Sidebar client summary source registry", () => {
           type: "session-metadata-changed",
           sessionId: "star-later",
           starred: true,
-          timestamp: "2026-06-28T11:01:00.000Z",
+          timestamp: new Date(RECENT_MS + 60_000).toISOString(),
         },
         200,
       );

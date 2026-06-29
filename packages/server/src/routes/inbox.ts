@@ -3,8 +3,9 @@
  *
  * Tiers (in priority order):
  * 1. needsAttention - Sessions with pendingInputType set (tool-approval or user-question)
- * 2. active - In-turn sessions (or idle sessions still retaining provider
- *    background work) without pending input
+ * 2. active - In-turn sessions, idle sessions still retaining provider
+ *    background work, or existing sessions targeted by pending Project Queue
+ *    work, without pending input
  * 3. recentActivity - Sessions updated in the last 30 minutes (not in tiers 1-2)
  * 4. unread8h - Sessions with hasUnread and updatedAt within 8 hours (not in tiers 1-3)
  * 5. unread24h - Sessions with hasUnread and updatedAt within 24 hours (not in tiers 1-4)
@@ -25,6 +26,7 @@ import { listSessionsAcrossProviders } from "../sessions/provider-resolution.js"
 import type { GrokSessionReader } from "../sessions/grok-reader.js";
 import type { PiSessionReader } from "../sessions/pi-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
+import type { ProjectQueueService } from "../services/ProjectQueueService.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type {
   AgentActivity,
@@ -42,6 +44,7 @@ export interface InboxDeps {
   notificationService?: NotificationService;
   sessionIndexService?: SessionIndexService;
   sessionMetadataService?: SessionMetadataService;
+  projectQueueService?: Pick<ProjectQueueService, "listAll">;
   codexScanner?: CodexSessionScanner;
   codexSessionsDir?: string;
   codexReaderFactory?: (projectPath: string) => CodexSessionReader;
@@ -83,6 +86,24 @@ const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 const EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
+function getActiveProjectQueueSessionIds(
+  projectQueueService: InboxDeps["projectQueueService"],
+): Set<string> {
+  const sessionIds = new Set<string>();
+  if (!projectQueueService) return sessionIds;
+
+  for (const item of projectQueueService.listAll()) {
+    if (
+      item.target.type === "existing-session" &&
+      (item.status === "queued" || item.status === "dispatching")
+    ) {
+      sessionIds.add(item.target.sessionId);
+    }
+  }
+
+  return sessionIds;
+}
+
 export function createInboxRoutes(deps: InboxDeps): Hono {
   const routes = new Hono();
 
@@ -113,6 +134,9 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
       codexScanner: deps.codexScanner,
       geminiScanner: deps.geminiScanner,
     });
+    const activeProjectQueueSessionIds = getActiveProjectQueueSessionIds(
+      deps.projectQueueService,
+    );
     const listOptions = getActiveSessionIndexOptions(
       deps.sessionAutoArchiveDays,
     );
@@ -229,10 +253,13 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
       }
     }
 
-    // Tier 2: active - in-turn sessions without pending input
+    // Tier 2: active - live sessions and sessions with pending Project Queue work
     for (const item of allSessions) {
       if (assignedSessionIds.has(item.session.id)) continue;
-      if (item.activity === "in-turn") {
+      if (
+        item.activity === "in-turn" ||
+        activeProjectQueueSessionIds.has(item.session.id)
+      ) {
         active.push(toInboxItem(item));
         assignedSessionIds.add(item.session.id);
       }

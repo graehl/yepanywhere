@@ -1,4 +1,7 @@
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import type {
+  ProjectQueueItemSummary,
+  UrlProjectId,
+} from "@yep-anywhere/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionIndexService } from "../../src/indexes/index.js";
 import type { NotificationService } from "../../src/notifications/index.js";
@@ -59,14 +62,35 @@ function createProject(id: string, name: string, sessionDir: string): Project {
   };
 }
 
+function createExistingSessionProjectQueueItem(
+  id: string,
+  projectId: string,
+  sessionId: string,
+  status: ProjectQueueItemSummary["status"] = "queued",
+): ProjectQueueItemSummary {
+  return {
+    id,
+    projectId: projectId as UrlProjectId,
+    target: { type: "existing-session", sessionId },
+    messagePreview: `Queued ${id}`,
+    message: { text: `Queued ${id}` },
+    createdAt: hoursAgo(1),
+    updatedAt: hoursAgo(1),
+    status,
+    attachmentCount: 0,
+  };
+}
+
 describe("Inbox Routes", () => {
   let mockScanner: ProjectScanner;
   let mockReaderFactory: (project: Project) => ISessionReader;
   let mockSupervisor: Supervisor;
   let mockNotificationService: NotificationService;
   let mockSessionIndexService: SessionIndexService;
+  let mockProjectQueueService: NonNullable<InboxDeps["projectQueueService"]>;
   let sessionsByDir: Map<string, SessionSummary[]>;
   let codexSessionsByPath: Map<string, SessionSummary[]>;
+  let projectQueueItems: ProjectQueueItemSummary[];
   let processMap: Map<
     string,
     {
@@ -80,6 +104,7 @@ describe("Inbox Routes", () => {
   beforeEach(() => {
     sessionsByDir = new Map();
     codexSessionsByPath = new Map();
+    projectQueueItems = [];
     processMap = new Map();
     unreadMap = new Map();
 
@@ -124,6 +149,10 @@ describe("Inbox Routes", () => {
         },
       ),
     } as unknown as SessionIndexService;
+
+    mockProjectQueueService = {
+      listAll: vi.fn(() => projectQueueItems),
+    };
   });
 
   async function makeRequest(deps: InboxDeps): Promise<InboxResponse> {
@@ -248,6 +277,71 @@ describe("Inbox Routes", () => {
       expect(result.recentActivity).toHaveLength(1);
       expect(result.recentActivity[0].sessionId).toBe("sess1");
       expect(result.recentActivity[0].activity).toBeUndefined();
+    });
+
+    it("categorizes existing-session Project Queue targets into active", async () => {
+      const project = createProject("proj1", "myproject", "/sessions/proj1");
+      const session = createSession("sess1", "proj1", hoursAgo(30));
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+      projectQueueItems = [
+        createExistingSessionProjectQueueItem("queue-1", "proj1", "sess1"),
+      ];
+
+      const result = await makeRequest({
+        scanner: mockScanner,
+        readerFactory: mockReaderFactory,
+        supervisor: mockSupervisor,
+        notificationService: mockNotificationService,
+        sessionIndexService: mockSessionIndexService,
+        projectQueueService: mockProjectQueueService,
+      });
+
+      expect(result.active).toHaveLength(1);
+      expect(result.active[0].sessionId).toBe("sess1");
+      expect(result.recentActivity).toHaveLength(0);
+      expect(result.unread24h).toHaveLength(0);
+    });
+
+    it("does not promote failed or new-session Project Queue items", async () => {
+      const project = createProject("proj1", "myproject", "/sessions/proj1");
+      const failedSession = createSession("failed-sess", "proj1", hoursAgo(30));
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [failedSession]);
+      projectQueueItems = [
+        createExistingSessionProjectQueueItem(
+          "queue-failed",
+          "proj1",
+          "failed-sess",
+          "failed",
+        ),
+        {
+          id: "queue-new",
+          projectId: "proj1" as UrlProjectId,
+          target: { type: "new-session", title: "Queued new session" },
+          messagePreview: "Queued new session",
+          message: { text: "Queued new session" },
+          createdAt: hoursAgo(1),
+          updatedAt: hoursAgo(1),
+          status: "queued",
+          attachmentCount: 0,
+        },
+      ];
+
+      const result = await makeRequest({
+        scanner: mockScanner,
+        readerFactory: mockReaderFactory,
+        supervisor: mockSupervisor,
+        notificationService: mockNotificationService,
+        sessionIndexService: mockSessionIndexService,
+        projectQueueService: mockProjectQueueService,
+      });
+
+      expect(result.active).toHaveLength(0);
+      expect(result.recentActivity).toHaveLength(0);
+      expect(result.unread24h).toHaveLength(0);
     });
 
     it("categorizes session updated in last 30 minutes into recentActivity", async () => {

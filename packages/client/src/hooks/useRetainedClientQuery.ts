@@ -22,6 +22,7 @@ export interface UseRetainedClientQueryOptions<T> {
   debounceMs?: number;
   meta?: unknown;
   revalidateOn?: readonly ActivityEventType[];
+  shouldRevalidateEvent?: (event: RetainedClientQueryEvent) => boolean;
   fetcher: (context: ClientQueryRequestContext) => Promise<T>;
   applySnapshot?: (
     result: T,
@@ -42,6 +43,11 @@ export interface RetainedClientQueryRunOptions {
   meta?: unknown;
 }
 
+export interface RetainedClientQueryEvent {
+  eventType: ActivityEventType;
+  data: unknown;
+}
+
 export function useRetainedClientQuery<T>({
   sourceKey,
   key,
@@ -53,6 +59,7 @@ export function useRetainedClientQuery<T>({
   debounceMs = DEFAULT_REVALIDATE_DEBOUNCE_MS,
   meta,
   revalidateOn = [],
+  shouldRevalidateEvent,
   fetcher,
   applySnapshot,
 }: UseRetainedClientQueryOptions<T>): UseRetainedClientQueryResult {
@@ -77,11 +84,13 @@ export function useRetainedClientQuery<T>({
   const runSequenceRef = useRef(0);
   const coverageRef = useRef(coverage);
   const metaRef = useRef(meta);
+  const shouldRevalidateEventRef = useRef(shouldRevalidateEvent);
   const fetcherRef = useRef(fetcher);
   const applySnapshotRef = useRef(applySnapshot);
 
   coverageRef.current = coverage;
   metaRef.current = meta;
+  shouldRevalidateEventRef.current = shouldRevalidateEvent;
   fetcherRef.current = fetcher;
   applySnapshotRef.current = applySnapshot;
 
@@ -185,7 +194,12 @@ export function useRetainedClientQuery<T>({
       return undefined;
     }
     const unsubscribers = revalidateEvents.map((eventType) =>
-      activityBus.on(eventType, () => {
+      activityBus.on(eventType, (data) => {
+        if (
+          shouldRevalidateEventRef.current?.({ eventType, data }) === false
+        ) {
+          return;
+        }
         scheduleRevalidation();
       }),
     );

@@ -11,9 +11,9 @@ import {
 import { useRetainedClientQuery } from "../useRetainedClientQuery";
 
 const busMock = vi.hoisted(() => {
-  const handlers = new Map<string, Set<() => void>>();
+  const handlers = new Map<string, Set<(data?: unknown) => void>>();
   return {
-    on: vi.fn((event: string, handler: () => void) => {
+    on: vi.fn((event: string, handler: (data?: unknown) => void) => {
       let set = handlers.get(event);
       if (!set) {
         set = new Set();
@@ -22,9 +22,9 @@ const busMock = vi.hoisted(() => {
       set.add(handler);
       return () => handlers.get(event)?.delete(handler);
     }),
-    emit(event: string) {
+    emit(event: string, data?: unknown) {
       for (const handler of handlers.get(event) ?? []) {
-        handler();
+        handler(data);
       }
     },
     reset() {
@@ -68,11 +68,16 @@ function renderRetainedQuery({
   ready = true,
   fetcher = vi.fn(async () => "loaded"),
   applySnapshot = vi.fn(),
+  shouldRevalidateEvent,
 }: {
   sourceKey?: ClientSummarySourceKey;
   ready?: boolean;
   fetcher?: ReturnType<typeof vi.fn<() => Promise<string>>>;
   applySnapshot?: ReturnType<typeof vi.fn>;
+  shouldRevalidateEvent?: (event: {
+    eventType: string;
+    data: unknown;
+  }) => boolean;
 } = {}) {
   return renderHook(
     (props: { ready: boolean }) =>
@@ -82,6 +87,7 @@ function renderRetainedQuery({
         ready: props.ready,
         debounceMs: 50,
         revalidateOn: ["refresh", "reconnect"],
+        shouldRevalidateEvent,
         fetcher,
         applySnapshot,
       }),
@@ -149,6 +155,27 @@ describe("useRetainedClientQuery", () => {
     });
     await settle();
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets callers ignore revalidation events", async () => {
+    const fetcher = vi.fn(async () => "loaded");
+    const shouldRevalidateEvent = vi.fn(() => false);
+    renderRetainedQuery({ fetcher, shouldRevalidateEvent });
+
+    await settle();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      busMock.emit("refresh", { reason: "known-local-update" });
+      await vi.advanceTimersByTimeAsync(50);
+    });
+
+    await settle();
+    expect(shouldRevalidateEvent).toHaveBeenCalledWith({
+      eventType: "refresh",
+      data: { reason: "known-local-update" },
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("shares a forced refresh across mounted retained consumers", async () => {

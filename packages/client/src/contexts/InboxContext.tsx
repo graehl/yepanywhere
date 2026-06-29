@@ -16,7 +16,10 @@ import {
   useState,
 } from "react";
 import { type InboxItem, type InboxResponse, api } from "../api/client";
-import { useRetainedClientQuery } from "../hooks/useRetainedClientQuery";
+import {
+  type RetainedClientQueryEvent,
+  useRetainedClientQuery,
+} from "../hooks/useRetainedClientQuery";
 import { authEvents } from "../lib/authEvents";
 import {
   createClientQueryKey,
@@ -52,7 +55,7 @@ const INBOX_STALE_TIME_MS = 0;
 
 /**
  * Tracks the stable order of session IDs within each tier.
- * Used to prevent reordering during polling while still allowing
+ * Used to prevent reordering during background revalidation while still allowing
  * items to move between tiers.
  */
 type TierOrder = Record<InboxTier, string[]>;
@@ -134,6 +137,30 @@ function createEmptyTierOrder(): TierOrder {
   };
 }
 
+function getLocallyPatchableSessionUpdatedIds(
+  inbox: InboxResponse,
+): ReadonlySet<string> {
+  const sessionIds = new Set<string>();
+  for (const tier of ["needsAttention", "active", "recentActivity"] as const) {
+    for (const item of inbox[tier]) {
+      sessionIds.add(item.sessionId);
+    }
+  }
+  return sessionIds;
+}
+
+function getEventSessionId(data: unknown): string | null {
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    !("sessionId" in data) ||
+    typeof data.sessionId !== "string"
+  ) {
+    return null;
+  }
+  return data.sessionId;
+}
+
 interface InboxContextValue {
   /** Sessions requiring immediate user input (tool approval or question) */
   needsAttention: InboxItem[];
@@ -184,6 +211,11 @@ export function InboxProvider({
   const sourceKeyRef = useRef(sourceKey);
   sourceKeyRef.current = sourceKey;
   const inbox = useInboxResponseSnapshot();
+  const locallyPatchableSessionUpdatedIdsRef = useRef<ReadonlySet<string>>(
+    new Set(),
+  );
+  locallyPatchableSessionUpdatedIdsRef.current =
+    getLocallyPatchableSessionUpdatedIds(inbox);
   const [enabled, setEnabled] = useState(initialEnabled);
   const isRemoteConnectionReady =
     !isRemoteClient() ||
@@ -250,6 +282,21 @@ export function InboxProvider({
     [],
   );
 
+  const shouldRevalidateInboxEvent = useCallback(
+    (event: RetainedClientQueryEvent) => {
+      if (event.eventType !== "session-updated") {
+        return true;
+      }
+
+      const sessionId = getEventSessionId(event.data);
+      return (
+        sessionId === null ||
+        !locallyPatchableSessionUpdatedIdsRef.current.has(sessionId)
+      );
+    },
+    [],
+  );
+
   const {
     loading,
     error,
@@ -262,6 +309,7 @@ export function InboxProvider({
     hasData: hasInitialLoad,
     staleTimeMs: INBOX_STALE_TIME_MS,
     revalidateOn: INBOX_REVALIDATE_EVENTS,
+    shouldRevalidateEvent: shouldRevalidateInboxEvent,
     fetcher: () => api.getInbox(),
     applySnapshot: applyInboxSnapshot,
   });

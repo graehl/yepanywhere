@@ -77,6 +77,14 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   with a small shared status snapshot store. Initial status reads and
   wake/reconnect refreshes now share in-flight work, and `poll: true` retains
   one source-level poll owner instead of starting one timer per hook instance.
+- 2026-06-29: Investigated the remaining session-page `/api/inbox` duplicates.
+  They were activity-driven, not a fixed inbox poll: global
+  `session-updated` events from already-known sessions caused full inbox
+  snapshots about one debounce window later. Added retained-query event
+  filtering so Inbox patches content-only updates from `clientSummaryStore`
+  when the current tier can be updated locally, and revalidates the full inbox
+  for unknown rows, unread-tier promotions, or other membership-affecting
+  events.
 
 ## Context
 
@@ -124,7 +132,7 @@ Audited 2026-06-28. This is the starting map for migration priority.
 | `useSidebarSessionFeeds` | two `useGlobalSessionsFeed` instances | Visual Sidebar owns unfiltered and starred fetches. Rows render from broad entity projections, so coverage is implicit and can be accidentally warmed by All Sessions. | Replace with an app-shell retainer plus shared global-session controls. |
 | `useProjects` | `/api/projects` | Source-scoped snapshot reporting plus retained query lifecycle. Revalidates on readiness, refresh/reconnect, and project-affecting process/session events. Previously owned `hasFetchedRef`, loading/error, and debounce locally. | Completed retained-revalidation target. |
 | `useProject` | `/api/projects/:id` | Source-scoped detail snapshot reporting plus retained query lifecycle. Refresh/reconnect revalidate the retained detail query; process/session events revalidate only when they match the selected project. | Completed retained-revalidation target. |
-| `InboxContext` | `/api/inbox` | App-scoped singleton feed owner. Stable tier ordering and source-scoped snapshot reporting stay provider-owned; readiness, retained query lifecycle, and wake/reconnect/activity refetch now go through `useRetainedClientQuery`. | Completed second retained-revalidation target. Keep tier-order policy local. |
+| `InboxContext` | `/api/inbox` | App-scoped singleton feed owner. Stable tier ordering and source-scoped snapshot reporting stay provider-owned; readiness, retained query lifecycle, and wake/reconnect/activity refetch now go through `useRetainedClientQuery`. Locally patchable `session-updated` rows patch through the summary store without a full inbox snapshot; unknown content updates and unread-tier promotions still revalidate so membership can be discovered. | Completed second retained-revalidation target. Keep tier-order policy local. |
 | `useProcesses` | `/api/processes?includeTerminated=true` | Source-keyed process snapshot plus retained controller query. Revalidates on readiness, refresh/reconnect, process/session events, and patches metadata titles locally. Previously used hook-local rows plus a fixed 30s poll. | Completed first retained-revalidation target. A process summary store slice can wait. |
 | `useProjectQueues` | `/api/project-queue` for the global queue feed; `/api/projects/:id/queue` for mutations | Source-scoped global queue snapshots plus per-project mutation reporting. Retained query lifecycle now owns wake/reconnect refetches, so Projects does not fan out across every project. | Completed adjacent retained-revalidation target. Keep mutations project-scoped. |
 | `useServerSettings` | `/api/settings` | Source-keyed retained query plus a small shared settings snapshot store. Initial GETs and reconnect/refresh revalidation share in-flight work; successful PUT responses update the shared snapshot. | Completed config-feed target. Keep mutations hook-local. |
@@ -541,6 +549,9 @@ Inbox specifics:
 - use retained-query revalidation for initial load, `refresh`, `reconnect`,
   `process-state-changed`, `session-status-changed`, `session-seen`,
   `session-created`, `session-metadata-changed`, and `session-updated`;
+- filter `session-updated` revalidation when the updated session is already in
+  a tier whose content fields can patch through `clientSummaryStore` without
+  recomputing membership (`needsAttention`, `active`, or `recentActivity`);
 - preserve remote secure-connection readiness gating;
 - preserve manual `refresh()` as a server-sort refresh rather than a stable
   merge refresh.
@@ -551,6 +562,9 @@ Acceptance:
 - [x] source switches reset stable tier order;
 - [x] refresh/reconnect events coalesce into one retained-query refetch;
 - [x] existing rows remain selected from `clientSummaryStore`;
+- [x] locally patchable `session-updated` events patch inbox rows without
+  forcing a full `/api/inbox` refresh, while unknown rows and unread-tier
+  promotions still revalidate;
 - [x] manual refresh can still force server sort order.
 
 ### 7. Move Projects Onto Retained Revalidation

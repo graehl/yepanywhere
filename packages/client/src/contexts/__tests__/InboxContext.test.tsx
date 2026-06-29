@@ -13,14 +13,14 @@ import {
 } from "../InboxContext";
 
 const { activityBus, mockGetInbox, remoteState } = vi.hoisted(() => {
-  const handlers = new Map<string, Set<() => void>>();
+  const handlers = new Map<string, Set<(data?: unknown) => void>>();
   return {
     mockGetInbox: vi.fn<() => Promise<InboxResponse>>(),
     remoteState: {
       connection: null as { connection: object | null } | null,
     },
     activityBus: {
-      on: vi.fn((event: string, handler: () => void) => {
+      on: vi.fn((event: string, handler: (data?: unknown) => void) => {
         let set = handlers.get(event);
         if (!set) {
           set = new Set();
@@ -29,9 +29,9 @@ const { activityBus, mockGetInbox, remoteState } = vi.hoisted(() => {
         set.add(handler);
         return () => handlers.get(event)?.delete(handler);
       }),
-      emit(event: string) {
+      emit(event: string, data?: unknown) {
         for (const handler of handlers.get(event) ?? []) {
-          handler();
+          handler(data);
         }
       },
       reset() {
@@ -309,6 +309,182 @@ describe("InboxProvider", () => {
 
       expect(mockGetInbox).toHaveBeenCalledTimes(2);
       expect(view.getByTestId("total").textContent).toBe("2");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("patches known session-updated events without refetching the inbox", async () => {
+    vi.useFakeTimers();
+    try {
+      remoteState.connection = { connection: {} };
+      mockGetInbox.mockResolvedValueOnce(
+        emptyInbox({
+          needsAttention: [
+            {
+              sessionId: "session-1",
+              projectId: "project-1",
+              projectName: "Project",
+              sessionTitle: "Initial",
+              updatedAt: "2026-06-28T00:00:00.000Z",
+              pendingInputType: "user-question",
+            },
+          ],
+        }),
+      );
+
+      const view = render(
+        <InboxProvider>
+          <InboxConsumer />
+        </InboxProvider>,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mockGetInbox).toHaveBeenCalledTimes(1);
+      expect(view.getByTestId("needs").textContent).toBe("Initial");
+
+      await act(async () => {
+        activityBus.emit("session-updated", {
+          type: "session-updated",
+          sessionId: "session-1",
+          projectId: "project-1",
+          title: "Patched title",
+          updatedAt: "2026-06-28T00:01:00.000Z",
+          timestamp: "2026-06-28T00:01:00.000Z",
+        });
+        await vi.advanceTimersByTimeAsync(500);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockGetInbox).toHaveBeenCalledTimes(1);
+      expect(view.getByTestId("needs").textContent).toBe("Patched title");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refetches inbox when a session-updated event is not in known tiers", async () => {
+    vi.useFakeTimers();
+    try {
+      remoteState.connection = { connection: {} };
+      mockGetInbox
+        .mockResolvedValueOnce(emptyInbox())
+        .mockResolvedValueOnce(
+          emptyInbox({
+            recentActivity: [
+              {
+                sessionId: "session-2",
+                projectId: "project-1",
+                projectName: "Project",
+                sessionTitle: "Discovered",
+                updatedAt: "2026-06-28T00:01:00.000Z",
+              },
+            ],
+          }),
+        );
+
+      const view = render(
+        <InboxProvider>
+          <InboxConsumer />
+        </InboxProvider>,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mockGetInbox).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        activityBus.emit("session-updated", {
+          type: "session-updated",
+          sessionId: "session-2",
+          projectId: "project-1",
+          title: "Discovered",
+          updatedAt: "2026-06-28T00:01:00.000Z",
+          timestamp: "2026-06-28T00:01:00.000Z",
+        });
+        await vi.advanceTimersByTimeAsync(500);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockGetInbox).toHaveBeenCalledTimes(2);
+      expect(view.getByTestId("total").textContent).toBe("1");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refetches inbox for unread-tier session-updated promotions", async () => {
+    vi.useFakeTimers();
+    try {
+      remoteState.connection = { connection: {} };
+      mockGetInbox
+        .mockResolvedValueOnce(
+          emptyInbox({
+            unread24h: [
+              {
+                sessionId: "session-3",
+                projectId: "project-1",
+                projectName: "Project",
+                sessionTitle: "Unread",
+                updatedAt: "2026-06-27T23:00:00.000Z",
+                hasUnread: true,
+              },
+            ],
+          }),
+        )
+        .mockResolvedValueOnce(
+          emptyInbox({
+            recentActivity: [
+              {
+                sessionId: "session-3",
+                projectId: "project-1",
+                projectName: "Project",
+                sessionTitle: "Unread updated",
+                updatedAt: "2026-06-28T00:01:00.000Z",
+                hasUnread: true,
+              },
+            ],
+          }),
+        );
+
+      const view = render(
+        <InboxProvider>
+          <InboxConsumer />
+        </InboxProvider>,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mockGetInbox).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        activityBus.emit("session-updated", {
+          type: "session-updated",
+          sessionId: "session-3",
+          projectId: "project-1",
+          title: "Unread updated",
+          updatedAt: "2026-06-28T00:01:00.000Z",
+          timestamp: "2026-06-28T00:01:00.000Z",
+        });
+        await vi.advanceTimersByTimeAsync(500);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockGetInbox).toHaveBeenCalledTimes(2);
+      expect(view.getByTestId("total").textContent).toBe("1");
     } finally {
       vi.useRealTimers();
     }

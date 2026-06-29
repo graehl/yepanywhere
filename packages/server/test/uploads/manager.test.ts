@@ -70,6 +70,25 @@ describe("sanitizeFilename", () => {
     const { id, sanitized } = sanitizeFilename(".gitignore");
     expect(sanitized).toBe(`${id}_.gitignore`);
   });
+
+  it("normalizes the macOS screenshot narrow no-break space (U+202F) before AM/PM", () => {
+    // macOS (Ventura+) names screenshots with a U+202F NARROW NO-BREAK SPACE
+    // between the time and AM/PM, which looks like a space but breaks path lookups.
+    const original = "Screenshot 2026-06-29 at 10.17.29\u202fAM.png";
+    const { id, sanitized } = sanitizeFilename(original);
+    expect(sanitized).toBe(`${id}_Screenshot 2026-06-29 at 10.17.29 AM.png`);
+    expect(sanitized).not.toContain("\u202f");
+  });
+
+  it("normalizes other exotic whitespace (NBSP, tabs) to a regular space", () => {
+    const { id, sanitized } = sanitizeFilename("a\u00a0b\tc.txt");
+    expect(sanitized).toBe(`${id}_a b c.txt`);
+  });
+
+  it("strips zero-width/invisible characters", () => {
+    const { id, sanitized } = sanitizeFilename("fi\u200ble\ufeff.txt");
+    expect(sanitized).toBe(`${id}_file.txt`);
+  });
 });
 
 describe("getUploadDir", () => {

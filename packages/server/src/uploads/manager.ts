@@ -54,6 +54,8 @@ export function sanitizeFilename(original: string): {
   // Remove null bytes and other dangerous characters
   let sanitized = baseFilename
     .replace(/\0/g, "")
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "") // strip zero-width/invisible chars
+    .replace(/[^\S ]/g, " ") // normalize exotic whitespace (NBSP, U+202F narrow no-break space that macOS screenshots use before AM/PM, tabs, etc.) to a regular space
     .replace(/[<>:"/\\|?*]/g, "_") // Windows-invalid chars (includes path separators)
     .replace(/\.\./g, "_") // path traversal
     .trim();

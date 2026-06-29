@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { api } from "../api/client";
+import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
+import {
+  activityBus,
+  type ProcessStateEvent,
+  type SessionCreatedEvent,
+  type SessionStatusEvent,
+} from "../lib/activityBus";
+import {
+  createClientQueryKey,
+  type ClientQueryRequestContext,
+} from "../lib/clientQueryController";
 import {
   reportProjectCollectionSnapshot,
   reportProjectsCollectionSnapshot,
@@ -7,9 +18,33 @@ import {
   useProjectCollectionRecord,
   useProjectCollectionRecords,
 } from "../lib/clientSummaryStore";
-import { useFileActivity } from "./useFileActivity";
+import { isRemoteClient } from "../lib/connection";
+import { useRetainedClientQuery } from "./useRetainedClientQuery";
 
-const REFETCH_DEBOUNCE_MS = 500;
+const PROJECTS_QUERY_KEY = createClientQueryKey({
+  endpoint: "projects",
+});
+const PROJECTS_REVALIDATE_EVENTS = [
+  "refresh",
+  "reconnect",
+  "process-state-changed",
+  "session-status-changed",
+  "session-created",
+] as const;
+
+type ProjectsResponse = Awaited<ReturnType<typeof api.getProjects>>;
+type ProjectResponse = Awaited<ReturnType<typeof api.getProject>>;
+interface ProjectQueryMeta {
+  projectId: string | undefined;
+}
+
+function useRemoteReady(): boolean {
+  const remoteConnection = useOptionalRemoteConnection();
+  return (
+    !isRemoteClient() ||
+    (remoteConnection !== null && remoteConnection.connection !== null)
+  );
+}
 
 /**
  * Fetch a single project by ID.
@@ -17,117 +52,77 @@ const REFETCH_DEBOUNCE_MS = 500;
 export function useProject(projectId: string | undefined) {
   const sourceKey = useClientSummarySourceKey();
   const project = useProjectCollectionRecord(projectId) ?? null;
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const loadedProjectIdRef = useRef<string | undefined>(undefined);
-  const loadedSourceKeyRef = useRef<string | null>(null);
-  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const refreshProject = useCallback(
-    (changedProjectId?: string) => {
-      if (!projectId || (changedProjectId && changedProjectId !== projectId)) {
-        return;
-      }
-      if (refetchTimerRef.current) {
-        clearTimeout(refetchTimerRef.current);
-      }
-      const targetProjectId = projectId;
-      const requestSourceKey = sourceKey;
-      refetchTimerRef.current = setTimeout(() => {
-        const requestStartedAt = Date.now();
-        api
-          .getProject(targetProjectId)
-          .then((data) => {
-            if (
-              loadedProjectIdRef.current === targetProjectId &&
-              loadedSourceKeyRef.current === requestSourceKey
-            ) {
-              reportProjectCollectionSnapshot(
-                requestSourceKey,
-                { project: data.project },
-                requestStartedAt,
-              );
-              setError(null);
-            }
-          })
-          .catch((err) => {
-            if (
-              loadedProjectIdRef.current === targetProjectId &&
-              loadedSourceKeyRef.current === requestSourceKey
-            ) {
-              setError(err instanceof Error ? err : new Error(String(err)));
-            }
-          });
-      }, REFETCH_DEBOUNCE_MS);
-    },
-    [projectId, sourceKey],
+  const ready = useRemoteReady();
+  const queryKey = useMemo(
+    () =>
+      createClientQueryKey({
+        endpoint: "project",
+        projectId: projectId ?? null,
+      }),
+    [projectId],
   );
+  const enabled = Boolean(projectId);
 
-  useFileActivity({
-    onProcessStateChange: (event) => refreshProject(event.projectId),
-    onSessionStatusChange: (event) => refreshProject(event.projectId),
-    onSessionCreated: (event) => refreshProject(event.session.projectId),
-    onReconnect: () => refreshProject(),
+  const {
+    loading,
+    error,
+    scheduleRevalidation,
+  } = useRetainedClientQuery<ProjectResponse>({
+    sourceKey,
+    key: queryKey,
+    enabled,
+    ready,
+    hasData: project !== null,
+    meta: { projectId },
+    revalidateOn: ["refresh", "reconnect"],
+    fetcher: (context) => {
+      const requestProjectId = (context.meta as ProjectQueryMeta | undefined)
+        ?.projectId;
+      if (!requestProjectId) {
+        throw new Error("Project id is required");
+      }
+      return api.getProject(requestProjectId);
+    },
+    applySnapshot: (data, context) => {
+      reportProjectCollectionSnapshot(
+        context.sourceKey,
+        { project: data.project },
+        context.requestStartedAt,
+      );
+    },
   });
 
   useEffect(() => {
     if (!projectId) {
-      setLoading(false);
-      loadedProjectIdRef.current = undefined;
-      loadedSourceKeyRef.current = null;
-      return;
+      return undefined;
     }
 
-    // Reset when switching projects or backend sources.
-    if (
-      loadedProjectIdRef.current !== projectId ||
-      loadedSourceKeyRef.current !== sourceKey
-    ) {
-      if (refetchTimerRef.current) {
-        clearTimeout(refetchTimerRef.current);
-        refetchTimerRef.current = null;
-      }
-      setLoading(true);
-      setError(null);
-      loadedProjectIdRef.current = projectId;
-      loadedSourceKeyRef.current = sourceKey;
-    }
-
-    let cancelled = false;
-    const requestStartedAt = Date.now();
-    const requestSourceKey = sourceKey;
-
-    api
-      .getProject(projectId)
-      .then((data) => {
-        if (!cancelled) {
-          reportProjectCollectionSnapshot(
-            requestSourceKey,
-            { project: data.project },
-            requestStartedAt,
-          );
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err : new Error(String(err)));
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, sourceKey]);
-
-  useEffect(() => {
-    return () => {
-      if (refetchTimerRef.current) {
-        clearTimeout(refetchTimerRef.current);
+    const maybeRefresh = (
+      event: ProcessStateEvent | SessionStatusEvent | SessionCreatedEvent,
+    ) => {
+      const changedProjectId =
+        "session" in event ? event.session.projectId : event.projectId;
+      if (changedProjectId === projectId) {
+        scheduleRevalidation();
       }
     };
-  }, []);
+
+    const unsubscribeProcess = activityBus.on(
+      "process-state-changed",
+      maybeRefresh,
+    );
+    const unsubscribeStatus = activityBus.on(
+      "session-status-changed",
+      maybeRefresh,
+    );
+    const unsubscribeCreated = activityBus.on("session-created", maybeRefresh);
+
+    return () => {
+      unsubscribeProcess();
+      unsubscribeStatus();
+      unsubscribeCreated();
+    };
+  }, [projectId, scheduleRevalidation]);
 
   return useMemo(
     () => ({ project, loading, error }),
@@ -138,72 +133,22 @@ export function useProject(projectId: string | undefined) {
 export function useProjects() {
   const sourceKey = useClientSummarySourceKey();
   const projects = useProjectCollectionRecords();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hasFetchedRef = useRef(false);
-  const fetchedSourceKeyRef = useRef<string | null>(null);
-  const hasResolvedInitialFetchRef = useRef(false);
-
-  const fetch = useCallback(async () => {
-    // Preserve existing UI during background refetches triggered by activity
-    // events so pages don't bounce back to their initial loading state.
-    setLoading(!hasResolvedInitialFetchRef.current);
-    setError(null);
-    const requestStartedAt = Date.now();
-    const requestSourceKey = sourceKey;
-    try {
-      const data = await api.getProjects();
+  const ready = useRemoteReady();
+  const { loading, error, refetch } = useRetainedClientQuery<ProjectsResponse>({
+    sourceKey,
+    key: PROJECTS_QUERY_KEY,
+    ready,
+    hasData: projects.length > 0,
+    revalidateOn: PROJECTS_REVALIDATE_EVENTS,
+    fetcher: () => api.getProjects(),
+    applySnapshot: (data, context: ClientQueryRequestContext) => {
       reportProjectsCollectionSnapshot(
-        requestSourceKey,
+        context.sourceKey,
         { projects: data.projects },
-        requestStartedAt,
+        context.requestStartedAt,
       );
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      hasResolvedInitialFetchRef.current = true;
-      setLoading(false);
-    }
-  }, [sourceKey]);
-
-  // Initial fetch - only once (avoid StrictMode double-fetch)
-  useEffect(() => {
-    if (hasFetchedRef.current && fetchedSourceKeyRef.current === sourceKey) {
-      return;
-    }
-    hasFetchedRef.current = true;
-    fetchedSourceKeyRef.current = sourceKey;
-    hasResolvedInitialFetchRef.current = false;
-    fetch();
-  }, [fetch, sourceKey]);
-
-  // Debounced refetch for status change events
-  const debouncedRefetch = useCallback(() => {
-    if (refetchTimerRef.current) {
-      clearTimeout(refetchTimerRef.current);
-    }
-    refetchTimerRef.current = setTimeout(() => {
-      fetch();
-    }, REFETCH_DEBOUNCE_MS);
-  }, [fetch]);
-
-  // Subscribe to activity that can change live project counts.
-  useFileActivity({
-    onProcessStateChange: debouncedRefetch,
-    onSessionStatusChange: debouncedRefetch,
-    onSessionCreated: debouncedRefetch,
-    onReconnect: fetch,
+    },
   });
 
-  // Cleanup debounce timer
-  useEffect(() => {
-    return () => {
-      if (refetchTimerRef.current) {
-        clearTimeout(refetchTimerRef.current);
-      }
-    };
-  }, []);
-
-  return { projects, loading, error, refetch: fetch };
+  return { projects, loading, error, refetch };
 }

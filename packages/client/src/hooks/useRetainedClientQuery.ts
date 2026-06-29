@@ -21,6 +21,7 @@ export interface UseRetainedClientQueryOptions<T> {
   hasData?: boolean;
   staleTimeMs?: number;
   debounceMs?: number;
+  meta?: unknown;
   revalidateOn?: readonly ActivityEventType[];
   fetcher: (context: ClientQueryRequestContext) => Promise<T>;
   applySnapshot?: (
@@ -51,6 +52,7 @@ export function useRetainedClientQuery<T>({
   hasData = false,
   staleTimeMs,
   debounceMs = DEFAULT_REVALIDATE_DEBOUNCE_MS,
+  meta,
   revalidateOn = [],
   fetcher,
   applySnapshot,
@@ -75,10 +77,12 @@ export function useRetainedClientQuery<T>({
   const mountedRef = useRef(true);
   const runSequenceRef = useRef(0);
   const coverageRef = useRef(coverage);
+  const metaRef = useRef(meta);
   const fetcherRef = useRef(fetcher);
   const applySnapshotRef = useRef(applySnapshot);
 
   coverageRef.current = coverage;
+  metaRef.current = meta;
   fetcherRef.current = fetcher;
   applySnapshotRef.current = applySnapshot;
 
@@ -133,7 +137,7 @@ export function useRetainedClientQuery<T>({
           coverage: coverageRef.current,
           staleTimeMs,
           force,
-          meta,
+          meta: meta ?? metaRef.current,
           fetcher: (context) => fetcherRef.current(context),
           applySnapshot: (result, context) =>
             applySnapshotRef.current?.(result, context),

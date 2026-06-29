@@ -1,13 +1,37 @@
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "../../types";
 
-const mocks = vi.hoisted(() => ({
-  getProject: vi.fn(),
-  getProjects: vi.fn(),
-  activityBusOn: vi.fn(() => () => {}),
-  useFileActivity: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  const handlers = new Map<string, Set<(data: unknown) => void>>();
+  return {
+    getProject: vi.fn(),
+    getProjects: vi.fn(),
+    isRemoteClient: vi.fn(() => false),
+    remoteState: {
+      connection: null as { connection: object | null } | null,
+    },
+    activityBus: {
+      on: vi.fn((event: string, handler: (data: unknown) => void) => {
+        let set = handlers.get(event);
+        if (!set) {
+          set = new Set();
+          handlers.set(event, set);
+        }
+        set.add(handler);
+        return () => handlers.get(event)?.delete(handler);
+      }),
+      emit(event: string, data?: unknown) {
+        for (const handler of handlers.get(event) ?? []) {
+          handler(data);
+        }
+      },
+      reset() {
+        handlers.clear();
+      },
+    },
+  };
+});
 
 vi.mock("../../api/client", () => ({
   api: {
@@ -18,18 +42,31 @@ vi.mock("../../api/client", () => ({
 
 vi.mock("../../lib/activityBus", () => ({
   activityBus: {
-    on: mocks.activityBusOn,
+    on: mocks.activityBus.on,
   },
 }));
 
-vi.mock("../useFileActivity", () => ({
-  useFileActivity: mocks.useFileActivity,
+vi.mock("../../lib/connection", () => ({
+  isRemoteClient: mocks.isRemoteClient,
 }));
 
+vi.mock("../../contexts/RemoteConnectionContext", () => ({
+  useOptionalRemoteConnection: () => mocks.remoteState.connection,
+}));
+
+import { resetClientQueryControllerForTests } from "../../lib/clientQueryController";
 import { resetClientSummaryStoreForTests } from "../../lib/clientSummaryStore";
 import { useProject, useProjects } from "../useProjects";
 
 const RECENT = "2026-06-27T11:00:00.000Z";
+
+async function settle() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+}
 
 function project(id: string, overrides: Partial<Project> = {}): Project {
   return {
@@ -47,15 +84,21 @@ function project(id: string, overrides: Partial<Project> = {}): Project {
 
 beforeEach(() => {
   resetClientSummaryStoreForTests();
+  resetClientQueryControllerForTests();
   mocks.getProject.mockReset();
   mocks.getProjects.mockReset();
-  mocks.activityBusOn.mockClear();
-  mocks.useFileActivity.mockClear();
+  mocks.isRemoteClient.mockReset();
+  mocks.isRemoteClient.mockReturnValue(false);
+  mocks.remoteState.connection = null;
+  mocks.activityBus.reset();
+  mocks.activityBus.on.mockClear();
 });
 
 afterEach(() => {
   cleanup();
+  resetClientQueryControllerForTests();
   resetClientSummaryStoreForTests();
+  vi.useRealTimers();
 });
 
 describe("useProjects", () => {
@@ -74,6 +117,41 @@ describe("useProjects", () => {
       "project-b",
     ]);
     expect(mocks.getProjects).toHaveBeenCalledTimes(1);
+  });
+
+  it("coalesces project list refresh events through the retained query", async () => {
+    vi.useFakeTimers();
+    mocks.getProjects
+      .mockResolvedValueOnce({
+        projects: [project("project-a")],
+      })
+      .mockResolvedValueOnce({
+        projects: [project("project-a"), project("project-b")],
+      });
+
+    const { result } = renderHook(() => useProjects());
+    await settle();
+    expect(result.current.loading).toBe(false);
+    expect(mocks.getProjects).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      mocks.activityBus.emit("refresh");
+      mocks.activityBus.emit("reconnect");
+      await vi.advanceTimersByTimeAsync(499);
+    });
+    expect(mocks.getProjects).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.getProjects).toHaveBeenCalledTimes(2);
+    expect(result.current.projects.map((row) => row.id)).toEqual([
+      "project-a",
+      "project-b",
+    ]);
   });
 
   it("shares collection-backed project facts between list and detail hooks", async () => {
@@ -102,5 +180,51 @@ describe("useProjects", () => {
     await waitFor(() =>
       expect(list.result.current.projects[0]?.name).toBe("Detail Project"),
     );
+  });
+
+  it("only revalidates project detail for matching project activity", async () => {
+    vi.useFakeTimers();
+    mocks.getProject
+      .mockResolvedValueOnce({
+        project: project("project-a", { activeOwnedCount: 1 }),
+      })
+      .mockResolvedValueOnce({
+        project: project("project-a", { activeOwnedCount: 2 }),
+      });
+
+    const detail = renderHook(() => useProject("project-a"));
+    await settle();
+    expect(detail.result.current.loading).toBe(false);
+    expect(mocks.getProject).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      mocks.activityBus.emit("process-state-changed", {
+        type: "process-state-changed",
+        sessionId: "session-b",
+        projectId: "project-b",
+        activity: "in-turn",
+        timestamp: "2026-06-29T00:00:00.000Z",
+      });
+      await vi.advanceTimersByTimeAsync(500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mocks.getProject).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      mocks.activityBus.emit("process-state-changed", {
+        type: "process-state-changed",
+        sessionId: "session-a",
+        projectId: "project-a",
+        activity: "in-turn",
+        timestamp: "2026-06-29T00:00:01.000Z",
+      });
+      await vi.advanceTimersByTimeAsync(500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.getProject).toHaveBeenCalledTimes(2);
+    expect(detail.result.current.project?.activeOwnedCount).toBe(2);
   });
 });

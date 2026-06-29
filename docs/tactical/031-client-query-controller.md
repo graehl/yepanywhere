@@ -50,6 +50,11 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   stable tier ordering and snapshot reporting in the provider. Inbox now uses
   the same retained wake/reconnect/session/process-event refresh shape as
   Agents, with manual refresh still forcing server sort order.
+- 2026-06-29: Moved `useProjects` and `useProject` onto
+  `useRetainedClientQuery`. Project list/detail snapshots still report into
+  `clientSummaryStore`; retained revalidation now owns initial fetch,
+  wake/reconnect refresh, and project activity debounce, while project detail
+  keeps filtering activity to the selected project.
 - 2026-06-29: Added explicit session observation provenance in the summary
   reducer. Global-session rows are named as fuller snapshots, Inbox rows as
   partial snapshots, and activity-bus reducers as partial events so freshness
@@ -99,8 +104,8 @@ Audited 2026-06-28. This is the starting map for migration priority.
 | --- | --- | --- | --- |
 | `useGlobalSessionsFeed` | `/api/sessions`, optional `/api/sessions/stats` | Source-scoped snapshot reporting, local loading/error, local debounce, local request sequence, no shared in-flight dedupe. `limit` is part of the query key, so 50-row Sidebar and 100-row All Sessions fetches do not satisfy each other. | First target. Needs coverage-aware rows and separate stats handling. |
 | `useSidebarSessionFeeds` | two `useGlobalSessionsFeed` instances | Visual Sidebar owns unfiltered and starred fetches. Rows render from broad entity projections, so coverage is implicit and can be accidentally warmed by All Sessions. | Replace with an app-shell retainer plus shared global-session controls. |
-| `useProjects` | `/api/projects` | Source-scoped snapshot reporting and activity-bus debounce, but hook-local `hasFetchedRef`, loading/error, and no shared in-flight dedupe. | Good second-wave target after global sessions. |
-| `useProject` | `/api/projects/:id` | Source-scoped snapshot reporting, per-hook cancellation and debounce. Multiple consumers of the same project can duplicate fetches. | Second-wave target if repeated project detail fetches stay visible. |
+| `useProjects` | `/api/projects` | Source-scoped snapshot reporting plus retained query lifecycle. Revalidates on readiness, refresh/reconnect, and project-affecting process/session events. Previously owned `hasFetchedRef`, loading/error, and debounce locally. | Completed retained-revalidation target. |
+| `useProject` | `/api/projects/:id` | Source-scoped detail snapshot reporting plus retained query lifecycle. Refresh/reconnect revalidate the retained detail query; process/session events revalidate only when they match the selected project. | Completed retained-revalidation target. |
 | `InboxContext` | `/api/inbox` | App-scoped singleton feed owner. Stable tier ordering and source-scoped snapshot reporting stay provider-owned; readiness, retained query lifecycle, and wake/reconnect/activity refetch now go through `useRetainedClientQuery`. | Completed second retained-revalidation target. Keep tier-order policy local. |
 | `useProcesses` | `/api/processes?includeTerminated=true` | Source-keyed process snapshot plus retained controller query. Revalidates on readiness, refresh/reconnect, process/session events, and patches metadata titles locally. Previously used hook-local rows plus a fixed 30s poll. | Completed first retained-revalidation target. A process summary store slice can wait. |
 | `useProjectQueues` | `/api/projects/:id/queue` for each visible project | Source-scoped queue snapshots and mutation reporting, but each mounted consumer batches its own project ids and request lifecycle. Reconnect/refresh refetches are hook-local. | Good second-wave target. Needs per-project keying rather than one broad array key. |
@@ -527,14 +532,43 @@ Acceptance:
 - [x] existing rows remain selected from `clientSummaryStore`;
 - [x] manual refresh can still force server sort order.
 
-### 7. Move Adjacent Summary Feeds Opportunistically
+### 7. Move Projects Onto Retained Revalidation
+
+Status: Completed 2026-06-29.
+
+Move `useProjects` and `useProject` from hook-local fetch/debounce state onto
+`useRetainedClientQuery`, while preserving their client-summary snapshot
+reporting.
+
+Project specifics:
+
+- keep project records in `clientSummaryStore`;
+- use a list query key for `/api/projects`;
+- use per-project detail query keys for `/api/projects/:id`;
+- preserve remote secure-connection readiness gating;
+- revalidate the project list on `refresh`, `reconnect`,
+  `process-state-changed`, `session-status-changed`, and `session-created`;
+- revalidate project detail on `refresh` and `reconnect`;
+- for project detail, filter process/session activity events to the selected
+  project before scheduling revalidation.
+
+Acceptance:
+
+- [x] project list responses still feed the shared project collection;
+- [x] project detail responses still update list consumers through shared
+  project records;
+- [x] project list wake/reconnect events coalesce into one retained-query
+  refetch;
+- [x] project detail ignores unrelated project activity;
+- [x] no project request starts before remote secure-connection readiness.
+
+### 8. Move Adjacent Summary Feeds Opportunistically
 
 Status: Follow-on.
 
-After global sessions, processes, and inbox prove the controller shape, migrate
-only feeds that get a clear simplification:
+After global sessions, processes, inbox, and projects prove the controller
+shape, migrate only feeds that get a clear simplification:
 
-- Projects list and project details;
 - project queues;
 - server settings;
 - version/provider catalog if their existing module-level caches can be
@@ -574,6 +608,8 @@ Acceptance:
   coalesced retained-query refresh.
 - Verify Inbox uses the same retained refresh path while preserving stable tier
   ordering and manual server-sort refresh.
+- Verify project list/detail feeds use retained refresh while preserving shared
+  project record updates and detail-event filtering.
 - Verify star/archive/read mutations update store-backed surfaces immediately
   and invalidate retained server-owned memberships.
 - Verify StrictMode or multiple mounted consumers do not double-fetch the same

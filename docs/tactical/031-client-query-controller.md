@@ -1,6 +1,7 @@
 # Client Query Controller
 
-Status: Proposed, Sidebar retainer landed 2026-06-28.
+Status: In progress; retained query controller and Sidebar starred projection
+landed through 2026-06-29.
 
 This note tracks the next data-fetching cleanup after the client summary store
 work. The immediate forcing bug is Sidebar session coverage: after a browser
@@ -31,9 +32,9 @@ reconnect, or session metadata changes. That belongs here, not in a separate
 - 2026-06-28: Mounted Sidebar session feed coverage from `NavigationLayout`, so
   the app shell retains Sidebar's global and starred session queries
   independently of the visual Sidebar branch.
-- 2026-06-28: Corrected Sidebar rendering to use retained query memberships
-  for Starred, Recent, and Older sections instead of broad "all known entity"
-  projections that varied with fetch completion order.
+- 2026-06-28: Corrected Sidebar Recent and Older rendering to use retained
+  query memberships instead of broad "all known entity" projections that varied
+  with fetch completion order.
 - 2026-06-28: Fixed the remaining active-session race by allowing older full
   session snapshots to backfill missing fields left by newer partial live
   updates. The timestamp guards still protect newer values, but no longer keep
@@ -85,6 +86,11 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   when the current tier can be updated locally, and revalidates the full inbox
   for unknown rows, unread-tier promotions, or other membership-affecting
   events.
+- 2026-06-29: Changed Sidebar Starred to render from the known starred entity
+  projection while still retaining the starred sessions query for coverage,
+  pagination, and server reconciliation. This fixes the metadata-toggle window
+  where a row left Last 24 Hours before the server-owned starred membership had
+  refetched.
 
 ## Context
 
@@ -202,6 +208,37 @@ Merge rules:
 - `sessionCollectionRecordToGlobalSessionItem(...)` still drops records missing
   required row fields. That is a useful guard, but reducers should treat dropped
   rows as incomplete observations, not as proof the session is absent.
+
+## Sidebar Starred Projection Decision
+
+Status: Implemented 2026-06-29.
+
+Sidebar has two different list responsibilities:
+
+- Starred is a metadata-derived pin surface. If the client already knows a
+  complete session row and then observes `isStarred: true`, the row should move
+  into Starred immediately. Waiting for `/api/sessions?starred=true` to refetch
+  creates a bad intermediate state: the same metadata event removes the row
+  from Recent/Older, so the row appears to disappear.
+- Recent and Older are coverage/list surfaces. They are tied to server-owned
+  pagination, archive filtering, and the Sidebar global feed's loaded window.
+  Rendering every known entity there would make the Sidebar depend on whichever
+  other page happened to warm the normalized store.
+
+The resulting split is intentional:
+
+- Sidebar still mounts the global and starred session feeds through
+  `useSidebarSessionFeeds`, including when the visual Sidebar is collapsed or
+  closed. Those feeds keep coverage independent of route-local pages.
+- Recent and Older render from the retained global query membership, then apply
+  the derived recent/older selectors.
+- Starred renders from `useStarredSessionRecords()`, the normalized known-entity
+  projection. The retained starred query remains responsible for discovering
+  older starred rows, filling gaps, pagination, and reconciling with the server.
+- `selectStarredSessionRecords(...)` still filters `isArchived !== true`. If a
+  session's archived state is unknown because only partial observations have
+  arrived, the client cannot infer absence from the server's default
+  non-archived query. The retained starred feed is the reconciliation path.
 
 ## Library Options
 

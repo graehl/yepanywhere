@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createClientSummaryHostSourceKey,
   reportGlobalSessionsCollectionSnapshot,
+  reportSessionCollectionMetadataChanged,
   resetClientSummaryStoreForTests,
   setCurrentClientSummarySourceKey,
 } from "../../lib/clientSummaryStore";
@@ -179,6 +180,17 @@ function renderSidebar() {
   );
 }
 
+function sectionRowIds(container: HTMLElement, listId: string): string[] {
+  const list = container.querySelector(`#${listId}`);
+  if (!list) {
+    return [];
+  }
+  return Array.from(list.querySelectorAll("[data-testid^='session-row-']")).map(
+    (element) =>
+      element.getAttribute("data-testid")?.replace("session-row-", "") ?? "",
+  );
+}
+
 describe("Sidebar client summary source registry", () => {
   beforeEach(() => {
     resetClientSummaryStoreForTests();
@@ -264,5 +276,60 @@ describe("Sidebar client summary source registry", () => {
         .getByTestId("session-row-mac-session")
         .getAttribute("data-has-draft"),
     ).toBe("true");
+  });
+
+  it("renders locally starred known rows before starred query refetches", async () => {
+    const macbook = createClientSummaryHostSourceKey("macbook");
+
+    act(() => {
+      setCurrentClientSummarySourceKey(macbook);
+      reportGlobalSessionsCollectionSnapshot(
+        macbook,
+        {
+          query: { scope: "global-sessions" },
+          sessions: [session("star-later", "Star later")],
+          hasMore: false,
+        },
+        100,
+      );
+      reportGlobalSessionsCollectionSnapshot(
+        macbook,
+        {
+          query: { scope: "global-sessions", starred: true },
+          sessions: [],
+          hasMore: false,
+        },
+        100,
+      );
+    });
+
+    const { container } = renderSidebar();
+
+    await waitFor(() => {
+      expect(
+        sectionRowIds(container, "sidebar-last-24-hours-list"),
+      ).toEqual(["star-later"]);
+    });
+    expect(sectionRowIds(container, "sidebar-starred-list")).toEqual([]);
+
+    act(() => {
+      reportSessionCollectionMetadataChanged(
+        macbook,
+        {
+          type: "session-metadata-changed",
+          sessionId: "star-later",
+          starred: true,
+          timestamp: "2026-06-28T11:01:00.000Z",
+        },
+        200,
+      );
+    });
+
+    await waitFor(() => {
+      expect(sectionRowIds(container, "sidebar-starred-list")).toEqual([
+        "star-later",
+      ]);
+    });
+    expect(sectionRowIds(container, "sidebar-last-24-hours-list")).toEqual([]);
   });
 });

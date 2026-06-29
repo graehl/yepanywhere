@@ -119,6 +119,22 @@ vi.mock("../../lib/clientSummaryStore", () => {
       query.starred
         ? starredSessionsState.sessions
         : globalSessionsState.sessions,
+    useStarredSessionRecords: () => {
+      const sessionsById = new Map<string, Record<string, unknown>>();
+      for (const session of [
+        ...globalSessionsState.sessions,
+        ...starredSessionsState.sessions,
+      ]) {
+        if (
+          typeof session.id === "string" &&
+          session.isStarred === true &&
+          session.isArchived !== true
+        ) {
+          sessionsById.set(session.id, session);
+        }
+      }
+      return Array.from(sessionsById.values());
+    },
     useKnownProjectQueueItems: () =>
       Object.values(projectQueuesState.queuesByProject).flat(),
     useProjectQueuedSessionIds: () => {

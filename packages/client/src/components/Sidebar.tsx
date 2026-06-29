@@ -27,7 +27,6 @@ import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionColl
 import {
   selectOlderSessionRecordsFromRecords,
   selectRecentSessionRecordsFromRecords,
-  selectStarredSessionRecordsFromRecords,
 } from "../lib/clientSummaryState";
 import {
   useDraftSessionIds,
@@ -36,6 +35,7 @@ import {
   useProjectQueuedSessionIds,
   useProjectQueueSidebarCount,
   useSessionCollectionQueryRecords,
+  useStarredSessionRecords,
 } from "../lib/clientSummaryStore";
 import { UI_KEYS } from "../lib/storageKeys";
 import { getSessionDisplayTitle } from "../utils";
@@ -233,7 +233,6 @@ export function Sidebar({
 
   const {
     globalQuery,
-    starredQuery,
     loading: sessionsLoading,
     hasMoreGlobalSessions,
     loadMoreGlobalSessions,
@@ -242,11 +241,7 @@ export function Sidebar({
   } = useSidebarSessionFeeds(SIDEBAR_SESSION_FEED_LIMIT);
 
   const globalQueryRecords = useSessionCollectionQueryRecords(globalQuery);
-  const starredQueryRecords = useSessionCollectionQueryRecords(starredQuery);
-  const starredSessionRecords = useMemo(
-    () => selectStarredSessionRecordsFromRecords(starredQueryRecords),
-    [starredQueryRecords],
-  );
+  const starredSessionRecords = useStarredSessionRecords();
   const recentSessionRecords = useMemo(
     () => selectRecentSessionRecordsFromRecords(globalQueryRecords),
     [globalQueryRecords],

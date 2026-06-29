@@ -31,6 +31,7 @@ const {
   mockCreateDetachedSession,
   mockQueueMessage,
   mockCreateProjectQueueItem,
+  mockReportProjectQueueCollectionSnapshot,
   mockAddProject,
   mockUpload,
   mockUploadStagedAttachment,
@@ -64,6 +65,7 @@ const {
   mockCreateDetachedSession: vi.fn(),
   mockQueueMessage: vi.fn(),
   mockCreateProjectQueueItem: vi.fn(),
+  mockReportProjectQueueCollectionSnapshot: vi.fn(),
   mockAddProject: vi.fn(),
   mockUpload: vi.fn(),
   mockUploadStagedAttachment: vi.fn(),
@@ -364,6 +366,7 @@ vi.mock("../../hooks/useSessionToolbarVisibility", () => ({
 }));
 
 vi.mock("../../lib/clientSummaryStore", () => ({
+  reportProjectQueueCollectionSnapshot: mockReportProjectQueueCollectionSnapshot,
   useClientSummarySourceKey: () => "host:test",
   useActiveProjectSessionIds: (projectId: string | null | undefined) => {
     if (!projectId) return [];
@@ -1059,6 +1062,10 @@ describe("NewSessionForm", () => {
     );
     expect(mockStartSession).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockReportProjectQueueCollectionSnapshot).toHaveBeenCalledWith(
+      "host:test",
+      { projectId: "project-1", items: [] },
+    );
   });
 
   it("queues staged new-session files through Project Queue", async () => {

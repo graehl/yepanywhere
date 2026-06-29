@@ -82,6 +82,7 @@ import {
   shouldShowProjectQueueAffordance,
 } from "../lib/projectQueueVisibility";
 import {
+  reportProjectQueueCollectionSnapshot,
   useActiveProjectSessionIds,
   useClientSummarySourceKey,
 } from "../lib/clientSummaryStore";
@@ -2008,7 +2009,7 @@ export function NewSessionForm({
       );
       const showThinking = getShowThinkingSetting();
 
-      await api.createProjectQueueItem(resolvedProjectId, {
+      const response = await api.createProjectQueueItem(resolvedProjectId, {
         target: {
           type: "new-session",
           mode: sessionMode,
@@ -2036,6 +2037,10 @@ export function NewSessionForm({
           client: "new-session",
         },
       });
+      reportProjectQueueCollectionSnapshot(
+        clientSummarySourceKey,
+        response.queue,
+      );
 
       logSessionUiTrace("new-session-project-queued", {
         projectId: resolvedProjectId,

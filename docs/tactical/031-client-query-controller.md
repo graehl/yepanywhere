@@ -385,7 +385,8 @@ Examples:
 - star/unstar changes starred query membership and derived Sidebar sections;
 - archive/unarchive changes default non-archived query membership;
 - mark read/unread affects inbox membership and unread filters/counts;
-- project queue mutations update queue summaries and targeted-session badges.
+- project queue create/update/delete/retry mutations update queue summaries and
+  targeted-session badges.
 
 ## Implementation Chunks
 

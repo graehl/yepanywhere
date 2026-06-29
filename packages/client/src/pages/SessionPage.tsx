@@ -111,6 +111,7 @@ import {
   getBtwAsideSessionDisplayTitle,
 } from "../lib/btwAsideSessions";
 import {
+  reportProjectQueueCollectionSnapshot,
   useActiveProjectSessionIds,
   useClientSummarySourceKey,
 } from "../lib/clientSummaryStore";
@@ -2814,7 +2815,7 @@ function SessionPageContent({
         serverOffsetMs: getEstimatedServerOffsetMs(),
       });
       const requestSentAtMs = Date.now();
-      await api.createProjectQueueItem(projectId, {
+      const response = await api.createProjectQueueItem(projectId, {
         target: {
           type: "existing-session",
           sessionId,
@@ -2842,6 +2843,10 @@ function SessionPageContent({
           client: "toolbar",
         },
       });
+      reportProjectQueueCollectionSnapshot(
+        clientSummarySourceKey,
+        response.queue,
+      );
       logSessionUiTrace("composer-project-queue-result", {
         sessionId,
         projectId,

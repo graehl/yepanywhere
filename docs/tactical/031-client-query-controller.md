@@ -14,6 +14,12 @@ loading/error state. That makes it easy for route-local fetches to incidentally
 populate shared summary state, and hard for a component to state "this surface
 requires this data coverage" without duplicate requests.
 
+The follow-up forcing bug was the same layer from another angle: Agents polled
+`/api/processes?includeTerminated=true` every 30 seconds because it had no
+shared retained-query revalidation path for phone wake, tab foreground,
+reconnect, or session metadata changes. That belongs here, not in a separate
+"live collection" abstraction.
+
 ## Progress
 
 - 2026-06-28: Added the minimal client query controller scaffold and focused
@@ -32,6 +38,14 @@ requires this data coverage" without duplicate requests.
   session snapshots to backfill missing fields left by newer partial live
   updates. The timestamp guards still protect newer values, but no longer keep
   active starred records too incomplete for Sidebar row rendering.
+- 2026-06-29: Folded the Agents/Inbox live freshness follow-up back into this
+  controller plan. The next target is retained-query revalidation for
+  processes/Agents, not a parallel live-collection hook.
+- 2026-06-29: Added `useRetainedClientQuery` as the React-facing retained
+  query revalidation layer and moved `useProcesses` onto it. Agents no longer
+  uses a 30s poll; the process list now fetches after readiness, revalidates
+  on retained wake/reconnect/session/process events, and patches custom titles
+  immediately from `session-metadata-changed`.
 
 ## Context
 
@@ -80,6 +94,7 @@ Audited 2026-06-28. This is the starting map for migration priority.
 | `useProjects` | `/api/projects` | Source-scoped snapshot reporting and activity-bus debounce, but hook-local `hasFetchedRef`, loading/error, and no shared in-flight dedupe. | Good second-wave target after global sessions. |
 | `useProject` | `/api/projects/:id` | Source-scoped snapshot reporting, per-hook cancellation and debounce. Multiple consumers of the same project can duplicate fetches. | Second-wave target if repeated project detail fetches stay visible. |
 | `InboxContext` | `/api/inbox` | Already close to a singleton feed owner. Handles readiness, stable tier ordering, source-scoped snapshot reporting, stale response protection, and debounced activity refetches. | Later migration only if the controller can preserve stable tier ordering cleanly. Not needed for Sidebar bug. |
+| `useProcesses` | `/api/processes?includeTerminated=true` | Source-keyed process snapshot plus retained controller query. Revalidates on readiness, refresh/reconnect, process/session events, and patches metadata titles locally. Previously used hook-local rows plus a fixed 30s poll. | Completed first retained-revalidation target. A process summary store slice can wait. |
 | `useProjectQueues` | `/api/projects/:id/queue` for each visible project | Source-scoped queue snapshots and mutation reporting, but each mounted consumer batches its own project ids and request lifecycle. Reconnect/refresh refetches are hook-local. | Good second-wave target. Needs per-project keying rather than one broad array key. |
 | `useServerSettings` | `/api/settings` | Pure hook-local fetch/mutation state. Uses `useBackgroundRevalidation` for quiet reconnect/refresh updates. No source-key capture or shared in-flight cache. | Candidate after summary feeds, especially if settings become store-backed. |
 | `useVersion` | `/api/version` | Module-level shared in-flight promise for non-fresh requests, but no source scoping and no retained cache entry. Pending speech backend polling is bespoke. | Maybe later. Existing dedupe is useful but source-blind in hosted remote scenarios. |
@@ -90,8 +105,12 @@ Audited 2026-06-28. This is the starting map for migration priority.
 
 Findings:
 
-- The immediate bug is specific to global-session row coverage. Fix that before
-  migrating adjacent feeds.
+- The original immediate bug was specific to global-session row coverage. That
+  path now proves the query key, coverage, and Sidebar retainer shape.
+- The next shared gap was retained-query revalidation. The controller can dedupe
+  an `ensureClientQuery` call; `useRetainedClientQuery` is now the first
+  React-facing layer that centralizes activity-bus refresh, reconnect,
+  debounce, readiness, and forced refetch for a retained feed.
 - Several hooks already solve one query-cache concern locally, but each solves a
   different subset: in-flight dedupe, TTL, debounce, stale response protection,
   or background revalidation.
@@ -247,6 +266,56 @@ events only for fetch-side lifecycle:
 Reducers and selectors remain in `clientSummaryState` / `clientSummaryStore`.
 The controller should not duplicate session projection logic.
 
+## Retained Query Revalidation
+
+The controller core knows which queries are retained and can share in-flight
+work. The React-facing revalidation layer tells retained feeds how to revalidate
+when the app receives a wake, reconnect, mutation, or activity signal. Without
+that layer, each hook rebuilds the same mechanics:
+
+- local debounce timers;
+- local readiness guards;
+- local `activityBus` subscriptions;
+- local force-refetch calls;
+- local "do not flash loading over existing data" behavior.
+
+Use a small React-facing layer on top of the controller. The first
+implementation is `useRetainedClientQuery`:
+
+```ts
+useRetainedClientQuery({
+  sourceKey,
+  key,
+  coverage,
+  enabled,
+  ready,
+  staleTimeMs,
+  revalidateOn,
+  fetcher,
+  applySnapshot,
+});
+```
+
+The exact API can change, but the behavior should not:
+
+- initial ensure runs once after `enabled && ready`;
+- `refresh` and `reconnect` mark retained queries stale and schedule one
+  debounced ensure;
+- endpoint-specific activity events can invalidate or refetch matching query
+  keys;
+- no fixed polling interval is introduced;
+- no request is started before the React-level readiness gate opens;
+- `fetchJSON` remains the transport-level secure-connection wait;
+- background revalidation errors preserve existing data and avoid loading
+  flashes;
+- unmounted entries do not keep timers, subscriptions, or server resources
+  alive.
+
+Local reducers still remain the fast path. For example, a
+`session-metadata-changed` event should update any normalized session facts
+immediately when it contains enough data, then invalidate retained server-owned
+memberships only when membership or denormalized row fields may have changed.
+
 ## Mutations
 
 Shared mutation helpers remain a separate but related track from
@@ -349,12 +418,46 @@ Acceptance:
 - no extra duplicate `/api/sessions` request when All Sessions is already
   retaining compatible coverage.
 
-### 5. Move Adjacent Summary Feeds Opportunistically
+### 5. Move Agents Processes Onto The Controller
+
+Status: Completed 2026-06-29.
+
+Move `useProcesses` from a mount fetch plus 30s poll to a retained controller
+query.
+
+Process list specifics:
+
+- add a process-list query key for `/api/processes?includeTerminated=true`;
+- keep `useProcesses` local-state-backed in the first slice unless another
+  surface needs process rows from `ClientSummaryState`;
+- source-key the query so hosted/remote sources do not leak process rows;
+- use retained-query revalidation for initial load, `refresh`, `reconnect`,
+  `process-state-changed`, `session-created`, and session metadata/update
+  events;
+- patch custom titles locally from metadata events when the event carries
+  enough data;
+- fall back to a coalesced refetch when an event only identifies the affected
+  session;
+- remove `POLL_INTERVAL_MS` and `setInterval` from `useProcesses`.
+
+Acceptance:
+
+- [x] opening `/agents` performs one ready-gated process-list request;
+- [x] StrictMode or multiple Agents consumers share the source-keyed process
+  snapshot and controller query instead of owning independent poll loops;
+- [x] backgrounding a tab or waking a phone causes at most one coalesced refresh
+  after the connection is usable;
+- [x] custom session titles appear on the Agents page without waiting for a timed
+  poll;
+- [x] existing rows stay visible during background revalidation failures;
+- [x] no process-list request starts before remote secure-connection readiness.
+
+### 6. Move Adjacent Summary Feeds Opportunistically
 
 Status: Follow-on.
 
-After global sessions prove the controller shape, migrate only feeds that get a
-clear simplification:
+After global sessions and processes prove the controller shape, migrate only
+feeds that get a clear simplification:
 
 - Projects list and project details;
 - project queues;
@@ -391,6 +494,10 @@ Acceptance:
   readiness.
 - Verify activity-bus-created sessions remain visible through stale older
   snapshots.
+- Verify Agents no longer polls, but still refreshes on tab foreground, phone
+  wake, reconnect, and relevant process/session events.
+- Verify Agents custom titles update from metadata changes or the next
+  coalesced retained-query refresh.
 - Verify star/archive/read mutations update store-backed surfaces immediately
   and invalidate retained server-owned memberships.
 - Verify StrictMode or multiple mounted consumers do not double-fetch the same

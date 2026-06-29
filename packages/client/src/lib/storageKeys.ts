@@ -65,6 +65,8 @@ export const UI_KEYS = {
   sidebarWidth: "yep-anywhere-sidebar-width",
   sidebarExpanded: "yep-anywhere-sidebar-expanded",
   sidebarSectionExpansion: "yep-anywhere-sidebar-section-expansion",
+  sidebarDuplicateHidingEnabled:
+    "yep-anywhere-sidebar-duplicate-hiding-enabled",
   funPhrases: "yep-anywhere-fun-phrases-enabled",
   streamingEnabled: "yep-anywhere-streaming-enabled",
   speechKeepMicWarm: "yep-anywhere-speech-keep-mic-warm",

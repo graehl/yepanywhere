@@ -167,31 +167,38 @@ vi.mock("../../hooks/useVersion", () => ({
 
 vi.mock("../../i18n", () => ({
   useI18n: () => ({
-    t: (key: string) =>
-      (
-        ({
-          actionExpandSidebar: "Expand sidebar",
-          actionCloseSidebar: "Close sidebar",
-          sidebarNewSession: "New Session",
-          sidebarInbox: "Inbox",
-          sidebarAllSessions: "All Sessions",
-          sidebarProjects: "Projects",
-          projectCardQueueCount: "Project Queue items: {count}",
-          sidebarSectionPendingSessions: "Pending Sessions",
-          sidebarSettings: "Settings",
-          sidebarSwitchHost: "Switch Host",
-          sidebarSectionStarred: "Starred",
-          sidebarSectionLast24Hours: "Last 24 Hours",
-          sidebarSectionOlder: "Older",
-          sidebarSectionExpand: "Expand",
-          sidebarSectionCollapse: "Collapse",
-          sidebarEmpty: "No sessions yet",
-          projectQueueStatusQueued: "Queued",
-          projectQueueStatusFailed: "Failed",
-          projectQueueTargetNewSession: "New session",
-          projectQueueUnknownProject: "Unknown project",
-        }) as Record<string, string>
-      )[key] ?? key,
+    t: (key: string, vars?: Record<string, string | number>) => {
+      const messages = {
+        actionExpandSidebar: "Expand sidebar",
+        actionCloseSidebar: "Close sidebar",
+        sidebarNewSession: "New Session",
+        sidebarInbox: "Inbox",
+        sidebarAllSessions: "All Sessions",
+        sidebarProjects: "Projects",
+        projectCardQueueCount: "Project Queue items: {count}",
+        sidebarSectionPendingSessions: "Pending Sessions",
+        sidebarSettings: "Settings",
+        sidebarSwitchHost: "Switch Host",
+        sidebarSectionStarred: "Starred",
+        sidebarSectionLast24Hours: "Last 24 Hours",
+        sidebarSectionOlder: "Older",
+        sidebarSectionExpand: "Expand",
+        sidebarSectionCollapse: "Collapse",
+        sidebarEmpty: "No sessions yet",
+        sidebarHiddenDuplicateSessions: "{count} hidden (duplicate titles)",
+        projectQueueStatusQueued: "Queued",
+        projectQueueStatusFailed: "Failed",
+        projectQueueTargetNewSession: "New session",
+        projectQueueUnknownProject: "Unknown project",
+      } as Record<string, string>;
+      let text = messages[key] ?? key;
+      if (vars) {
+        for (const [name, value] of Object.entries(vars)) {
+          text = text.replaceAll(`{${name}}`, String(value));
+        }
+      }
+      return text;
+    },
   }),
 }));
 
@@ -483,6 +490,61 @@ describe("Sidebar collapsed toggle", () => {
 
     expect(screen.getByTestId("session-substantive")).toBeDefined();
     expect(screen.queryByTestId("session-thin")).toBeNull();
+  });
+
+  it("shows recent and older duplicates when duplicate hiding is disabled", () => {
+    window.localStorage.setItem(UI_KEYS.sidebarDuplicateHidingEnabled, "false");
+    const sharedRecentTitle = "Repeated recent session";
+    const sharedOlderTitle = "Repeated older session";
+    const now = Date.now();
+    globalSessionsState.sessions = [
+      makeSession("recent-thin", new Date(now).toISOString(), {
+        title: sharedRecentTitle,
+        fullTitle: sharedRecentTitle,
+        messageCount: 1,
+      }),
+      makeSession("recent-substantive", new Date(now - 60_000).toISOString(), {
+        title: sharedRecentTitle,
+        fullTitle: sharedRecentTitle,
+        messageCount: 12,
+      }),
+      makeSession(
+        "older-thin",
+        new Date(now - 48 * 60 * 60 * 1000).toISOString(),
+        {
+          title: sharedOlderTitle,
+          fullTitle: sharedOlderTitle,
+          messageCount: 1,
+        },
+      ),
+      makeSession(
+        "older-substantive",
+        new Date(now - 49 * 60 * 60 * 1000).toISOString(),
+        {
+          title: sharedOlderTitle,
+          fullTitle: sharedOlderTitle,
+          messageCount: 12,
+        },
+      ),
+    ];
+
+    render(
+      <MemoryRouter>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("session-recent-thin")).toBeDefined();
+    expect(screen.getByTestId("session-recent-substantive")).toBeDefined();
+    expect(screen.getByTestId("session-older-thin")).toBeDefined();
+    expect(screen.getByTestId("session-older-substantive")).toBeDefined();
+    expect(screen.queryByText(/hidden \(duplicate titles\)/)).toBeNull();
   });
 
   it("shows a draft badge on the new session action", () => {

@@ -12,6 +12,7 @@ import { useProjects } from "../hooks/useProjects";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
+import { useSidebarDuplicateHiding } from "../hooks/useSidebarDuplicateHiding";
 import {
   SIDEBAR_SESSION_FEED_LIMIT,
   useSidebarSessionFeeds,
@@ -220,6 +221,7 @@ export function Sidebar({
   const { t } = useI18n();
   // Get base path for relay mode (e.g., "/remote/my-server")
   const basePath = useRemoteBasePath();
+  const { sidebarDuplicateHidingEnabled } = useSidebarDuplicateHiding();
   const navigate = useNavigate();
   const remoteConnection = useOptionalRemoteConnection();
   const { settings: serverSettings } = useServerSettings();
@@ -600,14 +602,24 @@ export function Sidebar({
 
   const { visibleRecent, hiddenRecent } = useMemo(() => {
     const idle = recentDaySessions.filter((s) => !isActiveSession(s));
+    if (!sidebarDuplicateHidingEnabled) {
+      return { visibleRecent: idle, hiddenRecent: [] };
+    }
     const { visible, hidden } = groupDuplicateSessions(idle);
     return { visibleRecent: visible, hiddenRecent: hidden };
-  }, [groupDuplicateSessions, recentDaySessions]);
+  }, [
+    groupDuplicateSessions,
+    recentDaySessions,
+    sidebarDuplicateHidingEnabled,
+  ]);
 
   const { visibleOlder, hiddenOlder } = useMemo(() => {
+    if (!sidebarDuplicateHidingEnabled) {
+      return { visibleOlder: olderSessions, hiddenOlder: [] };
+    }
     const { visible, hidden } = groupDuplicateSessions(olderSessions);
     return { visibleOlder: visible, hiddenOlder: hidden };
-  }, [groupDuplicateSessions, olderSessions]);
+  }, [groupDuplicateSessions, olderSessions, sidebarDuplicateHidingEnabled]);
 
   const drafts = useDraftSessionIds();
 
@@ -958,8 +970,10 @@ export function Sidebar({
                         onClick={() => setShowHiddenRecent((v) => !v)}
                         aria-expanded={showHiddenRecent}
                       >
-                        {showHiddenRecent ? "−" : "+"} {hiddenRecent.length}{" "}
-                        hidden (duplicate titles)
+                        {showHiddenRecent ? "−" : "+"}{" "}
+                        {t("sidebarHiddenDuplicateSessions", {
+                          count: hiddenRecent.length,
+                        })}
                       </button>
                       {showHiddenRecent && (
                         <ul className="sidebar-session-list sidebar-hidden-sublist">
@@ -996,8 +1010,10 @@ export function Sidebar({
                         onClick={() => setShowHiddenOlder((v) => !v)}
                         aria-expanded={showHiddenOlder}
                       >
-                        {showHiddenOlder ? "−" : "+"} {hiddenOlder.length}{" "}
-                        hidden (duplicate titles)
+                        {showHiddenOlder ? "−" : "+"}{" "}
+                        {t("sidebarHiddenDuplicateSessions", {
+                          count: hiddenOlder.length,
+                        })}
                       </button>
                       {showHiddenOlder && (
                         <ul className="sidebar-session-list sidebar-hidden-sublist">

@@ -76,6 +76,7 @@ import {
   useSettingsIconStyle,
 } from "../../hooks/useSettingsIconStyle";
 import { useSessionLoadingProgress } from "../../hooks/useSessionLoadingProgress";
+import { useSidebarDuplicateHiding } from "../../hooks/useSidebarDuplicateHiding";
 import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewRendering";
 import { useStreamingEnabled } from "../../hooks/useStreamingEnabled";
 import { TAB_SIZES, useTabSize } from "../../hooks/useTabSize";
@@ -206,6 +207,8 @@ export function AppearanceSettings() {
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
   const { floatingActionButtonEnabled, setFloatingActionButtonEnabled } =
     useFloatingActionButtonEnabled();
+  const { sidebarDuplicateHidingEnabled, setSidebarDuplicateHidingEnabled } =
+    useSidebarDuplicateHiding();
   const { tabTitleActivityEnabled, setTabTitleActivityEnabled } =
     useTabTitleActivityPreference();
   const { showConnectionBars, setShowConnectionBars } = useDeveloperMode();
@@ -243,6 +246,7 @@ export function AppearanceSettings() {
       alwaysShowQuoteCircles,
       funPhrasesEnabled,
       floatingActionButtonEnabled,
+      sidebarDuplicateHidingEnabled,
       tabTitleActivityEnabled,
       showConnectionBars,
     }),
@@ -273,6 +277,7 @@ export function AppearanceSettings() {
       alwaysShowQuoteCircles,
       funPhrasesEnabled,
       floatingActionButtonEnabled,
+      sidebarDuplicateHidingEnabled,
       tabTitleActivityEnabled,
       showConnectionBars,
     ],
@@ -307,6 +312,7 @@ export function AppearanceSettings() {
       setAlwaysShowQuoteCircles(snapshot.alwaysShowQuoteCircles);
       setFunPhrasesEnabled(snapshot.funPhrasesEnabled);
       setFloatingActionButtonEnabled(snapshot.floatingActionButtonEnabled);
+      setSidebarDuplicateHidingEnabled(snapshot.sidebarDuplicateHidingEnabled);
       setTabTitleActivityEnabled(snapshot.tabTitleActivityEnabled);
       setShowConnectionBars(snapshot.showConnectionBars);
       setContentMaxWidthDraft(String(snapshot.contentMaxWidth));
@@ -360,6 +366,7 @@ export function AppearanceSettings() {
       setAlwaysShowQuoteCircles,
       setFunPhrasesEnabled,
       setFloatingActionButtonEnabled,
+      setSidebarDuplicateHidingEnabled,
       setTabTitleActivityEnabled,
       setShowConnectionBars,
     ],
@@ -1380,6 +1387,22 @@ export function AppearanceSettings() {
               type="checkbox"
               checked={floatingActionButtonEnabled}
               onChange={(e) => setFloatingActionButtonEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceSidebarDuplicateHidingTitle")}</strong>
+            <p>{t("appearanceSidebarDuplicateHidingDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={sidebarDuplicateHidingEnabled}
+              onChange={(e) =>
+                setSidebarDuplicateHidingEnabled(e.target.checked)
+              }
             />
             <span className="toggle-slider" />
           </label>

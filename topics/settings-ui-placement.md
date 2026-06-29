@@ -17,19 +17,18 @@ auto-open).
 
 YA has three, and the choice is about *scope of persistence*, not convenience:
 
-1. **Client-local UI preference** — `localStorage` via a `UI_KEYS` entry
-   (`lib/storageKeys.ts`) and a small hook returning `[value, setValue]`.
-   Models: `useAttachmentUploadQuality`, `useOutputAppearance`. Use for a pure
-   local view/UX preference that need not follow the user to another
-   device/install (fonts, spacing, local rendering toggles).
+1. **Browser-local preference** — `localStorage` via a `UI_KEYS` or
+   `BROWSER_LOCAL_KEYS` entry (`lib/storageKeys.ts`) and a small hook returning
+   `[value, setValue]`. Models: `useAttachmentUploadQuality`,
+   `useOutputAppearance`, and `useModelSettings`'s local model/thinking/speech
+   overrides. Use for a local view/UX or client-side default that need not
+   follow the user to another browser profile.
 
-2. **Server-scoped / per-install preference** — `useModelSettings`'s
-   `getServerScoped("key")` / `setServerScoped` (keyed by `installId`). Model:
-   `showThinking`. Use for a session-interaction preference that should persist
-   per install and typically pairs with a **live in-session toggle** (the
-   toolbar `showThinking` switch seeds from this default). The `UI_KEYS` entry
-   names the key, but access goes through the server-scoped helpers, not raw
-   `localStorage`.
+2. **Source-scoped client storage** — local browser storage keyed by
+   `ClientSummarySourceKey` in the owning helper (`clientSummaryStore`,
+   `sessionDraftStorage`, `useDrafts`, session UI storage). Use when a hosted
+   or multi-server client needs independent client-side state per source, such
+   as drafts and source-specific session UI handoff state.
 
 3. **Server-persisted setting** — `useServerSettings` / `updateSetting`
    (`settings.*`). Model: `newSessionDefaults` (in `ModelSettings.tsx`). Use for
@@ -37,9 +36,10 @@ YA has three, and the choice is about *scope of persistence*, not convenience:
    (default model, permission mode, delivery windows) and must survive on the
    server.
 
-Decision rule: pure local rendering/UX → (1). A per-install session preference,
-especially one with a live override → (2). Session/server config that seeds new
-sessions → (3).
+Decision rule: pure local rendering/UX or a browser-profile default → (1).
+Client state that must not collide across hosted/remote sources → (2).
+Session/server config that seeds new sessions or must survive on the server →
+(3).
 
 ## Categories (what each is *for*)
 
@@ -62,7 +62,7 @@ conceptually adjusting*, not where the code lives):
 - **Model + new-session defaults / options** — things **set on session start**:
   default model, permission mode, thinking config, and UI elements that seed a
   new session. `ModelSettings.tsx` hosts `newSessionDefaults`; `showThinking`
-  (server-scoped, with a live toolbar toggle) lives in this cluster via
+  (browser-local, with a live toolbar toggle) lives in this cluster via
   `useModelSettings`.
 
 Introduce a **new category** only when a sizable cluster of options doesn't fit
@@ -71,7 +71,7 @@ an existing one; a single niche toggle joins the nearest existing category.
 ## The default + live-override pattern
 
 A persistent default may be paired with an **ephemeral, in-context toggle** that
-seeds from it. `showThinking` is the canonical case: a per-install default
+seeds from it. `showThinking` is the canonical case: a browser-local default
 (settings) plus a live toolbar switch for the current session. The override is
 **not itself a setting** — it is transient session/job state. Reach for this
 pattern when the user may want to flip the behavior for *this* session/action
@@ -81,14 +81,16 @@ without changing their standing default.
 
 The fork-after-summary "open the forked session in a new tab when ready" option
 (see [fork-from-turn](fork-from-turn.md)) is, in the project owner's words,
-"analogous to show thinking, a little more niche." It therefore follows the
-`showThinking` precedent rather than a bespoke mechanism:
+"analogous to show thinking, a little more niche." It belongs near the
+model / new-session cluster (`ModelSettings.tsx`) if a persisted default is
+added, but the install-id localStorage excision deliberately did **not** add
+that persistence. Current behavior remains **default-off and non-persistent**;
+adding a browser-local or source-scoped default would be a product behavior
+change and should be documented when it lands.
 
-- **Persistent default:** a server-scoped per-install preference in the
-  model / new-session cluster (`useModelSettings`, surfaced under the
-  new-session options in `ModelSettings.tsx`), **default-off** per
-  [vanilla-defaults](vanilla-defaults.md). (A future dedicated "Sessions"
-  category could absorb it if that cluster grows; not warranted for one toggle.)
+- **Default:** no persisted default today; each new mount seeds the behavior to
+  off per [vanilla-defaults](vanilla-defaults.md). A future dedicated "Sessions"
+  category could absorb it if that cluster grows; not warranted for one toggle.
 - **Live per-fork override:** an ephemeral toggle on the `ForkSummaryIndicator`
   during the *generating* phase, seeded from the default. It is per-fork
   transient state, not a setting.

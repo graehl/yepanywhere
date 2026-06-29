@@ -1,41 +1,11 @@
 /**
  * Centralized localStorage key definitions.
  *
- * Keys are split into two categories:
- * - UI_KEYS: Visual preferences that are global to the browser
- * - SERVER_SCOPED_KEYS: Settings that need to be scoped by server installId
- *
- * When accessing via yepanywhere.com/remote, users may connect to different
- * servers. Server-scoped settings ensure each server has independent config.
+ * UI_KEYS are local browser preferences. BROWSER_LOCAL_KEYS are older
+ * production keys kept as explicit browser-local storage for compatibility.
+ * Source-scoped draft/session UI keys live in their owning modules.
  */
 import { generateUUID } from "./uuid";
-
-// ============================================================================
-// Global Install ID (set once on connection, used for key scoping)
-// ============================================================================
-
-let currentInstallId: string | undefined;
-
-/** Set the current server's install ID (called once on connection) */
-export function setCurrentInstallId(installId: string): void {
-  const prevInstallId = currentInstallId;
-  currentInstallId = installId;
-
-  // Run migration if this is a new install ID
-  if (prevInstallId !== installId) {
-    const migrated = migrateLegacySettings(installId);
-    if (migrated) {
-      console.log(
-        "[storageKeys] Migrated legacy localStorage keys to scoped keys",
-      );
-    }
-  }
-}
-
-/** Get the current server's install ID (undefined if not yet set) */
-export function getCurrentInstallId(): string | undefined {
-  return currentInstallId;
-}
 
 // ============================================================================
 // UI Preferences (global to browser, not scoped by server)
@@ -99,92 +69,27 @@ export const UI_KEYS = {
 } as const;
 
 // ============================================================================
-// Server-Scoped Settings (prefixed with installId)
+// Browser-Local Settings
 // ============================================================================
 
-/** Base key names for server-scoped settings (installId prefix added at runtime) */
-export const SERVER_SCOPED_KEYS = {
-  model: "model",
-  thinkingLevel: "thinking-level",
-  thinkingEnabled: "thinking-enabled",
-  thinkingMode: "thinking-mode",
-  showThinking: "show-thinking",
-  forkSummaryAutoOpen: "fork-summary-auto-open",
-  voiceInputEnabled: "voice-input-enabled",
-  speechMethod: "speech-method",
-  speechSmartTurn: "speech-smart-turn",
-  grokSpeechAudio: "grok-speech-audio",
-  parakeetSpeechModel: "parakeet-speech-model",
-  xaiSttApiKey: "xai-stt-api-key",
-  browserProfileId: "browser-profile-id",
-  notifyInApp: "notify-in-app",
-  recentProject: "recent-project",
+export const BROWSER_LOCAL_KEYS = {
+  model: "yep-anywhere-model",
+  thinkingLevel: "yep-anywhere-thinking-level",
+  // Old boolean thinking key still seeds the newer thinkingMode preference.
+  thinkingEnabled: "yep-anywhere-thinking-enabled",
+  thinkingMode: "yep-anywhere-thinking-mode",
+  showThinking: "yep-anywhere-show-thinking",
+  voiceInputEnabled: "yep-anywhere-voice-input-enabled",
+  speechMethod: "yep-anywhere-speech-method",
+  speechSmartTurn: "yep-anywhere-speech-smart-turn",
+  grokSpeechAudio: "yep-anywhere-grok-speech-audio",
+  parakeetSpeechModel: "yep-anywhere-parakeet-speech-model",
+  xaiSttApiKey: "yep-anywhere-xai-stt-api-key",
+  // Preserve the first-shipped push/client-log device id key.
+  browserProfileId: "yep-anywhere-device-id",
+  notifyInApp: "yep-anywhere-notify-in-app",
+  recentProject: "yep-anywhere-recent-project",
 } as const;
-
-/** Build a server-scoped storage key */
-export function serverKey(
-  installId: string,
-  key: (typeof SERVER_SCOPED_KEYS)[keyof typeof SERVER_SCOPED_KEYS],
-): string {
-  return `yep-anywhere-${installId}-${key}`;
-}
-
-/**
- * Get a server-scoped value from localStorage.
- * Falls back to unscoped key if installId is not yet available.
- */
-export function getServerScoped(
-  key: keyof typeof SERVER_SCOPED_KEYS,
-  legacyKey?: string,
-): string | null {
-  const installId = currentInstallId;
-  if (installId) {
-    const scopedKey = serverKey(installId, SERVER_SCOPED_KEYS[key]);
-    return localStorage.getItem(scopedKey);
-  }
-  // Fallback to legacy key if available
-  if (legacyKey) {
-    return localStorage.getItem(legacyKey);
-  }
-  return null;
-}
-
-/**
- * Set a server-scoped value in localStorage.
- * Falls back to unscoped key if installId is not yet available.
- */
-export function setServerScoped(
-  key: keyof typeof SERVER_SCOPED_KEYS,
-  value: string,
-  legacyKey?: string,
-): void {
-  const installId = currentInstallId;
-  if (installId) {
-    const scopedKey = serverKey(installId, SERVER_SCOPED_KEYS[key]);
-    localStorage.setItem(scopedKey, value);
-  } else if (legacyKey) {
-    // Fallback to legacy key
-    localStorage.setItem(legacyKey, value);
-  }
-}
-
-/**
- * Remove a server-scoped value from localStorage.
- */
-export function removeServerScoped(
-  key: keyof typeof SERVER_SCOPED_KEYS,
-  legacyKey?: string,
-): void {
-  const installId = currentInstallId;
-  if (installId) {
-    const scopedKey = serverKey(installId, SERVER_SCOPED_KEYS[key]);
-    localStorage.removeItem(scopedKey);
-  }
-  // Also remove legacy key if present
-  if (legacyKey) {
-    localStorage.removeItem(legacyKey);
-  }
-}
 
 /**
  * Get or create the browser profile ID.
@@ -192,16 +97,14 @@ export function removeServerScoped(
  * Creates a new UUID if one doesn't exist.
  */
 export function getOrCreateBrowserProfileId(): string {
-  let browserProfileId = getServerScoped(
-    "browserProfileId",
-    LEGACY_KEYS.browserProfileId,
+  let browserProfileId = localStorage.getItem(
+    BROWSER_LOCAL_KEYS.browserProfileId,
   );
   if (!browserProfileId) {
     browserProfileId = generateUUID();
-    setServerScoped(
-      "browserProfileId",
+    localStorage.setItem(
+      BROWSER_LOCAL_KEYS.browserProfileId,
       browserProfileId,
-      LEGACY_KEYS.browserProfileId,
     );
   }
   return browserProfileId;
@@ -216,93 +119,3 @@ export const REMOTE_CREDENTIALS_KEY = "yep-anywhere-remote-credentials";
 
 /** Saved hosts for multi-host remote access */
 export const SAVED_HOSTS_KEY = "yep-anywhere-saved-hosts";
-
-// ============================================================================
-// Legacy Key Mappings (for migration from old unscoped keys)
-// ============================================================================
-
-/** Old unscoped keys that need migration to server-scoped versions */
-export const LEGACY_KEYS = {
-  model: "yep-anywhere-model",
-  thinkingLevel: "yep-anywhere-thinking-level",
-  thinkingEnabled: "yep-anywhere-thinking-enabled",
-  thinkingMode: "yep-anywhere-thinking-mode",
-  showThinking: "yep-anywhere-show-thinking",
-  voiceInputEnabled: "yep-anywhere-voice-input-enabled",
-  speechMethod: "yep-anywhere-speech-method",
-  speechSmartTurn: "yep-anywhere-speech-smart-turn",
-  grokSpeechAudio: "yep-anywhere-grok-speech-audio",
-  parakeetSpeechModel: "yep-anywhere-parakeet-speech-model",
-  xaiSttApiKey: "yep-anywhere-xai-stt-api-key",
-  browserProfileId: "yep-anywhere-device-id",
-  notifyInApp: "yep-anywhere-notify-in-app",
-  recentProject: "yep-anywhere-recent-project",
-} as const;
-
-/** Keys that need renaming (old name -> new name in UI_KEYS) */
-export const UI_KEY_RENAMES = {
-  "sidebar-expanded": UI_KEYS.sidebarExpanded,
-} as const;
-
-// ============================================================================
-// Migration Helper
-// ============================================================================
-
-/**
- * Migrate legacy unscoped settings to server-scoped keys.
- * Call this once when the installId becomes available.
- * Returns true if any migrations were performed.
- */
-export function migrateLegacySettings(installId: string): boolean {
-  let migrated = false;
-
-  // Migrate server-scoped keys
-  const scopedMigrations: Array<{
-    legacy: string;
-    scoped: keyof typeof SERVER_SCOPED_KEYS;
-  }> = [
-    { legacy: LEGACY_KEYS.model, scoped: "model" },
-    { legacy: LEGACY_KEYS.thinkingLevel, scoped: "thinkingLevel" },
-    { legacy: LEGACY_KEYS.thinkingEnabled, scoped: "thinkingEnabled" },
-    { legacy: LEGACY_KEYS.showThinking, scoped: "showThinking" },
-    { legacy: LEGACY_KEYS.voiceInputEnabled, scoped: "voiceInputEnabled" },
-    { legacy: LEGACY_KEYS.speechMethod, scoped: "speechMethod" },
-    { legacy: LEGACY_KEYS.speechSmartTurn, scoped: "speechSmartTurn" },
-    {
-      legacy: LEGACY_KEYS.parakeetSpeechModel,
-      scoped: "parakeetSpeechModel",
-    },
-    { legacy: LEGACY_KEYS.xaiSttApiKey, scoped: "xaiSttApiKey" },
-    { legacy: LEGACY_KEYS.browserProfileId, scoped: "browserProfileId" },
-    { legacy: LEGACY_KEYS.notifyInApp, scoped: "notifyInApp" },
-    { legacy: LEGACY_KEYS.recentProject, scoped: "recentProject" },
-  ];
-
-  for (const { legacy, scoped } of scopedMigrations) {
-    const value = localStorage.getItem(legacy);
-    if (value !== null) {
-      const newKey = serverKey(installId, SERVER_SCOPED_KEYS[scoped]);
-      // Only migrate if new key doesn't already exist
-      if (localStorage.getItem(newKey) === null) {
-        localStorage.setItem(newKey, value);
-        migrated = true;
-      }
-      // Remove legacy key after migration
-      localStorage.removeItem(legacy);
-    }
-  }
-
-  // Migrate UI key renames
-  for (const [oldKey, newKey] of Object.entries(UI_KEY_RENAMES)) {
-    const value = localStorage.getItem(oldKey);
-    if (value !== null) {
-      if (localStorage.getItem(newKey) === null) {
-        localStorage.setItem(newKey, value);
-        migrated = true;
-      }
-      localStorage.removeItem(oldKey);
-    }
-  }
-
-  return migrated;
-}

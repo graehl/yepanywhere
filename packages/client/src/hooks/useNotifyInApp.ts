@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  LEGACY_KEYS,
-  getServerScoped,
-  setServerScoped,
-} from "../lib/storageKeys";
+import { BROWSER_LOCAL_KEYS } from "../lib/storageKeys";
 
 /**
  * Read the notifyInApp setting from localStorage
  */
 function getNotifyInAppSetting(): boolean {
-  return getServerScoped("notifyInApp", LEGACY_KEYS.notifyInApp) === "true";
+  return localStorage.getItem(BROWSER_LOCAL_KEYS.notifyInApp) === "true";
 }
 
 /**
@@ -79,7 +75,7 @@ export function useNotifyInApp() {
   }, [notifyInApp]);
 
   const setNotifyInApp = useCallback((value: boolean) => {
-    setServerScoped("notifyInApp", String(value), LEGACY_KEYS.notifyInApp);
+    localStorage.setItem(BROWSER_LOCAL_KEYS.notifyInApp, String(value));
     setNotifyInAppState(value);
   }, []);
 

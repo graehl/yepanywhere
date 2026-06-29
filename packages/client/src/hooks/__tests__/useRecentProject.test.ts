@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  SERVER_SCOPED_KEYS,
-  serverKey,
-  setCurrentInstallId,
-} from "../../lib/storageKeys";
+import { BROWSER_LOCAL_KEYS } from "../../lib/storageKeys";
 import { resolvePreferredProjectId } from "../useRecentProject";
 
 describe("resolvePreferredProjectId", () => {
@@ -26,27 +22,20 @@ describe("resolvePreferredProjectId", () => {
         }),
       },
     });
-    setCurrentInstallId("test-install");
   });
 
   afterEach(() => {
     localStorage.clear();
   });
 
-  it("prefers the valid recent project from scoped localStorage", () => {
-    localStorage.setItem(
-      serverKey("test-install", SERVER_SCOPED_KEYS.recentProject),
-      "webvam",
-    );
+  it("prefers the valid recent project from browser-local localStorage", () => {
+    localStorage.setItem(BROWSER_LOCAL_KEYS.recentProject, "webvam");
 
     expect(resolvePreferredProjectId(projects, "jstorrent")).toBe("webvam");
   });
 
   it("falls back to the caller-provided project when the recent project is stale", () => {
-    localStorage.setItem(
-      serverKey("test-install", SERVER_SCOPED_KEYS.recentProject),
-      "missing-project",
-    );
+    localStorage.setItem(BROWSER_LOCAL_KEYS.recentProject, "missing-project");
 
     expect(resolvePreferredProjectId(projects, "jstorrent")).toBe("jstorrent");
   });

@@ -1,5 +1,5 @@
 import { fetchJSON } from "../../api/client";
-import { getServerScoped, LEGACY_KEYS, setServerScoped } from "../storageKeys";
+import { BROWSER_LOCAL_KEYS } from "../storageKeys";
 
 export type XaiSttCredentialSource = "browser-local" | "server-borrowed";
 
@@ -25,13 +25,10 @@ interface XaiClientSecretResponse {
   expiresAt?: string;
 }
 
-const XAI_STT_KEY_STORAGE = "xaiSttApiKey";
 const XAI_STT_KEY_CHANGE_EVENT = "ya:xai-stt-api-key-change";
 
 export function getBrowserXaiSttApiKey(): string {
-  return (
-    getServerScoped(XAI_STT_KEY_STORAGE, LEGACY_KEYS.xaiSttApiKey)?.trim() ?? ""
-  );
+  return localStorage.getItem(BROWSER_LOCAL_KEYS.xaiSttApiKey)?.trim() ?? "";
 }
 
 export function hasBrowserXaiSttApiKey(): boolean {
@@ -41,7 +38,7 @@ export function hasBrowserXaiSttApiKey(): boolean {
 export function setBrowserXaiSttApiKey(apiKey: string): void {
   const trimmed = apiKey.trim();
   const previous = getBrowserXaiSttApiKey();
-  setServerScoped(XAI_STT_KEY_STORAGE, trimmed, LEGACY_KEYS.xaiSttApiKey);
+  localStorage.setItem(BROWSER_LOCAL_KEYS.xaiSttApiKey, trimmed);
   if (previous !== trimmed && typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(XAI_STT_KEY_CHANGE_EVENT));
   }

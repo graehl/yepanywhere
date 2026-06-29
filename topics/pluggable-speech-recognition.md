@@ -189,11 +189,12 @@ streaming/confidence surface exists.
 - `NewSessionForm` and the active session composer toolbar build
   speech-method dropdowns from the same advertised active backend list. The
   dropdown is shown only when more than one method is available.
-- `useModelSettings` persists a server-scoped `speechMethod`. When there is
-  no explicit local choice, server-learned `clientDefaults.speech` from
-  `/api/version` supplies the client default. Speech setting changes write both
-  the local explicit value and a partial server client-default update so a later
-  browser with no explicit local override inherits the most recent UI choice.
+- `useModelSettings` persists an explicit browser-local `speechMethod` under
+  `yep-anywhere-speech-method`. When there is no explicit local choice,
+  server-learned `clientDefaults.speech` from `/api/version` supplies the
+  client default. Speech setting changes write both the local explicit value
+  and a partial server client-default update so a later browser with no
+  explicit local override inherits the most recent UI choice.
   If neither local nor server default exists, the effective runtime default
   prefers direct Grok streaming when `ya-grok` is configured, otherwise active
   server-routed STT over browser-native, with `ya-deepgram` ranked ahead of

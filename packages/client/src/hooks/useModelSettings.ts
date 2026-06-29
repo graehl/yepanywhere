@@ -6,9 +6,8 @@ import type {
   ThinkingMode,
   ThinkingOption,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
-import { useInstallId } from "../contexts/InstallIdContext";
 import {
   CLIENT_STORAGE_DEFAULT,
   type DefaultedValue,
@@ -31,11 +30,7 @@ import {
   type GrokSpeechAudioSettings,
   type SpeechSmartTurnSettings,
 } from "../lib/speechProviders/SpeechProvider";
-import {
-  getServerScoped,
-  LEGACY_KEYS,
-  setServerScoped,
-} from "../lib/storageKeys";
+import { BROWSER_LOCAL_KEYS } from "../lib/storageKeys";
 import { useVersion } from "./useVersion";
 
 /**
@@ -72,7 +67,7 @@ function remapLegacyModelChoice(stored: string | null): string | null {
 
 function loadModel(): ModelOption {
   const stored = remapLegacyModelChoice(
-    getServerScoped("model", LEGACY_KEYS.model),
+    localStorage.getItem(BROWSER_LOCAL_KEYS.model),
   );
   if (stored && MODEL_OPTIONS.some((option) => option.value === stored)) {
     return stored as ModelOption;
@@ -81,7 +76,7 @@ function loadModel(): ModelOption {
 }
 
 function saveModel(model: ModelOption) {
-  setServerScoped("model", model, LEGACY_KEYS.model);
+  localStorage.setItem(BROWSER_LOCAL_KEYS.model, model);
 }
 
 /** Migration map from old thinking levels to effort levels */
@@ -92,7 +87,7 @@ const LEGACY_LEVEL_MAP: Record<string, EffortLevel> = {
 };
 
 function loadEffortLevel(): EffortLevel {
-  const stored = getServerScoped("thinkingLevel", LEGACY_KEYS.thinkingLevel);
+  const stored = localStorage.getItem(BROWSER_LOCAL_KEYS.thinkingLevel);
   if (stored) {
     // Check for new effort level values
     if (isEffortLevel(stored)) {
@@ -109,22 +104,19 @@ function loadEffortLevel(): EffortLevel {
 }
 
 function saveEffortLevel(level: EffortLevel) {
-  setServerScoped("thinkingLevel", level, LEGACY_KEYS.thinkingLevel);
+  localStorage.setItem(BROWSER_LOCAL_KEYS.thinkingLevel, level);
 }
 
 const THINKING_MODES: ThinkingMode[] = ["off", "auto", "on"];
 
 function loadThinkingMode(): ThinkingMode {
   // Try new key first
-  const stored = getServerScoped("thinkingMode", LEGACY_KEYS.thinkingMode);
+  const stored = localStorage.getItem(BROWSER_LOCAL_KEYS.thinkingMode);
   if (stored && THINKING_MODES.includes(stored as ThinkingMode)) {
     return stored as ThinkingMode;
   }
   // Migrate from old boolean thinkingEnabled
-  const legacy = getServerScoped(
-    "thinkingEnabled",
-    LEGACY_KEYS.thinkingEnabled,
-  );
+  const legacy = localStorage.getItem(BROWSER_LOCAL_KEYS.thinkingEnabled);
   if (legacy === "true") {
     // Old "on" was adaptive, so migrate to "auto"
     saveThinkingMode("auto");
@@ -134,7 +126,7 @@ function loadThinkingMode(): ThinkingMode {
 }
 
 function saveThinkingMode(mode: ThinkingMode) {
-  setServerScoped("thinkingMode", mode, LEGACY_KEYS.thinkingMode);
+  localStorage.setItem(BROWSER_LOCAL_KEYS.thinkingMode, mode);
 }
 
 const SHOW_THINKING_VALUES: ShowThinking[] = ["default", "on", "off"];
@@ -145,14 +137,14 @@ const SHOW_THINKING_VALUES: ShowThinking[] = ["default", "on", "off"];
  * requests are controlled separately by the server. Defaults to "default".
  */
 function loadShowThinking(): ShowThinking {
-  const stored = getServerScoped("showThinking", LEGACY_KEYS.showThinking);
+  const stored = localStorage.getItem(BROWSER_LOCAL_KEYS.showThinking);
   return stored && SHOW_THINKING_VALUES.includes(stored as ShowThinking)
     ? (stored as ShowThinking)
     : "default";
 }
 
 function saveShowThinking(value: ShowThinking) {
-  setServerScoped("showThinking", value, LEGACY_KEYS.showThinking);
+  localStorage.setItem(BROWSER_LOCAL_KEYS.showThinking, value);
 }
 
 function loadVoiceInputEnabled(): boolean {
@@ -163,20 +155,16 @@ function loadVoiceInputEnabled(): boolean {
 }
 
 function loadVoiceInputEnabledSetting(): DefaultedValue<boolean> {
-  const stored = getServerScoped(
-    "voiceInputEnabled",
-    LEGACY_KEYS.voiceInputEnabled,
-  );
+  const stored = localStorage.getItem(BROWSER_LOCAL_KEYS.voiceInputEnabled);
   if (stored === "true") return true;
   if (stored === "false") return false;
   return CLIENT_STORAGE_DEFAULT;
 }
 
 function saveVoiceInputEnabled(enabled: boolean) {
-  setServerScoped(
-    "voiceInputEnabled",
+  localStorage.setItem(
+    BROWSER_LOCAL_KEYS.voiceInputEnabled,
     enabled ? "true" : "false",
-    LEGACY_KEYS.voiceInputEnabled,
   );
 }
 
@@ -186,7 +174,7 @@ function loadStoredSpeechMethod(): SpeechMethodId | null {
 }
 
 function loadSpeechMethodSetting(): DefaultedValue<SpeechMethodId> {
-  const stored = getServerScoped("speechMethod", LEGACY_KEYS.speechMethod);
+  const stored = localStorage.getItem(BROWSER_LOCAL_KEYS.speechMethod);
   if (stored && isSpeechMethodId(stored)) {
     return stored;
   }
@@ -201,7 +189,7 @@ function loadSpeechMethod(): SpeechMethodId {
 }
 
 function saveSpeechMethod(method: SpeechMethodId) {
-  setServerScoped("speechMethod", method, LEGACY_KEYS.speechMethod);
+  localStorage.setItem(BROWSER_LOCAL_KEYS.speechMethod, method);
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -240,10 +228,7 @@ function loadSpeechSmartTurnSettings(): SpeechSmartTurnSettings {
 }
 
 function loadSpeechSmartTurnSettingsSetting(): DefaultedValue<SpeechSmartTurnSettings> {
-  const stored = getServerScoped(
-    "speechSmartTurn",
-    LEGACY_KEYS.speechSmartTurn,
-  );
+  const stored = localStorage.getItem(BROWSER_LOCAL_KEYS.speechSmartTurn);
   if (!stored || stored === CLIENT_STORAGE_DEFAULT)
     return CLIENT_STORAGE_DEFAULT;
   try {
@@ -256,10 +241,9 @@ function loadSpeechSmartTurnSettingsSetting(): DefaultedValue<SpeechSmartTurnSet
 }
 
 function saveSpeechSmartTurnSettings(settings: SpeechSmartTurnSettings) {
-  setServerScoped(
-    "speechSmartTurn",
+  localStorage.setItem(
+    BROWSER_LOCAL_KEYS.speechSmartTurn,
     JSON.stringify(cleanSpeechSmartTurnSettings(settings)),
-    LEGACY_KEYS.speechSmartTurn,
   );
 }
 
@@ -282,10 +266,7 @@ function loadGrokSpeechAudioSettings(): GrokSpeechAudioSettings {
 }
 
 function loadGrokSpeechAudioSettingsSetting(): DefaultedValue<GrokSpeechAudioSettings> {
-  const stored = getServerScoped(
-    "grokSpeechAudio",
-    LEGACY_KEYS.grokSpeechAudio,
-  );
+  const stored = localStorage.getItem(BROWSER_LOCAL_KEYS.grokSpeechAudio);
   if (!stored || stored === CLIENT_STORAGE_DEFAULT)
     return CLIENT_STORAGE_DEFAULT;
   try {
@@ -298,26 +279,21 @@ function loadGrokSpeechAudioSettingsSetting(): DefaultedValue<GrokSpeechAudioSet
 }
 
 function saveGrokSpeechAudioSettings(settings: GrokSpeechAudioSettings) {
-  setServerScoped(
-    "grokSpeechAudio",
+  localStorage.setItem(
+    BROWSER_LOCAL_KEYS.grokSpeechAudio,
     JSON.stringify(cleanGrokSpeechAudioSettings(settings)),
-    LEGACY_KEYS.grokSpeechAudio,
   );
 }
 
 function loadParakeetSpeechModel(): string {
-  const stored = getServerScoped(
-    "parakeetSpeechModel",
-    LEGACY_KEYS.parakeetSpeechModel,
-  );
+  const stored = localStorage.getItem(BROWSER_LOCAL_KEYS.parakeetSpeechModel);
   return stored?.trim() ? stored : DEFAULT_PARAKEET_SPEECH_MODEL;
 }
 
 function saveParakeetSpeechModel(model: string) {
-  setServerScoped(
-    "parakeetSpeechModel",
+  localStorage.setItem(
+    BROWSER_LOCAL_KEYS.parakeetSpeechModel,
     cleanParakeetSpeechModel(model),
-    LEGACY_KEYS.parakeetSpeechModel,
   );
 }
 
@@ -380,13 +356,6 @@ export function useModelSettings() {
     useState<ThinkingMode>(loadThinkingMode);
   const [showThinking, setShowThinkingState] =
     useState<ShowThinking>(loadShowThinking);
-  // showThinking is stored under a server-scoped key that needs the installId,
-  // which arrives asynchronously after a /api/server-info fetch. The synchronous
-  // useState(loadShowThinking) above can run before installId is known, so
-  // re-read once installId lands; if the user already changed it this mount,
-  // commit that explicit choice into the scoped key instead.
-  const { installId } = useInstallId();
-  const showThinkingTouchedRef = useRef(false);
   const [voiceInputEnabled, setVoiceInputEnabledState] = useState<boolean>(() =>
     resolveDefaultedValue(
       loadVoiceInputEnabledSetting(),
@@ -442,18 +411,6 @@ export function useModelSettings() {
     hasServerSpeechMethodDefault,
   ]);
 
-  useEffect(() => {
-    if (!installId) {
-      return;
-    }
-    if (showThinkingTouchedRef.current) {
-      saveShowThinking(showThinking);
-      return;
-    }
-    const stored = loadShowThinking();
-    setShowThinkingState((prev) => (prev === stored ? prev : stored));
-  }, [installId, showThinking]);
-
   const setModel = useCallback((m: ModelOption) => {
     setModelState(m);
     saveModel(m);
@@ -470,7 +427,6 @@ export function useModelSettings() {
   }, []);
 
   const setShowThinking = useCallback((value: ShowThinking) => {
-    showThinkingTouchedRef.current = true;
     setShowThinkingState(value);
     saveShowThinking(value);
   }, []);

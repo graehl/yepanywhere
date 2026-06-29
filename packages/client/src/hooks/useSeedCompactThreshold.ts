@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
-import { LEGACY_KEYS, getServerScoped } from "../lib/storageKeys";
+import { BROWSER_LOCAL_KEYS } from "../lib/storageKeys";
 
 /**
  * One-time seed of the per-model "compact context early" threshold (task 029).
@@ -13,10 +13,9 @@ import { LEGACY_KEYS, getServerScoped } from "../lib/storageKeys";
  * 1M ≈ 200K) exactly once. Users who had chosen the explicit 1M variant
  * (`opus[1m]`/`sonnet[1m]`), `default`, or any other model get nothing.
  *
- * The raw stored model is read pre-remap: `remapLegacyModelChoice` does not
- * persist, so the original `opus[1m]` vs bare `opus` distinction survives in
- * localStorage. The install-id scoping provider is not mounted, so the value
- * lives at the unscoped legacy key — `getServerScoped` falls back to it.
+ * The raw stored model is read pre-remap from the browser-local model key:
+ * `remapLegacyModelChoice` does not persist, so the original `opus[1m]` vs
+ * bare `opus` distinction survives in localStorage.
  *
  * The marker is per-browser but the write is server-global-per-model; for a
  * single user that's acceptable (first device to load wins). The marker is set
@@ -43,7 +42,7 @@ export function useSeedCompactThreshold(): void {
     }
     ranRef.current = true;
 
-    const rawModel = getServerScoped("model", LEGACY_KEYS.model);
+    const rawModel = localStorage.getItem(BROWSER_LOCAL_KEYS.model);
     // Mark before any network so a slow/failed request can't double-seed.
     localStorage.setItem(SEED_MARKER_KEY, "1");
     if (!rawModel || !SEEDABLE_MODELS.has(rawModel)) return;

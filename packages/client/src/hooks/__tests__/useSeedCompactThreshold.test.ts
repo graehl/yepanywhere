@@ -1,6 +1,6 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LEGACY_KEYS } from "../../lib/storageKeys";
+import { BROWSER_LOCAL_KEYS } from "../../lib/storageKeys";
 
 const mocks = vi.hoisted(() => ({
   getServerSettings: vi.fn(async () => ({
@@ -35,7 +35,7 @@ describe("useSeedCompactThreshold", () => {
   });
 
   it("seeds 20% for a former bare-opus user", async () => {
-    window.localStorage.setItem(LEGACY_KEYS.model, "opus");
+    window.localStorage.setItem(BROWSER_LOCAL_KEYS.model, "opus");
     const { useSeedCompactThreshold } = await import(
       "../useSeedCompactThreshold"
     );
@@ -50,7 +50,7 @@ describe("useSeedCompactThreshold", () => {
   });
 
   it("does not seed for the explicit 1M variant", async () => {
-    window.localStorage.setItem(LEGACY_KEYS.model, "opus[1m]");
+    window.localStorage.setItem(BROWSER_LOCAL_KEYS.model, "opus[1m]");
     const { useSeedCompactThreshold } = await import(
       "../useSeedCompactThreshold"
     );
@@ -64,7 +64,7 @@ describe("useSeedCompactThreshold", () => {
   });
 
   it("respects an existing per-model threshold", async () => {
-    window.localStorage.setItem(LEGACY_KEYS.model, "sonnet");
+    window.localStorage.setItem(BROWSER_LOCAL_KEYS.model, "sonnet");
     mocks.getServerSettings.mockResolvedValue({
       settings: { clientDefaults: { compactAtContextPercent: { sonnet: 50 } } },
     });
@@ -79,7 +79,7 @@ describe("useSeedCompactThreshold", () => {
 
   it("does nothing when already seeded (marker present)", async () => {
     window.localStorage.setItem(SEED_MARKER_KEY, "1");
-    window.localStorage.setItem(LEGACY_KEYS.model, "opus");
+    window.localStorage.setItem(BROWSER_LOCAL_KEYS.model, "opus");
     const { useSeedCompactThreshold } = await import(
       "../useSeedCompactThreshold"
     );
@@ -92,7 +92,7 @@ describe("useSeedCompactThreshold", () => {
 
   it("does not run on the login page (unauthenticated)", async () => {
     mocks.isAuthenticated = false;
-    window.localStorage.setItem(LEGACY_KEYS.model, "opus");
+    window.localStorage.setItem(BROWSER_LOCAL_KEYS.model, "opus");
     const { useSeedCompactThreshold } = await import(
       "../useSeedCompactThreshold"
     );

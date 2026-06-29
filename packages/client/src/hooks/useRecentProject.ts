@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  LEGACY_KEYS,
-  getServerScoped,
-  setServerScoped,
-} from "../lib/storageKeys";
+import { BROWSER_LOCAL_KEYS } from "../lib/storageKeys";
 
 interface ProjectLike {
   id: string;
@@ -15,7 +11,7 @@ interface ProjectLike {
  */
 export function getRecentProjectId(): string | null {
   if (typeof window === "undefined") return null;
-  return getServerScoped("recentProject", LEGACY_KEYS.recentProject);
+  return localStorage.getItem(BROWSER_LOCAL_KEYS.recentProject);
 }
 
 /**
@@ -23,7 +19,7 @@ export function getRecentProjectId(): string | null {
  */
 export function setRecentProjectId(projectId: string): void {
   if (typeof window === "undefined") return;
-  setServerScoped("recentProject", projectId, LEGACY_KEYS.recentProject);
+  localStorage.setItem(BROWSER_LOCAL_KEYS.recentProject, projectId);
 }
 
 /**

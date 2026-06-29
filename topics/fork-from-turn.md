@@ -498,11 +498,13 @@ indicator,** freeing the composer immediately.
    elapsed time.
 
 2. **On ready** (target fork created, summary submitted), **open the forked
-   session in a new tab** when the auto-open preference is on — a server-scoped
-   per-install default (default-off per [vanilla-defaults](vanilla-defaults.md);
-   see [settings-ui-placement](settings-ui-placement.md)) with a per-fork
-   override toggle on the indicator. Because generation typically takes 30+ s,
-   the open is deferred to completion, not attempted up front.
+   session in a new tab** when the live auto-open toggle is on. Current
+   production behavior is default-off and non-persistent after the install-id
+   localStorage excision; adding a browser-local or source-scoped persisted
+   default would be a separate product behavior change (see
+   [settings-ui-placement](settings-ui-placement.md)). Because generation
+   typically takes 30+ s, the open is deferred to completion, not attempted up
+   front.
 
 3. **Auto-open fallback.** If the new tab cannot open (popup blocking, or a
    user "don't auto-open" preference), the indicator stays and surfaces a

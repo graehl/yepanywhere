@@ -10,11 +10,7 @@ import {
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  SERVER_SCOPED_KEYS,
-  serverKey,
-  setCurrentInstallId,
-} from "../../lib/storageKeys";
+import { BROWSER_LOCAL_KEYS } from "../../lib/storageKeys";
 import { NewSessionPage } from "../NewSessionPage";
 
 const { projectsState, recentSessionsState } = vi.hoisted(() => ({
@@ -174,7 +170,6 @@ describe("NewSessionPage", () => {
       configurable: true,
       value: localStorageMock,
     });
-    setCurrentInstallId("test-install");
     window.localStorage.clear();
     projectsState.loading = false;
     recentSessionsState.recentSessions = [];
@@ -189,7 +184,7 @@ describe("NewSessionPage", () => {
 
   it("uses the stored recent project when opened without a project", async () => {
     window.localStorage.setItem(
-      serverKey("test-install", SERVER_SCOPED_KEYS.recentProject),
+      BROWSER_LOCAL_KEYS.recentProject,
       "project-2",
     );
 
@@ -208,9 +203,7 @@ describe("NewSessionPage", () => {
 
     await waitFor(() => {
       expect(
-        window.localStorage.getItem(
-          serverKey("test-install", SERVER_SCOPED_KEYS.recentProject),
-        ),
+        window.localStorage.getItem(BROWSER_LOCAL_KEYS.recentProject),
       ).toBe("project-1");
     });
   });
@@ -224,15 +217,13 @@ describe("NewSessionPage", () => {
       "/new-session?projectId=project-2",
     );
     expect(
-      window.localStorage.getItem(
-        serverKey("test-install", SERVER_SCOPED_KEYS.recentProject),
-      ),
+      window.localStorage.getItem(BROWSER_LOCAL_KEYS.recentProject),
     ).toBe("project-2");
   });
 
   it("keeps an explicit detached selection instead of restoring recents", async () => {
     window.localStorage.setItem(
-      serverKey("test-install", SERVER_SCOPED_KEYS.recentProject),
+      BROWSER_LOCAL_KEYS.recentProject,
       "project-1",
     );
     renderPage("/new-session?projectId=project-1");

@@ -151,7 +151,9 @@ Current implementation, 2026-06-15:
 - Direct xAI methods do not send audio through YA, so YA cannot retain the
   captured audio artifact for later inspection. Do not compensate by storing
   browser-local audio unless that is explicitly requested as a separate feature.
-- The browser-local xAI STT key lives in server-scoped local storage.
+- The browser-local xAI STT key lives only in this browser profile, under the
+  explicit localStorage key `yep-anywhere-xai-stt-api-key`
+  (`BROWSER_LOCAL_KEYS.xaiSttApiKey`).
 - When the browser-local key is empty, direct streaming asks
   `POST /api/speech/xai-client-secret` for a short-lived xAI client secret
   minted by the YA server from `YEP_STT_XAI_API_KEY`.

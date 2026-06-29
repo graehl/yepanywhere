@@ -373,12 +373,10 @@ length at the source.
 Independently, the client gate matters: `effectiveShowThinking` resolves the
 "default" Show-thinking preference to **off** for every provider except Codex
 (`packages/client/src/lib/showThinking.ts`), so opencode thinking is hidden
-unless the user sets the toggle to "on". That preference is server-scoped and
-was **not surviving reload** — a provider-agnostic race: `useModelSettings`
-reads it synchronously at mount, before the async `/api/server-info` install-id
-fetch resolves, and `showThinking` has no legacy-key fallback, so it defaulted
-every reload. Fixed by re-reading once the install-id lands (unless changed
-in-session).
+unless the user sets the toggle to "on". That preference is browser-local under
+`yep-anywhere-show-thinking` (`BROWSER_LOCAL_KEYS.showThinking`), so it survives
+reloads in the same browser profile; there is no client install-id scoping or
+async `/api/server-info` dependency in the settings path.
 
 ## Gaps To Close
 

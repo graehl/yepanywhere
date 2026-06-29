@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import {
-  LEGACY_KEYS,
+  BROWSER_LOCAL_KEYS,
   getOrCreateBrowserProfileId,
-  getServerScoped,
 } from "../lib/storageKeys";
 import type {
   PushDeliveryUrgency,
@@ -59,9 +58,8 @@ export function usePushNotifications() {
     const init = async () => {
       // Check browser support first
       if (!hasBrowserSupport) {
-        const browserProfileId = getServerScoped(
-          "browserProfileId",
-          LEGACY_KEYS.browserProfileId,
+        const browserProfileId = localStorage.getItem(
+          BROWSER_LOCAL_KEYS.browserProfileId,
         );
         setState((s) => ({
           ...s,
@@ -78,9 +76,8 @@ export function usePushNotifications() {
         try {
           const response = await api.getServerSettings();
           if (!response.settings.serviceWorkerEnabled) {
-            const browserProfileId = getServerScoped(
-              "browserProfileId",
-              LEGACY_KEYS.browserProfileId,
+            const browserProfileId = localStorage.getItem(
+              BROWSER_LOCAL_KEYS.browserProfileId,
             );
             setState((s) => ({
               ...s,

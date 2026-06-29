@@ -1,42 +1,27 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it } from "vitest";
-import { migrateLegacySettings } from "../storageKeys";
+import { BROWSER_LOCAL_KEYS, getOrCreateBrowserProfileId } from "../storageKeys";
 
-describe("storageKeys migrations", () => {
+describe("browser-local storage keys", () => {
   afterEach(() => {
     localStorage.clear();
   });
 
-  it("does not migrate draft recovery keys", () => {
-    localStorage.setItem("draft-message-session-a", "session draft");
-    localStorage.setItem("draft-new-session", "new session draft");
-    localStorage.setItem("draft-new-session-project-a", "project draft");
-    localStorage.setItem("fab-draft", "fab draft");
-    localStorage.setItem("fab-prefill", "fab prefill");
+  it("reuses the existing browser profile id from the production device key", () => {
+    localStorage.setItem(BROWSER_LOCAL_KEYS.browserProfileId, "device-1");
 
-    expect(migrateLegacySettings("install-a")).toBe(false);
+    expect(getOrCreateBrowserProfileId()).toBe("device-1");
+  });
 
-    expect(localStorage.getItem("draft-message-session-a")).toBe(
-      "session draft",
+  it("stores a generated browser profile id under the production device key", () => {
+    const browserProfileId = getOrCreateBrowserProfileId();
+
+    expect(browserProfileId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
-    expect(localStorage.getItem("draft-new-session")).toBe(
-      "new session draft",
-    );
-    expect(localStorage.getItem("draft-new-session-project-a")).toBe(
-      "project draft",
-    );
-    expect(localStorage.getItem("fab-draft")).toBe("fab draft");
-    expect(localStorage.getItem("fab-prefill")).toBe("fab prefill");
-    expect(localStorage.getItem("yep-anywhere-install-a-draft-session-a")).toBe(
-      null,
-    );
-    expect(
-      localStorage.getItem("yep-anywhere-install-a-new-session-draft-project-a"),
-    ).toBe(null);
-    expect(localStorage.getItem("yep-anywhere-install-a-fab-draft")).toBe(null);
-    expect(localStorage.getItem("yep-anywhere-install-a-fab-prefill")).toBe(
-      null,
+    expect(localStorage.getItem(BROWSER_LOCAL_KEYS.browserProfileId)).toBe(
+      browserProfileId,
     );
   });
 });

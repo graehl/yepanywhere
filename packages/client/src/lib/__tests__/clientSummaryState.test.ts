@@ -217,6 +217,7 @@ describe("clientSummaryState", () => {
             title: "Snapshot title",
             fullTitle: "Snapshot full title",
             messageCount: 10,
+            ownership: { owner: "self", processId: "process-1" },
             isStarred: true,
           }),
         ],
@@ -241,6 +242,7 @@ describe("clientSummaryState", () => {
       provider: "claude",
       createdAt: RECENT,
       isStarred: true,
+      ownership: { owner: "self", processId: "process-1" },
       activity: "in-turn",
     });
     expect(record?.messageCount).toBe(2);
@@ -797,6 +799,55 @@ describe("clientSummaryState", () => {
     );
     expect(selectInboxResponse(state).recentActivity[0]).toMatchObject({
       sessionId: "session-1",
+      activity: undefined,
+    });
+  });
+
+  it("does not let an older full snapshot resurrect cleared lifecycle activity", () => {
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [
+          globalSession("session-1", {
+            activity: "in-turn",
+            ownership: { owner: "self", processId: "process-1" },
+          }),
+        ],
+        hasMore: false,
+      },
+      100,
+    );
+
+    state = applyInboxCollectionSnapshot(
+      state,
+      {
+        needsAttention: [],
+        active: [],
+        recentActivity: [inboxItem("session-1")],
+        unread8h: [],
+        unread24h: [],
+      },
+      200,
+    );
+
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [
+          globalSession("session-1", {
+            activity: "in-turn",
+            ownership: { owner: "self", processId: "process-1" },
+          }),
+        ],
+        hasMore: false,
+      },
+      150,
+    );
+
+    expect(selectSessionCollectionRecord(state, "session-1")).toMatchObject({
+      ownership: { owner: "self", processId: "process-1" },
       activity: undefined,
     });
   });

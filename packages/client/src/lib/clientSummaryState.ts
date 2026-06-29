@@ -25,6 +25,31 @@ import {
 
 const NO_OBSERVATION = Number.NEGATIVE_INFINITY;
 
+export type SessionCollectionObservationKind =
+  | "full-snapshot"
+  | "partial-snapshot"
+  | "partial-event";
+
+export type SessionCollectionObservationSource =
+  | "global-sessions"
+  | "inbox"
+  | "session-created"
+  | "session-updated"
+  | "metadata-changed"
+  | "process-state"
+  | "session-status"
+  | "session-seen";
+
+// Each session reducer entry point names whether it is applying a fuller row
+// snapshot or a partial observation. The merge rules currently resolve
+// conflicts by field-group freshness and allow older observations to backfill
+// empty fields; the explicit source/kind keeps that distinction auditable.
+interface SessionCollectionObservation {
+  observedAt: number;
+  kind: SessionCollectionObservationKind;
+  source: SessionCollectionObservationSource;
+}
+
 export interface SessionCollectionRecord {
   id: string;
   title?: string | null;
@@ -489,7 +514,7 @@ function upsertInboxItemRecord(
   state: ClientSummaryState,
   item: InboxItem,
   tier: InboxTier,
-  observedAt: number,
+  observation: SessionCollectionObservation,
 ): ClientSummaryState {
   let record = getRecord(state, item.sessionId);
 
@@ -499,7 +524,7 @@ function upsertInboxItemRecord(
       title: item.sessionTitle,
       updatedAt: item.updatedAt,
     },
-    observedAt,
+    observation,
   );
 
   record = withProjectFields(
@@ -508,7 +533,7 @@ function upsertInboxItemRecord(
       projectId: item.projectId,
       projectName: item.projectName,
     },
-    observedAt,
+    observation,
   );
 
   record = withMetadataFields(
@@ -516,7 +541,7 @@ function upsertInboxItemRecord(
     {
       customTitle: item.customTitle,
     },
-    observedAt,
+    observation,
   );
 
   const inferredActivity =
@@ -532,10 +557,10 @@ function upsertInboxItemRecord(
       activity: inferredActivity,
       pendingInputType: item.pendingInputType,
     },
-    observedAt,
+    observation,
   );
 
-  record = withUnreadField(record, item.hasUnread, observedAt);
+  record = withUnreadField(record, item.hasUnread, observation);
 
   return putRecord(state, record);
 }
@@ -552,12 +577,17 @@ function putInboxSnapshot(
     return state;
   }
 
+  const observation = createSessionCollectionObservation(
+    requestStartedAt,
+    "partial-snapshot",
+    "inbox",
+  );
   let next = state;
   const tiers = createEmptyInboxTierRecord<string[]>(() => []);
   for (const tier of INBOX_TIERS) {
     for (const item of snapshot[tier]) {
       tiers[tier].push(item.sessionId);
-      next = upsertInboxItemRecord(next, item, tier, requestStartedAt);
+      next = upsertInboxItemRecord(next, item, tier, observation);
     }
   }
 
@@ -588,6 +618,21 @@ function isActiveActivity(activity: AgentActivity | undefined): boolean {
   return activity === "in-turn" || activity === "waiting-input";
 }
 
+function createSessionCollectionObservation(
+  observedAt: number,
+  kind: SessionCollectionObservationKind,
+  source: SessionCollectionObservationSource,
+): SessionCollectionObservation {
+  return { observedAt, kind, source };
+}
+
+function isFreshObservation(
+  observation: SessionCollectionObservation,
+  recordObservedAt: number | undefined,
+): boolean {
+  return observation.observedAt >= (recordObservedAt ?? NO_OBSERVATION);
+}
+
 function canApplyObservedField<T>(
   currentValue: T | undefined,
   nextValue: T | undefined,
@@ -609,12 +654,12 @@ function withContentFields(
     initialPrompt?: string;
     lastAgentText?: string;
   },
-  observedAt: number,
+  observation: SessionCollectionObservation,
 ): SessionCollectionRecord {
   if (Object.values(fields).every((value) => value === undefined)) {
     return record;
   }
-  const isFresh = observedAt >= (record.contentObservedAt ?? NO_OBSERVATION);
+  const isFresh = isFreshObservation(observation, record.contentObservedAt);
 
   return {
     ...record,
@@ -657,8 +702,8 @@ function withContentFields(
     )
       ? { lastAgentText: fields.lastAgentText }
       : {}),
-    ...(isFresh ? { contentObservedAt: observedAt } : {}),
-    observedAt: Math.max(record.observedAt, observedAt),
+    ...(isFresh ? { contentObservedAt: observation.observedAt } : {}),
+    observedAt: Math.max(record.observedAt, observation.observedAt),
   };
 }
 
@@ -671,12 +716,12 @@ function withMetadataFields(
     parentSessionId?: string;
     executor?: string;
   },
-  observedAt: number,
+  observation: SessionCollectionObservation,
 ): SessionCollectionRecord {
   if (Object.values(fields).every((value) => value === undefined)) {
     return record;
   }
-  const isFresh = observedAt >= (record.metadataObservedAt ?? NO_OBSERVATION);
+  const isFresh = isFreshObservation(observation, record.metadataObservedAt);
 
   return {
     ...record,
@@ -699,8 +744,8 @@ function withMetadataFields(
     ...(canApplyObservedField(record.executor, fields.executor, isFresh)
       ? { executor: fields.executor }
       : {}),
-    ...(isFresh ? { metadataObservedAt: observedAt } : {}),
-    observedAt: Math.max(record.observedAt, observedAt),
+    ...(isFresh ? { metadataObservedAt: observation.observedAt } : {}),
+    observedAt: Math.max(record.observedAt, observation.observedAt),
   };
 }
 
@@ -710,12 +755,12 @@ function withProjectFields(
     projectId?: string;
     projectName?: string;
   },
-  observedAt: number,
+  observation: SessionCollectionObservation,
 ): SessionCollectionRecord {
   if (Object.values(fields).every((value) => value === undefined)) {
     return record;
   }
-  const isFresh = observedAt >= (record.projectObservedAt ?? NO_OBSERVATION);
+  const isFresh = isFreshObservation(observation, record.projectObservedAt);
 
   return {
     ...record,
@@ -725,8 +770,8 @@ function withProjectFields(
     ...(canApplyObservedField(record.projectName, fields.projectName, isFresh)
       ? { projectName: fields.projectName }
       : {}),
-    ...(isFresh ? { projectObservedAt: observedAt } : {}),
-    observedAt: Math.max(record.observedAt, observedAt),
+    ...(isFresh ? { projectObservedAt: observation.observedAt } : {}),
+    observedAt: Math.max(record.observedAt, observation.observedAt),
   };
 }
 
@@ -737,7 +782,7 @@ function withLifecycleFields(
     activity?: AgentActivity | null;
     pendingInputType?: PendingInputType;
   },
-  observedAt: number,
+  observation: SessionCollectionObservation,
 ): SessionCollectionRecord {
   if (
     fields.ownership === undefined &&
@@ -746,55 +791,76 @@ function withLifecycleFields(
   ) {
     return record;
   }
-  if (observedAt < (record.lifecycleObservedAt ?? NO_OBSERVATION)) {
-    return record;
-  }
 
+  const isFresh = isFreshObservation(observation, record.lifecycleObservedAt);
   const normalizedActivity = normalizeActivity(fields.activity);
   const wasActive = isActiveActivity(record.activity);
-  const isActive = isActiveActivity(normalizedActivity);
+  const nextActivity = isFresh ? normalizedActivity : record.activity;
+  const isActive = isActiveActivity(nextActivity);
+  const nextPendingInputType = (() => {
+    if (isFresh) {
+      return nextActivity === "waiting-input"
+        ? fields.pendingInputType
+        : undefined;
+    }
+    if (
+      nextActivity === "waiting-input" &&
+      canApplyObservedField(
+        record.pendingInputType,
+        fields.pendingInputType,
+        isFresh,
+      )
+    ) {
+      return fields.pendingInputType;
+    }
+    return record.pendingInputType;
+  })();
+
   return {
     ...record,
-    ...(fields.ownership !== undefined ? { ownership: fields.ownership } : {}),
-    activity: normalizedActivity,
-    activeStartedAt: isActive
-      ? wasActive
-        ? record.activeStartedAt
-        : observedAt
-      : undefined,
-    pendingInputType:
-      normalizedActivity === "waiting-input"
-        ? fields.pendingInputType
-        : undefined,
-    lifecycleObservedAt: observedAt,
-    observedAt: Math.max(record.observedAt, observedAt),
+    ...(canApplyObservedField(record.ownership, fields.ownership, isFresh)
+      ? { ownership: fields.ownership }
+      : {}),
+    activity: nextActivity,
+    activeStartedAt: isFresh
+      ? isActive
+        ? wasActive
+          ? record.activeStartedAt
+          : observation.observedAt
+        : undefined
+      : record.activeStartedAt,
+    pendingInputType: nextPendingInputType,
+    ...(isFresh ? { lifecycleObservedAt: observation.observedAt } : {}),
+    observedAt: Math.max(record.observedAt, observation.observedAt),
   };
 }
 
 function withUnreadField(
   record: SessionCollectionRecord,
   hasUnread: boolean | undefined,
-  observedAt: number,
+  observation: SessionCollectionObservation,
 ): SessionCollectionRecord {
-  if (
-    hasUnread === undefined ||
-    observedAt < (record.unreadObservedAt ?? NO_OBSERVATION)
-  ) {
+  if (hasUnread === undefined) {
+    return record;
+  }
+
+  const isFresh = isFreshObservation(observation, record.unreadObservedAt);
+  if (!isFresh && record.hasUnread !== undefined) {
     return record;
   }
 
   return {
     ...record,
     hasUnread,
-    unreadObservedAt: observedAt,
-    observedAt: Math.max(record.observedAt, observedAt),
+    ...(isFresh ? { unreadObservedAt: observation.observedAt } : {}),
+    observedAt: Math.max(record.observedAt, observation.observedAt),
   };
 }
 
 function upsertSnapshotRecord(
   state: ClientSummaryState,
   row: GlobalSessionItem,
-  requestStartedAt: number,
+  observation: SessionCollectionObservation,
 ): ClientSummaryState {
   let record = getRecord(state, row.id);
 
@@ -811,7 +877,7 @@ function upsertSnapshotRecord(
       initialPrompt: row.initialPrompt,
       lastAgentText: row.lastAgentText,
     },
-    requestStartedAt,
+    observation,
   );
 
   record = withMetadataFields(
@@ -823,7 +889,7 @@ function upsertSnapshotRecord(
       parentSessionId: row.parentSessionId,
       executor: row.executor,
     },
-    requestStartedAt,
+    observation,
   );
 
   record = withProjectFields(
@@ -832,7 +898,7 @@ function upsertSnapshotRecord(
       projectId: row.projectId,
       projectName: row.projectName,
     },
-    requestStartedAt,
+    observation,
   );
 
   record = withLifecycleFields(
@@ -842,18 +908,18 @@ function upsertSnapshotRecord(
       activity: row.activity,
       pendingInputType: row.pendingInputType,
     },
-    requestStartedAt,
+    observation,
   );
 
-  record = withUnreadField(record, row.hasUnread, requestStartedAt);
+  record = withUnreadField(record, row.hasUnread, observation);
 
   record = {
     ...record,
     snapshotObservedAt: Math.max(
       record.snapshotObservedAt ?? NO_OBSERVATION,
-      requestStartedAt,
+      observation.observedAt,
     ),
-    observedAt: Math.max(record.observedAt, requestStartedAt),
+    observedAt: Math.max(record.observedAt, observation.observedAt),
   };
 
   return putRecord(state, record);
@@ -909,9 +975,14 @@ export function applyGlobalSessionsCollectionSnapshot(
   snapshot: GlobalSessionsCollectionSnapshot,
   requestStartedAt = Date.now(),
 ): ClientSummaryState {
+  const observation = createSessionCollectionObservation(
+    requestStartedAt,
+    "full-snapshot",
+    "global-sessions",
+  );
   let next = state;
   for (const row of snapshot.sessions) {
-    next = upsertSnapshotRecord(next, row, requestStartedAt);
+    next = upsertSnapshotRecord(next, row, observation);
   }
   return upsertQuery(next, snapshot, requestStartedAt);
 }
@@ -988,6 +1059,11 @@ export function applySessionCollectionCreated(
   event: SessionCreatedEvent,
   observedAt = Date.now(),
 ): ClientSummaryState {
+  const observation = createSessionCollectionObservation(
+    observedAt,
+    "partial-event",
+    "session-created",
+  );
   const session = event.session;
   let record = getRecord(state, session.id);
 
@@ -1004,7 +1080,7 @@ export function applySessionCollectionCreated(
       initialPrompt: session.initialPrompt,
       lastAgentText: session.lastAgentText,
     },
-    observedAt,
+    observation,
   );
 
   record = withMetadataFields(
@@ -1015,7 +1091,7 @@ export function applySessionCollectionCreated(
       isStarred: session.isStarred,
       parentSessionId: session.parentSessionId,
     },
-    observedAt,
+    observation,
   );
 
   record = withProjectFields(
@@ -1024,7 +1100,7 @@ export function applySessionCollectionCreated(
       projectId: session.projectId,
       projectName: session.projectName ?? record.projectName,
     },
-    observedAt,
+    observation,
   );
 
   record = withLifecycleFields(
@@ -1034,10 +1110,10 @@ export function applySessionCollectionCreated(
       activity: session.activity,
       pendingInputType: session.pendingInputType,
     },
-    observedAt,
+    observation,
   );
 
-  record = withUnreadField(record, session.hasUnread, observedAt);
+  record = withUnreadField(record, session.hasUnread, observation);
 
   return putRecord(state, {
     ...record,
@@ -1051,6 +1127,11 @@ export function applySessionCollectionUpdated(
   event: SessionUpdatedEvent,
   observedAt = Date.now(),
 ): ClientSummaryState {
+  const observation = createSessionCollectionObservation(
+    observedAt,
+    "partial-event",
+    "session-updated",
+  );
   const record = withContentFields(
     getRecord(state, event.sessionId),
     {
@@ -1060,7 +1141,7 @@ export function applySessionCollectionUpdated(
       model: event.model,
       lastAgentText: event.lastAgentText,
     },
-    observedAt,
+    observation,
   );
   return putRecord(state, record);
 }
@@ -1070,6 +1151,11 @@ export function applySessionCollectionMetadataChanged(
   event: SessionMetadataChangedEvent,
   observedAt = Date.now(),
 ): ClientSummaryState {
+  const observation = createSessionCollectionObservation(
+    observedAt,
+    "partial-event",
+    "metadata-changed",
+  );
   const record = withMetadataFields(
     getRecord(state, event.sessionId),
     {
@@ -1078,12 +1164,12 @@ export function applySessionCollectionMetadataChanged(
       isStarred: event.starred,
       parentSessionId: event.parentSessionId ?? undefined,
     },
-    observedAt,
+    observation,
   );
   const withProject = withProjectFields(
     record,
     { projectId: event.projectId },
-    observedAt,
+    observation,
   );
   return putRecord(state, withProject);
 }
@@ -1093,8 +1179,17 @@ export function applySessionCollectionStatusChanged(
   event: SessionStatusEvent,
   observedAt = Date.now(),
 ): ClientSummaryState {
+  const observation = createSessionCollectionObservation(
+    observedAt,
+    "partial-event",
+    "session-status",
+  );
   let record = getRecord(state, event.sessionId);
-  record = withProjectFields(record, { projectId: event.projectId }, observedAt);
+  record = withProjectFields(
+    record,
+    { projectId: event.projectId },
+    observation,
+  );
   record = withLifecycleFields(
     record,
     {
@@ -1102,7 +1197,7 @@ export function applySessionCollectionStatusChanged(
       activity: event.ownership.owner === "none" ? "idle" : record.activity,
       pendingInputType: record.pendingInputType,
     },
-    observedAt,
+    observation,
   );
   return putRecord(state, record);
 }
@@ -1112,15 +1207,24 @@ export function applySessionCollectionProcessStateChanged(
   event: ProcessStateEvent,
   observedAt = Date.now(),
 ): ClientSummaryState {
+  const observation = createSessionCollectionObservation(
+    observedAt,
+    "partial-event",
+    "process-state",
+  );
   let record = getRecord(state, event.sessionId);
-  record = withProjectFields(record, { projectId: event.projectId }, observedAt);
+  record = withProjectFields(
+    record,
+    { projectId: event.projectId },
+    observation,
+  );
   record = withLifecycleFields(
     record,
     {
       activity: event.activity,
       pendingInputType: event.pendingInputType,
     },
-    observedAt,
+    observation,
   );
   return putRecord(state, record);
 }
@@ -1130,10 +1234,15 @@ export function applySessionCollectionSeen(
   event: SessionSeenEvent,
   observedAt = Date.now(),
 ): ClientSummaryState {
+  const observation = createSessionCollectionObservation(
+    observedAt,
+    "partial-event",
+    "session-seen",
+  );
   const record = withUnreadField(
     getRecord(state, event.sessionId),
     false,
-    observedAt,
+    observation,
   );
   return putRecord(state, record);
 }

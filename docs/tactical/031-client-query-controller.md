@@ -50,6 +50,10 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   stable tier ordering and snapshot reporting in the provider. Inbox now uses
   the same retained wake/reconnect/session/process-event refresh shape as
   Agents, with manual refresh still forcing server sort order.
+- 2026-06-29: Added explicit session observation provenance in the summary
+  reducer. Global-session rows are named as fuller snapshots, Inbox rows as
+  partial snapshots, and activity-bus reducers as partial events so freshness
+  guards no longer hide which paths can only observe part of a session row.
 
 ## Context
 
@@ -126,6 +130,45 @@ Findings:
   manual refresh semantics.
 - Transcript/session detail loading is intentionally outside the scope. Its
   merge and stream rules are endpoint-specific and load-bearing.
+
+## Session Observation Semantics
+
+Session collection records are a union of observations, not a single endpoint
+response. The normalized entity map may know a session because a fuller list
+row arrived, because an Inbox snapshot mentioned it, or because a live event
+reported one field group. Query membership is separate from entity
+completeness.
+
+The reducer now names each session observation:
+
+| Source | Kind | Completeness |
+| --- | --- | --- |
+| `global-sessions` | `full-snapshot` | Mostly full `GlobalSessionItem` rows from `/api/sessions`. These are the best source for fields required by `sessionCollectionRecordToGlobalSessionItem(...)`, but the request timestamp can be older than newer live events that already reached the client. |
+| `inbox` | `partial-snapshot` | Inbox tier snapshots. These carry title, project, unread, and inferred lifecycle hints for sessions in inbox buckets, but they are not complete global-session rows. |
+| `session-created` | `partial-event` | A broad live event for a new session. It may carry many row fields, but it is still an event observation and can omit metadata or project display fields. |
+| `session-updated` | `partial-event` | Content-only observation: title, updated time, message count, model, last agent text. |
+| `metadata-changed` | `partial-event` | Metadata/project observation: custom title, archive/star state, parent id, project id. |
+| `process-state` | `partial-event` | Lifecycle/project observation: activity and pending input, with project id. It does not prove content or metadata completeness. |
+| `session-status` | `partial-event` | Ownership/project observation. It can clear lifecycle activity when ownership returns to none. |
+| `session-seen` | `partial-event` | Unread observation only. |
+
+Merge rules:
+
+- Freshness is tracked by field group (`contentObservedAt`,
+  `metadataObservedAt`, `projectObservedAt`, `lifecycleObservedAt`,
+  `unreadObservedAt`) instead of one record timestamp.
+- Newer observations protect populated fields from older snapshots.
+- Older observations may still backfill fields that are empty, so a newer
+  partial event cannot make a session permanently too incomplete to render.
+- Lifecycle activity is intentionally stricter than ordinary optional fields:
+  a newer observation that clears activity should not be undone by an older full
+  snapshot that still saw the session as active.
+- The timestamp is client-side observation time. For HTTP snapshots it is the
+  request-started time captured before the fetch; for live events it is the
+  client receive/reduce time unless a caller passes a test timestamp.
+- `sessionCollectionRecordToGlobalSessionItem(...)` still drops records missing
+  required row fields. That is a useful guard, but reducers should treat dropped
+  rows as incomplete observations, not as proof the session is absent.
 
 ## Library Options
 

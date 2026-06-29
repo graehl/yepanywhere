@@ -705,7 +705,7 @@ export function AppearanceSettings() {
           </div>
         </div>
         <div className="settings-item-group generated-title-settings">
-          <div className="settings-item">
+          <div className="settings-item-group-row">
             <div className="settings-item-info">
               <strong>{t("appearanceGeneratedTitlesTitle")}</strong>
               <p>{t("appearanceGeneratedTitlesDescription")}</p>
@@ -720,7 +720,7 @@ export function AppearanceSettings() {
             </label>
           </div>
           {generatedTitleEnabled && (
-            <div className="settings-item generated-title-length-item">
+            <div className="settings-item-group-row settings-item-group-row--field">
               <div className="settings-item-info">
                 <strong>{t("appearanceGeneratedTitleLengthTitle")}</strong>
                 <p>{t("appearanceGeneratedTitleLengthDescription")}</p>

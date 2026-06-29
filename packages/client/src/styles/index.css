@@ -9099,17 +9099,34 @@ a.sidebar-nav-item {
   margin-bottom: 0;
 }
 
-/* Groups an enable/disable toggle with its dependent sub-setting(s). The
-   dependent rows render below the toggle and are nested via a left accent. */
+/* Groups an enable/disable toggle with its dependent sub-setting(s) on a
+   shared surface (like the file-access panel): rows sit on one common
+   background, separated by dividers, rather than being indented. */
 .settings-item-group {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  overflow: hidden;
+  background: var(--bg-code);
+  border-radius: var(--radius-md);
 }
 
-.settings-item-group .generated-title-length-item {
-  margin-left: var(--space-3);
-  border-left: 2px solid var(--border-subtle);
+.settings-item-group-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-color);
+}
+
+.settings-item-group-row:first-child {
+  border-top: 0;
+}
+
+.settings-item-group-row--field {
+  align-items: flex-start;
+  flex-wrap: wrap;
 }
 
 .settings-subsection-heading {

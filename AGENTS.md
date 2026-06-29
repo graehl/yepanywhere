@@ -86,6 +86,24 @@ compatibility; then summarize the behavioral changes, risks, and follow-on work.
 Also state the likely benefit in one sentence, e.g. that this catches protocol
 or schema drift early and reduces silent breakage in YA's Codex integration.
 
+After any provider-refresh pass for Codex or Claude, update the tracked
+compatibility marker in root `package.json`:
+
+- `yepAnywhere.codexCli.compatibleThroughVersion` records the latest Codex CLI
+  version whose YA-visible app-server protocol, model catalog, and runtime
+  assumptions were checked or updated.
+- `yepAnywhere.claudeCode.compatibleThroughVersion` records the latest Claude
+  Code runtime version whose YA-visible SDK/package, model/command, and
+  transcript/control assumptions were checked or updated; keep
+  `yepAnywhere.claudeCode.claudeAgentSdkVersion` paired with the committed
+  `@anthropic-ai/claude-agent-sdk` dependency when the SDK is refreshed.
+
+This marker is the committed "compatible through / up to date as of" answer for
+future minor-version checks. For Codex, keep `expectedVersion` in sync with
+source/protocol refreshes that change the audited app-server target; a no-op
+audit may advance only `compatibleThroughVersion` if the checked-in source did
+not need to change.
+
 ## Reference Source (local-only)
 
 `references/` holds upstream source cloned for local reading. It is gitignored

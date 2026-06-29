@@ -83,6 +83,7 @@ intentionally redesigned to import that package again.
 Primary sources:
 
 - root `package.json` `yepAnywhere.codexCli.expectedVersion`;
+- root `package.json` `yepAnywhere.codexCli.compatibleThroughVersion`;
 - `codex --version`;
 - `scripts/update-codex-protocol.mjs`;
 - `packages/server/src/sdk/providers/codex-protocol/generated/`;
@@ -123,7 +124,34 @@ older installs may continue to work when YA does not need newer protocol fields,
 and version-sensitive behavior should be capability- or version-gated where
 possible.
 
-Current source refresh, 2026-06-16:
+Current source refresh, 2026-06-29:
+
+- Installed Codex is `codex-cli 0.142.4`; npm `@openai/codex` `latest` is
+  `0.142.4`. Root `package.json` records
+  `yepAnywhere.codexCli.expectedVersion` and
+  `compatibleThroughVersion` as `0.142.4`.
+- `pnpm codex:protocol:check` initially reported stale checked-in generated
+  files: `LegacyAppPathString.ts`, `ResponseItem.ts`,
+  `v2/ThreadForkResponse.ts`, `v2/ThreadResumeResponse.ts`,
+  `v2/ThreadStartParams.ts`, `v2/ThreadStartResponse.ts`, and
+  `v2/TurnStartParams.ts`. Regenerating the app-server subset made the check
+  clean.
+- YA-visible protocol drift is generated-only in this slice: path-conversion
+  comment wording changed; `ResponseItem` no longer gives
+  `compaction_trigger` an internal metadata passthrough field; and
+  `multiAgentMode` on thread/turn params and responses is now deprecated or
+  ignored in favor of Ultra reasoning effort. YA does not set
+  `multiAgentMode` and does not consume `compaction_trigger` metadata, so no
+  provider runtime change is indicated.
+- App-server `model/list` returned the same visible YA model set:
+  `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, and
+  `gpt-5.3-codex-spark`; `priority` service tier remains on `gpt-5.5` and
+  `gpt-5.4`.
+
+Status: Codex 0.142.4 compatibility refresh complete in generated source; no
+new runtime behavior change was introduced.
+
+Previous source refresh, 2026-06-16:
 
 - Installed Codex is `codex-cli 0.140.0`; repo expected version is `0.140.0`.
 - `pnpm codex:protocol:check` is clean after regenerating the checked-in
@@ -211,6 +239,8 @@ Primary sources:
 
 - `packages/server/package.json` and `pnpm-lock.yaml` for
   `@anthropic-ai/claude-agent-sdk`;
+- root `package.json` `yepAnywhere.claudeCode.compatibleThroughVersion` and
+  `yepAnywhere.claudeCode.claudeAgentSdkVersion`;
 - SDK `query()` control methods used in `packages/server/src/sdk/providers/claude.ts`;
 - live `supportedModels()` and `supportedCommands()` from the SDK handshake;
 - `CLAUDE_MODELS_FALLBACK`, `mergeClaudeModels()`, and `/goal` alias logic;
@@ -244,7 +274,22 @@ Difference detectors:
 - Model ids, effort levels, or context windows change enough to make fallback
   constants or model glyph rules misleading.
 
-Current source refresh, 2026-06-19:
+Current source refresh, 2026-06-29:
+
+- `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.183` to `0.3.195`,
+  whose package metadata declares bundled Claude Code `2.1.195`.
+- Local `claude --version` reports `2.1.195 (Claude Code)`, and npm
+  `@anthropic-ai/claude-agent-sdk` `latest` is `0.3.195` (`next` is
+  `0.3.196`). Root `package.json` records Claude Code compatibility through
+  `2.1.195` and pairs it with SDK `0.3.195`.
+- No checked-in Claude protocol regeneration exists. Focused Claude provider
+  tests passed after the dependency refresh, and no YA source change was
+  indicated by the package/runtime version check in this slice.
+
+Status: Claude Code 2.1.195 / SDK 0.3.195 compatibility refresh complete as a
+package and marker update; no new runtime behavior change was introduced.
+
+Previous source refresh, 2026-06-19:
 
 - `@anthropic-ai/claude-agent-sdk` was refreshed from `0.3.170` to `0.3.183`,
   whose package metadata declares bundled Claude Code `2.1.183`.
@@ -463,7 +508,7 @@ The server package currently pins provider-adjacent packages as follows:
 
 | package | current/wanted | latest observed | role |
 |---|---:|---:|---|
-| `@anthropic-ai/claude-agent-sdk` | `0.3.158` | `0.3.163` | Active Claude provider dependency |
+| `@anthropic-ai/claude-agent-sdk` | `0.3.195` | `0.3.195` | Active Claude provider dependency |
 | `@agentclientprotocol/sdk` | `0.12.0` | `0.24.0` | Active ACP client dependency for Grok/Gemini |
 
 Treat both rows as provider-refresh inputs.

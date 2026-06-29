@@ -9099,9 +9099,9 @@ a.sidebar-nav-item {
   margin-bottom: 0;
 }
 
-/* Groups an enable/disable toggle with its dependent sub-setting(s) on a
-   shared surface (like the file-access panel): rows sit on one common
-   background, separated by dividers, rather than being indented. */
+/* Groups an enable/disable toggle with its dependent sub-setting(s) inside a
+   single beveled container: rows share one continuous background with no
+   dividers between them, rather than being indented or split into cards. */
 .settings-item-group {
   display: flex;
   flex-direction: column;
@@ -9117,11 +9117,10 @@ a.sidebar-nav-item {
   gap: var(--space-4);
   min-width: 0;
   padding: var(--space-3);
-  border-top: 1px solid var(--border-color);
 }
 
-.settings-item-group-row:first-child {
-  border-top: 0;
+.settings-item-group-row + .settings-item-group-row {
+  padding-top: 0;
 }
 
 .settings-item-group-row--field {

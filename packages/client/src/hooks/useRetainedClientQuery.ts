@@ -32,8 +32,14 @@ export interface UseRetainedClientQueryOptions<T> {
 export interface UseRetainedClientQueryResult {
   loading: boolean;
   error: Error | null;
-  refetch: () => Promise<void>;
+  refetch: (options?: RetainedClientQueryRunOptions) => Promise<void>;
   scheduleRevalidation: () => void;
+}
+
+export interface RetainedClientQueryRunOptions {
+  force?: boolean;
+  background?: boolean;
+  meta?: unknown;
 }
 
 export function useRetainedClientQuery<T>({
@@ -104,7 +110,8 @@ export function useRetainedClientQuery<T>({
     async ({
       force = false,
       background = false,
-    }: { force?: boolean; background?: boolean } = {}) => {
+      meta,
+    }: RetainedClientQueryRunOptions = {}) => {
       if (!enabled || !ready) {
         return;
       }
@@ -126,6 +133,7 @@ export function useRetainedClientQuery<T>({
           coverage: coverageRef.current,
           staleTimeMs,
           force,
+          meta,
           fetcher: (context) => fetcherRef.current(context),
           applySnapshot: (result, context) =>
             applySnapshotRef.current?.(result, context),
@@ -206,7 +214,8 @@ export function useRetainedClientQuery<T>({
   return {
     loading,
     error,
-    refetch: () => run({ force: true }),
+    refetch: (options?: RetainedClientQueryRunOptions) =>
+      run({ ...options, force: options?.force ?? true }),
     scheduleRevalidation,
   };
 }

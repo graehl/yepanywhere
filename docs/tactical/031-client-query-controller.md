@@ -46,6 +46,10 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   uses a 30s poll; the process list now fetches after readiness, revalidates
   on retained wake/reconnect/session/process events, and patches custom titles
   immediately from `session-metadata-changed`.
+- 2026-06-29: Moved `InboxContext` onto `useRetainedClientQuery` while keeping
+  stable tier ordering and snapshot reporting in the provider. Inbox now uses
+  the same retained wake/reconnect/session/process-event refresh shape as
+  Agents, with manual refresh still forcing server sort order.
 
 ## Context
 
@@ -93,7 +97,7 @@ Audited 2026-06-28. This is the starting map for migration priority.
 | `useSidebarSessionFeeds` | two `useGlobalSessionsFeed` instances | Visual Sidebar owns unfiltered and starred fetches. Rows render from broad entity projections, so coverage is implicit and can be accidentally warmed by All Sessions. | Replace with an app-shell retainer plus shared global-session controls. |
 | `useProjects` | `/api/projects` | Source-scoped snapshot reporting and activity-bus debounce, but hook-local `hasFetchedRef`, loading/error, and no shared in-flight dedupe. | Good second-wave target after global sessions. |
 | `useProject` | `/api/projects/:id` | Source-scoped snapshot reporting, per-hook cancellation and debounce. Multiple consumers of the same project can duplicate fetches. | Second-wave target if repeated project detail fetches stay visible. |
-| `InboxContext` | `/api/inbox` | Already close to a singleton feed owner. Handles readiness, stable tier ordering, source-scoped snapshot reporting, stale response protection, and debounced activity refetches. | Later migration only if the controller can preserve stable tier ordering cleanly. Not needed for Sidebar bug. |
+| `InboxContext` | `/api/inbox` | App-scoped singleton feed owner. Stable tier ordering and source-scoped snapshot reporting stay provider-owned; readiness, retained query lifecycle, and wake/reconnect/activity refetch now go through `useRetainedClientQuery`. | Completed second retained-revalidation target. Keep tier-order policy local. |
 | `useProcesses` | `/api/processes?includeTerminated=true` | Source-keyed process snapshot plus retained controller query. Revalidates on readiness, refresh/reconnect, process/session events, and patches metadata titles locally. Previously used hook-local rows plus a fixed 30s poll. | Completed first retained-revalidation target. A process summary store slice can wait. |
 | `useProjectQueues` | `/api/projects/:id/queue` for each visible project | Source-scoped queue snapshots and mutation reporting, but each mounted consumer batches its own project ids and request lifecycle. Reconnect/refresh refetches are hook-local. | Good second-wave target. Needs per-project keying rather than one broad array key. |
 | `useServerSettings` | `/api/settings` | Pure hook-local fetch/mutation state. Uses `useBackgroundRevalidation` for quiet reconnect/refresh updates. No source-key capture or shared in-flight cache. | Candidate after summary feeds, especially if settings become store-backed. |
@@ -117,9 +121,9 @@ Findings:
 - Some module-level caches (`useVersion`, `useProviders`) are not source-keyed.
   They are not the first bug, but a shared controller should avoid repeating
   that source-blind shape.
-- Inbox is the most mature current feed owner. Treat it as a reference for
-  source capture and stale response handling, but do not force its stable tier
-  ordering through a generic abstraction prematurely.
+- Inbox remains the reference for feed-local policies that should not move into
+  the generic controller: stable tier ordering, accepted-snapshot shaping, and
+  manual refresh semantics.
 - Transcript/session detail loading is intentionally outside the scope. Its
   merge and stream rules are endpoint-specific and load-bearing.
 
@@ -452,16 +456,43 @@ Acceptance:
 - [x] existing rows stay visible during background revalidation failures;
 - [x] no process-list request starts before remote secure-connection readiness.
 
-### 6. Move Adjacent Summary Feeds Opportunistically
+### 6. Move Inbox Onto Retained Revalidation
+
+Status: Completed 2026-06-29.
+
+Move `InboxContext` from bespoke readiness, debounce, and activity-event fetch
+timers onto `useRetainedClientQuery`, while preserving its app-scoped provider
+role and stable tier ordering.
+
+Inbox specifics:
+
+- keep `/api/inbox` payload handling in `InboxContext`;
+- keep `mergeWithStableOrder` and tier-order refs local to the provider;
+- keep accepted snapshot reporting through `reportInboxCollectionSnapshot`;
+- use retained-query revalidation for initial load, `refresh`, `reconnect`,
+  `process-state-changed`, `session-status-changed`, `session-seen`,
+  `session-created`, `session-metadata-changed`, and `session-updated`;
+- preserve remote secure-connection readiness gating;
+- preserve manual `refresh()` as a server-sort refresh rather than a stable
+  merge refresh.
+
+Acceptance:
+
+- [x] no `/api/inbox` request starts before remote secure-connection readiness;
+- [x] source switches reset stable tier order;
+- [x] refresh/reconnect events coalesce into one retained-query refetch;
+- [x] existing rows remain selected from `clientSummaryStore`;
+- [x] manual refresh can still force server sort order.
+
+### 7. Move Adjacent Summary Feeds Opportunistically
 
 Status: Follow-on.
 
-After global sessions and processes prove the controller shape, migrate only
-feeds that get a clear simplification:
+After global sessions, processes, and inbox prove the controller shape, migrate
+only feeds that get a clear simplification:
 
 - Projects list and project details;
 - project queues;
-- inbox;
 - server settings;
 - version/provider catalog if their existing module-level caches can be
   replaced with the generic controller cleanly.
@@ -498,6 +529,8 @@ Acceptance:
   wake, reconnect, and relevant process/session events.
 - Verify Agents custom titles update from metadata changes or the next
   coalesced retained-query refresh.
+- Verify Inbox uses the same retained refresh path while preserving stable tier
+  ordering and manual server-sort refresh.
 - Verify star/archive/read mutations update store-backed surfaces immediately
   and invalidate retained server-owned memberships.
 - Verify StrictMode or multiple mounted consumers do not double-fetch the same

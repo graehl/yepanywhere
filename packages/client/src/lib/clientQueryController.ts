@@ -14,6 +14,7 @@ export interface ClientQueryRequestContext {
   key: ClientQueryKey;
   coverage: ClientQueryCoverage;
   requestStartedAt: number;
+  meta?: unknown;
 }
 
 export interface ClientQueryState {
@@ -34,6 +35,7 @@ export interface EnsureClientQueryOptions<T> {
   coverage?: ClientQueryCoverage;
   staleTimeMs?: number;
   force?: boolean;
+  meta?: unknown;
   fetcher: (context: ClientQueryRequestContext) => Promise<T>;
   applySnapshot?: (
     result: T,
@@ -268,6 +270,7 @@ export function ensureClientQuery<T>(
     key,
     coverage: requestedCoverage,
     requestStartedAt,
+    meta: options.meta,
   };
 
   const inFlight: ClientQueryInFlight = {

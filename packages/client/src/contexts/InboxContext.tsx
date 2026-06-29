@@ -16,8 +16,12 @@ import {
   useState,
 } from "react";
 import { type InboxItem, type InboxResponse, api } from "../api/client";
-import { useFileActivity } from "../hooks/useFileActivity";
+import { useRetainedClientQuery } from "../hooks/useRetainedClientQuery";
 import { authEvents } from "../lib/authEvents";
+import {
+  createClientQueryKey,
+  type ClientQueryRequestContext,
+} from "../lib/clientQueryController";
 import { isRemoteClient } from "../lib/connection";
 import {
   reportInboxCollectionSnapshot,
@@ -31,8 +35,20 @@ import { useOptionalRemoteConnection } from "./RemoteConnectionContext";
 export type { InboxItem, InboxResponse } from "../api/client";
 export { INBOX_TIERS, type InboxTier } from "../lib/inboxTiers";
 
-// Debounce interval for refetch on SSE events (prevents rapid refetches)
-const REFETCH_DEBOUNCE_MS = 500;
+const INBOX_QUERY_KEY = createClientQueryKey({
+  endpoint: "inbox",
+});
+const INBOX_REVALIDATE_EVENTS = [
+  "refresh",
+  "reconnect",
+  "process-state-changed",
+  "session-status-changed",
+  "session-seen",
+  "session-created",
+  "session-metadata-changed",
+  "session-updated",
+] as const;
+const INBOX_STALE_TIME_MS = 0;
 
 /**
  * Tracks the stable order of session IDs within each tier.
@@ -168,168 +184,102 @@ export function InboxProvider({
   const sourceKeyRef = useRef(sourceKey);
   sourceKeyRef.current = sourceKey;
   const inbox = useInboxResponseSnapshot();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
   const [enabled, setEnabled] = useState(initialEnabled);
   const isRemoteConnectionReady =
     !isRemoteClient() ||
     (remoteConnection !== null && remoteConnection.connection !== null);
+  const queryEnabled =
+    enabled &&
+    window.location.pathname !== "/login" &&
+    !authEvents.loginRequired;
 
   // Track the order of session IDs per tier for stable rendering
   const tierOrderRef = useRef<TierOrder>(createEmptyTierOrder());
   // Track if we've done the initial load (determines whether to use stable ordering)
   const hasInitialLoadRef = useRef(false);
+  const [hasInitialLoad, setHasInitialLoad] = useState(false);
   // Track accepted responses so an older overlapping request cannot perturb the
   // stable tier order after a newer request already won.
   const latestAcceptedRequestStartedAtRef = useRef(0);
-  // Debounce timer for SSE-triggered refetches
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Track enabled state in ref for callbacks
-  const enabledRef = useRef(enabled);
-  enabledRef.current = enabled;
 
   useEffect(() => {
     tierOrderRef.current = createEmptyTierOrder();
     hasInitialLoadRef.current = false;
+    setHasInitialLoad(false);
     latestAcceptedRequestStartedAtRef.current = 0;
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = null;
-    }
-    setError(null);
-    setLoading(
-      enabledRef.current &&
-        isRemoteConnectionReady &&
-        window.location.pathname !== "/login" &&
-        !authEvents.loginRequired,
-    );
-  }, [isRemoteConnectionReady, sourceKey]);
+  }, [sourceKey]);
 
   /**
-   * Fetches inbox data and applies stable ordering.
-   * @param forceFullSort - If true, uses server sort order instead of stable merge
+   * Applies inbox data and preserves stable tier ordering unless a foreground
+   * refresh explicitly asks for server sort order.
    */
-  const fetchInbox = useCallback(
-    async (forceFullSort = false) => {
-      // Skip if disabled, remote auth is still establishing, on login page,
-      // or login is required (prevents transient auth errors and 401s).
-      if (
-        !enabledRef.current ||
-        !isRemoteConnectionReady ||
-        window.location.pathname === "/login" ||
-        authEvents.loginRequired
-      ) {
+  const applyInboxSnapshot = useCallback(
+    (data: InboxResponse, context: ClientQueryRequestContext) => {
+      const requestSourceKey = context.sourceKey;
+      const requestStartedAt = context.requestStartedAt;
+      const forceFullSort =
+        typeof context.meta === "object" &&
+        context.meta !== null &&
+        "forceFullSort" in context.meta &&
+        context.meta.forceFullSort === true;
+
+      if (sourceKeyRef.current !== requestSourceKey) {
+        reportInboxCollectionSnapshot(requestSourceKey, data, requestStartedAt);
         return;
       }
 
-      const requestStartedAt = Date.now();
-      const requestSourceKey = sourceKey;
-      try {
-        const data = await api.getInbox();
-        if (sourceKeyRef.current !== requestSourceKey) {
-          reportInboxCollectionSnapshot(requestSourceKey, data, requestStartedAt);
-          return;
-        }
-        const nextInbox =
-          !hasInitialLoadRef.current || forceFullSort
-            ? data
-            : mergeWithStableOrder(data, tierOrderRef.current);
+      const nextInbox =
+        !hasInitialLoadRef.current || forceFullSort
+          ? data
+          : mergeWithStableOrder(data, tierOrderRef.current);
 
-        if (requestStartedAt < latestAcceptedRequestStartedAtRef.current) {
-          return;
-        }
-
-        reportInboxCollectionSnapshot(
-          requestSourceKey,
-          nextInbox,
-          requestStartedAt,
-        );
-        tierOrderRef.current = extractTierOrder(nextInbox);
-        latestAcceptedRequestStartedAtRef.current = requestStartedAt;
-        hasInitialLoadRef.current = true;
-        setError(null);
-      } catch (err) {
-        if (
-          sourceKeyRef.current === requestSourceKey &&
-          requestStartedAt >= latestAcceptedRequestStartedAtRef.current
-        ) {
-          setError(err instanceof Error ? err : new Error(String(err)));
-        }
-      } finally {
-        if (sourceKeyRef.current === requestSourceKey) {
-          setLoading(false);
-        }
+      if (requestStartedAt < latestAcceptedRequestStartedAtRef.current) {
+        return;
       }
+
+      reportInboxCollectionSnapshot(
+        requestSourceKey,
+        nextInbox,
+        requestStartedAt,
+      );
+      tierOrderRef.current = extractTierOrder(nextInbox);
+      latestAcceptedRequestStartedAtRef.current = requestStartedAt;
+      hasInitialLoadRef.current = true;
+      setHasInitialLoad(true);
     },
-    [isRemoteConnectionReady, sourceKey],
+    [],
   );
+
+  const {
+    loading,
+    error,
+    refetch: refetchInboxQuery,
+  } = useRetainedClientQuery<InboxResponse>({
+    sourceKey,
+    key: INBOX_QUERY_KEY,
+    enabled: queryEnabled,
+    ready: isRemoteConnectionReady,
+    hasData: hasInitialLoad,
+    staleTimeMs: INBOX_STALE_TIME_MS,
+    revalidateOn: INBOX_REVALIDATE_EVENTS,
+    fetcher: () => api.getInbox(),
+    applySnapshot: applyInboxSnapshot,
+  });
 
   /**
    * Force a full refresh with server-provided sort order.
    */
   const refresh = useCallback(() => {
-    return fetchInbox(true);
-  }, [fetchInbox]);
+    return refetchInboxQuery({ meta: { forceFullSort: true } });
+  }, [refetchInboxQuery]);
 
-  /**
-   * Debounced refetch - prevents rapid refetches from multiple SSE events
-   */
-  const debouncedRefetch = useCallback(() => {
-    // Skip if disabled, remote auth is still establishing, on login page,
-    // or login is required.
-    if (
-      !enabledRef.current ||
-      !isRemoteConnectionReady ||
-      window.location.pathname === "/login" ||
-      authEvents.loginRequired
-    ) {
-      return;
-    }
-
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-    debounceTimerRef.current = setTimeout(() => {
-      fetchInbox();
-    }, REFETCH_DEBOUNCE_MS);
-  }, [fetchInbox, isRemoteConnectionReady]);
-
-  // Subscribe to SSE events for real-time updates
-  // NOTE: We no longer refetch on file-change events. The inbox API primarily categorizes
-  // sessions by processState and pendingInputType, which are now available via SSE events:
-  // - process-state-changed: processState, pendingInputType (for needsAttention/active tiers)
-  // - session-status-changed: when session becomes owned/external/idle
-  // - session-created: new session
-  // - session-seen: hasUnread status changes (less critical for inbox tiers)
-  //
-  // File changes mostly affect hasUnread, which is secondary to inbox tier categorization.
-  useFileActivity({
-    onProcessStateChange: debouncedRefetch,
-    onSessionStatusChange: debouncedRefetch,
-    onSessionSeen: debouncedRefetch,
-    onSessionCreated: debouncedRefetch,
-  });
-
-  // Initial fetch when enabled (and not on login page or requiring login)
-  useEffect(() => {
-    if (
-      enabled &&
-      isRemoteConnectionReady &&
-      window.location.pathname !== "/login" &&
-      !authEvents.loginRequired
-    ) {
-      fetchInbox();
-    }
-  }, [enabled, fetchInbox, isRemoteConnectionReady]);
-
-  // Cleanup debounce timer
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, []);
+  const refetch = useCallback(
+    (forceFullSort = false) =>
+      refetchInboxQuery(
+        forceFullSort ? { meta: { forceFullSort: true } } : undefined,
+      ),
+    [refetchInboxQuery],
+  );
 
   // Computed totals
   const totalNeedsAttention = inbox.needsAttention.length;
@@ -353,7 +303,7 @@ export function InboxProvider({
         loading,
         error,
         refresh,
-        refetch: fetchInbox,
+        refetch,
         totalNeedsAttention,
         totalActive,
         totalItems,

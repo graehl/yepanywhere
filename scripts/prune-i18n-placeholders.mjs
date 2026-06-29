@@ -17,6 +17,12 @@ const knownDynamicEnglishKeys = new Set([
   "hostPickerStatusChecking",
   "hostPickerStatusUnknown",
 ]);
+const allowedExactEnglishDuplicates = new Map([
+  // Mark intentional same-as-English locale strings here when omission would
+  // lose meaning. Prefer sparse fallback for brand names and proper nouns.
+  // ["de", new Set(["exampleKey"])],
+  // ["*", new Set(["exampleKeyForEveryLocale"])],
+]);
 
 function usage() {
   console.log(`Usage: node scripts/prune-i18n-placeholders.mjs --check|--write|--health
@@ -27,6 +33,8 @@ Options:
   --write  Remove non-English entries exactly equal to en.json.
   --health Report placeholder duplicates, non-English keys absent from en.json,
            and candidate unused English keys. Candidate unused keys are advisory.
+           Intentional exact matches are allowed when listed in
+           allowedExactEnglishDuplicates in this script.
   --help   Show this message.
 `);
 }
@@ -66,11 +74,20 @@ async function readJson(filePath) {
   return JSON.parse(text);
 }
 
-function findExactEnglishDuplicates(localeMessages, englishMessages) {
+function isAllowedExactEnglishDuplicate(locale, key) {
+  return (
+    (allowedExactEnglishDuplicates.get(locale)?.has(key) ?? false) ||
+    (allowedExactEnglishDuplicates.get("*")?.has(key) ?? false)
+  );
+}
+
+function findExactEnglishDuplicates(locale, localeMessages, englishMessages) {
   return Object.entries(localeMessages)
     .filter(
       ([key, value]) =>
-        Object.hasOwn(englishMessages, key) && englishMessages[key] === value,
+        Object.hasOwn(englishMessages, key) &&
+        englishMessages[key] === value &&
+        !isAllowedExactEnglishDuplicate(locale, key),
     )
     .map(([key]) => key);
 }
@@ -151,7 +168,11 @@ async function main() {
 
     const filePath = path.join(i18nDir, file);
     const messages = await readJson(filePath);
-    const duplicateKeys = findExactEnglishDuplicates(messages, englishMessages);
+    const duplicateKeys = findExactEnglishDuplicates(
+      locale,
+      messages,
+      englishMessages,
+    );
     const extraKeys = findExtraLocaleKeys(messages, englishMessages);
     totalDuplicates += duplicateKeys.length;
     totalExtraKeys += extraKeys.length;

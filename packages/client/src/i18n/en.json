@@ -850,7 +850,7 @@
   "gitStatusUpgradeRequiredTitle": "Source Control needs a server update",
   "gitStatusUpgradeRequiredDescription": "This browser has a newer Source Control page, but this yepanywhere server does not advertise support for it. Upgrade the yepanywhere server, then reload this page.",
   "gitStatusLastCheckedRemote": "Last checked remote: {time}",
-  "gitStatusRemoteNever": "never",
+  "gitStatusRemoteUnknown": "unknown",
   "gitStatusRemoteJustNow": "just now",
   "gitStatusRemoteMinutesAgo": "{count}m ago",
   "gitStatusRemoteHoursAgo": "{count}h ago",

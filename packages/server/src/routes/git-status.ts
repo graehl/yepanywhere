@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -80,7 +80,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ error: "Project not found" }, 404);
     }
 
-    const checkedRemoteAt = getCheckedRemoteAt(project.path);
+    const checkedRemoteAt = await getCheckedRemoteAt(project.path);
     if (gitOperationsByProjectPath.has(project.path)) {
       const result: GitRemoteCheckResult = {
         status: "busy",
@@ -117,7 +117,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
 
       const result: GitRemoteCheckResult = {
         status: "failed",
-        checkedRemoteAt: getCheckedRemoteAt(project.path),
+        checkedRemoteAt: await getCheckedRemoteAt(project.path),
         gitStatus: await getGitStatusSnapshot(project.path),
         detail: getGitErrorDetail(err),
       };
@@ -143,7 +143,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ error: "Project not found" }, 404);
     }
 
-    const checkedRemoteAt = getCheckedRemoteAt(project.path);
+    const checkedRemoteAt = await getCheckedRemoteAt(project.path);
     if (gitOperationsByProjectPath.has(project.path)) {
       const result: GitPullResult = {
         status: "busy",
@@ -180,7 +180,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
 
       const result: GitPullResult = {
         status: "failed",
-        checkedRemoteAt: getCheckedRemoteAt(project.path),
+        checkedRemoteAt: await getCheckedRemoteAt(project.path),
         gitStatus: await getGitStatusSnapshot(project.path),
         detail: getGitErrorDetail(err),
       };
@@ -206,7 +206,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json({ error: "Project not found" }, 404);
     }
 
-    const checkedRemoteAt = getCheckedRemoteAt(project.path);
+    const checkedRemoteAt = await getCheckedRemoteAt(project.path);
     if (gitOperationsByProjectPath.has(project.path)) {
       const result: GitPushResult = {
         status: "busy",
@@ -245,7 +245,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
             ? "up-to-date"
             : "pushed"
           : "published",
-        checkedRemoteAt: getCheckedRemoteAt(project.path),
+        checkedRemoteAt: await getCheckedRemoteAt(project.path),
         gitStatus: await getGitStatusWithRemoteCheckTime(project.path),
       };
       return c.json(result);
@@ -261,7 +261,7 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
 
       const result: GitPushResult = {
         status: isPushRejectedError(err) ? "rejected" : "failed",
-        checkedRemoteAt: getCheckedRemoteAt(project.path),
+        checkedRemoteAt: await getCheckedRemoteAt(project.path),
         gitStatus: await getGitStatusSnapshot(project.path),
         detail: getGitErrorDetail(err),
       };
@@ -425,14 +425,17 @@ async function runGit(
   });
 }
 
-function getCheckedRemoteAt(projectPath: string): string | null {
-  return remoteCheckedAtByProjectPath.get(projectPath) ?? null;
+async function getCheckedRemoteAt(projectPath: string): Promise<string | null> {
+  return latestIsoTimestamp(
+    remoteCheckedAtByProjectPath.get(projectPath) ?? null,
+    await getRecordedFetchAt(projectPath),
+  );
 }
 
 async function getGitStatusWithRemoteCheckTime(
   projectPath: string,
 ): Promise<GitStatusInfo> {
-  return getGitStatus(projectPath, getCheckedRemoteAt(projectPath));
+  return getGitStatus(projectPath, await getCheckedRemoteAt(projectPath));
 }
 
 async function getGitStatusSnapshot(
@@ -446,9 +449,45 @@ async function getGitStatusSnapshot(
     }
     return {
       ...NOT_A_GIT_REPO,
-      checkedRemoteAt: getCheckedRemoteAt(projectPath),
+      checkedRemoteAt: await getCheckedRemoteAt(projectPath),
     };
   }
+}
+
+async function getRecordedFetchAt(projectPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await runGit(projectPath, [
+      "rev-parse",
+      "--git-path",
+      "FETCH_HEAD",
+    ]);
+    const fetchHeadPath = stdout.trim();
+    if (!fetchHeadPath) {
+      return null;
+    }
+
+    const fetchHeadStat = await stat(resolve(projectPath, fetchHeadPath));
+    if (!fetchHeadStat.isFile() || !Number.isFinite(fetchHeadStat.mtimeMs)) {
+      return null;
+    }
+    return fetchHeadStat.mtime.toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function latestIsoTimestamp(
+  first: string | null,
+  second: string | null,
+): string | null {
+  if (!first) return second;
+  if (!second) return first;
+
+  const firstTime = Date.parse(first);
+  const secondTime = Date.parse(second);
+  if (!Number.isFinite(firstTime)) return second;
+  if (!Number.isFinite(secondTime)) return first;
+  return secondTime > firstTime ? second : first;
 }
 
 function getGitErrorDetail(err: unknown): string | undefined {

@@ -866,7 +866,7 @@ function formatRemoteCheckTime(
   t: (key: string, vars?: Record<string, string | number>) => string,
 ): string {
   if (!value) {
-    return t("gitStatusRemoteNever");
+    return t("gitStatusRemoteUnknown");
   }
 
   const timestamp = Date.parse(value);

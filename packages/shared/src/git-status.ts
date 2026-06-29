@@ -49,7 +49,7 @@ export interface GitStatusInfo {
   files: GitFileChange[];
   /** Recent commits on the current HEAD */
   recentCommits?: GitRecentCommit[];
-  /** Last successful explicit remote check, if known by this server */
+  /** Last successful remote fetch/check detected from this server or git metadata */
   checkedRemoteAt?: string | null;
 }
 

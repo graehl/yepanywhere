@@ -31,6 +31,10 @@ Progress:
 - [x] 2026-06-04: Added advisory `i18n:missing` reporting for sparse-locale
   coverage. It lists English keys absent from each non-English overlay for
   daily or weekly translation planning without failing ordinary code checks.
+- [x] 2026-06-29: Added an explicit exact-English duplicate allowlist to
+  `scripts/prune-i18n-placeholders.mjs` for rare intentional same-as-English
+  locale strings. Cleaned the current backlog by removing font-family names
+  from sparse overlays and translating the remaining recap/mode labels.
 
 ## Context
 
@@ -91,6 +95,10 @@ distinguish deliberate locale grammar from accidental placeholder loss.
 - Treat non-English JSON files as sparse overlays.
 - Remove non-English entries only when their value is exactly identical to the
   corresponding English value.
+- For rare intentional exact matches, add the key to the script-level
+  `allowedExactEnglishDuplicates` allowlist. Prefer omitting proper nouns,
+  brand names, and font-family names from sparse overlays when English fallback
+  preserves the same display text.
 - Keep the runtime fallback behavior explicit and tested.
 - Keep locale display names such as `localeNameFr: "Français"` even when they
   are identical across locales; they are still intentional values. If they are

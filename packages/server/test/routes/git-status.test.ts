@@ -3,7 +3,11 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { type GitPushResult, toUrlProjectId } from "@yep-anywhere/shared";
+import {
+  type GitPushResult,
+  type GitStatusInfo,
+  toUrlProjectId,
+} from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProjectScanner } from "../../src/projects/scanner.js";
 import { createGitStatusRoutes } from "../../src/routes/git-status.js";
@@ -106,5 +110,24 @@ describe("git-status routes", () => {
     expect(response.status).toBe(200);
     expect(body.status).toBe("pushed");
     expect(body.gitStatus?.ahead).toBe(0);
+  });
+
+  it("reports the last fetch time recorded by git", async () => {
+    const repoDir = await createRepoWithUpstream();
+    const { projectId, routes } = createRoutesForProject(repoDir);
+    const beforeFetchMs = Date.now() - 2_000;
+
+    await runGit(repoDir, ["fetch", "origin"]);
+
+    const afterFetchMs = Date.now() + 2_000;
+    const response = await routes.request(`/${projectId}/git`);
+    const body = (await response.json()) as GitStatusInfo;
+    const checkedRemoteMs = Date.parse(body.checkedRemoteAt ?? "");
+
+    expect(response.status).toBe(200);
+    expect(body.checkedRemoteAt).toEqual(expect.any(String));
+    expect(Number.isFinite(checkedRemoteMs)).toBe(true);
+    expect(checkedRemoteMs).toBeGreaterThanOrEqual(beforeFetchMs);
+    expect(checkedRemoteMs).toBeLessThanOrEqual(afterFetchMs);
   });
 });

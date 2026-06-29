@@ -1,6 +1,6 @@
 # Session Page Request Dedupe
 
-Status: First chunk implemented 2026-06-29.
+Status: Settings-feed migration implemented 2026-06-29.
 Topic: client-query-controller
 
 ## Problem
@@ -60,12 +60,13 @@ Acceptance:
 
 ## Follow-Up
 
-After this slice, migrate the obvious session-page duplicate config feed:
-`useServerSettings`. That hook is mounted by several shell/session/settings
-surfaces and still owns hook-local state plus background revalidation. Moving it
-onto a source-keyed retained query should remove the repeated `/api/settings`
-requests without adding polling.
+`useServerSettings` has now moved onto a source-keyed retained query with a
+small shared settings snapshot store. That should remove the repeated
+`/api/settings` requests from shell/session/settings consumers without adding
+polling.
 
-Then add a browser-level network smoke test or manual checklist for a session
-page reload on `https://localhost:3400`, with request counts grouped by method,
-path, query string, and initiator.
+The next step is a browser-level network smoke test or manual checklist for a
+session page reload on `https://localhost:3400`, with request counts grouped by
+method, path, query string, and initiator. That will separate remaining true
+duplicates from distinct collection/detail requests that look similar in the
+Network name column.

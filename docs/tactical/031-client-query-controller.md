@@ -64,6 +64,11 @@ reconnect, or session metadata changes. That belongs here, not in a separate
   fan-out gap. Forced retained revalidation now bypasses fresh cache entries
   but still shares compatible in-flight requests, so multiple mounted consumers
   of the same source/key do not duplicate refresh/reconnect fetches.
+- 2026-06-29: Moved `useServerSettings` onto a source-keyed retained query
+  with a small shared settings snapshot store. Multiple shell/session/settings
+  consumers now share one `/api/settings` GET, reconnect/refresh revalidation
+  coalesces, secure remote clients wait for connection readiness, and
+  successful PUT responses update every mounted consumer.
 
 ## Context
 
@@ -114,7 +119,7 @@ Audited 2026-06-28. This is the starting map for migration priority.
 | `InboxContext` | `/api/inbox` | App-scoped singleton feed owner. Stable tier ordering and source-scoped snapshot reporting stay provider-owned; readiness, retained query lifecycle, and wake/reconnect/activity refetch now go through `useRetainedClientQuery`. | Completed second retained-revalidation target. Keep tier-order policy local. |
 | `useProcesses` | `/api/processes?includeTerminated=true` | Source-keyed process snapshot plus retained controller query. Revalidates on readiness, refresh/reconnect, process/session events, and patches metadata titles locally. Previously used hook-local rows plus a fixed 30s poll. | Completed first retained-revalidation target. A process summary store slice can wait. |
 | `useProjectQueues` | `/api/project-queue` for the global queue feed; `/api/projects/:id/queue` for mutations | Source-scoped global queue snapshots plus per-project mutation reporting. Retained query lifecycle now owns wake/reconnect refetches, so Projects does not fan out across every project. | Completed adjacent retained-revalidation target. Keep mutations project-scoped. |
-| `useServerSettings` | `/api/settings` | Pure hook-local fetch/mutation state. Uses `useBackgroundRevalidation` for quiet reconnect/refresh updates. No source-key capture or shared in-flight cache. | Candidate after summary feeds, especially if settings become store-backed. |
+| `useServerSettings` | `/api/settings` | Source-keyed retained query plus a small shared settings snapshot store. Initial GETs and reconnect/refresh revalidation share in-flight work; successful PUT responses update the shared snapshot. | Completed config-feed target. Keep mutations hook-local. |
 | `useVersion` | `/api/version` | Module-level shared in-flight promise for non-fresh requests, but no source scoping and no retained cache entry. Pending speech backend polling is bespoke. | Maybe later. Existing dedupe is useful but source-blind in hosted remote scenarios. |
 | `useProviders` | `/api/providers` | Module-level TTL cache and shared in-flight promise. No source scoping. | Maybe later. Existing shape is close to a generic query entry but must become source-aware first. |
 | `usePublicShareStatus` | `/api/public-shares/status` | Hook-local fetch and optional 5s poll. Multiple mounted consumers can duplicate polling. | Candidate only if duplicate polling becomes noisy; keep out of first slice. |

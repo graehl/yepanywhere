@@ -679,6 +679,347 @@ export function AppearanceSettings() {
             </span>
           </div>
         </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceTabSizeTitle")}</strong>
+            <p>{t("appearanceTabSizeDescription")}</p>
+          </div>
+          <div className="font-size-selector">
+            {TAB_SIZES.map((size) => (
+              <button
+                key={size}
+                type="button"
+                className={`font-size-option ${tabSize === size ? "active" : ""}`}
+                onClick={() => setTabSize(size)}
+              >
+                {getTabSizeLabel(size)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceGeneratedTitleLengthTitle")}</strong>
+            <p>{t("appearanceGeneratedTitleLengthDescription")}</p>
+          </div>
+          <div className="settings-item-actions">
+            <CommittedRangeInput
+              min={GENERATED_TITLE_LENGTH_MIN}
+              max={GENERATED_TITLE_LENGTH_MAX}
+              step={GENERATED_TITLE_LENGTH_STEP}
+              value={generatedTitleLength}
+              onDraftChange={(value) =>
+                setGeneratedTitleLengthDraft(String(value))
+              }
+              onCommit={setGeneratedTitleLength}
+              aria-label={t("appearanceGeneratedTitleLengthTitle")}
+            />
+            <span className="settings-input-unit">
+              <input
+                type="number"
+                className="settings-input-small"
+                min={GENERATED_TITLE_LENGTH_MIN}
+                max={GENERATED_TITLE_LENGTH_MAX}
+                step={GENERATED_TITLE_LENGTH_STEP}
+                value={generatedTitleLengthDraft}
+                onChange={(e) => setGeneratedTitleLengthDraft(e.target.value)}
+                onBlur={commitGeneratedTitleLength}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    commitGeneratedTitleLength();
+                    e.currentTarget.blur();
+                  }
+                }}
+                aria-label={t("appearanceGeneratedTitleLengthTitle")}
+              />
+              {t("appearanceGeneratedTitleLengthUnit")}
+            </span>
+            <button
+              type="button"
+              className="settings-inline-x"
+              onClick={() => {
+                setGeneratedTitleLength(DEFAULT_GENERATED_TITLE_LENGTH);
+                setGeneratedTitleLengthDraft(
+                  String(DEFAULT_GENERATED_TITLE_LENGTH),
+                );
+              }}
+              aria-label={t("appearanceGeneratedTitleLengthReset")}
+              title={t("appearanceGeneratedTitleLengthReset")}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceHoverCardDelayTitle")}</strong>
+            <p>{t("appearanceHoverCardDelayDescription")}</p>
+          </div>
+          <div className="settings-item-actions">
+            <CommittedRangeInput
+              min={HOVERCARD_SHOW_DELAY_MIN_MS}
+              max={HOVERCARD_SHOW_DELAY_MAX_MS}
+              step={HOVERCARD_SHOW_DELAY_STEP_MS}
+              value={hoverCardShowDelayMs}
+              onDraftChange={(value) => setHoverCardDelayDraft(String(value))}
+              onCommit={setHoverCardShowDelayMs}
+              aria-label={t("appearanceHoverCardDelayTitle")}
+            />
+            <span className="settings-input-unit">
+              <input
+                type="number"
+                className="settings-input-small"
+                min={HOVERCARD_SHOW_DELAY_MIN_MS}
+                max={HOVERCARD_SHOW_DELAY_MAX_MS}
+                step={HOVERCARD_SHOW_DELAY_STEP_MS}
+                value={hoverCardDelayDraft}
+                onChange={(e) => setHoverCardDelayDraft(e.target.value)}
+                onBlur={commitHoverCardDelay}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    commitHoverCardDelay();
+                    e.currentTarget.blur();
+                  }
+                }}
+                aria-label={t("appearanceHoverCardDelayTitle")}
+              />
+              {t("appearanceHoverCardDelayUnit")}
+            </span>
+            <button
+              type="button"
+              className="settings-inline-x"
+              onClick={() => {
+                setHoverCardShowDelayMs(DEFAULT_HOVERCARD_SHOW_DELAY_MS);
+                setHoverCardDelayDraft(String(DEFAULT_HOVERCARD_SHOW_DELAY_MS));
+              }}
+              aria-label={t("appearanceHoverCardReset")}
+              title={t("appearanceHoverCardReset")}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceHoverCardHeightTitle")}</strong>
+            <p>{t("appearanceHoverCardHeightDescription")}</p>
+          </div>
+          <div className="settings-item-actions">
+            <CommittedRangeInput
+              min={HOVERCARD_MAX_HEIGHT_MIN_PX}
+              max={HOVERCARD_MAX_HEIGHT_MAX_PX}
+              step={HOVERCARD_MAX_HEIGHT_STEP_PX}
+              value={hoverCardMaxHeightPx}
+              onDraftChange={(value) => setHoverCardHeightDraft(String(value))}
+              onCommit={setHoverCardMaxHeightPx}
+              aria-label={t("appearanceHoverCardHeightTitle")}
+            />
+            <span className="settings-input-unit">
+              <input
+                type="number"
+                className="settings-input-small"
+                min={HOVERCARD_MAX_HEIGHT_MIN_PX}
+                max={HOVERCARD_MAX_HEIGHT_MAX_PX}
+                step={HOVERCARD_MAX_HEIGHT_STEP_PX}
+                value={hoverCardHeightDraft}
+                onChange={(e) => setHoverCardHeightDraft(e.target.value)}
+                onBlur={commitHoverCardHeight}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    commitHoverCardHeight();
+                    e.currentTarget.blur();
+                  }
+                }}
+                aria-label={t("appearanceHoverCardHeightTitle")}
+              />
+              {t("appearanceHoverCardHeightUnit")}
+            </span>
+            <span className="settings-hovercard-lines">
+              ({hoverCardHeightLines}{" "}
+              {hoverCardHeightLines === 1
+                ? t("appearanceHoverCardLineUnit")
+                : t("appearanceHoverCardLinesUnit")}
+              )
+            </span>
+            <button
+              type="button"
+              className="settings-inline-x"
+              onClick={() => {
+                setHoverCardMaxHeightPx(DEFAULT_HOVERCARD_MAX_HEIGHT_PX);
+                setHoverCardHeightDraft(
+                  String(DEFAULT_HOVERCARD_MAX_HEIGHT_PX),
+                );
+              }}
+              aria-label={t("appearanceHoverCardReset")}
+              title={t("appearanceHoverCardReset")}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceStreamingTitle")}</strong>
+            <p>{t("appearanceStreamingDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={streamingEnabled}
+              onChange={(e) => setStreamingEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceSessionLoadingProgressTitle")}</strong>
+            <p>{t("appearanceSessionLoadingProgressDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={sessionLoadingProgressEnabled}
+              onChange={(e) =>
+                setSessionLoadingProgressEnabled(e.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceStableToolPreviewTitle")}</strong>
+            <p>{t("appearanceStableToolPreviewDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={stableToolPreviewRendering}
+              onChange={(e) => setStableToolPreviewRendering(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceInlineImagesTitle")}</strong>
+            <p>{t("appearanceInlineImagesDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={inlineMediaExpandedByDefault}
+              onChange={(e) =>
+                setInlineMediaExpandedByDefault(e.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceAlwaysShowQuoteCirclesTitle")}</strong>
+            <p>{t("appearanceAlwaysShowQuoteCirclesDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={alwaysShowQuoteCircles}
+              onChange={(e) => setAlwaysShowQuoteCircles(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceFunPhrasesTitle")}</strong>
+            <p>{t("appearanceFunPhrasesDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={funPhrasesEnabled}
+              onChange={(e) => setFunPhrasesEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceFloatingActionButtonTitle")}</strong>
+            <p>{t("appearanceFloatingActionButtonDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={floatingActionButtonEnabled}
+              onChange={(e) => setFloatingActionButtonEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceSidebarDuplicateHidingTitle")}</strong>
+            <p>{t("appearanceSidebarDuplicateHidingDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={sidebarDuplicateHidingEnabled}
+              onChange={(e) =>
+                setSidebarDuplicateHidingEnabled(e.target.checked)
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceTabTitleActivityTitle")}</strong>
+            <p>{t("appearanceTabTitleActivityDescription")}</p>
+          </div>
+          <div className="settings-item-actions">
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={tabTitleActivityEnabled}
+                onChange={(e) => setTabTitleActivityEnabled(e.target.checked)}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceConnectionBarsTitle")}</strong>
+            <p>{t("appearanceConnectionBarsDescription")}</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={showConnectionBars}
+              onChange={(e) => setShowConnectionBars(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("appearanceToolbarSettingsShortcutTitle")}</strong>
+            <p>{t("appearanceToolbarSettingsShortcutDescription")}</p>
+          </div>
+          <div className="settings-item-actions">
+            <button
+              type="button"
+              className="settings-button"
+              onClick={() => navigate(`${basePath}/settings/toolbar`)}
+            >
+              {t("appearanceToolbarSettingsShortcutAction")}
+            </button>
+          </div>
+        </div>
         <div className="settings-item output-appearance-settings">
           <div className="output-appearance-panel">
             <div className="output-appearance-controls">
@@ -1109,347 +1450,6 @@ export function AppearanceSettings() {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceTabSizeTitle")}</strong>
-            <p>{t("appearanceTabSizeDescription")}</p>
-          </div>
-          <div className="font-size-selector">
-            {TAB_SIZES.map((size) => (
-              <button
-                key={size}
-                type="button"
-                className={`font-size-option ${tabSize === size ? "active" : ""}`}
-                onClick={() => setTabSize(size)}
-              >
-                {getTabSizeLabel(size)}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceGeneratedTitleLengthTitle")}</strong>
-            <p>{t("appearanceGeneratedTitleLengthDescription")}</p>
-          </div>
-          <div className="settings-item-actions">
-            <CommittedRangeInput
-              min={GENERATED_TITLE_LENGTH_MIN}
-              max={GENERATED_TITLE_LENGTH_MAX}
-              step={GENERATED_TITLE_LENGTH_STEP}
-              value={generatedTitleLength}
-              onDraftChange={(value) =>
-                setGeneratedTitleLengthDraft(String(value))
-              }
-              onCommit={setGeneratedTitleLength}
-              aria-label={t("appearanceGeneratedTitleLengthTitle")}
-            />
-            <span className="settings-input-unit">
-              <input
-                type="number"
-                className="settings-input-small"
-                min={GENERATED_TITLE_LENGTH_MIN}
-                max={GENERATED_TITLE_LENGTH_MAX}
-                step={GENERATED_TITLE_LENGTH_STEP}
-                value={generatedTitleLengthDraft}
-                onChange={(e) => setGeneratedTitleLengthDraft(e.target.value)}
-                onBlur={commitGeneratedTitleLength}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    commitGeneratedTitleLength();
-                    e.currentTarget.blur();
-                  }
-                }}
-                aria-label={t("appearanceGeneratedTitleLengthTitle")}
-              />
-              {t("appearanceGeneratedTitleLengthUnit")}
-            </span>
-            <button
-              type="button"
-              className="settings-inline-x"
-              onClick={() => {
-                setGeneratedTitleLength(DEFAULT_GENERATED_TITLE_LENGTH);
-                setGeneratedTitleLengthDraft(
-                  String(DEFAULT_GENERATED_TITLE_LENGTH),
-                );
-              }}
-              aria-label={t("appearanceGeneratedTitleLengthReset")}
-              title={t("appearanceGeneratedTitleLengthReset")}
-            >
-              ×
-            </button>
-          </div>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceHoverCardDelayTitle")}</strong>
-            <p>{t("appearanceHoverCardDelayDescription")}</p>
-          </div>
-          <div className="settings-item-actions">
-            <CommittedRangeInput
-              min={HOVERCARD_SHOW_DELAY_MIN_MS}
-              max={HOVERCARD_SHOW_DELAY_MAX_MS}
-              step={HOVERCARD_SHOW_DELAY_STEP_MS}
-              value={hoverCardShowDelayMs}
-              onDraftChange={(value) => setHoverCardDelayDraft(String(value))}
-              onCommit={setHoverCardShowDelayMs}
-              aria-label={t("appearanceHoverCardDelayTitle")}
-            />
-            <span className="settings-input-unit">
-              <input
-                type="number"
-                className="settings-input-small"
-                min={HOVERCARD_SHOW_DELAY_MIN_MS}
-                max={HOVERCARD_SHOW_DELAY_MAX_MS}
-                step={HOVERCARD_SHOW_DELAY_STEP_MS}
-                value={hoverCardDelayDraft}
-                onChange={(e) => setHoverCardDelayDraft(e.target.value)}
-                onBlur={commitHoverCardDelay}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    commitHoverCardDelay();
-                    e.currentTarget.blur();
-                  }
-                }}
-                aria-label={t("appearanceHoverCardDelayTitle")}
-              />
-              {t("appearanceHoverCardDelayUnit")}
-            </span>
-            <button
-              type="button"
-              className="settings-inline-x"
-              onClick={() => {
-                setHoverCardShowDelayMs(DEFAULT_HOVERCARD_SHOW_DELAY_MS);
-                setHoverCardDelayDraft(String(DEFAULT_HOVERCARD_SHOW_DELAY_MS));
-              }}
-              aria-label={t("appearanceHoverCardReset")}
-              title={t("appearanceHoverCardReset")}
-            >
-              ×
-            </button>
-          </div>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceHoverCardHeightTitle")}</strong>
-            <p>{t("appearanceHoverCardHeightDescription")}</p>
-          </div>
-          <div className="settings-item-actions">
-            <CommittedRangeInput
-              min={HOVERCARD_MAX_HEIGHT_MIN_PX}
-              max={HOVERCARD_MAX_HEIGHT_MAX_PX}
-              step={HOVERCARD_MAX_HEIGHT_STEP_PX}
-              value={hoverCardMaxHeightPx}
-              onDraftChange={(value) => setHoverCardHeightDraft(String(value))}
-              onCommit={setHoverCardMaxHeightPx}
-              aria-label={t("appearanceHoverCardHeightTitle")}
-            />
-            <span className="settings-input-unit">
-              <input
-                type="number"
-                className="settings-input-small"
-                min={HOVERCARD_MAX_HEIGHT_MIN_PX}
-                max={HOVERCARD_MAX_HEIGHT_MAX_PX}
-                step={HOVERCARD_MAX_HEIGHT_STEP_PX}
-                value={hoverCardHeightDraft}
-                onChange={(e) => setHoverCardHeightDraft(e.target.value)}
-                onBlur={commitHoverCardHeight}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    commitHoverCardHeight();
-                    e.currentTarget.blur();
-                  }
-                }}
-                aria-label={t("appearanceHoverCardHeightTitle")}
-              />
-              {t("appearanceHoverCardHeightUnit")}
-            </span>
-            <span className="settings-hovercard-lines">
-              ({hoverCardHeightLines}{" "}
-              {hoverCardHeightLines === 1
-                ? t("appearanceHoverCardLineUnit")
-                : t("appearanceHoverCardLinesUnit")}
-              )
-            </span>
-            <button
-              type="button"
-              className="settings-inline-x"
-              onClick={() => {
-                setHoverCardMaxHeightPx(DEFAULT_HOVERCARD_MAX_HEIGHT_PX);
-                setHoverCardHeightDraft(
-                  String(DEFAULT_HOVERCARD_MAX_HEIGHT_PX),
-                );
-              }}
-              aria-label={t("appearanceHoverCardReset")}
-              title={t("appearanceHoverCardReset")}
-            >
-              ×
-            </button>
-          </div>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceStreamingTitle")}</strong>
-            <p>{t("appearanceStreamingDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={streamingEnabled}
-              onChange={(e) => setStreamingEnabled(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceSessionLoadingProgressTitle")}</strong>
-            <p>{t("appearanceSessionLoadingProgressDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={sessionLoadingProgressEnabled}
-              onChange={(e) =>
-                setSessionLoadingProgressEnabled(e.target.checked)
-              }
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceStableToolPreviewTitle")}</strong>
-            <p>{t("appearanceStableToolPreviewDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={stableToolPreviewRendering}
-              onChange={(e) => setStableToolPreviewRendering(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceInlineImagesTitle")}</strong>
-            <p>{t("appearanceInlineImagesDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={inlineMediaExpandedByDefault}
-              onChange={(e) =>
-                setInlineMediaExpandedByDefault(e.target.checked)
-              }
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceAlwaysShowQuoteCirclesTitle")}</strong>
-            <p>{t("appearanceAlwaysShowQuoteCirclesDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={alwaysShowQuoteCircles}
-              onChange={(e) => setAlwaysShowQuoteCircles(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceFunPhrasesTitle")}</strong>
-            <p>{t("appearanceFunPhrasesDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={funPhrasesEnabled}
-              onChange={(e) => setFunPhrasesEnabled(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceFloatingActionButtonTitle")}</strong>
-            <p>{t("appearanceFloatingActionButtonDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={floatingActionButtonEnabled}
-              onChange={(e) => setFloatingActionButtonEnabled(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceSidebarDuplicateHidingTitle")}</strong>
-            <p>{t("appearanceSidebarDuplicateHidingDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={sidebarDuplicateHidingEnabled}
-              onChange={(e) =>
-                setSidebarDuplicateHidingEnabled(e.target.checked)
-              }
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceTabTitleActivityTitle")}</strong>
-            <p>{t("appearanceTabTitleActivityDescription")}</p>
-          </div>
-          <div className="settings-item-actions">
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={tabTitleActivityEnabled}
-                onChange={(e) => setTabTitleActivityEnabled(e.target.checked)}
-              />
-              <span className="toggle-slider" />
-            </label>
-          </div>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceConnectionBarsTitle")}</strong>
-            <p>{t("appearanceConnectionBarsDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={showConnectionBars}
-              onChange={(e) => setShowConnectionBars(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceToolbarSettingsShortcutTitle")}</strong>
-            <p>{t("appearanceToolbarSettingsShortcutDescription")}</p>
-          </div>
-          <div className="settings-item-actions">
-            <button
-              type="button"
-              className="settings-button"
-              onClick={() => navigate(`${basePath}/settings/toolbar`)}
-            >
-              {t("appearanceToolbarSettingsShortcutAction")}
-            </button>
           </div>
         </div>
       </div>

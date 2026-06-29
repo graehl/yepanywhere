@@ -17,3 +17,9 @@ interface ImportMeta {
 
 /** Build-time version from git describe (injected by Vite define) */
 declare const __APP_VERSION__: string;
+
+/** Vite dev-server port (injected by Vite define); used to detect direct access */
+declare const __VITE_DEV_PORT__: number;
+
+/** Main backend server port (injected by Vite define); link target for the wrong-port notice */
+declare const __BACKEND_PORT__: number;

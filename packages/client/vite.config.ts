@@ -35,6 +35,14 @@ export default defineConfig({
   clearScreen: false,
   define: {
     __APP_VERSION__: JSON.stringify(getGitVersion()),
+    // Injected so the client can detect direct access to the Vite dev port
+    // (e.g. localhost:3402) and point users at the real app on the main server.
+    // See WrongPortNotice in main.tsx. __BACKEND_PORT__ mirrors the server's own
+    // derivation (config.ts: PORT ?? 3400) so it stays correct for custom ports.
+    __VITE_DEV_PORT__: JSON.stringify(vitePort),
+    __BACKEND_PORT__: JSON.stringify(
+      process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3400,
+    ),
   },
   plugins: [
     react(),

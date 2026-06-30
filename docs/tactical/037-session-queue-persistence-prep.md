@@ -1,6 +1,6 @@
 # Session Queue Persistence Prep
 
-Status: Head recovered patient queue resume implemented locally.
+Status: Safe-restart preserved queue reporting implemented locally.
 
 Progress:
 
@@ -17,10 +17,21 @@ Progress:
       revision.
 - [x] Add restart-paused session queue display/delete UI/API behavior.
 - [x] Add restart-paused session queue resume behavior.
-- [ ] Integrate persisted session queues with safe restart.
+- [x] Report persisted recovered patient queues in safe restart state.
+- [ ] Teach safe restart to preserve live patient queues instead of waiting for
+      them.
 
 Latest update:
 
+- 2026-06-30: Safe-restart preserved queue reporting implemented locally.
+  The session queue persistence service now emits an internal change event
+  after successful disk mutations, and `SafeRestartService` can report preserved
+  work separately from drain blockers. In manual/dev restart mode, recovered
+  `paused-after-restart` patient entries appear in safe-restart state as
+  `recovered-session-queue` preserved work and are appended to the reload
+  banner's scheduled restart status. This count does not make the banner unsafe
+  by itself and does not block restart. Active sessions plus live in-memory
+  per-session queues still provide the blocking drain status.
 - 2026-06-30: Head recovered patient queue resume implemented locally.
   Restart-paused patient entries now render with `Resume` and `Delete` actions.
   Resume is intentionally head-only per session: the server rejects non-oldest
@@ -96,7 +107,9 @@ YA currently has two different queue layers:
 
 Short-term `deferred` entries and direct `MessageQueue` entries remain
 server-authoritative only while the process is alive. Patient entries are now
-persisted while queued, but recovered paused entries are not yet surfaced.
+persisted while queued; recovered paused entries are surfaced in session views,
+can be deleted or resumed one at a time, and are reported to safe restart as
+preserved work rather than drain blockers.
 
 That split is mostly reasonable, but it leaves a hole for dev restarts and hard
 server exits: a user may have several normal session queued messages visible in
@@ -129,9 +142,9 @@ ephemeral:
 - process restart/session stop drops the queue.
 
 This draft now narrows that contract for the patient queue only. Live patient
-entries are persisted while queued, but restart recovery remains non-visible
-until the API/UI surface is added. Do not update UI copy or promise restart
-recovery until recovered entries are actually server-reported and actionable.
+entries are persisted while queued, and restart recovery is visible for
+server-reported `paused-after-restart` patient entries. Do not promise recovery
+for short-term deferred or direct queue entries.
 
 ## Product Decisions
 
@@ -279,9 +292,11 @@ The implementation order is staged:
 6. Teach safe restart to treat persisted patient entries as preserved work,
    while still reporting live active sessions as blockers.
 
-Steps 1-4 are implemented, including explicit per-entry resume. The next likely
-chunk is step 6's safe-restart integration, preceded by a project-level
-recovered-queue summary if bulk visibility/resume is needed.
+Steps 1-5 are implemented, including explicit per-entry resume. Step 6's first
+reporting layer is implemented for already recovered `paused-after-restart`
+patient entries. The next likely safe-restart chunk is preserving live patient
+queue backlog at the scheduled restart boundary instead of waiting for those
+patient entries to promote.
 
 ## Restart UX
 
@@ -343,24 +358,26 @@ Resume chunk:
 
 ## Safe Restart Interaction
 
-Today dev safe restart waits for active sessions and in-memory queued messages
-to drain because queued messages would otherwise be lost.
+Today dev safe restart waits for active sessions and live in-memory queued
+messages to drain. It also reports already persisted recovered patient entries
+as preserved work, not blockers.
 
-Once per-session queued messages are durable, safe restart can become less
-strict for that class of work:
+The agreed shape is:
 
 - active provider sessions still block until they drain or are explicitly
   interrupted;
 - short-term `deferred` and direct queue entries should drain before safe
   restart because they only exist inside an active session, and the active
   session is the blocker;
-- persistable patient queued messages can be flushed to disk, marked
-  paused-after-restart, and reported as preserved rather than unsafe;
+- already recovered `paused-after-restart` patient entries are preserved work
+  and do not block restart;
+- live persistable patient queued messages can later be flushed to disk, marked
+  `paused-after-restart`, and reported as preserved rather than unsafe;
 - the banner can say why restart is blocked only for the remaining live
   blockers.
 
-This should be implemented after queue persistence is real, not as part of the
-schema/store preparation.
+Recovered-work reporting is implemented. Live patient-queue preservation at the
+safe restart boundary remains a follow-up.
 
 ## Verification
 
@@ -383,9 +400,9 @@ Runtime tests, when live persistence is wired:
 - [x] deleting a recovered queued message removes it from disk and UI;
 - [x] resuming recovered entries preserves per-session order for the
   implemented per-entry path;
-- Project Queue promotion still waits for recovered per-session queues before
-  injecting project-level work;
-- safe restart distinguishes active live blockers from persisted preserved
+- [ ] Project Queue promotion still waits for recovered per-session queues
+  before injecting project-level work;
+- [x] safe restart distinguishes active live blockers from persisted preserved
   queued work.
 
 Manual smoke:

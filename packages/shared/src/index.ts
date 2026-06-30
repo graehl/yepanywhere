@@ -126,6 +126,8 @@ export type {
   SafeRestartBlocker,
   SafeRestartBlockerType,
   SafeRestartChangedEvent,
+  SafeRestartPreservedWork,
+  SafeRestartPreservedWorkType,
   SafeRestartState,
   SafeRestartStatus,
 } from "./safe-restart.js";

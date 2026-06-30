@@ -359,6 +359,7 @@ const projectQueueService = new ProjectQueueService({
 });
 const sessionQueuePersistenceService = new SessionQueuePersistenceService({
   dataDir: config.dataDir,
+  eventBus,
 });
 const sessionIndexService = new SessionIndexService({
   projectsDir: config.claudeProjectsDir,

@@ -2,7 +2,9 @@
 
 > Queued ("deferred") messages are server-owned state. The client renders the
 > server's list and issues add/cancel requests. It never keeps its own copy of
-> the queue, never reconciles by text, and never persists the queue to disk.
+> the queue or reconciles by text. Long-lived patient entries are durable
+> server state while queued; short-term direct/deferred entries remain
+> process-local.
 
 Topic: queued-messages
 
@@ -45,8 +47,9 @@ minutes.
    never collapsed, matched, or de-duplicated by their content.
 4. **Patient persistence only.** Short-term deferred and direct queues live in
    the Process and die when the process restarts or the session stops. Patient
-   entries are durable server state while queued, but restart-loaded entries are
-   still non-visible until the recovery API/UI lands.
+   entries are durable server state while queued. Restart-loaded patient entries
+   surface as `paused-after-restart` queue chips and require explicit resume or
+   delete.
 5. **No optimism.** Queuing and cancelling behave exactly like sending a normal
    session message: the composer disables, the request goes to the server, and
    the UI only changes when confirmed server state comes back. No optimistic
@@ -65,15 +68,18 @@ minutes.
 - **Cancel (delete).** Issue the delete request; the chip disappears only when
   the next server state no longer contains it. A delete of an already-gone id is
   a no-op.
-- **Process restart / session stop.** The queue is gone. Clients reflect the
-  empty (or rebuilt) server state on their next sync. No local resurrection of
-  "recovered" entries.
+- **Process restart / session stop.** Short-term direct/deferred queue state is
+  gone. Persisted patient entries load as `paused-after-restart`; clients
+  reflect those server-reported entries on the next sync and never resurrect
+  queue state locally.
 
 ## Surface
 
 - **List:** the client receives the queue from the server only — the `connected`
-  event payload on (re)connect and `deferred-queue` SSE events on change. No GET
-  fallback is required for correctness; the connection stream is the channel.
+  event payload on (re)connect and `deferred-queue` SSE events on change.
+  Session detail/metadata responses may also decorate recovered
+  `paused-after-restart` patient entries for initial load after a server
+  restart.
 - **Add:** `POST` a queue request; the server appends and broadcasts the new
   list.
 - **Cancel:** `DELETE` by id; the server removes and broadcasts the new list.
@@ -128,7 +134,9 @@ paused entries are surfaced through session detail/metadata responses and can
 be deleted by durable queue id. Explicit per-entry resume is implemented for
 the oldest recovered patient entry in a session; non-head resume and resume
 behind live queued backlog are rejected to preserve FIFO ordering. Safe restart
-integration and project-level recovered-queue controls are still pending.
+reports recovered patient entries as preserved work, not blockers. Project-level
+recovered-queue controls and live patient preservation at the safe restart
+boundary are still pending.
 
 ## What we are removing and why
 

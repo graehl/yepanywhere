@@ -1,3 +1,4 @@
+import type { SafeRestartState } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import { SafeRestartService } from "../../src/services/SafeRestartService.js";
 import { EventBus } from "../../src/watcher/EventBus.js";
@@ -77,6 +78,72 @@ describe("SafeRestartService", () => {
     expect(state.status).toBe("restarting");
     expect(state.blockers).toEqual([]);
     expect(restart).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports preserved recovered queue entries without blocking restart", async () => {
+    const eventBus = new EventBus();
+    const restart = vi.fn();
+    const service = new SafeRestartService({
+      eventBus,
+      getWorkerActivity: () => ({
+        activeWorkers: 0,
+        interruptibleSessionCount: 0,
+        queueLength: 0,
+        hasActiveWork: false,
+      }),
+      getPreservedWork: () => [
+        { type: "recovered-session-queue", count: 2 },
+      ],
+      restart,
+    });
+
+    const state = await service.schedule();
+
+    expect(state.status).toBe("restarting");
+    expect(state.blockers).toEqual([]);
+    expect(state.preserved).toEqual([
+      { type: "recovered-session-queue", count: 2 },
+    ]);
+    expect(state.canRestartNow).toBe(true);
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
+
+  it("updates scheduled state when preserved queue count changes", async () => {
+    const eventBus = new EventBus();
+    let preservedCount = 1;
+    const states: SafeRestartState[] = [];
+
+    eventBus.subscribe((event) => {
+      if (event.type === "safe-restart-changed") {
+        states.push(event.state);
+      }
+    });
+
+    const service = new SafeRestartService({
+      eventBus,
+      getWorkerActivity: () => ({
+        activeWorkers: 1,
+        interruptibleSessionCount: 1,
+        queueLength: 0,
+        hasActiveWork: true,
+      }),
+      getPreservedWork: () => [
+        { type: "recovered-session-queue", count: preservedCount },
+      ],
+      restart: vi.fn(),
+    });
+
+    await service.schedule();
+    preservedCount = 3;
+    eventBus.emit({
+      type: "session-queue-persistence-changed",
+      timestamp: new Date().toISOString(),
+    });
+    await Promise.resolve();
+
+    expect(states.at(-1)?.preserved).toEqual([
+      { type: "recovered-session-queue", count: 3 },
+    ]);
   });
 
   it("counts per-session queued messages separately from worker queue length", async () => {

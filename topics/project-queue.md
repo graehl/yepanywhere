@@ -31,7 +31,8 @@ across the YA install, and it is separate from the existing per-session queue.
   waiting for active sessions and in-memory session queued messages, including
   per-process direct/deferred queues, to drain. The durable Project Queue
   backlog survives the restart and remains visibly paused until the user
-  resumes it.
+  resumes it. Persisted recovered patient session-queue entries are reported as
+  preserved work in safe-restart status rather than as drain blockers.
 - Empty Project Queue state is always normal/running. Do not preserve a hidden
   pause after the last queued/failed/dispatching item leaves the queue.
 

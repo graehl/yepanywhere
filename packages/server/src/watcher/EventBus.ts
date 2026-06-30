@@ -143,6 +143,12 @@ export interface WorkerActivityEvent {
   timestamp: string;
 }
 
+/** Event emitted when durable per-session queue state changes. */
+export interface SessionQueuePersistenceChangedEvent {
+  type: "session-queue-persistence-changed";
+  timestamp: string;
+}
+
 /** Event emitted when session metadata changes (title, archived, starred) */
 export interface SessionMetadataChangedEvent {
   type: "session-metadata-changed";
@@ -269,6 +275,7 @@ export type BusEvent =
   | QueuePositionChangedEvent
   | QueueRequestRemovedEvent
   | WorkerActivityEvent
+  | SessionQueuePersistenceChangedEvent
   | SafeRestartChangedEvent
   | ProjectQueueChangedEvent
   | SessionMetadataChangedEvent

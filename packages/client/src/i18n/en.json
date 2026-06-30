@@ -1015,6 +1015,7 @@
   "reloadBannerSafeRestartWaitingQueued": "Restart scheduled - waiting for {count} queued message{suffix}",
   "reloadBannerSafeRestartReady": "Restart scheduled - restarting now",
   "reloadBannerSafeRestartRestarting": "Restarting when safe...",
+  "reloadBannerSafeRestartPreservedRecoveredQueue": "{count} recovered patient queued message{suffix} preserved for manual resume.",
   "filterClearAll": "Clear all",
   "filterByLabel": "Filter by {label}",
   "globalSessionsTitle": "All Sessions",

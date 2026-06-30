@@ -9,6 +9,7 @@ import {
   isUrlProjectId,
 } from "@yep-anywhere/shared";
 import type { UserMessage } from "../sdk/types.js";
+import type { EventBus } from "../watcher/EventBus.js";
 
 const CURRENT_VERSION = 1;
 const FILE_NAME = "session-queued-messages.json";
@@ -50,6 +51,7 @@ interface SessionQueuedMessagesState {
 
 export interface SessionQueuePersistenceServiceOptions {
   dataDir: string;
+  eventBus?: EventBus;
 }
 
 export class SessionQueuePersistenceValidationError extends Error {
@@ -241,6 +243,7 @@ function itemsEqual(
 export class SessionQueuePersistenceService {
   private dataDir: string;
   private filePath: string;
+  private eventBus: EventBus | undefined;
   private state: SessionQueuedMessagesState = {
     version: CURRENT_VERSION,
     items: [],
@@ -251,6 +254,7 @@ export class SessionQueuePersistenceService {
   constructor(options: SessionQueuePersistenceServiceOptions) {
     this.dataDir = options.dataDir;
     this.filePath = path.join(this.dataDir, FILE_NAME);
+    this.eventBus = options.eventBus;
   }
 
   async initialize(): Promise<void> {
@@ -304,6 +308,7 @@ export class SessionQueuePersistenceService {
         normalizeItem(item, { loadedFromDisk: false }),
       );
       await this.save();
+      this.emitChange();
       return this.list();
     });
   }
@@ -322,6 +327,7 @@ export class SessionQueuePersistenceService {
         this.state.items[index] = normalized;
       }
       await this.save();
+      this.emitChange();
       return cloneJson(normalized);
     });
   }
@@ -332,6 +338,7 @@ export class SessionQueuePersistenceService {
       if (index === -1) return false;
       this.state.items.splice(index, 1);
       await this.save();
+      this.emitChange();
       return true;
     });
   }
@@ -340,6 +347,7 @@ export class SessionQueuePersistenceService {
     await this.withMutation(async () => {
       this.state.items = [];
       await this.save();
+      this.emitChange();
     });
   }
 
@@ -369,5 +377,12 @@ export class SessionQueuePersistenceService {
     const tmpPath = `${this.filePath}.tmp`;
     await fs.writeFile(tmpPath, JSON.stringify(this.state, null, 2));
     await fs.rename(tmpPath, this.filePath);
+  }
+
+  private emitChange(): void {
+    this.eventBus?.emit({
+      type: "session-queue-persistence-changed",
+      timestamp: new Date().toISOString(),
+    });
   }
 }

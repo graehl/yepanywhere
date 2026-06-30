@@ -1,4 +1,8 @@
-import type { SafeRestartBlocker, SafeRestartState } from "@yep-anywhere/shared";
+import type {
+  SafeRestartBlocker,
+  SafeRestartPreservedWork,
+  SafeRestartState,
+} from "@yep-anywhere/shared";
 import { useI18n } from "../i18n";
 
 interface Props {
@@ -19,6 +23,13 @@ function blockerCount(
   type: SafeRestartBlocker["type"],
 ): number {
   return blockers.find((blocker) => blocker.type === type)?.count ?? 0;
+}
+
+function preservedCount(
+  preserved: SafeRestartPreservedWork[] | undefined,
+  type: SafeRestartPreservedWork["type"],
+): number {
+  return preserved?.find((item) => item.type === type)?.count ?? 0;
 }
 
 export function ReloadBanner({
@@ -52,6 +63,12 @@ export function ReloadBanner({
   const queuedBlockers = safeRestartState
     ? blockerCount(safeRestartState.blockers, "session-queue")
     : 0;
+  const recoveredQueuePreserved = safeRestartState
+    ? preservedCount(
+        safeRestartState.preserved,
+        "recovered-session-queue",
+      )
+    : 0;
   const safeRestartStatus =
     safeRestartState?.status === "restarting"
       ? t("reloadBannerSafeRestartRestarting")
@@ -75,6 +92,13 @@ export function ReloadBanner({
                 })
               : t("reloadBannerSafeRestartReady")
         : null;
+  const safeRestartPreservedStatus =
+    hasScheduledRestart && recoveredQueuePreserved > 0
+      ? t("reloadBannerSafeRestartPreservedRecoveredQueue", {
+          count: recoveredQueuePreserved,
+          suffix: recoveredQueuePreserved !== 1 ? "s" : "",
+        })
+      : null;
   const immediateRestartWarning =
     interruptibleSessionCount > 0 && queuedSessionMessageCount > 0
       ? t("developmentInterruptedWarningActiveAndQueued", {
@@ -103,6 +127,9 @@ export function ReloadBanner({
       {showWarning && (
         <span className="reload-banner-warning-text">
           {safeRestartStatus ?? immediateRestartWarning}
+          {safeRestartPreservedStatus
+            ? ` ${safeRestartPreservedStatus}`
+            : null}
         </span>
       )}
       <button

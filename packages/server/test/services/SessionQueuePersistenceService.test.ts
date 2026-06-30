@@ -2,12 +2,13 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { toUrlProjectId } from "@yep-anywhere/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type PersistedSessionQueuedMessage,
   SessionQueuePersistenceService,
   SessionQueuePersistenceValidationError,
 } from "../../src/services/SessionQueuePersistenceService.js";
+import { EventBus } from "../../src/watcher/EventBus.js";
 
 const FILE_NAME = "session-queued-messages.json";
 
@@ -174,6 +175,26 @@ describe("SessionQueuePersistenceService", () => {
     expect(await service.deleteItem("queued-1")).toBe(true);
     expect(service.list()).toEqual([]);
     await expect(fs.access(filePath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("emits change events after successful mutations", async () => {
+    const eventBus = new EventBus();
+    const listener = vi.fn();
+    eventBus.subscribe((event) => {
+      if (event.type === "session-queue-persistence-changed") {
+        listener(event.type);
+      }
+    });
+    const service = new SessionQueuePersistenceService({
+      dataDir: testDir,
+      eventBus,
+    });
+    await service.initialize();
+
+    await service.upsertItem(makeItem());
+    await service.deleteItem("queued-1");
+
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 
   it("rejects invalid caller mutations without changing current state", async () => {

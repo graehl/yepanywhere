@@ -34,7 +34,9 @@ describe("ReloadBanner", () => {
     );
 
     expect(onRestartWhenSafe).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("2 active sessions will be interrupted")).toBeTruthy();
+    expect(
+      screen.getByText("2 active sessions will be interrupted"),
+    ).toBeTruthy();
   });
 
   it("hides restart when safe for safe backend reloads", () => {
@@ -74,6 +76,24 @@ describe("ReloadBanner", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel Restart" }));
 
     expect(onCancelSafeRestart).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows preserved recovered queue status for scheduled restart", () => {
+    renderBanner({
+      onRestartWhenSafe: vi.fn(),
+      safeRestartState: {
+        status: "scheduled",
+        blockers: [{ type: "active-sessions", count: 1 }],
+        preserved: [{ type: "recovered-session-queue", count: 2 }],
+        canRestartNow: false,
+        scheduledAt: "2026-06-30T00:00:00.000Z",
+        updatedAt: "2026-06-30T00:00:00.000Z",
+      },
+    });
+
+    expect(
+      screen.getByText(/2 recovered patient queued messages preserved/),
+    ).toBeTruthy();
   });
 
   it("does not show restart when safe for frontend reloads", () => {

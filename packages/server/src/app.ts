@@ -3,6 +3,7 @@ import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import type {
   AppContentBlock,
   AppSession,
+  SafeRestartPreservedWork,
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import {
@@ -121,7 +122,10 @@ import { ProjectQueueScheduler } from "./services/ProjectQueueScheduler.js";
 import type { ProjectQueueService } from "./services/ProjectQueueService.js";
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
-import type { SessionQueuePersistenceService } from "./services/SessionQueuePersistenceService.js";
+import type {
+  PersistedSessionQueuedMessage,
+  SessionQueuePersistenceService,
+} from "./services/SessionQueuePersistenceService.js";
 import { SafeRestartService } from "./services/SafeRestartService.js";
 import type { SharingService } from "./services/SharingService.js";
 import type { SpeechBackendRegistry } from "./services/voice/registry.js";
@@ -292,6 +296,31 @@ function hasPendingToolCall(messages: Message[]): boolean {
   }
 
   return pendingToolUseIds.size > 0;
+}
+
+function isRecoveredPatientQueueItem(
+  item: PersistedSessionQueuedMessage,
+): boolean {
+  return item.kind === "patient" && item.status === "paused-after-restart";
+}
+
+function getPreservedRestartWork(
+  sessionQueuePersistenceService: SessionQueuePersistenceService | undefined,
+): SafeRestartPreservedWork[] {
+  if (!sessionQueuePersistenceService) return [];
+
+  const recoveredPatientCount = sessionQueuePersistenceService
+    .list()
+    .filter(isRecoveredPatientQueueItem).length;
+
+  return recoveredPatientCount > 0
+    ? [
+        {
+          type: "recovered-session-queue",
+          count: recoveredPatientCount,
+        },
+      ]
+    : [];
 }
 
 export function createApp(options: AppOptions): AppResult {
@@ -795,6 +824,8 @@ export function createApp(options: AppOptions): AppResult {
       ? new SafeRestartService({
           eventBus: options.eventBus,
           getWorkerActivity: () => supervisor.getWorkerActivity(),
+          getPreservedWork: () =>
+            getPreservedRestartWork(options.sessionQueuePersistenceService),
           restart: () =>
             triggerServerRestart({
               notificationService: options.notificationService,

@@ -1,6 +1,7 @@
 import type {
   SafeRestartBlocker,
   SafeRestartChangedEvent,
+  SafeRestartPreservedWork,
   SafeRestartState,
   SafeRestartStatus,
 } from "@yep-anywhere/shared";
@@ -17,6 +18,7 @@ export interface SafeRestartWorkerActivity {
 export interface SafeRestartServiceOptions {
   eventBus: EventBus;
   getWorkerActivity: () => SafeRestartWorkerActivity;
+  getPreservedWork?: () => SafeRestartPreservedWork[];
   restart: () => Promise<void> | void;
   pauseProjectQueueDispatch?: () => Promise<boolean> | boolean;
   resumeProjectQueueDispatch?: () => Promise<void>;
@@ -28,11 +30,15 @@ const RELEVANT_EVENT_TYPES = new Set([
   "queue-request-added",
   "queue-request-removed",
   "queue-position-changed",
+  "session-queue-persistence-changed",
 ]);
 
 export class SafeRestartService {
   private readonly eventBus: EventBus;
   private readonly getWorkerActivity: () => SafeRestartWorkerActivity;
+  private readonly getPreservedWorkSnapshot:
+    | (() => SafeRestartPreservedWork[])
+    | undefined;
   private readonly restart: () => Promise<void> | void;
   private readonly pauseProjectQueueDispatch?: () => Promise<boolean> | boolean;
   private readonly resumeProjectQueueDispatch?: () => Promise<void>;
@@ -48,6 +54,7 @@ export class SafeRestartService {
   constructor(options: SafeRestartServiceOptions) {
     this.eventBus = options.eventBus;
     this.getWorkerActivity = options.getWorkerActivity;
+    this.getPreservedWorkSnapshot = options.getPreservedWork;
     this.restart = options.restart;
     this.pauseProjectQueueDispatch = options.pauseProjectQueueDispatch;
     this.resumeProjectQueueDispatch = options.resumeProjectQueueDispatch;
@@ -65,12 +72,16 @@ export class SafeRestartService {
 
   getState(): SafeRestartState {
     const blockers = this.getBlockers();
+    const preserved = this.getPreservedWork();
     const state: SafeRestartState = {
       status: this.status,
       blockers,
       canRestartNow: blockers.length === 0,
       updatedAt: this.updatedAt,
     };
+    if (preserved.length > 0) {
+      state.preserved = preserved;
+    }
     if (this.scheduledAt) {
       state.scheduledAt = this.scheduledAt;
     }
@@ -135,6 +146,27 @@ export class SafeRestartService {
       });
     }
     return blockers;
+  }
+
+  private getPreservedWork(): SafeRestartPreservedWork[] {
+    if (!this.getPreservedWorkSnapshot) return [];
+    try {
+      return this.getPreservedWorkSnapshot()
+        .map((item) => ({
+          type: item.type,
+          count:
+            typeof item.count === "number" && Number.isFinite(item.count)
+              ? Math.max(0, item.count)
+              : 0,
+        }))
+        .filter((item) => item.count > 0);
+    } catch (error) {
+      console.warn(
+        "[SafeRestartService] Failed to read preserved restart work:",
+        error,
+      );
+      return [];
+    }
   }
 
   private async evaluateAndMaybeRestart(): Promise<void> {

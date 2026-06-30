@@ -16,9 +16,15 @@ Progress:
 - [x] Add dev banner `Restart When Safe` action.
 - [x] Wait for active sessions and in-memory session queued messages to drain.
 - [x] Report drain blockers in the reload banner.
+- [x] Report persisted recovered patient session-queue entries as preserved
+      restart work.
 
 Latest update:
 
+- 2026-06-30: Safe restart now reports persisted recovered patient
+  session-queue entries as preserved work. These entries are visible in the
+  scheduled restart banner status when present, but they do not block restart;
+  active sessions and live in-memory queued messages remain the drain blockers.
 - 2026-06-30: Scheduled safe restart implemented for dev/manual reload mode.
   Blocked backend reload banners now offer `Restart When Safe`; scheduling
   pauses Project Queue dispatch, waits for active provider sessions and
@@ -172,6 +178,8 @@ Implemented behavior:
   - active provider sessions that would be interrupted;
   - in-memory session queued messages that would otherwise be lost, including
     supervisor worker-queue entries and live-process direct/deferred queues.
+- Persisted recovered patient session-queue entries are reported as preserved
+  work in the scheduled status and do not block the restart.
 - The banner reports exact blocker counts and changes the safe-restart action
   to `Cancel Restart` while scheduled.
 - When blockers drain, YA calls the same backend restart path used by
@@ -179,7 +187,9 @@ Implemented behavior:
 
 Out of scope for this chunk:
 
-- Persisting the normal in-memory session queue across restarts.
+- Preserving still-live patient queued messages at the safe restart boundary
+  instead of waiting for them.
+- Persisting short-term direct/deferred session queues across restarts.
 - A production/server lifecycle manager.
 - Draining or persisting arbitrary non-session background jobs beyond the
   existing worker activity signal.

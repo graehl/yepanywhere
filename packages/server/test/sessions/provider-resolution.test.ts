@@ -4,6 +4,7 @@ import {
   findSessionSummaryAcrossProviders,
   listSessionsAcrossProviders,
 } from "../../src/sessions/provider-resolution.js";
+import type { ISessionIndexService } from "../../src/indexes/types.js";
 import type { ISessionReader } from "../../src/sessions/types.js";
 import type { Project, SessionSummary } from "../../src/supervisor/types.js";
 
@@ -50,6 +51,53 @@ describe("provider resolution", () => {
     expect(readerFactory).toHaveBeenCalledWith(
       expect.objectContaining({ provider: "opencode" }),
     );
+  });
+
+  it("uses the session index when resolving one summary", async () => {
+    const projectId = "proj-indexed" as UrlProjectId;
+    const summary: SessionSummary = {
+      id: "session-indexed",
+      projectId,
+      title: "Indexed",
+      fullTitle: "Indexed",
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:01:00.000Z",
+      messageCount: 1,
+      ownership: { owner: "none" },
+      provider: "claude",
+    };
+    const reader = makeReader(null);
+    const sessionIndexService = makeSessionIndexService(summary);
+
+    const resolved = await findSessionSummaryAcrossProviders(
+      {
+        id: projectId,
+        path: "/tmp/indexed",
+        name: "indexed",
+        sessionCount: 1,
+        sessionDir: "/tmp/indexed/.claude-sessions",
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: null,
+        provider: "claude",
+      },
+      "session-indexed",
+      projectId,
+      {
+        readerFactory: vi.fn(() => reader),
+        sessionIndexService,
+      },
+      "claude",
+    );
+
+    expect(resolved?.summary).toBe(summary);
+    expect(sessionIndexService.getSessionSummaryWithCache).toHaveBeenCalledWith(
+      "/tmp/indexed/.claude-sessions",
+      projectId,
+      "session-indexed",
+      reader,
+    );
+    expect(reader.getSessionSummary).not.toHaveBeenCalled();
   });
 
   it("lists OpenCode sessions for a project whose primary provider is Claude", async () => {
@@ -109,5 +157,18 @@ function makeReader(summary: SessionSummary | null): ISessionReader {
     getSessionSummaryIfChanged: vi.fn(async () => null),
     getAgentMappings: vi.fn(async () => []),
     getAgentSession: vi.fn(async () => null),
+  };
+}
+
+function makeSessionIndexService(
+  summary: SessionSummary | null,
+): ISessionIndexService {
+  return {
+    initialize: vi.fn(async () => {}),
+    getSessionsWithCache: vi.fn(async () => (summary ? [summary] : [])),
+    getSessionSummaryWithCache: vi.fn(async () => summary),
+    getSessionTitle: vi.fn(async () => summary?.title ?? null),
+    invalidateSession: vi.fn(),
+    clearCache: vi.fn(),
   };
 }

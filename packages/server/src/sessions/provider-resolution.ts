@@ -387,7 +387,14 @@ export async function findSessionSummaryAcrossProviders(
   preferredProvider?: ProviderName | string,
 ): Promise<ResolvedSessionSummary | null> {
   for (const source of getSessionSources(project, deps, preferredProvider)) {
-    const summary = await source.reader.getSessionSummary(sessionId, projectId);
+    const summary = deps.sessionIndexService
+      ? await deps.sessionIndexService.getSessionSummaryWithCache(
+          source.sessionDir,
+          projectId,
+          sessionId,
+          source.reader,
+        )
+      : await source.reader.getSessionSummary(sessionId, projectId);
     if (summary) {
       return { source, summary };
     }

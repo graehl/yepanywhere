@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { toUrlProjectId } from "@yep-anywhere/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionIndexService } from "../../src/indexes/SessionIndexService.js";
 import { GrokSessionReader } from "../../src/sessions/grok-reader.js";
 import { SessionReader } from "../../src/sessions/reader.js";
@@ -110,6 +110,33 @@ describe("SessionIndexService", () => {
       );
       expect(sessions2).toHaveLength(1);
       expect(sessions2[0]?.id).toBe("session-1");
+    });
+
+    it("returns a single cached summary when mtime/size match", async () => {
+      await createSession("session-1", "Hello world");
+      const getSessionSummary = vi.spyOn(reader, "getSessionSummary");
+
+      const first = await service.getSessionSummaryWithCache(
+        sessionDir,
+        projectId,
+        "session-1",
+        reader,
+      );
+
+      expect(first?.id).toBe("session-1");
+      expect(first?.title).toBe("Hello world");
+      expect(getSessionSummary).toHaveBeenCalledTimes(1);
+
+      const second = await service.getSessionSummaryWithCache(
+        sessionDir,
+        projectId,
+        "session-1",
+        reader,
+      );
+
+      expect(second?.id).toBe("session-1");
+      expect(second?.title).toBe("Hello world");
+      expect(getSessionSummary).toHaveBeenCalledTimes(1);
     });
   });
 

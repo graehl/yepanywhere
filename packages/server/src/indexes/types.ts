@@ -42,6 +42,25 @@ export interface ISessionIndexService {
   ): Promise<SessionSummary[]>;
 
   /**
+   * Get one session summary using the cache when possible.
+   *
+   * This is the preferred server-side primitive for display metadata about a
+   * known session id. It avoids the easy-to-miss direct reader path while still
+   * falling back to the provider reader on a cache miss or changed file.
+   *
+   * @param sessionDir - Directory containing session files
+   * @param projectId - The project ID
+   * @param sessionId - The session ID
+   * @param reader - Session reader for parsing files on cache miss
+   */
+  getSessionSummaryWithCache(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    sessionId: string,
+    reader: ISessionReader,
+  ): Promise<SessionSummary | null>;
+
+  /**
    * Get just the title for a single session, using cache when possible.
    * More efficient than getSessionsWithCache when you only need one session.
    *

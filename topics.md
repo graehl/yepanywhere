@@ -79,3 +79,5 @@
   rollout.
 - codex-session-index-memory - Codex summary-index cold parse memory spikes,
   entry cache retention, and instrumentation.
+- project-queue-reorder-and-titles - Project Queue project-local
+  reprioritization and cache-backed target session display titles.

@@ -200,6 +200,10 @@ export class SessionIndexService implements ISessionIndexService {
   private dirtySessionsByDir: Map<string, Set<string>> = new Map();
   private inFlightSessionLoads: Map<string, Promise<SessionSummary[]>> =
     new Map();
+  private inFlightSessionSummaryLoads: Map<
+    string,
+    Promise<SessionSummary | null>
+  > = new Map();
   private inFlightTitleLoads: Map<string, Promise<string | null>> = new Map();
   private inFlightSummaryParses: Map<string, Promise<SessionSummary | null>> =
     new Map();
@@ -549,6 +553,20 @@ export class SessionIndexService implements ISessionIndexService {
     this.dirtySessionsByDir.set(scopeKey, current);
   }
 
+  private clearSessionDirty(
+    sessionDir: string,
+    sessionId: string,
+    reader?: ISessionReader,
+  ): void {
+    const scopeKey = this.getScopeKey(sessionDir, reader);
+    const dirty = this.dirtySessionsByDir.get(scopeKey);
+    if (!dirty) return;
+    dirty.delete(sessionId);
+    if (dirty.size === 0) {
+      this.dirtySessionsByDir.delete(scopeKey);
+    }
+  }
+
   private markDirDirty(sessionDir: string, reader?: ISessionReader): void {
     this.dirtyDirs.add(this.getScopeKey(sessionDir, reader));
   }
@@ -593,21 +611,7 @@ export class SessionIndexService implements ISessionIndexService {
       ) {
         continue;
       }
-      summaries.push({
-        id: sessionId,
-        projectId,
-        title: cached.title,
-        fullTitle: cached.fullTitle,
-        createdAt: cached.createdAt,
-        updatedAt: cached.updatedAt,
-        messageCount: cached.messageCount,
-        ownership: { owner: "none" },
-        contextUsage: cached.contextUsage,
-        provider: cached.provider ?? DEFAULT_PROVIDER,
-        model: cached.model,
-        parentSessionId: cached.parentSessionId,
-        lastAgentText: cached.lastAgentText,
-      });
+      summaries.push(this.toSessionSummary(sessionId, cached, projectId));
     }
 
     summaries.sort(
@@ -616,6 +620,28 @@ export class SessionIndexService implements ISessionIndexService {
     );
 
     return summaries;
+  }
+
+  private toSessionSummary(
+    sessionId: string,
+    cached: CachedSessionSummary,
+    projectId: UrlProjectId,
+  ): SessionSummary {
+    return {
+      id: sessionId,
+      projectId,
+      title: cached.title,
+      fullTitle: cached.fullTitle,
+      createdAt: cached.createdAt,
+      updatedAt: cached.updatedAt,
+      messageCount: cached.messageCount,
+      ownership: { owner: "none" },
+      contextUsage: cached.contextUsage,
+      provider: cached.provider ?? DEFAULT_PROVIDER,
+      model: cached.model,
+      parentSessionId: cached.parentSessionId,
+      lastAgentText: cached.lastAgentText,
+    };
   }
 
   private toCachedSummary(
@@ -1216,21 +1242,7 @@ export class SessionIndexService implements ISessionIndexService {
           ) {
             continue;
           }
-          summaries.push({
-            id: sessionId,
-            projectId,
-            title: cached.title,
-            fullTitle: cached.fullTitle,
-            createdAt: cached.createdAt,
-            updatedAt: cached.updatedAt,
-            messageCount: cached.messageCount,
-            ownership: { owner: "none" },
-            contextUsage: cached.contextUsage,
-            provider: cached.provider ?? DEFAULT_PROVIDER,
-            model: cached.model,
-            parentSessionId: cached.parentSessionId,
-            lastAgentText: cached.lastAgentText,
-          });
+          summaries.push(this.toSessionSummary(sessionId, cached, projectId));
         } else {
           cacheMissBytes += size;
           cacheMisses.push({
@@ -1554,6 +1566,129 @@ export class SessionIndexService implements ISessionIndexService {
   }
 
   /**
+   * Get one session summary, using cached metadata when the indexed file stats
+   * still match. This is the cache-first single-session companion to
+   * getSessionsWithCache.
+   */
+  async getSessionSummaryWithCache(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    sessionId: string,
+    reader: ISessionReader,
+  ): Promise<SessionSummary | null> {
+    const loadKey = this.getTitleLoadKey(
+      sessionDir,
+      projectId,
+      sessionId,
+      reader,
+    );
+    const inFlight = this.inFlightSessionSummaryLoads.get(loadKey);
+    if (inFlight) return inFlight;
+
+    const promise = this.getSessionSummaryWithCacheInternal(
+      sessionDir,
+      projectId,
+      sessionId,
+      reader,
+    );
+    this.inFlightSessionSummaryLoads.set(loadKey, promise);
+    try {
+      return await promise;
+    } finally {
+      if (this.inFlightSessionSummaryLoads.get(loadKey) === promise) {
+        this.inFlightSessionSummaryLoads.delete(loadKey);
+      }
+    }
+  }
+
+  private async getSessionSummaryWithCacheInternal(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    sessionId: string,
+    reader: ISessionReader,
+  ): Promise<SessionSummary | null> {
+    const scopeKey = this.getScopeKey(sessionDir, reader);
+    const index = await this.loadIndex(sessionDir, projectId, reader);
+    const cached = index.sessions[sessionId];
+    const dirtySessions = this.dirtySessionsByDir.get(scopeKey);
+    const isDirty = dirtySessions?.has(sessionId) ?? false;
+    const filePath =
+      (await reader.getSessionFilePath?.(sessionId)) ??
+      path.join(sessionDir, `${sessionId}.jsonl`);
+
+    let stats: Stats;
+    try {
+      stats = await fs.stat(filePath);
+    } catch {
+      // Some readers can resolve a session across fallback locations even when
+      // they do not expose a concrete file path for the index. Preserve that
+      // behavior, but skip caching because we have no reliable mtime/size key.
+      try {
+        const summary = await reader.getSessionSummary(sessionId, projectId);
+        if (summary) {
+          this.clearSessionDirty(sessionDir, sessionId, reader);
+          return summary;
+        }
+      } catch {
+        // Fall through to clear any stale indexed entry below.
+      }
+
+      if (cached) {
+        delete index.sessions[sessionId];
+        await this.saveIndex(sessionDir, reader).catch(() => {
+          // Save failures are already logged by saveIndex.
+        });
+      }
+      this.clearSessionDirty(sessionDir, sessionId, reader);
+      return null;
+    }
+
+    const mtime = stats.mtimeMs;
+    const size = stats.size;
+
+    if (
+      cached &&
+      !isDirty &&
+      cached.fileMtime === mtime &&
+      cached.indexedBytes === size
+    ) {
+      return cached.isEmpty
+        ? null
+        : this.toSessionSummary(sessionId, cached, projectId);
+    }
+
+    const validationKey = `${scopeKey}::single:${sessionId}`;
+
+    try {
+      const summary = await this.enqueueSummaryParse({
+        sessionDir,
+        projectId,
+        reader,
+        scopeKey,
+        validationKey,
+        sessionId,
+        filePath,
+        size,
+        mtime,
+      });
+      if (summary) {
+        index.sessions[sessionId] = this.toCachedSummary(summary, mtime, size);
+        this.clearSessionDirty(sessionDir, sessionId, reader);
+        await this.saveIndex(sessionDir, reader);
+        return summary;
+      }
+
+      index.sessions[sessionId] = this.toEmptyCachedSummary(mtime, size);
+      this.clearSessionDirty(sessionDir, sessionId, reader);
+      await this.saveIndex(sessionDir, reader);
+    } catch {
+      // Reader errors should not break callers that only need display metadata.
+    }
+
+    return null;
+  }
+
+  /**
    * Get just the title for a single session, using cache when possible.
    * More efficient than getSessionsWithCache when you only need one session.
    */
@@ -1594,40 +1729,13 @@ export class SessionIndexService implements ISessionIndexService {
     sessionId: string,
     reader: ISessionReader,
   ): Promise<string | null> {
-    const index = await this.loadIndex(sessionDir, projectId, reader);
-    const cached = index.sessions[sessionId];
-    const filePath =
-      (await reader.getSessionFilePath?.(sessionId)) ??
-      path.join(sessionDir, `${sessionId}.jsonl`);
-
-    try {
-      const stats = await fs.stat(filePath);
-      const mtime = stats.mtimeMs;
-      const size = stats.size;
-
-      if (
-        cached &&
-        cached.fileMtime === mtime &&
-        cached.indexedBytes === size
-      ) {
-        if (cached.isEmpty) return null;
-        return cached.title;
-      }
-
-      const summary = await reader.getSessionSummary(sessionId, projectId);
-      if (summary) {
-        index.sessions[sessionId] = this.toCachedSummary(summary, mtime, size);
-        await this.saveIndex(sessionDir, reader);
-        return summary.title;
-      }
-
-      index.sessions[sessionId] = this.toEmptyCachedSummary(mtime, size);
-      await this.saveIndex(sessionDir, reader);
-    } catch {
-      // File error - return null
-    }
-
-    return null;
+    const summary = await this.getSessionSummaryWithCache(
+      sessionDir,
+      projectId,
+      sessionId,
+      reader,
+    );
+    return summary?.title ?? null;
   }
 
   dispose(): void {

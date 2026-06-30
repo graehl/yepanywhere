@@ -37,7 +37,8 @@ Progress:
 - [ ] Bound `CodexSessionReader.entryCache` by byte budget and session count.
 - [x] Decide whether a parse queue is still needed after the streaming-summary
   cold-index harness.
-- [ ] Add a summary parse queue/semaphore for cold summary-index fills.
+- [ ] Add a summary parse queue/semaphore with cold-index progress/status and
+  default non-blocking startup warmup.
 
 ## Incident
 
@@ -691,6 +692,11 @@ Interpretation:
   scopes from parsing huge files or huge individual lines at the same time.
 - A parse queue is no longer conditional. It is the next direct mitigation for
   restart/reconnect bursts and cold `/api/inbox` fan-out.
+- Startup should not block on cache warmth by default. First-run histories can
+  take tens of seconds or minutes, and a startup blocker would leave the UI,
+  restart/admin paths, and progress surfaces unavailable while the server looks
+  dead. Prefer fast startup plus background warmup, with progress surfaced when
+  a user-visible request is waiting on that work.
 - `SessionIndexService` perf records were visible in the dev terminal during
   the run, but did not persist into `logs/server.log`. The service currently
   captures a module-scope logger, so if the module is imported before startup
@@ -698,7 +704,7 @@ Interpretation:
   Fix this before relying on file-log-only harness aggregation for
   `session_index_perf`.
 
-### Chunk 3: Summary Parse Queue
+### Chunk 3: Summary Parse Queue And Warmup Status
 
 Priority: highest after the cold-index harness.
 
@@ -708,6 +714,10 @@ Goal:
   many expensive provider summary parses at the same time.
 - Keep warmed index reads fast and keep visible session detail higher priority
   than background summary fill.
+- Make first-run and post-restart cold indexing observable in CLI/server logs,
+  and optionally in the UI when a user-visible list is actually waiting.
+- Keep default startup non-blocking; treat "server is listening" separately
+  from "all summary indexes are warm".
 
 Implementation shape:
 
@@ -719,10 +729,33 @@ Implementation shape:
   concurrently.
 - Keep the queue scoped to summary/index work first; do not route ordinary
   warmed cache reads through it.
+- Represent cold summary-index work as progress-bearing jobs with stable scope
+  keys, provider/source, project id, total files, completed files, cache hits,
+  cache misses, bytes queued or parsed, active file count, elapsed time, and
+  coarse ETA when enough samples exist.
+- Start low-priority background warmup after startup for the same scopes normal
+  inbox/session-list routes would request. Do not make this a startup blocker
+  by default.
+- When `/api/inbox` or session-list routes need a cold scope, attach them to
+  the existing warmup job rather than launching duplicate parse work.
+- Log periodic structured progress while a cold warmup job is active so
+  `pnpm dev`, `pnpm start`, and packaged production runs show forward progress
+  before the UI is usable.
+- Add a lightweight status surface, either a dedicated
+  `/api/session-index/status` endpoint or a route-attached status payload, so
+  the client can show progress only when a list request is delayed or warmup has
+  crossed a short threshold.
 - Prioritize visible detail reads and explicit project/session views over
   background inbox backfill if they ever share the same scheduler.
 - Fix the `SessionIndexService` logger capture so `session_index_perf` is
   persisted to the configured JSON log file as well as the dev terminal.
+- Keep complete-list semantics by default. Do not silently return partial
+  inbox/session lists unless a future explicit option or response contract marks
+  the list as partial.
+- Consider a later explicit deployment option, for example a
+  `SESSION_INDEX_STARTUP_WARM=required`-style mode, for environments that want
+  readiness to mean "summary indexes are warm." The default should remain
+  background warmup.
 
 Acceptance:
 
@@ -734,6 +767,12 @@ Acceptance:
   `codex_entry_read` remains absent for plain Codex summaries.
 - `session_index_perf` is present in `logs/server.log` for future harness
   aggregation.
+- Cold warmup progress is visible in structured server logs, including file
+  counts and byte progress.
+- The client can determine whether summary indexes are warming and can display
+  a progress indicator without triggering duplicate warming work.
+- Server startup reaches the listening/admin state before full summary-index
+  warmth unless an explicit non-default startup-warm option is enabled.
 - Warm `/api/inbox` remains sub-second on the temp data dir after indexes are
   built.
 

@@ -1,7 +1,9 @@
 # Summary Parser Worker Isolation
 
-Status: tactical design for review. Do not implement until this document is
-reviewed and the first implementation chunk is explicitly approved.
+Status: implementation chunk 1 commenced. The standalone child-process parser
+harness, IPC protocol, env-gated parent client, source `tsx` launch guard, and
+focused tests have been added locally. Production `SessionIndexService` summary
+parses are not wired through the worker yet.
 
 Related: [`038-codex-session-index-memory.md`](038-codex-session-index-memory.md),
 especially "Chunk 5: Summary Parser Worker Isolation".
@@ -350,21 +352,68 @@ cold-index harness to aggregate both before and after the change.
      before/after RSS, responsiveness, worker recycle counts, and any remaining
      follow-up.
 
+## Implementation Chunk 1
+
+Implemented locally on 2026-06-30:
+
+- Added shared worker IPC protocol types for parse requests, parse responses,
+  worker metrics, sanitized errors, modes, and parent events.
+- Added a child worker entrypoint that sends a ready message over fork IPC,
+  accepts one parse request at a time, dispatches to Claude or Codex summary
+  parsing, and returns only `SessionSummary | null` plus metrics.
+- Added a parent `SummaryParserClient` with:
+  - modes `off`, `on`, and `required`;
+  - explicit source-worker launch through
+    `--conditions source --import tsx` only on Node >=20.6;
+  - built-worker resolution for `packages/server/dist`;
+  - launch timeout, per-job timeout, crash/disconnect handling, close cleanup,
+    and observable in-process fallback for worker setup failures.
+- Added focused tests for:
+  - Node 20.6 source-worker guard behavior;
+  - source worker parsing of one Claude fixture;
+  - source worker parsing of one Codex fixture;
+  - `on` mode fallback when worker launch is unsupported;
+  - `required` mode failing instead of falling back;
+  - explicit in-process parser execution for fallback.
+- Verified a built-JS worker fork after `pnpm --filter @yep-anywhere/server
+  build` with a one-off compiled-worker Claude fixture.
+
+Validation:
+
+```bash
+pnpm --filter @yep-anywhere/server test -- \
+  test/sessions/summary-parser-worker.test.ts
+pnpm --filter @yep-anywhere/server build
+```
+
+Result:
+
+- Focused summary-parser worker tests passed: 7 passed.
+- Server build passed and emitted the worker entrypoint to `dist`.
+- A one-off `node --input-type=module` harness forked the built worker and
+  returned `status: "ok"` for a compiled-worker Claude fixture.
+
+Not wired in this chunk:
+
+- `SessionIndexService.enqueueSummaryParse()` still calls provider readers
+  directly.
+- Codex support in the child uses the existing `CodexSessionReader` for the
+  harness. Extracting the streaming Codex summary parser into a pure worker
+  function remains chunk 3.
+- Recycle budgets beyond timeout are not enforced yet. Large-line/file/byte
+  recycle policy remains chunk 4.
+
 ## Open Design Questions
 
 - When should the worker gate graduate from default-off to default-on for
   Claude/Codex summary-index work? The first implementation should stay
   default-off until a real cold-history run proves reliability and RSS benefit.
-- Does explicit `--conditions source --import tsx` work reliably for the dev
-  worker under the current package/cwd layout, or is the JavaScript bootstrap
-  fallback needed?
 - Which initial recycle thresholds should be used? The measured large lines
   were 60.0 MB for Claude and 32.2 MB for Codex, so a threshold below those
   values should recycle on the known pathological cases.
-- Should worker status appear only in structured logs at first, or should
-  `/api/session-index/status` include current worker pid/generation/recycle
-  counters in chunk 1?
-- Which child failures are safe to retry in-process? The starting assumption is
-  setup/import/IPC failures only; timeout, OOM-like exit, and active-parse crash
-  should skip/empty-cache the one summary unless an explicit debug override is
-  enabled.
+- When wiring `SessionIndexService`, should worker state appear only in
+  structured logs at first, or should `/api/session-index/status` include
+  current worker pid/generation/recycle counters immediately?
+- Should active-parse crash/timeout/OOM ever retry in-process behind an explicit
+  debug override, or should the production adapter always skip/empty-cache that
+  one summary?

@@ -1761,13 +1761,13 @@ describe("NewSessionForm", () => {
     fireEvent.contextMenu(screen.getByText("voice"));
     expect(
       screen.queryByRole("radio", {
-        name: /^Grok STT through YA batch Browser sends a complete compressed recording through YA to xAI\.$/,
+        name: "Grok STT through YA batch",
       }),
     ).toBeNull();
     expect(
       screen
         .getByRole("radio", {
-          name: /^Grok STT direct Browser streams PCM audio directly to xAI\.$/,
+          name: "Grok STT direct",
         })
         .getAttribute("aria-checked"),
     ).toBe("true");
@@ -1775,7 +1775,7 @@ describe("NewSessionForm", () => {
 
     fireEvent.click(
       screen.getByRole("radio", {
-        name: /^Grok STT through YA Browser streams PCM audio through YA to xAI\.$/,
+        name: "Grok STT through YA",
       }),
     );
     expect(mockSetSpeechMethod).toHaveBeenCalledWith("ya-grok");
@@ -1832,7 +1832,7 @@ describe("NewSessionForm", () => {
 
     expect(
       screen.queryByRole("radio", {
-        name: /^Grok STT through YA batch Browser sends a complete compressed recording through YA to xAI\.$/,
+        name: "Grok STT through YA batch",
       }),
     ).toBeNull();
   });

@@ -70,6 +70,7 @@ export function SpeechControlMenu({
   const micDeviceSelectId = useId();
   const parakeetModelPresetId = useId();
   const parakeetModelInputId = useId();
+  const methodDescriptionIdPrefix = useId();
   const { micDeviceId, setMicDeviceId } = useSpeechCaptureSettings();
   const { parakeetSpeechModel, setParakeetSpeechModel } = useModelSettings();
   const [open, setOpen] = useState(false);
@@ -450,6 +451,9 @@ export function SpeechControlMenu({
               >
                 {methodOptions.map((option) => {
                   const selected = option.value === selectedMethod;
+                  const descriptionId = option.description
+                    ? `${methodDescriptionIdPrefix}-${option.value}-description`
+                    : undefined;
                   return (
                     <button
                       key={option.value}
@@ -459,6 +463,8 @@ export function SpeechControlMenu({
                       }`}
                       role="radio"
                       aria-checked={selected}
+                      aria-label={option.label}
+                      aria-describedby={descriptionId}
                       onClick={() => {
                         if (option.value !== selectedMethod) {
                           onBeforeCaptureChange?.();
@@ -478,6 +484,7 @@ export function SpeechControlMenu({
                         </span>
                         {option.description && (
                           <span
+                            id={descriptionId}
                             className="speech-method-description"
                             title={option.description}
                           >

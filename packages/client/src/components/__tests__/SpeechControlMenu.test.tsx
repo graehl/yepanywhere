@@ -163,7 +163,11 @@ describe("SpeechControlMenu", () => {
       showMethodSelector: true,
       methodOptions: [
         { value: "browser-native", label: "Browser" },
-        { value: "xai-grok-direct-streaming", label: "Grok direct" },
+        {
+          value: "xai-grok-direct-streaming",
+          label: "Grok direct",
+          description: "Browser streams PCM audio directly to xAI.",
+        },
       ],
       selectedMethod: "browser-native",
       onMethodChange,
@@ -171,7 +175,13 @@ describe("SpeechControlMenu", () => {
     });
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "voice" }));
-    fireEvent.click(screen.getByRole("radio", { name: "Grok direct" }));
+    const grokDirect = screen.getByRole("radio", { name: "Grok direct" });
+    const descriptionId = grokDirect.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    expect(document.getElementById(descriptionId ?? "")?.textContent).toBe(
+      "Browser streams PCM audio directly to xAI.",
+    );
+    fireEvent.click(grokDirect);
 
     expect(onBeforeCaptureChange).toHaveBeenCalledTimes(1);
     expect(onMethodChange).toHaveBeenCalledWith(["xai-grok-direct-streaming"]);

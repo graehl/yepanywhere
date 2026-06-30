@@ -67,7 +67,11 @@ supervisor must uphold:
    (`Supervisor.ts` catch in `requestForkedRecap`).
 
 4. **Suppress empty recaps.** No recent assistant text since the user
-   left ⇒ no recap (`getRecentAssistantText`, `Supervisor.ts:2110`-ish).
+   left ⇒ no recap (`getRecentAssistantText`). **Exception:** a process
+   revived for this recap (`{revived:true}`) has an empty in-memory buffer
+   even though its transcript has content, so the revived path skips both the
+   native wait and this emptiness gate and forks straight from the transcript;
+   the fork's own empty-text fallback handles a genuinely empty transcript.
 
 5. **Favor native rows when they arrive in time.** A provider-native
    `system/away_summary` observed before fallback emission resets the return
@@ -91,17 +95,47 @@ The provider honours the abort: `generateForkBackedSummary`
 
 ## Trigger model (where "away" is decided)
 
-There is **no server-managed idle timer.** The trigger is **client tab
-visibility**: `useSession.ts:643` records `hiddenSinceMs` on
-`document.visibilitychange` hidden, and on return POSTs
-`/api/processes/:id/recap` (`processes.ts:191` →
-`Supervisor.requestRecap`) iff hidden ≥ the session's configured
-`recapAfterSeconds` threshold and not within `RECAP_REQUEST_COOLDOWN_MS`.
-The default away threshold is 5 min; the cooldown remains a hard-coded
-30 s client guard. The server *does* track per-session last activity —
-`updatedAt` from JSONL `stats.mtime` (`reader.ts:323`, cached in
-`SessionIndexService`); that is the source of the "4m ago" hovercard line
-— but nothing on the server fires a recap from it.
+There is **no server-managed idle timer.** The trigger is **client view
+presence**, owned by `useSession.ts`: hiding the tab — or navigating away from
+/ unmounting the session view — arms a `setTimeout`; when it fires after the
+session's `recapAfterSeconds` threshold (default 5 min) it POSTs the recap.
+Returning to the visible/mounted view before the threshold cancels the pending
+timer. The request is **session-keyed, not process-keyed**
+(`POST /api/projects/:projectId/sessions/:sessionId/recap`, `sessions.ts`), so
+it survives a server restart that killed the process. The older process-keyed
+`POST /api/processes/:id/recap` (`processes.ts`) still exists for a live process.
+
+The session-keyed route resolves the trigger:
+
+- A **live** process recaps directly in its own mode
+  (`Supervisor.requestRecap`).
+- A **cold** session (no live process) is revived and recapped **only when its
+  durable `recapMode` is `fork`** — `side-session`/`native` recaps need the
+  in-memory recent-text buffer a revived process lacks, while `fork` reads the
+  transcript from disk. Revival uses `reactivateSession(..., {preempt:false})`:
+  a background recap must **never evict a live worker** to revive a different
+  session, so at capacity it skips rather than preempts. The revived recap
+  passes `{revived:true}` to bypass the native-wait + emptiness gate (point 4).
+
+Because the timer only exists for the session a client is *displaying*, an
+unfocused / list-only session never time-triggers a recap — the focus scoping
+is structural, and process-absence is the accepted correlate for "revive."
+
+The client also suppresses the POST when recaps cannot act, so it does not fire
+for sessions with recaps off. It learns the live process's `recapMode` from the
+`connected` stream event and keeps it in a ref (surviving the owner→none flip
+when the process dies), then arms only when that mode is enabled: any non-off
+mode while live, or `fork` once cold (the only mode that revives). A session
+never seen live this view has an unknown mode and does not fire.
+
+`recapMode` is durable (persisted in `SessionMetadataService`, mirroring
+`recapAfterSeconds`); the recap-config route and reactivation read/write it.
+This is what lets a cold session report whether/how to recap, and it also fixes
+a prior bug where reactivation reset a session's recap mode to the default.
+
+The server *does* track per-session last activity — `updatedAt` from JSONL
+`stats.mtime`, cached in `SessionIndexService`; that is the source of the
+"4m ago" hovercard line — but nothing on the server fires a recap from it.
 
 ## Status and remaining gaps
 
@@ -120,6 +154,11 @@ The default away threshold is 5 min; the cooldown remains a hard-coded
   payloads, and the process recap-config route. The new-session/settings
   Recap blocks and session Recap modal surface the value; the client
   visibility trigger consumes it.
+- **Done:** cold-session revival. The away trigger is session-keyed; a
+  displayed fork-mode session whose process died (e.g. `reyep`/restart) is
+  revived (`reactivateSession`, never preempting a live worker) and recapped
+  from its transcript via `{revived:true}`. `recapMode` is now durable in
+  session metadata so the cold session can report whether/how to recap.
 - **Verified:** focused server tests, full typecheck, lint, and a real Codex
   fork-recap smoke across `reyep` restart, and `pnpm i18n:scan`.
   Smoke session
@@ -193,3 +232,10 @@ waiting for idle and then using `process.sessionId` for detail/list assertions.
   use the native text and do not run/commit the synthetic fallback.
 - A synthetic recap survives server restart/session reopen through the YA
   metadata overlay, while the provider JSONL remains free of YA helper turns.
+- A cold (process-dead) fork-mode session is revived and recapped on the
+  session-keyed away trigger; a cold non-fork session is not revived; a
+  background recap never preempts a live worker (skips at capacity).
+- `recapMode` round-trips through `SessionMetadataService` (persist on
+  recap-config, read on reactivation), surviving server restart.
+- A revived process with an empty recap buffer still emits a forked recap
+  (the `{revived:true}` bypass), and reactivation no longer resets recapMode.

@@ -1092,6 +1092,23 @@ export const api = {
       },
     ),
 
+  // Session-keyed away recap: survives a server restart that killed the
+  // process. A cold fork-mode session is revived server-side and recapped.
+  requestSessionRecap: (
+    projectId: string,
+    sessionId: string,
+    hiddenSinceMs?: number,
+  ) =>
+    fetchJSON<{ supported: boolean; emitted: boolean; reason?: string }>(
+      `/projects/${projectId}/sessions/${sessionId}/recap`,
+      {
+        method: "POST",
+        ...(hiddenSinceMs === undefined
+          ? {}
+          : { body: JSON.stringify({ hiddenSinceMs }) }),
+      },
+    ),
+
   setProcessRecapConfig: (
     processId: string,
     config: {

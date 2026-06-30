@@ -43,10 +43,18 @@ cancellation on activity) and the current trigger/threshold gaps.
   cannot generate one cheaply (no cache fork, no second model handy)
   may decline; YA surfaces this as a capability gap rather than
   silently doing nothing.
-- Triggering is YA's responsibility. The client signals "the user
-  returned after being away" (e.g., via `visibilitychange` after a
-  minimum hidden interval); the server decides whether the gap is large
-  enough and whether the session has anything new to summarize.
+- Triggering is YA's responsibility. The client arms an away timer when the
+  session view is hidden/left and fires it (session-keyed) after the
+  `recapAfterSeconds` threshold; the server decides whether the session has
+  anything new to summarize. Because the request is keyed by session, not
+  process, it survives a server restart: a *displayed* fork-mode session whose
+  process died is revived and recapped from its transcript (never preempting a
+  live worker). See [fork-recap.md](fork-recap.md) for the revive/no-preempt
+  lifecycle.
+- Recap configuration is durable. `recapAfterSeconds` and `recapMode` are
+  persisted in session metadata, so a session's recap preference survives a
+  process death / reactivation and is what tells a cold session whether and how
+  to recap.
 - The hint suffix the Claude TUI appends to its first few recaps —
   ` (disable recaps in /config)` — is provider-specific noise. YA must
   strip it before rendering so users do not see CLI-only configuration

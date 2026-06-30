@@ -20,6 +20,7 @@ import type {
   PermissionMode,
   PromptSuggestionMode,
   ProviderName,
+  RecapMode,
   SlashCommand,
 } from "./types.js";
 import type { UploadedFile } from "./upload.js";
@@ -308,6 +309,9 @@ export type SessionOwnership =
       permissionMode?: PermissionMode;
       modeVersion?: number;
       recapAfterSeconds?: number;
+      /** Recap strategy of the live process; lets the client suppress the
+       * away-recap POST when recaps are off for the session. */
+      recapMode?: RecapMode;
     } // we control it
   | { owner: "external" }; // another process owns it
 

@@ -296,14 +296,22 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
     if (!updatedProcess) {
       return c.json({ error: "Process not found" }, 404);
     }
+    // Persist recap config so a process-dead session keeps it: recapMode is
+    // required to later revive a cold fork-mode session for an away recap.
     if (
       deps.sessionMetadataService &&
-      updates.recapAfterSeconds !== undefined
+      (updates.recapAfterSeconds !== undefined ||
+        updates.recapMode !== undefined)
     ) {
       await deps.sessionMetadataService.updateMetadata(
         updatedProcess.sessionId,
         {
-          recapAfterSeconds: updatedProcess.recapAfterSeconds,
+          ...(updates.recapAfterSeconds !== undefined && {
+            recapAfterSeconds: updatedProcess.recapAfterSeconds,
+          }),
+          ...(updates.recapMode !== undefined && {
+            recapMode: updatedProcess.recapMode,
+          }),
         },
       );
     }

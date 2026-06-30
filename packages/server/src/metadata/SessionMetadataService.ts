@@ -12,6 +12,7 @@ import {
   type DurableRecapMessage,
   type ProviderName,
   type PromptSuggestionMode,
+  type RecapMode,
   type TranscriptDisplayObject,
   type UrlProjectId,
   normalizeRecapAfterSeconds,
@@ -58,6 +59,13 @@ export interface SessionMetadata {
   promptSuggestionMode?: PromptSuggestionMode;
   /** Browser-away duration before YA asks the live process for a recap. */
   recapAfterSeconds?: number;
+  /**
+   * Per-session recap strategy (off | native | side-session | fork). Durable
+   * so a process-dead session still knows whether/how to recap — required to
+   * revive a cold fork-mode session on the away trigger. See
+   * topics/fork-recap.md.
+   */
+  recapMode?: RecapMode;
   /** YA's effective project/working directory for this session. */
   workingProjectId?: UrlProjectId;
   /** Provider transcript project when it differs from the effective project. */
@@ -439,6 +447,15 @@ export class SessionMetadataService {
   }
 
   /**
+   * Get the persisted recap strategy for a session, or undefined if it was
+   * never explicitly saved (use default). Used to decide whether a cold
+   * (process-dead) session should be revived for a forked recap.
+   */
+  getRecapMode(sessionId: string): RecapMode | undefined {
+    return this.state.sessions[sessionId]?.recapMode;
+  }
+
+  /**
    * Set the initial prompt accepted for a new session.
    * Used as a durable recovery source if provider startup fails before JSONL
    * persistence writes the user message.
@@ -471,6 +488,7 @@ export class SessionMetadataService {
       heartbeatForceAfterMinutes?: number | null;
       promptSuggestionMode?: PromptSuggestionMode | null;
       recapAfterSeconds?: number | null;
+      recapMode?: RecapMode | null;
     },
   ): Promise<void> {
     this.updateSessionMetadata(sessionId, (metadata) => {
@@ -529,6 +547,12 @@ export class SessionMetadataService {
             : normalizeRecapAfterSeconds(updates.recapAfterSeconds);
       }
 
+      // null clears (revert to default); "off" is meaningful-stored — it must
+      // override the default on resume — so it is not collapsed away.
+      if (updates.recapMode !== undefined) {
+        result.recapMode = updates.recapMode ?? undefined;
+      }
+
       return result;
     });
     await this.save();
@@ -581,6 +605,9 @@ export class SessionMetadataService {
     }
     if (updated.recapAfterSeconds !== undefined) {
       cleaned.recapAfterSeconds = updated.recapAfterSeconds;
+    }
+    if (updated.recapMode) {
+      cleaned.recapMode = updated.recapMode;
     }
     if (updated.workingProjectId) {
       cleaned.workingProjectId = updated.workingProjectId;

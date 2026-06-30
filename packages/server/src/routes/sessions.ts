@@ -4054,6 +4054,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             globalInstructions: getGlobalInstructions(),
             recapAfterSeconds:
               helperSettings.recapAfterSeconds ?? metadata?.recapAfterSeconds,
+            recapMode: helperSettings.recapMode ?? metadata?.recapMode,
           },
         );
       } catch (error) {
@@ -4080,6 +4081,99 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       });
     },
   );
+
+  // POST /api/projects/:projectId/sessions/:sessionId/recap
+  // Away-recap trigger, keyed by session (not process) so it survives a server
+  // restart that killed the process. A live process recaps directly in its own
+  // mode; a cold fork-mode session is revived — without ever preempting a live
+  // worker — and recapped from its on-disk transcript. See topics/fork-recap.md.
+  routes.post("/projects/:projectId/sessions/:sessionId/recap", async (c) => {
+    const projectId = c.req.param("projectId");
+    const sessionId = c.req.param("sessionId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    let sinceMs: number | null = null;
+    try {
+      const body = await c.req.json<{ hiddenSinceMs?: unknown }>();
+      if (
+        typeof body.hiddenSinceMs === "number" &&
+        Number.isFinite(body.hiddenSinceMs)
+      ) {
+        sinceMs = body.hiddenSinceMs;
+      }
+    } catch {
+      // Empty body is accepted.
+    }
+
+    // Live process: recap directly in whatever mode it runs.
+    const live = deps.supervisor.getProcessForSession(sessionId);
+    if (live && !live.isTerminated) {
+      const result = await deps.supervisor.requestRecap(live.id, { sinceMs });
+      return c.json(result);
+    }
+
+    // Cold session: only fork mode can recap from the on-disk transcript —
+    // side-session/native recaps need in-memory recent text a revived process
+    // lacks. Other modes simply skip until the session is live again.
+    const recapMode = deps.sessionMetadataService?.getRecapMode(sessionId);
+    if (recapMode !== "fork") {
+      return c.json({
+        supported: true,
+        emitted: false,
+        reason: "recap requires a live process for this recap mode",
+      });
+    }
+
+    const project = await deps.scanner.getOrCreateProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found or path does not exist" }, 404);
+    }
+
+    const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
+    const providerName =
+      (metadata?.provider as ProviderName | undefined) ?? project.provider;
+    const rawModel = metadata?.requestedModel;
+    const model = rawModel && rawModel !== "default" ? rawModel : undefined;
+
+    let process: Process;
+    try {
+      process = await deps.supervisor.reactivateSession(
+        project.path,
+        sessionId,
+        undefined,
+        {
+          model,
+          providerName,
+          executor: metadata?.executor,
+          globalInstructions: getGlobalInstructions(),
+          recapAfterSeconds: metadata?.recapAfterSeconds,
+          recapMode: "fork",
+        },
+        { preempt: false },
+      );
+    } catch (error) {
+      // At capacity with no idle worker to drop (background recaps never
+      // preempt), or reactivation failed — skip the recap rather than error.
+      const atCapacity =
+        error instanceof Error && error.message.includes("worker capacity");
+      return c.json({
+        supported: true,
+        emitted: false,
+        reason: atCapacity
+          ? "recap skipped: at worker capacity"
+          : "recap skipped: session could not be revived",
+      });
+    }
+
+    const result = await deps.supervisor.requestRecap(process.id, {
+      sinceMs,
+      revived: true,
+    });
+    return c.json(result);
+  });
 
   // POST /api/projects/:projectId/sessions/:sessionId/restart
   // Start a fresh session from a bounded handoff, then terminate the old YA-owned process.

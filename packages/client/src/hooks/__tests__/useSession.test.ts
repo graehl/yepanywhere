@@ -15,6 +15,7 @@ import { __resetAwayRecapTimersForTest, useSession } from "../useSession";
 const apiMocks = vi.hoisted(() => ({
   getSessionMetadata: vi.fn(),
   requestRecap: vi.fn(),
+  requestSessionRecap: vi.fn(),
   setPermissionMode: vi.fn(),
 }));
 
@@ -187,6 +188,8 @@ describe("useSession completion reconciliation", () => {
     apiMocks.getSessionMetadata.mockReset();
     apiMocks.requestRecap.mockReset();
     apiMocks.requestRecap.mockResolvedValue({ supported: true });
+    apiMocks.requestSessionRecap.mockReset();
+    apiMocks.requestSessionRecap.mockResolvedValue({ supported: true });
     apiMocks.setPermissionMode.mockReset();
     apiMocks.setPermissionMode.mockResolvedValue({
       permissionMode: "acceptEdits",
@@ -935,6 +938,7 @@ describe("useSession completion reconciliation", () => {
           owner: "self",
           processId: "proc-1",
           recapAfterSeconds: 2,
+          recapMode: "fork",
         }),
       );
 
@@ -947,7 +951,7 @@ describe("useSession completion reconciliation", () => {
         visibility.set("visible");
         document.dispatchEvent(new Event("visibilitychange"));
       });
-      expect(apiMocks.requestRecap).not.toHaveBeenCalled();
+      expect(apiMocks.requestSessionRecap).not.toHaveBeenCalled();
 
       act(() => {
         visibility.set("hidden");
@@ -959,9 +963,10 @@ describe("useSession completion reconciliation", () => {
         document.dispatchEvent(new Event("visibilitychange"));
       });
 
-      expect(apiMocks.requestRecap).toHaveBeenCalledTimes(1);
-      expect(apiMocks.requestRecap).toHaveBeenCalledWith(
-        "proc-1",
+      expect(apiMocks.requestSessionRecap).toHaveBeenCalledTimes(1);
+      expect(apiMocks.requestSessionRecap).toHaveBeenCalledWith(
+        PROJECT_ID,
+        "sess-1",
         Date.parse("2026-04-24T00:00:01.999Z"),
       );
     } finally {
@@ -979,6 +984,7 @@ describe("useSession completion reconciliation", () => {
           owner: "self",
           processId: "proc-bg",
           recapAfterSeconds: 2,
+          recapMode: "fork",
         }),
       );
 
@@ -991,9 +997,10 @@ describe("useSession completion reconciliation", () => {
         vi.advanceTimersByTime(2_000);
       });
 
-      expect(apiMocks.requestRecap).toHaveBeenCalledTimes(1);
-      expect(apiMocks.requestRecap).toHaveBeenCalledWith(
-        "proc-bg",
+      expect(apiMocks.requestSessionRecap).toHaveBeenCalledTimes(1);
+      expect(apiMocks.requestSessionRecap).toHaveBeenCalledWith(
+        PROJECT_ID,
+        "sess-bg",
         Date.parse("2026-04-24T00:00:00.000Z"),
       );
     } finally {
@@ -1011,6 +1018,7 @@ describe("useSession completion reconciliation", () => {
           owner: "self",
           processId: "proc-nav",
           recapAfterSeconds: 2,
+          recapMode: "fork",
         }),
       );
 
@@ -1021,9 +1029,10 @@ describe("useSession completion reconciliation", () => {
         vi.advanceTimersByTime(2_000);
       });
 
-      expect(apiMocks.requestRecap).toHaveBeenCalledTimes(1);
-      expect(apiMocks.requestRecap).toHaveBeenCalledWith(
-        "proc-nav",
+      expect(apiMocks.requestSessionRecap).toHaveBeenCalledTimes(1);
+      expect(apiMocks.requestSessionRecap).toHaveBeenCalledWith(
+        PROJECT_ID,
+        "sess-nav",
         Date.parse("2026-04-24T00:00:00.000Z"),
       );
     } finally {
@@ -1041,6 +1050,7 @@ describe("useSession completion reconciliation", () => {
           owner: "self",
           processId: "proc-cancel",
           recapAfterSeconds: 5,
+          recapMode: "fork",
         }),
       );
 
@@ -1057,13 +1067,15 @@ describe("useSession completion reconciliation", () => {
         vi.advanceTimersByTime(10_000);
       });
 
-      expect(apiMocks.requestRecap).not.toHaveBeenCalled();
+      expect(apiMocks.requestSessionRecap).not.toHaveBeenCalled();
     } finally {
       visibility.restore();
     }
   });
 
-  it("does not schedule a recap without a live process id", () => {
+  it("does not POST when recap mode is unknown (never live this view)", () => {
+    // A list-browsed session whose mode we never learned must not fire: the
+    // POST would only be skipped server-side. Recaps must be confirmed enabled.
     const visibility = installVisibilityStateMock("visible");
 
     try {
@@ -1077,7 +1089,34 @@ describe("useSession completion reconciliation", () => {
         vi.advanceTimersByTime(600_000);
       });
 
-      expect(apiMocks.requestRecap).not.toHaveBeenCalled();
+      expect(apiMocks.requestSessionRecap).not.toHaveBeenCalled();
+    } finally {
+      visibility.restore();
+    }
+  });
+
+  it("does not POST when recaps are off for a live session", () => {
+    const visibility = installVisibilityStateMock("visible");
+
+    try {
+      renderHook(() =>
+        useSession(PROJECT_ID, "sess-off", {
+          owner: "self",
+          processId: "proc-off",
+          recapAfterSeconds: 2,
+          recapMode: "off",
+        }),
+      );
+
+      act(() => {
+        visibility.set("hidden");
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      act(() => {
+        vi.advanceTimersByTime(600_000);
+      });
+
+      expect(apiMocks.requestSessionRecap).not.toHaveBeenCalled();
     } finally {
       visibility.restore();
     }

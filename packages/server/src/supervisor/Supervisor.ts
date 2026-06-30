@@ -823,6 +823,7 @@ export class Supervisor {
     resumeSessionId: string,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    options?: { preempt?: boolean },
   ): Promise<Process> {
     const existing = this.getProcessForSession(resumeSessionId);
     if (existing) {
@@ -848,10 +849,13 @@ export class Supervisor {
       }
 
       if (this.isAtCapacity()) {
-        const preemptable = this.findPreemptableWorker();
+        const preemptable =
+          options?.preempt === false ? undefined : this.findPreemptableWorker();
         if (preemptable) {
           await this.preemptWorker(preemptable);
         } else {
+          // A background away-recap passes preempt:false: it should never evict
+          // a live worker just to revive a different session for a recap.
           throw new Error(
             "Cannot reactivate: server is at worker capacity and no idle process can be preempted",
           );
@@ -2177,6 +2181,7 @@ export class Supervisor {
     process: Process,
     provider: AgentProvider,
     sinceMs: number | null,
+    options?: { revived?: boolean },
   ): Promise<RecapRequestResult> {
     if (!provider.supportsRecaps || !provider.generateSummary) {
       return {
@@ -2204,26 +2209,33 @@ export class Supervisor {
       };
     }
 
-    const nativeRecap = await process.waitForNativeRecapSince(
-      sinceMs,
-      provider.supportsNativeRecaps ? NATIVE_RECAP_FALLBACK_GRACE_MS : 0,
-    );
-    if (nativeRecap) {
-      return {
-        supported: true,
-        emitted: true,
-        reason: "native recap emitted",
-        text: nativeRecap.text,
-      };
-    }
+    // A process freshly revived for this recap has an empty in-memory recap
+    // buffer (it never streamed) and will not emit a native away_summary on its
+    // own, so the native wait and the recent-text emptiness gate below would
+    // both wrongly suppress. Skip them: the fork reads the transcript from disk,
+    // and its own empty-text fallback handles a genuinely empty transcript.
+    if (options?.revived !== true) {
+      const nativeRecap = await process.waitForNativeRecapSince(
+        sinceMs,
+        provider.supportsNativeRecaps ? NATIVE_RECAP_FALLBACK_GRACE_MS : 0,
+      );
+      if (nativeRecap) {
+        return {
+          supported: true,
+          emitted: true,
+          reason: "native recap emitted",
+          text: nativeRecap.text,
+        };
+      }
 
-    const recent = process.getRecentAssistantText(sinceMs);
-    if (recent.length === 0) {
-      return {
-        supported: true,
-        emitted: false,
-        reason: "no recent assistant activity to summarize",
-      };
+      const recent = process.getRecentAssistantText(sinceMs);
+      if (recent.length === 0) {
+        return {
+          supported: true,
+          emitted: false,
+          reason: "no recent assistant activity to summarize",
+        };
+      }
     }
 
     const abortController = new AbortController();
@@ -3193,7 +3205,7 @@ export class Supervisor {
 
   async requestRecap(
     processId: string,
-    options?: { sinceMs?: number | null },
+    options?: { sinceMs?: number | null; revived?: boolean },
   ): Promise<{
     supported: boolean;
     emitted: boolean;
@@ -3224,6 +3236,7 @@ export class Supervisor {
             process,
             provider,
             options?.sinceMs ?? null,
+            { revived: options?.revived === true },
           )
         : await process.requestRecap(provider, options);
     await this.handleRecapResult(process, result);

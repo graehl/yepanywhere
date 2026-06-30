@@ -417,6 +417,40 @@ describe("SessionMetadataService", () => {
 
       expect(newService.getPromptSuggestionMode("session-1")).toBe("off");
     });
+
+    it("stores an explicit recap mode, including 'off'", async () => {
+      await service.initialize();
+
+      await service.updateMetadata("session-1", { recapMode: "fork" });
+      expect(service.getRecapMode("session-1")).toBe("fork");
+
+      // "off" is meaningful-stored: it must override the default on resume, so
+      // it survives the prune block even as the only field.
+      await service.updateMetadata("session-2", { recapMode: "off" });
+      expect(service.getMetadata("session-2")).toEqual({ recapMode: "off" });
+      expect(service.getRecapMode("session-2")).toBe("off");
+    });
+
+    it("clears the recap mode when set to null", async () => {
+      await service.initialize();
+
+      await service.updateMetadata("session-1", { recapMode: "fork" });
+      expect(service.getRecapMode("session-1")).toBe("fork");
+
+      await service.updateMetadata("session-1", { recapMode: null });
+      expect(service.getMetadata("session-1")).toBeUndefined();
+      expect(service.getRecapMode("session-1")).toBeUndefined();
+    });
+
+    it("persists the recap mode across restarts", async () => {
+      await service.initialize();
+      await service.updateMetadata("session-1", { recapMode: "fork" });
+
+      const newService = new SessionMetadataService({ dataDir: testDir });
+      await newService.initialize();
+
+      expect(newService.getRecapMode("session-1")).toBe("fork");
+    });
   });
 
   describe("recapMessages", () => {

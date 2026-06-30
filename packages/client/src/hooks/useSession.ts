@@ -2,6 +2,7 @@ import {
   type MarkdownAugment,
   type ContextUsage,
   type ProviderName,
+  type RecapMode,
   type SessionQueuedMessageSummary,
   type SessionLivenessSnapshot,
   type UploadedFile,
@@ -62,8 +63,8 @@ const FALLBACK_STREAM_LONG_SILENCE_THRESHOLD_MS = 300_000;
 const awayRecapTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function scheduleAwayRecap(
+  projectId: string,
   sessionId: string,
-  processId: string,
   awayThresholdMs: number,
 ): void {
   // One away period -> one timer; keep the original "away since".
@@ -73,9 +74,13 @@ function scheduleAwayRecap(
   const awaySinceMs = Date.now();
   const timer = setTimeout(() => {
     awayRecapTimers.delete(sessionId);
-    void api.requestRecap(processId, awaySinceMs).catch((error) => {
-      console.warn("Failed to request recap:", error);
-    });
+    // Session-keyed so a process that died while we were away (e.g. a server
+    // restart) can still be revived and recapped server-side.
+    void api
+      .requestSessionRecap(projectId, sessionId, awaySinceMs)
+      .catch((error) => {
+        console.warn("Failed to request recap:", error);
+      });
   }, awayThresholdMs);
   awayRecapTimers.set(sessionId, timer);
 }
@@ -94,6 +99,21 @@ export function __resetAwayRecapTimersForTest(): void {
     clearTimeout(timer);
   }
   awayRecapTimers.clear();
+}
+
+// Whether an away-recap POST is worth sending for this session: only when a
+// recap mode that can act is enabled. A live session recaps in any non-off
+// mode; a cold (process-dead) session can only be revived+recapped in fork
+// mode. `mode` is undefined until we have seen the session live this view, so
+// a never-live (list-browsed) session never fires. See topics/fork-recap.md.
+function awayRecapEnabled(
+  mode: RecapMode | undefined,
+  sessionIsLive: boolean,
+): boolean {
+  if (!mode || mode === "off") {
+    return false;
+  }
+  return sessionIsLive || mode === "fork";
 }
 
 function hasUserVisibleStreamProgress(
@@ -469,6 +489,7 @@ export function useSession(
     permissionMode?: PermissionMode;
     modeVersion?: number;
     recapAfterSeconds?: number;
+    recapMode?: RecapMode;
   },
   streamingMarkdownCallbacks?: StreamingMarkdownCallbacks,
   options?: {
@@ -668,7 +689,6 @@ export function useSession(
   // For Codex providers, the first connected-event catch-up fetch can duplicate
   // freshly streamed messages because JSONL and stream IDs are not yet aligned.
   const hasHandledConnectedEventRef = useRef(false);
-  const liveProcessId = status.owner === "self" ? status.processId : null;
   const recapAwayThresholdMs =
     normalizeRecapAfterSeconds(
       status.owner === "self"
@@ -677,6 +697,17 @@ export function useSession(
     ) * 1000;
   const recapAwayThresholdMsRef = useRef(recapAwayThresholdMs);
   recapAwayThresholdMsRef.current = recapAwayThresholdMs;
+  // Last-known recap mode + liveness, kept in refs so the away trigger (fired
+  // on hide/leave) can suppress the POST when recaps are off, and so the mode
+  // learned while the process was live survives the owner->none flip when it
+  // dies (e.g. a server restart).
+  const liveRecapMode = status.owner === "self" ? status.recapMode : undefined;
+  const recapModeRef = useRef<RecapMode | undefined>(liveRecapMode);
+  if (liveRecapMode) {
+    recapModeRef.current = liveRecapMode;
+  }
+  const sessionIsLiveRef = useRef(status.owner === "self");
+  sessionIsLiveRef.current = status.owner === "self";
 
   // Reset connected-event tracking when switching sessions.
   useEffect(() => {
@@ -692,10 +723,13 @@ export function useSession(
     }
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        if (liveProcessId) {
+        // Arm only when a recap mode that can act is enabled (a cold fork-mode
+        // session is revived + recapped server-side on fire); skip otherwise so
+        // we do not POST for sessions with recaps off.
+        if (awayRecapEnabled(recapModeRef.current, sessionIsLiveRef.current)) {
           scheduleAwayRecap(
+            projectId,
             sessionId,
-            liveProcessId,
             recapAwayThresholdMsRef.current,
           );
         }
@@ -709,13 +743,13 @@ export function useSession(
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [sessionId, liveProcessId]);
+  }, [sessionId, projectId]);
 
   // Navigating away from this session's view is the equivalent away signal:
   // being present (mounted with the tab visible) cancels any pending recap;
   // leaving (unmount or in-place session switch) schedules it. The cleanup
-  // closure carries this render's sessionId and processId, so an in-place
-  // A->B switch schedules A against A's own process.
+  // closure carries this render's projectId and sessionId, so an in-place
+  // A->B switch schedules A against A's own session.
   useEffect(() => {
     if (
       typeof document === "undefined" ||
@@ -724,15 +758,15 @@ export function useSession(
       cancelAwayRecap(sessionId);
     }
     return () => {
-      if (liveProcessId) {
+      if (awayRecapEnabled(recapModeRef.current, sessionIsLiveRef.current)) {
         scheduleAwayRecap(
+          projectId,
           sessionId,
-          liveProcessId,
           recapAwayThresholdMsRef.current,
         );
       }
     };
-  }, [sessionId, liveProcessId]);
+  }, [sessionId, projectId]);
 
   // Slash commands available for this session (from init message)
   const [slashCommands, setSlashCommands] = useState<string[]>([]);
@@ -1745,10 +1779,14 @@ export function useSession(
           provider?: ProviderName;
           model?: string;
           recapAfterSeconds?: number;
+          recapMode?: RecapMode;
           deferredMessages?: DeferredMessage[];
           liveness?: SessionLivenessSnapshot;
         };
         setSessionLiveness(connectedData.liveness ?? null);
+        if (connectedData.recapMode) {
+          recapModeRef.current = connectedData.recapMode;
+        }
 
         // Update actual session ID if server reports a different one
         // This handles the temp→real ID transition when createSession returns

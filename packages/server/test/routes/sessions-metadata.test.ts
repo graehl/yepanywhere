@@ -3729,3 +3729,131 @@ describe("Sessions metadata route", () => {
     expect(abortProcess).not.toHaveBeenCalled();
   });
 });
+
+describe("Session-keyed away-recap route", () => {
+  const projectId = encodeProjectId("/tmp/project");
+  const recapPath = `/projects/${projectId}/sessions/sess-1/recap`;
+
+  it("recaps a live process directly", async () => {
+    const requestRecap = vi.fn(async () => ({
+      supported: true,
+      emitted: true,
+      text: "live recap",
+    }));
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => ({ id: "p1", isTerminated: false })),
+        requestRecap,
+      } as unknown as SessionsDeps["supervisor"],
+    });
+
+    const response = await routes.request(recapPath, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hiddenSinceMs: 1000 }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      emitted: true,
+      text: "live recap",
+    });
+    expect(requestRecap).toHaveBeenCalledWith("p1", { sinceMs: 1000 });
+  });
+
+  it("revives a cold fork-mode session and recaps from the transcript", async () => {
+    const reactivateSession = vi.fn(async () => ({ id: "p-revived" }));
+    const requestRecap = vi.fn(async () => ({
+      supported: true,
+      emitted: true,
+      text: "revived recap",
+    }));
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        reactivateSession,
+        requestRecap,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => createProject()),
+      } as unknown as SessionsDeps["scanner"],
+      sessionMetadataService: {
+        getRecapMode: vi.fn(() => "fork"),
+        getMetadata: vi.fn(() => ({ provider: "claude" as ProviderName })),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(recapPath, { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      emitted: true,
+      text: "revived recap",
+    });
+    expect(reactivateSession).toHaveBeenCalledWith(
+      "/tmp/project",
+      "sess-1",
+      undefined,
+      expect.objectContaining({ recapMode: "fork", providerName: "claude" }),
+      { preempt: false },
+    );
+    expect(requestRecap).toHaveBeenCalledWith("p-revived", {
+      sinceMs: null,
+      revived: true,
+    });
+  });
+
+  it("skips a cold session whose recap mode is not fork (no revival)", async () => {
+    const reactivateSession = vi.fn();
+    const requestRecap = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        reactivateSession,
+        requestRecap,
+      } as unknown as SessionsDeps["supervisor"],
+      sessionMetadataService: {
+        getRecapMode: vi.fn(() => "side-session"),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(recapPath, { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ emitted: false });
+    expect(reactivateSession).not.toHaveBeenCalled();
+    expect(requestRecap).not.toHaveBeenCalled();
+  });
+
+  it("skips without preempting when revival hits worker capacity", async () => {
+    const reactivateSession = vi.fn(async () => {
+      throw new Error(
+        "Cannot reactivate: server is at worker capacity and no idle process can be preempted",
+      );
+    });
+    const requestRecap = vi.fn();
+    const routes = createSessionsRoutes({
+      supervisor: {
+        getProcessForSession: vi.fn(() => null),
+        reactivateSession,
+        requestRecap,
+      } as unknown as SessionsDeps["supervisor"],
+      scanner: {
+        getOrCreateProject: vi.fn(async () => createProject()),
+      } as unknown as SessionsDeps["scanner"],
+      sessionMetadataService: {
+        getRecapMode: vi.fn(() => "fork"),
+        getMetadata: vi.fn(() => ({ provider: "claude" as ProviderName })),
+      } as unknown as NonNullable<SessionsDeps["sessionMetadataService"]>,
+    });
+
+    const response = await routes.request(recapPath, { method: "POST" });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      emitted: false,
+      reason: expect.stringContaining("capacity"),
+    });
+    expect(requestRecap).not.toHaveBeenCalled();
+  });
+});

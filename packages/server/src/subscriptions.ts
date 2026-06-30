@@ -270,6 +270,7 @@ export function createSessionSubscription(
     permissionMode: process.permissionMode,
     modeVersion: process.modeVersion,
     recapAfterSeconds: process.recapAfterSeconds,
+    recapMode: process.recapMode,
     provider: process.provider,
     model: process.resolvedModel,
     liveness: process.getLivenessSnapshot(),

@@ -712,6 +712,78 @@ describe("SessionIndexService", () => {
       expect(sessions[0]?.title).toBe("Persistent session");
     });
 
+    it("preserves parentSessionId on fast path and after restart", async () => {
+      const lineageService = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        fullValidationIntervalMs: 60000,
+      });
+      await lineageService.initialize();
+
+      const forkFile = join(sessionDir, "fork-session.jsonl");
+      await writeFile(forkFile, "Fork summary\n");
+      const forkStats = await stat(forkFile);
+      let parseCount = 0;
+      const lineageReader: ISessionReader = {
+        listSessions: async () => [],
+        listSessionFiles: async () => [
+          { sessionId: "fork-session", filePath: forkFile },
+        ],
+        getSessionSummary: async (
+          sessionId: string,
+          projectId: string,
+        ): Promise<SessionSummary> => {
+          parseCount += 1;
+          return {
+            id: sessionId,
+            projectId,
+            title: "Fork summary",
+            fullTitle: "Fork summary",
+            createdAt: new Date(forkStats.mtimeMs).toISOString(),
+            updatedAt: new Date(forkStats.mtimeMs).toISOString(),
+            messageCount: 2,
+            ownership: { owner: "none" },
+            provider: "codex",
+            parentSessionId: "source-session",
+          };
+        },
+        getSession: async () => null,
+        getSessionSummaryIfChanged: async () => null,
+        getAgentMappings: async () => [],
+        getAgentSession: async () => null,
+      };
+
+      const first = await lineageService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        lineageReader,
+      );
+      expect(first[0]?.parentSessionId).toBe("source-session");
+      expect(parseCount).toBe(1);
+
+      const fastPath = await lineageService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        lineageReader,
+      );
+      expect(fastPath[0]?.parentSessionId).toBe("source-session");
+      expect(parseCount).toBe(1);
+
+      const restartedService = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        fullValidationIntervalMs: 60000,
+      });
+      await restartedService.initialize();
+      const afterRestart = await restartedService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        lineageReader,
+      );
+      expect(afterRestart[0]?.parentSessionId).toBe("source-session");
+      expect(parseCount).toBe(1);
+    });
+
     it("writes index atomically without leftover temp files", async () => {
       await createSession("session-1", "Atomic session");
 

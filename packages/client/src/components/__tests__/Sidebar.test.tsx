@@ -585,6 +585,142 @@ describe("Sidebar collapsed toggle", () => {
     expect(screen.queryByTestId("session-thin")).toBeNull();
   });
 
+  it("keeps the current same-title fork visible even with fewer messages", () => {
+    const sharedTitle = "Bug hunt";
+    const now = Date.now();
+    globalSessionsState.sessions = [
+      makeSession("parent", new Date(now - 60_000).toISOString(), {
+        title: sharedTitle,
+        fullTitle: sharedTitle,
+        messageCount: 198,
+      }),
+      makeSession("current-fork", new Date(now).toISOString(), {
+        title: sharedTitle,
+        fullTitle: sharedTitle,
+        messageCount: 81,
+        parentSessionId: "parent",
+      }),
+    ];
+
+    render(
+      <MemoryRouter>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          currentSessionId="current-fork"
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("session-current-fork")).toBeDefined();
+    expect(screen.getByTestId("session-parent")).toBeDefined();
+    expect(screen.queryByText(/hidden \(duplicate titles\)/)).toBeNull();
+  });
+
+  it("keeps self-owned idle same-title sessions visible", () => {
+    const sharedTitle = "Retitle work";
+    const now = Date.now();
+    globalSessionsState.sessions = [
+      makeSession("owned", new Date(now).toISOString(), {
+        title: sharedTitle,
+        fullTitle: sharedTitle,
+        messageCount: 1,
+        ownership: { owner: "self", processId: "process-owned" },
+      }),
+      makeSession("larger", new Date(now - 60_000).toISOString(), {
+        title: sharedTitle,
+        fullTitle: sharedTitle,
+        messageCount: 20,
+      }),
+    ];
+
+    render(
+      <MemoryRouter>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("session-owned")).toBeDefined();
+    expect(screen.getByTestId("session-larger")).toBeDefined();
+    expect(screen.queryByText(/hidden \(duplicate titles\)/)).toBeNull();
+  });
+
+  it("does not let a same-title helper child hide its source", () => {
+    const sharedTitle = "Summarize this session";
+    const now = Date.now();
+    globalSessionsState.sessions = [
+      makeSession("source", new Date(now - 60_000).toISOString(), {
+        title: sharedTitle,
+        fullTitle: sharedTitle,
+        messageCount: 4,
+      }),
+      makeSession("helper", new Date(now).toISOString(), {
+        title: sharedTitle,
+        fullTitle: sharedTitle,
+        messageCount: 12,
+        parentSessionId: "source",
+      }),
+    ];
+
+    render(
+      <MemoryRouter>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("session-source")).toBeDefined();
+    expect(screen.getByTestId("session-helper")).toBeDefined();
+    expect(screen.queryByText(/hidden \(duplicate titles\)/)).toBeNull();
+  });
+
+  it("does not group rows that only share compact truncated titles", () => {
+    const compactTitle = "Shared compact title";
+    const now = Date.now();
+    globalSessionsState.sessions = [
+      makeSession("first", new Date(now).toISOString(), {
+        title: compactTitle,
+        fullTitle: `${compactTitle} with first distinct full prompt`,
+        messageCount: 1,
+      }),
+      makeSession("second", new Date(now - 60_000).toISOString(), {
+        title: compactTitle,
+        fullTitle: `${compactTitle} with second distinct full prompt`,
+        messageCount: 20,
+      }),
+    ];
+
+    render(
+      <MemoryRouter>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("session-first")).toBeDefined();
+    expect(screen.getByTestId("session-second")).toBeDefined();
+    expect(screen.queryByText(/hidden \(duplicate titles\)/)).toBeNull();
+  });
+
   it("shows recent and older duplicates when duplicate hiding is disabled", () => {
     window.localStorage.setItem(UI_KEYS.sidebarDuplicateHidingEnabled, "false");
     const sharedRecentTitle = "Repeated recent session";

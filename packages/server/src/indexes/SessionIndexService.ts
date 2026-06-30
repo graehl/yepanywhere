@@ -45,17 +45,19 @@ export interface CachedSessionSummary {
   provider: ProviderName;
   /** Model used for this session (e.g. "gemini-2.5-pro") */
   model?: string;
+  /** Parent session when this session is a YA-owned/provider fork. */
+  parentSessionId?: string;
   /** Capped excerpt of the most recent visible agent turn or provider recap. */
   lastAgentText?: string;
 }
 
 export interface SessionIndexState {
-  version: 1;
+  version: 2;
   projectId: string;
   sessions: Record<string, CachedSessionSummary>;
 }
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 export interface SessionIndexServiceOptions {
   /** Directory to store index files (defaults to ~/.yep-anywhere/indexes) */
@@ -486,6 +488,7 @@ export class SessionIndexService implements ISessionIndexService {
         contextUsage: cached.contextUsage,
         provider: cached.provider ?? DEFAULT_PROVIDER,
         model: cached.model,
+        parentSessionId: cached.parentSessionId,
         lastAgentText: cached.lastAgentText,
       });
     }
@@ -514,6 +517,7 @@ export class SessionIndexService implements ISessionIndexService {
       fileMtime: mtime,
       provider: summary.provider,
       model: summary.model,
+      parentSessionId: summary.parentSessionId,
       lastAgentText: summary.lastAgentText,
     };
   }
@@ -776,6 +780,7 @@ export class SessionIndexService implements ISessionIndexService {
             contextUsage: cached.contextUsage,
             provider: cached.provider ?? DEFAULT_PROVIDER,
             model: cached.model,
+            parentSessionId: cached.parentSessionId,
             lastAgentText: cached.lastAgentText,
           });
         } else {

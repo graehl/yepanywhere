@@ -77,6 +77,46 @@ function isActiveSession(session: GlobalSessionItem): boolean {
   return session.activity === "in-turn" || session.activity === "waiting-input";
 }
 
+function duplicateGroupingTitle(session: GlobalSessionItem): string {
+  return (
+    session.customTitle ??
+    session.fullTitle ??
+    session.title ??
+    session.initialPrompt ??
+    ""
+  );
+}
+
+function duplicateGroupingKey(session: GlobalSessionItem): string | null {
+  const title = duplicateGroupingTitle(session).trim();
+  if (!title) return null;
+  const normalizedTitle = title.replace(/\s+/g, " ").toLowerCase();
+  return `${session.provider || "unknown"}|${session.projectId}|${normalizedTitle}`;
+}
+
+function updatedAtMs(session: GlobalSessionItem): number {
+  return new Date(session.updatedAt).getTime();
+}
+
+function duplicateRepresentativeRank(session: GlobalSessionItem): number {
+  if (session.isArchived) return 0;
+  if (session.isStarred) return 3;
+  if (session.ownership?.owner === "external") return 2;
+  return 1;
+}
+
+function compareDuplicateRepresentative(
+  a: GlobalSessionItem,
+  b: GlobalSessionItem,
+): number {
+  const rankDiff =
+    duplicateRepresentativeRank(b) - duplicateRepresentativeRank(a);
+  if (rankDiff !== 0) return rankDiff;
+  const messageCountDiff = (b.messageCount || 0) - (a.messageCount || 0);
+  if (messageCountDiff !== 0) return messageCountDiff;
+  return updatedAtMs(b) - updatedAtMs(a);
+}
+
 function isSidebarPendingProjectQueueItem(
   item: ProjectQueueItemSummary,
 ): item is SidebarPendingProjectQueueItem {
@@ -542,11 +582,9 @@ export function Sidebar({
     [knownProjectQueueItems],
   );
 
-  // Client-side heuristic for "obvious duplicate title" sessions (general, no hardcoded strings).
-  // Within each section we group by (provider, project, normalized title).
-  // In a dup cluster, we keep the *best* one visible (prefer higher messageCount, then more recent activity)
-  // and hide the rest behind a "(N hidden)" expander. This avoids hiding the substantive version of a
-  // repeated title while still decluttering obvious resume/handoff/research dups of the same name.
+  // Client-side duplicate-title hiding is deliberately fail-open. It only
+  // hides unrelated exact-title idle rows when a user-facing representative is
+  // also visible in this section.
   const [showHiddenRecent, setShowHiddenRecent] = useState(false);
   const [showHiddenOlder, setShowHiddenOlder] = useState(false);
 
@@ -554,50 +592,66 @@ export function Sidebar({
     (sessions: GlobalSessionItem[]) => {
       const groups = new Map<string, GlobalSessionItem[]>();
       for (const s of sessions) {
-        const normTitle = (s.title || s.fullTitle || s.initialPrompt || "")
-          .trim()
-          .toLowerCase()
-          .slice(0, 120);
-        const key = `${s.provider || "unknown"}|${s.projectId}|${normTitle}`;
+        const key = duplicateGroupingKey(s);
+        if (!key) continue;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)?.push(s);
       }
 
-      const visible: GlobalSessionItem[] = [];
+      const visibleIds = new Set<string>();
       const hidden: GlobalSessionItem[] = [];
-      for (const arr of groups.values()) {
-        if (arr.length === 1) {
-          const only = arr[0];
-          if (only) visible.push(only);
-        } else {
-          // Keep the best: highest messageCount wins (do not hide the one with more work).
-          // On tie (or no counts), prefer the one with more recent activity.
-          arr.sort((a, b) => {
-            const mcA = a.messageCount || 0;
-            const mcB = b.messageCount || 0;
-            if (mcB !== mcA) return mcB - mcA;
-            return (
-              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-            );
-          });
-          const selected = arr[0];
-          if (!selected) continue;
-          visible.push(selected);
-          hidden.push(...arr.slice(1));
+      for (const s of sessions) {
+        const key = duplicateGroupingKey(s);
+        const group = key ? groups.get(key) : undefined;
+        if (!group || group.length === 1) {
+          visibleIds.add(s.id);
         }
       }
 
-      visible.sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      );
-      hidden.sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      );
+      for (const arr of groups.values()) {
+        if (arr.length <= 1) continue;
+
+        const groupSessionIds = new Set(arr.map((session) => session.id));
+        const parentIdsInGroup = new Set(
+          arr
+            .map((session) => session.parentSessionId)
+            .filter(
+              (id): id is string =>
+                typeof id === "string" && groupSessionIds.has(id),
+            ),
+        );
+        const protectedRows = arr.filter(
+          (session) =>
+            session.id === currentSessionId ||
+            session.ownership?.owner === "self" ||
+            Boolean(session.parentSessionId) ||
+            parentIdsInGroup.has(session.id),
+        );
+        for (const session of protectedRows) {
+          visibleIds.add(session.id);
+        }
+
+        const hidable = arr.filter((session) => !visibleIds.has(session.id));
+        if (hidable.length <= 1) {
+          for (const session of hidable) {
+            visibleIds.add(session.id);
+          }
+          continue;
+        }
+
+        const sorted = [...hidable].sort(compareDuplicateRepresentative);
+        const selected = sorted[0];
+        if (!selected) continue;
+        visibleIds.add(selected.id);
+        hidden.push(...sorted.slice(1));
+      }
+
+      const visible = sessions.filter((session) => visibleIds.has(session.id));
+      visible.sort((a, b) => updatedAtMs(b) - updatedAtMs(a));
+      hidden.sort((a, b) => updatedAtMs(b) - updatedAtMs(a));
       return { visible, hidden };
     },
-    [],
+    [currentSessionId],
   );
 
   // Active sessions are pinned above idle rows and never deduped or sorted —

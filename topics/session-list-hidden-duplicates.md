@@ -122,6 +122,16 @@ list data, and `messageCount` is not a safe proxy for "main session".
      are not grouped.
    - Session index: cached Codex fork summaries preserve `parentSessionId`.
 
+## Implementation Notes
+
+The immediate fix preserves `parentSessionId` in session-index cache entries
+and bumps the cache schema so existing lineage-less cache files rebuild.
+Sidebar duplicate grouping now keys by the effective full title and fails open
+for current, self-owned, or lineage-related rows. That intentionally leaves a
+same-title parent/fork pair visible until YA has explicit helper-purpose
+metadata; a visible extra row is preferable to hiding the source/current
+session behind a duplicate affordance.
+
 ## Non-Goals
 
 - Do not remove duplicate hiding entirely; it remains useful as a decluttering

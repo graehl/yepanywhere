@@ -537,8 +537,23 @@ const materializedFile = {
   mimeType: "text/plain",
 };
 
+function installObjectUrlMock() {
+  const URLCtor = URL;
+  class MockURL extends URLCtor {}
+  Object.defineProperty(MockURL, "createObjectURL", {
+    configurable: true,
+    value: vi.fn(() => "blob:new-session-attachment"),
+  });
+  Object.defineProperty(MockURL, "revokeObjectURL", {
+    configurable: true,
+    value: vi.fn(),
+  });
+  vi.stubGlobal("URL", MockURL);
+}
+
 describe("NewSessionForm", () => {
   beforeEach(() => {
+    installObjectUrlMock();
     providersState.providers = [
       {
         name: "claude",
@@ -678,6 +693,7 @@ describe("NewSessionForm", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("keeps an explicit Claude selection when saved Codex defaults load later", async () => {
@@ -946,6 +962,49 @@ describe("NewSessionForm", () => {
       expect(draftAttachmentState.value?.refs).toEqual([stagedRef]);
     });
     expect(screen.getByText("notes.txt")).toBeTruthy();
+  });
+
+  it("shows duplicate new-session attachment names with numeric suffixes", async () => {
+    serverSettingsState.isLoading = false;
+    mockUploadStagedAttachment.mockImplementation(async (file: File) => ({
+      ...stagedRef,
+      id: `staged-${file.name}`,
+      originalName: `server-${file.name}`,
+      name: `staged-${file.name}`,
+    }));
+    const { container } = render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("missing file input");
+
+    fireEvent.change(input, {
+      target: {
+        files: [
+          new File(["a"], "image.png", { type: "image/png" }),
+          new File(["b"], "image.png", { type: "image/png" }),
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(mockUploadStagedAttachment).toHaveBeenCalledTimes(2);
+    });
+
+    expect(
+      mockUploadStagedAttachment.mock.calls.map(([file]) => file.name),
+    ).toEqual(["image.png", "image-1.png"]);
+    expect(screen.getByText("image.png")).toBeTruthy();
+    expect(screen.getByText("image-1.png")).toBeTruthy();
+    expect(
+      draftAttachmentState.value?.refs.map((ref) => ref.originalName),
+    ).toEqual(["image.png", "image-1.png"]);
   });
 
   it("materializes staged new-session files after creating the session", async () => {

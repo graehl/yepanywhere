@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { UI_KEYS } from "../lib/storageKeys";
 
-const DEFAULT_SESSION_LOADING_PROGRESS = false;
+const DEFAULT_SESSION_LOADING_PROGRESS = true;
 
 const listeners = new Set<() => void>();
 

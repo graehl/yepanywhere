@@ -2,14 +2,14 @@
 
 Topic: remote-hosted-compatibility
 
-Status: Level metadata implemented; hosted warning not yet wired.
+Status: Level metadata and hosted warning implemented.
 
 Progress:
 
 - [x] 2026-06-30: Advertise `remoteCompatibilityLevel: 10` from `/api/version`
   and relay compatibility metadata.
-- [ ] Add the hosted remote warning for missing or lower levels, treating
-  missing as level `0`.
+- [x] 2026-06-30: Add the hosted remote warning for missing or lower levels,
+  treating missing as level `0`.
 
 The hosted remote UI can move ahead of npm-installed YA servers because the
 website/latest client and the server package are released on different
@@ -61,7 +61,7 @@ Reasoning:
 - level `10` gives the first visible compatibility marker room to mean "current
   generation of hosted remote", not "the first tiny capability flag."
 
-Initial client behavior should be:
+Initial client behavior:
 
 - `REQUIRED_REMOTE_COMPATIBILITY_LEVEL = 0`;
 - `RECOMMENDED_REMOTE_COMPATIBILITY_LEVEL = 10`;

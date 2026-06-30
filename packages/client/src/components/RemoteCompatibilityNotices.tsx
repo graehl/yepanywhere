@@ -26,6 +26,7 @@ export function RemoteCompatibilityNotices({
         updateAvailable: versionInfo?.updateAvailable ?? false,
         installSource: versionInfo?.installSource,
         resumeProtocolVersion: versionInfo?.resumeProtocolVersion,
+        remoteCompatibilityLevel: versionInfo?.remoteCompatibilityLevel,
         capabilities: versionInfo?.capabilities,
         relayUsername,
         installId,

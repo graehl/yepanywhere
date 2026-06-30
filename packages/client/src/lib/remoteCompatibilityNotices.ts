@@ -34,10 +34,13 @@ export interface RemoteCompatibilityInput {
   updateAvailable: boolean;
   installSource?: RemoteInstallSource;
   resumeProtocolVersion?: number;
+  remoteCompatibilityLevel?: number;
   capabilities?: string[];
   relayUsername?: string | null;
   installId?: string | null;
   recommendedBaselineVersion?: string;
+  requiredRemoteCompatibilityLevel?: number;
+  recommendedRemoteCompatibilityLevel?: number;
 }
 
 export const RELAY_RESUME_SECURITY_MIN_VERSION = "0.4.0";
@@ -45,6 +48,8 @@ export const RELAY_RESUME_SECURITY_MIN_PROTOCOL = 2;
 export const RELAY_RESUME_SERVER_PROOF_MIN_VERSION = "0.5.1";
 export const RELAY_RESUME_SERVER_PROOF_PROTOCOL = 3;
 export const REMOTE_BACKEND_API_RECOMMENDED_VERSION = "0.4.29";
+export const REQUIRED_REMOTE_COMPATIBILITY_LEVEL = 0;
+export const RECOMMENDED_REMOTE_COMPATIBILITY_LEVEL = 10;
 
 const NPM_UPDATE_COMMAND = "npm update -g yepanywhere";
 const SOURCE_UPDATE_COMMAND = [
@@ -82,6 +87,13 @@ export function getRemoteCompatibilityNotices(
 
   const notices: RemoteCompatibilityNotice[] = [];
   const current = parseSemver(input.currentVersion);
+  const remoteCompatibilityLevel = getRemoteCompatibilityLevel(input);
+  const requiredRemoteCompatibilityLevel =
+    input.requiredRemoteCompatibilityLevel ??
+    REQUIRED_REMOTE_COMPATIBILITY_LEVEL;
+  const recommendedRemoteCompatibilityLevel =
+    input.recommendedRemoteCompatibilityLevel ??
+    RECOMMENDED_REMOTE_COMPATIBILITY_LEVEL;
 
   const oldResumeProtocol =
     input.resumeProtocolVersion !== undefined &&
@@ -149,6 +161,55 @@ export function getRemoteCompatibilityNotices(
     });
   }
 
+  if (remoteCompatibilityLevel < requiredRemoteCompatibilityLevel) {
+    const guidance = buildUpdateGuidance(
+      input,
+      `compatibility level ${requiredRemoteCompatibilityLevel}`,
+    );
+    const id = `remote-compat-required-${requiredRemoteCompatibilityLevel}`;
+    notices.push({
+      id,
+      severity: "blocking",
+      title: "Server update required",
+      body: "This hosted client requires a newer YA server compatibility level for basic remote use. Update the local server, or use localhost, a tunnel, or a VPN with the old server.",
+      guidance: guidance.text,
+      versionSummary: buildCompatibilityLevelSummary(
+        remoteCompatibilityLevel,
+        requiredRemoteCompatibilityLevel,
+        "required",
+      ),
+      action: guidance.action,
+      dismissKey: buildDismissKey(
+        input,
+        id,
+        `${remoteCompatibilityLevel}-to-${requiredRemoteCompatibilityLevel}`,
+      ),
+    });
+  } else if (remoteCompatibilityLevel < recommendedRemoteCompatibilityLevel) {
+    const guidance = buildUpdateGuidance(
+      input,
+      `compatibility level ${recommendedRemoteCompatibilityLevel}`,
+    );
+    const id = `remote-compat-level-${recommendedRemoteCompatibilityLevel}`;
+    notices.push({
+      id,
+      severity: "recommended",
+      title: "Update local server soon",
+      body: "This hosted client is newer than your local YA server. Basic remote use should still work, but update the server soon to avoid missing or unstable newer remote features.",
+      guidance: guidance.text,
+      versionSummary: buildCompatibilityLevelSummary(
+        remoteCompatibilityLevel,
+        recommendedRemoteCompatibilityLevel,
+      ),
+      action: guidance.action,
+      dismissKey: buildDismissKey(
+        input,
+        id,
+        `${remoteCompatibilityLevel}-to-${recommendedRemoteCompatibilityLevel}`,
+      ),
+    });
+  }
+
   const baseline =
     input.recommendedBaselineVersion ?? REMOTE_BACKEND_API_RECOMMENDED_VERSION;
   if (isVersionLessThan(input.currentVersion, baseline)) {
@@ -178,6 +239,7 @@ export function getRemoteCompatibilityNotices(
   const hasSpecificUpdateNotice = notices.some(
     (notice) =>
       notice.id.startsWith("backend-api-compat-") ||
+      notice.id.startsWith("remote-compat-") ||
       notice.id === "relay-resume-security" ||
       notice.id === "relay-resume-v3-grace",
   );
@@ -213,8 +275,28 @@ export function getRemoteCompatibilityNotices(
 
   return notices.sort((a, b) => {
     const severity = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
-    return severity !== 0 ? severity : a.id.localeCompare(b.id);
+    if (severity !== 0) return severity;
+    const priority = getNoticePriority(a.id) - getNoticePriority(b.id);
+    return priority !== 0 ? priority : a.id.localeCompare(b.id);
   });
+}
+
+function getNoticePriority(id: string): number {
+  if (id === "relay-resume-security" || id === "relay-resume-v3-grace") {
+    return 0;
+  }
+  if (id.startsWith("remote-compat-")) return 1;
+  if (id.startsWith("backend-api-compat-")) return 2;
+  if (id === "remote-update-available") return 3;
+  return 4;
+}
+
+function getRemoteCompatibilityLevel(input: RemoteCompatibilityInput): number {
+  const level = input.remoteCompatibilityLevel;
+  if (typeof level === "number" && Number.isSafeInteger(level) && level >= 0) {
+    return level;
+  }
+  return 0;
 }
 
 function chooseTargetVersion(
@@ -229,6 +311,14 @@ function chooseTargetVersion(
     label: `${formatVersion(minimumVersion)}+`,
     version: minimumVersion,
   };
+}
+
+function buildCompatibilityLevelSummary(
+  currentLevel: number,
+  targetLevel: number,
+  targetLabel: "recommended" | "required" = "recommended",
+): string {
+  return `Compatibility level ${currentLevel}; ${targetLabel} ${targetLevel}`;
 }
 
 function buildVersionSummary(

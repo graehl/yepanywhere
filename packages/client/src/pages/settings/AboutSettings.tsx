@@ -40,6 +40,7 @@ export function AboutSettings() {
         updateAvailable: candidate?.updateAvailable ?? false,
         installSource: candidate?.installSource,
         resumeProtocolVersion: candidate?.resumeProtocolVersion,
+        remoteCompatibilityLevel: candidate?.remoteCompatibilityLevel,
         capabilities: candidate?.capabilities,
         relayUsername: currentRelayUsername,
       }),

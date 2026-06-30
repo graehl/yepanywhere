@@ -19,7 +19,7 @@ Progress:
 - [x] 2026-06-30: Add a coarse hosted-remote compatibility level to
   `/api/version` and relay compatibility metadata. See
   [`../../topics/remote-hosted-compatibility.md`](../../topics/remote-hosted-compatibility.md).
-- [ ] 2026-06-30: Show a hosted remote warning for missing or lower
+- [x] 2026-06-30: Show a hosted remote warning for missing or lower
   `remoteCompatibilityLevel`.
 
 ## Context

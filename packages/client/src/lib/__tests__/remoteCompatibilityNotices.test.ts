@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  RECOMMENDED_REMOTE_COMPATIBILITY_LEVEL,
   compareSemver,
   getEffectiveInstallSource,
   getRemoteCompatibilityNotices,
@@ -7,6 +8,10 @@ import {
   isVersionLessThan,
   parseSemver,
 } from "../remoteCompatibilityNotices";
+
+const CURRENT_REMOTE_COMPATIBILITY = {
+  remoteCompatibilityLevel: RECOMMENDED_REMOTE_COMPATIBILITY_LEVEL,
+};
 
 describe("remoteCompatibilityNotices", () => {
   it("does not emit notices outside relay-hosted connections", () => {
@@ -22,6 +27,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("emits a warning notice for protocol 2 relay resume metadata", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "0.5.0",
       latestVersion: "0.5.1",
       updateAvailable: false,
@@ -41,6 +47,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("does not display unrelated site tags as server versions", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "site-v1.6.1",
       latestVersion: null,
       updateAvailable: false,
@@ -60,6 +67,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("emits a blocking notice for pre-v2 relay resume protocol metadata", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "0.4.29",
       latestVersion: "0.5.1",
       updateAvailable: true,
@@ -75,6 +83,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("falls back to version < 0.4.0 for relay resume security", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "0.3.9",
       latestVersion: "0.4.29",
       updateAvailable: true,
@@ -88,6 +97,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("does not use the version fallback for 0.4.0+ servers", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "0.4.0",
       latestVersion: "0.4.29",
       updateAvailable: true,
@@ -102,6 +112,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("treats git-describe builds after 0.4.0 as past the security baseline", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "0.4.0-3-gabcdef",
       latestVersion: "0.4.29",
       updateAvailable: true,
@@ -116,6 +127,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("avoids unsafe old-version claims for unknown versions", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "dev",
       latestVersion: null,
       updateAvailable: false,
@@ -127,6 +139,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("emits the release-specific recommended update notice", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "0.4.28",
       latestVersion: "0.4.29",
       updateAvailable: true,
@@ -149,6 +162,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("suggests source update steps for git-describe checkout versions", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "0.4.28-3-gabcdef",
       latestVersion: "0.4.29",
       updateAvailable: true,
@@ -167,6 +181,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("uses explicit source metadata even when the version is exactly tagged", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "0.4.28",
       latestVersion: "0.4.29",
       updateAvailable: true,
@@ -182,6 +197,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("uses npm-global metadata for direct npm guidance", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "0.4.28",
       latestVersion: "0.4.29",
       updateAvailable: true,
@@ -199,6 +215,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("uses a generic update notice when no specific notice applies", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "0.4.29",
       latestVersion: "0.4.30",
       updateAvailable: true,
@@ -215,6 +232,7 @@ describe("remoteCompatibilityNotices", () => {
 
   it("shows the bundled baseline when latest is not published yet", () => {
     const notices = getRemoteCompatibilityNotices({
+      ...CURRENT_REMOTE_COMPATIBILITY,
       currentVersion: "0.4.28",
       latestVersion: "0.4.28",
       updateAvailable: false,
@@ -226,6 +244,75 @@ describe("remoteCompatibilityNotices", () => {
     expect(notices[0]?.versionSummary).toBe(
       "Server v0.4.28; recommended v0.4.29+",
     );
+  });
+
+  it("emits a strong warning when the server omits the remote compatibility level", () => {
+    const notices = getRemoteCompatibilityNotices({
+      currentVersion: "0.5.2",
+      latestVersion: "0.5.2",
+      updateAvailable: false,
+      resumeProtocolVersion: 3,
+      relayUsername: "dev-box",
+    });
+
+    expect(notices.map((notice) => notice.id)).toEqual([
+      "remote-compat-level-10",
+    ]);
+    expect(notices[0]?.severity).toBe("recommended");
+    expect(notices[0]?.title).toBe("Update local server soon");
+    expect(notices[0]?.body).toContain("newer than your local YA server");
+    expect(notices[0]?.versionSummary).toBe(
+      "Compatibility level 0; recommended 10",
+    );
+    expect(notices[0]?.dismissKey).toContain(
+      "remote-compat-level-10:0-to-10",
+    );
+  });
+
+  it("does not warn when the server reports the recommended remote compatibility level", () => {
+    const notices = getRemoteCompatibilityNotices({
+      currentVersion: "0.5.2",
+      latestVersion: "0.5.2",
+      updateAvailable: false,
+      resumeProtocolVersion: 3,
+      remoteCompatibilityLevel: 10,
+      relayUsername: "dev-box",
+    });
+
+    expect(notices).toEqual([]);
+  });
+
+  it("uses the compatibility-level warning instead of the generic update notice", () => {
+    const notices = getRemoteCompatibilityNotices({
+      currentVersion: "0.5.2",
+      latestVersion: "0.5.3",
+      updateAvailable: true,
+      resumeProtocolVersion: 3,
+      remoteCompatibilityLevel: 9,
+      relayUsername: "dev-box",
+    });
+
+    expect(notices.map((notice) => notice.id)).toEqual([
+      "remote-compat-level-10",
+    ]);
+    expect(notices[0]?.versionSummary).toBe(
+      "Compatibility level 9; recommended 10",
+    );
+  });
+
+  it("prioritizes the compatibility-level warning over the older backend baseline notice", () => {
+    const notices = getRemoteCompatibilityNotices({
+      currentVersion: "0.4.28",
+      latestVersion: "0.5.2",
+      updateAvailable: true,
+      resumeProtocolVersion: 3,
+      relayUsername: "dev-box",
+    });
+
+    expect(notices.map((notice) => notice.id)).toEqual([
+      "remote-compat-level-10",
+      "backend-api-compat-0.4.29",
+    ]);
   });
 });
 

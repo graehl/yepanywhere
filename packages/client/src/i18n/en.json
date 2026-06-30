@@ -227,6 +227,8 @@
   "projectQueueCount": "{count} queued",
   "projectQueueRefreshing": "Refreshing...",
   "projectQueueLoadError": "Project queue error: {message}",
+  "projectQueueRecoveredTitle": "Paused Session Queue",
+  "projectQueueRecoveredCount": "{count} paused",
   "projectQueueUnknownProject": "Unknown project",
   "projectQueueAttachmentOnly": "Attachment-only message",
   "projectQueueTargetNewSession": "New session",

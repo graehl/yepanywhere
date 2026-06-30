@@ -137,6 +137,12 @@ pause so users understand why durable backlog is not promoting automatically.
 Destructive item removal should use Delete/Remove wording, not Cancel, because
 it permanently removes the persisted queue item.
 
+When recovered `paused-after-restart` patient session-queue entries exist, the
+projects page should show them above Project Queue items because they run first
+and block Project Queue promotion. This is a read-only overview grouped by
+session and linked back to the session page; resume/delete controls remain on
+the session surface until project-level queue management is intentionally added.
+
 ## Attachments
 
 Existing-session Project Queue items may contain already uploaded attachment

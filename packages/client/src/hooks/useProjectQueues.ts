@@ -1,6 +1,7 @@
 import type {
   ProjectQueueDispatchState,
   ProjectQueueItemSummary,
+  ProjectQueueRecoveredSessionQueueSummary,
   UpdateProjectQueueItemRequest,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -22,6 +23,7 @@ import { useVersion } from "./useVersion";
 export interface UseProjectQueuesResult {
   queuesByProject: Record<string, readonly ProjectQueueItemSummary[]>;
   items: ProjectQueueItemSummary[];
+  recoveredSessionQueues: ProjectQueueRecoveredSessionQueueSummary[];
   loading: boolean;
   error: Error | null;
   mutatingItemId: string | null;
@@ -57,7 +59,11 @@ function flattenQueues(
 const PROJECT_QUEUE_QUERY_KEY = createClientQueryKey({
   endpoint: "project-queue",
 });
-const PROJECT_QUEUE_REVALIDATE_EVENTS = ["refresh", "reconnect"] as const;
+const PROJECT_QUEUE_REVALIDATE_EVENTS = [
+  "refresh",
+  "reconnect",
+  "session-queue-persistence-changed",
+] as const;
 const RUNNING_DISPATCH_STATE: ProjectQueueDispatchState = { status: "running" };
 
 export function useProjectQueues(
@@ -82,6 +88,8 @@ export function useProjectQueues(
   const [dispatchState, setDispatchState] = useState<ProjectQueueDispatchState>(
     RUNNING_DISPATCH_STATE,
   );
+  const [storedRecoveredSessionQueues, setStoredRecoveredSessionQueues] =
+    useState<ProjectQueueRecoveredSessionQueueSummary[]>([]);
   const [mutationError, setMutationError] = useState<Error | null>(null);
   const queryEnabled = enabled && normalizedProjectIds.length > 0;
   const hasData = Object.keys(storedQueuesByProject).length > 0;
@@ -95,6 +103,7 @@ export function useProjectQueues(
     fetcher: () => api.getProjectQueueItems(),
     applySnapshot: (data, context) => {
       setDispatchState(data.dispatchState ?? RUNNING_DISPATCH_STATE);
+      setStoredRecoveredSessionQueues(data.recoveredSessionQueues ?? []);
       reportProjectQueueGlobalCollectionSnapshot(
         context.sourceKey,
         data,
@@ -176,6 +185,7 @@ export function useProjectQueues(
     try {
       const response = await api.pauseProjectQueueDispatch();
       setDispatchState(response.dispatchState ?? RUNNING_DISPATCH_STATE);
+      setStoredRecoveredSessionQueues(response.recoveredSessionQueues ?? []);
       reportProjectQueueGlobalCollectionSnapshot(requestSourceKey, response);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -192,6 +202,7 @@ export function useProjectQueues(
     try {
       const response = await api.resumeProjectQueueDispatch();
       setDispatchState(response.dispatchState ?? RUNNING_DISPATCH_STATE);
+      setStoredRecoveredSessionQueues(response.recoveredSessionQueues ?? []);
       reportProjectQueueGlobalCollectionSnapshot(requestSourceKey, response);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -213,10 +224,24 @@ export function useProjectQueues(
     () => flattenQueues(enabled ? storedQueuesByProject : {}),
     [enabled, storedQueuesByProject],
   );
+  const projectIdSet = useMemo(
+    () => new Set(normalizedProjectIds),
+    [normalizedProjectIds],
+  );
+  const recoveredSessionQueues = useMemo(
+    () =>
+      enabled
+        ? storedRecoveredSessionQueues.filter((item) =>
+            projectIdSet.has(item.projectId),
+          )
+        : [],
+    [enabled, projectIdSet, storedRecoveredSessionQueues],
+  );
 
   return {
     queuesByProject: enabled ? storedQueuesByProject : {},
     items,
+    recoveredSessionQueues,
     loading,
     error: mutationError ?? queryError,
     mutatingItemId,

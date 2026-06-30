@@ -9,7 +9,12 @@ import {
   createProjectQueueRoutes,
 } from "../../src/routes/project-queue.js";
 import { ProjectQueueService } from "../../src/services/ProjectQueueService.js";
+import {
+  type PersistedSessionQueuedMessage,
+  SessionQueuePersistenceService,
+} from "../../src/services/SessionQueuePersistenceService.js";
 import type { Project } from "../../src/supervisor/types.js";
+import type { SessionMetadataService } from "../../src/metadata/index.js";
 
 describe("Project Queue Routes", () => {
   let testDir: string;
@@ -54,6 +59,25 @@ describe("Project Queue Routes", () => {
     return createGlobalProjectQueueRoutes({
       projectQueueService: service,
     });
+  }
+
+  function makePersistedSessionQueueItem(
+    overrides: Partial<PersistedSessionQueuedMessage> = {},
+  ): PersistedSessionQueuedMessage {
+    return {
+      id: "persisted-1",
+      sessionId: "session-1",
+      projectId,
+      projectPath: project.path,
+      provider: "claude",
+      kind: "patient",
+      message: { text: "resume this first" },
+      createdAt: "2026-06-30T00:00:00.000Z",
+      updatedAt: "2026-06-30T00:00:00.000Z",
+      queuedAt: "2026-06-30T00:00:00.000Z",
+      status: "paused-after-restart",
+      ...overrides,
+    };
   }
 
   it("creates, lists, updates, retries, and deletes project queue items", async () => {
@@ -153,6 +177,61 @@ describe("Project Queue Routes", () => {
       {
         projectId: otherProjectId,
         messagePreview: "second queued item",
+      },
+    ]);
+  });
+
+  it("includes recovered session queue entries in the global list", async () => {
+    const sessionQueuePersistenceService = new SessionQueuePersistenceService({
+      dataDir: testDir,
+    });
+    await sessionQueuePersistenceService.initialize();
+    await sessionQueuePersistenceService.replaceAll([
+      makePersistedSessionQueueItem({
+        id: "persisted-2",
+        message: { text: "second recovered" },
+        queuedAt: "2026-06-30T00:00:02.000Z",
+      }),
+      makePersistedSessionQueueItem({
+        id: "persisted-1",
+        message: { text: "first recovered" },
+        queuedAt: "2026-06-30T00:00:01.000Z",
+      }),
+      makePersistedSessionQueueItem({
+        id: "live-patient",
+        message: { text: "not recovered" },
+        status: "queued",
+      }),
+    ]);
+
+    const routes = createGlobalProjectQueueRoutes({
+      projectQueueService: service,
+      sessionQueuePersistenceService,
+      sessionMetadataService: {
+        getMetadata: vi.fn((sessionId: string) =>
+          sessionId === "session-1"
+            ? { customTitle: "Recovered session" }
+            : undefined,
+        ),
+      } as unknown as SessionMetadataService,
+    });
+    const response = await routes.request("/");
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.recoveredSessionQueues).toMatchObject([
+      {
+        id: "persisted-1",
+        sessionId: "session-1",
+        projectId,
+        content: "first recovered",
+        status: "paused-after-restart",
+        kind: "patient",
+        sessionTitle: "Recovered session",
+      },
+      {
+        id: "persisted-2",
+        content: "second recovered",
       },
     ]);
   });

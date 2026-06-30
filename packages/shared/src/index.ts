@@ -215,6 +215,7 @@ export type {
   ProjectQueueItemSummary,
   ProjectQueueListResponse,
   ProjectQueueMessage,
+  ProjectQueueRecoveredSessionQueueSummary,
   ProjectQueueResponse,
   ProjectQueueStagedAttachments,
   ProjectQueueTarget,

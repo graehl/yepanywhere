@@ -21,9 +21,17 @@ Progress:
 - [x] Teach safe restart to preserve live patient queues instead of waiting for
       them.
 - [x] Block Project Queue promotion behind recovered patient queues.
+- [x] Show recovered patient queues on the Projects page.
 
 Latest update:
 
+- 2026-06-30: Read-only project-level recovered queue overview implemented
+  locally. The global Project Queue response now includes
+  `recoveredSessionQueues`, populated from persisted
+  `paused-after-restart` patient entries and refreshed on durable session queue
+  changes. The Projects page renders those entries above Project Queue items,
+  grouped by session with a link to the owning session; resume/delete controls
+  remain session-local for this slice.
 - 2026-06-30: Project Queue promotion now treats recovered patient queues as
   project-busy. The shared project-idle predicate can include persisted
   `paused-after-restart` patient entries, and the Project Queue scheduler wires
@@ -373,8 +381,10 @@ Resume chunk:
   re-entering the patient deferred queue;
 - [x] preserve per-session FIFO order by allowing only the oldest recovered
   entry to resume and rejecting resume behind live queued backlog;
-- [ ] add an optional project-level summary/resume-all control once per-entry
-  resume behavior is stable.
+- [x] add a read-only project-level summary that links recovered session queue
+  groups back to their session pages;
+- [ ] add optional project-level resume-all controls once the read-only summary
+  and per-entry resume behavior are stable.
 
 ## Safe Restart Interaction
 
@@ -425,6 +435,8 @@ Runtime tests, when live persistence is wired:
   `paused-after-restart` only after active sessions and volatile queues drain;
 - [x] Project Queue promotion still waits for recovered per-session queues
   before injecting project-level work;
+- [x] Projects page renders recovered per-session queues above Project Queue
+  items without treating them as Project Queue records;
 - [x] safe restart distinguishes active live blockers from persisted preserved
   queued work.
 

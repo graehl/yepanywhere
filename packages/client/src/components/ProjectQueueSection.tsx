@@ -2,6 +2,7 @@ import type {
   ProjectQueueDispatchState,
   ProjectQueueItemSummary,
   ProjectQueueMessage,
+  ProjectQueueRecoveredSessionQueueSummary,
 } from "@yep-anywhere/shared";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -13,6 +14,7 @@ type Translate = ReturnType<typeof useI18n>["t"];
 interface ProjectQueueSectionProps {
   projects: Project[];
   items: ProjectQueueItemSummary[];
+  recoveredSessionQueues?: ProjectQueueRecoveredSessionQueueSummary[];
   loading: boolean;
   error: Error | null;
   mutatingItemId: string | null;
@@ -68,9 +70,74 @@ function statusLabel(
   }
 }
 
+function sessionLabel(
+  item: ProjectQueueRecoveredSessionQueueSummary,
+  t: Translate,
+): string {
+  return (
+    item.sessionTitle?.trim() ||
+    t("projectQueueTargetSession", {
+      sessionId: item.sessionId.slice(0, 8),
+    })
+  );
+}
+
+interface RecoveredSessionQueueGroup {
+  key: string;
+  projectId: string;
+  sessionId: string;
+  sessionTitle?: string;
+  items: ProjectQueueRecoveredSessionQueueSummary[];
+}
+
+function groupRecoveredSessionQueues(
+  items: readonly ProjectQueueRecoveredSessionQueueSummary[],
+): RecoveredSessionQueueGroup[] {
+  const groups = new Map<string, RecoveredSessionQueueGroup>();
+  for (const item of items) {
+    const key = `${item.projectId}:${item.sessionId}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.items.push(item);
+    } else {
+      groups.set(key, {
+        key,
+        projectId: item.projectId,
+        sessionId: item.sessionId,
+        ...(item.sessionTitle ? { sessionTitle: item.sessionTitle } : {}),
+        items: [item],
+      });
+    }
+  }
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      items: [...group.items].sort((left, right) => {
+        const queued = (left.queuedAt ?? left.timestamp).localeCompare(
+          right.queuedAt ?? right.timestamp,
+        );
+        return queued !== 0 ? queued : left.id.localeCompare(right.id);
+      }),
+    }))
+    .sort((left, right) => {
+      const project = left.projectId.localeCompare(right.projectId);
+      if (project !== 0) return project;
+      const leftQueued =
+        left.items[0]?.queuedAt ?? left.items[0]?.timestamp ?? "";
+      const rightQueued =
+        right.items[0]?.queuedAt ?? right.items[0]?.timestamp ?? "";
+      const queued = leftQueued.localeCompare(rightQueued);
+      return queued !== 0
+        ? queued
+        : left.sessionId.localeCompare(right.sessionId);
+    });
+}
+
 export function ProjectQueueSection({
   projects,
   items,
+  recoveredSessionQueues = [],
   loading,
   error,
   mutatingItemId,
@@ -89,7 +156,10 @@ export function ProjectQueueSection({
   const [editText, setEditText] = useState("");
   const highlightedItemRef = useRef<HTMLLIElement | null>(null);
   const projectById = new Map(projects.map((project) => [project.id, project]));
-  const hasContent = items.length > 0;
+  const recoveredGroups = groupRecoveredSessionQueues(recoveredSessionQueues);
+  const recoveredCount = recoveredSessionQueues.length;
+  const hasProjectQueueItems = items.length > 0;
+  const hasContent = hasProjectQueueItems || recoveredCount > 0;
   const pausedState =
     dispatchState.status === "paused" ? dispatchState : undefined;
   const description = pausedState
@@ -123,23 +193,27 @@ export function ProjectQueueSection({
           <p>{description}</p>
         </div>
         <div className="project-queue-section__header-actions">
-          <span className="project-queue-section__count">
-            {loading
-              ? t("projectQueueRefreshing")
-              : t("projectQueueCount", { count: items.length })}
-          </span>
-          <button
-            type="button"
-            className="project-queue-section__dispatch-button"
-            onClick={pausedState ? onResumeDispatch : onPauseDispatch}
-            disabled={mutatingDispatchState}
-          >
-            {pausedState ? t("projectQueueResume") : t("projectQueuePause")}
-          </button>
+          {hasProjectQueueItems && (
+            <span className="project-queue-section__count">
+              {loading
+                ? t("projectQueueRefreshing")
+                : t("projectQueueCount", { count: items.length })}
+            </span>
+          )}
+          {hasProjectQueueItems && (
+            <button
+              type="button"
+              className="project-queue-section__dispatch-button"
+              onClick={pausedState ? onResumeDispatch : onPauseDispatch}
+              disabled={mutatingDispatchState}
+            >
+              {pausedState ? t("projectQueueResume") : t("projectQueuePause")}
+            </button>
+          )}
         </div>
       </div>
 
-      {pausedState && (
+      {pausedState && hasProjectQueueItems && (
         <div className="project-queue-section__notice">
           {pausedState.reason === "restart"
             ? t("projectQueuePausedAfterRestartNotice")
@@ -153,7 +227,65 @@ export function ProjectQueueSection({
         </div>
       )}
 
-      {hasContent && (
+      {recoveredGroups.length > 0 && (
+        <div className="project-queue-recovered">
+          <div className="project-queue-recovered__header">
+            <h3>{t("projectQueueRecoveredTitle")}</h3>
+            <span className="project-queue-recovered__count">
+              {t("projectQueueRecoveredCount", { count: recoveredCount })}
+            </span>
+          </div>
+          <ul className="project-queue-recovered__groups">
+            {recoveredGroups.map((group) => {
+              const project = projectById.get(group.projectId);
+              const firstItem = group.items[0];
+              const label = firstItem
+                ? sessionLabel(firstItem, t)
+                : t("projectQueueTargetSession", {
+                    sessionId: group.sessionId.slice(0, 8),
+                  });
+              return (
+                <li className="project-queue-recovered__group" key={group.key}>
+                  <div className="project-queue-recovered__group-header">
+                    <span className="project-queue-recovered__project">
+                      {project?.name ?? t("projectQueueUnknownProject")}
+                    </span>
+                    <Link
+                      className="project-queue-recovered__session"
+                      to={`${basePath}/projects/${group.projectId}/sessions/${group.sessionId}`}
+                    >
+                      {label}
+                    </Link>
+                    <span className="project-queue-recovered__status">
+                      {t("sessionRecoveredQueuedPaused")}
+                    </span>
+                  </div>
+                  <ul className="project-queue-recovered__messages">
+                    {group.items.map((item) => (
+                      <li
+                        className="project-queue-recovered__message"
+                        key={item.id}
+                      >
+                        <span className="project-queue-recovered__preview">
+                          {item.content || t("projectQueueAttachmentOnly")}
+                        </span>
+                        <span className="project-queue-recovered__age">
+                          {formatRelativeTime(
+                            item.queuedAt ?? item.timestamp,
+                            t,
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {hasProjectQueueItems && (
         <ul className="project-queue-list">
           {items.map((item) => {
             const project = projectById.get(item.projectId);

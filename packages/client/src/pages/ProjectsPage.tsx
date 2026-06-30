@@ -243,6 +243,7 @@ export function ProjectsPage() {
           <ProjectQueueSection
             projects={projects}
             items={projectQueues.items}
+            recoveredSessionQueues={projectQueues.recoveredSessionQueues}
             loading={projectQueues.loading}
             error={projectQueues.error}
             mutatingItemId={projectQueues.mutatingItemId}

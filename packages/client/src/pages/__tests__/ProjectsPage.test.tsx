@@ -52,6 +52,7 @@ vi.mock("../../hooks/useProjectQueues", () => ({
   useProjectQueues: () => ({
     queuesByProject: { "project-1": state.queueItems },
     items: state.queueItems,
+    recoveredSessionQueues: [],
     loading: false,
     error: null,
     mutatingItemId: null,

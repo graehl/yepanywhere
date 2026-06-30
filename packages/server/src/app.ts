@@ -1043,6 +1043,8 @@ export function createApp(options: AppOptions): AppResult {
       "/api/project-queue",
       createGlobalProjectQueueRoutes({
         projectQueueService: options.projectQueueService,
+        sessionMetadataService: options.sessionMetadataService,
+        sessionQueuePersistenceService: options.sessionQueuePersistenceService,
       }),
     );
     app.route(

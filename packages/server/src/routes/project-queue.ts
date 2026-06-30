@@ -2,14 +2,20 @@ import {
   type CreateProjectQueueItemRequest,
   type ProjectQueueListResponse,
   type ProjectQueueItemSummary,
+  type ProjectQueueRecoveredSessionQueueSummary,
   type UpdateProjectQueueItemRequest,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
+import type { SessionMetadataService } from "../metadata/index.js";
 import {
   type ProjectQueueService,
   ProjectQueueValidationError,
 } from "../services/ProjectQueueService.js";
+import type {
+  PersistedSessionQueuedMessage,
+  SessionQueuePersistenceService,
+} from "../services/SessionQueuePersistenceService.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { Project } from "../supervisor/types.js";
 
@@ -21,10 +27,81 @@ export interface ProjectQueueRoutesDeps {
 export type GlobalProjectQueueRoutesDeps = Pick<
   ProjectQueueRoutesDeps,
   "projectQueueService"
->;
+> & {
+  sessionMetadataService?: SessionMetadataService;
+  sessionQueuePersistenceService?: SessionQueuePersistenceService;
+};
 
 function validationError(message: string) {
   return { error: "Invalid project queue request", reason: message };
+}
+
+function isRecoveredPatientQueueItem(
+  item: PersistedSessionQueuedMessage,
+): boolean {
+  return item.kind === "patient" && item.status === "paused-after-restart";
+}
+
+function summarizeRecoveredSessionQueue(
+  item: PersistedSessionQueuedMessage,
+  sessionMetadataService: SessionMetadataService | undefined,
+): ProjectQueueRecoveredSessionQueueSummary {
+  const attachmentCount =
+    (item.message.attachments?.length ?? 0) +
+    (item.message.images?.length ?? 0) +
+    (item.message.documents?.length ?? 0);
+  const tempId = item.message.tempId ?? item.source?.tempId;
+  const sessionTitle =
+    sessionMetadataService?.getMetadata(item.sessionId)?.customTitle;
+
+  return {
+    id: item.id,
+    ...(tempId ? { tempId } : {}),
+    content: item.message.text,
+    timestamp: item.queuedAt,
+    ...(item.message.attachments?.length
+      ? { attachments: item.message.attachments }
+      : {}),
+    ...(attachmentCount > 0 ? { attachmentCount } : {}),
+    ...(item.message.metadata ? { metadata: item.message.metadata } : {}),
+    kind: "patient",
+    status: "paused-after-restart",
+    sessionId: item.sessionId,
+    projectId: item.projectId,
+    queuedAt: item.queuedAt,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    ...(sessionTitle ? { sessionTitle } : {}),
+  };
+}
+
+function listRecoveredSessionQueues(
+  deps: GlobalProjectQueueRoutesDeps,
+): ProjectQueueRecoveredSessionQueueSummary[] {
+  return (deps.sessionQueuePersistenceService?.list() ?? [])
+    .filter(isRecoveredPatientQueueItem)
+    .sort((left, right) => {
+      const project = left.projectId.localeCompare(right.projectId);
+      if (project !== 0) return project;
+      const session = left.sessionId.localeCompare(right.sessionId);
+      if (session !== 0) return session;
+      const queued = left.queuedAt.localeCompare(right.queuedAt);
+      return queued !== 0 ? queued : left.id.localeCompare(right.id);
+    })
+    .map((item) =>
+      summarizeRecoveredSessionQueue(item, deps.sessionMetadataService),
+    );
+}
+
+function globalQueueResponse(
+  deps: GlobalProjectQueueRoutesDeps,
+  dispatchState = deps.projectQueueService.getDispatchState(),
+): ProjectQueueListResponse {
+  return {
+    items: deps.projectQueueService.listAll(),
+    dispatchState,
+    recoveredSessionQueues: listRecoveredSessionQueues(deps),
+  };
 }
 
 export function createGlobalProjectQueueRoutes(
@@ -33,21 +110,13 @@ export function createGlobalProjectQueueRoutes(
   const routes = new Hono();
 
   routes.get("/", async (c) => {
-    const response: ProjectQueueListResponse = {
-      items: deps.projectQueueService.listAll(),
-      dispatchState: deps.projectQueueService.getDispatchState(),
-    };
-    return c.json(response);
+    return c.json(globalQueueResponse(deps));
   });
 
   routes.post("/pause", async (c) => {
     try {
       const dispatchState = await deps.projectQueueService.pauseDispatch();
-      const response: ProjectQueueListResponse = {
-        items: deps.projectQueueService.listAll(),
-        dispatchState,
-      };
-      return c.json(response);
+      return c.json(globalQueueResponse(deps, dispatchState));
     } catch (error) {
       if (error instanceof ProjectQueueValidationError) {
         return c.json(validationError(error.message), 400);
@@ -58,11 +127,7 @@ export function createGlobalProjectQueueRoutes(
 
   routes.post("/resume", async (c) => {
     const dispatchState = await deps.projectQueueService.resumeDispatch();
-    const response: ProjectQueueListResponse = {
-      items: deps.projectQueueService.listAll(),
-      dispatchState,
-    };
-    return c.json(response);
+    return c.json(globalQueueResponse(deps, dispatchState));
   });
 
   return routes;

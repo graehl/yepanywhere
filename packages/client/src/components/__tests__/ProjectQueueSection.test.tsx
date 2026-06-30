@@ -3,6 +3,7 @@
 import type {
   ProjectQueueDispatchState,
   ProjectQueueItemSummary,
+  ProjectQueueRecoveredSessionQueueSummary,
 } from "@yep-anywhere/shared";
 import {
   cleanup,
@@ -47,6 +48,25 @@ function makeItem(
   };
 }
 
+function makeRecoveredSessionQueue(
+  overrides: Partial<ProjectQueueRecoveredSessionQueueSummary> = {},
+): ProjectQueueRecoveredSessionQueueSummary {
+  return {
+    id: "recovered-1",
+    sessionId: "session-recovered",
+    sessionTitle: "Recovered session",
+    projectId: PROJECT_ID,
+    content: "Recovered queued message",
+    timestamp: "2026-06-30T00:00:00.000Z",
+    queuedAt: "2026-06-30T00:00:00.000Z",
+    createdAt: "2026-06-30T00:00:00.000Z",
+    updatedAt: "2026-06-30T00:00:00.000Z",
+    kind: "patient",
+    status: "paused-after-restart",
+    ...overrides,
+  };
+}
+
 function renderSection(
   items: ProjectQueueItemSummary[],
   handlers = {
@@ -58,6 +78,7 @@ function renderSection(
   },
   highlightedItemId?: string,
   dispatchState: ProjectQueueDispatchState = { status: "running" },
+  recoveredSessionQueues: ProjectQueueRecoveredSessionQueueSummary[] = [],
 ) {
   render(
     <I18nProvider>
@@ -65,6 +86,7 @@ function renderSection(
         <ProjectQueueSection
           projects={[project]}
           items={items}
+          recoveredSessionQueues={recoveredSessionQueues}
           loading={false}
           error={null}
           mutatingItemId={null}
@@ -105,6 +127,44 @@ describe("ProjectQueueSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(handlers.onDeleteItem).toHaveBeenCalledWith("project-1", "1");
+  });
+
+  it("renders recovered session queues above project queue items", () => {
+    renderSection(
+      [makeItem("1")],
+      undefined,
+      undefined,
+      { status: "running" },
+      [makeRecoveredSessionQueue()],
+    );
+
+    expect(screen.getByRole("heading", { name: "Paused Session Queue" }))
+      .toBeTruthy();
+    expect(screen.getByText("Recovered queued message")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Recovered session" }).getAttribute(
+        "href",
+      ),
+    ).toBe("/projects/project-1/sessions/session-recovered");
+
+    const text = document.body.textContent ?? "";
+    expect(text.indexOf("Recovered queued message")).toBeLessThan(
+      text.indexOf("Queued message 1"),
+    );
+  });
+
+  it("shows recovered session queues without project queue controls", () => {
+    renderSection(
+      [],
+      undefined,
+      undefined,
+      { status: "running" },
+      [makeRecoveredSessionQueue()],
+    );
+
+    expect(screen.getByText("Recovered queued message")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+    expect(screen.queryByText("0 queued")).toBeNull();
   });
 
   it("pauses dispatch from the header", () => {

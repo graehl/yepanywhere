@@ -193,6 +193,11 @@ export interface CacheMissBillingEvent {
   timestamp: string;
 }
 
+export interface SessionQueuePersistenceChangedEvent {
+  type: "session-queue-persistence-changed";
+  timestamp: string;
+}
+
 // Map event names to their data types
 interface ActivityEventMap {
   "file-change": FileChangeEvent;
@@ -202,6 +207,7 @@ interface ActivityEventMap {
   "session-seen": SessionSeenEvent;
   "process-state-changed": ProcessStateEvent;
   "project-queue-changed": ProjectQueueChangedEvent;
+  "session-queue-persistence-changed": SessionQueuePersistenceChangedEvent;
   "session-metadata-changed": SessionMetadataChangedEvent;
   // Connection events
   "browser-tab-connected": BrowserTabConnectedEvent;
@@ -459,6 +465,7 @@ class ActivityBus {
       "session-seen",
       "process-state-changed",
       "project-queue-changed",
+      "session-queue-persistence-changed",
       "session-metadata-changed",
       "browser-tab-connected",
       "browser-tab-disconnected",

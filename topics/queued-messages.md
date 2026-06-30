@@ -138,8 +138,9 @@ reports recovered patient entries as preserved work, not blockers, and converts
 live patient entries to `paused-after-restart` once active sessions plus
 short-term/direct queue blockers have drained. Project Queue promotion treats
 persisted recovered patient entries as project-busy so project-level work
-cannot jump ahead of preserved per-session work. Project-level recovered-queue
-controls are still pending.
+cannot jump ahead of preserved per-session work. The Projects page shows a
+read-only recovered queue overview grouped by session; management remains on
+the session page, and project-level resume-all controls are still pending.
 
 ## What we are removing and why
 

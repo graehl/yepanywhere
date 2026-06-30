@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
-import type { ProjectQueueItemSummary } from "@yep-anywhere/shared";
+import type {
+  ProjectQueueItemSummary,
+  ProjectQueueRecoveredSessionQueueSummary,
+} from "@yep-anywhere/shared";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -89,6 +92,25 @@ function makeItem(
   };
 }
 
+function makeRecoveredSessionQueue(
+  id: string,
+  projectId: ProjectQueueRecoveredSessionQueueSummary["projectId"] = PROJECT_ID,
+): ProjectQueueRecoveredSessionQueueSummary {
+  return {
+    id,
+    tempId: `temp-${id}`,
+    sessionId: `session-${id}`,
+    projectId,
+    content: `Recovered ${id}`,
+    timestamp: `2026-06-30T00:00:0${id}.000Z`,
+    queuedAt: `2026-06-30T00:00:0${id}.000Z`,
+    createdAt: `2026-06-30T00:00:0${id}.000Z`,
+    updatedAt: `2026-06-30T00:00:0${id}.000Z`,
+    kind: "patient",
+    status: "paused-after-restart",
+  };
+}
+
 beforeEach(() => {
   resetClientSummaryStoreForTests();
   resetClientQueryControllerForTests();
@@ -143,6 +165,66 @@ describe("useProjectQueues", () => {
     expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
     expect(apiMock.getProjectQueue).not.toHaveBeenCalled();
     expect(result.current.items.map((item) => item.id)).toEqual(["1", "2"]);
+  });
+
+  it("exposes recovered session queues for the supplied projects", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [],
+      recoveredSessionQueues: [
+        makeRecoveredSessionQueue("1", PROJECT_ID),
+        makeRecoveredSessionQueue("2", PROJECT_ID_2),
+      ],
+    });
+
+    const { result } = renderHook(() => useProjectQueues(["project-1"]));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.recoveredSessionQueues).toMatchObject([
+      {
+        id: "1",
+        projectId: PROJECT_ID,
+        content: "Recovered 1",
+        status: "paused-after-restart",
+      },
+    ]);
+  });
+
+  it("refetches recovered session queues after persistence changes", async () => {
+    apiMock.getProjectQueueItems
+      .mockResolvedValueOnce({
+        items: [],
+        recoveredSessionQueues: [makeRecoveredSessionQueue("1", PROJECT_ID)],
+      })
+      .mockResolvedValueOnce({
+        items: [],
+        recoveredSessionQueues: [makeRecoveredSessionQueue("3", PROJECT_ID)],
+      });
+
+    const { result } = renderHook(() => useProjectQueues(["project-1"]));
+
+    await waitFor(() =>
+      expect(
+        result.current.recoveredSessionQueues.map((item) => item.id),
+      ).toEqual(["1"]),
+    );
+
+    act(() => {
+      busMock.emit("session-queue-persistence-changed", {
+        type: "session-queue-persistence-changed",
+        timestamp: "2026-06-30T00:00:10.000Z",
+      });
+    });
+
+    await waitFor(
+      () => expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(2),
+      { timeout: 1500 },
+    );
+    await waitFor(() =>
+      expect(
+        result.current.recoveredSessionQueues.map((item) => item.id),
+      ).toEqual(["3"]),
+    );
   });
 
   it("shares manual refetches across mounted consumers", async () => {

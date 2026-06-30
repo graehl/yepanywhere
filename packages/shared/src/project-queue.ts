@@ -7,6 +7,7 @@ import type {
 import type { StagedAttachmentRef, UploadedFile } from "./upload.js";
 import type { UrlProjectId } from "./projectId.js";
 import type { UserMessageMetadata } from "./user-message-metadata.js";
+import type { SessionQueuedMessageSummary } from "./app-types.js";
 
 export type ProjectQueueItemStatus = "queued" | "dispatching" | "failed";
 
@@ -97,6 +98,16 @@ export interface ProjectQueueItemSummary {
   lastAttemptAt?: string;
 }
 
+export interface ProjectQueueRecoveredSessionQueueSummary
+  extends SessionQueuedMessageSummary {
+  id: string;
+  sessionId: string;
+  projectId: UrlProjectId;
+  kind: "patient";
+  status: "paused-after-restart";
+  sessionTitle?: string;
+}
+
 export interface ProjectQueueResponse {
   projectId: UrlProjectId;
   items: ProjectQueueItemSummary[];
@@ -106,6 +117,7 @@ export interface ProjectQueueResponse {
 export interface ProjectQueueListResponse {
   items: ProjectQueueItemSummary[];
   dispatchState?: ProjectQueueDispatchState;
+  recoveredSessionQueues?: ProjectQueueRecoveredSessionQueueSummary[];
 }
 
 export interface CreateProjectQueueItemRequest {

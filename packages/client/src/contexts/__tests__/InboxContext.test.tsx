@@ -60,8 +60,15 @@ vi.mock("../RemoteConnectionContext", () => ({
 }));
 
 function InboxConsumer() {
-  const { error, loading, needsAttention, refresh, totalItems } =
-    useInboxContext();
+  const {
+    active,
+    error,
+    loading,
+    needsAttention,
+    recentActivity,
+    refresh,
+    totalItems,
+  } = useInboxContext();
   return (
     <div>
       <span data-testid="loading">{String(loading)}</span>
@@ -69,6 +76,12 @@ function InboxConsumer() {
       <span data-testid="total">{String(totalItems)}</span>
       <span data-testid="needs">
         {needsAttention.map((item) => item.sessionTitle).join("|")}
+      </span>
+      <span data-testid="active">
+        {active.map((item) => item.sessionTitle).join("|")}
+      </span>
+      <span data-testid="recent">
+        {recentActivity.map((item) => item.sessionTitle).join("|")}
       </span>
       <button type="button" data-testid="refresh" onClick={() => void refresh()}>
         refresh
@@ -485,6 +498,86 @@ describe("InboxProvider", () => {
 
       expect(mockGetInbox).toHaveBeenCalledTimes(2);
       expect(view.getByTestId("total").textContent).toBe("1");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refetches inbox when project queue membership can change tiers", async () => {
+    vi.useFakeTimers();
+    try {
+      remoteState.connection = { connection: {} };
+      mockGetInbox
+        .mockResolvedValueOnce(
+          emptyInbox({
+            recentActivity: [
+              {
+                sessionId: "session-4",
+                projectId: "project-1",
+                projectName: "Project",
+                sessionTitle: "Queued later",
+                updatedAt: "2026-06-28T00:00:00.000Z",
+              },
+            ],
+          }),
+        )
+        .mockResolvedValueOnce(
+          emptyInbox({
+            active: [
+              {
+                sessionId: "session-4",
+                projectId: "project-1",
+                projectName: "Project",
+                sessionTitle: "Queued later",
+                updatedAt: "2026-06-28T00:00:00.000Z",
+              },
+            ],
+          }),
+        );
+
+      const view = render(
+        <InboxProvider>
+          <InboxConsumer />
+        </InboxProvider>,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mockGetInbox).toHaveBeenCalledTimes(1);
+      expect(view.getByTestId("recent").textContent).toBe("Queued later");
+      expect(view.getByTestId("active").textContent).toBe("");
+
+      await act(async () => {
+        activityBus.emit("project-queue-changed", {
+          type: "project-queue-changed",
+          projectId: "project-1",
+          items: [
+            {
+              id: "queue-1",
+              projectId: "project-1",
+              target: { type: "existing-session", sessionId: "session-4" },
+              messagePreview: "Queued work",
+              message: { text: "Queued work" },
+              createdAt: "2026-06-28T00:01:00.000Z",
+              updatedAt: "2026-06-28T00:01:00.000Z",
+              status: "queued",
+              attachmentCount: 0,
+            },
+          ],
+          reason: "created",
+          timestamp: "2026-06-28T00:01:00.000Z",
+        });
+        await vi.advanceTimersByTimeAsync(500);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockGetInbox).toHaveBeenCalledTimes(2);
+      expect(view.getByTestId("recent").textContent).toBe("");
+      expect(view.getByTestId("active").textContent).toBe("Queued later");
     } finally {
       vi.useRealTimers();
     }

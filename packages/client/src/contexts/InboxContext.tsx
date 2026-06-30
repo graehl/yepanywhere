@@ -50,6 +50,7 @@ const INBOX_REVALIDATE_EVENTS = [
   "session-created",
   "session-metadata-changed",
   "session-updated",
+  "project-queue-changed",
 ] as const;
 const INBOX_STALE_TIME_MS = 0;
 

@@ -12,6 +12,8 @@ Topic: sidebar-session-ordering
 See also: [ui-architecture](ui-architecture.md) (share the order at the data/render
 boundary, don't re-sort per view), [session-liveness](session-liveness.md)
 (what "active" means: `activity` = `in-turn` / `waiting-input`),
+[session-list-hidden-duplicates](session-list-hidden-duplicates.md) (when a
+duplicate-title row may be hidden at all),
 [scrollback-view-stability](scrollback-view-stability.md) (the same
 "don't move what the user is reading" principle, applied to the transcript).
 
@@ -131,7 +133,9 @@ The **Older** section needs no active handling: an active session has a fresh
   order; they must not re-sort active rows by a churning key. Recency sorting
   is confined to idle rows.
 - Idle rows may be deduped and sorted by `updatedAt` — they don't churn, so this
-  is safe and is the desired recency behavior.
+  is safe and is the desired recency behavior, subject to the stricter
+  representative-safety rules in
+  [session-list-hidden-duplicates](session-list-hidden-duplicates.md).
 
 ## Regression history
 

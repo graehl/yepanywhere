@@ -44,6 +44,7 @@
 - mic-button-speech-ui - Mic button speech insertion, spoken commands, and streaming/batch composer behavior.
 - prompt-cache-keepalive - Open-client-only provider prompt-cache warming and cost/activity bounds.
 - session-list-display - Session list/sidebar badges, model glyph mapping, and the hover tooltip card.
+- session-list-hidden-duplicates - Conservative duplicate-title hiding for session lists, preserving fork/helper lineage and never letting YA helper sessions hide source/current sessions.
 - stream-durable-id-dedup - Stream-vs-durable message id alignment and the approx-dedup backstop (codex/opencode steer double-render).
 - selection-comment-ui - Quote selected assistant output into the composer with source-block tint reminders.
 - fork-from-turn - Turn-notch fork actions and server-owned fork-after-summary jobs.

@@ -1275,6 +1275,84 @@ describe("clientSummaryState", () => {
     expect(selectProjectQueueItems(state, PROJECT_ID)).toBe(before);
   });
 
+  it("preserves project queue target titles when events omit display metadata", () => {
+    let state = applyProjectQueueCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        projectId: PROJECT_ID,
+        items: [
+          queueItem("1", {
+            targetTitle: "Investigate failing build",
+            targetFullTitle: "Investigate failing build in CI",
+          }),
+        ],
+      },
+      100,
+    );
+
+    state = applyProjectQueueCollectionChanged(
+      state,
+      {
+        type: "project-queue-changed",
+        projectId: PROJECT_ID,
+        items: [queueItem("1")],
+        reason: "updated",
+        timestamp: RECENT,
+      },
+      200,
+    );
+
+    expect(selectProjectQueueItems(state, PROJECT_ID)).toMatchObject([
+      {
+        id: "1",
+        targetTitle: "Investigate failing build",
+        targetFullTitle: "Investigate failing build in CI",
+      },
+    ]);
+  });
+
+  it("does not preserve project queue target titles after target changes", () => {
+    let state = applyProjectQueueCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        projectId: PROJECT_ID,
+        items: [
+          queueItem("1", {
+            targetTitle: "Original session",
+            targetFullTitle: "Original session full title",
+          }),
+        ],
+      },
+      100,
+    );
+
+    state = applyProjectQueueCollectionChanged(
+      state,
+      {
+        type: "project-queue-changed",
+        projectId: PROJECT_ID,
+        items: [
+          queueItem("1", {
+            target: { type: "existing-session", sessionId: "session-other" },
+          }),
+        ],
+        reason: "updated",
+        timestamp: RECENT,
+      },
+      200,
+    );
+
+    expect(selectProjectQueueItems(state, PROJECT_ID)).toMatchObject([
+      {
+        id: "1",
+        target: { type: "existing-session", sessionId: "session-other" },
+      },
+    ]);
+    expect(selectProjectQueueItems(state, PROJECT_ID)[0]?.targetTitle).toBe(
+      undefined,
+    );
+  });
+
   it("does not let older project queue snapshots undo newer queue facts", () => {
     let state = applyProjectQueueCollectionSnapshot(
       createEmptyClientSummaryState(),

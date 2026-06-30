@@ -3,6 +3,7 @@ import {
   type ProjectQueueListResponse,
   type ProjectQueueItemSummary,
   type ProjectQueueRecoveredSessionQueueSummary,
+  type ProjectQueueResponse,
   type UpdateProjectQueueItemRequest,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
@@ -17,17 +18,23 @@ import type {
   SessionQueuePersistenceService,
 } from "../services/SessionQueuePersistenceService.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import {
+  findSessionSummaryAcrossProviders,
+  type ProviderResolutionDeps,
+} from "../sessions/provider-resolution.js";
 import type { Project } from "../supervisor/types.js";
 
-export interface ProjectQueueRoutesDeps {
+interface ProjectQueueTitleDeps extends Partial<ProviderResolutionDeps> {
+  scanner?: ProjectScanner;
+}
+
+export interface ProjectQueueRoutesDeps extends ProjectQueueTitleDeps {
   scanner: ProjectScanner;
   projectQueueService: ProjectQueueService;
 }
 
-export type GlobalProjectQueueRoutesDeps = Pick<
-  ProjectQueueRoutesDeps,
-  "projectQueueService"
-> & {
+export type GlobalProjectQueueRoutesDeps = ProjectQueueTitleDeps & {
+  projectQueueService: ProjectQueueService;
   sessionMetadataService?: SessionMetadataService;
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
 };
@@ -93,12 +100,145 @@ function listRecoveredSessionQueues(
     );
 }
 
-function globalQueueResponse(
+function hasTitleResolutionDeps(
+  deps: ProjectQueueTitleDeps,
+): deps is ProjectQueueTitleDeps & Pick<ProviderResolutionDeps, "readerFactory"> {
+  return typeof deps.readerFactory === "function";
+}
+
+function buildProviderResolutionDeps(
+  deps: ProjectQueueTitleDeps & Pick<ProviderResolutionDeps, "readerFactory">,
+): ProviderResolutionDeps {
+  const resolutionDeps: ProviderResolutionDeps = {
+    readerFactory: deps.readerFactory,
+  };
+  if (deps.sessionIndexService) {
+    resolutionDeps.sessionIndexService = deps.sessionIndexService;
+  }
+  if (deps.codexSessionsDir) {
+    resolutionDeps.codexSessionsDir = deps.codexSessionsDir;
+  }
+  if (deps.codexReaderFactory) {
+    resolutionDeps.codexReaderFactory = deps.codexReaderFactory;
+  }
+  if (deps.geminiSessionsDir) {
+    resolutionDeps.geminiSessionsDir = deps.geminiSessionsDir;
+  }
+  if (deps.geminiReaderFactory) {
+    resolutionDeps.geminiReaderFactory = deps.geminiReaderFactory;
+  }
+  if (deps.geminiHashToCwd) {
+    resolutionDeps.geminiHashToCwd = deps.geminiHashToCwd;
+  }
+  if (deps.grokSessionsDir) {
+    resolutionDeps.grokSessionsDir = deps.grokSessionsDir;
+  }
+  if (deps.grokReaderFactory) {
+    resolutionDeps.grokReaderFactory = deps.grokReaderFactory;
+  }
+  if (deps.piSessionsDir) {
+    resolutionDeps.piSessionsDir = deps.piSessionsDir;
+  }
+  if (deps.piReaderFactory) {
+    resolutionDeps.piReaderFactory = deps.piReaderFactory;
+  }
+  return resolutionDeps;
+}
+
+async function enrichProjectQueueItem(
+  project: Project,
+  item: ProjectQueueItemSummary,
+  deps: ProjectQueueTitleDeps,
+): Promise<ProjectQueueItemSummary> {
+  if (item.target.type !== "existing-session" || !hasTitleResolutionDeps(deps)) {
+    return item;
+  }
+
+  try {
+    const resolved = await findSessionSummaryAcrossProviders(
+      project,
+      item.target.sessionId,
+      project.id,
+      buildProviderResolutionDeps(deps),
+      item.target.provider,
+    );
+    return {
+      ...item,
+      targetTitle: resolved?.summary.title ?? null,
+      targetFullTitle: resolved?.summary.fullTitle ?? null,
+    };
+  } catch {
+    return {
+      ...item,
+      targetTitle: null,
+      targetFullTitle: null,
+    };
+  }
+}
+
+async function enrichProjectQueueItems(
+  project: Project,
+  items: ProjectQueueItemSummary[],
+  deps: ProjectQueueTitleDeps,
+): Promise<ProjectQueueItemSummary[]> {
+  if (!hasTitleResolutionDeps(deps)) {
+    return items;
+  }
+  return Promise.all(
+    items.map((item) => enrichProjectQueueItem(project, item, deps)),
+  );
+}
+
+async function resolveProjectForQueueItem(
+  item: ProjectQueueItemSummary,
+  deps: GlobalProjectQueueRoutesDeps,
+  projectCache: Map<string, Promise<Project | null>>,
+): Promise<Project | null> {
+  if (!deps.scanner) return null;
+  let projectPromise = projectCache.get(item.projectId);
+  if (!projectPromise) {
+    projectPromise = deps.scanner
+      .getOrCreateProject(item.projectId)
+      .catch(() => null);
+    projectCache.set(item.projectId, projectPromise);
+  }
+  return projectPromise;
+}
+
+async function enrichGlobalProjectQueueItems(
+  items: ProjectQueueItemSummary[],
+  deps: GlobalProjectQueueRoutesDeps,
+): Promise<ProjectQueueItemSummary[]> {
+  if (!deps.scanner || !hasTitleResolutionDeps(deps)) {
+    return items;
+  }
+  const projectCache = new Map<string, Promise<Project | null>>();
+  return Promise.all(
+    items.map(async (item) => {
+      const project = await resolveProjectForQueueItem(item, deps, projectCache);
+      return project ? enrichProjectQueueItem(project, item, deps) : item;
+    }),
+  );
+}
+
+async function projectQueueResponse(
+  project: Project,
+  deps: ProjectQueueRoutesDeps,
+): Promise<ProjectQueueResponse> {
+  const queue = deps.projectQueueService.listProject(project.id);
+  return {
+    ...queue,
+    items: await enrichProjectQueueItems(project, queue.items, deps),
+  };
+}
+
+async function globalQueueResponse(
   deps: GlobalProjectQueueRoutesDeps,
   dispatchState = deps.projectQueueService.getDispatchState(),
-): ProjectQueueListResponse {
+): Promise<ProjectQueueListResponse> {
+  const items = deps.projectQueueService.listAll();
   return {
-    items: deps.projectQueueService.listAll(),
+    items: await enrichGlobalProjectQueueItems(items, deps),
     dispatchState,
     recoveredSessionQueues: listRecoveredSessionQueues(deps),
   };
@@ -110,13 +250,13 @@ export function createGlobalProjectQueueRoutes(
   const routes = new Hono();
 
   routes.get("/", async (c) => {
-    return c.json(globalQueueResponse(deps));
+    return c.json(await globalQueueResponse(deps));
   });
 
   routes.post("/pause", async (c) => {
     try {
       const dispatchState = await deps.projectQueueService.pauseDispatch();
-      return c.json(globalQueueResponse(deps, dispatchState));
+      return c.json(await globalQueueResponse(deps, dispatchState));
     } catch (error) {
       if (error instanceof ProjectQueueValidationError) {
         return c.json(validationError(error.message), 400);
@@ -127,7 +267,7 @@ export function createGlobalProjectQueueRoutes(
 
   routes.post("/resume", async (c) => {
     const dispatchState = await deps.projectQueueService.resumeDispatch();
-    return c.json(globalQueueResponse(deps, dispatchState));
+    return c.json(await globalQueueResponse(deps, dispatchState));
   });
 
   return routes;
@@ -163,7 +303,7 @@ export function createProjectQueueRoutes(deps: ProjectQueueRoutesDeps): Hono {
       return c.json({ error: resolved.error }, resolved.status);
     }
 
-    return c.json(deps.projectQueueService.listProject(resolved.project.id));
+    return c.json(await projectQueueResponse(resolved.project, deps));
   });
 
   routes.post("/:projectId/queue", async (c) => {
@@ -185,10 +325,11 @@ export function createProjectQueueRoutes(deps: ProjectQueueRoutesDeps): Hono {
         projectPath: resolved.project.path,
         request: body,
       });
+      const queue = await projectQueueResponse(resolved.project, deps);
       return c.json(
         {
-          item,
-          queue: deps.projectQueueService.listProject(resolved.project.id),
+          item: queue.items.find((candidate) => candidate.id === item.id) ?? item,
+          queue,
         },
         201,
       );
@@ -226,9 +367,10 @@ export function createProjectQueueRoutes(deps: ProjectQueueRoutesDeps): Hono {
       if (!item) {
         return c.json({ error: "Project queue item not found" }, 404);
       }
+      const queue = await projectQueueResponse(resolved.project, deps);
       return c.json({
-        item,
-        queue: deps.projectQueueService.listProject(resolved.project.id),
+        item: queue.items.find((candidate) => candidate.id === item.id) ?? item,
+        queue,
       });
     } catch (error) {
       if (error instanceof ProjectQueueValidationError) {
@@ -261,7 +403,7 @@ export function createProjectQueueRoutes(deps: ProjectQueueRoutesDeps): Hono {
     }
     return c.json({
       deleted: true,
-      queue: deps.projectQueueService.listProject(resolved.project.id),
+      queue: await projectQueueResponse(resolved.project, deps),
     });
   });
 
@@ -280,16 +422,19 @@ export function createProjectQueueRoutes(deps: ProjectQueueRoutesDeps): Hono {
       if (!item) {
         return c.json({ error: "Project queue item not found" }, 404);
       }
+      const queue = await projectQueueResponse(resolved.project, deps);
+      const enrichedItem =
+        queue.items.find((candidate) => candidate.id === item?.id) ?? item;
+      return c.json({
+        item: enrichedItem,
+        queue,
+      });
     } catch (error) {
       if (error instanceof ProjectQueueValidationError) {
         return c.json(validationError(error.message), 400);
       }
       throw error;
     }
-    return c.json({
-      item,
-      queue: deps.projectQueueService.listProject(resolved.project.id),
-    });
   });
 
   return routes;

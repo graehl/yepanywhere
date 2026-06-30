@@ -427,6 +427,8 @@ function projectQueueItemsEqual(
       item.id === other.id &&
       item.projectId === other.projectId &&
       normalizedJsonEqual(item.target, other.target) &&
+      item.targetTitle === other.targetTitle &&
+      item.targetFullTitle === other.targetFullTitle &&
       item.messagePreview === other.messagePreview &&
       normalizedJsonEqual(item.message, other.message) &&
       item.createdAt === other.createdAt &&
@@ -438,6 +440,45 @@ function projectQueueItemsEqual(
       item.lastAttemptAt === other.lastAttemptAt
     );
   });
+}
+
+function mergeProjectQueueItemDisplayMetadata(
+  existingItems: readonly ProjectQueueItemSummary[] | undefined,
+  snapshotItems: readonly ProjectQueueItemSummary[],
+): readonly ProjectQueueItemSummary[] {
+  if (!existingItems?.length) return snapshotItems;
+  const existingById = new Map(existingItems.map((item) => [item.id, item]));
+  let changed = false;
+  const merged = snapshotItems.map((item) => {
+    if (
+      item.targetTitle !== undefined &&
+      item.targetFullTitle !== undefined
+    ) {
+      return item;
+    }
+    const existing = existingById.get(item.id);
+    if (!existing) return item;
+    if (!normalizedJsonEqual(item.target, existing.target)) return item;
+    const targetTitle =
+      item.targetTitle !== undefined ? item.targetTitle : existing.targetTitle;
+    const targetFullTitle =
+      item.targetFullTitle !== undefined
+        ? item.targetFullTitle
+        : existing.targetFullTitle;
+    if (
+      targetTitle === item.targetTitle &&
+      targetFullTitle === item.targetFullTitle
+    ) {
+      return item;
+    }
+    changed = true;
+    return {
+      ...item,
+      ...(targetTitle !== undefined ? { targetTitle } : {}),
+      ...(targetFullTitle !== undefined ? { targetFullTitle } : {}),
+    };
+  });
+  return changed ? merged : snapshotItems;
 }
 
 function inboxTierIdsEqual(
@@ -474,12 +515,16 @@ function putProjectQueueSnapshot(
   observedAt: number,
 ): ClientSummaryState {
   const existing = state.projectQueues.byProject.get(snapshot.projectId);
+  const snapshotItems = mergeProjectQueueItemDisplayMetadata(
+    existing?.items,
+    snapshot.items,
+  );
   if (existing) {
     if (observedAt < (existing.snapshotObservedAt ?? NO_OBSERVATION)) {
       return state;
     }
 
-    if (projectQueueItemsEqual(existing.items, snapshot.items)) {
+    if (projectQueueItemsEqual(existing.items, snapshotItems)) {
       if (observedAt === existing.snapshotObservedAt) {
         return state;
       }
@@ -502,7 +547,7 @@ function putProjectQueueSnapshot(
   const byProject = new Map(state.projectQueues.byProject);
   byProject.set(snapshot.projectId, {
     projectId: snapshot.projectId,
-    items: snapshot.items,
+    items: snapshotItems,
     observedAt: Math.max(existing?.observedAt ?? NO_OBSERVATION, observedAt),
     snapshotObservedAt: observedAt,
   });

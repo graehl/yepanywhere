@@ -8,12 +8,14 @@ import {
   createGlobalProjectQueueRoutes,
   createProjectQueueRoutes,
 } from "../../src/routes/project-queue.js";
+import type { ISessionIndexService } from "../../src/indexes/types.js";
 import { ProjectQueueService } from "../../src/services/ProjectQueueService.js";
 import {
   type PersistedSessionQueuedMessage,
   SessionQueuePersistenceService,
 } from "../../src/services/SessionQueuePersistenceService.js";
-import type { Project } from "../../src/supervisor/types.js";
+import type { ISessionReader } from "../../src/sessions/types.js";
+import type { Project, SessionSummary } from "../../src/supervisor/types.js";
 import type { SessionMetadataService } from "../../src/metadata/index.js";
 
 describe("Project Queue Routes", () => {
@@ -44,7 +46,9 @@ describe("Project Queue Routes", () => {
     await fs.rm(testDir, { recursive: true, force: true });
   });
 
-  function createRoutes() {
+  function createRoutes(
+    overrides: Partial<Parameters<typeof createProjectQueueRoutes>[0]> = {},
+  ) {
     return createProjectQueueRoutes({
       scanner: {
         getOrCreateProject: vi.fn(async (id) =>
@@ -52,12 +56,16 @@ describe("Project Queue Routes", () => {
         ),
       } as unknown as ProjectScanner,
       projectQueueService: service,
+      ...overrides,
     });
   }
 
-  function createGlobalRoutes() {
+  function createGlobalRoutes(
+    overrides: Partial<Parameters<typeof createGlobalProjectQueueRoutes>[0]> = {},
+  ) {
     return createGlobalProjectQueueRoutes({
       projectQueueService: service,
+      ...overrides,
     });
   }
 
@@ -181,6 +189,59 @@ describe("Project Queue Routes", () => {
     ]);
   });
 
+  it("enriches existing-session targets with cached session titles", async () => {
+    await service.createItem({
+      projectId,
+      projectPath: project.path,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "first queued item" },
+      },
+    });
+    const reader = makeReader();
+    const summary = makeSessionSummary("session-1", "Target session title");
+    const sessionIndexService = makeSessionIndexService(summary);
+    const readerFactory = vi.fn(() => reader);
+
+    const projectRoutes = createRoutes({
+      readerFactory,
+      sessionIndexService,
+    });
+    const projectResponse = await projectRoutes.request(`/${projectId}/queue`);
+
+    expect(projectResponse.status).toBe(200);
+    const projectBody = await projectResponse.json();
+    expect(projectBody.items[0]).toMatchObject({
+      targetTitle: "Target session title",
+      targetFullTitle: "Full Target session title",
+    });
+    expect(sessionIndexService.getSessionSummaryWithCache).toHaveBeenCalledWith(
+      project.sessionDir,
+      project.id,
+      "session-1",
+      reader,
+    );
+
+    const globalRoutes = createGlobalRoutes({
+      scanner: {
+        getOrCreateProject: vi.fn(async (id) =>
+          id === projectId ? project : null,
+        ),
+      } as unknown as ProjectScanner,
+      readerFactory,
+      sessionIndexService,
+    });
+    const globalResponse = await globalRoutes.request("/");
+
+    expect(globalResponse.status).toBe(200);
+    const globalBody = await globalResponse.json();
+    expect(globalBody.items[0]).toMatchObject({
+      projectId,
+      targetTitle: "Target session title",
+      targetFullTitle: "Full Target session title",
+    });
+  });
+
   it("includes recovered session queue entries in the global list", async () => {
     const sessionQueuePersistenceService = new SessionQueuePersistenceService({
       dataDir: testDir,
@@ -273,3 +334,44 @@ describe("Project Queue Routes", () => {
     });
   });
 });
+
+function makeSessionSummary(
+  sessionId: string,
+  title: string,
+): SessionSummary {
+  return {
+    id: sessionId,
+    projectId: toUrlProjectId("/tmp/project-queue-route"),
+    title,
+    fullTitle: `Full ${title}`,
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:01:00.000Z",
+    messageCount: 2,
+    ownership: { owner: "none" },
+    provider: "claude",
+  };
+}
+
+function makeReader(): ISessionReader {
+  return {
+    listSessions: vi.fn(async () => []),
+    getSessionSummary: vi.fn(async () => null),
+    getSession: vi.fn(async () => null),
+    getSessionSummaryIfChanged: vi.fn(async () => null),
+    getAgentMappings: vi.fn(async () => []),
+    getAgentSession: vi.fn(async () => null),
+  };
+}
+
+function makeSessionIndexService(
+  summary: SessionSummary | null,
+): ISessionIndexService {
+  return {
+    initialize: vi.fn(async () => {}),
+    getSessionsWithCache: vi.fn(async () => (summary ? [summary] : [])),
+    getSessionSummaryWithCache: vi.fn(async () => summary),
+    getSessionTitle: vi.fn(async () => summary?.title ?? null),
+    invalidateSession: vi.fn(),
+    clearCache: vi.fn(),
+  };
+}

@@ -33,6 +33,7 @@ const project: Project = {
 function makeItem(
   id: string,
   status: ProjectQueueItemSummary["status"] = "queued",
+  overrides: Partial<ProjectQueueItemSummary> = {},
 ): ProjectQueueItemSummary {
   return {
     id,
@@ -45,6 +46,7 @@ function makeItem(
     status,
     attachmentCount: 0,
     ...(status === "failed" ? { lastError: "Provider unavailable" } : {}),
+    ...overrides,
   };
 }
 
@@ -127,6 +129,20 @@ describe("ProjectQueueSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(handlers.onDeleteItem).toHaveBeenCalledWith("project-1", "1");
+  });
+
+  it("renders target session titles when available", () => {
+    renderSection([
+      makeItem("1", "queued", {
+        targetTitle: "Investigate failing build",
+        targetFullTitle: "Investigate failing build in CI",
+      }),
+    ]);
+
+    expect(
+      screen.getByRole("link", { name: "Investigate failing build" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Session session-" })).toBeNull();
   });
 
   it("renders recovered session queues above project queue items", () => {

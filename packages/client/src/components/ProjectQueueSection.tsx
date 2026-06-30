@@ -49,6 +49,8 @@ function formatRelativeTime(timestamp: string, t: Translate): string {
 }
 
 function targetLabel(item: ProjectQueueItemSummary, t: Translate): string {
+  const targetTitle = item.targetTitle?.trim();
+  if (targetTitle) return targetTitle;
   return item.target.type === "new-session"
     ? t("projectQueueTargetNewSession")
     : t("projectQueueTargetSession", {

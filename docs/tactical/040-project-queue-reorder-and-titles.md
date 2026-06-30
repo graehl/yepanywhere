@@ -1,6 +1,6 @@
 # Project Queue Reorder And Titles
 
-Status: first implementation slice complete; queue API/UI chunks remain.
+Status: title enrichment slice complete; move-to-top API/UI chunks remain.
 
 Topic: project-queue-reorder-and-titles
 
@@ -56,13 +56,13 @@ Implementation status:
 - [x] Cache-first single-session summary primitive.
 - [x] Title lookup delegates to the summary primitive.
 - [x] Provider summary resolution uses the index service when available.
-- [ ] Project Queue API title enrichment.
+- [x] Project Queue API title enrichment.
 - [ ] Project-local move-to-top mutation.
 - [ ] Client hook and manager UI controls.
 
 ## Remaining Implementation
 
-1. Enrich queue read models with target-session display metadata.
+1. Enrich queue read models with target-session display metadata. (Complete)
    Existing-session items should include nullable target title fields resolved
    through `findSessionSummaryAcrossProviders(...)` or an equivalent helper
    that uses the cache-first summary path.

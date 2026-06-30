@@ -87,6 +87,8 @@ export interface ProjectQueueItemSummary {
   id: string;
   projectId: UrlProjectId;
   target: ProjectQueueTarget;
+  targetTitle?: string | null;
+  targetFullTitle?: string | null;
   messagePreview: string;
   message: ProjectQueueMessage;
   createdAt: string;

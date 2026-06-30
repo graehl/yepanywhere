@@ -198,15 +198,17 @@ describe("GET /version", () => {
     expect(fetchCount).toBe(2);
   });
 
-  it("includes capabilities and resumeProtocolVersion", async () => {
+  it("includes capabilities and compatibility metadata", async () => {
     mockFetch(() => new Response(null, { status: 204 }));
 
-    const { createVersionRoutes } = await importVersion();
+    const { REMOTE_COMPATIBILITY_LEVEL, createVersionRoutes } =
+      await importVersion();
     const routes = createVersionRoutes();
     const res = await routes.request("/");
     const json = await res.json();
 
     expect(json.resumeProtocolVersion).toBeTypeOf("number");
+    expect(json.remoteCompatibilityLevel).toBe(REMOTE_COMPATIBILITY_LEVEL);
     expect(Array.isArray(json.capabilities)).toBe(true);
   });
 

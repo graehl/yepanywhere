@@ -190,6 +190,7 @@ export function createWsHandler(
             appVersion: msg.appVersion,
             resumeProtocolVersion: msg.resumeProtocolVersion,
             renderProtocolVersion: msg.renderProtocolVersion,
+            remoteCompatibilityLevel: msg.remoteCompatibilityLevel,
             capabilities: msg.capabilities,
           },
           channel,
@@ -213,6 +214,7 @@ export function createWsHandler(
             appVersion: msg.appVersion,
             resumeProtocolVersion: msg.resumeProtocolVersion,
             renderProtocolVersion: msg.renderProtocolVersion,
+            remoteCompatibilityLevel: msg.remoteCompatibilityLevel,
             capabilities: msg.capabilities ? [...msg.capabilities] : undefined,
           });
 
@@ -223,6 +225,7 @@ export function createWsHandler(
               appVersion: msg.appVersion,
               resumeProtocolVersion: msg.resumeProtocolVersion,
               renderProtocolVersion: msg.renderProtocolVersion,
+              remoteCompatibilityLevel: msg.remoteCompatibilityLevel,
               capabilities: msg.capabilities,
             },
             "Server registered",
@@ -279,6 +282,7 @@ export function createWsHandler(
             appVersion: result.server?.appVersion,
             resumeProtocolVersion: result.server?.resumeProtocolVersion,
             renderProtocolVersion: result.server?.renderProtocolVersion,
+            remoteCompatibilityLevel: result.server?.remoteCompatibilityLevel,
             capabilities: result.server?.capabilities
               ? [...result.server.capabilities]
               : undefined,

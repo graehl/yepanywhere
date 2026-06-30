@@ -36,6 +36,7 @@ describe("relay-protocol", () => {
           appVersion: "0.2.0",
           resumeProtocolVersion: 2,
           renderProtocolVersion: 1,
+          remoteCompatibilityLevel: 10,
           capabilities: ["git-status", "deviceBridge"],
         };
         expect(isRelayServerRegister(msg)).toBe(true);

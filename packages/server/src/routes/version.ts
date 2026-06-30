@@ -200,6 +200,8 @@ export interface VersionInfo {
   installSource?: InstallSource;
   /** Session resume protocol version supported by this server. */
   resumeProtocolVersion: number;
+  /** Coarse hosted remote UI/server compatibility level. */
+  remoteCompatibilityLevel: number;
   /** Feature capabilities supported by this server. Used by clients to show/hide UI. */
   capabilities: string[];
   /**
@@ -223,6 +225,8 @@ export interface VersionInfo {
 
 /** Resume protocol version with mutual nonce challenge + server proof binding. */
 export const RESUME_PROTOCOL_VERSION = 3;
+/** Coarse hosted remote UI/server compatibility generation. */
+export const REMOTE_COMPATIBILITY_LEVEL = 10;
 
 /** Base capabilities always advertised. */
 const BASE_CAPABILITIES = [
@@ -277,6 +281,7 @@ export interface ServerCompatibilityInfo {
   appVersion: string;
   installSource: InstallSource;
   resumeProtocolVersion: number;
+  remoteCompatibilityLevel: number;
   renderProtocolVersion?: number;
   capabilities: string[];
   clientDefaults?: ClientDefaults;
@@ -346,6 +351,7 @@ export function getServerCompatibilityInfo(
     appVersion: versionInfo.version,
     installSource: versionInfo.installSource,
     resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
+    remoteCompatibilityLevel: REMOTE_COMPATIBILITY_LEVEL,
     capabilities: getServerCapabilities(options),
     ...(clientDefaults ? { clientDefaults } : {}),
   }));
@@ -387,6 +393,7 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
       updateAvailable,
       installSource: currentVersionInfo.installSource,
       resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
+      remoteCompatibilityLevel: REMOTE_COMPATIBILITY_LEVEL,
       capabilities,
       voiceBackends,
       voiceBackendStatuses,

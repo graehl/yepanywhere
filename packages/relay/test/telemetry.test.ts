@@ -34,12 +34,14 @@ describe("Relay telemetry", () => {
       installId: "install-1",
       appVersion: "1.2.3",
       resumeProtocolVersion: 2,
+      remoteCompatibilityLevel: 10,
       capabilities: ["git-status"],
     });
     telemetry.record({
       event: "client_connect_success",
       username: "alice",
       installId: "install-1",
+      remoteCompatibilityLevel: 10,
     });
 
     await telemetry.close();
@@ -57,6 +59,7 @@ describe("Relay telemetry", () => {
       installId: "install-1",
       appVersion: "1.2.3",
       resumeProtocolVersion: 2,
+      remoteCompatibilityLevel: 10,
       capabilities: ["git-status"],
     });
     expect(content[1]).toMatchObject({
@@ -64,6 +67,7 @@ describe("Relay telemetry", () => {
       relayNodeId: "relay-test",
       username: "alice",
       installId: "install-1",
+      remoteCompatibilityLevel: 10,
     });
   });
 

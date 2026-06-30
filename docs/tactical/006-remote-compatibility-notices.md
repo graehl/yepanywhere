@@ -16,6 +16,11 @@ Progress:
   warning-path compatibility fallback during the grace window rather than an
   immediate hosted-client cutoff. See
   [`011-relay-srp-v2-v3-grace-period.md`](011-relay-srp-v2-v3-grace-period.md).
+- [x] 2026-06-30: Add a coarse hosted-remote compatibility level to
+  `/api/version` and relay compatibility metadata. See
+  [`../../topics/remote-hosted-compatibility.md`](../../topics/remote-hosted-compatibility.md).
+- [ ] 2026-06-30: Show a hosted remote warning for missing or lower
+  `remoteCompatibilityLevel`.
 
 ## Context
 
@@ -52,6 +57,7 @@ The server already exposes enough metadata for a first slice through
 - `resumeProtocolVersion`
 - `capabilities`
 - `installSource`
+- `remoteCompatibilityLevel`
 
 The relay registration path also reports optional compatibility metadata for
 observability:
@@ -59,6 +65,7 @@ observability:
 - `appVersion`
 - `resumeProtocolVersion`
 - `renderProtocolVersion`
+- `remoteCompatibilityLevel`
 - `capabilities`
 
 Relay resume protocol warnings should distinguish three cases:
@@ -239,12 +246,20 @@ the compatibility concern:
   once it exists.
 - `capabilities` are useful for feature-level notice copy, but they should not
   be the only basis for a hard cutoff.
+- `remoteCompatibilityLevel` is the coarse hosted-client/server drift signal:
+  use it to warn that the hosted client broadly expects a newer server
+  generation, not to replace exact feature capabilities or protocol versions.
 
 Use versions for release-specific guidance:
 
 - known security baseline releases;
 - known recommended-update releases;
 - generic current/latest update state.
+
+For the first `remoteCompatibilityLevel` rollout, older servers that omit the
+field should evaluate as level `0`. The hosted client should initially require
+level `0` but recommend level `10`, producing a strong non-blocking update
+warning for missing or lower levels.
 
 Do not treat dev/git versions as older unless they can be safely compared. For
 `git describe`-style versions such as `0.4.0-3-gabcdef`, compare them as newer

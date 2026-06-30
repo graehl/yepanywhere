@@ -25,6 +25,8 @@ export interface RelayServerCompatibilityMetadata {
   resumeProtocolVersion?: number;
   /** Future render protocol version for hosted client/server compatibility. */
   renderProtocolVersion?: number;
+  /** Coarse hosted remote UI/server compatibility level. */
+  remoteCompatibilityLevel?: number;
   /** Feature capabilities supported by this server. */
   capabilities?: string[];
 }
@@ -48,6 +50,8 @@ export interface RelayServerRegister {
   resumeProtocolVersion?: number;
   /** Optional future render protocol version. */
   renderProtocolVersion?: number;
+  /** Optional hosted remote UI/server compatibility level. */
+  remoteCompatibilityLevel?: number;
   /** Optional feature capabilities. */
   capabilities?: string[];
 }
@@ -154,6 +158,8 @@ export function isRelayServerRegister(
       typeof register.resumeProtocolVersion === "number") &&
     (register.renderProtocolVersion === undefined ||
       typeof register.renderProtocolVersion === "number") &&
+    (register.remoteCompatibilityLevel === undefined ||
+      typeof register.remoteCompatibilityLevel === "number") &&
     (register.capabilities === undefined ||
       (Array.isArray(register.capabilities) &&
         register.capabilities.every(
@@ -180,6 +186,8 @@ export function isRelayServerChannelRegister(
       typeof register.resumeProtocolVersion === "number") &&
     (register.renderProtocolVersion === undefined ||
       typeof register.renderProtocolVersion === "number") &&
+    (register.remoteCompatibilityLevel === undefined ||
+      typeof register.remoteCompatibilityLevel === "number") &&
     (register.capabilities === undefined ||
       (Array.isArray(register.capabilities) &&
         register.capabilities.every(

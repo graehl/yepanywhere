@@ -230,6 +230,7 @@ describe("Relay Server E2E", () => {
         installId,
         appVersion: "1.2.3",
         resumeProtocolVersion: 2,
+        remoteCompatibilityLevel: 10,
         capabilities: ["git-status", "deviceBridge"],
       };
 
@@ -245,12 +246,17 @@ describe("Relay Server E2E", () => {
           connectedAt: string;
           appVersion?: string;
           resumeProtocolVersion?: number;
+          remoteCompatibilityLevel?: number;
           capabilities?: string[];
           state: string;
         }>;
         compatibility: {
           appVersions: Array<{ value: string | null; count: number }>;
           resumeProtocolVersions: Array<{
+            value: number | null;
+            count: number;
+          }>;
+          remoteCompatibilityLevels: Array<{
             value: number | null;
             count: number;
           }>;
@@ -268,6 +274,7 @@ describe("Relay Server E2E", () => {
         state: "waiting",
         appVersion: "1.2.3",
         resumeProtocolVersion: 2,
+        remoteCompatibilityLevel: 10,
         capabilities: ["git-status", "deviceBridge"],
       });
       expect(activeServer?.connectedAt).toEqual(expect.any(String));
@@ -277,6 +284,10 @@ describe("Relay Server E2E", () => {
       });
       expect(status.compatibility.resumeProtocolVersions).toContainEqual({
         value: 2,
+        count: 1,
+      });
+      expect(status.compatibility.remoteCompatibilityLevels).toContainEqual({
+        value: 10,
         count: 1,
       });
       expect(status.compatibility.capabilities).toContainEqual({

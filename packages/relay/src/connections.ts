@@ -52,6 +52,7 @@ export interface ActiveRelayServerSummary {
   appVersions: SummaryBucket<string>[];
   resumeProtocolVersions: SummaryBucket<number>[];
   renderProtocolVersions: SummaryBucket<number>[];
+  remoteCompatibilityLevels: SummaryBucket<number>[];
   capabilities: Array<{ capability: string; count: number }>;
 }
 
@@ -134,6 +135,7 @@ export class ConnectionManager {
       appVersion: metadata.appVersion,
       resumeProtocolVersion: metadata.resumeProtocolVersion,
       renderProtocolVersion: metadata.renderProtocolVersion,
+      remoteCompatibilityLevel: metadata.remoteCompatibilityLevel,
       capabilities: metadata.capabilities
         ? [...metadata.capabilities]
         : undefined,
@@ -357,6 +359,10 @@ export class ConnectionManager {
       renderProtocolVersions: summarizeOptionalValues(
         activeServers,
         (server) => server.renderProtocolVersion ?? null,
+      ),
+      remoteCompatibilityLevels: summarizeOptionalValues(
+        activeServers,
+        (server) => server.remoteCompatibilityLevel ?? null,
       ),
       capabilities: summarizeCapabilities(activeServers),
     };

@@ -819,6 +819,7 @@ async function startServer() {
         appVersion: compatibility.appVersion,
         resumeProtocolVersion: compatibility.resumeProtocolVersion,
         renderProtocolVersion: compatibility.renderProtocolVersion,
+        remoteCompatibilityLevel: compatibility.remoteCompatibilityLevel,
         capabilities: compatibility.capabilities,
         onRelayConnection: acceptRelayConnection,
         onStatusChange: (status) => {
@@ -834,6 +835,7 @@ async function startServer() {
           appVersion: compatibility.appVersion,
           resumeProtocolVersion: compatibility.resumeProtocolVersion,
           renderProtocolVersion: compatibility.renderProtocolVersion,
+          remoteCompatibilityLevel: compatibility.remoteCompatibilityLevel,
           capabilities: compatibility.capabilities,
           onRelayConnection: acceptRelayConnection,
           onStatusChange: (status) => {

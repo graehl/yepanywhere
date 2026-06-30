@@ -35,6 +35,7 @@ interface ServerCompatibilityFields {
   appVersion?: string;
   resumeProtocolVersion?: number;
   renderProtocolVersion?: number;
+  remoteCompatibilityLevel?: number;
   capabilities?: string[];
 }
 

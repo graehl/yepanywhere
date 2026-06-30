@@ -37,6 +37,8 @@ export interface RelayClientConfig {
   resumeProtocolVersion?: number;
   /** Optional future render protocol version for relay observability. */
   renderProtocolVersion?: number;
+  /** Optional hosted remote UI/server compatibility level for relay observability. */
+  remoteCompatibilityLevel?: number;
   /** Optional server capabilities for relay observability. */
   capabilities?: string[];
   /**
@@ -252,6 +254,7 @@ export class RelayClientService {
             appVersion: this.config.appVersion,
             resumeProtocolVersion: this.config.resumeProtocolVersion,
             renderProtocolVersion: this.config.renderProtocolVersion,
+            remoteCompatibilityLevel: this.config.remoteCompatibilityLevel,
             capabilities: this.config.capabilities,
           } satisfies RelayServerChannelRegister)
         : ({
@@ -261,6 +264,7 @@ export class RelayClientService {
             appVersion: this.config.appVersion,
             resumeProtocolVersion: this.config.resumeProtocolVersion,
             renderProtocolVersion: this.config.renderProtocolVersion,
+            remoteCompatibilityLevel: this.config.remoteCompatibilityLevel,
             capabilities: this.config.capabilities,
           } satisfies RelayServerRegister);
     ws.send(JSON.stringify(register));

@@ -332,6 +332,8 @@ export interface VersionInfo {
   installSource?: "npm-global" | "source" | "release-package" | "unknown";
   /** Session resume protocol version supported by server (undefined on older servers). */
   resumeProtocolVersion?: number;
+  /** Coarse hosted remote UI/server compatibility level. Undefined on older servers. */
+  remoteCompatibilityLevel?: number;
   /** Feature capabilities supported by the server. Undefined on older servers. */
   capabilities?: string[];
   /** Server-routed speech backend ids validated by the server. */

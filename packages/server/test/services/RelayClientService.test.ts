@@ -139,6 +139,7 @@ describe("RelayClientService", () => {
         appVersion: "1.2.3",
         resumeProtocolVersion: 2,
         renderProtocolVersion: 1,
+        remoteCompatibilityLevel: 10,
         capabilities: ["git-status", "deviceBridge"],
         onRelayConnection: mockOnRelayConnection,
       });
@@ -153,6 +154,7 @@ describe("RelayClientService", () => {
         appVersion: "1.2.3",
         resumeProtocolVersion: 2,
         renderProtocolVersion: 1,
+        remoteCompatibilityLevel: 10,
         capabilities: ["git-status", "deviceBridge"],
       });
     });

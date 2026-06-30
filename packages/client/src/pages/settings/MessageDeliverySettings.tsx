@@ -1,3 +1,9 @@
+import {
+  DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
+  DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
+  MAX_PROJECT_QUEUE_QUIET_SECONDS,
+  clampProjectQueueQuietSeconds,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CommittedRangeInput } from "../../components/ui/CommittedRangeInput";
 import { useServerSettings } from "../../hooks/useServerSettings";
@@ -7,7 +13,7 @@ import { useSettingsUndo } from "./SettingsUndoContext";
 
 const JOIN_WINDOW_SLIDER_MAX_SECONDS = 120;
 const JOIN_WINDOW_MAX_SECONDS = 86400;
-const JOIN_WINDOW_SAVE_DEBOUNCE_MS = 400;
+const SECONDS_SLIDER_SAVE_DEBOUNCE_MS = 400;
 
 function parseJoinWindowSeconds(value: string): number {
   const parsed = Number.parseInt(value, 10);
@@ -15,11 +21,20 @@ function parseJoinWindowSeconds(value: string): number {
   return Math.min(parsed, JOIN_WINDOW_MAX_SECONDS);
 }
 
+function parseProjectQueueQuietSeconds(value: string): number {
+  const parsed = Number.parseInt(value, 10);
+  return (
+    clampProjectQueueQuietSeconds(parsed) ?? DEFAULT_PROJECT_QUEUE_QUIET_SECONDS
+  );
+}
+
 interface MessageDeliveryBaseline {
   joinWindowSeconds: number;
+  projectQueueQuietSeconds: number;
   composeAnchorsEnabled: boolean;
   steerNowDefault: boolean;
   patientQueueDefault: boolean;
+  projectQueueCtrlEnterEnabled: boolean;
 }
 
 /**
@@ -35,28 +50,46 @@ export function MessageDeliverySettings() {
   // null drafts mirror the server value; non-null while the user is editing
   // or a save is in flight, cleared once the server catches up.
   const [draftJoinWindow, setDraftJoinWindow] = useState<string | null>(null);
+  const [draftProjectQueueQuiet, setDraftProjectQueueQuiet] = useState<
+    string | null
+  >(null);
   const [draftAnchors, setDraftAnchors] = useState<boolean | null>(null);
   const [draftSteerNow, setDraftSteerNow] = useState<boolean | null>(null);
   const [draftPatientQueue, setDraftPatientQueue] = useState<boolean | null>(
     null,
   );
+  const [draftProjectQueueCtrlEnter, setDraftProjectQueueCtrlEnter] = useState<
+    boolean | null
+  >(null);
   const baselineRef = useRef<MessageDeliveryBaseline | null>(null);
 
   const serverJoinWindowSeconds = settings?.deferredJoinWindowSeconds ?? 0;
+  const serverProjectQueueQuietSeconds =
+    clampProjectQueueQuietSeconds(settings?.projectQueueQuietSeconds) ??
+    DEFAULT_PROJECT_QUEUE_QUIET_SECONDS;
   const serverComposeAnchorsEnabled = settings?.composeAnchorsEnabled ?? false;
   const serverSteerNowDefault =
     settings?.clientDefaults?.steerNowDefault ?? false;
   const serverPatientQueueDefault =
     settings?.clientDefaults?.patientQueueDefault ?? false;
+  const serverProjectQueueCtrlEnterEnabled =
+    settings?.clientDefaults?.projectQueueCtrlEnterEnabled ??
+    DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED;
 
   useEffect(() => {
     if (settings && !baselineRef.current) {
       baselineRef.current = {
         joinWindowSeconds: settings.deferredJoinWindowSeconds ?? 0,
+        projectQueueQuietSeconds:
+          clampProjectQueueQuietSeconds(settings.projectQueueQuietSeconds) ??
+          DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
         composeAnchorsEnabled: settings.composeAnchorsEnabled ?? false,
         steerNowDefault: settings.clientDefaults?.steerNowDefault ?? false,
         patientQueueDefault:
           settings.clientDefaults?.patientQueueDefault ?? false,
+        projectQueueCtrlEnterEnabled:
+          settings.clientDefaults?.projectQueueCtrlEnterEnabled ??
+          DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
       };
     }
   }, [settings]);
@@ -64,10 +97,17 @@ export function MessageDeliverySettings() {
   const shownJoinWindowText =
     draftJoinWindow ?? String(serverJoinWindowSeconds);
   const shownJoinWindowSeconds = parseJoinWindowSeconds(shownJoinWindowText);
+  const shownProjectQueueQuietText =
+    draftProjectQueueQuiet ?? String(serverProjectQueueQuietSeconds);
+  const shownProjectQueueQuietSeconds = parseProjectQueueQuietSeconds(
+    shownProjectQueueQuietText,
+  );
   const shownAnchors = draftAnchors ?? serverComposeAnchorsEnabled;
   const shownSteerNowDefault = draftSteerNow ?? serverSteerNowDefault;
   const shownPatientQueueDefault =
     draftPatientQueue ?? serverPatientQueueDefault;
+  const shownProjectQueueCtrlEnter =
+    draftProjectQueueCtrlEnter ?? serverProjectQueueCtrlEnterEnabled;
 
   // Debounced auto-save for the join window (sliders fire continuously).
   useEffect(() => {
@@ -78,9 +118,21 @@ export function MessageDeliverySettings() {
       void updateSettings({ deferredJoinWindowSeconds: parsed }).catch(() => {
         // surfaced via the hook's error state
       });
-    }, JOIN_WINDOW_SAVE_DEBOUNCE_MS);
+    }, SECONDS_SLIDER_SAVE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [draftJoinWindow, serverJoinWindowSeconds, updateSettings]);
+
+  useEffect(() => {
+    if (draftProjectQueueQuiet === null) return;
+    const parsed = parseProjectQueueQuietSeconds(draftProjectQueueQuiet);
+    if (parsed === serverProjectQueueQuietSeconds) return;
+    const timer = setTimeout(() => {
+      void updateSettings({ projectQueueQuietSeconds: parsed }).catch(() => {
+        // surfaced via the hook's error state
+      });
+    }, SECONDS_SLIDER_SAVE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [draftProjectQueueQuiet, serverProjectQueueQuietSeconds, updateSettings]);
 
   // Drop drafts once the server reflects them.
   useEffect(() => {
@@ -91,6 +143,15 @@ export function MessageDeliverySettings() {
       setDraftJoinWindow(null);
     }
   }, [draftJoinWindow, serverJoinWindowSeconds]);
+  useEffect(() => {
+    if (
+      draftProjectQueueQuiet !== null &&
+      parseProjectQueueQuietSeconds(draftProjectQueueQuiet) ===
+        serverProjectQueueQuietSeconds
+    ) {
+      setDraftProjectQueueQuiet(null);
+    }
+  }, [draftProjectQueueQuiet, serverProjectQueueQuietSeconds]);
   useEffect(() => {
     if (draftAnchors !== null && draftAnchors === serverComposeAnchorsEnabled) {
       setDraftAnchors(null);
@@ -109,28 +170,42 @@ export function MessageDeliverySettings() {
       setDraftPatientQueue(null);
     }
   }, [draftPatientQueue, serverPatientQueueDefault]);
+  useEffect(() => {
+    if (
+      draftProjectQueueCtrlEnter !== null &&
+      draftProjectQueueCtrlEnter === serverProjectQueueCtrlEnterEnabled
+    ) {
+      setDraftProjectQueueCtrlEnter(null);
+    }
+  }, [draftProjectQueueCtrlEnter, serverProjectQueueCtrlEnterEnabled]);
 
   const baseline = baselineRef.current;
   const canUndo =
     !!baseline &&
     (shownJoinWindowSeconds !== baseline.joinWindowSeconds ||
+      shownProjectQueueQuietSeconds !== baseline.projectQueueQuietSeconds ||
       shownAnchors !== baseline.composeAnchorsEnabled ||
       shownSteerNowDefault !== baseline.steerNowDefault ||
-      shownPatientQueueDefault !== baseline.patientQueueDefault);
+      shownPatientQueueDefault !== baseline.patientQueueDefault ||
+      shownProjectQueueCtrlEnter !== baseline.projectQueueCtrlEnterEnabled);
 
   const undo = useCallback(async () => {
     const snapshot = baselineRef.current;
     if (!snapshot) return;
     setDraftJoinWindow(null);
+    setDraftProjectQueueQuiet(null);
     setDraftAnchors(null);
     setDraftSteerNow(null);
     setDraftPatientQueue(null);
+    setDraftProjectQueueCtrlEnter(null);
     await updateSettings({
       deferredJoinWindowSeconds: snapshot.joinWindowSeconds,
+      projectQueueQuietSeconds: snapshot.projectQueueQuietSeconds,
       composeAnchorsEnabled: snapshot.composeAnchorsEnabled,
       clientDefaults: {
         steerNowDefault: snapshot.steerNowDefault,
         patientQueueDefault: snapshot.patientQueueDefault,
+        projectQueueCtrlEnterEnabled: snapshot.projectQueueCtrlEnterEnabled,
       },
     }).catch(() => {
       // surfaced via the hook's error state
@@ -196,6 +271,43 @@ export function MessageDeliverySettings() {
           </span>
         </div>
 
+        <div className="settings-item model-settings-item">
+          <div className="settings-item-info">
+            <strong>{t("messageDeliveryProjectQueueQuietTitle")}</strong>
+            <p>{t("messageDeliveryProjectQueueQuietDescription")}</p>
+          </div>
+          <span className="output-appearance-slider-row">
+            <CommittedRangeInput
+              id="message-delivery-project-queue-quiet"
+              min={0}
+              max={MAX_PROJECT_QUEUE_QUIET_SECONDS}
+              step={5}
+              value={shownProjectQueueQuietSeconds}
+              aria-label={t("messageDeliveryProjectQueueQuietTitle")}
+              onCommit={(value) => setDraftProjectQueueQuiet(String(value))}
+            />
+            <span className="output-appearance-number-wrap">
+              <input
+                type="number"
+                className="settings-input-small output-appearance-number"
+                min={0}
+                max={MAX_PROJECT_QUEUE_QUIET_SECONDS}
+                value={shownProjectQueueQuietText}
+                onChange={(e) => setDraftProjectQueueQuiet(e.target.value)}
+                aria-label={t("messageDeliveryProjectQueueQuietTitle")}
+              />
+              <span className="output-appearance-unit">s</span>
+            </span>
+          </span>
+          <span className="settings-hint">
+            {shownProjectQueueQuietSeconds === 0
+              ? t("messageDeliveryProjectQueueQuietOffHint")
+              : t("messageDeliveryProjectQueueQuietOnHint", {
+                  seconds: String(shownProjectQueueQuietSeconds),
+                })}
+          </span>
+        </div>
+
         <label className="settings-item">
           <div className="settings-item-info">
             <strong>{t("messageDeliveryComposeAnchorsTitle")}</strong>
@@ -254,6 +366,27 @@ export function MessageDeliverySettings() {
               });
             }}
             aria-label={t("messageDeliveryPatientQueueDefaultTitle")}
+          />
+        </label>
+
+        <label className="settings-item">
+          <div className="settings-item-info">
+            <strong>{t("messageDeliveryProjectQueueShortcutTitle")}</strong>
+            <p>{t("messageDeliveryProjectQueueShortcutDescription")}</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={shownProjectQueueCtrlEnter}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setDraftProjectQueueCtrlEnter(next);
+              void updateSettings({
+                clientDefaults: { projectQueueCtrlEnterEnabled: next },
+              }).catch(() => {
+                // surfaced via the hook's error state
+              });
+            }}
+            aria-label={t("messageDeliveryProjectQueueShortcutTitle")}
           />
         </label>
 

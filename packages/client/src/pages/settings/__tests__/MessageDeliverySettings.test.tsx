@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_PROJECT_QUEUE_QUIET_SECONDS } from "@yep-anywhere/shared";
 import type { ServerSettings } from "../../../api/client";
 import { MessageDeliverySettings } from "../MessageDeliverySettings";
 import {
@@ -77,14 +78,39 @@ describe("MessageDeliverySettings", () => {
     vi.useFakeTimers();
     render(<MessageDeliverySettings />);
 
-    fireEvent.change(screen.getByRole("spinbutton"), {
-      target: { value: "30" },
-    });
+    fireEvent.change(
+      screen.getByRole("spinbutton", {
+        name: "messageDeliveryJoinWindowTitle",
+      }),
+      {
+        target: { value: "30" },
+      },
+    );
     expect(mockUpdateSettings).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(500);
     expect(mockUpdateSettings).toHaveBeenCalledWith({
       deferredJoinWindowSeconds: 30,
+    });
+  });
+
+  it("debounce-saves the Project Queue quiet window from the numeric input", () => {
+    vi.useFakeTimers();
+    render(<MessageDeliverySettings />);
+
+    fireEvent.change(
+      screen.getByRole("spinbutton", {
+        name: "messageDeliveryProjectQueueQuietTitle",
+      }),
+      {
+        target: { value: "60" },
+      },
+    );
+    expect(mockUpdateSettings).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(500);
+    expect(mockUpdateSettings).toHaveBeenCalledWith({
+      projectQueueQuietSeconds: 60,
     });
   });
 
@@ -105,6 +131,18 @@ describe("MessageDeliverySettings", () => {
 
     expect(mockUpdateSettings).toHaveBeenCalledWith({
       deferredJoinWindowSeconds: 45,
+    });
+  });
+
+  it("saves the Project Queue Ctrl+Enter preference immediately", () => {
+    render(<MessageDeliverySettings />);
+
+    fireEvent.click(
+      screen.getByLabelText("messageDeliveryProjectQueueShortcutTitle"),
+    );
+
+    expect(mockUpdateSettings).toHaveBeenCalledWith({
+      clientDefaults: { projectQueueCtrlEnterEnabled: false },
     });
   });
 
@@ -139,8 +177,13 @@ describe("MessageDeliverySettings", () => {
     await holder.registration?.undo();
     expect(mockUpdateSettings).toHaveBeenLastCalledWith({
       deferredJoinWindowSeconds: 20,
+      projectQueueQuietSeconds: DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
       composeAnchorsEnabled: true,
-      clientDefaults: { steerNowDefault: false, patientQueueDefault: false },
+      clientDefaults: {
+        steerNowDefault: false,
+        patientQueueDefault: false,
+        projectQueueCtrlEnterEnabled: true,
+      },
     });
   });
 });

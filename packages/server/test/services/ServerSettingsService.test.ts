@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { MAX_PROJECT_QUEUE_QUIET_SECONDS } from "@yep-anywhere/shared";
 import { ServerSettingsService } from "../../src/services/ServerSettingsService.js";
 
 describe("ServerSettingsService", () => {
@@ -65,5 +66,25 @@ describe("ServerSettingsService", () => {
     await service.initialize();
 
     expect(service.getSetting("heartbeatTurnText")).toBe("checking in");
+  });
+
+  it("clamps oversized Project Queue quiet-window settings on load", async () => {
+    await fs.writeFile(
+      path.join(testDir, "server-settings.json"),
+      JSON.stringify({
+        version: 2,
+        settings: {
+          projectQueueQuietSeconds: 999,
+        },
+      }),
+      "utf-8",
+    );
+    const service = new ServerSettingsService({ dataDir: testDir });
+
+    await service.initialize();
+
+    expect(service.getSetting("projectQueueQuietSeconds")).toBe(
+      MAX_PROJECT_QUEUE_QUIET_SECONDS,
+    );
   });
 });

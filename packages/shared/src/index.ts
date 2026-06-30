@@ -105,6 +105,7 @@ export {
   DEFAULT_CACHE_MISS_BILLING_PROVIDER_FRESH_WINDOW_MINUTES,
   DEFAULT_CACHE_MISS_BILLING_MINIMUM_INPUT_TOKENS,
   DEFAULT_CACHE_MISS_BILLING_SETTINGS,
+  DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
 } from "./types.js";
 
 export type {
@@ -220,6 +221,11 @@ export type {
   ProjectQueueStagedAttachments,
   ProjectQueueTarget,
   UpdateProjectQueueItemRequest,
+} from "./project-queue.js";
+export {
+  DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
+  MAX_PROJECT_QUEUE_QUIET_SECONDS,
+  clampProjectQueueQuietSeconds,
 } from "./project-queue.js";
 
 export type {

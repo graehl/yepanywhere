@@ -4,6 +4,7 @@ import type {
   SessionLivenessSnapshot,
   ShowThinking,
 } from "@yep-anywhere/shared";
+import { DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED } from "@yep-anywhere/shared";
 import type { MouseEvent, RefObject, TouchEvent } from "react";
 import {
   type Dispatch,
@@ -839,6 +840,10 @@ export function MessageInputToolbarView({
   actionsControl,
 }: MessageInputToolbarViewProps) {
   const shortcutsPopoverOpen = shortcutsControl.open;
+  const shortcutSettings =
+    shortcutsControl.canSwapEnterAction && shortcutsControl.onSwapEnterAction
+      ? { onSwapEnterAction: shortcutsControl.onSwapEnterAction }
+      : null;
   const showToolbarStatus =
     visibility.sessionStatus && (statusControl?.showToolbarStatus ?? false);
   const showLivenessChip = statusControl?.showLivenessChip ?? false;
@@ -1642,35 +1647,35 @@ export function MessageInputToolbarView({
                         <span>{t("toolbarShortcutForkAfterSummary")}</span>
                       </div>
                     )}
-                    <div className="session-shortcuts-row session-shortcuts-row-muted">
-                      <span className="session-shortcuts-keys">
-                        {t("toolbarShortcutRightClickLongPress")}
-                      </span>
-                      <span>{t("toolbarShortcutChangeKeys")}</span>
-                    </div>
-                    {shortcutsControl.settingsOpen &&
-                      shortcutsControl.canSwapEnterAction &&
-                      shortcutsControl.onSwapEnterAction && (
-                        <div className="session-shortcuts-settings">
-                          <div className="session-shortcuts-row">
-                            <span className="session-shortcuts-keys">
-                              <kbd>Enter</kbd>
-                            </span>
-                            <span>
-                              {shortcutsControl.enterActionKind === "queue"
-                                ? t("toolbarShortcutQueueCurrentTurn")
-                                : t("toolbarShortcutSteerCurrentTurn")}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            className="session-shortcuts-action"
-                            onClick={shortcutsControl.onSwapEnterAction}
-                          >
-                            {t("toolbarShortcutSwapEnterCtrlEnter")}
-                          </button>
+                    {shortcutSettings && (
+                      <div className="session-shortcuts-row session-shortcuts-row-muted">
+                        <span className="session-shortcuts-keys">
+                          {t("toolbarShortcutRightClickLongPress")}
+                        </span>
+                        <span>{t("toolbarShortcutChangeKeys")}</span>
+                      </div>
+                    )}
+                    {shortcutsControl.settingsOpen && shortcutSettings && (
+                      <div className="session-shortcuts-settings">
+                        <div className="session-shortcuts-row">
+                          <span className="session-shortcuts-keys">
+                            <kbd>Enter</kbd>
+                          </span>
+                          <span>
+                            {shortcutsControl.enterActionKind === "queue"
+                              ? t("toolbarShortcutQueueCurrentTurn")
+                              : t("toolbarShortcutSteerCurrentTurn")}
+                          </span>
                         </div>
-                      )}
+                        <button
+                          type="button"
+                          className="session-shortcuts-action"
+                          onClick={shortcutSettings.onSwapEnterAction}
+                        >
+                          {t("toolbarShortcutSwapEnterCtrlEnter")}
+                        </button>
+                      </div>
+                    )}
                     <div className="session-shortcuts-row">
                       <span className="session-shortcuts-keys">
                         <kbd>Ctrl</kbd>
@@ -2108,6 +2113,15 @@ export function MessageInputToolbar({
     (effectivePrimaryActionKind === "steer" ||
       effectivePrimaryActionKind === "queue");
   const queueActionTooltip = t("toolbarQueueTooltip");
+  const projectQueueCtrlEnterEnabled =
+    versionInfo?.clientDefaults?.projectQueueCtrlEnterEnabled ??
+    DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED;
+  const showProjectQueueShortcut = Boolean(
+    supportsProjectQueue &&
+      toolbarVisibility.projectQueue &&
+      onProjectQueue &&
+      projectQueueCtrlEnterEnabled,
+  );
   const sendTooltip = sendOverride
     ? sendOverride.tooltip
     : effectivePrimaryActionKind === "steer"
@@ -2116,8 +2130,11 @@ export function MessageInputToolbar({
         ? queueActionTooltip
         : t("toolbarSendTooltip");
   const queueTooltip = queueActionTooltip;
-  const queueShortcutLabel =
-    canSwapEnterAction && effectivePrimaryActionKind === "queue"
+  const canSwapDisplayedEnterAction =
+    canSwapEnterAction && !showProjectQueueShortcut;
+  const queueShortcutLabel = showProjectQueueShortcut
+    ? t("toolbarShortcutProjectQueue")
+    : canSwapDisplayedEnterAction && effectivePrimaryActionKind === "queue"
       ? t("toolbarShortcutSteerCurrentTurn")
       : t("toolbarShortcutQueueCurrentTurn");
   const effectiveBtwToolbarMode =
@@ -2516,7 +2533,7 @@ export function MessageInputToolbar({
         setSettingsOpen: setShortcutSettingsOpen,
         hasDualActions,
         enterActionKind: enterActionKind ?? effectivePrimaryActionKind,
-        canSwapEnterAction,
+        canSwapEnterAction: canSwapDisplayedEnterAction,
         onSwapEnterAction,
         queueShortcutLabel,
         canForkAfterSummary,
@@ -2567,7 +2584,9 @@ export function MessageInputToolbar({
             ? {
                 onProjectQueue,
                 canSend,
-                tooltip: t("toolbarProjectQueueTooltip"),
+                tooltip: showProjectQueueShortcut
+                  ? t("toolbarProjectQueueTooltipWithShortcut")
+                  : t("toolbarProjectQueueTooltip"),
               }
             : null,
       }}

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   type PermissionMode,
   type ProjectQueueItem,
   type ProviderName,
@@ -24,7 +25,7 @@ import {
   type ProjectWorkSupervisor,
 } from "./projectWorkIdle.js";
 
-const DEFAULT_IDLE_GRACE_MS = 1000;
+const DEFAULT_IDLE_GRACE_MS = DEFAULT_PROJECT_QUEUE_QUIET_SECONDS * 1000;
 
 export interface ProjectQueueProcessSnapshot
   extends ProjectWorkProcessSnapshot {
@@ -76,6 +77,7 @@ export interface ProjectQueueSchedulerOptions {
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
   externalTracker?: ProjectQueueExternalTracker;
   idleGraceMs?: number;
+  getIdleGraceMs?: () => number;
   getGlobalInstructions?: () => string | undefined;
   onSessionStarted?: (args: {
     item: ProjectQueueItem;
@@ -110,8 +112,12 @@ export class ProjectQueueScheduler {
   private readonly supervisor: ProjectQueueSupervisor;
   private readonly eventBus: EventBus;
   private readonly externalTracker?: ProjectQueueExternalTracker;
-  private readonly idleGraceMs: number;
-  private readonly timers = new Map<UrlProjectId, ReturnType<typeof setTimeout>>();
+  private readonly fixedIdleGraceMs?: number;
+  private readonly getConfiguredIdleGraceMs?: () => number;
+  private readonly timers = new Map<
+    UrlProjectId,
+    ReturnType<typeof setTimeout>
+  >();
   private readonly inFlight = new Set<UrlProjectId>();
   private readonly unsubscribe: () => void;
 
@@ -120,9 +126,10 @@ export class ProjectQueueScheduler {
     this.supervisor = options.supervisor;
     this.eventBus = options.eventBus;
     this.externalTracker = options.externalTracker;
-    this.idleGraceMs = options.idleGraceMs ?? DEFAULT_IDLE_GRACE_MS;
+    this.fixedIdleGraceMs = options.idleGraceMs;
+    this.getConfiguredIdleGraceMs = options.getIdleGraceMs;
     this.unsubscribe = this.eventBus.subscribe(this.handleEvent);
-    this.scheduleAllDispatchableProjects(0);
+    this.scheduleAllDispatchableProjects();
   }
 
   dispose(): void {
@@ -160,7 +167,9 @@ export class ProjectQueueScheduler {
           event.reason === "released"
         ) {
           this.scheduleProjectIfDispatchable(event.projectId);
-        } else if (!this.projectQueueService.hasDispatchableItem(event.projectId)) {
+        } else if (
+          !this.projectQueueService.hasDispatchableItem(event.projectId)
+        ) {
           this.clearProjectTimer(event.projectId);
         }
         break;
@@ -193,15 +202,29 @@ export class ProjectQueueScheduler {
       ).length;
   }
 
-  private scheduleAllDispatchableProjects(delayMs = this.idleGraceMs): void {
-    for (const projectId of this.projectQueueService.getProjectIdsWithDispatchableItems()) {
+  private getIdleGraceMs(): number {
+    const raw =
+      this.fixedIdleGraceMs ??
+      this.getConfiguredIdleGraceMs?.() ??
+      DEFAULT_IDLE_GRACE_MS;
+    return Number.isFinite(raw)
+      ? Math.max(0, Math.round(raw))
+      : DEFAULT_IDLE_GRACE_MS;
+  }
+
+  private scheduleAllDispatchableProjects(
+    delayMs = this.getIdleGraceMs(),
+  ): void {
+    const projectIds =
+      this.projectQueueService.getProjectIdsWithDispatchableItems();
+    for (const projectId of projectIds) {
       this.scheduleProject(projectId, delayMs);
     }
   }
 
   private scheduleProjectIfDispatchable(
     projectId: UrlProjectId,
-    delayMs = this.idleGraceMs,
+    delayMs = this.getIdleGraceMs(),
   ): void {
     if (!this.projectQueueService.hasDispatchableItem(projectId)) {
       this.clearProjectTimer(projectId);
@@ -239,7 +262,8 @@ export class ProjectQueueScheduler {
       const idle = await this.getProjectIdleStatus(projectId);
       if (!idle.idle) return;
 
-      item = await this.projectQueueService.claimNextDispatchableItem(projectId);
+      item =
+        await this.projectQueueService.claimNextDispatchableItem(projectId);
       if (!item) return;
 
       const stillIdle = await this.getProjectIdleStatus(projectId);
@@ -260,7 +284,11 @@ export class ProjectQueueScheduler {
         "Project queue dispatch failed",
       );
       if (item) {
-        await this.projectQueueService.failDispatch(projectId, item.id, message);
+        await this.projectQueueService.failDispatch(
+          projectId,
+          item.id,
+          message,
+        );
       }
     } finally {
       this.inFlight.delete(projectId);
@@ -277,7 +305,11 @@ export class ProjectQueueScheduler {
             permissionMode,
             modelSettings,
           )
-        : await this.dispatchNewSessionItem(item, permissionMode, modelSettings);
+        : await this.dispatchNewSessionItem(
+            item,
+            permissionMode,
+            modelSettings,
+          );
 
     if (isQueueFullResult(result)) {
       throw new Error(`Worker queue is full (${result.maxQueueSize})`);

@@ -1,10 +1,12 @@
 # Project Queue
 
+> Project Queue is a durable, server-owned backlog for work that should start
+> only after a whole project becomes quiet.
+
 Topic: project-queue
 
-Project Queue is a durable, server-owned backlog for work that should start
-only after a whole project becomes quiet. It is project-scoped, not global
-across the YA install, and it is separate from the existing per-session queue.
+It is project-scoped, not global across the YA install, and it is separate from
+the existing per-session queue.
 
 ## Core Semantics
 
@@ -17,8 +19,9 @@ across the YA install, and it is separate from the existing per-session queue.
 - A normal session queue is lower-level than Project Queue. Existing in-turn
   work, direct provider queue depth, deferred queue depth, pending input, and
   retained provider work must all drain before a Project Queue item promotes.
-- Project Queue promotion requires the project to remain idle for a short grace
-  window, then re-checks project idleness immediately after claiming the item.
+- Project Queue promotion requires the project to remain idle for the configured
+  project-quiet window, then re-checks project idleness immediately after
+  claiming the item.
 - Promotion handles one Project Queue item per project-idle boundary. Do not
   drain the project backlog in one burst.
 - A global Project Queue dispatch pause gates promotion above all project
@@ -52,6 +55,22 @@ This means a session with five normal queued messages should finish those
 messages before Project Queue starts. Project Queue is not a competing second
 queue on the same session; it is a project-level backlog that injects only
 after all lower-level work in the project is done.
+
+## Quiet Window
+
+Project Queue's quiet window is a user-interaction patience setting, not a
+replacement for the idle predicate. Per-session direct/deferred/patient queues,
+pending input, active provider turns, retained provider work, worker queue
+entries, and known external ownership still block Project Queue absolutely.
+Once those blockers clear, the project must stay clear for the quiet window
+before one Project Queue item may promote.
+
+The configurable range is 0-300 seconds, default 30 seconds. A value of 0 means
+"promote as soon as the project idle predicate is true", while still performing
+the immediate post-claim idle re-check. The effective minimum is therefore the
+time required for lower-level queues to actually drain plus the configured
+Project Queue quiet window; Project Queue must not rely on the patient-queue
+safety margin as its only protection against launching too early.
 
 ## Project Idle Predicate
 
@@ -117,6 +136,14 @@ queue-blocking work but the current session composer has not yet seen every
 active sibling session in its local inbox tiers. Do not derive this fallback
 from owned-process counts alone; idle retained YA processes should not expose
 the advanced Project Queue action.
+
+When the Project Queue action is visible and the Project Queue Ctrl+Enter
+preference is enabled, Ctrl+Enter submits through Project Queue instead of the
+regular per-session alternate action. This binding applies to both existing
+session composers and the new-session composer. It is intentionally conditioned
+on the same availability as the visible Project Queue button, so hiding or
+disabling Project Queue cannot silently steal Ctrl+Enter from regular
+queue/steer behavior.
 
 ## Inline Rendering
 

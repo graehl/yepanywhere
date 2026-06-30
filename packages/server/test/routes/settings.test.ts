@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MAX_PROJECT_QUEUE_QUIET_SECONDS } from "@yep-anywhere/shared";
 import { createSettingsRoutes } from "../../src/routes/settings.js";
 import type { PublicShareService } from "../../src/services/PublicShareService.js";
 import type {
@@ -251,6 +252,42 @@ describe("Settings Routes", () => {
       });
     });
 
+    it("accepts Project Queue quiet-window settings", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectQueueQuietSeconds: 45,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        projectQueueQuietSeconds: 45,
+      });
+    });
+
+    it("rejects out-of-range Project Queue quiet-window settings", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectQueueQuietSeconds: MAX_PROJECT_QUEUE_QUIET_SECONDS + 1,
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("accepts Grok Build XAI_API_KEY opt-in setting", async () => {
       const onGrokBuildUseXaiApiKeyChanged = vi.fn();
       const routes = createSettingsRoutes({
@@ -359,6 +396,7 @@ describe("Settings Routes", () => {
             },
             busyComposerDefaultAction: "queue",
             collapsedComposerButton: "alternate",
+            projectQueueCtrlEnterEnabled: false,
           },
         }),
       });
@@ -377,6 +415,7 @@ describe("Settings Routes", () => {
           },
           busyComposerDefaultAction: "queue",
           collapsedComposerButton: "alternate",
+          projectQueueCtrlEnterEnabled: false,
           sessionToolbarVisibility: {
             microphone: true,
             waveform: false,

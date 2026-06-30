@@ -17,6 +17,8 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   DEFAULT_CACHE_MISS_BILLING_SETTINGS,
+  DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
+  clampProjectQueueQuietSeconds,
   normalizeYaClientBaseUrlFromShareViewerUrl,
 } from "@yep-anywhere/shared";
 import type { FileAccessSettings } from "../middleware/file-access.js";
@@ -128,6 +130,11 @@ export interface ServerSettings {
    * delivered queued turns. Unset falls back to env `YEP_COMPOSE_ANCHORS`.
    */
   composeAnchorsEnabled?: boolean;
+  /**
+   * Seconds the whole-project idle predicate must remain clear before Project
+   * Queue promotes one item. Range 0-300, default 30.
+   */
+  projectQueueQuietSeconds?: number;
 }
 
 export const CODEX_UPDATE_POLICIES = ["auto", "notify", "off"] as const;
@@ -152,6 +159,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   codexUpdatePolicy: "notify",
   clientDefaults: DEFAULT_CLIENT_DEFAULTS,
   cacheMissBilling: DEFAULT_CACHE_MISS_BILLING_SETTINGS,
+  projectQueueQuietSeconds: DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
 };
 
 function mergeLoadedClientDefaults(
@@ -239,6 +247,9 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
       ...settings.cacheMissBilling?.providerFreshWindowMinutes,
     },
   };
+  normalized.projectQueueQuietSeconds =
+    clampProjectQueueQuietSeconds(settings.projectQueueQuietSeconds) ??
+    DEFAULT_PROJECT_QUEUE_QUIET_SECONDS;
   return normalized;
 }
 

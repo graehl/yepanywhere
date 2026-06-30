@@ -163,6 +163,9 @@ const {
         string,
         { streaming?: boolean; smartTurn?: boolean }
       >;
+      clientDefaults?: {
+        projectQueueCtrlEnterEnabled?: boolean;
+      };
     } | null,
   },
   remoteBasePathState: {
@@ -366,7 +369,8 @@ vi.mock("../../hooks/useSessionToolbarVisibility", () => ({
 }));
 
 vi.mock("../../lib/clientSummaryStore", () => ({
-  reportProjectQueueCollectionSnapshot: mockReportProjectQueueCollectionSnapshot,
+  reportProjectQueueCollectionSnapshot:
+    mockReportProjectQueueCollectionSnapshot,
   useClientSummarySourceKey: () => "host:test",
   useActiveProjectSessionIds: (projectId: string | null | undefined) => {
     if (!projectId) return [];
@@ -439,6 +443,8 @@ vi.mock("../../i18n", () => ({
           "Summarize tailed assistant output after backgrounding (not closing) for {seconds} s.",
         recapModeForkTimedDescription:
           "Summarize from a temporary fork after backgrounding (not closing) for {seconds} s.",
+        toolbarProjectQueueTooltipWithShortcut:
+          "Send after all sessions in this project are idle\nCtrl+Enter",
       };
       let translated = text[key] ?? key;
       if (!vars) return translated;
@@ -1096,9 +1102,13 @@ describe("NewSessionForm", () => {
     fireEvent.change(screen.getByPlaceholderText("newSessionPlaceholder"), {
       target: { value: "queued project work" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "toolbarProjectQueueLabel" }),
+    const projectQueueButton = screen.getByRole("button", {
+      name: "toolbarProjectQueueLabel",
+    });
+    expect(projectQueueButton.getAttribute("title")).toBe(
+      "Send after all sessions in this project are idle\nCtrl+Enter",
     );
+    fireEvent.click(projectQueueButton);
 
     await waitFor(() => {
       expect(mockCreateProjectQueueItem).toHaveBeenCalledTimes(1);
@@ -1130,6 +1140,46 @@ describe("NewSessionForm", () => {
       "host:test",
       { projectId: "project-1", items: [] },
     );
+  });
+
+  it("uses Ctrl+Enter to queue a new session through Project Queue", async () => {
+    toolbarVisibilityState.projectQueue = true;
+    inboxState.active = [
+      { sessionId: "session-active", projectId: "project-1" },
+    ];
+    serverSettingsState.isLoading = false;
+
+    render(
+      <NewSessionForm
+        projectId="project-1"
+        selectedProject={chooserProjects[0]}
+        projects={[...chooserProjects]}
+      />,
+    );
+
+    const composer = screen.getByPlaceholderText("newSessionPlaceholder");
+    fireEvent.change(composer, {
+      target: { value: "queued project shortcut" },
+    });
+    fireEvent.keyDown(composer, { key: "Enter", ctrlKey: true });
+
+    await waitFor(() => {
+      expect(mockCreateProjectQueueItem).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mockCreateProjectQueueItem).toHaveBeenCalledWith(
+      "project-1",
+      expect.objectContaining({
+        message: expect.objectContaining({
+          text: "queued project shortcut",
+          metadata: expect.objectContaining({
+            deliveryIntent: "deferred",
+          }),
+        }),
+        createdFrom: { client: "new-session" },
+      }),
+    );
+    expect(mockStartSession).not.toHaveBeenCalled();
   });
 
   it("queues staged new-session files through Project Queue", async () => {

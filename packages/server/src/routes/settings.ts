@@ -21,7 +21,9 @@ import {
   normalizeYaClientBaseUrlFromShareViewerUrl,
   type PermissionMode,
   DEFAULT_CACHE_MISS_BILLING_SETTINGS,
+  DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
+  MAX_PROJECT_QUEUE_QUIET_SECONDS,
   PROMPT_CACHE_KEEPALIVE_MODES,
   type PromptCacheKeepaliveMode,
   type PromptCacheKeepaliveSettings,
@@ -35,6 +37,7 @@ import {
   type SessionToolbarVisibilityClientDefaults,
   type SpeechSmartTurnClientDefault,
   type ThinkingMode,
+  clampProjectQueueQuietSeconds,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import {
@@ -88,6 +91,7 @@ const CLIENT_DEFAULT_KEYS = [
   "sessionToolbarVisibility",
   "steerNowDefault",
   "patientQueueDefault",
+  "projectQueueCtrlEnterEnabled",
   "compactAtContextPercent",
 ] as const;
 const BUSY_COMPOSER_DEFAULT_ACTIONS = [
@@ -765,6 +769,18 @@ function parseClientDefaults(raw: unknown): ClientDefaults | undefined | null {
       parsed.patientQueueDefault = raw.patientQueueDefault;
     }
   }
+  if ("projectQueueCtrlEnterEnabled" in raw) {
+    if (
+      raw.projectQueueCtrlEnterEnabled === undefined ||
+      raw.projectQueueCtrlEnterEnabled === null
+    ) {
+      parsed.projectQueueCtrlEnterEnabled = undefined;
+    } else if (typeof raw.projectQueueCtrlEnterEnabled !== "boolean") {
+      return null;
+    } else {
+      parsed.projectQueueCtrlEnterEnabled = raw.projectQueueCtrlEnterEnabled;
+    }
+  }
   if ("sessionToolbarVisibility" in raw) {
     const parsedVisibility = parseSessionToolbarVisibilityClientDefaults(
       raw.sessionToolbarVisibility,
@@ -825,6 +841,13 @@ function mergeClientDefaults(
       delete merged.patientQueueDefault;
     } else {
       merged.patientQueueDefault = update.patientQueueDefault;
+    }
+  }
+  if ("projectQueueCtrlEnterEnabled" in update) {
+    if (update.projectQueueCtrlEnterEnabled === undefined) {
+      delete merged.projectQueueCtrlEnterEnabled;
+    } else {
+      merged.projectQueueCtrlEnterEnabled = update.projectQueueCtrlEnterEnabled;
     }
   }
   if ("sessionToolbarVisibility" in update) {
@@ -1141,6 +1164,30 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
           {
             error:
               "deferredJoinWindowSeconds must be a non-negative number of seconds (0 = never join)",
+          },
+          400,
+        );
+      }
+    }
+    if ("projectQueueQuietSeconds" in body) {
+      if (
+        body.projectQueueQuietSeconds === undefined ||
+        body.projectQueueQuietSeconds === null
+      ) {
+        updates.projectQueueQuietSeconds = DEFAULT_PROJECT_QUEUE_QUIET_SECONDS;
+      } else if (
+        typeof body.projectQueueQuietSeconds === "number" &&
+        Number.isFinite(body.projectQueueQuietSeconds) &&
+        body.projectQueueQuietSeconds >= 0 &&
+        body.projectQueueQuietSeconds <= MAX_PROJECT_QUEUE_QUIET_SECONDS
+      ) {
+        updates.projectQueueQuietSeconds =
+          clampProjectQueueQuietSeconds(body.projectQueueQuietSeconds) ??
+          DEFAULT_PROJECT_QUEUE_QUIET_SECONDS;
+      } else {
+        return c.json(
+          {
+            error: `projectQueueQuietSeconds must be a number of seconds from 0 to ${MAX_PROJECT_QUEUE_QUIET_SECONDS}`,
           },
           400,
         );

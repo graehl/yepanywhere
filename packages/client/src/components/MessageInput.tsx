@@ -1,5 +1,6 @@
 import {
   DEFAULT_PATIENT_QUEUE_PATIENCE_SECONDS,
+  DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
   type BusyComposerDefaultAction,
   clampPatientPatienceSeconds,
   type CollapsedComposerButtonPreference,
@@ -26,6 +27,7 @@ import {
   type DraftControls,
   useDraftPersistence,
 } from "../hooks/useDraftPersistence";
+import { useSessionToolbarVisibility } from "../hooks/useSessionToolbarVisibility";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
@@ -61,6 +63,7 @@ import {
 } from "../lib/speechDraftTransaction";
 import { getSlashCommandMenuParts } from "../lib/slashCommands";
 import { isVoiceInputShortcut } from "../lib/voiceInputShortcut";
+import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
 import type { ContextUsage, PermissionMode } from "../types";
 import { AttachmentChip } from "./AttachmentChip";
 import { MessageInputToolbar } from "./MessageInputToolbar";
@@ -476,6 +479,7 @@ export function MessageInput({
   onForkSummaryShortcut,
 }: Props) {
   const { t } = useI18n();
+  const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
   const [text, setText, controls] = useDraftPersistence(draftKey, {
     sessionDraft: draftIndex,
   });
@@ -646,6 +650,15 @@ export function MessageInput({
   // of promoting at the next end of turn.
   const patientQueueEnabled =
     version?.clientDefaults?.patientQueueDefault ?? false;
+  const projectQueueCtrlEnterEnabled =
+    version?.clientDefaults?.projectQueueCtrlEnterEnabled ??
+    DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED;
+  const projectQueueShortcutAvailable =
+    projectQueueCtrlEnterEnabled &&
+    serverSupportsProjectQueue(version) &&
+    toolbarVisibility.projectQueue &&
+    !!onProjectQueue &&
+    !forkSummaryMode;
   const [steerNowOverride, setSteerNowOverride] = useState<boolean | null>(
     null,
   );
@@ -1449,6 +1462,18 @@ export function MessageInput({
       ) {
         e.preventDefault();
         handleForkWithoutSummary();
+        return;
+      }
+
+      if (
+        projectQueueShortcutAvailable &&
+        e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        handleProjectQueue();
         return;
       }
 

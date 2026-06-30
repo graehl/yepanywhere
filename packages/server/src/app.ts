@@ -7,8 +7,10 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import {
+  DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   buildEffectiveAgentContext,
+  clampProjectQueueQuietSeconds,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
@@ -421,9 +423,9 @@ export function createApp(options: AppOptions): AppResult {
     return created;
   };
   const codexDiscoveryIndex = getCodexDiscoveryIndex(CODEX_SESSIONS_DIR);
-  const codexScanner = new CodexSessionScanner({
-    ...(codexDiscoveryIndex ? { discoveryIndex: codexDiscoveryIndex } : {}),
-  });
+  const codexScanner = new CodexSessionScanner(
+    codexDiscoveryIndex ? { discoveryIndex: codexDiscoveryIndex } : {},
+  );
   const geminiScanner = new GeminiSessionScanner();
   const projectScanCachePath = options.dataDir
     ? join(options.dataDir, "indexes", "project-scanner-cache.json")
@@ -787,6 +789,10 @@ export function createApp(options: AppOptions): AppResult {
       attachmentStagingService,
       sessionQueuePersistenceService: options.sessionQueuePersistenceService,
       externalTracker,
+      getIdleGraceMs: () =>
+        (clampProjectQueueQuietSeconds(
+          options.serverSettingsService?.getSetting("projectQueueQuietSeconds"),
+        ) ?? DEFAULT_PROJECT_QUEUE_QUIET_SECONDS) * 1000,
       getGlobalInstructions: () =>
         buildEffectiveAgentContext({
           globalInstructions:
@@ -809,7 +815,10 @@ export function createApp(options: AppOptions): AppResult {
           await metadata.setInitialPrompt(process.sessionId, item.message.text);
         }
         if (item.target.model) {
-          await metadata.setRequestedModel(process.sessionId, item.target.model);
+          await metadata.setRequestedModel(
+            process.sessionId,
+            item.target.model,
+          );
         }
         await metadata.updateMetadata(process.sessionId, {
           ...(process.promptSuggestionMode !== undefined

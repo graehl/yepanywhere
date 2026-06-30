@@ -27,10 +27,7 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitFor(
-  assertion: () => void,
-  timeoutMs = 250,
-): Promise<void> {
+async function waitFor(assertion: () => void, timeoutMs = 250): Promise<void> {
   const started = Date.now();
   let lastError: unknown;
   while (Date.now() - started < timeoutMs) {
@@ -216,6 +213,62 @@ describe("ProjectQueueScheduler", () => {
     expect(service.listProject(projectId).items).toEqual([]);
   });
 
+  it("waits for the configured project quiet window before promoting", async () => {
+    scheduler.dispose();
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      idleGraceMs: 100,
+    });
+
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "wait for quiet" },
+      },
+    });
+
+    await wait(30);
+    expect(supervisor.resumeCalls).toHaveLength(0);
+
+    await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1), 400);
+  });
+
+  it("restarts the project quiet window after session activity", async () => {
+    scheduler.dispose();
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      idleGraceMs: 100,
+    });
+
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "wait after activity" },
+      },
+    });
+
+    await wait(30);
+    eventBus.emit({
+      type: "session-updated",
+      sessionId: "session-1",
+      projectId,
+      updatedAt: new Date().toISOString(),
+      timestamp: new Date().toISOString(),
+    });
+    await wait(40);
+    expect(supervisor.resumeCalls).toHaveLength(0);
+
+    await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1), 400);
+  });
+
   it("materializes staged attachments before promoting a queued new session", async () => {
     scheduler.dispose();
     const projectPath = path.join(testDir, "project");
@@ -368,6 +421,37 @@ describe("ProjectQueueScheduler", () => {
       projectPath: PROJECT_PATH,
       message: { text: "project work waits" },
     });
+  });
+
+  it("waits for per-session deferred queues to drain", async () => {
+    let deferredQueue: unknown[] = [{ id: "deferred-1" }];
+    const process = createProcess(projectId, {
+      getDeferredQueueSummary: () => deferredQueue,
+    });
+    supervisor.processes = [process];
+
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "blocked by session queue" },
+      },
+    });
+
+    await wait(25);
+    expect(supervisor.resumeCalls).toHaveLength(0);
+
+    deferredQueue = [];
+    eventBus.emit({
+      type: "session-updated",
+      sessionId: process.sessionId,
+      projectId,
+      updatedAt: new Date().toISOString(),
+      timestamp: new Date().toISOString(),
+    });
+
+    await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1));
   });
 
   it("waits for external ownership to clear", async () => {

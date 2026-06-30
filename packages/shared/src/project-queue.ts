@@ -9,6 +9,19 @@ import type { UrlProjectId } from "./projectId.js";
 import type { UserMessageMetadata } from "./user-message-metadata.js";
 import type { SessionQueuedMessageSummary } from "./app-types.js";
 
+export const DEFAULT_PROJECT_QUEUE_QUIET_SECONDS = 30;
+export const MAX_PROJECT_QUEUE_QUIET_SECONDS = 5 * 60;
+
+export function clampProjectQueueQuietSeconds(
+  value: unknown,
+): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return Math.min(
+    MAX_PROJECT_QUEUE_QUIET_SECONDS,
+    Math.max(0, Math.round(value)),
+  );
+}
+
 export type ProjectQueueItemStatus = "queued" | "dispatching" | "failed";
 
 export type ProjectQueueDispatchPauseReason = "manual" | "restart";

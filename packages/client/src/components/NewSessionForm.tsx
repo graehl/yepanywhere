@@ -1,5 +1,6 @@
 import {
   DEFAULT_RECAP_AFTER_SECONDS,
+  DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED,
   HELPER_SIDE_MODEL_CHEAPEST,
   HELPER_SIDE_MODEL_SAME_AS_MAIN,
   PROMPT_SUGGESTION_MODES,
@@ -541,6 +542,9 @@ export function NewSessionForm({
   // Server version for voiceBackends advertisement
   const { version: versionInfo } = useVersion();
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
+  const projectQueueCtrlEnterEnabled =
+    versionInfo?.clientDefaults?.projectQueueCtrlEnterEnabled ??
+    DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED;
   const { hasBrowserXaiSttApiKey } = useBrowserXaiSttApiKey();
 
   // Toast for error messages
@@ -1987,14 +1991,13 @@ export function NewSessionForm({
     const clientTimestamp = getServerClockTimestamp(actionAtMs);
     const submittedAt = new Date(clientTimestamp).toISOString();
     const firstStagedRef = stagedRefs[0];
-    const stagedAttachments =
-      firstStagedRef
-        ? {
-            batchId: firstStagedRef.batchId,
-            refs: stagedRefs,
-            updatedAt: new Date().toISOString(),
-          }
-        : undefined;
+    const stagedAttachments = firstStagedRef
+      ? {
+          batchId: firstStagedRef.batchId,
+          refs: stagedRefs,
+          updatedAt: new Date().toISOString(),
+        }
+      : undefined;
 
     setInterimTranscript("");
     setIsStarting(true);
@@ -2109,16 +2112,31 @@ export function NewSessionForm({
       // Skip Enter during IME composition (e.g. Chinese/Japanese/Korean input)
       if (e.nativeEvent.isComposing) return;
 
-      // On mobile (touch devices), Enter adds newline - must use send button
-      // On desktop, Enter sends message, Shift/Ctrl+Enter adds newline
-      const isMobile = hasCoarsePointer();
-
       // If voice recording is active, Enter submits (on any device)
       if (voiceButtonRef.current?.isListening) {
         e.preventDefault();
         handleStartSession();
         return;
       }
+
+      if (
+        projectQueueCtrlEnterEnabled &&
+        toolbarVisibility.projectQueue &&
+        showProjectQueueAction &&
+        canQueueProjectSession &&
+        e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        void handleQueueProjectSession();
+        return;
+      }
+
+      // On mobile (touch devices), Enter adds newline - must use send button.
+      // On desktop, Enter sends message, Shift/Ctrl+Enter adds newline.
+      const isMobile = hasCoarsePointer();
 
       if (isMobile) {
         // Mobile: Enter always adds newline, send button required
@@ -2391,9 +2409,8 @@ export function NewSessionForm({
     .filter(isPendingStagedFile)
     .map(toPersistedStagedAttachmentRef);
   const attachmentNavigationGuardActive = hasAttachmentNavigationRisk({
-    pendingUploadCount: pendingFiles.filter(
-      (file) => file.kind === "uploading",
-    ).length,
+    pendingUploadCount: pendingFiles.filter((file) => file.kind === "uploading")
+      .length,
     transientAttachmentCount: pendingFiles.filter(isPendingLocalFile).length,
     stagedRefs: stagedPendingFileRefs,
     draftState: draftControls.getAttachmentState(),
@@ -2405,12 +2422,13 @@ export function NewSessionForm({
       pendingFilesReadyForProjectQueue &&
       hasProjectQueueTargetProject,
   );
-  const projectQueueNewSessionTitle =
-    !pendingFilesReadyForProjectQueue
-      ? t("projectQueueNewSessionAttachmentsPreparing")
-      : hasProjectQueueTargetProject
-        ? t("toolbarProjectQueueTooltip")
-        : t("projectQueueNewSessionNeedsProject");
+  const projectQueueNewSessionTitle = !pendingFilesReadyForProjectQueue
+    ? t("projectQueueNewSessionAttachmentsPreparing")
+    : hasProjectQueueTargetProject
+      ? projectQueueCtrlEnterEnabled
+        ? t("toolbarProjectQueueTooltipWithShortcut")
+        : t("toolbarProjectQueueTooltip")
+      : t("projectQueueNewSessionNeedsProject");
   const interimDisplayTranscript = interimTranscript.trim();
   // The inline mirror previews speech in place at the insertion point: streaming
   // interim text, otherwise the pending-state label (Listening…/Transcribing…/

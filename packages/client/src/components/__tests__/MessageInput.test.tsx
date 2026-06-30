@@ -257,6 +257,8 @@ vi.mock("../../i18n", () => ({
           toolbarProjectQueueLabel: "Queue for Project Queue",
           toolbarProjectQueueTooltip:
             "Send after all sessions in this project are idle",
+          toolbarProjectQueueTooltipWithShortcut:
+            "Send after all sessions in this project are idle\nCtrl+Enter",
           toolbarLivenessVerifiedProgress: "Verified progress",
           toolbarLivenessVerifiedIdle: "Verified idle",
           toolbarRelativeAgeNow: "now",
@@ -293,6 +295,7 @@ vi.mock("../../i18n", () => ({
             "Full-session reverse search",
           toolbarShortcutSteerCurrentTurn: "Steer current turn",
           toolbarShortcutQueueCurrentTurn: "Queue message",
+          toolbarShortcutProjectQueue: "Queue for Project Queue",
           toolbarShortcutForkAfterSummary:
             "Fork after initial turn with summary",
           toolbarShortcutSend: "Send",
@@ -500,6 +503,8 @@ const toolbarT = ((key: string, params?: Record<string, string>) => {
     toolbarProjectQueueLabel: "Queue for Project Queue",
     toolbarProjectQueueTooltip:
       "Send after all sessions in this project are idle",
+    toolbarProjectQueueTooltipWithShortcut:
+      "Send after all sessions in this project are idle\nCtrl+Enter",
     toolbarSteerTooltip: "Steer current turn\nEnter",
     toolbarSend: "Send",
     toolbarOverflowMenu: "More toolbar controls",
@@ -1801,6 +1806,23 @@ describe("MessageInput", () => {
     expect(keys).toEqual(["Ctrl", "Alt", "S"]);
   });
 
+  it("shows the Project Queue Ctrl+Enter binding in shortcut help", async () => {
+    renderMessageInput(vi.fn(), { onProjectQueue: vi.fn(), onQueue: vi.fn() });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Session keyboard shortcuts" }),
+    );
+
+    const row = screen
+      .getByText("Queue for Project Queue")
+      .closest(".session-shortcuts-row");
+    const keys = Array.from(row?.querySelectorAll("kbd") ?? []).map(
+      (key) => key.textContent,
+    );
+
+    expect(keys).toEqual(["Ctrl", "Enter"]);
+  });
+
   it("hides stop while a running composer has queued text", () => {
     const onStop = vi.fn();
     const textarea = renderMessageInput(
@@ -2497,6 +2519,79 @@ describe("MessageInput", () => {
     expectSubmission(onQueue, "claude patient queue", "patient");
   });
 
+  it("uses Ctrl+Enter for Project Queue when that action is visible", () => {
+    versionState.version = {
+      ...versionState.version,
+      clientDefaults: { patientQueueDefault: true },
+    };
+    const onQueue = vi.fn();
+    const onProjectQueue = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        supportsSteering: true,
+        onQueue,
+        onProjectQueue,
+      },
+    );
+
+    fireEvent.change(textarea, { target: { value: "project quiet later" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    expectSubmission(onProjectQueue, "project quiet later", "deferred");
+    expect(onQueue).not.toHaveBeenCalled();
+  });
+
+  it("falls back to patient queue when the Project Queue shortcut is disabled", () => {
+    versionState.version = {
+      ...versionState.version,
+      clientDefaults: {
+        patientQueueDefault: true,
+        projectQueueCtrlEnterEnabled: false,
+      },
+    };
+    const onQueue = vi.fn();
+    const onProjectQueue = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        supportsSteering: true,
+        onQueue,
+        onProjectQueue,
+      },
+    );
+
+    fireEvent.change(textarea, { target: { value: "patient fallback" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    expect(onProjectQueue).not.toHaveBeenCalled();
+    expectSubmission(onQueue, "patient fallback", "patient");
+  });
+
+  it("does not steal Ctrl+Enter from queue when Project Queue is unsupported", () => {
+    versionState.version = {
+      ...versionState.version,
+      capabilities: ["voiceInput"],
+      clientDefaults: { patientQueueDefault: true },
+    };
+    const onQueue = vi.fn();
+    const onProjectQueue = vi.fn();
+    const textarea = renderMessageInput(
+      vi.fn(() => true),
+      {
+        supportsSteering: true,
+        onQueue,
+        onProjectQueue,
+      },
+    );
+
+    fireEvent.change(textarea, { target: { value: "unsupported fallback" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+
+    expect(onProjectQueue).not.toHaveBeenCalled();
+    expectSubmission(onQueue, "unsupported fallback", "patient");
+  });
+
   it("keeps queue available when the primary steer action downgrades", () => {
     const onQueue = vi.fn();
     const textarea = renderMessageInput(
@@ -2540,6 +2635,11 @@ describe("MessageInput", () => {
     const textarea = renderMessageInput(vi.fn(), { onProjectQueue });
 
     fireEvent.change(textarea, { target: { value: "project-wide later" } });
+    expect(
+      screen
+        .getByRole("button", { name: "Queue for Project Queue" })
+        .getAttribute("title"),
+    ).toBe("Send after all sessions in this project are idle\nCtrl+Enter");
     fireEvent.click(
       screen.getByRole("button", { name: "Queue for Project Queue" }),
     );

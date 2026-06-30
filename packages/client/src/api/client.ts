@@ -1864,6 +1864,8 @@ export interface ServerSettings {
   deferredJoinWindowSeconds?: number;
   /** Whether delivered queued turns receive compose-time staleness anchors. */
   composeAnchorsEnabled?: boolean;
+  /** Seconds Project Queue waits after whole-project idle before promotion. */
+  projectQueueQuietSeconds?: number;
 }
 
 export type RelayClientStatus =

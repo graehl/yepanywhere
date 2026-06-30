@@ -143,6 +143,7 @@ export class ProjectQueueScheduler {
           event.reason === "updated" ||
           event.reason === "deleted" ||
           event.reason === "retry" ||
+          event.reason === "resumed" ||
           event.reason === "released"
         ) {
           this.scheduleProjectIfDispatchable(event.projectId);

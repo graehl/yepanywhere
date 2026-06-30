@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
     },
   ],
   queueItems: [] as ProjectQueueItemSummary[],
+  dispatchState: { status: "running" as const },
   inboxCountsByProject: new Map<
     string,
     { needsAttention: number; active: number; total: number }
@@ -54,7 +55,11 @@ vi.mock("../../hooks/useProjectQueues", () => ({
     loading: false,
     error: null,
     mutatingItemId: null,
+    mutatingDispatchState: false,
+    dispatchState: state.dispatchState,
     refetch: vi.fn(),
+    pauseDispatch: vi.fn(),
+    resumeDispatch: vi.fn(),
     updateItem: vi.fn(),
     deleteItem: vi.fn(),
     retryItem: vi.fn(),
@@ -98,6 +103,7 @@ function makeItem(status: ProjectQueueItemSummary["status"]) {
 describe("ProjectsPage", () => {
   beforeEach(() => {
     state.queueItems = [makeItem("queued")];
+    state.dispatchState = { status: "running" };
     state.inboxCountsByProject = new Map();
   });
 
@@ -116,6 +122,7 @@ describe("ProjectsPage", () => {
 
     expect(screen.getByRole("heading", { name: "Project Queue" })).toBeTruthy();
     expect(screen.getByText("Queued project work")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
     expect(screen.getByTitle("Project Queue items: 1").textContent).toBe("1");
   });
 

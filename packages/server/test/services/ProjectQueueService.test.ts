@@ -82,6 +82,55 @@ describe("ProjectQueueService", () => {
       attachmentCount: 0,
       createdFrom: { client: "toolbar", sessionId: "session-1" },
     });
+    expect(queue.dispatchState).toMatchObject({
+      status: "paused",
+      reason: "restart",
+    });
+  });
+
+  it("persists manual dispatch pause across service re-instantiation", async () => {
+    const service = await createService();
+    await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "wait for manual resume" },
+      },
+    });
+
+    await service.pauseDispatch();
+    const reloaded = await createService();
+
+    expect(reloaded.getDispatchState()).toMatchObject({
+      status: "paused",
+      reason: "manual",
+    });
+  });
+
+  it("rejects pausing an empty project queue", async () => {
+    const service = await createService();
+
+    await expect(service.pauseDispatch()).rejects.toBeInstanceOf(
+      ProjectQueueValidationError,
+    );
+  });
+
+  it("clears dispatch pause when the last item is deleted", async () => {
+    const service = await createService();
+    const created = await service.createItem({
+      projectId,
+      projectPath: "/tmp/project-queue",
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "temporary queued work" },
+      },
+    });
+
+    await service.pauseDispatch();
+    await service.deleteItem(projectId, created.id);
+
+    expect(service.getDispatchState()).toEqual({ status: "running" });
   });
 
   it("updates, retries, and deletes items with project-scoped events", async () => {
@@ -230,6 +279,10 @@ describe("ProjectQueueService", () => {
         status: "queued",
       },
     ]);
+    expect(persisted.dispatchState).toMatchObject({
+      status: "paused",
+      reason: "restart",
+    });
   });
 
   it("serializes concurrent creates without dropping writes", async () => {

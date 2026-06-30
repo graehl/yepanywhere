@@ -144,6 +144,7 @@ describe("Project Queue Routes", () => {
 
     expect(response.status).toBe(200);
     const body = await response.json();
+    expect(body.dispatchState).toEqual({ status: "running" });
     expect(body.items).toMatchObject([
       {
         projectId,
@@ -154,5 +155,42 @@ describe("Project Queue Routes", () => {
         messagePreview: "second queued item",
       },
     ]);
+  });
+
+  it("pauses and resumes project queue dispatch globally", async () => {
+    await service.createItem({
+      projectId,
+      projectPath: project.path,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "pause this queue" },
+      },
+    });
+
+    const routes = createGlobalRoutes();
+    const pauseResponse = await routes.request("/pause", { method: "POST" });
+    expect(pauseResponse.status).toBe(200);
+    expect(await pauseResponse.json()).toMatchObject({
+      dispatchState: { status: "paused", reason: "manual" },
+      items: [{ messagePreview: "pause this queue" }],
+    });
+
+    const resumeResponse = await routes.request("/resume", { method: "POST" });
+    expect(resumeResponse.status).toBe(200);
+    expect(await resumeResponse.json()).toMatchObject({
+      dispatchState: { status: "running" },
+      items: [{ messagePreview: "pause this queue" }],
+    });
+  });
+
+  it("rejects pausing an empty project queue", async () => {
+    const response = await createGlobalRoutes().request("/pause", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "Invalid project queue request",
+    });
   });
 });

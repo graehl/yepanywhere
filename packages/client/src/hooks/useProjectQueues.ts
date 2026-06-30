@@ -1,10 +1,12 @@
 import type {
+  ProjectQueueDispatchState,
   ProjectQueueItemSummary,
   UpdateProjectQueueItemRequest,
 } from "@yep-anywhere/shared";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { activityBus } from "../lib/activityBus";
 import { createClientQueryKey } from "../lib/clientQueryController";
 import { isRemoteClient } from "../lib/connection";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
@@ -23,7 +25,11 @@ export interface UseProjectQueuesResult {
   loading: boolean;
   error: Error | null;
   mutatingItemId: string | null;
+  mutatingDispatchState: boolean;
+  dispatchState: ProjectQueueDispatchState;
   refetch: () => Promise<void>;
+  pauseDispatch: () => Promise<void>;
+  resumeDispatch: () => Promise<void>;
   updateItem: (
     projectId: string,
     itemId: string,
@@ -52,6 +58,7 @@ const PROJECT_QUEUE_QUERY_KEY = createClientQueryKey({
   endpoint: "project-queue",
 });
 const PROJECT_QUEUE_REVALIDATE_EVENTS = ["refresh", "reconnect"] as const;
+const RUNNING_DISPATCH_STATE: ProjectQueueDispatchState = { status: "running" };
 
 export function useProjectQueues(
   projectIds: readonly string[],
@@ -71,6 +78,10 @@ export function useProjectQueues(
     normalizedProjectIds,
   );
   const [mutatingItemId, setMutatingItemId] = useState<string | null>(null);
+  const [mutatingDispatchState, setMutatingDispatchState] = useState(false);
+  const [dispatchState, setDispatchState] = useState<ProjectQueueDispatchState>(
+    RUNNING_DISPATCH_STATE,
+  );
   const [mutationError, setMutationError] = useState<Error | null>(null);
   const queryEnabled = enabled && normalizedProjectIds.length > 0;
   const hasData = Object.keys(storedQueuesByProject).length > 0;
@@ -83,6 +94,7 @@ export function useProjectQueues(
     revalidateOn: PROJECT_QUEUE_REVALIDATE_EVENTS,
     fetcher: () => api.getProjectQueueItems(),
     applySnapshot: (data, context) => {
+      setDispatchState(data.dispatchState ?? RUNNING_DISPATCH_STATE);
       reportProjectQueueGlobalCollectionSnapshot(
         context.sourceKey,
         data,
@@ -106,6 +118,9 @@ export function useProjectQueues(
           itemId,
           request,
         );
+        setDispatchState(
+          response.queue.dispatchState ?? RUNNING_DISPATCH_STATE,
+        );
         reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
       } catch (err) {
         setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -123,6 +138,7 @@ export function useProjectQueues(
     const requestSourceKey = sourceKey;
     try {
       const response = await api.deleteProjectQueueItem(projectId, itemId);
+      setDispatchState(response.queue.dispatchState ?? RUNNING_DISPATCH_STATE);
       reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -138,6 +154,7 @@ export function useProjectQueues(
     const requestSourceKey = sourceKey;
     try {
       const response = await api.retryProjectQueueItem(projectId, itemId);
+      setDispatchState(response.queue.dispatchState ?? RUNNING_DISPATCH_STATE);
       reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -152,6 +169,46 @@ export function useProjectQueues(
     await refetch();
   }, [refetch]);
 
+  const pauseDispatch = useCallback(async () => {
+    setMutatingDispatchState(true);
+    setMutationError(null);
+    const requestSourceKey = sourceKey;
+    try {
+      const response = await api.pauseProjectQueueDispatch();
+      setDispatchState(response.dispatchState ?? RUNNING_DISPATCH_STATE);
+      reportProjectQueueGlobalCollectionSnapshot(requestSourceKey, response);
+    } catch (err) {
+      setMutationError(err instanceof Error ? err : new Error(String(err)));
+      throw err;
+    } finally {
+      setMutatingDispatchState(false);
+    }
+  }, [sourceKey]);
+
+  const resumeDispatch = useCallback(async () => {
+    setMutatingDispatchState(true);
+    setMutationError(null);
+    const requestSourceKey = sourceKey;
+    try {
+      const response = await api.resumeProjectQueueDispatch();
+      setDispatchState(response.dispatchState ?? RUNNING_DISPATCH_STATE);
+      reportProjectQueueGlobalCollectionSnapshot(requestSourceKey, response);
+    } catch (err) {
+      setMutationError(err instanceof Error ? err : new Error(String(err)));
+      throw err;
+    } finally {
+      setMutatingDispatchState(false);
+    }
+  }, [sourceKey]);
+
+  useEffect(() => {
+    return activityBus.on("project-queue-changed", (event) => {
+      if (event.dispatchState) {
+        setDispatchState(event.dispatchState);
+      }
+    });
+  }, []);
+
   const items = useMemo(
     () => flattenQueues(enabled ? storedQueuesByProject : {}),
     [enabled, storedQueuesByProject],
@@ -163,7 +220,11 @@ export function useProjectQueues(
     loading,
     error: mutationError ?? queryError,
     mutatingItemId,
+    mutatingDispatchState,
+    dispatchState: enabled ? dispatchState : RUNNING_DISPATCH_STATE,
     refetch: refetchQueues,
+    pauseDispatch,
+    resumeDispatch,
     updateItem,
     deleteItem,
     retryItem,

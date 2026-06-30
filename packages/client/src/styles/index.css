@@ -1045,6 +1045,13 @@ textarea {
   line-height: 1.35;
 }
 
+.project-queue-section__header-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .project-queue-section__count {
   flex-shrink: 0;
   min-width: max-content;
@@ -1060,6 +1067,57 @@ textarea {
   color: var(--project-queue-action-bg);
   font-size: var(--font-size-xs);
   font-weight: 600;
+}
+
+.project-queue-section__dispatch-button {
+  min-height: 32px;
+  min-width: 72px;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid
+    color-mix(in srgb, var(--project-queue-action-bg) 42%, var(--border-input));
+  border-radius: var(--radius-sm);
+  background: color-mix(
+    in srgb,
+    var(--project-queue-action-bg) 12%,
+    transparent
+  );
+  color: var(--project-queue-action-bg);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.project-queue-section__dispatch-button:hover:not(:disabled) {
+  border-color: color-mix(
+    in srgb,
+    var(--project-queue-action-bg) 68%,
+    var(--border-input)
+  );
+  background: color-mix(
+    in srgb,
+    var(--project-queue-action-bg) 18%,
+    transparent
+  );
+}
+
+.project-queue-section__dispatch-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.project-queue-section__notice {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid
+    color-mix(in srgb, var(--project-queue-action-bg) 24%, var(--border-subtle));
+  border-radius: var(--radius-sm);
+  background: color-mix(
+    in srgb,
+    var(--project-queue-action-bg) 8%,
+    transparent
+  );
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
 }
 
 .project-queue-section__error,
@@ -1261,7 +1319,7 @@ textarea {
     gap: var(--space-2);
   }
 
-  .project-queue-section__count {
+  .project-queue-section__header-actions {
     align-self: flex-start;
   }
 

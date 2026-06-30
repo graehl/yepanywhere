@@ -35,6 +35,32 @@ export function createGlobalProjectQueueRoutes(
   routes.get("/", async (c) => {
     const response: ProjectQueueListResponse = {
       items: deps.projectQueueService.listAll(),
+      dispatchState: deps.projectQueueService.getDispatchState(),
+    };
+    return c.json(response);
+  });
+
+  routes.post("/pause", async (c) => {
+    try {
+      const dispatchState = await deps.projectQueueService.pauseDispatch();
+      const response: ProjectQueueListResponse = {
+        items: deps.projectQueueService.listAll(),
+        dispatchState,
+      };
+      return c.json(response);
+    } catch (error) {
+      if (error instanceof ProjectQueueValidationError) {
+        return c.json(validationError(error.message), 400);
+      }
+      throw error;
+    }
+  });
+
+  routes.post("/resume", async (c) => {
+    const dispatchState = await deps.projectQueueService.resumeDispatch();
+    const response: ProjectQueueListResponse = {
+      items: deps.projectQueueService.listAll(),
+      dispatchState,
     };
     return c.json(response);
   });

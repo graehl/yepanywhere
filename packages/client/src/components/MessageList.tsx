@@ -3896,7 +3896,7 @@ export const MessageList = memo(function MessageList({
                             title={t("projectQueueInlineCancel")}
                           >
                             <XIcon />
-                            <span>{t("projectQueueCancel")}</span>
+                            <span>{t("projectQueueDelete")}</span>
                           </button>
                         )}
                     </div>

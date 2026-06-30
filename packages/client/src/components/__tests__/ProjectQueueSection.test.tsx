@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
-import type { ProjectQueueItemSummary } from "@yep-anywhere/shared";
+import type {
+  ProjectQueueDispatchState,
+  ProjectQueueItemSummary,
+} from "@yep-anywhere/shared";
 import {
   cleanup,
   fireEvent,
@@ -47,11 +50,14 @@ function makeItem(
 function renderSection(
   items: ProjectQueueItemSummary[],
   handlers = {
+    onPauseDispatch: vi.fn(),
+    onResumeDispatch: vi.fn(),
     onDeleteItem: vi.fn(),
     onRetryItem: vi.fn(),
     onUpdateItem: vi.fn(),
   },
   highlightedItemId?: string,
+  dispatchState: ProjectQueueDispatchState = { status: "running" },
 ) {
   render(
     <I18nProvider>
@@ -62,7 +68,11 @@ function renderSection(
           loading={false}
           error={null}
           mutatingItemId={null}
+          mutatingDispatchState={false}
+          dispatchState={dispatchState}
           highlightedItemId={highlightedItemId}
+          onPauseDispatch={handlers.onPauseDispatch}
+          onResumeDispatch={handlers.onResumeDispatch}
           onDeleteItem={handlers.onDeleteItem}
           onRetryItem={handlers.onRetryItem}
           onUpdateItem={handlers.onUpdateItem}
@@ -78,7 +88,7 @@ describe("ProjectQueueSection", () => {
     cleanup();
   });
 
-  it("renders queued items with project, target, and cancel action", () => {
+  it("renders queued items with project, target, and delete action", () => {
     const handlers = renderSection([makeItem("1")]);
 
     expect(screen.getByRole("heading", { name: "Project Queue" })).toBeTruthy();
@@ -92,9 +102,36 @@ describe("ProjectQueueSection", () => {
       "/projects/project-1/sessions/session-abcdef",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(handlers.onDeleteItem).toHaveBeenCalledWith("project-1", "1");
+  });
+
+  it("pauses dispatch from the header", () => {
+    const handlers = renderSection([makeItem("1")]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+
+    expect(handlers.onPauseDispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes paused-after-restart dispatch from the header", () => {
+    const handlers = renderSection(
+      [makeItem("1")],
+      undefined,
+      undefined,
+      {
+        status: "paused",
+        reason: "restart",
+        pausedAt: "2026-06-30T00:00:00.000Z",
+      },
+    );
+
+    expect(screen.getByText("Dispatch is paused after server restart."))
+      .toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+
+    expect(handlers.onResumeDispatch).toHaveBeenCalledTimes(1);
   });
 
   it("offers retry and shows errors for failed items", () => {
@@ -138,7 +175,7 @@ describe("ProjectQueueSection", () => {
     renderSection([makeItem("3", "dispatching")]);
 
     expect(
-      (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();

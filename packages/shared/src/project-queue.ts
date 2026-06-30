@@ -10,6 +10,16 @@ import type { UserMessageMetadata } from "./user-message-metadata.js";
 
 export type ProjectQueueItemStatus = "queued" | "dispatching" | "failed";
 
+export type ProjectQueueDispatchPauseReason = "manual" | "restart";
+
+export type ProjectQueueDispatchState =
+  | { status: "running" }
+  | {
+      status: "paused";
+      reason: ProjectQueueDispatchPauseReason;
+      pausedAt: string;
+    };
+
 export type ProjectQueueClientSource =
   | "toolbar"
   | "projects-page"
@@ -90,10 +100,12 @@ export interface ProjectQueueItemSummary {
 export interface ProjectQueueResponse {
   projectId: UrlProjectId;
   items: ProjectQueueItemSummary[];
+  dispatchState?: ProjectQueueDispatchState;
 }
 
 export interface ProjectQueueListResponse {
   items: ProjectQueueItemSummary[];
+  dispatchState?: ProjectQueueDispatchState;
 }
 
 export interface CreateProjectQueueItemRequest {
@@ -116,10 +128,13 @@ export interface ProjectQueueChangedEvent {
     | "updated"
     | "deleted"
     | "retry"
+    | "paused"
+    | "resumed"
     | "dispatching"
     | "released"
     | "promoted"
     | "failed";
   itemId?: string;
+  dispatchState?: ProjectQueueDispatchState;
   timestamp: string;
 }

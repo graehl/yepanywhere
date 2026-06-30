@@ -194,6 +194,8 @@ export type {
   ProjectQueueChangedEvent,
   ProjectQueueClientSource,
   ProjectQueueCreatedFrom,
+  ProjectQueueDispatchPauseReason,
+  ProjectQueueDispatchState,
   ProjectQueueItem,
   ProjectQueueItemStatus,
   ProjectQueueItemSummary,

@@ -1,4 +1,5 @@
 import type {
+  ProjectQueueDispatchState,
   ProjectQueueItemSummary,
   ProjectQueueMessage,
 } from "@yep-anywhere/shared";
@@ -15,8 +16,12 @@ interface ProjectQueueSectionProps {
   loading: boolean;
   error: Error | null;
   mutatingItemId: string | null;
+  mutatingDispatchState: boolean;
+  dispatchState: ProjectQueueDispatchState;
   highlightedItemId?: string | null;
   basePath?: string;
+  onPauseDispatch: () => void;
+  onResumeDispatch: () => void;
   onDeleteItem: (projectId: string, itemId: string) => void;
   onRetryItem: (projectId: string, itemId: string) => void;
   onUpdateItem: (
@@ -69,8 +74,12 @@ export function ProjectQueueSection({
   loading,
   error,
   mutatingItemId,
+  mutatingDispatchState,
+  dispatchState,
   highlightedItemId,
   basePath = "",
+  onPauseDispatch,
+  onResumeDispatch,
   onDeleteItem,
   onRetryItem,
   onUpdateItem,
@@ -81,6 +90,13 @@ export function ProjectQueueSection({
   const highlightedItemRef = useRef<HTMLLIElement | null>(null);
   const projectById = new Map(projects.map((project) => [project.id, project]));
   const hasContent = items.length > 0;
+  const pausedState =
+    dispatchState.status === "paused" ? dispatchState : undefined;
+  const description = pausedState
+    ? pausedState.reason === "restart"
+      ? t("projectQueuePausedAfterRestartDescription")
+      : t("projectQueuePausedDescription")
+    : t("projectQueueDescription");
 
   useEffect(() => {
     if (!editingItemId) return;
@@ -104,14 +120,32 @@ export function ProjectQueueSection({
       <div className="project-queue-section__header">
         <div>
           <h2 id="project-queue-title">{t("projectQueueTitle")}</h2>
-          <p>{t("projectQueueDescription")}</p>
+          <p>{description}</p>
         </div>
-        <span className="project-queue-section__count">
-          {loading
-            ? t("projectQueueRefreshing")
-            : t("projectQueueCount", { count: items.length })}
-        </span>
+        <div className="project-queue-section__header-actions">
+          <span className="project-queue-section__count">
+            {loading
+              ? t("projectQueueRefreshing")
+              : t("projectQueueCount", { count: items.length })}
+          </span>
+          <button
+            type="button"
+            className="project-queue-section__dispatch-button"
+            onClick={pausedState ? onResumeDispatch : onPauseDispatch}
+            disabled={mutatingDispatchState}
+          >
+            {pausedState ? t("projectQueueResume") : t("projectQueuePause")}
+          </button>
+        </div>
       </div>
+
+      {pausedState && (
+        <div className="project-queue-section__notice">
+          {pausedState.reason === "restart"
+            ? t("projectQueuePausedAfterRestartNotice")
+            : t("projectQueuePausedNotice")}
+        </div>
+      )}
 
       {error && (
         <div className="project-queue-section__error">
@@ -250,7 +284,7 @@ export function ProjectQueueSection({
                       onClick={() => onDeleteItem(item.projectId, item.id)}
                       disabled={isMutating || isDispatching}
                     >
-                      {t("projectQueueCancel")}
+                      {t("projectQueueDelete")}
                     </button>
                   </div>
                 </div>

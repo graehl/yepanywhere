@@ -8,6 +8,8 @@ import {
   type PermissionMode,
   type ProjectQueueChangedEvent,
   type ProjectQueueCreatedFrom,
+  type ProjectQueueDispatchPauseReason,
+  type ProjectQueueDispatchState,
   type ProjectQueueItem,
   type ProjectQueueItemSummary,
   type ProjectQueueMessage,
@@ -26,12 +28,14 @@ import {
 import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
 import type { EventBus } from "../watcher/EventBus.js";
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 const MAX_MESSAGE_PREVIEW_LENGTH = 180;
+const RUNNING_DISPATCH_STATE: ProjectQueueDispatchState = { status: "running" };
 
 interface ProjectQueueState {
   version: number;
   items: ProjectQueueItem[];
+  dispatchState: ProjectQueueDispatchState;
 }
 
 export interface ProjectQueueServiceOptions {
@@ -62,6 +66,38 @@ function optionalString(value: unknown, field: string): string | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function dispatchStatesEqual(
+  a: ProjectQueueDispatchState | undefined,
+  b: ProjectQueueDispatchState | undefined,
+): boolean {
+  return JSON.stringify(a ?? RUNNING_DISPATCH_STATE) === JSON.stringify(b);
+}
+
+function normalizeDispatchState(
+  raw: unknown,
+  hasItems: boolean,
+): ProjectQueueDispatchState {
+  if (!hasItems) return RUNNING_DISPATCH_STATE;
+  if (isRecord(raw) && raw.status === "paused") {
+    const reason =
+      raw.reason === "manual" || raw.reason === "restart"
+        ? raw.reason
+        : undefined;
+    const pausedAt =
+      typeof raw.pausedAt === "string" && raw.pausedAt.trim()
+        ? raw.pausedAt
+        : undefined;
+    if (reason && pausedAt) {
+      return { status: "paused", reason, pausedAt };
+    }
+  }
+  return {
+    status: "paused",
+    reason: "restart",
+    pausedAt: new Date().toISOString(),
+  };
 }
 
 function optionalProvider(value: unknown): ProviderName | undefined {
@@ -463,7 +499,11 @@ function cloneItem(item: ProjectQueueItem): ProjectQueueItem {
 export class ProjectQueueService {
   private dataDir: string;
   private filePath: string;
-  private state: ProjectQueueState = { version: CURRENT_VERSION, items: [] };
+  private state: ProjectQueueState = {
+    version: CURRENT_VERSION,
+    items: [],
+    dispatchState: RUNNING_DISPATCH_STATE,
+  };
   private initialized = false;
   private mutationQueue: Promise<void> = Promise.resolve();
   private attachmentStagingService?: AttachmentStagingService;
@@ -490,13 +530,22 @@ export class ProjectQueueService {
       const items = rawItems
         .map(normalizeProjectQueueItem)
         .filter((item): item is ProjectQueueItem => item !== null);
+      const dispatchState = normalizeDispatchState(
+        parsed.dispatchState,
+        items.length > 0,
+      );
       this.state = {
         version: CURRENT_VERSION,
         items,
+        dispatchState,
       };
       const needsSave =
         parsed.version !== CURRENT_VERSION ||
         items.length !== rawItems.length ||
+        !dispatchStatesEqual(
+          dispatchState,
+          parsed.dispatchState as ProjectQueueDispatchState | undefined,
+        ) ||
         rawItems.some(
           (item) =>
             isRecord(item) &&
@@ -514,7 +563,11 @@ export class ProjectQueueService {
           error,
         );
       }
-      this.state = { version: CURRENT_VERSION, items: [] };
+      this.state = {
+        version: CURRENT_VERSION,
+        items: [],
+        dispatchState: RUNNING_DISPATCH_STATE,
+      };
     }
     this.initialized = true;
   }
@@ -526,6 +579,7 @@ export class ProjectQueueService {
       items: this.state.items
         .filter((item) => item.projectId === projectId)
         .map(summarizeItem),
+      dispatchState: this.state.dispatchState,
     };
   }
 
@@ -534,8 +588,19 @@ export class ProjectQueueService {
     return this.state.items.map(summarizeItem);
   }
 
+  getDispatchState(): ProjectQueueDispatchState {
+    this.ensureInitialized();
+    return this.state.dispatchState;
+  }
+
+  isDispatchPaused(): boolean {
+    this.ensureInitialized();
+    return this.state.dispatchState.status === "paused";
+  }
+
   getProjectIdsWithDispatchableItems(): UrlProjectId[] {
     this.ensureInitialized();
+    if (this.isDispatchPaused()) return [];
     const projectIds = new Set<UrlProjectId>();
     for (const item of this.state.items) {
       if (projectIds.has(item.projectId)) continue;
@@ -551,10 +616,42 @@ export class ProjectQueueService {
 
   hasDispatchableItem(projectId: UrlProjectId): boolean {
     this.ensureInitialized();
+    if (this.isDispatchPaused()) return false;
     return (
       this.state.items.find((item) => item.projectId === projectId)?.status ===
       "queued"
     );
+  }
+
+  async pauseDispatch(
+    reason: ProjectQueueDispatchPauseReason = "manual",
+  ): Promise<ProjectQueueDispatchState> {
+    return this.withMutation(async () => {
+      this.ensureInitialized();
+      if (this.state.items.length === 0) {
+        throw new ProjectQueueValidationError(
+          "Cannot pause an empty Project Queue",
+        );
+      }
+      this.state.dispatchState = {
+        status: "paused",
+        reason,
+        pausedAt: new Date().toISOString(),
+      };
+      await this.save();
+      this.emitAllProjectChanges("paused");
+      return this.state.dispatchState;
+    });
+  }
+
+  async resumeDispatch(): Promise<ProjectQueueDispatchState> {
+    return this.withMutation(async () => {
+      this.ensureInitialized();
+      this.state.dispatchState = RUNNING_DISPATCH_STATE;
+      await this.save();
+      this.emitAllProjectChanges("resumed");
+      return this.state.dispatchState;
+    });
   }
 
   async createItem(params: {
@@ -646,6 +743,7 @@ export class ProjectQueueService {
         );
       }
       const [deleted] = this.state.items.splice(index, 1);
+      this.clearDispatchPauseIfEmpty();
       await this.save();
       await this.cleanupQueueAttachments(deleted);
       this.emitChange(projectId, "deleted", itemId);
@@ -685,6 +783,7 @@ export class ProjectQueueService {
   ): Promise<ProjectQueueItem | null> {
     return this.withMutation(async () => {
       this.ensureInitialized();
+      if (this.isDispatchPaused()) return null;
       const index = this.state.items.findIndex(
         (item) => item.projectId === projectId,
       );
@@ -738,6 +837,7 @@ export class ProjectQueueService {
       const index = this.findProjectItemIndex(projectId, itemId);
       if (index === -1) return false;
       const [completed] = this.state.items.splice(index, 1);
+      this.clearDispatchPauseIfEmpty();
       await this.save();
       await this.cleanupQueueAttachments(completed);
       this.emitChange(projectId, "promoted", itemId);
@@ -781,6 +881,15 @@ export class ProjectQueueService {
     return this.state.items.findIndex(
       (item) => item.projectId === projectId && item.id === itemId,
     );
+  }
+
+  private clearDispatchPauseIfEmpty(): void {
+    if (this.state.items.length > 0) return;
+    this.state.dispatchState = RUNNING_DISPATCH_STATE;
+  }
+
+  private getProjectIdsWithItems(): UrlProjectId[] {
+    return [...new Set(this.state.items.map((item) => item.projectId))];
   }
 
   private ensureInitialized(): void {
@@ -908,8 +1017,17 @@ export class ProjectQueueService {
       items: this.listProject(projectId).items,
       reason,
       ...(itemId ? { itemId } : {}),
+      dispatchState: this.state.dispatchState,
       timestamp: new Date().toISOString(),
     };
     this.options.eventBus?.emit(event);
+  }
+
+  private emitAllProjectChanges(
+    reason: ProjectQueueChangedEvent["reason"],
+  ): void {
+    for (const projectId of this.getProjectIdsWithItems()) {
+      this.emitChange(projectId, reason);
+    }
   }
 }

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import type { ProjectQueueItemSummary } from "@yep-anywhere/shared";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,6 +31,8 @@ const apiMock = vi.hoisted(() => ({
   updateProjectQueueItem: vi.fn(),
   deleteProjectQueueItem: vi.fn(),
   retryProjectQueueItem: vi.fn(),
+  pauseProjectQueueDispatch: vi.fn(),
+  resumeProjectQueueDispatch: vi.fn(),
 }));
 const versionMock = vi.hoisted(() => ({
   version: { capabilities: ["projectQueue"] as string[] },
@@ -96,6 +100,8 @@ beforeEach(() => {
   apiMock.updateProjectQueueItem.mockReset();
   apiMock.deleteProjectQueueItem.mockReset();
   apiMock.retryProjectQueueItem.mockReset();
+  apiMock.pauseProjectQueueDispatch.mockReset();
+  apiMock.resumeProjectQueueDispatch.mockReset();
   connectionMock.isRemoteClient.mockReset();
   connectionMock.isRemoteClient.mockReturnValue(false);
   connectionMock.remoteState.connection = null;
@@ -265,5 +271,42 @@ describe("useProjectQueues", () => {
     expect(result.current.items).toMatchObject([
       { id: "1", messagePreview: "Edited message" },
     ]);
+  });
+
+  it("updates dispatch state from pause and resume responses", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [makeItem("1")],
+      dispatchState: { status: "running" },
+    });
+    apiMock.pauseProjectQueueDispatch.mockResolvedValue({
+      items: [makeItem("1")],
+      dispatchState: {
+        status: "paused",
+        reason: "manual",
+        pausedAt: "2026-06-30T00:00:00.000Z",
+      },
+    });
+    apiMock.resumeProjectQueueDispatch.mockResolvedValue({
+      items: [makeItem("1")],
+      dispatchState: { status: "running" },
+    });
+
+    const { result } = renderHook(() => useProjectQueues(["project-1"]));
+
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    await act(async () => {
+      await result.current.pauseDispatch();
+    });
+
+    expect(result.current.dispatchState).toMatchObject({
+      status: "paused",
+      reason: "manual",
+    });
+
+    await act(async () => {
+      await result.current.resumeDispatch();
+    });
+
+    expect(result.current.dispatchState).toEqual({ status: "running" });
   });
 });

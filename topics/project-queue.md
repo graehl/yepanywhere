@@ -21,6 +21,14 @@ across the YA install, and it is separate from the existing per-session queue.
   window, then re-checks project idleness immediately after claiming the item.
 - Promotion handles one Project Queue item per project-idle boundary. Do not
   drain the project backlog in one burst.
+- A global Project Queue dispatch pause gates promotion above all project
+  items. Paused items remain editable/retryable/deletable; the scheduler simply
+  must not claim queued items until dispatch resumes.
+- A server restart with persisted Project Queue backlog starts
+  paused-after-restart by default. The user must explicitly resume dispatch
+  after inspecting any work that may have been interrupted by the restart.
+- Empty Project Queue state is always normal/running. Do not preserve a hidden
+  pause after the last queued/failed/dispatching item leaves the queue.
 
 The intended ordering is:
 
@@ -108,6 +116,13 @@ local session queue order from project-wide queue order.
 Inline rendering is a visibility and cancel mirror for items that target the
 current session. The projects page remains the authoritative queue manager for
 cross-project inspection, edit, and retry.
+
+The projects page is also the authoritative global dispatch pause surface. Show
+Pause/Resume only while Project Queue has visible backlog. When dispatch is
+paused after server restart, copy must distinguish that state from a manual
+pause so users understand why durable backlog is not promoting automatically.
+Destructive item removal should use Delete/Remove wording, not Cancel, because
+it permanently removes the persisted queue item.
 
 ## Attachments
 

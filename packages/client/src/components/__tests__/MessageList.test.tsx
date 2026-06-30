@@ -43,8 +43,8 @@ vi.mock("../../i18n", () => ({
           "Project Queue sending (#{position})",
         projectQueueInlineStatusFailed: "Project Queue failed (#{position})",
         projectQueueInlineCopy: "Copy Project Queue message",
-        projectQueueInlineCancel: "Cancel Project Queue item",
-        projectQueueCancel: "Cancel",
+        projectQueueInlineCancel: "Delete Project Queue item",
+        projectQueueDelete: "Delete",
         userPromptCopyAction: "Copy message text",
         userPromptEditAction: "Edit latest message",
       };
@@ -965,7 +965,7 @@ describe("MessageList", () => {
     expect(screen.getByText("Project Queue (#2)")).toBeTruthy();
   });
 
-  it("cancels inline project queue messages", () => {
+  it("deletes inline project queue messages", () => {
     const onCancelProjectQueueMessage = vi.fn();
     render(
       <MessageList
@@ -984,7 +984,7 @@ describe("MessageList", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Cancel Project Queue item" }),
+      screen.getByRole("button", { name: "Delete Project Queue item" }),
     );
 
     expect(onCancelProjectQueueMessage).toHaveBeenCalledWith("project-queue-1");

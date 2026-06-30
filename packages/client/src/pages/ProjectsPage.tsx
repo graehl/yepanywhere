@@ -119,6 +119,22 @@ export function ProjectsPage() {
     }
   };
 
+  const handlePauseProjectQueue = async () => {
+    try {
+      await projectQueues.pauseDispatch();
+    } catch {
+      // The hook exposes the error in the queue section.
+    }
+  };
+
+  const handleResumeProjectQueue = async () => {
+    try {
+      await projectQueues.resumeDispatch();
+    } catch {
+      // The hook exposes the error in the queue section.
+    }
+  };
+
   const handleRetryQueueItem = async (projectId: string, itemId: string) => {
     try {
       await projectQueues.retryItem(projectId, itemId);
@@ -230,8 +246,12 @@ export function ProjectsPage() {
             loading={projectQueues.loading}
             error={projectQueues.error}
             mutatingItemId={projectQueues.mutatingItemId}
+            mutatingDispatchState={projectQueues.mutatingDispatchState}
+            dispatchState={projectQueues.dispatchState}
             highlightedItemId={highlightedQueueItemId}
             basePath={basePath}
+            onPauseDispatch={handlePauseProjectQueue}
+            onResumeDispatch={handleResumeProjectQueue}
             onDeleteItem={handleDeleteQueueItem}
             onRetryItem={handleRetryQueueItem}
             onUpdateItem={handleUpdateQueueItem}

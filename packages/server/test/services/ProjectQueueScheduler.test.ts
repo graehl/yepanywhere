@@ -349,6 +349,33 @@ describe("ProjectQueueScheduler", () => {
     await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1));
   });
 
+  it("does not promote while dispatch is paused and resumes on request", async () => {
+    scheduler.dispose();
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "paused project work" },
+      },
+    });
+    await service.pauseDispatch();
+
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      idleGraceMs: 1,
+    });
+
+    await wait(25);
+    expect(supervisor.resumeCalls).toHaveLength(0);
+
+    await service.resumeDispatch();
+
+    await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1));
+  });
+
   it("persists a failed dispatch and stops behind it", async () => {
     vi.spyOn(getLogger(), "warn").mockImplementation(() => undefined);
     supervisor.resumeError = new Error("provider unavailable");

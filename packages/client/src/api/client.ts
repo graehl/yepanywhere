@@ -572,6 +572,16 @@ export const api = {
   getProjectQueueItems: () =>
     fetchJSON<ProjectQueueListResponse>("/project-queue"),
 
+  pauseProjectQueueDispatch: () =>
+    fetchJSON<ProjectQueueListResponse>("/project-queue/pause", {
+      method: "POST",
+    }),
+
+  resumeProjectQueueDispatch: () =>
+    fetchJSON<ProjectQueueListResponse>("/project-queue/resume", {
+      method: "POST",
+    }),
+
   createProjectQueueItem: (
     projectId: string,
     request: CreateProjectQueueItemRequest,

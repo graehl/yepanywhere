@@ -18,9 +18,16 @@ Progress:
 - [x] Report drain blockers in the reload banner.
 - [x] Report persisted recovered patient session-queue entries as preserved
       restart work.
+- [x] Preserve live patient session-queue entries at the safe restart boundary.
 
 Latest update:
 
+- 2026-06-30: Safe restart now preserves live patient session-queue entries
+  once all volatile blockers have drained. It still waits for active provider
+  sessions, supervisor worker queue entries, direct provider queue entries, and
+  short-term deferred messages. When only patient queue backlog remains, the
+  live entries are marked `paused-after-restart`, removed from the live process
+  queue, and reported as preserved work before restart proceeds.
 - 2026-06-30: Safe restart now reports persisted recovered patient
   session-queue entries as preserved work. These entries are visible in the
   scheduled restart banner status when present, but they do not block restart;
@@ -177,7 +184,10 @@ Implemented behavior:
 - The restart waits for both:
   - active provider sessions that would be interrupted;
   - in-memory session queued messages that would otherwise be lost, including
-    supervisor worker-queue entries and live-process direct/deferred queues.
+    supervisor worker-queue entries and live-process direct/short-term
+    deferred queues.
+- Live patient session-queue entries are preserved as restart-paused work once
+  all volatile blockers have drained.
 - Persisted recovered patient session-queue entries are reported as preserved
   work in the scheduled status and do not block the restart.
 - The banner reports exact blocker counts and changes the safe-restart action
@@ -187,8 +197,6 @@ Implemented behavior:
 
 Out of scope for this chunk:
 
-- Preserving still-live patient queued messages at the safe restart boundary
-  instead of waiting for them.
 - Persisting short-term direct/deferred session queues across restarts.
 - A production/server lifecycle manager.
 - Draining or persisting arbitrary non-session background jobs beyond the

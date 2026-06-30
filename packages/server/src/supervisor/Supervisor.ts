@@ -3926,6 +3926,37 @@ export class Supervisor {
     return count;
   }
 
+  async preserveRestartablePatientQueuesForRestart(): Promise<number> {
+    if (!this.sessionQueuePersistenceService || this.workerQueue.length > 0) {
+      return 0;
+    }
+
+    const processes = Array.from(this.processes.values()).filter(
+      (process) => !process.isTerminated,
+    );
+    if (processes.some((process) => this.processHasActiveWork(process))) {
+      return 0;
+    }
+    if (
+      processes.some(
+        (process) =>
+          process.queueDepth > 0 || process.hasVolatileDeferredMessages(),
+      )
+    ) {
+      return 0;
+    }
+
+    let preservedCount = 0;
+    for (const process of processes) {
+      preservedCount +=
+        await process.preservePatientDeferredMessagesForRestart();
+    }
+    if (preservedCount > 0) {
+      this.emitWorkerActivity();
+    }
+    return preservedCount;
+  }
+
   // ============ Staleness Detection ============
 
   /**

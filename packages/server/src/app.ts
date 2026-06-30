@@ -827,6 +827,9 @@ export function createApp(options: AppOptions): AppResult {
           getWorkerActivity: () => supervisor.getWorkerActivity(),
           getPreservedWork: () =>
             getPreservedRestartWork(options.sessionQueuePersistenceService),
+          preparePreservedWork: async () => {
+            await supervisor.preserveRestartablePatientQueuesForRestart();
+          },
           restart: () =>
             triggerServerRestart({
               notificationService: options.notificationService,

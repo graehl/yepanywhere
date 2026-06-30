@@ -810,6 +810,12 @@ export class Process {
     );
   }
 
+  hasVolatileDeferredMessages(): boolean {
+    return this.deferredQueue.some(
+      (entry) => !isPatientDeferredEntry(entry, this.provider),
+    );
+  }
+
   async waitForPatientQueuePersistenceIdle(): Promise<void> {
     await this.patientQueuePersistenceTail;
   }
@@ -2281,6 +2287,29 @@ export class Process {
       return;
     }
 
+    const item = this.toPersistedPatientDeferredItem(entry, "queued");
+    if (!item) return;
+
+    this.enqueuePatientQueuePersistence(
+      async () => {
+        await this.sessionQueuePersistenceService?.upsertItem(item);
+      },
+      { action: "upsert", persistedQueueId: item.id },
+    );
+  }
+
+  private toPersistedPatientDeferredItem(
+    entry: DeferredQueueEntry,
+    status: PersistedSessionQueuedMessage["status"],
+    updatedAt = entry.timestamp,
+  ): PersistedSessionQueuedMessage | null {
+    if (
+      !this.sessionQueuePersistenceService ||
+      !isPatientDeferredEntry(entry, this.provider)
+    ) {
+      return null;
+    }
+
     const id = entry.persistedQueueId ?? randomUUID();
     entry.persistedQueueId = id;
     const createdAt =
@@ -2289,7 +2318,7 @@ export class Process {
       ? { tempId: entry.message.tempId }
       : undefined;
     const mode = entry.message.mode ?? this._permissionMode;
-    const item: PersistedSessionQueuedMessage = {
+    return {
       id,
       sessionId: this._sessionId,
       projectId: this.projectId,
@@ -2302,18 +2331,11 @@ export class Process {
       kind: "patient",
       message: entry.message,
       createdAt,
-      updatedAt: entry.timestamp,
+      updatedAt,
       queuedAt: entry.timestamp,
-      status: "queued",
+      status,
       ...(source ? { source } : {}),
     };
-
-    this.enqueuePatientQueuePersistence(
-      async () => {
-        await this.sessionQueuePersistenceService?.upsertItem(item);
-      },
-      { action: "upsert", persistedQueueId: id },
-    );
   }
 
   private deletePersistedPatientDeferredEntries(
@@ -2339,6 +2361,69 @@ export class Process {
       },
       { action: "delete", reason, persistedQueueIds: ids },
     );
+  }
+
+  async preservePatientDeferredMessagesForRestart(): Promise<number> {
+    if (!this.sessionQueuePersistenceService) {
+      return 0;
+    }
+
+    const entries = this.deferredQueue.filter((entry) =>
+      isPatientDeferredEntry(entry, this.provider),
+    );
+    if (entries.length === 0) {
+      return 0;
+    }
+
+    for (const entry of entries) {
+      if (!entry.persistedQueueId) {
+        this.persistPatientDeferredEntry(entry);
+      }
+    }
+
+    const pausedAt = new Date().toISOString();
+    const preserve = this.patientQueuePersistenceTail.then(async () => {
+      for (const entry of entries) {
+        const item = this.toPersistedPatientDeferredItem(
+          entry,
+          "paused-after-restart",
+          pausedAt,
+        );
+        if (!item) {
+          throw new Error("Failed to serialize patient queue entry");
+        }
+        await this.sessionQueuePersistenceService?.upsertItem(item);
+      }
+    });
+
+    this.patientQueuePersistenceTail = preserve.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    try {
+      await preserve;
+    } catch (error) {
+      getLogger().warn(
+        {
+          event: "patient_queue_preserve_failed",
+          sessionId: this._sessionId,
+          processId: this.id,
+          projectId: this.projectId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to preserve patient queued-message state for restart",
+      );
+      return 0;
+    }
+
+    const preservedEntries = new Set(entries);
+    this.deferredQueue = this.deferredQueue.filter(
+      (entry) => !preservedEntries.has(entry),
+    );
+    this.emitDeferredQueueChange();
+    await this.patientQueuePersistenceTail;
+    return entries.length;
   }
 
   /**

@@ -19,6 +19,7 @@ export interface SafeRestartServiceOptions {
   eventBus: EventBus;
   getWorkerActivity: () => SafeRestartWorkerActivity;
   getPreservedWork?: () => SafeRestartPreservedWork[];
+  preparePreservedWork?: () => Promise<void> | void;
   restart: () => Promise<void> | void;
   pauseProjectQueueDispatch?: () => Promise<boolean> | boolean;
   resumeProjectQueueDispatch?: () => Promise<void>;
@@ -39,6 +40,7 @@ export class SafeRestartService {
   private readonly getPreservedWorkSnapshot:
     | (() => SafeRestartPreservedWork[])
     | undefined;
+  private readonly preparePreservedWork?: () => Promise<void> | void;
   private readonly restart: () => Promise<void> | void;
   private readonly pauseProjectQueueDispatch?: () => Promise<boolean> | boolean;
   private readonly resumeProjectQueueDispatch?: () => Promise<void>;
@@ -50,11 +52,13 @@ export class SafeRestartService {
   private updatedAt: string;
   private restartTriggered = false;
   private projectQueuePausedBySchedule = false;
+  private evaluationPromise: Promise<void> | undefined;
 
   constructor(options: SafeRestartServiceOptions) {
     this.eventBus = options.eventBus;
     this.getWorkerActivity = options.getWorkerActivity;
     this.getPreservedWorkSnapshot = options.getPreservedWork;
+    this.preparePreservedWork = options.preparePreservedWork;
     this.restart = options.restart;
     this.pauseProjectQueueDispatch = options.pauseProjectQueueDispatch;
     this.resumeProjectQueueDispatch = options.resumeProjectQueueDispatch;
@@ -169,10 +173,30 @@ export class SafeRestartService {
     }
   }
 
-  private async evaluateAndMaybeRestart(): Promise<void> {
+  private evaluateAndMaybeRestart(): Promise<void> {
+    if (this.evaluationPromise) {
+      return this.evaluationPromise;
+    }
+    this.evaluationPromise = this.evaluateAndMaybeRestartOnce().finally(() => {
+      this.evaluationPromise = undefined;
+    });
+    return this.evaluationPromise;
+  }
+
+  private async evaluateAndMaybeRestartOnce(): Promise<void> {
     if (this.status !== "scheduled" || this.restartTriggered) return;
 
     this.updatedAt = this.timestamp();
+    if (this.preparePreservedWork) {
+      try {
+        await this.preparePreservedWork();
+      } catch (error) {
+        console.warn(
+          "[SafeRestartService] Failed to prepare preserved restart work:",
+          error,
+        );
+      }
+    }
     const blockers = this.getBlockers();
     if (blockers.length > 0) {
       this.emitChange();

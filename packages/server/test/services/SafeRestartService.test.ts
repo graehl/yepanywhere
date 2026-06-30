@@ -108,6 +108,43 @@ describe("SafeRestartService", () => {
     expect(restart).toHaveBeenCalledTimes(1);
   });
 
+  it("prepares preserved work before evaluating queued blockers", async () => {
+    const eventBus = new EventBus();
+    const restart = vi.fn();
+    let queuedSessionMessageCount = 2;
+    let preservedCount = 0;
+    const preparePreservedWork = vi.fn(async () => {
+      queuedSessionMessageCount = 0;
+      preservedCount = 2;
+    });
+    const service = new SafeRestartService({
+      eventBus,
+      getWorkerActivity: () => ({
+        activeWorkers: 1,
+        interruptibleSessionCount: 0,
+        queueLength: 0,
+        queuedSessionMessageCount,
+        hasActiveWork: false,
+      }),
+      getPreservedWork: () =>
+        preservedCount > 0
+          ? [{ type: "recovered-session-queue", count: preservedCount }]
+          : [],
+      preparePreservedWork,
+      restart,
+    });
+
+    const state = await service.schedule();
+
+    expect(preparePreservedWork).toHaveBeenCalledTimes(1);
+    expect(state.status).toBe("restarting");
+    expect(state.blockers).toEqual([]);
+    expect(state.preserved).toEqual([
+      { type: "recovered-session-queue", count: 2 },
+    ]);
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
+
   it("updates scheduled state when preserved queue count changes", async () => {
     const eventBus = new EventBus();
     let preservedCount = 1;

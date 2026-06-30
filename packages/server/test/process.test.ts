@@ -1627,6 +1627,57 @@ describe("Process", () => {
       });
     });
 
+    it("preserves patient queue entries as paused restart work", async () => {
+      await withSessionQueuePersistence(async ({ service, projectId }) => {
+        const iterator = createMockIterator([
+          { type: "system", session_id: "sess-1" },
+        ]);
+        const process = new Process(iterator, {
+          projectPath: "/tmp/process-session-queue",
+          projectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          idleTimeoutMs: 100,
+          sessionQueuePersistenceService: service,
+        });
+
+        process.deferMessage({
+          text: "patient follow-up",
+          tempId: "temp-patient",
+          metadata: {
+            deliveryIntent: "patient",
+            serverReceivedAt: "2026-06-30T10:00:00.000Z",
+          },
+        });
+        await process.waitForPatientQueuePersistenceIdle();
+
+        const preserved =
+          await process.preservePatientDeferredMessagesForRestart();
+        await process.waitForPatientQueuePersistenceIdle();
+
+        expect(preserved).toBe(1);
+        expect(process.getDeferredQueueSummary()).toEqual([]);
+        expect(service.list()).toMatchObject([
+          {
+            sessionId: "sess-1",
+            projectId,
+            kind: "patient",
+            status: "paused-after-restart",
+            message: {
+              text: "patient follow-up",
+              tempId: "temp-patient",
+              metadata: {
+                deliveryIntent: "patient",
+                serverReceivedAt: "2026-06-30T10:00:00.000Z",
+              },
+            },
+            source: { tempId: "temp-patient" },
+            createdAt: "2026-06-30T10:00:00.000Z",
+          },
+        ]);
+      });
+    });
+
     it("drains deferred messages for replacement process recovery", async () => {
       const iterator = createMockIterator([
         { type: "system", session_id: "sess-1" },

@@ -1,6 +1,6 @@
 # Session Queue Persistence Prep
 
-Status: Safe-restart preserved queue reporting implemented locally.
+Status: Live patient queues preserved at the safe-restart boundary.
 
 Progress:
 
@@ -18,11 +18,22 @@ Progress:
 - [x] Add restart-paused session queue display/delete UI/API behavior.
 - [x] Add restart-paused session queue resume behavior.
 - [x] Report persisted recovered patient queues in safe restart state.
-- [ ] Teach safe restart to preserve live patient queues instead of waiting for
+- [x] Teach safe restart to preserve live patient queues instead of waiting for
       them.
 
 Latest update:
 
+- 2026-06-30: Live patient queue preservation at the safe-restart boundary
+  implemented locally. `SafeRestartService` now runs a preserved-work
+  preparation hook before deciding whether queued-message blockers remain. The
+  Supervisor hook is deliberately conservative: it only converts live patient
+  queue entries after Project Queue dispatch has already been paused and there
+  are no active sessions, no supervisor worker queue, no direct provider queue,
+  and no short-term deferred queue entries. At that point each live patient
+  entry is flushed through the existing patient queue persistence chain, marked
+  `paused-after-restart`, removed from the live `Process.deferredQueue`, and
+  reported as preserved restart work. If anything volatile remains, safe
+  restart still waits.
 - 2026-06-30: Safe-restart preserved queue reporting implemented locally.
   The session queue persistence service now emits an internal change event
   after successful disk mutations, and `SafeRestartService` can report preserved
@@ -292,11 +303,12 @@ The implementation order is staged:
 6. Teach safe restart to treat persisted patient entries as preserved work,
    while still reporting live active sessions as blockers.
 
-Steps 1-5 are implemented, including explicit per-entry resume. Step 6's first
-reporting layer is implemented for already recovered `paused-after-restart`
-patient entries. The next likely safe-restart chunk is preserving live patient
-queue backlog at the scheduled restart boundary instead of waiting for those
-patient entries to promote.
+Steps 1-6 are implemented for the patient queue. Safe restart now reports
+already recovered `paused-after-restart` patient entries and converts live
+patient queue backlog to that same paused recovered state once all volatile
+work has drained. Remaining follow-up work is project-level visibility/control
+and making Project Queue promotion treat recovered patient queues as
+project-busy.
 
 ## Restart UX
 
@@ -358,7 +370,7 @@ Resume chunk:
 
 ## Safe Restart Interaction
 
-Today dev safe restart waits for active sessions and live in-memory queued
+Today dev safe restart waits for active sessions and volatile in-memory queued
 messages to drain. It also reports already persisted recovered patient entries
 as preserved work, not blockers.
 
@@ -371,13 +383,14 @@ The agreed shape is:
   session is the blocker;
 - already recovered `paused-after-restart` patient entries are preserved work
   and do not block restart;
-- live persistable patient queued messages can later be flushed to disk, marked
-  `paused-after-restart`, and reported as preserved rather than unsafe;
+- live persistable patient queued messages are flushed to disk, marked
+  `paused-after-restart`, removed from live process queues, and reported as
+  preserved rather than unsafe once all volatile blockers have drained;
 - the banner can say why restart is blocked only for the remaining live
   blockers.
 
-Recovered-work reporting is implemented. Live patient-queue preservation at the
-safe restart boundary remains a follow-up.
+Recovered-work reporting and live patient-queue preservation at the safe
+restart boundary are implemented.
 
 ## Verification
 
@@ -400,6 +413,8 @@ Runtime tests, when live persistence is wired:
 - [x] deleting a recovered queued message removes it from disk and UI;
 - [x] resuming recovered entries preserves per-session order for the
   implemented per-entry path;
+- [x] scheduled safe restart preserves live patient entries as
+  `paused-after-restart` only after active sessions and volatile queues drain;
 - [ ] Project Queue promotion still waits for recovered per-session queues
   before injecting project-level work;
 - [x] safe restart distinguishes active live blockers from persisted preserved

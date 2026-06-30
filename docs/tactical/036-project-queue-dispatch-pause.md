@@ -19,9 +19,16 @@ Progress:
 - [x] Report persisted recovered patient session-queue entries as preserved
       restart work.
 - [x] Preserve live patient session-queue entries at the safe restart boundary.
+- [x] Keep Project Queue promotion behind recovered patient session-queue
+      entries after restart.
 
 Latest update:
 
+- 2026-06-30: Project Queue promotion now blocks behind persisted recovered
+  patient session-queue entries. Those entries remain preserved rather than
+  safe-restart blockers, but after restart they still count as project-busy so
+  resumed Project Queue dispatch cannot jump ahead of per-session work waiting
+  for explicit resume/delete.
 - 2026-06-30: Safe restart now preserves live patient session-queue entries
   once all volatile blockers have drained. It still waits for active provider
   sessions, supervisor worker queue entries, direct provider queue entries, and
@@ -189,7 +196,8 @@ Implemented behavior:
 - Live patient session-queue entries are preserved as restart-paused work once
   all volatile blockers have drained.
 - Persisted recovered patient session-queue entries are reported as preserved
-  work in the scheduled status and do not block the restart.
+  work in the scheduled status and do not block the restart. After restart,
+  they still block Project Queue promotion until explicitly resumed or deleted.
 - The banner reports exact blocker counts and changes the safe-restart action
   to `Cancel Restart` while scheduled.
 - When blockers drain, YA calls the same backend restart path used by

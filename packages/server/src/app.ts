@@ -779,6 +779,7 @@ export function createApp(options: AppOptions): AppResult {
       projectQueueService: options.projectQueueService,
       supervisor,
       attachmentStagingService,
+      sessionQueuePersistenceService: options.sessionQueuePersistenceService,
       externalTracker,
       getGlobalInstructions: () =>
         buildEffectiveAgentContext({

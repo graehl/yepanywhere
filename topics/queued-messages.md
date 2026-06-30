@@ -136,9 +136,10 @@ the oldest recovered patient entry in a session; non-head resume and resume
 behind live queued backlog are rejected to preserve FIFO ordering. Safe restart
 reports recovered patient entries as preserved work, not blockers, and converts
 live patient entries to `paused-after-restart` once active sessions plus
-short-term/direct queue blockers have drained. Project-level recovered-queue
-controls and Project Queue promotion blocking on recovered patient queues are
-still pending.
+short-term/direct queue blockers have drained. Project Queue promotion treats
+persisted recovered patient entries as project-busy so project-level work
+cannot jump ahead of preserved per-session work. Project-level recovered-queue
+controls are still pending.
 
 ## What we are removing and why
 

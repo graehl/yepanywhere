@@ -34,7 +34,9 @@ across the YA install, and it is separate from the existing per-session queue.
   volatile blockers have drained. The durable Project Queue backlog survives
   the restart and remains visibly paused until the user resumes it. Persisted
   recovered patient session-queue entries are reported as preserved work in
-  safe-restart status rather than as drain blockers.
+  safe-restart status rather than as drain blockers, but they still count as
+  project-busy for Project Queue promotion so project-level work cannot jump
+  ahead of restart-paused per-session work.
 - Empty Project Queue state is always normal/running. Do not preserve a hidden
   pause after the last queued/failed/dispatching item leaves the queue.
 
@@ -63,8 +65,11 @@ A project is not idle while any owned session in that project has:
 - liveness other than `verified-idle`.
 
 A project is also not idle while it has a worker/startup queue entry or known
-external session ownership. External ownership is best-effort and can decay;
-UI copy must not promise perfect detection of all outside provider activity.
+external session ownership. Project Queue promotion also treats persisted
+`paused-after-restart` patient session-queue entries in the project as
+not-idle, even when no live process currently owns those entries. External
+ownership is best-effort and can decay; UI copy must not promise perfect
+detection of all outside provider activity.
 
 ## UI Semantics
 

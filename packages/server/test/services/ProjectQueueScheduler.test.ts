@@ -17,6 +17,7 @@ import {
   type ProjectQueueSupervisor,
 } from "../../src/services/ProjectQueueScheduler.js";
 import { ProjectQueueService } from "../../src/services/ProjectQueueService.js";
+import { SessionQueuePersistenceService } from "../../src/services/SessionQueuePersistenceService.js";
 import { AttachmentStagingService } from "../../src/uploads/index.js";
 import { EventBus } from "../../src/watcher/EventBus.js";
 
@@ -311,6 +312,62 @@ describe("ProjectQueueScheduler", () => {
     });
 
     await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1));
+  });
+
+  it("waits for recovered patient queues before promoting project work", async () => {
+    scheduler.dispose();
+    const sessionQueuePersistenceService = new SessionQueuePersistenceService({
+      dataDir: testDir,
+      eventBus,
+    });
+    await sessionQueuePersistenceService.initialize();
+    await sessionQueuePersistenceService.replaceAll([
+      {
+        id: "persisted-patient-1",
+        sessionId: "session-1",
+        projectId,
+        projectPath: PROJECT_PATH,
+        provider: "claude",
+        kind: "patient",
+        message: { text: "older recovered session work" },
+        createdAt: "2026-06-30T00:00:00.000Z",
+        updatedAt: "2026-06-30T00:00:00.000Z",
+        queuedAt: "2026-06-30T00:00:00.000Z",
+        status: "paused-after-restart",
+      },
+    ]);
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      sessionQueuePersistenceService,
+      idleGraceMs: 1,
+    });
+
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "project work waits" },
+      },
+    });
+
+    await wait(25);
+    expect(supervisor.resumeCalls).toHaveLength(0);
+    await expect(scheduler.getProjectIdleStatus(projectId)).resolves.toEqual({
+      idle: false,
+      blockers: ["recovered-session-queue:1"],
+    });
+
+    await sessionQueuePersistenceService.deleteItem("persisted-patient-1");
+
+    await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1));
+    expect(supervisor.resumeCalls[0]).toMatchObject({
+      sessionId: "session-1",
+      projectPath: PROJECT_PATH,
+      message: { text: "project work waits" },
+    });
   });
 
   it("waits for external ownership to clear", async () => {

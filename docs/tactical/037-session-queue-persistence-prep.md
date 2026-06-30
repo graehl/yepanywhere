@@ -20,9 +20,17 @@ Progress:
 - [x] Report persisted recovered patient queues in safe restart state.
 - [x] Teach safe restart to preserve live patient queues instead of waiting for
       them.
+- [x] Block Project Queue promotion behind recovered patient queues.
 
 Latest update:
 
+- 2026-06-30: Project Queue promotion now treats recovered patient queues as
+  project-busy. The shared project-idle predicate can include persisted
+  `paused-after-restart` patient entries, and the Project Queue scheduler wires
+  that count in when deciding whether to promote project-level work. Durable
+  session queue persistence changes also wake the scheduler, so deleting or
+  resuming the preserved per-session head lets queued project work promote once
+  the project is otherwise idle.
 - 2026-06-30: Live patient queue preservation at the safe-restart boundary
   implemented locally. `SafeRestartService` now runs a preserved-work
   preparation hook before deciding whether queued-message blockers remain. The
@@ -306,9 +314,9 @@ The implementation order is staged:
 Steps 1-6 are implemented for the patient queue. Safe restart now reports
 already recovered `paused-after-restart` patient entries and converts live
 patient queue backlog to that same paused recovered state once all volatile
-work has drained. Remaining follow-up work is project-level visibility/control
-and making Project Queue promotion treat recovered patient queues as
-project-busy.
+work has drained. Project Queue promotion also treats recovered patient queues
+as project-busy. Remaining follow-up work is project-level
+visibility/control.
 
 ## Restart UX
 
@@ -415,7 +423,7 @@ Runtime tests, when live persistence is wired:
   implemented per-entry path;
 - [x] scheduled safe restart preserves live patient entries as
   `paused-after-restart` only after active sessions and volatile queues drain;
-- [ ] Project Queue promotion still waits for recovered per-session queues
+- [x] Project Queue promotion still waits for recovered per-session queues
   before injecting project-level work;
 - [x] safe restart distinguishes active live blockers from persisted preserved
   queued work.

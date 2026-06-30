@@ -37,6 +37,7 @@ export async function getProjectWorkIdleStatus(
   options: {
     supervisor: ProjectWorkSupervisor;
     externalTracker?: ProjectWorkExternalTracker;
+    getRecoveredPatientQueueCount?: (projectId: UrlProjectId) => number;
   },
 ): Promise<ProjectWorkIdleStatus> {
   const blockers: string[] = [];
@@ -69,6 +70,12 @@ export async function getProjectWorkIdleStatus(
     if (request.projectId === projectId) {
       blockers.push("worker-queue");
     }
+  }
+
+  const recoveredPatientQueueCount =
+    options.getRecoveredPatientQueueCount?.(projectId) ?? 0;
+  if (recoveredPatientQueueCount > 0) {
+    blockers.push(`recovered-session-queue:${recoveredPatientQueueCount}`);
   }
 
   if (options.externalTracker) {

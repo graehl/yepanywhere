@@ -12,6 +12,10 @@ import type { BusEvent, EventBus } from "../watcher/EventBus.js";
 import type { ModelSettings } from "../supervisor/Supervisor.js";
 import type { AttachmentStagingService } from "../uploads/AttachmentStagingService.js";
 import type { ProjectQueueService } from "./ProjectQueueService.js";
+import type {
+  PersistedSessionQueuedMessage,
+  SessionQueuePersistenceService,
+} from "./SessionQueuePersistenceService.js";
 import {
   getProjectWorkIdleStatus,
   type ProjectWorkExternalTracker,
@@ -69,6 +73,7 @@ export interface ProjectQueueSchedulerOptions {
   supervisor: ProjectQueueSupervisor;
   eventBus: EventBus;
   attachmentStagingService?: AttachmentStagingService;
+  sessionQueuePersistenceService?: SessionQueuePersistenceService;
   externalTracker?: ProjectQueueExternalTracker;
   idleGraceMs?: number;
   getGlobalInstructions?: () => string | undefined;
@@ -92,6 +97,12 @@ function isQueuedResult(
   result: ProjectQueueDispatchResult,
 ): result is { queued: true; queueId: string; position: number } {
   return "queued" in result && result.queued === true;
+}
+
+function isRecoveredPatientQueueItem(
+  item: PersistedSessionQueuedMessage,
+): boolean {
+  return item.kind === "patient" && item.status === "paused-after-restart";
 }
 
 export class ProjectQueueScheduler {
@@ -132,6 +143,8 @@ export class ProjectQueueScheduler {
     return getProjectWorkIdleStatus(projectId, {
       supervisor: this.supervisor,
       externalTracker: this.externalTracker,
+      getRecoveredPatientQueueCount: (candidateProjectId) =>
+        this.getRecoveredPatientQueueCount(candidateProjectId),
     });
   }
 
@@ -163,10 +176,22 @@ export class ProjectQueueScheduler {
       case "worker-activity-changed":
       case "queue-position-changed":
       case "queue-request-removed":
+      case "session-queue-persistence-changed":
         this.scheduleAllDispatchableProjects();
         break;
     }
   };
+
+  private getRecoveredPatientQueueCount(projectId: UrlProjectId): number {
+    const service = this.options.sessionQueuePersistenceService;
+    if (!service) return 0;
+    return service
+      .list()
+      .filter(
+        (item) =>
+          item.projectId === projectId && isRecoveredPatientQueueItem(item),
+      ).length;
+  }
 
   private scheduleAllDispatchableProjects(delayMs = this.idleGraceMs): void {
     for (const projectId of this.projectQueueService.getProjectIdsWithDispatchableItems()) {

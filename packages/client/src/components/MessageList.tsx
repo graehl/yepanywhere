@@ -1191,6 +1191,8 @@ interface Props {
   quoteClearSignal?: number;
   /** Callback to cancel a deferred message */
   onCancelDeferred?: (tempId: string) => void;
+  /** Callback to resume a restart-paused recovered queue entry */
+  onResumeRecoveredDeferred?: (queueId: string) => void;
   /** Callback to delete a restart-paused recovered queue entry */
   onDeleteRecoveredDeferred?: (queueId: string) => void;
   /** Callback to cancel a Project Queue item */
@@ -1245,6 +1247,24 @@ function XIcon({ size = 14 }: { size?: number }) {
     >
       <path d="M18 6 6 18" />
       <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+function PlayIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m8 5 11 7-11 7V5Z" />
     </svg>
   );
 }
@@ -1376,6 +1396,7 @@ export const MessageList = memo(function MessageList({
   composerDraftChange,
   quoteClearSignal = 0,
   onCancelDeferred,
+  onResumeRecoveredDeferred,
   onDeleteRecoveredDeferred,
   onCancelProjectQueueMessage,
   onCorrectLatestUserMessage,
@@ -3996,6 +4017,20 @@ export const MessageList = memo(function MessageList({
                       showTextLabel
                       onClick={(event) => event.stopPropagation()}
                     />
+                    {recoveredQueueId && onResumeRecoveredDeferred ? (
+                      <button
+                        type="button"
+                        className="deferred-message-action deferred-message-action-resume"
+                        onClick={() =>
+                          onResumeRecoveredDeferred(recoveredQueueId)
+                        }
+                        aria-label={t("sessionRecoveredQueuedResume")}
+                        title={t("sessionRecoveredQueuedResume")}
+                      >
+                        <PlayIcon />
+                        <span>{t("sessionRecoveredQueuedResumeShort")}</span>
+                      </button>
+                    ) : null}
                     {recoveredQueueId && onDeleteRecoveredDeferred ? (
                       <button
                         type="button"

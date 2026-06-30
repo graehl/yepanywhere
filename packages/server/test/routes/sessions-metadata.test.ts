@@ -16,7 +16,11 @@ import {
   createSessionsRoutes,
   type SessionsDeps,
 } from "../../src/routes/sessions.js";
-import { SessionQueuePersistenceService } from "../../src/services/SessionQueuePersistenceService.js";
+import {
+  type PersistedSessionQueuedMessage,
+  SessionQueuePersistenceService,
+} from "../../src/services/SessionQueuePersistenceService.js";
+import type { UserMessage } from "../../src/sdk/types.js";
 import type { CodexSessionReader } from "../../src/sessions/codex-reader.js";
 import type { GrokSessionReader } from "../../src/sessions/grok-reader.js";
 import type {
@@ -107,6 +111,37 @@ async function withSessionQueuePersistence<T>(
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
+}
+
+function createPersistedPatientQueueItem(
+  project: Project,
+  overrides: Partial<PersistedSessionQueuedMessage> = {},
+): PersistedSessionQueuedMessage {
+  const id = overrides.id ?? "queue-1";
+  const base: PersistedSessionQueuedMessage = {
+    id,
+    sessionId: "sess-1",
+    projectId: project.id,
+    projectPath: project.path,
+    provider: "claude",
+    kind: "patient",
+    message: {
+      text: "resume after restart",
+      tempId: `temp-${id}`,
+      metadata: { deliveryIntent: "patient" },
+    },
+    createdAt: "2026-06-30T09:00:00.000Z",
+    updatedAt: "2026-06-30T09:01:00.000Z",
+    queuedAt: "2026-06-30T09:00:00.000Z",
+    status: "paused-after-restart",
+    source: { tempId: `temp-${id}` },
+  };
+  return {
+    ...base,
+    ...overrides,
+    message: overrides.message ?? base.message,
+    source: overrides.source ?? base.source,
+  };
 }
 
 async function createGrokRedirectFixture(): Promise<{
@@ -495,6 +530,237 @@ describe("Sessions metadata route", () => {
       });
       expect(sessionQueuePersistenceService.listSession("sess-1")).toEqual([]);
     });
+  });
+
+  it("rejects non-head recovered patient queue resume", async () => {
+    await withSessionQueuePersistence(
+      async (sessionQueuePersistenceService) => {
+        const project = createProject();
+        await sessionQueuePersistenceService.replaceAll([
+          createPersistedPatientQueueItem(project, {
+            id: "queue-1",
+            queuedAt: "2026-06-30T09:00:00.000Z",
+          }),
+          createPersistedPatientQueueItem(project, {
+            id: "queue-2",
+            queuedAt: "2026-06-30T09:05:00.000Z",
+          }),
+        ]);
+
+        const routes = createSessionsRoutes({
+          supervisor: {
+            getProcessForSession: vi.fn(() => null),
+          } as unknown as SessionsDeps["supervisor"],
+          sessionQueuePersistenceService,
+        });
+
+        const response = await routes.request(
+          "/sessions/sess-1/recovered-queue/queue-2/resume",
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(409);
+        await expect(response.json()).resolves.toMatchObject({
+          headQueueId: "queue-1",
+          deferredMessages: [
+            { id: "queue-1", status: "paused-after-restart" },
+            { id: "queue-2", status: "paused-after-restart" },
+          ],
+        });
+        expect(
+          sessionQueuePersistenceService
+            .listSession("sess-1")
+            .map((item) => item.status),
+        ).toEqual(["paused-after-restart", "paused-after-restart"]);
+      },
+    );
+  });
+
+  it("rejects recovered patient queue resume behind live queued work", async () => {
+    await withSessionQueuePersistence(
+      async (sessionQueuePersistenceService) => {
+        const project = createProject();
+        await sessionQueuePersistenceService.replaceAll([
+          createPersistedPatientQueueItem(project, {
+            id: "queue-1",
+            queuedAt: "2026-06-30T09:00:00.000Z",
+          }),
+        ]);
+        const getDeferredQueueSummary = vi.fn(() => [
+          {
+            tempId: "temp-newer",
+            content: "newer queued work",
+            timestamp: "2026-06-30T10:00:00.000Z",
+          },
+        ]);
+
+        const routes = createSessionsRoutes({
+          supervisor: {
+            getProcessForSession: vi.fn(() => ({
+              isTerminated: false,
+              getDeferredQueueSummary,
+            })),
+          } as unknown as SessionsDeps["supervisor"],
+          sessionQueuePersistenceService,
+        });
+
+        const response = await routes.request(
+          "/sessions/sess-1/recovered-queue/queue-1/resume",
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(409);
+        await expect(response.json()).resolves.toMatchObject({
+          headQueueId: "queue-1",
+          deferredMessages: [
+            { id: "queue-1", status: "paused-after-restart" },
+            { tempId: "temp-newer", content: "newer queued work" },
+          ],
+        });
+        expect(
+          sessionQueuePersistenceService.listSession("sess-1")[0],
+        ).toMatchObject({
+          id: "queue-1",
+          status: "paused-after-restart",
+        });
+      },
+    );
+  });
+
+  it("resumes the head recovered patient queue entry into a live process", async () => {
+    await withSessionQueuePersistence(
+      async (sessionQueuePersistenceService) => {
+        const project = createProject();
+        const item = createPersistedPatientQueueItem(project, {
+          id: "queue-1",
+          message: {
+            text: "resume me",
+            tempId: "temp-recovered",
+            metadata: { deliveryIntent: "patient" },
+          },
+          queuedAt: "2026-06-30T09:00:00.000Z",
+          mode: "default",
+        });
+        await sessionQueuePersistenceService.replaceAll([item]);
+
+        const deferredMessages: {
+          tempId?: string;
+          content: string;
+          timestamp: string;
+          metadata?: UserMessage["metadata"];
+        }[] = [];
+        const persistenceWrites: Promise<unknown>[] = [];
+        const deferMessage = vi.fn(
+          (
+            message: UserMessage,
+            options?: {
+              persistedQueueId?: string;
+              timestamp?: string;
+            },
+          ) => {
+            deferredMessages.push({
+              tempId: message.tempId,
+              content: message.text,
+              timestamp: options?.timestamp ?? "missing-timestamp",
+              metadata: message.metadata,
+            });
+            persistenceWrites.push(
+              sessionQueuePersistenceService.upsertItem({
+                ...item,
+                id: options?.persistedQueueId ?? item.id,
+                message,
+                updatedAt: options?.timestamp ?? item.updatedAt,
+                queuedAt: options?.timestamp ?? item.queuedAt,
+                status: "queued",
+              }),
+            );
+            return { success: true, deferred: true };
+          },
+        );
+        const primeSupportedCommandsForMessage = vi.fn(async () => {});
+        const waitForPatientQueuePersistenceIdle = vi.fn(async () => {
+          await Promise.all(persistenceWrites);
+        });
+        const getDeferredQueueSummary = vi.fn(() => deferredMessages);
+        const process = {
+          id: "proc-1",
+          isTerminated: false,
+          state: { type: "idle" },
+          permissionMode: "default",
+          modeVersion: 0,
+          recapAfterSeconds: 300,
+          setPermissionMode: vi.fn(),
+          primeSupportedCommandsForMessage,
+          deferMessage,
+          waitForPatientQueuePersistenceIdle,
+          getDeferredQueueSummary,
+        };
+        const reactivateSession = vi.fn(async () => process);
+
+        const routes = createSessionsRoutes({
+          supervisor: {
+            getProcessForSession: vi.fn(() => null),
+            reactivateSession,
+          } as unknown as SessionsDeps["supervisor"],
+          sessionQueuePersistenceService,
+        });
+
+        const response = await routes.request(
+          "/sessions/sess-1/recovered-queue/queue-1/resume",
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(200);
+        expect(reactivateSession).toHaveBeenCalledWith(
+          project.path,
+          "sess-1",
+          "default",
+          expect.objectContaining({
+            providerName: "claude",
+          }),
+        );
+        expect(primeSupportedCommandsForMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: "resume me",
+            tempId: "temp-recovered",
+            metadata: { deliveryIntent: "patient" },
+          }),
+        );
+        expect(deferMessage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            text: "resume me",
+            tempId: "temp-recovered",
+            metadata: { deliveryIntent: "patient" },
+          }),
+          {
+            promoteIfReady: true,
+            persistedQueueId: "queue-1",
+            timestamp: "2026-06-30T09:00:00.000Z",
+          },
+        );
+        expect(waitForPatientQueuePersistenceIdle).toHaveBeenCalledTimes(1);
+        await expect(response.json()).resolves.toMatchObject({
+          resumed: true,
+          processId: "proc-1",
+          deferredMessages: [
+            {
+              tempId: "temp-recovered",
+              content: "resume me",
+              timestamp: "2026-06-30T09:00:00.000Z",
+            },
+          ],
+        });
+        expect(
+          sessionQueuePersistenceService.listSession("sess-1"),
+        ).toMatchObject([
+          {
+            id: "queue-1",
+            status: "queued",
+            queuedAt: "2026-06-30T09:00:00.000Z",
+          },
+        ]);
+      },
+    );
   });
 
   it("resolves agent content across providers for mixed-provider projects", async () => {

@@ -1039,6 +1039,26 @@ export const api = {
       { method: "DELETE" },
     ),
 
+  resumeRecoveredQueuedMessage: (sessionId: string, queueId: string) =>
+    fetchJSON<{
+      resumed: boolean;
+      deferred?: boolean;
+      promoted?: boolean;
+      position?: number;
+      processId: string;
+      processState?: "idle" | "in-turn" | "waiting-input";
+      permissionMode?: PermissionMode;
+      modeVersion?: number;
+      recapAfterSeconds?: number;
+      deferredMessages: DeferredQueueMessage[];
+      serverTimestamp: number;
+    }>(
+      `/sessions/${sessionId}/recovered-queue/${encodeURIComponent(
+        queueId,
+      )}/resume`,
+      { method: "POST" },
+    ),
+
   abortProcess: (processId: string) =>
     fetchJSON<{ aborted: boolean }>(`/processes/${processId}/abort`, {
       method: "POST",

@@ -1,6 +1,6 @@
 # Session Queue Persistence Prep
 
-Status: Paused recovery display/delete chunk implemented locally.
+Status: Head recovered patient queue resume implemented locally.
 
 Progress:
 
@@ -16,11 +16,22 @@ Progress:
 - [x] Update `topics/queued-messages.md` with the patient-only persistence
       revision.
 - [x] Add restart-paused session queue display/delete UI/API behavior.
-- [ ] Add restart-paused session queue resume behavior.
+- [x] Add restart-paused session queue resume behavior.
 - [ ] Integrate persisted session queues with safe restart.
 
 Latest update:
 
+- 2026-06-30: Head recovered patient queue resume implemented locally.
+  Restart-paused patient entries now render with `Resume` and `Delete` actions.
+  Resume is intentionally head-only per session: the server rejects non-oldest
+  recovered entries, and also rejects resume when a live deferred queue already
+  has backlog that would put older recovered work behind newer live work. A
+  successful resume reactivates/attaches the session without sending a turn,
+  re-enters the message through `Process.deferMessage` as patient work, and
+  preserves the durable queue id plus original queued timestamp by upserting the
+  record from `paused-after-restart` back to `queued`. Remaining recovered
+  entries are included with live queue summaries so the next paused item is
+  still visible after the session has been reactivated.
 - 2026-06-30: Paused recovery display/delete implemented locally. Shared
   session queue summary DTOs now include optional durable `id`, `kind`, and
   `status` fields. Session detail and metadata responses report recovered
@@ -268,10 +279,9 @@ The implementation order is staged:
 6. Teach safe restart to treat persisted patient entries as preserved work,
    while still reporting live active sessions as blockers.
 
-Steps 1-3 are implemented. The next likely chunk is step 4: expose loaded
-paused-after-restart patient entries through a server-owned recovery API and
-session summary surface, without auto-dispatching them into a live provider
-process.
+Steps 1-4 are implemented, including explicit per-entry resume. The next likely
+chunk is step 6's safe-restart integration, preceded by a project-level
+recovered-queue summary if bulk visibility/resume is needed.
 
 ## Restart UX
 
@@ -315,18 +325,20 @@ First recovery chunk:
 1. [x] Add a shared queue-summary DTO with optional durable `id`, `kind`, and
    `status` fields.
 2. [x] Decorate session detail and session metadata responses with recovered
-   `paused-after-restart` patient entries when no live process owns the queue.
+   `paused-after-restart` patient entries, including alongside live process
+   queue state.
 3. [x] Add a delete endpoint keyed by durable queue id.
 4. [x] Teach the client initial session load/metadata refresh to mirror recovered
    queue entries from the server response.
 5. [x] Render recovered entries as paused chips; do not auto-dispatch.
 
-Resume chunk, later:
+Resume chunk:
 
-- resume one recovered entry by creating/attaching a session process and
+- [x] resume one recovered entry by creating/attaching a session process and
   re-entering the patient deferred queue;
-- preserve per-session FIFO order when resuming multiple recovered entries;
-- add an optional project-level summary/resume-all control once per-entry
+- [x] preserve per-session FIFO order by allowing only the oldest recovered
+  entry to resume and rejecting resume behind live queued backlog;
+- [ ] add an optional project-level summary/resume-all control once per-entry
   resume behavior is stable.
 
 ## Safe Restart Interaction
@@ -369,7 +381,8 @@ Runtime tests, when live persistence is wired:
 - [x] patient entries survive server restart as paused API/UI state and do not
   auto-send;
 - [x] deleting a recovered queued message removes it from disk and UI;
-- [ ] resuming recovered entries preserves per-session order;
+- [x] resuming recovered entries preserves per-session order for the
+  implemented per-entry path;
 - Project Queue promotion still waits for recovered per-session queues before
   injecting project-level work;
 - safe restart distinguishes active live blockers from persisted preserved

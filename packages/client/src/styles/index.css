@@ -5971,6 +5971,10 @@ a.sidebar-nav-item {
   color: var(--attention-color);
 }
 
+.deferred-message-action-resume {
+  color: var(--success-color, #4a4);
+}
+
 .deferred-message-action-steer {
   color: var(--accent-color);
 }

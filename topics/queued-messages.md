@@ -125,8 +125,10 @@ Status as of 2026-06-30: live patient queue write/delete is wired into
 `Process`/Supervisor. A queued patient entry is written to the server
 persistence service, and cancel/promotion/drain removes it. Startup-loaded
 paused entries are surfaced through session detail/metadata responses and can
-be deleted by durable queue id. Explicit resume/re-dispatch of recovered
-entries is still pending.
+be deleted by durable queue id. Explicit per-entry resume is implemented for
+the oldest recovered patient entry in a session; non-head resume and resume
+behind live queued backlog are rejected to preserve FIFO ordering. Safe restart
+integration and project-level recovered-queue controls are still pending.
 
 ## What we are removing and why
 

@@ -2941,6 +2941,34 @@ function SessionPageContent({
     [sessionId, setDeferredMessages, showToast, t],
   );
 
+  const handleResumeRecoveredDeferred = useCallback(
+    async (queueId: string) => {
+      try {
+        const result = await api.resumeRecoveredQueuedMessage(
+          sessionId,
+          queueId,
+        );
+        setStatus({
+          owner: "self",
+          processId: result.processId,
+          permissionMode: result.permissionMode,
+          modeVersion: result.modeVersion,
+          recapAfterSeconds: result.recapAfterSeconds,
+        });
+        setProcessState(result.processState ?? "idle");
+        setDeferredMessages(result.deferredMessages ?? []);
+      } catch (err) {
+        console.error("Failed to resume recovered queued message:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(
+          t("sessionRecoveredQueuedResumeFailed", { message: errorMsg }),
+          "error",
+        );
+      }
+    },
+    [sessionId, setDeferredMessages, setProcessState, setStatus, showToast, t],
+  );
+
   const handleCancelLatestDeferred = useCallback(() => {
     const latest = [...deferredMessages]
       .reverse()
@@ -5491,6 +5519,7 @@ function SessionPageContent({
                   composerDraftChange={composerDraftChangeForAnchors}
                   quoteClearSignal={quoteClearSignal}
                   onCancelDeferred={handleCancelDeferred}
+                  onResumeRecoveredDeferred={handleResumeRecoveredDeferred}
                   onDeleteRecoveredDeferred={handleDeleteRecoveredDeferred}
                   onCancelProjectQueueMessage={handleCancelProjectQueueItem}
                   onCorrectLatestUserMessage={handleCorrectLatestUserMessage}

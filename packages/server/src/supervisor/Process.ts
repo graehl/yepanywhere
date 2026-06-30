@@ -2352,6 +2352,8 @@ export class Process {
     message: UserMessage,
     options?: {
       promoteIfReady?: boolean;
+      persistedQueueId?: string;
+      timestamp?: string;
     },
   ): {
     success: boolean;
@@ -2392,7 +2394,10 @@ export class Process {
 
     const entry: DeferredQueueEntry = {
       message,
-      timestamp: new Date().toISOString(),
+      timestamp: options?.timestamp ?? new Date().toISOString(),
+      ...(options?.persistedQueueId
+        ? { persistedQueueId: options.persistedQueueId }
+        : {}),
     };
     this.deferredQueue.push(entry);
     this.persistPatientDeferredEntry(entry);

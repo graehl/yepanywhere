@@ -628,6 +628,15 @@ function recoveredPatientQueueSummaries(
   deps: SessionsDeps,
   sessionId: string,
 ): SessionQueuedMessageSummary[] {
+  return recoveredPatientQueueItems(deps, sessionId).map(
+    persistedPatientQueueSummary,
+  );
+}
+
+function recoveredPatientQueueItems(
+  deps: SessionsDeps,
+  sessionId: string,
+): PersistedSessionQueuedMessage[] {
   if (!deps.sessionQueuePersistenceService) {
     return [];
   }
@@ -637,8 +646,7 @@ function recoveredPatientQueueSummaries(
       (item) =>
         item.kind === "patient" && item.status === "paused-after-restart",
     )
-    .sort((left, right) => left.queuedAt.localeCompare(right.queuedAt))
-    .map(persistedPatientQueueSummary);
+    .sort((left, right) => left.queuedAt.localeCompare(right.queuedAt));
 }
 
 function sessionQueueSummaries(
@@ -646,13 +654,37 @@ function sessionQueueSummaries(
   sessionId: string,
   process: Process | undefined,
 ): SessionQueuedMessageSummary[] {
+  const recovered = recoveredPatientQueueSummaries(deps, sessionId);
   if (process && typeof process.getDeferredQueueSummary === "function") {
-    return process.getDeferredQueueSummary();
+    const messages: SessionQueuedMessageSummary[] = [
+      ...process.getDeferredQueueSummary(),
+      ...recovered,
+    ];
+    return messages.sort((left, right) =>
+      (left.queuedAt ?? left.timestamp).localeCompare(
+        right.queuedAt ?? right.timestamp,
+      ),
+    );
   }
   if (process) {
-    return [];
+    return recovered;
   }
-  return recoveredPatientQueueSummaries(deps, sessionId);
+  return recovered;
+}
+
+function recoveredPatientUserMessage(
+  item: PersistedSessionQueuedMessage,
+): UserMessage {
+  const mode = item.message.mode ?? item.mode;
+  const metadata: UserMessageMetadata = {
+    ...(item.message.metadata ?? {}),
+    deliveryIntent: "patient" satisfies UserMessageDeliveryIntent,
+  };
+  return {
+    ...item.message,
+    ...(mode ? { mode } : {}),
+    metadata,
+  };
 }
 
 async function resolveSessionReaderForAgentContent({
@@ -5445,10 +5477,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const item = service
       .listSession(sessionId)
       .find((candidate) => candidate.id === queueId);
-    if (
-      item?.kind !== "patient" ||
-      item.status !== "paused-after-restart"
-    ) {
+    if (item?.kind !== "patient" || item.status !== "paused-after-restart") {
       return c.json({ error: "Recovered queued message not found" }, 404);
     }
 
@@ -5458,6 +5487,156 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       deferredMessages: recoveredPatientQueueSummaries(deps, sessionId),
     });
   });
+
+  // POST /api/sessions/:sessionId/recovered-queue/:queueId/resume - Move the
+  // oldest restart-paused patient queue entry back into the live patient queue.
+  routes.post(
+    "/sessions/:sessionId/recovered-queue/:queueId/resume",
+    async (c) => {
+      const sessionId = c.req.param("sessionId");
+      const queueId = c.req.param("queueId");
+      const service = deps.sessionQueuePersistenceService;
+      if (!service) {
+        return c.json({ error: "Session queue persistence unavailable" }, 503);
+      }
+
+      const recoveredItems = recoveredPatientQueueItems(deps, sessionId);
+      const item = recoveredItems.find((candidate) => candidate.id === queueId);
+      if (!item) {
+        return c.json({ error: "Recovered queued message not found" }, 404);
+      }
+
+      const head = recoveredItems[0];
+      if (!head || head.id !== item.id) {
+        return c.json(
+          {
+            error: "Resume recovered queued messages in their original order.",
+            headQueueId: head?.id,
+            deferredMessages: recoveredItems.map(persistedPatientQueueSummary),
+          },
+          409,
+        );
+      }
+
+      let process = deps.supervisor.getProcessForSession(sessionId);
+      if (process?.isTerminated) {
+        process = undefined;
+      }
+      const liveDeferredMessages = process?.getDeferredQueueSummary() ?? [];
+      if (liveDeferredMessages.length > 0) {
+        return c.json(
+          {
+            error:
+              "Drain or cancel live queued messages before resuming recovered work.",
+            headQueueId: item.id,
+            deferredMessages: sessionQueueSummaries(deps, sessionId, process),
+          },
+          409,
+        );
+      }
+
+      const mode = item.message.mode ?? item.mode;
+      const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
+      const parsedExecutor = parseOptionalExecutor(
+        item.executor ?? metadata?.executor,
+      );
+      if (parsedExecutor.error) {
+        return c.json({ error: parsedExecutor.error }, 400);
+      }
+      const rawModel = item.model ?? metadata?.requestedModel;
+      const model = rawModel && rawModel !== "default" ? rawModel : undefined;
+
+      if (!process) {
+        try {
+          process = await deps.supervisor.reactivateSession(
+            item.projectPath,
+            sessionId,
+            mode,
+            {
+              model,
+              serviceTier: item.serviceTier,
+              providerName: item.provider,
+              executor: parsedExecutor.executor,
+              globalInstructions: getGlobalInstructions(),
+              recapAfterSeconds: metadata?.recapAfterSeconds,
+              promptSuggestionMode: metadata?.promptSuggestionMode,
+            },
+          );
+        } catch (error) {
+          return c.json(
+            {
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Failed to reactivate session",
+            },
+            503,
+          );
+        }
+        await persistLaunchMetadata(
+          sessionId,
+          item.provider,
+          parsedExecutor.executor,
+          undefined,
+          item.model ?? metadata?.requestedModel,
+          metadata?.promptSuggestionMode,
+          metadata?.recapAfterSeconds,
+        );
+      } else if (mode) {
+        process.setPermissionMode(mode);
+      }
+
+      const reactivatedBacklog = process.getDeferredQueueSummary();
+      if (reactivatedBacklog.length > 0) {
+        return c.json(
+          {
+            error:
+              "Drain or cancel live queued messages before resuming recovered work.",
+            headQueueId: item.id,
+            deferredMessages: sessionQueueSummaries(deps, sessionId, process),
+          },
+          409,
+        );
+      }
+
+      const userMessage = recoveredPatientUserMessage(item);
+      await process.primeSupportedCommandsForMessage(userMessage);
+      const deferredResult = process.deferMessage(userMessage, {
+        promoteIfReady: true,
+        persistedQueueId: item.id,
+        timestamp: item.queuedAt,
+      });
+      if (!deferredResult.success) {
+        return c.json(
+          {
+            error: "Failed to resume recovered queued message",
+            reason: deferredResult.error,
+            deferredMessages: recoveredPatientQueueSummaries(deps, sessionId),
+          },
+          409,
+        );
+      }
+
+      await process.waitForPatientQueuePersistenceIdle();
+      return c.json({
+        resumed: true,
+        deferred: deferredResult.deferred,
+        promoted: deferredResult.promoted,
+        position: deferredResult.position,
+        processId: process.id,
+        processState:
+          process.state.type === "waiting-input" ||
+          process.state.type === "in-turn"
+            ? process.state.type
+            : "idle",
+        permissionMode: process.permissionMode,
+        modeVersion: process.modeVersion,
+        recapAfterSeconds: process.recapAfterSeconds,
+        deferredMessages: sessionQueueSummaries(deps, sessionId, process),
+        serverTimestamp: Date.now(),
+      });
+    },
+  );
 
   // DELETE /api/sessions/:sessionId/deferred/:tempId - Cancel a deferred message
   routes.delete("/sessions/:sessionId/deferred/:tempId", async (c) => {

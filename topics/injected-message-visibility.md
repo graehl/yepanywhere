@@ -93,9 +93,17 @@ expandable detail, but does not render as a user bubble. Server-side user-turn
 slicing also treats the skill body as synthetic, and fork-after source
 validation rejects the body as a selected user-authored request.
 
-Remaining Part 2 scope: resume-from-full init text can still render as normal
-turns. It predates the compaction work and needs its own classification, not a
-local CSS hide.
+### Codex resumed environment context (landed 2026-06-30)
+
+Codex can persist a user-role `response_item` containing only
+`<environment_context>...</environment_context>` immediately before the real
+user turn that wakes a TUI-created session. YA now suppresses that lone
+environment-context setup item when it is immediately followed by a normal user
+prompt, so the context row does not render as a fictitious user turn.
+
+Remaining Part 2 scope: broader resume-from-full init text can still render as
+normal turns. It predates the compaction work and needs its own classification,
+not a local CSS hide.
 
 ## "Show hidden" — future exploration (no implementation yet)
 

@@ -437,5 +437,35 @@ export function createProjectQueueRoutes(deps: ProjectQueueRoutesDeps): Hono {
     }
   });
 
+  routes.post("/:projectId/queue/:itemId/move-to-top", async (c) => {
+    const resolved = await resolveProject(c.req.param("projectId"));
+    if ("error" in resolved) {
+      return c.json({ error: resolved.error }, resolved.status);
+    }
+
+    let item: ProjectQueueItemSummary | null;
+    try {
+      item = await deps.projectQueueService.moveItemToTop(
+        resolved.project.id,
+        c.req.param("itemId"),
+      );
+      if (!item) {
+        return c.json({ error: "Project queue item not found" }, 404);
+      }
+      const queue = await projectQueueResponse(resolved.project, deps);
+      const enrichedItem =
+        queue.items.find((candidate) => candidate.id === item?.id) ?? item;
+      return c.json({
+        item: enrichedItem,
+        queue,
+      });
+    } catch (error) {
+      if (error instanceof ProjectQueueValidationError) {
+        return c.json(validationError(error.message), 400);
+      }
+      throw error;
+    }
+  });
+
   return routes;
 }

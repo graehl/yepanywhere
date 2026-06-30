@@ -778,6 +778,61 @@ export class ProjectQueueService {
     });
   }
 
+  async moveItemToTop(
+    projectId: UrlProjectId,
+    itemId: string,
+  ): Promise<ProjectQueueItemSummary | null> {
+    return this.withMutation(async () => {
+      this.ensureInitialized();
+      const index = this.findProjectItemIndex(projectId, itemId);
+      if (index === -1) return null;
+      const existing = this.state.items[index]!;
+      if (existing.status === "dispatching") {
+        throw new ProjectQueueValidationError(
+          "Cannot reorder an item while it is dispatching",
+        );
+      }
+
+      const projectIndexes = this.getProjectItemIndexes(projectId);
+      const projectItems = projectIndexes.map(
+        (projectIndex) => this.state.items[projectIndex]!,
+      );
+      const originalIds = projectItems.map((item) => item.id);
+      const projectItemIndex = projectItems.findIndex(
+        (item) => item.id === itemId,
+      );
+      if (projectItemIndex === -1) return null;
+
+      const [removed] = projectItems.splice(projectItemIndex, 1);
+      const moved: ProjectQueueItem = {
+        ...removed!,
+        updatedAt: new Date().toISOString(),
+      };
+      const firstMovableIndex = projectItems.findIndex(
+        (item) => item.status !== "dispatching",
+      );
+      projectItems.splice(
+        firstMovableIndex === -1 ? projectItems.length : firstMovableIndex,
+        0,
+        moved,
+      );
+
+      const reordered = projectItems.some(
+        (item, position) => item.id !== originalIds[position],
+      );
+      if (!reordered) {
+        return summarizeItem(existing);
+      }
+
+      for (const [position, projectIndex] of projectIndexes.entries()) {
+        this.state.items[projectIndex] = projectItems[position]!;
+      }
+      await this.save();
+      this.emitChange(projectId, "reordered", itemId);
+      return summarizeItem(moved);
+    });
+  }
+
   async claimNextDispatchableItem(
     projectId: UrlProjectId,
   ): Promise<ProjectQueueItem | null> {
@@ -881,6 +936,14 @@ export class ProjectQueueService {
     return this.state.items.findIndex(
       (item) => item.projectId === projectId && item.id === itemId,
     );
+  }
+
+  private getProjectItemIndexes(projectId: UrlProjectId): number[] {
+    const indexes: number[] = [];
+    for (const [index, item] of this.state.items.entries()) {
+      if (item.projectId === projectId) indexes.push(index);
+    }
+    return indexes;
   }
 
   private clearDispatchPauseIfEmpty(): void {

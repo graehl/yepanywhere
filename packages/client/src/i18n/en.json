@@ -238,6 +238,7 @@
   "projectQueueStatusFailed": "Failed",
   "projectQueueRetry": "Retry",
   "projectQueueEdit": "Edit",
+  "projectQueueMoveToTop": "Move to top",
   "projectQueueSave": "Save",
   "projectQueueDiscard": "Discard",
   "projectQueuePause": "Pause",

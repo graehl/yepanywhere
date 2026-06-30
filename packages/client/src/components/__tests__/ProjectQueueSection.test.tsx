@@ -76,6 +76,7 @@ function renderSection(
     onResumeDispatch: vi.fn(),
     onDeleteItem: vi.fn(),
     onRetryItem: vi.fn(),
+    onMoveItemToTop: vi.fn(),
     onUpdateItem: vi.fn(),
   },
   highlightedItemId?: string,
@@ -99,6 +100,7 @@ function renderSection(
           onResumeDispatch={handlers.onResumeDispatch}
           onDeleteItem={handlers.onDeleteItem}
           onRetryItem={handlers.onRetryItem}
+          onMoveItemToTop={handlers.onMoveItemToTop}
           onUpdateItem={handlers.onUpdateItem}
         />
       </MemoryRouter>
@@ -217,6 +219,16 @@ describe("ProjectQueueSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(handlers.onRetryItem).toHaveBeenCalledWith("project-1", "2");
+  });
+
+  it("offers move-to-top only for non-leading movable items", () => {
+    const handlers = renderSection([makeItem("1"), makeItem("2")]);
+
+    const moveButtons = screen.getAllByRole("button", { name: "Move to top" });
+    expect(moveButtons).toHaveLength(1);
+    fireEvent.click(moveButtons[0]!);
+
+    expect(handlers.onMoveItemToTop).toHaveBeenCalledWith("project-1", "2");
   });
 
   it("highlights a linked queue item", () => {

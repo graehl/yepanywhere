@@ -26,6 +26,7 @@ interface ProjectQueueSectionProps {
   onResumeDispatch: () => void;
   onDeleteItem: (projectId: string, itemId: string) => void;
   onRetryItem: (projectId: string, itemId: string) => void;
+  onMoveItemToTop: (projectId: string, itemId: string) => void;
   onUpdateItem: (
     projectId: string,
     itemId: string,
@@ -136,6 +137,18 @@ function groupRecoveredSessionQueues(
     });
 }
 
+function isFirstMovableProjectQueueItem(
+  item: ProjectQueueItemSummary,
+  items: readonly ProjectQueueItemSummary[],
+): boolean {
+  const firstMovable = items.find(
+    (candidate) =>
+      candidate.projectId === item.projectId &&
+      candidate.status !== "dispatching",
+  );
+  return firstMovable?.id === item.id;
+}
+
 export function ProjectQueueSection({
   projects,
   items,
@@ -151,6 +164,7 @@ export function ProjectQueueSection({
   onResumeDispatch,
   onDeleteItem,
   onRetryItem,
+  onMoveItemToTop,
   onUpdateItem,
 }: ProjectQueueSectionProps) {
   const { t } = useI18n();
@@ -296,6 +310,8 @@ export function ProjectQueueSection({
             const isEditing = editingItemId === item.id;
             const isHighlighted = highlightedItemId === item.id;
             const canEdit = item.status === "queued" || item.status === "failed";
+            const canMoveToTop =
+              canEdit && !isFirstMovableProjectQueueItem(item, items);
             const canSaveEdit =
               !isMutating &&
               (editText.trim().length > 0 ||
@@ -411,6 +427,15 @@ export function ProjectQueueSection({
                         disabled={isMutating}
                       >
                         {t("projectQueueEdit")}
+                      </button>
+                    )}
+                    {canMoveToTop && !isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => onMoveItemToTop(item.projectId, item.id)}
+                        disabled={isMutating}
+                      >
+                        {t("projectQueueMoveToTop")}
                       </button>
                     )}
                     <button

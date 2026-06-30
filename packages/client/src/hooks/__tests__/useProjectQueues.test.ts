@@ -34,6 +34,7 @@ const apiMock = vi.hoisted(() => ({
   updateProjectQueueItem: vi.fn(),
   deleteProjectQueueItem: vi.fn(),
   retryProjectQueueItem: vi.fn(),
+  moveProjectQueueItemToTop: vi.fn(),
   pauseProjectQueueDispatch: vi.fn(),
   resumeProjectQueueDispatch: vi.fn(),
 }));
@@ -122,6 +123,7 @@ beforeEach(() => {
   apiMock.updateProjectQueueItem.mockReset();
   apiMock.deleteProjectQueueItem.mockReset();
   apiMock.retryProjectQueueItem.mockReset();
+  apiMock.moveProjectQueueItemToTop.mockReset();
   apiMock.pauseProjectQueueDispatch.mockReset();
   apiMock.resumeProjectQueueDispatch.mockReset();
   connectionMock.isRemoteClient.mockReset();
@@ -353,6 +355,32 @@ describe("useProjectQueues", () => {
     expect(result.current.items).toMatchObject([
       { id: "1", messagePreview: "Edited message" },
     ]);
+  });
+
+  it("preserves queue order from move-to-top responses", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [makeItem("1"), makeItem("2")],
+    });
+    apiMock.moveProjectQueueItemToTop.mockResolvedValue({
+      item: makeItem("2", PROJECT_ID),
+      queue: {
+        projectId: PROJECT_ID,
+        items: [makeItem("2", PROJECT_ID), makeItem("1", PROJECT_ID)],
+      },
+    });
+
+    const { result } = renderHook(() => useProjectQueues(["project-1"]));
+
+    await waitFor(() => expect(result.current.items).toHaveLength(2));
+    await act(async () => {
+      await result.current.moveItemToTop("project-1", "2");
+    });
+
+    expect(apiMock.moveProjectQueueItemToTop).toHaveBeenCalledWith(
+      "project-1",
+      "2",
+    );
+    expect(result.current.items.map((item) => item.id)).toEqual(["2", "1"]);
   });
 
   it("updates dispatch state from pause and resume responses", async () => {

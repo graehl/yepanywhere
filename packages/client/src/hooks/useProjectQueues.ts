@@ -39,6 +39,7 @@ export interface UseProjectQueuesResult {
   ) => Promise<void>;
   deleteItem: (projectId: string, itemId: string) => Promise<void>;
   retryItem: (projectId: string, itemId: string) => Promise<void>;
+  moveItemToTop: (projectId: string, itemId: string) => Promise<void>;
 }
 
 function uniqueProjectIds(projectIds: readonly string[]): string[] {
@@ -48,12 +49,7 @@ function uniqueProjectIds(projectIds: readonly string[]): string[] {
 function flattenQueues(
   queuesByProject: Record<string, readonly ProjectQueueItemSummary[]>,
 ): ProjectQueueItemSummary[] {
-  return Object.values(queuesByProject)
-    .flat()
-    .sort((a, b) => {
-      const created = a.createdAt.localeCompare(b.createdAt);
-      return created !== 0 ? created : a.id.localeCompare(b.id);
-    });
+  return Object.values(queuesByProject).flat();
 }
 
 const PROJECT_QUEUE_QUERY_KEY = createClientQueryKey({
@@ -173,6 +169,22 @@ export function useProjectQueues(
     }
   }, [sourceKey]);
 
+  const moveItemToTop = useCallback(async (projectId: string, itemId: string) => {
+    setMutatingItemId(itemId);
+    setMutationError(null);
+    const requestSourceKey = sourceKey;
+    try {
+      const response = await api.moveProjectQueueItemToTop(projectId, itemId);
+      setDispatchState(response.queue.dispatchState ?? RUNNING_DISPATCH_STATE);
+      reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
+    } catch (err) {
+      setMutationError(err instanceof Error ? err : new Error(String(err)));
+      throw err;
+    } finally {
+      setMutatingItemId(null);
+    }
+  }, [sourceKey]);
+
   const refetchQueues = useCallback(async () => {
     setMutationError(null);
     await refetch();
@@ -253,5 +265,6 @@ export function useProjectQueues(
     updateItem,
     deleteItem,
     retryItem,
+    moveItemToTop,
   };
 }

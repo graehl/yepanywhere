@@ -135,6 +135,42 @@ describe("Project Queue Routes", () => {
     expect((await deleteResponse.json()).queue.items).toEqual([]);
   });
 
+  it("moves a project queue item to the top", async () => {
+    const routes = createRoutes();
+    const firstResponse = await routes.request(`/${projectId}/queue`, {
+      method: "POST",
+      body: JSON.stringify({
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "first queued item" },
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const secondResponse = await routes.request(`/${projectId}/queue`, {
+      method: "POST",
+      body: JSON.stringify({
+        target: { type: "existing-session", sessionId: "session-2" },
+        message: { text: "second queued item" },
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const first = await firstResponse.json();
+    const second = await secondResponse.json();
+
+    const moveResponse = await routes.request(
+      `/${projectId}/queue/${second.item.id}/move-to-top`,
+      { method: "POST" },
+    );
+
+    expect(moveResponse.status).toBe(200);
+    const moved = await moveResponse.json();
+    expect(moved.item).toMatchObject({
+      id: second.item.id,
+      messagePreview: "second queued item",
+    });
+    expect(moved.queue.items.map((item: ProjectQueueItemSummary) => item.id))
+      .toEqual([second.item.id, first.item.id]);
+  });
+
   it("rejects invalid queue requests", async () => {
     const routes = createRoutes();
 

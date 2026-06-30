@@ -143,6 +143,17 @@ export function ProjectsPage() {
     }
   };
 
+  const handleMoveQueueItemToTop = async (
+    projectId: string,
+    itemId: string,
+  ) => {
+    try {
+      await projectQueues.moveItemToTop(projectId, itemId);
+    } catch {
+      // The hook exposes the error in the queue section.
+    }
+  };
+
   const handleUpdateQueueItem = async (
     projectId: string,
     itemId: string,
@@ -255,6 +266,7 @@ export function ProjectsPage() {
             onResumeDispatch={handleResumeProjectQueue}
             onDeleteItem={handleDeleteQueueItem}
             onRetryItem={handleRetryQueueItem}
+            onMoveItemToTop={handleMoveQueueItemToTop}
             onUpdateItem={handleUpdateQueueItem}
           />
 

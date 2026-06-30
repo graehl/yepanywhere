@@ -64,6 +64,7 @@ vi.mock("../../hooks/useProjectQueues", () => ({
     updateItem: vi.fn(),
     deleteItem: vi.fn(),
     retryItem: vi.fn(),
+    moveItemToTop: vi.fn(),
   }),
 }));
 

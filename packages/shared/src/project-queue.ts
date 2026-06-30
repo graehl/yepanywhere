@@ -146,6 +146,7 @@ export interface ProjectQueueChangedEvent {
     | "resumed"
     | "dispatching"
     | "released"
+    | "reordered"
     | "promoted"
     | "failed";
   itemId?: string;

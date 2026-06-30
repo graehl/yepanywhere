@@ -1,6 +1,7 @@
 # Project Queue Reorder And Titles
 
-Status: title enrichment slice complete; move-to-top API/UI chunks remain.
+Status: title enrichment and project-local move-to-top slices complete; narrow
+viewport visual QA remains.
 
 Topic: project-queue-reorder-and-titles
 
@@ -57,8 +58,8 @@ Implementation status:
 - [x] Title lookup delegates to the summary primitive.
 - [x] Provider summary resolution uses the index service when available.
 - [x] Project Queue API title enrichment.
-- [ ] Project-local move-to-top mutation.
-- [ ] Client hook and manager UI controls.
+- [x] Project-local move-to-top mutation.
+- [x] Client hook and manager UI controls.
 
 ## Remaining Implementation
 
@@ -67,31 +68,38 @@ Implementation status:
    through `findSessionSummaryAcrossProviders(...)` or an equivalent helper
    that uses the cache-first summary path.
 
-2. Add a project-local move-to-top service method.
+2. Add a project-local move-to-top service method. (Complete)
    It should move only queued/failed items if dispatching items are already
    claimed, preserve item contents, update `updatedAt`, persist atomically, and
    emit a reorder-specific project-queue event.
 
-3. Add an API mutation for move-to-top.
+3. Add an API mutation for move-to-top. (Complete)
    Keep it under the existing project queue route family, for example
    `POST /api/projects/:projectId/queue/:itemId/move-to-top`.
 
-4. Add client API and hook support.
+4. Add client API and hook support. (Complete)
    `useProjectQueues` should expose the mutation and refresh from the
    reorder-specific event reason without sorting away the server order.
 
-5. Add the Project Queue manager button.
-   Use a compact icon button with an accessible label/tooltip. The button
-   should be disabled or hidden when the item is already first among movable
-   items for that project, and should not appear for claimed dispatching work.
+5. Add the Project Queue manager button. (Complete)
+   Use a compact action button consistent with existing queue controls. The
+   button should be disabled or hidden when the item is already first among
+   movable items for that project, and should not appear for claimed
+   dispatching work.
 
 ## Verification Plan
 
-- Server service tests for cache hit, stale/missing summary fallback, and
+- [x] Server service tests for cache hit, stale/missing summary fallback, and
   provider-resolution index use.
-- ProjectQueueService tests for project-local reorder and persistence.
-- Route tests for the new move-to-top endpoint and enriched title response.
-- Client hook/component tests for preserved order, button enablement, and title
+- [x] ProjectQueueService tests for project-local reorder and persistence.
+- [x] Route tests for the new move-to-top endpoint and enriched title response.
+- [x] Client hook/component tests for preserved order, button enablement, and title
   rendering.
-- A narrow viewport check of the Project Queue card so the title, prompt text,
+- [ ] A narrow viewport check of the Project Queue card so the title, prompt text,
   and action buttons do not overlap.
+
+Commands run:
+
+- `pnpm --filter @yep-anywhere/server test -- test/services/ProjectQueueService.test.ts test/routes/project-queue.test.ts`
+- `pnpm --filter @yep-anywhere/client test -- src/hooks/__tests__/useProjectQueues.test.ts src/components/__tests__/ProjectQueueSection.test.tsx`
+- `pnpm typecheck`

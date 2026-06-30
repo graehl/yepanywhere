@@ -622,6 +622,17 @@ export const api = {
       method: "POST",
     }),
 
+  moveProjectQueueItemToTop: (projectId: string, itemId: string) =>
+    fetchJSON<{
+      item: ProjectQueueItemSummary;
+      queue: ProjectQueueResponse;
+    }>(
+      `/projects/${projectId}/queue/${encodeURIComponent(itemId)}/move-to-top`,
+      {
+        method: "POST",
+      },
+    ),
+
   /**
    * Get agent session content for lazy-loading completed Tasks.
    * Used to fetch subagent messages on demand when expanding a Task.

@@ -706,6 +706,10 @@ export class Process {
     return this._lastMessageTime;
   }
 
+  get lastPromptCacheRefreshTime(): Date | null {
+    return this.lastPromptCacheKeepaliveAt;
+  }
+
   /**
    * Check if the underlying CLI process is still alive.
    * Returns true if alive, false if dead, undefined if liveness check is unavailable.

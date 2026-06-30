@@ -718,6 +718,8 @@ export function createApp(options: AppOptions): AppResult {
         inactivityMinutes,
       };
     },
+    getCacheMissBillingSettings: () =>
+      options.serverSettingsService?.getSetting("cacheMissBilling"),
   });
 
   // Create external session tracker if eventBus is available
@@ -1134,6 +1136,7 @@ export function createApp(options: AppOptions): AppResult {
       "/api/settings",
       createSettingsRoutes({
         serverSettingsService: options.serverSettingsService,
+        sessionMetadataService: options.sessionMetadataService,
         onAllowedHostsChanged: updateAllowedHosts,
         onFileAccessChanged: updateFileAccess,
         onRemoteSessionPersistenceChanged: options.remoteSessionService

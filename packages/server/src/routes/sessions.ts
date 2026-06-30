@@ -4440,14 +4440,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       originalMetadata?.promptSuggestionMode,
       originalMetadata?.recapAfterSeconds,
     );
-    if (forkTitle && deps.sessionMetadataService) {
+    if (deps.sessionMetadataService) {
       await deps.sessionMetadataService.updateMetadata(fork.sessionId, {
         title: forkTitle,
+        parentSessionId: sessionId,
       });
       deps.eventBus?.emit({
         type: "session-metadata-changed",
         sessionId: fork.sessionId,
         title: forkTitle,
+        parentSessionId: sessionId,
         timestamp: new Date().toISOString(),
       });
     }

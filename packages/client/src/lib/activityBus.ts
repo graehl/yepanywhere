@@ -1,5 +1,6 @@
 import type {
   AgentActivity,
+  CacheMissBillingRecord,
   ContextUsage,
   PendingInputType,
   ProjectQueueChangedEvent,
@@ -178,6 +179,13 @@ export interface BrowserTabDisconnectedEvent {
   timestamp: string;
 }
 
+export interface CacheMissBillingEvent {
+  type: "cache-miss-billing";
+  record: CacheMissBillingRecord;
+  showToast: boolean;
+  timestamp: string;
+}
+
 // Map event names to their data types
 interface ActivityEventMap {
   "file-change": FileChangeEvent;
@@ -191,6 +199,7 @@ interface ActivityEventMap {
   // Connection events
   "browser-tab-connected": BrowserTabConnectedEvent;
   "browser-tab-disconnected": BrowserTabDisconnectedEvent;
+  "cache-miss-billing": CacheMissBillingEvent;
   // Dev mode events
   "source-change": SourceChangeEvent;
   "backend-reloaded": undefined;
@@ -445,6 +454,7 @@ class ActivityBus {
       "session-metadata-changed",
       "browser-tab-connected",
       "browser-tab-disconnected",
+      "cache-miss-billing",
       "source-change",
       "backend-reloaded",
       "worker-activity-changed",

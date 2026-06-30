@@ -531,6 +531,65 @@ describe("Settings Routes", () => {
       });
     });
 
+    it("accepts provider-scoped cache-billing freshness windows", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cacheMissBilling: {
+            enabled: true,
+            showToasts: true,
+            providerFreshWindowMinutes: {
+              claude: 60,
+              codex: 10,
+            },
+            minimumInputTokens: 100_000,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        cacheMissBilling: {
+          enabled: true,
+          showToasts: true,
+          freshWindowMinutes: 60,
+          providerFreshWindowMinutes: {
+            claude: 60,
+            codex: 10,
+          },
+          minimumInputTokens: 100_000,
+        },
+      });
+    });
+
+    it("rejects invalid cache-billing freshness windows", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cacheMissBilling: {
+            providerFreshWindowMinutes: {
+              unknown: 10,
+            },
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      const json = await response.json();
+      expect(json.error).toContain("cacheMissBilling must use booleans");
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("accepts provider-scoped new-session defaults", async () => {
       const routes = createSettingsRoutes({
         serverSettingsService: mockServerSettingsService,

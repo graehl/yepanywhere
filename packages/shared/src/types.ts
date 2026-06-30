@@ -1,3 +1,5 @@
+import type { UrlProjectId } from "./projectId.js";
+
 /**
  * Provider name - which AI agent provider to use.
  * - "claude": Claude via Anthropic SDK
@@ -150,6 +152,95 @@ export const PROMPT_CACHE_KEEPALIVE_MODES = ["auto", "off"] as const;
 export type PromptCacheKeepaliveMode =
   (typeof PROMPT_CACHE_KEEPALIVE_MODES)[number];
 export const DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES = 40;
+
+export const DEFAULT_CACHE_MISS_BILLING_FRESH_WINDOW_MINUTES = 60;
+export const DEFAULT_CACHE_MISS_BILLING_PROVIDER_FRESH_WINDOW_MINUTES: Partial<
+  Record<ProviderName, number>
+> = {
+  claude: 60,
+  codex: 10,
+};
+export const DEFAULT_CACHE_MISS_BILLING_MINIMUM_INPUT_TOKENS = 50_000;
+
+export interface CacheMissBillingSettings {
+  /** Enable usage-accounting detection and durable server-side evidence logs. */
+  enabled?: boolean;
+  /** Show an in-app popup when an unexpected recompute is recorded. */
+  showToasts?: boolean;
+  /** Fallback freshness window when a provider has no explicit override. */
+  freshWindowMinutes?: number;
+  /** Provider-specific windows where YA expects zero uncached prefix cost. */
+  providerFreshWindowMinutes?: Partial<Record<ProviderName, number>>;
+  /** Minimum uncached input size before YA records a billing-relevant recompute. */
+  minimumInputTokens?: number;
+}
+
+export type CacheMissBillingReason =
+  | "fork-prefix-cache-miss"
+  | "warm-session-cache-miss"
+  | "fork-prefix-cache-hit"
+  | "warm-session-cache-hit";
+
+export type CacheMissBillingOutcome =
+  | "unexpected-recompute"
+  | "expected-cache-hit";
+
+export interface ExpectedInputCostState {
+  /** YA's best provider-specific expectation before reading usage accounting. */
+  state: "expected-free";
+  /** Expected normal-price uncached tokens for the retained context prefix. */
+  expectedUncachedPrefixTokens: 0;
+  source: "fork" | "warm-session";
+  /** True when YA believes the retained/cacheable prefix is byte-identical. */
+  prefixByteIdentical: true;
+  /** Why YA believes the cacheable prefix matches a recent provider prefix. */
+  prefixBasis: "provider-fork-byte-identical" | "same-session-prefix";
+  /** True when the provider cache should still be inside its freshness window. */
+  freshEnough: true;
+  providerFreshWindowMinutes: number;
+}
+
+export interface CacheMissBillingUsage {
+  /** Provider-reported uncached input tokens for the observed turn. */
+  inputTokens: number;
+  /** Provider-reported cached-read input tokens, when visible. */
+  cacheReadTokens?: number;
+  /** Provider-reported cache-creation/write input tokens, when visible. */
+  cacheCreationTokens?: number;
+  /** Provider-reported output tokens, when visible. */
+  outputTokens?: number;
+  /** Input tokens YA believes were billed at normal input cost. */
+  uncachedInputTokens: number;
+}
+
+export interface CacheMissBillingRecord {
+  id: string;
+  timestamp: string;
+  provider: ProviderName;
+  sessionId: string;
+  projectId: UrlProjectId;
+  sessionPath: string;
+  parentSessionId?: string;
+  reason: CacheMissBillingReason;
+  outcome: CacheMissBillingOutcome;
+  messageId?: string;
+  messageIndex?: number;
+  observedUsage: CacheMissBillingUsage;
+  expectedInputCost: ExpectedInputCostState;
+  freshWindowMinutes: number;
+  elapsedSinceExpectedCacheMs?: number;
+  expectedCacheSource: "fork" | "warm-session";
+}
+
+export const DEFAULT_CACHE_MISS_BILLING_SETTINGS: Required<CacheMissBillingSettings> =
+  {
+    enabled: false,
+    showToasts: true,
+    freshWindowMinutes: DEFAULT_CACHE_MISS_BILLING_FRESH_WINDOW_MINUTES,
+    providerFreshWindowMinutes:
+      DEFAULT_CACHE_MISS_BILLING_PROVIDER_FRESH_WINDOW_MINUTES,
+    minimumInputTokens: DEFAULT_CACHE_MISS_BILLING_MINIMUM_INPUT_TOKENS,
+  };
 
 export interface PromptCacheKeepaliveProviderInfo {
   /** Whether this provider can refresh/cache-touch without polluting session context. */
@@ -370,6 +461,8 @@ export type CollapsedComposerButtonPreference =
   | "alternate"
   | "microphone";
 
+export const DEFAULT_PROJECT_QUEUE_CTRL_ENTER_ENABLED = true;
+
 export interface ClientDefaults {
   /** Defaults used by browser clients when local storage has no explicit value. */
   speech?: SpeechClientDefaults;
@@ -395,6 +488,12 @@ export interface ClientDefaults {
    * (`deferred`).
    */
   patientQueueDefault?: boolean;
+  /**
+   * When true, Ctrl+Enter uses Project Queue whenever the Project Queue
+   * affordance is available. Off leaves Ctrl+Enter bound to the regular
+   * per-session alternate action.
+   */
+  projectQueueCtrlEnterEnabled?: boolean;
   /** Session toolbar visibility defaults for controls with no local override. */
   sessionToolbarVisibility?: SessionToolbarVisibilityClientDefaults;
   /**

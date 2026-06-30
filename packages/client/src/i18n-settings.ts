@@ -154,6 +154,11 @@ export function getSettingsCategories(
       description: t("settingsProvidersDescription"),
     },
     {
+      id: "cache-miss-billing",
+      label: t("settingsCacheMissBillingTitle"),
+      description: t("settingsCacheMissBillingDescription"),
+    },
+    {
       id: "speech",
       label: t("settingsSpeechTitle"),
       description: t("settingsSpeechDescription"),

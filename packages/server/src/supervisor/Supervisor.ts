@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
+  type CacheMissBillingSettings,
   type EffortLevel,
   type PermissionRules,
   type PromptSuggestionMode,
@@ -17,6 +18,7 @@ import { getLogger } from "../logging/logger.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import { getProjectName } from "../projects/paths.js";
 import { getProvider } from "../sdk/providers/index.js";
+import { CacheMissBillingMonitor } from "../services/CacheMissBillingMonitor.js";
 import type {
   AgentProvider,
   SummaryGenerationRequest,
@@ -467,6 +469,8 @@ export interface SupervisorOptions {
   getPromptCacheKeepaliveSettings?: (
     provider: ProviderName,
   ) => PromptCacheKeepaliveSettings | undefined;
+  /** Callback to read live cache-miss billing monitor settings. */
+  getCacheMissBillingSettings?: () => CacheMissBillingSettings | undefined;
   /** Maximum time to wait for a graceful provider interrupt before hard abort. */
   interruptTimeoutMs?: number;
   /** Metadata service used to hide/archive server-owned helper forks. */
@@ -506,6 +510,7 @@ export class Supervisor {
   private getPromptCacheKeepaliveSettings?: (
     provider: ProviderName,
   ) => PromptCacheKeepaliveSettings | undefined;
+  private cacheMissBillingMonitor: CacheMissBillingMonitor;
   private heartbeatTurnInFlight = false;
   private heartbeatTurnTimer: ReturnType<typeof setInterval>;
   private livenessProbeTimer: ReturnType<typeof setInterval>;
@@ -544,6 +549,11 @@ export class Supervisor {
     this.getHeartbeatTurnCandidates = options.getHeartbeatTurnCandidates;
     this.getPromptCacheKeepaliveSettings =
       options.getPromptCacheKeepaliveSettings;
+    this.cacheMissBillingMonitor = new CacheMissBillingMonitor({
+      eventBus: options.eventBus,
+      sessionMetadataService: options.sessionMetadataService,
+      getSettings: options.getCacheMissBillingSettings,
+    });
     this.interruptTimeoutMs =
       options.interruptTimeoutMs ?? DEFAULT_INTERRUPT_TIMEOUT_MS;
     this.sessionMetadataService = options.sessionMetadataService;
@@ -3376,6 +3386,7 @@ export class Supervisor {
       } else if (event.type === "complete") {
         this.unregisterProcess(process);
       } else if (event.type === "message") {
+        this.cacheMissBillingMonitor.observeMessage(process, event.message);
         if (
           isAwaySummaryMessage(event.message) &&
           event.message.isSynthetic !== true
@@ -3599,6 +3610,7 @@ export class Supervisor {
 
   private unregisterProcess(process: Process): void {
     this.observedProcessIds.delete(process.id);
+    this.cacheMissBillingMonitor.forgetProcess(process.id);
     this.pendingForkedRecapRequests.delete(process.id);
     this.forkedRecapInFlight.get(process.id)?.abort();
     this.forkedRecapInFlight.delete(process.id);

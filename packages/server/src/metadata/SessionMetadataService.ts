@@ -8,6 +8,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+  type CacheMissBillingRecord,
   type DurableRecapMessage,
   type ProviderName,
   type PromptSuggestionMode,
@@ -30,6 +31,8 @@ export interface SessionMetadata {
   transcriptDisplayObjects?: TranscriptDisplayObject[];
   /** Durable YA-owned recap rows merged into the transcript view only. */
   recapMessages?: DurableRecapMessage[];
+  /** Provider usage evidence for warm/forked prefix cache hits and recomputes. */
+  cacheMissBillingEvents?: CacheMissBillingRecord[];
   /**
    * YA model id (launch alias, e.g. "opus"/"default") chosen when YA started
    * this session. Persisted so per-model settings still key by the requested
@@ -70,6 +73,7 @@ export interface SessionMetadataState {
 
 const CURRENT_VERSION = 2;
 const MAX_RECAP_MESSAGES_PER_SESSION = 200;
+const MAX_CACHE_MISS_BILLING_EVENTS_PER_SESSION = 100;
 
 export interface SessionMetadataServiceOptions {
   /** Directory to store metadata state (defaults to ~/.yep-anywhere) */
@@ -177,6 +181,31 @@ export class SessionMetadataService {
 
   getRecapMessages(sessionId: string): DurableRecapMessage[] {
     return [...(this.state.sessions[sessionId]?.recapMessages ?? [])];
+  }
+
+  getCacheMissBillingEvents(limit = 200): CacheMissBillingRecord[] {
+    const safeLimit = Math.max(0, Math.min(500, Math.floor(limit)));
+    if (safeLimit === 0) {
+      return [];
+    }
+    return Object.values(this.state.sessions)
+      .flatMap((metadata) => metadata.cacheMissBillingEvents ?? [])
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, safeLimit);
+  }
+
+  async addCacheMissBillingEvent(
+    sessionId: string,
+    event: CacheMissBillingRecord,
+  ): Promise<void> {
+    this.updateSessionMetadata(sessionId, (metadata) => ({
+      ...metadata,
+      cacheMissBillingEvents: [
+        ...(metadata.cacheMissBillingEvents ?? []),
+        event,
+      ].slice(-MAX_CACHE_MISS_BILLING_EVENTS_PER_SESSION),
+    }));
+    await this.save();
   }
 
   async addRecapMessage(
@@ -527,6 +556,9 @@ export class SessionMetadataService {
     }
     if (updated.recapMessages?.length) {
       cleaned.recapMessages = updated.recapMessages;
+    }
+    if (updated.cacheMissBillingEvents?.length) {
+      cleaned.cacheMissBillingEvents = updated.cacheMissBillingEvents;
     }
     if (updated.requestedModel) cleaned.requestedModel = updated.requestedModel;
     if (updated.provider) cleaned.provider = updated.provider;

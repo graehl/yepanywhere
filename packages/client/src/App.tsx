@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { BottomOverscrollReload } from "./components/BottomOverscrollReload";
+import { CacheMissBillingToasts } from "./components/CacheMissBillingToasts";
 import { ClientLogRecordingBadge } from "./components/ClientLogRecordingBadge";
 import { CodexUpdatePrompt } from "./components/CodexUpdatePrompt";
 import { ConnectionBar } from "./components/ConnectionBar";
@@ -61,6 +62,7 @@ function AppContent({ children }: Props) {
   return (
     <>
       <ConnectionBar />
+      <CacheMissBillingToasts />
       {!isSessionDetailRoute && <ClientLogRecordingBadge />}
       {isManualReloadMode && pendingReloads.backend && (
         <ReloadBanner

@@ -7,6 +7,7 @@ import {
   type SummaryParserClientEvent,
   type SummaryParserClientStatus,
   type SummaryParserWorkerError,
+  type SummaryParserWorkerLimits,
   type SummaryParserWorkerMode,
   type SummaryParserWorkerRequest,
   type SummaryParserWorkerResponse,
@@ -58,6 +59,9 @@ export interface SummaryParserClientOptions {
   timeoutMs?: number;
   launchTimeoutMs?: number;
   idleTimeoutMs?: number;
+  recycleAfterBytes?: number;
+  recycleAfterFiles?: number;
+  recycleAfterLineBytes?: number;
   entrypoint?: SummaryParserWorkerEntrypoint;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -74,6 +78,8 @@ class SummaryParserWorkerSetupError extends Error {
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_LAUNCH_TIMEOUT_MS = 5_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
+const DEFAULT_RECYCLE_AFTER_BYTES = 512 * 1024 * 1024;
+const DEFAULT_RECYCLE_AFTER_LINE_BYTES = 16 * 1024 * 1024;
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 
@@ -129,11 +135,14 @@ export class SummaryParserClient {
   private readonly timeoutMs: number;
   private readonly launchTimeoutMs: number;
   private readonly idleTimeoutMs: number;
+  private readonly recycleLimits: SummaryParserWorkerLimits;
   private readonly cwd?: string;
   private readonly env?: NodeJS.ProcessEnv;
   private readonly onEvent?: (event: SummaryParserClientEvent) => void;
   private child: ChildProcess | null = null;
   private childGeneration = 0;
+  private childParsedFiles = 0;
+  private childParsedBytes = 0;
   private activeRequestId: string | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -143,6 +152,17 @@ export class SummaryParserClient {
     this.launchTimeoutMs =
       options.launchTimeoutMs ?? DEFAULT_LAUNCH_TIMEOUT_MS;
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+    this.recycleLimits = {
+      recycleAfterBytes: normalizePositiveLimit(
+        options.recycleAfterBytes,
+        DEFAULT_RECYCLE_AFTER_BYTES,
+      ),
+      recycleAfterFiles: normalizePositiveLimit(options.recycleAfterFiles),
+      recycleAfterLineBytes: normalizePositiveLimit(
+        options.recycleAfterLineBytes,
+        DEFAULT_RECYCLE_AFTER_LINE_BYTES,
+      ),
+    };
     this.cwd = options.cwd;
     this.env = options.env;
     this.onEvent = options.onEvent;
@@ -163,21 +183,32 @@ export class SummaryParserClient {
     }
 
     try {
-      const response = await this.parseWithWorker(request, entrypoint);
+      const requestWithLimits = this.applyDefaultLimits(request);
+      const response = await this.parseWithWorker(
+        requestWithLimits,
+        entrypoint,
+      );
+      const recycleReason = this.applyRecyclePolicy(
+        requestWithLimits,
+        response,
+      );
       const status = clientStatusFromResponse(response);
       const event: SummaryParserClientEvent = {
         event: "summary_parser_worker_result",
-        provider: request.provider,
-        sessionId: request.sessionId,
-        filePath: request.filePath,
+        provider: requestWithLimits.provider,
+        sessionId: requestWithLimits.sessionId,
+        filePath: requestWithLimits.filePath,
         mode: this.mode,
         status,
         workerPid: response.metrics.workerPid,
-        workerGeneration: this.childGeneration,
+        workerGeneration: response.metrics.workerGeneration,
         ...(response.error ? { error: response.error } : {}),
       };
       this.emitEvent(event);
       this.logResult(event, response);
+      if (recycleReason) {
+        await this.recycleChild(response, recycleReason);
+      }
       return {
         summary: response.summary,
         status,
@@ -194,6 +225,21 @@ export class SummaryParserClient {
         );
       }
       const sanitized = sanitizeSummaryParserError(error);
+      await this.stopChild("crash");
+      const event: SummaryParserClientEvent = {
+        event: "summary_parser_worker_result",
+        provider: request.provider,
+        sessionId: request.sessionId,
+        filePath: request.filePath,
+        mode: this.mode,
+        status: "crash",
+        error: sanitized,
+      };
+      this.emitEvent(event);
+      getLogger().warn(
+        event,
+        "SUMMARY_PARSER_WORKER: parse failed after worker crash",
+      );
       return {
         summary: null,
         status: "crash",
@@ -256,6 +302,95 @@ export class SummaryParserClient {
       source: "fallback",
       fallbackReason: reason,
     };
+  }
+
+  private applyDefaultLimits(
+    request: SummaryParserWorkerRequest,
+  ): SummaryParserWorkerRequest {
+    const limits = compactLimits({
+      ...this.recycleLimits,
+      ...request.limits,
+    });
+    if (Object.keys(limits).length > 0) {
+      return { ...request, limits };
+    }
+    const { limits: _limits, ...requestWithoutLimits } = request;
+    return requestWithoutLimits;
+  }
+
+  private applyRecyclePolicy(
+    request: SummaryParserWorkerRequest,
+    response: SummaryParserWorkerResponse,
+  ): string | null {
+    this.childParsedFiles += 1;
+    this.childParsedBytes += Math.max(0, response.metrics.fileSize);
+    response.metrics.workerGeneration ??= this.childGeneration;
+    response.metrics.workerParsedFiles = this.childParsedFiles;
+    response.metrics.workerParsedBytes = this.childParsedBytes;
+
+    let recycleReason = response.metrics.recycleRecommended
+      ? (response.metrics.recycleReason ?? "worker_recommended")
+      : null;
+
+    const lineLimit = request.limits?.recycleAfterLineBytes;
+    if (
+      !recycleReason &&
+      lineLimit !== undefined &&
+      response.metrics.maxLineLength !== undefined &&
+      response.metrics.maxLineLength >= lineLimit
+    ) {
+      recycleReason = "large_line";
+    }
+
+    const byteLimit = request.limits?.recycleAfterBytes;
+    if (
+      !recycleReason &&
+      byteLimit !== undefined &&
+      this.childParsedBytes >= byteLimit
+    ) {
+      recycleReason = "byte_budget";
+    }
+
+    const fileLimit = request.limits?.recycleAfterFiles;
+    if (
+      !recycleReason &&
+      fileLimit !== undefined &&
+      this.childParsedFiles >= fileLimit
+    ) {
+      recycleReason = "file_budget";
+    }
+
+    if (recycleReason) {
+      response.metrics.recycleRecommended = true;
+      response.metrics.recycleReason = recycleReason;
+    }
+
+    return recycleReason;
+  }
+
+  private async recycleChild(
+    response: SummaryParserWorkerResponse,
+    reason: string,
+  ): Promise<void> {
+    const startedAt = Date.now();
+    await this.stopChild(`recycle_${reason}`);
+    getLogger().info(
+      {
+        event: "summary_parser_worker_recycle",
+        provider: response.metrics.provider,
+        sessionId: response.metrics.sessionId,
+        filePath: response.metrics.filePath,
+        reason,
+        workerPid: response.metrics.workerPid,
+        workerGeneration: response.metrics.workerGeneration,
+        stopMs: Date.now() - startedAt,
+        workerParsedFiles: response.metrics.workerParsedFiles,
+        workerParsedBytes: response.metrics.workerParsedBytes,
+        fileSize: response.metrics.fileSize,
+        maxLineLength: response.metrics.maxLineLength,
+      },
+      "SUMMARY_PARSER_WORKER: recycled child",
+    );
   }
 
   private emitEvent(event: SummaryParserClientEvent): void {
@@ -409,6 +544,9 @@ export class SummaryParserClient {
     });
     this.child = child;
     this.childGeneration += 1;
+    this.childParsedFiles = 0;
+    this.childParsedBytes = 0;
+    const startedAt = Date.now();
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -461,6 +599,18 @@ export class SummaryParserClient {
       child.once("error", onError);
     });
 
+    getLogger().debug(
+      {
+        event: "summary_parser_worker_start",
+        workerPid: child.pid,
+        workerGeneration: this.childGeneration,
+        runtime: entrypoint.runtime,
+        modulePath: entrypoint.modulePath,
+        launchMs: Date.now() - startedAt,
+      },
+      "SUMMARY_PARSER_WORKER: child ready",
+    );
+
     return child;
   }
 
@@ -483,6 +633,42 @@ export class SummaryParserClient {
       );
     });
   }
+}
+
+function normalizePositiveLimit(
+  value: number | undefined,
+  fallback?: number,
+): number | undefined {
+  const candidate = value ?? fallback;
+  if (candidate === undefined || !Number.isFinite(candidate) || candidate <= 0) {
+    return undefined;
+  }
+  return Math.floor(candidate);
+}
+
+function compactLimits(
+  limits: SummaryParserWorkerLimits,
+): SummaryParserWorkerLimits {
+  const compacted: SummaryParserWorkerLimits = {};
+  const timeoutMs = normalizePositiveLimit(limits.timeoutMs);
+  if (timeoutMs !== undefined) {
+    compacted.timeoutMs = timeoutMs;
+  }
+  const recycleAfterBytes = normalizePositiveLimit(limits.recycleAfterBytes);
+  if (recycleAfterBytes !== undefined) {
+    compacted.recycleAfterBytes = recycleAfterBytes;
+  }
+  const recycleAfterFiles = normalizePositiveLimit(limits.recycleAfterFiles);
+  if (recycleAfterFiles !== undefined) {
+    compacted.recycleAfterFiles = recycleAfterFiles;
+  }
+  const recycleAfterLineBytes = normalizePositiveLimit(
+    limits.recycleAfterLineBytes,
+  );
+  if (recycleAfterLineBytes !== undefined) {
+    compacted.recycleAfterLineBytes = recycleAfterLineBytes;
+  }
+  return compacted;
 }
 
 function defaultWorkerCwd(modulePath: string): string {

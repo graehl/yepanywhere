@@ -83,6 +83,8 @@ export interface SummaryParserWorkerMetrics {
   heapUsedAfter: number;
   rssBefore: number;
   rssAfter: number;
+  workerParsedFiles?: number;
+  workerParsedBytes?: number;
   recycleRecommended?: boolean;
   recycleReason?: string;
 }

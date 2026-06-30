@@ -1,8 +1,9 @@
 # Summary Parser Worker Isolation
 
-Status: implementation chunk 3 completed locally. Claude and Codex summary
-parsing can now route through the child-process worker behind separate
-default-off gates:
+Status: implementation chunk 4 completed locally. Claude and Codex summary
+parsing can route through the child-process worker behind separate default-off
+gates, and the parent now recycles parser children after clearly
+heap-contaminating parses or timeout/crash paths.
 
 - `CLAUDE_SUMMARY_PARSER_WORKER=off|on|required`
 - `CODEX_SUMMARY_PARSER_WORKER=off|on|required`
@@ -523,14 +524,71 @@ Not implemented in this chunk:
   avoiding child-side session discovery; a pure module extraction can remain a
   follow-up if tests or reuse pressure justify it.
 
+## Implementation Chunk 4
+
+Implemented locally on 2026-06-30:
+
+- Enforced parent-side worker recycle after a parse response marks itself
+  recycle-worthy, currently for large-line and timeout responses.
+- Added parent-side cumulative recycle budgets:
+  - `recycleAfterLineBytes`, default 16 MiB;
+  - `recycleAfterBytes`, default 512 MiB per child;
+  - `recycleAfterFiles`, available as an option but disabled by default.
+- Kept a single active parser child. Normal parses reuse the warm child; a
+  recycle-worthy parse retires that child after the response, and the next
+  parse starts a fresh child. No warm-spare/secondary worker is started yet.
+- Added cumulative per-child counters to worker response metrics:
+  `workerParsedFiles` and `workerParsedBytes`.
+- Added structured `summary_parser_worker_start` debug logging with launch
+  duration and `summary_parser_worker_recycle` info logging with recycle
+  reason, stop duration, worker pid/generation, parsed file/byte counters, file
+  size, and max line length.
+- Tightened crash/error handling so a non-timeout worker failure emits a
+  `summary_parser_worker_result` event with `status: "crash"` and retires any
+  still-connected child instead of reusing a suspect process.
+- Added focused tests proving that ordinary parses reuse one child, large-line
+  parses recycle the child before the next job, byte-budget exhaustion recycles
+  the child, and a hanging worker returns a timeout response with
+  `recycleReason: "timeout"`.
+
+Validation:
+
+```bash
+pnpm --filter @yep-anywhere/server test -- \
+  test/sessions/summary-parser-worker.test.ts
+pnpm --filter @yep-anywhere/server build
+pnpm lint
+git diff --check
+```
+
+Result:
+
+- Focused worker tests passed: 15 passed.
+- Server build passed.
+- A one-off `node --input-type=module` harness forked the built worker,
+  recycled after a large-line Claude fixture, and verified the next parse used
+  a different child pid.
+- Root lint exited 0 with the existing unrelated advisories in
+  `packages/server/src/routes/sessions.ts` and
+  `packages/server/test/augments/task-list-augments.test.ts`.
+- `git diff --check` passed.
+
+Not implemented in this chunk:
+
+- No warm spare. If real cold-history runs show fork/startup latency after
+  recycling is material, the next lifecycle optimization is one active child
+  plus one ready spare, with only one active parse at a time.
+- No `/api/session-index/status` worker counters yet. Recycle/start events are
+  currently structured logs plus per-response metrics.
+- No real-history RSS/result measurement yet. The worker gates remain
+  default-off until the cold `/api/inbox` harness proves reliability and memory
+  benefit.
+
 ## Open Design Questions
 
 - When should the worker gate graduate from default-off to default-on for
   Claude/Codex summary-index work? The first implementation should stay
   default-off until a real cold-history run proves reliability and RSS benefit.
-- Which initial recycle thresholds should be used? The measured large lines
-  were 60.0 MB for Claude and 32.2 MB for Codex, so a threshold below those
-  values should recycle on the known pathological cases.
 - Should worker state remain only in structured logs for the Claude rollout, or
   should `/api/session-index/status` include current worker
   pid/generation/recycle counters before the cold-history harness?

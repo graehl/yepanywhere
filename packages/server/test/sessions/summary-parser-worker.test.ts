@@ -55,6 +55,47 @@ function fakeSummary(request: SummaryParserWorkerRequest): SessionSummary {
   };
 }
 
+async function writeClaudeSummaryFixture(options: {
+  filePath: string;
+  message: string;
+  assistantText?: string;
+}): Promise<void> {
+  const now = "2026-06-30T00:00:00.000Z";
+  const later = "2026-06-30T00:00:01.000Z";
+  await writeFile(
+    options.filePath,
+    `${[
+      JSON.stringify({
+        type: "user",
+        uuid: "user-1",
+        timestamp: now,
+        message: {
+          content: options.message,
+        },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        uuid: "assistant-1",
+        parentUuid: "user-1",
+        timestamp: later,
+        message: {
+          model: "claude-sonnet-4-5",
+          content: [
+            {
+              type: "text",
+              text: options.assistantText ?? "Parsed by worker.",
+            },
+          ],
+          usage: {
+            input_tokens: 10,
+            output_tokens: 5,
+          },
+        },
+      }),
+    ].join("\n")}\n`,
+  );
+}
+
 async function writeCodexSummaryFixture(options: {
   filePath: string;
   sessionId: string;
@@ -130,6 +171,200 @@ describe("summary parser worker harness", () => {
     expect(entrypoint.modulePath.endsWith("summary-parser-worker-entry.js")).toBe(
       true,
     );
+  });
+
+  itIfSourceWorker("reuses one child for ordinary parses", async () => {
+    const firstSessionId = "reuse-worker-session-a";
+    const secondSessionId = "reuse-worker-session-b";
+    const firstPath = join(testDir, `${firstSessionId}.jsonl`);
+    const secondPath = join(testDir, `${secondSessionId}.jsonl`);
+    await writeClaudeSummaryFixture({
+      filePath: firstPath,
+      message: "First ordinary parse",
+    });
+    await writeClaudeSummaryFixture({
+      filePath: secondPath,
+      message: "Second ordinary parse",
+    });
+    client = new SummaryParserClient({
+      mode: "required",
+      cwd: packageRoot,
+      entrypoint: sourceEntrypoint(),
+      timeoutMs: 15_000,
+      launchTimeoutMs: 10_000,
+    });
+
+    const first = await client.parse({
+      type: "parse",
+      requestId: randomUUID(),
+      provider: "claude",
+      filePath: firstPath,
+      sessionId: firstSessionId,
+      projectId: "worker-project" as UrlProjectId,
+      stats: await fileStats(firstPath),
+    });
+    const second = await client.parse({
+      type: "parse",
+      requestId: randomUUID(),
+      provider: "claude",
+      filePath: secondPath,
+      sessionId: secondSessionId,
+      projectId: "worker-project" as UrlProjectId,
+      stats: await fileStats(secondPath),
+    });
+
+    expect(first.status).toBe("ok");
+    expect(second.status).toBe("ok");
+    expect(second.response?.metrics.workerPid).toBe(
+      first.response?.metrics.workerPid,
+    );
+    expect(second.response?.metrics.workerParsedFiles).toBe(2);
+    expect(second.response?.metrics.recycleRecommended).toBeUndefined();
+  });
+
+  itIfSourceWorker("recycles the child after a large-line parse", async () => {
+    const largeSessionId = "large-line-worker-session";
+    const nextSessionId = "after-large-line-worker-session";
+    const largePath = join(testDir, `${largeSessionId}.jsonl`);
+    const nextPath = join(testDir, `${nextSessionId}.jsonl`);
+    await writeClaudeSummaryFixture({
+      filePath: largePath,
+      message: `This title is intentionally long enough to cross the test recycle threshold. ${"x".repeat(1_000)}`,
+    });
+    await writeClaudeSummaryFixture({
+      filePath: nextPath,
+      message: "Next parse after recycle",
+    });
+    client = new SummaryParserClient({
+      mode: "required",
+      cwd: packageRoot,
+      entrypoint: sourceEntrypoint(),
+      recycleAfterLineBytes: 512,
+      timeoutMs: 15_000,
+      launchTimeoutMs: 10_000,
+    });
+
+    const first = await client.parse({
+      type: "parse",
+      requestId: randomUUID(),
+      provider: "claude",
+      filePath: largePath,
+      sessionId: largeSessionId,
+      projectId: "worker-project" as UrlProjectId,
+      stats: await fileStats(largePath),
+    });
+    const second = await client.parse({
+      type: "parse",
+      requestId: randomUUID(),
+      provider: "claude",
+      filePath: nextPath,
+      sessionId: nextSessionId,
+      projectId: "worker-project" as UrlProjectId,
+      stats: await fileStats(nextPath),
+    });
+
+    expect(first.status).toBe("ok");
+    expect(first.response?.metrics.recycleRecommended).toBe(true);
+    expect(first.response?.metrics.recycleReason).toBe("large_line");
+    expect(second.status).toBe("ok");
+    expect(second.response?.metrics.workerPid).not.toBe(
+      first.response?.metrics.workerPid,
+    );
+    expect(second.response?.metrics.workerParsedFiles).toBe(1);
+    expect(second.response?.metrics.recycleRecommended).toBeUndefined();
+  });
+
+  itIfSourceWorker("recycles the child after a cumulative byte budget", async () => {
+    const firstSessionId = "byte-budget-worker-session-a";
+    const secondSessionId = "byte-budget-worker-session-b";
+    const firstPath = join(testDir, `${firstSessionId}.jsonl`);
+    const secondPath = join(testDir, `${secondSessionId}.jsonl`);
+    await writeClaudeSummaryFixture({
+      filePath: firstPath,
+      message: "Byte budget parse",
+    });
+    await writeClaudeSummaryFixture({
+      filePath: secondPath,
+      message: "After byte budget recycle",
+    });
+    client = new SummaryParserClient({
+      mode: "required",
+      cwd: packageRoot,
+      entrypoint: sourceEntrypoint(),
+      recycleAfterBytes: 1,
+      recycleAfterLineBytes: 1024 * 1024,
+      timeoutMs: 15_000,
+      launchTimeoutMs: 10_000,
+    });
+
+    const first = await client.parse({
+      type: "parse",
+      requestId: randomUUID(),
+      provider: "claude",
+      filePath: firstPath,
+      sessionId: firstSessionId,
+      projectId: "worker-project" as UrlProjectId,
+      stats: await fileStats(firstPath),
+    });
+    const second = await client.parse({
+      type: "parse",
+      requestId: randomUUID(),
+      provider: "claude",
+      filePath: secondPath,
+      sessionId: secondSessionId,
+      projectId: "worker-project" as UrlProjectId,
+      stats: await fileStats(secondPath),
+    });
+
+    expect(first.status).toBe("ok");
+    expect(first.response?.metrics.recycleRecommended).toBe(true);
+    expect(first.response?.metrics.recycleReason).toBe("byte_budget");
+    expect(second.status).toBe("ok");
+    expect(second.response?.metrics.workerPid).not.toBe(
+      first.response?.metrics.workerPid,
+    );
+  });
+
+  it("returns a timeout response when the worker hangs", async () => {
+    const workerPath = join(testDir, "hanging-worker.js");
+    await writeFile(
+      workerPath,
+      [
+        'process.send?.({ type: "ready", pid: process.pid, nodeVersion: process.version });',
+        'process.on("message", () => {});',
+      ].join("\n"),
+    );
+    const filePath = join(testDir, "timeout-session.jsonl");
+    await writeClaudeSummaryFixture({
+      filePath,
+      message: "Timeout parse",
+    });
+    client = new SummaryParserClient({
+      mode: "required",
+      entrypoint: {
+        supported: true,
+        runtime: "built",
+        modulePath: workerPath,
+        execArgv: [],
+      },
+      timeoutMs: 50,
+      launchTimeoutMs: 1_000,
+    });
+
+    const result = await client.parse({
+      type: "parse",
+      requestId: randomUUID(),
+      provider: "claude",
+      filePath,
+      sessionId: "timeout-session",
+      projectId: "worker-project" as UrlProjectId,
+      stats: await fileStats(filePath),
+    });
+
+    expect(result.status).toBe("timeout");
+    expect(result.response?.metrics.recycleRecommended).toBe(true);
+    expect(result.response?.metrics.recycleReason).toBe("timeout");
+    expect(result.error?.name).toBe("TimeoutError");
   });
 
   itIfSourceWorker("parses a Claude fixture through a source worker", async () => {

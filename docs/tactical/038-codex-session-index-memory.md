@@ -1,6 +1,8 @@
 # Codex Session Index Memory Spikes
 
-Status: First implementation chunk landed 2026-06-30.
+Status: Implementation chunk 2 landed 2026-06-30. Codex summary reads now
+stream JSONL instead of materializing full transcript entries; cold-index harness
+measurement is still pending.
 
 Progress:
 
@@ -24,6 +26,14 @@ Progress:
 - [x] Add a focused regression test for summary-read non-retention.
 - [x] Validate with server build and focused reader/index tests.
 - [x] Decide and land the first implementation chunk.
+- [x] Checked whether Claude and other provider readers have the same
+  summary-index cold-fill shape.
+- [x] Replace summary reads with a streaming Codex summary parser.
+- [ ] Run a before/after cold-index harness against a temporary `YEP_DATA_DIR`.
+- [ ] Replace Claude summary reads with a compact DAG summary parser.
+- [ ] Bound `CodexSessionReader.entryCache` by byte budget and session count.
+- [ ] Decide whether a parse queue is still needed after streaming summaries and
+  bounded retention land.
 
 ## Incident
 
@@ -139,6 +149,66 @@ The dedupe key path is also a potential transient amplifier because it builds
 Set keys from full message text for selected `response_item` and `event_msg`
 entries.
 
+## Provider Parity Check
+
+Checked on 2026-06-30 before implementation chunk 2.
+
+Claude:
+
+- `ClaudeSessionReader.getSessionSummaryFromDir()` reads the whole JSONL file,
+  trims and splits it, parses every line into `ClaudeSessionEntry[]`, builds a
+  DAG with `buildDag(messages)`, then derives active-branch title, message
+  count, model, context usage, and recent-agent text.
+- `ClaudeSessionReader` does not have a full-transcript `entryCache` equivalent.
+  Its parsed messages are local to the summary/detail call and should be
+  collectible after the request.
+- The risk is therefore transient cold-fill memory and CPU, not indefinite
+  retention from an unbounded reader cache.
+- Exact Claude summaries are harder to make purely rolling than Codex summaries
+  because active-branch selection depends on `uuid`/`parentUuid`, branch tips,
+  timestamps, progress-message exclusions, compaction boundaries, and active
+  branch context usage. A compact DAG parser can still retain much less than the
+  full raw transcript by storing only per-node summary fields needed for branch
+  selection and summary derivation.
+
+Local Claude history snapshot:
+
+- `~/.claude/projects`: 3277 JSONL files, about 2.7 GB total.
+- Largest project bucket:
+  `/Users/kgraehl/.claude/projects/-Users-kgraehl-code-jstorrent`, 1164 files,
+  about 1079.8 MB total, largest file about 61.6 MB.
+- Other large buckets include webvam at about 444.3 MB and yepanywhere at about
+  357.8 MB.
+
+Gemini:
+
+- `GeminiSessionReader.getSessionSummary()` reads and parses the whole Gemini
+  session JSON file for summary fields.
+- This has the same cold-fill class, although the storage format is not JSONL
+  and local sizing was not the incident driver.
+
+OpenCode/Grok/Pi:
+
+- OpenCode's SQLite reader is more selective for summaries. The legacy
+  file-backed OpenCode path reads per-session and per-message JSON files, but it
+  is not the same single huge JSONL transcript path.
+- Grok summaries use a small native `summary.json`; full `updates.jsonl` parsing
+  is for detail.
+- Pi parses JSONL and keeps a parsed-session cache keyed by file/mtime; that is
+  a separate provider-specific retention concern, but not the Codex
+  `entryCache` issue.
+
+Conclusion:
+
+- The summary cold-fill fix should become a provider-reader hardening theme.
+- Start with Codex because it caused the observed incident, its summaries are
+  linear, and it still has the largest local rollout bucket.
+- Follow with a Claude compact-DAG summary parser because local Claude history
+  is also multi-GB and the shared session index calls every provider's
+  `getSessionSummary()` on cache misses.
+- Keep the `entryCache` byte/session cap Codex-specific unless another provider
+  shows equivalent long-lived parsed-transcript retention.
+
 ## Inbox Probe
 
 Current on-disk indexes are warm, so live `/api/inbox` no longer reproduces the
@@ -246,17 +316,20 @@ Acceptance:
 This is the clearest behavioral fix.
 
 `getSessionSummary()` needs summary fields, not a reusable full transcript
-cache. It currently pays the full parse cost and then stores parsed entries in
-`entryCache`. Add a summary-only path that either:
+cache. Before implementation chunk 1 it paid the full parse cost and stored
+parsed entries in `entryCache`. It now skips cache writes for summary reads, but
+it still goes through `readJsonlLines()` and materializes a full
+`CodexSessionEntry[]` before deriving the summary. Add a summary-only path that
+either:
 
 - parses entries without storing them in `entryCache`; or
 - streams JSONL records and computes summary state incrementally.
 
-Streaming is more realistic for summaries than for full detail normalization:
-title, full title, message count, model, provider, turn context, context usage,
-and parent metadata can be tracked while walking the file. Full detail loading
-may still need more ordering/deduplication context and can remain a separate
-problem.
+Streaming is more realistic for summaries than for full detail normalization and
+is now the preferred next step. Title, full title, message count, model,
+provider, launch turn context, context usage, and parent metadata can be tracked
+while walking the file. Full detail loading may still need more
+ordering/deduplication context and can remain a separate problem.
 
 Acceptance:
 
@@ -412,7 +485,234 @@ Result:
 
 Next recommended chunk:
 
-- Run the cold-index harness against a temporary `YEP_DATA_DIR` with
-  `SESSION_INDEX_LOG_PERF=true CODEX_READER_LOG_PARSE=true`, then use the new
-  logs to size and prioritize an `entryCache` byte cap and/or memory-aware
-  parse queue.
+- Completed by implementation chunk 2. The next recommended code chunk is the
+  Claude compact-DAG summary parser; run the Codex cold-index harness when
+  measuring before/after memory behavior or before tuning cache limits.
+
+## Concrete Implementation Steps
+
+### Chunk 2: Streaming Codex Summary Parser
+
+Priority: highest.
+
+Goal:
+
+- Make `CodexSessionReader.getSessionSummary()` avoid whole-file
+  `readFile -> trim -> split`, full `CodexSessionEntry[]` allocation, and
+  transcript dedupe work.
+- Keep `getSession()` on the existing full-entry path because visible detail
+  loading still needs normalized transcript data and append caching.
+
+Implementation shape:
+
+- Add a Codex JSONL streaming/line-iteration helper for plain rollout files.
+  Either extend it to compressed rollouts immediately, or explicitly fall back
+  to the current non-caching path for compressed files until zstd streaming is
+  implemented.
+- Parse one line at a time with `parseCodexSessionEntry()` and update rolling
+  summary state instead of pushing entries into an array.
+- Track the first `session_meta` entry for id, created time, source,
+  originator, CLI version, parent/fork id, and model-provider fallback.
+- Track title with the current duplicate-user-message rules:
+  - remember the first non-system `event_msg.user_message`;
+  - remember the first non-system `response_item` user message;
+  - if any response-item user message exists, use the response-item title path
+    and ignore event user-message titles.
+- Track message count with the same duplicate-user-message rules:
+  - count `event_msg.user_message` entries separately;
+  - count `response_item` message entries with role `user` or `assistant`;
+  - final count is `responseMessageCount` plus event user-message count only
+    when no response-item user message was seen.
+- Track last `turn_context.payload.model` for the model, first `turn_context`
+  for launch approval/sandbox policy, and latest usable `token_count` for
+  context usage. Compute provider and context-window fallback after the scan so
+  they use final model/provider state.
+- Add a `codex_summary_stream` metric, or equivalent `codex_entry_read`
+  replacement, with file size, line count, max line length, parse duration, and
+  memory deltas.
+
+Acceptance:
+
+- Summary path does not call `readJsonlLines()` for plain rollout files.
+- Summary path never writes to or grows `entryCache`.
+- Tests compare streaming summaries against the existing entry-array summary
+  behavior for title, message count, model, context usage, provider, parent id,
+  approval policy, and sandbox policy.
+- Tests cover mixed `event_msg.user_message` and `response_item` user messages
+  so the duplicate-count/title rules stay stable.
+- Empty temporary summary indexes over large local Codex history no longer show
+  `codex_entry_read` events with `purpose: "summary"` for plain files.
+
+Validation:
+
+```bash
+pnpm --filter @yep-anywhere/server test -- \
+  test/sessions/codex-reader-oss.test.ts \
+  test/indexes/SessionIndexService.test.ts
+pnpm --filter @yep-anywhere/server build
+```
+
+Then run a cold-index harness with a temporary data directory:
+
+```bash
+SESSION_INDEX_LOG_PERF=true \
+CODEX_READER_LOG_PARSE=true \
+YEP_DATA_DIR=/tmp/ya-cold-index-streaming \
+pnpm --filter @yep-anywhere/server dev
+```
+
+Request `/api/inbox` and at least one project session-list route after startup.
+Record peak RSS, summary-index miss bytes, summary parse durations, and whether
+any summary path still uses `readJsonlLines()`.
+
+## Implementation Chunk 2
+
+Implemented 2026-06-30:
+
+- Added `iterateJsonlLines()` in the JSONL utility layer so callers can stream
+  plain and zstd JSONL lines without materializing the full file string or a
+  full line array.
+- `CodexSessionReader.getSessionSummary()` now builds summaries from streaming
+  state instead of calling `readEntries()` / `readJsonlLines()`.
+- The streaming summary state tracks only session metadata, first launch
+  context, title candidates, message counters, latest model, and latest usable
+  token-count context candidate.
+- Summary duplicate suppression is preserved for exact duplicate user/assistant
+  message records, but uses fixed-size hashes instead of storing full message
+  text as Set keys.
+- Detail, subagent, and agent-mapping reads still use the existing full-entry
+  path; visible session detail still benefits from append caching.
+- Added `codex_summary_stream` metrics with file size, line count, parsed and
+  deduped entry counts, duplicate skips, max line length, memory deltas, and
+  current entry-cache stats.
+- Added a regression test that compares streaming summary output against the
+  full detail-summary path for title selection, duplicate handling, message
+  count, provider/model, parent/source metadata, approval/sandbox policy, and
+  context usage.
+
+Validation:
+
+```bash
+pnpm --filter @yep-anywhere/server test -- \
+  test/sessions/codex-reader-oss.test.ts
+pnpm --filter @yep-anywhere/server test -- \
+  test/indexes/SessionIndexService.test.ts
+pnpm --filter @yep-anywhere/server build
+pnpm lint
+pnpm --filter @yep-anywhere/server test
+```
+
+Result:
+
+- Focused Codex reader tests passed: 19 passed, 1 skipped.
+- Focused session-index tests passed: 23 passed.
+- Server build passed.
+- `pnpm lint` exited 0; it still reports the existing unrelated advisory items
+  in `packages/server/src/routes/sessions.ts` and
+  `packages/server/test/augments/task-list-augments.test.ts`.
+- Full server test suite passed: 154 files, 2356 passed, 6 skipped.
+
+Still pending:
+
+- A real cold-index harness with temporary `YEP_DATA_DIR` and
+  `SESSION_INDEX_LOG_PERF=true CODEX_READER_LOG_PARSE=true`. Unit coverage
+  proves the summary path streams and leaves `entryCache` empty; the harness is
+  still needed to record local peak RSS and cold-fill timings over the large
+  real Codex history.
+
+### Chunk 3: Claude Compact-DAG Summary Parser
+
+Priority: high after Codex streaming summaries.
+
+Goal:
+
+- Make Claude summary-index cold fill avoid retaining full raw
+  `ClaudeSessionEntry[]` objects and full message/tool content while computing
+  the same `SessionSummary`.
+- Preserve detail loading as-is until there is evidence that visible Claude
+  detail reads, not cold summary fills, are the bottleneck.
+
+Implementation shape:
+
+- Add a Claude summary parser that walks JSONL lines and stores compact DAG
+  nodes: uuid, parent uuid, line index, timestamp, type, progress exclusion,
+  compact logical-parent metadata, first timestamp, first user-title candidate,
+  model candidate, usage candidate, and last-agent excerpt candidate.
+- Reuse the branch-selection semantics from `buildDag()`:
+  - skip entries without uuid and progress nodes for branch selection;
+  - choose tip by latest timestamp, then branch length, then line index;
+  - follow `parentUuid` and compact-boundary logical parents;
+  - keep the existing fallback for missing logical/progress parents.
+- After selecting the active branch, derive conversation message count, latest
+  model, context usage including compaction overhead, and recent-agent excerpt
+  from compact node summaries.
+- Compare compact summaries against current full-parse summaries in tests before
+  replacing the production path.
+
+Acceptance:
+
+- Claude summary cold fill no longer builds a full raw message array for each
+  miss.
+- Tests cover rewinds/branches, compaction metadata, model changes, context
+  usage, IDE metadata title filtering, and last-agent excerpt behavior.
+- The compact parser intentionally remains a summary parser; `getSession()`
+  still returns full raw messages.
+
+### Chunk 4: Bounded Entry Cache
+
+Priority: high after streaming summaries.
+
+Goal:
+
+- Prevent visible session detail loads, subagent reads, and agent-mapping scans
+  from permanently pinning many parsed transcripts in one process.
+
+Implementation shape:
+
+- Replace the unbounded `Map<string, CodexEntryCache>` with an LRU-like cache
+  that tracks approximate source bytes, entry count, last access time, and
+  session count.
+- Add conservative defaults, for example:
+  - max cached source bytes;
+  - max cached sessions;
+  - optional max single-file cacheable size;
+  - optional TTL for old entries.
+- Allow env overrides for local diagnosis, but keep the default safe without
+  user configuration.
+- Skip storing a detail parse when the file is larger than the configured
+  single-entry or total budget. Return the parsed entries to the current request
+  but do not retain them.
+- Preserve append behavior for cacheable active sessions.
+- Log evictions and expose cache stats through the existing diagnostics path.
+
+Acceptance:
+
+- Repeated detail loads of large historical sessions cannot leave RSS growing
+  without bound.
+- A cache entry larger than the budget is not retained.
+- Tests cover hit, append, stale invalidation, size eviction, count eviction,
+  and non-cacheable large files.
+
+### Chunk 5: Parse Queue, Only If Still Needed
+
+Priority: conditional.
+
+Streaming summaries remove the broadest cold-index spike. Bounded entry caching
+removes the clearest retention leak. Add a shared parse queue only if the
+instrumented cold harness still shows many expensive full-detail parses running
+at once after those two fixes.
+
+Implementation shape if needed:
+
+- Add a provider-root-scoped semaphore for expensive full JSONL parses.
+- Coalesce identical file parses by session/file identity.
+- Prioritize visible detail loads above background index or historical
+  metadata scans.
+- Consider byte-aware scheduling so two very large rollouts do not parse at the
+  same time.
+
+Acceptance:
+
+- Restart/reconnect bursts cannot start many large full-transcript parses
+  concurrently.
+- Visible session detail is not starved behind background list/index work.

@@ -180,6 +180,190 @@ describe("CodexSessionReader - OSS Support", () => {
     });
   });
 
+  it("streams summary state without full entry retention", async () => {
+    const sessionId = "summary-stream-session";
+    const now = new Date().toISOString();
+    const responseUser = {
+      type: "response_item",
+      timestamp: now,
+      payload: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "response title" }],
+      },
+    };
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: now,
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: now,
+          forked_from_id: "parent-session",
+          model_provider: "local",
+          originator: "yep-anywhere",
+          cli_version: "1.2.3",
+          source: "exec",
+        },
+      }),
+      JSON.stringify({
+        type: "turn_context",
+        timestamp: now,
+        payload: {
+          cwd: "/test/project",
+          approval_policy: "on-request",
+          sandbox_policy: {
+            type: "workspace-write",
+            network_access: true,
+            exclude_tmpdir_env_var: false,
+            exclude_slash_tmp: true,
+          },
+          model: "gpt-4o",
+        },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: {
+          type: "user_message",
+          message: "event title should be ignored when response user exists",
+        },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          type: "message",
+          role: "user",
+          content: [
+            { type: "input_text", text: "<environment_context>\nignored" },
+          ],
+        },
+      }),
+      JSON.stringify(responseUser),
+      JSON.stringify(responseUser),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "visible response" }],
+        },
+      }),
+      JSON.stringify({
+        type: "turn_context",
+        timestamp: now,
+        payload: {
+          cwd: "/test/project",
+          approval_policy: "never",
+          model: "qwen2.5-coder",
+        },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: {
+          type: "token_count",
+          info: {
+            last_token_usage: {
+              input_tokens: 120,
+              cached_input_tokens: 0,
+              output_tokens: 10,
+              total_tokens: 130,
+            },
+            model_context_window: 1000,
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: {
+          type: "token_count",
+          info: {
+            last_token_usage: {
+              input_tokens: 0,
+              cached_input_tokens: 0,
+              output_tokens: 0,
+              total_tokens: 0,
+            },
+            model_context_window: 1000,
+          },
+        },
+      }),
+    ];
+
+    await writeFile(
+      join(testDir, `${sessionId}.jsonl`),
+      `${lines.join("\n")}\n`,
+    );
+
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+
+    expect(summary).toMatchObject({
+      id: sessionId,
+      title: "response title",
+      fullTitle: "response title",
+      messageCount: 3,
+      provider: "codex-oss",
+      model: "qwen2.5-coder",
+      parentSessionId: "parent-session",
+      originator: "yep-anywhere",
+      cliVersion: "1.2.3",
+      source: "exec",
+      approvalPolicy: "on-request",
+      sandboxPolicy: {
+        type: "workspace-write",
+        networkAccess: true,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: true,
+      },
+      contextUsage: {
+        inputTokens: 120,
+        percentage: 12,
+        contextWindow: 1000,
+      },
+    });
+    expect(reader.getEntryCacheStats()).toMatchObject({
+      sessions: 0,
+      entries: 0,
+      sourceBytes: 0,
+    });
+    expect(reader.getLastSummaryStreamMetrics()).toMatchObject({
+      event: "codex_summary_stream",
+      sessionId,
+      compressed: false,
+      lineCount: lines.length,
+      parsedEntries: lines.length,
+      dedupedEntries: lines.length - 1,
+      skippedDuplicateEntries: 1,
+      entryCache: {
+        sessions: 0,
+        entries: 0,
+        sourceBytes: 0,
+      },
+    });
+
+    const full = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(full?.summary).toMatchObject({
+      title: summary?.title,
+      fullTitle: summary?.fullTitle,
+      messageCount: summary?.messageCount,
+      provider: summary?.provider,
+      model: summary?.model,
+      parentSessionId: summary?.parentSessionId,
+      contextUsage: summary?.contextUsage,
+    });
+  });
+
   itIfNativeZstd("loads zstd-compressed rollout files", async () => {
     const sessionId = "zstd-rollout";
     const now = new Date().toISOString();

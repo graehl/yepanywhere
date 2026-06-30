@@ -11,6 +11,7 @@
  * Unlike Claude's DAG structure, Codex sessions are linear.
  */
 
+import { createHash } from "node:crypto";
 import { open, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -35,7 +36,7 @@ import {
   isCodexRolloutFileName,
   preferPlainCodexRollouts,
 } from "../utils/codexRolloutFiles.js";
-import { readJsonlLines } from "../utils/jsonl.js";
+import { iterateJsonlLines, readJsonlLines } from "../utils/jsonl.js";
 import {
   type CodexRolloutDiscoveryStats,
   createCodexSessionDiscoveryIndex,
@@ -174,6 +175,63 @@ interface CodexEntryReadMetrics {
   entryCache: CodexEntryCacheStats;
 }
 
+export interface CodexSummaryStreamMetrics {
+  event: "codex_summary_stream";
+  sessionsDir: string;
+  projectPath?: string;
+  sessionId: string;
+  filePath: string;
+  fileSize: number;
+  fileMtimeMs: number;
+  compressed: boolean;
+  durationMs: number;
+  parseMs: number;
+  lineCount: number;
+  parsedEntries: number;
+  dedupedEntries: number;
+  skippedDuplicateEntries: number;
+  maxLineLength: number;
+  heapUsedBefore: number;
+  heapUsedAfter: number;
+  rssBefore: number;
+  rssAfter: number;
+  heapUsedDelta: number;
+  rssDelta: number;
+  entryCache: CodexEntryCacheStats;
+}
+
+interface CodexSummaryTitleCandidate {
+  title: string | null;
+  fullTitle: string | null;
+}
+
+interface CodexSummaryContextCandidate {
+  inputTokens: number;
+  contextWindow?: number;
+}
+
+interface CodexSummaryState {
+  metaEntry?: CodexSessionMetaEntry;
+  firstTurnContext?: CodexTurnContextEntry;
+  firstEventUserTitle?: CodexSummaryTitleCandidate;
+  firstResponseUserTitle?: CodexSummaryTitleCandidate;
+  sawResponseItemUser: boolean;
+  eventUserMessageCount: number;
+  responseMessageCount: number;
+  model?: string;
+  contextCandidate?: CodexSummaryContextCandidate;
+}
+
+interface CodexSummaryStreamRead {
+  state: CodexSummaryState;
+  lineCount: number;
+  parsedEntries: number;
+  dedupedEntries: number;
+  skippedDuplicateEntries: number;
+  maxLineLength: number;
+  parseMs: number;
+}
+
 function parseCodexJsonlChunk(
   chunk: string,
   mayEndWithPartialLine: boolean,
@@ -231,6 +289,53 @@ function getCodexEntryDedupeKey(entry: CodexSessionEntry): string | null {
   return null;
 }
 
+function getCodexSummaryDedupeKey(entry: CodexSessionEntry): string | null {
+  if (entry.type === "response_item") {
+    const { payload } = entry;
+    if (payload.type !== "message") {
+      return null;
+    }
+
+    const hash = createHash("sha256");
+    hash.update(entry.type);
+    hash.update("\0");
+    hash.update(entry.timestamp);
+    hash.update("\0");
+    hash.update(payload.type);
+    hash.update("\0");
+    hash.update(payload.role);
+    hash.update("\0");
+    payload.content.forEach((block, index) => {
+      if (index > 0) hash.update("\n");
+      hash.update(
+        "text" in block && typeof block.text === "string"
+          ? block.text
+          : block.type,
+      );
+    });
+    return hash.digest("base64url");
+  }
+
+  if (entry.type === "event_msg") {
+    const { payload } = entry;
+    if (payload.type !== "user_message" && payload.type !== "agent_message") {
+      return null;
+    }
+
+    const hash = createHash("sha256");
+    hash.update(entry.type);
+    hash.update("\0");
+    hash.update(entry.timestamp);
+    hash.update("\0");
+    hash.update(payload.type);
+    hash.update("\0");
+    hash.update(payload.message);
+    return hash.digest("base64url");
+  }
+
+  return null;
+}
+
 function dedupeCodexEntries(entries: CodexSessionEntry[]): CodexSessionEntry[] {
   const seen = new Set<string>();
   let deduped: CodexSessionEntry[] | null = null;
@@ -267,6 +372,7 @@ export class CodexSessionReader implements ISessionReader {
   private discoveryIndex?: SessionDiscoveryIndex;
   private slowLogThresholdMs: number;
   private lastScanMetrics: CodexSessionReaderScanMetrics | null = null;
+  private lastSummaryStreamMetrics: CodexSummaryStreamMetrics | null = null;
 
   // Cache of session ID -> file path for quick lookups
   private sessionFileCache: Map<string, CodexSessionFile> = new Map();
@@ -321,6 +427,12 @@ export class CodexSessionReader implements ISessionReader {
     };
   }
 
+  getLastSummaryStreamMetrics(): CodexSummaryStreamMetrics | null {
+    return this.lastSummaryStreamMetrics
+      ? { ...this.lastSummaryStreamMetrics }
+      : null;
+  }
+
   async listSessions(projectId: UrlProjectId): Promise<SessionSummary[]> {
     const summaries: SessionSummary[] = [];
     const sessions = await this.scanSessions();
@@ -357,15 +469,10 @@ export class CodexSessionReader implements ISessionReader {
     if (!sessionFile) return null;
 
     try {
-      const entries = await this.readEntries(sessionId, sessionFile.filePath, {
-        purpose: "summary",
-        cache: false,
-      });
-      return await this.buildSessionSummaryFromEntries(
+      return await this.buildSessionSummaryFromStream(
         sessionId,
         projectId,
         sessionFile,
-        entries,
       );
     } catch {
       return null;
@@ -872,6 +979,266 @@ export class CodexSessionReader implements ISessionReader {
     return dedupedEntries.slice();
   }
 
+  private async buildSessionSummaryFromStream(
+    sessionId: string,
+    projectId: UrlProjectId,
+    sessionFile: CodexSessionFile,
+  ): Promise<SessionSummary | null> {
+    const stats = await stat(sessionFile.filePath);
+    const read = await this.readSummaryStream(
+      sessionId,
+      sessionFile.filePath,
+      stats,
+    );
+    return this.buildSessionSummaryFromState(
+      sessionId,
+      projectId,
+      stats,
+      read.state,
+    );
+  }
+
+  private async readSummaryStream(
+    sessionId: string,
+    filePath: string,
+    stats: Awaited<ReturnType<typeof stat>>,
+  ): Promise<CodexSummaryStreamRead> {
+    const startedAt = Date.now();
+    const memoryBefore = process.memoryUsage();
+    const state: CodexSummaryState = {
+      sawResponseItemUser: false,
+      eventUserMessageCount: 0,
+      responseMessageCount: 0,
+    };
+    const seenDedupeKeys = new Set<string>();
+    let lineCount = 0;
+    let parsedEntries = 0;
+    let dedupedEntries = 0;
+    let skippedDuplicateEntries = 0;
+    let maxLineLength = 0;
+
+    const parseStartedAt = Date.now();
+    for await (const line of iterateJsonlLines(filePath)) {
+      lineCount += 1;
+      maxLineLength = Math.max(maxLineLength, line.length);
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+
+      const entry = parseCodexSessionEntry(trimmed);
+      if (!entry) {
+        continue;
+      }
+
+      parsedEntries += 1;
+      const dedupeKey = getCodexSummaryDedupeKey(entry);
+      if (dedupeKey) {
+        if (seenDedupeKeys.has(dedupeKey)) {
+          skippedDuplicateEntries += 1;
+          continue;
+        }
+        seenDedupeKeys.add(dedupeKey);
+      }
+
+      dedupedEntries += 1;
+      this.applySummaryEntry(state, entry);
+    }
+    const parseMs = Date.now() - parseStartedAt;
+
+    const read = {
+      state,
+      lineCount,
+      parsedEntries,
+      dedupedEntries,
+      skippedDuplicateEntries,
+      maxLineLength,
+      parseMs,
+    };
+    this.recordSummaryStreamMetrics({
+      startedAt,
+      memoryBefore,
+      sessionId,
+      filePath,
+      stats,
+      read,
+    });
+    return read;
+  }
+
+  private applySummaryEntry(
+    state: CodexSummaryState,
+    entry: CodexSessionEntry,
+  ): void {
+    if (entry.type === "session_meta") {
+      state.metaEntry ??= entry;
+      return;
+    }
+
+    if (entry.type === "turn_context") {
+      state.firstTurnContext ??= entry;
+      if (entry.payload.model) {
+        state.model = entry.payload.model;
+      }
+      return;
+    }
+
+    if (entry.type === "event_msg") {
+      if (entry.payload.type === "user_message") {
+        state.eventUserMessageCount += 1;
+        if (!state.firstEventUserTitle) {
+          const fullTitle = entry.payload.message.trim();
+          if (!this.isSystemPromptUserMessage(fullTitle)) {
+            state.firstEventUserTitle = {
+              title: truncateSessionTitle(fullTitle) || null,
+              fullTitle,
+            };
+          }
+        }
+        return;
+      }
+
+      if (entry.payload.type === "token_count") {
+        const info = entry.payload.info;
+        const usage = info?.last_token_usage ?? info?.total_token_usage;
+        const inputTokens = usage?.input_tokens ?? 0;
+        if (inputTokens > 0) {
+          state.contextCandidate = {
+            inputTokens,
+            ...(info?.model_context_window && info.model_context_window > 0
+              ? { contextWindow: info.model_context_window }
+              : {}),
+          };
+        }
+      }
+      return;
+    }
+
+    if (entry.type !== "response_item") {
+      return;
+    }
+
+    const payload = entry.payload;
+    if (payload.type !== "message") {
+      return;
+    }
+
+    if (payload.role === "user" || payload.role === "assistant") {
+      state.responseMessageCount += 1;
+    }
+
+    if (payload.role !== "user") {
+      return;
+    }
+
+    state.sawResponseItemUser = true;
+    if (state.firstResponseUserTitle) {
+      return;
+    }
+
+    const fullTitle = payload.content
+      .map((content) =>
+        "text" in content && typeof content.text === "string"
+          ? content.text
+          : "",
+      )
+      .join("\n")
+      .trim();
+    if (fullTitle && !this.isSystemPromptUserMessage(fullTitle)) {
+      state.firstResponseUserTitle = {
+        title: truncateSessionTitle(fullTitle) || null,
+        fullTitle,
+      };
+    }
+  }
+
+  private buildSessionSummaryFromState(
+    sessionId: string,
+    projectId: UrlProjectId,
+    stats: Awaited<ReturnType<typeof stat>>,
+    state: CodexSummaryState,
+  ): SessionSummary | null {
+    const metaEntry = state.metaEntry;
+    if (!metaEntry) return null;
+
+    const messageCount =
+      state.responseMessageCount +
+      (state.sawResponseItemUser ? 0 : state.eventUserMessageCount);
+    if (messageCount === 0) return null;
+
+    const model = state.model;
+    const provider = this.determineProvider(metaEntry, model);
+    const contextUsage = this.contextUsageFromSummaryCandidate(
+      state.contextCandidate,
+      model,
+      provider,
+    );
+    const title =
+      (state.sawResponseItemUser
+        ? state.firstResponseUserTitle
+        : state.firstEventUserTitle) ?? {
+        title: null,
+        fullTitle: null,
+      };
+    const parentSessionId =
+      typeof metaEntry.payload.forked_from_id === "string"
+        ? metaEntry.payload.forked_from_id
+        : undefined;
+
+    return {
+      id: sessionId,
+      projectId,
+      title: title.title,
+      fullTitle: title.fullTitle,
+      createdAt: metaEntry.payload.timestamp,
+      updatedAt: stats.mtime.toISOString(),
+      messageCount,
+      ownership: { owner: "none" },
+      contextUsage,
+      provider,
+      model,
+      parentSessionId,
+      originator: metaEntry.payload.originator,
+      cliVersion: metaEntry.payload.cli_version,
+      source: codexSessionSourceLabel(metaEntry.payload.source),
+      approvalPolicy: state.firstTurnContext?.payload.approval_policy,
+      sandboxPolicy: state.firstTurnContext?.payload.sandbox_policy
+        ? {
+            type: state.firstTurnContext.payload.sandbox_policy.type,
+            networkAccess:
+              state.firstTurnContext.payload.sandbox_policy.network_access,
+            excludeTmpdirEnvVar:
+              state.firstTurnContext.payload.sandbox_policy
+                .exclude_tmpdir_env_var,
+            excludeSlashTmp:
+              state.firstTurnContext.payload.sandbox_policy.exclude_slash_tmp,
+          }
+        : undefined,
+    };
+  }
+
+  private contextUsageFromSummaryCandidate(
+    candidate: CodexSummaryContextCandidate | undefined,
+    model: string | undefined,
+    provider: "codex" | "codex-oss",
+  ): ContextUsage | undefined {
+    if (!candidate) {
+      return undefined;
+    }
+
+    const contextWindow =
+      candidate.contextWindow ?? getModelContextWindow(model, provider);
+    const percentage = Math.min(
+      100,
+      Math.round((candidate.inputTokens / contextWindow) * 100),
+    );
+    return {
+      inputTokens: candidate.inputTokens,
+      percentage,
+      contextWindow,
+    };
+  }
+
   private async buildSessionSummaryFromEntries(
     sessionId: string,
     projectId: UrlProjectId,
@@ -1001,6 +1368,54 @@ export class CodexSessionReader implements ISessionReader {
       return;
     }
     getLogger().debug(payload, "CODEX_READER: entry read");
+  }
+
+  private recordSummaryStreamMetrics(options: {
+    startedAt: number;
+    memoryBefore: NodeJS.MemoryUsage;
+    sessionId: string;
+    filePath: string;
+    stats: Awaited<ReturnType<typeof stat>>;
+    read: Omit<CodexSummaryStreamRead, "state">;
+  }): void {
+    const durationMs = Date.now() - options.startedAt;
+    const memoryAfter = process.memoryUsage();
+    const payload: CodexSummaryStreamMetrics = {
+      event: "codex_summary_stream",
+      sessionsDir: this.sessionsDir,
+      ...(this.projectPath ? { projectPath: this.projectPath } : {}),
+      sessionId: options.sessionId,
+      filePath: options.filePath,
+      fileSize: Number(options.stats.size),
+      fileMtimeMs: Number(options.stats.mtimeMs),
+      compressed: isCompressedCodexSessionFile(options.filePath),
+      durationMs,
+      parseMs: options.read.parseMs,
+      lineCount: options.read.lineCount,
+      parsedEntries: options.read.parsedEntries,
+      dedupedEntries: options.read.dedupedEntries,
+      skippedDuplicateEntries: options.read.skippedDuplicateEntries,
+      maxLineLength: options.read.maxLineLength,
+      heapUsedBefore: options.memoryBefore.heapUsed,
+      heapUsedAfter: memoryAfter.heapUsed,
+      rssBefore: options.memoryBefore.rss,
+      rssAfter: memoryAfter.rss,
+      heapUsedDelta: memoryAfter.heapUsed - options.memoryBefore.heapUsed,
+      rssDelta: memoryAfter.rss - options.memoryBefore.rss,
+      entryCache: this.getEntryCacheStats(),
+    };
+
+    this.lastSummaryStreamMetrics = payload;
+
+    if (!LOG_ENTRY_READS && durationMs < this.slowLogThresholdMs) {
+      return;
+    }
+
+    if (durationMs >= this.slowLogThresholdMs) {
+      getLogger().warn(payload, "CODEX_READER: slow summary stream");
+      return;
+    }
+    getLogger().debug(payload, "CODEX_READER: summary stream");
   }
 
   private async readFileRange(

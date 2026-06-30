@@ -4774,6 +4774,7 @@ a.sidebar-nav-item {
 }
 
 .composer-activity-age-time,
+.composer-position-age-time,
 .composer-liveness-time {
   color: inherit;
 }

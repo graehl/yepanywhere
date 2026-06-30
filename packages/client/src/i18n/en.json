@@ -732,6 +732,8 @@
   "toolbarLivenessUnknownState": "Unknown state",
   "toolbarRelativeAgeNow": "now",
   "toolbarRelativeAgePast": "{age} ago",
+  "toolbarPositionAge": "at {age}",
+  "toolbarPositionAgeAria": "Transcript position age",
   "toolbarLivenessSummary": "{state} {age}",
   "toolbarLivenessAria": "Session verified liveness: {summary}",
   "toolbarLastActivityAria": "Session last activity",

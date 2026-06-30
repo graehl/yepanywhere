@@ -2283,6 +2283,8 @@ function SessionPageContent({
       ? sessionUpdatedAt
       : lastStreamActivityAt;
   }, [sessionUpdatedAt, lastStreamActivityAt]);
+  const [transcriptPositionTimestampMs, setTranscriptPositionTimestampMs] =
+    useState<number | null>(null);
 
   useEngagementTracking({
     sessionId,
@@ -5495,6 +5497,9 @@ function SessionPageContent({
                     void setForkSummaryAutoOpen(objectId, value);
                   }}
                   onFollowForkSummary={followForkSummary}
+                  onTranscriptPositionTimestampChange={
+                    setTranscriptPositionTimestampMs
+                  }
                 />
               </AgentContentProvider>
             </SessionMetadataProvider>
@@ -5687,6 +5692,7 @@ function SessionPageContent({
                     onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                     contextUsage={session?.contextUsage}
                     lastActivityAt={activityAt}
+                    positionTimestampMs={transcriptPositionTimestampMs}
                     sessionLiveness={sessionLiveness}
                     isRunning={status.owner === "self"}
                     isThinking={canStopOwnedProcess}
@@ -5780,6 +5786,7 @@ function SessionPageContent({
                 }
                 contextUsage={session?.contextUsage}
                 lastActivityAt={activityAt}
+                positionTimestampMs={transcriptPositionTimestampMs}
                 sessionLiveness={sessionLiveness}
                 projectId={projectId}
                 sessionId={sessionId}

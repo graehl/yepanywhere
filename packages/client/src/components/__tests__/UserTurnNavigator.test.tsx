@@ -104,6 +104,7 @@ describe("UserTurnNavigator", () => {
     const messageList = document.createElement("div");
     const firstRow = document.createElement("div");
     const secondRow = document.createElement("div");
+    const onPreviewTimestampChange = vi.fn();
     const scrollTo = vi.fn(
       (optionsOrX?: ScrollToOptions | number, y?: number) => {
         scrollTop =
@@ -142,10 +143,15 @@ describe("UserTurnNavigator", () => {
     render(
       <UserTurnNavigator
         anchors={[
-          { id: "user-1", preview: "First request" },
-          { id: "user-2", preview: "Second request with more context" },
+          { id: "user-1", preview: "First request", timestampMs: 1000 },
+          {
+            id: "user-2",
+            preview: "Second request with more context",
+            timestampMs: 2000,
+          },
         ]}
         messageListRef={{ current: messageList }}
+        onPreviewTimestampChange={onPreviewTimestampChange}
       />,
     );
 
@@ -165,6 +171,7 @@ describe("UserTurnNavigator", () => {
 
     fireEvent.pointerEnter(secondMarker);
     expect(screen.getByText("Second request with more context")).toBeTruthy();
+    expect(onPreviewTimestampChange).toHaveBeenLastCalledWith(2000);
     expect(
       document
         .querySelector(".user-turn-nav-preview")

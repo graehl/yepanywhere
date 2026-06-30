@@ -57,3 +57,29 @@ dash, dot, hit target, and preview label all use it, so they stay aligned.
 `MARKER_SPREAD_PX`, `MARKER_HIT_MIN_PX`, `MARKER_HIT_MAX_PX` are internal tuning
 constants in `UserTurnNavigator.tsx`, **not** user-facing settings. If a setting
 is ever wanted, expose `MARKER_SPREAD_PX` (0 → max) as the one knob.
+
+## Bottom-bar position age
+
+The composer bottom bar may show a contextual turn-position age immediately to
+the left of the session last-activity age. The contract is narrow:
+
+- A hovered/focused turn-rail marker owns the contextual age while its preview
+  tooltip is active.
+- Otherwise, when the transcript is not following the live tail, ordinary
+  scrollbar movement owns the contextual age. Use the most recent visible turn
+  end; if no turn end is visible because the viewport is inside a long turn,
+  fall back to the timestamp nearest the middle of the visible transcript.
+- Hover/focus wins over scroll position. The contextual age clears when the
+  preview clears, the rail unmounts, or the transcript returns to follow mode.
+- Marker-hover age comes from the marker anchor's message timestamp, not from
+  rendered DOM text or the preview label. Normal turn notches use the user
+  prompt's timestamp; search-mode anchors may use the row they target.
+  Scrollbar-position age comes from the visible transcript rows and their
+  source message timestamps.
+- The bottom bar renders the contextual age as its own neighbor chip. It is not
+  gated by the ordinary session last-activity chip's stale threshold; compare
+  against the session last-activity compact label even when that label is
+  hidden, and suppress the contextual chip only when the two labels match.
+- The chip is informational only: noninteractive, muted relative to warning
+  liveness/status chips, and formatted as `at X ago` so it reads as a position
+  qualifier for the adjacent session activity age.

@@ -267,6 +267,8 @@ vi.mock("../../i18n", () => ({
           }`,
           toolbarLastActivityAria: "Session last activity",
           toolbarLastActivityAge: `Last activity ${params?.age ?? ""}`,
+          toolbarPositionAge: `at ${params?.age ?? ""}`,
+          toolbarPositionAgeAria: "Transcript position age",
           toolbarBtwChildSessionTitle:
             "Viewing a /btw child session; click to return to Mother (Ctrl+B)",
           toolbarBtwFocusedFooterTitle:
@@ -2070,6 +2072,38 @@ describe("MessageInput", () => {
 
     expect(screen.getByText("8m ago")).toBeTruthy();
     expect(screen.queryByText("Last activity 8m ago")).toBeNull();
+  });
+
+  it("shows transcript position age even when session activity age is fresh", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T12:04:00.000Z"));
+
+    renderMessageInput(
+      vi.fn(() => true),
+      {
+        lastActivityAt: "2026-04-26T12:03:00.000Z",
+        positionTimestampMs: new Date("2026-04-26T11:54:00.000Z").getTime(),
+      },
+    );
+
+    expect(screen.getByText("at 10m ago")).toBeTruthy();
+    expect(screen.queryByText("1m ago")).toBeNull();
+  });
+
+  it("suppresses transcript position age when it matches session activity age", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-26T12:06:30.000Z"));
+
+    renderMessageInput(
+      vi.fn(() => true),
+      {
+        lastActivityAt: "2026-04-26T12:00:30.000Z",
+        positionTimestampMs: new Date("2026-04-26T12:00:00.000Z").getTime(),
+      },
+    );
+
+    expect(screen.getByText("6m ago")).toBeTruthy();
+    expect(screen.queryByText("at 6m ago")).toBeNull();
   });
 
   it("keeps long-form last activity wording after 30 minutes", () => {

@@ -88,6 +88,12 @@ type ProgressiveTimelineEntry =
   | { kind: "turn"; group: { items: readonly unknown[] } }
   | { kind: "btw" };
 
+interface TurnGroup {
+  isUserPrompt: boolean;
+  isStandalone?: boolean;
+  items: RenderItem[];
+}
+
 function getProgressiveTimelineEntryWeight(
   entry: ProgressiveTimelineEntry,
 ): number {
@@ -141,16 +147,8 @@ function clampNumber(value: number, min: number, max: number): number {
  * Groups consecutive assistant items (text, thinking, tool_call) into turns.
  * User prompts break the grouping and are returned as separate groups.
  */
-function groupItemsIntoTurns(items: RenderItem[]): Array<{
-  isUserPrompt: boolean;
-  isStandalone?: boolean;
-  items: RenderItem[];
-}> {
-  const groups: Array<{
-    isUserPrompt: boolean;
-    isStandalone?: boolean;
-    items: RenderItem[];
-  }> = [];
+function groupItemsIntoTurns(items: RenderItem[]): TurnGroup[] {
+  const groups: TurnGroup[] = [];
   let currentAssistantGroup: RenderItem[] = [];
 
   for (const item of items) {
@@ -213,6 +211,32 @@ function getLatestItemsTimestampMs(
     latest = latest === null ? timestampMs : Math.max(latest, timestampMs);
   }
   return latest;
+}
+
+function getLastTimestampedItem(items: readonly RenderItem[]): RenderItem | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (
+      item &&
+      getLatestMessageTimestampMs(item.sourceMessages) !== null
+    ) {
+      return item;
+    }
+  }
+  return null;
+}
+
+function groupEndsVisibleTurn(
+  group: TurnGroup,
+  nextGroup: TurnGroup | undefined,
+): boolean {
+  if (group.isStandalone) {
+    return true;
+  }
+  if (!group.isUserPrompt) {
+    return true;
+  }
+  return !nextGroup || nextGroup.isUserPrompt || nextGroup.isStandalone === true;
 }
 
 function getThinkingDurationMs(
@@ -361,6 +385,100 @@ function findRenderRow(
 interface VisibleRenderAnchor {
   id: string;
   topOffset: number;
+}
+
+function getVisibleTurnEndTimestampMs(
+  messageList: HTMLDivElement,
+  scrollContainer: HTMLElement,
+  groups: readonly TurnGroup[],
+): number | null {
+  const containerRect = scrollContainer.getBoundingClientRect();
+  let timestampMs: number | null = null;
+
+  for (let index = 0; index < groups.length; index += 1) {
+    const group = groups[index];
+    if (!group || !groupEndsVisibleTurn(group, groups[index + 1])) {
+      continue;
+    }
+    const item = getLastTimestampedItem(group.items);
+    if (!item) {
+      continue;
+    }
+    const row = findRenderRow(messageList, item.id);
+    if (!row) {
+      continue;
+    }
+    const rowRect = row.getBoundingClientRect();
+    if (
+      rowRect.bottom >= containerRect.top &&
+      rowRect.bottom <= containerRect.bottom
+    ) {
+      timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
+    }
+  }
+
+  return timestampMs;
+}
+
+function getMiddleVisibleTimestampMs(
+  messageList: HTMLDivElement,
+  scrollContainer: HTMLElement,
+  items: readonly RenderItem[],
+): number | null {
+  const containerRect = scrollContainer.getBoundingClientRect();
+  const middleY = containerRect.top + containerRect.height / 2;
+  const timestampsById = new Map<string, number>();
+
+  for (const item of items) {
+    const timestampMs = getLatestMessageTimestampMs(item.sourceMessages);
+    if (timestampMs !== null) {
+      timestampsById.set(item.id, timestampMs);
+    }
+  }
+
+  let best: { distance: number; timestampMs: number } | null = null;
+  for (const row of messageList.querySelectorAll<HTMLElement>(
+    "[data-render-id]",
+  )) {
+    const id = row.dataset.renderId;
+    if (!id) {
+      continue;
+    }
+    const timestampMs = timestampsById.get(id);
+    if (timestampMs === undefined) {
+      continue;
+    }
+    const rowRect = row.getBoundingClientRect();
+    const visible =
+      rowRect.bottom >= containerRect.top && rowRect.top <= containerRect.bottom;
+    if (!visible) {
+      continue;
+    }
+    const distance =
+      rowRect.top <= middleY && rowRect.bottom >= middleY
+        ? 0
+        : Math.min(
+            Math.abs(rowRect.top - middleY),
+            Math.abs(rowRect.bottom - middleY),
+          );
+    if (!best || distance <= best.distance) {
+      best = { distance, timestampMs };
+    }
+  }
+
+  return best?.timestampMs ?? null;
+}
+
+function getTranscriptPositionTimestampMs(
+  messageList: HTMLDivElement,
+  scrollContainer: HTMLElement,
+  groups: readonly TurnGroup[],
+  items: readonly RenderItem[],
+): number | null {
+  return (
+    getVisibleTurnEndTimestampMs(messageList, scrollContainer, groups) ??
+    getMiddleVisibleTimestampMs(messageList, scrollContainer, items)
+  );
 }
 
 function getFirstVisibleRenderAnchor(
@@ -549,7 +667,14 @@ function getFullSessionSearchAnchorForItem(
     case "user_prompt": {
       const text = getPromptTextForCorrection(item.content);
       const preview = getSearchPreviewFallback(text);
-      return preview ? { id: item.id, preview, searchText: text } : null;
+      return preview
+        ? {
+            id: item.id,
+            preview,
+            searchText: text,
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
+          }
+        : null;
     }
     case "session_setup": {
       const text = joinSearchParts([
@@ -561,6 +686,7 @@ function getFullSessionSearchAnchorForItem(
             id: item.id,
             preview: item.title || getSearchPreviewFallback(text),
             searchText: text,
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
           }
         : null;
     }
@@ -577,6 +703,7 @@ function getFullSessionSearchAnchorForItem(
               item.object.title ??
               getSearchPreviewFallback(item.object.error ?? item.object.status),
             searchText,
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
           }
         : null;
     }
@@ -586,6 +713,7 @@ function getFullSessionSearchAnchorForItem(
             id: item.id,
             preview: getSearchPreviewFallback(item.text),
             searchText: item.text,
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
           }
         : null;
     case "thinking":
@@ -594,6 +722,7 @@ function getFullSessionSearchAnchorForItem(
             id: item.id,
             preview: `Thinking: ${getSearchPreviewFallback(item.thinking)}`,
             searchText: joinSearchParts(["Thinking", item.thinking]),
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
           }
         : null;
     case "system": {
@@ -603,6 +732,7 @@ function getFullSessionSearchAnchorForItem(
             id: item.id,
             preview: getSearchPreviewFallback(systemSearchText),
             searchText: systemSearchText,
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
           }
         : null;
     }
@@ -613,6 +743,7 @@ function getFullSessionSearchAnchorForItem(
             id: item.id,
             preview: getSearchPreviewFallback(searchText),
             searchText,
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
           }
         : null;
     }
@@ -623,6 +754,7 @@ function getFullSessionSearchAnchorForItem(
             id: item.id,
             preview: getToolSearchPreview(item),
             searchText,
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
           }
         : null;
     }
@@ -647,6 +779,7 @@ function getFullSessionSearchAnchorsForSegment(
         "Explored",
         `${segment.items.length} items`,
       ]),
+      timestampMs: getLatestItemsTimestampMs(segment.items),
     },
   ];
 
@@ -1091,6 +1224,7 @@ interface Props {
   progressiveRenderStatusVisible?: boolean;
   /** Stable identity for one progressive initial-render cycle. */
   progressiveRenderKey?: string;
+  onTranscriptPositionTimestampChange?: (timestampMs: number | null) => void;
   getForkSummaryTargetHref?: (targetSessionId: string) => string;
   onCancelForkSummary?: (objectId: string) => void;
   onToggleForkSummaryAutoOpen?: (objectId: string, value: boolean) => void;
@@ -1258,6 +1392,7 @@ export const MessageList = memo(function MessageList({
   progressiveRenderEnabled = false,
   progressiveRenderStatusVisible = true,
   progressiveRenderKey,
+  onTranscriptPositionTimestampChange,
   getForkSummaryTargetHref,
   onCancelForkSummary,
   onToggleForkSummaryAutoOpen,
@@ -1324,6 +1459,12 @@ export const MessageList = memo(function MessageList({
   const [navMotionCue, setNavMotionCue] = useState<UserTurnNavMotionCue | null>(
     null,
   );
+  const [hoveredMarkerTimestampMs, setHoveredMarkerTimestampMs] = useState<
+    number | null
+  >(null);
+  const [scrollPositionTimestampMs, setScrollPositionTimestampMs] = useState<
+    number | null
+  >(null);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
   const [userTurnSearch, setUserTurnSearch] = useState<UserTurnSearchSession>({
     active: false,
@@ -1465,6 +1606,7 @@ export const MessageList = memo(function MessageList({
       }
       lastHeightRef.current = container.scrollHeight;
       setIsScrolledToBottom(true);
+      setScrollPositionTimestampMs(null);
 
       // Clear programmatic flag after scroll events have fired
       const releaseProgrammaticScroll = () => {
@@ -1766,7 +1908,11 @@ export const MessageList = memo(function MessageList({
       if (!preview) {
         continue;
       }
-      anchors.push({ id: item.id, preview });
+      anchors.push({
+        id: item.id,
+        preview,
+        timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
+      });
     }
     return anchors;
   }, [displayRenderItems]);
@@ -1787,7 +1933,12 @@ export const MessageList = memo(function MessageList({
       const text = getPromptTextForCorrection(item.content);
       const preview = getSearchPreviewFallback(text);
       if (preview && !isSessionSetupText(preview)) {
-        anchors.push({ id: item.id, preview, searchText: text });
+        anchors.push({
+          id: item.id,
+          preview,
+          searchText: text,
+          timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
+        });
       }
     }
     return anchors;
@@ -1804,14 +1955,24 @@ export const MessageList = memo(function MessageList({
         const text = getPromptTextForCorrection(item.content);
         const preview = getSearchPreviewFallback(text);
         if (preview && !isSessionSetupText(preview)) {
-          anchors.push({ id: item.id, preview, searchText: text });
+          anchors.push({
+            id: item.id,
+            preview,
+            searchText: text,
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
+          });
         }
         continue;
       }
       if (item.type === "text") {
         const preview = getSearchPreviewFallback(item.text);
         if (preview) {
-          anchors.push({ id: item.id, preview, searchText: item.text });
+          anchors.push({
+            id: item.id,
+            preview,
+            searchText: item.text,
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
+          });
         }
         continue;
       }
@@ -1823,6 +1984,7 @@ export const MessageList = memo(function MessageList({
             id: item.id,
             preview,
             searchText: systemSearchText,
+            timestampMs: getLatestMessageTimestampMs(item.sourceMessages),
           });
         }
       }
@@ -1973,6 +2135,48 @@ export const MessageList = memo(function MessageList({
       dispatchSessionIsearchGuideState({ active: false, scope: "user" });
     },
     [],
+  );
+  const updateScrollPositionTimestamp = useCallback(
+    (options: { atBottom?: boolean } = {}) => {
+      const content = containerRef.current;
+      const container = content?.parentElement;
+      if (!content || !container || options.atBottom) {
+        setScrollPositionTimestampMs(null);
+        return;
+      }
+      setScrollPositionTimestampMs(
+        getTranscriptPositionTimestampMs(
+          content,
+          container,
+          turnGroups,
+          displayRenderItems,
+        ),
+      );
+    },
+    [displayRenderItems, turnGroups],
+  );
+
+  useEffect(() => {
+    updateScrollPositionTimestamp({ atBottom: isScrolledToBottom });
+  }, [isScrolledToBottom, updateScrollPositionTimestamp]);
+
+  useEffect(() => {
+    const contextualTimestampMs =
+      hoveredMarkerTimestampMs ??
+      (isScrolledToBottom ? null : scrollPositionTimestampMs);
+    onTranscriptPositionTimestampChange?.(contextualTimestampMs);
+  }, [
+    hoveredMarkerTimestampMs,
+    isScrolledToBottom,
+    onTranscriptPositionTimestampChange,
+    scrollPositionTimestampMs,
+  ]);
+
+  useEffect(
+    () => () => {
+      onTranscriptPositionTimestampChange?.(null);
+    },
+    [onTranscriptPositionTimestampChange],
   );
   useEffect(() => {
     const handleCopy = (event: ClipboardEvent) => {
@@ -2947,7 +3151,8 @@ export const MessageList = memo(function MessageList({
       clearForcedCurrentScrollTimers();
     }
     setIsScrolledToBottom(atBottom);
-  }, [clearForcedCurrentScrollTimers]);
+    updateScrollPositionTimestamp({ atBottom });
+  }, [clearForcedCurrentScrollTimers, updateScrollPositionTimestamp]);
 
   // Attach scroll listener to parent container
   useEffect(() => {
@@ -3304,12 +3509,14 @@ export const MessageList = memo(function MessageList({
         onNavigateStart={() => {
           shouldAutoScrollRef.current = false;
           setIsScrolledToBottom(false);
+          updateScrollPositionTimestamp({ atBottom: false });
         }}
         onSearchMatchSelect={selectUserTurnSearchMatch}
         onTrimAnchor={onTrimBeforeUserMessage}
         onForkBeforeAnchor={onForkBeforeUserMessage}
         onForkAfterAnchor={onForkAfterUserMessage}
         onCopyAnchor={onCopyUserMessage}
+        onPreviewTimestampChange={setHoveredMarkerTimestampMs}
         searchState={userTurnNavSearchState}
       />
       {searchPanelTarget && searchPanel

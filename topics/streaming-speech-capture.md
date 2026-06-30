@@ -148,6 +148,11 @@ settings surface):
   page visibility is the portable signal: YA cannot reliably detect true pixel
   occlusion by another OS window.
 
+  Cross-tab handoff is allowed to take a short delay. When a hidden tab becomes
+  visible while another YA tab's warm-mic lease is still current, it must keep
+  the reacquire intent alive and retry after the previous owner releases or the
+  lease expires; it must not give up after the first refused acquire.
+
   Default off keeps no speculative capture.
 
   Settings copy should name this visibility scope. Prefer wording like "Keep

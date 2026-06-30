@@ -2447,6 +2447,92 @@ describe("YA server speech provider", () => {
     expect(secondTrack.stop).toHaveBeenCalledTimes(1);
   });
 
+  it("retries visible warm mic reacquire after the previous tab lease releases", async () => {
+    vi.useFakeTimers();
+    try {
+      localStorage.setItem(UI_KEYS.speechKeepMicWarm, "true");
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "visible",
+      });
+
+      let firstStopped = false;
+      let secondStopped = false;
+      const firstTrack = {
+        get readyState() {
+          return firstStopped ? "ended" : "live";
+        },
+        stop: vi.fn(() => {
+          firstStopped = true;
+        }),
+      } as unknown as MediaStreamTrack;
+      const secondTrack = {
+        get readyState() {
+          return secondStopped ? "ended" : "live";
+        },
+        stop: vi.fn(() => {
+          secondStopped = true;
+        }),
+      } as unknown as MediaStreamTrack;
+      const firstStream = {
+        getTracks: () => [firstTrack],
+      } as unknown as MediaStream;
+      const secondStream = {
+        getTracks: () => [secondTrack],
+      } as unknown as MediaStream;
+      const getUserMedia = vi
+        .fn<() => Promise<MediaStream>>()
+        .mockResolvedValueOnce(firstStream)
+        .mockResolvedValueOnce(secondStream);
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: { getUserMedia },
+      });
+
+      await expect(getSpeechMicStream({ keepWarm: true })).resolves.toBe(
+        firstStream,
+      );
+
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "hidden",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(firstTrack.stop).toHaveBeenCalledTimes(1);
+
+      localStorage.setItem(
+        SHARED_SPEECH_MIC_LEASE_STORAGE_KEY,
+        JSON.stringify({
+          ownerId: "previous-visible-tab",
+          expiresAt: Date.now() + 10_000,
+        }),
+      );
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "visible",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+      expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(199);
+      expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+      localStorage.removeItem(SHARED_SPEECH_MIC_LEASE_STORAGE_KEY);
+      await vi.advanceTimersByTimeAsync(1);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(getUserMedia).toHaveBeenCalledTimes(2);
+      expect(secondTrack.stop).not.toHaveBeenCalled();
+
+      releaseSharedSpeechMicStream();
+      expect(secondTrack.stop).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not release active shared mic capture when the page is hidden", async () => {
     Object.defineProperty(document, "visibilityState", {
       configurable: true,

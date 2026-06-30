@@ -7,6 +7,7 @@ export const SHARED_SPEECH_MIC_LEASE_STORAGE_KEY =
 const SHARED_SPEECH_MIC_CHANNEL_NAME = "yep-anywhere-speech-warm-mic";
 const SHARED_SPEECH_MIC_LEASE_TTL_MS = 4000;
 const SHARED_SPEECH_MIC_LEASE_HEARTBEAT_MS = 1000;
+const SHARED_SPEECH_MIC_HANDOFF_RETRY_MS = 200;
 const TAB_ID = `${Date.now().toString(36)}-${Math.random()
   .toString(36)
   .slice(2)}`;
@@ -32,6 +33,7 @@ let reacquireSharedWarmWhenVisible = false;
 let sharedWarmRequested = false;
 let idleLeaseHeld = false;
 let idleLeaseHeartbeat: ReturnType<typeof setInterval> | null = null;
+let reacquireRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let lifecycleInstalled = false;
 let leaseChannel: BroadcastChannel | null = null;
 
@@ -106,6 +108,11 @@ function isLeaseCurrent(
   return lease !== null && lease.expiresAt > Date.now();
 }
 
+function hasOtherCurrentIdleLease(): boolean {
+  const lease = readIdleLease();
+  return isLeaseCurrent(lease) && lease.ownerId !== TAB_ID;
+}
+
 function getBroadcastChannel(): BroadcastChannel | null {
   if (leaseChannel) return leaseChannel;
   if (typeof BroadcastChannel === "undefined") return null;
@@ -115,6 +122,10 @@ function getBroadcastChannel(): BroadcastChannel | null {
     if (message.ownerId === TAB_ID) return;
     if (message.type === "claimed") {
       releaseIdleSharedSpeechMicStream(false);
+      return;
+    }
+    if (message.type === "released") {
+      maybeReacquireSharedWarmStream();
     }
   };
   return leaseChannel;
@@ -129,6 +140,21 @@ function stopIdleLeaseHeartbeat(): void {
     clearInterval(idleLeaseHeartbeat);
     idleLeaseHeartbeat = null;
   }
+}
+
+function clearReacquireRetry(): void {
+  if (reacquireRetryTimer !== null) {
+    clearTimeout(reacquireRetryTimer);
+    reacquireRetryTimer = null;
+  }
+}
+
+function scheduleReacquireRetry(): void {
+  if (reacquireRetryTimer !== null) return;
+  reacquireRetryTimer = setTimeout(() => {
+    reacquireRetryTimer = null;
+    maybeReacquireSharedWarmStream();
+  }, SHARED_SPEECH_MIC_HANDOFF_RETRY_MS);
 }
 
 function releaseIdleLease(): void {
@@ -199,17 +225,48 @@ function releaseIdleSharedSpeechMicStream(reacquireOnVisible: boolean): void {
 
 function maybeReacquireSharedWarmStream(): void {
   if (!reacquireSharedWarmWhenVisible) return;
-  if (!isDocumentVisible() || !getStoredKeepMicWarm()) return;
-  reacquireSharedWarmWhenVisible = false;
+  if (!isDocumentVisible()) return;
+  if (!getStoredKeepMicWarm()) {
+    reacquireSharedWarmWhenVisible = false;
+    clearReacquireRetry();
+    return;
+  }
+  if (hasOtherCurrentIdleLease()) {
+    scheduleReacquireRetry();
+    return;
+  }
   void getSpeechMicStream({
     keepWarm: true,
     micDeviceId: getStoredMicDeviceId(),
-  }).catch((err: unknown) => {
-    console.warn(
-      "[SpeechMic] Warm microphone reacquire failed",
-      err instanceof Error ? err.message : String(err),
-    );
-  });
+  })
+    .then((stream) => {
+      if (isSharedSpeechMicStream(stream) && hasLiveSpeechTracks(stream)) {
+        reacquireSharedWarmWhenVisible = false;
+        clearReacquireRetry();
+        return;
+      }
+      if (isDocumentVisible() && getStoredKeepMicWarm()) {
+        scheduleReacquireRetry();
+      }
+    })
+    .catch((err: unknown) => {
+      if (!isDocumentVisible()) return;
+      if (!getStoredKeepMicWarm()) {
+        reacquireSharedWarmWhenVisible = false;
+        clearReacquireRetry();
+        return;
+      }
+      if (hasOtherCurrentIdleLease()) {
+        scheduleReacquireRetry();
+        return;
+      }
+      reacquireSharedWarmWhenVisible = false;
+      clearReacquireRetry();
+      console.warn(
+        "[SpeechMic] Warm microphone reacquire failed",
+        err instanceof Error ? err.message : String(err),
+      );
+    });
 }
 
 function retainOrReleaseIdleWarmStream(): void {
@@ -260,9 +317,11 @@ function installSharedMicLifecycle(): void {
   window.addEventListener("storage", (event) => {
     if (event.key !== SHARED_SPEECH_MIC_LEASE_STORAGE_KEY) return;
     const lease = readIdleLease();
-    if (lease?.ownerId && lease.ownerId !== TAB_ID) {
+    if (isLeaseCurrent(lease) && lease.ownerId !== TAB_ID) {
       releaseIdleSharedSpeechMicStream(false);
+      return;
     }
+    maybeReacquireSharedWarmStream();
   });
 }
 
@@ -368,6 +427,7 @@ export function speechMicConstraints(
 export function releaseSharedSpeechMicStream(): void {
   sharedWarmRequested = false;
   releaseIdleLease();
+  clearReacquireRetry();
   if (sharedActiveCaptureLeases > 0) {
     releaseSharedWarmWhenInactive = true;
     reacquireSharedWarmWhenVisible = false;

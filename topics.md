@@ -68,3 +68,5 @@
   dedupe, and retained summary feed queries.
 - session-initial-load-performance - Long-session initial render progress,
   chunking, and transcript mount cost experiments.
+- client-route-retention - Bounded browser-side route/view retention for
+  instant back/forward returns without unbounded transcript caching.

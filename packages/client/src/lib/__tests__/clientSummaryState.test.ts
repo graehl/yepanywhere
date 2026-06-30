@@ -671,6 +671,135 @@ describe("clientSummaryState", () => {
     });
   });
 
+  it("keeps recent event-created query ids through replace snapshots that omit them", () => {
+    const query = {
+      scope: "global-sessions" as const,
+      limit: 50,
+    };
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        query,
+        sessions: [globalSession("existing")],
+        hasMore: false,
+      },
+      100,
+    );
+
+    state = applySessionCollectionCreated(
+      state,
+      createdEvent("new-session"),
+      200,
+    );
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query,
+        sessions: [globalSession("new-session")],
+        hasMore: true,
+        mode: "prepend",
+      },
+      200,
+    );
+
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query,
+        sessions: [globalSession("existing")],
+        hasMore: false,
+        mode: "replace",
+      },
+      700,
+    );
+
+    expect(
+      selectSessionCollectionQueryRecords(state, query).map((s) => s.id),
+    ).toEqual(["new-session", "existing"]);
+  });
+
+  it("expires event-created query id preservation after one minute", () => {
+    const query = {
+      scope: "global-sessions" as const,
+      limit: 50,
+    };
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        query,
+        sessions: [globalSession("existing")],
+        hasMore: false,
+      },
+      100,
+    );
+
+    state = applySessionCollectionCreated(
+      state,
+      createdEvent("new-session"),
+      200,
+    );
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query,
+        sessions: [globalSession("new-session")],
+        hasMore: true,
+        mode: "prepend",
+      },
+      200,
+    );
+
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query,
+        sessions: [globalSession("existing")],
+        hasMore: false,
+        mode: "replace",
+      },
+      60_201,
+    );
+
+    expect(
+      selectSessionCollectionQueryRecords(state, query).map((s) => s.id),
+    ).toEqual(["existing"]);
+  });
+
+  it("does not preserve event-created rows in search query replacements", () => {
+    const query = {
+      scope: "global-sessions" as const,
+      searchQuery: "new",
+    };
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        query,
+        sessions: [globalSession("new-session")],
+        hasMore: false,
+      },
+      100,
+    );
+
+    state = applySessionCollectionCreated(
+      state,
+      createdEvent("new-session"),
+      200,
+    );
+
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query,
+        sessions: [],
+        hasMore: false,
+        mode: "replace",
+      },
+      300,
+    );
+
+    expect(selectSessionCollectionQueryRecords(state, query)).toEqual([]);
+  });
+
   it("stores inbox tier ids and upserts partial session facts", () => {
     const state = applyInboxCollectionSnapshot(
       createEmptyClientSummaryState(),

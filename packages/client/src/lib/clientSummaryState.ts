@@ -25,6 +25,7 @@ import {
 } from "./inboxTiers";
 
 const NO_OBSERVATION = Number.NEGATIVE_INFINITY;
+const CREATED_SESSION_QUERY_MEMBERSHIP_TTL_MS = 60_000;
 
 export type SessionCollectionObservationKind =
   | "full-snapshot"
@@ -1000,6 +1001,14 @@ function upsertQuery(
       ...incomingIds,
       ...existing.ids.filter((id) => !incomingIdSet.has(id)),
     ];
+  } else if (existing) {
+    ids = preserveRecentEventCreatedQueryIds(
+      state,
+      snapshot.query,
+      existing.ids,
+      incomingIds,
+      requestStartedAt,
+    );
   }
 
   const queries = new Map(state.sessions.queries);
@@ -1019,6 +1028,61 @@ function upsertQuery(
       queries,
     },
   };
+}
+
+function preserveRecentEventCreatedQueryIds(
+  state: ClientSummaryState,
+  query: SessionCollectionQueryDescriptor,
+  existingIds: readonly string[],
+  incomingIds: readonly string[],
+  observedAt: number,
+): string[] {
+  const incomingIdSet = new Set(incomingIds);
+  const preservedIds = existingIds.filter((id) => {
+    if (incomingIdSet.has(id)) {
+      return false;
+    }
+    const record = state.sessions.entities.get(id);
+    return (
+      !!record &&
+      isRecentlyEventCreatedRecord(record, observedAt) &&
+      recordMatchesQuery(record, query)
+    );
+  });
+
+  return preservedIds.length > 0
+    ? [...preservedIds, ...incomingIds]
+    : [...incomingIds];
+}
+
+function isRecentlyEventCreatedRecord(
+  record: SessionCollectionRecord,
+  observedAt: number,
+): boolean {
+  if (record.eventCreatedAt === undefined) {
+    return false;
+  }
+  const ageMs = observedAt - record.eventCreatedAt;
+  return ageMs >= 0 && ageMs <= CREATED_SESSION_QUERY_MEMBERSHIP_TTL_MS;
+}
+
+function recordMatchesQuery(
+  record: SessionCollectionRecord,
+  query: SessionCollectionQueryDescriptor,
+): boolean {
+  if (query.searchQuery?.trim()) {
+    return false;
+  }
+  if (query.projectId && record.projectId !== query.projectId) {
+    return false;
+  }
+  if (query.includeArchived !== true && record.isArchived === true) {
+    return false;
+  }
+  if (query.starred === true && record.isStarred !== true) {
+    return false;
+  }
+  return true;
 }
 
 export function applyGlobalSessionsCollectionSnapshot(

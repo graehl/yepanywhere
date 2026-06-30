@@ -18,19 +18,24 @@ import {
 } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { mockVoiceCancelProcessing, mockVoiceToggle, voicePropsState } =
-  vi.hoisted(() => ({
-    mockVoiceCancelProcessing: vi.fn(),
-    mockVoiceToggle: vi.fn(),
-    voicePropsState: {
-      current: null as null | {
-        onPendingSpeechChange?: (
-          kind: "listening" | "transcribing" | "finalizing" | null,
-        ) => void;
-        onInterimTranscript?: (text: string) => void;
-      },
+const {
+  mockVoiceCancelProcessing,
+  mockVoicePrewarm,
+  mockVoiceToggle,
+  voicePropsState,
+} = vi.hoisted(() => ({
+  mockVoiceCancelProcessing: vi.fn(),
+  mockVoicePrewarm: vi.fn(),
+  mockVoiceToggle: vi.fn(),
+  voicePropsState: {
+    current: null as null | {
+      onPendingSpeechChange?: (
+        kind: "listening" | "transcribing" | "finalizing" | null,
+      ) => void;
+      onInterimTranscript?: (text: string) => void;
     },
-  }));
+  },
+}));
 
 vi.mock("react-router-dom", () => ({
   useNavigate: () => vi.fn(),
@@ -93,6 +98,7 @@ vi.mock("../VoiceInputButton", () => ({
         stopAndFinalize: () => "",
         toggle: mockVoiceToggle,
         cancelProcessing: mockVoiceCancelProcessing,
+        prewarm: mockVoicePrewarm,
         isListening: false,
         isAvailable: true,
       }),
@@ -107,11 +113,25 @@ import { FloatingActionButton } from "../FloatingActionButton";
 afterEach(() => {
   cleanup();
   mockVoiceCancelProcessing.mockReset();
+  mockVoicePrewarm.mockReset();
   mockVoiceToggle.mockReset();
   voicePropsState.current = null;
 });
 
 describe("FloatingActionButton speech", () => {
+  it("prewarms voice resources after expanding the quick composer", async () => {
+    render(<FloatingActionButton />);
+
+    expect(mockVoicePrewarm).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText("fabNewSession"));
+    await waitFor(() => expect(mockVoicePrewarm).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByLabelText("fabClose"));
+    fireEvent.click(screen.getByLabelText("fabNewSession"));
+    await waitFor(() => expect(mockVoicePrewarm).toHaveBeenCalledTimes(2));
+  });
+
   it("keeps the quick composer editable with an inline transcribing badge", async () => {
     render(<FloatingActionButton />);
 

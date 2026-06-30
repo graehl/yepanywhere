@@ -54,6 +54,7 @@
 - session-retitle - Explicit title editing and user-confirmed generated retitle proposals.
 - responsive-layout-gaps - Font-metric-sensitive responsive wrapping gaps and the measured layout invariants that should replace fixed pixel/rem thresholds.
 - session-defaults - New-session default scoping: all-provider controls vs provider/model economics controls.
+- floating-new-session-composer - Non-session-page `+` quick composer, new-session prefill, and click-time non-browser speech prewarm.
 - permission-mode - Provider-independent approval preference with model-capability-gated Auto fallback.
 - codex-sessions - Codex rollout storage, compression representation, and YA's durable read assumptions.
 - codex-metadata-scanner - Codex rollout head-metadata discovery, current cache layers, and scanner performance gaps.

@@ -175,6 +175,7 @@ export function FloatingActionButton() {
   useEffect(() => {
     if (isExpanded) {
       textareaRef.current?.focus();
+      voiceButtonRef.current?.prewarm();
     }
   }, [isExpanded]);
 

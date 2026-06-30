@@ -156,11 +156,22 @@ settings surface):
   idle stream is held; no audio is sent between dictations." Avoid an
   unqualified "while this is on" caption, because hidden tabs intentionally
   release the idle warm stream.
+  Warm triggers route through the selected speech provider's optional
+  `prewarm()` hook, so **browser-native Web Speech is deliberately non-warmed**:
+  `BrowserNativeProvider` has no prewarm implementation and YA must not call
+  `SpeechRecognition.start()` before the user presses the mic button. This
+  avoids the browser-owned recording indicator sitting on constantly when the
+  selected ASR backend is browser-native.
+
   Implementation detail: initial warm acquisition is triggered idempotently
   when a desktop mouse pointer nears the mic control (the clickable rect plus
-  margin), using the currently selected mic device. If Chrome microphone
-  permission is not already granted, the first click still performs the
-  permission/device open; subsequent dictations reuse the warm stream.
+  margin), using the currently selected mic device. The floating new-session
+  composer also triggers provider prewarm after the user clicks its `+` to
+  expand the composer; it must not prewarm before that click. If Chrome
+  microphone permission is not already granted, the first mic click still
+  performs the permission/device open; subsequent dictations reuse the warm
+  stream when the active non-browser provider and Keep Mic Warm setting permit
+  it.
 - **Warm-mic also warms the server STT model.** The same pointer-near warm
   trigger fires a one-shot `/speech/prewarm` for the selected server-routed
   backend (`YaServerProvider.prewarm`), so the first dictation skips the

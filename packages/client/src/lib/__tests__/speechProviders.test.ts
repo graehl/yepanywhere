@@ -478,6 +478,12 @@ describe("browser-native speech provider", () => {
     return FakeSpeechRecognition;
   }
 
+  it("does not expose prewarm, avoiding browser-owned recording indicators", () => {
+    const provider = new BrowserNativeProvider();
+
+    expect("prewarm" in provider).toBe(false);
+  });
+
   it("keeps browser-native amber until Chrome reports audio capture", () => {
     const Recognition = installFakeSpeechRecognition();
     const provider = new BrowserNativeProvider();

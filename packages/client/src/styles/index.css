@@ -12507,7 +12507,17 @@ a.sidebar-nav-item {
 .provider-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  column-gap: 0.4rem;
+  row-gap: 0.3rem;
+}
+
+.provider-options:has(.provider-option:not(.disabled)):has(
+  .provider-option.disabled
+)::after {
+  content: "";
+  flex-basis: 100%;
+  height: 0;
+  order: 1;
 }
 
 .provider-option {
@@ -12536,6 +12546,7 @@ a.sidebar-nav-item {
 }
 
 .provider-option.disabled {
+  order: 2;
   opacity: 0.4;
   cursor: not-allowed;
 }

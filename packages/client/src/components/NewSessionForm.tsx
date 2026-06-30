@@ -92,6 +92,7 @@ import {
   clearNewSessionPrefill,
   getNewSessionPrefill,
 } from "../lib/newSessionPrefill";
+import { makeAttachmentFileNamesUnique } from "../lib/attachmentFileNames";
 import {
   getEstimatedServerOffsetMs,
   getServerClockTimestamp,
@@ -728,13 +729,15 @@ export function NewSessionForm({
       if (files.length === 0) {
         return;
       }
+      const pendingNames = pendingFilesRef.current.map(getPendingFileName);
+      const uniqueFiles = makeAttachmentFileNamesUnique(files, pendingNames);
 
       const batchId = supportsProjectQueue
         ? ensureDraftAttachmentBatchId()
         : null;
 
       if (!batchId) {
-        const localFiles = files.map(
+        const localFiles = uniqueFiles.map(
           (file): PendingLocalFile => ({
             kind: "local",
             id: `pending-${generateUUID()}`,
@@ -748,7 +751,7 @@ export function NewSessionForm({
         return;
       }
 
-      for (const file of files) {
+      for (const file of uniqueFiles) {
         const tempId = `pending-${generateUUID()}`;
         const previewUrl = file.type.startsWith("image/")
           ? URL.createObjectURL(file)
@@ -797,6 +800,7 @@ export function NewSessionForm({
           );
           return {
             ...stagedRef,
+            originalName: file.name,
             kind: "staged",
             ...(previewUrl ? { previewUrl } : {}),
           } satisfies PendingStagedFile;
@@ -2382,7 +2386,7 @@ export function NewSessionForm({
   const canStart = Boolean(hasContent);
   const hasProjectQueueTargetProject = Boolean(projectQueueTargetProjectId);
   const pendingFilesReadyForProjectQueue =
-    pendingFiles.length === 0 || pendingFiles.every(isPendingStagedFile);
+    pendingFiles.every(isPendingStagedFile);
   const stagedPendingFileRefs = pendingFiles
     .filter(isPendingStagedFile)
     .map(toPersistedStagedAttachmentRef);

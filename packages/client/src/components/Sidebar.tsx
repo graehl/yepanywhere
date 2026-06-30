@@ -3,12 +3,16 @@ import {
   type ProjectQueueItemSummary,
 } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useNewSessionDraft } from "../hooks/useDrafts";
 import { useProjectQueues } from "../hooks/useProjectQueues";
 import { useProjects } from "../hooks/useProjects";
+import {
+  getProjectIdFromLocation,
+  resolvePreferredProjectId,
+} from "../hooks/useRecentProject";
 import { usePublicShareStatus } from "../hooks/usePublicShareStatus";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useServerSettings } from "../hooks/useServerSettings";
@@ -223,6 +227,7 @@ export function Sidebar({
   const basePath = useRemoteBasePath();
   const { sidebarDuplicateHidingEnabled } = useSidebarDuplicateHiding();
   const navigate = useNavigate();
+  const location = useLocation();
   const remoteConnection = useOptionalRemoteConnection();
   const { settings: serverSettings } = useServerSettings();
   const publicSharesEnabled = serverSettings?.publicSharesEnabled ?? false;
@@ -261,6 +266,15 @@ export function Sidebar({
   // Global inbox count. Title badge updates are owned by the app shell.
   const { needsAttention: inboxCount } = useInboxCounts();
   const { projects } = useProjects();
+  const sourceControlProjectId = useMemo(
+    () =>
+      getProjectIdFromLocation(location.pathname, location.search) ??
+      resolvePreferredProjectId(projects),
+    [location.pathname, location.search, projects],
+  );
+  const sourceControlPath = sourceControlProjectId
+    ? `/git-status?projectId=${encodeURIComponent(sourceControlProjectId)}`
+    : "/git-status";
   const projectQueueSidebarCount = useProjectQueueSidebarCount(projects);
   const newSessionPath = "/new-session";
   const newSessionHref = `${basePath}${newSessionPath}`;
@@ -807,7 +821,7 @@ export function Sidebar({
             />
             {capabilities.includes(GIT_STATUS_ENHANCED_CAPABILITY) && (
               <SidebarNavItem
-                to="/git-status"
+                to={sourceControlPath}
                 icon={SidebarIcons.sourceControl}
                 label={t("sidebarSourceControl")}
                 onClick={onNavigate}

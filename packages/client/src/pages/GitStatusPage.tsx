@@ -22,6 +22,10 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useGitStatus } from "../hooks/useGitStatus";
 import { useProject, useProjects } from "../hooks/useProjects";
 import { useRelativeNow } from "../hooks/useRelativeNow";
+import {
+  resolvePreferredProjectId,
+  setRecentProjectId,
+} from "../hooks/useRecentProject";
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
@@ -48,7 +52,8 @@ export function GitStatusPage() {
     useNavigationLayout();
 
   const { projects, loading: projectsLoading } = useProjects();
-  const effectiveProjectId = projectId || projects[0]?.id;
+  const effectiveProjectId =
+    projectId || resolvePreferredProjectId(projects) || undefined;
   const { project } = useProject(effectiveProjectId);
   const {
     version,
@@ -70,7 +75,14 @@ export function GitStatusPage() {
 
   useDocumentTitle(project?.name, t("gitStatusTitle"));
 
+  useEffect(() => {
+    if (effectiveProjectId && project) {
+      setRecentProjectId(effectiveProjectId);
+    }
+  }, [effectiveProjectId, project]);
+
   const handleProjectChange = (newProjectId: string) => {
+    setRecentProjectId(newProjectId);
     setSearchParams({ projectId: newProjectId }, { replace: true });
   };
 

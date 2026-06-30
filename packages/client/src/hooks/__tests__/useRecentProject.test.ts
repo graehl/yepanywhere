@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BROWSER_LOCAL_KEYS } from "../../lib/storageKeys";
-import { resolvePreferredProjectId } from "../useRecentProject";
+import {
+  extractProjectIdFromPath,
+  getProjectIdFromLocation,
+  resolvePreferredProjectId,
+} from "../useRecentProject";
 
 describe("resolvePreferredProjectId", () => {
   const projects = [{ id: "jstorrent" }, { id: "webvam" }];
@@ -48,5 +52,34 @@ describe("resolvePreferredProjectId", () => {
 
   it("returns null when no projects are available", () => {
     expect(resolvePreferredProjectId([], "jstorrent")).toBeNull();
+  });
+});
+
+describe("project context extraction", () => {
+  it("extracts a project from direct and relay route paths", () => {
+    expect(extractProjectIdFromPath("/projects/alpha/sessions/session-1")).toBe(
+      "alpha",
+    );
+    expect(
+      extractProjectIdFromPath("/remote/test/projects/beta/sessions/session-2"),
+    ).toBe("beta");
+  });
+
+  it("prefers explicit query project context over path context", () => {
+    expect(
+      getProjectIdFromLocation("/projects/path-project/sessions/session-1", ""),
+    ).toBe("path-project");
+    expect(
+      getProjectIdFromLocation("/sessions", "?project=filter-project"),
+    ).toBe("filter-project");
+    expect(
+      getProjectIdFromLocation("/git-status", "?projectId=source-project"),
+    ).toBe("source-project");
+    expect(
+      getProjectIdFromLocation(
+        "/projects/path-project/sessions/session-1",
+        "?projectId=query-project",
+      ),
+    ).toBe("query-project");
   });
 });

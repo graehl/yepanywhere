@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
-import type { ProjectQueueItemSummary } from "@yep-anywhere/shared";
+import {
+  GIT_STATUS_ENHANCED_CAPABILITY,
+  type ProjectQueueItemSummary,
+} from "@yep-anywhere/shared";
 import {
   cleanup,
   fireEvent,
@@ -191,6 +194,7 @@ vi.mock("../../i18n", () => ({
         sidebarInbox: "Inbox",
         sidebarAllSessions: "All Sessions",
         sidebarProjects: "Projects",
+        sidebarSourceControl: "Source Control",
         projectCardQueueCount: "Project Queue items: {count}",
         sidebarSectionPendingSessions: "Pending Sessions",
         sidebarSettings: "Settings",
@@ -448,6 +452,79 @@ describe("Sidebar collapsed toggle", () => {
     expect(badge?.classList.contains("sidebar-nav-badge--projectQueue")).toBe(
       true,
     );
+  });
+
+  it("links Source Control to the project selected in the sessions filter", () => {
+    versionState.capabilities = [GIT_STATUS_ENHANCED_CAPABILITY];
+    projectsState.projects = [
+      { id: "project-1", name: "Alpha" },
+      { id: "project-2", name: "Beta" },
+    ];
+
+    render(
+      <MemoryRouter
+        initialEntries={["/sessions?project=project-2&source=projects"]}
+      >
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Source Control" }).getAttribute("href"),
+    ).toBe("/remote/test/git-status?projectId=project-2");
+  });
+
+  it("links Source Control to the current session project", () => {
+    versionState.capabilities = [GIT_STATUS_ENHANCED_CAPABILITY];
+    projectsState.projects = [
+      { id: "project-1", name: "Alpha" },
+      { id: "project-2", name: "Beta" },
+    ];
+
+    render(
+      <MemoryRouter initialEntries={["/projects/project-1/sessions/session-1"]}>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Source Control" }).getAttribute("href"),
+    ).toBe("/remote/test/git-status?projectId=project-1");
+  });
+
+  it("keeps Source Control active when its link includes project context", () => {
+    versionState.capabilities = [GIT_STATUS_ENHANCED_CAPABILITY];
+    projectsState.projects = [{ id: "project-1", name: "Alpha" }];
+
+    render(
+      <MemoryRouter initialEntries={["/git-status?projectId=project-1"]}>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={() => {}}
+          isDesktop={true}
+          isCollapsed={false}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen
+        .getByRole("link", { name: "Source Control" })
+        .classList.contains("active"),
+    ).toBe(true);
   });
 
   it("links pending new-session Project Queue items to the Projects page", () => {

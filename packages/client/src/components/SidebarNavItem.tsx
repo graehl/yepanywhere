@@ -211,8 +211,11 @@ export function SidebarNavItem({
 }: SidebarNavItemProps) {
   const location = useLocation();
   const fullPath = `${basePath}${to}`;
+  const fullPathname = fullPath.split(/[?#]/)[0] || fullPath;
+  const targetPathname = to.split(/[?#]/)[0] || to;
   // Check if current path matches (with or without basePath prefix)
-  const isActive = location.pathname === fullPath || location.pathname === to;
+  const isActive =
+    location.pathname === fullPathname || location.pathname === targetPathname;
 
   return (
     <Link

@@ -1,0 +1,325 @@
+# Summary Parser Worker Isolation
+
+Status: tactical design for review. Do not implement until this document is
+reviewed and the first implementation chunk is explicitly approved.
+
+Related: [`038-codex-session-index-memory.md`](038-codex-session-index-memory.md),
+especially "Chunk 5: Summary Parser Worker Isolation".
+
+Topic: codex-session-index-memory
+
+## Problem Statement
+
+Chunks 1 through 4 removed the known summary-index retention paths:
+
+- Codex summary reads now stream rollout JSONL and do not populate the full
+  transcript `entryCache`.
+- Claude summary reads now stream into compact DAG nodes instead of retaining
+  full raw `ClaudeSessionEntry[]` arrays.
+- `SessionIndexService` now coalesces cache misses and runs summary parses
+  through a global queue, with default concurrency 1 and warmup/status
+  reporting.
+
+The remaining measured risk is not many retained transcript arrays. It is a
+single active summary parse temporarily allocating very large `JSON.parse()`
+inputs and parsed objects inside the main app-server process. Chunk 4 measured:
+
+- Claude: 3277 summary streams, about 2.71 GB total, largest file 61.6 MB,
+  largest JSONL line 60.0 MB, slowest single parse 7.45 seconds.
+- Codex: 1147 summary streams, about 4.54 GB total, largest file 173.3 MB,
+  largest JSONL line 32.2 MB.
+- Process-tree RSS still peaked around 1.80 GB even with summary parse
+  concurrency 1.
+
+This still has two user-visible failure modes:
+
+- Giant single-line `JSON.parse()` work can block the server event loop long
+  enough to make maintenance, API, and reconnect paths feel wedged.
+- V8 may retain expanded heap in the app-server process after the cold fill,
+  even when the parsed summary data is no longer retained by YA code.
+
+The next mitigation should isolate the summary parse heap and failure domain
+from the main app server.
+
+## Why A Child Process
+
+Use `child_process.fork()` over `worker_threads` for the parser boundary.
+
+Worker threads are lighter, but they still live in the same OS process and
+share the process lifetime, RSS, native allocator pressure, and catastrophic
+process-OOM failure domain. They can reduce event-loop blocking, but they are
+not the strongest answer to "release all heap touched by this pathological
+parse" or "survive an out-of-memory parser."
+
+A forked Node child gives the property this stream now needs:
+
+- the child owns the transient JSON strings, parsed objects, and parser-side
+  V8 heap;
+- exiting the child releases that heap to the OS independently of the app
+  server's V8 heap behavior;
+- a parser crash or OOM can be contained to one summary job instead of taking
+  down the app server;
+- Node IPC gives structured messages without shell quoting or a new runtime
+  dependency.
+
+The trade-off is lifecycle and packaging complexity. That complexity should stay
+behind a narrow parser adapter, not spread into provider readers or route code.
+
+## Scope
+
+In scope:
+
+- Summary parsing only.
+- Start with Claude and Codex, because both now have streaming summary-only
+  parsers and both showed giant individual JSONL lines in the chunk-4 harness.
+- Keep `SessionIndexService` as the owner of queueing, request coalescing,
+  cache writes, warmup progress, recent job history, and
+  `/api/session-index/status`.
+- Keep existing API behavior and complete-list semantics for `/api/inbox` and
+  session-list routes.
+- Return `SessionSummary | null` and parser metrics from the child.
+
+Out of scope:
+
+- Detail transcript loading, subagent reads, agent-mapping scans, and
+  `getSession()` behavior.
+- Replacing the `SessionIndexService` queue, cache, warmup status endpoint, or
+  complete-list contract.
+- Changing provider-visible session IDs. YA URL session IDs remain canonical;
+  provider-native IDs must not replace them in URLs, metadata, REST/WebSocket
+  payloads, or UI copy.
+- A parallel parser pool. Keep one parser child and one active parse by default
+  unless measurements later show that a pool is worth the added memory and
+  scheduling complexity.
+- Silently falling back to main-process parsing for huge files in production.
+  A main-process path may exist as an explicit debug/development mode.
+
+## Proposed Design
+
+### Parent Ownership
+
+The main server keeps the existing scheduling shape:
+
+1. `SessionIndexService` discovers cache misses, starts or updates warmup jobs,
+   and enqueues one summary parse task per cache miss.
+2. The existing queue still coalesces identical
+   `scopeKey::sessionId::mtime::size` parse work.
+3. The queued task body calls a narrow `SummaryParserClient` adapter instead of
+   directly calling `reader.getSessionSummary()` for supported providers.
+4. The adapter sends one parse request to the child, waits for a response,
+   returns `SessionSummary | null`, and reports metrics back to the existing
+   warmup/status/log surfaces.
+
+This keeps the child process stateless with respect to session-index policy.
+The child parses one file and returns one result. It does not own caches,
+warmup jobs, source discovery, route contracts, or retry policy.
+
+### Message Protocol
+
+The parent sends one active request at a time by default.
+
+Request fields:
+
+- `requestId`: parent-generated ID used only for IPC correlation.
+- `provider`: `claude` or `codex`.
+- `filePath`: absolute path to the session JSONL or compressed Codex rollout.
+- `sessionId`: YA-visible session ID for the summary being parsed.
+- `projectId`: YA project ID to copy into the returned `SessionSummary`.
+- `stats`: parent-observed size, mtime, and mtimeMs from the index validation
+  pass.
+- `sourceHints`: provider-specific read hints that are cheap to pass, such as
+  Codex sessions directory, project path, compressed-file hint, source label
+  inputs, or Claude config/project directory context.
+- `contextWindowHints`: bounded model/provider context-window data needed to
+  compute `ContextUsage` without consulting main-process reader state.
+- `limits`: per-job timeout and recycle thresholds visible to the child for
+  metric annotation. The parent remains the authority for enforcing timeout.
+
+Response fields:
+
+- `requestId`.
+- `status`: `ok`, `empty`, or `error`.
+- `summary`: `SessionSummary` for `ok`; `null` for `empty` and `error`.
+- `metrics`: provider, sessionId, filePath, file size, mtime, line count,
+  parsed entry count, malformed line count when available, deduped/skipped
+  counts when available, max line length, parse duration, worker pid, worker
+  generation, memory before/after inside the child, and recycle recommendation.
+- `error`: sanitized error name/message for `error` responses.
+
+No raw transcript entries, raw JSONL lines, full content blocks, or parsed
+provider-entry arrays cross IPC in either direction.
+
+### Child Parser Entrypoint
+
+The worker entrypoint should be a small provider dispatcher:
+
+- Claude path calls the existing `readClaudeSessionSummary()` pure summary
+  parser, with an injected context-window resolver backed by the request's
+  hints.
+- Codex path should use an extracted pure summary parser equivalent to the
+  current `CodexSessionReader.buildSessionSummaryFromStream()` path. Avoid
+  constructing a full reader in the child if that pulls in discovery caches or
+  unrelated provider state.
+- The child should not import route code, `SessionIndexService`, app startup,
+  WebSocket code, provider process supervisors, or maintenance server modules.
+- The child may use provider schema/parsing helpers and logging-independent
+  utilities.
+
+The child should send metrics to the parent in the response. The parent should
+emit structured logs through the configured app logger so file logging,
+`LOG_PRETTY`, and production logging behavior remain consistent.
+
+### Recycle Policy
+
+Run one parser child with one active parse by default. Recycle the child:
+
+- after a configurable parsed-byte budget;
+- after a configurable file-count budget;
+- after any job whose max line length crosses a large-line threshold;
+- after a parse timeout;
+- after a child crash, disconnect, protocol error, or OOM-like exit;
+- during app-server shutdown.
+
+Recommended initial posture:
+
+- recycle after a giant-line job even when it succeeds, because that is the
+  scenario most likely to leave inflated child heap;
+- recycle before accepting the next job, not in the middle of a successful
+  response path;
+- keep an idle timeout so an app server with no active summary-index work does
+  not keep a child process alive forever;
+- expose recycle counts and last recycle reason in parser metrics/status.
+
+The existing architecture mandate still applies: background work must have a
+clear owner and teardown path. A child exists only because the global
+summary-index queue has work, or because a short bounded idle timeout is keeping
+it warm for the next queued parse.
+
+## Dev And Production Packaging
+
+The worker needs a resolver that works in both server modes:
+
+- Development runs the server through `tsx --conditions source src/index.ts`.
+  The child entrypoint must either be launched with equivalent TypeScript/tsx
+  support or through a tiny compiled/bootstrap entry that can load the source
+  worker. Do not assume `process.execArgv` automatically contains everything
+  needed; verify it in the first harness.
+- Production runs built JavaScript from `packages/server/dist/index.js`. The
+  worker module must be emitted by `tsc`, included in the npm/bundle output, and
+  resolved relative to the built server entrypoint.
+- Prefer `child_process.fork(modulePath, args, { stdio: [..., "ipc"] })` with
+  argument arrays. Do not spawn through a shell, and do not build command-line
+  strings that require shell quoting.
+- Keep `execArgv`, `env`, and `cwd` explicit enough that dev/prod behavior is
+  reproducible. Do not leak provider-specific process env changes into the
+  child unless the parser needs them.
+- Cross-platform termination should be best-effort and bounded: request
+  graceful exit, wait a short grace period, then force-kill. On Windows, signal
+  names are not POSIX semantics; treat `kill()` as process termination and rely
+  on timeouts rather than signal-specific behavior.
+
+## Failure Handling
+
+Parser failures must not crash the app server.
+
+- A normal provider parse error should return `status: "empty"` or
+  `status: "error"` with `summary: null`, matching the existing reader behavior
+  where malformed or unreadable summaries are skipped and the index records an
+  empty cached summary for that file.
+- A child crash, disconnect, timeout, OOM-like exit, or protocol mismatch should
+  fail only the active summary job. The parent should recycle the child and
+  allow the session-index queue to continue.
+- The adapter should resolve `null` for expected parser-process failures so
+  `SessionIndexService` can preserve current skip/empty-summary behavior. It
+  should reject only for parent-side bugs or invariants that should fail the
+  warmup job loudly.
+- Timeout must include process cleanup. The parent should not leave an orphaned
+  parser child after returning `null` for the timed-out job.
+- If the parent is shutting down, terminate the child before process exit and
+  stop draining the summary queue.
+
+Metric/log event shape should make parser isolation visible without replacing
+existing stream metrics. Add a parent-emitted event such as
+`summary_parser_worker_job`:
+
+- provider, sessionId, projectId, filePath, fileSize, fileMtimeMs;
+- status: `ok`, `empty`, `error`, `timeout`, `crash`, or `protocol_error`;
+- durationMs, parseMs, queue wait when available;
+- lineCount, parsedEntries, malformedLines, dedupedEntries,
+  skippedDuplicateEntries, maxLineLength when available;
+- workerPid, workerGeneration, workerStartedAt, recycleReason;
+- child heap/RSS before/after and parent heap/RSS before/after;
+- sanitized error name/message.
+
+Continue emitting `claude_summary_stream` and `codex_summary_stream` fields, or
+emit worker-scoped equivalents with field names close enough for the existing
+cold-index harness to aggregate both before and after the change.
+
+## Acceptance Criteria
+
+- A cold `/api/inbox` over the real local Claude and Codex histories completes
+  with complete lists and writes complete summary indexes.
+- The main server remains responsive during a giant-line summary parse. At
+  minimum, maintenance `/status` and `/api/session-index/status` should answer
+  while the child is parsing.
+- A synthetic giant-line fixture demonstrates that app-server heap/RSS does not
+  remain inflated after the child is recycled.
+- Parser crash, timeout, and malformed-input cases skip or empty-cache exactly
+  one summary according to existing index behavior, then continue draining the
+  queue.
+- Existing `SessionIndexService` queue, warmup progress, recent jobs, status
+  endpoint, cache behavior, and `/api/inbox` response contract are preserved.
+- No raw transcript entries or large content arrays cross IPC.
+- Dev and production launches both resolve the worker entrypoint without shell
+  quoting or extra runtime dependencies.
+
+## Implementation Chunks
+
+1. Build a minimal child-process parser harness and message protocol.
+   - Add the worker entrypoint resolver, IPC request/response types, parent
+     lifecycle wrapper, timeout handling, and a standalone test/harness that can
+     parse one Claude fixture and one Codex fixture without wiring production
+     routes.
+   - Verify dev `tsx` launch and built-JS launch before touching
+     `SessionIndexService`.
+2. Wire Claude summary parsing through the child behind an env/config gate or a
+   narrow adapter.
+   - Keep main-process Claude parsing available only as an explicit debug path
+     while the harness is being validated.
+   - Preserve `claude_summary_stream` fields or add equivalent worker-scoped
+     fields.
+3. Add Codex summary parser support.
+   - Extract the streaming Codex summary parser into a reusable pure function if
+     needed.
+   - Preserve compressed rollout handling, metadata/source fields, provider
+     inference, model/context usage, and duplicate-entry accounting.
+4. Add recycle, timeout, crash, and OOM handling.
+   - Enforce byte/file/large-line recycle budgets.
+   - Add idle child teardown and app shutdown cleanup.
+   - Surface recycle/crash/timeout counters in logs and
+     `/api/session-index/status` if useful for the harness.
+5. Add stress tests/harness coverage and update docs/status.
+   - Include a synthetic giant-line fixture.
+   - Re-run the cold `/api/inbox` harness over real histories.
+   - Update `038-codex-session-index-memory.md` or this doc with measured
+     before/after RSS, responsiveness, worker recycle counts, and any remaining
+     follow-up.
+
+## Open Design Questions
+
+- What should the production default be after the first harness passes:
+  default-on for Claude/Codex summary-index work, or default-off until a real
+  cold-history run proves the RSS win? A conservative first implementation can
+  use an env gate and promote the default in a later chunk.
+- What exact dev entrypoint strategy is most reliable with the current
+  `tsx --conditions source` server launch: inherit `process.execArgv`, fork a
+  `tsx`-registered TypeScript entry, or add a tiny JavaScript bootstrap?
+- Which initial recycle thresholds should be used? The measured large lines
+  were 60.0 MB for Claude and 32.2 MB for Codex, so a threshold below those
+  values should recycle on the known pathological cases.
+- Should worker status appear only in structured logs at first, or should
+  `/api/session-index/status` include current worker pid/generation/recycle
+  counters in chunk 1?
+- For parser-process failures, should the adapter always resolve `null` to
+  match existing provider-reader skip behavior, or should selected protocol
+  errors still fail the warmup job loudly during the gated rollout?

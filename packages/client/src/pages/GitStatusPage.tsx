@@ -942,6 +942,12 @@ function getPullMessage(
     case "not-a-git-repo":
       return t("gitStatusPullNotRepo");
     case "failed":
+      if (isDivergedStatus(result.gitStatus)) {
+        return t("gitStatusPullDiverged", {
+          ahead: result.gitStatus.ahead,
+          behind: result.gitStatus.behind,
+        });
+      }
       return t("gitStatusPullFailed");
     default:
       return "";
@@ -964,6 +970,12 @@ function getPushMessage(
     case "no-upstream":
       return t("gitStatusPushNoUpstream");
     case "rejected":
+      if (isDivergedStatus(result.gitStatus)) {
+        return t("gitStatusPushDiverged", {
+          ahead: result.gitStatus.ahead,
+          behind: result.gitStatus.behind,
+        });
+      }
       return t("gitStatusPushRejected");
     case "not-a-git-repo":
       return t("gitStatusPushNotRepo");
@@ -972,6 +984,12 @@ function getPushMessage(
     default:
       return "";
   }
+}
+
+function isDivergedStatus(
+  status: GitPullResult["gitStatus"] | GitPushResult["gitStatus"],
+): status is GitStatusInfo {
+  return Boolean(status && status.ahead > 0 && status.behind > 0);
 }
 
 function getGitActionMessage({

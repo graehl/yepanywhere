@@ -20,10 +20,10 @@ Progress:
 Latest update:
 
 - 2026-06-30: Scheduled safe restart implemented for dev/manual reload mode.
-  The backend reload banner now offers `Restart When Safe`; scheduling pauses
-  Project Queue dispatch, waits for active provider sessions and in-memory
-  session queued messages to drain, reports the blocker counts in the banner,
-  and then uses the existing backend restart path.
+  Blocked backend reload banners now offer `Restart When Safe`; scheduling
+  pauses Project Queue dispatch, waits for active provider sessions and
+  in-memory session queued messages to drain, reports the blocker counts in the
+  banner, and then uses the existing backend restart path.
 - 2026-06-30: First implementation chunk landed locally. Project Queue dispatch
   state is persisted, non-empty queues loaded after restart become
   paused-after-restart, empty queues normalize back to running, pause/resume is
@@ -164,8 +164,8 @@ general production lifecycle control.
 
 Implemented behavior:
 
-- `Restart When Safe` appears beside `Reload Anyway` for backend reload
-  banners.
+- `Restart When Safe` appears beside `Reload Anyway` only when a backend reload
+  has active session or in-memory queued-message blockers.
 - Scheduling pauses Project Queue dispatch with restart semantics so persisted
   backlog does not promote more automatic work while the restart is pending.
 - The restart waits for both:

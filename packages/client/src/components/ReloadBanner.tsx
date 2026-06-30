@@ -41,6 +41,11 @@ export function ReloadBanner({
     safeRestartState.status !== "idle";
   const showWarning =
     (unsafeToRestart && target === "backend") || hasScheduledRestart;
+  const canScheduleSafeRestart =
+    target === "backend" &&
+    onRestartWhenSafe &&
+    unsafeToRestart &&
+    !hasScheduledRestart;
   const activeBlockers = safeRestartState
     ? blockerCount(safeRestartState.blockers, "active-sessions")
     : 0;
@@ -109,7 +114,7 @@ export function ReloadBanner({
       >
         {showWarning ? "Reload Anyway" : `Reload ${label}`}
       </button>
-      {target === "backend" && onRestartWhenSafe && !hasScheduledRestart && (
+      {canScheduleSafeRestart && (
         <button
           type="button"
           className="reload-banner-button reload-banner-button-safe"

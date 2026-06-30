@@ -37,6 +37,17 @@ describe("ReloadBanner", () => {
     expect(screen.getByText("2 active sessions will be interrupted")).toBeTruthy();
   });
 
+  it("hides restart when safe for safe backend reloads", () => {
+    renderBanner({
+      onRestartWhenSafe: vi.fn(),
+    });
+
+    expect(screen.getByRole("button", { name: "Reload Server" })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Restart When Safe" }),
+    ).toBeNull();
+  });
+
   it("shows scheduled drain status and cancel action", () => {
     const onCancelSafeRestart = vi.fn();
     renderBanner({

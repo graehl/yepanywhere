@@ -147,7 +147,7 @@ Relay only sees encrypted blobs. SRP handshake passes through relay to yepanywhe
 |---------|-------------|
 | Network drop | WebSocket closes, SSE errors |
 | Device sleep | Laptop lid close, phone screen off |
-| Page visibility | Tab hidden > 5 seconds |
+| Page visibility | Tab becomes visible; current state controls ping/reconnect behavior |
 | Server restart | Connection closes with code |
 
 ### Reconnection by Mode
@@ -182,11 +182,22 @@ Relay only sees encrypted blobs. SRP handshake passes through relay to yepanywhe
 | Relay mode | Use `reconnectThroughRelay()` |
 | Relay failure | Throw `RelayReconnectRequiredError` |
 
-**Mobile wake handling** (`useRemoteActivityBusConnection.ts:40-57`):
-- Listens to `document.visibilitychange`
-- If hidden > 5 seconds, calls `forceReconnect()`
-- Forces WebSocket close and full reconnection
-- All subscriptions notified to re-subscribe
+**Mobile wake handling**:
+- `useRemoteActivityBusConnection` only starts/stops the shared `ActivityBus`;
+  visibility handling is owned by `ConnectionManager`.
+- On `document.visibilitychange` back to visible while state is `connected`,
+  `ConnectionManager` emits `visibilityRestored` immediately so consumers can
+  refresh data in parallel with the health check.
+- If a ping function is available, the manager sends a protocol ping and waits
+  `pongTimeoutMs` (default 2s). A matching pong leaves the connection marked
+  connected.
+- If the ping send throws or the pong times out, `forceReconnect()` resets the
+  backoff counter and enters `reconnecting`. The next attempt still uses the
+  base backoff delay (default 1s plus jitter); it is not a zero-delay attempt.
+- If the manager is already `reconnecting` when the page becomes visible, the
+  visibility handler does not reset the current backoff or in-flight reconnect.
+- During reconnect, transport implementations notify active subscriptions as
+  closed; when the transport reaches `connected`, `ActivityBus` re-subscribes.
 
 ---
 
@@ -231,9 +242,24 @@ Relay only sees encrypted blobs. SRP handshake passes through relay to yepanywhe
 
 **Current flow:**
 - No historical sync - only events after subscription
-- Visibility change triggers `forceReconnect()` which re-subscribes
+- Visibility restore emits a local `refresh` event while connected. If the
+  subsequent ping fails or times out, reconnect/resubscribe follows the
+  `ConnectionManager` path described above.
 
 **Gap:** If offline for N seconds, miss session status changes during that window.
+
+### Client Connection Diagnostics
+
+The remote log collector can be enabled from the Development settings pane via
+**Browser Diagnostics**. It wraps browser console methods, records uncaught
+errors and lightweight client telemetry, buffers entries locally in IndexedDB,
+and flushes them to `POST /api/client-logs` when `ConnectionManager` returns to
+`connected`.
+
+Captured connection logs include the existing `ConnectionManager`,
+`SecureConnection`, `ActivityBus`, `WebSocketConnection`, `RemoteConnection`,
+and `Relay` console prefixes. The server writes uploads under
+`{dataDir}/logs/client-logs/client-YYYY-MM-DD-<deviceId>.jsonl`.
 
 ---
 

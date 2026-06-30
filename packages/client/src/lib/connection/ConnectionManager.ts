@@ -494,6 +494,7 @@ export class ConnectionManager {
       (visible) => {
         if (!visible) {
           this._hiddenSince = this.timers.now();
+          this._log(`visibility hidden (${this._formatReconnectContext()})`);
         } else {
           this._handleBecameVisible();
         }
@@ -509,10 +510,20 @@ export class ConnectionManager {
   }
 
   private _handleBecameVisible(): void {
-    if (this._state !== "connected") return;
-
     const hiddenDuration =
       this._hiddenSince !== null ? this.timers.now() - this._hiddenSince : null;
+    const visiblePrefix = `visibility visible${
+      hiddenDuration != null ? ` after ${hiddenDuration}ms hidden` : ""
+    }`;
+
+    if (this._state !== "connected") {
+      const context = this._formatReconnectContext();
+      this._log(
+        `${visiblePrefix}, keeping existing reconnect cycle (${context})`,
+      );
+      return;
+    }
+
     this._hiddenSince = null;
 
     // Notify consumers immediately so they can refresh data in parallel
@@ -521,11 +532,16 @@ export class ConnectionManager {
 
     if (!this._sendPing) {
       // No ping function provided — skip connectivity check
+      const context = this._formatReconnectContext();
+      this._log(`${visiblePrefix}, no ping function (${context})`);
       return;
     }
 
     if (this._criticalOperationDepth > 0) {
-      this._log("visible, skipping ping during critical operation");
+      const context = this._formatReconnectContext();
+      this._log(
+        `${visiblePrefix}, skipping ping during critical operation (${context})`,
+      );
       return;
     }
 
@@ -535,9 +551,7 @@ export class ConnectionManager {
     const pingId = String(++this._pingCounter);
     this._pendingPingId = pingId;
 
-    this._log(
-      `visible${hiddenDuration != null ? ` after ${hiddenDuration}ms hidden` : ""}, pinging`,
-    );
+    this._log(`${visiblePrefix}, pinging (${this._formatReconnectContext()})`);
 
     try {
       this._sendPing(pingId);
@@ -572,6 +586,26 @@ export class ConnectionManager {
         reason === "ping-failed" ||
         reason === "pong-timeout")
     );
+  }
+
+  private _formatReconnectContext(): string {
+    const parts = [`state=${this._state}`];
+    if (this._reconnectAttempts > 0) {
+      parts.push(`attempts=${this._reconnectAttempts}`);
+    }
+    if (this._backoffTimerId !== null) {
+      parts.push("backoff=pending");
+    }
+    if (this._reconnectPromise) {
+      parts.push("reconnect=in-flight");
+    }
+    if (this._pendingPingId) {
+      parts.push(`pendingPing=${this._pendingPingId}`);
+    }
+    if (this._criticalOperationDepth > 0) {
+      parts.push(`criticalDepth=${this._criticalOperationDepth}`);
+    }
+    return parts.join(", ");
   }
 }
 

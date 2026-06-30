@@ -78,6 +78,12 @@ In scope:
 - Keep existing API behavior and complete-list semantics for `/api/inbox` and
   session-list routes.
 - Return `SessionSummary | null` and parser metrics from the child.
+- Roll the worker path out behind an env/config gate. The initial default stays
+  main-process parsing until the worker harness and real cold-history runs prove
+  the path reliable enough to promote.
+- Keep a deliberate in-process fallback path for rollout safety. The fallback
+  must be observable in logs/metrics so a broken worker does not silently hide
+  behind old behavior.
 
 Out of scope:
 
@@ -91,8 +97,9 @@ Out of scope:
 - A parallel parser pool. Keep one parser child and one active parse by default
   unless measurements later show that a pool is worth the added memory and
   scheduling complexity.
-- Silently falling back to main-process parsing for huge files in production.
-  A main-process path may exist as an explicit debug/development mode.
+- Treating fallback as a memory mitigation. Fallback preserves availability
+  while the worker path is gated; it does not isolate heap for the fallback
+  parse.
 
 ## Proposed Design
 
@@ -113,6 +120,39 @@ The main server keeps the existing scheduling shape:
 This keeps the child process stateless with respect to session-index policy.
 The child parses one file and returns one result. It does not own caches,
 warmup jobs, source discovery, route contracts, or retry policy.
+
+### Rollout Gate And Fallback
+
+Start with the worker disabled by default behind an environment/config setting.
+A useful shape is:
+
+- `off`: always use the existing in-process summary parser.
+- `on`: prefer the child parser, but fall back to the in-process parser when
+  the worker cannot be launched, cannot load its entrypoint, disconnects before
+  accepting a job, or returns a protocol-level setup error.
+- `required`: use the child parser and fail/skip the active summary if worker
+  infrastructure fails. This is useful for harnesses and CI coverage that need
+  to prove the worker path actually ran.
+
+The fallback decision should be made in the parent adapter, before
+`SessionIndexService` sees the result, so the existing queue/cache/status code
+does not need separate fallback branches.
+
+Do not automatically retry every child failure in-process. Retrying a child OOM,
+timeout, or large-line crash in the main process reintroduces the exact memory
+risk this change is meant to isolate. For the initial `on` mode:
+
+- fallback is appropriate for worker launch, import, IPC setup, and early
+  protocol failures;
+- parser exceptions for ordinary malformed input should preserve existing
+  `null` summary behavior;
+- timeout, OOM-like exit, or crash during an active parse should default to
+  `null`/empty-cache for that summary, with an explicit debug override if a
+  maintainer wants to retry in-process for diagnosis.
+
+Every fallback should emit a structured log event with provider, sessionId,
+filePath, worker mode, fallback reason, and whether the fallback happened before
+or after the child began parsing.
 
 ### Message Protocol
 
@@ -200,10 +240,13 @@ it warm for the next queued parse.
 The worker needs a resolver that works in both server modes:
 
 - Development runs the server through `tsx --conditions source src/index.ts`.
-  The child entrypoint must either be launched with equivalent TypeScript/tsx
-  support or through a tiny compiled/bootstrap entry that can load the source
-  worker. Do not assume `process.execArgv` automatically contains everything
-  needed; verify it in the first harness.
+  Try an explicit `child_process.fork()` of the TypeScript worker entrypoint
+  with dev `execArgv` equivalent to `--conditions source --import tsx` as the
+  first implementation strategy. Do not inherit parent `process.execArgv`
+  blindly; verify the exact args in the first harness.
+- If explicit `--import tsx` proves unreliable across package/cwd layouts, fall
+  back to a tiny JavaScript bootstrap that exists only to load the TypeScript
+  worker in dev and the built JavaScript worker in production.
 - Production runs built JavaScript from `packages/server/dist/index.js`. The
   worker module must be emitted by `tsc`, included in the npm/bundle output, and
   resolved relative to the built server entrypoint.
@@ -280,12 +323,14 @@ cold-index harness to aggregate both before and after the change.
      lifecycle wrapper, timeout handling, and a standalone test/harness that can
      parse one Claude fixture and one Codex fixture without wiring production
      routes.
-   - Verify dev `tsx` launch and built-JS launch before touching
-     `SessionIndexService`.
+   - Start with explicit dev `execArgv` for `--conditions source --import tsx`,
+     plus built-JS launch for production.
+   - Include env/config gate handling and observable in-process fallback before
+     touching `SessionIndexService`.
 2. Wire Claude summary parsing through the child behind an env/config gate or a
    narrow adapter.
-   - Keep main-process Claude parsing available only as an explicit debug path
-     while the harness is being validated.
+   - Keep main-process Claude parsing as the default until the gate is enabled,
+     and as the observable fallback for worker setup failures.
    - Preserve `claude_summary_stream` fields or add equivalent worker-scoped
      fields.
 3. Add Codex summary parser support.
@@ -307,19 +352,19 @@ cold-index harness to aggregate both before and after the change.
 
 ## Open Design Questions
 
-- What should the production default be after the first harness passes:
-  default-on for Claude/Codex summary-index work, or default-off until a real
-  cold-history run proves the RSS win? A conservative first implementation can
-  use an env gate and promote the default in a later chunk.
-- What exact dev entrypoint strategy is most reliable with the current
-  `tsx --conditions source` server launch: inherit `process.execArgv`, fork a
-  `tsx`-registered TypeScript entry, or add a tiny JavaScript bootstrap?
+- When should the worker gate graduate from default-off to default-on for
+  Claude/Codex summary-index work? The first implementation should stay
+  default-off until a real cold-history run proves reliability and RSS benefit.
+- Does explicit `--conditions source --import tsx` work reliably for the dev
+  worker under the current package/cwd layout, or is the JavaScript bootstrap
+  fallback needed?
 - Which initial recycle thresholds should be used? The measured large lines
   were 60.0 MB for Claude and 32.2 MB for Codex, so a threshold below those
   values should recycle on the known pathological cases.
 - Should worker status appear only in structured logs at first, or should
   `/api/session-index/status` include current worker pid/generation/recycle
   counters in chunk 1?
-- For parser-process failures, should the adapter always resolve `null` to
-  match existing provider-reader skip behavior, or should selected protocol
-  errors still fail the warmup job loudly during the gated rollout?
+- Which child failures are safe to retry in-process? The starting assumption is
+  setup/import/IPC failures only; timeout, OOM-like exit, and active-parse crash
+  should skip/empty-cache the one summary unless an explicit debug override is
+  enabled.

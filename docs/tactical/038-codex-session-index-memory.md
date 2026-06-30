@@ -1,8 +1,10 @@
 # Codex Session Index Memory Spikes
 
-Status: Implementation chunk 2 landed 2026-06-30. Codex summary reads now
-stream JSONL instead of materializing full transcript entries; cold-index harness
-measurement is still pending.
+Status: Implementation chunk 2 landed 2026-06-30 and was measured against a
+real cold YA index over the local provider histories. Codex summary reads now
+stream JSONL instead of materializing full transcript entries; the remaining
+measured peak is from concurrent cold summary parsing and very large individual
+JSONL lines, not retained Codex entry-cache arrays.
 
 Progress:
 
@@ -29,11 +31,13 @@ Progress:
 - [x] Checked whether Claude and other provider readers have the same
   summary-index cold-fill shape.
 - [x] Replace summary reads with a streaming Codex summary parser.
-- [ ] Run a before/after cold-index harness against a temporary `YEP_DATA_DIR`.
+- [x] Run a post-chunk-2 cold-index harness against a temporary
+  `YEP_DATA_DIR` and the real local provider histories.
 - [ ] Replace Claude summary reads with a compact DAG summary parser.
 - [ ] Bound `CodexSessionReader.entryCache` by byte budget and session count.
-- [ ] Decide whether a parse queue is still needed after streaming summaries and
-  bounded retention land.
+- [x] Decide whether a parse queue is still needed after the streaming-summary
+  cold-index harness.
+- [ ] Add a summary parse queue/semaphore for cold summary-index fills.
 
 ## Incident
 
@@ -612,17 +616,130 @@ Result:
   `packages/server/test/augments/task-list-augments.test.ts`.
 - Full server test suite passed: 154 files, 2356 passed, 6 skipped.
 
-Still pending:
+## Cold-Index Harness After Chunk 2
 
-- A real cold-index harness with temporary `YEP_DATA_DIR` and
-  `SESSION_INDEX_LOG_PERF=true CODEX_READER_LOG_PARSE=true`. Unit coverage
-  proves the summary path streams and leaves `entryCache` empty; the harness is
-  still needed to record local peak RSS and cold-fill timings over the large
-  real Codex history.
+Ran on 2026-06-30 with a temporary YA data directory and the real local
+provider histories:
 
-### Chunk 3: Claude Compact-DAG Summary Parser
+```bash
+PORT=4500 \
+MAINTENANCE_PORT=0 \
+YEP_DATA_DIR=/tmp/ya-cold-index-cCXtKp \
+LOG_TO_FILE=true \
+LOG_LEVEL=info \
+SESSION_INDEX_LOG_PERF=true \
+CODEX_READER_LOG_PARSE=true \
+pnpm --dir packages/server run dev
+```
 
-Priority: high after Codex streaming summaries.
+The temporary data dir forced cold YA summary indexes while preserving the real
+provider stores:
+
+- `/Users/kgraehl/.codex/sessions`
+- `/Users/kgraehl/.claude/projects`
+- `/Users/kgraehl/.gemini/tmp`
+
+Cold `/api/inbox` result:
+
+- HTTP 200 in 32.8 seconds, 8507 bytes.
+- Response tiers: 0 needs-attention, 0 active, 6 recent-activity, 13 unread-8h,
+  8 unread-24h.
+- Server RSS sampled from about 378 MB before the request to a 1.50 GB peak.
+- RSS immediately after the request was about 683 MB.
+- The run wrote 56 summary index files containing 4421 cached sessions:
+  3271 Claude, 6 Claude-Ollama, and 1144 Codex.
+
+Warm `/api/inbox` against the same temp data dir:
+
+- HTTP 200 in 0.75 seconds, 8507 bytes.
+- Same response-tier counts as the cold request.
+- RSS samples stayed around 440 MB during the warm request.
+
+Codex reader metrics from `codex_summary_stream`:
+
+- 1147 streamed summary reads.
+- About 4.50 GB of rollout bytes streamed.
+- About 1.52 million JSONL lines parsed.
+- Aggregate Codex summary parse duration was about 124 seconds while the cold
+  request completed in 32.8 seconds, proving multiple project-scope summary
+  streams were running concurrently.
+- Largest rollout streamed: 173.3 MB.
+- Largest single JSONL line: 32.2 MB.
+- Slowest single summary stream: 5.4 seconds.
+- Highest recorded RSS after a Codex stream: 1.55 GB.
+- Highest recorded heap after a Codex stream: 1.23 GB.
+- `entryCache.sessions` stayed at 0 for every Codex summary stream.
+- The run produced 0 `codex_entry_read` events, so plain Codex summary-index
+  cold fill did not call the full-entry reader.
+
+Largest Codex project buckets during the cold run:
+
+| project | sessions | streamed MB | aggregate parse ms | largest file MB | largest line MB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `/Users/kgraehl/code/webvam` | 159 | 1282.0 | 21723 | 173.3 | 32.2 |
+| `/Users/kgraehl/code/mclone` | 141 | 1118.0 | 26854 | 74.2 | 9.8 |
+| `/Users/kgraehl/code/playbox` | 194 | 794.0 | 24175 | 86.8 | 15.7 |
+| `/Users/kgraehl/code/yepanywhere` | 351 | 541.6 | 16692 | 34.0 | 24.8 |
+
+Interpretation:
+
+- Implementation chunk 2 fixed the unbounded summary-retention mechanism for
+  Codex. The cold run streamed multi-GB history with no summary-path
+  `entryCache` growth and no full-entry summary reads.
+- The remaining cold peak is still high enough to justify a concurrency cap.
+  Streaming limits retained memory, but it does not prevent several project
+  scopes from parsing huge files or huge individual lines at the same time.
+- A parse queue is no longer conditional. It is the next direct mitigation for
+  restart/reconnect bursts and cold `/api/inbox` fan-out.
+- `SessionIndexService` perf records were visible in the dev terminal during
+  the run, but did not persist into `logs/server.log`. The service currently
+  captures a module-scope logger, so if the module is imported before startup
+  logger initialization, perf records can use the early console-only logger.
+  Fix this before relying on file-log-only harness aggregation for
+  `session_index_perf`.
+
+### Chunk 3: Summary Parse Queue
+
+Priority: highest after the cold-index harness.
+
+Goal:
+
+- Prevent restart/reconnect bursts and cold `/api/inbox` fan-out from running
+  many expensive provider summary parses at the same time.
+- Keep warmed index reads fast and keep visible session detail higher priority
+  than background summary fill.
+
+Implementation shape:
+
+- Add a small provider-summary parse scheduler/semaphore used by
+  `SessionIndexService` around cache-miss `reader.getSessionSummary()` calls.
+- Start with a conservative global or provider-root concurrency of 1 for
+  summary-index cold fills, with an env override for measurement.
+- Coalesce identical file/session summary parses when the same miss is requested
+  concurrently.
+- Keep the queue scoped to summary/index work first; do not route ordinary
+  warmed cache reads through it.
+- Prioritize visible detail reads and explicit project/session views over
+  background inbox backfill if they ever share the same scheduler.
+- Fix the `SessionIndexService` logger capture so `session_index_perf` is
+  persisted to the configured JSON log file as well as the dev terminal.
+
+Acceptance:
+
+- A cold `/api/inbox` over the current real local histories still completes and
+  writes complete summary indexes.
+- Aggregate parse work may remain large, but sampled peak RSS is bounded by one
+  or a small number of active summary parses instead of the full project fan-out.
+- `codex_summary_stream` still reports `entryCache.sessions: 0` and
+  `codex_entry_read` remains absent for plain Codex summaries.
+- `session_index_perf` is present in `logs/server.log` for future harness
+  aggregation.
+- Warm `/api/inbox` remains sub-second on the temp data dir after indexes are
+  built.
+
+### Chunk 4: Claude Compact-DAG Summary Parser
+
+Priority: high after the summary parse queue.
 
 Goal:
 
@@ -658,9 +775,10 @@ Acceptance:
 - The compact parser intentionally remains a summary parser; `getSession()`
   still returns full raw messages.
 
-### Chunk 4: Bounded Entry Cache
+### Chunk 5: Bounded Entry Cache
 
-Priority: high after streaming summaries.
+Priority: high after the summary parse queue and still valuable before broad
+detail-cache use.
 
 Goal:
 
@@ -693,14 +811,15 @@ Acceptance:
 - Tests cover hit, append, stale invalidation, size eviction, count eviction,
   and non-cacheable large files.
 
-### Chunk 5: Parse Queue, Only If Still Needed
+### Chunk 6: Detail Parse Queue, Only If Still Needed
 
-Priority: conditional.
+Priority: conditional after the summary parse queue and bounded entry cache.
 
-Streaming summaries remove the broadest cold-index spike. Bounded entry caching
-removes the clearest retention leak. Add a shared parse queue only if the
-instrumented cold harness still shows many expensive full-detail parses running
-at once after those two fixes.
+Streaming summaries remove the broadest summary-retention spike, and the chunk
+3 queue addresses cold summary-index fan-out. Bounded entry caching removes the
+clearest remaining retention leak. Add a separate detail parse queue only if
+instrumentation shows many expensive full-detail parses running at once after
+those fixes.
 
 Implementation shape if needed:
 

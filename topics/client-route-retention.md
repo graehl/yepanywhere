@@ -7,6 +7,12 @@
 
 Topic: client-route-retention
 
+Status: First Source Control slice implemented 2026-06-30. YA now has a
+bounded in-tab route-retention registry plus Source Control warm-return
+retention for Git status data, selected file, page/diff scroll, and diff view
+mode. Production session transcript snapshots and the broader Settings/Inbox/
+Agents/Projects route-state rollout remain future phases.
+
 Related context:
 
 - [Client Global Store](client-global-store.md) covers normalized

@@ -15,7 +15,16 @@ import {
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
 } from "@yep-anywhere/shared";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
@@ -32,6 +41,17 @@ import {
 import { useVersion } from "../hooks/useVersion";
 import { useI18n } from "../i18n";
 import { MainContent, useNavigationLayout } from "../layouts";
+import {
+  type ClientSummarySourceKey,
+  useClientSummarySourceKey,
+} from "../lib/clientSummaryStore";
+import {
+  invalidateRouteRetention,
+  patchRouteRetention,
+  readRouteRetention,
+  subscribeRouteRetention,
+  type RouteRetentionKeyInput,
+} from "../lib/routeRetention";
 
 interface PatchHunk {
   oldStart: number;
@@ -47,12 +67,71 @@ interface GitDiffResult {
   markdownHtml?: string;
 }
 
+interface GitDiffViewState {
+  showFullContext?: boolean;
+  showMarkdownPreview?: boolean;
+}
+
+interface SourceControlRouteState {
+  selectedFileKey?: string | null;
+  statusRevision?: string | null;
+  pageScrollTop?: number;
+  diffScrollTopByFileKey?: Record<string, number>;
+  diffViewByFileKey?: Record<string, GitDiffViewState>;
+}
+
+const SOURCE_CONTROL_ROUTE_TTL_MS = 5 * 60 * 1000;
+
+function getSourceControlRouteRetentionKey(
+  sourceKey: ClientSummarySourceKey,
+  projectId: string,
+): RouteRetentionKeyInput {
+  return {
+    sourceKey,
+    routeId: "git-status",
+    projectId,
+    queryParams: { projectId },
+  };
+}
+
+function updateSourceControlRouteState(
+  key: RouteRetentionKeyInput,
+  update: (current: SourceControlRouteState) => SourceControlRouteState,
+): void {
+  patchRouteRetention<SourceControlRouteState>(
+    key,
+    (current) => update(current ?? {}),
+    { ttlMs: SOURCE_CONTROL_ROUTE_TTL_MS },
+  );
+}
+
+function readSourceControlRouteState(
+  key: RouteRetentionKeyInput,
+): SourceControlRouteState | null {
+  return readRouteRetention<SourceControlRouteState>(key, {
+    touch: false,
+    recordDiagnostics: false,
+  });
+}
+
+function useSourceControlRouteState(
+  key: RouteRetentionKeyInput | null,
+): SourceControlRouteState | null {
+  return useSyncExternalStore(
+    subscribeRouteRetention,
+    () => (key ? readSourceControlRouteState(key) : null),
+    () => null,
+  );
+}
+
 export function GitStatusPage() {
   const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const projectId = searchParams.get("projectId");
+  const sourceKey = useClientSummarySourceKey();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
+  const pageScrollRef = useRef<HTMLElement | null>(null);
 
   const { projects, loading: projectsLoading } = useProjects();
   const effectiveProjectId =
@@ -78,8 +157,36 @@ export function GitStatusPage() {
   const { gitStatus, loading, error, refetch } = useGitStatus(
     supportsEnhancedGitStatus ? effectiveProjectId : undefined,
   );
+  const routeRetentionKey = useMemo(
+    () =>
+      effectiveProjectId
+        ? getSourceControlRouteRetentionKey(sourceKey, effectiveProjectId)
+        : null,
+    [effectiveProjectId, sourceKey],
+  );
+  const retainedRouteState = useSourceControlRouteState(routeRetentionKey);
 
   useDocumentTitle(project?.name, t("gitStatusTitle"));
+
+  useLayoutEffect(() => {
+    const scrollTop = retainedRouteState?.pageScrollTop;
+    if (typeof scrollTop !== "number" || !pageScrollRef.current) {
+      return;
+    }
+    pageScrollRef.current.scrollTop = scrollTop;
+  }, [gitStatus?.files.length, retainedRouteState?.pageScrollTop]);
+
+  useLayoutEffect(() => {
+    return () => {
+      if (!routeRetentionKey || !pageScrollRef.current) {
+        return;
+      }
+      updateSourceControlRouteState(routeRetentionKey, (current) => ({
+        ...current,
+        pageScrollTop: pageScrollRef.current?.scrollTop ?? 0,
+      }));
+    };
+  }, [routeRetentionKey]);
 
   useEffect(() => {
     if (effectiveProjectId && project) {
@@ -118,7 +225,7 @@ export function GitStatusPage() {
         isSidebarCollapsed={isSidebarCollapsed}
       />
 
-      <main className="page-scroll-container">
+      <main className="page-scroll-container" ref={pageScrollRef}>
         <div className="page-content-inner">
           {versionLoading || projectsLoading ? (
             <div className="loading">{t("gitStatusLoading")}</div>
@@ -138,9 +245,12 @@ export function GitStatusPage() {
             <div className="git-status-empty">{t("gitStatusNotRepo")}</div>
           ) : gitStatus && effectiveProjectId ? (
             <GitStatusContent
+              key={`${sourceKey}:${effectiveProjectId}`}
               status={gitStatus}
               projectId={effectiveProjectId}
               isWideScreen={isWideScreen}
+              routeRetentionKey={routeRetentionKey}
+              retainedRouteState={retainedRouteState}
               supportsRemoteCheck={supportsRemoteCheck}
               supportsPull={supportsPull}
               supportsPush={supportsPush}
@@ -172,6 +282,8 @@ function GitStatusContent({
   status,
   projectId,
   isWideScreen,
+  routeRetentionKey,
+  retainedRouteState,
   supportsRemoteCheck,
   supportsPull,
   supportsPush,
@@ -182,6 +294,8 @@ function GitStatusContent({
   status: GitStatusInfo;
   projectId: string;
   isWideScreen: boolean;
+  routeRetentionKey: RouteRetentionKeyInput | null;
+  retainedRouteState: SourceControlRouteState | null;
   supportsRemoteCheck: boolean;
   supportsPull: boolean;
   supportsPush: boolean;
@@ -189,7 +303,9 @@ function GitStatusContent({
   onRefreshStatus: () => Promise<void>;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
-  const [selectedFile, setSelectedFile] = useState<GitFileChange | null>(null);
+  const [selectedFileKey, setSelectedFileKey] = useState<string | null>(
+    () => retainedRouteState?.selectedFileKey ?? null,
+  );
   const [remoteCheckResult, setRemoteCheckResult] =
     useState<GitRemoteCheckResult | null>(null);
   const [isCheckingRemote, setIsCheckingRemote] = useState(false);
@@ -223,18 +339,67 @@ function GitStatusContent({
         allFiles: [...staged, ...unstaged, ...untracked],
       };
     }, [status.files]);
+  const selectedFile = useMemo(
+    () =>
+      selectedFileKey
+        ? (allFiles.find((file) => gitFileKey(file) === selectedFileKey) ??
+          null)
+        : null,
+    [allFiles, selectedFileKey],
+  );
+  const statusRevision = useMemo(() => getGitStatusRevision(status), [status]);
+
+  const retainSelectedFileKey = useCallback(
+    (nextSelectedFileKey: string | null) => {
+      if (!routeRetentionKey) {
+        return;
+      }
+      updateSourceControlRouteState(routeRetentionKey, (current) => ({
+        ...current,
+        selectedFileKey: nextSelectedFileKey,
+        statusRevision,
+      }));
+    },
+    [routeRetentionKey, statusRevision],
+  );
+
+  const handleFileClick = useCallback(
+    (file: GitFileChange) => {
+      const nextSelectedFileKey = gitFileKey(file);
+      setSelectedFileKey(nextSelectedFileKey);
+      retainSelectedFileKey(nextSelectedFileKey);
+    },
+    [retainSelectedFileKey],
+  );
 
   useEffect(() => {
-    setSelectedFile((current) => {
+    setSelectedFileKey((current) => {
       if (allFiles.length === 0) {
+        if (current !== null) {
+          retainSelectedFileKey(null);
+        }
         return null;
       }
-      if (current && allFiles.some((file) => isSameGitFile(file, current))) {
+      if (current && allFiles.some((file) => gitFileKey(file) === current)) {
         return current;
       }
-      return isWideScreen ? (allFiles[0] ?? null) : null;
+      const next = isWideScreen && allFiles[0] ? gitFileKey(allFiles[0]) : null;
+      if (next !== current) {
+        retainSelectedFileKey(next);
+      }
+      return next;
     });
-  }, [allFiles, isWideScreen]);
+  }, [allFiles, isWideScreen, retainSelectedFileKey]);
+
+  useEffect(() => {
+    if (!routeRetentionKey) {
+      return;
+    }
+    updateSourceControlRouteState(routeRetentionKey, (current) => ({
+      ...current,
+      statusRevision,
+    }));
+  }, [routeRetentionKey, statusRevision]);
 
   useEffect(() => {
     setRemoteCheckResult(null);
@@ -340,6 +505,9 @@ function GitStatusContent({
       const result = await api.pullGit(projectId);
       setPullResult(result);
       if (result.status === "pulled") {
+        if (routeRetentionKey) {
+          invalidateRouteRetention(routeRetentionKey);
+        }
         await onRefreshStatus();
       }
     } catch (err) {
@@ -349,7 +517,14 @@ function GitStatusContent({
     } finally {
       setIsPulling(false);
     }
-  }, [isGitActionRunning, onRefreshStatus, projectId, supportsPull, t]);
+  }, [
+    isGitActionRunning,
+    onRefreshStatus,
+    projectId,
+    routeRetentionKey,
+    supportsPull,
+    t,
+  ]);
 
   const handlePush = useCallback(async () => {
     if (!supportsPush || isGitActionRunning) return;
@@ -371,6 +546,9 @@ function GitStatusContent({
         result.status === "published" ||
         result.status === "up-to-date"
       ) {
+        if (routeRetentionKey) {
+          invalidateRouteRetention(routeRetentionKey);
+        }
         await onRefreshStatus();
       }
     } catch (err) {
@@ -380,7 +558,14 @@ function GitStatusContent({
     } finally {
       setIsPushing(false);
     }
-  }, [isGitActionRunning, onRefreshStatus, projectId, supportsPush, t]);
+  }, [
+    isGitActionRunning,
+    onRefreshStatus,
+    projectId,
+    routeRetentionKey,
+    supportsPush,
+    t,
+  ]);
 
   const checkedRemoteAt =
     pushResult?.checkedRemoteAt ??
@@ -517,7 +702,7 @@ function GitStatusContent({
                     title={t("gitStatusStaged")}
                     files={stagedFiles}
                     selectedFile={selectedFile}
-                    onFileClick={setSelectedFile}
+                    onFileClick={handleFileClick}
                   />
                 )}
                 {unstagedFiles.length > 0 && (
@@ -525,7 +710,7 @@ function GitStatusContent({
                     title={t("gitStatusChanges")}
                     files={unstagedFiles}
                     selectedFile={selectedFile}
-                    onFileClick={setSelectedFile}
+                    onFileClick={handleFileClick}
                   />
                 )}
                 {untrackedFiles.length > 0 && (
@@ -533,7 +718,7 @@ function GitStatusContent({
                     title={t("gitStatusUntracked")}
                     files={untrackedFiles}
                     selectedFile={selectedFile}
-                    onFileClick={setSelectedFile}
+                    onFileClick={handleFileClick}
                   />
                 )}
               </>
@@ -544,7 +729,13 @@ function GitStatusContent({
         </div>
 
         {isWideScreen && !status.isClean && (
-          <GitDiffPreview file={selectedFile} projectId={projectId} t={t} />
+          <GitDiffPreview
+            file={selectedFile}
+            projectId={projectId}
+            routeRetentionKey={routeRetentionKey}
+            retainedRouteState={retainedRouteState}
+            t={t}
+          />
         )}
       </div>
 
@@ -552,8 +743,13 @@ function GitStatusContent({
         <GitDiffModal
           file={selectedFile}
           projectId={projectId}
+          routeRetentionKey={routeRetentionKey}
+          retainedRouteState={retainedRouteState}
           t={t}
-          onClose={() => setSelectedFile(null)}
+          onClose={() => {
+            setSelectedFileKey(null);
+            retainSelectedFileKey(null);
+          }}
         />
       )}
     </div>
@@ -582,7 +778,9 @@ function GitFileSection({
             key={`${file.path}-${file.staged}`}
             file={file}
             isSelected={
-              selectedFile ? isSameGitFile(file, selectedFile) : false
+              selectedFile
+                ? gitFileKey(file) === gitFileKey(selectedFile)
+                : false
             }
             onClick={onFileClick}
           />
@@ -680,13 +878,45 @@ function GitRecentCommits({
 function GitDiffPreview({
   file,
   projectId,
+  routeRetentionKey,
+  retainedRouteState,
   t,
 }: {
   file: GitFileChange | null;
   projectId: string;
+  routeRetentionKey: RouteRetentionKeyInput | null;
+  retainedRouteState: SourceControlRouteState | null;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   const fileName = file ? file.path.split("/").pop() || file.path : null;
+  const fileKey = file ? gitFileKey(file) : null;
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (!fileKey || !bodyRef.current) {
+      return;
+    }
+    const scrollTop = retainedRouteState?.diffScrollTopByFileKey?.[fileKey];
+    if (typeof scrollTop === "number") {
+      bodyRef.current.scrollTop = scrollTop;
+    }
+  }, [fileKey, retainedRouteState?.diffScrollTopByFileKey]);
+
+  useLayoutEffect(() => {
+    return () => {
+      if (!routeRetentionKey || !fileKey || !bodyRef.current) {
+        return;
+      }
+      const scrollTop = bodyRef.current.scrollTop;
+      updateSourceControlRouteState(routeRetentionKey, (current) => ({
+        ...current,
+        diffScrollTopByFileKey: {
+          ...current.diffScrollTopByFileKey,
+          [fileKey]: scrollTop,
+        },
+      }));
+    };
+  }, [fileKey, routeRetentionKey]);
 
   return (
     <section className="git-diff-preview-pane">
@@ -695,9 +925,15 @@ function GitDiffPreview({
           {fileName ?? t("gitStatusDiffPreview")}
         </h3>
       </div>
-      <div className="git-diff-preview-body">
+      <div className="git-diff-preview-body" ref={bodyRef}>
         {file ? (
-          <GitDiffBody file={file} projectId={projectId} t={t} />
+          <GitDiffBody
+            file={file}
+            projectId={projectId}
+            routeRetentionKey={routeRetentionKey}
+            retainedRouteState={retainedRouteState}
+            t={t}
+          />
         ) : (
           <div className="git-diff-placeholder">
             {t("gitStatusSelectFileForDiff")}
@@ -711,11 +947,15 @@ function GitDiffPreview({
 function GitDiffModal({
   file,
   projectId,
+  routeRetentionKey,
+  retainedRouteState,
   t,
   onClose,
 }: {
   file: GitFileChange;
   projectId: string;
+  routeRetentionKey: RouteRetentionKeyInput | null;
+  retainedRouteState: SourceControlRouteState | null;
   t: (key: string, vars?: Record<string, string | number>) => string;
   onClose: () => void;
 }) {
@@ -723,7 +963,13 @@ function GitDiffModal({
 
   return (
     <Modal title={fileName} onClose={onClose}>
-      <GitDiffBody file={file} projectId={projectId} t={t} />
+      <GitDiffBody
+        file={file}
+        projectId={projectId}
+        routeRetentionKey={routeRetentionKey}
+        retainedRouteState={retainedRouteState}
+        t={t}
+      />
     </Modal>
   );
 }
@@ -731,10 +977,14 @@ function GitDiffModal({
 function GitDiffBody({
   file,
   projectId,
+  routeRetentionKey,
+  retainedRouteState,
   t,
 }: {
   file: GitFileChange;
   projectId: string;
+  routeRetentionKey: RouteRetentionKeyInput | null;
+  retainedRouteState: SourceControlRouteState | null;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   const [diffResult, setDiffResult] = useState<GitDiffResult | null>(null);
@@ -783,6 +1033,8 @@ function GitDiffBody({
           file={file}
           projectId={projectId}
           diffResult={diffResult}
+          routeRetentionKey={routeRetentionKey}
+          retainedRouteState={retainedRouteState}
           t={t}
         />
       )}
@@ -794,19 +1046,29 @@ function GitDiffContent({
   file,
   projectId,
   diffResult,
+  routeRetentionKey,
+  retainedRouteState,
   t,
 }: {
   file: GitFileChange;
   projectId: string;
   diffResult: GitDiffResult;
+  routeRetentionKey: RouteRetentionKeyInput | null;
+  retainedRouteState: SourceControlRouteState | null;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
-  const [showFullContext, setShowFullContext] = useState(false);
+  const fileKey = gitFileKey(file);
+  const retainedDiffView = retainedRouteState?.diffViewByFileKey?.[fileKey];
+  const [showFullContext, setShowFullContext] = useState(
+    () => retainedDiffView?.showFullContext ?? false,
+  );
   const [fullContextResult, setFullContextResult] =
     useState<GitDiffResult | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
   const [contextError, setContextError] = useState<string | null>(null);
-  const [showMarkdownPreview, setShowMarkdownPreview] = useState(false);
+  const [showMarkdownPreview, setShowMarkdownPreview] = useState(
+    () => retainedDiffView?.showMarkdownPreview ?? false,
+  );
   const contentRef = useRef<HTMLDivElement>(null);
 
   const isMarkdown = /\.(md|markdown)$/i.test(file.path);
@@ -814,37 +1076,85 @@ function GitDiffContent({
     isMarkdown &&
     !!(fullContextResult?.markdownHtml || diffResult.markdownHtml);
 
-  const handleToggleContext = useCallback(async () => {
-    if (!showFullContext && !fullContextResult) {
-      setContextLoading(true);
-      setContextError(null);
-      try {
-        const result = await api.getGitDiff(projectId, {
-          path: file.path,
-          staged: file.staged,
-          status: file.status,
-          fullContext: true,
-        });
-        setFullContextResult(result);
-      } catch (err) {
-        setContextError(
-          err instanceof Error ? err.message : t("gitStatusLoadContextFailed"),
-        );
-        setContextLoading(false);
+  const retainDiffView = useCallback(
+    (view: GitDiffViewState) => {
+      if (!routeRetentionKey) {
         return;
       }
+      updateSourceControlRouteState(routeRetentionKey, (current) => ({
+        ...current,
+        diffViewByFileKey: {
+          ...current.diffViewByFileKey,
+          [fileKey]: {
+            ...current.diffViewByFileKey?.[fileKey],
+            ...view,
+          },
+        },
+      }));
+    },
+    [fileKey, routeRetentionKey],
+  );
+
+  const loadFullContext = useCallback(async () => {
+    if (fullContextResult || contextLoading) {
+      return true;
+    }
+    setContextLoading(true);
+    setContextError(null);
+    try {
+      const result = await api.getGitDiff(projectId, {
+        path: file.path,
+        staged: file.staged,
+        status: file.status,
+        fullContext: true,
+      });
+      setFullContextResult(result);
+      return true;
+    } catch (err) {
+      setContextError(
+        err instanceof Error ? err.message : t("gitStatusLoadContextFailed"),
+      );
+      return false;
+    } finally {
       setContextLoading(false);
     }
-    setShowFullContext(!showFullContext);
   }, [
-    showFullContext,
     fullContextResult,
+    contextLoading,
     projectId,
     file.path,
     file.staged,
     file.status,
     t,
   ]);
+
+  const handleToggleContext = useCallback(async () => {
+    const nextShowFullContext = !showFullContext;
+    if (nextShowFullContext && !(await loadFullContext())) {
+      return;
+    }
+    setShowFullContext(nextShowFullContext);
+    retainDiffView({ showFullContext: nextShowFullContext });
+  }, [loadFullContext, retainDiffView, showFullContext]);
+
+  const handleToggleMarkdownPreview = useCallback(() => {
+    const nextShowMarkdownPreview = !showMarkdownPreview;
+    setShowMarkdownPreview(nextShowMarkdownPreview);
+    retainDiffView({ showMarkdownPreview: nextShowMarkdownPreview });
+  }, [retainDiffView, showMarkdownPreview]);
+
+  useEffect(() => {
+    if (showFullContext && !fullContextResult && !contextLoading) {
+      void loadFullContext();
+    }
+  }, [contextLoading, fullContextResult, loadFullContext, showFullContext]);
+
+  useEffect(() => {
+    if (!hasMarkdownPreview && showMarkdownPreview) {
+      setShowMarkdownPreview(false);
+      retainDiffView({ showMarkdownPreview: false });
+    }
+  }, [hasMarkdownPreview, retainDiffView, showMarkdownPreview]);
 
   // Scroll to first changed line when showing full context
   useEffect(() => {
@@ -875,7 +1185,7 @@ function GitDiffContent({
             <button
               type="button"
               className={`diff-context-toggle ${showMarkdownPreview ? "active" : ""}`}
-              onClick={() => setShowMarkdownPreview(!showMarkdownPreview)}
+              onClick={handleToggleMarkdownPreview}
             >
               {showMarkdownPreview ? t("gitStatusDiff") : t("gitStatusPreview")}
             </button>
@@ -919,12 +1229,21 @@ function GitDiffContent({
   );
 }
 
-function isSameGitFile(left: GitFileChange, right: GitFileChange): boolean {
-  return gitFileKey(left) === gitFileKey(right);
-}
-
 function gitFileKey(file: GitFileChange): string {
   return `${file.path}\0${file.staged ? "1" : "0"}\0${file.status}`;
+}
+
+function getGitStatusRevision(status: GitStatusInfo): string {
+  return JSON.stringify({
+    branch: status.branch,
+    upstream: status.upstream,
+    ahead: status.ahead,
+    behind: status.behind,
+    clean: status.isClean,
+    files: status.files.map(gitFileKey),
+    recent: (status.recentCommits ?? []).map((commit) => commit.hash),
+    checkedRemoteAt: status.checkedRemoteAt ?? null,
+  });
 }
 
 function formatCommitDate(value: string): string {

@@ -59,6 +59,25 @@ export interface SessionIndexState {
 
 const CURRENT_VERSION = 2;
 
+interface SessionIndexLargestCacheMiss {
+  sessionId: string;
+  filePath: string;
+  size: number;
+  mtime: number;
+}
+
+interface SessionIndexPerfDetails {
+  scopeKey?: string;
+  validationKey?: string;
+  indexedSessions?: number;
+  dirtySessions?: number;
+  totalFiles?: number;
+  cacheHits?: number;
+  cacheMisses?: number;
+  cacheMissBytes?: number;
+  largestCacheMisses?: SessionIndexLargestCacheMiss[];
+}
+
 export interface SessionIndexServiceOptions {
   /** Directory to store index files (defaults to ~/.yep-anywhere/indexes) */
   dataDir?: string;
@@ -546,6 +565,7 @@ export class SessionIndexService implements ISessionIndexService {
     statCalls: number,
     parseCalls: number,
     sessionDir: string,
+    details: SessionIndexPerfDetails = {},
   ): void {
     this.cacheStats.requests += 1;
     this.cacheStats.statCalls += statCalls;
@@ -558,7 +578,16 @@ export class SessionIndexService implements ISessionIndexService {
 
     if (LOG_CACHE_PERF || durationMs >= 250) {
       logger.info(
-        `[SessionIndexService] mode=${mode} dir=${sessionDir} durationMs=${durationMs} statCalls=${statCalls} parseCalls=${parseCalls}`,
+        {
+          event: "session_index_perf",
+          mode,
+          sessionDir,
+          durationMs,
+          statCalls,
+          parseCalls,
+          ...details,
+        },
+        "SESSION_INDEX: performance",
       );
     }
   }
@@ -696,12 +725,21 @@ export class SessionIndexService implements ISessionIndexService {
     summaries: SessionSummary[];
     statCalls: number;
     parseCalls: number;
+    totalFiles: number;
+    cacheHits: number;
+    cacheMisses: number;
+    cacheMissBytes: number;
+    largestCacheMisses: SessionIndexLargestCacheMiss[];
   }> {
     const summaries: SessionSummary[] = [];
     const seenSessionIds = new Set<string>();
     let indexChanged = false;
     let statCalls = 0;
     let parseCalls = 0;
+    let totalFiles = 0;
+    let cacheHits = 0;
+    let cacheMissBytes = 0;
+    let largestCacheMisses: SessionIndexLargestCacheMiss[] = [];
 
     try {
       // Enumerate session files — delegate to reader if it supports custom
@@ -719,6 +757,7 @@ export class SessionIndexService implements ISessionIndexService {
             filePath: path.join(sessionDir, f),
           }));
       }
+      totalFiles = sessionFiles.length;
 
       const STAT_BATCH = 100;
       const allStats: (Stats | null)[] = Array.from({
@@ -739,6 +778,7 @@ export class SessionIndexService implements ISessionIndexService {
 
       const cacheMisses: {
         sessionId: string;
+        filePath: string;
         mtime: number;
         size: number;
       }[] = [];
@@ -761,6 +801,7 @@ export class SessionIndexService implements ISessionIndexService {
           cached.fileMtime === mtime &&
           cached.indexedBytes === size
         ) {
+          cacheHits += 1;
           if (cached.isEmpty) continue;
           if (
             options?.activeAfterMs !== undefined &&
@@ -784,9 +825,26 @@ export class SessionIndexService implements ISessionIndexService {
             lastAgentText: cached.lastAgentText,
           });
         } else {
-          cacheMisses.push({ sessionId, mtime, size });
+          cacheMissBytes += size;
+          cacheMisses.push({
+            sessionId,
+            filePath: entry.filePath,
+            mtime,
+            size,
+          });
         }
       }
+
+      largestCacheMisses = cacheMisses
+        .slice()
+        .sort((a, b) => b.size - a.size)
+        .slice(0, 5)
+        .map(({ sessionId, filePath, mtime, size }) => ({
+          sessionId,
+          filePath,
+          mtime,
+          size,
+        }));
 
       for (const { sessionId, mtime, size } of cacheMisses) {
         parseCalls += 1;
@@ -831,9 +889,27 @@ export class SessionIndexService implements ISessionIndexService {
       );
       this.clearDirDirtyState(sessionDir, reader);
 
-      return { summaries, statCalls, parseCalls };
+      return {
+        summaries,
+        statCalls,
+        parseCalls,
+        totalFiles,
+        cacheHits,
+        cacheMisses: cacheMisses.length,
+        cacheMissBytes,
+        largestCacheMisses,
+      };
     } catch {
-      return { summaries: [], statCalls, parseCalls };
+      return {
+        summaries: [],
+        statCalls,
+        parseCalls,
+        totalFiles,
+        cacheHits,
+        cacheMisses: parseCalls,
+        cacheMissBytes,
+        largestCacheMisses,
+      };
     }
   }
 
@@ -926,7 +1002,11 @@ export class SessionIndexService implements ISessionIndexService {
     // Fast path: no dirty signals and recent full validation.
     if (!fullValidationDue && !hasDirDirty && !hasDirtySessions) {
       const summaries = this.buildSummariesFromIndex(index, projectId, options);
-      this.recordCallStats("fast", Date.now() - start, 0, 0, sessionDir);
+      this.recordCallStats("fast", Date.now() - start, 0, 0, sessionDir, {
+        scopeKey,
+        validationKey,
+        indexedSessions: Object.keys(index.sessions).length,
+      });
       return summaries;
     }
 
@@ -948,6 +1028,12 @@ export class SessionIndexService implements ISessionIndexService {
         incremental.statCalls,
         incremental.parseCalls,
         sessionDir,
+        {
+          scopeKey,
+          validationKey,
+          dirtySessions: dirtySessions?.size ?? 0,
+          indexedSessions: Object.keys(index.sessions).length,
+        },
       );
       return summaries;
     }
@@ -965,6 +1051,16 @@ export class SessionIndexService implements ISessionIndexService {
       full.statCalls,
       full.parseCalls,
       sessionDir,
+      {
+        scopeKey,
+        validationKey,
+        indexedSessions: Object.keys(index.sessions).length,
+        totalFiles: full.totalFiles,
+        cacheHits: full.cacheHits,
+        cacheMisses: full.cacheMisses,
+        cacheMissBytes: full.cacheMissBytes,
+        largestCacheMisses: full.largestCacheMisses,
+      },
     );
     return full.summaries;
   }

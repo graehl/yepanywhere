@@ -77,3 +77,5 @@
 - remote-hosted-compatibility - Coarse hosted remote UI / YA server
   compatibility level, starting with recommended level 10 for the first
   rollout.
+- codex-session-index-memory - Codex summary-index cold parse memory spikes,
+  entry cache retention, and instrumentation.

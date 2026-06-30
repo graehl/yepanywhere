@@ -152,6 +152,34 @@ describe("CodexSessionReader - OSS Support", () => {
     expect(session?.data.provider).toBe("codex-oss");
   });
 
+  it("does not retain full entries for summary-only reads", async () => {
+    const sessionId = "summary-cache-session";
+    await createSessionFile(sessionId, "openai", "gpt-5");
+
+    expect(reader.getEntryCacheStats().sessions).toBe(0);
+
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(summary?.id).toBe(sessionId);
+    expect(reader.getEntryCacheStats()).toMatchObject({
+      sessions: 0,
+      entries: 0,
+      sourceBytes: 0,
+    });
+
+    const session = await reader.getSession(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(session?.data.session.entries.length).toBeGreaterThan(0);
+    expect(reader.getEntryCacheStats()).toMatchObject({
+      sessions: 1,
+      sourceBytes: expect.any(Number),
+    });
+  });
+
   itIfNativeZstd("loads zstd-compressed rollout files", async () => {
     const sessionId = "zstd-rollout";
     const now = new Date().toISOString();

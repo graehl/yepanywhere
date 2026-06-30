@@ -555,6 +555,12 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
     description: "Log session-index performance timings.",
   },
   {
+    name: "CODEX_READER_LOG_PARSE",
+    group: "Diagnostics & development",
+    description:
+      "Log Codex entry-read parse/cache timings and memory deltas.",
+  },
+  {
     name: "SESSION_FOCUSED_WATCH_LOG_EVENTS",
     group: "Diagnostics & development",
     description: "Log focused-session file-watch events.",

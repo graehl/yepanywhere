@@ -567,6 +567,11 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
       "Log Codex entry-read parse/cache timings and memory deltas.",
   },
   {
+    name: "CLAUDE_READER_LOG_PARSE",
+    group: "Diagnostics & development",
+    description: "Log Claude summary stream timings and memory deltas.",
+  },
+  {
     name: "SESSION_FOCUSED_WATCH_LOG_EVENTS",
     group: "Diagnostics & development",
     description: "Log focused-session file-watch events.",

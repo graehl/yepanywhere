@@ -235,6 +235,137 @@ describe("SessionReader", () => {
   });
 
   describe("DAG handling", () => {
+    it("summarizes the timestamp-selected active branch", async () => {
+      const summaryReader = new SessionReader({
+        sessionDir: testDir,
+        getContextWindow: () => 10000,
+      });
+      const sessionId = "summary-active-branch";
+      const jsonl = [
+        JSON.stringify({
+          type: "user",
+          uuid: "root",
+          parentUuid: null,
+          timestamp: "2026-01-01T00:00:00.000Z",
+          message: { content: "Original title", role: "user" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          uuid: "dead-a",
+          parentUuid: "root",
+          timestamp: "2026-01-01T00:01:00.000Z",
+          message: {
+            content: [{ type: "text", text: "Dead branch response" }],
+            model: "claude-haiku-4-5-20251101",
+            usage: { input_tokens: 1000, output_tokens: 10 },
+          },
+        }),
+        JSON.stringify({
+          type: "user",
+          uuid: "dead-u",
+          parentUuid: "dead-a",
+          timestamp: "2026-01-01T00:02:00.000Z",
+          message: { content: "Dead branch follow-up", role: "user" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          uuid: "active-a",
+          parentUuid: "root",
+          timestamp: "2026-01-01T00:10:00.000Z",
+          message: {
+            content: [{ type: "text", text: "Active branch answer" }],
+            model: "qwen3-coder-128k:latest",
+            usage: {
+              input_tokens: 2000,
+              cache_read_input_tokens: 30,
+              cache_creation_input_tokens: 70,
+              output_tokens: 20,
+            },
+          },
+        }),
+      ].join("\n");
+      await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
+
+      const summary = await summaryReader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
+
+      expect(summary?.title).toBe("Original title");
+      expect(summary?.messageCount).toBe(2);
+      expect(summary?.provider).toBe("claude-ollama");
+      expect(summary?.model).toBe("qwen3-coder-128k:latest");
+      expect(summary?.lastAgentText).toBe("Active branch answer");
+      expect(summary?.contextUsage).toMatchObject({
+        inputTokens: 2100,
+        outputTokens: 20,
+        cacheReadTokens: 30,
+        cacheCreationTokens: 70,
+        contextWindow: 10000,
+        percentage: 21,
+      });
+    });
+
+    it("bridges progress-parented continuation in summaries", async () => {
+      const sessionId = "summary-progress-parent";
+      const jsonl = [
+        JSON.stringify({
+          type: "user",
+          uuid: "u1",
+          parentUuid: null,
+          timestamp: "2026-01-01T00:00:00.000Z",
+          message: { content: "Start", role: "user" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          uuid: "a1",
+          parentUuid: "u1",
+          timestamp: "2026-01-01T00:01:00.000Z",
+          message: {
+            content: [{ type: "tool_use", id: "tool-1", name: "Task" }],
+            model: "claude-opus-4-5-20251101",
+            usage: { input_tokens: 100, output_tokens: 5 },
+          },
+        }),
+        JSON.stringify({
+          type: "progress",
+          uuid: "p1",
+          parentUuid: "a1",
+          timestamp: "2026-01-01T00:02:00.000Z",
+          data: {},
+          toolUseID: "tool-1",
+          parentToolUseID: "tool-1",
+        }),
+        JSON.stringify({
+          type: "user",
+          uuid: "u2",
+          parentUuid: "p1",
+          timestamp: "2026-01-01T00:03:00.000Z",
+          message: { content: "Continue", role: "user" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          uuid: "a2",
+          parentUuid: "u2",
+          timestamp: "2026-01-01T00:04:00.000Z",
+          message: {
+            content: [{ type: "text", text: "Final answer" }],
+            model: "claude-opus-4-5-20251101",
+            usage: { input_tokens: 200, output_tokens: 10 },
+          },
+        }),
+      ].join("\n");
+      await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
+
+      const summary = await reader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
+
+      expect(summary?.messageCount).toBe(4);
+      expect(summary?.lastAgentText).toBe("Final answer");
+    });
+
     it("returns only active branch messages, filtering dead branches", async () => {
       const sessionId = "dag-test-1";
       // Structure:

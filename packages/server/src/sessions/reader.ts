@@ -5,16 +5,8 @@ import {
   type ProviderName,
   type UrlProjectId,
   getModelContextWindow,
-  isIdeMetadata,
-  stripIdeMetadata,
-  truncateSessionTitle,
 } from "@yep-anywhere/shared";
-import type {
-  ContentBlock,
-  ContextUsage,
-  Message,
-  SessionSummary,
-} from "../supervisor/types.js";
+import type { ContentBlock, Message, SessionSummary } from "../supervisor/types.js";
 import type {
   GetSessionOptions,
   ISessionReader,
@@ -36,7 +28,7 @@ import {
   systemAwaySummaryExcerpt,
 } from "./agent-excerpt.js";
 import { collectVisibleClaudeEntries } from "./claude-messages.js";
-import { buildDag } from "./dag.js";
+import { readClaudeSessionSummary } from "./claude-summary.js";
 
 export interface ClaudeSessionReaderOptions {
   sessionDir: string;
@@ -82,35 +74,6 @@ type UsageFields = {
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
 };
-
-const COMMAND_NAME_RE = /<command-name>([\s\S]*?)<\/command-name>/;
-const COMMAND_MESSAGE_RE = /<command-message>[\s\S]*?<\/command-message>/g;
-const COMMAND_ARGS_RE = /<command-args>([\s\S]*?)<\/command-args>/;
-const COMMAND_NAME_TAG_RE = /<command-name>[\s\S]*?<\/command-name>/g;
-const COMMAND_ARGS_TAG_RE = /<command-args>[\s\S]*?<\/command-args>/g;
-const LOCAL_COMMAND_CAVEAT_RE =
-  /<local-command-caveat>[\s\S]*?<\/local-command-caveat>/g;
-
-function formatClaudeCommandTurn(text: string): string | null {
-  const command = text.match(COMMAND_NAME_RE)?.[1]?.trim();
-  if (!command) return null;
-
-  const unparsed = text
-    .replace(LOCAL_COMMAND_CAVEAT_RE, "")
-    .replace(COMMAND_NAME_TAG_RE, "")
-    .replace(COMMAND_MESSAGE_RE, "")
-    .replace(COMMAND_ARGS_TAG_RE, "")
-    .trim();
-  if (unparsed) return null;
-
-  const args = text.match(COMMAND_ARGS_RE)?.[1]?.trim() ?? "";
-  return args ? `${command} ${args}` : command;
-}
-
-function normalizeTitleText(text: string): string {
-  const withoutIdeMetadata = stripIdeMetadata(text);
-  return formatClaudeCommandTurn(withoutIdeMetadata) ?? withoutIdeMetadata;
-}
 
 /**
  * Get the total input tokens from a usage object.
@@ -271,92 +234,14 @@ export class ClaudeSessionReader implements ISessionReader {
     const filePath = join(dir, `${sessionId}.jsonl`);
 
     try {
-      const content = await readFile(filePath, "utf-8");
-      const trimmed = content.trim();
-
-      // Skip empty files
-      if (!trimmed) {
-        return null;
-      }
-
-      const lines = trimmed.split("\n");
-      const messages = lines
-        .map((line) => {
-          try {
-            return JSON.parse(line) as ClaudeSessionEntry;
-          } catch {
-            return null;
-          }
-        })
-        .filter((m): m is ClaudeSessionEntry => m !== null);
-
-      // Build DAG and get active branch (filters out dead branches from rewinds, etc.)
-      const { activeBranch } = buildDag(messages);
-
-      // Filter active branch to user/assistant messages only
-      const conversationMessages = activeBranch
-        .filter(
-          (node) => node.raw.type === "user" || node.raw.type === "assistant",
-        )
-        .map((node) => node.raw);
-
-      // Skip sessions with no actual conversation messages (metadata-only files).
-      // Note: Newly created sessions may not have user/assistant messages yet (SDK writes async).
-      // These are handled separately in the projects route by adding owned processes.
-      if (conversationMessages.length === 0) {
-        return null;
-      }
-
       const stats = await stat(filePath);
-      const firstUserMessage = this.findFirstUserMessage(messages);
-      const fullTitle = firstUserMessage?.trim() || null;
-      const model = this.extractModel(conversationMessages);
-      const lastAgentText = this.findLastAgentExcerpt(
-        activeBranch.map((node) => node.raw),
-      );
-
-      // Prefer the first entry's content timestamp for the creation time. The
-      // file's birthtime is unreliable on Linux filesystems without statx btime
-      // (Node returns the unix epoch there), which made all Claude sessions show
-      // a 1970 / suppressed creation age; fall back to mtime over an epoch
-      // birthtime so the value is never bogus.
-      const firstTimestamp = messages.find(
-        (m): m is Extract<ClaudeSessionEntry, { timestamp: string }> =>
-          "timestamp" in m &&
-          typeof m.timestamp === "string" &&
-          m.timestamp.length > 0,
-      )?.timestamp;
-      const createdAt =
-        firstTimestamp ??
-        (stats.birthtimeMs > 0
-          ? stats.birthtime.toISOString()
-          : stats.mtime.toISOString());
-
-      // claude-ollama sessions use the same JSONL format but have non-Claude
-      // model IDs (e.g. "qwen3-coder-128k:latest" vs "claude-opus-4-5-20251101")
-      const provider =
-        model && !model.startsWith("claude-") ? "claude-ollama" : "claude";
-
-      const contextUsage = this.extractContextUsage(
-        activeBranch.map((node) => node.raw),
-        model,
-        provider,
-      );
-
-      return {
-        id: sessionId,
+      return await readClaudeSessionSummary({
+        filePath,
+        stats,
+        sessionId,
         projectId,
-        title: this.extractTitle(firstUserMessage),
-        fullTitle,
-        createdAt,
-        updatedAt: stats.mtime.toISOString(),
-        messageCount: conversationMessages.length,
-        ownership: { owner: "none" }, // Will be updated by Supervisor
-        contextUsage,
-        provider,
-        model,
-        lastAgentText,
-      };
+        resolveContextWindow: this.resolveContextWindow,
+      });
     } catch {
       return null;
     }
@@ -635,55 +520,6 @@ export class ClaudeSessionReader implements ISessionReader {
     return null;
   }
 
-  private findFirstUserMessage(messages: ClaudeSessionEntry[]): string | null {
-    for (const msg of messages) {
-      if (msg.type === "user") {
-        const content = msg.message.content;
-        if (content) {
-          // Content can be string or array of content blocks
-          if (typeof content === "string") {
-            return this.extractTitleContent(content);
-          }
-          // Filter to object blocks only (skip string items), cast for compatibility
-          const objectBlocks = content.filter(
-            (b) => typeof b !== "string",
-          ) as Array<{ type: string; text?: string }>;
-          return this.extractTitleContent(objectBlocks);
-        }
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Excerpt of the most recent visible agent turn or provider recap for the row
-   * hover card. Scans backward for a provider away-summary or latest assistant
-   * message carrying prose (the "what did it tell me" signal); when the latest
-   * turns are tool-only, falls back to an earlier text block, and only to a
-   * "⚙ <tool>" label when there is no agent prose at all. See
-   * topics/session-hovercard-recent-activity.md.
-   */
-  private findLastAgentExcerpt(
-    messages: ClaudeSessionEntry[],
-  ): string | undefined {
-    let trailingTool: string | undefined;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      const awaySummary = systemAwaySummaryExcerpt(msg);
-      if (awaySummary) return awaySummary;
-      if (msg?.type !== "assistant") continue;
-      const { text, toolName } = assistantContentParts(
-        (msg as { message?: { content?: unknown } }).message?.content,
-      );
-      const excerpt = formatAgentExcerpt(text);
-      if (excerpt) return excerpt;
-      // No prose here — remember the most recent tool name (first seen while
-      // scanning backward) in case no earlier turn has prose either.
-      if (!trailingTool && toolName) trailingTool = toolName;
-    }
-    return trailingTool ? `⚙ ${trailingTool}` : undefined;
-  }
-
   /**
    * Fast, on-demand recompute of the hover-card excerpt for a non-running
    * session: read the file and scan raw lines from the end, parsing only until
@@ -726,141 +562,6 @@ export class ClaudeSessionReader implements ISessionReader {
       if (!trailingTool && toolName) trailingTool = toolName;
     }
     return trailingTool ? `⚙ ${trailingTool}` : undefined;
-  }
-
-  /**
-   * Extract context usage from the last assistant message.
-   * Usage data is stored in message.usage with input_tokens, cache_read_input_tokens, etc.
-   *
-   * After compaction, the API's input_tokens only reflects tokens sent in the compacted
-   * request (summary + new messages), which is much less than the actual context window
-   * fill level. We use compactMetadata.preTokens from compact_boundary entries to compute
-   * the hidden overhead (system prompt, tools, etc.) and add it to post-compaction usage.
-   *
-   * @param messages - All active branch messages (including system entries for compaction detection)
-   * @param model - Model ID for determining context window size
-   */
-  private extractContextUsage(
-    messages: ClaudeSessionEntry[],
-    model: string | undefined,
-    provider?: ProviderName,
-  ): ContextUsage | undefined {
-    const contextWindowSize = this.resolveContextWindow(model, provider);
-
-    // Compute token overhead from compaction metadata.
-    // After compaction, the API reports fewer input_tokens because old messages are
-    // compressed into a summary. But the SDK's actual context window fill is higher.
-    // compactMetadata.preTokens tells us the true fill level at compaction time.
-    const overhead = computeCompactionOverhead(messages);
-
-    // Find the last assistant message (iterate backwards)
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (msg && msg.type === "assistant") {
-        const usage = msg.message.usage as
-          | {
-              input_tokens?: number;
-              output_tokens?: number;
-              cache_read_input_tokens?: number;
-              cache_creation_input_tokens?: number;
-            }
-          | undefined;
-
-        if (usage) {
-          // Total input = fresh tokens + cached tokens + new cache creation
-          const rawInputTokens =
-            (usage.input_tokens ?? 0) +
-            (usage.cache_read_input_tokens ?? 0) +
-            (usage.cache_creation_input_tokens ?? 0);
-
-          // Skip messages with zero input tokens (incomplete streaming messages)
-          if (rawInputTokens === 0) {
-            continue;
-          }
-
-          // Apply overhead correction for post-compaction messages
-          const inputTokens = rawInputTokens + overhead;
-
-          const percentage = Math.round(
-            (inputTokens / contextWindowSize) * 100,
-          );
-
-          const result: ContextUsage = {
-            inputTokens,
-            percentage,
-            contextWindow: contextWindowSize,
-          };
-
-          // Add optional fields if available
-          if (usage.output_tokens !== undefined && usage.output_tokens > 0) {
-            result.outputTokens = usage.output_tokens;
-          }
-          if (
-            usage.cache_read_input_tokens !== undefined &&
-            usage.cache_read_input_tokens > 0
-          ) {
-            result.cacheReadTokens = usage.cache_read_input_tokens;
-          }
-          if (
-            usage.cache_creation_input_tokens !== undefined &&
-            usage.cache_creation_input_tokens > 0
-          ) {
-            result.cacheCreationTokens = usage.cache_creation_input_tokens;
-          }
-
-          return result;
-        }
-      }
-    }
-    return undefined;
-  }
-
-  /**
-   * Extract the model from the most recent assistant message. A session's
-   * model can change mid-transcript (fork with a model override, setModel),
-   * so the last real model is the session's current one.
-   * The model is stored in message.model (e.g., "claude-opus-4-5-20251101").
-   */
-  private extractModel(messages: ClaudeSessionEntry[]): string | undefined {
-    // Skip "<synthetic>" which the SDK uses for error messages (e.g., 500 errors).
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (msg?.type === "assistant") {
-        const model = msg.message.model;
-        if (model && model !== "<synthetic>") {
-          return model;
-        }
-      }
-    }
-    return undefined;
-  }
-
-  private extractTitle(content: string | null): string | null {
-    if (!content) return null;
-    return truncateSessionTitle(content) || null;
-  }
-
-  /**
-   * Extract content for title generation, skipping IDE metadata blocks.
-   * This ensures session titles show the actual user message, not IDE metadata
-   * like <ide_opened_file> or <ide_selection> tags.
-   */
-  private extractTitleContent(
-    content: string | Array<{ type: string; text?: string }>,
-  ): string {
-    if (typeof content === "string") {
-      return normalizeTitleText(content);
-    }
-    const titleText = content
-      .filter(
-        (block): block is { type: string; text: string } =>
-          block.type === "text" &&
-          typeof block.text === "string" &&
-          !isIdeMetadata(block.text),
-      )
-      .map((block) => block.text)
-      .join("\n");
-    return normalizeTitleText(titleText);
   }
 
   /**

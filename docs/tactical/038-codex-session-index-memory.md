@@ -1,11 +1,13 @@
 # Codex Session Index Memory Spikes
 
-Status: Implementation chunk 3 landed 2026-06-30 and was measured against a
+Status: Implementation chunk 4 landed 2026-06-30 and was measured against a
 real cold YA index over the local provider histories. Codex summary reads now
 stream JSONL instead of materializing full transcript entries, and summary-index
 cache misses now pass through a global parse queue with warmup progress/status.
-The remaining measured peak is mainly from Claude full summary parsing, very
-large individual JSONL lines, and V8 heap retention after cold fills.
+Claude summary reads now stream into compact DAG nodes instead of retaining full
+raw message arrays. The remaining measured peak is mainly from very large
+individual JSONL lines, Codex summary streams in the same cold run, and V8 heap
+retention after cold fills.
 
 Progress:
 
@@ -34,7 +36,7 @@ Progress:
 - [x] Replace summary reads with a streaming Codex summary parser.
 - [x] Run a post-chunk-2 cold-index harness against a temporary
   `YEP_DATA_DIR` and the real local provider histories.
-- [ ] Replace Claude summary reads with a compact DAG summary parser.
+- [x] Replace Claude summary reads with a compact DAG summary parser.
 - [ ] Bound `CodexSessionReader.entryCache` by byte budget and session count.
 - [x] Decide whether a parse queue is still needed after the streaming-summary
   cold-index harness.
@@ -43,6 +45,8 @@ Progress:
   endpoint.
 - [ ] Add optional/default non-blocking startup warmup, if the route-triggered
   queue still leaves first-use UX too opaque.
+- [ ] Isolate summary parsing from the app-server heap for pathological
+  single-line JSONL files.
 
 ## Incident
 
@@ -949,10 +953,162 @@ Acceptance:
 - The compact parser intentionally remains a summary parser; `getSession()`
   still returns full raw messages.
 
-### Chunk 5: Bounded Entry Cache
+## Implementation Chunk 4
 
-Priority: high after the summary parse queue and still valuable before broad
-detail-cache use.
+Implemented 2026-06-30:
+
+- Added a Claude summary-only parser that streams JSONL lines through
+  `iterateJsonlLines()` instead of `readFile -> trim -> split`.
+- The parser stores compact branch nodes keyed by UUID: parent UUID, logical
+  compact parent, parsed-entry line index, timestamp, type, model, usage,
+  compaction pre-token metadata, and bounded last-agent excerpt candidates.
+- Branch selection mirrors `buildDag()` for summary purposes: progress rows are
+  excluded from the DAG, tips are chosen by timestamp then branch length then
+  line index, compact logical parents are followed, and missing progress/logical
+  parents fall back to the previous parsed node by line order.
+- `ClaudeSessionReader.getSessionSummary()` now uses the compact parser.
+  Detail loading, subagent loading, visible transcript normalization, and
+  fork/resume context still use the full raw message path.
+- Added `CLAUDE_READER_LOG_PARSE=true` to emit `claude_summary_stream` metrics
+  with file size, line count, parsed entry count, malformed line count, compact
+  node count, max line length, parse duration, and memory before/after.
+- Added focused reader tests for timestamp-selected active summary branches,
+  Claude-Ollama provider inference, context usage fields, last-agent excerpts,
+  and progress-parent fallback in summaries. Existing title, branch, and
+  compaction tests continue to cover the production summary path.
+
+Validation:
+
+```bash
+pnpm --filter @yep-anywhere/server test -- test/sessions/reader.test.ts
+pnpm --filter @yep-anywhere/server build
+pnpm --filter @yep-anywhere/server test
+git diff --check
+pnpm lint
+```
+
+Result:
+
+- Focused Claude reader tests passed: 48 passed.
+- Full server test suite passed: 155 files, 2370 passed, 6 skipped.
+- Server build passed.
+- `git diff --check` passed.
+- `pnpm lint` exited 0; it still reports the existing unrelated advisory items
+  in `packages/server/src/routes/sessions.ts` and
+  `packages/server/test/augments/task-list-augments.test.ts`.
+
+## Cold-Index Harness After Chunk 4
+
+Ran on 2026-06-30 with a temporary YA data directory and the real local
+provider histories:
+
+```bash
+PORT=4502 \
+MAINTENANCE_PORT=0 \
+YEP_DATA_DIR=/tmp/ya-cold-index-claude-XIsx3D \
+LOG_TO_FILE=true \
+LOG_LEVEL=info \
+LOG_PRETTY=false \
+SESSION_INDEX_LOG_PERF=true \
+CODEX_READER_LOG_PARSE=true \
+CLAUDE_READER_LOG_PARSE=true \
+SESSION_INDEX_SUMMARY_PARSE_CONCURRENCY=1 \
+pnpm --dir packages/server run dev
+```
+
+Notes:
+
+- The cold and warm `/api/inbox` responses both completed. The shell harness was
+  interrupted during cleanup because the package runner did not exit with the
+  child server, so exact `curl` timing output was lost. Response file mtimes and
+  sampler rows put cold completion at roughly 43 seconds and warm completion
+  about one second later.
+- Response tiers were stable: 0 needs-attention, 0 active, 6 recent-activity,
+  13 unread-8h, and 6 unread-24h.
+- The sampler recorded process-tree RSS from about 743 MB to a 1.80 GB peak,
+  ending around 1.69 GB while a watcher-triggered parse was still active. These
+  numbers are not perfectly comparable to earlier single-process RSS samples.
+- `/api/session-index/status` samples still showed the queue limit holding:
+  `max_active_parses: 1`, `max_queued_parses: 19`, `max_active_jobs: 20`.
+
+Claude summary metrics:
+
+- 3277 `claude_summary_stream` records.
+- About 2.71 GB of Claude JSONL data streamed.
+- Aggregate Claude summary parse duration was about 18.0 seconds.
+- Largest Claude file streamed: 61.6 MB.
+- Largest single Claude JSONL line: 60.0 MB.
+- Slowest Claude summary stream: 7.45 seconds, for that 61.6 MB file with a
+  60.0 MB line.
+- Malformed Claude lines: 0.
+
+Codex summary metrics in the same run:
+
+- 1147 `codex_summary_stream` records.
+- About 4.54 GB of Codex JSONL data streamed.
+- Aggregate Codex summary parse duration was about 25.3 seconds.
+- Largest Codex file streamed: 173.3 MB.
+- Largest single Codex JSONL line: 32.2 MB.
+
+Interpretation:
+
+- The Claude summary path no longer retains full raw `ClaudeSessionEntry[]`
+  arrays or full content blocks for every cold summary miss.
+- The remaining RSS peak is not explained by retained Claude raw-message arrays.
+  It is now dominated by large single-line JSON parses, Codex streams in the
+  same cold request, and V8 retaining heap after cold fill.
+- Worker/child-process isolation for summary parsing has become more relevant:
+  it would let the server release heap after pathological single-line parses.
+  That is a stronger cold-index RSS mitigation than further compaction inside
+  the main process, but it is also more complex.
+- Bounded Codex detail `entryCache` remains important for visible detail and
+  historical reads, but it is no longer the clearest explanation for cold
+  summary-index RSS.
+
+### Chunk 5: Summary Parser Worker Isolation
+
+Priority: highest if the next target is cold summary-index RSS.
+
+Goal:
+
+- Keep complete-list semantics while preventing pathological summary parses
+  from permanently expanding the app server's V8 heap.
+- Preserve the existing session-index queue/status contract and provider reader
+  behavior from callers' perspective.
+
+Implementation shape:
+
+- Move summary parse execution behind a worker thread or child-process adapter.
+  A child process is preferable if the primary goal is releasing heap after a
+  huge single-line parse or surviving parser OOM.
+- Start with Claude and Codex summary parsers, because both now have streaming
+  summary-only code paths and both showed giant individual JSONL lines in the
+  chunk-4 harness.
+- Keep the existing main-process queue as the scheduler. The queued task sends
+  provider, file path, session id, project id, file size/mtime, and any needed
+  context-window inputs to the parser worker.
+- Return only `SessionSummary | null` plus metrics; never send raw transcript
+  entries back to the app process.
+- Recycle the worker after a byte/file budget, after a parse timeout, or after
+  parsing a line above a large-line threshold.
+- Fall back to main-process parsing only as an explicit debug/development mode,
+  not as the silent production default for huge files.
+
+Acceptance:
+
+- A cold `/api/inbox` over the current real histories completes with complete
+  lists and no app-server heap growth proportional to the largest parsed line.
+- Worker metrics preserve `claude_summary_stream` and `codex_summary_stream`
+  fields, or emit equivalent worker-scoped events.
+- A synthetic giant-line fixture demonstrates that worker recycle releases the
+  app-server heap after the parse completes.
+- Parser failure marks the session summary as empty or failed according to the
+  existing index behavior without crashing the app server.
+
+### Chunk 6: Bounded Entry Cache
+
+Priority: high for detail-read retention. For cold summary-index RSS after
+chunk 4, summary parser worker isolation is the stronger next mitigation.
 
 Goal:
 
@@ -985,7 +1141,7 @@ Acceptance:
 - Tests cover hit, append, stale invalidation, size eviction, count eviction,
   and non-cacheable large files.
 
-### Chunk 6: Detail Parse Queue, Only If Still Needed
+### Chunk 7: Detail Parse Queue, Only If Still Needed
 
 Priority: conditional after the summary parse queue and bounded entry cache.
 

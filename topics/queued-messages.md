@@ -124,8 +124,9 @@ revision. The agreed live persistence shape is intentionally narrow:
 Status as of 2026-06-30: live patient queue write/delete is wired into
 `Process`/Supervisor. A queued patient entry is written to the server
 persistence service, and cancel/promotion/drain removes it. Startup-loaded
-paused entries are not yet surfaced through a recovery API/UI, so the
-user-visible restart-recovery contract is still pending.
+paused entries are surfaced through session detail/metadata responses and can
+be deleted by durable queue id. Explicit resume/re-dispatch of recovered
+entries is still pending.
 
 ## What we are removing and why
 

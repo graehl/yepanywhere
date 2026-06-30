@@ -12,6 +12,7 @@ import {
   type ClaudeSessionEntry,
   type RecapMode,
   type SessionMetadataResponse,
+  type SessionQueuedMessageSummary,
   type SessionOwnership,
   type ShowThinking,
   type ThinkingOption,
@@ -48,6 +49,10 @@ import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
 import { appendApprovalAuditLog } from "../security/approvalAuditLog.js";
 import type { ModelInfoService } from "../services/ModelInfoService.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
+import type {
+  PersistedSessionQueuedMessage,
+  SessionQueuePersistenceService,
+} from "../services/SessionQueuePersistenceService.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession, cloneCodexSession } from "../sessions/fork.js";
 import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
@@ -569,6 +574,8 @@ export interface SessionsDeps {
   serverSettingsService?: ServerSettingsService;
   /** ModelInfoService for context window lookups */
   modelInfoService?: ModelInfoService;
+  /** Durable store for recovered patient queued messages */
+  sessionQueuePersistenceService?: SessionQueuePersistenceService;
   /** Data directory for local security/audit logs */
   dataDir?: string;
 }
@@ -586,6 +593,66 @@ function providerResolutionDeps(deps: SessionsDeps): ProviderResolutionDeps {
     piSessionsDir: deps.piSessionsDir,
     piReaderFactory: deps.piReaderFactory,
   };
+}
+
+function persistedPatientQueueSummary(
+  item: PersistedSessionQueuedMessage,
+): SessionQueuedMessageSummary {
+  const attachmentCount =
+    (item.message.attachments?.length ?? 0) +
+    (item.message.images?.length ?? 0) +
+    (item.message.documents?.length ?? 0);
+  const tempId = item.message.tempId ?? item.source?.tempId;
+
+  return {
+    id: item.id,
+    ...(tempId ? { tempId } : {}),
+    content: item.message.text,
+    timestamp: item.queuedAt,
+    ...(item.message.attachments?.length
+      ? { attachments: item.message.attachments }
+      : {}),
+    ...(attachmentCount > 0 ? { attachmentCount } : {}),
+    ...(item.message.metadata ? { metadata: item.message.metadata } : {}),
+    kind: "patient",
+    status: item.status === "paused-after-restart" ? item.status : "queued",
+    sessionId: item.sessionId,
+    projectId: item.projectId,
+    queuedAt: item.queuedAt,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function recoveredPatientQueueSummaries(
+  deps: SessionsDeps,
+  sessionId: string,
+): SessionQueuedMessageSummary[] {
+  if (!deps.sessionQueuePersistenceService) {
+    return [];
+  }
+  return deps.sessionQueuePersistenceService
+    .listSession(sessionId)
+    .filter(
+      (item) =>
+        item.kind === "patient" && item.status === "paused-after-restart",
+    )
+    .sort((left, right) => left.queuedAt.localeCompare(right.queuedAt))
+    .map(persistedPatientQueueSummary);
+}
+
+function sessionQueueSummaries(
+  deps: SessionsDeps,
+  sessionId: string,
+  process: Process | undefined,
+): SessionQueuedMessageSummary[] {
+  if (process && typeof process.getDeferredQueueSummary === "function") {
+    return process.getDeferredQueueSummary();
+  }
+  if (process) {
+    return [];
+  }
+  return recoveredPatientQueueSummaries(deps, sessionId);
 }
 
 async function resolveSessionReaderForAgentContent({
@@ -2484,6 +2551,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       process,
       process?.provider ?? metadataProvider ?? project.provider,
     );
+    const deferredMessages = sessionQueueSummaries(deps, sessionId, process);
     const sessionSummaryResult = await findSessionSummaryAcrossProviders(
       transcriptProject,
       sessionId,
@@ -2582,6 +2650,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       processState: process?.state.type ?? null,
       pendingInputRequest,
       slashCommands,
+      ...(deferredMessages.length > 0 ? { deferredMessages } : {}),
     } satisfies SessionMetadataResponse;
 
     return c.json(response);
@@ -2910,6 +2979,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         metadataProvider ??
         project.provider,
     );
+    const deferredMessages = sessionQueueSummaries(deps, sessionId, process);
 
     if (!session) {
       // Session file doesn't exist yet - only valid if we own the process
@@ -2983,6 +3053,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           ownership,
           pendingInputRequest,
           slashCommands,
+          ...(deferredMessages.length > 0 ? { deferredMessages } : {}),
         });
       }
       const canonicalProjectId = await getGrokNativeProjectId(
@@ -3169,6 +3240,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       pendingInputRequest,
       slashCommands,
       ...(paginationInfo && { pagination: paginationInfo }),
+      ...(deferredMessages.length > 0 ? { deferredMessages } : {}),
     });
   });
 
@@ -5357,6 +5429,33 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       restarted: result.restarted,
       processId: result.process.id,
       serverTimestamp,
+    });
+  });
+
+  // DELETE /api/sessions/:sessionId/recovered-queue/:queueId - Delete a
+  // restart-paused patient queue entry by durable queue id.
+  routes.delete("/sessions/:sessionId/recovered-queue/:queueId", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const queueId = c.req.param("queueId");
+    const service = deps.sessionQueuePersistenceService;
+    if (!service) {
+      return c.json({ error: "Session queue persistence unavailable" }, 503);
+    }
+
+    const item = service
+      .listSession(sessionId)
+      .find((candidate) => candidate.id === queueId);
+    if (
+      item?.kind !== "patient" ||
+      item.status !== "paused-after-restart"
+    ) {
+      return c.json({ error: "Recovered queued message not found" }, 404);
+    }
+
+    await service.deleteItem(queueId);
+    return c.json({
+      deleted: true,
+      deferredMessages: recoveredPatientQueueSummaries(deps, sessionId),
     });
   });
 

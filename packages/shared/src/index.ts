@@ -296,6 +296,9 @@ export type {
   AppSession,
   SessionMetadataPayload,
   SessionMetadataResponse,
+  SessionQueuedMessageKind,
+  SessionQueuedMessageStatus,
+  SessionQueuedMessageSummary,
   // Agent session types
   AgentStatus,
   AgentSession,

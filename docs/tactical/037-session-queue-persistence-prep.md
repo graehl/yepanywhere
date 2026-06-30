@@ -1,6 +1,6 @@
 # Session Queue Persistence Prep
 
-Status: Patient live persistence chunk implemented locally.
+Status: Paused recovery display/delete chunk implemented locally.
 
 Progress:
 
@@ -15,11 +15,28 @@ Progress:
       service.
 - [x] Update `topics/queued-messages.md` with the patient-only persistence
       revision.
-- [ ] Add restart-paused session queue UI/API behavior.
+- [x] Add restart-paused session queue display/delete UI/API behavior.
+- [ ] Add restart-paused session queue resume behavior.
 - [ ] Integrate persisted session queues with safe restart.
 
 Latest update:
 
+- 2026-06-30: Paused recovery display/delete implemented locally. Shared
+  session queue summary DTOs now include optional durable `id`, `kind`, and
+  `status` fields. Session detail and metadata responses report recovered
+  `paused-after-restart` patient entries when no live process owns the queue,
+  and the session page mirrors those entries from REST load/metadata refresh.
+  Recovered chips render as `Paused after restart` and delete through a durable
+  queue-id endpoint that removes the persisted item. This chunk still does not
+  resume recovered entries or show a project-level recovered-queue summary.
+- 2026-06-30: Recovery surface plan agreed. The paused/recovered state should
+  live on the durable queue envelope, not inside the provider-bound
+  `UserMessage`. The first recovery chunk should expose
+  `paused-after-restart` patient entries as server-reported queue summary data
+  on session load/metadata, render them as paused session queue chips, and allow
+  deletion by durable queue id. Explicit resume of individual entries or all
+  project recovered entries is a follow-up because it needs process attach/
+  recreate semantics and queue-order dispatch rules.
 - 2026-06-30: Patient live persistence wiring implemented locally.
   `SessionQueuePersistenceService` is initialized at server startup and passed
   through `Supervisor` into each `Process`. `Process.deferMessage` now writes
@@ -267,9 +284,50 @@ After a server restart with persisted per-session queued messages:
 - let the user delete individual entries;
 - provide an explicit resume path before any entry is sent.
 
-This mirrors Project Queue's restart-pause principle, but the UI surface should
-remain session-local. The Projects page should not become the primary normal
-session-queue manager.
+The paused state is queue-envelope state:
+
+```ts
+{
+  id: "server-owned-durable-id",
+  kind: "patient",
+  status: "paused-after-restart",
+  message: { text: "...", tempId: "..." },
+  sessionId,
+  projectId,
+  queuedAt
+}
+```
+
+It should not be embedded in `UserMessage`, because `UserMessage` is the
+provider-bound payload that may later be sent verbatim.
+
+This mirrors Project Queue's restart-pause principle, but the first UI surface
+should remain session-local:
+
+- session page: show recovered patient entries as normal queued-message chips
+  with a paused-after-restart status, plus delete and later resume actions;
+- project page: optionally summarize recovered patient entries near Project
+  Queue controls, but make `Resume all` a follow-up after per-entry/per-session
+  resume semantics are proven.
+
+First recovery chunk:
+
+1. [x] Add a shared queue-summary DTO with optional durable `id`, `kind`, and
+   `status` fields.
+2. [x] Decorate session detail and session metadata responses with recovered
+   `paused-after-restart` patient entries when no live process owns the queue.
+3. [x] Add a delete endpoint keyed by durable queue id.
+4. [x] Teach the client initial session load/metadata refresh to mirror recovered
+   queue entries from the server response.
+5. [x] Render recovered entries as paused chips; do not auto-dispatch.
+
+Resume chunk, later:
+
+- resume one recovered entry by creating/attaching a session process and
+  re-entering the patient deferred queue;
+- preserve per-session FIFO order when resuming multiple recovered entries;
+- add an optional project-level summary/resume-all control once per-entry
+  resume behavior is stable.
 
 ## Safe Restart Interaction
 
@@ -308,8 +366,9 @@ Runtime tests, when live persistence is wired:
 - [x] patient entries are written to the persistence file while queued;
 - [x] patient cancel/promotion removes the persisted item;
 - [x] short-term deferred entries are not written to the persistence file;
-- [ ] patient entries survive server restart and do not auto-send;
-- [ ] deleting a recovered queued message removes it from disk and UI;
+- [x] patient entries survive server restart as paused API/UI state and do not
+  auto-send;
+- [x] deleting a recovered queued message removes it from disk and UI;
 - [ ] resuming recovered entries preserves per-session order;
 - Project Queue promotion still waits for recovered per-session queues before
   injecting project-level work;

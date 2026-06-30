@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type PaginationInfo, api } from "../api/client";
+import { type DeferredQueueMessage, type PaginationInfo, api } from "../api/client";
 import {
   getMessageTimestampMs,
   hasEquivalentJsonlMessage,
@@ -42,6 +42,7 @@ export interface SessionLoadResult {
     description: string;
     argumentHint?: string;
   }> | null;
+  deferredMessages?: DeferredQueueMessage[];
 }
 
 export type SessionLoadProgressStage =
@@ -744,6 +745,7 @@ export function useSessionMessages(
           status: data.ownership,
           pendingInputRequest: data.pendingInputRequest,
           slashCommands: data.slashCommands,
+          deferredMessages: data.deferredMessages,
         });
       })
       .catch((err) => {

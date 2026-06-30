@@ -2921,10 +2921,33 @@ function SessionPageContent({
     [deferredMessages, sessionId, showToast, t],
   );
 
+  const handleDeleteRecoveredDeferred = useCallback(
+    async (queueId: string) => {
+      try {
+        const result = await api.deleteRecoveredQueuedMessage(
+          sessionId,
+          queueId,
+        );
+        setDeferredMessages(result.deferredMessages ?? []);
+      } catch (err) {
+        console.error("Failed to delete recovered queued message:", err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        showToast(
+          t("sessionRecoveredQueuedDeleteFailed", { message: errorMsg }),
+          "error",
+        );
+      }
+    },
+    [sessionId, setDeferredMessages, showToast, t],
+  );
+
   const handleCancelLatestDeferred = useCallback(() => {
     const latest = [...deferredMessages]
       .reverse()
-      .find((message) => message.tempId);
+      .find(
+        (message) =>
+          message.tempId && message.status !== "paused-after-restart",
+      );
     if (!latest?.tempId) {
       return false;
     }
@@ -5468,6 +5491,7 @@ function SessionPageContent({
                   composerDraftChange={composerDraftChangeForAnchors}
                   quoteClearSignal={quoteClearSignal}
                   onCancelDeferred={handleCancelDeferred}
+                  onDeleteRecoveredDeferred={handleDeleteRecoveredDeferred}
                   onCancelProjectQueueMessage={handleCancelProjectQueueItem}
                   onCorrectLatestUserMessage={handleCorrectLatestUserMessage}
                   onTrimBeforeUserMessage={trimClientFromUserMessage}

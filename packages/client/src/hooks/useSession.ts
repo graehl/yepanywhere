@@ -2,9 +2,9 @@ import {
   type MarkdownAugment,
   type ContextUsage,
   type ProviderName,
+  type SessionQueuedMessageSummary,
   type SessionLivenessSnapshot,
   type UploadedFile,
-  type UserMessageMetadata,
   DEFAULT_RECAP_AFTER_SECONDS,
   getModelContextWindow,
   normalizeRecapAfterSeconds,
@@ -268,14 +268,7 @@ export interface PendingMessage {
  * persists it, never reconciles it by text, and never adds delivery states of
  * its own. The server is the single source of truth.
  */
-export interface DeferredMessage {
-  tempId?: string;
-  content: string;
-  timestamp: string;
-  metadata?: UserMessageMetadata;
-  attachmentCount?: number;
-  attachments?: UploadedFile[];
-}
+export type DeferredMessage = SessionQueuedMessageSummary;
 
 const CONCATENATED_USER_TURN_SEPARATOR = "\n\n--------\n\n";
 const USER_ECHO_CLOCK_SKEW_MS = 60_000;
@@ -808,6 +801,7 @@ export function useSession(
       // The SSE init message that normally carries these is discarded after
       // ~30s; stopped providers with static commands also rely on this payload.
       setSlashCommands(result.slashCommands?.map((c) => c.name) ?? []);
+      setDeferredMessages(result.deferredMessages ?? []);
 
       // Focusing a non-running session: its list/hover preview gets no live
       // session-updated events, so recompute it once (the server pushes the
@@ -1324,6 +1318,7 @@ export function useSession(
             if (result.pendingInputRequest) {
               setPendingInputRequest(result.pendingInputRequest);
             }
+            setDeferredMessages(result.deferredMessages ?? []);
           });
 
           return current; // Return unchanged for now, will update when fetch completes
@@ -1361,6 +1356,7 @@ export function useSession(
       ) {
         setPendingInputRequest(null);
       }
+      setDeferredMessages(data.deferredMessages ?? []);
     } catch {
       // Silent fail - non-critical
     }
@@ -1956,6 +1952,7 @@ export function useSession(
   const handleStreamError = useCallback(async () => {
     try {
       const data = await api.getSessionMetadata(projectId, sessionId);
+      setDeferredMessages(data.deferredMessages ?? []);
       const metadataProcessState = parseProcessState(data.processState);
       if (data.ownership.owner !== "self") {
         setStatus({ owner: "none" });

@@ -22,6 +22,8 @@ import type {
   ProviderName,
   SlashCommand,
 } from "./types.js";
+import type { UploadedFile } from "./upload.js";
+import type { UserMessageMetadata } from "./user-message-metadata.js";
 
 // =============================================================================
 // App Message Extensions
@@ -448,6 +450,35 @@ export interface SessionMetadataPayload
   transcriptProjectId?: UrlProjectId;
 }
 
+export type SessionQueuedMessageKind = "deferred" | "patient";
+
+export type SessionQueuedMessageStatus =
+  | "queued"
+  | "paused-after-restart";
+
+/**
+ * Server-owned queued-message summary for the session UI.
+ *
+ * Live entries use `tempId` for the existing in-process cancel route. Recovered
+ * restart-paused entries additionally use durable `id` for delete/resume APIs.
+ */
+export interface SessionQueuedMessageSummary {
+  id?: string;
+  tempId?: string;
+  content: string;
+  timestamp: string;
+  attachments?: UploadedFile[];
+  attachmentCount?: number;
+  metadata?: UserMessageMetadata;
+  kind?: SessionQueuedMessageKind;
+  status?: SessionQueuedMessageStatus;
+  sessionId?: string;
+  projectId?: UrlProjectId;
+  queuedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 /**
  * Lightweight session metadata response used for title/status refreshes.
  */
@@ -457,6 +488,7 @@ export interface SessionMetadataResponse {
   processState: AgentActivity | null;
   pendingInputRequest?: InputRequest | null;
   slashCommands?: SlashCommand[] | null;
+  deferredMessages?: SessionQueuedMessageSummary[];
 }
 
 // =============================================================================

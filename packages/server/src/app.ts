@@ -1030,6 +1030,7 @@ export function createApp(options: AppOptions): AppResult {
       piReaderFactory,
       serverSettingsService: options.serverSettingsService,
       modelInfoService: options.modelInfoService,
+      sessionQueuePersistenceService: options.sessionQueuePersistenceService,
       dataDir: options.dataDir,
     }),
   );

@@ -34,6 +34,7 @@ import type {
   PublicSessionShareViewerActionResponse,
   RevokePublicSessionSharesResponse,
   SessionMetadataResponse,
+  SessionQueuedMessageSummary,
   SessionLivenessSnapshot,
   ShowThinking,
   SlashCommand,
@@ -142,13 +143,7 @@ export interface GlobalSessionStats {
   executorCounts: Record<string, number>;
 }
 
-export interface DeferredQueueMessage {
-  tempId?: string;
-  content: string;
-  timestamp: string;
-  metadata?: UserMessageMetadata;
-  attachmentCount?: number;
-}
+export type DeferredQueueMessage = SessionQueuedMessageSummary;
 
 /** Minimal project info for filter dropdowns */
 export interface ProjectOption {
@@ -531,6 +526,7 @@ export const api = {
       ownership: SessionStatus;
       pendingInputRequest?: InputRequest | null;
       slashCommands?: SlashCommand[] | null;
+      deferredMessages?: DeferredQueueMessage[];
       pagination?: PaginationInfo;
     }>(`/projects/${projectId}/sessions/${sessionId}${qs ? `?${qs}` : ""}`);
   },
@@ -1034,6 +1030,12 @@ export const api = {
   cancelDeferredMessage: (sessionId: string, tempId: string) =>
     fetchJSON<{ cancelled: boolean }>(
       `/sessions/${sessionId}/deferred/${encodeURIComponent(tempId)}`,
+      { method: "DELETE" },
+    ),
+
+  deleteRecoveredQueuedMessage: (sessionId: string, queueId: string) =>
+    fetchJSON<{ deleted: boolean; deferredMessages: DeferredQueueMessage[] }>(
+      `/sessions/${sessionId}/recovered-queue/${encodeURIComponent(queueId)}`,
       { method: "DELETE" },
     ),
 

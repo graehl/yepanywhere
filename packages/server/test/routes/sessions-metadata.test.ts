@@ -16,6 +16,7 @@ import {
   createSessionsRoutes,
   type SessionsDeps,
 } from "../../src/routes/sessions.js";
+import { SessionQueuePersistenceService } from "../../src/services/SessionQueuePersistenceService.js";
 import type { CodexSessionReader } from "../../src/sessions/codex-reader.js";
 import type { GrokSessionReader } from "../../src/sessions/grok-reader.js";
 import type {
@@ -93,6 +94,19 @@ function createLoadedGrokSession(
       session: { messages },
     },
   };
+}
+
+async function withSessionQueuePersistence<T>(
+  fn: (service: SessionQueuePersistenceService) => Promise<T>,
+): Promise<T> {
+  const tempDir = await mkdtemp(join(tmpdir(), "ya-session-queue-route-"));
+  try {
+    const service = new SessionQueuePersistenceService({ dataDir: tempDir });
+    await service.initialize();
+    return await fn(service);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 async function createGrokRedirectFixture(): Promise<{
@@ -374,6 +388,113 @@ describe("Sessions metadata route", () => {
       "sess-1",
       project.id,
     );
+  });
+
+  it("returns paused recovered patient queue entries in metadata", async () => {
+    await withSessionQueuePersistence(async (sessionQueuePersistenceService) => {
+      const project = createProject();
+      const summary = createSummary();
+      await sessionQueuePersistenceService.replaceAll([
+        {
+          id: "queue-1",
+          sessionId: "sess-1",
+          projectId: project.id,
+          projectPath: project.path,
+          provider: "claude",
+          kind: "patient",
+          message: {
+            text: "resume after restart",
+            tempId: "temp-patient",
+            metadata: { deliveryIntent: "patient" },
+          },
+          createdAt: "2026-06-30T09:00:00.000Z",
+          updatedAt: "2026-06-30T09:01:00.000Z",
+          queuedAt: "2026-06-30T09:00:00.000Z",
+          status: "paused-after-restart",
+          source: { tempId: "temp-patient" },
+        },
+      ]);
+      const reader = {
+        getSessionSummary: vi.fn(async () => summary),
+      } as unknown as ISessionReader;
+
+      const routes = createSessionsRoutes({
+        supervisor: {
+          getProcessForSession: vi.fn(() => null),
+        } as unknown as SessionsDeps["supervisor"],
+        scanner: {
+          getOrCreateProject: vi.fn(async () => project),
+        } as unknown as SessionsDeps["scanner"],
+        readerFactory: vi.fn(() => reader),
+        sessionQueuePersistenceService,
+      });
+
+      const response = await routes.request(
+        `/projects/${project.id}/sessions/sess-1/metadata`,
+      );
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        deferredMessages: [
+          {
+            id: "queue-1",
+            tempId: "temp-patient",
+            content: "resume after restart",
+            kind: "patient",
+            status: "paused-after-restart",
+            sessionId: "sess-1",
+            projectId: project.id,
+            timestamp: "2026-06-30T09:00:00.000Z",
+            metadata: { deliveryIntent: "patient" },
+          },
+        ],
+      });
+    });
+  });
+
+  it("deletes a paused recovered patient queue entry by durable id", async () => {
+    await withSessionQueuePersistence(async (sessionQueuePersistenceService) => {
+      const project = createProject();
+      await sessionQueuePersistenceService.replaceAll([
+        {
+          id: "queue-1",
+          sessionId: "sess-1",
+          projectId: project.id,
+          projectPath: project.path,
+          provider: "claude",
+          kind: "patient",
+          message: {
+            text: "delete me",
+            tempId: "temp-patient",
+            metadata: { deliveryIntent: "patient" },
+          },
+          createdAt: "2026-06-30T09:00:00.000Z",
+          updatedAt: "2026-06-30T09:01:00.000Z",
+          queuedAt: "2026-06-30T09:00:00.000Z",
+          status: "paused-after-restart",
+        },
+      ]);
+
+      const routes = createSessionsRoutes({
+        supervisor: {
+          getProcessForSession: vi.fn(() => null),
+        } as unknown as SessionsDeps["supervisor"],
+        scanner: {
+          getOrCreateProject: vi.fn(async () => project),
+        } as unknown as SessionsDeps["scanner"],
+        sessionQueuePersistenceService,
+      });
+
+      const response = await routes.request(
+        "/sessions/sess-1/recovered-queue/queue-1",
+        { method: "DELETE" },
+      );
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        deleted: true,
+        deferredMessages: [],
+      });
+      expect(sessionQueuePersistenceService.listSession("sess-1")).toEqual([]);
+    });
   });
 
   it("resolves agent content across providers for mixed-provider projects", async () => {

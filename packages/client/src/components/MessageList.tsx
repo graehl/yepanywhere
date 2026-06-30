@@ -1,9 +1,9 @@
 import type {
   MarkdownAugment,
   ProjectQueueItemStatus,
+  SessionQueuedMessageSummary,
   TranscriptDisplayObject,
   UploadedFile,
-  UserMessageMetadata,
 } from "@yep-anywhere/shared";
 import {
   memo,
@@ -1006,14 +1006,7 @@ interface PendingMessage {
 }
 
 /** Deferred message queued server-side */
-interface DeferredMessage {
-  tempId?: string;
-  content: string;
-  timestamp: string;
-  metadata?: UserMessageMetadata;
-  attachmentCount?: number;
-  attachments?: UploadedFile[];
-}
+type DeferredMessage = SessionQueuedMessageSummary;
 
 interface InlineProjectQueueMessage {
   id: string;
@@ -1034,6 +1027,10 @@ interface ComposerTailLanePosition {
 
 function isPatientDeferredMessage(message: DeferredMessage): boolean {
   return message.metadata?.deliveryIntent === "patient";
+}
+
+function isRecoveredDeferredMessage(message: DeferredMessage): boolean {
+  return message.status === "paused-after-restart";
 }
 
 function formatQueuedAge(timestampMs: number, nowMs: number): string {
@@ -1194,6 +1191,8 @@ interface Props {
   quoteClearSignal?: number;
   /** Callback to cancel a deferred message */
   onCancelDeferred?: (tempId: string) => void;
+  /** Callback to delete a restart-paused recovered queue entry */
+  onDeleteRecoveredDeferred?: (queueId: string) => void;
   /** Callback to cancel a Project Queue item */
   onCancelProjectQueueMessage?: (itemId: string) => void;
   /** Callback to correct the latest actually-sent user message */
@@ -1377,6 +1376,7 @@ export const MessageList = memo(function MessageList({
   composerDraftChange,
   quoteClearSignal = 0,
   onCancelDeferred,
+  onDeleteRecoveredDeferred,
   onCancelProjectQueueMessage,
   onCorrectLatestUserMessage,
   onTrimBeforeUserMessage,
@@ -3909,13 +3909,18 @@ export const MessageList = memo(function MessageList({
 
           const deferred = tailItem.message;
           const isPatientDeferred = isPatientDeferredMessage(deferred);
+          const isRecoveredDeferred = isRecoveredDeferredMessage(deferred);
+          const recoveredQueueId =
+            isRecoveredDeferred && deferred.id ? deferred.id : null;
           const lanePosition = composerTailLanePositions.get(tailItem.key);
-          const deferredStatus = getDeferredMessageStatus({
-            isPatient: isPatientDeferred,
-            lanePosition,
-            timestampMs,
-            nowMs,
-          });
+          const deferredStatus = isRecoveredDeferred
+            ? t("sessionRecoveredQueuedPaused")
+            : getDeferredMessageStatus({
+                isPatient: isPatientDeferred,
+                lanePosition,
+                timestampMs,
+                nowMs,
+              });
           return (
             <div
               key={tailItem.key}
@@ -3947,7 +3952,9 @@ export const MessageList = memo(function MessageList({
                   <span
                     className="deferred-message-status"
                     title={
-                      isPatientDeferred
+                      isRecoveredDeferred
+                        ? t("sessionRecoveredQueuedPausedTitle")
+                        : isPatientDeferred
                         ? "Patient queue waits for verified quiet. Regular queued messages may pass it."
                         : undefined
                     }
@@ -3989,7 +3996,20 @@ export const MessageList = memo(function MessageList({
                       showTextLabel
                       onClick={(event) => event.stopPropagation()}
                     />
-                    {deferred.tempId && onCancelDeferred && (
+                    {recoveredQueueId && onDeleteRecoveredDeferred ? (
+                      <button
+                        type="button"
+                        className="deferred-message-action deferred-message-action-cancel"
+                        onClick={() =>
+                          onDeleteRecoveredDeferred(recoveredQueueId)
+                        }
+                        aria-label={t("sessionRecoveredQueuedDelete")}
+                        title={t("sessionRecoveredQueuedDelete")}
+                      >
+                        <XIcon />
+                        <span>{t("sessionRecoveredQueuedDeleteShort")}</span>
+                      </button>
+                    ) : deferred.tempId && onCancelDeferred ? (
                       <button
                         type="button"
                         className="deferred-message-action deferred-message-action-cancel"
@@ -4002,7 +4022,7 @@ export const MessageList = memo(function MessageList({
                         <XIcon />
                         <span>Cancel</span>
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>

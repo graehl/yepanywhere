@@ -208,6 +208,73 @@ describe("reconcileLinearMessages", () => {
     expect(result[0]?.uuid).toBe("codex-2-2026-06-30T02:01:12.931Z");
   });
 
+  it("merges an attached opening turn by visible text and attachment identity", () => {
+    const prompt = "Please inspect this screenshot.";
+    const attachmentLine =
+      "- [image.png](</project/.attachments/session-a/image.png>) (42 kb, image/png, 321x460)";
+    const messages: Message[] = [
+      {
+        uuid: "live-opening",
+        type: "user",
+        timestamp: "2026-06-30T03:15:06.807Z",
+        _source: "sdk",
+        message: { role: "user", content: prompt },
+        attachments: [
+          {
+            id: "file-1",
+            originalName: "image.png",
+            path: "/project/.attachments/session-a/image.png",
+            size: 42_000,
+            mimeType: "image/png",
+          },
+        ],
+      },
+      {
+        uuid: "codex-2-2026-06-30T03:15:16.034Z",
+        type: "user",
+        timestamp: "2026-06-30T03:15:16.034Z",
+        _source: "jsonl",
+        message: {
+          role: "user",
+          content: `${prompt}\n\nUser uploaded files in .attachments:\n${attachmentLine}`,
+        },
+      },
+    ];
+
+    const result = reconcileLinearMessages(messages);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?._source).toBe("jsonl");
+    expect(result[0]?.uuid).toBe("codex-2-2026-06-30T03:15:16.034Z");
+  });
+
+  it("merges same-source live duplicates of the visible opening turn", () => {
+    const prompt = "Please inspect this screenshot.";
+    const expanded = `${prompt}\n\nUser uploaded files in .attachments:\n- [image.png](</project/.attachments/session-a/image.png>) (42 kb, image/png, 321x460)`;
+    const messages: Message[] = [
+      {
+        uuid: "ya-live-opening",
+        type: "user",
+        timestamp: "2026-06-30T03:15:06.807Z",
+        _source: "sdk",
+        message: { role: "user", content: expanded },
+      },
+      {
+        uuid: "codex-live-opening",
+        type: "user",
+        timestamp: "2026-06-30T03:15:16.034Z",
+        _source: "sdk",
+        message: { role: "user", content: expanded },
+      },
+    ];
+
+    const result = reconcileLinearMessages(messages);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.uuid).toBe("codex-live-opening");
+    expect(result[0]?._source).toBe("sdk");
+  });
+
   it("does not use the startup window for later repeated user turns", () => {
     const messages: Message[] = [
       {
@@ -239,6 +306,50 @@ describe("reconcileLinearMessages", () => {
       "first-user",
       "second-user-sdk",
       "second-user-jsonl",
+    ]);
+  });
+
+  it("keeps later repeated attached user turns separate", () => {
+    const prompt = "Please inspect this screenshot.";
+    const expanded = `${prompt}\n\nUser uploaded files in .attachments:\n- [image.png](</project/.attachments/session-a/image.png>) (42 kb, image/png, 321x460)`;
+    const messages: Message[] = [
+      {
+        uuid: "first-user",
+        type: "user",
+        timestamp: "2026-03-09T10:00:00.000Z",
+        _source: "jsonl",
+        message: { role: "user", content: "Start." },
+      },
+      {
+        uuid: "assistant",
+        type: "assistant",
+        timestamp: "2026-03-09T10:00:02.000Z",
+        _source: "jsonl",
+        message: { role: "assistant", content: "Ready." },
+      },
+      {
+        uuid: "later-user-sdk",
+        type: "user",
+        timestamp: "2026-03-09T10:00:10.000Z",
+        _source: "sdk",
+        message: { role: "user", content: expanded },
+      },
+      {
+        uuid: "later-user-jsonl",
+        type: "user",
+        timestamp: "2026-03-09T10:00:16.000Z",
+        _source: "jsonl",
+        message: { role: "user", content: expanded },
+      },
+    ];
+
+    const result = reconcileLinearMessages(messages);
+
+    expect(result.map((message) => message.uuid)).toEqual([
+      "first-user",
+      "assistant",
+      "later-user-sdk",
+      "later-user-jsonl",
     ]);
   });
 

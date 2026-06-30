@@ -49,7 +49,9 @@ interrupted to deliver a queued steer is double-displayed."
    finished thread setup and written the durable response-item user row. That
    first-turn pair gets a 30s startup window, but only when no earlier user
    turn exists; later repeated user turns, assistant text, and tool rows still
-   use the 2s backstop.
+   use the 2s backstop. This is a merge-layer backstop, not the whole UI
+   contract: the rendered transcript still must not show two adjacent copies of
+   the same visible first user turn while startup is settling.
 
 ## OpenCode
 
@@ -158,6 +160,57 @@ the durable first user row appears. A real report on 2026-06-30
 `02:01:07.884Z` and the durable visible user row at `02:01:12.931Z`, outside
 the general 2s window. The fix is a first-plain-user-turn-only 30s window in
 `linearMessageDedup`, not a looser general Codex backstop.
+
+### Re-reported first-turn duplicate with attachments
+
+On 2026-06-30, session `019f1685-f1c8-7171-b056-e9b3f2f6be61` showed the
+opening prompt twice as two normal user bubbles. That session was created from
+`NewSessionForm` with an attachment. Evidence bounds the root cause:
+
+- The REST session detail had one visible opening user row:
+  `codex-2-2026-06-30T03:15:16.034Z`.
+- A fresh headless load of the same URL rendered one opening user prompt, so the
+  duplicate was not persisted in the durable transcript and was not produced by
+  a clean initial load.
+- The attached-new-session path is two-phase: create an empty session,
+  materialize the attachments, then call `api.queueMessage(...)` for the first
+  turn with `tempId` intentionally `undefined`. That removes the strongest
+  client identity hook and lengthens the startup window before the durable row
+  exists.
+- During that window, the client can hold more than one live/user copy: YA's own
+  queued echo and Codex's later thread-item user echo, or a stale in-memory
+  stream copy plus a later durable backfill. The current backstop handles
+  cross-source same-fingerprint pairs, and exact same-source repeats only when
+  timestamps are identical; it does not enforce a user-visible "one first turn"
+  invariant across all startup sources.
+
+The UI contract should be stronger than "the right source eventually wins":
+before rendering the main transcript, the first visible user turn may appear at
+most once. For the startup window, compare the user-visible prompt text after
+stripping YA's uploaded-files metadata into the same attachment model the UI
+renders, plus the rendered attachment identity set. If two adjacent user rows
+match that visible identity, collapse them and prefer the authoritative durable
+row when present, otherwise prefer the metadata-rich/latest live row. Do not
+extend this to arbitrary later repeated user turns; a user really can resend the
+same text later.
+
+Landed fix:
+
+- `linearMessageDedup` now computes an attachment-bearing visible first-user
+  fingerprint: rendered prompt text after removing YA's uploaded-files metadata,
+  plus attachment paths from either the metadata section or message attachment
+  fields.
+- The guard merges SDK/JSONL first-turn copies and same-source SDK startup
+  copies when that visible attachment fingerprint matches inside the existing
+  30s first-turn window. It still leaves text-only same-source repeats on the
+  previous strict rule, because two text-only first messages can be real user
+  actions.
+- Regression coverage pins the attached new-session cases above and confirms a
+  later identical attached prompt remains two turns.
+
+Still deferred: thread a client user message id through the attached-new-session
+two-phase path too; that removes the need for this safety net on the opening
+turn instead of only masking it.
 
 ### Pitfalls that turned out fine (for the deferred user-turn work)
 

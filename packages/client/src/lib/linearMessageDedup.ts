@@ -14,6 +14,10 @@ const REPLAY_TIMESTAMP_WINDOW_MS = 2000;
 // 2s backstop.
 const FIRST_USER_TURN_TIMESTAMP_WINDOW_MS = 30000;
 const MAX_SCAN_MESSAGES = 400;
+const UPLOADED_FILES_MARKERS = [
+  "\n\nUser uploaded files in .attachments:\n",
+  "\n\nUser uploaded files:\n",
+] as const;
 
 interface ApproxDedupOptions {
   windowMs?: number;
@@ -23,6 +27,7 @@ interface ApproxDedupOptions {
 }
 
 const semanticFingerprintCache = new WeakMap<Message, string | null>();
+const visibleUserTurnFingerprintCache = new WeakMap<Message, string | null>();
 
 function getMessageRole(message: Message): string {
   const nestedRole = (message.message as { role?: unknown } | undefined)?.role;
@@ -198,6 +203,137 @@ function getSemanticFingerprint(message: Message): string | null {
   return fingerprint;
 }
 
+function getTextContent(message: Message): string | null {
+  const content = getMessageContent(message);
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  const textParts = content
+    .map((block) => {
+      if (!block || typeof block !== "object") return "";
+      const typedBlock = block as { type?: unknown; text?: unknown };
+      const type = typeof typedBlock.type === "string" ? typedBlock.type : "";
+      if (type !== "text" && type !== "output_text" && type !== "input_text") {
+        return "";
+      }
+      return typeof typedBlock.text === "string" ? typedBlock.text : "";
+    })
+    .filter((text) => text.length > 0);
+
+  return textParts.length > 0 ? textParts.join("\n") : null;
+}
+
+function splitUploadedFilesSection(text: string): {
+  text: string;
+  attachmentPaths: string[];
+} {
+  const markerIndex = UPLOADED_FILES_MARKERS.map((marker) => ({
+    marker,
+    index: text.indexOf(marker),
+  }))
+    .filter(({ index }) => index !== -1)
+    .sort((a, b) => a.index - b.index)[0];
+
+  if (!markerIndex) {
+    return { text, attachmentPaths: [] };
+  }
+
+  const visibleText = text.slice(0, markerIndex.index);
+  const uploadSection = text.slice(
+    markerIndex.index + markerIndex.marker.length,
+  );
+  const markdownRegex = /^- \[(?:.+?)\]\((?:<(.+?)>|(.+?))\) \((?:[^)]*)\)$/;
+  const legacyRegex = /^- .+? \([^)]+\): (.+)$/;
+  const attachmentPaths: string[] = [];
+
+  for (const line of uploadSection.split("\n")) {
+    const trimmed = line.trim();
+    const markdownMatch = trimmed.match(markdownRegex);
+    if (markdownMatch) {
+      attachmentPaths.push(markdownMatch[1] ?? markdownMatch[2] ?? "");
+      continue;
+    }
+    const legacyMatch = trimmed.match(legacyRegex);
+    if (legacyMatch) {
+      attachmentPaths.push(legacyMatch[1] ?? "");
+    }
+  }
+
+  return {
+    text: visibleText,
+    attachmentPaths: attachmentPaths.filter((path) => path.trim().length > 0),
+  };
+}
+
+function extractAttachmentPaths(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((attachment) => {
+      if (!attachment || typeof attachment !== "object") {
+        return "";
+      }
+      const path = (attachment as { path?: unknown }).path;
+      if (typeof path === "string" && path.trim().length > 0) {
+        return path;
+      }
+      const id = (attachment as { id?: unknown }).id;
+      return typeof id === "string" ? id : "";
+    })
+    .filter((path) => path.trim().length > 0);
+}
+
+function normalizeVisibleText(text: string): string {
+  return text.replace(/\r\n/g, "\n").trim();
+}
+
+function getVisibleUserTurnFingerprint(message: Message): string | null {
+  const cached = visibleUserTurnFingerprintCache.get(message);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  if (!isPlainUserTurn(message)) {
+    visibleUserTurnFingerprintCache.set(message, null);
+    return null;
+  }
+
+  const text = getTextContent(message);
+  if (text === null) {
+    visibleUserTurnFingerprintCache.set(message, null);
+    return null;
+  }
+
+  const split = splitUploadedFilesSection(text);
+  const attachmentPaths = new Set<string>([
+    ...split.attachmentPaths,
+    ...extractAttachmentPaths(
+      (message as { attachments?: unknown }).attachments,
+    ),
+    ...extractAttachmentPaths(
+      (message.message as { attachments?: unknown } | undefined)?.attachments,
+    ),
+  ]);
+  const normalizedText = normalizeVisibleText(split.text);
+  if (attachmentPaths.size === 0) {
+    visibleUserTurnFingerprintCache.set(message, null);
+    return null;
+  }
+
+  const fingerprint = `visible-user|${normalizedText}|attachments:${Array.from(
+    attachmentPaths,
+  )
+    .sort()
+    .join("|")}`;
+  visibleUserTurnFingerprintCache.set(message, fingerprint);
+  return fingerprint;
+}
+
 export function getMessageTimestampMs(message: Message): number | null {
   if (typeof message.timestamp !== "string") {
     return null;
@@ -232,9 +368,6 @@ export function hasEquivalentJsonlMessage(
     if (candidate?._source !== "jsonl") {
       continue;
     }
-    if (getSemanticFingerprint(candidate) !== incomingFingerprint) {
-      continue;
-    }
     const candidateTimestampMs = getMessageTimestampMs(candidate);
     if (candidateTimestampMs === null) {
       continue;
@@ -243,6 +376,17 @@ export function hasEquivalentJsonlMessage(
       isPlainUserTurn(candidate) &&
       isPlainUserTurn(incoming) &&
       !hasEarlierPlainUserTurn(existing, i);
+    const semanticMatches =
+      getSemanticFingerprint(candidate) === incomingFingerprint;
+    const candidateVisibleFingerprint =
+      getVisibleUserTurnFingerprint(candidate);
+    const visibleUserTurnMatches =
+      isFirstUserTurnPair &&
+      candidateVisibleFingerprint !== null &&
+      candidateVisibleFingerprint === getVisibleUserTurnFingerprint(incoming);
+    if (!semanticMatches && !visibleUserTurnMatches) {
+      continue;
+    }
     const allowedDeltaMs = getAllowedTimestampDeltaMs(
       candidate,
       incoming,
@@ -264,6 +408,7 @@ interface IndexedMessage {
   originalIndex: number;
   timestampMs: number | null;
   fingerprint: string | null;
+  visibleUserTurnFingerprint: string | null;
 }
 
 export function reconcileLinearMessages(
@@ -288,6 +433,7 @@ export function reconcileLinearMessages(
         originalIndex,
         timestampMs: getMessageTimestampMs(message),
         fingerprint: getSemanticFingerprint(message),
+        visibleUserTurnFingerprint: getVisibleUserTurnFingerprint(message),
       }),
     )
     .sort((a, b) => {
@@ -323,9 +469,17 @@ export function reconcileLinearMessages(
         if (entry.timestampMs - candidate.timestampMs > maxCandidateWindowMs) {
           break;
         }
-        if (candidate.fingerprint !== entry.fingerprint) {
-          continue;
-        }
+        const isFirstUserTurnPair =
+          isPlainUserTurn(candidate.message) &&
+          isPlainUserTurn(entry.message) &&
+          !hasEarlierPlainUserEntry(kept, i);
+        const semanticMatches = candidate.fingerprint === entry.fingerprint;
+        const visibleUserTurnMatches =
+          isFirstUserTurnPair &&
+          candidate.visibleUserTurnFingerprint !== null &&
+          candidate.visibleUserTurnFingerprint ===
+            entry.visibleUserTurnFingerprint;
+        if (!semanticMatches && !visibleUserTurnMatches) continue;
         const candidateSource = candidate.message._source;
         const entrySource = entry.message._source;
         const sameSource = candidateSource === entrySource;
@@ -333,10 +487,13 @@ export function reconcileLinearMessages(
           candidateSource !== undefined &&
           entrySource !== undefined &&
           !sameSource;
+        const canMergeStartupLiveSources =
+          visibleUserTurnMatches && sameSource && candidateSource === "sdk";
         const canMergeSameSource =
           sameSource &&
           candidateSource !== undefined &&
-          candidate.timestampMs === entry.timestampMs;
+          (candidate.timestampMs === entry.timestampMs ||
+            canMergeStartupLiveSources);
         if (!canMergeDifferentSources && !canMergeSameSource) {
           continue;
         }
@@ -344,10 +501,6 @@ export function reconcileLinearMessages(
         if (!mergeSource) {
           continue;
         }
-        const isFirstUserTurnPair =
-          isPlainUserTurn(candidate.message) &&
-          isPlainUserTurn(entry.message) &&
-          !hasEarlierPlainUserEntry(kept, i);
         const allowedDeltaMs = getAllowedTimestampDeltaMs(
           candidate.message,
           entry.message,
@@ -366,6 +519,9 @@ export function reconcileLinearMessages(
         candidate.timestampMs =
           getMessageTimestampMs(candidate.message) ?? candidate.timestampMs;
         candidate.fingerprint = getSemanticFingerprint(candidate.message);
+        candidate.visibleUserTurnFingerprint = getVisibleUserTurnFingerprint(
+          candidate.message,
+        );
         merged = true;
         break;
       }

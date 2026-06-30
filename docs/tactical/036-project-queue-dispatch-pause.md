@@ -1,6 +1,6 @@
 # Project Queue Dispatch Pause
 
-Status: First implementation chunk complete.
+Status: Safe restart chunk implemented locally.
 
 Progress:
 
@@ -12,10 +12,18 @@ Progress:
 - [x] Rename destructive Project Queue item removal from Cancel to Delete.
 - [x] Add focused service, scheduler, route, and client tests.
 - [x] Update durable Project Queue topic docs.
-- [ ] Scope scheduled graceful backend restart as a follow-up chunk.
+- [x] Scope scheduled graceful backend restart as a follow-up chunk.
+- [x] Add dev banner `Restart When Safe` action.
+- [x] Wait for active sessions and in-memory session queued messages to drain.
+- [x] Report drain blockers in the reload banner.
 
 Latest update:
 
+- 2026-06-30: Scheduled safe restart implemented for dev/manual reload mode.
+  The backend reload banner now offers `Restart When Safe`; scheduling pauses
+  Project Queue dispatch, waits for active provider sessions and in-memory
+  session queued messages to drain, reports the blocker counts in the banner,
+  and then uses the existing backend restart path.
 - 2026-06-30: First implementation chunk landed locally. Project Queue dispatch
   state is persisted, non-empty queues loaded after restart become
   paused-after-restart, empty queues normalize back to running, pause/resume is
@@ -150,9 +158,28 @@ not remember hidden paused state.
 
 ## Follow-Up Chunk
 
-The next useful chunk is scheduled graceful backend restart. That should be a
-separate design/implementation pass because it needs to coordinate active
-provider sessions, server process lifecycle, client notices, and persisted
-queue/session backlog state. The dispatch pause implemented here gives that
-work a conservative default: after a restart, retained Project Queue backlog is
-visible and paused until the user resumes it.
+The scheduled graceful backend restart chunk is intentionally dev/manual reload
+only. It is exposed through the existing backend reload banner rather than a
+general production lifecycle control.
+
+Implemented behavior:
+
+- `Restart When Safe` appears beside `Reload Anyway` for backend reload
+  banners.
+- Scheduling pauses Project Queue dispatch with restart semantics so persisted
+  backlog does not promote more automatic work while the restart is pending.
+- The restart waits for both:
+  - active provider sessions that would be interrupted;
+  - in-memory session queued messages that would otherwise be lost, including
+    supervisor worker-queue entries and live-process direct/deferred queues.
+- The banner reports exact blocker counts and changes the safe-restart action
+  to `Cancel Restart` while scheduled.
+- When blockers drain, YA calls the same backend restart path used by
+  `Reload Anyway`.
+
+Out of scope for this chunk:
+
+- Persisting the normal in-memory session queue across restarts.
+- A production/server lifecycle manager.
+- Draining or persisting arbitrary non-session background jobs beyond the
+  existing worker activity signal.

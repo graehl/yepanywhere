@@ -9,6 +9,7 @@ import type {
   PendingInputType,
   ProjectQueueChangedEvent,
   PromptSuggestionMode,
+  SafeRestartChangedEvent,
   TranscriptDisplayObject,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -133,7 +134,10 @@ export interface WorkerActivityEvent {
   activeWorkers: number;
   /** Sessions that would interrupt active work if the server restarts now. */
   interruptibleSessionCount: number;
+  /** Supervisor worker queue length. */
   queueLength: number;
+  /** In-memory user turns waiting in worker or live per-session queues. */
+  queuedSessionMessageCount?: number;
   /** True if any session has interruptible active work. */
   hasActiveWork: boolean;
   timestamp: string;
@@ -265,6 +269,7 @@ export type BusEvent =
   | QueuePositionChangedEvent
   | QueueRequestRemovedEvent
   | WorkerActivityEvent
+  | SafeRestartChangedEvent
   | ProjectQueueChangedEvent
   | SessionMetadataChangedEvent
   | SessionAbortedEvent

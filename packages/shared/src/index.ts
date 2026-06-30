@@ -118,6 +118,14 @@ export type {
   GitRemoteCheckStatus,
   GitStatusInfo,
 } from "./git-status.js";
+
+export type {
+  SafeRestartBlocker,
+  SafeRestartBlockerType,
+  SafeRestartChangedEvent,
+  SafeRestartState,
+  SafeRestartStatus,
+} from "./safe-restart.js";
 export {
   GIT_STATUS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,

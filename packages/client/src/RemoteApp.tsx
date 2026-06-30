@@ -62,9 +62,14 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
     pendingReloads,
     reloadBackend,
     reloadFrontend,
+    scheduleSafeRestart,
+    cancelSafeRestart,
     dismiss,
     unsafeToRestart,
     interruptibleSessionCount,
+    queuedSessionMessageCount,
+    safeRestartState,
+    safeRestartMutating,
   } = useReloadNotifications();
   const isSessionDetailRoute = /\/sessions\/[^/]+/.test(location.pathname);
 
@@ -79,8 +84,13 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
           target="backend"
           onReload={reloadBackend}
           onDismiss={() => dismiss("backend")}
+          onRestartWhenSafe={scheduleSafeRestart}
+          onCancelSafeRestart={cancelSafeRestart}
           unsafeToRestart={unsafeToRestart}
           interruptibleSessionCount={interruptibleSessionCount}
+          queuedSessionMessageCount={queuedSessionMessageCount}
+          safeRestartState={safeRestartState}
+          safeRestartMutating={safeRestartMutating}
         />
       )}
       {isManualReloadMode && pendingReloads.frontend && (

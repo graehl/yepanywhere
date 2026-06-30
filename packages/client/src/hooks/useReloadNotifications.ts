@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { SafeRestartState } from "@yep-anywhere/shared";
 import { fetchJSON } from "../api/client";
 import {
   type SourceChangeEvent,
@@ -25,6 +26,13 @@ interface DevStatus {
 }
 
 export const FRONTEND_RELOAD_QUERY_PARAM = "__ya_reload";
+
+const IDLE_SAFE_RESTART_STATE: SafeRestartState = {
+  status: "idle",
+  blockers: [],
+  canRestartNow: true,
+  updatedAt: "",
+};
 
 function toReloadUrl(currentUrl: string | URL): URL {
   return new URL(
@@ -63,11 +71,15 @@ export function useReloadNotifications() {
   });
   const [devStatus, setDevStatus] = useState<DevStatus | null>(null);
   const [connected, setConnected] = useState(activityBus.connected);
+  const [safeRestartState, setSafeRestartState] =
+    useState<SafeRestartState>(IDLE_SAFE_RESTART_STATE);
+  const [safeRestartMutating, setSafeRestartMutating] = useState(false);
   const [workerActivity, setWorkerActivity] = useState<WorkerActivityEvent>({
     type: "worker-activity-changed",
     activeWorkers: 0,
     interruptibleSessionCount: 0,
     queueLength: 0,
+    queuedSessionMessageCount: 0,
     hasActiveWork: false,
     timestamp: "",
   });
@@ -93,6 +105,18 @@ export function useReloadNotifications() {
     fetchJSON<WorkerActivityEvent>("/status/workers")
       .then((data) => {
         if (data) setWorkerActivity(data);
+      })
+      .catch(() => {
+        // Ignore errors
+      });
+
+    fetchJSON<SafeRestartState>("/dev/safe-restart")
+      .then((data) => {
+        if (!data) return;
+        setSafeRestartState(data);
+        if (data.status !== "idle") {
+          setPendingReloads((prev) => ({ ...prev, backend: true }));
+        }
       })
       .catch(() => {
         // Ignore errors
@@ -143,12 +167,22 @@ export function useReloadNotifications() {
     unsubscribers.push(
       activityBus.on("backend-reloaded", () => {
         setPendingReloads((prev) => ({ ...prev, backend: false }));
+        setSafeRestartState(IDLE_SAFE_RESTART_STATE);
       }),
     );
 
     unsubscribers.push(
       activityBus.on("worker-activity-changed", (data: WorkerActivityEvent) => {
         setWorkerActivity(data);
+      }),
+    );
+
+    unsubscribers.push(
+      activityBus.on("safe-restart-changed", (data) => {
+        setSafeRestartState(data.state);
+        if (data.state.status !== "idle") {
+          setPendingReloads((prev) => ({ ...prev, backend: true }));
+        }
       }),
     );
 
@@ -202,6 +236,31 @@ export function useReloadNotifications() {
     }
   }, []);
 
+  const scheduleSafeRestart = useCallback(async () => {
+    setSafeRestartMutating(true);
+    try {
+      const state = await fetchJSON<SafeRestartState>("/dev/safe-restart", {
+        method: "POST",
+      });
+      setSafeRestartState(state);
+      setPendingReloads((prev) => ({ ...prev, backend: true }));
+    } finally {
+      setSafeRestartMutating(false);
+    }
+  }, []);
+
+  const cancelSafeRestart = useCallback(async () => {
+    setSafeRestartMutating(true);
+    try {
+      const state = await fetchJSON<SafeRestartState>("/dev/safe-restart", {
+        method: "DELETE",
+      });
+      setSafeRestartState(state);
+    } finally {
+      setSafeRestartMutating(false);
+    }
+  }, []);
+
   // Reload the frontend (browser refresh)
   const reloadFrontend = useCallback(() => {
     const reloadUrl = buildFrontendReloadUrl(
@@ -251,6 +310,10 @@ export function useReloadNotifications() {
     devStatus?.noBackendReload || devStatus?.noFrontendReload;
   const interruptibleSessionCount =
     getInterruptibleSessionCount(workerActivity);
+  const queuedSessionMessageCount = Math.max(
+    0,
+    workerActivity.queuedSessionMessageCount ?? workerActivity.queueLength,
+  );
 
   return {
     isManualReloadMode,
@@ -259,10 +322,16 @@ export function useReloadNotifications() {
     reloadBackend,
     reloadFrontend,
     reload,
+    scheduleSafeRestart,
+    cancelSafeRestart,
     dismiss,
     dismissAll,
     workerActivity,
     interruptibleSessionCount,
-    unsafeToRestart: interruptibleSessionCount > 0,
+    queuedSessionMessageCount,
+    safeRestartState,
+    safeRestartMutating,
+    unsafeToRestart:
+      interruptibleSessionCount > 0 || queuedSessionMessageCount > 0,
   };
 }

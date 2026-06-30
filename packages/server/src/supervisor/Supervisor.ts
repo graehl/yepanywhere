@@ -3530,6 +3530,7 @@ export class Supervisor {
         ) {
           this.schedulePatientDeferredCheck(process, 250);
         }
+        this.emitWorkerActivity();
       } else if (event.type === "terminated") {
         this.emitProcessTerminated(
           process.sessionId,
@@ -3892,16 +3893,27 @@ export class Supervisor {
     const interruptibleSessionCount = Array.from(
       this.processes.values(),
     ).filter((p) => this.processHasActiveWork(p)).length;
+    const queuedSessionMessageCount = this.getQueuedSessionMessageCount();
 
     const event: WorkerActivityEvent = {
       type: "worker-activity-changed",
       activeWorkers: this.processes.size,
       interruptibleSessionCount,
       queueLength: this.workerQueue.length,
+      queuedSessionMessageCount,
       hasActiveWork: interruptibleSessionCount > 0,
       timestamp: new Date().toISOString(),
     };
     this.eventBus.emit(event);
+  }
+
+  private getQueuedSessionMessageCount(): number {
+    let count = this.workerQueue.length;
+    for (const process of this.processes.values()) {
+      count += process.queueDepth;
+      count += process.getDeferredQueueSummary().length;
+    }
+    return count;
   }
 
   // ============ Staleness Detection ============
@@ -4169,6 +4181,7 @@ export class Supervisor {
     activeWorkers: number;
     interruptibleSessionCount: number;
     queueLength: number;
+    queuedSessionMessageCount: number;
     hasActiveWork: boolean;
   } {
     const interruptibleSessionCount = Array.from(
@@ -4178,6 +4191,7 @@ export class Supervisor {
       activeWorkers: this.processes.size,
       interruptibleSessionCount,
       queueLength: this.workerQueue.length,
+      queuedSessionMessageCount: this.getQueuedSessionMessageCount(),
       hasActiveWork: interruptibleSessionCount > 0,
     };
   }

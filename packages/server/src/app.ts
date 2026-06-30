@@ -83,7 +83,10 @@ import {
   createPublicShareRoutes,
 } from "./routes/public-shares.js";
 import { createRecentsRoutes } from "./routes/recents.js";
-import { createServerAdminRoutes } from "./routes/server-admin.js";
+import {
+  createServerAdminRoutes,
+  triggerServerRestart,
+} from "./routes/server-admin.js";
 import { createEnvSettingsRoutes } from "./routes/env-settings.js";
 import { createServerInfoRoutes } from "./routes/server-info.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
@@ -118,6 +121,7 @@ import { ProjectQueueScheduler } from "./services/ProjectQueueScheduler.js";
 import type { ProjectQueueService } from "./services/ProjectQueueService.js";
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
+import { SafeRestartService } from "./services/SafeRestartService.js";
 import type { SharingService } from "./services/SharingService.js";
 import type { SpeechBackendRegistry } from "./services/voice/registry.js";
 import { CodexSessionReader } from "./sessions/codex-reader.js";
@@ -777,6 +781,40 @@ export function createApp(options: AppOptions): AppResult {
       },
     });
   }
+
+  const isManualReloadMode =
+    process.env.NO_BACKEND_RELOAD === "true" ||
+    process.env.NO_FRONTEND_RELOAD === "true";
+
+  const safeRestartService =
+    options.eventBus && isManualReloadMode
+      ? new SafeRestartService({
+          eventBus: options.eventBus,
+          getWorkerActivity: () => supervisor.getWorkerActivity(),
+          restart: () =>
+            triggerServerRestart({
+              notificationService: options.notificationService,
+            }),
+          pauseProjectQueueDispatch: async () => {
+            const service = options.projectQueueService;
+            if (!service || service.listAll().length === 0) return false;
+            if (service.isDispatchPaused()) return false;
+            await service.pauseDispatch("restart");
+            return true;
+          },
+          resumeProjectQueueDispatch: async () => {
+            const service = options.projectQueueService;
+            if (!service) return;
+            const dispatchState = service.getDispatchState();
+            if (
+              dispatchState.status === "paused" &&
+              dispatchState.reason === "restart"
+            ) {
+              await service.resumeDispatch();
+            }
+          },
+        })
+      : undefined;
 
   // Create PushNotifier if push notifications are enabled
   // This sends push notifications when sessions need user input
@@ -1452,12 +1490,15 @@ export function createApp(options: AppOptions): AppResult {
     );
 
     // Dev routes (manual reload workflow) - mounted when manual reload is enabled
-    const isDevMode =
-      process.env.NO_BACKEND_RELOAD === "true" ||
-      process.env.NO_FRONTEND_RELOAD === "true";
-    if (isDevMode) {
+    if (isManualReloadMode) {
       console.log("[Dev] Mounting dev routes at /api/dev");
-      app.route("/api/dev", createDevRoutes({ eventBus: options.eventBus }));
+      app.route(
+        "/api/dev",
+        createDevRoutes({
+          eventBus: options.eventBus,
+          safeRestartService,
+        }),
+      );
     }
   }
 

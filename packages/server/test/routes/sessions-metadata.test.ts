@@ -1919,6 +1919,7 @@ describe("Sessions metadata route", () => {
     expect(setProvider).toHaveBeenCalledWith("sess-fork", "claude");
     expect(updateMetadata).toHaveBeenCalledWith("sess-fork", {
       title: "Fork: Refactor session",
+      parentSessionId: "sess-1",
     });
   });
 

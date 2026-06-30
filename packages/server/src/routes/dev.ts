@@ -1,8 +1,11 @@
 import { Hono } from "hono";
+import type { SafeRestartState } from "@yep-anywhere/shared";
+import type { SafeRestartService } from "../services/SafeRestartService.js";
 import type { EventBus, SourceChangeEvent } from "../watcher/index.js";
 
 export interface DevDeps {
   eventBus: EventBus;
+  safeRestartService?: SafeRestartService;
 }
 
 // Track backend dirty state - persists across page refreshes until server restarts
@@ -52,6 +55,36 @@ export function createDevRoutes(deps: DevDeps): Hono {
       backendDirty,
       timestamp: new Date().toISOString(),
     });
+  });
+
+  // GET /api/dev/safe-restart - Get scheduled safe restart state
+  routes.get("/safe-restart", (c) => {
+    return c.json<SafeRestartState>(
+      deps.safeRestartService?.getState() ?? {
+        status: "idle",
+        blockers: [],
+        canRestartNow: true,
+        updatedAt: new Date().toISOString(),
+      },
+    );
+  });
+
+  // POST /api/dev/safe-restart - Restart after active work and queues drain
+  routes.post("/safe-restart", async (c) => {
+    if (!deps.safeRestartService) {
+      return c.json({ error: "Safe restart is not available" }, 404);
+    }
+    const state = await deps.safeRestartService.schedule();
+    return c.json(state);
+  });
+
+  // DELETE /api/dev/safe-restart - Cancel a scheduled safe restart
+  routes.delete("/safe-restart", async (c) => {
+    if (!deps.safeRestartService) {
+      return c.json({ error: "Safe restart is not available" }, 404);
+    }
+    const state = await deps.safeRestartService.cancel();
+    return c.json(state);
   });
 
   return routes;

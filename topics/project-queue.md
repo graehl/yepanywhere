@@ -27,6 +27,11 @@ across the YA install, and it is separate from the existing per-session queue.
 - A server restart with persisted Project Queue backlog starts
   paused-after-restart by default. The user must explicitly resume dispatch
   after inspecting any work that may have been interrupted by the restart.
+- Dev-mode scheduled safe restart also pauses Project Queue dispatch before
+  waiting for active sessions and in-memory session queued messages, including
+  per-process direct/deferred queues, to drain. The durable Project Queue
+  backlog survives the restart and remains visibly paused until the user
+  resumes it.
 - Empty Project Queue state is always normal/running. Do not preserve a hidden
   pause after the last queued/failed/dispatching item leaves the queue.
 

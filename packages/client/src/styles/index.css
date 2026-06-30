@@ -9048,6 +9048,11 @@ a.sidebar-nav-item {
   background: rgba(255, 255, 255, 0.4);
 }
 
+.reload-banner-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .reload-banner-button-primary {
   background: #000;
   color: var(--warning-color);
@@ -9078,6 +9083,10 @@ a.sidebar-nav-item {
 
 .reload-banner-warning-text {
   font-weight: 600;
+}
+
+.reload-banner-button-safe {
+  background: rgba(255, 255, 255, 0.32);
 }
 
 .reload-banner-button-danger {

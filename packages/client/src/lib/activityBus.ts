@@ -5,6 +5,8 @@ import type {
   PendingInputType,
   ProjectQueueChangedEvent,
   PromptSuggestionMode,
+  SafeRestartChangedEvent,
+  SafeRestartState,
   TranscriptDisplayObject,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -133,11 +135,16 @@ export interface WorkerActivityEvent {
   activeWorkers: number;
   /** Sessions that would interrupt active work if the server restarts now. */
   interruptibleSessionCount?: number;
+  /** Supervisor worker queue length. */
   queueLength: number;
+  /** In-memory user turns waiting in worker or live per-session queues. */
+  queuedSessionMessageCount?: number;
   /** True if any session has interruptible active work. */
   hasActiveWork: boolean;
   timestamp: string;
 }
+
+export type { SafeRestartChangedEvent, SafeRestartState };
 
 export function getInterruptibleSessionCount(
   activity: Pick<
@@ -204,6 +211,7 @@ interface ActivityEventMap {
   "source-change": SourceChangeEvent;
   "backend-reloaded": undefined;
   "worker-activity-changed": WorkerActivityEvent;
+  "safe-restart-changed": SafeRestartChangedEvent;
   reconnect: undefined;
   refresh: undefined;
 }
@@ -458,6 +466,7 @@ class ActivityBus {
       "source-change",
       "backend-reloaded",
       "worker-activity-changed",
+      "safe-restart-changed",
       "reconnect",
       "refresh",
     ].includes(type);

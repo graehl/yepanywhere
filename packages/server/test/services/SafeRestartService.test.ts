@@ -1,0 +1,126 @@
+import { describe, expect, it, vi } from "vitest";
+import { SafeRestartService } from "../../src/services/SafeRestartService.js";
+import { EventBus } from "../../src/watcher/EventBus.js";
+
+describe("SafeRestartService", () => {
+  it("waits for active sessions and queued messages before restarting", async () => {
+    const eventBus = new EventBus();
+    let activity = {
+      activeWorkers: 2,
+      interruptibleSessionCount: 2,
+      queueLength: 1,
+      hasActiveWork: true,
+    };
+    const restart = vi.fn();
+    const pauseProjectQueueDispatch = vi.fn(async () => true);
+    const states: string[] = [];
+
+    eventBus.subscribe((event) => {
+      if (event.type === "safe-restart-changed") {
+        states.push(event.state.status);
+      }
+    });
+
+    const service = new SafeRestartService({
+      eventBus,
+      getWorkerActivity: () => activity,
+      restart,
+      pauseProjectQueueDispatch,
+    });
+
+    const scheduled = await service.schedule();
+
+    expect(pauseProjectQueueDispatch).toHaveBeenCalledTimes(1);
+    expect(scheduled.status).toBe("scheduled");
+    expect(scheduled.blockers).toEqual([
+      { type: "active-sessions", count: 2 },
+      { type: "session-queue", count: 1 },
+    ]);
+    expect(restart).not.toHaveBeenCalled();
+
+    activity = {
+      activeWorkers: 0,
+      interruptibleSessionCount: 0,
+      queueLength: 0,
+      hasActiveWork: false,
+    };
+    eventBus.emit({
+      type: "worker-activity-changed",
+      ...activity,
+      timestamp: new Date().toISOString(),
+    });
+    await Promise.resolve();
+
+    expect(restart).toHaveBeenCalledTimes(1);
+    expect(service.getState().status).toBe("restarting");
+    expect(states).toContain("scheduled");
+    expect(states).toContain("restarting");
+  });
+
+  it("restarts immediately when there are no drain blockers", async () => {
+    const eventBus = new EventBus();
+    const restart = vi.fn();
+    const service = new SafeRestartService({
+      eventBus,
+      getWorkerActivity: () => ({
+        activeWorkers: 0,
+        interruptibleSessionCount: 0,
+        queueLength: 0,
+        hasActiveWork: false,
+      }),
+      restart,
+      pauseProjectQueueDispatch: async () => false,
+    });
+
+    const state = await service.schedule();
+
+    expect(state.status).toBe("restarting");
+    expect(state.blockers).toEqual([]);
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts per-session queued messages separately from worker queue length", async () => {
+    const eventBus = new EventBus();
+    const restart = vi.fn();
+    const service = new SafeRestartService({
+      eventBus,
+      getWorkerActivity: () => ({
+        activeWorkers: 1,
+        interruptibleSessionCount: 0,
+        queueLength: 0,
+        queuedSessionMessageCount: 3,
+        hasActiveWork: false,
+      }),
+      restart,
+    });
+
+    const state = await service.schedule();
+
+    expect(state.status).toBe("scheduled");
+    expect(state.blockers).toEqual([{ type: "session-queue", count: 3 }]);
+    expect(restart).not.toHaveBeenCalled();
+  });
+
+  it("resumes only Project Queue dispatch that it paused", async () => {
+    const eventBus = new EventBus();
+    const resumeProjectQueueDispatch = vi.fn();
+    const service = new SafeRestartService({
+      eventBus,
+      getWorkerActivity: () => ({
+        activeWorkers: 1,
+        interruptibleSessionCount: 1,
+        queueLength: 0,
+        hasActiveWork: true,
+      }),
+      restart: vi.fn(),
+      pauseProjectQueueDispatch: async () => true,
+      resumeProjectQueueDispatch,
+    });
+
+    await service.schedule();
+    const cancelled = await service.cancel();
+
+    expect(cancelled.status).toBe("idle");
+    expect(resumeProjectQueueDispatch).toHaveBeenCalledTimes(1);
+  });
+});

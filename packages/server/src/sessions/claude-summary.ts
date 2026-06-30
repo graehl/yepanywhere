@@ -50,6 +50,20 @@ interface ParseMetrics {
   maxLineLength: number;
 }
 
+export interface ClaudeSummaryStreamMetrics extends ParseMetrics {
+  fileSize: number;
+  parseMs: number;
+  rssBefore: number;
+  rssAfter: number;
+  heapUsedBefore: number;
+  heapUsedAfter: number;
+}
+
+export interface ClaudeSessionSummaryRead {
+  summary: SessionSummary | null;
+  metrics: ClaudeSummaryStreamMetrics;
+}
+
 interface ClaudeSummaryParseState {
   nodeMap: Map<string, CompactClaudeSummaryNode>;
   childrenMap: Map<string | null, string[]>;
@@ -573,38 +587,57 @@ function buildSummaryFromState(
   };
 }
 
-function logParseMetrics(args: {
+function createStreamMetrics(args: {
   options: ReadClaudeSessionSummaryOptions;
   metrics: ParseMetrics;
   parseMs: number;
   memoryBefore: NodeJS.MemoryUsage;
   memoryAfter: NodeJS.MemoryUsage;
+}): ClaudeSummaryStreamMetrics {
+  return {
+    fileSize: args.options.stats.size,
+    lineCount: args.metrics.lineCount,
+    parsedEntries: args.metrics.parsedEntries,
+    malformedLines: args.metrics.malformedLines,
+    nodeCount: args.metrics.nodeCount,
+    maxLineLength: args.metrics.maxLineLength,
+    parseMs: args.parseMs,
+    rssBefore: args.memoryBefore.rss,
+    rssAfter: args.memoryAfter.rss,
+    heapUsedBefore: args.memoryBefore.heapUsed,
+    heapUsedAfter: args.memoryAfter.heapUsed,
+  };
+}
+
+function logParseMetrics(args: {
+  options: ReadClaudeSessionSummaryOptions;
+  metrics: ClaudeSummaryStreamMetrics;
 }): void {
-  if (!LOG_CLAUDE_SUMMARY_PARSE && args.parseMs < 250) return;
+  if (!LOG_CLAUDE_SUMMARY_PARSE && args.metrics.parseMs < 250) return;
   getLogger().info(
     {
       event: "claude_summary_stream",
       sessionId: args.options.sessionId,
       filePath: args.options.filePath,
-      fileSize: args.options.stats.size,
+      fileSize: args.metrics.fileSize,
       lineCount: args.metrics.lineCount,
       parsedEntries: args.metrics.parsedEntries,
       malformedLines: args.metrics.malformedLines,
       nodeCount: args.metrics.nodeCount,
       maxLineLength: args.metrics.maxLineLength,
-      parseMs: args.parseMs,
-      rssBefore: args.memoryBefore.rss,
-      rssAfter: args.memoryAfter.rss,
-      heapUsedBefore: args.memoryBefore.heapUsed,
-      heapUsedAfter: args.memoryAfter.heapUsed,
+      parseMs: args.metrics.parseMs,
+      rssBefore: args.metrics.rssBefore,
+      rssAfter: args.metrics.rssAfter,
+      heapUsedBefore: args.metrics.heapUsedBefore,
+      heapUsedAfter: args.metrics.heapUsedAfter,
     },
     "CLAUDE_READER: summary stream",
   );
 }
 
-export async function readClaudeSessionSummary(
+export async function readClaudeSessionSummaryWithMetrics(
   options: ReadClaudeSessionSummaryOptions,
-): Promise<SessionSummary | null> {
+): Promise<ClaudeSessionSummaryRead> {
   const state = createParseState();
   const startedAt = Date.now();
   const memoryBefore = process.memoryUsage();
@@ -632,14 +665,27 @@ export async function readClaudeSessionSummary(
 
   const parseMs = Date.now() - startedAt;
   const memoryAfter = process.memoryUsage();
-  logParseMetrics({
+  const metrics = createStreamMetrics({
     options,
     metrics: state.metrics,
     parseMs,
     memoryBefore,
     memoryAfter,
   });
+  logParseMetrics({
+    options,
+    metrics,
+  });
 
-  if (state.metrics.parsedEntries === 0) return null;
-  return buildSummaryFromState(state, options);
+  const summary =
+    state.metrics.parsedEntries === 0
+      ? null
+      : buildSummaryFromState(state, options);
+  return { summary, metrics };
+}
+
+export async function readClaudeSessionSummary(
+  options: ReadClaudeSessionSummaryOptions,
+): Promise<SessionSummary | null> {
+  return (await readClaudeSessionSummaryWithMetrics(options)).summary;
 }

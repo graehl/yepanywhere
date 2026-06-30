@@ -1,9 +1,9 @@
 # Summary Parser Worker Isolation
 
-Status: implementation chunk 1 commenced. The standalone child-process parser
-harness, IPC protocol, env-gated parent client, source `tsx` launch guard, and
-focused tests have been added locally. Production `SessionIndexService` summary
-parses are not wired through the worker yet.
+Status: implementation chunk 2 completed locally. Claude summary parsing can
+now route through the child-process worker behind the default-off
+`CLAUDE_SUMMARY_PARSER_WORKER=off|on|required` gate. Codex summary parsing is
+still not routed through the worker.
 
 Related: [`038-codex-session-index-memory.md`](038-codex-session-index-memory.md),
 especially "Chunk 5: Summary Parser Worker Isolation".
@@ -396,12 +396,65 @@ Result:
 Not wired in this chunk:
 
 - `SessionIndexService.enqueueSummaryParse()` still calls provider readers
-  directly.
+  directly. Claude readers gained the worker gate in chunk 2.
 - Codex support in the child uses the existing `CodexSessionReader` for the
   harness. Extracting the streaming Codex summary parser into a pure worker
   function remains chunk 3.
 - Recycle budgets beyond timeout are not enforced yet. Large-line/file/byte
   recycle policy remains chunk 4.
+
+## Implementation Chunk 2
+
+Implemented locally on 2026-06-30:
+
+- Added `CLAUDE_SUMMARY_PARSER_WORKER=off|on|required`, parsed into server
+  config and documented in env settings / CLI help. The default remains `off`.
+- Wired `ClaudeSessionReader.getSessionSummary()` to use `SummaryParserClient`
+  when the gate is `on` or `required`. With the gate off, the existing
+  in-process `readClaudeSessionSummary()` path runs directly.
+- Kept the in-process path as the observable `on`-mode fallback for worker
+  setup/import/IPC failures. `required` mode skips/fails the one summary rather
+  than falling back.
+- Passed the configured Claude worker mode through app reader construction,
+  maintenance debug readers, and provider-resolution merged Claude readers, so
+  session-index cache misses inherit the same startup gate through the existing
+  reader API.
+- Added parent-side `summary_parser_worker_result` logging and a bounded idle
+  timeout for the child process, so enabling the gate does not keep a parser
+  child alive indefinitely after summary work completes.
+- Extended Claude summary parsing to return its existing stream metrics to the
+  worker response: line count, parsed entries, malformed lines, compact node
+  count, max line length, and parse duration.
+- Added focused tests for reader-level worker routing, reader-level fallback,
+  and config parsing/defaults.
+
+Validation:
+
+```bash
+pnpm --filter @yep-anywhere/server test -- \
+  test/sessions/summary-parser-worker.test.ts \
+  test/sessions/reader.test.ts \
+  test/config.test.ts
+pnpm --filter @yep-anywhere/server build
+```
+
+Result:
+
+- Focused worker/reader/config tests passed: 79 passed.
+- Server build passed.
+- A one-off `node --input-type=module` harness forked the built worker and
+  returned `status: "ok"` with Claude line-count metrics.
+
+Not implemented in this chunk:
+
+- The gate is still default-off and has not been run against a real cold
+  `/api/inbox` history.
+- Codex summary parsing is still not routed through the worker.
+- Large-line/file/byte recycle budgets remain a later chunk.
+- The child currently relies on shared context-window heuristics rather than a
+  full serialized `ModelInfoService` catalog. Because the worker path is
+  default-off, this remains a measured rollout concern rather than a default
+  behavior change.
 
 ## Open Design Questions
 
@@ -411,9 +464,9 @@ Not wired in this chunk:
 - Which initial recycle thresholds should be used? The measured large lines
   were 60.0 MB for Claude and 32.2 MB for Codex, so a threshold below those
   values should recycle on the known pathological cases.
-- When wiring `SessionIndexService`, should worker state appear only in
-  structured logs at first, or should `/api/session-index/status` include
-  current worker pid/generation/recycle counters immediately?
+- Should worker state remain only in structured logs for the Claude rollout, or
+  should `/api/session-index/status` include current worker
+  pid/generation/recycle counters before the cold-history harness?
 - Should active-parse crash/timeout/OOM ever retry in-process behind an explicit
   debug override, or should the production adapter always skip/empty-cache that
   one summary?

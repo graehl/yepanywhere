@@ -11,6 +11,7 @@ import {
   supportsTsxImportWorker,
   type InProcessSummaryParser,
 } from "../../src/sessions/summary-parser-worker-client.js";
+import { ClaudeSessionReader } from "../../src/sessions/reader.js";
 import type {
   SummaryParserClientEvent,
   SummaryParserWorkerRequest,
@@ -100,7 +101,7 @@ describe("summary parser worker harness", () => {
     const later = "2026-06-30T00:00:01.000Z";
     await writeFile(
       filePath,
-      [
+      `${[
         JSON.stringify({
           type: "user",
           uuid: "user-1",
@@ -123,7 +124,7 @@ describe("summary parser worker harness", () => {
             },
           },
         }),
-      ].join("\n") + "\n",
+      ].join("\n")}\n`,
     );
 
     client = new SummaryParserClient({
@@ -159,7 +160,7 @@ describe("summary parser worker harness", () => {
     const now = "2026-06-30T00:00:00.000Z";
     await writeFile(
       filePath,
-      [
+      `${[
         JSON.stringify({
           type: "session_meta",
           timestamp: now,
@@ -183,7 +184,7 @@ describe("summary parser worker harness", () => {
             message: "Hello from Codex",
           },
         }),
-      ].join("\n") + "\n",
+      ].join("\n")}\n`,
     );
 
     client = new SummaryParserClient({
@@ -305,5 +306,88 @@ describe("summary parser worker harness", () => {
     expect(response.status).toBe("ok");
     expect(response.summary?.title).toBe("Fallback parse");
     expect(response.metrics.workerPid).toBe(process.pid);
+  });
+
+  itIfSourceWorker("routes ClaudeSessionReader summaries through the worker", async () => {
+    const sessionId = "reader-worker-session";
+    const filePath = join(testDir, `${sessionId}.jsonl`);
+    await writeFile(
+      filePath,
+      `${JSON.stringify({
+        type: "user",
+        uuid: "user-1",
+        timestamp: "2026-06-30T00:00:00.000Z",
+        message: { content: "Reader worker parse" },
+      })}\n`,
+    );
+    const events: SummaryParserClientEvent[] = [];
+    client = new SummaryParserClient({
+      mode: "required",
+      cwd: packageRoot,
+      entrypoint: sourceEntrypoint(),
+      onEvent: (event) => events.push(event),
+      timeoutMs: 15_000,
+      launchTimeoutMs: 10_000,
+    });
+    const reader = new ClaudeSessionReader({
+      sessionDir: testDir,
+      summaryParserWorkerMode: "required",
+      summaryParserClient: client,
+    });
+
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "worker-project" as UrlProjectId,
+    );
+
+    expect(summary?.title).toBe("Reader worker parse");
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: "summary_parser_worker_result",
+        status: "ok",
+      }),
+    );
+  });
+
+  it("falls back from ClaudeSessionReader on worker setup failure in on mode", async () => {
+    const sessionId = "reader-fallback-session";
+    const filePath = join(testDir, `${sessionId}.jsonl`);
+    await writeFile(
+      filePath,
+      `${JSON.stringify({
+        type: "user",
+        uuid: "user-1",
+        timestamp: "2026-06-30T00:00:00.000Z",
+        message: { content: "Reader fallback parse" },
+      })}\n`,
+    );
+    const events: SummaryParserClientEvent[] = [];
+    client = new SummaryParserClient({
+      mode: "on",
+      entrypoint: {
+        supported: false,
+        runtime: "source",
+        reason: "source worker requires Node >=20.6",
+      },
+      onEvent: (event) => events.push(event),
+    });
+    const reader = new ClaudeSessionReader({
+      sessionDir: testDir,
+      summaryParserWorkerMode: "on",
+      summaryParserClient: client,
+    });
+
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "worker-project" as UrlProjectId,
+    );
+
+    expect(summary?.title).toBe("Reader fallback parse");
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: "summary_parser_worker_fallback",
+        fallbackReason: "source worker requires Node >=20.6",
+      }),
+    );
   });
 });

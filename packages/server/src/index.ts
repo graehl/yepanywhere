@@ -696,6 +696,7 @@ async function startServer() {
     deviceBridgeService,
     modelInfoService,
     enabledProviders: config.enabledProviders,
+    claudeSummaryParserWorkerMode: config.claudeSummaryParserWorkerMode,
     codexCliPath: config.codexCliPath,
     voiceInputEnabled: config.voiceInputEnabled,
     speechBackendRegistry,
@@ -729,7 +730,10 @@ async function startServer() {
       const projects = await scanner.listProjects();
       const project = projects.find((p) => p.path === projectPath);
       if (project?.provider !== "claude") return null;
-      return new ClaudeSessionReader({ sessionDir: project.sessionDir });
+      return new ClaudeSessionReader({
+        sessionDir: project.sessionDir,
+        summaryParserWorkerMode: config.claudeSummaryParserWorkerMode,
+      });
     },
   });
 

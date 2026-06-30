@@ -75,6 +75,7 @@ export interface SummaryParserWorkerMetrics {
   lineCount?: number;
   parsedEntries?: number;
   malformedLines?: number;
+  nodeCount?: number;
   dedupedEntries?: number;
   skippedDuplicateEntries?: number;
   maxLineLength?: number;
@@ -131,6 +132,19 @@ export function sanitizeSummaryParserError(
     name: "Error",
     message: typeof error === "string" ? error : "Unknown error",
   };
+}
+
+export function parseSummaryParserWorkerMode(
+  value: string | undefined,
+): SummaryParserWorkerMode {
+  switch (value?.trim().toLowerCase()) {
+    case "on":
+      return "on";
+    case "required":
+      return "required";
+    default:
+      return "off";
+  }
 }
 
 export function isSummaryParserWorkerReady(

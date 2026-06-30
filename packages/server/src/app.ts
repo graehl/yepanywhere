@@ -140,6 +140,7 @@ import { findSessionSummaryAcrossProviders } from "./sessions/provider-resolutio
 import { applyRecapOverlayToSummary } from "./sessions/recap-overlays.js";
 import { normalizeSession } from "./sessions/normalization.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
+import type { SummaryParserWorkerMode } from "./sessions/summary-parser-worker-protocol.js";
 import type { ISessionReader } from "./sessions/types.js";
 import { ExternalSessionTracker } from "./supervisor/ExternalSessionTracker.js";
 import {
@@ -174,6 +175,8 @@ export interface AppOptions {
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
   /** SessionIndexService for caching session summaries */
   sessionIndexService?: SessionIndexService;
+  /** Claude summary parser child-process mode. Default off. */
+  claudeSummaryParserWorkerMode?: SummaryParserWorkerMode;
   /** Project scanner cache TTL in ms (0 = rescan every request). */
   projectScanCacheTtlMs?: number;
   /** Sessions older than this many days are hidden from default scans. 0 disables. */
@@ -500,6 +503,7 @@ export function createApp(options: AppOptions): AppResult {
             new ClaudeSessionReader({
               sessionDir: project.sessionDir,
               additionalDirs: project.mergedSessionDirs,
+              summaryParserWorkerMode: options.claudeSummaryParserWorkerMode,
               getContextWindow: mis
                 ? (model, provider) => mis.getContextWindow(model, provider)
                 : undefined,
@@ -592,6 +596,7 @@ export function createApp(options: AppOptions): AppResult {
         grokReaderFactory,
         piSessionsDir: PI_SESSIONS_DIR,
         piReaderFactory,
+        claudeSummaryParserWorkerMode: options.claudeSummaryParserWorkerMode,
       },
       options.sessionMetadataService?.getProvider(sessionId),
     );
@@ -631,6 +636,7 @@ export function createApp(options: AppOptions): AppResult {
       grokReaderFactory,
       piSessionsDir: PI_SESSIONS_DIR,
       piReaderFactory,
+      claudeSummaryParserWorkerMode: options.claudeSummaryParserWorkerMode,
     };
 
     for (const [sessionId, metadata] of heartbeatSessionIds) {

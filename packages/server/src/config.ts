@@ -8,6 +8,10 @@ import { DEFAULT_IDLE_TIMEOUT_SECONDS } from "./defaults.js";
 import { captureStartupEnvSettings } from "./envSettings.js";
 import { getDefaultCodexSessionsDir } from "./projects/codex-scanner.js";
 import type { PermissionMode } from "./sdk/types.js";
+import {
+  parseSummaryParserWorkerMode,
+  type SummaryParserWorkerMode,
+} from "./sessions/summary-parser-worker-protocol.js";
 import { getModuleEnv, harvestYaModuleEnv } from "./yaModuleEnv.js";
 
 /**
@@ -66,6 +70,8 @@ export interface Config {
   sessionIndexWriteLockStaleMs: number;
   /** Max concurrent summary parses across all session-index scopes. */
   sessionIndexSummaryParseConcurrency: number;
+  /** Claude summary parser worker mode. Default off. */
+  claudeSummaryParserWorkerMode: SummaryParserWorkerMode;
   /** Default active session window in days. 0 disables auto-archiving. */
   sessionAutoArchiveDays: number;
   /** Project scanner cache TTL (ms). 0 = rescan every request. */
@@ -256,6 +262,9 @@ export function loadConfig(): Config {
     1,
     parseIntOrDefault(process.env.SESSION_INDEX_SUMMARY_PARSE_CONCURRENCY, 1),
   );
+  const claudeSummaryParserWorkerMode = parseSummaryParserWorkerMode(
+    process.env.CLAUDE_SUMMARY_PARSER_WORKER,
+  );
   const projectScanCacheTtlMs = Math.max(
     0,
     parseIntOrDefault(process.env.PROJECT_SCAN_CACHE_TTL_MS, 5000),
@@ -294,6 +303,7 @@ export function loadConfig(): Config {
     sessionIndexWriteLockTimeoutMs,
     sessionIndexWriteLockStaleMs,
     sessionIndexSummaryParseConcurrency,
+    claudeSummaryParserWorkerMode,
     sessionAutoArchiveDays,
     projectScanCacheTtlMs,
     idleTimeoutMs:

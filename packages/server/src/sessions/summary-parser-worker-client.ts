@@ -1,5 +1,5 @@
 import { fork, type ChildProcess } from "node:child_process";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getLogger } from "../logging/logger.js";
 import type { SessionSummary } from "../supervisor/types.js";
@@ -57,6 +57,7 @@ export interface SummaryParserClientOptions {
   mode?: SummaryParserWorkerMode;
   timeoutMs?: number;
   launchTimeoutMs?: number;
+  idleTimeoutMs?: number;
   entrypoint?: SummaryParserWorkerEntrypoint;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -72,6 +73,7 @@ class SummaryParserWorkerSetupError extends Error {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_LAUNCH_TIMEOUT_MS = 5_000;
+const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 
@@ -126,18 +128,21 @@ export class SummaryParserClient {
   private readonly mode: SummaryParserWorkerMode;
   private readonly timeoutMs: number;
   private readonly launchTimeoutMs: number;
+  private readonly idleTimeoutMs: number;
   private readonly cwd?: string;
   private readonly env?: NodeJS.ProcessEnv;
   private readonly onEvent?: (event: SummaryParserClientEvent) => void;
   private child: ChildProcess | null = null;
   private childGeneration = 0;
   private activeRequestId: string | null = null;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly options: SummaryParserClientOptions = {}) {
     this.mode = options.mode ?? "off";
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.launchTimeoutMs =
       options.launchTimeoutMs ?? DEFAULT_LAUNCH_TIMEOUT_MS;
+    this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.cwd = options.cwd;
     this.env = options.env;
     this.onEvent = options.onEvent;
@@ -160,7 +165,7 @@ export class SummaryParserClient {
     try {
       const response = await this.parseWithWorker(request, entrypoint);
       const status = clientStatusFromResponse(response);
-      this.emitEvent({
+      const event: SummaryParserClientEvent = {
         event: "summary_parser_worker_result",
         provider: request.provider,
         sessionId: request.sessionId,
@@ -170,7 +175,9 @@ export class SummaryParserClient {
         workerPid: response.metrics.workerPid,
         workerGeneration: this.childGeneration,
         ...(response.error ? { error: response.error } : {}),
-      });
+      };
+      this.emitEvent(event);
+      this.logResult(event, response);
       return {
         summary: response.summary,
         status,
@@ -197,6 +204,7 @@ export class SummaryParserClient {
   }
 
   async close(): Promise<void> {
+    this.clearIdleTimer();
     await this.stopChild("client_close");
   }
 
@@ -254,6 +262,37 @@ export class SummaryParserClient {
     this.onEvent?.(event);
   }
 
+  private logResult(
+    event: SummaryParserClientEvent,
+    response: SummaryParserWorkerResponse,
+  ): void {
+    const payload = {
+      ...event,
+      metrics: response.metrics,
+      ...(response.error ? { error: response.error } : {}),
+    };
+    if (event.status === "ok" || event.status === "empty") {
+      getLogger().debug(payload, "SUMMARY_PARSER_WORKER: parse complete");
+      return;
+    }
+    getLogger().warn(payload, "SUMMARY_PARSER_WORKER: parse failed");
+  }
+
+  private clearIdleTimer(): void {
+    if (!this.idleTimer) return;
+    clearTimeout(this.idleTimer);
+    this.idleTimer = null;
+  }
+
+  private scheduleIdleStop(): void {
+    this.clearIdleTimer();
+    if (this.idleTimeoutMs <= 0) return;
+    this.idleTimer = setTimeout(() => {
+      if (this.activeRequestId) return;
+      void this.stopChild("idle_timeout");
+    }, this.idleTimeoutMs);
+  }
+
   private async parseWithWorker(
     request: SummaryParserWorkerRequest,
     entrypoint: SupportedSummaryParserWorkerEntrypoint,
@@ -277,6 +316,7 @@ export class SummaryParserClient {
         child.off("disconnect", onDisconnect);
         child.off("error", onError);
         this.activeRequestId = null;
+        this.scheduleIdleStop();
       };
       const finish = (
         result:
@@ -356,12 +396,13 @@ export class SummaryParserClient {
   private async ensureChild(
     entrypoint: SupportedSummaryParserWorkerEntrypoint,
   ): Promise<ChildProcess> {
+    this.clearIdleTimer();
     if (this.child?.connected) {
       return this.child;
     }
 
     const child = fork(entrypoint.modulePath, [], {
-      cwd: this.cwd,
+      cwd: this.cwd ?? defaultWorkerCwd(entrypoint.modulePath),
       env: this.env ? { ...process.env, ...this.env } : process.env,
       execArgv: entrypoint.execArgv,
       stdio: ["ignore", "ignore", "ignore", "ipc"],
@@ -424,6 +465,7 @@ export class SummaryParserClient {
   }
 
   private async stopChild(reason: string): Promise<void> {
+    this.clearIdleTimer();
     const child = this.child;
     if (!child) return;
     this.child = null;
@@ -441,6 +483,10 @@ export class SummaryParserClient {
       );
     });
   }
+}
+
+function defaultWorkerCwd(modulePath: string): string {
+  return resolve(dirname(modulePath), "..", "..");
 }
 
 function timeoutResponse(

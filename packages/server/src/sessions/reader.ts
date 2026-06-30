@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -29,6 +30,11 @@ import {
 } from "./agent-excerpt.js";
 import { collectVisibleClaudeEntries } from "./claude-messages.js";
 import { readClaudeSessionSummary } from "./claude-summary.js";
+import { SummaryParserClient } from "./summary-parser-worker-client.js";
+import type {
+  SummaryParserWorkerMode,
+  SummaryParserWorkerRequest,
+} from "./summary-parser-worker-protocol.js";
 
 export interface ClaudeSessionReaderOptions {
   sessionDir: string;
@@ -39,6 +45,10 @@ export interface ClaudeSessionReaderOptions {
     model: string | undefined,
     provider?: ProviderName,
   ) => number;
+  /** Default-off child-process summary parser gate. */
+  summaryParserWorkerMode?: SummaryParserWorkerMode;
+  /** Test/diagnostic injection for the summary parser worker client. */
+  summaryParserClient?: SummaryParserClient;
 }
 
 /** @deprecated Use ClaudeSessionReaderOptions */
@@ -161,6 +171,8 @@ export class ClaudeSessionReader implements ISessionReader {
     model: string | undefined,
     provider?: ProviderName,
   ) => number;
+  private summaryParserWorkerMode: SummaryParserWorkerMode;
+  private summaryParserClient?: SummaryParserClient;
 
   constructor(options: ClaudeSessionReaderOptions) {
     this.sessionDir = options.sessionDir;
@@ -170,6 +182,8 @@ export class ClaudeSessionReader implements ISessionReader {
     ];
     this.resolveContextWindow =
       options.getContextWindow ?? getModelContextWindow;
+    this.summaryParserWorkerMode = options.summaryParserWorkerMode ?? "off";
+    this.summaryParserClient = options.summaryParserClient;
   }
 
   async listSessions(projectId: UrlProjectId): Promise<SessionSummary[]> {
@@ -235,16 +249,50 @@ export class ClaudeSessionReader implements ISessionReader {
 
     try {
       const stats = await stat(filePath);
-      return await readClaudeSessionSummary({
+      const inProcessParser = () =>
+        readClaudeSessionSummary({
+          filePath,
+          stats,
+          sessionId,
+          projectId,
+          resolveContextWindow: this.resolveContextWindow,
+        });
+
+      if (this.summaryParserWorkerMode === "off") {
+        return await inProcessParser();
+      }
+
+      const request: SummaryParserWorkerRequest = {
+        type: "parse",
+        requestId: randomUUID(),
+        provider: "claude",
         filePath,
-        stats,
         sessionId,
         projectId,
-        resolveContextWindow: this.resolveContextWindow,
-      });
+        stats: {
+          size: Number(stats.size),
+          mtimeMs: Number(stats.mtimeMs),
+          mtimeIso: stats.mtime.toISOString(),
+        },
+        sourceHints: {
+          claude: { sessionDir: dir },
+        },
+      };
+      const result = await this.getSummaryParserClient().parse(
+        request,
+        inProcessParser,
+      );
+      return result.summary;
     } catch {
       return null;
     }
+  }
+
+  private getSummaryParserClient(): SummaryParserClient {
+    this.summaryParserClient ??= new SummaryParserClient({
+      mode: this.summaryParserWorkerMode,
+    });
+    return this.summaryParserClient;
   }
 
   async getSession(

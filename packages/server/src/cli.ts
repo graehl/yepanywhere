@@ -126,6 +126,8 @@ ENVIRONMENT VARIABLES:
                                 Session index stale lock threshold in ms (default: 10000)
   SESSION_INDEX_SUMMARY_PARSE_CONCURRENCY
                                 Max concurrent session-summary parses during cold index fills (default: 1)
+  CLAUDE_SUMMARY_PARSER_WORKER  Claude summary parser child-process mode:
+                                off, on, or required (default: off)
   SESSION_INDEX_LOG_PERF
                                 Log session-index performance timings
   CODEX_READER_LOG_PARSE

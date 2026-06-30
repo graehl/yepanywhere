@@ -259,6 +259,12 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
       "Maximum concurrent session-summary parses during cold index fills. Default 1.",
   },
   {
+    name: "CLAUDE_SUMMARY_PARSER_WORKER",
+    group: "Sessions & scanning",
+    description:
+      "Claude summary parser child-process mode (off|on|required). Default off.",
+  },
+  {
     name: "PROJECT_SCAN_CACHE_TTL_MS",
     group: "Sessions & scanning",
     description: "Project scanner cache TTL (ms). 0 rescans every request.",

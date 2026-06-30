@@ -15,6 +15,7 @@ import { GrokSessionReader } from "./grok-reader.js";
 import { OPENCODE_STORAGE_DIR } from "./opencode-reader.js";
 import { PiSessionReader } from "./pi-reader.js";
 import { ClaudeSessionReader } from "./reader.js";
+import type { SummaryParserWorkerMode } from "./summary-parser-worker-protocol.js";
 import type { ISessionReader } from "./types.js";
 
 type ProviderGroup = "claude" | "codex" | "gemini" | "opencode" | "grok" | "pi";
@@ -37,6 +38,7 @@ export interface ProviderResolutionDeps {
   grokReaderFactory?: (projectPath: string) => GrokSessionReader;
   piSessionsDir?: string;
   piReaderFactory?: (projectPath: string) => PiSessionReader;
+  claudeSummaryParserWorkerMode?: SummaryParserWorkerMode;
 }
 
 export interface SessionSource {
@@ -339,7 +341,10 @@ async function listSessionsForSource(
     normalizeProviderGroup(project.provider) === "claude"
   ) {
     for (const dir of project.mergedSessionDirs ?? []) {
-      const mergedReader = new ClaudeSessionReader({ sessionDir: dir });
+      const mergedReader = new ClaudeSessionReader({
+        sessionDir: dir,
+        summaryParserWorkerMode: deps.claudeSummaryParserWorkerMode,
+      });
       const merged = await deps.sessionIndexService.getSessionsWithCache(
         dir,
         project.id,

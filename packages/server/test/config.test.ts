@@ -60,6 +60,22 @@ describe("loadConfig codex paths", () => {
     expect(config.codexCliPath).toBeUndefined();
   });
 
+  it("keeps Claude summary parser worker disabled by default", async () => {
+    const { loadConfig } = await import("../src/config.js");
+    const config = loadConfig();
+
+    expect(config.claudeSummaryParserWorkerMode).toBe("off");
+  });
+
+  it("parses Claude summary parser worker opt-in", async () => {
+    vi.stubEnv("CLAUDE_SUMMARY_PARSER_WORKER", "required");
+
+    const { loadConfig } = await import("../src/config.js");
+    const config = loadConfig();
+
+    expect(config.claudeSummaryParserWorkerMode).toBe("required");
+  });
+
   it("uses the real Windows temp directory for default local-image paths", async () => {
     const { getDefaultAllowedImagePaths } = await import("../src/config.js");
 

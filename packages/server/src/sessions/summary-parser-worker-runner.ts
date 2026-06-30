@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { getModelContextWindow, type ProviderName } from "@yep-anywhere/shared";
 import type { SessionSummary } from "../supervisor/types.js";
 import { CodexSessionReader } from "./codex-reader.js";
-import { readClaudeSessionSummary } from "./claude-summary.js";
+import { readClaudeSessionSummaryWithMetrics } from "./claude-summary.js";
 import {
   type SummaryParserWorkerMetrics,
   type SummaryParserWorkerRequest,
@@ -36,8 +36,7 @@ async function parseClaudeSummary(
   request: SummaryParserWorkerRequest,
 ): Promise<ParsedSummaryResult> {
   const stats = await stat(request.filePath);
-  const parseStartedAt = Date.now();
-  const summary = await readClaudeSessionSummary({
+  const read = await readClaudeSessionSummaryWithMetrics({
     filePath: request.filePath,
     stats,
     sessionId: request.sessionId,
@@ -47,11 +46,16 @@ async function parseClaudeSummary(
   });
 
   return {
-    summary,
+    summary: read.summary,
     metrics: {
-      parseMs: Date.now() - parseStartedAt,
-      fileSize: Number(stats.size),
+      parseMs: read.metrics.parseMs,
+      fileSize: read.metrics.fileSize,
       fileMtimeMs: Number(stats.mtimeMs),
+      lineCount: read.metrics.lineCount,
+      parsedEntries: read.metrics.parsedEntries,
+      malformedLines: read.metrics.malformedLines,
+      nodeCount: read.metrics.nodeCount,
+      maxLineLength: read.metrics.maxLineLength,
     },
   };
 }
@@ -129,6 +133,9 @@ export async function runSummaryParserWorkerRequest(
         : {}),
       ...(result.metrics?.malformedLines !== undefined
         ? { malformedLines: result.metrics.malformedLines }
+        : {}),
+      ...(result.metrics?.nodeCount !== undefined
+        ? { nodeCount: result.metrics.nodeCount }
         : {}),
       ...(result.metrics?.dedupedEntries !== undefined
         ? { dedupedEntries: result.metrics.dedupedEntries }

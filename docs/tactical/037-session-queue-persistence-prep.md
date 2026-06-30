@@ -1,6 +1,6 @@
 # Session Queue Persistence Prep
 
-Status: First persistence service chunk implemented locally.
+Status: Patient live persistence chunk implemented locally.
 
 Progress:
 
@@ -10,14 +10,33 @@ Progress:
 - [x] Decide the first code slice: server-internal schema/store service only.
 - [x] Add `SessionQueuePersistenceService` with load/save/mutation
       normalization tests.
-- [ ] Wire `Process.deferredQueue` call sites to the persistence service.
+- [x] Clarify the first live wiring slice: persist patient queue entries only.
+- [x] Wire patient `Process.deferredQueue` call sites to the persistence
+      service.
+- [x] Update `topics/queued-messages.md` with the patient-only persistence
+      revision.
 - [ ] Add restart-paused session queue UI/API behavior.
 - [ ] Integrate persisted session queues with safe restart.
-- [ ] Reconcile `topics/queued-messages.md` once implementation is actually
-      adopted.
 
 Latest update:
 
+- 2026-06-30: Patient live persistence wiring implemented locally.
+  `SessionQueuePersistenceService` is initialized at server startup and passed
+  through `Supervisor` into each `Process`. `Process.deferMessage` now writes
+  only real patient entries (`deliveryIntent: "patient"` on providers where
+  patient semantics apply) to disk, using a durable server-owned queue id stored
+  on the in-memory queue entry. Patient cancel, drain/interrupt, and verified
+  idle promotion delete the persisted record. Short-term deferred entries and
+  direct `MessageQueue` entries are intentionally not written. Startup-loaded
+  paused entries remain in the persistence service only; they are not yet
+  surfaced through a recovery API/UI or resumed into live processes.
+- 2026-06-30: Clarified the live integration shape. The first live persistence
+  slice should cover only `deliveryIntent: "patient"` entries: the long-lived,
+  visible, cancellable queue that waits for verified idle and can remain pending
+  for many minutes. Short-term `deliveryIntent: "deferred"` entries and direct
+  `MessageQueue` entries remain ephemeral because they only exist while a
+  session is active, and an active session already blocks safe restart until it
+  drains.
 - 2026-06-30: First code slice implemented locally. Added a server-internal
   `SessionQueuePersistenceService` for
   `{dataDir}/session-queued-messages.json`, with atomic writes, serialized
@@ -30,9 +49,9 @@ Latest update:
 - 2026-06-30: Tactical draft opened from discussion. The intended direction is
   to make normal per-session queued messages durable enough to survive a YA
   server restart, eventually letting safe restart drain or preserve them the
-  same way Project Queue now does. This document is preparation only; current
-  runtime behavior remains that session queued messages are process-local and
-  lost on process/server restart.
+  same way Project Queue now does. At draft time this was preparation only:
+  session queued messages were process-local and lost on process/server
+  restart.
 
 ## Context
 
@@ -41,9 +60,15 @@ YA currently has two different queue layers:
 - **Project Queue** is durable project-scoped backlog. It is written to disk and
   survives YA server restart.
 - **Per-session queued messages** are process-owned. `MessageQueue` holds direct
-  provider queue entries, and `Process.deferredQueue` holds editable deferred or
-  patient entries waiting for a delivery boundary. They are server-authoritative
-  while the process is alive, but not persisted to disk.
+  provider queue entries, and `Process.deferredQueue` holds two different
+  delivery intents:
+  - short-term `deferred` entries, which promote at the current provider
+    boundary;
+  - long-lived `patient` entries, which wait for verified idle.
+
+Short-term `deferred` entries and direct `MessageQueue` entries remain
+server-authoritative only while the process is alive. Patient entries are now
+persisted while queued, but recovered paused entries are not yet surfaced.
 
 That split is mostly reasonable, but it leaves a hole for dev restarts and hard
 server exits: a user may have several normal session queued messages visible in
@@ -55,8 +80,8 @@ hooking persistence into live dispatch.
 
 Related docs:
 
-- `topics/queued-messages.md` - current contract: server-authoritative,
-  process-local, no disk persistence.
+- `topics/queued-messages.md` - current contract: server-authoritative queue
+  state with patient-only disk persistence.
 - `topics/queue-across-compaction.md` - standing patient queue should survive
   provider compaction/restart boundaries.
 - `topics/project-queue.md` - durable backlog and restart-paused semantics.
@@ -67,21 +92,22 @@ Related docs:
 
 ## Current Baseline
 
-The existing queued-message contract intentionally says the queue is ephemeral:
+The original queued-message contract intentionally said the queue was
+ephemeral:
 
 - the client does not persist queue entries in `localStorage`;
 - the server owns queue truth while the `Process` exists;
 - refresh/reconnect shows whatever the server process reports;
 - process restart/session stop drops the queue.
 
-This draft proposes a future revision to that contract, but does not change it
-until implementation lands. Do not update UI copy or promise restart recovery
-until the server has an actual durable queue service wired into the relevant
-paths.
+This draft now narrows that contract for the patient queue only. Live patient
+entries are persisted while queued, but restart recovery remains non-visible
+until the API/UI surface is added. Do not update UI copy or promise restart
+recovery until recovered entries are actually server-reported and actionable.
 
 ## Product Decisions
 
-- Per-session queued messages may become **durable server state**, not client
+- Patient queued messages are **durable server state while queued**, not client
   state. The client still renders only server-reported queue entries.
 - Restart recovery should be **paused after restart** by default. Loading
   persisted session queued messages must not auto-send them before the user has
@@ -96,7 +122,13 @@ paths.
 - Direct queue and deferred/patient queue entries should be modeled separately
   because they have different runtime ownership:
   - direct entries are waiting in `MessageQueue` for the provider iterator;
-  - deferred/patient entries remain YA-owned until their delivery boundary.
+  - short-term deferred entries remain YA-owned only until the current active
+    session reaches its next provider boundary;
+  - patient entries remain YA-owned until verified idle and are the only first
+    live persistence target.
+- The first live persistence slice is **patient-only**. Do not persist direct
+  `MessageQueue` entries or short-term `deliveryIntent: "deferred"` entries for
+  restart/safe-restart behavior.
 - A very small crash window around queue-to-provider handoff is acceptable for
   this feature. Exactly-once/idempotent provider delivery is not a prerequisite
   for persistence prep.
@@ -104,6 +136,11 @@ paths.
 ## Non-Goals
 
 - Do not persist queue entries in browser storage.
+- Do not persist short-term `deliveryIntent: "deferred"` entries for safe
+  restart. They only exist while a session is active, and that active session
+  already blocks safe restart until the entry is promoted or drained.
+- Do not persist direct `MessageQueue` entries for safe restart. They are also
+  tied to an active provider process/iterator boundary.
 - Do not resurrect messages that were already handed to the provider and
   should now be represented by provider transcript/history.
 - Do not add queue editing, reordering, or richer queue management as part of
@@ -154,10 +191,15 @@ Notes:
 
 - `kind: "patient"` is the durable form of
   `message.metadata.deliveryIntent === "patient"` and should continue to use
-  the verified-idle path for providers where that matters.
-- `kind: "deferred"` is turn-end deferred delivery.
+  the verified-idle path for providers where that matters. This is the only
+  kind the first live persistence slice should write.
+- `kind: "deferred"` is turn-end deferred delivery. The schema can represent it
+  for future compatibility, but restart/safe-restart persistence should not
+  write it in the agreed first live slice.
 - `kind: "direct"` is a message accepted by YA for normal provider queueing but
-  not yet known to have been yielded to the provider.
+  not yet known to have been yielded to the provider. The schema can represent
+  it for future compatibility, but restart/safe-restart persistence should not
+  write it in the agreed first live slice.
 - `message.tempId` can continue to support client chip clearing, but the
   durable queue id is the authoritative server id.
 - Attachments are only persistable if they already point to durable
@@ -194,25 +236,25 @@ evidence that the provider accepted it.
 
 ## Runtime Integration Direction
 
-The safest implementation order is staged:
+The implementation order is staged:
 
 1. Add shared/server queue envelope types, validation, and normalization tests.
 2. Add a `SessionQueuePersistenceService` with load/save/mutation tests, but no
    live queue call sites.
-3. Persist only `Process.deferredQueue` entries first. They are still YA-owned,
-   visible/cancellable, and conceptually closest to Project Queue items.
-4. Rehydrate deferred/patient entries after restart as paused visible queue
-   entries, not auto-dispatched work.
-5. Add direct `MessageQueue` persistence only after the direct handoff boundary
-   is represented well enough to avoid obvious ghost chips.
-6. Teach safe restart to treat persisted session queued messages as preserved
-   work, while still reporting live active sessions and any non-persistable
-   queued work as blockers.
+3. Persist only `Process.deferredQueue` entries whose
+   `message.metadata.deliveryIntent === "patient"`.
+4. Rehydrate patient entries after restart as paused visible queue entries, not
+   auto-dispatched work.
+5. Keep short-term `deferred` and direct `MessageQueue` entries ephemeral for
+   restart/safe-restart because their owning active session already blocks the
+   safe restart point.
+6. Teach safe restart to treat persisted patient entries as preserved work,
+   while still reporting live active sessions as blockers.
 
-Steps 1 and 2 are implemented. The next likely chunk is step 3:
-persist `Process.deferredQueue` entries only, rehydrate them as
-paused-after-restart visible queue entries, and leave direct `MessageQueue`
-persistence for a later slice.
+Steps 1-3 are implemented. The next likely chunk is step 4: expose loaded
+paused-after-restart patient entries through a server-owned recovery API and
+session summary surface, without auto-dispatching them into a live provider
+process.
 
 ## Restart UX
 
@@ -239,8 +281,10 @@ strict for that class of work:
 
 - active provider sessions still block until they drain or are explicitly
   interrupted;
-- non-persistable runtime work still blocks;
-- persistable queued session messages can be flushed to disk, marked
+- short-term `deferred` and direct queue entries should drain before safe
+  restart because they only exist inside an active session, and the active
+  session is the blocker;
+- persistable patient queued messages can be flushed to disk, marked
   paused-after-restart, and reported as preserved rather than unsafe;
 - the banner can say why restart is blocked only for the remaining live
   blockers.
@@ -261,9 +305,12 @@ Schema/store tests:
 
 Runtime tests, when live persistence is wired:
 
-- deferred/patient entries survive server restart and do not auto-send;
-- deleting a recovered queued message removes it from disk and UI;
-- resuming recovered entries preserves per-session order;
+- [x] patient entries are written to the persistence file while queued;
+- [x] patient cancel/promotion removes the persisted item;
+- [x] short-term deferred entries are not written to the persistence file;
+- [ ] patient entries survive server restart and do not auto-send;
+- [ ] deleting a recovered queued message removes it from disk and UI;
+- [ ] resuming recovered entries preserves per-session order;
 - Project Queue promotion still waits for recovered per-session queues before
   injecting project-level work;
 - safe restart distinguishes active live blockers from persisted preserved
@@ -280,11 +327,10 @@ Manual smoke:
 
 - Should recovered session queued messages have a single global resume control,
   or only per-session resume/delete controls?
-- Should direct `MessageQueue` entries be included in the first live
-  persistence slice, or should the first slice intentionally cover only
-  deferred/patient entries?
 - Should a hard server restart and a scheduled safe restart produce the same
   paused-after-restart status, or should safe restart use a more specific
   "preserved for restart" status?
 - Should recovered entries remember their original queue kind visibly, or is
   that only internal dispatch metadata?
+- Is there any future non-restart use case for persisting short-term
+  `deferred` or direct entries? There is no known need for safe restart.

@@ -121,6 +121,7 @@ import { ProjectQueueScheduler } from "./services/ProjectQueueScheduler.js";
 import type { ProjectQueueService } from "./services/ProjectQueueService.js";
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
+import type { SessionQueuePersistenceService } from "./services/SessionQueuePersistenceService.js";
 import { SafeRestartService } from "./services/SafeRestartService.js";
 import type { SharingService } from "./services/SharingService.js";
 import type { SpeechBackendRegistry } from "./services/voice/registry.js";
@@ -164,6 +165,8 @@ export interface AppOptions {
   projectMetadataService?: ProjectMetadataService;
   /** Durable project-scoped message queue service */
   projectQueueService?: ProjectQueueService;
+  /** Durable store for long-lived patient queued messages */
+  sessionQueuePersistenceService?: SessionQueuePersistenceService;
   /** SessionIndexService for caching session summaries */
   sessionIndexService?: SessionIndexService;
   /** Project scanner cache TTL in ms (0 = rescan every request). */
@@ -656,6 +659,7 @@ export function createApp(options: AppOptions): AppResult {
     maxWorkers: options.maxWorkers,
     idlePreemptThresholdMs: options.idlePreemptThresholdMs,
     maxQueueSize: options.maxQueueSize,
+    sessionQueuePersistenceService: options.sessionQueuePersistenceService,
     // Save executor for remote sessions to support resume
     onSessionExecutor: options.sessionMetadataService
       ? (sessionId, executor) =>

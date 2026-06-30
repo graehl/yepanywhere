@@ -69,6 +69,7 @@ import {
   PublicShareService,
   RelayClientService,
   ServerSettingsService,
+  SessionQueuePersistenceService,
   SharingService,
 } from "./services/index.js";
 import {
@@ -356,6 +357,9 @@ const projectQueueService = new ProjectQueueService({
   dataDir: config.dataDir,
   eventBus,
 });
+const sessionQueuePersistenceService = new SessionQueuePersistenceService({
+  dataDir: config.dataDir,
+});
 const sessionIndexService = new SessionIndexService({
   projectsDir: config.claudeProjectsDir,
   dataDir: path.join(config.dataDir, "indexes"),
@@ -470,6 +474,8 @@ async function startServer() {
   markStartup("projectMetadataService initialized");
   await projectQueueService.initialize();
   markStartup("projectQueueService initialized");
+  await sessionQueuePersistenceService.initialize();
+  markStartup("sessionQueuePersistenceService initialized");
   await attachmentStagingService.initialize();
   startAttachmentStagingCleanup();
   markStartup("attachmentStagingService initialized");
@@ -657,6 +663,7 @@ async function startServer() {
     sessionMetadataService,
     projectMetadataService,
     projectQueueService,
+    sessionQueuePersistenceService,
     sessionIndexService,
     projectScanCacheTtlMs: config.projectScanCacheTtlMs,
     sessionAutoArchiveDays: config.sessionAutoArchiveDays,

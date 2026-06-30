@@ -189,6 +189,7 @@ describe("Sessions metadata route", () => {
     const deferMessage = vi.fn(() => ({ success: true, deferred: true }));
     const primeSupportedCommandsForMessage = vi.fn(async () => {});
     const setPermissionMode = vi.fn();
+    const waitForPatientQueuePersistenceIdle = vi.fn(async () => {});
     const getDeferredQueueSummary = vi.fn(() => [
       {
         tempId: "temp-queued",
@@ -204,6 +205,7 @@ describe("Sessions metadata route", () => {
           setPermissionMode,
           primeSupportedCommandsForMessage,
           deferMessage,
+          waitForPatientQueuePersistenceIdle,
           getDeferredQueueSummary,
         })),
       } as unknown as SessionsDeps["supervisor"],
@@ -257,6 +259,7 @@ describe("Sessions metadata route", () => {
       { promoteIfReady: true, placement: undefined },
     );
     expect(setPermissionMode).toHaveBeenCalledWith("default");
+    expect(waitForPatientQueuePersistenceIdle).toHaveBeenCalledTimes(1);
     await expect(response.json()).resolves.toMatchObject({
       queued: true,
       deferred: true,
@@ -277,6 +280,7 @@ describe("Sessions metadata route", () => {
       promoted: true,
       position: 0,
     }));
+    const waitForPatientQueuePersistenceIdle = vi.fn(async () => {});
     const getDeferredQueueSummary = vi.fn(() => []);
 
     const routes = createSessionsRoutes({
@@ -285,6 +289,7 @@ describe("Sessions metadata route", () => {
           isTerminated: false,
           primeSupportedCommandsForMessage,
           deferMessage,
+          waitForPatientQueuePersistenceIdle,
           getDeferredQueueSummary,
         })),
       } as unknown as SessionsDeps["supervisor"],
@@ -314,6 +319,7 @@ describe("Sessions metadata route", () => {
       }),
       { promoteIfReady: true, placement: undefined },
     );
+    expect(waitForPatientQueuePersistenceIdle).toHaveBeenCalledTimes(1);
     await expect(response.json()).resolves.toMatchObject({
       queued: true,
       deferred: false,

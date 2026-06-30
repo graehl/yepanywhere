@@ -21,6 +21,12 @@ busy/idle composer contract lives in
 This note is narrower: it governs *where queued-message state lives and how the
 client learns about it*.
 
+Terminology warning: current code stores both short-term `deferred` entries and
+long-lived `patient` entries in `Process.deferredQueue`. In product discussion,
+"the queued messages worth preserving" usually means the patient queue: visible,
+cancellable entries that wait for verified idle and can remain pending for many
+minutes.
+
 ## Principles
 
 1. **Server-authoritative.** The single source of truth is the in-process
@@ -37,10 +43,10 @@ client learns about it*.
 3. **Identity is a server-owned id, never text.** Messages are addressed by id.
    Three queued messages that all say "proceed" are three distinct ids and are
    never collapsed, matched, or de-duplicated by their content.
-4. **Ephemeral by design.** The queue lives in the Process. It dies when the
-   process restarts and dies when the session stops. It is not persisted to
-   disk, and that is acceptable — losing the queue on process death is expected
-   behavior, not a failure to defend against.
+4. **Patient persistence only.** Short-term deferred and direct queues live in
+   the Process and die when the process restarts or the session stops. Patient
+   entries are durable server state while queued, but restart-loaded entries are
+   still non-visible until the recovery API/UI lands.
 5. **No optimism.** Queuing and cancelling behave exactly like sending a normal
    session message: the composer disables, the request goes to the server, and
    the UI only changes when confirmed server state comes back. No optimistic
@@ -92,9 +98,34 @@ not rejected. The point of this note is to ship a correct minimum first.
 - **Reordering / reshuffling the queue.** (Future: server-side reorder by id.)
 - **Steering a queued message into the active turn.**
 - **"Jump to context" / nearest-timestamp navigation** from a queued chip.
-- **Disk persistence** of the queue.
+- **Disk persistence of short-term direct/deferred queues.** A planned durable
+  slice is patient-only; direct `MessageQueue` entries and short-term
+  `deliveryIntent: "deferred"` entries only exist while a session is active, and
+  active sessions already block safe restart until those entries drain.
 - **Optimistic UI** for add or delete.
 - **Any fuzzy or content-based matching**, ordering inference, or client merge.
+
+## Patient persistence revision
+
+`docs/tactical/037-session-queue-persistence-prep.md` tracks the planned
+revision. The agreed live persistence shape is intentionally narrow:
+
+- persist only `deliveryIntent: "patient"` entries, the long-lived visible queue
+  that waits for verified idle;
+- load persisted patient entries after server restart as paused-after-restart,
+  never auto-send them on startup;
+- continue rendering queue state from server-owned state, not browser storage;
+- keep short-term `deliveryIntent: "deferred"` entries ephemeral because they
+  are tied to an active session and should promote before safe restart is
+  possible;
+- keep direct `MessageQueue` entries ephemeral for the same restart semantics;
+- do not use text matching to recover, deduplicate, or remove entries.
+
+Status as of 2026-06-30: live patient queue write/delete is wired into
+`Process`/Supervisor. A queued patient entry is written to the server
+persistence service, and cancel/promotion/drain removes it. Startup-loaded
+paused entries are not yet surfaced through a recovery API/UI, so the
+user-visible restart-recovery contract is still pending.
 
 ## What we are removing and why
 

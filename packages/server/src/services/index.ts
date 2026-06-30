@@ -43,6 +43,14 @@ export {
   type ProjectQueueServiceOptions,
 } from "./ProjectQueueService.js";
 export {
+  SessionQueuePersistenceService,
+  SessionQueuePersistenceValidationError,
+  type PersistedSessionQueuedMessage,
+  type PersistedSessionQueueKind,
+  type PersistedSessionQueueStatus,
+  type SessionQueuePersistenceServiceOptions,
+} from "./SessionQueuePersistenceService.js";
+export {
   ProjectQueueScheduler,
   type ProjectIdleStatus,
   type ProjectQueueExternalTracker,

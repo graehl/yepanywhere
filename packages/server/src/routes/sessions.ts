@@ -5248,6 +5248,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           410,
         );
       }
+      await process.waitForPatientQueuePersistenceIdle();
       return c.json({
         queued: true,
         deferred: deferredResult.deferred,
@@ -5360,7 +5361,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   });
 
   // DELETE /api/sessions/:sessionId/deferred/:tempId - Cancel a deferred message
-  routes.delete("/sessions/:sessionId/deferred/:tempId", (c) => {
+  routes.delete("/sessions/:sessionId/deferred/:tempId", async (c) => {
     const sessionId = c.req.param("sessionId");
     const tempId = c.req.param("tempId");
 
@@ -5374,6 +5375,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Deferred message not found" }, 404);
     }
 
+    await process.waitForPatientQueuePersistenceIdle();
     return c.json({ cancelled: true });
   });
 

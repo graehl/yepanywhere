@@ -28,6 +28,10 @@ import { getLogger } from "../logging/logger.js";
 import { getProjectName } from "../projects/paths.js";
 import { concatUserMessages, INTERRUPT_PREAMBLE } from "../sdk/messageQueue.js";
 import type { MessageQueue } from "../sdk/messageQueue.js";
+import type {
+  PersistedSessionQueuedMessage,
+  SessionQueuePersistenceService,
+} from "../services/SessionQueuePersistenceService.js";
 import { composeTimeAnchors } from "./composeTimeAnchor.js";
 import {
   type DeferredDeliverySettings,
@@ -75,7 +79,11 @@ import type {
 type Listener = (event: ProcessEvent) => void | Promise<void>;
 type ClaudeSessionState = "idle" | "running" | "requires_action";
 
-type DeferredQueueEntry = { message: UserMessage; timestamp: string };
+type DeferredQueueEntry = {
+  message: UserMessage;
+  timestamp: string;
+  persistedQueueId?: string;
+};
 type RecentAssistantRecapEntry = {
   completedAtMs: number;
   text: string;
@@ -415,6 +423,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   helperSideModel?: string;
   /** Override deferred-delivery toggles (tests); defaults from server config. */
   deferredDelivery?: DeferredDeliveryOptions;
+  /** Durable store for long-lived patient queued messages. */
+  sessionQueuePersistenceService?: SessionQueuePersistenceService;
 }
 
 export class Process {
@@ -432,6 +442,10 @@ export class Process {
   private legacyQueue: UserMessage[] = [];
   private messageQueue: MessageQueue | null;
   private deferredDeliveryOverrides: DeferredDeliveryOptions | undefined;
+  private sessionQueuePersistenceService:
+    | SessionQueuePersistenceService
+    | undefined;
+  private patientQueuePersistenceTail: Promise<void> = Promise.resolve();
   private abortFn: (() => void) | null;
   private _state: ProcessState = { type: "in-turn" };
   private listeners: Set<Listener> = new Set();
@@ -601,6 +615,8 @@ export class Process {
     // Real SDK provides these, mock SDK doesn't
     this.messageQueue = options.queue ?? null;
     this.deferredDeliveryOverrides = options.deferredDelivery;
+    this.sessionQueuePersistenceService =
+      options.sessionQueuePersistenceService;
     this.abortFn = options.abortFn ?? null;
     this._permissionMode = options.permissionMode ?? "default";
     this._permissions = options.permissions;
@@ -792,6 +808,10 @@ export class Process {
     return this.deferredQueue.some((entry) =>
       isPatientDeferredEntry(entry, this.provider),
     );
+  }
+
+  async waitForPatientQueuePersistenceIdle(): Promise<void> {
+    await this.patientQueuePersistenceTail;
   }
 
   getLivenessSnapshot(now = new Date()): SessionLivenessSnapshot {
@@ -1203,8 +1223,13 @@ export class Process {
     // knows to treat prior work as resumable.
     if (interrupted !== false && this.messageQueue) {
       const directDrained = this.messageQueue.drain();
-      const deferredDrained = this.deferredQueue.map((e) => e.message);
+      const deferredEntries = this.deferredQueue;
+      const deferredDrained = deferredEntries.map((e) => e.message);
       this.deferredQueue = [];
+      this.deletePersistedPatientDeferredEntries(
+        deferredEntries,
+        "promoted",
+      );
       this.emitDeferredQueueChange("promoted");
 
       const all = [
@@ -2227,6 +2252,95 @@ export class Process {
     );
   }
 
+  private enqueuePatientQueuePersistence(
+    action: () => Promise<void>,
+    context: Record<string, unknown>,
+  ): void {
+    this.patientQueuePersistenceTail = this.patientQueuePersistenceTail
+      .then(action, action)
+      .catch((error) => {
+        getLogger().warn(
+          {
+            event: "patient_queue_persistence_failed",
+            sessionId: this._sessionId,
+            processId: this.id,
+            projectId: this.projectId,
+            ...context,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Failed to persist patient queued-message state",
+        );
+      });
+  }
+
+  private persistPatientDeferredEntry(entry: DeferredQueueEntry): void {
+    if (
+      !this.sessionQueuePersistenceService ||
+      !isPatientDeferredEntry(entry, this.provider)
+    ) {
+      return;
+    }
+
+    const id = entry.persistedQueueId ?? randomUUID();
+    entry.persistedQueueId = id;
+    const createdAt =
+      entry.message.metadata?.serverReceivedAt ?? entry.timestamp;
+    const source = entry.message.tempId
+      ? { tempId: entry.message.tempId }
+      : undefined;
+    const mode = entry.message.mode ?? this._permissionMode;
+    const item: PersistedSessionQueuedMessage = {
+      id,
+      sessionId: this._sessionId,
+      projectId: this.projectId,
+      projectPath: this.projectPath,
+      provider: this.provider,
+      ...(this.executor ? { executor: this.executor } : {}),
+      ...(this.requestedModel ? { model: this.requestedModel } : {}),
+      ...(this.serviceTier ? { serviceTier: this.serviceTier } : {}),
+      ...(mode ? { mode } : {}),
+      kind: "patient",
+      message: entry.message,
+      createdAt,
+      updatedAt: entry.timestamp,
+      queuedAt: entry.timestamp,
+      status: "queued",
+      ...(source ? { source } : {}),
+    };
+
+    this.enqueuePatientQueuePersistence(
+      async () => {
+        await this.sessionQueuePersistenceService?.upsertItem(item);
+      },
+      { action: "upsert", persistedQueueId: id },
+    );
+  }
+
+  private deletePersistedPatientDeferredEntries(
+    entries: DeferredQueueEntry[],
+    reason: "cancelled" | "promoted",
+  ): void {
+    if (!this.sessionQueuePersistenceService) {
+      return;
+    }
+    const ids = entries
+      .filter((entry) => isPatientDeferredEntry(entry, this.provider))
+      .map((entry) => entry.persistedQueueId)
+      .filter((id): id is string => Boolean(id));
+    if (ids.length === 0) {
+      return;
+    }
+
+    this.enqueuePatientQueuePersistence(
+      async () => {
+        for (const id of ids) {
+          await this.sessionQueuePersistenceService?.deleteItem(id);
+        }
+      },
+      { action: "delete", reason, persistedQueueIds: ids },
+    );
+  }
+
   /**
    * Add a message to the deferred queue.
    * Deferred messages are held server-side and auto-sent when the agent reaches
@@ -2276,10 +2390,12 @@ export class Process {
       };
     }
 
-    this.deferredQueue.push({
+    const entry: DeferredQueueEntry = {
       message,
       timestamp: new Date().toISOString(),
-    });
+    };
+    this.deferredQueue.push(entry);
+    this.persistPatientDeferredEntry(entry);
     this.emitDeferredQueueChange("queued", message.tempId);
     return { success: true, deferred: true };
   }
@@ -2292,7 +2408,10 @@ export class Process {
       (entry) => entry.message.tempId === tempId,
     );
     if (index === -1) return false;
-    this.deferredQueue.splice(index, 1);
+    const [removed] = this.deferredQueue.splice(index, 1);
+    if (removed) {
+      this.deletePersistedPatientDeferredEntries([removed], "cancelled");
+    }
     this.emitDeferredQueueChange("cancelled", tempId);
     return true;
   }
@@ -2338,9 +2457,11 @@ export class Process {
       return [];
     }
 
-    const drained = this.deferredQueue.map((entry) => entry.message);
+    const drainedEntries = this.deferredQueue;
+    const drained = drainedEntries.map((entry) => entry.message);
     const firstTempId = drained[0]?.tempId;
     this.deferredQueue = [];
+    this.deletePersistedPatientDeferredEntries(drainedEntries, reason);
     this.emitDeferredQueueChange(reason, firstTempId);
     return drained;
   }
@@ -3355,6 +3476,7 @@ export class Process {
     this.deferredQueue = this.deferredQueue.filter(
       (entry) => !promotedEntries.has(entry),
     );
+    this.deletePersistedPatientDeferredEntries(group, "promoted");
     this.emitDeferredQueueChange(
       "promoted",
       group.length === 1 ? group[0]!.message.tempId : undefined,

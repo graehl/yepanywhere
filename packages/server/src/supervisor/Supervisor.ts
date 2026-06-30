@@ -19,6 +19,7 @@ import type { SessionMetadataService } from "../metadata/index.js";
 import { getProjectName } from "../projects/paths.js";
 import { getProvider } from "../sdk/providers/index.js";
 import { CacheMissBillingMonitor } from "../services/CacheMissBillingMonitor.js";
+import type { SessionQueuePersistenceService } from "../services/SessionQueuePersistenceService.js";
 import type {
   AgentProvider,
   SummaryGenerationRequest,
@@ -475,6 +476,8 @@ export interface SupervisorOptions {
   interruptTimeoutMs?: number;
   /** Metadata service used to hide/archive server-owned helper forks. */
   sessionMetadataService?: SessionMetadataService;
+  /** Durable store for long-lived patient queued messages. */
+  sessionQueuePersistenceService?: SessionQueuePersistenceService;
 }
 
 export class Supervisor {
@@ -521,6 +524,7 @@ export class Supervisor {
   private patientCheckTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private interruptTimeoutMs: number;
   private sessionMetadataService?: SessionMetadataService;
+  private sessionQueuePersistenceService?: SessionQueuePersistenceService;
   // In-flight forked recaps, keyed by process id. The AbortController cancels
   // the generator-fork helper turn when the parent becomes active again, so a
   // returning user's new turn is never shadowed by a stale recap. See
@@ -557,6 +561,8 @@ export class Supervisor {
     this.interruptTimeoutMs =
       options.interruptTimeoutMs ?? DEFAULT_INTERRUPT_TIMEOUT_MS;
     this.sessionMetadataService = options.sessionMetadataService;
+    this.sessionQueuePersistenceService =
+      options.sessionQueuePersistenceService;
     this.staleCheckTimer = setInterval(
       () => this.terminateStaleProcesses(),
       STALE_CHECK_INTERVAL_MS,
@@ -946,6 +952,7 @@ export class Supervisor {
       sessionId: tempSessionId,
       idleTimeoutMs: this.idleTimeoutMs,
       queue,
+      sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       abortFn: abort,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
@@ -1413,6 +1420,7 @@ export class Supervisor {
       sessionId: tempSessionId,
       idleTimeoutMs: this.idleTimeoutMs,
       queue,
+      sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       abortFn: abort,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
@@ -1543,6 +1551,7 @@ export class Supervisor {
       sessionId: tempSessionId,
       idleTimeoutMs: this.idleTimeoutMs,
       queue,
+      sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       abortFn: abort,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>
@@ -1671,6 +1680,7 @@ export class Supervisor {
       sessionId: tempSessionId,
       idleTimeoutMs: this.idleTimeoutMs,
       queue,
+      sessionQueuePersistenceService: this.sessionQueuePersistenceService,
       abortFn: abort,
       isProcessAlive,
       shouldRetainIdleProcess: (sessionId) =>

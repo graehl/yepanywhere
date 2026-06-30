@@ -1,5 +1,8 @@
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import { toUrlProjectId, type UrlProjectId } from "@yep-anywhere/shared";
 import { CONCAT_SEPARATOR, MessageQueue } from "../src/sdk/messageQueue.js";
 import { getLogger } from "../src/logging/logger.js";
 import type { AgentProvider } from "../src/sdk/providers/types.js";
@@ -7,6 +10,7 @@ import type {
   ProviderRetentionSnapshot,
   SDKMessage,
 } from "../src/sdk/types.js";
+import { SessionQueuePersistenceService } from "../src/services/SessionQueuePersistenceService.js";
 import { Process } from "../src/supervisor/Process.js";
 import type { ProcessEvent } from "../src/supervisor/types.js";
 
@@ -72,6 +76,27 @@ async function waitFor(assertion: () => void): Promise<void> {
     }
   }
   assertion();
+}
+
+async function withSessionQueuePersistence<T>(
+  fn: (options: {
+    service: SessionQueuePersistenceService;
+    projectId: UrlProjectId;
+  }) => Promise<T>,
+): Promise<T> {
+  const testDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "process-session-queue-"),
+  );
+  try {
+    const service = new SessionQueuePersistenceService({ dataDir: testDir });
+    await service.initialize();
+    return await fn({
+      service,
+      projectId: toUrlProjectId("/tmp/process-session-queue"),
+    });
+  } finally {
+    await fs.rm(testDir, { recursive: true, force: true });
+  }
 }
 
 function createRecapProvider(
@@ -1502,6 +1527,104 @@ describe("Process", () => {
           metadata,
         },
       ]);
+    });
+
+    it("persists only patient queue entries and deletes them on cancel", async () => {
+      await withSessionQueuePersistence(async ({ service, projectId }) => {
+        const iterator = createMockIterator([
+          { type: "system", session_id: "sess-1" },
+        ]);
+
+        const process = new Process(iterator, {
+          projectPath: "/tmp/process-session-queue",
+          projectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          idleTimeoutMs: 100,
+          sessionQueuePersistenceService: service,
+        });
+
+        process.deferMessage({
+          text: "short deferred",
+          tempId: "temp-deferred",
+          metadata: { deliveryIntent: "deferred" },
+        });
+        process.deferMessage({
+          text: "patient follow-up",
+          tempId: "temp-patient",
+          metadata: {
+            deliveryIntent: "patient",
+            serverReceivedAt: "2026-06-30T10:00:00.000Z",
+          },
+        });
+        await process.waitForPatientQueuePersistenceIdle();
+
+        expect(service.list()).toMatchObject([
+          {
+            sessionId: "sess-1",
+            projectId,
+            kind: "patient",
+            status: "queued",
+            message: {
+              text: "patient follow-up",
+              tempId: "temp-patient",
+              metadata: {
+                deliveryIntent: "patient",
+                serverReceivedAt: "2026-06-30T10:00:00.000Z",
+              },
+            },
+            source: { tempId: "temp-patient" },
+            createdAt: "2026-06-30T10:00:00.000Z",
+          },
+        ]);
+
+        expect(process.cancelDeferredMessage("temp-patient")).toBe(true);
+        await process.waitForPatientQueuePersistenceIdle();
+
+        expect(service.list()).toEqual([]);
+      });
+    });
+
+    it("deletes persisted patient entries when they promote", async () => {
+      await withSessionQueuePersistence(async ({ service, projectId }) => {
+        const controller = createControllableIterator();
+        const queue = new MessageQueue();
+        const process = new Process(controller.iterator, {
+          projectPath: "/tmp/process-session-queue",
+          projectId,
+          sessionId: "sess-1",
+          provider: "claude",
+          idleTimeoutMs: 100,
+          queue,
+          sessionQueuePersistenceService: service,
+        });
+
+        process.deferMessage(
+          {
+            text: "patient follow-up",
+            tempId: "temp-patient",
+            metadata: { deliveryIntent: "patient" },
+          },
+          { promoteIfReady: true },
+        );
+        await process.waitForPatientQueuePersistenceIdle();
+        expect(service.list()).toHaveLength(1);
+
+        controller.push({ type: "result", session_id: "sess-1" });
+        await waitFor(() => expect(process.state.type).toBe("idle"));
+
+        expect(
+          process.promoteEligiblePatientDeferredMessages({
+            quietSinceMs: Date.now() - 30_000,
+          }),
+        ).toMatchObject({ promoted: true });
+        await process.waitForPatientQueuePersistenceIdle();
+
+        expect(service.list()).toEqual([]);
+
+        controller.finish();
+        await process.abort();
+      });
     });
 
     it("drains deferred messages for replacement process recovery", async () => {

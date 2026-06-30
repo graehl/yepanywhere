@@ -505,7 +505,7 @@
   "sessionRetitleSaveAsTyped": "Save title as typed (Ctrl+Enter)",
   "sessionRetitleCancel": "Cancel retitle (Esc)",
   "sessionRetitleGenerating": "Generating title...",
-  "sessionRetitleDeferred": "Will save when generated title is ready...",
+  "sessionRetitleDeferred": "Generating title; will save when ready...",
   "sessionRetitleProposalLabel": "Suggested:",
   "sessionRetitleFailed": "Failed to generate title",
   "sessionRetitleUnsupported": "Generated titles need transcript fork support for this provider.",

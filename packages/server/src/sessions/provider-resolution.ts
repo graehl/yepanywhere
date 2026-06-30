@@ -39,6 +39,7 @@ export interface ProviderResolutionDeps {
   piSessionsDir?: string;
   piReaderFactory?: (projectPath: string) => PiSessionReader;
   claudeSummaryParserWorkerMode?: SummaryParserWorkerMode;
+  codexSummaryParserWorkerMode?: SummaryParserWorkerMode;
 }
 
 export interface SessionSource {
@@ -132,6 +133,7 @@ function createCodexSource(
       ? new CodexSessionReader({
           sessionsDir: deps.codexSessionsDir,
           projectPath: project.path,
+          summaryParserWorkerMode: deps.codexSummaryParserWorkerMode,
         })
       : null);
   if (!reader) return null;

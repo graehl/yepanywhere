@@ -11,7 +11,7 @@
  * Unlike Claude's DAG structure, Codex sessions are linear.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { open, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -44,6 +44,11 @@ import {
   readCodexRolloutMetadata,
 } from "./codex-discovery.js";
 import { normalizeSession } from "./normalization.js";
+import { SummaryParserClient } from "./summary-parser-worker-client.js";
+import type {
+  SummaryParserWorkerMode,
+  SummaryParserWorkerRequest,
+} from "./summary-parser-worker-protocol.js";
 import type {
   GetSessionOptions,
   ISessionReader,
@@ -64,6 +69,8 @@ export interface CodexSessionReaderOptions {
   dataDir?: string;
   discoveryIndex?: SessionDiscoveryIndex;
   slowLogThresholdMs?: number;
+  summaryParserWorkerMode?: SummaryParserWorkerMode;
+  summaryParserClient?: SummaryParserClient;
 }
 
 interface CodexSessionFile {
@@ -369,8 +376,11 @@ function dedupeCodexEntries(entries: CodexSessionEntry[]): CodexSessionEntry[] {
 export class CodexSessionReader implements ISessionReader {
   private sessionsDir: string;
   private projectPath?: string;
+  private dataDir?: string;
   private discoveryIndex?: SessionDiscoveryIndex;
   private slowLogThresholdMs: number;
+  private summaryParserWorkerMode: SummaryParserWorkerMode;
+  private summaryParserClient?: SummaryParserClient;
   private lastScanMetrics: CodexSessionReaderScanMetrics | null = null;
   private lastSummaryStreamMetrics: CodexSummaryStreamMetrics | null = null;
 
@@ -383,6 +393,7 @@ export class CodexSessionReader implements ISessionReader {
     this.projectPath = options.projectPath
       ? canonicalizeProjectPath(options.projectPath)
       : undefined;
+    this.dataDir = options.dataDir;
     this.discoveryIndex =
       options.discoveryIndex ??
       createCodexSessionDiscoveryIndex(options.dataDir, this.sessionsDir);
@@ -390,6 +401,8 @@ export class CodexSessionReader implements ISessionReader {
       0,
       options.slowLogThresholdMs ?? DEFAULT_SLOW_LOG_THRESHOLD_MS,
     );
+    this.summaryParserWorkerMode = options.summaryParserWorkerMode ?? "off";
+    this.summaryParserClient = options.summaryParserClient;
   }
 
   invalidateCache(): void {
@@ -469,11 +482,43 @@ export class CodexSessionReader implements ISessionReader {
     if (!sessionFile) return null;
 
     try {
-      return await this.buildSessionSummaryFromStream(
+      const inProcessParser = () =>
+        this.buildSessionSummaryFromStream(
+          sessionId,
+          projectId,
+          sessionFile.filePath,
+        );
+
+      if (this.summaryParserWorkerMode === "off") {
+        return await inProcessParser();
+      }
+
+      const stats = await stat(sessionFile.filePath);
+      const request: SummaryParserWorkerRequest = {
+        type: "parse",
+        requestId: randomUUID(),
+        provider: "codex",
+        filePath: sessionFile.filePath,
         sessionId,
         projectId,
-        sessionFile,
+        stats: {
+          size: Number(stats.size),
+          mtimeMs: Number(stats.mtimeMs),
+          mtimeIso: stats.mtime.toISOString(),
+        },
+        sourceHints: {
+          codex: {
+            sessionsDir: this.sessionsDir,
+            ...(this.projectPath ? { projectPath: this.projectPath } : {}),
+            ...(this.dataDir ? { dataDir: this.dataDir } : {}),
+          },
+        },
+      };
+      const result = await this.getSummaryParserClient().parse(
+        request,
+        inProcessParser,
       );
+      return result.summary;
     } catch {
       return null;
     }
@@ -979,23 +1024,34 @@ export class CodexSessionReader implements ISessionReader {
     return dedupedEntries.slice();
   }
 
+  async getSessionSummaryFromFile(
+    sessionId: string,
+    projectId: UrlProjectId,
+    filePath: string,
+  ): Promise<SessionSummary | null> {
+    return this.buildSessionSummaryFromStream(sessionId, projectId, filePath);
+  }
+
   private async buildSessionSummaryFromStream(
     sessionId: string,
     projectId: UrlProjectId,
-    sessionFile: CodexSessionFile,
+    filePath: string,
   ): Promise<SessionSummary | null> {
-    const stats = await stat(sessionFile.filePath);
-    const read = await this.readSummaryStream(
-      sessionId,
-      sessionFile.filePath,
-      stats,
-    );
+    const stats = await stat(filePath);
+    const read = await this.readSummaryStream(sessionId, filePath, stats);
     return this.buildSessionSummaryFromState(
       sessionId,
       projectId,
       stats,
       read.state,
     );
+  }
+
+  private getSummaryParserClient(): SummaryParserClient {
+    this.summaryParserClient ??= new SummaryParserClient({
+      mode: this.summaryParserWorkerMode,
+    });
+    return this.summaryParserClient;
   }
 
   private async readSummaryStream(

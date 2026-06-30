@@ -1,9 +1,11 @@
 # Summary Parser Worker Isolation
 
-Status: implementation chunk 2 completed locally. Claude summary parsing can
-now route through the child-process worker behind the default-off
-`CLAUDE_SUMMARY_PARSER_WORKER=off|on|required` gate. Codex summary parsing is
-still not routed through the worker.
+Status: implementation chunk 3 completed locally. Claude and Codex summary
+parsing can now route through the child-process worker behind separate
+default-off gates:
+
+- `CLAUDE_SUMMARY_PARSER_WORKER=off|on|required`
+- `CODEX_SUMMARY_PARSER_WORKER=off|on|required`
 
 Related: [`038-codex-session-index-memory.md`](038-codex-session-index-memory.md),
 especially "Chunk 5: Summary Parser Worker Isolation".
@@ -455,6 +457,71 @@ Not implemented in this chunk:
   full serialized `ModelInfoService` catalog. Because the worker path is
   default-off, this remains a measured rollout concern rather than a default
   behavior change.
+
+## Implementation Chunk 3
+
+Implemented locally on 2026-06-30:
+
+- Added `CODEX_SUMMARY_PARSER_WORKER=off|on|required`, parsed into server
+  config and documented in env settings / CLI help. The default remains `off`.
+- Wired `CodexSessionReader.getSessionSummary()` to use `SummaryParserClient`
+  when the gate is `on` or `required`. With the gate off, Codex keeps the
+  existing in-process streaming summary parser.
+- Kept Codex fallback behavior aligned with Claude: `on` mode falls back to
+  the in-process parser for worker setup/import/entrypoint failures, while
+  `required` mode proves the worker path and skips the one summary if worker
+  setup fails.
+- Added a direct-file Codex summary method for the worker path. The parent
+  process still owns discovery, file selection, session-index queueing, cache
+  behavior, and status/progress reporting; the child receives a known rollout
+  file path and parses only that file.
+- Updated the worker runner so Codex parsing no longer scans for the session
+  inside the child process. It uses the parent-provided `filePath` and returns
+  only the `SessionSummary | null` plus the existing Codex summary-stream
+  metrics.
+- Passed the configured Codex worker mode through app reader construction and
+  provider-resolution fallback reader construction, so session-index cache
+  misses inherit the startup gate through the existing reader API.
+- Added focused tests for Codex reader-level worker routing, Codex reader-level
+  fallback, and config parsing/defaults.
+
+Validation:
+
+```bash
+pnpm --filter @yep-anywhere/server test -- \
+  test/sessions/summary-parser-worker.test.ts \
+  test/config.test.ts
+pnpm --filter @yep-anywhere/server test -- \
+  test/sessions/codex-reader-oss.test.ts
+pnpm --filter @yep-anywhere/server build
+pnpm lint
+git diff --check
+```
+
+Result:
+
+- Focused worker/config tests passed: 33 passed.
+- Codex reader OSS tests passed: 19 passed, 1 skipped for native zstd
+  availability.
+- Server build passed.
+- A one-off `node --input-type=module` harness forked the built worker and
+  returned `status: "ok"` for a compiled-worker Codex fixture.
+- Root lint exited 0 with the existing unrelated advisories in
+  `packages/server/src/routes/sessions.ts` and
+  `packages/server/test/augments/task-list-augments.test.ts`.
+- `git diff --check` passed.
+
+Not implemented in this chunk:
+
+- The Codex gate is still default-off and has not been run against a real cold
+  `/api/inbox` history.
+- Worker recycle budgets beyond timeout are still not enforced.
+- Crash/timeout/OOM counters are still limited to existing worker events/logs;
+  `/api/session-index/status` has not gained worker-specific counters.
+- The chunk uses a direct-file Codex reader method rather than a standalone
+  pure parser module. That keeps the production change smaller while still
+  avoiding child-side session discovery; a pure module extraction can remain a
+  follow-up if tests or reuse pressure justify it.
 
 ## Open Design Questions
 

@@ -69,9 +69,10 @@ async function parseCodexSummary(
     ...(hints?.projectPath ? { projectPath: hints.projectPath } : {}),
     ...(hints?.dataDir ? { dataDir: hints.dataDir } : {}),
   });
-  const summary = await reader.getSessionSummary(
+  const summary = await reader.getSessionSummaryFromFile(
     request.sessionId,
     request.projectId,
+    request.filePath,
   );
   const streamMetrics = reader.getLastSummaryStreamMetrics();
 

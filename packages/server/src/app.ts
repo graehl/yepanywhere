@@ -179,6 +179,8 @@ export interface AppOptions {
   sessionIndexService?: SessionIndexService;
   /** Claude summary parser child-process mode. Default off. */
   claudeSummaryParserWorkerMode?: SummaryParserWorkerMode;
+  /** Codex summary parser child-process mode. Default off. */
+  codexSummaryParserWorkerMode?: SummaryParserWorkerMode;
   /** Project scanner cache TTL in ms (0 = rescan every request). */
   projectScanCacheTtlMs?: number;
   /** Sessions older than this many days are hidden from default scans. 0 disables. */
@@ -481,6 +483,7 @@ export function createApp(options: AppOptions): AppResult {
             return new CodexSessionReader({
               sessionsDir: project.sessionDir,
               projectPath: project.path,
+              summaryParserWorkerMode: options.codexSummaryParserWorkerMode,
               ...(discoveryIndex ? { discoveryIndex } : {}),
             });
           },
@@ -548,6 +551,7 @@ export function createApp(options: AppOptions): AppResult {
         return new CodexSessionReader({
           sessionsDir: CODEX_SESSIONS_DIR,
           projectPath,
+          summaryParserWorkerMode: options.codexSummaryParserWorkerMode,
           ...(discoveryIndex ? { discoveryIndex } : {}),
         });
       },
@@ -591,6 +595,7 @@ export function createApp(options: AppOptions): AppResult {
         readerFactory,
         codexSessionsDir: CODEX_SESSIONS_DIR,
         codexReaderFactory,
+        codexSummaryParserWorkerMode: options.codexSummaryParserWorkerMode,
         geminiSessionsDir: GEMINI_TMP_DIR,
         geminiReaderFactory,
         geminiHashToCwd: geminiScanner.getHashToCwd(),
@@ -631,6 +636,7 @@ export function createApp(options: AppOptions): AppResult {
       readerFactory,
       codexSessionsDir: CODEX_SESSIONS_DIR,
       codexReaderFactory,
+      codexSummaryParserWorkerMode: options.codexSummaryParserWorkerMode,
       geminiSessionsDir: GEMINI_TMP_DIR,
       geminiReaderFactory,
       geminiHashToCwd: geminiScanner.getHashToCwd(),

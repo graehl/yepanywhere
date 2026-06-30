@@ -697,6 +697,7 @@ async function startServer() {
     modelInfoService,
     enabledProviders: config.enabledProviders,
     claudeSummaryParserWorkerMode: config.claudeSummaryParserWorkerMode,
+    codexSummaryParserWorkerMode: config.codexSummaryParserWorkerMode,
     codexCliPath: config.codexCliPath,
     voiceInputEnabled: config.voiceInputEnabled,
     speechBackendRegistry,

@@ -265,6 +265,12 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
       "Claude summary parser child-process mode (off|on|required). Default off.",
   },
   {
+    name: "CODEX_SUMMARY_PARSER_WORKER",
+    group: "Sessions & scanning",
+    description:
+      "Codex summary parser child-process mode (off|on|required). Default off.",
+  },
+  {
     name: "PROJECT_SCAN_CACHE_TTL_MS",
     group: "Sessions & scanning",
     description: "Project scanner cache TTL (ms). 0 rescans every request.",

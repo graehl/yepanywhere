@@ -12,6 +12,7 @@ import {
   type InProcessSummaryParser,
 } from "../../src/sessions/summary-parser-worker-client.js";
 import { ClaudeSessionReader } from "../../src/sessions/reader.js";
+import { CodexSessionReader } from "../../src/sessions/codex-reader.js";
 import type {
   SummaryParserClientEvent,
   SummaryParserWorkerRequest,
@@ -52,6 +53,43 @@ function fakeSummary(request: SummaryParserWorkerRequest): SessionSummary {
     ownership: { owner: "none" },
     provider: request.provider === "codex" ? "codex" : "claude",
   };
+}
+
+async function writeCodexSummaryFixture(options: {
+  filePath: string;
+  sessionId: string;
+  projectPath: string;
+  message: string;
+}): Promise<void> {
+  const now = "2026-06-30T00:00:00.000Z";
+  await writeFile(
+    options.filePath,
+    `${[
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: now,
+        payload: {
+          id: options.sessionId,
+          cwd: options.projectPath,
+          timestamp: now,
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({
+        type: "turn_context",
+        timestamp: now,
+        payload: { model: "gpt-5" },
+      }),
+      JSON.stringify({
+        type: "event_msg",
+        timestamp: now,
+        payload: {
+          type: "user_message",
+          message: options.message,
+        },
+      }),
+    ].join("\n")}\n`,
+  );
 }
 
 describe("summary parser worker harness", () => {
@@ -157,35 +195,12 @@ describe("summary parser worker harness", () => {
     const sessionId = "codex-worker-session";
     const projectPath = "/test/project";
     const filePath = join(testDir, `${sessionId}.jsonl`);
-    const now = "2026-06-30T00:00:00.000Z";
-    await writeFile(
+    await writeCodexSummaryFixture({
       filePath,
-      `${[
-        JSON.stringify({
-          type: "session_meta",
-          timestamp: now,
-          payload: {
-            id: sessionId,
-            cwd: projectPath,
-            timestamp: now,
-            model_provider: "openai",
-          },
-        }),
-        JSON.stringify({
-          type: "turn_context",
-          timestamp: now,
-          payload: { model: "gpt-5" },
-        }),
-        JSON.stringify({
-          type: "event_msg",
-          timestamp: now,
-          payload: {
-            type: "user_message",
-            message: "Hello from Codex",
-          },
-        }),
-      ].join("\n")}\n`,
-    );
+      sessionId,
+      projectPath,
+      message: "Hello from Codex",
+    });
 
     client = new SummaryParserClient({
       mode: "required",
@@ -386,6 +401,92 @@ describe("summary parser worker harness", () => {
     expect(events).toContainEqual(
       expect.objectContaining({
         event: "summary_parser_worker_fallback",
+        fallbackReason: "source worker requires Node >=20.6",
+      }),
+    );
+  });
+
+  itIfSourceWorker("routes CodexSessionReader summaries through the worker", async () => {
+    const sessionId = "codex-reader-worker-session";
+    const projectPath = "/test/project";
+    const filePath = join(testDir, `${sessionId}.jsonl`);
+    await writeCodexSummaryFixture({
+      filePath,
+      sessionId,
+      projectPath,
+      message: "Codex reader worker parse",
+    });
+    const events: SummaryParserClientEvent[] = [];
+    client = new SummaryParserClient({
+      mode: "required",
+      cwd: packageRoot,
+      entrypoint: sourceEntrypoint(),
+      onEvent: (event) => events.push(event),
+      timeoutMs: 15_000,
+      launchTimeoutMs: 10_000,
+    });
+    const reader = new CodexSessionReader({
+      sessionsDir: testDir,
+      projectPath,
+      dataDir,
+      summaryParserWorkerMode: "required",
+      summaryParserClient: client,
+    });
+
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "worker-project" as UrlProjectId,
+    );
+
+    expect(summary?.title).toBe("Codex reader worker parse");
+    expect(summary?.provider).toBe("codex");
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: "summary_parser_worker_result",
+        provider: "codex",
+        status: "ok",
+      }),
+    );
+  });
+
+  it("falls back from CodexSessionReader on worker setup failure in on mode", async () => {
+    const sessionId = "codex-reader-fallback-session";
+    const projectPath = "/test/project";
+    const filePath = join(testDir, `${sessionId}.jsonl`);
+    await writeCodexSummaryFixture({
+      filePath,
+      sessionId,
+      projectPath,
+      message: "Codex reader fallback parse",
+    });
+    const events: SummaryParserClientEvent[] = [];
+    client = new SummaryParserClient({
+      mode: "on",
+      entrypoint: {
+        supported: false,
+        runtime: "source",
+        reason: "source worker requires Node >=20.6",
+      },
+      onEvent: (event) => events.push(event),
+    });
+    const reader = new CodexSessionReader({
+      sessionsDir: testDir,
+      projectPath,
+      dataDir,
+      summaryParserWorkerMode: "on",
+      summaryParserClient: client,
+    });
+
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "worker-project" as UrlProjectId,
+    );
+
+    expect(summary?.title).toBe("Codex reader fallback parse");
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: "summary_parser_worker_fallback",
+        provider: "codex",
         fallbackReason: "source worker requires Node >=20.6",
       }),
     );

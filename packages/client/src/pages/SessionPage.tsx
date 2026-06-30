@@ -1148,8 +1148,9 @@ function SessionPageContent({
     pendingUploadCount: uploadProgress.length,
     transientAttachmentCount: stagedAttachmentUploadsEnabled
       ? 0
-      : attachments.filter((attachment) => !isComposerStagedAttachment(attachment))
-          .length,
+      : attachments.filter(
+          (attachment) => !isComposerStagedAttachment(attachment),
+        ).length,
     stagedRefs: stagedComposerAttachmentRefs,
     draftState: draftControlsRef.current?.getAttachmentState() ?? null,
   });
@@ -4957,8 +4958,16 @@ function SessionPageContent({
                       disabled={
                         isRenaming || !!generatedRetitle?.deferredInsertion
                       }
-                      title={t("sessionRetitleSaveAsTyped")}
-                      aria-label={t("sessionRetitleSaveAsTyped")}
+                      title={
+                        titleEditMode === "retitle"
+                          ? t("sessionRetitleSaveAsTyped")
+                          : t("sessionTitleSave")
+                      }
+                      aria-label={
+                        titleEditMode === "retitle"
+                          ? t("sessionRetitleSaveAsTyped")
+                          : t("sessionTitleSave")
+                      }
                     >
                       <svg
                         width="15"
@@ -5126,6 +5135,11 @@ function SessionPageContent({
                   onToggleArchive={handleToggleArchive}
                   onToggleRead={handleToggleRead}
                   onRename={handleStartEditingTitle}
+                  onGenerateTitle={
+                    supportsForkFromTurn
+                      ? handleGenerateAndApplyTitle
+                      : undefined
+                  }
                   onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                   onConfigureRecaps={
                     status.owner === "self"

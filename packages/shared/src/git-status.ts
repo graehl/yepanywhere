@@ -3,6 +3,8 @@ export const GIT_STATUS_ENHANCED_CAPABILITY = "git-status-enhanced";
 export const GIT_STATUS_REMOTE_CHECK_CAPABILITY = "git-status-remote-check";
 export const GIT_STATUS_PULL_CAPABILITY = "git-status-pull";
 export const GIT_STATUS_PUSH_CAPABILITY = "git-status-push";
+export const GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY =
+  "git-status-integration-options";
 
 export interface GitFileChange {
   /** Relative file path within the repo */
@@ -89,5 +91,37 @@ export interface GitPushResult {
   status: GitPushStatus;
   checkedRemoteAt: string | null;
   gitStatus?: GitStatusInfo;
+  detail?: string;
+}
+
+export type GitIntegrationOptionsStatus =
+  | "available"
+  | "unavailable"
+  | "busy"
+  | "not-a-git-repo"
+  | "failed";
+
+export type GitIntegrationOptionReason =
+  | "not-diverged"
+  | "missing-upstream"
+  | "detached-head"
+  | "dirty-worktree"
+  | "sequencer-in-progress"
+  | "operation-running"
+  | "not-a-git-repo"
+  | "status-unavailable";
+
+export interface GitIntegrationOptionsResult {
+  status: GitIntegrationOptionsStatus;
+  checkedRemoteAt: string | null;
+  gitStatus?: GitStatusInfo;
+  canAutoRebase: boolean;
+  canAutoMerge: boolean;
+  reasons: GitIntegrationOptionReason[];
+  ahead: number;
+  behind: number;
+  upstream: string | null;
+  isClean: boolean;
+  hasSequencerState: boolean;
   detail?: string;
 }

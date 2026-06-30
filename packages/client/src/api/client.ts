@@ -12,6 +12,7 @@ import type {
   DeviceInfo,
   EnrichedRecentEntry,
   FileContentResponse,
+  GitIntegrationOptionsResult,
   GitPullResult,
   GitPushResult,
   GitRemoteCheckResult,
@@ -1375,6 +1376,11 @@ export const api = {
     fetchJSON<GitRemoteCheckResult>(`/projects/${projectId}/git/check-remote`, {
       method: "POST",
     }),
+
+  getGitIntegrationOptions: (projectId: string) =>
+    fetchJSON<GitIntegrationOptionsResult>(
+      `/projects/${projectId}/git/integration-options`,
+    ),
 
   pullGit: (projectId: string) =>
     fetchJSON<GitPullResult>(`/projects/${projectId}/git/pull`, {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import {
+  type GitIntegrationOptionsResult,
   type GitPushResult,
   type GitStatusInfo,
   toUrlProjectId,
@@ -83,6 +84,23 @@ describe("git-status routes", () => {
     return repoDir;
   }
 
+  async function createDivergedRepo(): Promise<string> {
+    const repoDir = await createRepoWithUpstream();
+    const remoteDir = join(tempDir, "remote.git");
+    const peerDir = join(tempDir, "peer");
+
+    await execFileAsync("git", ["clone", remoteDir, peerDir]);
+    await runGit(peerDir, ["config", "user.email", "ya-test@example.com"]);
+    await runGit(peerDir, ["config", "user.name", "YA Test"]);
+    await commitFile(peerDir, "REMOTE.md", "remote\n", "Remote commit");
+    await runGit(peerDir, ["push"]);
+
+    await runGit(repoDir, ["fetch", "origin"]);
+    await commitFile(repoDir, "LOCAL.md", "local\n", "Local commit");
+
+    return repoDir;
+  }
+
   it("reports up-to-date when push has nothing to send", async () => {
     const repoDir = await createRepoWithUpstream();
     const { projectId, routes } = createRoutesForProject(repoDir);
@@ -129,5 +147,45 @@ describe("git-status routes", () => {
     expect(Number.isFinite(checkedRemoteMs)).toBe(true);
     expect(checkedRemoteMs).toBeGreaterThanOrEqual(beforeFetchMs);
     expect(checkedRemoteMs).toBeLessThanOrEqual(afterFetchMs);
+  });
+
+  it("reports automatic integration options for a clean diverged branch", async () => {
+    const repoDir = await createDivergedRepo();
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(
+      `/${projectId}/git/integration-options`,
+    );
+    const body = (await response.json()) as GitIntegrationOptionsResult;
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("available");
+    expect(body.canAutoRebase).toBe(true);
+    expect(body.canAutoMerge).toBe(true);
+    expect(body.reasons).toEqual([]);
+    expect(body.ahead).toBe(1);
+    expect(body.behind).toBe(1);
+    expect(body.isClean).toBe(true);
+    expect(body.hasSequencerState).toBe(false);
+  });
+
+  it("blocks automatic integration options for a dirty diverged branch", async () => {
+    const repoDir = await createDivergedRepo();
+    await writeFile(join(repoDir, "dirty.txt"), "dirty\n");
+    const { projectId, routes } = createRoutesForProject(repoDir);
+
+    const response = await routes.request(
+      `/${projectId}/git/integration-options`,
+    );
+    const body = (await response.json()) as GitIntegrationOptionsResult;
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("unavailable");
+    expect(body.canAutoRebase).toBe(false);
+    expect(body.canAutoMerge).toBe(false);
+    expect(body.reasons).toContain("dirty-worktree");
+    expect(body.ahead).toBe(1);
+    expect(body.behind).toBe(1);
+    expect(body.isClean).toBe(false);
   });
 });

@@ -25,7 +25,13 @@ Progress:
       older server.
 - [x] 2026-06-28: Move recent commits into the left Source Control column with
       a contained scroll area, leaving the right column for the diff preview.
-- [ ] Add focused server and client tests.
+- [x] 2026-06-30: Explain diverged pull/push failures with prompt-like copy
+      that includes local and remote commit counts.
+- [x] 2026-06-30: Add a non-mutating diverged-branch integration-options
+      precheck and client row for automatic-option eligibility or blockers.
+- [x] 2026-06-30: Add focused server tests for integration-options eligibility
+      and dirty-worktree blocking.
+- [ ] Add focused client tests.
 
 ## Context
 
@@ -207,6 +213,64 @@ Other expected pull outcomes:
 - repository has an unfinished merge/rebase;
 - remote authentication or network failure;
 - operation timed out.
+
+## Diverged Branch UX
+
+When the branch is both ahead and behind its upstream, Pull and Push should
+remain conservative by default. Do not silently choose merge or rebase from the
+basic Pull/Push buttons. Rebase usually keeps a cleaner history, but it rewrites
+local commit hashes and can make later pushes to any already-published copy
+require force-with-lease. Merge avoids rewriting local commits but creates a
+merge commit. That choice is real user intent, not a routine fast-forward.
+
+The first useful response is clear, copy-pastable diagnosis. Keep the primary
+message terse enough that a user can paste it into an agent session:
+
+> Pull needs attention: branch diverged. Local commits: 2. Remote commits: 3. A
+> fast-forward pull cannot apply. Use a terminal or ask an agent to rebase or
+> merge.
+
+That style is preferable to verbose product copy. Avoid naming the app in these
+messages; state the git condition, the local/remote counts, why the simple
+operation stopped, and the next human/agent action.
+
+The current refinement can show automatic-option status directly below the
+message:
+
+```text
+Try automatically: Rebase  Merge  (?)
+```
+
+The `?` affordance can explain the trade-offs and rollback promise in a
+secondary popup or disclosure, not in the primary warning sentence. The first
+implementation is still non-mutating: it checks whether automatic options are
+eligible, or reports why they are unavailable. Actual Rebase/Merge actions
+remain deferred until the server can treat them as all-or-nothing operations.
+
+Automatic diverged-branch actions should have stricter preconditions than
+fast-forward Pull:
+
+- upstream exists and the branch is diverged;
+- no active merge, rebase, cherry-pick, or other sequencer state;
+- the worktree and index are clean for the first implementation;
+- one per-project git operation guard is held;
+- terminal prompts are disabled.
+
+If an automatic rebase/merge attempt fails, the server should abort the git
+operation and verify that `HEAD` and the working tree returned to the starting
+state before reporting failure. If rollback verification fails, surface that as
+manual recovery required with enough detail for a terminal or agent handoff.
+
+The deferred single `Sync` button can build on the same model:
+
+- fetch first;
+- inspect ahead/behind and local dirtiness;
+- fast-forward behind-only branches;
+- push ahead-only branches;
+- present the diverged message and automatic options when both sides have
+  commits;
+- keep dirty-worktree fast-forwards allowed when Git can apply them cleanly;
+- never promise that a successful git integration means tests pass.
 
 ## Push Semantics
 

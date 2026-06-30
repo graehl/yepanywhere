@@ -16839,6 +16839,82 @@ body:has(.session-page)
   border-color: color-mix(in srgb, var(--warning-color) 28%, transparent);
 }
 
+.git-integration-options {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+}
+
+.git-integration-options-warning {
+  color: var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 8%, transparent);
+  border-color: color-mix(in srgb, var(--warning-color) 22%, transparent);
+}
+
+.git-integration-options-label {
+  color: var(--text-muted);
+}
+
+.git-integration-option-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.55rem;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  opacity: 0.65;
+}
+
+.git-integration-help {
+  position: relative;
+}
+
+.git-integration-help summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  color: var(--text-muted);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full, 999px);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  list-style: none;
+}
+
+.git-integration-help summary::-webkit-details-marker {
+  display: none;
+}
+
+.git-integration-help-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 0;
+  width: min(320px, calc(100vw - 2rem));
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 .git-recent-commits {
   display: flex;
   min-width: 0;

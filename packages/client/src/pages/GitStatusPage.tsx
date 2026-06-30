@@ -1,5 +1,7 @@
 import type {
   GitFileChange,
+  GitIntegrationOptionReason,
+  GitIntegrationOptionsResult,
   GitPullResult,
   GitPushResult,
   GitRemoteCheckResult,
@@ -8,6 +10,7 @@ import type {
 } from "@yep-anywhere/shared";
 import {
   GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
   GIT_STATUS_PULL_CAPABILITY,
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,
@@ -69,6 +72,9 @@ export function GitStatusPage() {
     version?.capabilities?.includes(GIT_STATUS_PULL_CAPABILITY) ?? false;
   const supportsPush =
     version?.capabilities?.includes(GIT_STATUS_PUSH_CAPABILITY) ?? false;
+  const supportsIntegrationOptions =
+    version?.capabilities?.includes(GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY) ??
+    false;
   const { gitStatus, loading, error, refetch } = useGitStatus(
     supportsEnhancedGitStatus ? effectiveProjectId : undefined,
   );
@@ -138,6 +144,7 @@ export function GitStatusPage() {
               supportsRemoteCheck={supportsRemoteCheck}
               supportsPull={supportsPull}
               supportsPush={supportsPush}
+              supportsIntegrationOptions={supportsIntegrationOptions}
               onRefreshStatus={refetch}
               t={t as never}
             />
@@ -168,6 +175,7 @@ function GitStatusContent({
   supportsRemoteCheck,
   supportsPull,
   supportsPush,
+  supportsIntegrationOptions,
   onRefreshStatus,
   t,
 }: {
@@ -177,6 +185,7 @@ function GitStatusContent({
   supportsRemoteCheck: boolean;
   supportsPull: boolean;
   supportsPush: boolean;
+  supportsIntegrationOptions: boolean;
   onRefreshStatus: () => Promise<void>;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
@@ -191,6 +200,13 @@ function GitStatusContent({
   const [pushResult, setPushResult] = useState<GitPushResult | null>(null);
   const [isPushing, setIsPushing] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [integrationOptions, setIntegrationOptions] =
+    useState<GitIntegrationOptionsResult | null>(null);
+  const [isLoadingIntegrationOptions, setIsLoadingIntegrationOptions] =
+    useState(false);
+  const [integrationOptionsError, setIntegrationOptionsError] = useState<
+    string | null
+  >(null);
   const nowMs = useRelativeNow();
 
   const { stagedFiles, unstagedFiles, untrackedFiles, allFiles } =
@@ -230,9 +246,56 @@ function GitStatusContent({
     setPushResult(null);
     setPushError(null);
     setIsPushing(false);
+    setIntegrationOptions(null);
+    setIntegrationOptionsError(null);
+    setIsLoadingIntegrationOptions(false);
   }, [projectId]);
 
   const isGitActionRunning = isCheckingRemote || isPulling || isPushing;
+  const divergedActionStatus = getDivergedActionStatus(pullResult, pushResult);
+  const divergedActionKey = divergedActionStatus
+    ? `${divergedActionStatus.ahead}:${divergedActionStatus.behind}:${divergedActionStatus.upstream ?? ""}`
+    : "";
+
+  useEffect(() => {
+    if (!supportsIntegrationOptions || !divergedActionKey) {
+      setIntegrationOptions(null);
+      setIntegrationOptionsError(null);
+      setIsLoadingIntegrationOptions(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingIntegrationOptions(true);
+    setIntegrationOptions(null);
+    setIntegrationOptionsError(null);
+
+    api
+      .getGitIntegrationOptions(projectId)
+      .then((result) => {
+        if (!cancelled) {
+          setIntegrationOptions(result);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setIntegrationOptionsError(
+            err instanceof Error
+              ? err.message
+              : t("gitStatusAutoOptionsFailed"),
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingIntegrationOptions(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [divergedActionKey, projectId, supportsIntegrationOptions, t]);
 
   const handleCheckRemote = useCallback(async () => {
     if (!supportsRemoteCheck || isGitActionRunning) return;
@@ -244,6 +307,8 @@ function GitStatusContent({
     setPullError(null);
     setPushResult(null);
     setPushError(null);
+    setIntegrationOptions(null);
+    setIntegrationOptionsError(null);
     try {
       const result = await api.checkGitRemote(projectId);
       setRemoteCheckResult(result);
@@ -269,6 +334,8 @@ function GitStatusContent({
     setRemoteCheckError(null);
     setPushResult(null);
     setPushError(null);
+    setIntegrationOptions(null);
+    setIntegrationOptionsError(null);
     try {
       const result = await api.pullGit(projectId);
       setPullResult(result);
@@ -294,6 +361,8 @@ function GitStatusContent({
     setRemoteCheckError(null);
     setPullResult(null);
     setPullError(null);
+    setIntegrationOptions(null);
+    setIntegrationOptionsError(null);
     try {
       const result = await api.pushGit(projectId);
       setPushResult(result);
@@ -426,6 +495,14 @@ function GitStatusContent({
             >
               {gitActionMessage}
             </div>
+          )}
+          {divergedActionStatus && supportsIntegrationOptions && (
+            <GitIntegrationOptionsPanel
+              options={integrationOptions}
+              loading={isLoadingIntegrationOptions}
+              error={integrationOptionsError}
+              t={t}
+            />
           )}
 
           <div className="git-status-file-pane">
@@ -990,6 +1067,149 @@ function isDivergedStatus(
   status: GitPullResult["gitStatus"] | GitPushResult["gitStatus"],
 ): status is GitStatusInfo {
   return Boolean(status && status.ahead > 0 && status.behind > 0);
+}
+
+function getDivergedActionStatus(
+  pullResult: GitPullResult | null,
+  pushResult: GitPushResult | null,
+): GitStatusInfo | null {
+  if (pullResult?.status === "failed" && isDivergedStatus(pullResult.gitStatus)) {
+    return pullResult.gitStatus;
+  }
+  if (pushResult?.status === "rejected" && isDivergedStatus(pushResult.gitStatus)) {
+    return pushResult.gitStatus;
+  }
+  return null;
+}
+
+function GitIntegrationOptionsPanel({
+  options,
+  loading,
+  error,
+  t,
+}: {
+  options: GitIntegrationOptionsResult | null;
+  loading: boolean;
+  error: string | null;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  if (loading) {
+    return (
+      <div className="git-integration-options">
+        <span>{t("gitStatusAutoOptionsChecking")}</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="git-integration-options git-integration-options-warning">
+        <span>{error}</span>
+      </div>
+    );
+  }
+
+  if (!options) {
+    return null;
+  }
+
+  if (options.status === "available") {
+    return (
+      <div className="git-integration-options">
+        <span className="git-integration-options-label">
+          {t("gitStatusAutoOptionsLabel")}
+        </span>
+        <span
+          className="git-integration-option-pill"
+          aria-disabled="true"
+          title={t("gitStatusAutoActionNotEnabled")}
+        >
+          {t("gitStatusAutoRebase")}
+        </span>
+        <span
+          className="git-integration-option-pill"
+          aria-disabled="true"
+          title={t("gitStatusAutoActionNotEnabled")}
+        >
+          {t("gitStatusAutoMerge")}
+        </span>
+        <GitIntegrationOptionsHelp t={t} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="git-integration-options git-integration-options-warning">
+      <span>
+        {t("gitStatusAutoOptionsUnavailable", {
+          reason: getIntegrationUnavailableReason(options.reasons, t),
+        })}
+      </span>
+      <GitIntegrationOptionsHelp t={t} />
+    </div>
+  );
+}
+
+function GitIntegrationOptionsHelp({
+  t,
+}: {
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
+  return (
+    <details className="git-integration-help">
+      <summary
+        aria-label={t("gitStatusAutoHelpLabel")}
+        title={t("gitStatusAutoHelpLabel")}
+      >
+        ?
+      </summary>
+      <div className="git-integration-help-popover">
+        {t("gitStatusAutoHelp")}
+      </div>
+    </details>
+  );
+}
+
+const INTEGRATION_REASON_PRIORITY: GitIntegrationOptionReason[] = [
+  "operation-running",
+  "sequencer-in-progress",
+  "dirty-worktree",
+  "missing-upstream",
+  "detached-head",
+  "not-diverged",
+  "not-a-git-repo",
+  "status-unavailable",
+];
+
+function getIntegrationUnavailableReason(
+  reasons: GitIntegrationOptionReason[],
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
+  const reason =
+    INTEGRATION_REASON_PRIORITY.find((candidate) =>
+      reasons.includes(candidate),
+    ) ?? "status-unavailable";
+
+  switch (reason) {
+    case "operation-running":
+      return t("gitStatusAutoReasonOperationRunning");
+    case "sequencer-in-progress":
+      return t("gitStatusAutoReasonSequencer");
+    case "dirty-worktree":
+      return t("gitStatusAutoReasonDirty");
+    case "missing-upstream":
+      return t("gitStatusAutoReasonMissingUpstream");
+    case "detached-head":
+      return t("gitStatusAutoReasonDetached");
+    case "not-diverged":
+      return t("gitStatusAutoReasonNotDiverged");
+    case "not-a-git-repo":
+      return t("gitStatusAutoReasonNotRepo");
+    case "status-unavailable":
+      return t("gitStatusAutoReasonStatusUnavailable");
+    default:
+      return t("gitStatusAutoReasonStatusUnavailable");
+  }
 }
 
 function getGitActionMessage({

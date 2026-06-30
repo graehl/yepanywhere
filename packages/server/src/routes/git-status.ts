@@ -4,6 +4,8 @@ import { extname, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
   type GitFileChange,
+  type GitIntegrationOptionReason,
+  type GitIntegrationOptionsResult,
   type GitPullResult,
   type GitPushResult,
   type GitRemoteCheckResult,
@@ -124,6 +126,85 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
       return c.json(result);
     } finally {
       gitOperationsByProjectPath.delete(project.path);
+    }
+  });
+
+  /**
+   * GET /:projectId/git/integration-options
+   * Inspect whether automatic diverged-branch options can be offered.
+   *
+   * This is intentionally read-only: it does not fetch, rebase, merge, stash, or
+   * otherwise mutate the repository.
+   */
+  routes.get("/:projectId/git/integration-options", async (c) => {
+    const projectId = c.req.param("projectId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    const checkedRemoteAt = await getCheckedRemoteAt(project.path);
+    if (gitOperationsByProjectPath.has(project.path)) {
+      const status = await getGitStatusSnapshot(project.path);
+      const result: GitIntegrationOptionsResult = {
+        ...buildGitIntegrationOptionsResult(status, checkedRemoteAt, false),
+        status: "busy",
+        canAutoRebase: false,
+        canAutoMerge: false,
+        reasons: ["operation-running"],
+      };
+      return c.json(result);
+    }
+
+    try {
+      const status = await getGitStatusWithRemoteCheckTime(project.path);
+      const hasSequencerState = await hasGitSequencerState(project.path);
+      return c.json(
+        buildGitIntegrationOptionsResult(
+          status,
+          checkedRemoteAt,
+          hasSequencerState,
+        ),
+      );
+    } catch (err) {
+      if (isNotGitRepoError(err)) {
+        const result: GitIntegrationOptionsResult = {
+          status: "not-a-git-repo",
+          checkedRemoteAt: null,
+          gitStatus: NOT_A_GIT_REPO,
+          canAutoRebase: false,
+          canAutoMerge: false,
+          reasons: ["not-a-git-repo"],
+          ahead: 0,
+          behind: 0,
+          upstream: null,
+          isClean: true,
+          hasSequencerState: false,
+        };
+        return c.json(result);
+      }
+
+      const snapshot = await getGitStatusSnapshot(project.path);
+      const result: GitIntegrationOptionsResult = {
+        status: "failed",
+        checkedRemoteAt: await getCheckedRemoteAt(project.path),
+        gitStatus: snapshot,
+        canAutoRebase: false,
+        canAutoMerge: false,
+        reasons: ["status-unavailable"],
+        ahead: snapshot.ahead,
+        behind: snapshot.behind,
+        upstream: snapshot.upstream,
+        isClean: snapshot.isClean,
+        hasSequencerState: false,
+        detail: getGitErrorDetail(err),
+      };
+      return c.json(result);
     }
   });
 
@@ -451,6 +532,84 @@ async function getGitStatusSnapshot(
       ...NOT_A_GIT_REPO,
       checkedRemoteAt: await getCheckedRemoteAt(projectPath),
     };
+  }
+}
+
+function buildGitIntegrationOptionsResult(
+  status: GitStatusInfo,
+  checkedRemoteAt: string | null,
+  hasSequencerState: boolean,
+): GitIntegrationOptionsResult {
+  const reasons: GitIntegrationOptionReason[] = [];
+
+  if (!status.isGitRepo) {
+    reasons.push("not-a-git-repo");
+  }
+  if (!status.branch) {
+    reasons.push("detached-head");
+  }
+  if (!status.upstream) {
+    reasons.push("missing-upstream");
+  }
+  if (!(status.ahead > 0 && status.behind > 0)) {
+    reasons.push("not-diverged");
+  }
+  if (!status.isClean) {
+    reasons.push("dirty-worktree");
+  }
+  if (hasSequencerState) {
+    reasons.push("sequencer-in-progress");
+  }
+
+  const available = reasons.length === 0;
+  return {
+    status: available ? "available" : "unavailable",
+    checkedRemoteAt,
+    gitStatus: status,
+    canAutoRebase: available,
+    canAutoMerge: available,
+    reasons,
+    ahead: status.ahead,
+    behind: status.behind,
+    upstream: status.upstream,
+    isClean: status.isClean,
+    hasSequencerState,
+  };
+}
+
+async function hasGitSequencerState(projectPath: string): Promise<boolean> {
+  const gitStatePaths = [
+    "MERGE_HEAD",
+    "CHERRY_PICK_HEAD",
+    "REVERT_HEAD",
+    "rebase-merge",
+    "rebase-apply",
+    "sequencer",
+  ];
+  const checks = await Promise.all(
+    gitStatePaths.map((gitPath) => gitPathExists(projectPath, gitPath)),
+  );
+  return checks.some(Boolean);
+}
+
+async function gitPathExists(
+  projectPath: string,
+  gitPath: string,
+): Promise<boolean> {
+  try {
+    const { stdout } = await runGit(projectPath, [
+      "rev-parse",
+      "--git-path",
+      gitPath,
+    ]);
+    const resolvedPath = stdout.trim();
+    if (!resolvedPath) {
+      return false;
+    }
+    await stat(resolve(projectPath, resolvedPath));
+    return true;
+  } catch {
+    return false;
   }
 }
 

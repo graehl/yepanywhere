@@ -109,6 +109,9 @@ export {
 
 export type {
   GitFileChange,
+  GitIntegrationOptionReason,
+  GitIntegrationOptionsResult,
+  GitIntegrationOptionsStatus,
   GitPullResult,
   GitPullStatus,
   GitPushResult,
@@ -129,6 +132,7 @@ export type {
 export {
   GIT_STATUS_CAPABILITY,
   GIT_STATUS_ENHANCED_CAPABILITY,
+  GIT_STATUS_INTEGRATION_OPTIONS_CAPABILITY,
   GIT_STATUS_PULL_CAPABILITY,
   GIT_STATUS_PUSH_CAPABILITY,
   GIT_STATUS_REMOTE_CHECK_CAPABILITY,

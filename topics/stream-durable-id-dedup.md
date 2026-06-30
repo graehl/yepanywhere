@@ -44,6 +44,12 @@ interrupted to deliver a queued steer is double-displayed."
    legitimately-repeated identical tool call could be wrongly merged. The
    `excludeTools` option on both backstop functions implements this; OpenCode
    leaves it off.
+   The one deliberately wider exception is the **first plain user turn**:
+   new-session startup can show the optimistic user echo before Codex has
+   finished thread setup and written the durable response-item user row. That
+   first-turn pair gets a 30s startup window, but only when no earlier user
+   turn exists; later repeated user turns, assistant text, and tool rows still
+   use the 2s backstop.
 
 ## OpenCode
 
@@ -144,6 +150,14 @@ durable double-source: when response-item user messages exist (the norm),
 that carries `client_id`. Aligning requires either correlating the two or
 flipping that gate — entangled, and low marginal value over the 2s
 backstop (the residue is only two identical steers <2s apart). Not done.
+
+The first user turn has one additional startup wrinkle: YA may render the
+optimistic opening turn before the Codex thread has finished startup and before
+the durable first user row appears. A real report on 2026-06-30
+(`019f1642-3917-7052-aa32-1262257ec3f1`) had the session meta at
+`02:01:07.884Z` and the durable visible user row at `02:01:12.931Z`, outside
+the general 2s window. The fix is a first-plain-user-turn-only 30s window in
+`linearMessageDedup`, not a looser general Codex backstop.
 
 ### Pitfalls that turned out fine (for the deferred user-turn work)
 

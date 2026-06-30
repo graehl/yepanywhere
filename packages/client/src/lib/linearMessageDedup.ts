@@ -8,7 +8,19 @@ import { getMessageContent, mergeMessage } from "./mergeMessages";
 // the real load, this is only the backstop.
 const DEFAULT_TIMESTAMP_WINDOW_MS = 2000;
 const REPLAY_TIMESTAMP_WINDOW_MS = 2000;
+// New-session startup can echo the opening user turn before the provider has
+// finished creating/persisting the durable session. Keep the wider tolerance
+// scoped to that one first user turn; later identical turns stay on the tight
+// 2s backstop.
+const FIRST_USER_TURN_TIMESTAMP_WINDOW_MS = 30000;
 const MAX_SCAN_MESSAGES = 400;
+
+interface ApproxDedupOptions {
+  windowMs?: number;
+  replayWindowMs?: number;
+  firstUserTurnWindowMs?: number;
+  excludeTools?: boolean;
+}
 
 const semanticFingerprintCache = new WeakMap<Message, string | null>();
 
@@ -107,10 +119,53 @@ function isToolMessage(message: Message): boolean {
   });
 }
 
-function getAllowedTimestampDeltaMs(a: Message, b: Message): number {
+function isPlainUserTurn(message: Message): boolean {
+  return (
+    message.type === "user" &&
+    getMessageRole(message) === "user" &&
+    !isToolMessage(message)
+  );
+}
+
+function hasEarlierPlainUserTurn(
+  messages: Message[],
+  beforeIndex: number,
+): boolean {
+  for (let i = 0; i < beforeIndex; i += 1) {
+    const message = messages[i];
+    if (message && isPlainUserTurn(message)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasEarlierPlainUserEntry(
+  entries: IndexedMessage[],
+  beforeIndex: number,
+): boolean {
+  for (let i = 0; i < beforeIndex; i += 1) {
+    const entry = entries[i];
+    if (entry && isPlainUserTurn(entry.message)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getAllowedTimestampDeltaMs(
+  a: Message,
+  b: Message,
+  options: Required<Pick<ApproxDedupOptions, "windowMs" | "replayWindowMs">> &
+    Pick<ApproxDedupOptions, "firstUserTurnWindowMs">,
+  isFirstUserTurnPair: boolean,
+): number {
+  if (isFirstUserTurnPair) {
+    return options.firstUserTurnWindowMs ?? FIRST_USER_TURN_TIMESTAMP_WINDOW_MS;
+  }
   return isReplayMessage(a) || isReplayMessage(b)
-    ? REPLAY_TIMESTAMP_WINDOW_MS
-    : DEFAULT_TIMESTAMP_WINDOW_MS;
+    ? options.replayWindowMs
+    : options.windowMs;
 }
 
 function getSemanticFingerprint(message: Message): string | null {
@@ -154,11 +209,7 @@ export function getMessageTimestampMs(message: Message): number | null {
 export function hasEquivalentJsonlMessage(
   existing: Message[],
   incoming: Message,
-  options?: {
-    windowMs?: number;
-    replayWindowMs?: number;
-    excludeTools?: boolean;
-  },
+  options?: ApproxDedupOptions,
 ): boolean {
   if (options?.excludeTools && isToolMessage(incoming)) {
     return false;
@@ -171,6 +222,8 @@ export function hasEquivalentJsonlMessage(
 
   const windowMs = options?.windowMs ?? DEFAULT_TIMESTAMP_WINDOW_MS;
   const replayWindowMs = options?.replayWindowMs ?? REPLAY_TIMESTAMP_WINDOW_MS;
+  const firstUserTurnWindowMs =
+    options?.firstUserTurnWindowMs ?? FIRST_USER_TURN_TIMESTAMP_WINDOW_MS;
   const maxScan = MAX_SCAN_MESSAGES;
   const startIndex = Math.max(0, existing.length - maxScan);
 
@@ -186,9 +239,16 @@ export function hasEquivalentJsonlMessage(
     if (candidateTimestampMs === null) {
       continue;
     }
-    const allowedDeltaMs = isReplayMessage(incoming)
-      ? replayWindowMs
-      : windowMs;
+    const isFirstUserTurnPair =
+      isPlainUserTurn(candidate) &&
+      isPlainUserTurn(incoming) &&
+      !hasEarlierPlainUserTurn(existing, i);
+    const allowedDeltaMs = getAllowedTimestampDeltaMs(
+      candidate,
+      incoming,
+      { windowMs, replayWindowMs, firstUserTurnWindowMs },
+      isFirstUserTurnPair,
+    );
     if (
       Math.abs(candidateTimestampMs - incomingTimestampMs) <= allowedDeltaMs
     ) {
@@ -208,15 +268,17 @@ interface IndexedMessage {
 
 export function reconcileLinearMessages(
   messages: Message[],
-  options?: {
-    windowMs?: number;
-    replayWindowMs?: number;
-    excludeTools?: boolean;
-  },
+  options?: ApproxDedupOptions,
 ): Message[] {
   const windowMs = options?.windowMs ?? DEFAULT_TIMESTAMP_WINDOW_MS;
   const replayWindowMs = options?.replayWindowMs ?? REPLAY_TIMESTAMP_WINDOW_MS;
-  const maxCandidateWindowMs = Math.max(windowMs, replayWindowMs);
+  const firstUserTurnWindowMs =
+    options?.firstUserTurnWindowMs ?? FIRST_USER_TURN_TIMESTAMP_WINDOW_MS;
+  const maxCandidateWindowMs = Math.max(
+    windowMs,
+    replayWindowMs,
+    firstUserTurnWindowMs,
+  );
   const excludeTools = options?.excludeTools === true;
 
   const sorted = messages
@@ -282,9 +344,16 @@ export function reconcileLinearMessages(
         if (!mergeSource) {
           continue;
         }
-        const allowedDeltaMs =
-          getAllowedTimestampDeltaMs(candidate.message, entry.message) ??
-          windowMs;
+        const isFirstUserTurnPair =
+          isPlainUserTurn(candidate.message) &&
+          isPlainUserTurn(entry.message) &&
+          !hasEarlierPlainUserEntry(kept, i);
+        const allowedDeltaMs = getAllowedTimestampDeltaMs(
+          candidate.message,
+          entry.message,
+          { windowMs, replayWindowMs, firstUserTurnWindowMs },
+          isFirstUserTurnPair,
+        );
         if (entry.timestampMs - candidate.timestampMs > allowedDeltaMs) {
           continue;
         }

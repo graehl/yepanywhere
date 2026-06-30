@@ -87,6 +87,65 @@ describe("hasEquivalentJsonlMessage", () => {
       }),
     ).toBe(false);
   });
+
+  it("allows the opening user turn to cross the startup persistence gap", () => {
+    const existing: Message[] = [
+      {
+        uuid: "codex-2-2026-06-30T02:01:12.931Z",
+        type: "user",
+        timestamp: "2026-06-30T02:01:12.931Z",
+        _source: "jsonl",
+        message: {
+          role: "user",
+          content:
+            "source control seems sticky to the last created session's project?",
+        },
+      },
+    ];
+
+    expect(
+      hasEquivalentJsonlMessage(existing, {
+        uuid: "optimistic-opening-turn",
+        type: "user",
+        timestamp: "2026-06-30T02:01:07.884Z",
+        _source: "sdk",
+        message: {
+          role: "user",
+          content:
+            "source control seems sticky to the last created session's project?",
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps the tight window for repeated user turns after the opener", () => {
+    const existing: Message[] = [
+      {
+        uuid: "first-user",
+        type: "user",
+        timestamp: "2026-03-09T10:00:00.000Z",
+        _source: "jsonl",
+        message: { role: "user", content: "Start." },
+      },
+      {
+        uuid: "second-user-jsonl",
+        type: "user",
+        timestamp: "2026-03-09T10:00:16.000Z",
+        _source: "jsonl",
+        message: { role: "user", content: "Again." },
+      },
+    ];
+
+    expect(
+      hasEquivalentJsonlMessage(existing, {
+        uuid: "second-user-sdk",
+        type: "user",
+        timestamp: "2026-03-09T10:00:10.000Z",
+        _source: "sdk",
+        message: { role: "user", content: "Again." },
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("reconcileLinearMessages", () => {
@@ -114,6 +173,73 @@ describe("reconcileLinearMessages", () => {
     expect(result[0]?._source).toBe("jsonl");
     expect(result[0]?.uuid).toBe("jsonl-1");
     expect(result[0]?.timestamp).toBe("2026-03-09T10:00:00.800Z");
+  });
+
+  it("merges a first user turn across new-session startup delay", () => {
+    const messages: Message[] = [
+      {
+        uuid: "optimistic-opening-turn",
+        type: "user",
+        timestamp: "2026-06-30T02:01:07.884Z",
+        _source: "sdk",
+        message: {
+          role: "user",
+          content:
+            "source control seems sticky to the last created session's project?",
+        },
+      },
+      {
+        uuid: "codex-2-2026-06-30T02:01:12.931Z",
+        type: "user",
+        timestamp: "2026-06-30T02:01:12.931Z",
+        _source: "jsonl",
+        message: {
+          role: "user",
+          content:
+            "source control seems sticky to the last created session's project?",
+        },
+      },
+    ];
+
+    const result = reconcileLinearMessages(messages);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?._source).toBe("jsonl");
+    expect(result[0]?.uuid).toBe("codex-2-2026-06-30T02:01:12.931Z");
+  });
+
+  it("does not use the startup window for later repeated user turns", () => {
+    const messages: Message[] = [
+      {
+        uuid: "first-user",
+        type: "user",
+        timestamp: "2026-03-09T10:00:00.000Z",
+        _source: "jsonl",
+        message: { role: "user", content: "Start." },
+      },
+      {
+        uuid: "second-user-sdk",
+        type: "user",
+        timestamp: "2026-03-09T10:00:10.000Z",
+        _source: "sdk",
+        message: { role: "user", content: "Again." },
+      },
+      {
+        uuid: "second-user-jsonl",
+        type: "user",
+        timestamp: "2026-03-09T10:00:16.000Z",
+        _source: "jsonl",
+        message: { role: "user", content: "Again." },
+      },
+    ];
+
+    const result = reconcileLinearMessages(messages);
+
+    expect(result.map((message) => message.uuid)).toEqual([
+      "first-user",
+      "second-user-sdk",
+      "second-user-jsonl",
+    ]);
   });
 
   it("excludes tool messages from the backstop when excludeTools is set", () => {

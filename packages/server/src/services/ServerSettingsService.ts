@@ -9,12 +9,16 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type {
   AgentContextHints,
+  CacheMissBillingSettings,
   ClientDefaults,
   HelperTargetConfig,
   NewSessionDefaults,
   PromptCacheKeepaliveSettings,
 } from "@yep-anywhere/shared";
-import { normalizeYaClientBaseUrlFromShareViewerUrl } from "@yep-anywhere/shared";
+import {
+  DEFAULT_CACHE_MISS_BILLING_SETTINGS,
+  normalizeYaClientBaseUrlFromShareViewerUrl,
+} from "@yep-anywhere/shared";
 import type { FileAccessSettings } from "../middleware/file-access.js";
 import { publishDeferredDeliverySettings } from "../supervisor/deferredDeliverySettings.js";
 
@@ -94,6 +98,8 @@ export interface ServerSettings {
   helperTargets?: HelperTargetConfig[];
   /** Per-provider prompt-cache keepalive policy and cadence. */
   promptCacheKeepalive?: PromptCacheKeepaliveSettings;
+  /** Usage-accounting monitor for suspected prompt-cache billing misses. */
+  cacheMissBilling?: CacheMissBillingSettings;
   /** Whether lifecycle webhook delivery is enabled */
   lifecycleWebhooksEnabled?: boolean;
   /** External webhook URL that receives lifecycle events */
@@ -145,6 +151,7 @@ export const DEFAULT_SERVER_SETTINGS: ServerSettings = {
   grokBuildUseXaiApiKey: false,
   codexUpdatePolicy: "notify",
   clientDefaults: DEFAULT_CLIENT_DEFAULTS,
+  cacheMissBilling: DEFAULT_CACHE_MISS_BILLING_SETTINGS,
 };
 
 function mergeLoadedClientDefaults(
@@ -224,6 +231,14 @@ function normalizeLoadedSettings(settings: ServerSettings): ServerSettings {
       // Leave invalid legacy values for the status endpoint to report clearly.
     }
   }
+  normalized.cacheMissBilling = {
+    ...DEFAULT_CACHE_MISS_BILLING_SETTINGS,
+    ...settings.cacheMissBilling,
+    providerFreshWindowMinutes: {
+      ...DEFAULT_CACHE_MISS_BILLING_SETTINGS.providerFreshWindowMinutes,
+      ...settings.cacheMissBilling?.providerFreshWindowMinutes,
+    },
+  };
   return normalized;
 }
 

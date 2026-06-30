@@ -7,6 +7,7 @@ import {
   ALL_PROVIDERS,
   type AgentContextHints,
   type BusyComposerDefaultAction,
+  type CacheMissBillingSettings,
   type ClientDefaults,
   type CollapsedComposerButtonPreference,
   type EffortLevel,
@@ -19,6 +20,7 @@ import {
   normalizeYaClientBaseUrl,
   normalizeYaClientBaseUrlFromShareViewerUrl,
   type PermissionMode,
+  DEFAULT_CACHE_MISS_BILLING_SETTINGS,
   DEFAULT_PROMPT_CACHE_KEEPALIVE_INACTIVITY_MINUTES,
   PROMPT_CACHE_KEEPALIVE_MODES,
   type PromptCacheKeepaliveMode,
@@ -40,6 +42,7 @@ import {
   getFileAccessInfo,
   normalizeFileAccess,
 } from "../middleware/file-access.js";
+import type { SessionMetadataService } from "../metadata/index.js";
 import { testSSHConnection } from "../sdk/remote-spawn.js";
 import type { PublicShareService } from "../services/PublicShareService.js";
 import type {
@@ -118,6 +121,8 @@ const MAX_SPEECH_SMART_TURN_TIMEOUT_MS = 10000;
 
 export interface SettingsRoutesDeps {
   serverSettingsService: ServerSettingsService;
+  /** Server-stored per-session cache-billing evidence log. */
+  sessionMetadataService?: SessionMetadataService;
   /** Callback to apply allowedHosts changes at runtime */
   onAllowedHostsChanged?: (value: string | undefined) => void;
   /** Callback to apply fileAccess changes at runtime */
@@ -941,10 +946,116 @@ function parsePromptCacheKeepalive(
   return { providers };
 }
 
+function parseCacheMissBilling(
+  raw: unknown,
+): CacheMissBillingSettings | undefined | null {
+  if (raw === undefined) return null;
+  if (raw === null || raw === "") return DEFAULT_CACHE_MISS_BILLING_SETTINGS;
+  if (!isRecord(raw)) return null;
+
+  const parsed: CacheMissBillingSettings = {};
+  if ("enabled" in raw) {
+    if (raw.enabled === undefined || raw.enabled === null) {
+      parsed.enabled = DEFAULT_CACHE_MISS_BILLING_SETTINGS.enabled;
+    } else if (typeof raw.enabled !== "boolean") {
+      return null;
+    } else {
+      parsed.enabled = raw.enabled;
+    }
+  }
+  if ("showToasts" in raw) {
+    if (raw.showToasts === undefined || raw.showToasts === null) {
+      parsed.showToasts = DEFAULT_CACHE_MISS_BILLING_SETTINGS.showToasts;
+    } else if (typeof raw.showToasts !== "boolean") {
+      return null;
+    } else {
+      parsed.showToasts = raw.showToasts;
+    }
+  }
+  if ("freshWindowMinutes" in raw) {
+    if (
+      raw.freshWindowMinutes === undefined ||
+      raw.freshWindowMinutes === null
+    ) {
+      parsed.freshWindowMinutes =
+        DEFAULT_CACHE_MISS_BILLING_SETTINGS.freshWindowMinutes;
+    } else if (
+      typeof raw.freshWindowMinutes !== "number" ||
+      !Number.isInteger(raw.freshWindowMinutes) ||
+      raw.freshWindowMinutes < 1 ||
+      raw.freshWindowMinutes > 1440
+    ) {
+      return null;
+    } else {
+      parsed.freshWindowMinutes = raw.freshWindowMinutes;
+    }
+  }
+  if ("providerFreshWindowMinutes" in raw) {
+    if (
+      raw.providerFreshWindowMinutes === undefined ||
+      raw.providerFreshWindowMinutes === null
+    ) {
+      parsed.providerFreshWindowMinutes =
+        DEFAULT_CACHE_MISS_BILLING_SETTINGS.providerFreshWindowMinutes;
+    } else if (!isRecord(raw.providerFreshWindowMinutes)) {
+      return null;
+    } else {
+      const providerFreshWindowMinutes: Partial<Record<ProviderName, number>> =
+        {};
+      for (const [providerName, value] of Object.entries(
+        raw.providerFreshWindowMinutes,
+      )) {
+        if (!ALL_PROVIDERS.includes(providerName as ProviderName)) {
+          return null;
+        }
+        if (
+          typeof value !== "number" ||
+          !Number.isInteger(value) ||
+          value < 1 ||
+          value > 1440
+        ) {
+          return null;
+        }
+        providerFreshWindowMinutes[providerName as ProviderName] = value;
+      }
+      parsed.providerFreshWindowMinutes = providerFreshWindowMinutes;
+    }
+  }
+  if ("minimumInputTokens" in raw) {
+    if (
+      raw.minimumInputTokens === undefined ||
+      raw.minimumInputTokens === null
+    ) {
+      parsed.minimumInputTokens =
+        DEFAULT_CACHE_MISS_BILLING_SETTINGS.minimumInputTokens;
+    } else if (
+      typeof raw.minimumInputTokens !== "number" ||
+      !Number.isInteger(raw.minimumInputTokens) ||
+      raw.minimumInputTokens < 1 ||
+      raw.minimumInputTokens > 5_000_000
+    ) {
+      return null;
+    } else {
+      parsed.minimumInputTokens = raw.minimumInputTokens;
+    }
+  }
+
+  const result = {
+    ...DEFAULT_CACHE_MISS_BILLING_SETTINGS,
+    ...parsed,
+    providerFreshWindowMinutes: {
+      ...DEFAULT_CACHE_MISS_BILLING_SETTINGS.providerFreshWindowMinutes,
+      ...parsed.providerFreshWindowMinutes,
+    },
+  };
+  return result;
+}
+
 export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
   const app = new Hono();
   const {
     serverSettingsService,
+    sessionMetadataService,
     onAllowedHostsChanged,
     onFileAccessChanged,
     onRemoteSessionPersistenceChanged,
@@ -962,6 +1073,21 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
   app.get("/", (c) => {
     const settings = serverSettingsService.getSettings();
     return c.json({ settings });
+  });
+
+  /**
+   * GET /api/settings/cache-miss-billing/events
+   * Read the server-stored prompt-cache billing evidence log.
+   */
+  app.get("/cache-miss-billing/events", (c) => {
+    const rawLimit = Number(c.req.query("limit") ?? 200);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(Math.floor(rawLimit), 500)
+        : 200;
+    return c.json({
+      events: sessionMetadataService?.getCacheMissBillingEvents(limit) ?? [],
+    });
   });
 
   /**
@@ -1278,6 +1404,22 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
         );
       }
       updates.promptCacheKeepalive = parsedKeepalive;
+    }
+
+    if ("cacheMissBilling" in body) {
+      const parsedCacheMissBilling = parseCacheMissBilling(
+        body.cacheMissBilling,
+      );
+      if (parsedCacheMissBilling === null) {
+        return c.json(
+          {
+            error:
+              "cacheMissBilling must use booleans for enabled/showToasts, freshness windows 1-1440, and minimumInputTokens 1-5000000",
+          },
+          400,
+        );
+      }
+      updates.cacheMissBilling = parsedCacheMissBilling;
     }
 
     if (typeof body.lifecycleWebhooksEnabled === "boolean") {

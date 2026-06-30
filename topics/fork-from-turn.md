@@ -306,6 +306,99 @@ plus the two forks; the generation reprocesses uncached input when the source
 prompt cache has gone cold. Per [provider-context-economics](provider-context-economics.md),
 surface that price rather than hide it behind the button.
 
+Fork cache-economics assumption: the value of using a real provider fork for
+retitle, recap, and fork-after-summary helpers rests on the retained prefix
+rendering as byte-identical model input, not merely on YA preserving the same
+visible transcript. If the helper fork's first model turn is served by the same
+provider backend node, cache shard, or retained-prefix tier that just processed
+the source session, the large prefix prefill should be economically free or
+near-free for the user (subscription quota or discounted cached-input billing),
+with only the helper instruction and output paid at normal cost. That is an
+assumption to verify, not a provider guarantee: routing to a different backend,
+a provider-side cache miss, or any launch-time injected bytes before the cache
+breakpoint can turn the helper into a full replay of a 900k-token prefix.
+Default-enabling high-context helper forks therefore needs usage evidence from
+the provider (`cache_read_input_tokens`, `cached_input_tokens`, billed-input
+details, or equivalent subscription accounting), or UI copy that names the
+uncached full-prefix cost.
+
+Cache-affinity contract and implementation plan:
+
+- **Retained prefix stays first and byte-identical.** Provider adapters must not
+  put helper-only metadata, YA provenance, timestamps, working-tree refreshes,
+  title-generation instructions, recap instructions, or fork-summary instructions
+  before the retained provider prefix. Helper instructions are appended as the
+  first new turn after the fork boundary, so everything before that boundary can
+  hash to the same cache entry the source session just wrote or read.
+- **Main sessions carry cache-family metadata.** When a provider exposes a
+  routing or retention knob, YA should choose it at main-session start and store
+  the value as provider metadata for the session's fork family. The value belongs
+  to the retained-prefix lineage, not to the visible YA session id: helper forks,
+  target forks, and later fork descendants that share the prefix reuse it.
+- **Helper forks copy prompt-affecting configuration.** Before the helper's first
+  turn, copy the source model, effort/thinking setting, endpoint/region or
+  service tier, provider account/organization, cache retention/TTL setting,
+  routing/cache key, tool inventory, MCP/plugin state, permission mode, and any
+  other provider field that contributes to rendered prompt bytes or cache
+  routing. If YA intentionally changes one of those fields, treat the helper as
+  not cache-compatible and do not use cache warmth as a default-enable argument.
+- **OpenAI API-backed providers should use `prompt_cache_key`.** For a future
+  API-backed Codex/OpenAI provider, derive one stable cache-family key per source
+  session lineage, send it on the main session and every fork/helper request
+  with that retained prefix, and keep the chosen granularity below OpenAI's
+  documented overflow risk for one prefix/key pair. Also pass the same
+  `prompt_cache_retention` policy when configured. The success metric is
+  `usage.prompt_tokens_details.cached_tokens` on the helper turn. Source:
+  <https://developers.openai.com/api/docs/guides/prompt-caching>.
+- **Claude and current Codex CLI/app-server paths are capability-limited.** The
+  Claude Code contract is favorable: current docs say a fork inherits the
+  parent's system prompt, tools, and conversation history exactly, so its first
+  request reads the parent's cache. YA should still preserve Claude launch env
+  such as `ENABLE_PROMPT_CACHING_1H`, avoid helper-only pre-prefix injection, and
+  verify with `cache_read_input_tokens` / `cache_creation_input_tokens`. Current
+  Codex app-server protocol files expose cached-token accounting but no public
+  cache-routing key or retention override, so YA can only use native
+  `thread/fork`/fork-session behavior and measure `cached_input_tokens` until a
+  protocol refresh exposes more. Source:
+  <https://code.claude.com/docs/en/prompt-caching>.
+- **Track expected input cost from byte identity plus freshness.** Add
+  `settings.cache-miss-billing` (Cache Billing: "Prompt-cache accounting") as an
+  advanced default-off setting. Before usage is reported, YA derives an
+  expected-input-cost state for forked and regular turns: the retained prefix is
+  expected to cost **0 uncached prefix tokens** only when YA can say
+  `prefixByteIdentical && freshEnough`. For forks, byte identity comes from the
+  provider's fork contract preserving the retained prefix exactly. For regular
+  same-session turns, byte identity comes from appending the next user turn after
+  the same provider-owned session prefix. Freshness uses a provider-specific
+  window: Claude defaults to 60 minutes because YA-owned Claude launches set
+  `ENABLE_PROMPT_CACHING_1H=1`; current Codex app-server defaults to a
+  conservative 10-minute measured window until a protocol refresh exposes a
+  stronger cache-retention/routing contract.
+- **Record both misses and successful hits as billing evidence.** When enabled,
+  YA records provider usage observations for Claude and Codex turns where the
+  expected-input-cost state is expected-free: the first assistant usage from a YA
+  fork (including retitle, recap, and fork-after-summary helper/target forks),
+  or a session turn within the provider freshness window after a provider turn
+  or prompt-cache keepalive refresh. Claude observations must report
+  `input_tokens`, `cache_read_input_tokens`, and `cache_creation_input_tokens`;
+  Codex observations must report `input_tokens` and `cached_input_tokens` when
+  the app-server protocol exposes them. If cached-read tokens are present and
+  uncached input stays below the configured threshold, YA records an
+  expected-cache-hit success. If cached-read tokens are zero and uncached input
+  crosses the threshold, YA records an unexpected-recompute failure. Each record
+  stores provider, session id, parent session id when present, message id / live
+  message ordinal, usage fields, expected-input-cost state, and relative YA
+  session link. This answers the economically important question: did a
+  byte-identical retained prefix actually land on a backend/cache tier that
+  reused the prefix, or did the provider assess full input cost?
+- **Surface unexpected recomputes where the user can act.** The same setting
+  controls an optional popup. When enabled, every unexpected cache-billing
+  recompute emits an in-app warning with an Open Session action. The
+  server-stored log keeps both failures and successes, side by side on wide
+  screens and failures-first on narrow screens, so Claude and Codex evidence can
+  be reviewed after the fact. Default-off is required because YA-novel billing
+  warnings are instrumentation, not first-party-provider behavior.
+
 This is an advanced explicit action. Normal composer send behavior remains
 verbatim and unchanged; the feature is invoked only by the notch context menu or
 the documented shortcut.

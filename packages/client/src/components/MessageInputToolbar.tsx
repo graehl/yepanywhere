@@ -236,6 +236,8 @@ export interface MessageInputToolbarProps {
   contextUsage?: ContextUsage;
   /** Last session activity timestamp for stale composer liveness display. */
   lastActivityAt?: string | null;
+  /** Hovered or scrolled transcript position timestamp for the status line. */
+  positionTimestampMs?: number | null;
   /** Server-derived provider/session liveness evidence. */
   sessionLiveness?: SessionLivenessSnapshot | null;
   /** Whether the provider exposes a soft-immediate steer lane. */
@@ -540,6 +542,8 @@ interface ToolbarStatusControl {
   showLastActivityPrefix: boolean;
   lastActivityMs: number | null;
   lastActivityIsPast: boolean;
+  positionTimestampMs: number | null;
+  showPositionTimestamp: boolean;
 }
 
 interface ToolbarShortcutsControl {
@@ -1227,6 +1231,26 @@ export function MessageInputToolbarView({
               )}
             </div>
           )}
+          {statusControl.showPositionTimestamp && (
+            <div
+              className="composer-status-chip composer-position-age composer-activity-age--compact"
+              role="status"
+              aria-label={t("toolbarPositionAgeAria")}
+            >
+              <MessageAge
+                timestampMs={statusControl.positionTimestampMs}
+                nowMs={statusControl.nowMs}
+                className="composer-position-age-time"
+                formatLabel={(label) => {
+                  const localizedLabel =
+                    label === "now"
+                      ? t("toolbarRelativeAgeNow")
+                      : t("toolbarRelativeAgePast", { age: label });
+                  return t("toolbarPositionAge", { age: localizedLabel });
+                }}
+              />
+            </div>
+          )}
           {showLastActivityChip && (
             <div
               className={`composer-status-chip composer-activity-age${
@@ -1885,6 +1909,7 @@ export function MessageInputToolbar({
   onConfigureHeartbeat,
   contextUsage,
   lastActivityAt,
+  positionTimestampMs,
   sessionLiveness,
   showSteerNowMode = false,
   steerNowEnabled = false,
@@ -2036,6 +2061,20 @@ export function MessageInputToolbar({
     !showLastActivityPrefix &&
     lastActivityMs !== null &&
     formatCompactRelativeAge(lastActivityMs, nowMs) !== "now";
+  const positionAgeLabel =
+    positionTimestampMs === null || positionTimestampMs === undefined
+      ? null
+      : formatCompactRelativeAge(positionTimestampMs, nowMs);
+  const lastActivityAgeLabel =
+    lastActivityMs === null
+      ? null
+      : formatCompactRelativeAge(lastActivityMs, nowMs);
+  const showPositionTimestamp =
+    toolbarVisibility.sessionStatus &&
+    positionTimestampMs !== null &&
+    positionTimestampMs !== undefined &&
+    positionAgeLabel !== null &&
+    positionAgeLabel !== lastActivityAgeLabel;
   const livenessDisplay = sessionLiveness
     ? describeSessionLiveness(sessionLiveness, t)
     : null;
@@ -2162,7 +2201,8 @@ export function MessageInputToolbar({
     supportsSelectedSpeechSmartTurn ? speechSmartTurnSettings : undefined;
   const showLastActivityChip =
     toolbarVisibility.sessionStatus && showLastActivityAge;
-  const showToolbarStatus = showLivenessChip || showLastActivityChip;
+  const showToolbarStatus =
+    showLivenessChip || showLastActivityChip || showPositionTimestamp;
 
   useEffect(() => {
     if (effectiveThinkingMode !== "off") {
@@ -2269,6 +2309,7 @@ export function MessageInputToolbar({
     showLastActivityChip,
     showLivenessChip,
     showToolbarStatus,
+    showPositionTimestamp,
     showStopButton,
     showSendButton,
   ]);
@@ -2463,6 +2504,8 @@ export function MessageInputToolbar({
         showLastActivityPrefix,
         lastActivityMs,
         lastActivityIsPast,
+        positionTimestampMs: positionTimestampMs ?? null,
+        showPositionTimestamp,
       }}
       pendingApproval={pendingApproval}
       shortcutsControl={{

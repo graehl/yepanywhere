@@ -330,6 +330,8 @@ interface Props {
   contextUsage?: ContextUsage;
   /** Last session activity timestamp for stale composer liveness display. */
   lastActivityAt?: string | null;
+  /** Timestamp for the hovered/scrolled transcript position, shown near activity age. */
+  positionTimestampMs?: number | null;
   /** Server-derived provider/session liveness evidence. */
   sessionLiveness?: SessionLivenessSnapshot | null;
   /** Project ID for uploads (required to enable attach button) */
@@ -437,6 +439,7 @@ export function MessageInput({
   onDraftTextChange,
   contextUsage,
   lastActivityAt,
+  positionTimestampMs,
   sessionLiveness,
   projectId,
   sessionId,
@@ -2228,6 +2231,7 @@ export function MessageInput({
             onConfigureHeartbeat={onConfigureHeartbeat}
             contextUsage={contextUsage}
             lastActivityAt={lastActivityAt}
+            positionTimestampMs={positionTimestampMs}
             sessionLiveness={sessionLiveness}
             showSteerNowMode={supportsSteerNow && hasActiveDualActions}
             steerNowEnabled={steerNowEnabled}

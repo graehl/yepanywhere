@@ -158,6 +158,29 @@ describe("SessionReader", () => {
       expect(summary?.title).toBe("Short message");
     });
 
+    it("formats Claude command wrappers as the original slash command", async () => {
+      const sessionId = "test-session-command";
+      const commandMessage =
+        "<command-message>harsh-review</command-message>\n" +
+        "<command-name>/harsh-review</command-name>\n" +
+        "<command-args>HEAD - check title cleanup</command-args>";
+      const jsonl = JSON.stringify({
+        type: "user",
+        message: {
+          content: commandMessage,
+        },
+        uuid: "msg-1",
+        timestamp: new Date().toISOString(),
+      });
+      await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
+
+      const summary = await reader.getSessionSummary(sessionId, "test-project");
+      expect(summary?.title).toBe("/harsh-review HEAD - check title cleanup");
+      expect(summary?.fullTitle).toBe(
+        "/harsh-review HEAD - check title cleanup",
+      );
+    });
+
     it("returns null title for sessions with no user messages", async () => {
       const sessionId = "test-session-7";
       const jsonl = JSON.stringify({

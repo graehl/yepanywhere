@@ -19,6 +19,7 @@ export interface UserTurnNavAnchor {
   preview: string;
   searchText?: string;
   targetId?: string;
+  timestampMs?: number | null;
 }
 
 export interface UserTurnNavSearchState {
@@ -50,6 +51,8 @@ interface Props {
   onForkAfterAnchor?: (id: string) => void;
   /** Copy this turn's text to the clipboard. */
   onCopyAnchor?: (id: string) => void;
+  /** Reports the timestamp for a hovered/focused turn marker, if any. */
+  onPreviewTimestampChange?: (timestampMs: number | null) => void;
   searchState?: UserTurnNavSearchState | null;
 }
 
@@ -413,7 +416,7 @@ function buildSignature(layout: Omit<UserTurnNavLayout, "signature">): string {
       (marker) =>
         `${marker.id}:${marker.targetId ?? marker.id}:${Math.round(
           marker.topPct * 100,
-        )}`,
+        )}:${marker.timestampMs ?? ""}`,
     )
     .join("|");
   return [
@@ -643,6 +646,7 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
   onForkBeforeAnchor,
   onForkAfterAnchor,
   onCopyAnchor,
+  onPreviewTimestampChange,
   searchState,
 }: Props) {
   const { t } = useI18n();
@@ -974,26 +978,46 @@ export const UserTurnNavigator = memo(function UserTurnNavigator({
     },
     [searchState],
   );
-  const focusPreview = useCallback((id: string) => {
-    if (notchMenuOpenRef.current) return; // menu open: no preview (anti-strobe)
-    setPreviewId((current) => (current === id ? current : id));
-    setPreviewWindowAnchorId((current) => {
-      const visibleIds = visiblePreviewIdsRef.current;
-      const visibleIndex = visibleIds.indexOf(id);
-      const atVisibleEdge =
-        visibleIndex === 0 || visibleIndex === visibleIds.length - 1;
-      return visibleIndex === -1 || atVisibleEdge ? id : current;
-    });
-  }, []);
+  const focusPreview = useCallback(
+    (id: string) => {
+      if (notchMenuOpenRef.current) return; // menu open: no preview (anti-strobe)
+      setPreviewId((current) => (current === id ? current : id));
+      setPreviewWindowAnchorId((current) => {
+        const visibleIds = visiblePreviewIdsRef.current;
+        const visibleIndex = visibleIds.indexOf(id);
+        const atVisibleEdge =
+          visibleIndex === 0 || visibleIndex === visibleIds.length - 1;
+        return visibleIndex === -1 || atVisibleEdge ? id : current;
+      });
+      const marker = layout?.markers.find((candidate) => candidate.id === id);
+      onPreviewTimestampChange?.(marker?.timestampMs ?? null);
+    },
+    [layout?.markers, onPreviewTimestampChange],
+  );
   const clearPreview = useCallback(() => {
     setPreviewId(null);
     setPreviewWindowAnchorId(null);
-  }, []);
+    onPreviewTimestampChange?.(null);
+  }, [onPreviewTimestampChange]);
 
   useEffect(() => {
     setPreviewId(null);
     setPreviewWindowAnchorId(null);
-  }, [searchState?.activeId]);
+    onPreviewTimestampChange?.(null);
+  }, [onPreviewTimestampChange, searchState?.activeId]);
+
+  useEffect(() => {
+    if (!layout) {
+      onPreviewTimestampChange?.(null);
+    }
+  }, [layout, onPreviewTimestampChange]);
+
+  useEffect(
+    () => () => {
+      onPreviewTimestampChange?.(null);
+    },
+    [onPreviewTimestampChange],
+  );
 
   const previewLabels = useMemo<UserTurnPreviewLabel[]>(() => {
     if (!layout) {

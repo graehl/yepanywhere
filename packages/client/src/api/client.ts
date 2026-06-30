@@ -2,6 +2,8 @@ import type {
   AgentActivity,
   AgentContextHints,
   BrowserProfilesResponse,
+  CacheMissBillingRecord,
+  CacheMissBillingSettings,
   ClientDefaults,
   ConnectionsResponse,
   CreateProjectQueueItemRequest,
@@ -1541,6 +1543,13 @@ export const api = {
   // Read-only file-access info (env-pin state + resolved hint paths)
   getFileAccessInfo: () => fetchJSON<FileAccessInfo>("/settings/file-access"),
 
+  getCacheMissBillingEvents: (limit = 200) =>
+    fetchJSON<{ events: CacheMissBillingRecord[] }>(
+      `/settings/cache-miss-billing/events?limit=${encodeURIComponent(
+        String(limit),
+      )}`,
+    ),
+
   discoverHelperTargetModels: (baseUrl: string) =>
     fetchJSON<{ baseUrl: string; models: ModelInfo[] }>(
       "/settings/helper-targets/models",
@@ -1778,6 +1787,8 @@ export interface ServerSettings {
   newSessionDefaults?: NewSessionDefaults;
   /** Provider-scoped prompt-cache keepalive settings */
   promptCacheKeepalive?: PromptCacheKeepaliveSettings;
+  /** Usage-accounting monitor for suspected prompt-cache billing misses */
+  cacheMissBilling?: CacheMissBillingSettings;
   /** Browser-client defaults used when local storage has no explicit value */
   clientDefaults?: ClientDefaults;
   /** Server-routed speech audio retention policy */

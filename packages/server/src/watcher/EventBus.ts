@@ -4,6 +4,7 @@
 
 import type {
   AgentActivity,
+  CacheMissBillingRecord,
   ContextUsage,
   PendingInputType,
   ProjectQueueChangedEvent,
@@ -242,6 +243,14 @@ export interface BrowserTabDisconnectedEvent {
   timestamp: string;
 }
 
+/** Event emitted when cache-billing usage accounting shows a hit or likely miss. */
+export interface CacheMissBillingEvent {
+  type: "cache-miss-billing";
+  record: CacheMissBillingRecord;
+  showToast: boolean;
+  timestamp: string;
+}
+
 /** Union of all event types that can be emitted through the bus */
 export type BusEvent =
   | FileChangeEvent
@@ -262,7 +271,8 @@ export type BusEvent =
   | SessionUpdatedEvent
   | NetworkBindingChangedEvent
   | BrowserTabConnectedEvent
-  | BrowserTabDisconnectedEvent;
+  | BrowserTabDisconnectedEvent
+  | CacheMissBillingEvent;
 
 export type EventHandler<T = BusEvent> = (event: T) => void;
 

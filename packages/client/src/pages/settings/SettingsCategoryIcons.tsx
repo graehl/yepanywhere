@@ -38,6 +38,7 @@ export const settingsCategoryEmojiIcons: Record<string, string> = {
   appearance: "🎨",
   toolbar: "🎛️",
   model: "🧠",
+  "cache-miss-billing": "🧾",
   "message-delivery": "📨",
   "agent-context": "📋",
   notifications: "🔔",
@@ -98,6 +99,18 @@ export const settingsCategoryIcons: Record<string, ReactNode> = {
       <circle cx="7" cy="12" r="0.8" fill="currentColor" />
       <circle cx="12" cy="12" r="0.8" fill="currentColor" />
       <circle cx="17" cy="12" r="0.8" fill="currentColor" />
+    </Icon>
+  ),
+
+  "cache-miss-billing": (
+    <Icon>
+      {/* Receipt with a cache-miss marker. */}
+      <path d="M5 3v18l2-1 2 1 2-1 2 1 2-1 2 1 2-1V3Z" />
+      <path d="M8 7h8" />
+      <path d="M8 11h5" />
+      <path d="m15 11 2 2 2-2" />
+      <path d="m17 13V8" />
+      <path d="M8 16h4" />
     </Icon>
   ),
 

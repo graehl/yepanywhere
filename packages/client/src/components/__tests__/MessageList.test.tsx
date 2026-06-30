@@ -1239,6 +1239,187 @@ describe("MessageList", () => {
     composerTarget.remove();
   });
 
+  it("reports the most recent visible turn end while scrolled back", async () => {
+    const onTranscriptPositionTimestampChange = vi.fn();
+    const assistantEnd = "2026-04-26T12:04:00.000Z";
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request", "2026-04-26T12:00:00.000Z"),
+          assistantMessage("assistant-1", "earlier response", assistantEnd),
+          userMessage("user-2", "current request", "2026-04-26T12:05:00.000Z"),
+          assistantMessage(
+            "assistant-2",
+            "current response",
+            "2026-04-26T12:06:00.000Z",
+          ),
+        ]}
+        onTranscriptPositionTimestampChange={
+          onTranscriptPositionTimestampChange
+        }
+      />,
+    );
+
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 240,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    container.getBoundingClientRect = () =>
+      ({
+        top: 0,
+        bottom: 300,
+        height: 300,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    const user1 = container.querySelector<HTMLElement>(
+      '[data-render-id="user-1"]',
+    );
+    const assistant1 = container.querySelector<HTMLElement>(
+      '[data-render-id="assistant-1"]',
+    );
+    const user2 = container.querySelector<HTMLElement>(
+      '[data-render-id="user-2"]',
+    );
+    const assistant2 = container.querySelector<HTMLElement>(
+      '[data-render-id="assistant-2"]',
+    );
+    const assistantTurns =
+      container.querySelectorAll<HTMLElement>(".assistant-turn");
+    const firstAssistantTurn = assistantTurns.item(0);
+    const lastAssistantTurn = assistantTurns.item(1);
+    expect(user1).toBeTruthy();
+    expect(assistant1).toBeTruthy();
+    expect(user2).toBeTruthy();
+    expect(assistant2).toBeTruthy();
+    expect(assistantTurns).toHaveLength(2);
+    expect(firstAssistantTurn).toBeTruthy();
+    expect(lastAssistantTurn).toBeTruthy();
+    (user1 as HTMLElement).getBoundingClientRect = () => rectFor(-220, 40);
+    (assistant1 as HTMLElement).getBoundingClientRect = () => rectFor(80, 70);
+    (user2 as HTMLElement).getBoundingClientRect = () => rectFor(220, 40);
+    (assistant2 as HTMLElement).getBoundingClientRect = () => rectFor(380, 80);
+    (firstAssistantTurn as HTMLElement).getBoundingClientRect = () =>
+      rectFor(80, 70);
+    (lastAssistantTurn as HTMLElement).getBoundingClientRect = () =>
+      rectFor(380, 80);
+
+    fireEvent.wheel(container, { deltaY: -120 });
+    fireEvent.scroll(container);
+
+    await waitFor(() => {
+      expect(onTranscriptPositionTimestampChange).toHaveBeenLastCalledWith(
+        new Date(assistantEnd).getTime(),
+      );
+    });
+  });
+
+  it("uses the middle visible row when no turn end is visible", async () => {
+    const onTranscriptPositionTimestampChange = vi.fn();
+    const assistantMiddle = "2026-04-26T12:05:00.000Z";
+    const { container } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "long request", "2026-04-26T12:00:00.000Z"),
+          assistantMessage("assistant-1", "long response", assistantMiddle),
+        ]}
+        onTranscriptPositionTimestampChange={
+          onTranscriptPositionTimestampChange
+        }
+      />,
+    );
+
+    Object.defineProperty(container, "scrollTop", {
+      configurable: true,
+      value: 240,
+      writable: true,
+    });
+    Object.defineProperty(container, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(container, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    container.getBoundingClientRect = () =>
+      ({
+        top: 0,
+        bottom: 300,
+        height: 300,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const rectFor = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        height,
+        left: 0,
+        right: 400,
+        width: 400,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    const user1 = container.querySelector<HTMLElement>(
+      '[data-render-id="user-1"]',
+    );
+    const assistant1 = container.querySelector<HTMLElement>(
+      '[data-render-id="assistant-1"]',
+    );
+    const assistantTurn =
+      container.querySelector<HTMLElement>(".assistant-turn");
+    expect(user1).toBeTruthy();
+    expect(assistant1).toBeTruthy();
+    expect(assistantTurn).toBeTruthy();
+    (user1 as HTMLElement).getBoundingClientRect = () => rectFor(-120, 40);
+    (assistant1 as HTMLElement).getBoundingClientRect = () =>
+      rectFor(-80, 520);
+    (assistantTurn as HTMLElement).getBoundingClientRect = () =>
+      rectFor(-80, 520);
+
+    fireEvent.wheel(container, { deltaY: -120 });
+    fireEvent.scroll(container);
+
+    await waitFor(() => {
+      expect(onTranscriptPositionTimestampChange).toHaveBeenLastCalledWith(
+        new Date(assistantMiddle).getTime(),
+      );
+    });
+  });
+
   it("keeps catching up after Follow while output grows", async () => {
     const composerTarget = document.createElement("div");
     composerTarget.className = "session-input-inner";

@@ -80,8 +80,9 @@ export function preprocessMessages(
   }
 
   const compactCoalescedItems = coalesceCompactBoundaryItems(items);
-  const slashCommandCoalescedItems =
-    coalesceSlashCommandSkillBodies(compactCoalescedItems);
+  const slashCommandCoalescedItems = coalesceSlashCommandSkillBodies(
+    compactCoalescedItems,
+  );
   const enrichedItems = enrichWriteStdinWithCommand(slashCommandCoalescedItems);
   return collapseSessionSetupRuns(enrichedItems);
 }
@@ -127,6 +128,8 @@ const SESSION_SETUP_PREFIXES = [
   "# AGENTS.md instructions",
   "<environment_context>",
 ];
+
+const RESUME_ENVIRONMENT_CONTEXT_MAX_GAP_MS = 5_000;
 
 const INTERNAL_REASONING_PLACEHOLDER = "Reasoning [internal]";
 
@@ -190,9 +193,7 @@ function contentBlocksText(content: string | ContentBlock[]): string {
   }
   return content
     .map((block) =>
-      block.type === "text" && typeof block.text === "string"
-        ? block.text
-        : "",
+      block.type === "text" && typeof block.text === "string" ? block.text : "",
     )
     .filter(Boolean)
     .join("\n");
@@ -272,9 +273,7 @@ function isLocalCommandItem(
   return item.type === "system" && item.subtype === "local_command";
 }
 
-function isSlashCommandSkillBodyItem(
-  item: RenderItem,
-): item is UserPromptItem {
+function isSlashCommandSkillBodyItem(item: RenderItem): item is UserPromptItem {
   if (item.type !== "user_prompt") {
     return false;
   }
@@ -422,6 +421,45 @@ function isSessionSetupPrompt(item: UserPromptItem): boolean {
   return SESSION_SETUP_PREFIXES.some((prefix) => text.startsWith(prefix));
 }
 
+function isEnvironmentContextSetupPrompt(item: UserPromptItem): boolean {
+  return getPromptText(item.content)
+    .trimStart()
+    .startsWith("<environment_context>");
+}
+
+function itemTimestampMs(item: RenderItem): number | null {
+  const timestamp = item.sourceMessages
+    .map((message) =>
+      typeof message.timestamp === "string"
+        ? Date.parse(message.timestamp)
+        : NaN,
+    )
+    .find(Number.isFinite);
+  return timestamp === undefined ? null : timestamp;
+}
+
+function isImmediateResumeEnvironmentContext(
+  setupItem: UserPromptItem,
+  nextItem: RenderItem | undefined,
+): boolean {
+  if (
+    !isEnvironmentContextSetupPrompt(setupItem) ||
+    nextItem?.type !== "user_prompt" ||
+    isSessionSetupPrompt(nextItem)
+  ) {
+    return false;
+  }
+
+  const setupMs = itemTimestampMs(setupItem);
+  const nextMs = itemTimestampMs(nextItem);
+  if (setupMs === null || nextMs === null) {
+    return false;
+  }
+
+  const gapMs = nextMs - setupMs;
+  return gapMs >= 0 && gapMs <= RESUME_ENVIRONMENT_CONTEXT_MAX_GAP_MS;
+}
+
 function collapseSessionSetupRuns(items: RenderItem[]): RenderItem[] {
   const result: RenderItem[] = [];
   let index = 0;
@@ -443,6 +481,16 @@ function collapseSessionSetupRuns(items: RenderItem[]): RenderItem[] {
       }
       setupItems.push(runItem);
       runIndex += 1;
+    }
+
+    const singleSetupItem = setupItems.length === 1 ? setupItems[0] : undefined;
+    const shouldSuppressSingleSetupItem =
+      singleSetupItem !== undefined &&
+      isImmediateResumeEnvironmentContext(singleSetupItem, items[runIndex]);
+
+    if (shouldSuppressSingleSetupItem) {
+      index = runIndex;
+      continue;
     }
 
     // Preserve likely user-authored single setup-like messages mid-session.

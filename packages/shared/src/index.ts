@@ -45,6 +45,12 @@ export type {
   ProviderImageSizing,
   ModelInfo,
   RecapMode,
+  CacheMissBillingReason,
+  CacheMissBillingOutcome,
+  CacheMissBillingRecord,
+  CacheMissBillingSettings,
+  CacheMissBillingUsage,
+  ExpectedInputCostState,
   PromptCacheKeepaliveMode,
   PromptCacheKeepaliveProviderInfo,
   PromptCacheKeepaliveProviderSetting,
@@ -95,6 +101,10 @@ export {
   resolveModel,
   DEFAULT_MODEL,
   DEFAULT_PROVIDER,
+  DEFAULT_CACHE_MISS_BILLING_FRESH_WINDOW_MINUTES,
+  DEFAULT_CACHE_MISS_BILLING_PROVIDER_FRESH_WINDOW_MINUTES,
+  DEFAULT_CACHE_MISS_BILLING_MINIMUM_INPUT_TOKENS,
+  DEFAULT_CACHE_MISS_BILLING_SETTINGS,
 } from "./types.js";
 
 export type {

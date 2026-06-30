@@ -14,6 +14,7 @@ import { MainContent, useNavigationLayout } from "../../layouts";
 import { AboutSettings } from "./AboutSettings";
 import { AgentContextSettings } from "./AgentContextSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
+import { CacheMissBillingSettings } from "./CacheMissBillingSettings";
 import { DevelopmentSettings } from "./DevelopmentSettings";
 import { DevicesSettings } from "./DevicesSettings";
 import { EmulatorSettings } from "./EmulatorSettings";
@@ -44,6 +45,7 @@ const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
   toolbar: ToolbarSettings,
   model: ModelSettings,
+  "cache-miss-billing": CacheMissBillingSettings,
   "message-delivery": MessageDeliverySettings,
   "agent-context": AgentContextSettings,
   notifications: NotificationsSettings,

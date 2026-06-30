@@ -77,6 +77,18 @@ New-session Project Queue follows the same rule: hide when the selected project
 is idle and has no Project Queue backlog; show when the project has active work
 or existing Project Queue backlog.
 
+The new-session initial-turn composer is part of the Project Queue contract.
+When it queues a new session, the durable prompt/copy source is the text
+accepted from that composer, because that is what the user typed (including
+slash-command arguments). The promoted session should persist that text as its
+initial prompt and derive its title/display fallback from that saved prompt.
+Known gap: the initial-turn composer currently has no Project Queue button, so
+a user can queue later work from an existing session but cannot queue "start
+this new session after the project backlog drains" at the moment they write the
+initial turn. The missing affordance should reuse the same Project Queue target
+shape (`target.type === "new-session"`) and the same visibility rules above,
+not a separate client-held draft queue.
+
 UI visibility should use both exact active session ids, when available, and
 project-level Project Queue blocking-count summaries. The count fallback covers
 cases such as a fresh client after server restart where a project has

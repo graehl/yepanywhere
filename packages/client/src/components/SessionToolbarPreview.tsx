@@ -118,6 +118,8 @@ export function SessionToolbarPreview() {
             showLastActivityPrefix: false,
             lastActivityMs: null,
             lastActivityIsPast: false,
+            positionTimestampMs: null,
+            showPositionTimestamp: false,
           }}
           shortcutsControl={{
             open: shortcutsOpen,

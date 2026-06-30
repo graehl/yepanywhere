@@ -909,6 +909,55 @@ describe("preprocessMessages", () => {
     });
   });
 
+  it("suppresses a lone resumed Codex environment context before the user turn", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-user-1",
+        role: "user",
+        content: "normal first prompt",
+        timestamp: "2024-01-01T00:00:00.000Z",
+      },
+      {
+        id: "msg-setup-1",
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text:
+                "<environment_context>\n" +
+                "  <current_date>2026-06-30</current_date>\n" +
+                "</environment_context>",
+            },
+          ],
+        },
+        timestamp: "2024-01-01T00:01:00.000Z",
+      },
+      {
+        id: "msg-user-2",
+        type: "user",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "actual wake message" }],
+        },
+        timestamp: "2024-01-01T00:01:00.100Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      type: "user_prompt",
+      content: "normal first prompt",
+    });
+    expect(items[1]).toMatchObject({
+      type: "user_prompt",
+      content: [{ type: "text", text: "actual wake message" }],
+    });
+  });
+
   it("collapses repeated setup prompts inserted after resume", () => {
     const messages: Message[] = [
       {

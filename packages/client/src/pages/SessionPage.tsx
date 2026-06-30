@@ -2283,6 +2283,8 @@ function SessionPageContent({
       ? sessionUpdatedAt
       : lastStreamActivityAt;
   }, [sessionUpdatedAt, lastStreamActivityAt]);
+  const [transcriptPositionTimestampMs, setTranscriptPositionTimestampMs] =
+    useState<number | null>(null);
 
   useEngagementTracking({
     sessionId,
@@ -4883,7 +4885,14 @@ function SessionPageContent({
                 <span className="session-title-skeleton" />
               ) : isEditingTitle ? (
                 <div ref={titleEditControlsRef} className="session-title-edit">
-                  <div className="session-title-edit-row">
+                  <div
+                    className="session-title-edit-row"
+                    title={
+                      generatedRetitle?.deferredInsertion
+                        ? generatedRetitle.submittedTurnText
+                        : undefined
+                    }
+                  >
                     <input
                       ref={renameInputRef}
                       type="text"
@@ -4893,7 +4902,7 @@ function SessionPageContent({
                       }
                       placeholder={
                         generatedRetitle?.deferredInsertion
-                          ? t("sessionRetitleGenerating")
+                          ? t("sessionRetitleDeferred")
                           : undefined
                       }
                       onChange={(e) => setRenameValue(e.target.value)}
@@ -5010,29 +5019,26 @@ function SessionPageContent({
                       </svg>
                     </button>
                   </div>
-                  {titleEditMode === "retitle" && generatedRetitle && (
-                    <div
-                      className={`session-title-retitle-status is-${generatedRetitle.status}${
-                        generatedRetitle.deferredInsertion ? " is-armed" : ""
-                      }`}
-                      title={
-                        generatedRetitle.status === "generating" ||
-                        generatedRetitle.deferredInsertion
-                          ? generatedRetitle.submittedTurnText
-                          : undefined
-                      }
-                    >
-                      {generatedRetitle.deferredInsertion
-                        ? t("sessionRetitleDeferred")
-                        : generatedRetitle.status === "generating"
+                  {titleEditMode === "retitle" &&
+                    generatedRetitle &&
+                    !generatedRetitle.deferredInsertion && (
+                      <div
+                        className={`session-title-retitle-status is-${generatedRetitle.status}`}
+                        title={
+                          generatedRetitle.status === "generating"
+                            ? generatedRetitle.submittedTurnText
+                            : undefined
+                        }
+                      >
+                        {generatedRetitle.status === "generating"
                           ? t("sessionRetitleGenerating")
                           : generatedRetitle.status === "ready" &&
                               generatedRetitle.title
                             ? `${t("sessionRetitleProposalLabel")} ${generatedRetitle.title}`
                             : (generatedRetitle.error ??
                               t("sessionRetitleFailed"))}
-                    </div>
-                  )}
+                      </div>
+                    )}
                 </div>
               ) : (
                 <>
@@ -5491,6 +5497,9 @@ function SessionPageContent({
                     void setForkSummaryAutoOpen(objectId, value);
                   }}
                   onFollowForkSummary={followForkSummary}
+                  onTranscriptPositionTimestampChange={
+                    setTranscriptPositionTimestampMs
+                  }
                 />
               </AgentContentProvider>
             </SessionMetadataProvider>
@@ -5683,6 +5692,7 @@ function SessionPageContent({
                     onConfigureHeartbeat={() => setShowHeartbeatModal(true)}
                     contextUsage={session?.contextUsage}
                     lastActivityAt={activityAt}
+                    positionTimestampMs={transcriptPositionTimestampMs}
                     sessionLiveness={sessionLiveness}
                     isRunning={status.owner === "self"}
                     isThinking={canStopOwnedProcess}
@@ -5776,6 +5786,7 @@ function SessionPageContent({
                 }
                 contextUsage={session?.contextUsage}
                 lastActivityAt={activityAt}
+                positionTimestampMs={transcriptPositionTimestampMs}
                 sessionLiveness={sessionLiveness}
                 projectId={projectId}
                 sessionId={sessionId}

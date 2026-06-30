@@ -27,10 +27,11 @@ import { useI18n } from "../i18n";
 import { toBrowserAppHref } from "../lib/appHref";
 import { isNearScrollEnd } from "../lib/predictiveScroll";
 import { serverSupportsProjectQueue } from "../lib/projectQueueVisibility";
-import { sessionCollectionRecordsToGlobalSessionItems } from "../lib/sessionCollectionRecords";
+import { sessionCollectionRecordToGlobalSessionItem } from "../lib/sessionCollectionRecords";
 import {
   selectOlderSessionRecordsFromRecords,
   selectRecentSessionRecordsFromRecords,
+  type SessionCollectionRecord,
 } from "../lib/clientSummaryState";
 import {
   useDraftSessionIds,
@@ -67,6 +68,10 @@ type SidebarPendingProjectQueueItem = ProjectQueueItemSummary & {
   target: Extract<ProjectQueueItemSummary["target"], { type: "new-session" }>;
 };
 
+type SidebarSessionItem = GlobalSessionItem & {
+  activityInferredFromInboxTier?: boolean;
+};
+
 /**
  * A session is "active" while its agent is mid-turn or waiting on input. Active
  * sessions are pinned above idle rows and are deliberately sorted by the time
@@ -75,6 +80,31 @@ type SidebarPendingProjectQueueItem = ProjectQueueItemSummary & {
  */
 function isActiveSession(session: GlobalSessionItem): boolean {
   return session.activity === "in-turn" || session.activity === "waiting-input";
+}
+
+function sessionCollectionRecordsToSidebarSessionItems(
+  records: readonly SessionCollectionRecord[],
+): SidebarSessionItem[] {
+  const sessions: SidebarSessionItem[] = [];
+  for (const record of records) {
+    const session = sessionCollectionRecordToGlobalSessionItem(record);
+    if (!session) continue;
+    sessions.push({
+      ...session,
+      activityInferredFromInboxTier: record.activityInferredFromInboxTier,
+    });
+  }
+  return sessions;
+}
+
+function getSidebarRowActivity(
+  session: SidebarSessionItem,
+  hasProjectQueue: boolean,
+): GlobalSessionItem["activity"] {
+  if (hasProjectQueue && session.activityInferredFromInboxTier) {
+    return undefined;
+  }
+  return session.activity;
 }
 
 function duplicateGroupingTitle(session: GlobalSessionItem): string {
@@ -533,17 +563,17 @@ export function Sidebar({
   );
 
   const filteredStarredSessions = useMemo(
-    () => sessionCollectionRecordsToGlobalSessionItems(starredSessionRecords),
+    () => sessionCollectionRecordsToSidebarSessionItems(starredSessionRecords),
     [starredSessionRecords],
   );
 
   const recentDaySessions = useMemo(
-    () => sessionCollectionRecordsToGlobalSessionItems(recentSessionRecords),
+    () => sessionCollectionRecordsToSidebarSessionItems(recentSessionRecords),
     [recentSessionRecords],
   );
 
   const olderSessions = useMemo(
-    () => sessionCollectionRecordsToGlobalSessionItems(olderSessionRecords),
+    () => sessionCollectionRecordsToSidebarSessionItems(olderSessionRecords),
     [olderSessionRecords],
   );
 
@@ -589,8 +619,8 @@ export function Sidebar({
   const [showHiddenOlder, setShowHiddenOlder] = useState(false);
 
   const groupDuplicateSessions = useCallback(
-    (sessions: GlobalSessionItem[]) => {
-      const groups = new Map<string, GlobalSessionItem[]>();
+    (sessions: SidebarSessionItem[]) => {
+      const groups = new Map<string, SidebarSessionItem[]>();
       for (const s of sessions) {
         const key = duplicateGroupingKey(s);
         if (!key) continue;
@@ -690,39 +720,42 @@ export function Sidebar({
   // section render sites (starred / recent / older, each with a hidden-dups
   // sublist) stay identical. `createdAt` + `model` + `lastAgentText` feed the
   // hover card.
-  const renderCompactSession = (session: GlobalSessionItem) => (
-    <SessionListItem
-      key={session.id}
-      sessionId={session.id}
-      projectId={session.projectId}
-      title={getSessionDisplayTitle(session)}
-      fullTitle={session.fullTitle ?? getSessionDisplayTitle(session)}
-      initialPrompt={session.initialPrompt}
-      hasCustomTitle={!!session.customTitle}
-      lastAgentText={session.lastAgentText}
-      provider={session.provider}
-      model={session.model}
-      createdAt={session.createdAt}
-      updatedAt={session.updatedAt}
-      parentSessionId={session.parentSessionId}
-      status={session.ownership}
-      pendingInputType={session.pendingInputType}
-      hasUnread={session.hasUnread}
-      isStarred={session.isStarred}
-      isArchived={session.isArchived}
-      mode="compact"
-      isCurrent={session.id === currentSessionId}
-      activity={session.activity}
-      onNavigate={onNavigate}
-      showProjectName
-      projectName={session.projectName}
-      basePath={basePath}
-      messageCount={session.messageCount}
-      hasDraft={drafts.has(session.id)}
-      hasProjectQueue={projectQueuedSessionIds.has(session.id)}
-      publicShareControlsVisible={publicShareControlsVisible}
-    />
-  );
+  const renderCompactSession = (session: SidebarSessionItem) => {
+    const hasProjectQueue = projectQueuedSessionIds.has(session.id);
+    return (
+      <SessionListItem
+        key={session.id}
+        sessionId={session.id}
+        projectId={session.projectId}
+        title={getSessionDisplayTitle(session)}
+        fullTitle={session.fullTitle ?? getSessionDisplayTitle(session)}
+        initialPrompt={session.initialPrompt}
+        hasCustomTitle={!!session.customTitle}
+        lastAgentText={session.lastAgentText}
+        provider={session.provider}
+        model={session.model}
+        createdAt={session.createdAt}
+        updatedAt={session.updatedAt}
+        parentSessionId={session.parentSessionId}
+        status={session.ownership}
+        pendingInputType={session.pendingInputType}
+        hasUnread={session.hasUnread}
+        isStarred={session.isStarred}
+        isArchived={session.isArchived}
+        mode="compact"
+        isCurrent={session.id === currentSessionId}
+        activity={getSidebarRowActivity(session, hasProjectQueue)}
+        onNavigate={onNavigate}
+        showProjectName
+        projectName={session.projectName}
+        basePath={basePath}
+        messageCount={session.messageCount}
+        hasDraft={drafts.has(session.id)}
+        hasProjectQueue={hasProjectQueue}
+        publicShareControlsVisible={publicShareControlsVisible}
+      />
+    );
+  };
 
   // In desktop mode, always render. In mobile mode, only render when open.
   if (!isDesktop && !isOpen) return null;

@@ -66,6 +66,7 @@ export interface SessionCollectionRecord {
   ownership?: SessionStatus;
   pendingInputType?: PendingInputType;
   activity?: AgentActivity;
+  activityInferredFromInboxTier?: boolean;
   hasUnread?: boolean;
   customTitle?: string;
   isArchived?: boolean;
@@ -603,10 +604,13 @@ function upsertInboxItemRecord(
       : tier === "active"
         ? "in-turn"
         : null);
+  const activityInferredFromInboxTier =
+    item.activity === undefined && !item.pendingInputType && tier === "active";
   record = withLifecycleFields(
     record,
     {
       activity: inferredActivity,
+      activityInferredFromInboxTier,
       pendingInputType: item.pendingInputType,
     },
     observation,
@@ -832,6 +836,7 @@ function withLifecycleFields(
   fields: {
     ownership?: SessionStatus;
     activity?: AgentActivity | null;
+    activityInferredFromInboxTier?: boolean;
     pendingInputType?: PendingInputType;
   },
   observation: SessionCollectionObservation,
@@ -839,6 +844,7 @@ function withLifecycleFields(
   if (
     fields.ownership === undefined &&
     fields.activity === undefined &&
+    fields.activityInferredFromInboxTier === undefined &&
     fields.pendingInputType === undefined
   ) {
     return record;
@@ -874,6 +880,12 @@ function withLifecycleFields(
       ? { ownership: fields.ownership }
       : {}),
     activity: nextActivity,
+    activityInferredFromInboxTier:
+      isFresh && nextActivity
+        ? fields.activityInferredFromInboxTier === true
+        : isFresh
+          ? undefined
+          : record.activityInferredFromInboxTier,
     activeStartedAt: isFresh
       ? isActive
         ? wasActive

@@ -896,6 +896,40 @@ describe("clientSummaryState", () => {
     });
   });
 
+  it("tracks activity inferred only from active inbox tier placement", () => {
+    let state = applyInboxCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        needsAttention: [],
+        active: [inboxItem("queued-active")],
+        recentActivity: [],
+        unread8h: [],
+        unread24h: [],
+      },
+      100,
+    );
+
+    expect(selectSessionCollectionRecord(state, "queued-active")).toMatchObject({
+      activity: "in-turn",
+      activityInferredFromInboxTier: true,
+    });
+
+    state = applyGlobalSessionsCollectionSnapshot(
+      state,
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [globalSession("queued-active", { activity: "in-turn" })],
+        hasMore: false,
+      },
+      200,
+    );
+
+    expect(selectSessionCollectionRecord(state, "queued-active")).toMatchObject({
+      activity: "in-turn",
+      activityInferredFromInboxTier: false,
+    });
+  });
+
   it("clears older active lifecycle when a newer inbox row is no longer active", () => {
     let state = applyGlobalSessionsCollectionSnapshot(
       createEmptyClientSummaryState(),

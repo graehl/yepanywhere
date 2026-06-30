@@ -230,14 +230,19 @@ vi.mock("../SessionListItem", () => ({
   SessionListItem: ({
     sessionId,
     title,
+    activity,
     hasProjectQueue,
   }: {
     sessionId: string;
     title: string;
+    activity?: string;
     hasProjectQueue?: boolean;
   }) => (
-    <li data-testid={`session-${sessionId}`}>
+    <li data-testid={`session-${sessionId}`} data-activity={activity ?? ""}>
       {title}
+      {activity === "in-turn" ? (
+        <span data-testid={`thinking-${sessionId}`}>Thinking</span>
+      ) : null}
       {hasProjectQueue ? <span>Q</span> : null}
     </li>
   ),
@@ -438,6 +443,60 @@ describe("Sidebar collapsed toggle", () => {
     expect(
       screen.getByTestId("session-plain-session").textContent,
     ).not.toContain("Q");
+  });
+
+  it("hides the sidebar thinking dot for queue-only active rows", () => {
+    globalSessionsState.sessions = [
+      makeSession("queued-session", new Date().toISOString(), {
+        activity: "in-turn",
+        activityInferredFromInboxTier: true,
+      }),
+    ];
+    projectQueuesState.queuesByProject = {
+      "project-1": [
+        makeProjectQueueItem("queue-session", {
+          target: {
+            type: "existing-session",
+            sessionId: "queued-session",
+          },
+        }),
+      ],
+    };
+
+    renderSidebar();
+
+    expect(screen.getByTestId("session-queued-session").textContent).toContain(
+      "Q",
+    );
+    expect(screen.queryByTestId("thinking-queued-session")).toBeNull();
+    expect(screen.getByTestId("session-queued-session").dataset.activity).toBe(
+      "",
+    );
+  });
+
+  it("keeps the sidebar thinking dot for real in-turn queued rows", () => {
+    globalSessionsState.sessions = [
+      makeSession("active-queued-session", new Date().toISOString(), {
+        activity: "in-turn",
+      }),
+    ];
+    projectQueuesState.queuesByProject = {
+      "project-1": [
+        makeProjectQueueItem("queue-session", {
+          target: {
+            type: "existing-session",
+            sessionId: "active-queued-session",
+          },
+        }),
+      ],
+    };
+
+    renderSidebar();
+
+    expect(screen.getByTestId("thinking-active-queued-session")).toBeDefined();
+    expect(
+      screen.getByTestId("session-active-queued-session").dataset.activity,
+    ).toBe("in-turn");
   });
 
   it("shows the Project Queue count on the Projects nav item", () => {

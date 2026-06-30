@@ -61,6 +61,19 @@ describe("SessionIndexService", () => {
     await writeFile(join(sessionDir, `${sessionId}.jsonl`), `${jsonl}\n`);
   }
 
+  async function waitForCondition(
+    predicate: () => boolean,
+    message: string,
+    timeoutMs = 500,
+  ): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error(message);
+  }
+
   describe("initialization", () => {
     it("creates data directory on initialize", async () => {
       const newDataDir = join(testDir, "new-indexes");
@@ -300,6 +313,112 @@ describe("SessionIndexService", () => {
       expect(result2.length).toBe(3);
       expect(result3.length).toBe(3);
       expect(service.getDebugStats().requests).toBe(1);
+    });
+
+    it("limits concurrent summary parses across validation scopes", async () => {
+      const queuedService = new SessionIndexService({
+        dataDir: join(testDir, "queued-indexes"),
+        projectsDir,
+        summaryParseConcurrency: 1,
+      });
+      await queuedService.initialize();
+
+      const dirA = join(projectsDir, "queued-a");
+      const dirB = join(projectsDir, "queued-b");
+      await mkdir(dirA, { recursive: true });
+      await mkdir(dirB, { recursive: true });
+      const fileA = join(dirA, "session-a.jsonl");
+      const fileB = join(dirB, "session-b.jsonl");
+      await writeFile(fileA, "A\n");
+      await writeFile(fileB, "B\n");
+
+      let activeParses = 0;
+      let maxActiveParses = 0;
+      let parseStarts = 0;
+      let releaseFirstParse: (() => void) | null = null;
+      const firstParseHeld = new Promise<void>((resolve) => {
+        releaseFirstParse = resolve;
+      });
+      let firstParseStarted: (() => void) | null = null;
+      const firstParseStartedPromise = new Promise<void>((resolve) => {
+        firstParseStarted = resolve;
+      });
+
+      const createQueuedReader = (
+        dir: string,
+        sessionId: string,
+        filePath: string,
+      ): ISessionReader => ({
+        listSessionFiles: async () => [{ sessionId, filePath }],
+        getSessionSummary: async (
+          currentSessionId: string,
+          currentProjectId: string,
+        ): Promise<SessionSummary> => {
+          parseStarts += 1;
+          activeParses += 1;
+          maxActiveParses = Math.max(maxActiveParses, activeParses);
+          if (parseStarts === 1) {
+            firstParseStarted?.();
+            await firstParseHeld;
+          }
+          const fileStats = await stat(filePath);
+          activeParses -= 1;
+          return {
+            id: currentSessionId,
+            projectId: currentProjectId,
+            title: currentSessionId,
+            fullTitle: currentSessionId,
+            createdAt: new Date(fileStats.mtimeMs).toISOString(),
+            updatedAt: new Date(fileStats.mtimeMs).toISOString(),
+            messageCount: 1,
+            ownership: { owner: "none" },
+            provider: "claude",
+          };
+        },
+        getAgentMappings: async () => [],
+        getAgentSession: async () => null,
+        getIndexScopeKey: () => dir,
+      });
+
+      const requestA = queuedService.getSessionsWithCache(
+        dirA,
+        toUrlProjectId("/queued/a"),
+        createQueuedReader(dirA, "session-a", fileA),
+      );
+      const requestB = queuedService.getSessionsWithCache(
+        dirB,
+        toUrlProjectId("/queued/b"),
+        createQueuedReader(dirB, "session-b", fileB),
+      );
+
+      await firstParseStartedPromise;
+      await waitForCondition(
+        () => queuedService.getWarmupStatus().queuedParses === 1,
+        "second summary parse did not queue behind the active parse",
+      );
+
+      const activeStatus = queuedService.getWarmupStatus();
+      expect(activeStatus.summaryParseConcurrency).toBe(1);
+      expect(activeStatus.activeParses).toBe(1);
+      expect(activeStatus.queuedParses).toBe(1);
+      expect(activeStatus.activeJobs).toHaveLength(2);
+
+      releaseFirstParse?.();
+      const [sessionsA, sessionsB] = await Promise.all([requestA, requestB]);
+
+      expect(sessionsA.map((session) => session.id)).toEqual(["session-a"]);
+      expect(sessionsB.map((session) => session.id)).toEqual(["session-b"]);
+      expect(parseStarts).toBe(2);
+      expect(maxActiveParses).toBe(1);
+
+      const completedStatus = queuedService.getWarmupStatus();
+      expect(completedStatus.activeParses).toBe(0);
+      expect(completedStatus.queuedParses).toBe(0);
+      expect(completedStatus.activeJobs).toHaveLength(0);
+      expect(completedStatus.recentJobs).toHaveLength(2);
+      expect(
+        completedStatus.recentJobs.every((job) => job.status === "completed"),
+      ).toBe(true);
     });
   });
 

@@ -3,6 +3,8 @@ export {
   type CachedSessionSummary,
   type SessionIndexServiceOptions,
   type SessionIndexState,
+  type SessionIndexWarmupJobSnapshot,
+  type SessionIndexWarmupStatusSnapshot,
 } from "./SessionIndexService.js";
 export {
   SessionDiscoveryIndex,

@@ -124,6 +124,8 @@ ENVIRONMENT VARIABLES:
                                 Session index write lock timeout in ms (default: 2000)
   SESSION_INDEX_WRITE_LOCK_STALE_MS
                                 Session index stale lock threshold in ms (default: 10000)
+  SESSION_INDEX_SUMMARY_PARSE_CONCURRENCY
+                                Max concurrent session-summary parses during cold index fills (default: 1)
   SESSION_INDEX_LOG_PERF
                                 Log session-index performance timings
   CODEX_READER_LOG_PARSE

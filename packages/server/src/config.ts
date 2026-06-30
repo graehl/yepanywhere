@@ -64,6 +64,8 @@ export interface Config {
   sessionIndexWriteLockTimeoutMs: number;
   /** Session index lock staleness threshold (ms). */
   sessionIndexWriteLockStaleMs: number;
+  /** Max concurrent summary parses across all session-index scopes. */
+  sessionIndexSummaryParseConcurrency: number;
   /** Default active session window in days. 0 disables auto-archiving. */
   sessionAutoArchiveDays: number;
   /** Project scanner cache TTL (ms). 0 = rescan every request. */
@@ -250,6 +252,10 @@ export function loadConfig(): Config {
     1000,
     parseIntOrDefault(process.env.SESSION_INDEX_WRITE_LOCK_STALE_MS, 10000),
   );
+  const sessionIndexSummaryParseConcurrency = Math.max(
+    1,
+    parseIntOrDefault(process.env.SESSION_INDEX_SUMMARY_PARSE_CONCURRENCY, 1),
+  );
   const projectScanCacheTtlMs = Math.max(
     0,
     parseIntOrDefault(process.env.PROJECT_SCAN_CACHE_TTL_MS, 5000),
@@ -287,6 +293,7 @@ export function loadConfig(): Config {
     sessionIndexFullValidationMs,
     sessionIndexWriteLockTimeoutMs,
     sessionIndexWriteLockStaleMs,
+    sessionIndexSummaryParseConcurrency,
     sessionAutoArchiveDays,
     projectScanCacheTtlMs,
     idleTimeoutMs:

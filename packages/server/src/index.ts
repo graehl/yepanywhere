@@ -367,6 +367,7 @@ const sessionIndexService = new SessionIndexService({
   fullValidationIntervalMs: config.sessionIndexFullValidationMs,
   writeLockTimeoutMs: config.sessionIndexWriteLockTimeoutMs,
   writeLockStaleMs: config.sessionIndexWriteLockStaleMs,
+  summaryParseConcurrency: config.sessionIndexSummaryParseConcurrency,
   eventBus,
 });
 const pushService = new PushService({ dataDir: config.dataDir });

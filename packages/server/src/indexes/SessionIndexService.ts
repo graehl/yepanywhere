@@ -25,8 +25,9 @@ import type { SessionSummary } from "../supervisor/types.js";
 import type { EventBus, FileChangeEvent } from "../watcher/index.js";
 import type { ISessionIndexService, SessionIndexListOptions } from "./types.js";
 
-const logger = getLogger();
 const LOG_CACHE_PERF = process.env.SESSION_INDEX_LOG_PERF === "true";
+const DEFAULT_SUMMARY_PARSE_CONCURRENCY = 1;
+const DEFAULT_WARMUP_PROGRESS_LOG_INTERVAL_MS = 5000;
 
 export interface CachedSessionSummary {
   title: string | null;
@@ -78,6 +79,79 @@ interface SessionIndexPerfDetails {
   largestCacheMisses?: SessionIndexLargestCacheMiss[];
 }
 
+type SessionIndexWarmupJobStatus = "running" | "completed" | "failed";
+
+export interface SessionIndexWarmupJobSnapshot {
+  key: string;
+  status: SessionIndexWarmupJobStatus;
+  scopeKey: string;
+  validationKey: string;
+  sessionDir: string;
+  projectId: UrlProjectId;
+  startedAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  elapsedMs: number;
+  totalFiles: number;
+  completedFiles: number;
+  cacheHits: number;
+  cacheMisses: number;
+  cacheMissBytes: number;
+  parsedBytes: number;
+  parseCalls: number;
+  activeParses: number;
+  queuedParses: number;
+  coalescedParses: number;
+  lastSessionId?: string;
+  lastFilePath?: string;
+  error?: string;
+}
+
+export interface SessionIndexWarmupStatusSnapshot {
+  summaryParseConcurrency: number;
+  activeParses: number;
+  queuedParses: number;
+  activeJobs: SessionIndexWarmupJobSnapshot[];
+  recentJobs: SessionIndexWarmupJobSnapshot[];
+}
+
+interface SessionIndexWarmupJobState {
+  key: string;
+  status: SessionIndexWarmupJobStatus;
+  scopeKey: string;
+  validationKey: string;
+  sessionDir: string;
+  projectId: UrlProjectId;
+  startedAtMs: number;
+  updatedAtMs: number;
+  completedAtMs?: number;
+  lastLoggedAtMs: number;
+  totalFiles: number;
+  completedFiles: number;
+  cacheHits: number;
+  cacheMisses: number;
+  cacheMissBytes: number;
+  parsedBytes: number;
+  parseCalls: number;
+  activeParses: number;
+  queuedParses: number;
+  coalescedParses: number;
+  lastSessionId?: string;
+  lastFilePath?: string;
+  error?: string;
+}
+
+interface SummaryParseTask {
+  key: string;
+  jobKey: string;
+  sessionId: string;
+  filePath: string;
+  size: number;
+  run: () => Promise<SessionSummary | null>;
+  resolve: (summary: SessionSummary | null) => void;
+  reject: (error: unknown) => void;
+}
+
 export interface SessionIndexServiceOptions {
   /** Directory to store index files (defaults to ~/.yep-anywhere/indexes) */
   dataDir?: string;
@@ -96,6 +170,10 @@ export interface SessionIndexServiceOptions {
   writeLockTimeoutMs?: number;
   /** Age at which lock directories are treated as stale and removed (ms). */
   writeLockStaleMs?: number;
+  /** Max concurrent summary parses across all session-index scopes. */
+  summaryParseConcurrency?: number;
+  /** Interval for active cold-index progress logs. */
+  warmupProgressLogIntervalMs?: number;
 }
 
 /**
@@ -115,12 +193,21 @@ export class SessionIndexService implements ISessionIndexService {
   private fullValidationIntervalMs: number;
   private writeLockTimeoutMs: number;
   private writeLockStaleMs: number;
+  private summaryParseConcurrency: number;
+  private warmupProgressLogIntervalMs: number;
   private lastFullValidationAt: Map<string, number> = new Map();
   private dirtyDirs: Set<string> = new Set();
   private dirtySessionsByDir: Map<string, Set<string>> = new Map();
   private inFlightSessionLoads: Map<string, Promise<SessionSummary[]>> =
     new Map();
   private inFlightTitleLoads: Map<string, Promise<string | null>> = new Map();
+  private inFlightSummaryParses: Map<string, Promise<SessionSummary | null>> =
+    new Map();
+  private summaryParseQueue: SummaryParseTask[] = [];
+  private activeSummaryParses = 0;
+  private warmupJobs: Map<string, SessionIndexWarmupJobState> = new Map();
+  private recentWarmupJobs: SessionIndexWarmupJobSnapshot[] = [];
+  private warmupProgressTimer: ReturnType<typeof setInterval> | null = null;
   private cacheStats = {
     requests: 0,
     fastHits: 0,
@@ -145,6 +232,17 @@ export class SessionIndexService implements ISessionIndexService {
     );
     this.writeLockTimeoutMs = Math.max(0, options.writeLockTimeoutMs ?? 2000);
     this.writeLockStaleMs = Math.max(1000, options.writeLockStaleMs ?? 10000);
+    this.summaryParseConcurrency = Math.max(
+      1,
+      Math.floor(
+        options.summaryParseConcurrency ?? DEFAULT_SUMMARY_PARSE_CONCURRENCY,
+      ),
+    );
+    this.warmupProgressLogIntervalMs = Math.max(
+      1000,
+      options.warmupProgressLogIntervalMs ??
+        DEFAULT_WARMUP_PROGRESS_LOG_INTERVAL_MS,
+    );
 
     if (options.eventBus) {
       this.unsubscribeEventBus = options.eventBus.subscribe((event) => {
@@ -167,7 +265,7 @@ export class SessionIndexService implements ISessionIndexService {
       const firstKey = this.indexCache.keys().next().value;
       if (firstKey) {
         this.indexCache.delete(firstKey);
-        logger.debug(
+        getLogger().debug(
           `[SessionIndexService] Evicted cache entry for ${firstKey} (cache size: ${this.indexCache.size})`,
         );
       } else {
@@ -265,7 +363,7 @@ export class SessionIndexService implements ISessionIndexService {
     } catch (error) {
       // File doesn't exist or is invalid - start fresh
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        logger.warn(
+        getLogger().warn(
           { err: error },
           `[SessionIndexService] Failed to load index for ${scopeKey}, starting fresh`,
         );
@@ -338,7 +436,7 @@ export class SessionIndexService implements ISessionIndexService {
       await fs.unlink(tempPath).catch(() => {
         // Best-effort cleanup for failed atomic writes.
       });
-      logger.error(
+      getLogger().error(
         { err: error },
         `[SessionIndexService] Failed to save index for ${scopeKey}`,
       );
@@ -577,7 +675,7 @@ export class SessionIndexService implements ISessionIndexService {
     if (mode === "full") this.cacheStats.fullScans += 1;
 
     if (LOG_CACHE_PERF || durationMs >= 250) {
-      logger.info(
+      getLogger().info(
         {
           event: "session_index_perf",
           mode,
@@ -589,6 +687,276 @@ export class SessionIndexService implements ISessionIndexService {
         },
         "SESSION_INDEX: performance",
       );
+    }
+  }
+
+  private snapshotWarmupJob(
+    job: SessionIndexWarmupJobState,
+    now = Date.now(),
+  ): SessionIndexWarmupJobSnapshot {
+    return {
+      key: job.key,
+      status: job.status,
+      scopeKey: job.scopeKey,
+      validationKey: job.validationKey,
+      sessionDir: job.sessionDir,
+      projectId: job.projectId,
+      startedAt: new Date(job.startedAtMs).toISOString(),
+      updatedAt: new Date(job.updatedAtMs).toISOString(),
+      ...(job.completedAtMs
+        ? { completedAt: new Date(job.completedAtMs).toISOString() }
+        : {}),
+      elapsedMs: now - job.startedAtMs,
+      totalFiles: job.totalFiles,
+      completedFiles: job.completedFiles,
+      cacheHits: job.cacheHits,
+      cacheMisses: job.cacheMisses,
+      cacheMissBytes: job.cacheMissBytes,
+      parsedBytes: job.parsedBytes,
+      parseCalls: job.parseCalls,
+      activeParses: job.activeParses,
+      queuedParses: job.queuedParses,
+      coalescedParses: job.coalescedParses,
+      ...(job.lastSessionId ? { lastSessionId: job.lastSessionId } : {}),
+      ...(job.lastFilePath ? { lastFilePath: job.lastFilePath } : {}),
+      ...(job.error ? { error: job.error } : {}),
+    };
+  }
+
+  private startWarmupJob(args: {
+    scopeKey: string;
+    validationKey: string;
+    sessionDir: string;
+    projectId: UrlProjectId;
+  }): SessionIndexWarmupJobState {
+    const now = Date.now();
+    const existing = this.warmupJobs.get(args.validationKey);
+    if (existing && existing.status === "running") {
+      existing.updatedAtMs = now;
+      return existing;
+    }
+
+    const job: SessionIndexWarmupJobState = {
+      key: args.validationKey,
+      status: "running",
+      scopeKey: args.scopeKey,
+      validationKey: args.validationKey,
+      sessionDir: args.sessionDir,
+      projectId: args.projectId,
+      startedAtMs: now,
+      updatedAtMs: now,
+      lastLoggedAtMs: 0,
+      totalFiles: 0,
+      completedFiles: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      cacheMissBytes: 0,
+      parsedBytes: 0,
+      parseCalls: 0,
+      activeParses: 0,
+      queuedParses: 0,
+      coalescedParses: 0,
+    };
+    this.warmupJobs.set(job.key, job);
+    this.ensureWarmupProgressTimer();
+    this.logWarmupProgress(job, "start", true);
+    return job;
+  }
+
+  private updateWarmupJob(
+    jobKey: string,
+    update: (job: SessionIndexWarmupJobState, now: number) => void,
+  ): void {
+    const job = this.warmupJobs.get(jobKey);
+    if (job?.status !== "running") return;
+    const now = Date.now();
+    update(job, now);
+    job.updatedAtMs = now;
+  }
+
+  private completeWarmupJob(jobKey: string): void {
+    const job = this.warmupJobs.get(jobKey);
+    if (job?.status !== "running") return;
+    const now = Date.now();
+    job.status = "completed";
+    job.completedAtMs = now;
+    job.updatedAtMs = now;
+    this.logWarmupProgress(job, "complete", true);
+    this.rememberCompletedWarmupJob(job, now);
+  }
+
+  private failWarmupJob(jobKey: string, error: unknown): void {
+    const job = this.warmupJobs.get(jobKey);
+    if (job?.status !== "running") return;
+    const now = Date.now();
+    job.status = "failed";
+    job.error = error instanceof Error ? error.message : String(error);
+    job.completedAtMs = now;
+    job.updatedAtMs = now;
+    this.logWarmupProgress(job, "failed", true);
+    this.rememberCompletedWarmupJob(job, now);
+  }
+
+  private rememberCompletedWarmupJob(
+    job: SessionIndexWarmupJobState,
+    now: number,
+  ): void {
+    this.warmupJobs.delete(job.key);
+    this.recentWarmupJobs.unshift(this.snapshotWarmupJob(job, now));
+    this.recentWarmupJobs = this.recentWarmupJobs.slice(0, 20);
+    if (this.warmupJobs.size === 0) {
+      this.stopWarmupProgressTimer();
+    }
+  }
+
+  private ensureWarmupProgressTimer(): void {
+    if (this.warmupProgressTimer) return;
+    this.warmupProgressTimer = setInterval(() => {
+      const now = Date.now();
+      for (const job of this.warmupJobs.values()) {
+        this.logWarmupProgress(job, "progress", false, now);
+      }
+      if (this.warmupJobs.size === 0) {
+        this.stopWarmupProgressTimer();
+      }
+    }, this.warmupProgressLogIntervalMs);
+    this.warmupProgressTimer.unref?.();
+  }
+
+  private stopWarmupProgressTimer(): void {
+    if (!this.warmupProgressTimer) return;
+    clearInterval(this.warmupProgressTimer);
+    this.warmupProgressTimer = null;
+  }
+
+  private logWarmupProgress(
+    job: SessionIndexWarmupJobState,
+    phase: "start" | "progress" | "complete" | "failed",
+    force: boolean,
+    now = Date.now(),
+  ): void {
+    if (
+      !force &&
+      now - job.lastLoggedAtMs < this.warmupProgressLogIntervalMs
+    ) {
+      return;
+    }
+    job.lastLoggedAtMs = now;
+    getLogger().info(
+      {
+        event: "session_index_warmup_progress",
+        phase,
+        summaryParseConcurrency: this.summaryParseConcurrency,
+        globalActiveParses: this.activeSummaryParses,
+        globalQueuedParses: this.summaryParseQueue.length,
+        ...this.snapshotWarmupJob(job, now),
+      },
+      "SESSION_INDEX: warmup progress",
+    );
+  }
+
+  private enqueueSummaryParse(args: {
+    sessionDir: string;
+    projectId: UrlProjectId;
+    reader: ISessionReader;
+    scopeKey: string;
+    validationKey: string;
+    sessionId: string;
+    filePath: string;
+    size: number;
+    mtime: number;
+  }): Promise<SessionSummary | null> {
+    const parseKey = `${args.scopeKey}::${args.sessionId}::${args.mtime}::${args.size}`;
+    const existing = this.inFlightSummaryParses.get(parseKey);
+    if (existing) {
+      this.updateWarmupJob(args.validationKey, (job) => {
+        job.coalescedParses += 1;
+        job.lastSessionId = args.sessionId;
+        job.lastFilePath = args.filePath;
+      });
+      return existing.then((summary) => {
+        this.updateWarmupJob(args.validationKey, (job) => {
+          job.completedFiles += 1;
+          job.parsedBytes += args.size;
+          job.lastSessionId = args.sessionId;
+          job.lastFilePath = args.filePath;
+        });
+        return summary;
+      });
+    }
+
+    const promise = new Promise<SessionSummary | null>((resolve, reject) => {
+      const task: SummaryParseTask = {
+        key: parseKey,
+        jobKey: args.validationKey,
+        sessionId: args.sessionId,
+        filePath: args.filePath,
+        size: args.size,
+        run: () => args.reader.getSessionSummary(args.sessionId, args.projectId),
+        resolve,
+        reject,
+      };
+      this.summaryParseQueue.push(task);
+      this.updateWarmupJob(args.validationKey, (job) => {
+        job.queuedParses += 1;
+        job.lastSessionId = args.sessionId;
+        job.lastFilePath = args.filePath;
+      });
+      this.drainSummaryParseQueue();
+    });
+    this.inFlightSummaryParses.set(parseKey, promise);
+    promise.then(
+      () => {
+        if (this.inFlightSummaryParses.get(parseKey) === promise) {
+          this.inFlightSummaryParses.delete(parseKey);
+        }
+      },
+      () => {
+        if (this.inFlightSummaryParses.get(parseKey) === promise) {
+          this.inFlightSummaryParses.delete(parseKey);
+        }
+      },
+    );
+    return promise;
+  }
+
+  private drainSummaryParseQueue(): void {
+    while (
+      this.activeSummaryParses < this.summaryParseConcurrency &&
+      this.summaryParseQueue.length > 0
+    ) {
+      const task = this.summaryParseQueue.shift();
+      if (!task) return;
+      this.activeSummaryParses += 1;
+      this.updateWarmupJob(task.jobKey, (job) => {
+        job.queuedParses = Math.max(0, job.queuedParses - 1);
+        job.activeParses += 1;
+        job.parseCalls += 1;
+        job.lastSessionId = task.sessionId;
+        job.lastFilePath = task.filePath;
+      });
+
+      void (async () => {
+        try {
+          const summary = await task.run();
+          this.updateWarmupJob(task.jobKey, (job) => {
+            job.completedFiles += 1;
+            job.parsedBytes += task.size;
+            job.lastSessionId = task.sessionId;
+            job.lastFilePath = task.filePath;
+          });
+          task.resolve(summary);
+        } catch (error) {
+          this.failWarmupJob(task.jobKey, error);
+          task.reject(error);
+        } finally {
+          this.activeSummaryParses = Math.max(0, this.activeSummaryParses - 1);
+          this.updateWarmupJob(task.jobKey, (job) => {
+            job.activeParses = Math.max(0, job.activeParses - 1);
+          });
+          this.drainSummaryParseQueue();
+        }
+      })();
     }
   }
 
@@ -650,67 +1018,105 @@ export class SessionIndexService implements ISessionIndexService {
     let indexChanged = false;
     let statCalls = 0;
     let parseCalls = 0;
+    let warmupJobKey: string | null = null;
+    let warmupJobCacheMissBytes = 0;
+    const incrementalValidationKey = `${scopeKey}::incremental`;
 
-    for (const sessionId of Array.from(dirty)) {
-      const cached = index.sessions[sessionId];
+    try {
+      for (const sessionId of Array.from(dirty)) {
+        const cached = index.sessions[sessionId];
 
-      if (cached) {
-        statCalls += 1;
-        const changed = await reader.getSessionSummaryIfChanged(
-          sessionId,
-          projectId,
-          cached.fileMtime,
-          cached.indexedBytes,
-        );
-        if (!changed) continue;
-        parseCalls += 1;
-        index.sessions[sessionId] = this.toCachedSummary(
-          changed.summary,
-          changed.mtime,
-          changed.size,
-        );
-        indexChanged = true;
-        continue;
-      }
-
-      parseCalls += 1;
-      const summary = await reader.getSessionSummary(sessionId, projectId);
-      const filePath =
-        (await reader.getSessionFilePath?.(sessionId)) ??
-        path.join(sessionDir, `${sessionId}.jsonl`);
-
-      if (summary) {
-        try {
-          const stats = await fs.stat(filePath);
+        if (cached) {
           statCalls += 1;
+          const changed = await reader.getSessionSummaryIfChanged(
+            sessionId,
+            projectId,
+            cached.fileMtime,
+            cached.indexedBytes,
+          );
+          if (!changed) continue;
+          parseCalls += 1;
+          index.sessions[sessionId] = this.toCachedSummary(
+            changed.summary,
+            changed.mtime,
+            changed.size,
+          );
+          indexChanged = true;
+          continue;
+        }
+
+        const filePath =
+          (await reader.getSessionFilePath?.(sessionId)) ??
+          path.join(sessionDir, `${sessionId}.jsonl`);
+        let stats: Stats;
+        try {
+          stats = await fs.stat(filePath);
+          statCalls += 1;
+        } catch {
+          if (index.sessions[sessionId]) {
+            delete index.sessions[sessionId];
+            indexChanged = true;
+          }
+          continue;
+        }
+
+        parseCalls += 1;
+        warmupJobCacheMissBytes += stats.size;
+        if (!warmupJobKey) {
+          const job = this.startWarmupJob({
+            scopeKey,
+            validationKey: incrementalValidationKey,
+            sessionDir,
+            projectId,
+          });
+          warmupJobKey = job.key;
+          this.updateWarmupJob(job.key, (current) => {
+            current.totalFiles = dirty.size;
+          });
+        }
+        this.updateWarmupJob(warmupJobKey, (current) => {
+          current.cacheMisses += 1;
+          current.cacheMissBytes = warmupJobCacheMissBytes;
+        });
+
+        const summary = await this.enqueueSummaryParse({
+          sessionDir,
+          projectId,
+          reader,
+          scopeKey,
+          validationKey: warmupJobKey,
+          sessionId,
+          filePath,
+          size: stats.size,
+          mtime: stats.mtimeMs,
+        });
+
+        if (summary) {
           index.sessions[sessionId] = this.toCachedSummary(
             summary,
             stats.mtimeMs,
             stats.size,
           );
           indexChanged = true;
-        } catch {
-          // Ignore race where file disappeared after read.
+          continue;
         }
-        continue;
-      }
 
-      try {
-        const stats = await fs.stat(filePath);
-        statCalls += 1;
         index.sessions[sessionId] = this.toEmptyCachedSummary(
           stats.mtimeMs,
           stats.size,
         );
         indexChanged = true;
-      } catch {
-        if (index.sessions[sessionId]) {
-          delete index.sessions[sessionId];
-          indexChanged = true;
-        }
       }
+    } catch (error) {
+      if (warmupJobKey) {
+        this.failWarmupJob(warmupJobKey, error);
+      }
+      throw error;
     }
 
+    if (warmupJobKey) {
+      this.completeWarmupJob(warmupJobKey);
+    }
     this.dirtySessionsByDir.delete(scopeKey);
     return { indexChanged, statCalls, parseCalls };
   }
@@ -740,6 +1146,7 @@ export class SessionIndexService implements ISessionIndexService {
     let cacheHits = 0;
     let cacheMissBytes = 0;
     let largestCacheMisses: SessionIndexLargestCacheMiss[] = [];
+    let warmupJobKey: string | null = null;
 
     try {
       // Enumerate session files — delegate to reader if it supports custom
@@ -846,9 +1253,43 @@ export class SessionIndexService implements ISessionIndexService {
           size,
         }));
 
-      for (const { sessionId, mtime, size } of cacheMisses) {
+      if (cacheMisses.length > 0) {
+        const scopeKey = this.getScopeKey(sessionDir, reader);
+        const validationKey = this.getValidationKey(
+          sessionDir,
+          reader,
+          options,
+        );
+        const job = this.startWarmupJob({
+          scopeKey,
+          validationKey,
+          sessionDir,
+          projectId,
+        });
+        warmupJobKey = job.key;
+        this.updateWarmupJob(job.key, (current) => {
+          current.totalFiles = totalFiles;
+          current.completedFiles = cacheHits;
+          current.cacheHits = cacheHits;
+          current.cacheMisses = cacheMisses.length;
+          current.cacheMissBytes = cacheMissBytes;
+        });
+      }
+
+      for (const { sessionId, filePath, mtime, size } of cacheMisses) {
         parseCalls += 1;
-        const summary = await reader.getSessionSummary(sessionId, projectId);
+        const summary = await this.enqueueSummaryParse({
+          sessionDir,
+          projectId,
+          reader,
+          scopeKey: this.getScopeKey(sessionDir, reader),
+          validationKey:
+            warmupJobKey ?? this.getValidationKey(sessionDir, reader, options),
+          sessionId,
+          filePath,
+          size,
+          mtime,
+        });
         if (summary) {
           if (
             options?.activeAfterMs === undefined ||
@@ -866,6 +1307,9 @@ export class SessionIndexService implements ISessionIndexService {
           index.sessions[sessionId] = this.toEmptyCachedSummary(mtime, size);
           indexChanged = true;
         }
+      }
+      if (warmupJobKey) {
+        this.completeWarmupJob(warmupJobKey);
       }
 
       for (const sessionId of Object.keys(index.sessions)) {
@@ -899,7 +1343,10 @@ export class SessionIndexService implements ISessionIndexService {
         cacheMissBytes,
         largestCacheMisses,
       };
-    } catch {
+    } catch (error) {
+      if (warmupJobKey) {
+        this.failWarmupJob(warmupJobKey, error);
+      }
       return {
         summaries: [],
         statCalls,
@@ -936,6 +1383,19 @@ export class SessionIndexService implements ISessionIndexService {
           : 0,
       dirtyDirCount: this.dirtyDirs.size,
       dirtySessionCount,
+    };
+  }
+
+  getWarmupStatus(): SessionIndexWarmupStatusSnapshot {
+    const now = Date.now();
+    return {
+      summaryParseConcurrency: this.summaryParseConcurrency,
+      activeParses: this.activeSummaryParses,
+      queuedParses: this.summaryParseQueue.length,
+      activeJobs: Array.from(this.warmupJobs.values()).map((job) =>
+        this.snapshotWarmupJob(job, now),
+      ),
+      recentJobs: this.recentWarmupJobs,
     };
   }
 
@@ -1171,6 +1631,7 @@ export class SessionIndexService implements ISessionIndexService {
   }
 
   dispose(): void {
+    this.stopWarmupProgressTimer();
     this.unsubscribeEventBus?.();
     this.unsubscribeEventBus = null;
   }

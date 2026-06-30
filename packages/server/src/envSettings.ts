@@ -253,6 +253,12 @@ export const ENV_VAR_REGISTRY: EnvVarDescriptor[] = [
       "Age (ms) after which a session index write lock is considered stale.",
   },
   {
+    name: "SESSION_INDEX_SUMMARY_PARSE_CONCURRENCY",
+    group: "Sessions & scanning",
+    description:
+      "Maximum concurrent session-summary parses during cold index fills. Default 1.",
+  },
+  {
     name: "PROJECT_SCAN_CACHE_TTL_MS",
     group: "Sessions & scanning",
     description: "Project scanner cache TTL (ms). 0 rescans every request.",

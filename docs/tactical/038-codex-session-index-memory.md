@@ -1,10 +1,11 @@
 # Codex Session Index Memory Spikes
 
-Status: Implementation chunk 2 landed 2026-06-30 and was measured against a
+Status: Implementation chunk 3 landed 2026-06-30 and was measured against a
 real cold YA index over the local provider histories. Codex summary reads now
-stream JSONL instead of materializing full transcript entries; the remaining
-measured peak is from concurrent cold summary parsing and very large individual
-JSONL lines, not retained Codex entry-cache arrays.
+stream JSONL instead of materializing full transcript entries, and summary-index
+cache misses now pass through a global parse queue with warmup progress/status.
+The remaining measured peak is mainly from Claude full summary parsing, very
+large individual JSONL lines, and V8 heap retention after cold fills.
 
 Progress:
 
@@ -37,8 +38,11 @@ Progress:
 - [ ] Bound `CodexSessionReader.entryCache` by byte budget and session count.
 - [x] Decide whether a parse queue is still needed after the streaming-summary
   cold-index harness.
-- [ ] Add a summary parse queue/semaphore with cold-index progress/status and
-  default non-blocking startup warmup.
+- [x] Add a summary parse queue/semaphore with cold-index progress/status.
+- [x] Expose cold summary-index progress through structured logs and a status
+  endpoint.
+- [ ] Add optional/default non-blocking startup warmup, if the route-triggered
+  queue still leaves first-use UX too opaque.
 
 ## Incident
 
@@ -776,9 +780,140 @@ Acceptance:
 - Warm `/api/inbox` remains sub-second on the temp data dir after indexes are
   built.
 
+## Implementation Chunk 3
+
+Implemented 2026-06-30:
+
+- `SessionIndexService` now wraps cold summary-index cache misses in a global
+  FIFO/semaphore. The default concurrency is 1 and can be tuned with
+  `SESSION_INDEX_SUMMARY_PARSE_CONCURRENCY`.
+- Concurrent callers asking for the same summary parse share the same in-flight
+  promise instead of launching duplicate provider reads.
+- Cold full-validation and uncached dirty-session parses report progress as
+  warmup jobs with file counts, cache hits/misses, parsed bytes, active and
+  queued parse counts, and recent completed/failed job history.
+- Active warmup jobs emit structured `session_index_warmup_progress` logs at a
+  bounded interval. `SessionIndexService` now fetches the logger at call time so
+  `session_index_perf` persists to `logs/server.log` after logger startup.
+- `GET /api/session-index/status` returns current summary parse concurrency,
+  global active/queued parse counts, active jobs, and recent jobs.
+- Server config, CLI help, and environment settings now document
+  `SESSION_INDEX_SUMMARY_PARSE_CONCURRENCY`.
+
+Validation:
+
+```bash
+pnpm --filter @yep-anywhere/server test -- \
+  test/indexes/SessionIndexService.test.ts
+pnpm --filter @yep-anywhere/server test -- \
+  test/routes/session-index.test.ts
+pnpm --filter @yep-anywhere/server build
+pnpm lint
+pnpm --filter @yep-anywhere/server test
+```
+
+Result:
+
+- Focused session-index tests passed: 24 passed.
+- Focused session-index route tests passed: 1 passed.
+- Server build passed.
+- `pnpm lint` exited 0; it still reports the existing unrelated advisory items
+  in `packages/server/src/routes/sessions.ts` and
+  `packages/server/test/augments/task-list-augments.test.ts`.
+- Full server test suite passed: 155 files, 2366 passed, 6 skipped.
+
+Not implemented in this chunk:
+
+- Automatic background startup warmup. The server still warms summary indexes
+  on demand from inbox/session-list requests, but that demand is now bounded and
+  observable. A startup warmup pass can reuse the same queue/status machinery if
+  first-use latency remains a problem.
+- A polished client progress bar. The status endpoint is the server contract
+  the client can use later without triggering duplicate warming work.
+
+## Cold-Index Harness After Chunk 3
+
+Ran on 2026-06-30 with a temporary YA data directory and the real local
+provider histories:
+
+```bash
+PORT=4501 \
+MAINTENANCE_PORT=0 \
+YEP_DATA_DIR=/tmp/ya-cold-index-queue-IY47sS \
+LOG_TO_FILE=true \
+LOG_LEVEL=info \
+LOG_PRETTY=false \
+SESSION_INDEX_LOG_PERF=true \
+CODEX_READER_LOG_PARSE=true \
+SESSION_INDEX_SUMMARY_PARSE_CONCURRENCY=1 \
+pnpm --dir packages/server run dev
+```
+
+Cold `/api/inbox` result:
+
+- HTTP 200 in 34.7 seconds, 8187 bytes.
+- Response tiers: 0 needs-attention, 0 active, 7 recent-activity, 11 unread-8h,
+  8 unread-24h.
+- Server RSS sampled from about 343 MB before the request to a 1.72 GB peak.
+- RSS after the request settled around 1.17 GB rather than returning to the
+  pre-request baseline.
+- `/api/session-index/status` samples showed `max_active_parses: 1`,
+  `max_queued_parses: 20`, and `max_active_jobs: 21`.
+
+Warm `/api/inbox` against the same temp data dir:
+
+- HTTP 200 in 0.60 seconds, 8187 bytes.
+- RSS samples stayed around 1.17 GB.
+
+Log aggregation from `logs/server.log`:
+
+- `session_index_perf` records now persist to file logs.
+- 132 `session_index_warmup_progress` records were emitted.
+- 1146 `codex_summary_stream` records streamed about 4.50 GB of Codex rollout
+  data in aggregate.
+- `codex_entry_read` count stayed 0 and `entryCache.sessions` stayed 0 for
+  Codex summary streams.
+- The global summary parse queue never exceeded one active parse.
+- Codex summary streams still saw a 173.3 MB largest file and 32.2 MB largest
+  line. The highest recorded RSS after a Codex stream was about 1.39 GB and the
+  highest recorded heap after a stream was about 999 MB.
+
+Provider aggregate from `session_index_perf`:
+
+| provider | parse calls | cache miss MB | slowest scope ms | largest scope MB |
+| --- | ---: | ---: | ---: | ---: |
+| Claude | 3277 | 2708 | 33647 | 1079.8 |
+| Codex | 1146 | 4505.9 | 14761 | 1282.0 |
+
+Slowest/largest scopes:
+
+- Claude `/Users/kgraehl/.claude/projects/-Users-kgraehl-code-jstorrent`:
+  1164 parses, 1079.8 MB, 33.6 seconds.
+- Claude yepanywhere: 628 parses, 357.8 MB, 29.0 seconds.
+- Claude tilefun: 365 parses, 320.2 MB, 23.9 seconds.
+- Claude webvam: 326 parses, 444.3 MB, 17.9 seconds.
+- Codex playbox: 194 parses, 794.0 MB, 14.8 seconds.
+- Codex mclone: 140 parses, 1111.6 MB, 10.8 seconds.
+- Codex webvam: 159 parses, 1282.0 MB, 10.3 seconds.
+
+Interpretation:
+
+- The queue did what it was supposed to do: different project scopes no longer
+  launch concurrent summary parses, and identical parse work can coalesce.
+- Cold wall time stayed close to the prior unqueued run because the previous
+  cold path was already CPU/IO heavy and the request still needed complete list
+  semantics.
+- Peak RSS did not improve, and warm RSS stayed high after the cold request.
+  This shifts the next investigation away from Codex entry-cache retention and
+  toward the remaining full-summary parsers, especially Claude's current
+  whole-file `readFile -> trim -> split -> parse -> buildDag` path.
+- Background startup warmup remains a UX improvement, not the primary memory
+  mitigation. The core server-side primitive now exists; the next memory win is
+  reducing what each Claude summary parse allocates.
+
 ### Chunk 4: Claude Compact-DAG Summary Parser
 
-Priority: high after the summary parse queue.
+Priority: highest after the chunk-3 harness.
 
 Goal:
 

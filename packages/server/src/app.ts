@@ -90,6 +90,7 @@ import {
 } from "./routes/server-admin.js";
 import { createEnvSettingsRoutes } from "./routes/env-settings.js";
 import { createServerInfoRoutes } from "./routes/server-info.js";
+import { createSessionIndexRoutes } from "./routes/session-index.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createSettingsRoutes } from "./routes/settings.js";
 import { createSharingRoutes } from "./routes/sharing.js";
@@ -950,6 +951,15 @@ export function createApp(options: AppOptions): AppResult {
       notificationService: options.notificationService,
     }),
   );
+
+  if (options.sessionIndexService) {
+    app.route(
+      "/api/session-index",
+      createSessionIndexRoutes({
+        sessionIndexService: options.sessionIndexService,
+      }),
+    );
+  }
 
   // Network binding routes (runtime port/interface configuration)
   if (

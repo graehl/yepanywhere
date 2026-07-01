@@ -66,6 +66,8 @@ export type {
   CollapsedComposerButtonPreference,
   GrokSpeechAudioClientDefault,
   SessionToolbarVisibilityClientDefaults,
+  SessionToolbarPriorityClientDefaults,
+  ToolbarNarrowingPriority,
   SpeechClientDefaults,
   SpeechSmartTurnClientDefault,
   ModelOption,

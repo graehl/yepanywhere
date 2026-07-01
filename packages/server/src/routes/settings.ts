@@ -34,9 +34,11 @@ import {
   RECAP_MODES,
   type RecapMode,
   clampRecapAfterSeconds,
+  type SessionToolbarPriorityClientDefaults,
   type SessionToolbarVisibilityClientDefaults,
   type SpeechSmartTurnClientDefault,
   type ThinkingMode,
+  type ToolbarNarrowingPriority,
   clampProjectQueueQuietSeconds,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -84,11 +86,20 @@ const SESSION_TOOLBAR_VISIBILITY_CLIENT_DEFAULT_KEYS = [
   "sessionStatus",
   "projectQueue",
 ] as const satisfies readonly (keyof SessionToolbarVisibilityClientDefaults)[];
+const SESSION_TOOLBAR_PRIORITY_CLIENT_DEFAULT_KEYS =
+  SESSION_TOOLBAR_VISIBILITY_CLIENT_DEFAULT_KEYS satisfies readonly (keyof SessionToolbarPriorityClientDefaults)[];
+const TOOLBAR_NARROWING_PRIORITIES = [
+  "pin",
+  "last",
+  "mid",
+  "first",
+] as const satisfies readonly ToolbarNarrowingPriority[];
 const CLIENT_DEFAULT_KEYS = [
   "speech",
   "busyComposerDefaultAction",
   "collapsedComposerButton",
   "sessionToolbarVisibility",
+  "sessionToolbarPriority",
   "steerNowDefault",
   "patientQueueDefault",
   "projectQueueCtrlEnterEnabled",
@@ -638,6 +649,30 @@ function parseSessionToolbarVisibilityClientDefaults(
   return Object.keys(parsed).length > 0 ? parsed : null;
 }
 
+function parseSessionToolbarPriorityClientDefaults(
+  raw: unknown,
+): SessionToolbarPriorityClientDefaults | undefined | null {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  if (!isRecord(raw)) return null;
+
+  const allowedKeys = new Set<string>(
+    SESSION_TOOLBAR_PRIORITY_CLIENT_DEFAULT_KEYS,
+  );
+  for (const key of Object.keys(raw)) {
+    if (!allowedKeys.has(key)) return null;
+  }
+  const allowedPriorities = new Set<string>(TOOLBAR_NARROWING_PRIORITIES);
+
+  const parsed: SessionToolbarPriorityClientDefaults = {};
+  for (const key of SESSION_TOOLBAR_PRIORITY_CLIENT_DEFAULT_KEYS) {
+    if (!(key in raw)) continue;
+    const value = raw[key];
+    if (typeof value !== "string" || !allowedPriorities.has(value)) return null;
+    parsed[key] = value as ToolbarNarrowingPriority;
+  }
+  return Object.keys(parsed).length > 0 ? parsed : null;
+}
+
 // Per-model compaction thresholds: each value is "compact at X% of that
 // model's context window". Reject non-numbers (the slider only ever sends
 // numbers), but treat out-of-range like the load path does — keep 1–99 and
@@ -788,6 +823,13 @@ function parseClientDefaults(raw: unknown): ClientDefaults | undefined | null {
     if (parsedVisibility === null) return null;
     parsed.sessionToolbarVisibility = parsedVisibility;
   }
+  if ("sessionToolbarPriority" in raw) {
+    const parsedPriority = parseSessionToolbarPriorityClientDefaults(
+      raw.sessionToolbarPriority,
+    );
+    if (parsedPriority === null) return null;
+    parsed.sessionToolbarPriority = parsedPriority;
+  }
   if ("compactAtContextPercent" in raw) {
     const parsedCompact = parseCompactAtContextPercent(
       raw.compactAtContextPercent,
@@ -857,6 +899,16 @@ function mergeClientDefaults(
       merged.sessionToolbarVisibility = {
         ...current?.sessionToolbarVisibility,
         ...update.sessionToolbarVisibility,
+      };
+    }
+  }
+  if ("sessionToolbarPriority" in update) {
+    if (update.sessionToolbarPriority === undefined) {
+      delete merged.sessionToolbarPriority;
+    } else {
+      merged.sessionToolbarPriority = {
+        ...current?.sessionToolbarPriority,
+        ...update.sessionToolbarPriority,
       };
     }
   }

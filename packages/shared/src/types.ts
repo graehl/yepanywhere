@@ -454,6 +454,38 @@ export interface SessionToolbarVisibilityClientDefaults {
   projectQueue?: boolean;
 }
 
+/**
+ * How eagerly a session-toolbar control collapses into the `...` overflow menu
+ * as the composer narrows ("narrowing priority"). `first` collapses first,
+ * `mid` next, `last` collapses last; `pin` never collapses. Ordered
+ * highest-survival first.
+ */
+export type ToolbarNarrowingPriority = "pin" | "last" | "mid" | "first";
+
+/**
+ * Per-control narrowing priority, mirroring the visibility keys. Same server
+ * clientDefaults + localStorage plumbing as visibility. Right-side controls
+ * default to `pin`; the priority they expose is currently for settings-UI
+ * uniformity and not yet a functional right-side overflow (tracked in
+ * topics/toolbar-settings-ui.md).
+ */
+export interface SessionToolbarPriorityClientDefaults {
+  modeSelector?: ToolbarNarrowingPriority;
+  steerNow?: ToolbarNarrowingPriority;
+  attachments?: ToolbarNarrowingPriority;
+  slashMenu?: ToolbarNarrowingPriority;
+  thinkingToggle?: ToolbarNarrowingPriority;
+  renderMode?: ToolbarNarrowingPriority;
+  microphone?: ToolbarNarrowingPriority;
+  waveform?: ToolbarNarrowingPriority;
+  shortcutsHelp?: ToolbarNarrowingPriority;
+  contextUsage?: ToolbarNarrowingPriority;
+  btw?: ToolbarNarrowingPriority;
+  nudge?: ToolbarNarrowingPriority;
+  sessionStatus?: ToolbarNarrowingPriority;
+  projectQueue?: ToolbarNarrowingPriority;
+}
+
 export type BusyComposerDefaultAction = "steer" | "queue";
 
 export type CollapsedComposerButtonPreference =
@@ -496,6 +528,8 @@ export interface ClientDefaults {
   projectQueueCtrlEnterEnabled?: boolean;
   /** Session toolbar visibility defaults for controls with no local override. */
   sessionToolbarVisibility?: SessionToolbarVisibilityClientDefaults;
+  /** Session toolbar narrowing-priority defaults for controls with no local override. */
+  sessionToolbarPriority?: SessionToolbarPriorityClientDefaults;
   /**
    * Preemptive compaction thresholds, keyed by model id, each a percent (1–99)
    * of that model's context window. When a model's live context reaches its

@@ -26,7 +26,14 @@ import { useBrowserXaiSttApiKey } from "../hooks/useBrowserXaiSttApiKey";
 import { useProviders } from "../hooks/useProviders";
 import { useRelativeNow } from "../hooks/useRelativeNow";
 import {
+  DEFAULT_SESSION_TOOLBAR_PRIORITY,
+  type SessionToolbarPriority,
+  type ToolbarNarrowingPriority,
+  useSessionToolbarPriority,
+} from "../hooks/useSessionToolbarPriority";
+import {
   type SessionToolbarVisibility,
+  type SessionToolbarVisibilityKey,
   useSessionToolbarVisibility,
 } from "../hooks/useSessionToolbarVisibility";
 import { useVersion } from "../hooks/useVersion";
@@ -94,6 +101,22 @@ const COMPOSER_OVERFLOW_TIERS: ComposerOverflowTier[] = [
   "medium",
   "late",
 ];
+
+// Maps a control's narrowing priority to its overflow-tier CSS class. `first`
+// collapses first (early), `mid` next, `last` collapses last; `pin` yields no
+// tier class (and its menu copy stays hidden) so the control never collapses.
+function priorityToTierClass(priority: ToolbarNarrowingPriority): string {
+  switch (priority) {
+    case "first":
+      return "composer-bottom-overflow-early";
+    case "mid":
+      return "composer-bottom-overflow-medium";
+    case "last":
+      return "composer-bottom-overflow-late";
+    default:
+      return "";
+  }
+}
 
 function getFlexGapPx(element: HTMLElement): number {
   const style = getComputedStyle(element);
@@ -628,6 +651,8 @@ export interface MessageInputToolbarViewProps {
   t: ToolbarTranslate;
   refs?: ToolbarRefs;
   visibility: SessionToolbarVisibility;
+  /** Per-control narrowing priority; defaults to the built-in tiers when absent. */
+  priority?: SessionToolbarPriority;
   isCompactStatusMode?: boolean;
   modeControl?: ToolbarModeControl | null;
   attachmentControl: ToolbarAttachmentControl;
@@ -829,6 +854,7 @@ export function MessageInputToolbarView({
   t,
   refs,
   visibility,
+  priority,
   isCompactStatusMode = false,
   modeControl,
   attachmentControl,
@@ -843,6 +869,28 @@ export function MessageInputToolbarView({
   shortcutsControl,
   actionsControl,
 }: MessageInputToolbarViewProps) {
+  const controlPriority = priority ?? DEFAULT_SESSION_TOOLBAR_PRIORITY;
+  // Inline copy always carries `-inline`; append the priority-derived tier (or
+  // nothing when pinned). Menu copy carries just the tier. Both mirror each
+  // other so a control's inline and menu presentations stay mutually exclusive.
+  const inlineTierClass = (
+    key: SessionToolbarVisibilityKey,
+    ...extra: string[]
+  ): string =>
+    [
+      ...extra,
+      "composer-bottom-overflow-inline",
+      priorityToTierClass(controlPriority[key]),
+    ]
+      .filter(Boolean)
+      .join(" ");
+  const menuTierClass = (
+    key: SessionToolbarVisibilityKey,
+    ...extra: string[]
+  ): string =>
+    [...extra, priorityToTierClass(controlPriority[key])]
+      .filter(Boolean)
+      .join(" ");
   const shortcutsPopoverOpen = shortcutsControl.open;
   const shortcutSettings =
     shortcutsControl.canSwapEnterAction && shortcutsControl.onSwapEnterAction
@@ -1040,7 +1088,7 @@ export function MessageInputToolbarView({
     >
       <div ref={refs?.left} className="message-input-left">
         {visibility.modeSelector && modeControl && (
-          <span className="composer-bottom-overflow-inline composer-bottom-overflow-early">
+          <span className={inlineTierClass("modeSelector")}>
             <ModeSelector
               mode={modeControl.mode}
               onModeChange={modeControl.onModeChange}
@@ -1052,7 +1100,7 @@ export function MessageInputToolbarView({
         {visibility.attachments && (
           <button
             type="button"
-            className="attach-button composer-bottom-overflow-inline composer-bottom-overflow-early"
+            className={inlineTierClass("attachments", "attach-button")}
             onClick={attachmentControl.onAttachClick}
             disabled={!attachmentControl.canAttach}
             title={
@@ -1080,7 +1128,7 @@ export function MessageInputToolbarView({
           </button>
         )}
         {visibility.slashMenu && slashControl && (
-          <span className="composer-bottom-overflow-inline composer-bottom-overflow-medium">
+          <span className={inlineTierClass("slashMenu")}>
             <SlashCommandButton
               commands={slashControl.commands}
               onSelectCommand={slashControl.onSelectCommand}
@@ -1089,20 +1137,22 @@ export function MessageInputToolbarView({
           </span>
         )}
         {visibility.thinkingToggle && thinkingControl && (
-          <span className="composer-bottom-overflow-inline composer-bottom-overflow-medium">
+          <span className={inlineTierClass("thinkingToggle")}>
             <ThinkingToolbarControl control={thinkingControl} t={t} />
           </span>
         )}
         {visibility.renderMode && renderModeControl && (
           <button
             type="button"
-            className={`render-mode-toolbar-button composer-bottom-overflow-inline composer-bottom-overflow-late ${
+            className={inlineTierClass(
+              "renderMode",
+              "render-mode-toolbar-button",
               renderModeControl.state === "rendered"
                 ? "is-rendered"
                 : renderModeControl.state === "mixed"
                   ? "is-mixed"
-                  : ""
-            }`}
+                  : "",
+            )}
             onClick={renderModeControl.onToggle}
             title={renderModeControl.title}
             aria-label={renderModeControl.title}
@@ -1118,7 +1168,11 @@ export function MessageInputToolbarView({
         {visibility.nudge && nudgeControl && (
           <button
             type="button"
-            className={`heartbeat-toolbar-button composer-bottom-overflow-inline composer-bottom-overflow-late ${nudgeControl.enabled ? "active" : ""}`}
+            className={inlineTierClass(
+              "nudge",
+              "heartbeat-toolbar-button",
+              nudgeControl.enabled ? "active" : "",
+            )}
             onClick={nudgeControl.onClick}
             onContextMenu={nudgeControl.onContextMenu}
             onTouchStart={nudgeControl.onTouchStart}
@@ -1334,17 +1388,19 @@ export function MessageInputToolbarView({
             <div className="composer-bottom-overflow-menu" role="menu">
               <div className="composer-bottom-overflow-menu-group composer-bottom-overflow-menu-left">
                 {visibility.modeSelector && modeControl && (
-                  <ModeSelector
-                    mode={modeControl.mode}
-                    onModeChange={modeControl.onModeChange}
-                    modes={modeControl.modes}
-                    changesApplyNextTurn={modeControl.changesApplyNextTurn}
-                  />
+                  <span className={menuTierClass("modeSelector")}>
+                    <ModeSelector
+                      mode={modeControl.mode}
+                      onModeChange={modeControl.onModeChange}
+                      modes={modeControl.modes}
+                      changesApplyNextTurn={modeControl.changesApplyNextTurn}
+                    />
+                  </span>
                 )}
                 {visibility.attachments && (
                   <button
                     type="button"
-                    className="attach-button"
+                    className={menuTierClass("attachments", "attach-button")}
                     onClick={attachmentControl.onAttachClick}
                     disabled={!attachmentControl.canAttach}
                     title={
@@ -1375,7 +1431,7 @@ export function MessageInputToolbarView({
               </div>
               <div className="composer-bottom-overflow-menu-group composer-bottom-overflow-menu-right">
                 {visibility.slashMenu && slashControl && (
-                  <span className="composer-bottom-overflow-medium">
+                  <span className={menuTierClass("slashMenu")}>
                     <SlashCommandButton
                       commands={slashControl.commands}
                       onSelectCommand={slashControl.onSelectCommand}
@@ -1384,20 +1440,22 @@ export function MessageInputToolbarView({
                   </span>
                 )}
                 {visibility.thinkingToggle && thinkingControl && (
-                  <span className="composer-bottom-overflow-medium">
+                  <span className={menuTierClass("thinkingToggle")}>
                     <ThinkingToolbarControl control={thinkingControl} t={t} />
                   </span>
                 )}
                 {visibility.renderMode && renderModeControl && (
                   <button
                     type="button"
-                    className={`render-mode-toolbar-button composer-bottom-overflow-late ${
+                    className={menuTierClass(
+                      "renderMode",
+                      "render-mode-toolbar-button",
                       renderModeControl.state === "rendered"
                         ? "is-rendered"
                         : renderModeControl.state === "mixed"
                           ? "is-mixed"
-                          : ""
-                    }`}
+                          : "",
+                    )}
                     onClick={renderModeControl.onToggle}
                     title={renderModeControl.title}
                     aria-label={renderModeControl.title}
@@ -1414,7 +1472,11 @@ export function MessageInputToolbarView({
                 {visibility.nudge && nudgeControl && (
                   <button
                     type="button"
-                    className={`heartbeat-toolbar-button composer-bottom-overflow-late ${nudgeControl.enabled ? "active" : ""}`}
+                    className={menuTierClass(
+                      "nudge",
+                      "heartbeat-toolbar-button",
+                      nudgeControl.enabled ? "active" : "",
+                    )}
                     onClick={nudgeControl.onClick}
                     onContextMenu={nudgeControl.onContextMenu}
                     onTouchStart={nudgeControl.onTouchStart}
@@ -1449,7 +1511,10 @@ export function MessageInputToolbarView({
                 {visibility.shortcutsHelp && (
                   <button
                     type="button"
-                    className="session-shortcuts-help-button composer-bottom-overflow-late"
+                    className={menuTierClass(
+                      "shortcutsHelp",
+                      "session-shortcuts-help-button",
+                    )}
                     aria-label={t("toolbarKeyboardShortcutsAria")}
                     aria-expanded={shortcutsPopoverOpen}
                     onClick={() => shortcutsControl.setOpen((open) => !open)}
@@ -1494,7 +1559,10 @@ export function MessageInputToolbarView({
         {visibility.shortcutsHelp && (
           // biome-ignore lint/a11y/noStaticElementInteractions: pointer leave only hides the adjacent shortcuts popover
           <div
-            className="session-shortcuts-help composer-bottom-overflow-inline composer-bottom-overflow-late"
+            className={inlineTierClass(
+              "shortcutsHelp",
+              "session-shortcuts-help",
+            )}
             onMouseLeave={() => {
               shortcutsControl.setOpen(false);
               shortcutsControl.setSettingsOpen(false);
@@ -1984,6 +2052,7 @@ export function MessageInputToolbar({
   const supportsProjectQueue = serverSupportsProjectQueue(versionInfo);
   const { providers } = useProviders();
   const { visibility: toolbarVisibility } = useSessionToolbarVisibility();
+  const { priority: toolbarPriority } = useSessionToolbarPriority();
   const renderMode = useOptionalRenderModeContext();
   const nowMs = useRelativeNow();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -2450,6 +2519,7 @@ export function MessageInputToolbar({
         actions: toolbarActionsRef,
       }}
       visibility={toolbarVisibility}
+      priority={toolbarPriority}
       isCompactStatusMode={isCompactStatusMode}
       modeControl={
         onModeChange && supportsPermissionMode

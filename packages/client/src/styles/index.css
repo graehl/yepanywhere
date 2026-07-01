@@ -107,7 +107,7 @@
     local("Fira Mono"),
     local("FiraMono-Regular"),
     url("../assets/fonts/fira-mono/fira-mono-symbols2-400-normal.woff2")
-      format("woff2");
+    format("woff2");
   unicode-range: U+2000-2001, U+2004-2008, U+200A, U+23B8-23BD, U+2500-259F;
 }
 
@@ -120,7 +120,7 @@
     local("Fira Mono"),
     local("FiraMono-Regular"),
     url("../assets/fonts/fira-mono/fira-mono-latin-ext-400-normal.woff2")
-      format("woff2");
+    format("woff2");
   unicode-range:
     U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
     U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
@@ -137,7 +137,7 @@
     local("Fira Mono"),
     local("FiraMono-Regular"),
     url("../assets/fonts/fira-mono/fira-mono-latin-400-normal.woff2")
-      format("woff2");
+    format("woff2");
   unicode-range:
     U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
     U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
@@ -272,13 +272,18 @@
   --output-math-font-size-offset: 1px;
   --fixed-font-size-offset: 0px;
   --fixed-font-size-xs-raw: calc(
-    var(--output-prose-font-size) - 3px + var(--fixed-font-size-offset)
+    var(--output-prose-font-size) -
+    3px +
+    var(--fixed-font-size-offset)
   );
   --fixed-font-size-sm-raw: calc(
-    var(--output-prose-font-size) - 1px + var(--fixed-font-size-offset)
+    var(--output-prose-font-size) -
+    1px +
+    var(--fixed-font-size-offset)
   );
   --fixed-font-size-base-raw: calc(
-    var(--output-prose-font-size) + var(--fixed-font-size-offset)
+    var(--output-prose-font-size) +
+    var(--fixed-font-size-offset)
   );
   --fixed-font-size-xs: max(9px, var(--fixed-font-size-xs-raw));
   --fixed-font-size-sm: max(9px, var(--fixed-font-size-sm-raw));
@@ -1484,11 +1489,16 @@ textarea {
 }
 
 .project-queue-item__actions .project-queue-item__force-start {
-  border-color: color-mix(in srgb, var(--warning-color) 55%, var(--border-input));
+  border-color: color-mix(
+    in srgb,
+    var(--warning-color) 55%,
+    var(--border-input)
+  );
   color: var(--warning-color);
 }
 
-.project-queue-item__actions .project-queue-item__force-start:hover:not(:disabled) {
+.project-queue-item__actions
+  .project-queue-item__force-start:hover:not(:disabled) {
   border-color: var(--warning-color);
   background: color-mix(in srgb, var(--warning-color) 12%, transparent);
   color: var(--warning-color);
@@ -5356,14 +5366,18 @@ a.sidebar-nav-item {
   height: 8px;
 }
 
+/*
+ * Overflow menu copies gate by their (priority-derived) tier class uniformly
+ * across both menu groups: hidden by default, revealed once the toolbar's
+ * measured overflow tier reaches each control's tier. Early menu copies (e.g.
+ * the left-group mode/attach controls at their default priority) are revealed
+ * at every tier, since the menu only exists once the toolbar has collapsed to
+ * `early` or beyond. A control's inline and menu copies thus stay mutually
+ * exclusive at every tier and priority — see the show rules below.
+ */
+.composer-bottom-overflow-menu-group .composer-bottom-overflow-early,
 .composer-bottom-overflow-menu-group .composer-bottom-overflow-medium,
-.composer-bottom-overflow-menu-group .composer-bottom-overflow-late,
-.message-input-toolbar:not(.overflow-tier-medium):not(.overflow-tier-late)
-  .composer-bottom-overflow-menu-group
-  .composer-bottom-overflow-medium,
-.message-input-toolbar:not(.overflow-tier-late)
-  .composer-bottom-overflow-menu-group
-  .composer-bottom-overflow-late {
+.composer-bottom-overflow-menu-group .composer-bottom-overflow-late {
   display: none;
 }
 
@@ -5394,9 +5408,18 @@ a.sidebar-nav-item {
   display: none;
 }
 
+.message-input-toolbar.overflow-tier-early
+  .composer-bottom-overflow-menu-group
+  .composer-bottom-overflow-early,
+.message-input-toolbar.overflow-tier-medium
+  .composer-bottom-overflow-menu-group
+  .composer-bottom-overflow-early,
 .message-input-toolbar.overflow-tier-medium
   .composer-bottom-overflow-menu-group
   .composer-bottom-overflow-medium,
+.message-input-toolbar.overflow-tier-late
+  .composer-bottom-overflow-menu-group
+  .composer-bottom-overflow-early,
 .message-input-toolbar.overflow-tier-late
   .composer-bottom-overflow-menu-group
   .composer-bottom-overflow-medium,

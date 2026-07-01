@@ -446,6 +446,66 @@ describe("Settings Routes", () => {
       expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
     });
 
+    it("merges server-learned session toolbar priority", async () => {
+      settings = {
+        ...settings,
+        clientDefaults: {
+          sessionToolbarPriority: {
+            modeSelector: "first",
+            shortcutsHelp: "last",
+          },
+        },
+      };
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientDefaults: {
+            sessionToolbarPriority: {
+              modeSelector: "last",
+              attachments: "pin",
+            },
+          },
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockServerSettingsService.updateSettings).toHaveBeenCalledWith({
+        clientDefaults: {
+          sessionToolbarPriority: {
+            modeSelector: "last",
+            attachments: "pin",
+            shortcutsHelp: "last",
+          },
+        },
+      });
+    });
+
+    it("rejects an invalid session toolbar priority value", async () => {
+      const routes = createSettingsRoutes({
+        serverSettingsService: mockServerSettingsService,
+      });
+
+      const response = await routes.request("/", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientDefaults: {
+            sessionToolbarPriority: { modeSelector: "bogus" },
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      const json = await response.json();
+      expect(json.error).toBe("Invalid clientDefaults setting");
+      expect(mockServerSettingsService.updateSettings).not.toHaveBeenCalled();
+    });
+
     it("persists per-model compact thresholds and drops out-of-range entries", async () => {
       settings = { ...settings, clientDefaults: undefined };
       const routes = createSettingsRoutes({

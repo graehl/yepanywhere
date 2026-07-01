@@ -1,5 +1,6 @@
 import type {
   ProjectQueueItemSummary,
+  ProjectQueueRecoveredSessionQueueSummary,
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
@@ -33,7 +34,9 @@ import {
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
   selectProjectQueuedSessionIds,
+  selectProjectQueueDispatchState,
   selectProjectQueueItems,
+  selectProjectQueueRecoveredSessionQueues,
   selectProjectQueueSidebarCount,
   selectSessionCollectionQueryRecords,
   selectSessionCollectionQueryState,
@@ -134,6 +137,26 @@ function queueItem(
     updatedAt: `2026-06-27T11:00:0${id}.000Z`,
     status: "queued",
     attachmentCount: 0,
+    ...overrides,
+  };
+}
+
+function recoveredSessionQueue(
+  id: string,
+  overrides: Partial<ProjectQueueRecoveredSessionQueueSummary> = {},
+): ProjectQueueRecoveredSessionQueueSummary {
+  return {
+    id,
+    tempId: `temp-${id}`,
+    sessionId: `session-${id}`,
+    projectId: PROJECT_ID,
+    content: `Recovered ${id}`,
+    timestamp: `2026-06-27T11:00:0${id}.000Z`,
+    queuedAt: `2026-06-27T11:00:0${id}.000Z`,
+    createdAt: `2026-06-27T11:00:0${id}.000Z`,
+    updatedAt: `2026-06-27T11:00:0${id}.000Z`,
+    kind: "patient",
+    status: "paused-after-restart",
     ...overrides,
   };
 }
@@ -1184,6 +1207,127 @@ describe("clientSummaryState", () => {
     expect([...selectProjectQueuedSessionIds(state, [PROJECT_ID])]).toEqual([
       "session-1",
     ]);
+  });
+
+  it("stores dispatch state from project queue snapshots", () => {
+    let state = applyProjectQueueCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        projectId: PROJECT_ID,
+        items: [queueItem("1")],
+        dispatchState: {
+          status: "paused",
+          reason: "restart",
+          pausedAt: "2026-07-01T07:41:12.926Z",
+        },
+      },
+      100,
+    );
+
+    expect(selectProjectQueueDispatchState(state)).toMatchObject({
+      status: "paused",
+      reason: "restart",
+    });
+
+    state = applyProjectQueueCollectionChanged(
+      state,
+      {
+        type: "project-queue-changed",
+        projectId: PROJECT_ID,
+        items: [queueItem("1")],
+        reason: "resumed",
+        dispatchState: { status: "running" },
+        timestamp: RECENT,
+      },
+      200,
+    );
+
+    expect(selectProjectQueueDispatchState(state)).toEqual({
+      status: "running",
+    });
+  });
+
+  it("stores recovered session queues from global project queue snapshots", () => {
+    let state = applyProjectQueueGlobalCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        items: [queueItem("1")],
+        recoveredSessionQueues: [recoveredSessionQueue("1")],
+      },
+      100,
+    );
+
+    expect(selectProjectQueueRecoveredSessionQueues(state)).toMatchObject([
+      {
+        id: "1",
+        sessionId: "session-1",
+        projectId: PROJECT_ID,
+        status: "paused-after-restart",
+      },
+    ]);
+
+    state = applyProjectQueueGlobalCollectionSnapshot(
+      state,
+      { items: [], recoveredSessionQueues: [] },
+      200,
+    );
+
+    expect(selectProjectQueueRecoveredSessionQueues(state)).toEqual([]);
+  });
+
+  it("does not let older global snapshots undo newer project queue gate facts", () => {
+    let state = applyProjectQueueCollectionChanged(
+      createEmptyClientSummaryState(),
+      {
+        type: "project-queue-changed",
+        projectId: PROJECT_ID,
+        items: [queueItem("1")],
+        reason: "paused",
+        dispatchState: {
+          status: "paused",
+          reason: "manual",
+          pausedAt: "2026-07-01T07:45:00.000Z",
+        },
+        timestamp: RECENT,
+      },
+      200,
+    );
+
+    state = applyProjectQueueGlobalCollectionSnapshot(
+      state,
+      {
+        items: [],
+        dispatchState: { status: "running" },
+      },
+      150,
+    );
+
+    expect(selectProjectQueueDispatchState(state)).toMatchObject({
+      status: "paused",
+      reason: "manual",
+    });
+  });
+
+  it("does not let older snapshots undo newer recovered queue facts", () => {
+    let state = applyProjectQueueGlobalCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        items: [],
+        recoveredSessionQueues: [],
+      },
+      200,
+    );
+
+    state = applyProjectQueueGlobalCollectionSnapshot(
+      state,
+      {
+        items: [],
+        recoveredSessionQueues: [recoveredSessionQueue("1")],
+      },
+      150,
+    );
+
+    expect(selectProjectQueueRecoveredSessionQueues(state)).toEqual([]);
   });
 
   it("selects sidebar Project Queue counts from project fallbacks and queue snapshots", () => {

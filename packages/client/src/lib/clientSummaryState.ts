@@ -3,8 +3,10 @@ import type {
   PendingInputType,
   ProviderName,
   ProjectQueueChangedEvent,
+  ProjectQueueDispatchState,
   ProjectQueueItemSummary,
   ProjectQueueListResponse,
+  ProjectQueueRecoveredSessionQueueSummary,
   ProjectQueueResponse,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -130,6 +132,10 @@ export interface ProjectQueueCollectionRecord {
 
 export interface ProjectQueueCollectionState {
   byProject: ReadonlyMap<string, ProjectQueueCollectionRecord>;
+  dispatchState: ProjectQueueDispatchState;
+  dispatchStateObservedAt?: number;
+  recoveredSessionQueues: readonly ProjectQueueRecoveredSessionQueueSummary[];
+  recoveredSessionQueuesObservedAt?: number;
 }
 
 export interface ProjectQueueCountSource {
@@ -192,6 +198,11 @@ export interface InboxCollectionSnapshot extends InboxResponse {}
 
 const ALL_PROJECTS_QUERY_KEY = "all-projects";
 const EMPTY_PROJECT_QUEUE_ITEMS: readonly ProjectQueueItemSummary[] = [];
+const EMPTY_RECOVERED_SESSION_QUEUES: readonly ProjectQueueRecoveredSessionQueueSummary[] =
+  [];
+const RUNNING_PROJECT_QUEUE_DISPATCH_STATE: ProjectQueueDispatchState = {
+  status: "running",
+};
 const ACTIVE_INBOX_TIERS: readonly InboxTier[] = [
   "needsAttention",
   "active",
@@ -209,6 +220,8 @@ export function createEmptyClientSummaryState(): ClientSummaryState {
     },
     projectQueues: {
       byProject: new Map(),
+      dispatchState: RUNNING_PROJECT_QUEUE_DISPATCH_STATE,
+      recoveredSessionQueues: EMPTY_RECOVERED_SESSION_QUEUES,
     },
     inbox: {
       tiers: createEmptyInboxTierRecord(() => []),
@@ -509,42 +522,125 @@ function stringSetsEqual(
   return true;
 }
 
+function projectQueueDispatchStatesEqual(
+  a: ProjectQueueDispatchState,
+  b: ProjectQueueDispatchState,
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function recoveredSessionQueuesEqual(
+  a: readonly ProjectQueueRecoveredSessionQueueSummary[],
+  b: readonly ProjectQueueRecoveredSessionQueueSummary[],
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function putProjectQueueDispatchState(
+  state: ClientSummaryState,
+  dispatchState: ProjectQueueDispatchState | undefined,
+  observedAt: number,
+): ClientSummaryState {
+  if (!dispatchState) return state;
+  if (
+    observedAt <
+    (state.projectQueues.dispatchStateObservedAt ?? NO_OBSERVATION)
+  ) {
+    return state;
+  }
+  if (
+    projectQueueDispatchStatesEqual(
+      state.projectQueues.dispatchState,
+      dispatchState,
+    ) &&
+    observedAt === state.projectQueues.dispatchStateObservedAt
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    projectQueues: {
+      ...state.projectQueues,
+      dispatchState,
+      dispatchStateObservedAt: observedAt,
+    },
+  };
+}
+
+function putRecoveredSessionQueues(
+  state: ClientSummaryState,
+  recoveredSessionQueues:
+    | readonly ProjectQueueRecoveredSessionQueueSummary[]
+    | undefined,
+  observedAt: number,
+): ClientSummaryState {
+  if (!recoveredSessionQueues) return state;
+  if (
+    observedAt <
+    (state.projectQueues.recoveredSessionQueuesObservedAt ?? NO_OBSERVATION)
+  ) {
+    return state;
+  }
+  if (
+    recoveredSessionQueuesEqual(
+      state.projectQueues.recoveredSessionQueues,
+      recoveredSessionQueues,
+    ) &&
+    observedAt === state.projectQueues.recoveredSessionQueuesObservedAt
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    projectQueues: {
+      ...state.projectQueues,
+      recoveredSessionQueues,
+      recoveredSessionQueuesObservedAt: observedAt,
+    },
+  };
+}
+
 function putProjectQueueSnapshot(
   state: ClientSummaryState,
   snapshot: ProjectQueueCollectionSnapshot,
   observedAt: number,
 ): ClientSummaryState {
-  const existing = state.projectQueues.byProject.get(snapshot.projectId);
+  const withDispatch = putProjectQueueDispatchState(
+    state,
+    snapshot.dispatchState,
+    observedAt,
+  );
+  const existing = withDispatch.projectQueues.byProject.get(snapshot.projectId);
   const snapshotItems = mergeProjectQueueItemDisplayMetadata(
     existing?.items,
     snapshot.items,
   );
   if (existing) {
     if (observedAt < (existing.snapshotObservedAt ?? NO_OBSERVATION)) {
-      return state;
+      return withDispatch;
     }
 
     if (projectQueueItemsEqual(existing.items, snapshotItems)) {
       if (observedAt === existing.snapshotObservedAt) {
-        return state;
+        return withDispatch;
       }
-      const byProject = new Map(state.projectQueues.byProject);
+      const byProject = new Map(withDispatch.projectQueues.byProject);
       byProject.set(snapshot.projectId, {
         ...existing,
         observedAt: Math.max(existing.observedAt, observedAt),
         snapshotObservedAt: observedAt,
       });
       return {
-        ...state,
+        ...withDispatch,
         projectQueues: {
-          ...state.projectQueues,
+          ...withDispatch.projectQueues,
           byProject,
         },
       };
     }
   }
 
-  const byProject = new Map(state.projectQueues.byProject);
+  const byProject = new Map(withDispatch.projectQueues.byProject);
   byProject.set(snapshot.projectId, {
     projectId: snapshot.projectId,
     items: snapshotItems,
@@ -553,9 +649,9 @@ function putProjectQueueSnapshot(
   });
 
   return {
-    ...state,
+    ...withDispatch,
     projectQueues: {
-      ...state.projectQueues,
+      ...withDispatch.projectQueues,
       byProject,
     },
   };
@@ -595,17 +691,22 @@ function putProjectQueueGlobalSnapshot(
     byProject.delete(projectId);
   }
 
-  if (!byProject) {
-    return next;
+  if (byProject) {
+    next = {
+      ...next,
+      projectQueues: {
+        ...next.projectQueues,
+        byProject,
+      },
+    };
   }
 
-  return {
-    ...next,
-    projectQueues: {
-      ...next.projectQueues,
-      byProject,
-    },
-  };
+  next = putProjectQueueDispatchState(next, snapshot.dispatchState, observedAt);
+  return putRecoveredSessionQueues(
+    next,
+    snapshot.recoveredSessionQueues,
+    observedAt,
+  );
 }
 
 function upsertInboxItemRecord(
@@ -1202,7 +1303,11 @@ export function applyProjectQueueCollectionChanged(
 ): ClientSummaryState {
   return putProjectQueueSnapshot(
     state,
-    { projectId: event.projectId, items: event.items },
+    {
+      projectId: event.projectId,
+      items: event.items,
+      dispatchState: event.dispatchState,
+    },
     observedAt,
   );
 }
@@ -1484,6 +1589,18 @@ export function selectProjectQueueItemsByProject(
     }
   }
   return result;
+}
+
+export function selectProjectQueueDispatchState(
+  state: ClientSummaryState,
+): ProjectQueueDispatchState {
+  return state.projectQueues.dispatchState;
+}
+
+export function selectProjectQueueRecoveredSessionQueues(
+  state: ClientSummaryState,
+): readonly ProjectQueueRecoveredSessionQueueSummary[] {
+  return state.projectQueues.recoveredSessionQueues;
 }
 
 function countVisibleProjectQueueItems(

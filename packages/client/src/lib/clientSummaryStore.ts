@@ -41,8 +41,10 @@ import {
   selectProjectCollectionRecord,
   selectProjectCollectionRecords,
   selectProjectQueuedSessionIds,
+  selectProjectQueueDispatchState,
   selectProjectQueueSidebarCount,
   selectProjectQueueItemsByProject,
+  selectProjectQueueRecoveredSessionQueues,
   selectOlderSessionRecords,
   selectRecentSessionRecords,
   selectSessionCollectionQueryRecords,
@@ -576,16 +578,30 @@ export function useProjectQueueItemsByProject(
   const projectIdsKey = projectIds.join("\0");
   const selectedProjectIds = useMemo(() => [...projectIds], [projectIdsKey]);
   return useMemo(
-    () =>
-      selectProjectQueueItemsByProject(
+    () => {
+      const state = store.getState();
+      return selectProjectQueueItemsByProject(
         {
-          ...store.getState(),
-          projectQueues: { byProject },
+          ...state,
+          projectQueues: { ...state.projectQueues, byProject },
         },
         selectedProjectIds,
-      ),
+      );
+    },
     [store, byProject, selectedProjectIds],
   );
+}
+
+export function useProjectQueueDispatchState() {
+  useClientSummaryActivitySubscription();
+  const store = useCurrentClientSummaryStore();
+  return useStore(store, selectProjectQueueDispatchState);
+}
+
+export function useProjectQueueRecoveredSessionQueues() {
+  useClientSummaryActivitySubscription();
+  const store = useCurrentClientSummaryStore();
+  return useStore(store, selectProjectQueueRecoveredSessionQueues);
 }
 
 export function useProjectQueueSidebarCount(
@@ -612,14 +628,16 @@ export function useProjectQueueSidebarCount(
     [projects, projectsKey],
   );
   return useMemo(
-    () =>
-      selectProjectQueueSidebarCount(
+    () => {
+      const state = store.getState();
+      return selectProjectQueueSidebarCount(
         {
-          ...store.getState(),
-          projectQueues: { byProject },
+          ...state,
+          projectQueues: { ...state.projectQueues, byProject },
         },
         selectedProjects,
-      ),
+      );
+    },
     [store, byProject, selectedProjects],
   );
 }
@@ -649,14 +667,16 @@ export function useProjectQueuedSessionIds(
   const projectIdsKey = projectIds.join("\0");
   const selectedProjectIds = useMemo(() => [...projectIds], [projectIdsKey]);
   return useMemo(
-    () =>
-      selectProjectQueuedSessionIds(
+    () => {
+      const state = store.getState();
+      return selectProjectQueuedSessionIds(
         {
-          ...store.getState(),
-          projectQueues: { byProject },
+          ...state,
+          projectQueues: { ...state.projectQueues, byProject },
         },
         selectedProjectIds,
-      ),
+      );
+    },
     [store, byProject, selectedProjectIds],
   );
 }

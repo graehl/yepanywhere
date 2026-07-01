@@ -216,6 +216,40 @@ describe("useProjectQueues", () => {
     ]);
   });
 
+  it("shares dispatch state with consumers that reuse a fresh query", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [makeItem("1", PROJECT_ID)],
+      dispatchState: {
+        status: "paused",
+        reason: "restart",
+        pausedAt: "2026-07-01T07:41:12.926Z",
+      },
+      recoveredSessionQueues: [makeRecoveredSessionQueue("1", PROJECT_ID)],
+    });
+
+    const first = renderHook(() => useProjectQueues(["project-1"]));
+
+    await waitFor(() =>
+      expect(first.result.current.dispatchState).toMatchObject({
+        status: "paused",
+        reason: "restart",
+      }),
+    );
+
+    const second = renderHook(() => useProjectQueues(["project-1"]));
+
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+
+    expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
+    expect(second.result.current.dispatchState).toMatchObject({
+      status: "paused",
+      reason: "restart",
+    });
+    expect(
+      second.result.current.recoveredSessionQueues.map((item) => item.id),
+    ).toEqual(["1"]);
+  });
+
   it("refetches recovered session queues after persistence changes", async () => {
     apiMock.getProjectQueueItems
       .mockResolvedValueOnce({

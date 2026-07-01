@@ -294,7 +294,15 @@ export function getMarkdownForVisibleSelection(
 
   for (const lineIndex of touchedLineIndexes) {
     const line = sourceMap.lines[lineIndex];
-    if (!line?.forceWholeLine) {
+    if (
+      !line?.forceWholeLine ||
+      !selectionCoversWholeVisibleLine(
+        sourceMap.visible,
+        line,
+        visibleStart,
+        visibleEnd,
+      )
+    ) {
       continue;
     }
     sourceStart = Math.min(sourceStart, line.sourceStart);
@@ -302,6 +310,34 @@ export function getMarkdownForVisibleSelection(
   }
 
   return trimBoundaryNewlines(normalizedSource.slice(sourceStart, sourceEnd));
+}
+
+function selectionCoversWholeVisibleLine(
+  visible: string,
+  line: VisibleLine,
+  selectionStart: number,
+  selectionEnd: number,
+): boolean {
+  let contentStart = line.visibleStart;
+  let contentEnd = line.visibleEnd;
+
+  while (
+    contentStart < contentEnd &&
+    isHorizontalWhitespace(visible[contentStart] ?? "")
+  ) {
+    contentStart += 1;
+  }
+  while (
+    contentEnd > contentStart &&
+    isHorizontalWhitespace(visible[contentEnd - 1] ?? "")
+  ) {
+    contentEnd -= 1;
+  }
+
+  if (contentStart === contentEnd) {
+    return false;
+  }
+  return selectionStart <= contentStart && selectionEnd >= contentEnd;
 }
 
 function findExactSourceSelection(
@@ -326,6 +362,10 @@ function normalizeLineEndings(value: string): string {
 
 function trimBoundaryNewlines(value: string): string {
   return normalizeLineEndings(value).replace(/^\n+|\n+$/g, "");
+}
+
+function isHorizontalWhitespace(value: string): boolean {
+  return value === " " || value === "\t" || value === "\u00a0";
 }
 
 function rangeIntersectsNode(range: Range, node: Node): boolean {

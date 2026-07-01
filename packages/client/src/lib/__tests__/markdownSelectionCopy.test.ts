@@ -33,6 +33,30 @@ describe("getMarkdownForVisibleSelection", () => {
     ).toBe("2. Same");
   });
 
+  it("keeps partial selections inside markdown block lines narrow", () => {
+    expect(
+      getMarkdownForVisibleSelection(
+        "- `MCLONE_UI_V2_HIT_DEBUG=1` logs/overlays pointer",
+        "MCLONE_UI_V2_HIT_DEBUG=1",
+      ),
+    ).toBe("MCLONE_UI_V2_HIT_DEBUG=1");
+    expect(
+      getMarkdownForVisibleSelection("## Debug switches", "Debug"),
+    ).toBe("Debug");
+  });
+
+  it("preserves block markers for whole rendered line selections", () => {
+    expect(
+      getMarkdownForVisibleSelection(
+        "- `MCLONE_UI_V2_HIT_DEBUG=1` logs/overlays pointer",
+        "MCLONE_UI_V2_HIT_DEBUG=1 logs/overlays pointer",
+      ),
+    ).toBe("- `MCLONE_UI_V2_HIT_DEBUG=1` logs/overlays pointer");
+    expect(
+      getMarkdownForVisibleSelection("## Debug switches", "Debug switches"),
+    ).toBe("## Debug switches");
+  });
+
   it("keeps plain partial selections narrow", () => {
     expect(getMarkdownForVisibleSelection("alpha beta gamma", "beta")).toBe(
       "beta",
@@ -121,6 +145,38 @@ describe("extractMarkdownSnippetsFromSelection", () => {
     selection?.removeAllRanges();
     unregisterFirst();
     unregisterSecond();
+    root.remove();
+  });
+
+  it("copies only a selected inline token from a rendered list item", () => {
+    const root = document.createElement("div");
+    const source = document.createElement("div");
+    source.textContent =
+      "MCLONE_UI_V2_HIT_DEBUG=1 logs/overlays pointer, hovered rects";
+    root.append(source);
+    document.body.append(root);
+    const unregister = registerMarkdownCopySource(
+      source,
+      "- `MCLONE_UI_V2_HIT_DEBUG=1` logs/overlays pointer, hovered rects",
+    );
+
+    const range = document.createRange();
+    range.setStart(source.firstChild as Node, 0);
+    range.setEnd(source.firstChild as Node, "MCLONE_UI_V2_HIT_DEBUG=1".length);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    expect(extractMarkdownSnippetsFromSelection(root)).toMatchObject([
+      {
+        markdown: "MCLONE_UI_V2_HIT_DEBUG=1",
+        selectedText: "MCLONE_UI_V2_HIT_DEBUG=1",
+        sourceElement: source,
+      },
+    ]);
+
+    selection?.removeAllRanges();
+    unregister();
     root.remove();
   });
 });

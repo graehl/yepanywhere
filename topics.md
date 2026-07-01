@@ -89,5 +89,9 @@
   output secrets.
 - bash-result-contract - Provider-normalized Bash result fields for output,
   return code, timing, and empty-output rendering.
+- stream-persisted-render-parity - Live-stream and reloaded-from-disk rendering
+  must produce equivalent UI for every provider.
+- provider-authoring - Map for adding a new agent provider to the harness
+  (interface, reader, normalization, parity, snooping JSONL).
 - browser-profile-devices - Browser profile identity, automated browser
   grouping, and stale non-push profile retention.

@@ -181,8 +181,23 @@ function codexPersistedEntries(): CodexSessionEntry[] {
       },
     },
     {
-      type: "response_item",
+      // Real Codex persists the exit code in a structured exec_command_end
+      // event; the later function_call_output is deduped. Without this the
+      // reloaded Bash result would drop exitCode and drift from the live
+      // stream — see topics/stream-persisted-render-parity.md.
+      type: "event_msg",
       timestamp: "2026-03-05T12:00:06.000Z",
+      payload: {
+        type: "exec_command_end",
+        call_id: "call-bash",
+        aggregated_output: "done\n",
+        exit_code: 0,
+        status: "completed",
+      },
+    } as CodexSessionEntry,
+    {
+      type: "response_item",
+      timestamp: "2026-03-05T12:00:06.500Z",
       payload: {
         type: "function_call_output",
         call_id: "call-bash",

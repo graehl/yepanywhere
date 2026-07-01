@@ -6,6 +6,11 @@
 
 Topic: bash-result-contract
 
+See also: [stream-persisted-render-parity](stream-persisted-render-parity.md)
+(the equivalence contract this normalizer would enforce structurally — a
+provider-base Bash normalizer is that topic's "provider-normalizes direction"),
+[provider-authoring](provider-authoring.md).
+
 Status: proposal. The immediate UI path may use best-effort parsing, but the
 durable fix belongs in provider normalization.
 

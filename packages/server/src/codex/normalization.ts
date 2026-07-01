@@ -241,6 +241,10 @@ export function normalizeCodexToolOutputWithContext(
       isError,
       backgroundTaskId,
       interrupted,
+      // Carry a recoverable exit code so reloaded (function_call_output-only)
+      // Bash results match the live-stream structured result. Equivalence is a
+      // contract — see topics/stream-persisted-render-parity.md.
+      exitCode,
     );
   }
 

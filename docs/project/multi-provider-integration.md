@@ -2,6 +2,12 @@
 
 Yep Anywhere supports multiple AI agent providers. This document covers the architecture, current implementations, and future directions.
 
+See also (topics): [`provider-authoring`](../../topics/provider-authoring.md)
+for a step-by-step map of adding a new provider (interface, reader,
+normalization, snooping JSONL), and
+[`stream-persisted-render-parity`](../../topics/stream-persisted-render-parity.md)
+for the live-vs-reload equivalence contract every provider must satisfy.
+
 ## Provider Architecture
 
 All providers implement a common interface, enabling seamless substitution:

@@ -911,7 +911,7 @@ describe("clientSummaryState", () => {
     ]);
   });
 
-  it("preserves custom titles from inbox snapshots", () => {
+  it("preserves metadata from inbox snapshots", () => {
     const state = applyInboxCollectionSnapshot(
       createEmptyClientSummaryState(),
       {
@@ -919,6 +919,7 @@ describe("clientSummaryState", () => {
           inboxItem("custom", {
             sessionTitle: "Server Display Title",
             customTitle: "Renamed Session",
+            isStarred: true,
           }),
         ],
         active: [],
@@ -932,10 +933,45 @@ describe("clientSummaryState", () => {
     expect(selectSessionCollectionRecord(state, "custom")).toMatchObject({
       title: "Server Display Title",
       customTitle: "Renamed Session",
+      isStarred: true,
     });
     expect(selectInboxResponse(state).needsAttention[0]).toMatchObject({
       sessionTitle: "Server Display Title",
       customTitle: "Renamed Session",
+      isStarred: true,
+    });
+  });
+
+  it("does not clear known starred state when inbox snapshots omit it", () => {
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [globalSession("known-starred", { isStarred: true })],
+        hasMore: false,
+      },
+      100,
+    );
+
+    state = applyInboxCollectionSnapshot(
+      state,
+      {
+        needsAttention: [inboxItem("known-starred")],
+        active: [],
+        recentActivity: [],
+        unread8h: [],
+        unread24h: [],
+      },
+      200,
+    );
+
+    expect(selectSessionCollectionRecord(state, "known-starred")).toMatchObject(
+      {
+        isStarred: true,
+      },
+    );
+    expect(selectInboxResponse(state).needsAttention[0]).toMatchObject({
+      isStarred: true,
     });
   });
 

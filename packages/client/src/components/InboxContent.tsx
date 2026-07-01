@@ -133,6 +133,7 @@ function InboxSection({
                 projectName={item.projectName}
                 updatedAt={item.updatedAt}
                 hasUnread={item.hasUnread}
+                isStarred={item.isStarred}
                 activity={activity}
                 pendingInputType={item.pendingInputType}
                 mode="card"

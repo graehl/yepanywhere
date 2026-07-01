@@ -65,6 +65,7 @@ export interface InboxItem {
   sessionTitle: string;
   updatedAt: string;
   customTitle?: string;
+  isStarred?: boolean;
   pendingInputType?: PendingInputType;
   activity?: AgentActivity;
   hasUnread?: boolean;
@@ -127,6 +128,7 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
       activity?: AgentActivity;
       hasUnread?: boolean;
       customTitle?: string;
+      isStarred?: boolean;
     }> = [];
 
     const logger = getLogger();
@@ -215,6 +217,7 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
           activity,
           hasUnread,
           customTitle: metadata?.customTitle ?? session.customTitle,
+          isStarred: metadata?.isStarred ?? session.isStarred ?? false,
         });
       }
     }
@@ -240,6 +243,7 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
       }),
       updatedAt: item.session.updatedAt,
       customTitle: item.customTitle,
+      isStarred: item.isStarred,
       pendingInputType: item.pendingInputType,
       activity: item.activity,
       hasUnread: item.hasUnread,

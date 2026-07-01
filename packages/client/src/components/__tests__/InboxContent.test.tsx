@@ -113,6 +113,7 @@ vi.mock("../SessionListItem", () => ({
     hasCustomTitle,
     hasDraft,
     hasProjectQueue,
+    isStarred,
     sessionId,
     showActivityIndicator,
     title,
@@ -121,6 +122,7 @@ vi.mock("../SessionListItem", () => ({
     hasCustomTitle?: boolean;
     hasDraft?: boolean;
     hasProjectQueue?: boolean;
+    isStarred?: boolean;
     sessionId: string;
     showActivityIndicator?: boolean;
     title: string;
@@ -131,6 +133,7 @@ vi.mock("../SessionListItem", () => ({
         <span data-testid={`thinking-${sessionId}`}>Thinking</span>
       ) : null}
       {hasCustomTitle ? <span>Custom</span> : null}
+      {isStarred ? <span>Star</span> : null}
       {hasDraft ? <span>Draft</span> : null}
       {hasProjectQueue ? <span>Q</span> : null}
     </li>
@@ -240,6 +243,21 @@ describe("InboxContent", () => {
     expect(
       screen.getByTestId("session-renamed-session").textContent,
     ).not.toContain("Generated title");
+  });
+
+  it("passes starred state through to inbox rows", () => {
+    inboxState.needsAttention = [
+      {
+        ...makeInboxItem("starred-session", "project-1"),
+        isStarred: true,
+      },
+    ];
+
+    render(<InboxContent />);
+
+    expect(screen.getByTestId("session-starred-session").textContent).toContain(
+      "Star",
+    );
   });
 
   it("shows the active thinking indicator for real running inbox rows", () => {

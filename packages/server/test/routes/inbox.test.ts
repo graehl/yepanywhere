@@ -87,9 +87,16 @@ describe("Inbox Routes", () => {
   let mockSupervisor: Supervisor;
   let mockNotificationService: NotificationService;
   let mockSessionIndexService: SessionIndexService;
+  let mockSessionMetadataService: NonNullable<
+    InboxDeps["sessionMetadataService"]
+  >;
   let mockProjectQueueService: NonNullable<InboxDeps["projectQueueService"]>;
   let sessionsByDir: Map<string, SessionSummary[]>;
   let codexSessionsByPath: Map<string, SessionSummary[]>;
+  let metadataMap: Map<
+    string,
+    { customTitle?: string; isArchived?: boolean; isStarred?: boolean }
+  >;
   let projectQueueItems: ProjectQueueItemSummary[];
   let processMap: Map<
     string,
@@ -104,6 +111,7 @@ describe("Inbox Routes", () => {
   beforeEach(() => {
     sessionsByDir = new Map();
     codexSessionsByPath = new Map();
+    metadataMap = new Map();
     projectQueueItems = [];
     processMap = new Map();
     unreadMap = new Map();
@@ -149,6 +157,10 @@ describe("Inbox Routes", () => {
         },
       ),
     } as unknown as SessionIndexService;
+
+    mockSessionMetadataService = {
+      getMetadata: vi.fn((sessionId: string) => metadataMap.get(sessionId)),
+    } as unknown as NonNullable<InboxDeps["sessionMetadataService"]>;
 
     mockProjectQueueService = {
       listAll: vi.fn(() => projectQueueItems),
@@ -724,6 +736,26 @@ describe("Inbox Routes", () => {
       });
 
       expect(result.recentActivity[0].sessionTitle).toBe("My Custom Title");
+    });
+
+    it("includes starred metadata in inbox items", async () => {
+      const project = createProject("proj1", "myproject", "/sessions/proj1");
+      const session = createSession("sess1", "proj1", minutesAgo(10));
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+      metadataMap.set("sess1", { isStarred: true });
+
+      const result = await makeRequest({
+        scanner: mockScanner,
+        readerFactory: mockReaderFactory,
+        supervisor: mockSupervisor,
+        notificationService: mockNotificationService,
+        sessionIndexService: mockSessionIndexService,
+        sessionMetadataService: mockSessionMetadataService,
+      });
+
+      expect(result.recentActivity[0].isStarred).toBe(true);
     });
   });
 

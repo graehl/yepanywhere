@@ -831,6 +831,7 @@ function upsertInboxItemRecord(
     record,
     {
       customTitle: item.customTitle,
+      isStarred: item.isStarred,
     },
     observation,
   );
@@ -1778,6 +1779,7 @@ function sessionRecordToInboxItem(
     sessionTitle: record.title ?? null,
     updatedAt: record.updatedAt,
     customTitle: record.customTitle,
+    isStarred: record.isStarred,
     pendingInputType: record.pendingInputType,
     activity: record.activity,
     activityInferredFromInboxTier: record.activityInferredFromInboxTier,

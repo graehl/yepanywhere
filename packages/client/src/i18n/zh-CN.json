@@ -27,7 +27,6 @@
   "sidebarLoadingSessions": "正在加载会话...",
   "sidebarNoSessions": "还没有会话",
   "settingsAppearanceTitle": "外观",
-  "settingsAppearanceDescription": "主题、字号、流式输出",
   "settingsModelTitle": "会话默认值",
   "settingsModelDescription": "提供商、模型与思考默认值",
   "settingsAgentContextTitle": "代理上下文",

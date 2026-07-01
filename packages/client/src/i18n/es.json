@@ -27,7 +27,6 @@
   "sidebarLoadingSessions": "Cargando sesiones...",
   "sidebarNoSessions": "Todavía no hay sesiones",
   "settingsAppearanceTitle": "Apariencia",
-  "settingsAppearanceDescription": "Tema, tamaño de fuente, streaming",
   "settingsModelTitle": "Valores por sesión",
   "settingsModelDescription": "Proveedor, modelo y razonamiento por defecto",
   "settingsAgentContextTitle": "Contexto del agente",

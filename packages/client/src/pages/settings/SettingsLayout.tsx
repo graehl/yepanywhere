@@ -24,6 +24,7 @@ import { LocalAccessSettings } from "./LocalAccessSettings";
 import { MessageDeliverySettings } from "./MessageDeliverySettings";
 import { ModelSettings } from "./ModelSettings";
 import { NotificationsSettings } from "./NotificationsSettings";
+import { PerformanceSettings } from "./PerformanceSettings";
 import { ProvidersSettings } from "./ProvidersSettings";
 import { RemoteAccessSettings } from "./RemoteAccessSettings";
 import { RemoteExecutorsSettings } from "./RemoteExecutorsSettings";
@@ -43,6 +44,7 @@ import type { SettingsCategory } from "./types";
 // Map category IDs to their components
 const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
+  performance: PerformanceSettings,
   toolbar: ToolbarSettings,
   model: ModelSettings,
   "cache-miss-billing": CacheMissBillingSettings,

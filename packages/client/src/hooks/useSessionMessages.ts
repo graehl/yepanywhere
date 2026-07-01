@@ -13,6 +13,7 @@ import {
 } from "../lib/mergeMessages";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { getProvider } from "../providers/registry";
+import { getSessionTranscriptCacheEnabled } from "./useSessionPerformanceSettings";
 import { getStreamingEnabled } from "./useStreamingEnabled";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
@@ -141,6 +142,9 @@ function readSessionLoadCache(
   tailTurns?: number,
   tailFrom?: string,
 ): SessionRouteSnapshot | undefined {
+  if (!getSessionTranscriptCacheEnabled()) {
+    return undefined;
+  }
   return readSessionRouteSnapshot({
     sourceKey,
     projectId,
@@ -158,6 +162,9 @@ function writeSessionLoadCache(
   tailTurns?: number,
   tailFrom?: string,
 ): void {
+  if (!getSessionTranscriptCacheEnabled()) {
+    return;
+  }
   writeSessionRouteSnapshot(
     { sourceKey, projectId, sessionId, tailTurns, tailFrom },
     entry,
@@ -265,6 +272,10 @@ function createSessionLoadProgress(
   };
 }
 
+function toError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
+}
+
 function yieldForSessionLoadingProgressPaint(
   enabled: boolean | undefined,
 ): Promise<void> {
@@ -273,6 +284,26 @@ function yieldForSessionLoadingProgressPaint(
   }
 
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function tagJsonlMessages(messages: Message[]): Message[] {
+  return messages.map((m) => ({
+    ...m,
+    _source: "jsonl" as const,
+  }));
+}
+
+function mergePersistedMessagesForProvider(
+  baseMessages: Message[],
+  taggedMessages: Message[],
+  provider: string | undefined,
+): Message[] {
+  const result = mergeJSONLMessages(baseMessages, taggedMessages, {
+    skipDagOrdering: !getProvider(provider).capabilities.supportsDag,
+  });
+  return usesApproxMessageDedup(provider)
+    ? reconcileLinearMessages(result.messages, approxDedupOptions(provider))
+    : result.messages;
 }
 
 /**
@@ -324,50 +355,23 @@ export function useSessionMessages(
   const cachedLoad = cachedLoadRef.current.load;
 
   // Core state
-  const [messages, setMessages] = useState<Message[]>(
-    () => cachedLoad?.messages ?? [],
-  );
-  const [agentContent, setAgentContent] = useState<AgentContentMap>(
-    () => cachedLoad?.agentContent ?? {},
-  );
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [agentContent, setAgentContent] = useState<AgentContentMap>({});
   const [toolUseToAgent, setToolUseToAgent] = useState<Map<string, string>>(
-    () => new Map(cachedLoad?.toolUseToAgentEntries ?? []),
+    () => new Map(),
   );
-  const [loading, setLoading] = useState(!cachedLoad);
+  const [loading, setLoading] = useState(true);
   const [sessionLoadProgress, setSessionLoadProgress] =
-    useState<SessionLoadProgress>(() =>
-      cachedLoad
-        ? createSessionLoadProgress("complete", {
-            messageCount: cachedLoad.messages.length,
-            totalMessageCount: cachedLoad.pagination?.totalMessageCount,
-            hasOlderMessages: cachedLoad.pagination?.hasOlderMessages,
-          })
-        : createSessionLoadProgress("idle"),
-    );
-  const [session, setSession] = useState<SessionMetadata | null>(
-    () => cachedLoad?.session ?? null,
-  );
+    useState<SessionLoadProgress>(() => createSessionLoadProgress("idle"));
+  const [session, setSession] = useState<SessionMetadata | null>(null);
   const [pagination, setPagination] = useState<PaginationInfo | undefined>(
-    () => cachedLoad?.pagination,
+    undefined,
   );
   const [loadingOlder, setLoadingOlder] = useState(false);
   const scrollSnapshotRef = useRef<SessionRouteScrollSnapshot | undefined>(
     cachedLoad?.scrollSnapshot,
   );
-  const latestSnapshotRef = useRef<SessionRouteSnapshot | null>(
-    cachedLoad
-      ? {
-          messages: cachedLoad.messages,
-          session: cachedLoad.session,
-          pagination: cachedLoad.pagination,
-          agentContent: cachedLoad.agentContent,
-          toolUseToAgentEntries: cachedLoad.toolUseToAgentEntries,
-          lastMessageId: cachedLoad.lastMessageId,
-          maxPersistedTimestampMs: cachedLoad.maxPersistedTimestampMs,
-          scrollSnapshot: cachedLoad.scrollSnapshot,
-        }
-      : null,
-  );
+  const latestSnapshotRef = useRef<SessionRouteSnapshot | null>(null);
 
   // Buffering: queue stream messages until initial load completes
   const streamBufferRef = useRef<
@@ -435,10 +439,17 @@ export function useSessionMessages(
     return () => {
       const snapshot = latestSnapshotRef.current;
       if (!snapshot) return;
-      writeSessionRouteSnapshot(snapshotKey, {
-        ...snapshot,
-        scrollSnapshot: scrollSnapshotRef.current,
-      });
+      writeSessionLoadCache(
+        sourceKey,
+        projectId,
+        sessionId,
+        {
+          ...snapshot,
+          scrollSnapshot: scrollSnapshotRef.current,
+        },
+        tailTurns,
+        tailFrom,
+      );
     };
   }, [sourceKey, projectId, sessionId, tailTurns, tailFrom]);
 
@@ -556,6 +567,11 @@ export function useSessionMessages(
   // incremental refresh after the cached tail; merge that delta instead of
   // replacing the cached transcript.
   useEffect(() => {
+    let cancelled = false;
+    let warmHydrated = false;
+    let pendingWarmData: Awaited<ReturnType<typeof api.getSession>> | null =
+      null;
+    let pendingWarmError: Error | null = null;
     const warmLoad = readSessionLoadCache(
       sourceKey,
       projectId,
@@ -563,19 +579,190 @@ export function useSessionMessages(
       tailTurns,
       tailFrom,
     );
+
+    const notifyLoadComplete = (
+      data: Awaited<ReturnType<typeof api.getSession>>,
+    ) => {
+      onLoadComplete?.({
+        session: data.session,
+        status: data.ownership,
+        pendingInputRequest: data.pendingInputRequest,
+        slashCommands: data.slashCommands,
+        deferredMessages: data.deferredMessages,
+      });
+    };
+
+    const finishWarmHydration = (options: {
+      loadedMessages: Message[];
+      loadedSession: SessionMetadata;
+      loadedPagination?: PaginationInfo;
+      sourceMessageCount: number;
+      provider?: string;
+    }) => {
+      const lastJsonlId = findLastJsonlMessageId(options.loadedMessages);
+      if (lastJsonlId) {
+        lastMessageIdRef.current = lastJsonlId;
+      }
+
+      setAgentContent(warmLoad?.agentContent ?? {});
+      setToolUseToAgent(new Map(warmLoad?.toolUseToAgentEntries ?? []));
+      setSession(options.loadedSession);
+      setMessages(options.loadedMessages);
+      setPagination(options.loadedPagination);
+      markReloadPerfPhase("session_initial_messages_state_queued", {
+        messages: options.sourceMessageCount,
+        totalMessages: options.loadedMessages.length,
+        provider: options.provider,
+        restoredFromSnapshot: true,
+      });
+
+      initialLoadCompleteRef.current = true;
+      flushBuffer();
+
+      setLoading(false);
+      setSessionLoadProgress(
+        createSessionLoadProgress("complete", {
+          messageCount: options.loadedMessages.length,
+          totalMessageCount: options.loadedPagination?.totalMessageCount,
+          hasOlderMessages: options.loadedPagination?.hasOlderMessages,
+        }),
+      );
+      markReloadPerfPhase("session_initial_load_complete", {
+        messages: options.sourceMessageCount,
+        restoredFromSnapshot: true,
+      });
+    };
+
+    const applyWarmDataBeforeHydration = (
+      data: Awaited<ReturnType<typeof api.getSession>>,
+    ) => {
+      if (!warmLoad) return;
+      markReloadPerfPhase("session_initial_load_data_ready", {
+        messages: data.messages.length,
+        provider: data.session.provider,
+        totalMessages: data.pagination?.totalMessageCount,
+        hasOlderMessages: data.pagination?.hasOlderMessages,
+        restoredFromSnapshot: true,
+      });
+      providerRef.current = data.session.provider;
+      setSessionLoadProgress(
+        createSessionLoadProgress("loaded", {
+          messageCount: data.messages.length,
+          totalMessageCount: data.pagination?.totalMessageCount,
+          hasOlderMessages: data.pagination?.hasOlderMessages,
+        }),
+      );
+      setSessionLoadProgress(
+        createSessionLoadProgress("preparing", {
+          messageCount: data.messages.length,
+          totalMessageCount: data.pagination?.totalMessageCount,
+          hasOlderMessages: data.pagination?.hasOlderMessages,
+        }),
+      );
+      const taggedMessages = tagJsonlMessages(data.messages);
+      updatePersistedTimestampWatermark(taggedMessages);
+      const loadedMessages = warmLoad.lastMessageId
+        ? mergePersistedMessagesForProvider(
+            warmLoad.messages,
+            taggedMessages,
+            data.session.provider,
+          )
+        : usesApproxMessageDedup(data.session.provider)
+          ? reconcileLinearMessages(
+              taggedMessages,
+              approxDedupOptions(data.session.provider),
+            )
+          : taggedMessages;
+      const nextPagination = data.pagination ?? warmLoad.pagination;
+      setSessionLoadProgress(
+        createSessionLoadProgress("rendering", {
+          messageCount: loadedMessages.length,
+          totalMessageCount: nextPagination?.totalMessageCount,
+          hasOlderMessages: nextPagination?.hasOlderMessages,
+        }),
+      );
+      finishWarmHydration({
+        loadedMessages,
+        loadedSession: data.session,
+        loadedPagination: nextPagination,
+        sourceMessageCount: taggedMessages.length,
+        provider: data.session.provider,
+      });
+      writeSessionLoadCache(
+        sourceKey,
+        projectId,
+        sessionId,
+        {
+          messages: loadedMessages,
+          session: data.session,
+          pagination: nextPagination,
+          agentContent: warmLoad.agentContent,
+          toolUseToAgentEntries: warmLoad.toolUseToAgentEntries,
+          lastMessageId: lastMessageIdRef.current,
+          maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+          scrollSnapshot: scrollSnapshotRef.current,
+        },
+        tailTurns,
+        tailFrom,
+      );
+      notifyLoadComplete(data);
+    };
+
+    const applyWarmDeltaAfterHydration = (
+      data: Awaited<ReturnType<typeof api.getSession>>,
+    ) => {
+      if (!warmLoad) return;
+      markReloadPerfPhase("session_initial_load_data_ready", {
+        messages: data.messages.length,
+        provider: data.session.provider,
+        totalMessages: data.pagination?.totalMessageCount,
+        hasOlderMessages: data.pagination?.hasOlderMessages,
+        restoredFromSnapshot: true,
+        appliedAfterSnapshotHydration: true,
+      });
+      providerRef.current = data.session.provider;
+      setSession(data.session);
+      const taggedMessages = tagJsonlMessages(data.messages);
+      updatePersistedTimestampWatermark(taggedMessages);
+      setMessages((prev) => {
+        const baseMessages = prev.length > 0 ? prev : warmLoad.messages;
+        const loadedMessages = mergePersistedMessagesForProvider(
+          baseMessages,
+          taggedMessages,
+          data.session.provider,
+        );
+        const lastJsonlId = findLastJsonlMessageId(loadedMessages);
+        if (lastJsonlId) {
+          lastMessageIdRef.current = lastJsonlId;
+        }
+        return loadedMessages;
+      });
+      const nextPagination = data.pagination ?? warmLoad.pagination;
+      setPagination(nextPagination);
+      setSessionLoadProgress(
+        createSessionLoadProgress("complete", {
+          messageCount: nextPagination?.returnedMessageCount,
+          totalMessageCount: nextPagination?.totalMessageCount,
+          hasOlderMessages: nextPagination?.hasOlderMessages,
+        }),
+      );
+      notifyLoadComplete(data);
+    };
+
     markReloadPerfPhase("session_initial_load_start", {
       projectId,
       sessionId,
       tailCompactions: 2,
       tailTurns,
       tailFrom,
+      restoredFromSnapshot: Boolean(warmLoad),
     });
     initialLoadCompleteRef.current = false;
     streamBufferRef.current = [];
     scrollSnapshotRef.current = warmLoad?.scrollSnapshot;
     if (warmLoad) {
       setSessionLoadProgress(
-        createSessionLoadProgress("complete", {
+        createSessionLoadProgress("fetching", {
           messageCount: warmLoad.messages.length,
           totalMessageCount: warmLoad.pagination?.totalMessageCount,
           hasOlderMessages: warmLoad.pagination?.hasOlderMessages,
@@ -584,12 +771,38 @@ export function useSessionMessages(
       maxPersistedTimestampMsRef.current = warmLoad.maxPersistedTimestampMs;
       providerRef.current = warmLoad.session.provider;
       lastMessageIdRef.current = warmLoad.lastMessageId;
-      setMessages(warmLoad.messages);
-      setAgentContent(warmLoad.agentContent);
-      setToolUseToAgent(new Map(warmLoad.toolUseToAgentEntries));
-      setSession(warmLoad.session);
-      setPagination(warmLoad.pagination);
-      setLoading(false);
+      setLoading(true);
+      setMessages([]);
+      setAgentContent({});
+      setToolUseToAgent(new Map());
+      setSession(null);
+      setPagination(undefined);
+      void (async () => {
+        setSessionLoadProgress(
+          createSessionLoadProgress("rendering", {
+            messageCount: warmLoad.messages.length,
+            totalMessageCount: warmLoad.pagination?.totalMessageCount,
+            hasOlderMessages: warmLoad.pagination?.hasOlderMessages,
+          }),
+        );
+        await yieldForSessionLoadingProgressPaint(true);
+        if (cancelled) return;
+        warmHydrated = true;
+        if (pendingWarmData) {
+          applyWarmDataBeforeHydration(pendingWarmData);
+          return;
+        }
+        finishWarmHydration({
+          loadedMessages: warmLoad.messages,
+          loadedSession: warmLoad.session,
+          loadedPagination: warmLoad.pagination,
+          sourceMessageCount: warmLoad.messages.length,
+          provider: warmLoad.session.provider,
+        });
+        if (pendingWarmError) {
+          onLoadError?.(pendingWarmError);
+        }
+      })();
     } else {
       setSessionLoadProgress(createSessionLoadProgress("fetching"));
       maxPersistedTimestampMsRef.current = Number.NEGATIVE_INFINITY;
@@ -609,6 +822,15 @@ export function useSessionMessages(
         tailFrom,
       })
       .then(async (data) => {
+        if (cancelled) return;
+        if (warmLoad) {
+          if (!warmHydrated) {
+            pendingWarmData = data;
+            return;
+          }
+          applyWarmDeltaAfterHydration(data);
+          return;
+        }
         markReloadPerfPhase("session_initial_load_data_ready", {
           messages: data.messages.length,
           provider: data.session.provider,
@@ -633,33 +855,14 @@ export function useSessionMessages(
             hasOlderMessages: data.pagination?.hasOlderMessages,
           }),
         );
-        const taggedMessages = data.messages.map((m) => ({
-          ...m,
-          _source: "jsonl" as const,
-        }));
+        const taggedMessages = tagJsonlMessages(data.messages);
         updatePersistedTimestampWatermark(taggedMessages);
-        const warmMessages = warmLoad?.messages;
-        const shouldMergeWarmDelta =
-          warmMessages !== undefined && Boolean(lastMessageIdRef.current);
-        const loadedMessages = shouldMergeWarmDelta
-          ? (() => {
-              const result = mergeJSONLMessages(warmMessages, taggedMessages, {
-                skipDagOrdering: !getProvider(data.session.provider)
-                  .capabilities.supportsDag,
-              });
-              return usesApproxMessageDedup(data.session.provider)
-                ? reconcileLinearMessages(
-                    result.messages,
-                    approxDedupOptions(data.session.provider),
-                  )
-                : result.messages;
-            })()
-          : usesApproxMessageDedup(data.session.provider)
-            ? reconcileLinearMessages(
-                taggedMessages,
-                approxDedupOptions(data.session.provider),
-              )
-            : taggedMessages;
+        const loadedMessages = usesApproxMessageDedup(data.session.provider)
+          ? reconcileLinearMessages(
+              taggedMessages,
+              approxDedupOptions(data.session.provider),
+            )
+          : taggedMessages;
         setSessionLoadProgress(
           createSessionLoadProgress("rendering", {
             messageCount: loadedMessages.length,
@@ -668,6 +871,7 @@ export function useSessionMessages(
           }),
         );
         await yieldForSessionLoadingProgressPaint(detailedLoadingProgress);
+        if (cancelled) return;
         // Update lastMessageIdRef synchronously to avoid race condition:
         // stream "connected" event calls fetchNewMessages() immediately, but the
         // useEffect that normally updates lastMessageIdRef runs asynchronously.
@@ -677,7 +881,7 @@ export function useSessionMessages(
           lastMessageIdRef.current = lastJsonlId;
         }
 
-        const nextPagination = data.pagination ?? warmLoad?.pagination;
+        const nextPagination = data.pagination;
         const revealInitialTranscript = () => {
           setMessages(loadedMessages);
           setPagination(nextPagination);
@@ -714,7 +918,7 @@ export function useSessionMessages(
           {
             messages: loadedMessages,
             session: data.session,
-            pagination: data.pagination ?? warmLoad?.pagination,
+            pagination: data.pagination,
             agentContent: {},
             toolUseToAgentEntries: [],
             lastMessageId: lastMessageIdRef.current,
@@ -735,6 +939,20 @@ export function useSessionMessages(
         });
       })
       .catch((err) => {
+        if (cancelled) return;
+        if (warmLoad) {
+          const error = toError(err);
+          markReloadPerfPhase("session_initial_load_error", {
+            message: error.message,
+            restoredFromSnapshot: true,
+          });
+          if (!warmHydrated) {
+            pendingWarmError = error;
+            return;
+          }
+          onLoadError?.(error);
+          return;
+        }
         markReloadPerfPhase("session_initial_load_error", {
           message: err instanceof Error ? err.message : String(err),
         });
@@ -742,6 +960,9 @@ export function useSessionMessages(
         setLoading(false);
         onLoadError?.(err);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [
     projectId,
     sessionId,
@@ -930,7 +1151,9 @@ export function useSessionMessages(
   const updateRouteScrollSnapshot = useCallback(
     (snapshot: SessionRouteScrollSnapshot) => {
       scrollSnapshotRef.current = snapshot;
-      patchSessionRouteScrollSnapshot(snapshotKey, snapshot);
+      if (getSessionTranscriptCacheEnabled()) {
+        patchSessionRouteScrollSnapshot(snapshotKey, snapshot);
+      }
       if (latestSnapshotRef.current) {
         latestSnapshotRef.current = {
           ...latestSnapshotRef.current,

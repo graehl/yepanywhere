@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { UI_KEYS } from "../../lib/storageKeys";
 
 const mocks = vi.hoisted(() => ({
   useRetainSidebarSessionFeeds: vi.fn(),
@@ -168,6 +169,16 @@ describe("NavigationLayout", () => {
     act(() => {
       vi.advanceTimersByTime(60_000);
     });
+
+    expect(screen.queryByTestId("session-layer")).toBeNull();
+    expect(screen.getByTestId("route-content")).toBeTruthy();
+  });
+
+  it("does not park session DOM when session linger is disabled", () => {
+    window.localStorage.setItem(UI_KEYS.sessionDomLinger, "false");
+    renderNavigationLayoutWithSessionLinger();
+
+    fireEvent.click(screen.getByText("Agents"));
 
     expect(screen.queryByTestId("session-layer")).toBeNull();
     expect(screen.getByTestId("route-content")).toBeTruthy();

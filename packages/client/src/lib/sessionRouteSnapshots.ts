@@ -62,6 +62,8 @@ export interface SessionRouteSnapshotWriteOptions {
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_ENTRIES = 3;
 const DEFAULT_MAX_BYTES = 24 * 1024 * 1024;
+const APPROX_BYTES_PER_MESSAGE = 2048;
+const APPROX_BYTES_PER_AGENT_ENTRY = 1024;
 
 function now(options?: Pick<SessionRouteSnapshotWriteOptions, "nowMs">) {
   return options?.nowMs ?? Date.now();
@@ -109,15 +111,17 @@ export function getSessionRouteSnapshotKey({
 }
 
 function estimateBytes(snapshot: SessionRouteSnapshot): number {
-  try {
-    return JSON.stringify(snapshot)?.length ?? 0;
-  } catch {
-    return Number.MAX_SAFE_INTEGER;
-  }
+  // Deliberately coarse: this cache is bounded primarily by entry count and TTL.
+  // Full JSON serialization can block the main thread during route changes.
+  return (
+    snapshot.messages.length * APPROX_BYTES_PER_MESSAGE +
+    Object.keys(snapshot.agentContent).length * APPROX_BYTES_PER_AGENT_ENTRY +
+    snapshot.toolUseToAgentEntries.length * APPROX_BYTES_PER_AGENT_ENTRY
+  );
 }
 
 function toSnapshot(entry: SessionRouteSnapshotEntry): SessionRouteSnapshot {
-  return cloneSnapshot({
+  return {
     messages: entry.messages,
     session: entry.session,
     pagination: entry.pagination,
@@ -125,8 +129,10 @@ function toSnapshot(entry: SessionRouteSnapshotEntry): SessionRouteSnapshot {
     toolUseToAgentEntries: entry.toolUseToAgentEntries,
     lastMessageId: entry.lastMessageId,
     maxPersistedTimestampMs: entry.maxPersistedTimestampMs,
-    scrollSnapshot: entry.scrollSnapshot,
-  });
+    scrollSnapshot: entry.scrollSnapshot
+      ? cloneSnapshot(entry.scrollSnapshot)
+      : undefined,
+  };
 }
 
 function evictExpired(
@@ -209,9 +215,8 @@ export function writeSessionRouteSnapshot(
     return false;
   }
 
-  const cloned = cloneSnapshot(snapshot);
   store.set(key, {
-    ...cloned,
+    ...snapshot,
     key,
     sourceKey: input.sourceKey,
     projectId: input.projectId,
@@ -240,7 +245,11 @@ export function patchSessionRouteScrollSnapshot(
   entry.updatedAt = Date.now();
 }
 
-export function resetSessionRouteSnapshotsForTests(): void {
+export function clearSessionRouteSnapshots(): void {
   delete (globalThis as typeof globalThis & SessionRouteSnapshotGlobal)
     .__YA_SESSION_ROUTE_SNAPSHOTS__;
+}
+
+export function resetSessionRouteSnapshotsForTests(): void {
+  clearSessionRouteSnapshots();
 }

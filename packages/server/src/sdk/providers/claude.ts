@@ -443,8 +443,9 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   {
     id: "best",
     name: "Best",
-    description: "Highest-capability Claude Code alias for complex work",
-    contextWindow: getModelContextWindow("best", "claude"),
+    description:
+      "Highest-capability Claude Code alias (probably Opus 4.8, full 1M context)",
+    contextWindow: getModelContextWindow("opus[1m]", "claude"),
   },
   {
     id: "fable",

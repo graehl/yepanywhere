@@ -9906,21 +9906,190 @@ a.sidebar-nav-item {
   box-shadow: none;
 }
 
+/* Shown zone: one full-width row per control (preview + copy + priority + hide). */
 .session-toolbar-control-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
 }
 
-.session-toolbar-control {
+/* Hidden zone: two side-columns (left/right toolbar edge), stacking when narrow. */
+.session-toolbar-zone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.session-toolbar-zone-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-toolbar-zone-heading strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.session-toolbar-zone-heading span {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+}
+
+.session-toolbar-zone-separator {
+  height: 1px;
+  margin: var(--space-2) 0;
+  background: var(--border-color);
+}
+
+.session-toolbar-hidden-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+}
+
+.session-toolbar-hidden-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.session-toolbar-hidden-group-title {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.session-toolbar-hidden-empty {
+  margin: 0;
+  color: var(--text-dimmed);
+  font-size: var(--font-size-xs);
+  font-style: italic;
+}
+
+.session-toolbar-control-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-2);
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
+}
+
+.session-toolbar-control-row.is-hidden {
+  opacity: 0.9;
+}
+
+.session-toolbar-control-preview-cell {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.session-toolbar-control-row .session-toolbar-control-copy {
+  flex: 1 1 auto;
+}
+
+.session-toolbar-control-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+/* Segmented narrowing-priority radio. */
+.session-toolbar-priority {
+  display: inline-flex;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.session-toolbar-priority-option {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 3px 9px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.session-toolbar-priority-option + .session-toolbar-priority-option {
+  border-left: 1px solid var(--border-color);
+}
+
+.session-toolbar-priority-option:hover,
+.session-toolbar-priority-option:focus-visible {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.session-toolbar-priority-option.is-selected {
+  background: var(--accent-color, var(--focus-border));
+  color: var(--bg-primary);
+}
+
+.session-toolbar-hide-button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.session-toolbar-hide-button:hover,
+.session-toolbar-hide-button:focus-visible {
+  border-color: var(--error-color);
+  color: var(--error-color);
+  outline: none;
+}
+
+/* Single-control specimen used inside each settings row. */
+.toolbar-control-preview {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  overflow: visible;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.toolbar-control-preview .session-toolbar-preview-content {
+  min-width: 0;
+}
+
+.toolbar-control-preview .message-input-toolbar {
+  width: max-content;
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+.toolbar-control-preview .message-input-left,
+.toolbar-control-preview .message-input-actions {
+  gap: 4px;
+}
+
+.toolbar-control-preview .composer-status-ages {
+  margin-left: 0;
+  position: static;
 }
 
 .session-toolbar-control-copy {

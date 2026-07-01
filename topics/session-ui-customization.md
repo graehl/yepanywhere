@@ -5,6 +5,9 @@
 
 Topic: session-ui-customization
 
+See also: [toolbar-settings-ui.md](toolbar-settings-ui.md) — the how-it-works
+reference for the Toolbar settings pane (layout, narrowing priority, previews).
+
 ## Landed surface
 
 The first customization surface has shipped as its own top-level **Toolbar**

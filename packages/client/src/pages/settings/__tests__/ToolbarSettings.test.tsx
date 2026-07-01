@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock("../../../components/SessionToolbarPreview", () => ({
   SessionToolbarPreview: () => <div data-testid="toolbar-preview" />,
+  ToolbarControlPreview: () => <div data-testid="toolbar-control-preview" />,
 }));
 
 vi.mock("../../../hooks/useSessionToolbarVisibility", () => ({
@@ -32,6 +33,29 @@ vi.mock("../../../hooks/useSessionToolbarVisibility", () => ({
     },
     setControlVisible: vi.fn(),
     resetVisibility: vi.fn(),
+  }),
+}));
+
+vi.mock("../../../hooks/useSessionToolbarPriority", () => ({
+  useSessionToolbarPriority: () => ({
+    priority: {
+      modeSelector: "first",
+      steerNow: "pin",
+      attachments: "first",
+      slashMenu: "mid",
+      thinkingToggle: "mid",
+      renderMode: "last",
+      microphone: "pin",
+      waveform: "pin",
+      shortcutsHelp: "last",
+      contextUsage: "pin",
+      btw: "pin",
+      nudge: "last",
+      sessionStatus: "pin",
+      projectQueue: "pin",
+    },
+    setControlPriority: vi.fn(),
+    resetPriority: vi.fn(),
   }),
 }));
 

@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useSessionToolbarVisibility } from "../hooks/useSessionToolbarVisibility";
+import { useEffect, useMemo, useRef } from "react";
+import { useSessionToolbarPriority } from "../hooks/useSessionToolbarPriority";
+import {
+  DEFAULT_SESSION_TOOLBAR_VISIBILITY,
+  type SessionToolbarVisibility,
+  type SessionToolbarVisibilityKey,
+  useSessionToolbarVisibility,
+} from "../hooks/useSessionToolbarVisibility";
 import { useI18n } from "../i18n";
 import { getEffortLevelOptions } from "../lib/effortLevels";
 import type { ContextUsage } from "../types";
@@ -17,12 +23,27 @@ const PREVIEW_CONTEXT_USAGE: ContextUsage = {
 
 const noop = () => {};
 
-export function SessionToolbarPreview() {
+const ALL_HIDDEN_VISIBILITY = Object.fromEntries(
+  (
+    Object.keys(
+      DEFAULT_SESSION_TOOLBAR_VISIBILITY,
+    ) as SessionToolbarVisibilityKey[]
+  ).map((key) => [key, false]),
+) as unknown as SessionToolbarVisibility;
+
+function visibilityForOnly(
+  key: SessionToolbarVisibilityKey,
+): SessionToolbarVisibility {
+  return { ...ALL_HIDDEN_VISIBILITY, [key]: true };
+}
+
+/**
+ * Builds the mock control props the preview toolbar renders. Shared by the full
+ * preview (all controls) and the per-control settings-row preview so the two
+ * stay faithful to the real toolbar and never drift apart.
+ */
+function usePreviewToolbarControls(previewNowMs: number) {
   const { t } = useI18n();
-  const { visibility } = useSessionToolbarVisibility();
-  const inertRef = useRef<HTMLDivElement | null>(null);
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const previewNowMs = useMemo(() => Date.now(), []);
   const livenessDisplay = useMemo<LivenessDisplay>(
     () => ({
       prefix: t("toolbarLivenessVerifiedIdle"),
@@ -42,6 +63,133 @@ export function SessionToolbarPreview() {
     [t],
   );
 
+  return useMemo(() => {
+    const props: Pick<
+      MessageInputToolbarViewProps,
+      | "t"
+      | "modeControl"
+      | "attachmentControl"
+      | "slashControl"
+      | "thinkingControl"
+      | "renderModeControl"
+      | "nudgeControl"
+      | "speechControl"
+      | "statusControl"
+      | "shortcutsControl"
+    > & {
+      send: NonNullable<MessageInputToolbarViewProps["actionsControl"]["send"]>;
+      btw: NonNullable<MessageInputToolbarViewProps["actionsControl"]["btw"]>;
+      projectQueue: NonNullable<
+        MessageInputToolbarViewProps["actionsControl"]["projectQueue"]
+      >;
+    } = {
+      t,
+      modeControl: { mode: "bypassPermissions", onModeChange: noop },
+      attachmentControl: {
+        canAttach: true,
+        attachmentCount: 1,
+        onAttachClick: noop,
+      },
+      slashControl: {
+        commands: ["model", "btw", "compact", "done"],
+        onSelectCommand: noop,
+      },
+      thinkingControl: {
+        mode: "auto",
+        level: "max",
+        effortOptions,
+        onSetMode: noop,
+        onSetEffort: noop,
+        onToggleEnabled: noop,
+        showThinking: "default",
+        onSetShowThinking: noop,
+      },
+      renderModeControl: {
+        state: "mixed",
+        title: t("toolbarRenderModeMixed"),
+        onToggle: noop,
+      },
+      nudgeControl: {
+        enabled: true,
+        title: t("sessionHeartbeatTitle"),
+        onClick: noop,
+        onContextMenu: (event) => event.preventDefault(),
+        onTouchStart: noop,
+        onTouchEnd: (event) => event.preventDefault(),
+        onClearTouch: noop,
+      },
+      speechControl: {
+        showMethodSelector: false,
+        methodOptions: [],
+        selectedMethod: "browser-native",
+        onMethodChange: noop,
+        voiceButton: { kind: "preview" },
+      },
+      statusControl: {
+        showToolbarStatus: true,
+        showLivenessChip: true,
+        livenessDisplay,
+        livenessSummary: t("toolbarLivenessSummary", {
+          state: t("toolbarLivenessVerifiedIdle"),
+          age: t("toolbarRelativeAgePast", { age: "4m" }),
+        }),
+        nowMs: previewNowMs,
+        showLastActivityChip: false,
+        showLastActivityPrefix: false,
+        lastActivityMs: null,
+        lastActivityIsPast: false,
+        positionTimestampMs: null,
+        showPositionTimestamp: false,
+        hasPositionAge: false,
+        hasLastActivityAge: false,
+      },
+      shortcutsControl: {
+        open: false,
+        isearchScope: null,
+        setOpen:
+          noop as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+        settingsOpen: false,
+        setSettingsOpen:
+          noop as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+        hasDualActions: true,
+        enterActionKind: "steer",
+        canSwapEnterAction: false,
+        queueShortcutLabel: t("toolbarShortcutQueueCurrentTurn"),
+      },
+      send: {
+        onSend: noop,
+        canSend: true,
+        primaryActionKind: "steer",
+        primaryActionLabel: t("toolbarSteerTooltip"),
+        tooltip: t("toolbarSteerTooltip"),
+        icon: "↗",
+        showSteerNowMode: true,
+        steerNowEnabled: false,
+        onToggleSteerNow: noop,
+        queue: {
+          onQueue: noop,
+          hasDualActions: true,
+          queueTooltip: t("toolbarQueueTooltip"),
+        },
+      },
+      btw: {
+        onClick: noop,
+        pressed: false,
+        mode: "start",
+        title: t("toolbarBtwStartTitle"),
+      },
+      projectQueue: {
+        onProjectQueue: noop,
+        canSend: true,
+        tooltip: t("toolbarProjectQueueTooltip"),
+      },
+    };
+    return props;
+  }, [effortOptions, livenessDisplay, previewNowMs, t]);
+}
+
+function useInertPreviewRef() {
+  const inertRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const element = inertRef.current as
       | (HTMLDivElement & { inert?: boolean })
@@ -52,6 +200,17 @@ export function SessionToolbarPreview() {
       element.inert = false;
     };
   }, []);
+  return inertRef;
+}
+
+/** Full, faithful preview of the composer toolbar with the user's live config. */
+export function SessionToolbarPreview() {
+  const { t } = useI18n();
+  const { visibility } = useSessionToolbarVisibility();
+  const { priority } = useSessionToolbarPriority();
+  const previewNowMs = useMemo(() => Date.now(), []);
+  const controls = usePreviewToolbarControls(previewNowMs);
+  const inertRef = useInertPreviewRef();
 
   return (
     <div className="session-toolbar-preview" aria-hidden="true">
@@ -59,112 +218,75 @@ export function SessionToolbarPreview() {
         <MessageInputToolbarView
           t={t}
           visibility={visibility}
-          modeControl={{
-            mode: "bypassPermissions",
-            onModeChange: noop,
-          }}
-          attachmentControl={{
-            canAttach: true,
-            attachmentCount: 1,
-            onAttachClick: noop,
-          }}
-          slashControl={{
-            commands: ["model", "btw", "compact", "done"],
-            onSelectCommand: noop,
-          }}
-          thinkingControl={{
-            mode: "auto",
-            level: "max",
-            effortOptions,
-            onSetMode: noop,
-            onSetEffort: noop,
-            onToggleEnabled: noop,
-            showThinking: "default",
-            onSetShowThinking: noop,
-          }}
-          renderModeControl={{
-            state: "mixed",
-            title: t("toolbarRenderModeMixed"),
-            onToggle: noop,
-          }}
-          nudgeControl={{
-            enabled: true,
-            title: t("sessionHeartbeatTitle"),
-            onClick: noop,
-            onContextMenu: (event) => event.preventDefault(),
-            onTouchStart: noop,
-            onTouchEnd: (event) => event.preventDefault(),
-            onClearTouch: noop,
-          }}
-          speechControl={{
-            showMethodSelector: false,
-            methodOptions: [],
-            selectedMethod: "browser-native",
-            onMethodChange: noop,
-            voiceButton: {
-              kind: "preview",
-            },
-          }}
-          statusControl={{
-            showToolbarStatus: visibility.sessionStatus,
-            showLivenessChip: visibility.sessionStatus,
-            livenessDisplay,
-            livenessSummary: t("toolbarLivenessSummary", {
-              state: t("toolbarLivenessVerifiedIdle"),
-              age: t("toolbarRelativeAgePast", { age: "4m" }),
-            }),
-            nowMs: previewNowMs,
-            showLastActivityChip: false,
-            showLastActivityPrefix: false,
-            lastActivityMs: null,
-            lastActivityIsPast: false,
-            positionTimestampMs: null,
-            showPositionTimestamp: false,
-            hasPositionAge: false,
-            hasLastActivityAge: false,
-          }}
-          shortcutsControl={{
-            open: shortcutsOpen,
-            isearchScope: null,
-            setOpen: setShortcutsOpen,
-            settingsOpen: false,
-            setSettingsOpen:
-              noop as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
-            hasDualActions: true,
-            enterActionKind: "steer",
-            canSwapEnterAction: false,
-            queueShortcutLabel: t("toolbarShortcutQueueCurrentTurn"),
-          }}
+          priority={priority}
+          modeControl={controls.modeControl}
+          attachmentControl={controls.attachmentControl}
+          slashControl={controls.slashControl}
+          thinkingControl={controls.thinkingControl}
+          renderModeControl={controls.renderModeControl}
+          nudgeControl={controls.nudgeControl}
+          speechControl={controls.speechControl}
+          statusControl={controls.statusControl}
+          shortcutsControl={controls.shortcutsControl}
           actionsControl={{
             contextUsage: PREVIEW_CONTEXT_USAGE,
-            btw: {
-              onClick: noop,
-              pressed: false,
-              mode: "start",
-              title: t("toolbarBtwStartTitle"),
-            },
-            send: {
-              onSend: noop,
-              canSend: true,
-              primaryActionKind: "steer",
-              primaryActionLabel: t("toolbarSteerTooltip"),
-              tooltip: t("toolbarSteerTooltip"),
-              icon: "↗",
-              showSteerNowMode: true,
-              steerNowEnabled: false,
-              onToggleSteerNow: noop,
-              queue: {
-                onQueue: noop,
-                hasDualActions: true,
-                queueTooltip: t("toolbarQueueTooltip"),
-              },
-            },
-            projectQueue: {
-              onProjectQueue: noop,
-              canSend: true,
-              tooltip: t("toolbarProjectQueueTooltip"),
-            },
+            btw: controls.btw,
+            send: controls.send,
+            projectQueue: controls.projectQueue,
           }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A single toolbar control rendered in isolation, for the settings list rows.
+ * Reuses the real toolbar via visibility-of-one so each row shows the actual
+ * element. Right-side/actions controls are supplied only for their own key so
+ * the rest of the toolbar stays empty.
+ */
+export function ToolbarControlPreview({
+  controlKey,
+}: {
+  controlKey: SessionToolbarVisibilityKey;
+}) {
+  const { t } = useI18n();
+  const previewNowMs = useMemo(() => Date.now(), []);
+  const controls = usePreviewToolbarControls(previewNowMs);
+  const inertRef = useInertPreviewRef();
+
+  const actionsControl: MessageInputToolbarViewProps["actionsControl"] =
+    controlKey === "contextUsage"
+      ? { contextUsage: PREVIEW_CONTEXT_USAGE }
+      : controlKey === "btw"
+        ? { btw: controls.btw }
+        : controlKey === "projectQueue"
+          ? { projectQueue: controls.projectQueue }
+          : controlKey === "steerNow"
+            ? { send: controls.send }
+            : {};
+
+  return (
+    <div
+      className="toolbar-control-preview session-toolbar-preview"
+      aria-hidden="true"
+    >
+      <div ref={inertRef} className="session-toolbar-preview-content">
+        <MessageInputToolbarView
+          t={t}
+          visibility={visibilityForOnly(controlKey)}
+          modeControl={controls.modeControl}
+          attachmentControl={controls.attachmentControl}
+          slashControl={controls.slashControl}
+          thinkingControl={controls.thinkingControl}
+          renderModeControl={controls.renderModeControl}
+          nudgeControl={controls.nudgeControl}
+          speechControl={controls.speechControl}
+          speechWaveformActive={controlKey === "waveform"}
+          statusControl={controls.statusControl}
+          shortcutsControl={controls.shortcutsControl}
+          actionsControl={actionsControl}
         />
       </div>
     </div>

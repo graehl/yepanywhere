@@ -6,6 +6,10 @@
 
 Topic: composer-bottom-bar-overflow
 
+See also: [toolbar-settings-ui.md](toolbar-settings-ui.md) — the settings pane
+that lets users set each control's narrowing priority (which drives the tier
+classes this engine collapses).
+
 ## Concern
 
 The session composer bottom row can contain delivery controls, Stop, queue and

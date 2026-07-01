@@ -44,6 +44,11 @@ section below for what would have to change at higher fan-out.
 - [`packages/client/RENDERING_PERFORMANCE.md`](packages/client/RENDERING_PERFORMANCE.md)
   — the React render/update pipeline, what's coalesced, what stays immediate,
   the streaming-markdown ref pattern, and the review checklist.
+- [`topics/session-detail-data-layer.md`](topics/session-detail-data-layer.md)
+  — vision for a canonical client session-detail data layer between provider
+  stream/REST inputs and transcript DOM rendering; see the linked tactical
+  plan before reshaping `useSession`, `useSessionMessages`, transcript
+  augments, subagents, or same-tab message caches.
 - [`docs/project/connection-matrix.md`](docs/project/connection-matrix.md) —
   the four client transport modes (Direct / WS / SecureConnection /
   SecureConnection-via-relay) and which auth/encoding each uses.

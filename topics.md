@@ -96,3 +96,5 @@
   (interface, reader, normalization, parity, snooping JSONL).
 - browser-profile-devices - Browser profile identity, automated browser
   grouping, and stale non-push profile retention.
+- session-detail-data-layer - Canonical client session detail store/reducer
+  between provider transcript inputs and transcript DOM rendering.

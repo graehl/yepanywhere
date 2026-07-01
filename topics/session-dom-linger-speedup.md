@@ -155,6 +155,86 @@ contract. If YA later adds a built-in offsite/web viewer, that viewer must follo
 the same modal/content-frame rule: Back acts as close/return, the foreground
 viewer owns focus and pointer events, and the parked session remains inert.
 
+## New-Tab And Cross-Tab Model
+
+New-tab navigation starts a fresh app instance from a URL. A modified or
+middle-click on Settings, Source Control, Inbox, Agents, or another ordinary
+React Router `Link` must stay browser-native: the source tab must not run the
+same-tab route transition, so it must not park the current session merely
+because the new tab opens. The new tab mounts its own `NavigationLayout` and
+has no access to the source tab's hidden DOM or React state.
+
+Browser tabs have separate DOM trees, JavaScript heaps, React component
+instances, and per-tab singleton objects. Same-origin tabs can still share
+browser storage and explicit communication channels such as `localStorage`
+events, `BroadcastChannel`, a service worker, or a shared worker, but those
+channels can only transfer structured data and messages. They cannot transfer a
+live DOM tree, React fiber, scroll container, WebSocket object, or in-memory
+hook state between tabs.
+
+The current linger cap is therefore per tab, not global. Viewing the same YA
+session in two tabs creates two live session-route instances when both tabs are
+on the session URL. If either tab leaves to a non-session route, that tab may
+park its own copy for the 60-second grace window. For an active process, each
+mounted session route can also create its own session subscription and prompt
+cache keepalive viewer lease; the server cleans each lease on unsubscribe, but
+there is no current cross-tab election that collapses duplicate same-session
+viewers into one owner.
+
+If duplicate same-session tabs become a measured resource problem, mitigation
+should be coordination rather than DOM transfer:
+
+- A same-origin tab registry can use `BroadcastChannel` plus a short
+  `localStorage` lease, or `navigator.locks` where available, to elect one
+  active owner for expensive per-session work while non-owners stay passive.
+- A duplicate-session link could ask an already-open owner tab to focus itself
+  only when browser restrictions allow it; arbitrary focus of unrelated tabs is
+  not a dependable Chrome capability.
+- A service worker or shared worker can centralize data fetching or message
+  fan-out, but cannot share UI state or mounted DOM. That is a larger transport
+  architecture change, not an extension of the DOM linger host.
+
+Current stance: do not implement cross-tab coordination until duplicate
+same-session tabs show a real resource or correctness cost. The current
+one-entry linger cap is intentionally per tab, and duplicate tabs require the
+user to open the same session in multiple browser contexts. That is not yet a
+demonstrated priority.
+
+Evidence that would justify revisiting this:
+
+- debug traces showing multiple same-browser-profile tabs holding the same
+  source/project/session subscription or prompt-cache keepalive lease for long
+  enough to matter
+- a measured server or browser symptom, such as duplicated high-volume live
+  deltas, extra focused watches, excess keepalive refreshes, or visible CPU and
+  memory pressure from duplicate mounted transcript trees
+- a clear product decision for two visible windows on the same session: whether
+  both must receive full live updates independently, or whether a follower tab
+  may depend on an owner tab's broadcast stream with fast fallback
+
+Lowest-risk sequence if that evidence appears:
+
+1. Add instrumentation only. Count same-browser-profile duplicate session
+   viewers and keepalive leases without changing behavior.
+2. Add a same-origin presence registry keyed by source, project, session id,
+   route params, and tail params. Use `BroadcastChannel` plus a short
+   `localStorage` lease, or `navigator.locks` where available, and publish only
+   compact state: tab id, route key, visibility, parked/active status, and last
+   heartbeat.
+3. Reduce work only for hidden or parked duplicates first. A visible foreground
+   duplicate should keep its direct server subscription until the follower path
+   has complete replay, ordering, and owner-loss handling.
+4. If needed, trial an owner/follower subscription model. The owner holds the
+   server session subscription and rebroadcasts structured events; followers
+   fall back to their own subscription when the owner heartbeat expires, when
+   ordering gaps appear, or when the browser lacks the chosen coordination API.
+
+Do not use cross-tab coordination as a hidden focus-stealing feature. Focusing
+an already-open duplicate tab is at best an opportunistic convenience when the
+browser allows it, not a correctness primitive. Do not use a service worker or
+shared worker as the first step; that changes the transport architecture and
+still cannot share the session DOM.
+
 ## Verification
 
 - Browser test: session -> non-session route -> back within 60 seconds reuses
@@ -207,3 +287,11 @@ project-file viewer URLs to the contract. Normal clicks on those links open the
 same `FileViewerModal`; direct navigation to `/projects/:projectId/file` stays
 inside `NavigationLayout` as a sidebarless content-frame route so Back can reveal
 the parked session rather than remounting it.
+
+2026-07-01 code inspection verified ordinary sidebar navigation still uses
+React Router `Link`, whose click handler only intercepts unmodified left-clicks.
+Modified clicks and middle-clicks are left to the browser, so opening Settings
+or similar routes in a new tab does not trigger hidden-DOM parking in the source
+session tab. The current app has cross-tab storage/channels for preferences,
+draft decorations, service-worker messages, and shared speech mic leasing, but
+no session-view ownership or DOM-transfer protocol.

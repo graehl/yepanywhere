@@ -70,6 +70,10 @@ interface CommandPreview {
   hiddenLabel: string | null;
 }
 
+interface NoOutputBashResult {
+  exitCode?: number;
+}
+
 const COMMAND_PREVIEW_MAX_CHARS_PER_LINE = 220;
 
 function clamp(value: number, min: number, max: number): number {
@@ -456,9 +460,10 @@ export const ToolCallRow = memo(function ToolCallRow({
 
   // Check if this tool renders inline (bypasses entire tool-row structure)
   const hasInlineRenderer = toolRegistry.hasInlineRenderer(toolName);
-  const hasOnlyRedundantBashDetail = isRedundantBashResultExpansion(
+  const noOutputBashResult = getNoOutputBashResult(
     toolName,
     structuredResult,
+    toolResult?.content,
     status,
   );
   const suppressCollapsedPreview = shouldSuppressBashCollapsedPreview(
@@ -466,6 +471,7 @@ export const ToolCallRow = memo(function ToolCallRow({
     toolInput,
     structuredResult,
     status,
+    noOutputBashResult !== null,
   );
   const rendererToolName = toolRegistry.get(toolName).tool;
   const mayHaveCollapsedPreview =
@@ -564,10 +570,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   const [previewExpanded, setPreviewExpanded] = useState(true);
   // Tools with collapsed preview or interactive summary don't expand
   const isNonExpandable =
-    hasOnlyRedundantBashDetail ||
-    hasInteractiveSummary ||
-    hasCollapsedPreview ||
-    hasDeferredInteractiveShell;
+    hasInteractiveSummary || hasCollapsedPreview || hasDeferredInteractiveShell;
 
   // Edit and TodoWrite tools are expanded by default
   const [expanded, setExpanded] = useState(
@@ -586,11 +589,10 @@ export const ToolCallRow = memo(function ToolCallRow({
 
   // Dot button: expandable rows + preview-first rows with an inline result.
   const showDotBtn =
-    !hasOnlyRedundantBashDetail &&
-    (!isNonExpandable ||
-      canInlineExpandToolResult ||
-      hasPreviewToggle ||
-      hasSummaryDotToggle);
+    !isNonExpandable ||
+    canInlineExpandToolResult ||
+    hasPreviewToggle ||
+    hasSummaryDotToggle;
 
   // Header toggles dotExpanded for preview-first inline result rows.
   const hasHeaderDotToggle = canInlineExpandToolResult;
@@ -740,6 +742,7 @@ export const ToolCallRow = memo(function ToolCallRow({
           "tool-row-header",
           isNonExpandable ? "non-expandable" : "",
           showBashCommandTarget ? "has-command-preview" : "",
+          noOutputBashResult ? "has-result-suffix" : "",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -885,6 +888,18 @@ export const ToolCallRow = memo(function ToolCallRow({
           </span>
         )}
 
+        {noOutputBashResult && (
+          <>
+            <span className="tool-result-suffix">(no output)</span>
+            {noOutputBashResult.exitCode !== undefined &&
+              noOutputBashResult.exitCode !== 0 && (
+                <span className="tool-result-suffix tool-result-suffix-rc">
+                  rc={noOutputBashResult.exitCode}
+                </span>
+              )}
+          </>
+        )}
+
         {headerCommand && (
           <ToolHeaderCopyButton text={headerCommand} label="Copy command" />
         )}
@@ -949,9 +964,11 @@ export const ToolCallRow = memo(function ToolCallRow({
       {expanded && !isNonExpandable && (
         <div className="tool-row-content">
           <ToolRowCollapseStrip onCollapse={() => setExpanded(false)} />
-          {status === "pending" ||
-          status === "aborted" ||
-          status === "incomplete" ? (
+          {noOutputBashResult && isBashTool ? (
+            <BashNoOutputExpanded command={headerCommand} />
+          ) : status === "pending" ||
+            status === "aborted" ||
+            status === "incomplete" ? (
             <ToolUseExpanded
               toolName={toolName}
               toolInput={toolInput}
@@ -997,6 +1014,7 @@ function shouldSuppressBashCollapsedPreview(
   input: unknown,
   result: unknown,
   status?: ToolCallItem["status"],
+  hasNoOutputBashResult = false,
 ): boolean {
   if (!isBashLikeToolName(toolName)) {
     return false;
@@ -1006,30 +1024,82 @@ function shouldSuppressBashCollapsedPreview(
     return !hasBashPreviewResult(input);
   }
 
-  return (
-    result === undefined ||
-    isRedundantBashResultExpansion(toolName, result, status)
-  );
+  return result === undefined || hasNoOutputBashResult;
 }
 
-function isRedundantBashResultExpansion(
+function getNoOutputBashResult(
   toolName: string,
   result: unknown,
+  fallbackContent?: string,
   status?: ToolCallItem["status"],
-): boolean {
-  if (!isBashLikeToolName(toolName) || status !== "complete") {
-    return false;
+): NoOutputBashResult | null {
+  if (
+    !isBashLikeToolName(toolName) ||
+    (status !== "complete" && status !== "error")
+  ) {
+    return null;
   }
   if (result === undefined) {
-    return false;
+    return null;
   }
   if (getBashResultOutputForRichPreview(result).trim().length > 0) {
-    return false;
+    return null;
   }
   if (!isRecord(result)) {
-    return true;
+    return { exitCode: getBashExitCode(result, fallbackContent) };
   }
-  return result.interrupted !== true && result.backgroundTaskId === undefined;
+  if (result.interrupted === true || result.backgroundTaskId !== undefined) {
+    return null;
+  }
+  return { exitCode: getBashExitCode(result, fallbackContent) };
+}
+
+function getBashExitCode(
+  result: unknown,
+  fallbackContent?: string,
+): number | undefined {
+  if (typeof result === "string") {
+    return parseShellToolOutput(result).exitCode;
+  }
+
+  if (isRecord(result)) {
+    const direct = getNumberField(result, [
+      "exitCode",
+      "exit_code",
+      "returnCode",
+      "return_code",
+      "rc",
+    ]);
+    if (direct !== undefined) {
+      return direct;
+    }
+    if (typeof result.content === "string") {
+      const parsed = parseShellToolOutput(result.content).exitCode;
+      if (parsed !== undefined) {
+        return parsed;
+      }
+    }
+  }
+
+  return fallbackContent
+    ? parseShellToolOutput(fallbackContent).exitCode
+    : undefined;
+}
+
+function getNumberField(
+  record: Record<string, unknown>,
+  fieldNames: string[],
+): number | undefined {
+  for (const fieldName of fieldNames) {
+    const value = record[fieldName];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && /^-?\d+$/.test(value.trim())) {
+      return Number.parseInt(value, 10);
+    }
+  }
+  return undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1062,6 +1132,29 @@ function getBashResultOutputForRichPreview(result: unknown): string {
   }
 
   return "";
+}
+
+function BashNoOutputExpanded({ command }: { command: string }) {
+  const commandRef = useQuoteableTextSource<HTMLPreElement>(command);
+
+  if (!command.trim()) {
+    return null;
+  }
+
+  return (
+    <div className="tool-result-expanded">
+      <div className="bash-result bash-result-no-output">
+        <div className="bash-expanded-section bash-expanded-command-section">
+          <div className="bash-inline-section-header">
+            <span className="bash-inline-section-label">Command</span>
+          </div>
+          <pre ref={commandRef} className="code-block">
+            <code>{command}</code>
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ToolUseExpanded({

@@ -324,7 +324,10 @@ describe("Codex Normalization", () => {
       type: "tool_call",
       id: "call-bg",
       status: "complete",
-      toolResult: expect.objectContaining({ content: "done\n" }),
+      toolResult: expect.objectContaining({
+        content: "done\n",
+        structured: expect.objectContaining({ exitCode: 0 }),
+      }),
     });
   });
 
@@ -374,7 +377,10 @@ describe("Codex Normalization", () => {
         type: "tool_call",
         id: "call-fast",
         status: "error",
-        toolResult: expect.objectContaining({ content: "(no output)" }),
+        toolResult: expect.objectContaining({
+          content: "(no output)",
+          structured: expect.objectContaining({ exitCode: 1 }),
+        }),
       });
       expect(warnSpy).not.toHaveBeenCalled();
     } finally {

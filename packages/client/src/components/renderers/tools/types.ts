@@ -19,6 +19,7 @@ export interface BashResult {
   interrupted: boolean;
   isImage: boolean;
   backgroundTaskId?: string;
+  exitCode?: number;
 }
 
 /**

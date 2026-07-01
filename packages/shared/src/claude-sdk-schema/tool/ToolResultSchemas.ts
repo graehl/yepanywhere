@@ -66,6 +66,7 @@ const BashResultObjectSchema = z.object({
   interrupted: z.boolean().optional(),
   isImage: z.boolean().optional(),
   backgroundTaskId: z.string().optional(),
+  exitCode: z.number().optional(),
 });
 
 /**

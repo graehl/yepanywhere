@@ -61,6 +61,7 @@ function normalizeBashResult(
       stderr: isError ? output : "",
       interrupted: false,
       isImage: false,
+      ...(parsed.exitCode !== undefined ? { exitCode: parsed.exitCode } : {}),
     };
   }
   return result;

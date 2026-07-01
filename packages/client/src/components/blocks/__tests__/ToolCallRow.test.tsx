@@ -252,7 +252,7 @@ describe("ToolCallRow", () => {
     ]);
   });
 
-  it("does not make empty completed Bash rows expandable", () => {
+  it("keeps no-output Bash rows collapsed but expandable to the command", () => {
     const { container } = render(
       <ToolCallRow
         id="tool-empty-bash"
@@ -275,9 +275,52 @@ describe("ToolCallRow", () => {
 
     expect(screen.getByText("Ran")).toBeDefined();
     expect(screen.getByText("true")).toBeDefined();
+    expect(screen.getByText("(no output)")).toBeDefined();
     expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
-    expect(container.querySelector(".expand-chevron")).toBeNull();
-    expect(screen.queryByRole("button", { name: /expand/i })).toBeNull();
+    expect(container.querySelector(".tool-row-content")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+
+    const content = container.querySelector(".tool-row-content");
+    expect(content).not.toBeNull();
+    expect(content?.querySelector(".code-block")?.textContent).toBe("true");
+    expect(content?.querySelector(".bash-empty")).toBeNull();
+    expect(screen.getByRole("button", { name: "Collapse" })).toBeDefined();
+  });
+
+  it("shows return code suffix for non-zero no-output Bash rows", () => {
+    const { container } = render(
+      <ToolCallRow
+        id="tool-empty-bash-error"
+        toolName="Bash"
+        toolInput={{ command: "false" }}
+        toolResult={{
+          structured: {
+            stdout: "",
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+            exitCode: 7,
+          },
+          content: "(no output)",
+          isError: true,
+        }}
+        status="error"
+        sessionProvider="codex"
+      />,
+    );
+
+    expect(screen.getByText("Ran")).toBeDefined();
+    expect(screen.getByText("false")).toBeDefined();
+    expect(screen.getByText("(no output)")).toBeDefined();
+    expect(screen.getByText("rc=7")).toBeDefined();
+    expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+
+    expect(
+      container.querySelector(".tool-row-content .code-block")?.textContent,
+    ).toBe("false");
   });
 
   it("expands Bash command text without toggling row details", () => {

@@ -177,6 +177,10 @@
   flex-wrap: wrap;
 }
 
+.tool-row-header.has-result-suffix {
+  flex-wrap: wrap;
+}
+
 .tool-row-header:focus {
   outline: 1px solid var(--focus-border, #007acc);
   outline-offset: -1px;
@@ -319,6 +323,22 @@ button.tool-summary {
   font-weight: 700;
   line-height: 1.15;
   white-space: nowrap;
+}
+
+.tool-result-suffix {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  color: var(--text-muted, #888);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tool-result-suffix-rc {
+  color: var(--timeline-dot-error, #f85149);
+  font-weight: 600;
 }
 
 .tool-header-copy {

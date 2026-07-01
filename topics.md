@@ -87,3 +87,5 @@
 - public-share-content-censorship - Content-aware censorship proposal for
   public transcript bodies that may include Read/Edit snippets and command
   output secrets.
+- bash-result-contract - Provider-normalized Bash result fields for output,
+  return code, timing, and empty-output rendering.

@@ -310,7 +310,13 @@ export function normalizeCodexCommandExecutionOutput(
   ) {
     structured = normalizeWriteOutput(context.writeShellInfo);
   } else if (context?.toolName === "Bash" && execution.status !== "declined") {
-    structured = createBashToolResult(baseOutput, isError);
+    structured = createBashToolResult(
+      baseOutput,
+      isError,
+      undefined,
+      false,
+      execution.exitCode,
+    );
   }
 
   return { content, structured, isError };
@@ -1228,12 +1234,14 @@ function createBashToolResult(
   isError: boolean,
   backgroundTaskId?: string,
   interrupted = false,
+  exitCode?: number,
 ): {
   stdout: string;
   stderr: string;
   interrupted: boolean;
   isImage: false;
   backgroundTaskId?: string;
+  exitCode?: number;
 } {
   return {
     stdout: interrupted || isError ? "" : output,
@@ -1241,6 +1249,7 @@ function createBashToolResult(
     interrupted,
     isImage: false,
     ...(backgroundTaskId ? { backgroundTaskId } : {}),
+    ...(exitCode !== undefined ? { exitCode } : {}),
   };
 }
 

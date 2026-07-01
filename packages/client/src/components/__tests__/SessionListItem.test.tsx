@@ -274,6 +274,47 @@ describe("SessionListItem links", () => {
     ).toBe("Custom title");
   });
 
+  it("shows a card-mode thinking dot when requested for active rows", () => {
+    const { container } = render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="Active row"
+              activity="in-turn"
+              mode="card"
+              showActivityIndicator
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(container.querySelector(".thinking-indicator-dot")).toBeTruthy();
+  });
+
+  it("leaves card-mode activity hidden unless requested", () => {
+    const { container } = render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="Active row"
+              activity="in-turn"
+              mode="card"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    expect(container.querySelector(".thinking-indicator-dot")).toBeNull();
+  });
+
   it("uses custom titles for session hover previews", () => {
     vi.useFakeTimers();
 

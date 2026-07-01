@@ -85,8 +85,10 @@ export interface InboxItem {
   sessionTitle: string | null;
   updatedAt: string;
   customTitle?: string;
+  isStarred?: boolean;
   pendingInputType?: PendingInputType;
   activity?: AgentActivity;
+  activityInferredFromInboxTier?: boolean;
   hasUnread?: boolean;
 }
 

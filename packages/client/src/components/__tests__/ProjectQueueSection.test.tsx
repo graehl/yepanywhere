@@ -228,10 +228,17 @@ describe("ProjectQueueSection", () => {
         reason: "restart",
         pausedAt: "2026-06-30T00:00:00.000Z",
       },
+      [],
+      { [PROJECT_ID]: makeProjectStatus("paused") },
     );
 
     expect(screen.getByText("Dispatch is paused after server restart."))
       .toBeTruthy();
+    expect(
+      screen.getByText(
+        /After Resume, the next item may still wait up to 30s/,
+      ),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Resume" }));
 
     expect(handlers.onResumeDispatch).toHaveBeenCalledTimes(1);

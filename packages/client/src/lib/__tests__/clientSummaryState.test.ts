@@ -1,5 +1,6 @@
 import type {
   ProjectQueueItemSummary,
+  ProjectQueueProjectStatus,
   ProjectQueueRecoveredSessionQueueSummary,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -36,6 +37,7 @@ import {
   selectProjectQueuedSessionIds,
   selectProjectQueueDispatchState,
   selectProjectQueueItems,
+  selectProjectQueueProjectStatusesByProject,
   selectProjectQueueRecoveredSessionQueues,
   selectProjectQueueSidebarCount,
   selectSessionCollectionQueryRecords,
@@ -157,6 +159,24 @@ function recoveredSessionQueue(
     updatedAt: `2026-06-27T11:00:0${id}.000Z`,
     kind: "patient",
     status: "paused-after-restart",
+    ...overrides,
+  };
+}
+
+function projectQueueStatus(
+  state: ProjectQueueProjectStatus["state"],
+  overrides: Partial<ProjectQueueProjectStatus> = {},
+): ProjectQueueProjectStatus {
+  return {
+    projectId: PROJECT_ID,
+    state,
+    idle: state !== "blocked",
+    blockers: state === "blocked" ? ["session-1:in-turn"] : [],
+    dispatchPaused: state === "paused",
+    inFlight: state === "dispatching",
+    quietWindowMs: 30_000,
+    itemCount: state === "empty" ? 0 : 1,
+    nextItemId: state === "empty" ? undefined : "1",
     ...overrides,
   };
 }
@@ -891,7 +911,7 @@ describe("clientSummaryState", () => {
     ]);
   });
 
-  it("preserves custom titles from inbox snapshots", () => {
+  it("preserves metadata from inbox snapshots", () => {
     const state = applyInboxCollectionSnapshot(
       createEmptyClientSummaryState(),
       {
@@ -899,6 +919,7 @@ describe("clientSummaryState", () => {
           inboxItem("custom", {
             sessionTitle: "Server Display Title",
             customTitle: "Renamed Session",
+            isStarred: true,
           }),
         ],
         active: [],
@@ -912,10 +933,45 @@ describe("clientSummaryState", () => {
     expect(selectSessionCollectionRecord(state, "custom")).toMatchObject({
       title: "Server Display Title",
       customTitle: "Renamed Session",
+      isStarred: true,
     });
     expect(selectInboxResponse(state).needsAttention[0]).toMatchObject({
       sessionTitle: "Server Display Title",
       customTitle: "Renamed Session",
+      isStarred: true,
+    });
+  });
+
+  it("does not clear known starred state when inbox snapshots omit it", () => {
+    let state = applyGlobalSessionsCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        query: { scope: "global-sessions", limit: 50 },
+        sessions: [globalSession("known-starred", { isStarred: true })],
+        hasMore: false,
+      },
+      100,
+    );
+
+    state = applyInboxCollectionSnapshot(
+      state,
+      {
+        needsAttention: [inboxItem("known-starred")],
+        active: [],
+        recentActivity: [],
+        unread8h: [],
+        unread24h: [],
+      },
+      200,
+    );
+
+    expect(selectSessionCollectionRecord(state, "known-starred")).toMatchObject(
+      {
+        isStarred: true,
+      },
+    );
+    expect(selectInboxResponse(state).needsAttention[0]).toMatchObject({
+      isStarred: true,
     });
   });
 
@@ -936,6 +992,10 @@ describe("clientSummaryState", () => {
       activity: "in-turn",
       activityInferredFromInboxTier: true,
     });
+    expect(selectInboxResponse(state).active[0]).toMatchObject({
+      activity: "in-turn",
+      activityInferredFromInboxTier: true,
+    });
 
     state = applyGlobalSessionsCollectionSnapshot(
       state,
@@ -948,6 +1008,10 @@ describe("clientSummaryState", () => {
     );
 
     expect(selectSessionCollectionRecord(state, "queued-active")).toMatchObject({
+      activity: "in-turn",
+      activityInferredFromInboxTier: false,
+    });
+    expect(selectInboxResponse(state).active[0]).toMatchObject({
       activity: "in-turn",
       activityInferredFromInboxTier: false,
     });
@@ -1275,6 +1339,69 @@ describe("clientSummaryState", () => {
     expect(selectProjectQueueRecoveredSessionQueues(state)).toEqual([]);
   });
 
+  it("stores and replaces project queue project statuses from global snapshots", () => {
+    let state = applyProjectQueueGlobalCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        items: [queueItem("1")],
+        projectStatuses: {
+          [PROJECT_ID]: projectQueueStatus("waiting-quiet"),
+        },
+      },
+      100,
+    );
+
+    expect(
+      selectProjectQueueProjectStatusesByProject(state)[PROJECT_ID],
+    ).toMatchObject({
+      state: "waiting-quiet",
+      nextItemId: "1",
+    });
+
+    state = applyProjectQueueGlobalCollectionSnapshot(
+      state,
+      { items: [], projectStatuses: {} },
+      200,
+    );
+
+    expect(
+      selectProjectQueueProjectStatusesByProject(state)[PROJECT_ID],
+    ).toBeUndefined();
+  });
+
+  it("merges project queue project statuses from project snapshots", () => {
+    const otherProjectId = "project-2" as UrlProjectId;
+    let state = applyProjectQueueGlobalCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        items: [queueItem("1")],
+        projectStatuses: {
+          [PROJECT_ID]: projectQueueStatus("waiting-quiet"),
+        },
+      },
+      100,
+    );
+
+    state = applyProjectQueueCollectionSnapshot(
+      state,
+      {
+        projectId: otherProjectId,
+        items: [queueItem("2", { projectId: otherProjectId })],
+        projectStatuses: {
+          [otherProjectId]: projectQueueStatus("blocked", {
+            projectId: otherProjectId,
+          }),
+        },
+      },
+      200,
+    );
+
+    expect(selectProjectQueueProjectStatusesByProject(state)).toMatchObject({
+      [PROJECT_ID]: { state: "waiting-quiet" },
+      [otherProjectId]: { state: "blocked" },
+    });
+  });
+
   it("does not let older global snapshots undo newer project queue gate facts", () => {
     let state = applyProjectQueueCollectionChanged(
       createEmptyClientSummaryState(),
@@ -1328,6 +1455,32 @@ describe("clientSummaryState", () => {
     );
 
     expect(selectProjectQueueRecoveredSessionQueues(state)).toEqual([]);
+  });
+
+  it("does not let older global snapshots undo newer project statuses", () => {
+    let state = applyProjectQueueCollectionSnapshot(
+      createEmptyClientSummaryState(),
+      {
+        projectId: PROJECT_ID,
+        items: [queueItem("1")],
+        projectStatuses: {
+          [PROJECT_ID]: projectQueueStatus("blocked"),
+        },
+      },
+      200,
+    );
+
+    state = applyProjectQueueGlobalCollectionSnapshot(
+      state,
+      { items: [], projectStatuses: {} },
+      150,
+    );
+
+    expect(
+      selectProjectQueueProjectStatusesByProject(state)[PROJECT_ID],
+    ).toMatchObject({
+      state: "blocked",
+    });
   });
 
   it("selects sidebar Project Queue counts from project fallbacks and queue snapshots", () => {

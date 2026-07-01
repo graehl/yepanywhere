@@ -109,21 +109,31 @@ vi.mock("../FilterDropdown", () => ({
 
 vi.mock("../SessionListItem", () => ({
   SessionListItem: ({
+    activity,
     hasCustomTitle,
     hasDraft,
     hasProjectQueue,
+    isStarred,
     sessionId,
+    showActivityIndicator,
     title,
   }: {
+    activity?: string;
     hasCustomTitle?: boolean;
     hasDraft?: boolean;
     hasProjectQueue?: boolean;
+    isStarred?: boolean;
     sessionId: string;
+    showActivityIndicator?: boolean;
     title: string;
   }) => (
     <li data-testid={`session-${sessionId}`}>
       {title}
+      {showActivityIndicator && activity === "in-turn" ? (
+        <span data-testid={`thinking-${sessionId}`}>Thinking</span>
+      ) : null}
       {hasCustomTitle ? <span>Custom</span> : null}
+      {isStarred ? <span>Star</span> : null}
       {hasDraft ? <span>Draft</span> : null}
       {hasProjectQueue ? <span>Q</span> : null}
     </li>
@@ -233,5 +243,51 @@ describe("InboxContent", () => {
     expect(
       screen.getByTestId("session-renamed-session").textContent,
     ).not.toContain("Generated title");
+  });
+
+  it("passes starred state through to inbox rows", () => {
+    inboxState.needsAttention = [
+      {
+        ...makeInboxItem("starred-session", "project-1"),
+        isStarred: true,
+      },
+    ];
+
+    render(<InboxContent />);
+
+    expect(screen.getByTestId("session-starred-session").textContent).toContain(
+      "Star",
+    );
+  });
+
+  it("shows the active thinking indicator for real running inbox rows", () => {
+    inboxState.active = [
+      {
+        ...makeInboxItem("running-session", "project-1"),
+        activity: "in-turn",
+      },
+    ];
+
+    render(<InboxContent />);
+
+    expect(screen.getByTestId("thinking-running-session")).toBeTruthy();
+  });
+
+  it("hides the active thinking indicator for queue-only inbox rows", () => {
+    inboxState.active = [
+      {
+        ...makeInboxItem("queued-session", "project-1"),
+        activity: "in-turn",
+        activityInferredFromInboxTier: true,
+      },
+    ];
+    queuedSessionIds.add("queued-session");
+
+    render(<InboxContent />);
+
+    expect(screen.getByTestId("session-queued-session").textContent).toContain(
+      "Q",
+    );
+    expect(screen.queryByTestId("thinking-queued-session")).toBe(null);
   });
 });

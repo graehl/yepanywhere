@@ -508,6 +508,24 @@ function getFirstVisibleRenderAnchor(
   return null;
 }
 
+function shouldRestoreInitialScrollSnapshot(
+  snapshot: SessionRouteScrollSnapshot,
+): boolean {
+  if (snapshot.atBottom) {
+    return true;
+  }
+
+  // A top-of-transcript snapshot, with or without a first-row anchor, can be
+  // produced by a transient cached/progressive restore before tail follow has
+  // settled. Treat it as "no useful retained position" so ordinary session
+  // opens follow the tail instead of pinning the transcript to the top.
+  if (snapshot.scrollTop <= FOLLOW_BOTTOM_TOLERANCE_PX) {
+    return false;
+  }
+
+  return true;
+}
+
 function buildSearchPreview(
   text: string,
   query: string,
@@ -1428,6 +1446,7 @@ export const MessageList = memo(function MessageList({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
+  const previousInteractionDisabledRef = useRef(interactionDisabled);
   const isInitialLoadRef = useRef(true);
   const isProgrammaticScrollRef = useRef(false);
   const lastHeightRef = useRef(0);
@@ -1452,6 +1471,7 @@ export const MessageList = memo(function MessageList({
   const navMotionCueClearTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const previousProgressiveRevealActiveRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchRestoreFocusRef = useRef<HTMLElement | null>(null);
   const searchOriginalScrollTopRef = useRef<number | null>(null);
@@ -2722,6 +2742,24 @@ export const MessageList = memo(function MessageList({
     progressiveRenderCycleKey,
     visibleTimelineEntries.length,
   ]);
+  useLayoutEffect(() => {
+    const wasProgressiveRevealActive =
+      previousProgressiveRevealActiveRef.current;
+    previousProgressiveRevealActiveRef.current = progressiveRevealActive;
+
+    if (
+      !wasProgressiveRevealActive ||
+      progressiveRevealActive ||
+      !shouldAutoScrollRef.current
+    ) {
+      return;
+    }
+
+    const container = containerRef.current?.parentElement;
+    if (container) {
+      scrollToBottom(container);
+    }
+  }, [progressiveRevealActive, scrollToBottom]);
 
   const getThinkingItemExpanded = useCallback(
     (item: RenderItem) =>
@@ -3242,6 +3280,9 @@ export const MessageList = memo(function MessageList({
   // move away from the live tail. Programmatic scroll bursts can otherwise keep
   // the scroll handler muted long enough to rubber-band the viewport back down.
   useEffect(() => {
+    if (interactionDisabled) {
+      return;
+    }
     const container = containerRef.current?.parentElement;
     if (!container) return;
 
@@ -3454,12 +3495,25 @@ export const MessageList = memo(function MessageList({
     }
   }, [forceScrollToCurrent, scrollTrigger]);
 
+  useLayoutEffect(() => {
+    const wasInteractionDisabled = previousInteractionDisabledRef.current;
+    previousInteractionDisabledRef.current = interactionDisabled;
+    if (
+      wasInteractionDisabled &&
+      !interactionDisabled &&
+      shouldAutoScrollRef.current
+    ) {
+      forceScrollToCurrent(SEND_CATCH_UP_DELAYS_MS);
+    }
+  }, [forceScrollToCurrent, interactionDisabled]);
+
   // Restore same-tab route scroll before the default first-load follow behavior
   // moves the viewport to the tail.
   useEffect(() => {
     if (
       !isInitialLoadRef.current ||
       !initialScrollSnapshot ||
+      !shouldRestoreInitialScrollSnapshot(initialScrollSnapshot) ||
       displayRenderItems.length === 0
     ) {
       return;

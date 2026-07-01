@@ -1663,6 +1663,205 @@ describe("MessageList", () => {
     expect(container.scrollTop).toBe(320);
   });
 
+  it("ignores unanchored top snapshots on initial restore", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+        initialScrollSnapshot={{
+          atBottom: false,
+          scrollTop: 0,
+          scrollHeight: 48,
+          clientHeight: 500,
+          updatedAtMs: Date.now(),
+        }}
+      />,
+      { container: scrollContainer },
+    );
+
+    expect(scrollContainer.scrollTop).toBe(500);
+  });
+
+  it("ignores anchored top snapshots on initial restore", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+        initialScrollSnapshot={{
+          atBottom: false,
+          scrollTop: 0,
+          scrollHeight: 1000,
+          clientHeight: 500,
+          anchor: { id: "user-1", topOffset: 0 },
+          updatedAtMs: Date.now(),
+        }}
+      />,
+      { container: scrollContainer },
+    );
+
+    expect(scrollContainer.scrollTop).toBe(500);
+  });
+
+  it("keeps following the tail when progressive restore reveals rows", () => {
+    vi.useFakeTimers();
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    let scrollHeight = 500;
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "cached request"),
+          assistantMessage("assistant-1", "cached response"),
+        ]}
+        progressiveRenderEnabled
+        progressiveRenderKey="cached-session"
+      />,
+      { container: scrollContainer },
+    );
+
+    expect(
+      scrollContainer.querySelector(".message-list-progressive-hydrating"),
+    ).toBeTruthy();
+
+    scrollHeight = 1400;
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(scrollContainer.scrollTop).toBe(900);
+  });
+
+  it("catches up a parked transcript on reveal while following latest", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    const { rerender } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+        interactionDisabled
+      />,
+      { container: scrollContainer },
+    );
+    scrollContainer.scrollTop = 0;
+
+    rerender(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+      />,
+    );
+
+    expect(scrollContainer.scrollTop).toBe(500);
+  });
+
+  it("preserves a parked transcript read position on reveal", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    const messages = [
+      userMessage("user-1", "earlier request"),
+      assistantMessage("assistant-1", "current response"),
+    ];
+    const { rerender } = render(<MessageList messages={messages} />, {
+      container: scrollContainer,
+    });
+
+    scrollContainer.scrollTop = 200;
+    fireEvent.wheel(scrollContainer, { deltaY: -120 });
+
+    rerender(<MessageList messages={messages} interactionDisabled />);
+    expect(scrollContainer.scrollTop).toBe(200);
+
+    rerender(<MessageList messages={messages} />);
+    expect(scrollContainer.scrollTop).toBe(200);
+  });
+
   it("opens reverse user-turn search with Ctrl+R and hides nonmatches", async () => {
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,

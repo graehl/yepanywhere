@@ -87,7 +87,8 @@ Project Queue client state should mirror the server ownership:
 Implemented in the client shared-summary layer:
 
 - `ProjectQueueCollectionState` now stores queue items, global
-  `dispatchState`, and recovered session-queue summaries together.
+  `dispatchState`, recovered session-queue summaries, and project readiness
+  statuses together.
 - Project Queue snapshots and `project-queue-changed` events update the shared
   dispatch state when the server provides it.
 - Global snapshots update recovered session queues, and older observations do
@@ -107,7 +108,34 @@ Biome advisory output in `packages/server/src/routes/sessions.ts` and
 
 ## Follow-Up
 
-A logical next check is to audit other retained-query consumers for the same
-shape: data stored in `clientSummaryStore` while sibling control state is only
-updated inside a hook-local `applySnapshot`. If that pattern appears elsewhere,
-the retained-query freshness path can create similar stale controls.
+The retained-query audit checked:
+
+- `useServerSettings()`
+- `usePublicShareStatus()`
+- `useProcesses()`
+- `useGitStatus()`
+- `useProjects()` / `useProject()`
+- `useGlobalSessionsFeed()`
+- `InboxProvider`
+- `useProjectQueues()`
+
+Most consumers already store fetched server-visible data in either
+`clientSummaryStore`, route retention, or a module-level external store read via
+`useSyncExternalStore`. Their hook-local state is limited to transient loading,
+error, mutation, or ordering flags.
+
+The audit found one remaining Project Queue sibling state:
+`projectStatusesByProject`. The Projects page renders those statuses as row
+readiness/blocker details, but `useProjectQueues()` still kept them in local
+React state updated only from Project Queue snapshot responses. That had the
+same retained-query stale-state shape as `dispatchState`: a late consumer could
+reuse a fresh query, render shared queue rows, and keep `{}` for the row status
+map.
+
+The follow-up fix moved project statuses into `ProjectQueueCollectionState`.
+Global Project Queue snapshots replace the shared status map, per-project
+snapshots merge their provided statuses, and older snapshots cannot remove
+newer status facts.
+
+No other retained-query consumer currently shows the same server-visible
+snapshot/state split.

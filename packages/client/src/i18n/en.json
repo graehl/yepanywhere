@@ -252,6 +252,8 @@
   "projectQueuePausedAfterRestartDescription": "Dispatch is paused after server restart.",
   "projectQueuePausedNotice": "Project Queue dispatch is paused. Existing items can still be edited, retried, or deleted.",
   "projectQueuePausedAfterRestartNotice": "Project Queue dispatch was paused because the server restarted with queued work still pending.",
+  "projectQueuePausedNoticeWithDelay": "Project Queue dispatch is paused. After Resume, the next item may still wait up to {duration} for project quiet before starting.",
+  "projectQueuePausedAfterRestartNoticeWithDelay": "Project Queue dispatch was paused because the server restarted with queued work still pending. After Resume, the next item may still wait up to {duration} for project quiet before starting.",
   "projectQueueCount": "{count} queued",
   "projectQueueRefreshing": "Refreshing...",
   "projectQueueLoadError": "Project queue error: {message}",

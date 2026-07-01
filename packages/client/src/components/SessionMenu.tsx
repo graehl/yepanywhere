@@ -21,6 +21,8 @@ export interface SessionMenuProps {
   onGenerateTitle?: () => void | Promise<void>;
   /** Copy the session's initial prompt, when available. */
   onCopyPrompt?: () => void | Promise<void>;
+  /** Open this session in a new browser tab/window. */
+  onOpenNewTab?: () => void | Promise<void>;
   /** Called to request compaction in the current session */
   onCompact?: () => void | Promise<void>;
   /** Called to hand off the session into a fresh agent session */
@@ -71,6 +73,7 @@ export function SessionMenu({
   onRename,
   onGenerateTitle,
   onCopyPrompt,
+  onOpenNewTab,
   onCompact,
   onHandoff,
   onClear,
@@ -100,6 +103,23 @@ export function SessionMenu({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const dropdownItemCount =
+    3 +
+    (onOpenNewTab ? 1 : 0) +
+    (onGenerateTitle ? 1 : 0) +
+    (onCopyPrompt ? 1 : 0) +
+    (onConfigureHeartbeat ? 1 : 0) +
+    (onConfigureRecaps ? 1 : 0) +
+    (onTogglePromptSuggestions ? 1 : 0) +
+    (warningRestoreAvailable && onRestoreWarnings ? 1 : 0) +
+    (onCompact ? 1 : 0) +
+    (onHandoff ? 1 : 0) +
+    (onClear ? 1 : 0) +
+    (onShare ? 1 : 0) +
+    (onToggleRead ? 1 : 0) +
+    (processId && onTerminate ? 1 : 0) +
+    (onReload ? 1 : 0);
 
   // Close menu when clicking outside or scrolling (mobile)
   useEffect(() => {
@@ -153,7 +173,7 @@ export function SessionMenu({
       if (useFixedPositioning && triggerRef.current) {
         const rect = triggerRef.current.getBoundingClientRect();
         const dropdownWidth = 180; // Approximate width of dropdown
-        const dropdownHeight = 180; // Approximate height of dropdown (varies by options)
+        const dropdownHeight = Math.max(180, dropdownItemCount * 36 + 2);
         const rightPosition = window.innerWidth - rect.right;
         const margin = 8;
 
@@ -275,6 +295,24 @@ export function SessionMenu({
         </svg>
         {t("sessionMenuRename")}
       </button>
+      {onOpenNewTab && (
+        <button type="button" onClick={() => handleAction(onOpenNewTab)}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M15 3h6v6" />
+            <path d="M10 14 21 3" />
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          </svg>
+          {t("sessionMenuOpenNewTab")}
+        </button>
+      )}
       {onGenerateTitle && (
         <button type="button" onClick={() => handleAction(onGenerateTitle)}>
           <svg

@@ -683,6 +683,7 @@
   "sessionMenuUnstar": "Unstar",
   "sessionMenuStar": "Star",
   "sessionMenuRename": "Rename...",
+  "sessionMenuOpenNewTab": "Open in new tab",
   "sessionMenuGenerateTitle": "Generate Title (uses tokens)",
   "sessionMenuCopyPrompt": "Copy prompt",
   "sessionMenuHeartbeat": "Nudge...",

@@ -694,6 +694,10 @@ export function SessionListItem({
     [sessionHref],
   );
 
+  const handleOpenNewTab = useCallback(() => {
+    window.open(toBrowserAppHref(sessionHref), "_blank", "noopener");
+  }, [sessionHref]);
+
   // Star icon SVG
   const StarIcon = ({
     filled,
@@ -914,6 +918,7 @@ export function SessionListItem({
             setIsEditing(true);
           }}
           onCopyPrompt={copyPromptText ? handleCopyPrompt : undefined}
+          onOpenNewTab={handleOpenNewTab}
           onShare={
             publicShareControlsVisible
               ? () => setShowShareModal(true)

@@ -219,6 +219,38 @@ describe("SessionListItem links", () => {
     });
   });
 
+  it("opens the session in a new tab from the session menu", () => {
+    const onNavigate = vi.fn();
+
+    render(
+      <I18nProvider>
+        <MemoryRouter>
+          <ul>
+            <SessionListItem
+              sessionId="session-1"
+              projectId="project-1"
+              title="Menu new tab"
+              provider="claude"
+              mode="compact"
+              onNavigate={onNavigate}
+              basePath="/remote/test"
+            />
+          </ul>
+        </MemoryRouter>
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByLabelText("Session options"));
+    fireEvent.click(screen.getByRole("button", { name: "Open in new tab" }));
+
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(mockWindowOpen).toHaveBeenCalledWith(
+      "/remote/test/projects/project-1/sessions/session-1",
+      "_blank",
+      "noopener",
+    );
+  });
+
   it("uses custom titles for native row tooltips", () => {
     render(
       <I18nProvider>

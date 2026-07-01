@@ -36,7 +36,12 @@ framing suggests:
    over plain HTTP. So there is **one REST surface** (`/api/*`, ~40 route
    modules in `packages/server/src/routes/`), and the relay is a transport
    around it, not a second API. An external HTTP client is already a
-   first-class way to talk to YA.
+   first-class way to talk to YA. Because the WS envelope already carries full
+   HTTP semantics, *bypassing* it with a plain-REST endpoint is not a strong
+   benefit — a client can already speak the envelope, and plain REST forgoes
+   the WS `subscribe` streaming channel. Offer a direct-REST path as a
+   **courtesy to ordinary HTTP tooling** (curl, `requests`, OpenAI SDKs), not
+   as a capability the WS surface lacks.
 
 2. **The runtime is already a DI factory + plain classes.** `createApp(options:
    AppOptions)` (`packages/server/src/app.ts`) takes its dependencies as
@@ -213,7 +218,8 @@ accounting, execution-policy, auth, and teardown contracts are actually met.
 - **D2 — `---`-separated turn-script format** parsed into queued/deferred user
   turns (not steering); reuses existing queued-message delivery.
 - **D3 — User doc for the REST/WS API**, including how to reach it on
-  **localhost through an opt-in local REST/headless policy** (see below).
+  **localhost** (default: already open; the only guard is the loopback bind —
+  see below).
 - **D4 — Headless Node route host** (`createApp` with a minimal `AppOptions`).
 - **D5 — Extracted `@yep-anywhere/core` package.**
 - **D6 — OpenAI-compatible adapter** (`/v1/chat/completions`, `/v1/models`).
@@ -221,8 +227,9 @@ accounting, execution-policy, auth, and teardown contracts are actually met.
 
 D0 can land as an exploratory client against today's server. D1–D3 may still
 require small server additions if today's routes cannot attribute per-turn
-usage/timing, enforce the experiment execution policy, or provide the opt-in
-localhost access posture cleanly. D4–D6 are the TS extraction; D7 is Direction
+usage/timing, enforce the experiment execution policy, or add the inter-turn
+reaper for deterministic teardown (the default localhost access posture needs
+no addition — it is already open). D4–D6 are the TS extraction; D7 is Direction
 B.
 
 ## Documentation deliverable (D3)
@@ -232,15 +239,18 @@ prerequisite for anyone (including the Python client) to use the surface
 deliberately. It must cover:
 - the `/api/*` route surface an HTTP client can call directly;
 - the WS `request`/`response` (+ `subscribe`) envelope for the relayed path;
-- **how to access it on localhost** — specifically which security the direct
-  local path needs relaxed. The relay path's SRP+NaCl is **WS/relay-only**; a
-  direct localhost HTTP client instead faces cookie/session auth. **Decided:
-  keep the normal server defaults unchanged; expose loopback-trusted/no-auth
-  only through an explicit env var and/or launch argument.** That opt-in may be
-  an alternate `127.0.0.1` REST listener alongside the normal server, or an
-  explicit headless security policy for a server that binds only to loopback.
-  The doc must be explicit that this is *loopback-bound only*: it must not
-  disable auth on a bind address reachable off-host.
+- **how to access it on localhost** — for the *default* server there is nothing
+  to relax. YA is localhost-first and ships with auth **off** (`AuthService`
+  starts `enabled === false`; the middleware passes `/api/*` straight through
+  when auth is not enabled), so a direct localhost client is already
+  unauthenticated and supplies **no credentials**. The only trust boundary that
+  matters is the **bind address**: the invariant the doc must state is
+  *loopback-bound only* — never a bind reachable off-host. Cookie/session auth
+  applies only when the operator has explicitly enabled password auth, and even
+  then YA already has a `localhostOpen` / `setLocalhostOpen()` setting that
+  permits unauthenticated localhost access — so **no new no-auth machinery is
+  proposed**; the doc points at that existing knob. (The relay path's SRP+NaCl
+  is WS/relay-only and orthogonal to the direct path.)
 
 ## Proposed staging (Direction A)
 
@@ -258,6 +268,17 @@ attempts to collect `{ text, timestamps, usage }` records. This needs **no
 server refactor** only as an exploratory client. Any unreliable boundary,
 usage-attribution, auth, execution-policy, or teardown behavior becomes a
 concrete D1–D4 requirement rather than a client-side workaround.
+
+**Teardown in D0 is not optional — it is the only path.** Because D0 makes *no
+server change*, the inter-turn reaper (see *Resource Quiescence*) does not exist
+yet: nothing on the server will clean up an idle scripted session. So a D0
+script must itself call the close()-equivalent — **`POST
+/api/processes/:processId/abort`** (→ `Supervisor.abortProcess`) — in a
+`finally`/on-crash handler for **every** session it starts, or it orphans that
+session's process and watchers. In D0 this is not yet a courtesy; a script that
+can exit without aborting its sessions is a D0 bug. The configurable inter-turn
+reaper that later demotes this explicit close to a mere courtesy is D1+ server
+work.
 
 ### Step 1 — Headless route host (D4)
 
@@ -333,7 +354,8 @@ opinionated and the least load-bearing for the primary (experiment) use case.
     immediately, rather than waiting out the reaper deadline. This is the
     intended normal ending; document it as the expected script etiquette.
   - **The declared inter-turn reaper — the backstop.** For scripts that crash,
-    hang, or skip the courtesy call, the max-inter-turn budget guarantees
+    hang, or skip the courtesy call, the max-inter-turn budget — a configurable
+    per-session deadline with a conservative default (~60s) — guarantees
     eventual quiescence. The two are complementary: `done` is the fast, polite
     release; the reaper ensures resources are never orphaned when `done` never
     comes.
@@ -346,7 +368,11 @@ opinionated and the least load-bearing for the primary (experiment) use case.
   - Cross-ref `session-liveness.md`; this is the scripted-session analogue of
     the client-owned heartbeat named in `architecture-mandates.md`.
   This is the single most likely way a naive external API violates an existing
-  YA invariant, so the reaper is a required part of D0–D4, not a later polish.
+  YA invariant. The reaper needs server work, so it lands with the first
+  shippable runner (D1+), not in the no-server-change D0. Until it exists, D0
+  has **no backstop** and the explicit close is the sole teardown path (see
+  *Step 0*); the reaper is precisely what later demotes that close to a
+  courtesy.
 - **Provider abstraction seam** (`provider-abstraction.md`): the API should
   express provider/model *capabilities* (steer? interrupt? recaps? thinking?)
   via the existing `AgentProvider` flags, not hardcode per-provider branches in
@@ -356,10 +382,12 @@ opinionated and the least load-bearing for the primary (experiment) use case.
   change those routes' observable contract; the headless host reuses them
   as-is. Any new surface (`/api/experiments`, `/v1/*`) is additive.
 - **Auth / trust boundary** (`trusted-client-packaging.md`, relay/SRP docs): the
-  existing surface is gated by cookie auth (direct) or SRP+NaCl (relay), so an
-  external client faces auth the relay path otherwise handles. A headless
-  localhost host for a trusted single user can reasonably relax that on loopback
-  without touching the shipped server's defaults; the resolved posture lives in
+  default server is localhost-first with auth **off**, so the direct `/api/*`
+  path is *already* unauthenticated — an external localhost client sends no
+  credentials. Cookie/session auth applies only when the operator turns password
+  auth on (and that case reuses the existing `localhostOpen` knob); the relay
+  path's SRP+NaCl is separate. The real invariant for an external client is the
+  *loopback bind*, not a credential; the resolved posture lives in
   *Documentation deliverable (D3)*.
 - **Session-store coupling**: YA sessions are jsonl-file-backed and surface in
   the dashboard, index, recents, and liveness. An experiment API that reuses the
@@ -381,14 +409,18 @@ place.
 2. **Experiment session-store coupling → configurable per run**
    (§ *Design tensions* → session-store coupling). Default isolated/ephemeral;
    a flag opts a run into the visible jsonl store for UI inspection.
-3. **Localhost access posture → opt-in loopback-trusted/no-auth**
-   (§ *Documentation deliverable (D3)*). Normal server defaults stay unchanged;
-   the trust edge is the loopback bind and must never extend off-host.
+3. **Localhost access posture → default is already open; guard the bind, not the
+   credential** (§ *Documentation deliverable (D3)*). The default server ships
+   auth-off, so a direct localhost client needs no credential; the only
+   invariant is loopback-bound (never off-host). The password-enabled case
+   reuses the existing `localhostOpen` knob, not new machinery.
 4. **`@yep-anywhere/core` packaging → internal factoring only** (§ *Step 2*).
    No external semver promise until a real out-of-repo consumer exists.
-5. **Teardown contract → explicit `done` call + inter-turn reaper backstop**
-   (§ *Design tensions* → Resource Quiescence). Both keep scripted sessions
-   quiescent; required for D0–D4.
+5. **Teardown contract → explicit `done`/abort call + inter-turn reaper backstop**
+   (§ *Design tensions* → Resource Quiescence). The reaper (configurable
+   inter-turn deadline, default ~60s) is D1+ server work; in the no-server-change
+   D0 the explicit `POST /api/processes/:id/abort` close is the *only* teardown
+   path, not yet a courtesy.
 6. **Experiment execution policy → explicit and conservative**
    (§ *Experiment execution policy*). Provider/model/cwd, tool policy, and
    thinking/effort ride the request; tools blocked and thinking off unless

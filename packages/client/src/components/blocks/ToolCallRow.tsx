@@ -648,7 +648,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   );
   const bashCommandQuoteRef = useQuoteableTextSource<HTMLSpanElement>(
     showBashCommandTarget
-      ? bashCommandExpanded
+      ? !noOutputBashResult && bashCommandExpanded
         ? headerCommand
         : bashCommandPreview.text
       : "",
@@ -844,6 +844,18 @@ export const ToolCallRow = memo(function ToolCallRow({
             className={`tool-summary interactive-summary${hasSummaryDotToggle ? " outline-summary" : ""}`}
           >
             {interactiveSummaryContent}
+          </span>
+        ) : showBashCommandTarget && noOutputBashResult ? (
+          <span
+            className="tool-summary tool-summary-command"
+            title={headerCommand}
+          >
+            <span
+              ref={bashCommandQuoteRef}
+              className="tool-summary-command-text"
+            >
+              {bashCommandPreview.text}
+            </span>
           </span>
         ) : showBashCommandTarget ? (
           <button
@@ -1142,18 +1154,9 @@ function BashNoOutputExpanded({ command }: { command: string }) {
   }
 
   return (
-    <div className="tool-result-expanded">
-      <div className="bash-result bash-result-no-output">
-        <div className="bash-expanded-section bash-expanded-command-section">
-          <div className="bash-inline-section-header">
-            <span className="bash-inline-section-label">Command</span>
-          </div>
-          <pre ref={commandRef} className="code-block">
-            <code>{command}</code>
-          </pre>
-        </div>
-      </div>
-    </div>
+    <pre ref={commandRef} className="code-block bash-no-output-command">
+      <code>{command}</code>
+    </pre>
   );
 }
 

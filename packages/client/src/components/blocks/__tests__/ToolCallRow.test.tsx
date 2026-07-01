@@ -278,13 +278,18 @@ describe("ToolCallRow", () => {
     expect(screen.getByText("(no output)")).toBeDefined();
     expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
     expect(container.querySelector(".tool-row-content")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Show full command" }),
+    ).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+    fireEvent.click(screen.getByText("true"));
 
     const content = container.querySelector(".tool-row-content");
     expect(content).not.toBeNull();
+    expect(content?.textContent).toBe("true");
     expect(content?.querySelector(".code-block")?.textContent).toBe("true");
     expect(content?.querySelector(".bash-empty")).toBeNull();
+    expect(content?.querySelector(".bash-inline-section-label")).toBeNull();
     expect(screen.getByRole("button", { name: "Collapse" })).toBeDefined();
   });
 
@@ -345,15 +350,15 @@ describe("ToolCallRow", () => {
       />,
     );
 
-    const commandButton = screen.getByRole("button", {
-      name: "Show full command",
-    });
-    expect(commandButton.textContent).toBe(command);
+    expect(
+      screen.queryByRole("button", { name: "Show full command" }),
+    ).toBeNull();
 
-    fireEvent.click(commandButton);
+    fireEvent.click(screen.getByText(command));
 
-    expect(commandButton.className).toContain("is-expanded");
-    expect(container.querySelector(".tool-row-content")).toBeNull();
+    expect(
+      container.querySelector(".tool-row-content .code-block")?.textContent,
+    ).toBe(command);
     expect(container.querySelector(".tool-row-collapsed-preview")).toBeNull();
   });
 
@@ -381,23 +386,25 @@ describe("ToolCallRow", () => {
       />,
     );
 
-    const commandButton = screen.getByRole("button", {
-      name: "Show full command",
-    });
-    expect(commandButton.textContent).toContain("printf first");
-    expect(commandButton.textContent).toContain("printf second");
-    expect(commandButton.textContent).not.toContain("printf third");
+    expect(
+      screen.queryByRole("button", { name: "Show full command" }),
+    ).toBeNull();
+    const commandText = container.querySelector(".tool-summary-command-text");
+    expect(commandText?.textContent).toContain("printf first");
+    expect(commandText?.textContent).toContain("printf second");
+    expect(commandText?.textContent).not.toContain("printf third");
 
     // The hidden-content badge sits on its own line under the Run/Ran
-    // label, not inside the command button.
+    // label, not inside a nested command button.
     const moreBadge = container.querySelector(".tool-summary-command-more");
     expect(moreBadge?.textContent).toContain("+1 line");
-    expect(commandButton.textContent).not.toContain("+1 line");
+    expect(commandText?.textContent).not.toContain("+1 line");
 
-    fireEvent.click(commandButton);
+    fireEvent.click(commandText as Element);
 
-    expect(commandButton.textContent).toContain("printf third");
-    expect(container.querySelector(".tool-summary-command-more")).toBeNull();
+    expect(
+      container.querySelector(".tool-row-content .code-block")?.textContent,
+    ).toBe(command);
   });
 
   it("uses the timeline dot to expand long Grep summaries", () => {

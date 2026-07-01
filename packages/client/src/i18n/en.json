@@ -183,7 +183,7 @@
   "appearanceToolbarNudgeTitle": "Heartbeat/Nudge Button",
   "appearanceToolbarNudgeDescription": "Show the quick nudge toggle. The session menu still keeps Nudge available.",
   "appearanceToolbarStatusTitle": "Session Status",
-  "appearanceToolbarStatusDescription": "Show liveness and last-activity status chips.",
+  "appearanceToolbarStatusDescription": "Show liveness and last-activity status chips inline. The last-activity and scroll-position age (\"at 5m ago\") still float over the composer on narrow screens.",
   "appearanceToolbarProjectQueueTitle": "Project Queue Button",
   "appearanceToolbarProjectQueueDescription": "Show a separate submit button that waits for the whole project to go idle.",
   "processingThinkingTranscriptHide": "Hide thinking transcript rows (display only; the agent keeps working)",

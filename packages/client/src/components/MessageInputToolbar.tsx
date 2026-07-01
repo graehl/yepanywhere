@@ -545,6 +545,10 @@ interface ToolbarStatusControl {
   lastActivityIsPast: boolean;
   positionTimestampMs: number | null;
   showPositionTimestamp: boolean;
+  /** Position age present regardless of the sessionStatus toggle (compact float). */
+  hasPositionAge: boolean;
+  /** Last-activity freshness present regardless of the sessionStatus toggle. */
+  hasLastActivityAge: boolean;
 }
 
 interface ToolbarShortcutsControl {
@@ -844,11 +848,26 @@ export function MessageInputToolbarView({
     shortcutsControl.canSwapEnterAction && shortcutsControl.onSwapEnterAction
       ? { onSwapEnterAction: shortcutsControl.onSwapEnterAction }
       : null;
+  // When there is no room for the inline expanded status row (compact mode:
+  // the row does not fit, or a mobile viewport), the freshness/position ages
+  // float over the composer instead — decoupled from the sessionStatus toggle
+  // so width-constrained clients still get them. The float carries only the
+  // ages; the liveness chip stays inline under the sessionStatus toggle.
+  const hasFloatAges =
+    isCompactStatusMode &&
+    !!statusControl &&
+    (statusControl.hasPositionAge || statusControl.hasLastActivityAge);
   const showToolbarStatus =
-    visibility.sessionStatus && (statusControl?.showToolbarStatus ?? false);
+    (visibility.sessionStatus && (statusControl?.showToolbarStatus ?? false)) ||
+    hasFloatAges;
   const showLivenessChip = statusControl?.showLivenessChip ?? false;
   const livenessDisplay = statusControl?.livenessDisplay ?? null;
-  const showLastActivityChip = statusControl?.showLastActivityChip ?? false;
+  const showPositionChip =
+    (statusControl?.showPositionTimestamp ?? false) ||
+    (isCompactStatusMode && (statusControl?.hasPositionAge ?? false));
+  const showLastActivityChip =
+    (statusControl?.showLastActivityChip ?? false) ||
+    (isCompactStatusMode && (statusControl?.hasLastActivityAge ?? false));
   const showSendButton = !!actionsControl.send?.onSend;
   const showStopButton = !!actionsControl.stop;
   const showProjectQueueButton = !!(
@@ -1236,7 +1255,7 @@ export function MessageInputToolbarView({
               )}
             </div>
           )}
-          {statusControl.showPositionTimestamp && (
+          {showPositionChip && (
             <div
               className="composer-status-chip composer-position-age composer-activity-age--compact"
               role="status"
@@ -2074,12 +2093,19 @@ export function MessageInputToolbar({
     lastActivityMs === null
       ? null
       : formatCompactRelativeAge(lastActivityMs, nowMs);
-  const showPositionTimestamp =
-    toolbarVisibility.sessionStatus &&
+  // Age *content* independent of the sessionStatus toggle. The compact
+  // "float over the composer" presentation reuses these so width-constrained
+  // clients (mobile defaults sessionStatus off) still get the ages; the
+  // sessionStatus toggle gates only the inline row + liveness chip.
+  // "at N ago" stays follow-mode-safe: positionTimestampMs is null at the
+  // scroll bottom (MessageList), so hasPositionAge is false in follow mode.
+  const hasPositionAge =
     positionTimestampMs !== null &&
     positionTimestampMs !== undefined &&
     positionAgeLabel !== null &&
     positionAgeLabel !== lastActivityAgeLabel;
+  const showPositionTimestamp =
+    toolbarVisibility.sessionStatus && hasPositionAge;
   const livenessDisplay = sessionLiveness
     ? describeSessionLiveness(sessionLiveness, t)
     : null;
@@ -2216,8 +2242,9 @@ export function MessageInputToolbar({
     selectedSpeechMethodCapabilities.smartTurn === true;
   const activeSpeechSmartTurnSettings: SpeechSmartTurnSettings | undefined =
     supportsSelectedSpeechSmartTurn ? speechSmartTurnSettings : undefined;
+  const hasLastActivityAge = showLastActivityAge;
   const showLastActivityChip =
-    toolbarVisibility.sessionStatus && showLastActivityAge;
+    toolbarVisibility.sessionStatus && hasLastActivityAge;
   const showToolbarStatus =
     showLivenessChip || showLastActivityChip || showPositionTimestamp;
 
@@ -2523,6 +2550,8 @@ export function MessageInputToolbar({
         lastActivityIsPast,
         positionTimestampMs: positionTimestampMs ?? null,
         showPositionTimestamp,
+        hasPositionAge,
+        hasLastActivityAge,
       }}
       pendingApproval={pendingApproval}
       shortcutsControl={{

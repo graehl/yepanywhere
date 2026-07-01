@@ -120,6 +120,8 @@ export function SessionToolbarPreview() {
             lastActivityIsPast: false,
             positionTimestampMs: null,
             showPositionTimestamp: false,
+            hasPositionAge: false,
+            hasLastActivityAge: false,
           }}
           shortcutsControl={{
             open: shortcutsOpen,

@@ -79,6 +79,50 @@ they can reach a control.
   recalculated from the current rendered state, not frozen from an earlier
   toolbar membership snapshot.
 
+## Freshness / position-age presentation
+
+The composer status row can carry three status chips: session liveness, the
+last-activity **freshness** ("M ago"), and the transcript **position age**
+("at N ago" — the compose age of the message at the current scroll position).
+The freshness and position age are session/scroll information the user wants
+even on narrow screens, so they follow a fit-driven rule distinct from the
+liveness chip:
+
+- **Inline-expanded when there is room** for the expanded status row; the
+  liveness chip and expanded last-activity wording ("Last activity 35m") stay
+  inline under the `sessionStatus` visibility toggle
+  ([session-ui-customization.md](session-ui-customization.md)).
+- **Floated over the composer when there is not room** (the same measured
+  `requiredWidth > clientWidth` "compact" signal that drives control overflow,
+  or a mobile viewport — not a hardcoded breakpoint). The float carries only
+  the two ages, never the liveness chip.
+- **The float is decoupled from the `sessionStatus` toggle** so that
+  width-constrained clients still get the ages. This matters because
+  `sessionStatus` defaults *off* on mobile (the inline row would crowd the
+  cramped toolbar); a float consumes no inline space, so that justification
+  does not apply to it. Without decoupling, mobile users see neither age.
+  A consequence accepted by design: a user who explicitly hid Session Status
+  still gets the age float when the toolbar is cramped.
+- **"at N ago" is follow-mode-safe.** `positionTimestampMs` is null at the
+  scroll bottom (`MessageList`), so the position age never shows in follow
+  mode (composing at the bottom); only the freshness can. A secondary guard
+  drops it when its label would duplicate the freshness label. The edge that
+  survives: at the bottom while hovering a turn-rail marker,
+  `hoveredMarkerTimestampMs` re-supplies a position age (an explicit inspect
+  gesture, not passive follow).
+- These are non-interactive status (`pointer-events: none`), so — unlike the
+  interactive row participants above — they are exempt from the "controls that
+  occupy bottom-row space must occupy measured layout space" rule; the float
+  is intentionally absolute and out of flow.
+
+Implementation: the float reuses the existing `.status-floats
+.composer-status-ages` positioning; the age content is gated in
+`MessageInputToolbar.tsx` by `hasPositionAge` / `hasLastActivityAge` (toggle-
+independent) OR'd with the inline sessionStatus-gated flags. To keep the
+compact-mode fit measurement stable (the ResizeObserver sums the measured
+status element's width), the same element carries the ages in both inline and
+float presentations rather than swapping to a separate probe.
+
 ## Priority Notes
 
 - Primary message actions, Stop, queue/patient controls, and microphone should

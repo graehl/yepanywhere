@@ -508,6 +508,12 @@ const toolbarT = ((key: string, params?: Record<string, string>) => {
     toolbarSteerTooltip: "Steer current turn\nEnter",
     toolbarSend: "Send",
     toolbarOverflowMenu: "More toolbar controls",
+    toolbarRelativeAgeNow: "now",
+    toolbarRelativeAgePast: `${params?.age ?? ""} ago`,
+    toolbarPositionAge: `at ${params?.age ?? ""}`,
+    toolbarPositionAgeAria: "Transcript position age",
+    toolbarLastActivityAria: "Session last activity",
+    toolbarLastActivityAge: `Last activity ${params?.age ?? ""}`,
   };
   return translations[key] ?? key;
 }) as MessageInputToolbarViewProps["t"];
@@ -2181,6 +2187,98 @@ describe("MessageInput", () => {
     ).toBeNull();
     expect(screen.queryByText("Verified progress 5m")).toBeNull();
     expect(screen.getByText("6m ago")).toBeTruthy();
+  });
+
+  it("floats freshness and position age over the composer when compact, even with session status disabled", () => {
+    const nowMs = new Date("2026-04-26T12:06:00.000Z").getTime();
+    const { container } = render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={toolbarVisibility}
+        isCompactStatusMode={true}
+        attachmentControl={{ attachmentCount: 0 }}
+        statusControl={{
+          // Mirrors the parent when sessionStatus is off: inline gates false,
+          // but the ages are present and float in compact mode.
+          showToolbarStatus: false,
+          showLivenessChip: false,
+          livenessDisplay: null,
+          livenessSummary: null,
+          nowMs,
+          showLastActivityChip: false,
+          showLastActivityPrefix: false,
+          lastActivityMs: nowMs - 6 * 60 * 1000,
+          lastActivityIsPast: true,
+          positionTimestampMs: nowMs - 10 * 60 * 1000,
+          showPositionTimestamp: false,
+          hasPositionAge: true,
+          hasLastActivityAge: true,
+        }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{}}
+      />,
+    );
+
+    expect(screen.getByText("at 10m ago")).toBeTruthy();
+    expect(screen.getByText("6m ago")).toBeTruthy();
+    // The decoupled float carries only the ages, never the liveness chip.
+    expect(container.querySelector(".composer-liveness-status")).toBeNull();
+  });
+
+  it("hides the freshness/position float when there is room (not compact) and session status is disabled", () => {
+    const nowMs = new Date("2026-04-26T12:06:00.000Z").getTime();
+    render(
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={toolbarVisibility}
+        isCompactStatusMode={false}
+        attachmentControl={{ attachmentCount: 0 }}
+        statusControl={{
+          showToolbarStatus: false,
+          showLivenessChip: false,
+          livenessDisplay: null,
+          livenessSummary: null,
+          nowMs,
+          showLastActivityChip: false,
+          showLastActivityPrefix: false,
+          lastActivityMs: nowMs - 6 * 60 * 1000,
+          lastActivityIsPast: true,
+          positionTimestampMs: nowMs - 10 * 60 * 1000,
+          showPositionTimestamp: false,
+          hasPositionAge: true,
+          hasLastActivityAge: true,
+        }}
+        shortcutsControl={{
+          open: false,
+          isearchScope: null,
+          setOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+          settingsOpen: false,
+          setSettingsOpen:
+            vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+          hasDualActions: false,
+          enterActionKind: "send",
+          canSwapEnterAction: false,
+          queueShortcutLabel: "Queue while agent runs",
+        }}
+        actionsControl={{}}
+      />,
+    );
+
+    expect(screen.queryByText("at 10m ago")).toBeNull();
+    expect(screen.queryByText("6m ago")).toBeNull();
   });
 
   it("keeps a send affordance visible when the composer is collapsed", () => {

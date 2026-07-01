@@ -7,10 +7,22 @@ Topic: session-ui-customization
 
 ## Landed surface
 
-The first customization surface has shipped: Appearance settings → "Session
-toolbar" renders a live `SessionToolbarPreview` mockup beside a per-control
-visibility list, plus a reset-to-defaults action.
-<!-- verified: AppearanceSettings.tsx:51-121,327; SessionToolbarPreview.tsx -->
+The first customization surface has shipped as its own top-level **Toolbar**
+settings category (id `toolbar`, separate from **Appearance**): it renders a
+live `SessionToolbarPreview` mockup beside a per-control visibility list, plus
+a reset-to-defaults action.
+<!-- verified: i18n-settings.ts:103-112 (appearance vs toolbar categories);
+     ToolbarSettings.tsx; SessionToolbarPreview.tsx -->
+
+The `sessionStatus` control defaults **off on mobile** (`≤600px`,
+`MOBILE_SESSION_TOOLBAR_VISIBILITY_DEFAULTS`) because the inline status row
+crowds the cramped toolbar. Its description names only liveness/last-activity
+chips, so its effect on the scroll-position "at N ago" anchor is not obvious.
+The last-activity freshness and position age are nonetheless surfaced on
+narrow screens by a fit-driven float that is *decoupled* from this toggle —
+see [composer-bottom-bar-overflow.md](composer-bottom-bar-overflow.md)
+§ Freshness / position-age presentation. The toggle still governs the inline
+row and the liveness chip.
 Visibility state is held by `useSessionToolbarVisibility` and currently covers
 `modeSelector`, `attachments`, `slashMenu`, `thinkingToggle`, `renderMode`,
 `nudge`, `microphone`, `sessionStatus`, `shortcutsHelp`, `contextUsage`, `btw`,
@@ -105,6 +117,10 @@ visible buttons are disabled.
 
 ## Related Topics
 
+- [composer-bottom-bar-overflow.md](composer-bottom-bar-overflow.md) defines
+  the measured-fit float that surfaces the last-activity freshness and
+  scroll-position age over the composer independently of the `sessionStatus`
+  toggle on narrow screens.
 - [kzahel-disabled.md](kzahel-disabled.md) logs upstream-disabled features that
   should be reconsidered as configurable default-off session controls.
 - [message-control-steer-queue-btw-later-interrupt.md](message-control-steer-queue-btw-later-interrupt.md)

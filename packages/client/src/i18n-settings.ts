@@ -67,6 +67,8 @@ export function getOutputFixedFontLabel(
       return t("outputFixedFontIosevka");
     case "ibm-plex-mono":
       return t("outputFixedFontIbmPlexMono");
+    case "fira-mono":
+      return t("outputFixedFontFiraMono");
   }
 }
 

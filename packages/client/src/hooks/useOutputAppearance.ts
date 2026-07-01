@@ -6,7 +6,11 @@ export type OutputProseFont =
   | "source-serif-4"
   | "inter"
   | "alegreya-sans";
-export type OutputFixedFont = "system" | "iosevka" | "ibm-plex-mono";
+export type OutputFixedFont =
+  | "system"
+  | "iosevka"
+  | "ibm-plex-mono"
+  | "fira-mono";
 
 export const OUTPUT_APPEARANCE_CHANGE_EVENT = "yep-output-appearance-change";
 
@@ -20,6 +24,7 @@ export const OUTPUT_PROSE_FONTS: OutputProseFont[] = [
 export const OUTPUT_FIXED_FONTS: OutputFixedFont[] = [
   "system",
   "ibm-plex-mono",
+  "fira-mono",
   "iosevka",
 ];
 
@@ -104,6 +109,7 @@ const outputFixedFontStacks: Record<OutputFixedFont, string> = {
   system: "var(--font-mono-system)",
   iosevka: "var(--font-mono-iosevka)",
   "ibm-plex-mono": "var(--font-mono-ibm-plex)",
+  "fira-mono": "var(--font-mono-fira)",
 };
 
 function clamp(value: number, min: number, max: number): number {

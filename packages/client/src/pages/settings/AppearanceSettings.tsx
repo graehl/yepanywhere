@@ -1433,7 +1433,9 @@ export function AppearanceSettings() {
                   </p>
                   <pre className="output-preview-fixed">
                     <code>
-                      {'> grep -n "needle" src\n+ ASCII stays aligned'}
+                      {
+                        'f0 = (x: 0) => ({ ok: x + 1 });\nfn S(v) -> { return v[0] ?? false }'
+                      }
                     </code>
                   </pre>
                   <p>

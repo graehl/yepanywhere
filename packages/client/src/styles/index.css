@@ -99,6 +99,52 @@
 }
 
 @font-face {
+  font-family: "YA Fira Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    local("Fira Mono"),
+    local("FiraMono-Regular"),
+    url("../assets/fonts/fira-mono/fira-mono-symbols2-400-normal.woff2")
+      format("woff2");
+  unicode-range: U+2000-2001, U+2004-2008, U+200A, U+23B8-23BD, U+2500-259F;
+}
+
+@font-face {
+  font-family: "YA Fira Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    local("Fira Mono"),
+    local("FiraMono-Regular"),
+    url("../assets/fonts/fira-mono/fira-mono-latin-ext-400-normal.woff2")
+      format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
+    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "YA Fira Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src:
+    local("Fira Mono"),
+    local("FiraMono-Regular"),
+    url("../assets/fonts/fira-mono/fira-mono-latin-400-normal.woff2")
+      format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+    U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
   font-family: "YA IBM Plex Mono";
   font-style: normal;
   font-weight: 400;
@@ -212,6 +258,7 @@
   --font-mono-system: "SF Mono", Monaco, "Cascadia Code", Consolas, monospace;
   --font-mono-iosevka: "YA Iosevka", var(--font-mono-system);
   --font-mono-ibm-plex: "YA IBM Plex Mono", var(--font-mono-system);
+  --font-mono-fira: "YA Fira Mono", var(--font-mono-system);
   --font-mono: var(--font-mono-system);
   --font-size-xs: 10px;
   --font-size-sm: 12px;
@@ -224,18 +271,18 @@
   --thinking-prose-font-size: calc(var(--output-prose-font-size) - 1px);
   --output-math-font-size-offset: 1px;
   --fixed-font-size-offset: 0px;
-  --fixed-font-size-xs: max(
-    9px,
-    calc(var(--font-size-xs) + var(--fixed-font-size-offset))
+  --fixed-font-size-xs-raw: calc(
+    var(--output-prose-font-size) - 3px + var(--fixed-font-size-offset)
   );
-  --fixed-font-size-sm: max(
-    9px,
-    calc(var(--font-size-sm) + var(--fixed-font-size-offset))
+  --fixed-font-size-sm-raw: calc(
+    var(--output-prose-font-size) - 1px + var(--fixed-font-size-offset)
   );
-  --fixed-font-size-base: max(
-    10px,
-    calc(var(--font-size-base) + var(--fixed-font-size-offset))
+  --fixed-font-size-base-raw: calc(
+    var(--output-prose-font-size) + var(--fixed-font-size-offset)
   );
+  --fixed-font-size-xs: max(9px, var(--fixed-font-size-xs-raw));
+  --fixed-font-size-sm: max(9px, var(--fixed-font-size-sm-raw));
+  --fixed-font-size-base: max(10px, var(--fixed-font-size-base-raw));
   --fixed-font-size-inline: max(
     9px,
     calc(0.9em + var(--fixed-font-size-offset))
@@ -9523,6 +9570,10 @@ a.sidebar-nav-item {
   flex-wrap: wrap;
 }
 
+.output-font-option-system {
+  font-family: var(--font-sans);
+}
+
 .output-font-option-source-serif-4 {
   font-family: var(--font-output-serif);
 }
@@ -9535,12 +9586,20 @@ a.sidebar-nav-item {
   font-family: var(--font-output-alegreya-sans);
 }
 
+.output-fixed-font-option-system {
+  font-family: var(--font-mono-system);
+}
+
 .output-fixed-font-option-iosevka {
   font-family: var(--font-mono-iosevka);
 }
 
 .output-fixed-font-option-ibm-plex-mono {
   font-family: var(--font-mono-ibm-plex);
+}
+
+.output-fixed-font-option-fira-mono {
+  font-family: var(--font-mono-fira);
 }
 
 .output-appearance-slider-row {

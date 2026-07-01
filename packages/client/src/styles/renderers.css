@@ -4600,7 +4600,10 @@ details[open] .collapsible__icon {
   --file-viewer-wrap-columns: 156ch;
 
   font-family: "SF Mono", Monaco, "Cascadia Code", "Consolas", monospace;
-  font-size: calc(var(--font-size-sm) + var(--source-font-size-offset, 0px));
+  font-size: max(
+    9px,
+    calc(var(--fixed-font-size-sm-raw) + var(--source-font-size-offset, 0px))
+  );
   line-height: var(--file-viewer-code-line-box);
   letter-spacing: 0;
   background: var(--bg-code);
@@ -5081,7 +5084,10 @@ pre.code-highlighter-plain code {
   .file-viewer-code {
     min-width: max-content;
     width: max-content;
-    font-size: calc(var(--font-size-sm) + var(--source-font-size-offset, 0px));
+    font-size: max(
+      9px,
+      calc(var(--fixed-font-size-sm-raw) + var(--source-font-size-offset, 0px))
+    );
   }
 
   .file-viewer-code-highlighted .shiki-container pre.shiki,
@@ -5377,11 +5383,7 @@ pre.code-highlighter-plain,
 .file-viewer-code {
   font-size: max(
     9px,
-    calc(
-      var(--font-size-sm) +
-      var(--source-font-size-offset, 0px) +
-      var(--fixed-font-size-offset)
-    )
+    calc(var(--fixed-font-size-sm-raw) + var(--source-font-size-offset, 0px))
   );
 }
 

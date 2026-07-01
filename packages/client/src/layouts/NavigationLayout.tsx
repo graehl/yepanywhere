@@ -16,6 +16,7 @@ import {
 import { Sidebar } from "../components/Sidebar";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import { useSidebarPreference } from "../hooks/useSidebarPreference";
+import { useSessionPerformanceSettings } from "../hooks/useSessionPerformanceSettings";
 import {
   DESKTOP_BREAKPOINT,
   MIN_CONTENT_WIDTH,
@@ -134,6 +135,7 @@ export function SessionDomLingerRouteMarker() {
  */
 export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
   useRetainSidebarSessionFeeds();
+  const { sessionDomLingerEnabled } = useSessionPerformanceSettings();
 
   const location = useLocation();
   const currentSessionMatch = useMemo(
@@ -284,6 +286,10 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
   const sessionLayerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (!sessionDomLingerEnabled) {
+      setLingerRoute(currentSessionRoute);
+      return;
+    }
     if (currentSessionRoute) {
       setLingerRoute(currentSessionRoute);
       return;
@@ -300,7 +306,7 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
         expiresAtMs: now + SESSION_DOM_LINGER_TTL_MS,
       };
     });
-  }, [currentSessionRoute]);
+  }, [currentSessionRoute, sessionDomLingerEnabled]);
 
   useEffect(() => {
     if (lingerRoute?.status !== "parked") {

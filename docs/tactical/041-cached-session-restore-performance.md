@@ -1,6 +1,6 @@
 # Cached Session Restore Performance
 
-Status: First implementation slice landed, 2026-07-01.
+Status: Second implementation slice landed, 2026-07-01.
 
 Progress:
 
@@ -14,10 +14,23 @@ Progress:
   after cached messages are visible.
 - [x] Remove full `JSON.stringify(snapshot)` byte estimation from the snapshot
   write path; cache size is now coarse and entry/TTL bounded.
-- [ ] Add browser-local toggles for transcript snapshots and DOM linger.
+- [x] Add browser-local toggles for transcript snapshots and DOM linger.
 - [ ] Add mobile/browser timing instrumentation around cached restore first
   feedback, snapshot lookup, hydration, and long tasks.
 - [ ] Re-profile on a real mobile device or mobile-shaped browser profile.
+
+Second slice notes:
+
+- Added a Performance settings pane for large-session rendering and retention
+  behavior.
+- Moved response streaming, session loading progress, and stable tool preview
+  rendering out of Appearance into Performance.
+- Added default-on browser-local toggles for keeping the most recent session
+  mounted briefly and for retaining recent transcript snapshots.
+- Disabling transcript snapshots clears the current in-tab snapshot cache and
+  forces future session loads through the cold-load path.
+- Disabling DOM linger prevents the previous session layer from being parked
+  when leaving a session route.
 
 This note tracks the follow-up work for session route retention after the first
 `SessionRouteSnapshot` and one-session DOM linger slices. It is related to
@@ -254,7 +267,8 @@ the first visible feedback on a cached route return.
 1. Add instrumentation for cached restore timing and snapshot bookkeeping.
 2. Remove or defer synchronous byte estimation from snapshot writes. Done in
    the first implementation slice with coarse per-message accounting.
-3. Add settings toggles for transcript cache and DOM linger.
+3. Add settings toggles for transcript cache and DOM linger. Done in the
+   second implementation slice with a new Performance settings pane.
 4. Change cached restore to two-phase hydration with immediate loading shell.
    Done in the first implementation slice.
 5. Reuse `MessageList` progressive rendering for cached snapshot hydration.

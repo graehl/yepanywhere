@@ -36,6 +36,7 @@ function Icon(props: {
 
 export const settingsCategoryEmojiIcons: Record<string, string> = {
   appearance: "🎨",
+  performance: "⚡",
   toolbar: "🎛️",
   model: "🧠",
   "cache-miss-billing": "🧾",
@@ -75,6 +76,18 @@ export const settingsCategoryIcons: Record<string, ReactNode> = {
       <rect x="17" y="4" width="5" height="5" rx="1" fill="#15803d" />
       <rect x="17" y="10" width="5" height="5" rx="1" fill="#1e40af" />
       <rect x="17" y="16" width="5" height="5" rx="1" fill="#b91c1c" />
+    </Icon>
+  ),
+
+  performance: (
+    <Icon strokeWidth={2.5}>
+      {/* Gauge / speedometer */}
+      <path d="M4 15a8 8 0 0 1 16 0" />
+      <path d="M6.5 18h11" />
+      <path d="m12 14 4-5" />
+      <path d="M12 14h.01" />
+      <path d="M7.8 10.8 6.4 9.4" />
+      <path d="M16.2 10.8 17.6 9.4" />
     </Icon>
   ),
 

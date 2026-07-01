@@ -76,10 +76,7 @@ import {
   type SettingsIconStyle,
   useSettingsIconStyle,
 } from "../../hooks/useSettingsIconStyle";
-import { useSessionLoadingProgress } from "../../hooks/useSessionLoadingProgress";
 import { useSidebarDuplicateHiding } from "../../hooks/useSidebarDuplicateHiding";
-import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewRendering";
-import { useStreamingEnabled } from "../../hooks/useStreamingEnabled";
 import { TAB_SIZES, useTabSize } from "../../hooks/useTabSize";
 import { useTabTitleActivityPreference } from "../../hooks/useTabTitleActivityPreference";
 import { THEMES, useTheme } from "../../hooks/useTheme";
@@ -198,11 +195,6 @@ export function AppearanceSettings() {
     useState(() => formatNumberSetting(outputToolPreviewLineCount));
   const { theme, setTheme } = useTheme();
   const { settingsIconStyle, setSettingsIconStyle } = useSettingsIconStyle();
-  const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
-  const { sessionLoadingProgressEnabled, setSessionLoadingProgressEnabled } =
-    useSessionLoadingProgress();
-  const { stableToolPreviewRendering, setStableToolPreviewRendering } =
-    useStableToolPreviewRendering();
   const { inlineMediaExpandedByDefault, setInlineMediaExpandedByDefault } =
     useInlineMedia();
   const { alwaysShowQuoteCircles, setAlwaysShowQuoteCircles } =
@@ -243,9 +235,6 @@ export function AppearanceSettings() {
       generatedTitleLength,
       theme,
       settingsIconStyle,
-      streamingEnabled,
-      sessionLoadingProgressEnabled,
-      stableToolPreviewRendering,
       inlineMediaExpandedByDefault,
       alwaysShowQuoteCircles,
       funPhrasesEnabled,
@@ -275,9 +264,6 @@ export function AppearanceSettings() {
       generatedTitleLength,
       theme,
       settingsIconStyle,
-      streamingEnabled,
-      sessionLoadingProgressEnabled,
-      stableToolPreviewRendering,
       inlineMediaExpandedByDefault,
       alwaysShowQuoteCircles,
       funPhrasesEnabled,
@@ -311,9 +297,6 @@ export function AppearanceSettings() {
       setGeneratedTitleLength(snapshot.generatedTitleLength);
       setTheme(snapshot.theme);
       setSettingsIconStyle(snapshot.settingsIconStyle);
-      setStreamingEnabled(snapshot.streamingEnabled);
-      setSessionLoadingProgressEnabled(snapshot.sessionLoadingProgressEnabled);
-      setStableToolPreviewRendering(snapshot.stableToolPreviewRendering);
       setInlineMediaExpandedByDefault(snapshot.inlineMediaExpandedByDefault);
       setAlwaysShowQuoteCircles(snapshot.alwaysShowQuoteCircles);
       setFunPhrasesEnabled(snapshot.funPhrasesEnabled);
@@ -366,9 +349,6 @@ export function AppearanceSettings() {
       setGeneratedTitleLength,
       setTheme,
       setSettingsIconStyle,
-      setStreamingEnabled,
-      setSessionLoadingProgressEnabled,
-      setStableToolPreviewRendering,
       setInlineMediaExpandedByDefault,
       setAlwaysShowQuoteCircles,
       setFunPhrasesEnabled,
@@ -883,50 +863,6 @@ export function AppearanceSettings() {
               ×
             </button>
           </div>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceStreamingTitle")}</strong>
-            <p>{t("appearanceStreamingDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={streamingEnabled}
-              onChange={(e) => setStreamingEnabled(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceSessionLoadingProgressTitle")}</strong>
-            <p>{t("appearanceSessionLoadingProgressDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={sessionLoadingProgressEnabled}
-              onChange={(e) =>
-                setSessionLoadingProgressEnabled(e.target.checked)
-              }
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("appearanceStableToolPreviewTitle")}</strong>
-            <p>{t("appearanceStableToolPreviewDescription")}</p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={stableToolPreviewRendering}
-              onChange={(e) => setStableToolPreviewRendering(e.target.checked)}
-            />
-            <span className="toggle-slider" />
-          </label>
         </div>
         <div className="settings-item">
           <div className="settings-item-info">

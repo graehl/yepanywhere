@@ -245,7 +245,11 @@ export function patchSessionRouteScrollSnapshot(
   entry.updatedAt = Date.now();
 }
 
-export function resetSessionRouteSnapshotsForTests(): void {
+export function clearSessionRouteSnapshots(): void {
   delete (globalThis as typeof globalThis & SessionRouteSnapshotGlobal)
     .__YA_SESSION_ROUTE_SNAPSHOTS__;
+}
+
+export function resetSessionRouteSnapshotsForTests(): void {
+  clearSessionRouteSnapshots();
 }

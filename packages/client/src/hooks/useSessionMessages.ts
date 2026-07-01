@@ -13,6 +13,7 @@ import {
 } from "../lib/mergeMessages";
 import { markReloadPerfPhase } from "../lib/diagnostics/reloadPerfProbe";
 import { getProvider } from "../providers/registry";
+import { getSessionTranscriptCacheEnabled } from "./useSessionPerformanceSettings";
 import { getStreamingEnabled } from "./useStreamingEnabled";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
@@ -141,6 +142,9 @@ function readSessionLoadCache(
   tailTurns?: number,
   tailFrom?: string,
 ): SessionRouteSnapshot | undefined {
+  if (!getSessionTranscriptCacheEnabled()) {
+    return undefined;
+  }
   return readSessionRouteSnapshot({
     sourceKey,
     projectId,
@@ -158,6 +162,9 @@ function writeSessionLoadCache(
   tailTurns?: number,
   tailFrom?: string,
 ): void {
+  if (!getSessionTranscriptCacheEnabled()) {
+    return;
+  }
   writeSessionRouteSnapshot(
     { sourceKey, projectId, sessionId, tailTurns, tailFrom },
     entry,
@@ -432,10 +439,17 @@ export function useSessionMessages(
     return () => {
       const snapshot = latestSnapshotRef.current;
       if (!snapshot) return;
-      writeSessionRouteSnapshot(snapshotKey, {
-        ...snapshot,
-        scrollSnapshot: scrollSnapshotRef.current,
-      });
+      writeSessionLoadCache(
+        sourceKey,
+        projectId,
+        sessionId,
+        {
+          ...snapshot,
+          scrollSnapshot: scrollSnapshotRef.current,
+        },
+        tailTurns,
+        tailFrom,
+      );
     };
   }, [sourceKey, projectId, sessionId, tailTurns, tailFrom]);
 
@@ -1137,7 +1151,9 @@ export function useSessionMessages(
   const updateRouteScrollSnapshot = useCallback(
     (snapshot: SessionRouteScrollSnapshot) => {
       scrollSnapshotRef.current = snapshot;
-      patchSessionRouteScrollSnapshot(snapshotKey, snapshot);
+      if (getSessionTranscriptCacheEnabled()) {
+        patchSessionRouteScrollSnapshot(snapshotKey, snapshot);
+      }
       if (latestSnapshotRef.current) {
         latestSnapshotRef.current = {
           ...latestSnapshotRef.current,

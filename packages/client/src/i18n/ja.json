@@ -27,7 +27,6 @@
   "sidebarLoadingSessions": "セッションを読み込み中...",
   "sidebarNoSessions": "まだセッションがありません",
   "settingsAppearanceTitle": "外観",
-  "settingsAppearanceDescription": "テーマ、文字サイズ、ストリーミング",
   "settingsModelTitle": "セッション既定値",
   "settingsModelDescription": "プロバイダー・モデル・思考の既定値",
   "settingsAgentContextTitle": "エージェントコンテキスト",

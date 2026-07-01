@@ -17,6 +17,7 @@ import {
   resetClientSummaryStoreForTests,
   setCurrentClientSummarySourceKey,
 } from "../../lib/clientSummaryStore";
+import { UI_KEYS } from "../../lib/storageKeys";
 
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -34,6 +35,7 @@ import { getStreamingEnabled } from "../useStreamingEnabled";
 
 describe("useSessionMessages cache", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     resetClientSummaryStoreForTests();
     __resetSessionLoadCacheForTest();
     (getStreamingEnabled as Mock).mockReturnValue(true);
@@ -42,6 +44,7 @@ describe("useSessionMessages cache", () => {
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    window.localStorage.clear();
     __resetSessionLoadCacheForTest();
     resetClientSummaryStoreForTests();
   });
@@ -323,6 +326,75 @@ describe("useSessionMessages cache", () => {
     expect(
       second.result.current.messages.map((message) => message.uuid),
     ).toEqual(["win-msg"]);
+  });
+
+  it("does not restore retained messages when transcript cache is disabled", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-07-01T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-07-01T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+    });
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-07-01T00:01:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "fresh-msg",
+          type: "assistant",
+          timestamp: "2026-07-01T00:01:00.000Z",
+          message: { role: "assistant", content: "fresh" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+    });
+
+    const first = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    first.unmount();
+    window.localStorage.setItem(UI_KEYS.sessionTranscriptCache, "false");
+
+    const second = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    expect(second.result.current.restoredFromSnapshot).toBe(false);
+    await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
+    expect(apiMocks.getSession).toHaveBeenNthCalledWith(
+      2,
+      "proj-1",
+      "sess-1",
+      undefined,
+      { tailCompactions: 2 },
+    );
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+    expect(second.result.current.messages.map((message) => message.uuid)).toEqual(
+      ["fresh-msg"],
+    );
   });
 
   it("does not use durable recap overlays as warm-cache cursors", async () => {

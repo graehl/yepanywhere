@@ -106,6 +106,11 @@ export function getSettingsCategories(
       description: t("settingsAppearanceDescription"),
     },
     {
+      id: "performance",
+      label: t("settingsPerformanceTitle"),
+      description: t("settingsPerformanceDescription"),
+    },
+    {
       id: "toolbar",
       label: t("settingsToolbarTitle"),
       description: t("settingsToolbarDescription"),

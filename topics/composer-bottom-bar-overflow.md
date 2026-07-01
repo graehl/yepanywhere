@@ -101,8 +101,19 @@ liveness chip:
   `sessionStatus` defaults *off* on mobile (the inline row would crowd the
   cramped toolbar); a float consumes no inline space, so that justification
   does not apply to it. Without decoupling, mobile users see neither age.
-  A consequence accepted by design: a user who explicitly hid Session Status
-  still gets the age float when the toolbar is cramped.
+- **When `sessionStatus` is off the ages float at *every* width, not only on
+  narrow viewports.** The governing rule is "float whenever the ages cannot be
+  the inline expanded row" — which is true both when the toolbar is compact
+  *and* when the toggle is off (no inline row exists at any width). An earlier
+  cut floated only in compact mode, so a *wide* desktop client that hid Session
+  Status saw the ages vanish entirely and read it as a silently-changed
+  setting. `MessageInputToolbar.tsx` expresses this as
+  `statusFloats = isCompactStatusMode || !visibility.sessionStatus`, used for
+  the float gate, the forced position/last-activity chips, the `.status-floats`
+  class, and suppressing the long "Last activity 35m" prefix (float uses the
+  compact "M ago" form). A consequence accepted by design: a user who
+  explicitly hid Session Status still gets the age float (at any width, and when
+  the toolbar is cramped).
 - **"at N ago" is follow-mode-safe.** `positionTimestampMs` is null at the
   scroll bottom (`MessageList`), so the position age never shows in follow
   mode (composing at the bottom); only the freshness can. A secondary guard

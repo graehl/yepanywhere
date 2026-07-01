@@ -848,13 +848,16 @@ export function MessageInputToolbarView({
     shortcutsControl.canSwapEnterAction && shortcutsControl.onSwapEnterAction
       ? { onSwapEnterAction: shortcutsControl.onSwapEnterAction }
       : null;
-  // When there is no room for the inline expanded status row (compact mode:
-  // the row does not fit, or a mobile viewport), the freshness/position ages
-  // float over the composer instead — decoupled from the sessionStatus toggle
-  // so width-constrained clients still get them. The float carries only the
+  // The status ages float over the composer whenever they cannot be the inline
+  // expanded row: a compact viewport (the row does not fit, or mobile) OR the
+  // sessionStatus toggle is off (no inline row at any width). Floating is thus
+  // decoupled from the toggle so width-constrained clients still get the ages —
+  // and, extended here, so a *wide* client that hid Session Status still gets
+  // them (same as narrow) instead of seeing nothing. The float carries only the
   // ages; the liveness chip stays inline under the sessionStatus toggle.
+  const statusFloats = isCompactStatusMode || !visibility.sessionStatus;
   const hasFloatAges =
-    isCompactStatusMode &&
+    statusFloats &&
     !!statusControl &&
     (statusControl.hasPositionAge || statusControl.hasLastActivityAge);
   const showToolbarStatus =
@@ -864,10 +867,16 @@ export function MessageInputToolbarView({
   const livenessDisplay = statusControl?.livenessDisplay ?? null;
   const showPositionChip =
     (statusControl?.showPositionTimestamp ?? false) ||
-    (isCompactStatusMode && (statusControl?.hasPositionAge ?? false));
+    (statusFloats && (statusControl?.hasPositionAge ?? false));
   const showLastActivityChip =
     (statusControl?.showLastActivityChip ?? false) ||
-    (isCompactStatusMode && (statusControl?.hasLastActivityAge ?? false));
+    (statusFloats && (statusControl?.hasLastActivityAge ?? false));
+  // The floating presentation needs `.status-floats` (toolbar → position:
+  // static) so the ages anchor over the composer. Apply in compact mode
+  // (unchanged) and in the new wide+disabled float case; wide+enabled keeps the
+  // inline row and its normal positioning context.
+  const applyStatusFloats =
+    isCompactStatusMode || (statusFloats && showToolbarStatus);
   const showSendButton = !!actionsControl.send?.onSend;
   const showStopButton = !!actionsControl.stop;
   const showProjectQueueButton = !!(
@@ -1027,7 +1036,7 @@ export function MessageInputToolbarView({
   return (
     <div
       ref={setToolbarRef}
-      className={`message-input-toolbar${isCompactStatusMode ? " status-floats" : ""} overflow-tier-${bottomOverflowTier}`}
+      className={`message-input-toolbar${applyStatusFloats ? " status-floats" : ""} overflow-tier-${bottomOverflowTier}`}
     >
       <div ref={refs?.left} className="message-input-left">
         {visibility.modeSelector && modeControl && (
@@ -2075,9 +2084,13 @@ export function MessageInputToolbar({
   const showLastActivityAge = isStaleTimestamp(lastActivityMs, nowMs);
   const lastActivityAgeMs =
     lastActivityMs === null ? null : nowMs - lastActivityMs;
+  // Mirror the View's float condition: ages float (compact "M ago" form) when
+  // the inline expanded row is unavailable — compact viewport or sessionStatus
+  // off. The long "Last activity 35m" prefix is only for the inline row.
+  const statusFloats = isCompactStatusMode || !toolbarVisibility.sessionStatus;
   const showLastActivityPrefix =
     showLastActivityAge &&
-    !isCompactStatusMode &&
+    !statusFloats &&
     lastActivityAgeMs !== null &&
     lastActivityAgeMs >= LAST_ACTIVITY_TEXT_PREFIX_THRESHOLD_MS;
   const lastActivityIsPast =

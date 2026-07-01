@@ -2237,9 +2237,11 @@ describe("MessageInput", () => {
     expect(container.querySelector(".composer-liveness-status")).toBeNull();
   });
 
-  it("hides the freshness/position float when there is room (not compact) and session status is disabled", () => {
+  it("floats the freshness/position age over the composer even when not compact if session status is disabled", () => {
+    // Wide screen + Session Status toggle off: the ages still float (same as
+    // narrow), instead of vanishing. Matches the all-widths-when-disabled rule.
     const nowMs = new Date("2026-04-26T12:06:00.000Z").getTime();
-    render(
+    const { container } = render(
       <MessageInputToolbarView
         t={toolbarT}
         visibility={toolbarVisibility}
@@ -2277,8 +2279,11 @@ describe("MessageInput", () => {
       />,
     );
 
-    expect(screen.queryByText("at 10m ago")).toBeNull();
-    expect(screen.queryByText("6m ago")).toBeNull();
+    expect(screen.getByText("at 10m ago")).toBeTruthy();
+    expect(screen.getByText("6m ago")).toBeTruthy();
+    // Still the floating presentation (not the inline row) and ages only.
+    expect(container.querySelector(".status-floats")).toBeTruthy();
+    expect(container.querySelector(".composer-liveness-status")).toBeNull();
   });
 
   it("keeps a send affordance visible when the composer is collapsed", () => {

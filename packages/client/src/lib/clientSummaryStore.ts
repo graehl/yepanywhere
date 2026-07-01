@@ -44,6 +44,7 @@ import {
   selectProjectQueueDispatchState,
   selectProjectQueueSidebarCount,
   selectProjectQueueItemsByProject,
+  selectProjectQueueProjectStatusesByProject,
   selectProjectQueueRecoveredSessionQueues,
   selectOlderSessionRecords,
   selectRecentSessionRecords,
@@ -602,6 +603,25 @@ export function useProjectQueueRecoveredSessionQueues() {
   useClientSummaryActivitySubscription();
   const store = useCurrentClientSummaryStore();
   return useStore(store, selectProjectQueueRecoveredSessionQueues);
+}
+
+export function useProjectQueueProjectStatusesByProject() {
+  useClientSummaryActivitySubscription();
+  const store = useCurrentClientSummaryStore();
+  const projectStatusesByProject = useStore(
+    store,
+    (state) => state.projectQueues.projectStatusesByProject,
+  );
+  return useMemo(() => {
+    const state = store.getState();
+    return selectProjectQueueProjectStatusesByProject({
+      ...state,
+      projectQueues: {
+        ...state.projectQueues,
+        projectStatusesByProject,
+      },
+    });
+  }, [store, projectStatusesByProject]);
 }
 
 export function useProjectQueueSidebarCount(

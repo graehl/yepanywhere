@@ -18,6 +18,7 @@ import {
   useClientSummarySourceKey,
   useProjectQueueDispatchState,
   useProjectQueueItemsByProject,
+  useProjectQueueProjectStatusesByProject,
   useProjectQueueRecoveredSessionQueues,
 } from "../lib/clientSummaryStore";
 import { useRetainedClientQuery } from "./useRetainedClientQuery";
@@ -75,13 +76,6 @@ const RUNNING_DISPATCH_STATE: ProjectQueueDispatchState = {
   status: "running",
 };
 
-function mergeProjectStatuses(
-  current: Record<string, ProjectQueueProjectStatus>,
-  next: Record<string, ProjectQueueProjectStatus> | undefined,
-): Record<string, ProjectQueueProjectStatus> {
-  return next ? { ...current, ...next } : current;
-}
-
 export function useProjectQueues(
   projectIds: readonly string[],
 ): UseProjectQueuesResult {
@@ -101,14 +95,13 @@ export function useProjectQueues(
   );
   const storedDispatchState = useProjectQueueDispatchState();
   const storedRecoveredSessionQueues = useProjectQueueRecoveredSessionQueues();
+  const storedProjectStatusesByProject =
+    useProjectQueueProjectStatusesByProject();
   const [mutatingItemId, setMutatingItemId] = useState<string | null>(null);
   const [mutatingDispatchState, setMutatingDispatchState] = useState(false);
   const [mutatingPromoteItemId, setMutatingPromoteItemId] = useState<
     string | null
   >(null);
-  const [projectStatusesByProject, setProjectStatusesByProject] = useState<
-    Record<string, ProjectQueueProjectStatus>
-  >({});
   const [mutationError, setMutationError] = useState<Error | null>(null);
   const queryEnabled = enabled && normalizedProjectIds.length > 0;
   const hasData = Object.keys(storedQueuesByProject).length > 0;
@@ -121,7 +114,6 @@ export function useProjectQueues(
     revalidateOn: PROJECT_QUEUE_REVALIDATE_EVENTS,
     fetcher: () => api.getProjectQueueItems(),
     applySnapshot: (data, context) => {
-      setProjectStatusesByProject(data.projectStatuses ?? {});
       reportProjectQueueGlobalCollectionSnapshot(
         context.sourceKey,
         data,
@@ -145,9 +137,6 @@ export function useProjectQueues(
           itemId,
           request,
         );
-        setProjectStatusesByProject((current) =>
-          mergeProjectStatuses(current, response.queue.projectStatuses),
-        );
         reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
       } catch (err) {
         setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -165,9 +154,6 @@ export function useProjectQueues(
     const requestSourceKey = sourceKey;
     try {
       const response = await api.deleteProjectQueueItem(projectId, itemId);
-      setProjectStatusesByProject((current) =>
-        mergeProjectStatuses(current, response.queue.projectStatuses),
-      );
       reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -183,9 +169,6 @@ export function useProjectQueues(
     const requestSourceKey = sourceKey;
     try {
       const response = await api.retryProjectQueueItem(projectId, itemId);
-      setProjectStatusesByProject((current) =>
-        mergeProjectStatuses(current, response.queue.projectStatuses),
-      );
       reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -201,9 +184,6 @@ export function useProjectQueues(
     const requestSourceKey = sourceKey;
     try {
       const response = await api.moveProjectQueueItemToTop(projectId, itemId);
-      setProjectStatusesByProject((current) =>
-        mergeProjectStatuses(current, response.queue.projectStatuses),
-      );
       reportProjectQueueCollectionSnapshot(requestSourceKey, response.queue);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -224,7 +204,6 @@ export function useProjectQueues(
     const requestSourceKey = sourceKey;
     try {
       const response = await api.pauseProjectQueueDispatch();
-      setProjectStatusesByProject(response.projectStatuses ?? {});
       reportProjectQueueGlobalCollectionSnapshot(requestSourceKey, response);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -240,7 +219,6 @@ export function useProjectQueues(
     const requestSourceKey = sourceKey;
     try {
       const response = await api.resumeProjectQueueDispatch();
-      setProjectStatusesByProject(response.projectStatuses ?? {});
       reportProjectQueueGlobalCollectionSnapshot(requestSourceKey, response);
     } catch (err) {
       setMutationError(err instanceof Error ? err : new Error(String(err)));
@@ -264,7 +242,6 @@ export function useProjectQueues(
           itemId,
           ...(options.force ? { force: true } : {}),
         });
-        setProjectStatusesByProject(response.projectStatuses ?? {});
         reportProjectQueueGlobalCollectionSnapshot(requestSourceKey, response);
         return response.promoteResult;
       } catch (err) {
@@ -308,7 +285,7 @@ export function useProjectQueues(
   return {
     queuesByProject: enabled ? storedQueuesByProject : {},
     items,
-    projectStatusesByProject: enabled ? projectStatusesByProject : {},
+    projectStatusesByProject: enabled ? storedProjectStatusesByProject : {},
     recoveredSessionQueues,
     loading,
     error: mutationError ?? queryError,

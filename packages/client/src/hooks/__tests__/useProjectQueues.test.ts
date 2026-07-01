@@ -225,6 +225,9 @@ describe("useProjectQueues", () => {
         pausedAt: "2026-07-01T07:41:12.926Z",
       },
       recoveredSessionQueues: [makeRecoveredSessionQueue("1", PROJECT_ID)],
+      projectStatuses: {
+        [PROJECT_ID]: makeProjectStatus("waiting-quiet"),
+      },
     });
 
     const first = renderHook(() => useProjectQueues(["project-1"]));
@@ -248,6 +251,11 @@ describe("useProjectQueues", () => {
     expect(
       second.result.current.recoveredSessionQueues.map((item) => item.id),
     ).toEqual(["1"]);
+    expect(second.result.current.projectStatusesByProject[PROJECT_ID])
+      .toMatchObject({
+        state: "waiting-quiet",
+        nextItemId: "1",
+      });
   });
 
   it("refetches recovered session queues after persistence changes", async () => {

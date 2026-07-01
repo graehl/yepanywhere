@@ -3,6 +3,7 @@
 import type {
   ProjectQueueDispatchState,
   ProjectQueueItemSummary,
+  ProjectQueueProjectStatus,
   ProjectQueueRecoveredSessionQueueSummary,
 } from "@yep-anywhere/shared";
 import {
@@ -74,6 +75,7 @@ function renderSection(
   handlers = {
     onPauseDispatch: vi.fn(),
     onResumeDispatch: vi.fn(),
+    onPromoteNow: vi.fn(),
     onDeleteItem: vi.fn(),
     onRetryItem: vi.fn(),
     onMoveItemToTop: vi.fn(),
@@ -82,6 +84,7 @@ function renderSection(
   highlightedItemId?: string,
   dispatchState: ProjectQueueDispatchState = { status: "running" },
   recoveredSessionQueues: ProjectQueueRecoveredSessionQueueSummary[] = [],
+  projectStatusesByProject: Record<string, ProjectQueueProjectStatus> = {},
 ) {
   render(
     <I18nProvider>
@@ -94,10 +97,13 @@ function renderSection(
           error={null}
           mutatingItemId={null}
           mutatingDispatchState={false}
+          mutatingPromoteItemId={null}
           dispatchState={dispatchState}
+          projectStatusesByProject={projectStatusesByProject}
           highlightedItemId={highlightedItemId}
           onPauseDispatch={handlers.onPauseDispatch}
           onResumeDispatch={handlers.onResumeDispatch}
+          onPromoteNow={handlers.onPromoteNow}
           onDeleteItem={handlers.onDeleteItem}
           onRetryItem={handlers.onRetryItem}
           onMoveItemToTop={handlers.onMoveItemToTop}
@@ -107,6 +113,25 @@ function renderSection(
     </I18nProvider>,
   );
   return handlers;
+}
+
+function makeProjectStatus(
+  state: ProjectQueueProjectStatus["state"],
+  overrides: Partial<ProjectQueueProjectStatus> = {},
+): ProjectQueueProjectStatus {
+  const blocked = state === "blocked";
+  return {
+    projectId: PROJECT_ID,
+    state,
+    idle: !blocked,
+    blockers: blocked ? ["session-abcdef:in-turn"] : [],
+    dispatchPaused: state === "paused",
+    inFlight: state === "dispatching",
+    quietWindowMs: 30_000,
+    itemCount: 1,
+    nextItemId: "1",
+    ...overrides,
+  };
 }
 
 describe("ProjectQueueSection", () => {
@@ -229,6 +254,46 @@ describe("ProjectQueueSection", () => {
     fireEvent.click(moveButtons[0]!);
 
     expect(handlers.onMoveItemToTop).toHaveBeenCalledWith("project-1", "2");
+  });
+
+  it("starts a queued item immediately when only the quiet window remains", () => {
+    const handlers = renderSection(
+      [makeItem("1")],
+      undefined,
+      undefined,
+      { status: "running" },
+      [],
+      { [PROJECT_ID]: makeProjectStatus("waiting-quiet") },
+    );
+
+    expect(screen.getByText(/Waiting for project quiet/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Start now" }));
+
+    expect(handlers.onPromoteNow).toHaveBeenCalledWith(
+      "project-1",
+      "1",
+      { force: false },
+    );
+  });
+
+  it("surfaces a force-start override when blockers remain", () => {
+    const handlers = renderSection(
+      [makeItem("1")],
+      undefined,
+      undefined,
+      { status: "running" },
+      [],
+      { [PROJECT_ID]: makeProjectStatus("blocked") },
+    );
+
+    expect(screen.getByText(/Blocked: session- in turn/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Force start" }));
+
+    expect(handlers.onPromoteNow).toHaveBeenCalledWith(
+      "project-1",
+      "1",
+      { force: true },
+    );
   });
 
   it("highlights a linked queue item", () => {

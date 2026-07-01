@@ -135,6 +135,18 @@ export function ProjectsPage() {
     }
   };
 
+  const handlePromoteProjectQueueItem = async (
+    projectId: string,
+    itemId: string,
+    options?: { force?: boolean },
+  ) => {
+    try {
+      await projectQueues.promoteNow(projectId, itemId, options);
+    } catch {
+      // The hook exposes the error in the queue section.
+    }
+  };
+
   const handleRetryQueueItem = async (projectId: string, itemId: string) => {
     try {
       await projectQueues.retryItem(projectId, itemId);
@@ -259,11 +271,14 @@ export function ProjectsPage() {
             error={projectQueues.error}
             mutatingItemId={projectQueues.mutatingItemId}
             mutatingDispatchState={projectQueues.mutatingDispatchState}
+            mutatingPromoteItemId={projectQueues.mutatingPromoteItemId}
             dispatchState={projectQueues.dispatchState}
+            projectStatusesByProject={projectQueues.projectStatusesByProject}
             highlightedItemId={highlightedQueueItemId}
             basePath={basePath}
             onPauseDispatch={handlePauseProjectQueue}
             onResumeDispatch={handleResumeProjectQueue}
+            onPromoteNow={handlePromoteProjectQueueItem}
             onDeleteItem={handleDeleteQueueItem}
             onRetryItem={handleRetryQueueItem}
             onMoveItemToTop={handleMoveQueueItemToTop}

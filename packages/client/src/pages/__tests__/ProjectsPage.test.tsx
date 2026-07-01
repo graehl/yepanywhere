@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
     },
   ],
   queueItems: [] as ProjectQueueItemSummary[],
+  projectStatusesByProject: {},
   dispatchState: { status: "running" as const },
   inboxCountsByProject: new Map<
     string,
@@ -52,15 +53,18 @@ vi.mock("../../hooks/useProjectQueues", () => ({
   useProjectQueues: () => ({
     queuesByProject: { "project-1": state.queueItems },
     items: state.queueItems,
+    projectStatusesByProject: state.projectStatusesByProject,
     recoveredSessionQueues: [],
     loading: false,
     error: null,
     mutatingItemId: null,
     mutatingDispatchState: false,
+    mutatingPromoteItemId: null,
     dispatchState: state.dispatchState,
     refetch: vi.fn(),
     pauseDispatch: vi.fn(),
     resumeDispatch: vi.fn(),
+    promoteNow: vi.fn(),
     updateItem: vi.fn(),
     deleteItem: vi.fn(),
     retryItem: vi.fn(),
@@ -105,6 +109,7 @@ function makeItem(status: ProjectQueueItemSummary["status"]) {
 describe("ProjectsPage", () => {
   beforeEach(() => {
     state.queueItems = [makeItem("queued")];
+    state.projectStatusesByProject = {};
     state.dispatchState = { status: "running" };
     state.inboxCountsByProject = new Map();
   });

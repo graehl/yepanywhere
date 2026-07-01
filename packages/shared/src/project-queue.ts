@@ -34,6 +34,51 @@ export type ProjectQueueDispatchState =
       pausedAt: string;
     };
 
+export type ProjectQueueProjectState =
+  | "empty"
+  | "paused"
+  | "blocked"
+  | "waiting-quiet"
+  | "ready"
+  | "dispatching";
+
+export interface ProjectQueueProjectStatus {
+  projectId: UrlProjectId;
+  state: ProjectQueueProjectState;
+  idle: boolean;
+  blockers: string[];
+  dispatchPaused: boolean;
+  inFlight: boolean;
+  quietWindowMs: number;
+  itemCount: number;
+  nextItemId?: string;
+  nextAttemptAt?: string;
+  quietStartedAt?: string;
+  quietEligibleAt?: string;
+}
+
+export interface ProjectQueuePromoteNowResult {
+  promoted: boolean;
+  itemId?: string;
+  sessionId?: string;
+  reason:
+    | "promoted"
+    | "empty"
+    | "paused"
+    | "blocked"
+    | "in-flight"
+    | "not-found"
+    | "not-queued"
+    | "failed";
+  error?: string;
+  status: ProjectQueueProjectStatus;
+}
+
+export interface ProjectQueuePromoteNowRequest {
+  itemId?: string;
+  force?: boolean;
+}
+
 export type ProjectQueueClientSource =
   | "toolbar"
   | "projects-page"
@@ -127,12 +172,19 @@ export interface ProjectQueueResponse {
   projectId: UrlProjectId;
   items: ProjectQueueItemSummary[];
   dispatchState?: ProjectQueueDispatchState;
+  projectStatuses?: Record<string, ProjectQueueProjectStatus>;
 }
 
 export interface ProjectQueueListResponse {
   items: ProjectQueueItemSummary[];
   dispatchState?: ProjectQueueDispatchState;
   recoveredSessionQueues?: ProjectQueueRecoveredSessionQueueSummary[];
+  projectStatuses?: Record<string, ProjectQueueProjectStatus>;
+}
+
+export interface ProjectQueuePromoteNowResponse
+  extends ProjectQueueListResponse {
+  promoteResult: ProjectQueuePromoteNowResult;
 }
 
 export interface CreateProjectQueueItemRequest {

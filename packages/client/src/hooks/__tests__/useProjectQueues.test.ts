@@ -2,6 +2,7 @@
 
 import type {
   ProjectQueueItemSummary,
+  ProjectQueueProjectStatus,
   ProjectQueueRecoveredSessionQueueSummary,
 } from "@yep-anywhere/shared";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -37,6 +38,7 @@ const apiMock = vi.hoisted(() => ({
   moveProjectQueueItemToTop: vi.fn(),
   pauseProjectQueueDispatch: vi.fn(),
   resumeProjectQueueDispatch: vi.fn(),
+  promoteProjectQueueNow: vi.fn(),
 }));
 const versionMock = vi.hoisted(() => ({
   version: { capabilities: ["projectQueue"] as string[] },
@@ -112,6 +114,22 @@ function makeRecoveredSessionQueue(
   };
 }
 
+function makeProjectStatus(
+  state: ProjectQueueProjectStatus["state"],
+): ProjectQueueProjectStatus {
+  return {
+    projectId: PROJECT_ID,
+    state,
+    idle: state !== "blocked",
+    blockers: state === "blocked" ? ["session-1:in-turn"] : [],
+    dispatchPaused: state === "paused",
+    inFlight: state === "dispatching",
+    quietWindowMs: 30_000,
+    itemCount: 1,
+    nextItemId: "1",
+  };
+}
+
 beforeEach(() => {
   resetClientSummaryStoreForTests();
   resetClientQueryControllerForTests();
@@ -126,6 +144,7 @@ beforeEach(() => {
   apiMock.moveProjectQueueItemToTop.mockReset();
   apiMock.pauseProjectQueueDispatch.mockReset();
   apiMock.resumeProjectQueueDispatch.mockReset();
+  apiMock.promoteProjectQueueNow.mockReset();
   connectionMock.isRemoteClient.mockReset();
   connectionMock.isRemoteClient.mockReturnValue(false);
   connectionMock.remoteState.connection = null;
@@ -156,6 +175,7 @@ describe("useProjectQueues", () => {
         makeItem("1", PROJECT_ID),
         makeItem("2", PROJECT_ID_2),
       ],
+      projectStatuses: { [PROJECT_ID]: makeProjectStatus("waiting-quiet") },
     });
 
     const { result } = renderHook(() =>
@@ -167,6 +187,10 @@ describe("useProjectQueues", () => {
     expect(apiMock.getProjectQueueItems).toHaveBeenCalledTimes(1);
     expect(apiMock.getProjectQueue).not.toHaveBeenCalled();
     expect(result.current.items.map((item) => item.id)).toEqual(["1", "2"]);
+    expect(result.current.projectStatusesByProject[PROJECT_ID]).toMatchObject({
+      state: "waiting-quiet",
+      nextItemId: "1",
+    });
   });
 
   it("exposes recovered session queues for the supplied projects", async () => {
@@ -418,5 +442,40 @@ describe("useProjectQueues", () => {
     });
 
     expect(result.current.dispatchState).toEqual({ status: "running" });
+  });
+
+  it("promotes a specific project queue item with optional force", async () => {
+    apiMock.getProjectQueueItems.mockResolvedValue({
+      items: [makeItem("1")],
+      projectStatuses: { [PROJECT_ID]: makeProjectStatus("blocked") },
+    });
+    apiMock.promoteProjectQueueNow.mockResolvedValue({
+      items: [],
+      dispatchState: { status: "running" },
+      projectStatuses: { [PROJECT_ID]: makeProjectStatus("empty") },
+      promoteResult: {
+        promoted: true,
+        itemId: "1",
+        sessionId: "session-1",
+        reason: "promoted",
+        status: makeProjectStatus("empty"),
+      },
+    });
+
+    const { result } = renderHook(() => useProjectQueues(["project-1"]));
+
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    await act(async () => {
+      await result.current.promoteNow("project-1", "1", { force: true });
+    });
+
+    expect(apiMock.promoteProjectQueueNow).toHaveBeenCalledWith(
+      "project-1",
+      { itemId: "1", force: true },
+    );
+    expect(result.current.items).toEqual([]);
+    expect(result.current.projectStatusesByProject[PROJECT_ID]).toMatchObject({
+      state: "empty",
+    });
   });
 });

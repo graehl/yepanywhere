@@ -1,4 +1,8 @@
-import { toUrlProjectId, type UrlProjectId } from "@yep-anywhere/shared";
+import {
+  type ProjectQueuePromoteNowRequest,
+  toUrlProjectId,
+  type UrlProjectId,
+} from "@yep-anywhere/shared";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -223,6 +227,73 @@ describe("Project Queue Routes", () => {
         messagePreview: "second queued item",
       },
     ]);
+  });
+
+  it("includes project status and forwards promote-now requests", async () => {
+    const item = await service.createItem({
+      projectId,
+      projectPath: project.path,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "blocked queued item" },
+      },
+    });
+    const projectQueueScheduler = {
+      getProjectStatus: vi.fn(async (id: UrlProjectId) => ({
+        projectId: id,
+        state: "blocked" as const,
+        idle: false,
+        blockers: ["session-1:in-turn"],
+        dispatchPaused: false,
+        inFlight: false,
+        quietWindowMs: 30_000,
+        itemCount: 1,
+        nextItemId: item.id,
+      })),
+      promoteNow: vi.fn(
+        async (id: UrlProjectId, options: ProjectQueuePromoteNowRequest) => ({
+        promoted: true,
+        itemId: options.itemId,
+        sessionId: "session-1",
+        reason: "promoted" as const,
+        status: {
+          projectId: id,
+          state: "empty" as const,
+          idle: true,
+          blockers: [],
+          dispatchPaused: false,
+          inFlight: false,
+          quietWindowMs: 30_000,
+          itemCount: 0,
+        },
+      })),
+    };
+
+    const routes = createGlobalRoutes({ projectQueueScheduler });
+    const listResponse = await routes.request("/");
+    const listBody = await listResponse.json();
+    expect(listBody.projectStatuses[projectId]).toMatchObject({
+      state: "blocked",
+      blockers: ["session-1:in-turn"],
+      nextItemId: item.id,
+    });
+
+    const promoteResponse = await routes.request(`/${projectId}/promote-now`, {
+      method: "POST",
+      body: JSON.stringify({ itemId: item.id, force: true }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const promoteBody = await promoteResponse.json();
+    expect(promoteBody.promoteResult).toMatchObject({
+      promoted: true,
+      itemId: item.id,
+      sessionId: "session-1",
+      reason: "promoted",
+    });
+    expect(projectQueueScheduler.promoteNow).toHaveBeenCalledWith(projectId, {
+      itemId: item.id,
+      force: true,
+    });
   });
 
   it("enriches existing-session targets with cached session titles", async () => {

@@ -3,6 +3,7 @@
 import {
   GIT_STATUS_ENHANCED_CAPABILITY,
   type ProjectQueueItemSummary,
+  type ProjectQueueProjectStatus,
 } from "@yep-anywhere/shared";
 import {
   cleanup,
@@ -11,7 +12,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UI_KEYS } from "../../lib/storageKeys";
 import { Sidebar } from "../Sidebar";
@@ -19,6 +20,7 @@ import { Sidebar } from "../Sidebar";
 const {
   globalSessionsState,
   mockGlobalLoadMore,
+  mockPromoteNow,
   mockRemoteConnectionState,
   mockStarredLoadMore,
   mockToggleExpanded,
@@ -43,6 +45,7 @@ const {
     loadMore: vi.fn(),
   },
   mockGlobalLoadMore: vi.fn(),
+  mockPromoteNow: vi.fn(),
   mockRemoteConnectionState: {
     value: null as null | { disconnect: ReturnType<typeof vi.fn> },
   },
@@ -78,14 +81,18 @@ vi.mock("../../hooks/useProjectQueues", () => ({
   useProjectQueues: () => ({
     queuesByProject: projectQueuesState.queuesByProject,
     items: Object.values(projectQueuesState.queuesByProject).flat(),
+    projectStatusesByProject: {},
+    recoveredSessionQueues: [],
     loading: false,
     error: null,
     mutatingItemId: null,
     mutatingDispatchState: false,
+    mutatingPromoteItemId: null,
     dispatchState: { status: "running" },
     refetch: vi.fn(),
     pauseDispatch: vi.fn(),
     resumeDispatch: vi.fn(),
+    promoteNow: mockPromoteNow,
     updateItem: vi.fn(),
     deleteItem: vi.fn(),
     retryItem: vi.fn(),
@@ -292,6 +299,31 @@ function makeProjectQueueItem(
   };
 }
 
+function makeProjectStatus(
+  state: ProjectQueueProjectStatus["state"],
+): ProjectQueueProjectStatus {
+  return {
+    projectId: "project-1" as ProjectQueueProjectStatus["projectId"],
+    state,
+    idle: state !== "blocked",
+    blockers: state === "blocked" ? ["session-1:in-turn"] : [],
+    dispatchPaused: state === "paused",
+    inFlight: state === "dispatching",
+    quietWindowMs: 30_000,
+    itemCount: 1,
+  };
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <div data-testid="location">
+      {location.pathname}
+      {location.search}
+    </div>
+  );
+}
+
 /** Render order (top → bottom) of the rendered rows in the Last 24 Hours list. */
 function last24HourIds(container: HTMLElement): string[] {
   const list = container.querySelector("#sidebar-last-24-hours-list");
@@ -315,6 +347,7 @@ describe("Sidebar collapsed toggle", () => {
     });
     mockToggleExpanded.mockReset();
     mockWindowOpen.mockReset();
+    mockPromoteNow.mockReset();
     mockRemoteConnectionState.value = null;
     mockGlobalLoadMore.mockReset();
     mockStarredLoadMore.mockReset();
@@ -615,6 +648,63 @@ describe("Sidebar collapsed toggle", () => {
     expect(link.getAttribute("href")).toBe(
       "/remote/test/projects?queueItem=queue-new-session",
     );
+  });
+
+  it("starts queued new-session sidebar rows before navigating", async () => {
+    projectsState.projects = [
+      {
+        id: "project-1",
+        name: "Alpha",
+        projectQueueCount: 1,
+      },
+    ];
+    projectQueuesState.queuesByProject = {
+      "project-1": [
+        makeProjectQueueItem("queue-new-session", {
+          target: { type: "new-session", title: "Queued launch" },
+          messagePreview: "Queued launch",
+        }),
+      ],
+    };
+    mockPromoteNow.mockResolvedValue({
+      promoted: true,
+      itemId: "queue-new-session",
+      sessionId: "session-created",
+      reason: "promoted",
+      status: makeProjectStatus("empty"),
+    });
+    const onNavigate = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <Sidebar
+          isOpen={true}
+          onClose={() => {}}
+          onNavigate={onNavigate}
+          isDesktop={true}
+          isCollapsed={true}
+          onToggleExpanded={mockToggleExpanded}
+        />
+        <Routes>
+          <Route path="*" element={<LocationProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: /Queued launch/i }));
+
+    await waitFor(() =>
+      expect(mockPromoteNow).toHaveBeenCalledWith(
+        "project-1",
+        "queue-new-session",
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/remote/test/projects/project-1/sessions/session-created",
+      ),
+    );
+    expect(onNavigate).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the highest-message duplicate session visible", () => {

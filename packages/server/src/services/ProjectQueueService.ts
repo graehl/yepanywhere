@@ -836,12 +836,19 @@ export class ProjectQueueService {
   async claimNextDispatchableItem(
     projectId: UrlProjectId,
   ): Promise<ProjectQueueItem | null> {
+    return this.claimDispatchableItem(projectId);
+  }
+
+  async claimDispatchableItem(
+    projectId: UrlProjectId,
+    itemId?: string,
+  ): Promise<ProjectQueueItem | null> {
     return this.withMutation(async () => {
       this.ensureInitialized();
       if (this.isDispatchPaused()) return null;
-      const index = this.state.items.findIndex(
-        (item) => item.projectId === projectId,
-      );
+      const index = itemId
+        ? this.findProjectItemIndex(projectId, itemId)
+        : this.state.items.findIndex((item) => item.projectId === projectId);
       if (index === -1) return null;
       const existing = this.state.items[index]!;
       if (existing.status !== "queued") return null;

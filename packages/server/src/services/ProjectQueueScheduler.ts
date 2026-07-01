@@ -2,6 +2,8 @@ import {
   DEFAULT_PROJECT_QUEUE_QUIET_SECONDS,
   type PermissionMode,
   type ProjectQueueItem,
+  type ProjectQueueProjectStatus,
+  type ProjectQueuePromoteNowResult,
   type ProviderName,
   type UploadedFile,
   type UrlProjectId,
@@ -26,6 +28,16 @@ import {
 } from "./projectWorkIdle.js";
 
 const DEFAULT_IDLE_GRACE_MS = DEFAULT_PROJECT_QUEUE_QUIET_SECONDS * 1000;
+const BLOCKED_RETRY_MS = 30_000;
+
+type ProjectQueueTimerReason = "quiet" | "blocked-retry";
+
+interface ProjectQueueTimerState {
+  timer: ReturnType<typeof setTimeout>;
+  reason: ProjectQueueTimerReason;
+  scheduledAtMs: number;
+  eligibleAtMs: number;
+}
 
 export interface ProjectQueueProcessSnapshot
   extends ProjectWorkProcessSnapshot {
@@ -69,6 +81,32 @@ export type ProjectQueueExternalTracker = ProjectWorkExternalTracker;
 
 export type ProjectIdleStatus = ProjectWorkIdleStatus;
 
+type RunProjectResult =
+  | {
+      reason: "promoted";
+      itemId: string;
+      sessionId?: string;
+      promoted: true;
+    }
+  | {
+      reason:
+        | "empty"
+        | "paused"
+        | "blocked"
+        | "in-flight"
+        | "not-found"
+        | "not-queued"
+        | "failed";
+      itemId?: string;
+      error?: string;
+      promoted: false;
+    };
+
+interface PromoteNowOptions {
+  itemId?: string;
+  force?: boolean;
+}
+
 export interface ProjectQueueSchedulerOptions {
   projectQueueService: ProjectQueueService;
   supervisor: ProjectQueueSupervisor;
@@ -77,6 +115,7 @@ export interface ProjectQueueSchedulerOptions {
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
   externalTracker?: ProjectQueueExternalTracker;
   idleGraceMs?: number;
+  blockedRetryMs?: number;
   getIdleGraceMs?: () => number;
   getGlobalInstructions?: () => string | undefined;
   onSessionStarted?: (args: {
@@ -114,10 +153,7 @@ export class ProjectQueueScheduler {
   private readonly externalTracker?: ProjectQueueExternalTracker;
   private readonly fixedIdleGraceMs?: number;
   private readonly getConfiguredIdleGraceMs?: () => number;
-  private readonly timers = new Map<
-    UrlProjectId,
-    ReturnType<typeof setTimeout>
-  >();
+  private readonly timers = new Map<UrlProjectId, ProjectQueueTimerState>();
   private readonly inFlight = new Set<UrlProjectId>();
   private readonly unsubscribe: () => void;
 
@@ -134,8 +170,8 @@ export class ProjectQueueScheduler {
 
   dispose(): void {
     this.unsubscribe();
-    for (const timer of this.timers.values()) {
-      clearTimeout(timer);
+    for (const state of this.timers.values()) {
+      clearTimeout(state.timer);
     }
     this.timers.clear();
     this.inFlight.clear();
@@ -153,6 +189,89 @@ export class ProjectQueueScheduler {
       getRecoveredPatientQueueCount: (candidateProjectId) =>
         this.getRecoveredPatientQueueCount(candidateProjectId),
     });
+  }
+
+  async getProjectStatus(
+    projectId: UrlProjectId,
+  ): Promise<ProjectQueueProjectStatus> {
+    const items = this.projectQueueService.listProject(projectId).items;
+    const first = items[0];
+    const dispatchState = this.projectQueueService.getDispatchState();
+    const dispatchPaused = dispatchState.status === "paused";
+    const inFlight = this.inFlight.has(projectId);
+    const quietWindowMs = this.getIdleGraceMs();
+    const timer = this.timers.get(projectId);
+
+    if (!first) {
+      return {
+        projectId,
+        state: "empty",
+        idle: true,
+        blockers: [],
+        dispatchPaused,
+        inFlight,
+        quietWindowMs,
+        itemCount: 0,
+      };
+    }
+
+    const idle = await this.getProjectIdleStatus(projectId);
+    const blockers = [...idle.blockers];
+    if (first.status === "failed") {
+      blockers.push("project-queue:first-failed");
+    }
+
+    const now = Date.now();
+    const timerFields: Pick<
+      ProjectQueueProjectStatus,
+      "nextAttemptAt" | "quietStartedAt" | "quietEligibleAt"
+    > = {};
+    if (timer && timer.eligibleAtMs > now) {
+      timerFields.nextAttemptAt = new Date(timer.eligibleAtMs).toISOString();
+      if (timer.reason === "quiet" && idle.idle) {
+        timerFields.quietStartedAt = new Date(
+          timer.scheduledAtMs,
+        ).toISOString();
+        timerFields.quietEligibleAt = new Date(
+          timer.eligibleAtMs,
+        ).toISOString();
+      }
+    }
+
+    const state: ProjectQueueProjectStatus["state"] = dispatchPaused
+      ? "paused"
+      : inFlight || first.status === "dispatching"
+        ? "dispatching"
+        : blockers.length > 0
+          ? "blocked"
+          : timerFields.quietEligibleAt
+            ? "waiting-quiet"
+            : "ready";
+
+    return {
+      projectId,
+      state,
+      idle: idle.idle && blockers.length === 0,
+      blockers,
+      dispatchPaused,
+      inFlight,
+      quietWindowMs,
+      itemCount: items.length,
+      nextItemId: first.id,
+      ...timerFields,
+    };
+  }
+
+  async promoteNow(
+    projectId: UrlProjectId,
+    options: PromoteNowOptions = {},
+  ): Promise<ProjectQueuePromoteNowResult> {
+    this.clearProjectTimer(projectId);
+    const result = await this.runProject(projectId, options);
+    return {
+      ...result,
+      status: await this.getProjectStatus(projectId),
+    };
   }
 
   private readonly handleEvent = (event: BusEvent): void => {
@@ -214,69 +333,154 @@ export class ProjectQueueScheduler {
 
   private scheduleAllDispatchableProjects(
     delayMs = this.getIdleGraceMs(),
+    reason: ProjectQueueTimerReason = "quiet",
   ): void {
     const projectIds =
       this.projectQueueService.getProjectIdsWithDispatchableItems();
     for (const projectId of projectIds) {
-      this.scheduleProject(projectId, delayMs);
+      this.scheduleProject(projectId, delayMs, reason);
     }
   }
 
   private scheduleProjectIfDispatchable(
     projectId: UrlProjectId,
     delayMs = this.getIdleGraceMs(),
+    reason: ProjectQueueTimerReason = "quiet",
   ): void {
     if (!this.projectQueueService.hasDispatchableItem(projectId)) {
       this.clearProjectTimer(projectId);
       return;
     }
-    this.scheduleProject(projectId, delayMs);
+    this.scheduleProject(projectId, delayMs, reason);
   }
 
-  private scheduleProject(projectId: UrlProjectId, delayMs: number): void {
+  private scheduleProject(
+    projectId: UrlProjectId,
+    delayMs: number,
+    reason: ProjectQueueTimerReason,
+  ): void {
     if (this.inFlight.has(projectId)) return;
     this.clearProjectTimer(projectId);
+    const scheduledAtMs = Date.now();
+    const eligibleAtMs = scheduledAtMs + Math.max(0, Math.round(delayMs));
     const timer = setTimeout(() => {
       this.timers.delete(projectId);
       void this.runProject(projectId);
-    }, delayMs);
+    }, Math.max(0, Math.round(delayMs)));
     timer.unref?.();
-    this.timers.set(projectId, timer);
+    this.timers.set(projectId, {
+      timer,
+      reason,
+      scheduledAtMs,
+      eligibleAtMs,
+    });
   }
 
   private clearProjectTimer(projectId: UrlProjectId): void {
-    const timer = this.timers.get(projectId);
-    if (!timer) return;
-    clearTimeout(timer);
+    const state = this.timers.get(projectId);
+    if (!state) return;
+    clearTimeout(state.timer);
     this.timers.delete(projectId);
   }
 
-  private async runProject(projectId: UrlProjectId): Promise<void> {
-    if (this.inFlight.has(projectId)) return;
+  private scheduleBlockedProjectRetry(projectId: UrlProjectId): void {
     if (!this.projectQueueService.hasDispatchableItem(projectId)) return;
+    const retryMs = Math.max(
+      0,
+      Math.round(
+        this.options.blockedRetryMs ??
+          Math.max(
+            1_000,
+            Math.min(BLOCKED_RETRY_MS, this.getIdleGraceMs() || BLOCKED_RETRY_MS),
+          ),
+      ),
+    );
+    this.scheduleProject(projectId, retryMs, "blocked-retry");
+  }
+
+  private hasRunnableQueuedItem(
+    projectId: UrlProjectId,
+    itemId: string | undefined,
+  ): boolean {
+    if (!itemId) return this.projectQueueService.hasDispatchableItem(projectId);
+    const item = this.projectQueueService
+      .listProject(projectId)
+      .items.find((candidate) => candidate.id === itemId);
+    return item?.status === "queued";
+  }
+
+  private async runProject(
+    projectId: UrlProjectId,
+    options: PromoteNowOptions = {},
+  ): Promise<RunProjectResult> {
+    if (this.inFlight.has(projectId)) {
+      return { promoted: false, reason: "in-flight" };
+    }
+    if (this.projectQueueService.getDispatchState().status === "paused") {
+      this.clearProjectTimer(projectId);
+      return { promoted: false, reason: "paused" };
+    }
+    const projectItems = this.projectQueueService.listProject(projectId).items;
+    if (options.itemId && !projectItems.some((item) => item.id === options.itemId)) {
+      return { promoted: false, reason: "not-found", itemId: options.itemId };
+    }
+    if (!this.hasRunnableQueuedItem(projectId, options.itemId)) {
+      return {
+        promoted: false,
+        reason: projectItems.length === 0 ? "empty" : "not-queued",
+        ...(options.itemId ? { itemId: options.itemId } : {}),
+      };
+    }
 
     this.inFlight.add(projectId);
     let item: ProjectQueueItem | null = null;
+    let retryBlockedProject = false;
 
     try {
-      const idle = await this.getProjectIdleStatus(projectId);
-      if (!idle.idle) return;
-
-      item =
-        await this.projectQueueService.claimNextDispatchableItem(projectId);
-      if (!item) return;
-
-      const stillIdle = await this.getProjectIdleStatus(projectId);
-      if (!stillIdle.idle) {
-        await this.projectQueueService.releaseDispatchingItem(
-          projectId,
-          item.id,
-        );
-        return;
+      if (!options.force) {
+        const idle = await this.getProjectIdleStatus(projectId);
+        if (!idle.idle) {
+          retryBlockedProject = true;
+          return {
+            promoted: false,
+            reason: "blocked",
+            ...(options.itemId ? { itemId: options.itemId } : {}),
+          };
+        }
       }
 
-      await this.dispatchItem(item);
+      item = await this.projectQueueService.claimDispatchableItem(
+        projectId,
+        options.itemId,
+      );
+      if (!item) return { promoted: false, reason: "empty" };
+
+      if (!options.force) {
+        const stillIdle = await this.getProjectIdleStatus(projectId);
+        if (!stillIdle.idle) {
+          await this.projectQueueService.releaseDispatchingItem(
+            projectId,
+            item.id,
+          );
+          retryBlockedProject = true;
+          return { promoted: false, reason: "blocked", itemId: item.id };
+        }
+      }
+
+      const result = await this.dispatchItem(item);
       await this.projectQueueService.completeDispatch(projectId, item.id);
+      const sessionId =
+        item.target.type === "existing-session"
+          ? item.target.sessionId
+          : isQueuedResult(result) || isQueueFullResult(result)
+            ? undefined
+            : result.sessionId;
+      return {
+        promoted: true,
+        reason: "promoted",
+        itemId: item.id,
+        ...(sessionId ? { sessionId } : {}),
+      };
     } catch (error) {
       const message = errorMessage(error);
       getLogger().warn(
@@ -290,12 +494,23 @@ export class ProjectQueueScheduler {
           message,
         );
       }
+      return {
+        promoted: false,
+        reason: "failed",
+        ...(item ? { itemId: item.id } : {}),
+        error: message,
+      };
     } finally {
       this.inFlight.delete(projectId);
+      if (retryBlockedProject) {
+        this.scheduleBlockedProjectRetry(projectId);
+      }
     }
   }
 
-  private async dispatchItem(item: ProjectQueueItem): Promise<void> {
+  private async dispatchItem(
+    item: ProjectQueueItem,
+  ): Promise<ProjectQueueDispatchResult> {
     const permissionMode = item.message.mode ?? item.target.mode;
     const modelSettings = this.toModelSettings(item);
     const result =
@@ -318,6 +533,7 @@ export class ProjectQueueScheduler {
     if (!isQueuedResult(result)) {
       await this.options.onSessionStarted?.({ item, process: result });
     }
+    return result;
   }
 
   private async dispatchExistingSessionItem(

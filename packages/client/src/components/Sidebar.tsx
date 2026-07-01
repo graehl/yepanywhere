@@ -2,7 +2,13 @@ import {
   GIT_STATUS_ENHANCED_CAPABILITY,
   type ProjectQueueItemSummary,
 } from "@yep-anywhere/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { GlobalSessionItem } from "../api/client";
 import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
@@ -600,7 +606,7 @@ export function Sidebar({
   );
   // Keep the queue feed mounted for visible session rows and projects that
   // report queue work. Badge rendering itself uses the shared count selector.
-  useProjectQueues(sidebarQueueProjectIds);
+  const projectQueues = useProjectQueues(sidebarQueueProjectIds);
   const projectQueuedSessionIds = useProjectQueuedSessionIds(sidebarProjectIds);
   const knownProjectQueueItems = useKnownProjectQueueItems();
   const projectNameById = useMemo(
@@ -610,6 +616,44 @@ export function Sidebar({
   const pendingProjectQueueItems = useMemo(
     () => knownProjectQueueItems.filter(isSidebarPendingProjectQueueItem),
     [knownProjectQueueItems],
+  );
+  const handlePendingProjectQueueClick = useCallback(
+    async (
+      event: React.MouseEvent<HTMLAnchorElement>,
+      item: SidebarPendingProjectQueueItem,
+    ) => {
+      const targetPath = `${basePath}/projects?queueItem=${encodeURIComponent(
+        item.id,
+      )}`;
+      const isPlainLeftClick =
+        event.button === 0 &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey;
+      if (!isPlainLeftClick || item.status !== "queued") {
+        onNavigate();
+        return;
+      }
+
+      event.preventDefault();
+      try {
+        const result = await projectQueues.promoteNow(item.projectId, item.id);
+        if (result.promoted && result.sessionId) {
+          navigate(
+            `${basePath}/projects/${encodeURIComponent(
+              item.projectId,
+            )}/sessions/${encodeURIComponent(result.sessionId)}`,
+          );
+        } else {
+          navigate(targetPath);
+        }
+      } catch {
+        navigate(targetPath);
+      }
+      onNavigate();
+    },
+    [basePath, navigate, onNavigate, projectQueues.promoteNow],
   );
 
   // Client-side duplicate-title hiding is deliberately fail-open. It only
@@ -993,7 +1037,9 @@ export function Sidebar({
                             item.id,
                           )}`}
                           className={`sidebar-project-queue-item sidebar-project-queue-item--${item.status}`}
-                          onClick={onNavigate}
+                          onClick={(event) =>
+                            void handlePendingProjectQueueClick(event, item)
+                          }
                           title={itemTitle}
                         >
                           <span className="sidebar-project-queue-item__main">

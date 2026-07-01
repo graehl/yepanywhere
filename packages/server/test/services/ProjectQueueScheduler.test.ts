@@ -184,6 +184,7 @@ describe("ProjectQueueScheduler", () => {
       supervisor,
       eventBus,
       idleGraceMs: 1,
+      blockedRetryMs: 10,
     });
   });
 
@@ -365,6 +366,120 @@ describe("ProjectQueueScheduler", () => {
     });
 
     await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1));
+  });
+
+  it("reports project readiness blockers and keeps retrying blocked backlog", async () => {
+    scheduler.dispose();
+    const process = createProcess(projectId, { state: { type: "in-turn" } });
+    supervisor.processes = [process];
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      idleGraceMs: 1,
+      blockedRetryMs: 10,
+    });
+
+    await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "blocked then retry" },
+      },
+    });
+
+    await wait(25);
+    await expect(scheduler.getProjectStatus(projectId)).resolves.toMatchObject({
+      state: "blocked",
+      idle: false,
+      blockers: ["session-1:in-turn", "session-1:liveness-recently-active"],
+      itemCount: 1,
+      nextItemId: expect.any(String),
+    });
+    expect(supervisor.resumeCalls).toHaveLength(0);
+
+    process.state = { type: "idle" };
+
+    await waitFor(() => expect(supervisor.resumeCalls).toHaveLength(1), 500);
+    expect(supervisor.resumeCalls[0]).toMatchObject({
+      sessionId: "session-1",
+      message: { text: "blocked then retry" },
+    });
+  });
+
+  it("promoteNow skips the quiet timer but preserves idle blockers", async () => {
+    scheduler.dispose();
+    scheduler = new ProjectQueueScheduler({
+      projectQueueService: service,
+      supervisor,
+      eventBus,
+      idleGraceMs: 10_000,
+    });
+
+    const item = await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-1" },
+        message: { text: "start before quiet" },
+      },
+    });
+
+    const promoted = await scheduler.promoteNow(projectId, { itemId: item.id });
+    expect(promoted).toMatchObject({
+      promoted: true,
+      reason: "promoted",
+      itemId: item.id,
+      sessionId: "session-1",
+    });
+    expect(supervisor.resumeCalls).toHaveLength(1);
+    expect(supervisor.resumeCalls[0]).toMatchObject({
+      sessionId: "session-1",
+      message: { text: "start before quiet" },
+    });
+  });
+
+  it("force promote starts a specific item despite project blockers", async () => {
+    const process = createProcess(projectId, { state: { type: "in-turn" } });
+    supervisor.processes = [process];
+    const item = await service.createItem({
+      projectId,
+      projectPath: PROJECT_PATH,
+      request: {
+        target: { type: "existing-session", sessionId: "session-2" },
+        message: { text: "force despite blocker" },
+      },
+    });
+
+    const blocked = await scheduler.promoteNow(projectId, { itemId: item.id });
+    expect(blocked).toMatchObject({
+      promoted: false,
+      reason: "blocked",
+      itemId: item.id,
+      status: {
+        state: "blocked",
+        blockers: ["session-1:in-turn", "session-1:liveness-recently-active"],
+      },
+    });
+    expect(supervisor.resumeCalls).toHaveLength(0);
+
+    const forced = await scheduler.promoteNow(projectId, {
+      itemId: item.id,
+      force: true,
+    });
+
+    expect(forced).toMatchObject({
+      promoted: true,
+      reason: "promoted",
+      itemId: item.id,
+      sessionId: "session-2",
+    });
+    expect(supervisor.resumeCalls).toHaveLength(1);
+    expect(supervisor.resumeCalls[0]).toMatchObject({
+      sessionId: "session-2",
+      message: { text: "force despite blocker" },
+    });
   });
 
   it("waits for recovered patient queues before promoting project work", async () => {

@@ -65,6 +65,18 @@ entries, and known external ownership still block Project Queue absolutely.
 Once those blockers clear, the project must stay clear for the quiet window
 before one Project Queue item may promote.
 
+Queue status must be server-computed. Project Queue responses expose each
+project's scheduler state (`blocked`, `waiting-quiet`, `ready`, `dispatching`,
+`paused`, or `empty`), the configured quiet window, the next eligible timestamp,
+and raw blocker strings. The client may format that state as "waiting for quiet"
+or "blocked by ..." copy, but it must not infer idleness from stale local
+session rows.
+
+Blocked automatic attempts must stay live. If a quiet-window timer fires while
+absolute blockers remain, the scheduler keeps a bounded retry armed while
+backlog remains so decaying liveness or external-ownership evidence cannot leave
+the Project Queue inert forever.
+
 The configurable range is 0-300 seconds, default 30 seconds. A value of 0 means
 "promote as soon as the project idle predicate is true", while still performing
 the immediate post-claim idle re-check. The effective minimum is therefore the
@@ -163,6 +175,14 @@ paused after server restart, copy must distinguish that state from a manual
 pause so users understand why durable backlog is not promoting automatically.
 Destructive item removal should use Delete/Remove wording, not Cancel, because
 it permanently removes the persisted queue item.
+
+Each item on the projects page may offer a Start now control. Start now skips
+only the remaining quiet-window countdown; it still refuses when dispatch is
+paused, another item is already in flight for that project, or the project idle
+predicate reports blockers. When blockers remain visible, the same item may
+offer an explicit Force start control. Force start is an override of the idle
+predicate, not of dispatch pause or per-project in-flight protection, and the UI
+must surface the blockers before making that override available.
 
 When recovered `paused-after-restart` patient session-queue entries exist, the
 projects page should show them above Project Queue items because they run first

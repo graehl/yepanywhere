@@ -24,6 +24,8 @@ import type {
   PendingInputType,
   ProjectQueueItemSummary,
   ProjectQueueListResponse,
+  ProjectQueuePromoteNowRequest,
+  ProjectQueuePromoteNowResponse,
   ProjectQueueResponse,
   PromptSuggestionMode,
   PromptCacheKeepaliveSettings,
@@ -580,6 +582,18 @@ export const api = {
     fetchJSON<ProjectQueueListResponse>("/project-queue/resume", {
       method: "POST",
     }),
+
+  promoteProjectQueueNow: (
+    projectId: string,
+    request: ProjectQueuePromoteNowRequest = {},
+  ) =>
+    fetchJSON<ProjectQueuePromoteNowResponse>(
+      `/project-queue/${encodeURIComponent(projectId)}/promote-now`,
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+    ),
 
   createProjectQueueItem: (
     projectId: string,

@@ -2,6 +2,9 @@ import {
   type CreateProjectQueueItemRequest,
   type ProjectQueueListResponse,
   type ProjectQueueItemSummary,
+  type ProjectQueueProjectStatus,
+  type ProjectQueuePromoteNowRequest,
+  type ProjectQueuePromoteNowResponse,
   type ProjectQueueRecoveredSessionQueueSummary,
   type ProjectQueueResponse,
   type UpdateProjectQueueItemRequest,
@@ -13,6 +16,7 @@ import {
   type ProjectQueueService,
   ProjectQueueValidationError,
 } from "../services/ProjectQueueService.js";
+import type { ProjectQueueScheduler } from "../services/ProjectQueueScheduler.js";
 import type {
   PersistedSessionQueuedMessage,
   SessionQueuePersistenceService,
@@ -31,10 +35,15 @@ interface ProjectQueueTitleDeps extends Partial<ProviderResolutionDeps> {
 export interface ProjectQueueRoutesDeps extends ProjectQueueTitleDeps {
   scanner: ProjectScanner;
   projectQueueService: ProjectQueueService;
+  projectQueueScheduler?: Pick<ProjectQueueScheduler, "getProjectStatus">;
 }
 
 export type GlobalProjectQueueRoutesDeps = ProjectQueueTitleDeps & {
   projectQueueService: ProjectQueueService;
+  projectQueueScheduler?: Pick<
+    ProjectQueueScheduler,
+    "getProjectStatus" | "promoteNow"
+  >;
   sessionMetadataService?: SessionMetadataService;
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
 };
@@ -226,10 +235,29 @@ async function projectQueueResponse(
   deps: ProjectQueueRoutesDeps,
 ): Promise<ProjectQueueResponse> {
   const queue = deps.projectQueueService.listProject(project.id);
+  const projectStatuses = await projectStatusesForIds([project.id], deps);
   return {
     ...queue,
     items: await enrichProjectQueueItems(project, queue.items, deps),
+    projectStatuses,
   };
+}
+
+async function projectStatusesForIds(
+  projectIds: Iterable<string>,
+  deps: Pick<
+    GlobalProjectQueueRoutesDeps | ProjectQueueRoutesDeps,
+    "projectQueueScheduler"
+  >,
+): Promise<Record<string, ProjectQueueProjectStatus> | undefined> {
+  const scheduler = deps.projectQueueScheduler;
+  if (!scheduler) return undefined;
+  const statuses: Record<string, ProjectQueueProjectStatus> = {};
+  for (const projectId of new Set(projectIds)) {
+    if (!isUrlProjectId(projectId)) continue;
+    statuses[projectId] = await scheduler.getProjectStatus(projectId);
+  }
+  return statuses;
 }
 
 async function globalQueueResponse(
@@ -237,10 +265,19 @@ async function globalQueueResponse(
   dispatchState = deps.projectQueueService.getDispatchState(),
 ): Promise<ProjectQueueListResponse> {
   const items = deps.projectQueueService.listAll();
+  const recoveredSessionQueues = listRecoveredSessionQueues(deps);
+  const projectStatuses = await projectStatusesForIds(
+    [
+      ...items.map((item) => item.projectId),
+      ...recoveredSessionQueues.map((item) => item.projectId),
+    ],
+    deps,
+  );
   return {
     items: await enrichGlobalProjectQueueItems(items, deps),
     dispatchState,
-    recoveredSessionQueues: listRecoveredSessionQueues(deps),
+    recoveredSessionQueues,
+    projectStatuses,
   };
 }
 
@@ -268,6 +305,38 @@ export function createGlobalProjectQueueRoutes(
   routes.post("/resume", async (c) => {
     const dispatchState = await deps.projectQueueService.resumeDispatch();
     return c.json(await globalQueueResponse(deps, dispatchState));
+  });
+
+  routes.post("/:projectId/promote-now", async (c) => {
+    const projectId = c.req.param("projectId");
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+    if (!deps.projectQueueScheduler) {
+      return c.json({ error: "Project Queue scheduler unavailable" }, 503);
+    }
+
+    let body: ProjectQueuePromoteNowRequest = {};
+    if (c.req.header("content-type")?.includes("application/json")) {
+      try {
+        body = await c.req.json<ProjectQueuePromoteNowRequest>();
+      } catch {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+    }
+    const options = {
+      ...(typeof body.itemId === "string" && body.itemId.trim()
+        ? { itemId: body.itemId }
+        : {}),
+      ...(body.force === true ? { force: true } : {}),
+    };
+    const promoteResult =
+      await deps.projectQueueScheduler.promoteNow(projectId, options);
+    const response: ProjectQueuePromoteNowResponse = {
+      ...(await globalQueueResponse(deps)),
+      promoteResult,
+    };
+    return c.json(response);
   });
 
   return routes;

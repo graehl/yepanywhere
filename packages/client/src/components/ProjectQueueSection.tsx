@@ -2,6 +2,7 @@ import type {
   ProjectQueueDispatchState,
   ProjectQueueItemSummary,
   ProjectQueueMessage,
+  ProjectQueueProjectStatus,
   ProjectQueueRecoveredSessionQueueSummary,
 } from "@yep-anywhere/shared";
 import { type FormEvent, useEffect, useRef, useState } from "react";
@@ -19,11 +20,18 @@ interface ProjectQueueSectionProps {
   error: Error | null;
   mutatingItemId: string | null;
   mutatingDispatchState: boolean;
+  mutatingPromoteItemId: string | null;
   dispatchState: ProjectQueueDispatchState;
+  projectStatusesByProject?: Record<string, ProjectQueueProjectStatus>;
   highlightedItemId?: string | null;
   basePath?: string;
   onPauseDispatch: () => void;
   onResumeDispatch: () => void;
+  onPromoteNow: (
+    projectId: string,
+    itemId: string,
+    options?: { force?: boolean },
+  ) => void;
   onDeleteItem: (projectId: string, itemId: string) => void;
   onRetryItem: (projectId: string, itemId: string) => void;
   onMoveItemToTop: (projectId: string, itemId: string) => void;
@@ -70,6 +78,103 @@ function statusLabel(
       return t("projectQueueStatusFailed");
     case "queued":
       return t("projectQueueStatusQueued");
+  }
+}
+
+function formatDurationSeconds(ms: number, t: Translate): string {
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
+  return t("projectQueueReadinessSeconds", { seconds });
+}
+
+function shortSessionId(sessionId: string): string {
+  return sessionId.slice(0, 8);
+}
+
+function formatProjectQueueBlocker(blocker: string, t: Translate): string {
+  if (blocker === "worker-queue") return t("projectQueueBlockerWorkerQueue");
+  if (blocker === "project-queue:first-failed") {
+    return t("projectQueueBlockerFirstFailed");
+  }
+  if (blocker.startsWith("recovered-session-queue:")) {
+    const count = blocker.split(":")[1] ?? "?";
+    return t("projectQueueBlockerRecoveredSessionQueue", { count });
+  }
+
+  const [sessionId, reason] = blocker.split(":");
+  const session = shortSessionId(sessionId ?? "");
+  switch (reason) {
+    case "in-turn":
+      return t("projectQueueBlockerInTurn", { session });
+    case "waiting-input":
+      return t("projectQueueBlockerWaitingInput", { session });
+    case "provider-retained":
+      return t("projectQueueBlockerProviderRetained", { session });
+    case "direct-queue":
+      return t("projectQueueBlockerDirectQueue", { session });
+    case "deferred-queue":
+      return t("projectQueueBlockerDeferredQueue", { session });
+    case "pending-input":
+      return t("projectQueueBlockerPendingInput", { session });
+    case "external":
+      return t("projectQueueBlockerExternal", { session });
+    default:
+      if (reason?.startsWith("liveness-")) {
+        return t("projectQueueBlockerLiveness", {
+          session,
+          status: reason.slice("liveness-".length),
+        });
+      }
+      return t("projectQueueBlockerUnknown", { blocker });
+  }
+}
+
+function summarizeBlockers(
+  blockers: readonly string[],
+  t: Translate,
+): string {
+  const formatted = blockers
+    .slice(0, 3)
+    .map((blocker) => formatProjectQueueBlocker(blocker, t));
+  if (blockers.length > formatted.length) {
+    formatted.push(
+      t("projectQueueBlockerMore", {
+        count: blockers.length - formatted.length,
+      }),
+    );
+  }
+  return formatted.join("; ");
+}
+
+function readinessLabel(
+  status: ProjectQueueProjectStatus | undefined,
+  nowMs: number,
+  t: Translate,
+): string | null {
+  if (!status) return null;
+  switch (status.state) {
+    case "paused":
+      return t("projectQueueReadinessPaused");
+    case "blocked":
+      return t("projectQueueReadinessBlocked", {
+        blockers: summarizeBlockers(status.blockers, t),
+      });
+    case "waiting-quiet": {
+      const eligibleAt = status.quietEligibleAt
+        ? new Date(status.quietEligibleAt).getTime()
+        : Number.NaN;
+      const waitMs = Number.isFinite(eligibleAt)
+        ? Math.max(0, eligibleAt - nowMs)
+        : status.quietWindowMs;
+      return t("projectQueueReadinessWaitingQuiet", {
+        duration: formatDurationSeconds(waitMs, t),
+      });
+    }
+    case "ready":
+      return t("projectQueueReadinessReady");
+    case "dispatching":
+      return t("projectQueueReadinessDispatching");
+    case "empty":
+      return t("projectQueueReadinessEmpty");
   }
 }
 
@@ -157,11 +262,14 @@ export function ProjectQueueSection({
   error,
   mutatingItemId,
   mutatingDispatchState,
+  mutatingPromoteItemId,
   dispatchState,
+  projectStatusesByProject = {},
   highlightedItemId,
   basePath = "",
   onPauseDispatch,
   onResumeDispatch,
+  onPromoteNow,
   onDeleteItem,
   onRetryItem,
   onMoveItemToTop,
@@ -170,6 +278,7 @@ export function ProjectQueueSection({
   const { t } = useI18n();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const highlightedItemRef = useRef<HTMLLIElement | null>(null);
   const projectById = new Map(projects.map((project) => [project.id, project]));
   const recoveredGroups = groupRecoveredSessionQueues(recoveredSessionQueues);
@@ -198,6 +307,12 @@ export function ProjectQueueSection({
       behavior: "smooth",
     });
   }, [highlightedItemId, items]);
+
+  useEffect(() => {
+    if (!hasProjectQueueItems) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [hasProjectQueueItems]);
 
   if (!hasContent && !error) return null;
 
@@ -306,10 +421,22 @@ export function ProjectQueueSection({
           {items.map((item) => {
             const project = projectById.get(item.projectId);
             const isMutating = mutatingItemId === item.id;
+            const isPromoting = mutatingPromoteItemId === item.id;
             const isDispatching = item.status === "dispatching";
             const isEditing = editingItemId === item.id;
             const isHighlighted = highlightedItemId === item.id;
             const canEdit = item.status === "queued" || item.status === "failed";
+            const projectStatus = projectStatusesByProject[item.projectId];
+            const readiness = readinessLabel(projectStatus, nowMs, t);
+            const blockerSummary = projectStatus
+              ? summarizeBlockers(projectStatus.blockers, t)
+              : "";
+            const forceStart =
+              item.status === "queued" && projectStatus?.state === "blocked";
+            const canPromote =
+              item.status === "queued" &&
+              projectStatus?.state !== "paused" &&
+              projectStatus?.state !== "dispatching";
             const canMoveToTop =
               canEdit && !isFirstMovableProjectQueueItem(item, items);
             const canSaveEdit =
@@ -399,6 +526,11 @@ export function ProjectQueueSection({
                       {item.lastError}
                     </div>
                   )}
+                  {readiness && (
+                    <div className="project-queue-item__readiness">
+                      {readiness}
+                    </div>
+                  )}
                 </div>
 
                 <div className="project-queue-item__side">
@@ -408,6 +540,35 @@ export function ProjectQueueSection({
                     {statusLabel(item.status, t)}
                   </span>
                   <div className="project-queue-item__actions">
+                    {canPromote && !isEditing && (
+                      <button
+                        type="button"
+                        className={
+                          forceStart
+                            ? "project-queue-item__force-start"
+                            : undefined
+                        }
+                        onClick={() =>
+                          onPromoteNow(item.projectId, item.id, {
+                            force: forceStart,
+                          })
+                        }
+                        disabled={isMutating || isPromoting}
+                        title={
+                          forceStart
+                            ? t("projectQueueForceStartTitle", {
+                                blockers: blockerSummary,
+                              })
+                            : t("projectQueueStartNowTitle")
+                        }
+                      >
+                        {isPromoting
+                          ? t("projectQueuePromoting")
+                          : forceStart
+                            ? t("projectQueueForceStart")
+                            : t("projectQueueStartNow")}
+                      </button>
+                    )}
                     {item.status === "failed" && !isEditing && (
                       <button
                         type="button"

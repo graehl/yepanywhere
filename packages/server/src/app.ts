@@ -787,8 +787,9 @@ export function createApp(options: AppOptions): AppResult {
       })
     : undefined;
 
+  let projectQueueScheduler: ProjectQueueScheduler | undefined;
   if (options.eventBus && options.projectQueueService) {
-    new ProjectQueueScheduler({
+    projectQueueScheduler = new ProjectQueueScheduler({
       eventBus: options.eventBus,
       projectQueueService: options.projectQueueService,
       supervisor,
@@ -1066,6 +1067,7 @@ export function createApp(options: AppOptions): AppResult {
         scanner,
         readerFactory,
         projectQueueService: options.projectQueueService,
+        projectQueueScheduler,
         sessionIndexService: options.sessionIndexService,
         codexSessionsDir: CODEX_SESSIONS_DIR,
         codexReaderFactory,
@@ -1085,6 +1087,7 @@ export function createApp(options: AppOptions): AppResult {
         scanner,
         readerFactory,
         projectQueueService: options.projectQueueService,
+        projectQueueScheduler,
         sessionIndexService: options.sessionIndexService,
         codexSessionsDir: CODEX_SESSIONS_DIR,
         codexReaderFactory,

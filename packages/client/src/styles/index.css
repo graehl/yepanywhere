@@ -1383,6 +1383,14 @@ textarea {
   -webkit-line-clamp: 2;
 }
 
+.project-queue-item__readiness {
+  margin-top: 0.25rem;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .project-queue-item__edit {
   display: flex;
   flex-direction: column;
@@ -1473,6 +1481,17 @@ textarea {
   border-color: var(--text-muted);
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.project-queue-item__actions .project-queue-item__force-start {
+  border-color: color-mix(in srgb, var(--warning-color) 55%, var(--border-input));
+  color: var(--warning-color);
+}
+
+.project-queue-item__actions .project-queue-item__force-start:hover:not(:disabled) {
+  border-color: var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 12%, transparent);
+  color: var(--warning-color);
 }
 
 .project-queue-item__actions button:disabled,

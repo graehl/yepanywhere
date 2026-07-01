@@ -978,7 +978,6 @@ function SessionPageContent({
     loadOlderMessages,
     initialScrollSnapshot,
     updateRouteScrollSnapshot,
-    restoredFromSnapshot,
     reconnectStream,
     promptSuggestion,
     dismissPromptSuggestion,
@@ -5575,13 +5574,11 @@ function SessionPageContent({
                   loadingOlder={loadingOlder}
                   onLoadOlderMessages={loadOlderMessages}
                   clientTailActive={clientTailActive}
-                  progressiveRenderEnabled={
-                    sessionLoadingProgressEnabled && !restoredFromSnapshot
-                  }
+                  progressiveRenderEnabled={sessionLoadingProgressEnabled}
                   progressiveRenderStatusVisible={
                     sessionLoadingProgressDetailsVisible
                   }
-                  progressiveRenderKey={sessionId}
+                  progressiveRenderKey={`${clientSummarySourceKey}:${projectId}:${sessionId}:${location.search}`}
                   initialScrollSnapshot={initialScrollSnapshot}
                   onScrollSnapshotChange={updateRouteScrollSnapshot}
                   getForkSummaryTargetHref={getForkSummaryTargetHref}

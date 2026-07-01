@@ -46,7 +46,7 @@ describe("useSessionMessages cache", () => {
     resetClientSummaryStoreForTests();
   });
 
-  it("reuses retained session snapshots across remounts by default", async () => {
+  it("hydrates retained session snapshots after an initial loading state", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -118,10 +118,8 @@ describe("useSessionMessages cache", () => {
       }),
     );
 
-    expect(second.result.current.loading).toBe(false);
-    expect(second.result.current.messages.map((message) => message.uuid)).toEqual(
-      ["msg-1"],
-    );
+    expect(second.result.current.loading).toBe(true);
+    expect(second.result.current.messages).toEqual([]);
     expect(second.result.current.restoredFromSnapshot).toBe(true);
     await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
     expect(apiMocks.getSession).toHaveBeenNthCalledWith(
@@ -137,7 +135,7 @@ describe("useSessionMessages cache", () => {
     ).toEqual(["msg-1", "msg-2"]);
   });
 
-  it("reuses the warm session cache on remount and fetches only deltas", async () => {
+  it("reuses the warm session cache before a slow delta fetch resolves", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -161,23 +159,12 @@ describe("useSessionMessages cache", () => {
         totalCompactions: 0,
       },
     });
-    apiMocks.getSession.mockResolvedValueOnce({
-      session: {
-        provider: "claude",
-        updatedAt: "2026-05-04T00:01:00.000Z",
-      },
-      messages: [
-        {
-          uuid: "msg-2",
-          type: "assistant",
-          timestamp: "2026-05-04T00:01:00.000Z",
-          message: { role: "assistant", content: "hi" },
-        },
-      ],
-      ownership: { owner: "self" },
-      pendingInputRequest: null,
-      slashCommands: null,
-    });
+    let resolveDelta!: (value: unknown) => void;
+    apiMocks.getSession.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDelta = resolve;
+      }),
+    );
 
     const first = renderHook(() =>
       useSessionMessages({
@@ -206,7 +193,8 @@ describe("useSessionMessages cache", () => {
       }),
     );
 
-    expect(second.result.current.messages).toHaveLength(1);
+    expect(second.result.current.loading).toBe(true);
+    expect(second.result.current.messages).toEqual([]);
 
     await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
     expect(apiMocks.getSession).toHaveBeenNthCalledWith(
@@ -216,6 +204,33 @@ describe("useSessionMessages cache", () => {
       "msg-1",
       { tailCompactions: 2 },
     );
+
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+    expect(second.result.current.messages.map((message) => message.uuid)).toEqual(
+      ["msg-1"],
+    );
+
+    await act(async () => {
+      resolveDelta({
+        session: {
+          provider: "claude",
+          updatedAt: "2026-05-04T00:01:00.000Z",
+        },
+        messages: [
+          {
+            uuid: "msg-2",
+            type: "assistant",
+            timestamp: "2026-05-04T00:01:00.000Z",
+            message: { role: "assistant", content: "hi" },
+          },
+        ],
+        ownership: { owner: "self" },
+        pendingInputRequest: null,
+        slashCommands: null,
+      });
+      await apiMocks.getSession.mock.results[1]?.value;
+    });
+
     await waitFor(() => expect(second.result.current.messages).toHaveLength(2));
     expect(
       second.result.current.messages.map((message) => message.uuid),
@@ -434,7 +449,8 @@ describe("useSessionMessages cache", () => {
       }),
     );
 
-    expect(second.result.current.messages).toHaveLength(1);
+    expect(second.result.current.loading).toBe(true);
+    expect(second.result.current.messages).toEqual([]);
 
     await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
     await waitFor(() =>

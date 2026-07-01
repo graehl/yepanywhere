@@ -7,6 +7,8 @@
  */
 import { generateUUID } from "./uuid";
 
+export const AUTOMATION_BROWSER_PROFILE_ID = "automation";
+
 // ============================================================================
 // UI Preferences (global to browser, not scoped by server)
 // ============================================================================
@@ -91,21 +93,26 @@ export const BROWSER_LOCAL_KEYS = {
   recentProject: "yep-anywhere-recent-project",
 } as const;
 
+function isAutomatedBrowserProfile(): boolean {
+  return typeof navigator !== "undefined" && navigator.webdriver === true;
+}
+
 /**
  * Get or create the browser profile ID.
  * This identifies the browser profile (shared across tabs) for connection tracking.
  * Creates a new UUID if one doesn't exist.
  */
 export function getOrCreateBrowserProfileId(): string {
+  if (isAutomatedBrowserProfile()) {
+    return AUTOMATION_BROWSER_PROFILE_ID;
+  }
+
   let browserProfileId = localStorage.getItem(
     BROWSER_LOCAL_KEYS.browserProfileId,
   );
   if (!browserProfileId) {
     browserProfileId = generateUUID();
-    localStorage.setItem(
-      BROWSER_LOCAL_KEYS.browserProfileId,
-      browserProfileId,
-    );
+    localStorage.setItem(BROWSER_LOCAL_KEYS.browserProfileId, browserProfileId);
   }
   return browserProfileId;
 }

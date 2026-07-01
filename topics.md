@@ -89,3 +89,5 @@
   output secrets.
 - bash-result-contract - Provider-normalized Bash result fields for output,
   return code, timing, and empty-output rendering.
+- browser-profile-devices - Browser profile identity, automated browser
+  grouping, and stale non-push profile retention.

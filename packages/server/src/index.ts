@@ -373,6 +373,8 @@ const sessionIndexService = new SessionIndexService({
 const pushService = new PushService({ dataDir: config.dataDir });
 const browserProfileService = new BrowserProfileService({
   dataDir: config.dataDir,
+  getProtectedBrowserProfileIds: () =>
+    Object.keys(pushService.getSubscriptions()),
 });
 const recentsService = new RecentsService({ dataDir: config.dataDir });
 const authService = new AuthService({

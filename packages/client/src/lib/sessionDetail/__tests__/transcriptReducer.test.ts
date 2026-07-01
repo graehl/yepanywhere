@@ -56,6 +56,19 @@ function assistantMessage(
   };
 }
 
+function durableRecapMessage(uuid: string, timestamp: string): Message {
+  return {
+    type: "assistant",
+    uuid,
+    timestamp,
+    yaRecapSource: "provider",
+    message: {
+      role: "assistant",
+      content: "Session recap",
+    },
+  };
+}
+
 function comparableMessages(messages: readonly Message[]) {
   return messages.map((message) => ({
     uuid: message.uuid,
@@ -181,6 +194,69 @@ describe("transcriptReducer", () => {
     expect(state.messages[0]?.uuid).toBe("jsonl-user-1");
   });
 
+  it("replaces duplicate assistant stream rows with durable rows", () => {
+    const state = reduceSessionDetailActions(
+      [
+        {
+          type: "applyStreamMessage",
+          message: assistantMessage(
+            "sdk-assistant-1",
+            "The task is complete.",
+            "2026-07-01T12:00:00.000Z",
+          ),
+        },
+        {
+          type: "applyCatchupMessages",
+          messages: [
+            assistantMessage(
+              "jsonl-assistant-1",
+              "The task is complete.",
+              "2026-07-01T12:00:00.900Z",
+            ),
+          ],
+        },
+      ],
+      {
+        ...createInitialSessionDetailState(),
+        session: sessionMetadata("codex"),
+      },
+    );
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]?._source).toBe("jsonl");
+    expect(state.messages[0]?.uuid).toBe("jsonl-assistant-1");
+  });
+
+  it("drops transient streaming placeholders when streaming is disabled", () => {
+    const streamingMessage: Message = {
+      ...assistantMessage(
+        "assistant-streaming",
+        "partial",
+        "2026-07-01T12:00:00.000Z",
+      ),
+      _isStreaming: true,
+    };
+    const state = reduceSessionDetailActions(
+      [
+        {
+          type: "applyStreamMessage",
+          message: streamingMessage,
+        },
+        {
+          type: "applyStreamMessage",
+          message: streamingMessage,
+          streamingEnabled: false,
+        },
+      ],
+      {
+        ...createInitialSessionDetailState(),
+        session: sessionMetadata(),
+      },
+    );
+
+    expect(state.messages).toEqual([]);
+  });
+
   it("keeps distinct same-text user turns", () => {
     const state = reduceSessionDetailState(createInitialSessionDetailState(), {
       type: "loadPersistedTranscript",
@@ -224,6 +300,27 @@ describe("transcriptReducer", () => {
 
     expect(state.messages).toHaveLength(1);
     expect(state.messages[0]?.uuid).toBe("jsonl-user-1");
+  });
+
+  it("skips durable recap overlays when computing persisted cursors", () => {
+    const state = reduceSessionDetailState(createInitialSessionDetailState(), {
+      type: "loadPersistedTranscript",
+      session: sessionMetadata(),
+      messages: [
+        userMessage("user-1", "before recap", "2026-07-01T12:00:00.000Z"),
+        assistantMessage(
+          "assistant-1",
+          "before recap reply",
+          "2026-07-01T12:00:01.000Z",
+        ),
+        durableRecapMessage("recap-1", "2026-07-01T12:05:00.000Z"),
+      ],
+    });
+
+    expect(state.lastMessageId).toBe("assistant-1");
+    expect(state.maxPersistedTimestampMs).toBe(
+      Date.parse("2026-07-01T12:00:01.000Z"),
+    );
   });
 
   it("prepends older persisted messages and updates pagination", () => {
@@ -275,5 +372,80 @@ describe("transcriptReducer", () => {
     );
     expect(state.pagination?.hasOlderMessages).toBe(false);
     expect(state.lastMessageId).toBe("assistant-2");
+  });
+
+  it("preserves subagent content as broad provenance shape", () => {
+    const agentMessage = assistantMessage(
+      "agent-assistant-1",
+      "Subagent summary",
+      "2026-07-01T12:00:02.000Z",
+    );
+    const state = reduceSessionDetailState(createInitialSessionDetailState(), {
+      type: "loadPersistedTranscript",
+      session: sessionMetadata(),
+      messages: [
+        userMessage("user-1", "delegate", "2026-07-01T12:00:00.000Z"),
+      ],
+      agentContent: {
+        "agent-a": {
+          messages: [agentMessage],
+          status: "completed",
+          contextUsage: {
+            inputTokens: 1234,
+            percentage: 12,
+          },
+        },
+      },
+      toolUseToAgentEntries: [["toolu_1", "agent-a"]],
+    });
+
+    expect(state.agentContent["agent-a"]).toEqual({
+      messages: [agentMessage],
+      status: "completed",
+      contextUsage: {
+        inputTokens: 1234,
+        percentage: 12,
+      },
+    });
+    expect(state.toolUseToAgentEntries).toEqual([["toolu_1", "agent-a"]]);
+  });
+
+  it("keeps retained scroll snapshots patchable outside message changes", () => {
+    const initialSnapshot = {
+      atBottom: false,
+      scrollTop: 240,
+      scrollHeight: 1000,
+      clientHeight: 600,
+      anchor: {
+        id: "assistant-1",
+        topOffset: 42,
+      },
+      updatedAtMs: 1782910000000,
+    };
+    const patchedSnapshot = {
+      ...initialSnapshot,
+      atBottom: true,
+      scrollTop: 400,
+      updatedAtMs: 1782910001000,
+    };
+    const loaded = reduceSessionDetailState(createInitialSessionDetailState(), {
+      type: "loadPersistedTranscript",
+      session: sessionMetadata(),
+      messages: [
+        assistantMessage(
+          "assistant-1",
+          "loaded",
+          "2026-07-01T12:00:00.000Z",
+        ),
+      ],
+      scrollSnapshot: initialSnapshot,
+    });
+    const patched = reduceSessionDetailState(loaded, {
+      type: "patchScrollSnapshot",
+      scrollSnapshot: patchedSnapshot,
+    });
+
+    expect(patched.messages).toBe(loaded.messages);
+    expect(patched.scrollSnapshot).toEqual(patchedSnapshot);
   });
 });

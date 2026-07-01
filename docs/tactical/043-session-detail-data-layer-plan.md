@@ -2,10 +2,14 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 2 started. The pure reducer fixture harness now covers the basic
-persisted, streamed, catch-up, replay, duplicate-prompt, pagination,
+Status: Slice 2 continued. The pure reducer fixture harness now covers the
+basic persisted, streamed, catch-up, replay, duplicate-prompt,
+duplicate-assistant, pagination, retained-scroll-snapshot, recap-cursor,
 Codex-shaped provider parity, final-message markdown augment paths, and Codex
 augment live-id to durable-id transfer without changing runtime hook ownership.
+Subagent work is intentionally scoped to broad shape/provenance coverage for
+now; exact live-vs-durable subagent parity is deferred until the provider
+persistence model is better understood.
 
 This is the tactical plan for the vision in
 [`topics/session-detail-data-layer.md`](../../topics/session-detail-data-layer.md).
@@ -95,7 +99,7 @@ Initial fixtures should cover:
 - duplicate assistant message suppression;
 - server-rendered augment before target message;
 - server-rendered augment after target message;
-- subagent streamed live vs lazy-loaded/reloaded subagent content;
+- subagent agent references, child-content availability, and provenance shape;
 - provider parent/tree path projection during stream vs reload;
 - compaction boundary plus loaded tail;
 - pagination prepend;
@@ -222,26 +226,47 @@ Status 2026-07-01:
   no-op updates.
 - Added Codex final-markdown augment transfer when a live SDK message id is
   replaced by an equivalent durable JSONL id during persisted catch-up.
+- Added broader core transcript assertions for duplicate assistant catch-up,
+  disabled-streaming placeholder removal, durable recap cursor exclusion,
+  retained scroll snapshot patching, and subagent shape/provenance pass-through.
 - Remaining augment work is still substantial: block-level streaming augments,
   file/diff/tool augment identity, and broader canonical block identity are not
   solved by the message-id transfer.
 
-## Slice 3: Subagent And Tree Parity
+## Slice 3: Subagent Shape And Tree Projection
 
-Goal: normalize parent/tree and subagent transcript shapes before rendering.
+Goal: make provider parent/tree links and subagent availability inspectable
+without promising exact live/reload equivalence for every provider yet.
+
+Current stance:
+
+- Treat subagents as broad shape/provenance coverage until fixtures prove a
+  provider can reliably supply equivalent live and durable child transcripts.
+- Preserve agent references, tool-use-to-agent mappings, availability state,
+  and child-content provenance (`liveOnly`, `durableOnly`, `merged`,
+  `activityOnly`, or `missingDurable` style states) before attempting a unified
+  child transcript normal form.
+- Do not assert exact render parity for Codex or newer Claude sidechain
+  subagents as an early reducer invariant. Codex live activity and durable
+  child sessions are discovered through different provider surfaces, and newer
+  Claude sidechain messages no longer carry the legacy `parent_tool_use_id`
+  link in the child transcript itself.
 
 Work:
 
 - Model provider parent/tree links in canonical state.
-- Normalize subagent content loaded from durable child transcripts and live
-  subagent stream events through the same reducer path.
+- Represent subagent agent references and content availability through a
+  reducer-owned provenance model.
+- Keep live stream content, durable child transcript content, and
+  provider-specific activity-only signals distinguishable.
 - Keep `AgentContentProvider` or a compatibility adapter until renderers can
   read from selectors directly.
 
 Tests:
 
-- live subagent stream and lazy-loaded subagent transcript produce equivalent
-  nested transcript state;
+- subagent task rows preserve the available agent reference and mapping shape;
+- live-only, durable-only, merged, missing-durable, and activity-only subagent
+  cases remain distinguishable in canonical state;
 - provider parent/tree path selection produces stable render order during live
   stream and after reload;
 - child transcript updates do not reorder unrelated parent rows;
@@ -250,8 +275,9 @@ Tests:
 
 Exit criteria:
 
-- A side-by-side comparison of live-derived and durable-derived canonical state
-  for a subagent fixture is snapshot-equivalent.
+- A side-by-side comparison can explain whether a subagent fixture is live-only,
+  durable-only, merged, activity-only, or missing durable content without
+  conflating those states or producing duplicate parent rows.
 
 ## Slice 4: Session Detail Store Shell
 

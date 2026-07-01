@@ -60,7 +60,10 @@ provider stream / REST load / replay / catch-up / subagent load
 The data layer should canonicalize provider input before UI rendering. A live
 SDK stream sequence and the equivalent persisted transcript read should produce
 the same canonical session detail shape, modulo explicitly modeled transient
-state such as an in-flight token stream.
+state such as an in-flight token stream. Subagents are the early exception to
+that parity bar: provider persistence and live activity surfaces differ enough
+that the first goal is explicit provenance and broad shape correctness, not
+claiming exact live/reload equivalence before fixtures prove it.
 
 ## Boundaries
 
@@ -169,7 +172,8 @@ The data layer should make the following substantially easier:
 - snapshot tests for provider stream vs persisted transcript parity;
 - regression tests for duplicate user prompts and duplicate assistant rows;
 - deterministic augment attachment tests;
-- stable subagent rendering across live, lazy-loaded, and reloaded paths;
+- explicit subagent provenance across live, lazy-loaded, and reloaded paths, so
+  later provider-specific parity work starts from inspectable data;
 - side-by-side rendering of two session detail consumers;
 - a cleaner `/btw` model as a related session/detail consumer instead of a
   polling UI side-channel;

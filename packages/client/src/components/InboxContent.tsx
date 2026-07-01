@@ -83,6 +83,16 @@ interface InboxSectionProps {
   publicShareControlsVisible: boolean;
 }
 
+function getInboxRowActivity(
+  item: InboxItem,
+  tierKey: string,
+): InboxItem["activity"] {
+  if (tierKey === "active" && item.activityInferredFromInboxTier) {
+    return undefined;
+  }
+  return item.activity;
+}
+
 function InboxSection({
   config,
   items,
@@ -109,6 +119,7 @@ function InboxSection({
         <ul className="sessions-list">
           {items.map((item) => {
             const badge = config.getBadge?.(item);
+            const activity = getInboxRowActivity(item, config.key);
             return (
               <SessionListItem
                 key={item.sessionId}
@@ -122,13 +133,14 @@ function InboxSection({
                 projectName={item.projectName}
                 updatedAt={item.updatedAt}
                 hasUnread={item.hasUnread}
-                activity={config.key === "active" ? "in-turn" : item.activity}
+                activity={activity}
                 pendingInputType={item.pendingInputType}
                 mode="card"
                 showProjectName={!hideProjectName}
                 showTimestamp
                 showContextUsage={false}
                 showStatusBadge={false}
+                showActivityIndicator={config.key === "active"}
                 customBadge={
                   badge ? { ...badge, label: t(badge.label as never) } : null
                 }

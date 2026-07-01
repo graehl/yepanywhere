@@ -956,6 +956,10 @@ describe("clientSummaryState", () => {
       activity: "in-turn",
       activityInferredFromInboxTier: true,
     });
+    expect(selectInboxResponse(state).active[0]).toMatchObject({
+      activity: "in-turn",
+      activityInferredFromInboxTier: true,
+    });
 
     state = applyGlobalSessionsCollectionSnapshot(
       state,
@@ -968,6 +972,10 @@ describe("clientSummaryState", () => {
     );
 
     expect(selectSessionCollectionRecord(state, "queued-active")).toMatchObject({
+      activity: "in-turn",
+      activityInferredFromInboxTier: false,
+    });
+    expect(selectInboxResponse(state).active[0]).toMatchObject({
       activity: "in-turn",
       activityInferredFromInboxTier: false,
     });

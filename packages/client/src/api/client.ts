@@ -87,6 +87,7 @@ export interface InboxItem {
   customTitle?: string;
   pendingInputType?: PendingInputType;
   activity?: AgentActivity;
+  activityInferredFromInboxTier?: boolean;
   hasUnread?: boolean;
 }
 

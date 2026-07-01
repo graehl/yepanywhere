@@ -65,6 +65,7 @@ interface SessionListItemProps {
   showTimestamp?: boolean;
   showContextUsage?: boolean;
   showStatusBadge?: boolean;
+  showActivityIndicator?: boolean;
 
   // Custom badge (for Inbox)
   customBadge?: { label: string; className: string } | null;
@@ -161,6 +162,7 @@ export function SessionListItem({
   showTimestamp = true,
   showContextUsage = true,
   showStatusBadge = true,
+  showActivityIndicator = false,
   // Custom badge
   customBadge,
   // Actions
@@ -244,6 +246,8 @@ export function SessionListItem({
     !localTitle &&
     !title &&
     (messageCount === 0 || (messageCount == null && activity === "in-turn"));
+  const showCardThinkingIndicator =
+    isNewSession || (showActivityIndicator && activity === "in-turn");
   const displayTitle =
     localTitle ?? title ?? (isNewSession ? "New session" : "Untitled session");
   const hasEffectiveCustomTitle = !!localTitle || hasCustomTitle;
@@ -766,7 +770,7 @@ export function SessionListItem({
             <>
               <strong className="session-list-item__title">
                 {isStarred && <StarIcon filled size={12} />}
-                {isNewSession && <ThinkingIndicator />}
+                {showCardThinkingIndicator && <ThinkingIndicator />}
                 {isBtwAsideSession && (
                   // biome-ignore lint/a11y/noStaticElementInteractions: clickable variant has link role and keyboard handling; inert variant only shows the badge
                   <span

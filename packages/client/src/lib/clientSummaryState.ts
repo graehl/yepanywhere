@@ -1780,6 +1780,7 @@ function sessionRecordToInboxItem(
     customTitle: record.customTitle,
     pendingInputType: record.pendingInputType,
     activity: record.activity,
+    activityInferredFromInboxTier: record.activityInferredFromInboxTier,
     hasUnread: record.hasUnread,
   };
 }

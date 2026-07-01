@@ -235,8 +235,9 @@ Performance and memory checks:
 
 ## Follow-On: DOM Linger
 
-[`session-dom-linger-speedup.md`](session-dom-linger-speedup.md) proposes a
-separate 60-second hidden-DOM linger for the most recently left session route.
+[`session-dom-linger-speedup.md`](session-dom-linger-speedup.md) records the
+separate 60-second hidden-DOM linger for the most recently left session route;
+the first one-session underlay slice landed on 2026-07-01.
 That is intentionally not the baseline route-retention mechanism: it trades a
 small bounded amount of continued mounted-route work for even faster return
 when the user immediately bounces away and back.

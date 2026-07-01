@@ -736,11 +736,31 @@ function createSessionRetitleSubmittedTurnText(
     .join("\n");
 }
 
-export function SessionPage() {
-  const { projectId, sessionId } = useParams<{
+export interface SessionPageRouteLocation {
+  pathname: string;
+  search: string;
+  state: unknown;
+}
+
+export interface SessionPageProps {
+  projectId?: string;
+  sessionId?: string;
+  routeLocation?: SessionPageRouteLocation;
+  isDomLingerParked?: boolean;
+}
+
+export function SessionPage({
+  projectId: projectIdProp,
+  sessionId: sessionIdProp,
+  routeLocation,
+  isDomLingerParked = false,
+}: SessionPageProps = {}) {
+  const params = useParams<{
     projectId: string;
     sessionId: string;
   }>();
+  const projectId = projectIdProp ?? params.projectId;
+  const sessionId = sessionIdProp ?? params.sessionId;
 
   // Guard against missing params - this shouldn't happen with proper routing
   if (!projectId || !sessionId) {
@@ -756,6 +776,8 @@ export function SessionPage() {
           key={sessionId}
           projectId={projectId}
           sessionId={sessionId}
+          routeLocation={routeLocation}
+          isDomLingerParked={isDomLingerParked}
         />
       </RenderModeProvider>
     </StreamingMarkdownProvider>
@@ -796,9 +818,13 @@ const SESSION_LOADING_PROGRESS_DETAILS_DELAY_MS = 1500;
 function SessionPageContent({
   projectId,
   sessionId,
+  routeLocation,
+  isDomLingerParked,
 }: {
   projectId: string;
   sessionId: string;
+  routeLocation?: SessionPageRouteLocation;
+  isDomLingerParked: boolean;
 }) {
   const { t } = useI18n();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
@@ -822,7 +848,8 @@ function SessionPageContent({
   const projectQueueProjectIds = useMemo(() => [projectId], [projectId]);
   const projectQueues = useProjectQueues(projectQueueProjectIds);
   const navigate = useNavigate();
-  const location = useLocation();
+  const currentLocation = useLocation();
+  const location = routeLocation ?? currentLocation;
   // Get initial status and title from navigation state (passed by NewSessionPage)
   // This allows SSE to connect immediately and show optimistic title without waiting for getSession
   // Also get model/provider so ProviderBadge can render immediately
@@ -1992,7 +2019,7 @@ function SessionPageContent({
   );
 
   useEffect(() => {
-    if (!showProjectReclassifyMenu) return;
+    if (isDomLingerParked || !showProjectReclassifyMenu) return;
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
@@ -2018,7 +2045,7 @@ function SessionPageContent({
       document.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [showProjectReclassifyMenu]);
+  }, [isDomLingerParked, showProjectReclassifyMenu]);
 
   const handleProjectBreadcrumbContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLAnchorElement>) => {
@@ -2093,6 +2120,9 @@ function SessionPageContent({
   // Navigate to new session ID when temp ID is replaced with real SDK session ID
   // This ensures the URL stays in sync with the actual session
   useEffect(() => {
+    if (isDomLingerParked) {
+      return;
+    }
     if (actualSessionId && actualSessionId !== sessionId) {
       // Use replace to avoid creating a history entry for the temp ID
       navigate(
@@ -2110,11 +2140,15 @@ function SessionPageContent({
     navigate,
     location.state,
     basePath,
+    isDomLingerParked,
   ]);
 
   // Navigate to the session reader canonical project when the API followed
   // a provider-native redirect from a stale project-scoped link.
   useEffect(() => {
+    if (isDomLingerParked) {
+      return;
+    }
     const canonicalProjectId = session?.projectId;
     if (!canonicalProjectId || canonicalProjectId === projectId) {
       return;
@@ -2134,6 +2168,7 @@ function SessionPageContent({
     location.state,
     navigate,
     projectId,
+    isDomLingerParked,
     session?.projectId,
   ]);
 
@@ -2295,7 +2330,7 @@ function SessionPageContent({
     updatedAt: sessionUpdatedAt,
     lastSeenAt: session?.lastSeenAt,
     hasUnread: session?.hasUnread,
-    enabled: status.owner !== "external",
+    enabled: status.owner !== "external" && !isDomLingerParked,
   });
 
   const collectComposerAttachmentsForSubmission = useCallback(
@@ -4359,7 +4394,7 @@ function SessionPageContent({
   }, [pendingElsewhereDismissKey]);
 
   // Update browser tab title
-  useDocumentTitle(project?.name, displayTitle);
+  useDocumentTitle(project?.name, displayTitle, !isDomLingerParked);
 
   const setRetitleState = (state: GeneratedRetitleState | null) => {
     generatedRetitleRef.current = state;
@@ -4578,7 +4613,7 @@ function SessionPageContent({
   };
 
   useEffect(() => {
-    if (!isEditingTitle) return;
+    if (isDomLingerParked || !isEditingTitle) return;
     const handleWindowKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -4586,7 +4621,7 @@ function SessionPageContent({
     };
     window.addEventListener("keydown", handleWindowKeyDown);
     return () => window.removeEventListener("keydown", handleWindowKeyDown);
-  }, [isEditingTitle, handleCancelEditingTitle]);
+  }, [isDomLingerParked, isEditingTitle, handleCancelEditingTitle]);
 
   const handleToggleArchive = async () => {
     const newArchived = !isArchived;
@@ -5560,6 +5595,7 @@ function SessionPageContent({
                   onTranscriptPositionTimestampChange={
                     setTranscriptPositionTimestampMs
                   }
+                  interactionDisabled={isDomLingerParked}
                 />
               </AgentContentProvider>
             </SessionMetadataProvider>

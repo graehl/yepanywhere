@@ -13,7 +13,7 @@ import { initializeOutputAppearance } from "./hooks/useOutputAppearance";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
 import { registerServiceWorkerAtStartup } from "./lib/registerServiceWorker";
-import { NavigationLayout } from "./layouts";
+import { NavigationLayout, SessionDomLingerRouteMarker } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
 import { EmulatorPage } from "./pages/EmulatorPage";
@@ -158,7 +158,21 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
               {/* Login page (no layout wrapper) */}
               <Route path="/login" element={<LoginPage />} />
               {/* IMPORTANT: Keep routes in sync with remote-main.tsx — adding a route here? Add it there too! */}
-              <Route element={<NavigationLayout />}>
+              <Route
+                element={
+                  <NavigationLayout
+                    sessionElement={(route, { parked }) => (
+                      <SessionPage
+                        key={route.key}
+                        projectId={route.projectId}
+                        sessionId={route.sessionId}
+                        routeLocation={route.location}
+                        isDomLingerParked={parked}
+                      />
+                    )}
+                  />
+                }
+              >
                 <Route path="/projects" element={<ProjectsPage />} />
                 <Route path="/sessions" element={<GlobalSessionsPage />} />
                 <Route path="/agents" element={<AgentsPage />} />
@@ -176,7 +190,7 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
                 <Route path="/new-session" element={<NewSessionPage />} />
                 <Route
                   path="/projects/:projectId/sessions/:sessionId"
-                  element={<SessionPage />}
+                  element={<SessionDomLingerRouteMarker />}
                 />
               </Route>
               {/* File page has its own layout (no sidebar) */}

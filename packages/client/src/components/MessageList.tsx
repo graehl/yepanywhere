@@ -1228,6 +1228,7 @@ interface Props {
   progressiveRenderKey?: string;
   initialScrollSnapshot?: SessionRouteScrollSnapshot | null;
   onScrollSnapshotChange?: (snapshot: SessionRouteScrollSnapshot) => void;
+  interactionDisabled?: boolean;
   onTranscriptPositionTimestampChange?: (timestampMs: number | null) => void;
   getForkSummaryTargetHref?: (targetSessionId: string) => string;
   onCancelForkSummary?: (objectId: string) => void;
@@ -1418,6 +1419,7 @@ export const MessageList = memo(function MessageList({
   progressiveRenderKey,
   initialScrollSnapshot = null,
   onScrollSnapshotChange,
+  interactionDisabled = false,
   onTranscriptPositionTimestampChange,
   getForkSummaryTargetHref,
   onCancelForkSummary,
@@ -2231,6 +2233,9 @@ export const MessageList = memo(function MessageList({
     [onTranscriptPositionTimestampChange],
   );
   useEffect(() => {
+    if (interactionDisabled) {
+      return;
+    }
     const handleCopy = (event: ClipboardEvent) => {
       const root = containerRef.current;
       if (!root) {
@@ -2242,10 +2247,10 @@ export const MessageList = memo(function MessageList({
 
     document.addEventListener("copy", handleCopy);
     return () => document.removeEventListener("copy", handleCopy);
-  }, []);
+  }, [interactionDisabled]);
 
   useEffect(() => {
-    if (!onQuoteSelection) {
+    if (interactionDisabled || !onQuoteSelection) {
       setFloatingQuoteButton(null);
       return;
     }
@@ -2336,10 +2341,10 @@ export const MessageList = memo(function MessageList({
       window.removeEventListener("resize", updateFromSelectionRange);
       window.removeEventListener("scroll", updateFromSelectionRange, true);
     };
-  }, [onQuoteSelection]);
+  }, [interactionDisabled, onQuoteSelection]);
 
   useEffect(() => {
-    if (!onQuoteSelection) {
+    if (interactionDisabled || !onQuoteSelection) {
       return;
     }
     const handleSelectionTyping = (event: KeyboardEvent) => {
@@ -2364,7 +2369,7 @@ export const MessageList = memo(function MessageList({
     window.addEventListener("keydown", handleSelectionTyping, true);
     return () =>
       window.removeEventListener("keydown", handleSelectionTyping, true);
-  }, [applyQuoteFromSelection, onQuoteSelection]);
+  }, [applyQuoteFromSelection, interactionDisabled, onQuoteSelection]);
   const latestVisibleTimestampMs = useMemo(() => {
     let latest: number | null = null;
     const includeTimestamp = (timestampMs: number | null) => {
@@ -3062,6 +3067,10 @@ export const MessageList = memo(function MessageList({
   ]);
 
   useEffect(() => {
+    if (interactionDisabled) {
+      stopUserTurnSearchArrowRepeat();
+      return;
+    }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) {
         return;
@@ -3156,6 +3165,7 @@ export const MessageList = memo(function MessageList({
     startUserTurnSearchArrowRepeat,
     stopUserTurnSearchArrowRepeat,
     toggleThinkingItemsVisible,
+    interactionDisabled,
     userTurnSearch.active,
     userTurnSearch.scope,
   ]);
@@ -3214,6 +3224,9 @@ export const MessageList = memo(function MessageList({
 
   // Attach scroll listener to parent container
   useEffect(() => {
+    if (interactionDisabled) {
+      return;
+    }
     const container = containerRef.current?.parentElement;
     if (!container) return;
 
@@ -3324,7 +3337,7 @@ export const MessageList = memo(function MessageList({
       container.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [stopFollowingForUserScroll]);
+  }, [interactionDisabled, stopFollowingForUserScroll]);
 
   // Use ResizeObserver to detect content height changes (handles async markdown rendering)
   useEffect(() => {

@@ -19,8 +19,13 @@ function truncate(str: string, maxLength: number): string {
 export function useDocumentTitle(
   projectName?: string | null,
   sessionName?: string | null,
+  enabled = true,
 ) {
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     let title = BASE_TITLE;
 
     if (projectName) {
@@ -43,5 +48,5 @@ export function useDocumentTitle(
     return () => {
       document.title = BASE_TITLE;
     };
-  }, [projectName, sessionName]);
+  }, [enabled, projectName, sessionName]);
 }

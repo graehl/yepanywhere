@@ -32,7 +32,7 @@ import { initializeOutputAppearance } from "./hooks/useOutputAppearance";
 import { initializeTabSize } from "./hooks/useTabSize";
 import { initializeTheme } from "./hooks/useTheme";
 import { I18nProvider } from "./i18n";
-import { NavigationLayout } from "./layouts";
+import { NavigationLayout, SessionDomLingerRouteMarker } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
 import { DirectLoginPage } from "./pages/DirectLoginPage";
@@ -83,7 +83,21 @@ const APP_ROUTES = (
     <Route index element={<Navigate to="projects" replace />} />
 
     {/* IMPORTANT: Keep routes in sync with main.tsx — adding a route here? Add it there too! */}
-    <Route element={<NavigationLayout />}>
+    <Route
+      element={
+        <NavigationLayout
+          sessionElement={(route, { parked }) => (
+            <SessionPage
+              key={route.key}
+              projectId={route.projectId}
+              sessionId={route.sessionId}
+              routeLocation={route.location}
+              isDomLingerParked={parked}
+            />
+          )}
+        />
+      }
+    >
       <Route path="projects" element={<ProjectsPage />} />
       <Route path="projects/:projectId" element={<ProjectRedirect />} />
       <Route path="sessions" element={<GlobalSessionsPage />} />
@@ -97,7 +111,7 @@ const APP_ROUTES = (
       <Route path="new-session" element={<NewSessionPage />} />
       <Route
         path="projects/:projectId/sessions/:sessionId"
-        element={<SessionPage />}
+        element={<SessionDomLingerRouteMarker />}
       />
     </Route>
 

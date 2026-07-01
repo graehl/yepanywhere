@@ -2,9 +2,9 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 1 started. The pure reducer fixture harness now covers the
-basic persisted, streamed, catch-up, replay, duplicate-prompt, and pagination
-paths without changing runtime hook ownership.
+Status: Slice 1 expanded. The pure reducer fixture harness now covers the
+basic persisted, streamed, catch-up, replay, duplicate-prompt, pagination, and
+Codex-shaped provider parity paths without changing runtime hook ownership.
 
 This is the tactical plan for the vision in
 [`topics/session-detail-data-layer.md`](../../topics/session-detail-data-layer.md).
@@ -171,6 +171,14 @@ Status 2026-07-01:
 - Runtime ownership remains unchanged: `useSessionMessages`, stream
   subscriptions, route snapshots, and `MessageList` still own their current
   behavior while the reducer grows test coverage.
+- Added `actionAdapters.ts` so tests can feed REST-load, catch-up,
+  older-message, and stream-message inputs into the reducer through named
+  boundaries that match the eventual hook adapter.
+- Added Codex-shaped normalized fixtures for stream plus persisted catch-up
+  parity, buffered replay suppression, attachment opening-turn reconciliation,
+  and repeated tool calls with distinct call ids. Fixture text is neutral;
+  provider-like ids, timestamps, attachment shape, replay flags, and tool blocks
+  are preserved because those fields drive the reducer behavior.
 
 ## Slice 2: Augment Attachment Model
 

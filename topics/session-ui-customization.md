@@ -19,17 +19,19 @@ a reset-to-defaults action.
 
 The `sessionStatus` control defaults **off on mobile** (`≤600px`,
 `MOBILE_SESSION_TOOLBAR_VISIBILITY_DEFAULTS`) because the inline status row
-crowds the cramped toolbar. Its description names only liveness/last-activity
-chips, so its effect on the scroll-position "at N ago" anchor is not obvious.
-The last-activity freshness and position age are nonetheless surfaced on
-narrow screens by a fit-driven float that is *decoupled* from this toggle —
-see [composer-bottom-bar-overflow.md](composer-bottom-bar-overflow.md)
-§ Freshness / position-age presentation. The toggle still governs the inline
-row and the liveness chip.
+crowds the cramped toolbar. Its description names the inline liveness/status
+chips and the decoupled age float so the scroll-position "at N ago" anchor is
+discoverable from the Toolbar pane.
+The last-activity freshness and position age are nonetheless surfaced by a
+fit-driven float whenever the inline row is unavailable; this float is
+*decoupled* from this toggle — see
+[composer-bottom-bar-overflow.md](composer-bottom-bar-overflow.md)
+§ Freshness / position-age presentation. The toggle still governs the inline row
+and the liveness chip.
 Visibility state is held by `useSessionToolbarVisibility` and currently covers
-`modeSelector`, `attachments`, `slashMenu`, `thinkingToggle`, `renderMode`,
-`nudge`, `microphone`, `sessionStatus`, `shortcutsHelp`, `contextUsage`, `btw`,
-and `queueControls`. Toggling a control updates the
+`modeSelector`, `steerNow`, `attachments`, `slashMenu`, `thinkingToggle`,
+`renderMode`, `microphone`, `waveform`, `shortcutsHelp`, `contextUsage`, `btw`,
+`nudge`, `sessionStatus`, and `projectQueue`. Toggling a control updates the
 preview immediately.
 Controls are three-valued in client storage: missing/`default` follows the
 current client default, while booleans are explicit local choices. The server
@@ -37,6 +39,12 @@ also persists `clientDefaults.sessionToolbarVisibility` so the last selected
 toolbar value becomes the default for devices with no explicit local override.
 Resetting the toolbar visibility clears local overrides and returns that
 browser to following the server client default.
+Narrowing priority is held by `useSessionToolbarPriority` and is editable for
+controls the runtime overflow menu can actually reveal: the left-side controls,
+shortcut help, `sessionStatus`, `contextUsage`, `btw`, `steerNow`, and
+`projectQueue`. The right-side controls default to `pin`, so they stay inline
+unless the user explicitly chooses a collapse tier. `microphone` and `waveform`
+remain visibility-only controls for now.
 
 The former composer model indicator chip is removed from the customizable
 toolbar. The top-right provider badge remains the model/effort status surface
@@ -74,18 +82,18 @@ when queueing. The active composer model is:
   `Ctrl+Enter`; broader keybind remapping can build from there.
 
 `onQueue` is only supplied while the agent is running, so a "done" agent never
-reaches the queue path. The `queueControls` appearance toggle controls only
-the regular/patient switch; the alternate Steer/Later send button remains
-visible when dual-action delivery is available. Tooltips must state the regular
-queue and patient queue distinction. See
+reaches the queue path. The patient queue default is a Message Delivery
+setting, not a Toolbar visibility key; the alternate Steer/Later send button
+remains visible when dual-action delivery is available. Tooltips must state the
+regular queue and patient queue distinction. See
 [`message-control-steer-queue-btw-later-interrupt.md`](message-control-steer-queue-btw-later-interrupt.md).
 
 ## Remaining work
 
 Relative to the landed surface:
 
-- Toggling is a checkbox list beside the preview, not click-on-the-mockup-
-  control interaction.
+- Hidden/shown list rows are the editing surface, not click-on-the-mockup-
+  control interaction in the top preview.
 - Visibility is binary show/hide; there is no "visible but disabled" treatment
   (dimmed / crossed-out) that keeps a removed control legible in the real UI.
 - No per-session override distinct from the browser-local explicit choice yet.

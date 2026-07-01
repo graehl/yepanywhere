@@ -887,22 +887,21 @@ export function MessageInputToolbarView({
   const menuTierClass = (
     key: SessionToolbarVisibilityKey,
     ...extra: string[]
-  ): string =>
-    [...extra, priorityToTierClass(controlPriority[key])]
+  ): string => {
+    const tierClass = priorityToTierClass(controlPriority[key]);
+    return [...extra, tierClass || "composer-bottom-overflow-pinned"]
       .filter(Boolean)
       .join(" ");
+  };
+  const isPriorityCollapsible = (key: SessionToolbarVisibilityKey): boolean =>
+    controlPriority[key] !== "pin";
   const shortcutsPopoverOpen = shortcutsControl.open;
   const shortcutSettings =
     shortcutsControl.canSwapEnterAction && shortcutsControl.onSwapEnterAction
       ? { onSwapEnterAction: shortcutsControl.onSwapEnterAction }
       : null;
-  // The status ages float over the composer whenever they cannot be the inline
-  // expanded row: a compact viewport (the row does not fit, or mobile) OR the
-  // sessionStatus toggle is off (no inline row at any width). Floating is thus
-  // decoupled from the toggle so width-constrained clients still get the ages —
-  // and, extended here, so a *wide* client that hid Session Status still gets
-  // them (same as narrow) instead of seeing nothing. The float carries only the
-  // ages; the liveness chip stays inline under the sessionStatus toggle.
+  // The status ages float whenever the inline expanded row is unavailable:
+  // compact viewport, mobile layout, or the sessionStatus toggle off.
   const statusFloats = isCompactStatusMode || !visibility.sessionStatus;
   const hasFloatAges =
     statusFloats &&
@@ -919,10 +918,8 @@ export function MessageInputToolbarView({
   const showLastActivityChip =
     (statusControl?.showLastActivityChip ?? false) ||
     (statusFloats && (statusControl?.hasLastActivityAge ?? false));
-  // The floating presentation needs `.status-floats` (toolbar → position:
-  // static) so the ages anchor over the composer. Apply in compact mode
-  // (unchanged) and in the new wide+disabled float case; wide+enabled keeps the
-  // inline row and its normal positioning context.
+  // The floating presentation needs `.status-floats` so the ages anchor over
+  // the composer; wide+enabled keeps the inline row's positioning context.
   const applyStatusFloats =
     isCompactStatusMode || (statusFloats && showToolbarStatus);
   const showSendButton = !!actionsControl.send?.onSend;
@@ -937,14 +934,199 @@ export function MessageInputToolbarView({
     actionsControl.send?.showSteerNowMode &&
     actionsControl.send.onToggleSteerNow
   );
+  const renderStatusAges = (
+    className: string,
+    ref?: RefObject<HTMLDivElement | null>,
+  ) => {
+    if (!showToolbarStatus || !statusControl) {
+      return null;
+    }
+
+    return (
+      <div ref={ref} className={className}>
+        {showLivenessChip && livenessDisplay && (
+          <div
+            className={`composer-status-chip composer-liveness-status is-${livenessDisplay.tone}`}
+            role="status"
+            aria-label={t("toolbarLivenessAria", {
+              summary: statusControl.livenessSummary ?? "",
+            })}
+            title={livenessDisplay.title}
+          >
+            {livenessDisplay.timestampMs !== null ? (
+              <time
+                className="composer-liveness-time"
+                dateTime={new Date(livenessDisplay.timestampMs).toISOString()}
+                title={`${formatAbsoluteTimestamp(livenessDisplay.timestampMs)}\n${livenessDisplay.title}`}
+              >
+                {formatLivenessAge(
+                  t,
+                  livenessDisplay.timestampMs,
+                  statusControl.nowMs,
+                )}
+              </time>
+            ) : (
+              <span className="composer-liveness-time">
+                {livenessDisplay.prefix}
+              </span>
+            )}
+          </div>
+        )}
+        {showPositionChip && (
+          <div
+            className="composer-status-chip composer-position-age composer-activity-age--compact"
+            role="status"
+            aria-label={t("toolbarPositionAgeAria")}
+          >
+            <MessageAge
+              timestampMs={statusControl.positionTimestampMs}
+              nowMs={statusControl.nowMs}
+              className="composer-position-age-time"
+              formatLabel={(label) => {
+                const localizedLabel =
+                  label === "now"
+                    ? t("toolbarRelativeAgeNow")
+                    : t("toolbarRelativeAgePast", { age: label });
+                return t("toolbarPositionAge", { age: localizedLabel });
+              }}
+            />
+          </div>
+        )}
+        {showLastActivityChip && (
+          <div
+            className={`composer-status-chip composer-activity-age${
+              statusControl.showLastActivityPrefix
+                ? ""
+                : " composer-activity-age--compact"
+            }`}
+            role="status"
+            aria-label={t("toolbarLastActivityAria")}
+          >
+            <MessageAge
+              timestampMs={statusControl.lastActivityMs}
+              nowMs={statusControl.nowMs}
+              className="composer-activity-age-time"
+              formatLabel={(label) => {
+                const localizedLabel =
+                  label === "now" ? t("toolbarRelativeAgeNow") : label;
+                if (statusControl.showLastActivityPrefix) {
+                  return t("toolbarLastActivityAge", {
+                    age: localizedLabel,
+                  });
+                }
+                return statusControl.lastActivityIsPast
+                  ? t("toolbarRelativeAgePast", { age: localizedLabel })
+                  : localizedLabel;
+              }}
+            />
+          </div>
+        )}
+      </div>
+    );
+  };
+  const renderContextUsage = (className: string) => {
+    if (!visibility.contextUsage || !actionsControl.contextUsage) {
+      return null;
+    }
+    return (
+      <span className={className}>
+        <ContextThresholdQuickEdit
+          usage={actionsControl.contextUsage}
+          model={actionsControl.contextModel}
+          contextWindow={actionsControl.contextWindow}
+          size={16}
+        />
+      </span>
+    );
+  };
+  const renderBtwButton = (className: string, menu = false) => {
+    if (!visibility.btw || !actionsControl.btw) {
+      return null;
+    }
+    return (
+      <button
+        type="button"
+        className={className}
+        onClick={actionsControl.btw.onClick}
+        disabled={actionsControl.disabled || actionsControl.voiceDisabled}
+        aria-label={actionsControl.btw.title}
+        aria-pressed={actionsControl.btw.pressed}
+        title={actionsControl.btw.title}
+        role={menu ? "menuitem" : undefined}
+      >
+        /btw
+      </button>
+    );
+  };
+  const renderSteerNowToggle = (className: string) => {
+    if (!canToggleSteerNow || !actionsControl.send) {
+      return null;
+    }
+    return (
+      <label className={className} title={t("toolbarSteerNowTooltip")}>
+        <input
+          type="checkbox"
+          checked={!!actionsControl.send.steerNowEnabled}
+          onChange={actionsControl.send.onToggleSteerNow}
+          disabled={actionsControl.disabled}
+          aria-label={t("toolbarSteerNowLabel")}
+        />
+        <span>{t("toolbarSteerNowShortLabel")}</span>
+      </label>
+    );
+  };
+  const renderProjectQueueButton = (className: string, menu = false) => {
+    if (
+      !showProjectQueueButton ||
+      !actionsControl.projectQueue ||
+      !actionsControl.send
+    ) {
+      return null;
+    }
+    return (
+      <button
+        type="button"
+        onClick={actionsControl.projectQueue.onProjectQueue}
+        disabled={
+          actionsControl.disabled || !actionsControl.projectQueue.canSend
+        }
+        className={className}
+        aria-label={t("toolbarProjectQueueLabel")}
+        title={actionsControl.projectQueue.tooltip}
+        role={menu ? "menuitem" : undefined}
+      >
+        <span className="send-icon">⇥</span>
+      </button>
+    );
+  };
   const hasBottomOverflowControls = !!(
-    (visibility.modeSelector && modeControl) ||
-    visibility.attachments ||
-    (visibility.slashMenu && slashControl) ||
-    (visibility.thinkingToggle && thinkingControl) ||
-    (visibility.renderMode && renderModeControl) ||
-    (visibility.nudge && nudgeControl) ||
-    visibility.shortcutsHelp
+    (visibility.modeSelector &&
+      modeControl &&
+      isPriorityCollapsible("modeSelector")) ||
+    (visibility.attachments && isPriorityCollapsible("attachments")) ||
+    (visibility.slashMenu &&
+      slashControl &&
+      isPriorityCollapsible("slashMenu")) ||
+    (visibility.thinkingToggle &&
+      thinkingControl &&
+      isPriorityCollapsible("thinkingToggle")) ||
+    (visibility.renderMode &&
+      renderModeControl &&
+      isPriorityCollapsible("renderMode")) ||
+    (visibility.nudge && nudgeControl && isPriorityCollapsible("nudge")) ||
+    (visibility.sessionStatus &&
+      showToolbarStatus &&
+      statusControl &&
+      isPriorityCollapsible("sessionStatus")) ||
+    (visibility.shortcutsHelp && isPriorityCollapsible("shortcutsHelp")) ||
+    (visibility.contextUsage &&
+      actionsControl.contextUsage &&
+      isPriorityCollapsible("contextUsage")) ||
+    (visibility.btw && actionsControl.btw && isPriorityCollapsible("btw")) ||
+    (canToggleSteerNow && isPriorityCollapsible("steerNow")) ||
+    (showProjectQueueButton &&
+      actionsControl.send &&
+      isPriorityCollapsible("projectQueue"))
   );
   const [bottomOverflowOpen, setBottomOverflowOpen] = useState(false);
   const [bottomOverflowTier, setBottomOverflowTier] =
@@ -1288,86 +1470,11 @@ export function MessageInputToolbarView({
           )}
         {speechWaveformActive && <SpeechWaveform />}
       </div>
-      {showToolbarStatus && statusControl && (
-        <div ref={refs?.status} className="composer-status-ages">
-          {showLivenessChip && livenessDisplay && (
-            <div
-              className={`composer-status-chip composer-liveness-status is-${livenessDisplay.tone}`}
-              role="status"
-              aria-label={t("toolbarLivenessAria", {
-                summary: statusControl.livenessSummary ?? "",
-              })}
-              title={livenessDisplay.title}
-            >
-              {livenessDisplay.timestampMs !== null ? (
-                <time
-                  className="composer-liveness-time"
-                  dateTime={new Date(livenessDisplay.timestampMs).toISOString()}
-                  title={`${formatAbsoluteTimestamp(livenessDisplay.timestampMs)}\n${livenessDisplay.title}`}
-                >
-                  {formatLivenessAge(
-                    t,
-                    livenessDisplay.timestampMs,
-                    statusControl.nowMs,
-                  )}
-                </time>
-              ) : (
-                <span className="composer-liveness-time">
-                  {livenessDisplay.prefix}
-                </span>
-              )}
-            </div>
-          )}
-          {showPositionChip && (
-            <div
-              className="composer-status-chip composer-position-age composer-activity-age--compact"
-              role="status"
-              aria-label={t("toolbarPositionAgeAria")}
-            >
-              <MessageAge
-                timestampMs={statusControl.positionTimestampMs}
-                nowMs={statusControl.nowMs}
-                className="composer-position-age-time"
-                formatLabel={(label) => {
-                  const localizedLabel =
-                    label === "now"
-                      ? t("toolbarRelativeAgeNow")
-                      : t("toolbarRelativeAgePast", { age: label });
-                  return t("toolbarPositionAge", { age: localizedLabel });
-                }}
-              />
-            </div>
-          )}
-          {showLastActivityChip && (
-            <div
-              className={`composer-status-chip composer-activity-age${
-                statusControl.showLastActivityPrefix
-                  ? ""
-                  : " composer-activity-age--compact"
-              }`}
-              role="status"
-              aria-label={t("toolbarLastActivityAria")}
-            >
-              <MessageAge
-                timestampMs={statusControl.lastActivityMs}
-                nowMs={statusControl.nowMs}
-                className="composer-activity-age-time"
-                formatLabel={(label) => {
-                  const localizedLabel =
-                    label === "now" ? t("toolbarRelativeAgeNow") : label;
-                  if (statusControl.showLastActivityPrefix) {
-                    return t("toolbarLastActivityAge", {
-                      age: localizedLabel,
-                    });
-                  }
-                  return statusControl.lastActivityIsPast
-                    ? t("toolbarRelativeAgePast", { age: localizedLabel })
-                    : localizedLabel;
-                }}
-              />
-            </div>
-          )}
-        </div>
+      {renderStatusAges(
+        visibility.sessionStatus
+          ? inlineTierClass("sessionStatus", "composer-status-ages")
+          : "composer-status-ages",
+        refs?.status,
       )}
       {hasBottomOverflowControls && bottomOverflowTier !== "none" && (
         <div
@@ -1387,7 +1494,9 @@ export function MessageInputToolbarView({
           {bottomOverflowOpen && (
             <div className="composer-bottom-overflow-menu" role="menu">
               <div className="composer-bottom-overflow-menu-group composer-bottom-overflow-menu-left">
-                {visibility.modeSelector && modeControl && (
+                {visibility.modeSelector &&
+                  modeControl &&
+                  isPriorityCollapsible("modeSelector") && (
                   <span className={menuTierClass("modeSelector")}>
                     <ModeSelector
                       mode={modeControl.mode}
@@ -1397,7 +1506,8 @@ export function MessageInputToolbarView({
                     />
                   </span>
                 )}
-                {visibility.attachments && (
+                {visibility.attachments &&
+                  isPriorityCollapsible("attachments") && (
                   <button
                     type="button"
                     className={menuTierClass("attachments", "attach-button")}
@@ -1428,9 +1538,20 @@ export function MessageInputToolbarView({
                     )}
                   </button>
                 )}
+                {visibility.sessionStatus &&
+                  isPriorityCollapsible("sessionStatus") &&
+                  renderStatusAges(
+                    menuTierClass(
+                      "sessionStatus",
+                      "composer-status-ages",
+                      "composer-status-ages--menu",
+                    ),
+                  )}
               </div>
               <div className="composer-bottom-overflow-menu-group composer-bottom-overflow-menu-right">
-                {visibility.slashMenu && slashControl && (
+                {visibility.slashMenu &&
+                  slashControl &&
+                  isPriorityCollapsible("slashMenu") && (
                   <span className={menuTierClass("slashMenu")}>
                     <SlashCommandButton
                       commands={slashControl.commands}
@@ -1439,12 +1560,16 @@ export function MessageInputToolbarView({
                     />
                   </span>
                 )}
-                {visibility.thinkingToggle && thinkingControl && (
+                {visibility.thinkingToggle &&
+                  thinkingControl &&
+                  isPriorityCollapsible("thinkingToggle") && (
                   <span className={menuTierClass("thinkingToggle")}>
                     <ThinkingToolbarControl control={thinkingControl} t={t} />
                   </span>
                 )}
-                {visibility.renderMode && renderModeControl && (
+                {visibility.renderMode &&
+                  renderModeControl &&
+                  isPriorityCollapsible("renderMode") && (
                   <button
                     type="button"
                     className={menuTierClass(
@@ -1469,7 +1594,9 @@ export function MessageInputToolbarView({
                     <RenderModeGlyph />
                   </button>
                 )}
-                {visibility.nudge && nudgeControl && (
+                {visibility.nudge &&
+                  nudgeControl &&
+                  isPriorityCollapsible("nudge") && (
                   <button
                     type="button"
                     className={menuTierClass(
@@ -1508,7 +1635,8 @@ export function MessageInputToolbarView({
                     </svg>
                   </button>
                 )}
-                {visibility.shortcutsHelp && (
+                {visibility.shortcutsHelp &&
+                  isPriorityCollapsible("shortcutsHelp") && (
                   <button
                     type="button"
                     className={menuTierClass(
@@ -1531,6 +1659,35 @@ export function MessageInputToolbarView({
                     ?
                   </button>
                 )}
+                {isPriorityCollapsible("contextUsage") &&
+                  renderContextUsage(
+                    menuTierClass("contextUsage", "context-toolbar-control"),
+                  )}
+                {isPriorityCollapsible("btw") &&
+                  renderBtwButton(
+                    menuTierClass(
+                      "btw",
+                      "btw-toolbar-button",
+                      actionsControl.btw?.pressed ? "active" : "",
+                      actionsControl.btw?.mode === "focus-existing"
+                        ? "has-asides"
+                        : "",
+                    ),
+                    true,
+                  )}
+                {isPriorityCollapsible("steerNow") &&
+                  renderSteerNowToggle(
+                    menuTierClass("steerNow", "steer-now-toggle"),
+                  )}
+                {isPriorityCollapsible("projectQueue") &&
+                  renderProjectQueueButton(
+                    menuTierClass(
+                      "projectQueue",
+                      "send-button",
+                      "project-queue-button",
+                    ),
+                    true,
+                  )}
               </div>
             </div>
           )}
@@ -1838,28 +1995,16 @@ export function MessageInputToolbarView({
             )}
           </div>
         )}
-        {visibility.contextUsage && (
-          <ContextThresholdQuickEdit
-            usage={actionsControl.contextUsage}
-            model={actionsControl.contextModel}
-            contextWindow={actionsControl.contextWindow}
-            size={16}
-          />
+        {renderContextUsage(
+          inlineTierClass("contextUsage", "context-toolbar-control"),
         )}
-        {visibility.btw && actionsControl.btw && (
-          <button
-            type="button"
-            className={`btw-toolbar-button ${actionsControl.btw.pressed ? "active" : ""} ${
-              actionsControl.btw.mode === "focus-existing" ? "has-asides" : ""
-            }`}
-            onClick={actionsControl.btw.onClick}
-            disabled={actionsControl.disabled || actionsControl.voiceDisabled}
-            aria-label={actionsControl.btw.title}
-            aria-pressed={actionsControl.btw.pressed}
-            title={actionsControl.btw.title}
-          >
-            /btw
-          </button>
+        {renderBtwButton(
+          inlineTierClass(
+            "btw",
+            "btw-toolbar-button",
+            actionsControl.btw?.pressed ? "active" : "",
+            actionsControl.btw?.mode === "focus-existing" ? "has-asides" : "",
+          ),
         )}
         {showStopButton && actionsControl.stop && (
           <button
@@ -1874,20 +2019,8 @@ export function MessageInputToolbarView({
         )}
         {(showProjectQueueButton || showSendButton) && actionsControl.send ? (
           <>
-            {canToggleSteerNow && actionsControl.send && (
-              <label
-                className="steer-now-toggle"
-                title={t("toolbarSteerNowTooltip")}
-              >
-                <input
-                  type="checkbox"
-                  checked={!!actionsControl.send.steerNowEnabled}
-                  onChange={actionsControl.send.onToggleSteerNow}
-                  disabled={actionsControl.disabled}
-                  aria-label={t("toolbarSteerNowLabel")}
-                />
-                <span>{t("toolbarSteerNowShortLabel")}</span>
-              </label>
+            {renderSteerNowToggle(
+              inlineTierClass("steerNow", "steer-now-toggle"),
             )}
             {queueControl?.hasDualActions &&
               actionsControl.send.primaryActionKind !== "queue" &&
@@ -1937,20 +2070,12 @@ export function MessageInputToolbarView({
                 </span>
               </button>
             )}
-            {showProjectQueueButton && actionsControl.projectQueue && (
-              <button
-                type="button"
-                onClick={actionsControl.projectQueue.onProjectQueue}
-                disabled={
-                  actionsControl.disabled ||
-                  !actionsControl.projectQueue.canSend
-                }
-                className="send-button project-queue-button"
-                aria-label={t("toolbarProjectQueueLabel")}
-                title={actionsControl.projectQueue.tooltip}
-              >
-                <span className="send-icon">⇥</span>
-              </button>
+            {renderProjectQueueButton(
+              inlineTierClass(
+                "projectQueue",
+                "send-button",
+                "project-queue-button",
+              ),
             )}
             {showSendButton && (
               <button
@@ -2153,9 +2278,7 @@ export function MessageInputToolbar({
   const showLastActivityAge = isStaleTimestamp(lastActivityMs, nowMs);
   const lastActivityAgeMs =
     lastActivityMs === null ? null : nowMs - lastActivityMs;
-  // Mirror the View's float condition: ages float (compact "M ago" form) when
-  // the inline expanded row is unavailable — compact viewport or sessionStatus
-  // off. The long "Last activity 35m" prefix is only for the inline row.
+  // Keep the long "Last activity 35m" prefix exclusive to the inline row.
   const statusFloats = isCompactStatusMode || !toolbarVisibility.sessionStatus;
   const showLastActivityPrefix =
     showLastActivityAge &&

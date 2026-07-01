@@ -31,7 +31,6 @@ const COLLAPSED_COMPOSER_BUTTON_OPTIONS: CollapsedComposerButtonPreference[] = [
   "microphone",
 ];
 
-// Which toolbar edge a control lives on, for the hidden-zone two-column split.
 type ToolbarSide = "left" | "right";
 
 interface ToolbarControlMeta {
@@ -39,7 +38,23 @@ interface ToolbarControlMeta {
   title: string;
   description: string;
   side: ToolbarSide;
+  canSetPriority: boolean;
 }
+
+const PRIORITY_EDITABLE_CONTROLS = new Set<SessionToolbarVisibilityKey>([
+  "modeSelector",
+  "attachments",
+  "slashMenu",
+  "thinkingToggle",
+  "renderMode",
+  "nudge",
+  "sessionStatus",
+  "shortcutsHelp",
+  "contextUsage",
+  "btw",
+  "steerNow",
+  "projectQueue",
+]);
 
 export function ToolbarSettings() {
   const { t } = useI18n();
@@ -63,7 +78,6 @@ export function ToolbarSettings() {
   const collapsedComposerButton =
     settings?.clientDefaults?.collapsedComposerButton ?? "primary";
 
-  // Header undo: snapshot visibility + priority at pane open.
   const undoState = useMemo(
     () =>
       settings
@@ -104,94 +118,108 @@ export function ToolbarSettings() {
   );
   useSettingsUndoBaseline(undoState, restoreUndoState);
 
-  // Left-to-right toolbar order, annotated with the edge each control sits on.
+  const controlMeta = (
+    key: SessionToolbarVisibilityKey,
+    title: string,
+    description: string,
+    side: ToolbarSide,
+  ): ToolbarControlMeta => ({
+    key,
+    title,
+    description,
+    side,
+    canSetPriority: PRIORITY_EDITABLE_CONTROLS.has(key),
+  });
+
   const toolbarControls: ToolbarControlMeta[] = [
-    {
-      key: "modeSelector",
-      title: t("appearanceToolbarModeTitle"),
-      description: t("appearanceToolbarModeDescription"),
-      side: "left",
-    },
-    {
-      key: "attachments",
-      title: t("appearanceToolbarAttachmentsTitle"),
-      description: t("appearanceToolbarAttachmentsDescription"),
-      side: "left",
-    },
-    {
-      key: "slashMenu",
-      title: t("appearanceToolbarSlashTitle"),
-      description: t("appearanceToolbarSlashDescription"),
-      side: "left",
-    },
-    {
-      key: "thinkingToggle",
-      title: t("appearanceToolbarThinkingTitle"),
-      description: t("appearanceToolbarThinkingDescription"),
-      side: "left",
-    },
-    {
-      key: "renderMode",
-      title: t("appearanceToolbarRenderModeTitle"),
-      description: t("appearanceToolbarRenderModeDescription"),
-      side: "left",
-    },
-    {
-      key: "nudge",
-      title: t("appearanceToolbarNudgeTitle"),
-      description: t("appearanceToolbarNudgeDescription"),
-      side: "left",
-    },
-    {
-      key: "microphone",
-      title: t("appearanceToolbarMicrophoneTitle"),
-      description: t("appearanceToolbarMicrophoneDescription"),
-      side: "left",
-    },
-    {
-      key: "waveform",
-      title: t("appearanceToolbarWaveformTitle"),
-      description: t("appearanceToolbarWaveformDescription"),
-      side: "left",
-    },
-    {
-      key: "sessionStatus",
-      title: t("appearanceToolbarStatusTitle"),
-      description: t("appearanceToolbarStatusDescription"),
-      side: "right",
-    },
-    {
-      key: "shortcutsHelp",
-      title: t("appearanceToolbarShortcutsTitle"),
-      description: t("appearanceToolbarShortcutsDescription"),
-      side: "right",
-    },
-    {
-      key: "contextUsage",
-      title: t("appearanceToolbarContextTitle"),
-      description: t("appearanceToolbarContextDescription"),
-      side: "right",
-    },
-    {
-      key: "btw",
-      title: t("appearanceToolbarBtwTitle"),
-      description: t("appearanceToolbarBtwDescription"),
-      side: "right",
-    },
-    {
-      key: "steerNow",
-      title: t("appearanceToolbarSteerNowTitle"),
-      description: t("appearanceToolbarSteerNowDescription"),
-      side: "right",
-    },
+    controlMeta(
+      "modeSelector",
+      t("appearanceToolbarModeTitle"),
+      t("appearanceToolbarModeDescription"),
+      "left",
+    ),
+    controlMeta(
+      "attachments",
+      t("appearanceToolbarAttachmentsTitle"),
+      t("appearanceToolbarAttachmentsDescription"),
+      "left",
+    ),
+    controlMeta(
+      "slashMenu",
+      t("appearanceToolbarSlashTitle"),
+      t("appearanceToolbarSlashDescription"),
+      "left",
+    ),
+    controlMeta(
+      "thinkingToggle",
+      t("appearanceToolbarThinkingTitle"),
+      t("appearanceToolbarThinkingDescription"),
+      "left",
+    ),
+    controlMeta(
+      "renderMode",
+      t("appearanceToolbarRenderModeTitle"),
+      t("appearanceToolbarRenderModeDescription"),
+      "left",
+    ),
+    controlMeta(
+      "nudge",
+      t("appearanceToolbarNudgeTitle"),
+      t("appearanceToolbarNudgeDescription"),
+      "left",
+    ),
+    controlMeta(
+      "microphone",
+      t("appearanceToolbarMicrophoneTitle"),
+      t("appearanceToolbarMicrophoneDescription"),
+      "left",
+    ),
+    controlMeta(
+      "waveform",
+      t("appearanceToolbarWaveformTitle"),
+      t("appearanceToolbarWaveformDescription"),
+      "left",
+    ),
+    controlMeta(
+      "sessionStatus",
+      t("appearanceToolbarStatusTitle"),
+      t("appearanceToolbarStatusDescription"),
+      "right",
+    ),
+    controlMeta(
+      "shortcutsHelp",
+      t("appearanceToolbarShortcutsTitle"),
+      t("appearanceToolbarShortcutsDescription"),
+      "right",
+    ),
+    controlMeta(
+      "contextUsage",
+      t("appearanceToolbarContextTitle"),
+      t("appearanceToolbarContextDescription"),
+      "right",
+    ),
+    controlMeta(
+      "btw",
+      t("appearanceToolbarBtwTitle"),
+      t("appearanceToolbarBtwDescription"),
+      "right",
+    ),
+    controlMeta(
+      "steerNow",
+      t("appearanceToolbarSteerNowTitle"),
+      t("appearanceToolbarSteerNowDescription"),
+      "right",
+    ),
   ];
   if (supportsProjectQueue) {
-    toolbarControls.push({
-      key: "projectQueue",
-      title: t("appearanceToolbarProjectQueueTitle"),
-      description: t("appearanceToolbarProjectQueueDescription"),
-      side: "right",
-    });
+    toolbarControls.push(
+      controlMeta(
+        "projectQueue",
+        t("appearanceToolbarProjectQueueTitle"),
+        t("appearanceToolbarProjectQueueDescription"),
+        "right",
+      ),
+    );
   }
 
   const hiddenLeft = toolbarControls.filter(
@@ -374,35 +402,37 @@ export function ToolbarSettings() {
                     <span>{control.description}</span>
                   </span>
                   <span className="session-toolbar-control-actions">
-                    <span
-                      className="session-toolbar-priority"
-                      role="radiogroup"
-                      aria-label={t("appearanceToolbarPriorityAria", {
-                        control: control.title,
-                      })}
-                    >
-                      {priorityOptions.map((option) => {
-                        const selected =
-                          toolbarPriority[control.key] === option.value;
-                        return (
-                          <button
-                            type="button"
-                            key={option.value}
-                            className={`session-toolbar-priority-option${
-                              selected ? " is-selected" : ""
-                            }`}
-                            role="radio"
-                            aria-checked={selected}
-                            title={option.title}
-                            onClick={() =>
-                              setControlPriority(control.key, option.value)
-                            }
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                    </span>
+                    {control.canSetPriority && (
+                      <span
+                        className="session-toolbar-priority"
+                        role="radiogroup"
+                        aria-label={t("appearanceToolbarPriorityAria", {
+                          control: control.title,
+                        })}
+                      >
+                        {priorityOptions.map((option) => {
+                          const selected =
+                            toolbarPriority[control.key] === option.value;
+                          return (
+                            <button
+                              type="button"
+                              key={option.value}
+                              className={`session-toolbar-priority-option${
+                                selected ? " is-selected" : ""
+                              }`}
+                              role="radio"
+                              aria-checked={selected}
+                              title={option.title}
+                              onClick={() =>
+                                setControlPriority(control.key, option.value)
+                              }
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </span>
+                    )}
                     <button
                       type="button"
                       className="session-toolbar-hide-button"

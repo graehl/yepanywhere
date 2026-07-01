@@ -463,11 +463,8 @@ export interface SessionToolbarVisibilityClientDefaults {
 export type ToolbarNarrowingPriority = "pin" | "last" | "mid" | "first";
 
 /**
- * Per-control narrowing priority, mirroring the visibility keys. Same server
- * clientDefaults + localStorage plumbing as visibility. Right-side controls
- * default to `pin`; the priority they expose is currently for settings-UI
- * uniformity and not yet a functional right-side overflow (tracked in
- * topics/toolbar-settings-ui.md).
+ * Per-control narrowing priority, mirroring the visibility keys so clients can
+ * preserve stored defaults across runtime support changes.
  */
 export interface SessionToolbarPriorityClientDefaults {
   modeSelector?: ToolbarNarrowingPriority;

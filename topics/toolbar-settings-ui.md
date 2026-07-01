@@ -1,8 +1,9 @@
 # Toolbar Settings UI
 
 > The Settings → **Toolbar** pane lets users pick which composer-toolbar
-> controls are shown and, per control, how eagerly each collapses into the `…`
-> overflow menu as the bar narrows ("narrowing priority").
+> controls are shown and, for overflow-supported controls, how eagerly each
+> collapses into the `…` overflow menu as the bar narrows ("narrowing
+> priority").
 
 Topic: toolbar-settings-ui
 
@@ -18,7 +19,7 @@ the pane itself.
 `toolbar`), rendering `SessionToolbarPreview` / `ToolbarControlPreview` from
 `packages/client/src/components/SessionToolbarPreview.tsx`. State comes from two
 mirror hooks: `useSessionToolbarVisibility` (which controls are shown) and
-`useSessionToolbarPriority` (each shown control's narrowing priority).
+`useSessionToolbarPriority` (stored narrowing-priority defaults).
 
 ## Layout contract
 
@@ -39,8 +40,11 @@ The pane is three stacked pieces, top to bottom:
    them up top makes them scannable even though the live preview already locates
    the *visible* ones.
 3. A thin **separator**, then the **Shown zone** — visible controls in
-   left-to-right toolbar order, one full-width row each: specimen preview +
-   copy + a **narrowing-priority radio** + a quick **× Hide**.
+   left-to-right toolbar order, one column that matches a single Hidden-zone
+   column once that width can fit the shown-row controls, otherwise using the
+   row's practical floor (capped by the pane). Each row has a specimen preview,
+   copy, and a quick **× Hide**; rows for controls that the runtime overflow
+   engine can actually move also show a **narrowing-priority radio**.
 
 Both zones show a **per-row specimen** (`ToolbarControlPreview`) so a row is
 identified by the actual element, not just text. That specimen is somewhat
@@ -59,18 +63,23 @@ Priority answers "as the toolbar narrows, when does this control fold into the
 | `mid`  | collapses in the middle              | `medium`    |
 | `first`| collapses first                      | `early`     |
 
-Defaults reproduce the previously-hardcoded tiers exactly, so nothing changes
-until a user reconfigures: `modeSelector,attachments → first`;
-`slashMenu,thinkingToggle → mid`; `renderMode,nudge,shortcutsHelp → last`;
-every always-on control (`microphone, waveform, steerNow, contextUsage, btw,
-sessionStatus, projectQueue`) → `pin`. `MessageInputToolbar` derives each
-overflow control's tier CSS class from its priority (`priorityToTierClass`); the
-measured-width collapse logic is otherwise unchanged (see
-`composer-bottom-bar-overflow.md`).
+Defaults preserve the runtime collapse order: `modeSelector,attachments →
+first`; `slashMenu,thinkingToggle → mid`; `renderMode,nudge,shortcutsHelp →
+last`. Right-side controls (`sessionStatus`, `contextUsage`, `btw`, `steerNow`,
+`projectQueue`) are priority-editable and default to `pin`, preserving today's
+out-of-box toolbar unless the user chooses to collapse them. `MessageInputToolbar`
+derives each supported overflow control's tier CSS class from its priority
+(`priorityToTierClass`); the measured-width collapse logic is otherwise
+unchanged (see `composer-bottom-bar-overflow.md`). The settings pane only shows
+the priority radio for controls in that supported set, so a visible editor
+always maps to real runtime behavior. `microphone` and `waveform` remain outside
+the priority editor: microphone is the primary speech trigger, and waveform is
+elastic capture feedback rather than a fixed-width collapsible control.
 
 ## Edit surfaces & persistence
 
-- **Shown-zone priority radio** — sets `useSessionToolbarPriority.setControlPriority`.
+- **Shown-zone priority radio** — sets `useSessionToolbarPriority.setControlPriority`
+  for controls that currently collapse into the runtime overflow menu.
 - **× Hide / on-slider** — `useSessionToolbarVisibility.setControlVisible`,
   moving the row between the Shown and Hidden zones.
 - **Header undo / Reset** — snapshot restore covers both maps; Reset clears both.
@@ -87,14 +96,12 @@ instead of the visibility checkbox. The toggle carries its own `<label>`.
 
 ## Status / follow-ups
 
-- **Right-side priority is configurable but not yet functionally effective.**
-  Right-aligned / always-on controls expose a priority radio for settings-UI
-  uniformity (so every shown control edits the same way), but the runtime
-  overflow engine does not yet collapse them — they stay pinned in practice.
-  Landed this way deliberately (a `Known coverage gaps` in the commit). The
-  committed follow-up is to make right-side priority actually fold those
-  controls, because offering a control that silently does nothing is itself the
-  confusion this pane removes.
+- **Remaining non-priority controls are deliberate exclusions.** Priority
+  storage still mirrors every visibility key so existing and future defaults can
+  round-trip, but the pane exposes the radio only where the runtime overflow
+  engine has a real menu copy. A future speech-specific design can revisit
+  microphone/waveform without implying that today's row should show deceptive
+  priority choices for them.
 - **Clickable top preview (edit-in-preview) is a follow-up.** The top preview is
   currently read-only (spatial memory only); the Shown-zone priority radio + ×
   Hide are the editing surface. A future pass can let clicking a control in the

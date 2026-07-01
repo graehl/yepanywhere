@@ -91,6 +91,10 @@ vi.mock("../../../i18n", () => ({
           appearanceToolbarCollapsedButtonPrimary: "Primary",
           appearanceToolbarCollapsedButtonAlternate: "Alternate",
           appearanceToolbarCollapsedButtonMicrophone: "Microphone",
+          appearanceToolbarPriorityPin: "Pin",
+          appearanceToolbarPriorityLast: "Last",
+          appearanceToolbarPriorityMid: "Mid",
+          appearanceToolbarPriorityFirst: "First",
           appearanceSessionToolbarReset: "Reset",
         }) as Record<string, string>
       )[key] ?? key,
@@ -126,5 +130,12 @@ describe("ToolbarSettings", () => {
     render(<ToolbarSettings />);
 
     expect(screen.getByText("Project Queue")).toBeTruthy();
+  });
+
+  it("shows priority radios for controls the overflow engine supports", () => {
+    render(<ToolbarSettings />);
+
+    expect(screen.getAllByRole("radiogroup")).toHaveLength(8);
+    expect(screen.getAllByRole("radio")).toHaveLength(32);
   });
 });

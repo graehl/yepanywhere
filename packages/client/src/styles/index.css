@@ -5337,18 +5337,44 @@ a.sidebar-nav-item {
   flex: 0 0 auto;
 }
 
+.context-toolbar-control {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
 .composer-bottom-overflow-menu-group .mode-button,
 .composer-bottom-overflow-menu-group .attach-button,
 .composer-bottom-overflow-menu-group .slash-command-button,
 .composer-bottom-overflow-menu-group .thinking-toggle-button,
 .composer-bottom-overflow-menu-group .render-mode-toolbar-button,
 .composer-bottom-overflow-menu-group .heartbeat-toolbar-button,
-.composer-bottom-overflow-menu-group .session-shortcuts-help-button {
+.composer-bottom-overflow-menu-group .session-shortcuts-help-button,
+.composer-bottom-overflow-menu-group .context-toolbar-control {
   width: var(--composer-control-size);
   height: var(--composer-control-size);
   min-width: var(--composer-control-size);
   flex-shrink: 0;
   padding: 0;
+}
+
+.composer-bottom-overflow-menu-group .btw-toolbar-button,
+.composer-bottom-overflow-menu-group .steer-now-toggle,
+.composer-bottom-overflow-menu-group .send-button.project-queue-button,
+.composer-bottom-overflow-menu-group .composer-status-ages {
+  flex: 0 0 auto;
+}
+
+.composer-bottom-overflow-menu-group .context-toolbar-control {
+  justify-content: center;
+}
+
+.composer-bottom-overflow-menu-group .context-usage-label {
+  display: none;
+}
+
+.composer-bottom-overflow-menu-group .composer-status-ages {
+  margin-left: 0;
 }
 
 .composer-bottom-overflow-menu-group .mode-button {
@@ -5375,6 +5401,7 @@ a.sidebar-nav-item {
  * `early` or beyond. A control's inline and menu copies thus stay mutually
  * exclusive at every tier and priority — see the show rules below.
  */
+.composer-bottom-overflow-menu-group .composer-bottom-overflow-pinned,
 .composer-bottom-overflow-menu-group .composer-bottom-overflow-early,
 .composer-bottom-overflow-menu-group .composer-bottom-overflow-medium,
 .composer-bottom-overflow-menu-group .composer-bottom-overflow-late {
@@ -9570,6 +9597,8 @@ a.sidebar-nav-item {
 .session-toolbar-settings {
   flex-direction: column;
   align-items: stretch;
+  container-name: session-toolbar-settings;
+  container-type: inline-size;
 }
 
 .output-appearance-settings {
@@ -9906,14 +9935,14 @@ a.sidebar-nav-item {
   box-shadow: none;
 }
 
-/* Shown zone: one full-width row per control (preview + copy + priority + hide). */
 .session-toolbar-control-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  width: 100%;
+  max-width: 100%;
 }
 
-/* Hidden zone: two side-columns (left/right toolbar edge), stacking when narrow. */
 .session-toolbar-zone {
   display: flex;
   flex-direction: column;
@@ -9949,6 +9978,13 @@ a.sidebar-nav-item {
   gap: var(--space-3);
 }
 
+/* Match one Hidden column when it fits; 26rem keeps priority controls readable. */
+@container session-toolbar-settings (min-width: 492px) {
+  .session-toolbar-control-list {
+    width: min(100%, max(26rem, calc(50% - 6px)));
+  }
+}
+
 .session-toolbar-hidden-group {
   display: flex;
   flex-direction: column;
@@ -9975,6 +10011,8 @@ a.sidebar-nav-item {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  box-sizing: border-box;
+  width: 100%;
   padding: var(--space-2);
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
@@ -9993,6 +10031,7 @@ a.sidebar-nav-item {
 
 .session-toolbar-control-row .session-toolbar-control-copy {
   flex: 1 1 auto;
+  min-width: 0;
 }
 
 .session-toolbar-control-actions {

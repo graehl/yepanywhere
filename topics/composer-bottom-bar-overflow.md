@@ -67,10 +67,12 @@ they can reach a control.
   only until that total fits the toolbar width.
 - Hidden controls must remain reachable by tap/click from the popup menu, not
   disappear.
-- The eligible set should include controls from both the left and right toolbar
+- The eligible set includes controls from both the left and right toolbar
   containers. Permission mode, attachment, slash, thinking, render/formula,
-  heartbeat/pulse, and shortcut help may all collapse when space is tight; the
-  exact priority order can be refined later.
+  heartbeat/pulse, shortcut help, session status, context usage, `/btw`, Steer
+  Now, and Project Queue may all collapse when the user assigns a non-`pin`
+  priority. Send, Stop, pending approvals/questions, microphone, and the active
+  waveform remain inline/pinned by their own contracts.
 - At squeeze widths, permission mode should use a pure icon/dot presentation
   rather than carrying text such as `Bypass` inline.
 - Overflow priority does not require arbitrary reshuffling of the normal
@@ -172,8 +174,12 @@ float presentations rather than swapping to a separate probe.
   selected `...` button: mode and attachment use the available left side, while
   slash, thinking, render/formula, heartbeat/pulse, and shortcut help spill to
   the right when left space would be tight.
-- Context percentage, microphone, queue/patient controls, Stop, and send remain
-  inline in that first pass.
+- 2026-07-01 follow-up: right-side controls gained real overflow menu copies
+  where the Toolbar settings priority editor exposes them: session status,
+  context percentage, `/btw`, Steer Now, and Project Queue. Their defaults
+  remain `pin`; assigning `first`/`mid`/`last` makes them participate in the
+  same measured tier engine as the existing left-side controls. Send, Stop,
+  pending approval/question, microphone, and the active waveform stay pinned.
 - Active-microphone waveform landed on 2026-06-19 as a configurable,
   default-on session-toolbar element. It is an elastic child of the
   measured left control list: real YA-controlled capture samples fill whatever

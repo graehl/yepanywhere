@@ -25,12 +25,8 @@ export type SessionToolbarPriority = Record<
   ToolbarNarrowingPriority
 >;
 
-// Defaults reproduce today's hardcoded overflow tiers exactly: `first` == the
-// old `early` (collapses first), `mid` == `medium`, `last` == `late` (collapses
-// last). Controls that never collapsed (the right-side / always-on group) are
-// `pin`. Keeping these as defaults means the data-driven tiers change nothing
-// until a user reconfigures. Right-side priority is configurable but not yet
-// functionally effective — see topics/toolbar-settings-ui.md.
+// Defaults encode the runtime overflow order. Right-side controls stay pinned
+// until the user opts them into a collapse tier.
 export const DEFAULT_SESSION_TOOLBAR_PRIORITY: SessionToolbarPriority = {
   modeSelector: "first",
   attachments: "first",

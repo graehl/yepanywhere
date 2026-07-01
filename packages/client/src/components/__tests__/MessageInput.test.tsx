@@ -17,6 +17,7 @@ import {
   useState,
 } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_SESSION_TOOLBAR_PRIORITY } from "../../hooks/useSessionToolbarPriority";
 import { SESSION_ISEARCH_GUIDE_EVENT } from "../../lib/sessionIsearchGuide";
 import {
   YA_GROK_BATCH_SPEECH_METHOD,
@@ -505,6 +506,9 @@ const toolbarT = ((key: string, params?: Record<string, string>) => {
       "Send after all sessions in this project are idle",
     toolbarProjectQueueTooltipWithShortcut:
       "Send after all sessions in this project are idle\nCtrl+Enter",
+    toolbarSteerNowLabel: "Steer now",
+    toolbarSteerNowShortLabel: "Now",
+    toolbarSteerNowTooltip: "Steer current turn now",
     toolbarSteerTooltip: "Steer current turn\nEnter",
     toolbarSend: "Send",
     toolbarOverflowMenu: "More toolbar controls",
@@ -2994,8 +2998,11 @@ describe("MessageInput", () => {
     const onRenderToggle = vi.fn();
     const onNudgeClick = vi.fn();
     const setShortcutsOpen = vi.fn();
+    const onBtwClick = vi.fn();
+    const onToggleSteerNow = vi.fn();
+    const onProjectQueue = vi.fn();
 
-    render(
+    const { container } = render(
       <MessageInputToolbarView
         t={toolbarT}
         visibility={{
@@ -3003,7 +3010,17 @@ describe("MessageInput", () => {
           thinkingToggle: false,
           renderMode: true,
           shortcutsHelp: true,
+          contextUsage: true,
+          btw: true,
           nudge: true,
+          projectQueue: true,
+        }}
+        priority={{
+          ...DEFAULT_SESSION_TOOLBAR_PRIORITY,
+          contextUsage: "first",
+          btw: "first",
+          steerNow: "first",
+          projectQueue: "first",
         }}
         attachmentControl={{ attachmentCount: 0 }}
         renderModeControl={{
@@ -3034,6 +3051,22 @@ describe("MessageInput", () => {
           queueShortcutLabel: "Queue while agent runs",
         }}
         actionsControl={{
+          contextUsage: {
+            inputTokens: 42_000,
+            percentage: 42,
+            contextWindow: 100_000,
+          },
+          btw: {
+            onClick: onBtwClick,
+            pressed: false,
+            mode: "start",
+            title: "Start /btw aside",
+          },
+          projectQueue: {
+            onProjectQueue,
+            canSend: true,
+            tooltip: "Queue for Project Queue",
+          },
           send: {
             onSend: vi.fn(),
             canSend: true,
@@ -3041,6 +3074,9 @@ describe("MessageInput", () => {
             primaryActionLabel: "Send",
             tooltip: "Send",
             icon: "↑",
+            showSteerNowMode: true,
+            steerNowEnabled: false,
+            onToggleSteerNow,
           },
         }}
       />,
@@ -3061,9 +3097,20 @@ describe("MessageInput", () => {
     fireEvent.click(
       screen.getAllByLabelText("Session keyboard shortcuts").at(-1)!,
     );
+    fireEvent.click(screen.getAllByLabelText("Start /btw aside").at(-1)!);
+    fireEvent.click(screen.getAllByLabelText("Steer now").at(-1)!);
+    fireEvent.click(screen.getAllByLabelText("Queue for Project Queue").at(-1)!);
 
     expect(onRenderToggle).toHaveBeenCalledTimes(1);
     expect(onNudgeClick).toHaveBeenCalledTimes(1);
     expect(setShortcutsOpen).toHaveBeenCalledTimes(1);
+    expect(onBtwClick).toHaveBeenCalledTimes(1);
+    expect(onToggleSteerNow).toHaveBeenCalledTimes(1);
+    expect(onProjectQueue).toHaveBeenCalledTimes(1);
+    expect(
+      container.querySelectorAll(
+        ".composer-bottom-overflow-menu .context-toolbar-control",
+      ),
+    ).toHaveLength(1);
   });
 });

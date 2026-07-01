@@ -162,7 +162,7 @@
   "appearanceToolbarHiddenHeading": "Hidden",
   "appearanceToolbarHiddenDescription": "Off. Turn one on to add it back to the toolbar.",
   "appearanceToolbarShownHeading": "Shown",
-  "appearanceToolbarShownDescription": "On the toolbar, in left-to-right order. Set how eagerly each collapses into the … menu as the bar narrows, or hide it.",
+  "appearanceToolbarShownDescription": "On the toolbar, in left-to-right order. Set collapse priority for controls that can move into the … menu, or hide any control.",
   "appearanceToolbarSideLeft": "Left side",
   "appearanceToolbarSideRight": "Right side",
   "appearanceToolbarSideNoneHidden": "None hidden",

@@ -109,6 +109,25 @@ have several children (forks). No multi-parent rows have been observed;
 code and docs that say "DAG" mean this forest (see the header comments in
 `packages/server/src/sessions/dag.ts` and `packages/shared/src/dag.ts`).
 
+**Fork vs. forest — opposite conditions, do not conflate.** A *fork*
+(branch) is one parent with several children: the children share every row
+up to that parent and diverge only after it, so a fork is a *content*
+divergence *with* shared ancestry. The structure earns the name *forest*
+(rather than a single rooted tree) only because it can also contain
+**multiple roots** — rows whose `parentUuid` resolves to nothing in the
+loaded set. Multiple roots are almost always a *loading artifact*, not a
+divergence in the conversation: dropped connector rows
+(`attachment`/`system`) break the chain client-side, pagination /
+incremental-fetch windows omit the parent, and live stream rows carry no
+`parentUuid` at all — `dag.ts` deliberately treats all three as "parent
+absent, do not relocate." A genuinely second authored root is rare. So
+"this row's ancestry is not in view" (an extra root) and "we branched off a
+shared row" (a fork) are opposite situations. Every divergence that arises
+from *what was written* — the concurrent-writer and rewind/`api_error`
+cases below — is a **fork with a shared prefix**, never an extra root. A
+fully loaded, connector-complete transcript is a branching *tree*; the
+*forest* framing is really about partial/artifacted loading.
+
 Conversation rows routinely chain THROUGH non-conversation connector rows.
 Observed connector types: `attachment` rows (CLI-injected context such as
 `date_change` notices and file mentions — in observed sessions every
@@ -209,7 +228,10 @@ provider-side branch selection.
 
 See also: the provider-neutral ownership model, the Codex equivalent, and the
 `owner === "none"` pending-tool ("waiting elsewhere") banner are in
-[session-ownership.md](session-ownership.md).
+[session-ownership.md](session-ownership.md). The proposed remedy for the
+off-branch turns a fork strands — surfacing them and folding a summary of them
+into the live working branch on demand — is
+[fork-catchup.md](fork-catchup.md).
 
 ## Current Problem Areas
 

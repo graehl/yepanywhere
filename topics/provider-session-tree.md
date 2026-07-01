@@ -14,6 +14,9 @@ Related topics: [session-context-actions](session-context-actions.md),
 [fork-from-turn](fork-from-turn.md),
 [provider-fork-support](provider-fork-support.md) (the write side:
 `canForkAtNode` ⇔ a provider implementing `forkSession`),
+[fork-catchup](fork-catchup.md) (the lightweight always-present "N off-branch
+turns" indicator and the merge-as-FYI action this read-only navigator leaves out
+of scope),
 [vanilla-defaults](vanilla-defaults.md)
 
 ## Motivation

@@ -129,6 +129,31 @@ probe did not error and credit accounting was not measured); how `gy()`
 behaves on Bedrock/Vertex/gateway accounts; what exactly `JO()` requires
 beyond a first-party base URL.
 
+### Update 2026-07-01: Sonnet 5 rollout supersedes the sonnet rows above
+
+CLI `claude` 2.1.197. Re-probed after Sonnet 5 shipped; the 200K /
+credit-gated sonnet results above no longer hold:
+
+| `--model`    | runtime model (`modelUsage` key) | window                                          |
+| ------------ | -------------------------------- | ----------------------------------------------- |
+| `default`    | `claude-sonnet-5`                | 1,000,000                                       |
+| `sonnet`     | `claude-sonnet-5`                | 1,000,000                                       |
+| `sonnet[1m]` | `claude-sonnet-5[1m]`            | 1,000,000 (standard tier, **no** credit error)  |
+| `best`       | `claude-opus-4-8`                | 1,000,000                                       |
+
+So `sonnet` now auto-1Ms like opus, and the "Usage credits required for 1M
+context" gate is gone for Sonnet 5. Caveat — the SDK catalog lags the
+routing: `supportedModels()` still labels the `sonnet` alias "Sonnet 4.6"
+(and `default` "Sonnet 4.6 · …") even though both execute `claude-sonnet-5`.
+A version string taken from the SDK is therefore one release stale, so
+yepanywhere pins the "Sonnet 5" label in its own description rather than
+trusting the catalog. Sonnet 5's newer tokenizer also bills ~30% more tokens
+for the same text (the Opus 4.7 tokenizer).
+
+yepanywhere consequence: `sonnet` gets the always-1M treatment `opus` already
+had — normalized to `sonnet[1m]` at the SDK-query chokepoints, the separate
+"Sonnet 1M" picker entry dropped, `sonnet[1m]` kept as a hidden valid id.
+
 ## How yepanywhere consumes this
 
 yepanywhere never persists a session's real context window. It derives the

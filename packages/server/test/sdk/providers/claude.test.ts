@@ -70,7 +70,8 @@ describe("ClaudeProvider model list", () => {
     expect(models[0]).toMatchObject({
       id: "default",
       name: "Default",
-      description: "Claude Code chooses the recommended model for your account",
+      description:
+        "Claude Code chooses the recommended model for your account (probably Sonnet)",
     });
     expect(models.map((model) => model.id)).toContain("claude-sonnet-4-6");
   });

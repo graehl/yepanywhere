@@ -397,21 +397,31 @@ async function* withCleanup<T>(
 }
 
 /**
- * Opus always runs with the 1M-token context window: Opus 4.8's 1M is
- * standard-priced (no per-token premium), so bare `opus` is normalized to the
- * extended-context alias at every launch/setModel chokepoint and surfaced with
- * the 1M window in the exposed model list.
+ * Opus and Sonnet both run with the 1M-token context window: their 1M is
+ * standard-priced (no per-token premium), so bare `opus`/`sonnet` are
+ * normalized to the extended-context alias at every launch/setModel chokepoint
+ * and surfaced with the 1M window in the exposed model list.
  *
- * Sonnet is deliberately NOT extended. Its 1M window requires paid usage
- * credits — launching it as `sonnet[1m]` errors with "Usage credits required
- * for 1M context" — so Sonnet keeps its standard 200K window. See tasks/029.
+ * Sonnet's 1M was previously credit-gated (launching `sonnet[1m]` errored with
+ * "Usage credits required for 1M context"), so it once kept a separate 200K
+ * entry. Sonnet 5 lifted that gate: a live probe on this account runs
+ * `--model sonnet` as `claude-sonnet-5[1m]` at a 1,000,000 window on the
+ * standard tier with no error. The "Sonnet 5" label is pinned in the
+ * description (the name stays the generic "Sonnet") rather than taken from the
+ * SDK, because `supportedModels()` still reports the `sonnet` alias as
+ * "Sonnet 4.6" even though it routes to Sonnet 5 at runtime; that pin will
+ * drift once the SDK catalog catches up, and we accept it. See
+ * topics/claude-1m-context.md.
  */
 const ALWAYS_EXTENDED_CONTEXT_ALIASES: Record<string, string> = {
   opus: "opus[1m]",
+  sonnet: "sonnet[1m]",
 };
 
 const ALWAYS_EXTENDED_DESCRIPTIONS: Record<string, string> = {
   opus: "Opus 4.8 with the full 1M-token context window",
+  sonnet:
+    "Sonnet 5 with the full 1M-token context window · newer tokenizer bills ~30% more tokens",
 };
 
 /** Normalize the opus alias to its always-on 1M variant at launch. */
@@ -426,7 +436,8 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   {
     id: "default",
     name: "Default",
-    description: "Claude Code chooses the recommended model for your account",
+    description:
+      "Claude Code chooses the recommended model for your account (probably Sonnet)",
     contextWindow: getModelContextWindow("default", "claude"),
   },
   {
@@ -451,13 +462,7 @@ const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   {
     id: "sonnet",
     name: "Sonnet",
-    description: "Standard-context Sonnet for everyday coding tasks",
-    contextWindow: getModelContextWindow("sonnet", "claude"),
-  },
-  {
-    id: "sonnet[1m]",
-    name: "Sonnet 1M",
-    description: "Sonnet with 1M context",
+    description: ALWAYS_EXTENDED_DESCRIPTIONS.sonnet,
     contextWindow: getModelContextWindow("sonnet[1m]", "claude"),
   },
   {
@@ -564,21 +569,31 @@ export function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
     .map((id) => byId.get(id))
     .filter((model): model is ModelInfo => model !== undefined);
 
-  // Opus always uses the 1M window (withExtendedClaudeContext), so drop the
-  // redundant "opus[1m]" entry and surface the 1M window + label on the base
-  // alias — including when the SDK probe supplies a 200K window. Sonnet keeps
-  // both a standard "sonnet" and an explicit credit-gated "sonnet[1m]" entry.
+  // Opus and Sonnet always use the 1M window (withExtendedClaudeContext), so
+  // drop the redundant "opus[1m]"/"sonnet[1m]" entries and surface the 1M
+  // window + label on the base alias — including when the SDK probe supplies a
+  // 200K window. Sonnet also forces its description (not its name) because the
+  // SDK catalog still reports the alias as "Sonnet 4.6" while it routes to
+  // Sonnet 5.
   return merged
-    .filter((model) => model.id !== "opus[1m]")
-    .map((model) =>
-      model.id === "opus"
-        ? {
-            ...model,
-            contextWindow: getModelContextWindow("opus[1m]", "claude"),
-            description: ALWAYS_EXTENDED_DESCRIPTIONS.opus,
-          }
-        : model,
-    );
+    .filter((model) => model.id !== "opus[1m]" && model.id !== "sonnet[1m]")
+    .map((model) => {
+      if (model.id === "opus") {
+        return {
+          ...model,
+          contextWindow: getModelContextWindow("opus[1m]", "claude"),
+          description: ALWAYS_EXTENDED_DESCRIPTIONS.opus,
+        };
+      }
+      if (model.id === "sonnet") {
+        return {
+          ...model,
+          contextWindow: getModelContextWindow("sonnet[1m]", "claude"),
+          description: ALWAYS_EXTENDED_DESCRIPTIONS.sonnet,
+        };
+      }
+      return model;
+    });
 }
 
 /** Cached models from SDK probe */

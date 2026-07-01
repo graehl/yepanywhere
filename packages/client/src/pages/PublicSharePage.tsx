@@ -225,6 +225,21 @@ function mergePublicShareResponse(
   };
 }
 
+export function getPublicShareCautionKey(
+  mode: PublicSessionShareMode | null,
+):
+  | "publicShareLiveSecretWarning"
+  | "publicShareReadOnlySecretCaution"
+  | null {
+  if (mode === "live") {
+    return "publicShareLiveSecretWarning";
+  }
+  if (mode === "frozen") {
+    return "publicShareReadOnlySecretCaution";
+  }
+  return null;
+}
+
 export function PublicSharePage() {
   const { t } = useI18n();
   const { secret } = useParams<{ secret: string }>();
@@ -296,6 +311,8 @@ export function PublicSharePage() {
     ? t("publicShareRetrying")
     : t("publicShareLoading");
   const isFetching = loading || retrying;
+  const cautionKey = getPublicShareCautionKey(mode);
+  const cautionLabel = cautionKey ? t(cautionKey) : null;
 
   const refresh = useCallback(
     async (afterMessageId?: string) => {
@@ -506,6 +523,14 @@ export function PublicSharePage() {
         ref={scrollRef}
         onScroll={handleScroll}
       >
+        {cautionLabel && (
+          <div
+            className={`public-share-caution public-share-caution--${mode}`}
+            role="note"
+          >
+            {cautionLabel}
+          </div>
+        )}
         <ToastProvider>
           <SchemaValidationProvider>
             <StreamingMarkdownProvider>

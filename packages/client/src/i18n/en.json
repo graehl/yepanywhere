@@ -591,6 +591,8 @@
   "publicShareFrozenBadge": "Snapshot",
   "publicShareLiveBadge": "Live",
   "publicShareActiveViewers": "{count} active public viewer(s)",
+  "publicShareLiveSecretWarning": "WARNING: assistant read, edits, commands may leak secrets!",
+  "publicShareReadOnlySecretCaution": "Read, edit, and command output shown so far should be considered public.",
   "sessionErrorPrefix": "Error:",
   "sessionToggleSidebar": "Toggle sidebar",
   "sessionOpenSidebar": "Open sidebar",

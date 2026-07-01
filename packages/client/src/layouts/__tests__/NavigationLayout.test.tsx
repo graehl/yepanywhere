@@ -50,6 +50,7 @@ function renderNavigationLayoutWithSessionLinger(
                   data-parked={parked ? "true" : "false"}
                 >
                   <Link to="/agents">Agents</Link>
+                  <Link to="/projects/project-1/file?path=README.md">File</Link>
                   <Link to="/projects/project-1/sessions/session-2">
                     Session 2
                   </Link>
@@ -62,6 +63,16 @@ function renderNavigationLayoutWithSessionLinger(
             path="/agents"
             element={
               <div data-testid="route-content">
+                <Link to="/projects/project-1/sessions/session-1">
+                  Session 1
+                </Link>
+              </div>
+            }
+          />
+          <Route
+            path="/projects/:projectId/file"
+            element={
+              <div data-testid="file-frame">
                 <Link to="/projects/project-1/sessions/session-1">
                   Session 1
                 </Link>
@@ -110,6 +121,30 @@ describe("NavigationLayout", () => {
     expect(screen.getByTestId("route-content")).toBeTruthy();
     expect(screen.getByTestId("session-layer")).toBe(sessionLayer);
     expect(screen.getByTestId("session-layer").dataset.parked).toBe("true");
+    expect(
+      screen
+        .getByTestId("session-layer")
+        .closest("[data-session-dom-linger]")
+        ?.getAttribute("data-session-dom-linger"),
+    ).toBe("parked");
+
+    fireEvent.click(screen.getByText("Session 1"));
+
+    expect(screen.getByTestId("session-layer")).toBe(sessionLayer);
+    expect(screen.getByTestId("session-layer").dataset.parked).toBe("false");
+  });
+
+  it("parks the session DOM under a full-frame project file route", () => {
+    renderNavigationLayoutWithSessionLinger();
+
+    const sessionLayer = screen.getByTestId("session-layer");
+
+    fireEvent.click(screen.getByText("File"));
+
+    expect(screen.getByTestId("file-frame")).toBeTruthy();
+    expect(screen.getByTestId("session-layer")).toBe(sessionLayer);
+    expect(screen.getByTestId("session-layer").dataset.parked).toBe("true");
+    expect(screen.queryByTestId("mobile-sidebar")).toBeNull();
     expect(
       screen
         .getByTestId("session-layer")

@@ -67,6 +67,21 @@ with an explicit notice is preferable to falling through to Remote Access login,
 which incorrectly suggests the public viewer should authenticate to read a
 secret-link snapshot.
 
+## Public Share Transcript Secrets
+
+Public-share link scoping does not redact transcript text. `Read` snippets,
+`Edit` context, and command output such as `env`, `printenv`, stdout, stderr,
+test logs, and crash dumps can already contain secrets by the time a share is
+created or served. Providers usually avoid reading or repeating obvious secrets,
+but rare misses are expected over enough turns, so public-share safety must not
+depend on provider restraint.
+
+Interim UI contract: public share viewers warn that visible assistant
+read/edit/command output should be considered public, with stronger wording for
+live shares. Longer-term design should add content-aware censorship before
+public share bodies are sent to unauthenticated viewers; see
+[`public-share-content-censorship.md`](public-share-content-censorship.md).
+
 ## Public Share Relay Privacy
 
 Normal authenticated Remote Access is relay-mediated but end-to-end encrypted.
@@ -83,6 +98,9 @@ bearer-link read-only views, not as relay-operator-private views. See
 
 - [`docs/tactical/000-relay-origin-and-share-gating.md`](../docs/tactical/000-relay-origin-and-share-gating.md)
   records the current public-share relay, opt-in, and revocation decisions.
+- [`public-share-content-censorship.md`](public-share-content-censorship.md)
+  records the proposed content-aware redaction layer for public transcript
+  output.
 - [`SECURITY.md`](../SECURITY.md) is the public security-policy entry point for
   reporting vulnerabilities and should stay operator-facing rather than carrying
   implementation-specific design contracts.

@@ -135,6 +135,26 @@ This first version is default-on because the user explicitly selected it as the
 needed speed path and the one-entry/60-second caps make it bounded. Do not infer
 from that that generic hidden keep-alive is generally safe.
 
+## Content-Frame Contract
+
+Built-in content viewers launched from session content must preserve the session
+underlay. A normal click on a generated file-path link, `Read`/`Edit` file link,
+local-file link, local-media link, or explicit YA project-file viewer URL should
+open a modal or content-frame viewer while the current session remains mounted
+underneath. Browser Back is an acceptable close gesture for those viewers: for
+modals it should close the modal; for a full-frame content route it should leave
+the viewer route and reveal the lingered session immediately.
+
+Full-frame built-in viewers belong inside `NavigationLayout` as content-frame
+routes, not as sibling routes that unmount the layout. They may cover 100% of
+the app frame and suppress sidebar chrome, but the session linger host must stay
+mounted. `/projects/:projectId/file` is the current concrete example.
+
+External offsite links that navigate the browser away from YA are outside this
+contract. If YA later adds a built-in offsite/web viewer, that viewer must follow
+the same modal/content-frame rule: Back acts as close/return, the foreground
+viewer owns focus and pointer events, and the parked session remains inert.
+
 ## Verification
 
 - Browser test: session -> non-session route -> back within 60 seconds reuses
@@ -181,3 +201,9 @@ If the user leaves before the initial progressive render has completed, DOM
 linger preserves that existing in-progress overlay. That is expected for this
 slice: the feature avoids remount work; it does not hide work that was already
 visible before navigation away.
+
+Follow-up verification added generated assistant text paths and explicit
+project-file viewer URLs to the contract. Normal clicks on those links open the
+same `FileViewerModal`; direct navigation to `/projects/:projectId/file` stays
+inside `NavigationLayout` as a sidebarless content-frame route so Back can reveal
+the parked session rather than remounting it.

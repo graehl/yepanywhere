@@ -120,6 +120,10 @@ function readSessionRouteFromPathname(
   };
 }
 
+function isContentFrameRoutePathname(pathname: string): boolean {
+  return /(?:^|\/)projects\/[^/]+\/file\/?$/.test(pathname);
+}
+
 export function SessionDomLingerRouteMarker() {
   return null;
 }
@@ -134,6 +138,10 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
   const location = useLocation();
   const currentSessionMatch = useMemo(
     () => readSessionRouteFromPathname(location.pathname),
+    [location.pathname],
+  );
+  const isContentFrameRoute = useMemo(
+    () => isContentFrameRoutePathname(location.pathname),
     [location.pathname],
   );
   const sourceKey = useClientSummarySourceKey();
@@ -193,6 +201,12 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
       setSidebarOpen(false);
     }
   }, [canShowExpandedSidebar, isWideScreen, sidebarOpen]);
+
+  useEffect(() => {
+    if (isContentFrameRoute && sidebarOpen) {
+      setSidebarOpen(false);
+    }
+  }, [isContentFrameRoute, sidebarOpen]);
 
   // Smart toggle: if viewport can support expanded, toggle preference; otherwise open overlay
   const handleToggleExpanded = useCallback(() => {
@@ -323,11 +337,13 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
 
   return (
     <div
-      className={`session-page ${isWideScreen ? "desktop-layout" : ""} ${isResizing ? "resizing" : ""}`}
+      className={`session-page ${isWideScreen ? "desktop-layout" : ""} ${
+        isContentFrameRoute ? "content-frame-layout" : ""
+      } ${isResizing ? "resizing" : ""}`}
       style={containerStyle}
     >
       {/* Desktop sidebar - always visible on wide screens */}
-      {isWideScreen && (
+      {isWideScreen && !isContentFrameRoute && (
         <aside
           className={`sidebar-desktop ${effectivelyCollapsed ? "sidebar-collapsed" : ""} ${isResizing ? "resizing" : ""}`}
           style={desktopSidebarStyle}
@@ -349,7 +365,7 @@ export function NavigationLayout({ sessionElement }: NavigationLayoutProps) {
       )}
 
       {/* Mobile sidebar - modal overlay (also used for constrained desktop overlay) */}
-      {(!isWideScreen || sidebarOpen) && (
+      {!isContentFrameRoute && (!isWideScreen || sidebarOpen) && (
         <Sidebar
           isOpen={sidebarOpen}
           onClose={closeSidebar}

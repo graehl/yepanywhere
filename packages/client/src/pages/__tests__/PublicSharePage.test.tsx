@@ -7,7 +7,10 @@ import {
   rewritePublicShareLocalAppHref,
   rewritePublicShareLocalAppLinks,
 } from "../../contexts/PublicShareContext";
-import { isPublicShareLocalAppHref } from "../PublicSharePage";
+import {
+  getPublicShareCautionKey,
+  isPublicShareLocalAppHref,
+} from "../PublicSharePage";
 
 describe("isPublicShareLocalAppHref", () => {
   const shareUrl = "https://ya.graehl.org/share/secret";
@@ -38,6 +41,20 @@ describe("isPublicShareLocalAppHref", () => {
       isPublicShareLocalAppHref("https://example.com/README.md", shareUrl),
     ).toBe(false);
     expect(isPublicShareLocalAppHref("/share/other", shareUrl)).toBe(false);
+  });
+});
+
+describe("getPublicShareCautionKey", () => {
+  it("uses the stronger secret warning for live shares", () => {
+    expect(getPublicShareCautionKey("live")).toBe(
+      "publicShareLiveSecretWarning",
+    );
+  });
+
+  it("uses the milder public-output caution for snapshots", () => {
+    expect(getPublicShareCautionKey("frozen")).toBe(
+      "publicShareReadOnlySecretCaution",
+    );
   });
 });
 

@@ -188,13 +188,12 @@ if (import.meta.env.DEV && window.location.port === String(__VITE_DEV_PORT__)) {
                 <Route path="/devices" element={<EmulatorPage />} />
                 <Route path="/devices/:deviceId" element={<EmulatorPage />} />
                 <Route path="/new-session" element={<NewSessionPage />} />
+                <Route path="/projects/:projectId/file" element={<FilePage />} />
                 <Route
                   path="/projects/:projectId/sessions/:sessionId"
                   element={<SessionDomLingerRouteMarker />}
                 />
               </Route>
-              {/* File page has its own layout (no sidebar) */}
-              <Route path="/projects/:projectId/file" element={<FilePage />} />
               {/* Activity page has its own layout */}
               <Route path="/activity" element={<ActivityPage />} />
             </Routes>

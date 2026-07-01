@@ -5,6 +5,7 @@
 - Pluggable speech recognition providers
 - Browser-load session UI reliability
 - Public read-only session shares
+- Public share content censorship
 - Approval and local access security hardening
 - Security trust boundaries
 - Trusted client packaging for signed/local app installs

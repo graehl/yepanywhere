@@ -263,6 +263,74 @@ describe("Files API", () => {
       expect(json.rawUrl).toContain("image.png");
     });
 
+    it("sniffs unknown-extension UTF-8 files as displayable text", async () => {
+      await writeFile(
+        join(projectPath, "job.output"),
+        "alpha\nbeta\ngamma\n",
+      );
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files?path=job.output&highlight=true`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as FileContentResponse;
+      expect(json.metadata.path).toBe("job.output");
+      expect(json.metadata.mimeType).toBe("application/octet-stream");
+      expect(json.metadata.isText).toBe(true);
+      expect(json.content).toBe("alpha\nbeta\ngamma\n");
+    });
+
+    it("returns requested ranges for unknown-extension text files", async () => {
+      await writeFile(
+        join(projectPath, "task.stdout"),
+        ["one", "two", "three", "four"].join("\n"),
+      );
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files?path=task.stdout&line=2&lineEnd=3&view=range&highlight=true`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as FileContentResponse;
+      expect(json.metadata.mimeType).toBe("application/octet-stream");
+      expect(json.metadata.isText).toBe(true);
+      expect(json.content).toBe("two\nthree");
+      expect(json.contentStartLine).toBe(2);
+      expect(json.contentEndLine).toBe(3);
+      expect(json.contentTotalLines).toBe(4);
+      expect(json.contentTruncated).toBe(true);
+    });
+
+    it("keeps unknown-extension binary files out of text preview", async () => {
+      await writeFile(
+        join(projectPath, "artifact.output"),
+        Buffer.from([0, 1, 2, 3, 4, 5]),
+      );
+      const { app } = createApp({
+        sdk: mockSdk,
+        projectsDir: join(testDir, "sessions"),
+      });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/files?path=artifact.output`,
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as FileContentResponse;
+      expect(json.metadata.mimeType).toBe("application/octet-stream");
+      expect(json.metadata.isText).toBe(false);
+      expect(json.content).toBeUndefined();
+    });
+
     it("returns 400 for missing path parameter", async () => {
       const { app } = createApp({
         sdk: mockSdk,
@@ -656,6 +724,8 @@ describe("Files API", () => {
       ["file.md", true],
       ["file.json", true],
       ["file.svg", true],
+      ["file.output", true],
+      ["file.stdout", true],
       ["file.png", false],
       ["file.jpg", false],
       ["file.pdf", false],

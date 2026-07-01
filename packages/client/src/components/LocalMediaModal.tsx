@@ -91,6 +91,15 @@ function normalizeResourceForProjectContext(
   resource: LocalResourceRef,
   projectContext: ProjectContext | null | undefined,
 ): ProjectFileModalTarget | null {
+  if (resource.kind === "project-file" && resource.projectId) {
+    return {
+      filePath: resource.path,
+      lineEnd: resource.lineEnd,
+      lineNumber: resource.lineNumber,
+      projectId: resource.projectId,
+    };
+  }
+
   if (resource.kind !== "local-file" || !projectContext) {
     return null;
   }

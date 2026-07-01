@@ -389,11 +389,93 @@ describe("TextBlock", () => {
       undefined,
       "full",
     );
-    expect(await screen.findByText("Project doc")).toBeTruthy();
+    expect(await screen.findByText(/Project doc/)).toBeTruthy();
     const overlay = document.body.querySelector(".modal-overlay");
     expect(overlay).toBeTruthy();
     expect(overlay?.parentElement).toBe(document.body);
     expect(container.contains(overlay)).toBe(false);
+  });
+
+  it("opens generated project-file links in FileViewer", async () => {
+    apiMocks.getFile.mockResolvedValueOnce({
+      content: "# Project doc\n\nRendered through FileViewer.",
+      metadata: {
+        isText: true,
+        mimeType: "text/markdown",
+        path: "docs/status.md",
+        size: 36,
+      },
+      rawUrl: "/api/projects/project-1/files/raw?path=docs%2Fstatus.md",
+      renderedMarkdownHtml: "<h1>Project doc</h1>",
+    });
+
+    render(
+      <I18nProvider>
+        <TextBlock
+          text="See docs/status.md"
+          augmentHtml={
+            '<p>See <a class="fixed-font-file-link" href="/projects/project-1/file?path=docs%2Fstatus.md&amp;line=8" data-ya-resource="project-file" data-ya-project-id="project-1" data-ya-path="docs/status.md" data-ya-line="8" data-ya-private-project-file-link="true">docs/status.md</a></p>'
+          }
+        />
+      </I18nProvider>,
+    );
+
+    const clickAllowed = fireEvent.click(
+      screen.getByRole("link", { name: "docs/status.md" }),
+    );
+
+    expect(clickAllowed).toBe(false);
+    expect(apiMocks.getFile).toHaveBeenCalledWith(
+      "project-1",
+      "docs/status.md",
+      true,
+      8,
+      undefined,
+      "full",
+    );
+    expect(await screen.findByText(/Project doc/)).toBeTruthy();
+  });
+
+  it("opens explicit project file viewer URLs in FileViewer", async () => {
+    apiMocks.getFile.mockResolvedValueOnce({
+      content: "# Explicit URL\n\nRendered through FileViewer.",
+      metadata: {
+        isText: true,
+        mimeType: "text/markdown",
+        path: "topics/route.md",
+        size: 41,
+      },
+      rawUrl: "/api/projects/project-1/files/raw?path=topics%2Froute.md",
+      renderedMarkdownHtml: "<h1>Explicit URL</h1>",
+    });
+
+    render(
+      <I18nProvider>
+        <TextBlock
+          text="See /projects/project-1/file?path=topics%2Froute.md"
+          augmentHtml={
+            '<p>See <a href="/projects/project-1/file?path=topics%2Froute.md&amp;line=12&amp;lineEnd=15">/projects/project-1/file?path=topics%2Froute.md</a></p>'
+          }
+        />
+      </I18nProvider>,
+    );
+
+    const clickAllowed = fireEvent.click(
+      screen.getByRole("link", {
+        name: "/projects/project-1/file?path=topics%2Froute.md",
+      }),
+    );
+
+    expect(clickAllowed).toBe(false);
+    expect(apiMocks.getFile).toHaveBeenCalledWith(
+      "project-1",
+      "topics/route.md",
+      true,
+      12,
+      15,
+      "full",
+    );
+    expect(await screen.findByText(/Explicit URL/)).toBeTruthy();
   });
 
   it("normalizes browser-style Windows drive local-file links under the active project", async () => {

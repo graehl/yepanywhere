@@ -84,3 +84,6 @@
   reprioritization and cache-backed target session display titles.
 - session-dom-linger-speedup - Bounded hidden-DOM linger for immediate
   session back/reselect returns.
+- public-share-content-censorship - Content-aware censorship proposal for
+  public transcript bodies that may include Read/Edit snippets and command
+  output secrets.

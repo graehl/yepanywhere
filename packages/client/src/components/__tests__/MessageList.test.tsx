@@ -129,6 +129,15 @@ function systemMessage(
   };
 }
 
+function recapMessage(uuid: string, content: string): Message {
+  return {
+    type: "system",
+    uuid,
+    subtype: "away_summary",
+    content,
+  };
+}
+
 function dispatchCopyEvent() {
   const setData = vi.fn();
   const event = new Event("copy", {
@@ -1157,6 +1166,30 @@ describe("MessageList", () => {
       "text/plain",
       "user selected text\n\nassistant selected text",
     );
+  });
+
+  it("quotes recap selections through the reply pipeline", () => {
+    const onQuoteSelection = vi.fn(() => "> Recap selected text\nx");
+
+    render(
+      <MessageList
+        messages={[recapMessage("recap-1", "Recap selected text")]}
+        onQuoteSelection={onQuoteSelection}
+      />,
+    );
+
+    const recapText = screen.getByText("Recap selected text").firstChild;
+    expect(recapText).toBeTruthy();
+    const range = document.createRange();
+    range.setStart(recapText as Node, 0);
+    range.setEnd(recapText as Node, "Recap selected text".length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    fireEvent.keyDown(window, { key: "x" });
+
+    expect(onQuoteSelection).toHaveBeenCalledWith("> Recap selected text\nx");
   });
 
   it("scrolls to current from a focused composer with Ctrl+End", () => {

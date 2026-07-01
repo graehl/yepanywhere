@@ -3,6 +3,7 @@ import {
   MESSAGE_STALE_THRESHOLD_MS,
   getLatestMessageTimestampMs,
 } from "../lib/messageAge";
+import { useQuoteableTextSource } from "../hooks/useQuoteableTextSource";
 import type { CommentAnchor } from "../lib/commentAnchors";
 import type { ContentBlock } from "../types";
 import type { RenderItem } from "../types/renderItems";
@@ -245,6 +246,11 @@ export const RenderItemComponent = memo(function RenderItemComponent({
     isLatestVisibleTimestamp &&
     ageNowMs !== null &&
     ageNowMs - timestampMs >= MESSAGE_STALE_THRESHOLD_MS;
+  const recapQuoteRef = useQuoteableTextSource<HTMLSpanElement>(
+    item.type === "system" && item.subtype === "away_summary"
+      ? item.content
+      : "",
+  );
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -345,7 +351,9 @@ export const RenderItemComponent = memo(function RenderItemComponent({
           return (
             <div className="system-message-recap">
               <span className="system-message-recap-mark">※</span>
-              <span className="system-message-recap-body">{item.content}</span>
+              <span ref={recapQuoteRef} className="system-message-recap-body">
+                {item.content}
+              </span>
             </div>
           );
         }

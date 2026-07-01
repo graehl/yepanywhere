@@ -25,9 +25,9 @@ Assistant text blocks can be quoted via selection typing, a floating selection
 `>` button, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until the quote is
 removed or sent. Thinking summaries, user turns, Ran/Bash command and output
-text, and Grep preview/content text now use the same selection pipeline.
-Right-mouse line-select and per-section quote lanes for non-assistant-prose
-surfaces remain design/follow-up work.
+text, Grep preview/content text, and recap rows now use the same selection
+pipeline. Right-mouse line-select and per-section quote lanes for
+non-assistant-prose surfaces remain design/follow-up work.
 
 ## Resolved gaps (Phase 1)
 
@@ -319,10 +319,10 @@ already covers whole-paragraph quoting on those platforms.
   extractor can recover its source; the pipeline itself does not change.
   Initial scope widening shipped 2026-07-01 for thinking summaries, user
   prompts, Bash/Ran command text, fixed-font tool output after ANSI stripping,
-  and Grep preview/content text. The extractor now returns every eligible
-  source snippet a selection intersects, so a drag crossing user/assistant/tool
-  regions produces separate blank-line-separated quote blocks while skipping
-  unregistered UI chrome.
+  Grep preview/content text, and recap rows. The extractor now returns every
+  eligible source snippet a selection intersects, so a drag crossing
+  user/assistant/tool/system regions produces separate blank-line-separated
+  quote blocks while skipping unregistered UI chrome.
 
   **Thinking summaries — quote while streaming *or* finished.** We want to
   select and comment on a thinking-summary item even mid-stream, not only once

@@ -81,8 +81,11 @@ cancellation on activity) and the current trigger/threshold gaps.
 - Session lists and hovercards treat a fresher recap as the current ending
   text (`lastAgentText`) immediately on emission and after reload. A later
   real assistant turn naturally supersedes it through the normal summary path.
-- Recap rendering is read-only. There is no reply box, no thumbs, no
-  retry — clicking the recap row should not change provider state.
+- Recap rendering is read-only. There is no recap-specific reply box,
+  thumbs, retry, or dedicated copy-to-composer action; clicking the recap row
+  should not change provider state. The recap body text still participates in
+  the ordinary selection quote-comment pipeline, so a selected recap span can
+  become a `>` quote in the composer like other transcript content.
 
 ## Configuration and Native Capability
 
@@ -228,8 +231,9 @@ Remaining probes:
   since the user left does not surface in the message list.
 - The trailing ` (disable recaps in /config)` text is stripped from
   rendered content but the rest of the text is preserved verbatim.
-- Recap rendering does not expose retry, copy-to-composer, or other
-  actions that would let the recap become an editable user prompt.
+- Recap rendering does not expose retry or recap-specific action chrome; the
+  only path that can move recap text into the composer is the shared
+  selection quote-comment path used for other transcript content.
 
 ## Decision: YA synthesizes rather than passing through
 

@@ -6,6 +6,7 @@
 - glossary - Project vocabulary lookup and regeneration contract.
 - side-session-config - Shared helper side-session defaults and lifecycle.
 - openai-compatible-helper-sessions - OpenAI-compatible helper endpoint runtime for simulated helper work.
+- core-service-api - Proposal to expose YA's provider/session runtime as a headless service and extractable core for external scripts and OpenAI-style proxy clients.
 - prompt-suggestions - Next-user-turn suggestion surface and native/simulated split.
 - session-liveness - Provider/session cache state, stale entries, and recovery.
 - pluggable-speech-recognition - YA server-routed speech backends and browser-native fallback.

@@ -508,6 +508,20 @@ function getFirstVisibleRenderAnchor(
   return null;
 }
 
+function shouldRestoreInitialScrollSnapshot(
+  snapshot: SessionRouteScrollSnapshot,
+): boolean {
+  if (snapshot.atBottom || snapshot.anchor) {
+    return true;
+  }
+
+  // A zero-offset snapshot without a row anchor can be produced while cached
+  // progressive hydration is still showing only the lightweight loading shell.
+  // Treat it as "no useful retained position" so normal session opens follow
+  // the tail instead of pinning the transcript to the top.
+  return snapshot.scrollTop > FOLLOW_BOTTOM_TOLERANCE_PX;
+}
+
 function buildSearchPreview(
   text: string,
   query: string,
@@ -1452,6 +1466,7 @@ export const MessageList = memo(function MessageList({
   const navMotionCueClearTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const previousProgressiveRevealActiveRef = useRef(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchRestoreFocusRef = useRef<HTMLElement | null>(null);
   const searchOriginalScrollTopRef = useRef<number | null>(null);
@@ -2722,6 +2737,24 @@ export const MessageList = memo(function MessageList({
     progressiveRenderCycleKey,
     visibleTimelineEntries.length,
   ]);
+  useLayoutEffect(() => {
+    const wasProgressiveRevealActive =
+      previousProgressiveRevealActiveRef.current;
+    previousProgressiveRevealActiveRef.current = progressiveRevealActive;
+
+    if (
+      !wasProgressiveRevealActive ||
+      progressiveRevealActive ||
+      !shouldAutoScrollRef.current
+    ) {
+      return;
+    }
+
+    const container = containerRef.current?.parentElement;
+    if (container) {
+      scrollToBottom(container);
+    }
+  }, [progressiveRevealActive, scrollToBottom]);
 
   const getThinkingItemExpanded = useCallback(
     (item: RenderItem) =>
@@ -3460,6 +3493,7 @@ export const MessageList = memo(function MessageList({
     if (
       !isInitialLoadRef.current ||
       !initialScrollSnapshot ||
+      !shouldRestoreInitialScrollSnapshot(initialScrollSnapshot) ||
       displayRenderItems.length === 0
     ) {
       return;

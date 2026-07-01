@@ -949,6 +949,9 @@ function SessionPageContent({
     pagination,
     loadingOlder,
     loadOlderMessages,
+    initialScrollSnapshot,
+    updateRouteScrollSnapshot,
+    restoredFromSnapshot,
     reconnectStream,
     promptSuggestion,
     dismissPromptSuggestion,
@@ -5537,11 +5540,15 @@ function SessionPageContent({
                   loadingOlder={loadingOlder}
                   onLoadOlderMessages={loadOlderMessages}
                   clientTailActive={clientTailActive}
-                  progressiveRenderEnabled={sessionLoadingProgressEnabled}
+                  progressiveRenderEnabled={
+                    sessionLoadingProgressEnabled && !restoredFromSnapshot
+                  }
                   progressiveRenderStatusVisible={
                     sessionLoadingProgressDetailsVisible
                   }
                   progressiveRenderKey={sessionId}
+                  initialScrollSnapshot={initialScrollSnapshot}
+                  onScrollSnapshotChange={updateRouteScrollSnapshot}
                   getForkSummaryTargetHref={getForkSummaryTargetHref}
                   onCancelForkSummary={(objectId) => {
                     void cancelForkSummaryJob(objectId);

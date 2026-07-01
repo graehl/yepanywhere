@@ -48,11 +48,11 @@ Progress:
   test for current-source rows plus draft badges across host switches, and
   inbox/global-session/project hooks clear local loading/order refs when the
   source changes so stale responses cannot mutate current-source bookkeeping.
-- [x] 2026-06-28: Scoped the dev opt-in session warm-load cache by summary
-  source. When `VITE_SESSION_LOAD_CACHE=true`, cached transcript data now uses
-  the current `ClientSummarySourceKey` in addition to project/session ids, so
-  same-id sessions on different hosted remotes cannot warm-render one another's
-  messages after a host switch.
+- [x] 2026-06-28: Scoped the then-dev-only session warm-load cache by summary
+  source. That unbounded `VITE_SESSION_LOAD_CACHE=true` path has since been
+  replaced by production `SessionRouteSnapshot` retention, but the source-key
+  rule remains: same-id sessions on different hosted remotes must not
+  warm-render one another's messages after a host switch.
 - [x] 2026-06-28: Scoped new-session and FAB composer drafts by summary source.
   These drafts are crash/refresh recovery for the current UI format, not an
   upgrade-durable data store, so draft-specific legacy migrations were removed

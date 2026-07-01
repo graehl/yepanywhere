@@ -82,3 +82,5 @@
   entry cache retention, and instrumentation.
 - project-queue-reorder-and-titles - Project Queue project-local
   reprioritization and cache-backed target session display titles.
+- session-dom-linger-speedup - Bounded hidden-DOM linger for immediate
+  session back/reselect returns.

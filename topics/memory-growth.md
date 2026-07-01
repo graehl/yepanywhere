@@ -18,15 +18,21 @@
   non-incremental session detail response; streaming and `afterMessageId`
   refreshes must append normally so the loaded tail can grow without repeated
   recutting.
-- In-tab session-load caching is a developer convenience only. It must stay
-  disabled in production builds and default-off in development because retaining
-  every visited transcript can grow mobile browser memory and briefly show
-  stale transcript state during ordinary navigation.
-- Any future production client-side cache needs an explicit design note before
-  it ships: what user-visible behavior it changes, what data it retains, its
-  eviction policy, memory/entry limits, low-memory mobile behavior, invalidation
-  and staleness rules, and why those trade-offs are acceptable. Ad hoc
-  transcript caching must not be enabled by default.
+- The old in-tab session-load cache was a developer convenience only:
+  `VITE_SESSION_LOAD_CACHE=true` retained every visited transcript without
+  production eviction or source/query invalidation. It proved the warm-return
+  shape but was not the product path.
+- Production session route retention uses explicit `SessionRouteSnapshot`
+  entries instead: source-scoped, route/tail-window keyed, five-minute TTL,
+  three-entry default cap, 24 MiB total byte cap, least-recently-used eviction,
+  retained delta cursor, and retained scroll anchor. It is meant to work in
+  development, production builds, and hosted/relay clients.
+- Any future client-side transcript cache beyond `SessionRouteSnapshot` needs
+  an explicit design note before it ships: what user-visible behavior it
+  changes, what data it retains, its eviction policy, memory/entry limits,
+  low-memory mobile behavior, invalidation and staleness rules, and why those
+  trade-offs are acceptable. Ad hoc transcript caching must not be enabled by
+  default.
 
 ## 2026-05-12: heartbeat session `019e1ac6-c836-7e33-891e-2ba878d27ca5`
 

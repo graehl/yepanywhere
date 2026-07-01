@@ -873,6 +873,9 @@ export function useSession(
     pagination,
     loadingOlder,
     loadOlderMessages,
+    initialScrollSnapshot,
+    updateRouteScrollSnapshot,
+    restoredFromSnapshot,
   } = useSessionMessages({
     projectId,
     sessionId,
@@ -2083,6 +2086,9 @@ export function useSession(
     pagination, // Compact-boundary pagination metadata
     loadingOlder, // Whether older messages are being loaded
     loadOlderMessages, // Load next chunk of older messages
+    initialScrollSnapshot, // Retained same-tab route scroll anchor
+    updateRouteScrollSnapshot, // Update retained same-tab route scroll anchor
+    restoredFromSnapshot, // Initial render came from retained same-tab data
     reconnectStream, // Force session stream reconnection (e.g., after process restart)
   };
 }

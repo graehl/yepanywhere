@@ -10,7 +10,6 @@ import {
 } from "vitest";
 import {
   __resetSessionLoadCacheForTest,
-  isSessionLoadCacheEnabled,
   useSessionMessages,
 } from "../useSessionMessages";
 import {
@@ -47,28 +46,7 @@ describe("useSessionMessages cache", () => {
     resetClientSummaryStoreForTests();
   });
 
-  it("keeps the session load cache dev-only and explicit opt-in", () => {
-    expect(
-      isSessionLoadCacheEnabled({
-        DEV: false,
-        VITE_SESSION_LOAD_CACHE: "true",
-      }),
-    ).toBe(false);
-    expect(
-      isSessionLoadCacheEnabled({
-        DEV: true,
-        VITE_SESSION_LOAD_CACHE: undefined,
-      }),
-    ).toBe(false);
-    expect(
-      isSessionLoadCacheEnabled({
-        DEV: true,
-        VITE_SESSION_LOAD_CACHE: "true",
-      }),
-    ).toBe(true);
-  });
-
-  it("does not retain session messages across remounts by default", async () => {
+  it("reuses retained session snapshots across remounts by default", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -130,6 +108,7 @@ describe("useSessionMessages cache", () => {
     );
 
     await waitFor(() => expect(first.result.current.loading).toBe(false));
+    expect(first.result.current.restoredFromSnapshot).toBe(false);
     first.unmount();
 
     const second = renderHook(() =>
@@ -139,14 +118,17 @@ describe("useSessionMessages cache", () => {
       }),
     );
 
-    expect(second.result.current.loading).toBe(true);
-    expect(second.result.current.messages).toEqual([]);
+    expect(second.result.current.loading).toBe(false);
+    expect(second.result.current.messages.map((message) => message.uuid)).toEqual(
+      ["msg-1"],
+    );
+    expect(second.result.current.restoredFromSnapshot).toBe(true);
     await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
     expect(apiMocks.getSession).toHaveBeenNthCalledWith(
       2,
       "proj-1",
       "sess-1",
-      undefined,
+      "msg-1",
       { tailCompactions: 2 },
     );
     await waitFor(() => expect(second.result.current.loading).toBe(false));
@@ -156,7 +138,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("reuses the warm session cache on remount and fetches only deltas", async () => {
-    vi.stubEnv("VITE_SESSION_LOAD_CACHE", "true");
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -243,7 +224,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("does not reuse warm cached messages across summary sources", async () => {
-    vi.stubEnv("VITE_SESSION_LOAD_CACHE", "true");
     const macbook = createClientSummaryHostSourceKey("macbook");
     const winnative = createClientSummaryHostSourceKey("winnative");
     apiMocks.getSession.mockResolvedValueOnce({
@@ -331,7 +311,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("does not use durable recap overlays as warm-cache cursors", async () => {
-    vi.stubEnv("VITE_SESSION_LOAD_CACHE", "true");
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",
@@ -403,7 +382,6 @@ describe("useSessionMessages cache", () => {
   });
 
   it("keeps warm cached messages when an incremental refresh has no delta", async () => {
-    vi.stubEnv("VITE_SESSION_LOAD_CACHE", "true");
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
         provider: "claude",

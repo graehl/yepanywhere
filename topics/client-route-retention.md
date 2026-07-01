@@ -7,19 +7,22 @@
 
 Topic: client-route-retention
 
-Status: First Source Control slice implemented 2026-06-30. YA now has a
-bounded in-tab route-retention registry plus Source Control warm-return
-retention for Git status data, selected file, page/diff scroll, and diff view
-mode. Production session transcript snapshots and the broader Settings/Inbox/
-Agents/Projects route-state rollout remain future phases.
+Status: Source Control and production session-return snapshots implemented
+2026-06-30. YA now has a bounded in-tab route-retention registry plus Source
+Control warm-return retention for Git status data, selected file,
+page/diff scroll, and diff view mode. Session detail routes retain a bounded
+source-scoped snapshot with transcript data, pagination/cursor state, agent
+content indexes, and scroll anchor state, then revalidate by delta fetch in the
+background. The broader Settings/Inbox/Agents/Projects route-state rollout
+remains a future phase.
 
 Related context:
 
 - [Client Global Store](client-global-store.md) covers normalized
   client-wide summary/list/config data, not transcript or whole-route state.
-- [Memory Growth](memory-growth.md) explains why the existing in-tab
-  session-load cache is developer-only and why production retention needs
-  bounded eviction and invalidation.
+- [Memory Growth](memory-growth.md) explains why the old unbounded in-tab
+  session-load cache was developer-only and why the production session snapshot
+  path is source-scoped, TTL-bound, entry-capped, and byte-capped.
 - [Session Initial Load Performance](../docs/tactical/033-session-initial-load-performance.md)
   profiles long-session load costs and separates server response time from
   client mount and render cost.
@@ -87,10 +90,10 @@ Examples are Source Control's selected project and selected file, Settings'
 selected category and scroll position, Inbox filters and scroll position, and
 Projects or Agents list filters.
 
-Session transcript detail is the high-cost state class. A production version
-may retain a small number of recent session snapshots, but the snapshot must be
-source-scoped, memory-bounded, freshness-aware, and invalidation-aware. It must
-also record enough cursor information to fetch only the delta after restore.
+Session transcript detail is the high-cost state class. Production retention
+keeps a small number of recent session snapshots, but the snapshot must stay
+source-scoped, memory-bounded, freshness-aware, and invalidation-aware. It also
+records enough cursor information to fetch only the delta after restore.
 
 Composer drafts and provider text inputs should keep using their existing
 draft/input mechanisms. Route retention may restore focus and scroll, but it
@@ -172,11 +175,11 @@ experience.
 ### Phase 4: Productionize Session Return Snapshots
 
 Session detail routes need a special snapshot because messages, tool-call
-state, agent content, and pagination can be large. The existing development
-in-tab session-load cache proves the warm-return shape, but production support
-needs stricter bounds.
+state, agent content, and pagination can be large. The old development-only
+in-tab session-load cache proved the warm-return shape, but retained every
+visited transcript and was therefore not a production design.
 
-Define a `SessionRouteSnapshot` with at least:
+`SessionRouteSnapshot` contains:
 
 - source key, project id, YA session id, route params, and tail-window params
 - session metadata
@@ -184,21 +187,20 @@ Define a `SessionRouteSnapshot` with at least:
 - tool-use and agent-content indexes needed to render the restored transcript
 - last message id or other provider cursor for delta fetch
 - scroll anchor and follow-tail state
-- creation time, last access time, approximate row count, and approximate byte
-  count
+- creation time, last access time, TTL, and approximate byte count
 
-On warm route return, `useSessionMessages` should synchronously hydrate from a
-fresh matching snapshot, render without a blocking loading state, and then
-request only the delta after the retained cursor. If the snapshot is missing,
-expired, over budget, source-mismatched, or structurally inconsistent, fall
-back to the normal initial load path and report a retained-route miss in
-diagnostics.
+On warm route return, `useSessionMessages` synchronously hydrates from a fresh
+matching snapshot, renders without a blocking loading state, and then requests
+only the delta after the retained cursor. If the snapshot is missing, expired,
+over budget, source-mismatched, or structurally inconsistent, it falls back to
+the normal initial load path. A retained return also skips the progressive
+initial-render progress overlay; that overlay remains for cold long-session
+loads where it is still useful.
 
-Default limits should be conservative: retain only the most recent one to
-three session snapshots per tab, cap total retained bytes, and evict older or
-larger snapshots first. Long-session snapshots should be allowed to retain
-tail-window state without retaining the whole transcript unless the user has
-explicitly loaded and recently viewed the full history.
+Default limits are conservative: retain up to three session snapshots per tab,
+expire entries after five minutes, cap total retained bytes at 24 MiB, and evict
+least-recently-used entries first. Long-session snapshots retain the currently
+loaded tail/window; they do not force a whole-transcript load.
 
 ### Phase 5: Verification
 
@@ -209,6 +211,7 @@ Unit tests:
 - Source Control mutation invalidates or patches retained status
 - session snapshot hydrate-and-delta path does not cross source or route
   parameter boundaries
+- session snapshot TTL, entry cap, and byte cap
 
 Browser tests:
 
@@ -229,6 +232,14 @@ Performance and memory checks:
   navigation away
 - mobile-width smoke test after visiting several sessions confirms eviction
   happens before retained transcript memory grows without bound
+
+## Follow-On: DOM Linger
+
+[`session-dom-linger-speedup.md`](session-dom-linger-speedup.md) proposes a
+separate 60-second hidden-DOM linger for the most recently left session route.
+That is intentionally not the baseline route-retention mechanism: it trades a
+small bounded amount of continued mounted-route work for even faster return
+when the user immediately bounces away and back.
 
 ## Open Questions
 

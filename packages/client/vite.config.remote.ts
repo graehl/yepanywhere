@@ -69,7 +69,7 @@ export default defineConfig({
   clearScreen: false,
   // Remote builds should not serialize dev-only VITE_* shell variables such as
   // VITE_PORT into the hosted bundle. Keep this to intentional public inputs.
-  envPrefix: ["VITE_DEFAULT_RELAY_URL", "VITE_SESSION_LOAD_CACHE"],
+  envPrefix: ["VITE_DEFAULT_RELAY_URL"],
   plugins: [serveRemoteHtml(), react(), cspPlugin({ isRemote: true })],
   resolve: {
     conditions: ["source"],

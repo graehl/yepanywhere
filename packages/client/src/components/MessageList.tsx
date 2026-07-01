@@ -48,6 +48,7 @@ import {
   dispatchSessionIsearchGuideState,
   type SessionIsearchScope,
 } from "../lib/sessionIsearchGuide";
+import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
 import { stabilizeRenderItems } from "../lib/stableRenderItems";
 import { insertTranscriptDisplayObjects } from "../lib/transcriptDisplayObjects";
 import { UI_KEYS } from "../lib/storageKeys";
@@ -1225,6 +1226,8 @@ interface Props {
   progressiveRenderStatusVisible?: boolean;
   /** Stable identity for one progressive initial-render cycle. */
   progressiveRenderKey?: string;
+  initialScrollSnapshot?: SessionRouteScrollSnapshot | null;
+  onScrollSnapshotChange?: (snapshot: SessionRouteScrollSnapshot) => void;
   onTranscriptPositionTimestampChange?: (timestampMs: number | null) => void;
   getForkSummaryTargetHref?: (targetSessionId: string) => string;
   onCancelForkSummary?: (objectId: string) => void;
@@ -1413,6 +1416,8 @@ export const MessageList = memo(function MessageList({
   progressiveRenderEnabled = false,
   progressiveRenderStatusVisible = true,
   progressiveRenderKey,
+  initialScrollSnapshot = null,
+  onScrollSnapshotChange,
   onTranscriptPositionTimestampChange,
   getForkSummaryTargetHref,
   onCancelForkSummary,
@@ -2176,6 +2181,32 @@ export const MessageList = memo(function MessageList({
     },
     [displayRenderItems, turnGroups],
   );
+
+  const captureScrollSnapshot = useCallback(
+    (container: HTMLElement, content: HTMLDivElement) => {
+      const atBottom = isAtScrollBottom(container, content);
+      const anchor = atBottom
+        ? undefined
+        : getFirstVisibleRenderAnchor(content, container) ?? undefined;
+      return {
+        atBottom,
+        scrollTop: container.scrollTop,
+        scrollHeight: container.scrollHeight,
+        clientHeight: container.clientHeight,
+        ...(anchor ? { anchor } : {}),
+        updatedAtMs: Date.now(),
+      };
+    },
+    [],
+  );
+
+  const publishScrollSnapshot = useCallback(() => {
+    if (!onScrollSnapshotChange) return;
+    const content = containerRef.current;
+    const container = content?.parentElement;
+    if (!content || !container) return;
+    onScrollSnapshotChange(captureScrollSnapshot(container, content));
+  }, [captureScrollSnapshot, onScrollSnapshotChange]);
 
   useEffect(() => {
     updateScrollPositionTimestamp({ atBottom: isScrolledToBottom });
@@ -3173,7 +3204,13 @@ export const MessageList = memo(function MessageList({
     }
     setIsScrolledToBottom(atBottom);
     updateScrollPositionTimestamp({ atBottom });
-  }, [clearForcedCurrentScrollTimers, updateScrollPositionTimestamp]);
+    onScrollSnapshotChange?.(captureScrollSnapshot(container, content));
+  }, [
+    captureScrollSnapshot,
+    clearForcedCurrentScrollTimers,
+    onScrollSnapshotChange,
+    updateScrollPositionTimestamp,
+  ]);
 
   // Attach scroll listener to parent container
   useEffect(() => {
@@ -3183,9 +3220,10 @@ export const MessageList = memo(function MessageList({
     container.addEventListener("scroll", handleScroll);
 
     return () => {
+      publishScrollSnapshot();
       container.removeEventListener("scroll", handleScroll);
     };
-  }, [handleScroll]);
+  }, [handleScroll, publishScrollSnapshot]);
 
   // Cancel follow before browser scroll events when the user clearly tries to
   // move away from the live tail. Programmatic scroll bursts can otherwise keep
@@ -3402,6 +3440,71 @@ export const MessageList = memo(function MessageList({
       forceScrollToCurrent(SEND_CATCH_UP_DELAYS_MS);
     }
   }, [forceScrollToCurrent, scrollTrigger]);
+
+  // Restore same-tab route scroll before the default first-load follow behavior
+  // moves the viewport to the tail.
+  useEffect(() => {
+    if (
+      !isInitialLoadRef.current ||
+      !initialScrollSnapshot ||
+      displayRenderItems.length === 0
+    ) {
+      return;
+    }
+    const content = containerRef.current;
+    const container = content?.parentElement;
+    if (!content || !container) return;
+
+    isProgrammaticScrollRef.current = true;
+    if (initialScrollSnapshot.atBottom) {
+      scrollToBottom(container);
+      shouldAutoScrollRef.current = true;
+      setIsScrolledToBottom(true);
+    } else {
+      let restored = false;
+      const anchor = initialScrollSnapshot.anchor;
+      if (anchor) {
+        const row = findRenderRow(content, anchor.id);
+        if (row) {
+          const containerRect = container.getBoundingClientRect();
+          const rowRect = row.getBoundingClientRect();
+          container.scrollTop = Math.max(
+            0,
+            container.scrollTop +
+              rowRect.top -
+              containerRect.top -
+              anchor.topOffset,
+          );
+          restored = true;
+        }
+      }
+      if (!restored) {
+        const maxScrollTop = Math.max(
+          0,
+          container.scrollHeight - container.clientHeight,
+        );
+        container.scrollTop = Math.min(
+          initialScrollSnapshot.scrollTop,
+          maxScrollTop,
+        );
+      }
+      shouldAutoScrollRef.current = false;
+      setIsScrolledToBottom(false);
+      updateScrollPositionTimestamp({ atBottom: false });
+    }
+    lastHeightRef.current = container.scrollHeight;
+    isInitialLoadRef.current = false;
+    requestAnimationFrame(() => {
+      isProgrammaticScrollRef.current = false;
+      publishScrollSnapshot();
+    });
+  }, [
+    displayRenderItems.length,
+    initialScrollSnapshot,
+    publishScrollSnapshot,
+    scrollToBottom,
+    updateScrollPositionTimestamp,
+  ]);
 
   // Initial scroll to bottom on first render
   useEffect(() => {

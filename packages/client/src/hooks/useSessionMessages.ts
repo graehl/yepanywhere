@@ -17,6 +17,16 @@ import { getStreamingEnabled } from "./useStreamingEnabled";
 import type { Message, SessionMetadata, SessionStatus } from "../types";
 import { useClientSummarySourceKey } from "../lib/clientSummaryStore";
 import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
+import {
+  getSessionRouteSnapshotKey,
+  patchSessionRouteScrollSnapshot,
+  readSessionRouteSnapshot,
+  resetSessionRouteSnapshotsForTests,
+  writeSessionRouteSnapshot,
+  type SessionRouteScrollSnapshot,
+  type SessionRouteSnapshot,
+  type SessionRouteSnapshotKeyInput,
+} from "../lib/sessionRouteSnapshots";
 
 /** Content from a subagent (Task tool) */
 export interface AgentContent {
@@ -116,88 +126,12 @@ export interface UseSessionMessagesResult {
   loadingOlder: boolean;
   /** Load the next chunk of older messages */
   loadOlderMessages: () => Promise<void>;
-}
-
-interface SessionLoadCacheEntry {
-  messages: Message[];
-  session: SessionMetadata;
-  pagination?: PaginationInfo;
-  agentContent: AgentContentMap;
-  toolUseToAgentEntries: Array<[string, string]>;
-  lastMessageId?: string;
-  maxPersistedTimestampMs: number;
-}
-
-interface SessionLoadCacheGlobal {
-  __YA_SESSION_LOAD_CACHE__?: Map<string, SessionLoadCacheEntry>;
-}
-
-type SessionLoadCacheEnv = Pick<
-  ImportMetaEnv,
-  "DEV" | "VITE_SESSION_LOAD_CACHE"
->;
-
-export function isSessionLoadCacheEnabled(
-  env: SessionLoadCacheEnv = import.meta.env,
-): boolean {
-  return env.DEV === true && env.VITE_SESSION_LOAD_CACHE === "true";
-}
-
-function cloneForCache<T>(value: T): T {
-  if (typeof structuredClone === "function") {
-    return structuredClone(value);
-  }
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function getSessionLoadCache(): Map<string, SessionLoadCacheEntry> {
-  const globalCache = globalThis as typeof globalThis & SessionLoadCacheGlobal;
-  if (!globalCache.__YA_SESSION_LOAD_CACHE__) {
-    globalCache.__YA_SESSION_LOAD_CACHE__ = new Map();
-  }
-  return globalCache.__YA_SESSION_LOAD_CACHE__;
-}
-
-function encodeCacheKeyPart(value: string): string {
-  return encodeURIComponent(value);
-}
-
-function getSessionLoadCacheKey(
-  sourceKey: ClientSummarySourceKey,
-  projectId: string,
-  sessionId: string,
-): string {
-  return [
-    encodeCacheKeyPart(sourceKey),
-    encodeCacheKeyPart(projectId),
-    encodeCacheKeyPart(sessionId),
-  ].join(":");
-}
-
-function getSessionLoadVariantKey(options: {
-  sourceKey: ClientSummarySourceKey;
-  projectId: string;
-  sessionId: string;
-  tailTurns?: number;
-  tailFrom?: string;
-}): string {
-  const variant = [
-    options.tailTurns !== undefined ? `tailTurns=${options.tailTurns}` : "",
-    options.tailFrom ? `tailFrom=${options.tailFrom}` : "",
-  ]
-    .filter(Boolean)
-    .join("&");
-  return variant
-    ? `${getSessionLoadCacheKey(
-        options.sourceKey,
-        options.projectId,
-        options.sessionId,
-      )}?${variant}`
-    : getSessionLoadCacheKey(
-        options.sourceKey,
-        options.projectId,
-        options.sessionId,
-      );
+  /** Retained scroll anchor from the last same-tab route visit */
+  initialScrollSnapshot: SessionRouteScrollSnapshot | null;
+  /** Update the retained scroll anchor without re-rendering this hook */
+  updateRouteScrollSnapshot: (snapshot: SessionRouteScrollSnapshot) => void;
+  /** True when the initial render was hydrated from a retained route snapshot */
+  restoredFromSnapshot: boolean;
 }
 
 function readSessionLoadCache(
@@ -206,45 +140,32 @@ function readSessionLoadCache(
   sessionId: string,
   tailTurns?: number,
   tailFrom?: string,
-): SessionLoadCacheEntry | undefined {
-  if (!isSessionLoadCacheEnabled()) return undefined;
-  if (typeof window === "undefined") return undefined;
-  return getSessionLoadCache().get(
-    getSessionLoadVariantKey({
-      sourceKey,
-      projectId,
-      sessionId,
-      tailTurns,
-      tailFrom,
-    }),
-  );
+): SessionRouteSnapshot | undefined {
+  return readSessionRouteSnapshot({
+    sourceKey,
+    projectId,
+    sessionId,
+    tailTurns,
+    tailFrom,
+  });
 }
 
 function writeSessionLoadCache(
   sourceKey: ClientSummarySourceKey,
   projectId: string,
   sessionId: string,
-  entry: SessionLoadCacheEntry,
+  entry: SessionRouteSnapshot,
   tailTurns?: number,
   tailFrom?: string,
 ): void {
-  if (!isSessionLoadCacheEnabled()) return;
-  if (typeof window === "undefined") return;
-  getSessionLoadCache().set(
-    getSessionLoadVariantKey({
-      sourceKey,
-      projectId,
-      sessionId,
-      tailTurns,
-      tailFrom,
-    }),
-    cloneForCache(entry),
+  writeSessionRouteSnapshot(
+    { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+    entry,
   );
 }
 
 export function __resetSessionLoadCacheForTest(): void {
-  delete (globalThis as typeof globalThis & SessionLoadCacheGlobal)
-    .__YA_SESSION_LOAD_CACHE__;
+  resetSessionRouteSnapshotsForTests();
 }
 
 function usesApproxMessageDedup(provider?: string): boolean {
@@ -376,13 +297,31 @@ export function useSessionMessages(
     onLoadError,
   } = options;
   const sourceKey = useClientSummarySourceKey();
-  const cachedLoad = readSessionLoadCache(
+  const snapshotKey: SessionRouteSnapshotKeyInput = {
     sourceKey,
     projectId,
     sessionId,
     tailTurns,
     tailFrom,
-  );
+  };
+  const snapshotKeyString = getSessionRouteSnapshotKey(snapshotKey);
+  const cachedLoadRef = useRef<{
+    key: string;
+    load: SessionRouteSnapshot | undefined;
+  } | null>(null);
+  if (cachedLoadRef.current?.key !== snapshotKeyString) {
+    cachedLoadRef.current = {
+      key: snapshotKeyString,
+      load: readSessionLoadCache(
+        sourceKey,
+        projectId,
+        sessionId,
+        tailTurns,
+        tailFrom,
+      ),
+    };
+  }
+  const cachedLoad = cachedLoadRef.current.load;
 
   // Core state
   const [messages, setMessages] = useState<Message[]>(
@@ -412,6 +351,23 @@ export function useSessionMessages(
     () => cachedLoad?.pagination,
   );
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const scrollSnapshotRef = useRef<SessionRouteScrollSnapshot | undefined>(
+    cachedLoad?.scrollSnapshot,
+  );
+  const latestSnapshotRef = useRef<SessionRouteSnapshot | null>(
+    cachedLoad
+      ? {
+          messages: cachedLoad.messages,
+          session: cachedLoad.session,
+          pagination: cachedLoad.pagination,
+          agentContent: cachedLoad.agentContent,
+          toolUseToAgentEntries: cachedLoad.toolUseToAgentEntries,
+          lastMessageId: cachedLoad.lastMessageId,
+          maxPersistedTimestampMs: cachedLoad.maxPersistedTimestampMs,
+          scrollSnapshot: cachedLoad.scrollSnapshot,
+        }
+      : null,
+  );
 
   // Buffering: queue stream messages until initial load completes
   const streamBufferRef = useRef<
@@ -457,6 +413,34 @@ export function useSessionMessages(
       lastMessageIdRef.current = lastJsonlId;
     }
   }, [messages]);
+
+  useEffect(() => {
+    if (!session) {
+      latestSnapshotRef.current = null;
+      return;
+    }
+    latestSnapshotRef.current = {
+      messages,
+      session,
+      pagination,
+      agentContent,
+      toolUseToAgentEntries: Array.from(toolUseToAgent.entries()),
+      lastMessageId: lastMessageIdRef.current,
+      maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+      scrollSnapshot: scrollSnapshotRef.current,
+    };
+  }, [agentContent, messages, pagination, session, toolUseToAgent]);
+
+  useEffect(() => {
+    return () => {
+      const snapshot = latestSnapshotRef.current;
+      if (!snapshot) return;
+      writeSessionRouteSnapshot(snapshotKey, {
+        ...snapshot,
+        scrollSnapshot: scrollSnapshotRef.current,
+      });
+    };
+  }, [sourceKey, projectId, sessionId, tailTurns, tailFrom]);
 
   // Process a stream message event.
   // When replaying buffered startup events for Codex, suppress entries that are
@@ -588,6 +572,7 @@ export function useSessionMessages(
     });
     initialLoadCompleteRef.current = false;
     streamBufferRef.current = [];
+    scrollSnapshotRef.current = warmLoad?.scrollSnapshot;
     if (warmLoad) {
       setSessionLoadProgress(
         createSessionLoadProgress("complete", {
@@ -734,6 +719,7 @@ export function useSessionMessages(
             toolUseToAgentEntries: [],
             lastMessageId: lastMessageIdRef.current,
             maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
+            scrollSnapshot: scrollSnapshotRef.current,
           },
           tailTurns,
           tailFrom,
@@ -941,6 +927,20 @@ export function useSessionMessages(
     }
   }, [projectId, sessionId, pagination, updatePersistedTimestampWatermark]);
 
+  const updateRouteScrollSnapshot = useCallback(
+    (snapshot: SessionRouteScrollSnapshot) => {
+      scrollSnapshotRef.current = snapshot;
+      patchSessionRouteScrollSnapshot(snapshotKey, snapshot);
+      if (latestSnapshotRef.current) {
+        latestSnapshotRef.current = {
+          ...latestSnapshotRef.current,
+          scrollSnapshot: snapshot,
+        };
+      }
+    },
+    [sourceKey, projectId, sessionId, tailTurns, tailFrom],
+  );
+
   // Fetch session metadata only
   const fetchSessionMetadata = useCallback(async () => {
     try {
@@ -978,5 +978,8 @@ export function useSessionMessages(
     pagination,
     loadingOlder,
     loadOlderMessages,
+    initialScrollSnapshot: cachedLoad?.scrollSnapshot ?? null,
+    updateRouteScrollSnapshot,
+    restoredFromSnapshot: Boolean(cachedLoad),
   };
 }

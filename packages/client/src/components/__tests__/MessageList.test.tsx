@@ -1701,6 +1701,45 @@ describe("MessageList", () => {
     expect(scrollContainer.scrollTop).toBe(500);
   });
 
+  it("ignores anchored top snapshots on initial restore", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+        initialScrollSnapshot={{
+          atBottom: false,
+          scrollTop: 0,
+          scrollHeight: 1000,
+          clientHeight: 500,
+          anchor: { id: "user-1", topOffset: 0 },
+          updatedAtMs: Date.now(),
+        }}
+      />,
+      { container: scrollContainer },
+    );
+
+    expect(scrollContainer.scrollTop).toBe(500);
+  });
+
   it("keeps following the tail when progressive restore reveals rows", () => {
     vi.useFakeTimers();
     const scrollContainer = document.createElement("div");

@@ -511,15 +511,19 @@ function getFirstVisibleRenderAnchor(
 function shouldRestoreInitialScrollSnapshot(
   snapshot: SessionRouteScrollSnapshot,
 ): boolean {
-  if (snapshot.atBottom || snapshot.anchor) {
+  if (snapshot.atBottom) {
     return true;
   }
 
-  // A zero-offset snapshot without a row anchor can be produced while cached
-  // progressive hydration is still showing only the lightweight loading shell.
-  // Treat it as "no useful retained position" so normal session opens follow
-  // the tail instead of pinning the transcript to the top.
-  return snapshot.scrollTop > FOLLOW_BOTTOM_TOLERANCE_PX;
+  // A top-of-transcript snapshot, with or without a first-row anchor, can be
+  // produced by a transient cached/progressive restore before tail follow has
+  // settled. Treat it as "no useful retained position" so ordinary session
+  // opens follow the tail instead of pinning the transcript to the top.
+  if (snapshot.scrollTop <= FOLLOW_BOTTOM_TOLERANCE_PX) {
+    return false;
+  }
+
+  return true;
 }
 
 function buildSearchPreview(

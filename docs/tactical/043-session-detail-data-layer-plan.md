@@ -4,8 +4,8 @@ Topic: session-detail-data-layer
 
 Status: Slice 2 started. The pure reducer fixture harness now covers the basic
 persisted, streamed, catch-up, replay, duplicate-prompt, pagination,
-Codex-shaped provider parity, and initial final-message markdown augment paths
-without changing runtime hook ownership.
+Codex-shaped provider parity, final-message markdown augment paths, and Codex
+augment live-id to durable-id transfer without changing runtime hook ownership.
 
 This is the tactical plan for the vision in
 [`topics/session-detail-data-layer.md`](../../topics/session-detail-data-layer.md).
@@ -220,9 +220,11 @@ Status 2026-07-01:
 - Added tests for final markdown augment arrival before the target message,
   after the target message, from persisted-load input, and duplicate same-HTML
   no-op updates.
-- This is intentionally only the first augment step. Canonical augment identity
-  across provider stream ids and durable JSONL ids remains the next hard part
-  before runtime hook wiring.
+- Added Codex final-markdown augment transfer when a live SDK message id is
+  replaced by an equivalent durable JSONL id during persisted catch-up.
+- Remaining augment work is still substantial: block-level streaming augments,
+  file/diff/tool augment identity, and broader canonical block identity are not
+  solved by the message-id transfer.
 
 ## Slice 3: Subagent And Tree Parity
 

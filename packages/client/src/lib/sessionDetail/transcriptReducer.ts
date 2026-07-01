@@ -10,7 +10,11 @@ import {
 } from "../mergeMessages";
 import { getProvider } from "../../providers/registry";
 import type { Message } from "../../types";
-import type { SessionDetailAction, SessionDetailState } from "./types";
+import type {
+  MarkdownAugmentMap,
+  SessionDetailAction,
+  SessionDetailState,
+} from "./types";
 
 export function createInitialSessionDetailState(): SessionDetailState {
   return {
@@ -185,6 +189,89 @@ function applyStreamMessage(
   return messages === state.messages ? state : { ...state, messages };
 }
 
+function findEquivalentJsonlMessageId(
+  previousMessage: Message,
+  nextMessages: readonly Message[],
+  provider: string | undefined,
+): string | undefined {
+  if (!usesApproxMessageDedup(provider)) {
+    return undefined;
+  }
+
+  for (const candidate of nextMessages) {
+    if ((candidate._source ?? "sdk") !== "jsonl") {
+      continue;
+    }
+    const candidateId = getMessageId(candidate);
+    if (!candidateId) {
+      continue;
+    }
+    if (
+      hasEquivalentJsonlMessage(
+        [candidate],
+        previousMessage,
+        approxDedupOptions(provider),
+      )
+    ) {
+      return candidateId;
+    }
+  }
+
+  return undefined;
+}
+
+function reconcileMarkdownAugmentMessageIds(
+  state: SessionDetailState,
+  nextMessages: readonly Message[],
+  provider: string | undefined,
+  markdownAugments: MarkdownAugmentMap = state.markdownAugments,
+): MarkdownAugmentMap {
+  const augmentEntries = Object.entries(markdownAugments);
+  if (augmentEntries.length === 0) {
+    return markdownAugments;
+  }
+
+  const nextMessageIds = new Set(
+    nextMessages.map((message) => getMessageId(message)).filter(Boolean),
+  );
+  const previousMessagesById = new Map(
+    state.messages
+      .map((message) => [getMessageId(message), message] as const)
+      .filter(([messageId]) => messageId.length > 0),
+  );
+
+  let nextAugments = markdownAugments;
+  for (const [messageId, augment] of augmentEntries) {
+    if (nextMessageIds.has(messageId)) {
+      continue;
+    }
+
+    const previousMessage = previousMessagesById.get(messageId);
+    if (!previousMessage) {
+      continue;
+    }
+
+    const durableMessageId = findEquivalentJsonlMessageId(
+      previousMessage,
+      nextMessages,
+      provider,
+    );
+    if (!durableMessageId || durableMessageId === messageId) {
+      continue;
+    }
+
+    if (nextAugments === markdownAugments) {
+      nextAugments = { ...markdownAugments };
+    }
+    if (!nextAugments[durableMessageId]) {
+      nextAugments[durableMessageId] = augment;
+    }
+    delete nextAugments[messageId];
+  }
+
+  return nextAugments;
+}
+
 export function reduceSessionDetailState(
   state: SessionDetailState,
   action: SessionDetailAction,
@@ -196,15 +283,21 @@ export function reduceSessionDetailState(
         taggedMessages,
         action.session.provider,
       );
+      const markdownAugments = action.markdownAugments
+        ? { ...state.markdownAugments, ...action.markdownAugments }
+        : state.markdownAugments;
       return {
         ...state,
         messages,
         session: action.session,
         pagination: action.pagination,
         agentContent: action.agentContent ?? {},
-        markdownAugments: action.markdownAugments
-          ? { ...state.markdownAugments, ...action.markdownAugments }
-          : state.markdownAugments,
+        markdownAugments: reconcileMarkdownAugmentMessageIds(
+          state,
+          messages,
+          action.session.provider,
+          markdownAugments,
+        ),
         toolUseToAgentEntries: action.toolUseToAgentEntries ?? [],
         deferredMessages: action.deferredMessages ?? [],
         lastMessageId: findLastJsonlMessageId(messages),
@@ -233,6 +326,11 @@ export function reduceSessionDetailState(
         messages,
         session,
         pagination: action.pagination ?? state.pagination,
+        markdownAugments: reconcileMarkdownAugmentMessageIds(
+          state,
+          messages,
+          provider,
+        ),
         lastMessageId: findLastJsonlMessageId(messages),
         maxPersistedTimestampMs: updatePersistedTimestampWatermark(
           state.maxPersistedTimestampMs,
@@ -250,6 +348,11 @@ export function reduceSessionDetailState(
         ...state,
         messages,
         pagination: action.pagination ?? state.pagination,
+        markdownAugments: reconcileMarkdownAugmentMessageIds(
+          state,
+          messages,
+          provider,
+        ),
         lastMessageId: findLastJsonlMessageId(messages),
         maxPersistedTimestampMs: updatePersistedTimestampWatermark(
           state.maxPersistedTimestampMs,

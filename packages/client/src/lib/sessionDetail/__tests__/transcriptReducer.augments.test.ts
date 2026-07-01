@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import { preprocessMessages } from "../../preprocessMessages";
 import type { Message, SessionMetadata } from "../../../types";
 import {
+  createCatchupMessagesAction,
   createFinalMarkdownAugmentAction,
   createLoadPersistedTranscriptAction,
+  createStreamMessageActions,
+  hydrateInitialSessionDetailState,
 } from "../actionAdapters";
 import { selectSessionDetailPreprocessAugments } from "../selectors";
 import {
@@ -12,11 +15,11 @@ import {
   reduceSessionDetailState,
 } from "../transcriptReducer";
 
-function sessionMetadata(): SessionMetadata {
+function sessionMetadata(provider = "claude"): SessionMetadata {
   return {
     id: "session-augments",
     projectId: "project-1",
-    provider: "claude",
+    provider,
     title: "Session augments",
     updatedAt: "2026-07-01T12:00:00.000Z",
     createdAt: "2026-07-01T12:00:00.000Z",
@@ -110,6 +113,43 @@ describe("transcriptReducer markdown augments", () => {
       }),
     );
 
+    expect(getStateTextAugmentHtml(state)).toBe(html);
+  });
+
+  it("moves a final markdown augment from a live Codex id to its durable id", () => {
+    const html = "<p>Rendered durable answer.</p>";
+    const state = reduceSessionDetailActions(
+      [
+        ...createStreamMessageActions([
+          assistantMessage("live-assistant-1", "Rendered durable answer."),
+        ]),
+        createFinalMarkdownAugmentAction({
+          messageId: "live-assistant-1",
+          html,
+        }),
+        createCatchupMessagesAction({
+          session: sessionMetadata("codex"),
+          messages: [
+            assistantMessage(
+              "response_item_019b8510-augment-durable",
+              "Rendered durable answer.",
+            ),
+          ],
+        }),
+      ],
+      hydrateInitialSessionDetailState(
+        createInitialSessionDetailState(),
+        sessionMetadata("codex"),
+      ),
+    );
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]?.uuid).toBe(
+      "response_item_019b8510-augment-durable",
+    );
+    expect(state.markdownAugments).toEqual({
+      "response_item_019b8510-augment-durable": { html },
+    });
     expect(getStateTextAugmentHtml(state)).toBe(html);
   });
 

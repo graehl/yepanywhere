@@ -1,10 +1,24 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { extractMarkdownSnippetsFromSelection } from "../../../lib/markdownSelectionCopy";
 import { ThinkingBlock } from "../ThinkingBlock";
+
+function selectElementText(element: Element) {
+  const textNode = document
+    .createTreeWalker(element, NodeFilter.SHOW_TEXT)
+    .nextNode();
+  expect(textNode).toBeTruthy();
+  const range = document.createRange();
+  range.selectNodeContents(textNode as Node);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
 
 describe("ThinkingBlock", () => {
   afterEach(() => {
     cleanup();
+    window.getSelection()?.removeAllRanges();
   });
 
   it("shows a rounded thinking duration", () => {
@@ -88,5 +102,29 @@ describe("ThinkingBlock", () => {
     expect(container.querySelector(".thinking-code-block")?.textContent).toBe(
       "line-height = 1.5em - delta",
     );
+  });
+
+  it("registers expanded thinking text as a quoteable selection source", () => {
+    const { container } = render(
+      <ThinkingBlock
+        thinking={[
+          "**Checking instructions**",
+          "",
+          "Reading `AGENTS.md` before editing.",
+        ].join("\n")}
+        status="complete"
+        isExpanded={true}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    selectElementText(screen.getByText("Checking instructions"));
+
+    expect(extractMarkdownSnippetsFromSelection(container)).toMatchObject([
+      {
+        markdown: "Checking instructions",
+        selectedText: "Checking instructions",
+      },
+    ]);
   });
 });

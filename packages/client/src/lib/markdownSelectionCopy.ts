@@ -89,8 +89,6 @@ export function extractMarkdownSnippetsFromSelection(
   }
 
   const snippets: MarkdownSelectionSnippet[] = [];
-  const selectedTextParts: string[] = [];
-  const coveredTextParts: string[] = [];
   const sourceElements = Array.from(
     root.querySelectorAll<HTMLElement>(`[${MARKDOWN_COPY_SOURCE_ATTR}]`),
   );
@@ -99,11 +97,6 @@ export function extractMarkdownSnippetsFromSelection(
     const range = selection.getRangeAt(rangeIndex);
     if (!rangeIntersectsNode(range, root)) {
       continue;
-    }
-
-    const rootRangeText = getRangeTextWithinElement(range, root);
-    if (rootRangeText?.selectedText.trim()) {
-      selectedTextParts.push(rootRangeText.selectedText);
     }
 
     for (const element of sourceElements) {
@@ -120,7 +113,6 @@ export function extractMarkdownSnippetsFromSelection(
       if (!rangeText?.selectedText.trim()) {
         continue;
       }
-      coveredTextParts.push(rangeText.selectedText);
 
       const markdown =
         getMarkdownForVisibleSelection(source, rangeText.selectedText, {
@@ -137,13 +129,6 @@ export function extractMarkdownSnippetsFromSelection(
         });
       }
     }
-  }
-
-  if (
-    normalizeSelectedTextForCoverage(selectedTextParts.join("\n")) !==
-    normalizeSelectedTextForCoverage(coveredTextParts.join("\n"))
-  ) {
-    return [];
   }
 
   return snippets;
@@ -341,10 +326,6 @@ function normalizeLineEndings(value: string): string {
 
 function trimBoundaryNewlines(value: string): string {
   return normalizeLineEndings(value).replace(/^\n+|\n+$/g, "");
-}
-
-function normalizeSelectedTextForCoverage(value: string): string {
-  return normalizeLineEndings(value).replace(/\s+/g, " ").trim();
 }
 
 function rangeIntersectsNode(range: Range, node: Node): boolean {

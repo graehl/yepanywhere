@@ -1,5 +1,12 @@
 import katex from "katex";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   buildPublicShareFileHref,
   type PublicShareContextValue,
@@ -10,6 +17,7 @@ import { useOptionalSessionMetadata } from "../../contexts/SessionMetadataContex
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { toBrowserAppHref } from "../../lib/appHref";
 import { profileRenderWork } from "../../lib/diagnostics/renderProfiler";
+import { registerMarkdownCopySource } from "../../lib/markdownSelectionCopy";
 import { useScrollPreservingToggle } from "../../lib/scrollAnchor";
 import { makeDisplayPath } from "../../lib/text";
 import { FileViewerModal } from "../FilePathLink";
@@ -66,7 +74,7 @@ function escapeHtmlAttribute(text: string): string {
   return escapeHtml(text).replaceAll("\n", "&#10;");
 }
 
-function stripAnsiEscapes(text: string): string {
+export function stripAnsiEscapes(text: string): string {
   return text.replace(ANSI_ESCAPE_RE, "");
 }
 
@@ -767,6 +775,11 @@ export function FixedFontMathToggle({
     filePath: string;
     href: string | null;
   } | null>(null);
+  const copySourceRef = useRef<HTMLDivElement | null>(null);
+  const quoteSourceText = useMemo(
+    () => stripAnsiEscapes(sourceText),
+    [sourceText],
+  );
   const publicShareFileViewerSource = useMemo(
     () =>
       publicShare ? createPublicShareFileViewerSource(publicShare) : undefined,
@@ -807,6 +820,14 @@ export function FixedFontMathToggle({
   const { btnRef: toggleBtnRef, handleClick: handleToggleClick } =
     useScrollPreservingToggle(showRendered, toggleLocalMode);
 
+  useEffect(() => {
+    const element = copySourceRef.current;
+    if (!element || !quoteSourceText.trim()) {
+      return;
+    }
+    return registerMarkdownCopySource(element, quoteSourceText);
+  }, [quoteSourceText]);
+
   const handleRenderedClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       const link = (event.target as Element | null)?.closest?.(
@@ -837,7 +858,7 @@ export function FixedFontMathToggle({
     sessionMetadata?.projectId ?? publicShare?.projectId ?? "";
 
   return (
-    <div className="fixed-font-render-toggle">
+    <div ref={copySourceRef} className="fixed-font-render-toggle">
       {showRendered && rendered.changed ? (
         // biome-ignore lint/a11y/noStaticElementInteractions: click is delegated to rendered file links inside the HTML
         // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation remains on descendant links

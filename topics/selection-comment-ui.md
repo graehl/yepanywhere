@@ -19,12 +19,15 @@ See also:
 Topic: selection-comment-ui
 
 Status: **Phase 1 shipped 2026-06-23; the two early contract gaps fixed
-2026-06-23; the dedicated assistant quote lane fixed 2026-06-25.**
+2026-06-23; the dedicated assistant quote lane fixed 2026-06-25; initial
+Phase 2 scope widening shipped 2026-07-01.**
 Assistant text blocks can be quoted via selection typing, a floating selection
 `>` button, or per-paragraph `>` circles; the resulting `>` block is inserted
 into the composer and the selected source span is tinted until the quote is
-removed or sent. Wider quotable surfaces and right-mouse line-select remain
-design/follow-up work.
+removed or sent. Thinking summaries, user turns, Ran/Bash command and output
+text, and Grep preview/content text now use the same selection pipeline.
+Right-mouse line-select and per-section quote lanes for non-assistant-prose
+surfaces remain design/follow-up work.
 
 ## Resolved gaps (Phase 1)
 
@@ -116,6 +119,15 @@ The quote block itself:
 - Each source line is prefixed `> `. A selection spanning multiple blocks
   yields one `> ` block per source block, blank-line separated (the existing
   copy path already splits per source element and joins with `\n\n`).
+- A highlight crossing consecutive or alternating eligible text regions yields
+  one quote block per eligible region, in document order. Ineligible UI chrome
+  between them — tool names, local status labels such as the generated "Ran"
+  row label, buttons, timestamps, separators, collapsed-preview controls — is
+  ignored and must not cancel the quote action.
+- Eligible text is transcript/content text explicitly registered by the
+  renderer. For tool rows, the Bash/Ran command text and rendered command/output
+  bodies are eligible; locally generated row labels and controls are not unless
+  a renderer deliberately registers them as content.
 - If the composer already holds text, two blank-line-separated newlines come
   first — this is exactly the existing `appendComposerTransferDraft` rule, not
   a new one.
@@ -305,6 +317,12 @@ already covers whole-paragraph quoting on those platforms.
   user turns, thinking summaries (see below), and other rendered agent output.
   Each surface needs a registered markdown/text copy-source so the shared
   extractor can recover its source; the pipeline itself does not change.
+  Initial scope widening shipped 2026-07-01 for thinking summaries, user
+  prompts, Bash/Ran command text, fixed-font tool output after ANSI stripping,
+  and Grep preview/content text. The extractor now returns every eligible
+  source snippet a selection intersects, so a drag crossing user/assistant/tool
+  regions produces separate blank-line-separated quote blocks while skipping
+  unregistered UI chrome.
 
   **Thinking summaries — quote while streaming *or* finished.** We want to
   select and comment on a thinking-summary item even mid-stream, not only once

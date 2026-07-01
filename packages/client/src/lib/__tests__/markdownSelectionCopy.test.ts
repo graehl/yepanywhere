@@ -78,6 +78,51 @@ describe("extractMarkdownSnippetsFromSelection", () => {
     unregister();
     root.remove();
   });
+
+  it("splits a selection across eligible regions and skips separators", () => {
+    const root = document.createElement("div");
+    const firstSource = document.createElement("span");
+    const separator = document.createElement("span");
+    const secondSource = document.createElement("span");
+    firstSource.textContent = "first quote";
+    separator.textContent = " local chrome ";
+    secondSource.textContent = "second quote";
+    root.append(firstSource, separator, secondSource);
+    document.body.append(root);
+    const unregisterFirst = registerMarkdownCopySource(
+      firstSource,
+      "first quote",
+    );
+    const unregisterSecond = registerMarkdownCopySource(
+      secondSource,
+      "second quote",
+    );
+
+    const range = document.createRange();
+    range.setStart(firstSource.firstChild as Node, 0);
+    range.setEnd(secondSource.firstChild as Node, "second quote".length);
+    const selection = document.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    expect(extractMarkdownSnippetsFromSelection(root)).toMatchObject([
+      {
+        markdown: "first quote",
+        selectedText: "first quote",
+        sourceElement: firstSource,
+      },
+      {
+        markdown: "second quote",
+        selectedText: "second quote",
+        sourceElement: secondSource,
+      },
+    ]);
+
+    selection?.removeAllRanges();
+    unregisterFirst();
+    unregisterSecond();
+    root.remove();
+  });
 });
 
 describe("getMarkdownSnippetForSubElement", () => {

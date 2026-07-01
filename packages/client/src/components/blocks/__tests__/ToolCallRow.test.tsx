@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
 import { setStableToolPreviewRenderingPreference } from "../../../hooks/useStableToolPreviewRendering";
 import { I18nProvider } from "../../../i18n";
+import { extractMarkdownSnippetsFromSelection } from "../../../lib/markdownSelectionCopy";
 import { UI_KEYS } from "../../../lib/storageKeys";
 import {
   DEFERRED_PREVIEW_HEIGHT,
@@ -18,9 +19,22 @@ vi.mock("../../../contexts/SchemaValidationContext", () => ({
   }),
 }));
 
+function selectElementText(element: Element) {
+  const textNode = document
+    .createTreeWalker(element, NodeFilter.SHOW_TEXT)
+    .nextNode();
+  expect(textNode).toBeTruthy();
+  const range = document.createRange();
+  range.selectNodeContents(textNode as Node);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
 describe("ToolCallRow", () => {
   afterEach(() => {
     cleanup();
+    window.getSelection()?.removeAllRanges();
     Reflect.deleteProperty(window, "IntersectionObserver");
     setStableToolPreviewRenderingPreference(true);
     window.localStorage.removeItem(UI_KEYS.stableToolPreviewRendering);
@@ -174,6 +188,68 @@ describe("ToolCallRow", () => {
     expect(
       screen.getByRole("button", { name: "Expand preview" }),
     ).toBeDefined();
+  });
+
+  it("registers Ran command text as a quoteable selection source", () => {
+    const { container } = render(
+      <ToolCallRow
+        id="tool-quote-command"
+        toolName="Bash"
+        toolInput={{ command: "echo quote me" }}
+        toolResult={{
+          structured: {
+            stdout: "",
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+          },
+          content: "",
+          isError: false,
+        }}
+        status="complete"
+        sessionProvider="codex"
+      />,
+    );
+
+    selectElementText(screen.getByText("echo quote me"));
+
+    expect(extractMarkdownSnippetsFromSelection(container)).toMatchObject([
+      {
+        markdown: "echo quote me",
+        selectedText: "echo quote me",
+      },
+    ]);
+  });
+
+  it("registers Bash output previews as quoteable visible text", () => {
+    const { container } = render(
+      <ToolCallRow
+        id="tool-quote-output"
+        toolName="Bash"
+        toolInput={{ command: "printf red" }}
+        toolResult={{
+          structured: {
+            stdout: "\x1b[31mred quote\x1b[0m",
+            stderr: "",
+            interrupted: false,
+            isImage: false,
+          },
+          content: "\x1b[31mred quote\x1b[0m",
+          isError: false,
+        }}
+        status="complete"
+        sessionProvider="codex"
+      />,
+    );
+
+    selectElementText(screen.getByText("red quote"));
+
+    expect(extractMarkdownSnippetsFromSelection(container)).toMatchObject([
+      {
+        markdown: "red quote",
+        selectedText: "red quote",
+      },
+    ]);
   });
 
   it("does not make empty completed Bash rows expandable", () => {

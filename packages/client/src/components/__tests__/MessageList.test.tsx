@@ -1126,7 +1126,7 @@ describe("MessageList", () => {
     expect(nextCodeBlock?.scrollLeft).toBe(73);
   });
 
-  it("does not drop user text from mixed turn selections", () => {
+  it("copies mixed turn selections as separate source snippets", () => {
     render(
       <MessageList
         messages={[
@@ -1152,8 +1152,11 @@ describe("MessageList", () => {
 
     const { event, setData } = dispatchCopyEvent();
 
-    expect(event.defaultPrevented).toBe(false);
-    expect(setData).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(true);
+    expect(setData).toHaveBeenCalledWith(
+      "text/plain",
+      "user selected text\n\nassistant selected text",
+    );
   });
 
   it("scrolls to current from a focused composer with Ctrl+End", () => {
@@ -1405,8 +1408,7 @@ describe("MessageList", () => {
     expect(assistant1).toBeTruthy();
     expect(assistantTurn).toBeTruthy();
     (user1 as HTMLElement).getBoundingClientRect = () => rectFor(-120, 40);
-    (assistant1 as HTMLElement).getBoundingClientRect = () =>
-      rectFor(-80, 520);
+    (assistant1 as HTMLElement).getBoundingClientRect = () => rectFor(-80, 520);
     (assistantTurn as HTMLElement).getBoundingClientRect = () =>
       rectFor(-80, 520);
 

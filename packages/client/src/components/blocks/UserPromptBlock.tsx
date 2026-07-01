@@ -1,5 +1,6 @@
 import { memo, type ReactNode, useState } from "react";
 import { useI18n } from "../../i18n";
+import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
 import {
   type UploadedFileInfo,
   getFilename,
@@ -274,11 +275,21 @@ function CollapsibleText({ text }: { text: string }) {
   const exceedsLines = lines.length > MAX_LINES;
   const exceedsChars = text.length > MAX_CHARS;
   const needsTruncation = exceedsLines || exceedsChars;
+  const fullTextRef = useQuoteableTextSource<HTMLDivElement>(text);
+
+  // Truncate by lines first, then by characters if still too long
+  let truncatedText = exceedsLines
+    ? lines.slice(0, MAX_LINES).join("\n")
+    : text;
+  if (truncatedText.length > MAX_CHARS) {
+    truncatedText = truncatedText.slice(0, MAX_CHARS);
+  }
+  const truncatedRef = useQuoteableTextSource<HTMLDivElement>(truncatedText);
 
   if (!needsTruncation || isExpanded) {
     return (
       <div className="text-block">
-        {text}
+        <div ref={fullTextRef}>{text}</div>
         {isExpanded && needsTruncation && (
           <button
             type="button"
@@ -292,17 +303,9 @@ function CollapsibleText({ text }: { text: string }) {
     );
   }
 
-  // Truncate by lines first, then by characters if still too long
-  let truncatedText = exceedsLines
-    ? lines.slice(0, MAX_LINES).join("\n")
-    : text;
-  if (truncatedText.length > MAX_CHARS) {
-    truncatedText = truncatedText.slice(0, MAX_CHARS);
-  }
-
   return (
     <div className="text-block collapsible-text">
-      <div className="truncated-content">
+      <div ref={truncatedRef} className="truncated-content">
         {truncatedText}
         <div className="fade-overlay" />
       </div>

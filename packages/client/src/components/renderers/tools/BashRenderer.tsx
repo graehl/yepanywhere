@@ -9,6 +9,7 @@ import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { useOptionalSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { useOutputToolPreviewLineCount } from "../../../hooks/useOutputAppearance";
+import { useQuoteableTextSource } from "../../../hooks/useQuoteableTextSource";
 import {
   getDisplayBashCommandFromInput,
   isCodexProvider,
@@ -312,6 +313,7 @@ function BashToolUse({ input }: { input: BashInput }) {
     needsCollapse && !isExpanded
       ? `${lines.slice(0, MAX_LINES_TOOL_USE).join("\n")}\n...`
       : command;
+  const commandRef = useQuoteableTextSource<HTMLPreElement>(displayCommand);
 
   return (
     <div className="bash-tool-use">
@@ -319,7 +321,7 @@ function BashToolUse({ input }: { input: BashInput }) {
         <span className="bash-inline-section-label">Command</span>
         <BashCopyButton text={command} label="Copy command" />
       </div>
-      <pre className="code-block">
+      <pre ref={commandRef} className="code-block">
         <code>{displayCommand}</code>
       </pre>
       {needsCollapse && (
@@ -375,6 +377,7 @@ function BashToolResult({
   const stdout = result.stdout || "";
   const stderr = result.stderr || "";
   const command = input ? getBashCommand(input) : "";
+  const commandRef = useQuoteableTextSource<HTMLPreElement>(command);
   const sessionMetadata = useOptionalSessionMetadata();
   const stdoutLines = stdout.split("\n");
   const richStdout = useMemo(
@@ -409,7 +412,7 @@ function BashToolResult({
             <span className="bash-inline-section-label">Command</span>
             <BashCopyButton text={command} label="Copy command" />
           </div>
-          <pre className="code-block">
+          <pre ref={commandRef} className="code-block">
             <code>{command}</code>
           </pre>
         </div>

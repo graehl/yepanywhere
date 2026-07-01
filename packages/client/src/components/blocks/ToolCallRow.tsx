@@ -16,6 +16,7 @@ import {
   useOutputToolPreviewLineCount,
 } from "../../hooks/useOutputAppearance";
 import { useStableToolPreviewRendering } from "../../hooks/useStableToolPreviewRendering";
+import { useQuoteableTextSource } from "../../hooks/useQuoteableTextSource";
 import { getDisplayBashCommandFromInput } from "../../lib/bashCommand";
 import { PREDICTIVE_SCROLL_ROOT_MARGIN } from "../../lib/predictiveScroll";
 import { parseShellToolOutput } from "../../lib/shellToolOutput";
@@ -643,6 +644,13 @@ export const ToolCallRow = memo(function ToolCallRow({
     () => getCommandPreview(headerCommand, outputToolPreviewLineCount),
     [headerCommand, outputToolPreviewLineCount],
   );
+  const bashCommandQuoteRef = useQuoteableTextSource<HTMLSpanElement>(
+    showBashCommandTarget
+      ? bashCommandExpanded
+        ? headerCommand
+        : bashCommandPreview.text
+      : "",
+  );
 
   useEffect(() => {
     setBashCommandExpanded(false);
@@ -855,7 +863,10 @@ export const ToolCallRow = memo(function ToolCallRow({
               setBashCommandExpanded((current) => !current);
             }}
           >
-            <span className="tool-summary-command-text">
+            <span
+              ref={bashCommandQuoteRef}
+              className="tool-summary-command-text"
+            >
               {bashCommandExpanded ? headerCommand : bashCommandPreview.text}
             </span>
           </button>

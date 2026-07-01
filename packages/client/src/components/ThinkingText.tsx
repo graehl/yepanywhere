@@ -1,4 +1,5 @@
 import { Fragment, memo, type ReactNode, useMemo, useState } from "react";
+import { useQuoteableTextSource } from "../hooks/useQuoteableTextSource";
 
 interface ThinkingTextProps {
   text: string;
@@ -156,16 +157,22 @@ export const ThinkingText = memo(function ThinkingText({
   text,
 }: ThinkingTextProps) {
   const outline = useMemo(() => parseThinkingOutline(text), [text]);
+  const plainRef = useQuoteableTextSource<HTMLSpanElement>(text);
+  const outlineRef = useQuoteableTextSource<HTMLDivElement>(text);
   const [closedSections, setClosedSections] = useState<Set<string>>(
     () => new Set(),
   );
 
   if (!outline) {
-    return <span className="thinking-text thinking-text-plain">{text}</span>;
+    return (
+      <span ref={plainRef} className="thinking-text thinking-text-plain">
+        {text}
+      </span>
+    );
   }
 
   return (
-    <div className="thinking-text thinking-outline">
+    <div ref={outlineRef} className="thinking-text thinking-outline">
       {outline.map((section) => {
         const isOpen = !closedSections.has(section.key);
         return (

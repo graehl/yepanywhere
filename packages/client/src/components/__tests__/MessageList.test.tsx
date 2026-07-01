@@ -1784,6 +1784,84 @@ describe("MessageList", () => {
     expect(scrollContainer.scrollTop).toBe(900);
   });
 
+  it("catches up a parked transcript on reveal while following latest", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    const { rerender } = render(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+        interactionDisabled
+      />,
+      { container: scrollContainer },
+    );
+    scrollContainer.scrollTop = 0;
+
+    rerender(
+      <MessageList
+        messages={[
+          userMessage("user-1", "earlier request"),
+          assistantMessage("assistant-1", "current response"),
+        ]}
+      />,
+    );
+
+    expect(scrollContainer.scrollTop).toBe(500);
+  });
+
+  it("preserves a parked transcript read position on reveal", () => {
+    const scrollContainer = document.createElement("div");
+    document.body.append(scrollContainer);
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      value: 500,
+    });
+    scrollContainer.scrollTo = vi.fn() as typeof scrollContainer.scrollTo;
+
+    const messages = [
+      userMessage("user-1", "earlier request"),
+      assistantMessage("assistant-1", "current response"),
+    ];
+    const { rerender } = render(<MessageList messages={messages} />, {
+      container: scrollContainer,
+    });
+
+    scrollContainer.scrollTop = 200;
+    fireEvent.wheel(scrollContainer, { deltaY: -120 });
+
+    rerender(<MessageList messages={messages} interactionDisabled />);
+    expect(scrollContainer.scrollTop).toBe(200);
+
+    rerender(<MessageList messages={messages} />);
+    expect(scrollContainer.scrollTop).toBe(200);
+  });
+
   it("opens reverse user-turn search with Ctrl+R and hides nonmatches", async () => {
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,

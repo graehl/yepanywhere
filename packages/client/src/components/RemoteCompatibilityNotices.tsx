@@ -19,8 +19,10 @@ export function RemoteCompatibilityNotices({
   installId,
 }: RemoteCompatibilityNoticesProps) {
   const notices = useMemo(
-    () =>
-      getRemoteCompatibilityNotices({
+    () => {
+      if (!versionInfo) return [];
+
+      return getRemoteCompatibilityNotices({
         currentVersion: versionInfo?.current ?? null,
         latestVersion: versionInfo?.latest ?? null,
         updateAvailable: versionInfo?.updateAvailable ?? false,
@@ -30,7 +32,8 @@ export function RemoteCompatibilityNotices({
         capabilities: versionInfo?.capabilities,
         relayUsername,
         installId,
-      }),
+      });
+    },
     [installId, relayUsername, versionInfo],
   );
   const { dismissNotice, snoozeNotice, visibleNotices } =

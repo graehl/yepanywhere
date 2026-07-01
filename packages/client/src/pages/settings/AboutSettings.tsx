@@ -33,8 +33,10 @@ export function AboutSettings() {
   const { resetOnboarding } = useOnboarding();
   const currentRelayUsername = remoteConnection?.currentRelayUsername ?? null;
   const getNoticesForVersion = useCallback(
-    (candidate: VersionInfo | null) =>
-      getRemoteCompatibilityNotices({
+    (candidate: VersionInfo | null) => {
+      if (!candidate) return [];
+
+      return getRemoteCompatibilityNotices({
         currentVersion: candidate?.current ?? null,
         latestVersion: candidate?.latest ?? null,
         updateAvailable: candidate?.updateAvailable ?? false,
@@ -43,7 +45,8 @@ export function AboutSettings() {
         remoteCompatibilityLevel: candidate?.remoteCompatibilityLevel,
         capabilities: candidate?.capabilities,
         relayUsername: currentRelayUsername,
-      }),
+      });
+    },
     [currentRelayUsername],
   );
   const remoteCompatibilityNotices = useMemo(

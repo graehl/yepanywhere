@@ -244,6 +244,17 @@ describe("RemoteCompatibilityNotices", () => {
     );
   });
 
+  it("stays hidden while server version data is still loading", () => {
+    render(
+      <RemoteCompatibilityNotices
+        relayUsername="dev-box"
+        versionInfo={null}
+      />,
+    );
+
+    expect(screen.queryByTestId("remote-compatibility-notice")).toBeNull();
+  });
+
   it("renders the remote compatibility level warning for older servers", () => {
     render(
       <RemoteCompatibilityNotices

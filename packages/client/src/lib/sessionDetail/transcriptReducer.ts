@@ -17,6 +17,7 @@ export function createInitialSessionDetailState(): SessionDetailState {
     messages: [],
     session: null,
     agentContent: {},
+    markdownAugments: {},
     toolUseToAgentEntries: [],
     maxPersistedTimestampMs: Number.NEGATIVE_INFINITY,
     deferredMessages: [],
@@ -201,6 +202,9 @@ export function reduceSessionDetailState(
         session: action.session,
         pagination: action.pagination,
         agentContent: action.agentContent ?? {},
+        markdownAugments: action.markdownAugments
+          ? { ...state.markdownAugments, ...action.markdownAugments }
+          : state.markdownAugments,
         toolUseToAgentEntries: action.toolUseToAgentEntries ?? [],
         deferredMessages: action.deferredMessages ?? [],
         lastMessageId: findLastJsonlMessageId(messages),
@@ -259,6 +263,20 @@ export function reduceSessionDetailState(
         ...state,
         scrollSnapshot: action.scrollSnapshot,
       };
+
+    case "applyFinalMarkdownAugment": {
+      const existing = state.markdownAugments[action.messageId];
+      if (existing?.html === action.augment.html) {
+        return state;
+      }
+      return {
+        ...state,
+        markdownAugments: {
+          ...state.markdownAugments,
+          [action.messageId]: action.augment,
+        },
+      };
+    }
   }
 }
 

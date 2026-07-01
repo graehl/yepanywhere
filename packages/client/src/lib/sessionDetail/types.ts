@@ -1,3 +1,4 @@
+import type { MarkdownAugment } from "@yep-anywhere/shared";
 import type { DeferredQueueMessage, PaginationInfo } from "../../api/client";
 import type { Message, SessionMetadata } from "../../types";
 import type { SessionRouteScrollSnapshot } from "../sessionRouteSnapshots";
@@ -12,12 +13,14 @@ export interface AgentContent {
 }
 
 export type AgentContentMap = Record<string, AgentContent>;
+export type MarkdownAugmentMap = Record<string, MarkdownAugment>;
 
 export interface SessionDetailState {
   messages: Message[];
   session: SessionMetadata | null;
   pagination?: PaginationInfo;
   agentContent: AgentContentMap;
+  markdownAugments: MarkdownAugmentMap;
   toolUseToAgentEntries: Array<[string, string]>;
   lastMessageId?: string;
   maxPersistedTimestampMs: number;
@@ -32,6 +35,7 @@ export type SessionDetailAction =
       session: SessionMetadata;
       pagination?: PaginationInfo;
       agentContent?: AgentContentMap;
+      markdownAugments?: MarkdownAugmentMap;
       toolUseToAgentEntries?: Array<[string, string]>;
       deferredMessages?: DeferredQueueMessage[];
       scrollSnapshot?: SessionRouteScrollSnapshot;
@@ -56,4 +60,9 @@ export type SessionDetailAction =
   | {
       type: "patchScrollSnapshot";
       scrollSnapshot: SessionRouteScrollSnapshot;
+    }
+  | {
+      type: "applyFinalMarkdownAugment";
+      messageId: string;
+      augment: MarkdownAugment;
     };

@@ -2,9 +2,10 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 1 expanded. The pure reducer fixture harness now covers the
-basic persisted, streamed, catch-up, replay, duplicate-prompt, pagination, and
-Codex-shaped provider parity paths without changing runtime hook ownership.
+Status: Slice 2 started. The pure reducer fixture harness now covers the basic
+persisted, streamed, catch-up, replay, duplicate-prompt, pagination,
+Codex-shaped provider parity, and initial final-message markdown augment paths
+without changing runtime hook ownership.
 
 This is the tactical plan for the vision in
 [`topics/session-detail-data-layer.md`](../../topics/session-detail-data-layer.md).
@@ -207,6 +208,21 @@ Exit criteria:
 
 - Missing-augment regressions can be reproduced as reducer/selector tests
   rather than browser-only symptoms.
+
+Status 2026-07-01:
+
+- Added `markdownAugments` to `SessionDetailState` and an
+  `applyFinalMarkdownAugment` reducer action for completed server-rendered
+  markdown keyed by message id.
+- Added `selectSessionDetailPreprocessAugments` so the data-layer state can
+  feed the existing `preprocessMessages` augment shape without moving
+  `MessageList` ownership yet.
+- Added tests for final markdown augment arrival before the target message,
+  after the target message, from persisted-load input, and duplicate same-HTML
+  no-op updates.
+- This is intentionally only the first augment step. Canonical augment identity
+  across provider stream ids and durable JSONL ids remains the next hard part
+  before runtime hook wiring.
 
 ## Slice 3: Subagent And Tree Parity
 

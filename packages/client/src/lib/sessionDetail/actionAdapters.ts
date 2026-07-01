@@ -3,6 +3,7 @@ import type { Message, SessionMetadata } from "../../types";
 import type { SessionRouteScrollSnapshot } from "../sessionRouteSnapshots";
 import type {
   AgentContentMap,
+  MarkdownAugmentMap,
   SessionDetailAction,
   SessionDetailState,
 } from "./types";
@@ -27,11 +28,17 @@ export type PrependOlderMessagesAction = Extract<
   { type: "prependOlderMessages" }
 >;
 
+export type ApplyFinalMarkdownAugmentAction = Extract<
+  SessionDetailAction,
+  { type: "applyFinalMarkdownAugment" }
+>;
+
 export interface SessionDetailPersistedTranscriptInput {
   session: SessionMetadata;
   messages: Message[];
   pagination?: PaginationInfo;
   agentContent?: AgentContentMap;
+  markdownAugments?: MarkdownAugmentMap;
   toolUseToAgentEntries?: Array<[string, string]>;
   deferredMessages?: DeferredQueueMessage[];
   scrollSnapshot?: SessionRouteScrollSnapshot;
@@ -51,6 +58,7 @@ export function createLoadPersistedTranscriptAction(
     session: input.session,
     pagination: input.pagination,
     agentContent: input.agentContent,
+    markdownAugments: input.markdownAugments,
     toolUseToAgentEntries: input.toolUseToAgentEntries,
     deferredMessages: input.deferredMessages,
     scrollSnapshot: input.scrollSnapshot,
@@ -97,6 +105,17 @@ export function createPrependOlderMessagesAction(
     type: "prependOlderMessages",
     messages: input.messages,
     pagination: input.pagination,
+  };
+}
+
+export function createFinalMarkdownAugmentAction(input: {
+  messageId: string;
+  html: string;
+}): ApplyFinalMarkdownAugmentAction {
+  return {
+    type: "applyFinalMarkdownAugment",
+    messageId: input.messageId,
+    augment: { html: input.html },
   };
 }
 

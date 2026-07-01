@@ -178,6 +178,51 @@ function readinessLabel(
   }
 }
 
+function maxResumeQuietWindowMs(
+  items: readonly ProjectQueueItemSummary[],
+  projectStatusesByProject: Record<string, ProjectQueueProjectStatus>,
+): number | null {
+  let maxQuietWindowMs: number | null = null;
+  const projectIds = new Set(items.map((item) => item.projectId));
+  for (const projectId of projectIds) {
+    const quietWindowMs = projectStatusesByProject[projectId]?.quietWindowMs;
+    if (
+      typeof quietWindowMs !== "number" ||
+      !Number.isFinite(quietWindowMs) ||
+      quietWindowMs <= 0
+    ) {
+      continue;
+    }
+    maxQuietWindowMs =
+      maxQuietWindowMs === null
+        ? quietWindowMs
+        : Math.max(maxQuietWindowMs, quietWindowMs);
+  }
+  return maxQuietWindowMs;
+}
+
+function pausedNotice(
+  pausedState: Extract<ProjectQueueDispatchState, { status: "paused" }>,
+  items: readonly ProjectQueueItemSummary[],
+  projectStatusesByProject: Record<string, ProjectQueueProjectStatus>,
+  t: Translate,
+): string {
+  const quietWindowMs = maxResumeQuietWindowMs(items, projectStatusesByProject);
+  if (quietWindowMs !== null) {
+    return pausedState.reason === "restart"
+      ? t("projectQueuePausedAfterRestartNoticeWithDelay", {
+          duration: formatDurationSeconds(quietWindowMs, t),
+        })
+      : t("projectQueuePausedNoticeWithDelay", {
+          duration: formatDurationSeconds(quietWindowMs, t),
+        });
+  }
+
+  return pausedState.reason === "restart"
+    ? t("projectQueuePausedAfterRestartNotice")
+    : t("projectQueuePausedNotice");
+}
+
 function sessionLabel(
   item: ProjectQueueRecoveredSessionQueueSummary,
   t: Translate,
@@ -346,9 +391,7 @@ export function ProjectQueueSection({
 
       {pausedState && hasProjectQueueItems && (
         <div className="project-queue-section__notice">
-          {pausedState.reason === "restart"
-            ? t("projectQueuePausedAfterRestartNotice")
-            : t("projectQueuePausedNotice")}
+          {pausedNotice(pausedState, items, projectStatusesByProject, t)}
         </div>
       )}
 

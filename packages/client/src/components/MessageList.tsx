@@ -44,7 +44,6 @@ import {
 } from "../lib/sessionIsearchGuide";
 import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
 import {
-  buildAssistantTimelineRows,
   buildComposerTailDisplayRows,
   buildSessionDetailRenderItems,
   buildTimelineEntryDisplayRows,
@@ -2944,14 +2943,9 @@ export const MessageList = memo(function MessageList({
             );
           }
 
-          const { group } = timelineRow;
           return (
             <div key={timelineRow.key} className="assistant-turn">
-              {buildAssistantTimelineRows({
-                items: group.items,
-                latestVisibleTimestampMs,
-                nowMs,
-              }).map((assistantRow) => {
+              {timelineRow.rows.map((assistantRow) => {
                 if (assistantRow.kind === "explored") {
                   return (
                     <ExploredToolGroup

@@ -298,6 +298,9 @@ Reducer/helper behavior locked down during Slice 4:
   and assistant row classification plus row keys, latest-correctable flags,
   prompt-action eligibility, and stale-now hints while `MessageList` keeps
   actual rendering, callbacks, `/btw` ownership, and DOM behavior.
+- Assistant entry rows in that timeline display projection now also carry
+  selector-derived assistant timeline rows, so `MessageList` no longer calls
+  the lower-level assistant row selector inside the JSX loop.
 - Direction note: existing `scroll-snapshot` shadow divergence logs are treated
   as known noisy signal from the older snapshot path. Do not chase them as a
   near-term migration blocker until the non-scroll store/render surfaces are

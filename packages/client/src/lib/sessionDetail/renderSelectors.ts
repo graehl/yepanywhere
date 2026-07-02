@@ -363,6 +363,7 @@ export type TimelineEntryDisplayRow<
       kind: "assistant";
       key: string;
       group: TTurnGroup;
+      rows: AssistantTimelineRow[];
     };
 
 export function buildSessionDetailRenderItems({
@@ -1234,6 +1235,11 @@ export function buildTimelineEntryDisplayRows<
       kind: "assistant",
       key: entry.key,
       group,
+      rows: buildAssistantTimelineRows({
+        items: group.items,
+        latestVisibleTimestampMs,
+        nowMs,
+      }),
     };
   });
 }

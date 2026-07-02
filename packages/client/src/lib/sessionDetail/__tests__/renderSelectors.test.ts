@@ -910,6 +910,23 @@ describe("session detail render selectors", () => {
             kind: row.kind,
             key: row.key,
             firstItemId: row.group.items[0]?.id,
+            rows: row.rows.map((assistantRow) =>
+              assistantRow.kind === "item"
+                ? {
+                    kind: assistantRow.kind,
+                    id: assistantRow.item.id,
+                    itemIndex: assistantRow.itemIndex,
+                    staleNowMs: assistantRow.staleNowMs,
+                    thinkingDurationMs: assistantRow.thinkingDurationMs,
+                  }
+                : {
+                    kind: assistantRow.kind,
+                    id: assistantRow.id,
+                    itemIds: assistantRow.items.map((item) => item.id),
+                    segmentTimestampMs: assistantRow.segmentTimestampMs,
+                    staleNowMs: assistantRow.staleNowMs,
+                  },
+            ),
           };
         }
         return {
@@ -953,6 +970,15 @@ describe("session detail render selectors", () => {
         kind: "assistant",
         key: "turn-assistant",
         firstItemId: "assistant-1",
+        rows: [
+          {
+            kind: "item",
+            id: "assistant-1",
+            itemIndex: 0,
+            staleNowMs: undefined,
+            thinkingDurationMs: undefined,
+          },
+        ],
       },
       {
         kind: "btw",

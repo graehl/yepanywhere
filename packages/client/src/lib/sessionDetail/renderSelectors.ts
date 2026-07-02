@@ -32,6 +32,68 @@ export interface RenderTurnGroup {
   items: RenderItem[];
 }
 
+export interface RenderPendingMessage {
+  tempId: string;
+  timestamp: string;
+  clientOrder?: number;
+}
+
+export interface RenderDeferredMessage {
+  id?: string;
+  tempId?: string;
+  timestamp: string;
+  status?: string;
+  metadata?: {
+    deliveryIntent?: string;
+  };
+}
+
+export interface RenderProjectQueueMessage {
+  id: string;
+  timestamp: string;
+  projectPosition: number;
+}
+
+export interface ComposerTailLanePosition {
+  regularIndex?: number;
+  patientIndex?: number;
+}
+
+export type ComposerTailItem<
+  TPending extends RenderPendingMessage = RenderPendingMessage,
+  TDeferred extends RenderDeferredMessage = RenderDeferredMessage,
+  TProjectQueue extends RenderProjectQueueMessage = RenderProjectQueueMessage,
+> =
+  | {
+      kind: "pending";
+      key: string;
+      message: TPending;
+      sourceIndex: number;
+    }
+  | {
+      kind: "deferred";
+      key: string;
+      message: TDeferred;
+      deferredIndex: number;
+      sourceIndex: number;
+    }
+  | {
+      kind: "project-queue";
+      key: string;
+      message: TProjectQueue;
+      sourceIndex: number;
+    };
+
+export interface ComposerTailItemsInput<
+  TPending extends RenderPendingMessage = RenderPendingMessage,
+  TDeferred extends RenderDeferredMessage = RenderDeferredMessage,
+  TProjectQueue extends RenderProjectQueueMessage = RenderProjectQueueMessage,
+> {
+  deferredMessages?: readonly TDeferred[];
+  pendingMessages?: readonly TPending[];
+  projectQueueMessages?: readonly TProjectQueue[];
+}
+
 export interface RenderNavAnchor {
   id: string;
   preview: string;
@@ -146,6 +208,28 @@ export interface ProgressiveTimelineVisibility<
   percent: number;
 }
 
+export interface TimestampedTailInput {
+  timestamp?: string | null;
+}
+
+export interface TimestampedAsideInput {
+  historyAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface LatestVisibleTimestampInput<
+  TPending extends TimestampedTailInput = TimestampedTailInput,
+  TDeferred extends TimestampedTailInput = TimestampedTailInput,
+  TProjectQueue extends TimestampedTailInput = TimestampedTailInput,
+  TAside extends TimestampedAsideInput = TimestampedAsideInput,
+> {
+  asides?: readonly TAside[];
+  deferredMessages?: readonly TDeferred[];
+  displayRenderItems: readonly RenderItem[];
+  pendingMessages?: readonly TPending[];
+  projectQueueMessages?: readonly TProjectQueue[];
+}
+
 const SESSION_SETUP_PREFIXES = [
   "# AGENTS.md instructions",
   "<environment_context>",
@@ -238,6 +322,192 @@ export function getLatestRenderItemsTimestampMs(
     latest = latest === null ? timestampMs : Math.max(latest, timestampMs);
   }
   return latest;
+}
+
+export function getLastTimestampedRenderItem(
+  items: readonly RenderItem[],
+): RenderItem | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item && getLatestMessageTimestampMs(item.sourceMessages) !== null) {
+      return item;
+    }
+  }
+  return null;
+}
+
+export function groupEndsVisibleTurn(
+  group: RenderTurnGroup,
+  nextGroup: RenderTurnGroup | undefined,
+): boolean {
+  if (group.isStandalone) {
+    return true;
+  }
+  if (!group.isUserPrompt) {
+    return true;
+  }
+  return (
+    !nextGroup || nextGroup.isUserPrompt || nextGroup.isStandalone === true
+  );
+}
+
+export function getLatestVisibleTimestampMs({
+  asides = [],
+  deferredMessages = [],
+  displayRenderItems,
+  pendingMessages = [],
+  projectQueueMessages = [],
+}: LatestVisibleTimestampInput): number | null {
+  let latest: number | null = null;
+  const includeTimestamp = (timestampMs: number | null) => {
+    if (timestampMs === null) return;
+    latest = latest === null ? timestampMs : Math.max(latest, timestampMs);
+  };
+
+  for (const item of displayRenderItems) {
+    includeTimestamp(getLatestMessageTimestampMs(item.sourceMessages));
+  }
+  for (const pending of pendingMessages) {
+    includeTimestamp(parseTimestampMs(pending.timestamp));
+  }
+  for (const deferred of deferredMessages) {
+    includeTimestamp(parseTimestampMs(deferred.timestamp));
+  }
+  for (const projectQueue of projectQueueMessages) {
+    includeTimestamp(parseTimestampMs(projectQueue.timestamp));
+  }
+  for (const aside of asides) {
+    includeTimestamp(parseTimestampMs(aside.historyAt ?? aside.updatedAt));
+  }
+
+  return latest;
+}
+
+export function isPatientDeferredMessage(
+  message: RenderDeferredMessage,
+): boolean {
+  return message.metadata?.deliveryIntent === "patient";
+}
+
+export function isRecoveredDeferredMessage(
+  message: RenderDeferredMessage,
+): boolean {
+  return message.status === "paused-after-restart";
+}
+
+export function compareComposerTailItems(
+  left: ComposerTailItem,
+  right: ComposerTailItem,
+): number {
+  // Two lanes, each kept in its own order: optimistic pending sends (in flight)
+  // render before server-queued deferred messages, and deferred messages
+  // preserve the server's authoritative queue order rather than being re-sorted.
+  if (left.kind !== right.kind) {
+    const laneRank = { pending: 0, deferred: 1, "project-queue": 2 };
+    return laneRank[left.kind] - laneRank[right.kind];
+  }
+
+  if (left.kind === "deferred" && right.kind === "deferred") {
+    return left.deferredIndex - right.deferredIndex;
+  }
+
+  if (left.kind === "project-queue" && right.kind === "project-queue") {
+    return left.message.projectPosition - right.message.projectPosition;
+  }
+
+  const leftOrder =
+    left.kind === "pending" ? left.message.clientOrder : undefined;
+  const rightOrder =
+    right.kind === "pending" ? right.message.clientOrder : undefined;
+  if (
+    typeof leftOrder === "number" &&
+    Number.isFinite(leftOrder) &&
+    typeof rightOrder === "number" &&
+    Number.isFinite(rightOrder) &&
+    leftOrder !== rightOrder
+  ) {
+    return leftOrder - rightOrder;
+  }
+
+  const leftTimestamp = parseTimestampMs(left.message.timestamp);
+  const rightTimestamp = parseTimestampMs(right.message.timestamp);
+  if (
+    leftTimestamp !== null &&
+    rightTimestamp !== null &&
+    leftTimestamp !== rightTimestamp
+  ) {
+    return leftTimestamp - rightTimestamp;
+  }
+
+  return left.sourceIndex - right.sourceIndex;
+}
+
+export function buildComposerTailItems<
+  TPending extends RenderPendingMessage = RenderPendingMessage,
+  TDeferred extends RenderDeferredMessage = RenderDeferredMessage,
+  TProjectQueue extends RenderProjectQueueMessage = RenderProjectQueueMessage,
+>({
+  deferredMessages = [],
+  pendingMessages = [],
+  projectQueueMessages = [],
+}: ComposerTailItemsInput<TPending, TDeferred, TProjectQueue>): Array<
+  ComposerTailItem<TPending, TDeferred, TProjectQueue>
+> {
+  let sourceIndex = 0;
+  const items: Array<ComposerTailItem<TPending, TDeferred, TProjectQueue>> = [];
+
+  for (const pending of pendingMessages) {
+    items.push({
+      kind: "pending",
+      key: pending.tempId,
+      message: pending,
+      sourceIndex: sourceIndex++,
+    });
+  }
+  deferredMessages.forEach((deferred, deferredIndex) => {
+    items.push({
+      kind: "deferred",
+      key: deferred.tempId ?? `deferred-${deferredIndex}`,
+      message: deferred,
+      deferredIndex,
+      sourceIndex: sourceIndex++,
+    });
+  });
+  for (const projectQueue of projectQueueMessages) {
+    items.push({
+      kind: "project-queue",
+      key: `project-queue-${projectQueue.id}`,
+      message: projectQueue,
+      sourceIndex: sourceIndex++,
+    });
+  }
+
+  return items.sort(compareComposerTailItems) as Array<
+    ComposerTailItem<TPending, TDeferred, TProjectQueue>
+  >;
+}
+
+export function getComposerTailLanePositions(
+  items: readonly ComposerTailItem[],
+): Map<string, ComposerTailLanePosition> {
+  const positions = new Map<string, ComposerTailLanePosition>();
+  let regularIndex = 0;
+  let patientIndex = 0;
+
+  for (const item of items) {
+    if (item.kind !== "deferred") {
+      continue;
+    }
+    if (isPatientDeferredMessage(item.message)) {
+      positions.set(item.key, { patientIndex });
+      patientIndex += 1;
+    } else {
+      positions.set(item.key, { regularIndex });
+      regularIndex += 1;
+    }
+  }
+
+  return positions;
 }
 
 function getEarliestMessageTimestampMs(
@@ -548,10 +818,7 @@ export function getProgressiveTimelineVisibility<
     effectiveEntryCount,
     percent: Math.max(
       1,
-      Math.min(
-        100,
-        Math.round((effectiveEntryCount / entries.length) * 100),
-      ),
+      Math.min(100, Math.round((effectiveEntryCount / entries.length) * 100)),
     ),
   };
 }
@@ -586,9 +853,7 @@ export function getExplorationKind(toolName: string): ExplorationKind | null {
   return null;
 }
 
-export function isExplorationToolCall(
-  item: RenderItem,
-): item is ToolCallItem {
+export function isExplorationToolCall(item: RenderItem): item is ToolCallItem {
   return (
     item.type === "tool_call" && getExplorationKind(item.toolName) !== null
   );
@@ -849,9 +1114,7 @@ export function buildSearchPreview(
     .join(" ... ");
 }
 
-export function getSearchMatchProjection<
-  TAnchor extends RenderNavAnchor,
->({
+export function getSearchMatchProjection<TAnchor extends RenderNavAnchor>({
   anchors,
   caseSensitive = false,
   query,
@@ -890,9 +1153,7 @@ export function getSearchMatchProjection<
   };
 }
 
-export function getSearchSelectionProjection<
-  TAnchor extends RenderNavAnchor,
->({
+export function getSearchSelectionProjection<TAnchor extends RenderNavAnchor>({
   anchors,
   previewsById,
   searchReady,
@@ -919,9 +1180,7 @@ export function isSessionSetupText(text: string): boolean {
   return SESSION_SETUP_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
 }
 
-export function getSearchableUserTurnPreview(
-  item: RenderItem,
-): string | null {
+export function getSearchableUserTurnPreview(item: RenderItem): string | null {
   if (item.type !== "user_prompt" || item.isSubagent) {
     return null;
   }
@@ -985,9 +1244,7 @@ function stringifySearchValue(value: unknown): string {
   return stringify(value);
 }
 
-export function getContentBlocksText(
-  content: string | ContentBlock[],
-): string {
+export function getContentBlocksText(content: string | ContentBlock[]): string {
   if (typeof content === "string") {
     return content;
   }
@@ -1324,9 +1581,7 @@ function turnGroupHasFullSessionMatch(
   );
 }
 
-export function getSearchVisibleTurnGroups<
-  TTurnGroup extends RenderTurnGroup,
->({
+export function getSearchVisibleTurnGroups<TTurnGroup extends RenderTurnGroup>({
   matchIds,
   matchTargetIds = matchIds,
   scope,

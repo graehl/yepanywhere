@@ -45,12 +45,17 @@ Covered outputs:
 - visible thinking text-delta detection from thinking text-length summaries plus
   the local expansion predicate;
 - auto-expanded thinking-id reconciliation from previous/observed/current id
-  sets plus the historical-seed flag.
+  sets plus the historical-seed flag;
+- latest visible timestamp derivation across render items, pending sends,
+  deferred sends, project queue rows, and `/btw` asides;
+- last timestamped render-item lookup and visible-turn ending rules used by
+  transcript-position timestamp sampling;
+- composer tail ordering and deferred queue lane position derivation.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
 ref, thinking expansion state, search session state and keyboard navigation,
 correct-prompt action wiring, progressive reveal, selection, scroll anchoring,
-and actual rendering.
+composer tail row rendering/actions, and actual rendering.
 
 ## Still Local To MessageList
 
@@ -58,6 +63,7 @@ and actual rendering.
 - Search session state, keyboard/repeat navigation, and selected-match updates.
 - Correct-prompt action wiring.
 - `/btw` aside ownership and rendering.
+- Composer tail row rendering, labels, actions, and attachment display.
 - Progressive reveal state, status UI, and timers.
 - Scroll snapshots, follow-tail behavior, selection quote UI, and navigation.
 - DOM measurement and row anchoring.
@@ -65,6 +71,7 @@ and actual rendering.
 ## Next Preflight Slice
 
 Keep the Developer setting dogfood path default-off while moving one more pure
-projection out of `MessageList`. The next low-risk candidate is render-item
-timestamp helper extraction for transcript-position anchoring, while keeping
-DOM measurement, scroll effects, and snapshot ownership local.
+projection out of `MessageList`. The next low-risk candidates are
+search/navigation display projections or queued-tail row display metadata,
+while keeping DOM measurement, scroll effects, snapshot ownership, and row
+actions local.

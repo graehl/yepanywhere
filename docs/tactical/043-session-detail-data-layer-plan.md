@@ -88,6 +88,19 @@ What is already in place:
 - Auto-expanded thinking-id reconciliation now derives through
   `sessionDetail/renderSelectors`, using previous, observed, and current id
   sets plus the historical-seed flag.
+- Latest visible timestamp derivation, last timestamped render-item selection,
+  visible-turn ending rules, composer tail ordering, and deferred queue lane
+  positions now derive through `sessionDetail/renderSelectors`.
+
+Current diagnostic stance:
+
+- Treat `scroll-snapshot` shadow/store divergence logs as known noisy signal
+  from the older snapshot path. Do not spend migration time chasing those until
+  returned `messages`/`agentContent` and render-selector parity are otherwise
+  boring enough for a cleaner cutover audit.
+- Keep dogfooding the Developer toggle and turn non-scroll data divergences
+  into compact fixtures. Fresh browser checks with the toggle enabled did not
+  show catastrophic failures or fresh store/shadow divergence.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
@@ -125,8 +138,8 @@ Ownership is intentionally still split while we migrate:
   snapshots, selection, quote/search UI, and DOM timing. Pure render-item,
   assistant-segment, search-anchor, visible-group, search-match, latest
   correctable prompt, timeline-entry, progressive-count, and
-  progressive-visibility projections plus thinking summary/display derivation
-  now live outside the component.
+  progressive-visibility projections plus thinking summary/display, timestamp,
+  and composer-tail derivation now live outside the component.
 - Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
   content now enters through the action layer.
 
@@ -168,10 +181,11 @@ Next likely slice:
 
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any observed divergence into a
-  compact reducer or hook fixture.
-- Continue the render-selector preflight by moving render-item timestamp helper
-  primitives behind pure helpers without taking over DOM measurement, scroll
-  effects, or snapshot ownership.
+  compact reducer or hook fixture, except for known `scroll-snapshot` noise.
+- Continue the render-selector preflight with small pure projection moves that
+  do not own DOM measurement or effects. Good candidates are search/navigation
+  display projections or queued-tail row display metadata. Keep scroll
+  snapshots, follow-tail behavior, and `/btw` ownership local for now.
 
 Then:
 
@@ -202,6 +216,9 @@ Dogfood toggle:
   does not yet mean render canonical state.
 - Scroll symptoms can still be caused by DOM timing, retained snapshots, or
   render-item identity, not just data shape.
+- `scroll-snapshot` diagnostics are currently useful as a reminder that final
+  cutover needs a cleaner parity signal, but they are not a near-term blocker
+  while the rest of the data/render layer is still migrating.
 - A store-authoritative messages toggle may expose reducer gaps quickly; that
   is useful for dogfooding, but it should remain easy to disable.
 

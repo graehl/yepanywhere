@@ -3,14 +3,18 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "../../../types";
 import type { RenderItem } from "../../../types/renderItems";
 import {
+  buildComposerTailItems,
   buildAssistantRenderSegments,
   buildSessionDetailRenderItems,
   buildVisibleTimelineEntries,
   countThinkingItems,
   getAllTurnSearchAnchors,
+  getComposerTailLanePositions,
   getDisplayRenderItems,
   getFullSessionSearchAnchors,
+  getLastTimestampedRenderItem,
   getLatestThinkingItemId,
+  getLatestVisibleTimestampMs,
   getNextProgressiveEntryCount,
   getProgressiveTimelineVisibility,
   getProgressiveTimelineEntryWeight,
@@ -23,8 +27,11 @@ import {
   getThinkingTextLengths,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
+  groupEndsVisibleTurn,
   groupRenderItemsIntoTurns,
   hasVisibleThinkingTextDelta,
+  isPatientDeferredMessage,
+  isRecoveredDeferredMessage,
   reconcileAutoExpandedThinkingItemIds,
   selectSessionDetailRenderItems,
   selectLatestCorrectablePrompt,
@@ -155,6 +162,180 @@ describe("session detail render selectors", () => {
     ]);
   });
 
+  it("derives timestamp helper primitives for visible turns", () => {
+    const user: RenderItem = {
+      type: "user_prompt",
+      id: "user-1",
+      content: "Request",
+      sourceMessages: [sourceMessage("user-1", "2026-07-02T12:00:00.000Z")],
+    };
+    const untimestamped: RenderItem = {
+      type: "text",
+      id: "assistant-untimed",
+      text: "No timestamp",
+      sourceMessages: [],
+    };
+    const answer: RenderItem = {
+      type: "text",
+      id: "assistant-1",
+      text: "Answer",
+      sourceMessages: [
+        sourceMessage("assistant-1", "2026-07-02T12:02:00.000Z"),
+      ],
+    };
+    const display: RenderItem = {
+      type: "transcript_display_object",
+      id: "display-1",
+      object: displayObject("display-1", "user-1"),
+      sourceMessages: [],
+    };
+    const userGroup: RenderTurnGroup = { isUserPrompt: true, items: [user] };
+    const assistantGroup: RenderTurnGroup = {
+      isUserPrompt: false,
+      items: [untimestamped, answer],
+    };
+    const standaloneGroup: RenderTurnGroup = {
+      isUserPrompt: false,
+      isStandalone: true,
+      items: [display],
+    };
+
+    expect(getLastTimestampedRenderItem([user, untimestamped, answer])).toBe(
+      answer,
+    );
+    expect(getLastTimestampedRenderItem([untimestamped])).toBeNull();
+    expect(groupEndsVisibleTurn(userGroup, assistantGroup)).toBe(false);
+    expect(groupEndsVisibleTurn(userGroup, standaloneGroup)).toBe(true);
+    expect(groupEndsVisibleTurn(userGroup, undefined)).toBe(true);
+    expect(groupEndsVisibleTurn(assistantGroup, undefined)).toBe(true);
+    expect(groupEndsVisibleTurn(standaloneGroup, assistantGroup)).toBe(true);
+  });
+
+  it("derives the latest visible timestamp across transcript and tail inputs", () => {
+    const displayRenderItems: RenderItem[] = [
+      {
+        type: "text",
+        id: "assistant-1",
+        text: "Earlier answer",
+        sourceMessages: [
+          sourceMessage("assistant-1", "2026-07-02T12:00:00.000Z"),
+        ],
+      },
+      {
+        type: "text",
+        id: "assistant-2",
+        text: "Later answer",
+        sourceMessages: [
+          sourceMessage("assistant-2a", "2026-07-02T12:01:00.000Z"),
+          sourceMessage("assistant-2b", "2026-07-02T12:02:00.000Z"),
+        ],
+      },
+    ];
+    const asides = [
+      {
+        id: "aside-1",
+        updatedAt: "2026-07-02T12:05:00.000Z",
+      },
+    ];
+    const deferredMessages = [
+      { tempId: "deferred-1", timestamp: "not-a-date" },
+    ];
+    const pendingMessages = [
+      { tempId: "pending-1", timestamp: "2026-07-02T12:03:00.000Z" },
+    ];
+    const projectQueueMessages = [
+      {
+        id: "project-1",
+        projectPosition: 0,
+        timestamp: "2026-07-02T12:04:00.000Z",
+      },
+    ];
+
+    expect(
+      getLatestVisibleTimestampMs({
+        asides,
+        deferredMessages,
+        displayRenderItems,
+        pendingMessages,
+        projectQueueMessages,
+      }),
+    ).toBe(Date.parse("2026-07-02T12:05:00.000Z"));
+    expect(getLatestVisibleTimestampMs({ displayRenderItems: [] })).toBeNull();
+  });
+
+  it("derives composer tail ordering and deferred lane positions", () => {
+    const tailItems = buildComposerTailItems({
+      deferredMessages: [
+        {
+          tempId: "deferred-regular-1",
+          timestamp: "2026-07-02T12:10:00.000Z",
+        },
+        {
+          tempId: "deferred-patient-1",
+          timestamp: "2026-07-02T12:09:00.000Z",
+          metadata: { deliveryIntent: "patient" },
+        },
+        {
+          tempId: "deferred-regular-2",
+          timestamp: "2026-07-02T12:08:00.000Z",
+          status: "paused-after-restart",
+        },
+      ],
+      pendingMessages: [
+        {
+          tempId: "pending-second",
+          timestamp: "2026-07-02T12:01:00.000Z",
+          clientOrder: 2,
+        },
+        {
+          tempId: "pending-first",
+          timestamp: "2026-07-02T12:02:00.000Z",
+          clientOrder: 1,
+        },
+      ],
+      projectQueueMessages: [
+        {
+          id: "project-second",
+          timestamp: "2026-07-02T12:20:00.000Z",
+          projectPosition: 2,
+        },
+        {
+          id: "project-first",
+          timestamp: "2026-07-02T12:21:00.000Z",
+          projectPosition: 1,
+        },
+      ],
+    });
+
+    expect(tailItems.map((item) => item.key)).toEqual([
+      "pending-first",
+      "pending-second",
+      "deferred-regular-1",
+      "deferred-patient-1",
+      "deferred-regular-2",
+      "project-queue-project-first",
+      "project-queue-project-second",
+    ]);
+
+    const positions = getComposerTailLanePositions(tailItems);
+    expect(positions.get("deferred-regular-1")).toEqual({ regularIndex: 0 });
+    expect(positions.get("deferred-patient-1")).toEqual({ patientIndex: 0 });
+    expect(positions.get("deferred-regular-2")).toEqual({ regularIndex: 1 });
+    expect(positions.has("pending-first")).toBe(false);
+
+    const patient = tailItems.find((item) => item.key === "deferred-patient-1");
+    const recovered = tailItems.find(
+      (item) => item.key === "deferred-regular-2",
+    );
+    expect(
+      patient?.kind === "deferred" && isPatientDeferredMessage(patient.message),
+    ).toBe(true);
+    expect(
+      recovered?.kind === "deferred" &&
+        isRecoveredDeferredMessage(recovered.message),
+    ).toBe(true);
+  });
+
   it("derives user navigation anchors from searchable user turns", () => {
     const sourceMessages: Message[] = [
       {
@@ -278,9 +459,7 @@ describe("session detail render selectors", () => {
       toolName: "Read",
       toolInput: { file_path: "README.md" },
       status: "pending",
-      sourceMessages: [
-        sourceMessage("read-msg", "2026-07-02T12:01:00.000Z"),
-      ],
+      sourceMessages: [sourceMessage("read-msg", "2026-07-02T12:01:00.000Z")],
     };
     const grep: RenderItem = {
       type: "tool_call",
@@ -288,9 +467,7 @@ describe("session detail render selectors", () => {
       toolName: "Grep",
       toolInput: { pattern: "needle", path: "src" },
       status: "pending",
-      sourceMessages: [
-        sourceMessage("grep-msg", "2026-07-02T12:02:00.000Z"),
-      ],
+      sourceMessages: [sourceMessage("grep-msg", "2026-07-02T12:02:00.000Z")],
     };
     const thinking: RenderItem = {
       type: "thinking",
@@ -688,9 +865,7 @@ describe("session detail render selectors", () => {
       type: "text",
       id: "answer-1",
       text: "Done",
-      sourceMessages: [
-        sourceMessage("answer", "2026-07-02T12:00:10.000Z"),
-      ],
+      sourceMessages: [sourceMessage("answer", "2026-07-02T12:00:10.000Z")],
     };
     const items = [thinking, answer];
 
@@ -718,9 +893,9 @@ describe("session detail render selectors", () => {
       ],
     };
 
-    expect(getThinkingDurationMs(completeThinking, [completeThinking], 0, 0)).toBe(
-      3_000,
-    );
+    expect(
+      getThinkingDurationMs(completeThinking, [completeThinking], 0, 0),
+    ).toBe(3_000);
     expect(
       getThinkingDurationMs(
         streamingThinking,
@@ -821,9 +996,9 @@ describe("session detail render selectors", () => {
     };
     const items = [thinking, text];
 
-    expect(
-      getDisplayRenderItems(items, { thinkingItemsVisible: true }),
-    ).toBe(items);
+    expect(getDisplayRenderItems(items, { thinkingItemsVisible: true })).toBe(
+      items,
+    );
     expect(
       getDisplayRenderItems(items, { thinkingItemsVisible: false }),
     ).toEqual([text]);
@@ -1002,9 +1177,7 @@ describe("session detail render selectors", () => {
       selectedId: "anchor-2",
     });
 
-    expect(projection.matches.map((anchor) => anchor.id)).toEqual([
-      "anchor-2",
-    ]);
+    expect(projection.matches.map((anchor) => anchor.id)).toEqual(["anchor-2"]);
     expect(Array.from(projection.matchIds)).toEqual(["anchor-2"]);
     expect(Array.from(projection.matchTargetIds)).toEqual([
       "explored-read-1-grep-1",

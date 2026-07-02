@@ -272,6 +272,22 @@ Reducer/helper behavior locked down during Slice 4:
 - Auto-expanded thinking-id reconciliation now lives in
   `sessionDetail/renderSelectors`, preserving `MessageList` ownership of the
   state update and provider historical-seed trigger.
+- Latest visible timestamp derivation now lives in
+  `sessionDetail/renderSelectors`, combining render items, pending sends,
+  deferred sends, project queue rows, and `/btw` asides while `MessageList`
+  keeps age rendering and row ownership.
+- Transcript-position timestamp helper primitives now live in
+  `sessionDetail/renderSelectors`: last timestamped render-item lookup and the
+  visible-turn ending predicate. `MessageList` still owns DOM row measurement
+  and scroll sampling.
+- Composer tail ordering and deferred queue lane position derivation now live
+  in `sessionDetail/renderSelectors`, preserving pending/deferred/project-queue
+  ordering and patient-vs-regular deferred lane positions while `MessageList`
+  keeps row rendering, labels, actions, and attachment display.
+- Direction note: existing `scroll-snapshot` shadow divergence logs are treated
+  as known noisy signal from the older snapshot path. Do not chase them as a
+  near-term migration blocker until the non-scroll store/render surfaces are
+  otherwise complete enough for a cleaner cutover audit.
 
 ## Verification Details
 

@@ -47,13 +47,17 @@ import {
 import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
 import {
   buildAssistantRenderSegments,
+  buildComposerTailItems,
   buildSessionDetailRenderItems,
   buildVisibleTimelineEntries,
   countThinkingItems,
   getAllTurnSearchAnchors,
+  getComposerTailLanePositions,
   getDisplayRenderItems,
   getFullSessionSearchAnchors,
+  getLastTimestampedRenderItem,
   getLatestRenderItemsTimestampMs,
+  getLatestVisibleTimestampMs,
   getLatestThinkingItemId,
   getNextProgressiveEntryCount,
   getProgressiveTimelineVisibility,
@@ -67,11 +71,15 @@ import {
   getThinkingTextLengths,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
+  groupEndsVisibleTurn,
   groupRenderItemsIntoTurns,
   hasVisibleThinkingTextDelta,
+  isPatientDeferredMessage,
+  isRecoveredDeferredMessage,
   normalizeSearchText,
   reconcileAutoExpandedThinkingItemIds,
   selectLatestCorrectablePrompt,
+  type ComposerTailLanePosition,
   type RenderTurnGroup,
 } from "../lib/sessionDetail/renderSelectors";
 import { UI_KEYS } from "../lib/storageKeys";
@@ -104,32 +112,6 @@ const PROGRESSIVE_RENDER_REVEAL_DELAY_MS = 180;
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function getLastTimestampedItem(items: readonly RenderItem[]): RenderItem | null {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index];
-    if (
-      item &&
-      getLatestMessageTimestampMs(item.sourceMessages) !== null
-    ) {
-      return item;
-    }
-  }
-  return null;
-}
-
-function groupEndsVisibleTurn(
-  group: RenderTurnGroup,
-  nextGroup: RenderTurnGroup | undefined,
-): boolean {
-  if (group.isStandalone) {
-    return true;
-  }
-  if (!group.isUserPrompt) {
-    return true;
-  }
-  return !nextGroup || nextGroup.isUserPrompt || nextGroup.isStandalone === true;
 }
 
 function isCtrlKeyShortcut(
@@ -201,7 +183,7 @@ function getVisibleTurnEndTimestampMs(
     if (!group || !groupEndsVisibleTurn(group, groups[index + 1])) {
       continue;
     }
-    const item = getLastTimestampedItem(group.items);
+    const item = getLastTimestampedRenderItem(group.items);
     if (!item) {
       continue;
     }
@@ -251,7 +233,8 @@ function getMiddleVisibleTimestampMs(
     }
     const rowRect = row.getBoundingClientRect();
     const visible =
-      rowRect.bottom >= containerRect.top && rowRect.top <= containerRect.bottom;
+      rowRect.bottom >= containerRect.top &&
+      rowRect.top <= containerRect.bottom;
     if (!visible) {
       continue;
     }
@@ -530,19 +513,6 @@ interface InlineProjectQueueMessage {
   isMutating?: boolean;
 }
 
-interface ComposerTailLanePosition {
-  regularIndex?: number;
-  patientIndex?: number;
-}
-
-function isPatientDeferredMessage(message: DeferredMessage): boolean {
-  return message.metadata?.deliveryIntent === "patient";
-}
-
-function isRecoveredDeferredMessage(message: DeferredMessage): boolean {
-  return message.status === "paused-after-restart";
-}
-
 function formatQueuedAge(timestampMs: number, nowMs: number): string {
   const label = formatCompactRelativeAge(timestampMs, nowMs);
   return label === "now" ? "now" : `${label} ago`;
@@ -576,74 +546,6 @@ function getDeferredMessageStatus({
   return regularIndex === 0
     ? "Queued (next regular)"
     : `Queued regular (#${regularIndex + 1})`;
-}
-
-type ComposerTailItem =
-  | {
-      kind: "pending";
-      key: string;
-      message: PendingMessage;
-      sourceIndex: number;
-    }
-  | {
-      kind: "deferred";
-      key: string;
-      message: DeferredMessage;
-      deferredIndex: number;
-      sourceIndex: number;
-    }
-  | {
-      kind: "project-queue";
-      key: string;
-      message: InlineProjectQueueMessage;
-      sourceIndex: number;
-    };
-
-function compareComposerTailItems(
-  left: ComposerTailItem,
-  right: ComposerTailItem,
-): number {
-  // Two lanes, each kept in its own order: optimistic pending sends (in flight)
-  // render before server-queued deferred messages, and deferred messages
-  // preserve the server's authoritative queue order rather than being re-sorted.
-  if (left.kind !== right.kind) {
-    const laneRank = { pending: 0, deferred: 1, "project-queue": 2 };
-    return laneRank[left.kind] - laneRank[right.kind];
-  }
-
-  if (left.kind === "deferred" && right.kind === "deferred") {
-    return left.deferredIndex - right.deferredIndex;
-  }
-
-  if (left.kind === "project-queue" && right.kind === "project-queue") {
-    return left.message.projectPosition - right.message.projectPosition;
-  }
-
-  const leftOrder =
-    left.kind === "pending" ? left.message.clientOrder : undefined;
-  const rightOrder =
-    right.kind === "pending" ? right.message.clientOrder : undefined;
-  if (
-    typeof leftOrder === "number" &&
-    Number.isFinite(leftOrder) &&
-    typeof rightOrder === "number" &&
-    Number.isFinite(rightOrder) &&
-    leftOrder !== rightOrder
-  ) {
-    return leftOrder - rightOrder;
-  }
-
-  const leftTimestamp = parseTimestampMs(left.message.timestamp);
-  const rightTimestamp = parseTimestampMs(right.message.timestamp);
-  if (
-    leftTimestamp !== null &&
-    rightTimestamp !== null &&
-    leftTimestamp !== rightTimestamp
-  ) {
-    return leftTimestamp - rightTimestamp;
-  }
-
-  return left.sourceIndex - right.sourceIndex;
 }
 
 interface BtwAsideTimelineItem {
@@ -1462,8 +1364,7 @@ export const MessageList = memo(function MessageList({
       userTurnSearchPreviewsById,
     ],
   );
-  const selectedSearchAnchor =
-    userTurnSearchSelectionProjection.selectedAnchor;
+  const selectedSearchAnchor = userTurnSearchSelectionProjection.selectedAnchor;
   const selectedSearchTargetId =
     userTurnSearchSelectionProjection.selectedTargetId;
   selectedSearchTargetIdRef.current = selectedSearchTargetId;
@@ -1544,7 +1445,7 @@ export const MessageList = memo(function MessageList({
       const atBottom = isAtScrollBottom(container, content);
       const anchor = atBottom
         ? undefined
-        : getFirstVisibleRenderAnchor(content, container) ?? undefined;
+        : (getFirstVisibleRenderAnchor(content, container) ?? undefined);
       return {
         atBottom,
         scrollTop: container.scrollTop,
@@ -1725,89 +1626,36 @@ export const MessageList = memo(function MessageList({
     return () =>
       window.removeEventListener("keydown", handleSelectionTyping, true);
   }, [applyQuoteFromSelection, interactionDisabled, onQuoteSelection]);
-  const latestVisibleTimestampMs = useMemo(() => {
-    let latest: number | null = null;
-    const includeTimestamp = (timestampMs: number | null) => {
-      if (timestampMs === null) return;
-      latest = latest === null ? timestampMs : Math.max(latest, timestampMs);
-    };
-
-    for (const item of displayRenderItems) {
-      includeTimestamp(getLatestMessageTimestampMs(item.sourceMessages));
-    }
-    for (const pending of pendingMessages) {
-      includeTimestamp(parseTimestampMs(pending.timestamp));
-    }
-    for (const deferred of deferredMessages) {
-      includeTimestamp(parseTimestampMs(deferred.timestamp));
-    }
-    for (const projectQueue of projectQueueMessages) {
-      includeTimestamp(parseTimestampMs(projectQueue.timestamp));
-    }
-    for (const aside of btwAsides) {
-      includeTimestamp(parseTimestampMs(aside.historyAt ?? aside.updatedAt));
-    }
-
-    return latest;
-  }, [
-    displayRenderItems,
-    pendingMessages,
-    deferredMessages,
-    projectQueueMessages,
-    btwAsides,
-  ]);
-  const composerTailItems = useMemo(() => {
-    let sourceIndex = 0;
-    const items: ComposerTailItem[] = [];
-
-    for (const pending of pendingMessages) {
-      items.push({
-        kind: "pending",
-        key: pending.tempId,
-        message: pending,
-        sourceIndex: sourceIndex++,
-      });
-    }
-    deferredMessages.forEach((deferred, deferredIndex) => {
-      items.push({
-        kind: "deferred",
-        key: deferred.tempId ?? `deferred-${deferredIndex}`,
-        message: deferred,
-        deferredIndex,
-        sourceIndex: sourceIndex++,
-      });
-    });
-    for (const projectQueue of projectQueueMessages) {
-      items.push({
-        kind: "project-queue",
-        key: `project-queue-${projectQueue.id}`,
-        message: projectQueue,
-        sourceIndex: sourceIndex++,
-      });
-    }
-
-    return items.sort(compareComposerTailItems);
-  }, [pendingMessages, deferredMessages, projectQueueMessages]);
-  const composerTailLanePositions = useMemo(() => {
-    const positions = new Map<string, ComposerTailLanePosition>();
-    let regularIndex = 0;
-    let patientIndex = 0;
-
-    for (const item of composerTailItems) {
-      if (item.kind !== "deferred") {
-        continue;
-      }
-      if (isPatientDeferredMessage(item.message)) {
-        positions.set(item.key, { patientIndex });
-        patientIndex += 1;
-      } else {
-        positions.set(item.key, { regularIndex });
-        regularIndex += 1;
-      }
-    }
-
-    return positions;
-  }, [composerTailItems]);
+  const latestVisibleTimestampMs = useMemo(
+    () =>
+      getLatestVisibleTimestampMs({
+        asides: btwAsides,
+        deferredMessages,
+        displayRenderItems,
+        pendingMessages,
+        projectQueueMessages,
+      }),
+    [
+      displayRenderItems,
+      pendingMessages,
+      deferredMessages,
+      projectQueueMessages,
+      btwAsides,
+    ],
+  );
+  const composerTailItems = useMemo(
+    () =>
+      buildComposerTailItems({
+        deferredMessages,
+        pendingMessages,
+        projectQueueMessages,
+      }),
+    [pendingMessages, deferredMessages, projectQueueMessages],
+  );
+  const composerTailLanePositions = useMemo(
+    () => getComposerTailLanePositions(composerTailItems),
+    [composerTailItems],
+  );
   const latestCorrectablePrompt = useMemo(() => {
     if (!onCorrectLatestUserMessage) return null;
     return selectLatestCorrectablePrompt(renderItems);
@@ -3373,8 +3221,8 @@ export const MessageList = memo(function MessageList({
                       isRecoveredDeferred
                         ? t("sessionRecoveredQueuedPausedTitle")
                         : isPatientDeferred
-                        ? "Patient queue waits for verified quiet. Regular queued messages may pass it."
-                        : undefined
+                          ? "Patient queue waits for verified quiet. Regular queued messages may pass it."
+                          : undefined
                     }
                   >
                     {deferredStatus}

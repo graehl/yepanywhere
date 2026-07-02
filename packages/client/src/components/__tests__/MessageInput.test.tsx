@@ -26,7 +26,9 @@ import {
 import { setBrowserXaiSttApiKey } from "../../lib/speechProviders/xaiCredentials";
 import { MessageInput } from "../MessageInput";
 import {
+  getComposerToolbarOverflowLayoutSignature,
   MessageInputToolbarView,
+  type ComposerToolbarOverflowLayoutSignatureInput,
   type MessageInputToolbarViewProps,
 } from "../MessageInputToolbar";
 
@@ -3112,6 +3114,47 @@ describe("MessageInput", () => {
         ".composer-bottom-overflow-menu .context-toolbar-control",
       ),
     ).toHaveLength(1);
+  });
+
+  it("tracks toolbar overflow layout membership in a pure signature", () => {
+    const baseInput: ComposerToolbarOverflowLayoutSignatureInput = {
+      modeSelector: "first",
+      attachments: "first",
+      slashMenu: "mid",
+      thinkingToggle: "mid",
+      renderMode: "last",
+      nudge: "last",
+      sessionStatus: "pin",
+      shortcutsHelp: "last",
+      contextUsage: "pin",
+      btw: "pin",
+      steerNow: "pin",
+      projectQueue: "pin",
+      microphone: "live",
+      waveform: true,
+      send: "send",
+      queue: "off",
+      alternate: false,
+      stop: false,
+      pending: "off",
+    };
+
+    const signature = getComposerToolbarOverflowLayoutSignature(baseInput);
+
+    expect(signature).toContain("modeSelector:first");
+    expect(signature).toContain("attachments:first");
+    expect(
+      getComposerToolbarOverflowLayoutSignature({
+        ...baseInput,
+        attachments: "off",
+      }),
+    ).not.toBe(signature);
+    expect(
+      getComposerToolbarOverflowLayoutSignature({
+        ...baseInput,
+        queue: "send:true:false",
+      }),
+    ).not.toBe(signature);
   });
 
   it("relaxes bottom-row overflow when visible controls shrink", () => {

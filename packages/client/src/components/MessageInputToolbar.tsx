@@ -647,6 +647,189 @@ interface ToolbarActionsControl {
   send?: ToolbarSendControl | null;
 }
 
+type ComposerToolbarOverflowPriorityInput = ToolbarNarrowingPriority | "off";
+
+export interface ComposerToolbarOverflowLayoutSignatureInput {
+  modeSelector: ComposerToolbarOverflowPriorityInput;
+  attachments: ComposerToolbarOverflowPriorityInput;
+  slashMenu: ComposerToolbarOverflowPriorityInput;
+  thinkingToggle: ComposerToolbarOverflowPriorityInput;
+  renderMode: ComposerToolbarOverflowPriorityInput;
+  nudge: ComposerToolbarOverflowPriorityInput;
+  sessionStatus: ComposerToolbarOverflowPriorityInput;
+  shortcutsHelp: ComposerToolbarOverflowPriorityInput;
+  contextUsage: ComposerToolbarOverflowPriorityInput;
+  btw: ComposerToolbarOverflowPriorityInput;
+  steerNow: ComposerToolbarOverflowPriorityInput;
+  projectQueue: ComposerToolbarOverflowPriorityInput;
+  microphone: "live" | "preview" | "off";
+  waveform: boolean;
+  send: ToolbarSendControl["primaryActionKind"] | "off" | undefined;
+  queue: string;
+  alternate: boolean;
+  stop: boolean;
+  pending:
+    | NonNullable<MessageInputToolbarProps["pendingApproval"]>["type"]
+    | "off";
+}
+
+export function getComposerToolbarOverflowLayoutSignature(
+  input: ComposerToolbarOverflowLayoutSignatureInput,
+): string {
+  return [
+    `modeSelector:${input.modeSelector}`,
+    `attachments:${input.attachments}`,
+    `slashMenu:${input.slashMenu}`,
+    `thinkingToggle:${input.thinkingToggle}`,
+    `renderMode:${input.renderMode}`,
+    `nudge:${input.nudge}`,
+    `sessionStatus:${input.sessionStatus}`,
+    `shortcutsHelp:${input.shortcutsHelp}`,
+    `contextUsage:${input.contextUsage}`,
+    `btw:${input.btw}`,
+    `steerNow:${input.steerNow}`,
+    `projectQueue:${input.projectQueue}`,
+    `microphone:${input.microphone}`,
+    `waveform:${input.waveform}`,
+    `send:${input.send}`,
+    `queue:${input.queue}`,
+    `alternate:${input.alternate}`,
+    `stop:${input.stop}`,
+    `pending:${input.pending}`,
+  ].join("|");
+}
+
+function useMeasuredComposerOverflow({
+  layoutKey,
+  hasControls,
+  refs,
+}: {
+  layoutKey: string;
+  hasControls: boolean;
+  refs?: ToolbarRefs;
+}): {
+  tier: ComposerOverflowTier;
+  setToolbarRef: (node: HTMLDivElement | null) => void;
+} {
+  const [tier, setTier] = useState<ComposerOverflowTier>(() =>
+    typeof ResizeObserver === "undefined" ? "late" : "none",
+  );
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const lastToolbarWidthRef = useRef(0);
+  const lastLayoutKeyRef = useRef(layoutKey);
+  const setToolbarRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      toolbarRef.current = node;
+      if (refs?.toolbar) {
+        refs.toolbar.current = node;
+      }
+    },
+    [refs?.toolbar],
+  );
+
+  useLayoutEffect(() => {
+    if (lastLayoutKeyRef.current !== layoutKey) {
+      lastLayoutKeyRef.current = layoutKey;
+      const resetTier = typeof ResizeObserver === "undefined" ? "late" : "none";
+      if (tier !== resetTier) {
+        setTier(resetTier);
+        return;
+      }
+    }
+    const toolbar = toolbarRef.current;
+    if (!toolbar || !hasControls) {
+      if (tier !== "none") {
+        setTier("none");
+      }
+      return;
+    }
+
+    let frameId: number | null = null;
+    const measure = () => {
+      frameId = null;
+      const left =
+        refs?.left?.current ?? toolbar.querySelector(".message-input-left");
+      const actions =
+        refs?.actions?.current ??
+        toolbar.querySelector(".message-input-actions");
+      if (!(left instanceof HTMLElement) || !(actions instanceof HTMLElement)) {
+        return;
+      }
+      const leftRect = left.getBoundingClientRect();
+      const actionsRect = actions.getBoundingClientRect();
+      if (leftRect.width === 0 && actionsRect.width === 0) {
+        setTier("late");
+        return;
+      }
+      const leftWidth = getControlListWidth(left);
+      const actionsWidth = getControlListWidth(actions);
+      const overflow = toolbar.querySelector(".composer-bottom-overflow");
+      const overflowWidth =
+        overflow instanceof HTMLElement ? getVisibleControlWidth(overflow) : 0;
+      const visibleSectionCount = [
+        leftWidth,
+        overflowWidth,
+        actionsWidth,
+      ].filter((width) => width > 0).length;
+      const totalWidth =
+        leftWidth +
+        overflowWidth +
+        actionsWidth +
+        getFlexGapPx(toolbar) * Math.max(0, visibleSectionCount - 1);
+      const availableWidth = toolbar.getBoundingClientRect().width;
+      if (totalWidth <= availableWidth + 0.5) {
+        return;
+      }
+      setTier((currentTier) => {
+        const tierIndex = COMPOSER_OVERFLOW_TIERS.indexOf(currentTier);
+        return (
+          COMPOSER_OVERFLOW_TIERS[
+            Math.min(tierIndex + 1, COMPOSER_OVERFLOW_TIERS.length - 1)
+          ] ?? "late"
+        );
+      });
+    };
+    const scheduleMeasure = () => {
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+      frameId = requestAnimationFrame(measure);
+    };
+    const handleResize: ResizeObserverCallback = (entries) => {
+      const toolbarEntry = entries.find((entry) => entry.target === toolbar);
+      if (toolbarEntry) {
+        const nextWidth = toolbarEntry.contentRect.width;
+        if (nextWidth > lastToolbarWidthRef.current + 1) {
+          setTier("none");
+        }
+        lastToolbarWidthRef.current = nextWidth;
+      }
+      scheduleMeasure();
+    };
+
+    scheduleMeasure();
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(handleResize);
+      resizeObserver.observe(toolbar);
+      if (refs?.left?.current) {
+        resizeObserver.observe(refs.left.current);
+      }
+      if (refs?.actions?.current) {
+        resizeObserver.observe(refs.actions.current);
+      }
+    }
+    return () => {
+      resizeObserver?.disconnect();
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+    };
+  }, [tier, layoutKey, hasControls, refs?.actions, refs?.left]);
+
+  return { tier, setToolbarRef };
+}
+
 export interface MessageInputToolbarViewProps {
   t: ToolbarTranslate;
   refs?: ToolbarRefs;
@@ -1130,197 +1313,68 @@ export function MessageInputToolbarView({
       actionsControl.send &&
       isPriorityCollapsible("projectQueue"))
   );
-  const bottomOverflowLayoutKey = [
-    `modeSelector:${
+  const bottomOverflowLayoutKey = getComposerToolbarOverflowLayoutSignature({
+    modeSelector:
       visibility.modeSelector && modeControl
         ? controlPriority.modeSelector
-        : "off"
-    }`,
-    `attachments:${
-      visibility.attachments ? controlPriority.attachments : "off"
-    }`,
-    `slashMenu:${
-      visibility.slashMenu && slashControl ? controlPriority.slashMenu : "off"
-    }`,
-    `thinkingToggle:${
+        : "off",
+    attachments: visibility.attachments ? controlPriority.attachments : "off",
+    slashMenu:
+      visibility.slashMenu && slashControl ? controlPriority.slashMenu : "off",
+    thinkingToggle:
       visibility.thinkingToggle && thinkingControl
         ? controlPriority.thinkingToggle
-        : "off"
-    }`,
-    `renderMode:${
+        : "off",
+    renderMode:
       visibility.renderMode && renderModeControl
         ? controlPriority.renderMode
-        : "off"
-    }`,
-    `nudge:${
-      visibility.nudge && nudgeControl ? controlPriority.nudge : "off"
-    }`,
-    `sessionStatus:${
+        : "off",
+    nudge: visibility.nudge && nudgeControl ? controlPriority.nudge : "off",
+    sessionStatus:
       visibility.sessionStatus && showToolbarStatus && statusControl
         ? controlPriority.sessionStatus
-        : "off"
-    }`,
-    `shortcutsHelp:${
-      visibility.shortcutsHelp ? controlPriority.shortcutsHelp : "off"
-    }`,
-    `contextUsage:${
+        : "off",
+    shortcutsHelp: visibility.shortcutsHelp
+      ? controlPriority.shortcutsHelp
+      : "off",
+    contextUsage:
       visibility.contextUsage && actionsControl.contextUsage
         ? controlPriority.contextUsage
-        : "off"
-    }`,
-    `btw:${visibility.btw && actionsControl.btw ? controlPriority.btw : "off"}`,
-    `steerNow:${canToggleSteerNow ? controlPriority.steerNow : "off"}`,
-    `projectQueue:${
+        : "off",
+    btw: visibility.btw && actionsControl.btw ? controlPriority.btw : "off",
+    steerNow: canToggleSteerNow ? controlPriority.steerNow : "off",
+    projectQueue:
       showProjectQueueButton && actionsControl.send
         ? controlPriority.projectQueue
-        : "off"
-    }`,
-    `microphone:${
+        : "off",
+    microphone:
       visibility.microphone && selectedSpeechMethod && speechControl?.voiceButton
         ? speechControl.voiceButton.kind
-        : "off"
-    }`,
-    `waveform:${speechWaveformActive}`,
-    `send:${showSendButton ? actionsControl.send?.primaryActionKind : "off"}`,
-    `queue:${
+        : "off",
+    waveform: speechWaveformActive,
+    send: showSendButton ? actionsControl.send?.primaryActionKind : "off",
+    queue:
       queueControl?.hasDualActions
         ? [
             actionsControl.send?.primaryActionKind,
             !!queueControl.onQueue,
             !!queueControl.onSteer,
           ].join(":")
-        : "off"
-    }`,
-    `alternate:${!!actionsControl.send?.alternate}`,
-    `stop:${showStopButton}`,
-    `pending:${pendingApproval?.type ?? "off"}`,
-  ].join("|");
+        : "off",
+    alternate: !!actionsControl.send?.alternate,
+    stop: showStopButton,
+    pending: pendingApproval?.type ?? "off",
+  });
   const [bottomOverflowOpen, setBottomOverflowOpen] = useState(false);
-  const [bottomOverflowTier, setBottomOverflowTier] =
-    useState<ComposerOverflowTier>(() =>
-      typeof ResizeObserver === "undefined" ? "late" : "none",
-    );
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
-  const lastToolbarWidthRef = useRef(0);
-  const lastBottomOverflowLayoutKeyRef = useRef(bottomOverflowLayoutKey);
+  const { tier: bottomOverflowTier, setToolbarRef } =
+    useMeasuredComposerOverflow({
+      layoutKey: bottomOverflowLayoutKey,
+      hasControls: hasBottomOverflowControls,
+      refs,
+    });
   const shortcutsLongPressTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
-  const setToolbarRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      toolbarRef.current = node;
-      if (refs?.toolbar) {
-        refs.toolbar.current = node;
-      }
-    },
-    [refs?.toolbar],
-  );
-
-  useLayoutEffect(() => {
-    if (lastBottomOverflowLayoutKeyRef.current !== bottomOverflowLayoutKey) {
-      lastBottomOverflowLayoutKeyRef.current = bottomOverflowLayoutKey;
-      const resetTier = typeof ResizeObserver === "undefined" ? "late" : "none";
-      if (bottomOverflowTier !== resetTier) {
-        setBottomOverflowTier(resetTier);
-        return;
-      }
-    }
-    const toolbar = toolbarRef.current;
-    if (!toolbar || !hasBottomOverflowControls) {
-      if (bottomOverflowTier !== "none") {
-        setBottomOverflowTier("none");
-      }
-      return;
-    }
-
-    let frameId: number | null = null;
-    const measure = () => {
-      frameId = null;
-      const left =
-        refs?.left?.current ?? toolbar.querySelector(".message-input-left");
-      const actions =
-        refs?.actions?.current ??
-        toolbar.querySelector(".message-input-actions");
-      if (!(left instanceof HTMLElement) || !(actions instanceof HTMLElement)) {
-        return;
-      }
-      const leftRect = left.getBoundingClientRect();
-      const actionsRect = actions.getBoundingClientRect();
-      if (leftRect.width === 0 && actionsRect.width === 0) {
-        setBottomOverflowTier("late");
-        return;
-      }
-      const leftWidth = getControlListWidth(left);
-      const actionsWidth = getControlListWidth(actions);
-      const overflow = toolbar.querySelector(".composer-bottom-overflow");
-      const overflowWidth =
-        overflow instanceof HTMLElement ? getVisibleControlWidth(overflow) : 0;
-      const visibleSectionCount = [
-        leftWidth,
-        overflowWidth,
-        actionsWidth,
-      ].filter((width) => width > 0).length;
-      const totalWidth =
-        leftWidth +
-        overflowWidth +
-        actionsWidth +
-        getFlexGapPx(toolbar) * Math.max(0, visibleSectionCount - 1);
-      const availableWidth = toolbar.getBoundingClientRect().width;
-      if (totalWidth <= availableWidth + 0.5) {
-        return;
-      }
-      setBottomOverflowTier((tier) => {
-        const tierIndex = COMPOSER_OVERFLOW_TIERS.indexOf(tier);
-        return (
-          COMPOSER_OVERFLOW_TIERS[
-            Math.min(tierIndex + 1, COMPOSER_OVERFLOW_TIERS.length - 1)
-          ] ?? "late"
-        );
-      });
-    };
-    const scheduleMeasure = () => {
-      if (frameId !== null) {
-        cancelAnimationFrame(frameId);
-      }
-      frameId = requestAnimationFrame(measure);
-    };
-    const handleResize: ResizeObserverCallback = (entries) => {
-      const toolbarEntry = entries.find((entry) => entry.target === toolbar);
-      if (toolbarEntry) {
-        const nextWidth = toolbarEntry.contentRect.width;
-        if (nextWidth > lastToolbarWidthRef.current + 1) {
-          setBottomOverflowTier("none");
-        }
-        lastToolbarWidthRef.current = nextWidth;
-      }
-      scheduleMeasure();
-    };
-
-    scheduleMeasure();
-    let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(handleResize);
-      resizeObserver.observe(toolbar);
-      if (refs?.left?.current) {
-        resizeObserver.observe(refs.left.current);
-      }
-      if (refs?.actions?.current) {
-        resizeObserver.observe(refs.actions.current);
-      }
-    }
-    return () => {
-      resizeObserver?.disconnect();
-      if (frameId !== null) {
-        cancelAnimationFrame(frameId);
-      }
-    };
-  }, [
-    bottomOverflowTier,
-    bottomOverflowLayoutKey,
-    hasBottomOverflowControls,
-    refs?.actions,
-    refs?.left,
-  ]);
 
   const openShortcutSettings = () => {
     shortcutsControl.setOpen(true);

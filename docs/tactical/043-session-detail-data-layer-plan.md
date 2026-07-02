@@ -2,14 +2,16 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 2.5 diagnostics added. The pure reducer fixture harness now
+Status: Slice 4 store shell started. The pure reducer fixture harness now
 covers basic persisted, streamed, catch-up, replay, duplicate-prompt,
 duplicate-assistant, pagination, retained-scroll-snapshot, recap-cursor,
 Codex-shaped provider parity, final-message markdown augment paths, and Codex
-augment live-id to durable-id transfer. `useSessionMessages` now feeds a
-shadow reducer at existing load, stream, catch-up, pagination, mapping, and
+augment live-id to durable-id transfer. `useSessionMessages` feeds a shadow
+reducer at existing load, stream, catch-up, pagination, mapping, and
 scroll-snapshot boundaries and can opt into compact dev-only divergence
-diagnostics without switching production reads to the reducer.
+diagnostics without switching production reads to the reducer. The same-tab
+route snapshot cache now sits behind a named session detail store with
+selector subscriptions, retention controls, expiry/eviction, and stats.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -288,9 +290,9 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- If diagnostics stay quiet across normal use, start the store shell behind the
-  existing hook API: retention ownership, keyed entries, explicit TTL/caps, and
-  selector-ready reads while keeping `useSessionMessages` as the adapter.
+- Feed the store from the same hook boundaries as the shadow reducer, still
+  keeping `useSessionMessages` as the adapter and keeping production reads on
+  the current hook state until selector parity is proven.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -365,6 +367,25 @@ Exit criteria:
 
 - No direct `globalThis.__YA_SESSION_ROUTE_SNAPSHOTS__` ownership remains.
 - Current session cache tests pass through the store API.
+
+Status 2026-07-02:
+
+- Added `sessionDetailStore.ts`, a small hand-built external store keyed by
+  source/project/session/window parameters.
+- The store supports synchronous `read`, selector `subscribe`, reducer
+  `dispatch`, `retain`, `release`, `evictExpired`, `clear`, and `getStats`.
+- Moved `SessionRouteSnapshot` ownership behind the store while preserving the
+  existing `sessionRouteSnapshots` compatibility API used by
+  `useSessionMessages` and the Performance settings reset path.
+- Scroll snapshot patches update retained state without notifying ordinary
+  selector subscribers by default.
+- Added direct store coverage for source scoping, selector notifications,
+  non-notifying scroll patches, retained TTL behavior, and retained-entry LRU
+  behavior. Existing route snapshot and warm-cache hook tests pass through the
+  store-backed compatibility API.
+- Remaining Slice 4 work: expose the store as a runtime diagnostic/read surface
+  from the hook adapter and decide whether active in-view entries should be
+  retained separately from same-tab warm-cache entries before switching reads.
 
 ## Slice 5: Hook Adapter Migration
 

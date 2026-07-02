@@ -59,6 +59,7 @@ import {
   getSearchableUserTurnPreview,
   getSearchSelectionProjection,
   getSearchVisibleTurnGroups,
+  getThinkingDurationMs,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
@@ -98,21 +99,6 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function getEarliestMessageTimestampMs(
-  messages: readonly Message[],
-): number | null {
-  let earliest: number | null = null;
-  for (const message of messages) {
-    const timestampMs = parseTimestampMs(message.timestamp);
-    if (timestampMs === null) {
-      continue;
-    }
-    earliest =
-      earliest === null ? timestampMs : Math.min(earliest, timestampMs);
-  }
-  return earliest;
-}
-
 function getLastTimestampedItem(items: readonly RenderItem[]): RenderItem | null {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
@@ -137,53 +123,6 @@ function groupEndsVisibleTurn(
     return true;
   }
   return !nextGroup || nextGroup.isUserPrompt || nextGroup.isStandalone === true;
-}
-
-function getThinkingDurationMs(
-  item: RenderItem,
-  items: readonly RenderItem[],
-  index: number,
-  nowMs: number,
-): number | undefined {
-  if (item.type !== "thinking") {
-    return undefined;
-  }
-
-  const startMs =
-    getEarliestMessageTimestampMs(item.sourceMessages) ??
-    getLatestMessageTimestampMs(item.sourceMessages);
-  if (startMs === null) {
-    return undefined;
-  }
-
-  let endMs: number | null = item.status === "streaming" ? nowMs : null;
-  for (let nextIndex = index + 1; nextIndex < items.length; nextIndex += 1) {
-    const nextItem = items[nextIndex];
-    if (!nextItem) {
-      continue;
-    }
-    const nextTimestampMs =
-      getEarliestMessageTimestampMs(nextItem.sourceMessages) ??
-      getLatestMessageTimestampMs(nextItem.sourceMessages);
-    if (nextTimestampMs !== null && nextTimestampMs >= startMs) {
-      endMs = nextTimestampMs;
-      break;
-    }
-  }
-
-  if (endMs === null) {
-    const latestOwnMs = getLatestMessageTimestampMs(item.sourceMessages);
-    endMs = latestOwnMs !== null && latestOwnMs > startMs ? latestOwnMs : null;
-  }
-
-  if (endMs === null) {
-    return undefined;
-  }
-
-  const durationMs = endMs - startMs;
-  return durationMs >= 100 && durationMs < 24 * 60 * 60 * 1000
-    ? durationMs
-    : undefined;
 }
 
 function isCtrlKeyShortcut(

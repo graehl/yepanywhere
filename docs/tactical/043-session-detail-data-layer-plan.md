@@ -73,6 +73,8 @@ What is already in place:
 - Progressive timeline visibility projection now derives through
   `sessionDetail/renderSelectors`, including effective entry count, sliced
   entries, and progress percent.
+- Thinking duration derivation now derives through
+  `sessionDetail/renderSelectors`.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
@@ -110,7 +112,8 @@ Ownership is intentionally still split while we migrate:
   snapshots, selection, quote/search UI, and DOM timing. Pure render-item,
   assistant-segment, search-anchor, visible-group, search-match, latest
   correctable prompt, timeline-entry, progressive-count, and
-  progressive-visibility projections now live outside the component.
+  progressive-visibility projections plus thinking duration derivation now live
+  outside the component.
 - Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
   content now enters through the action layer.
 
@@ -153,9 +156,9 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any observed divergence into a
   compact reducer or hook fixture.
-- Continue the render-selector preflight by moving thinking duration derivation
-  behind a pure helper without taking over thinking visibility/expansion state
-  or rendering.
+- Continue the render-selector preflight by moving thinking count and
+  latest-thinking-id derivation behind pure helpers without taking over
+  thinking visibility/expansion state or rendering.
 
 Then:
 

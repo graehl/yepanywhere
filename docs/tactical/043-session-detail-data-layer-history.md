@@ -251,6 +251,10 @@ Reducer/helper behavior locked down during Slice 4:
   `sessionDetail/renderSelectors`, deriving effective entry count, tail-sliced
   entries, and progress percent while `MessageList` keeps reveal state, timers,
   status UI, rendering, and scroll.
+- Thinking duration derivation now lives in
+  `sessionDetail/renderSelectors`, preserving the existing start/end timestamp
+  rules while `MessageList` keeps thinking visibility, expansion state, and
+  rendering local.
 
 ## Verification Details
 

@@ -15,6 +15,7 @@ import {
   getSearchSelectionProjection,
   getSearchVisibleTurnGroups,
   getTailEntryCountForRenderItemTarget,
+  getThinkingDurationMs,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
@@ -663,6 +664,109 @@ describe("session detail render selectors", () => {
     expect(projected.effectiveEntryCount).toBe(1);
     expect(projected.entries).toEqual(entries.slice(-1));
     expect(projected.percent).toBe(1);
+  });
+
+  it("derives thinking duration from surrounding render item timestamps", () => {
+    const thinking: RenderItem = {
+      type: "thinking",
+      id: "thinking-1",
+      thinking: "Checking",
+      status: "complete",
+      sourceMessages: [
+        sourceMessage("thinking-start", "2026-07-02T12:00:00.000Z"),
+        sourceMessage("thinking-later", "2026-07-02T12:00:05.000Z"),
+      ],
+    };
+    const answer: RenderItem = {
+      type: "text",
+      id: "answer-1",
+      text: "Done",
+      sourceMessages: [
+        sourceMessage("answer", "2026-07-02T12:00:10.000Z"),
+      ],
+    };
+    const items = [thinking, answer];
+
+    expect(getThinkingDurationMs(thinking, items, 0, 0)).toBe(10_000);
+  });
+
+  it("derives thinking duration from own latest timestamp or streaming now", () => {
+    const completeThinking: RenderItem = {
+      type: "thinking",
+      id: "thinking-complete",
+      thinking: "Done thinking",
+      status: "complete",
+      sourceMessages: [
+        sourceMessage("thinking-start", "2026-07-02T12:00:00.000Z"),
+        sourceMessage("thinking-end", "2026-07-02T12:00:03.000Z"),
+      ],
+    };
+    const streamingThinking: RenderItem = {
+      type: "thinking",
+      id: "thinking-streaming",
+      thinking: "Still thinking",
+      status: "streaming",
+      sourceMessages: [
+        sourceMessage("thinking-stream", "2026-07-02T12:01:00.000Z"),
+      ],
+    };
+
+    expect(getThinkingDurationMs(completeThinking, [completeThinking], 0, 0)).toBe(
+      3_000,
+    );
+    expect(
+      getThinkingDurationMs(
+        streamingThinking,
+        [streamingThinking],
+        0,
+        Date.parse("2026-07-02T12:01:02.000Z"),
+      ),
+    ).toBe(2_000);
+  });
+
+  it("returns undefined for non-thinking and invalid thinking durations", () => {
+    const text: RenderItem = {
+      type: "text",
+      id: "text-1",
+      text: "Answer",
+      sourceMessages: [sourceMessage("answer", "2026-07-02T12:00:00.000Z")],
+    };
+    const tooShort: RenderItem = {
+      type: "thinking",
+      id: "thinking-short",
+      thinking: "Fast",
+      status: "streaming",
+      sourceMessages: [
+        sourceMessage("thinking-short", "2026-07-02T12:00:00.000Z"),
+      ],
+    };
+    const tooLong: RenderItem = {
+      type: "thinking",
+      id: "thinking-long",
+      thinking: "Long",
+      status: "streaming",
+      sourceMessages: [
+        sourceMessage("thinking-long", "2026-07-02T12:00:00.000Z"),
+      ],
+    };
+
+    expect(getThinkingDurationMs(text, [text], 0, 0)).toBeUndefined();
+    expect(
+      getThinkingDurationMs(
+        tooShort,
+        [tooShort],
+        0,
+        Date.parse("2026-07-02T12:00:00.050Z"),
+      ),
+    ).toBeUndefined();
+    expect(
+      getThinkingDurationMs(
+        tooLong,
+        [tooLong],
+        0,
+        Date.parse("2026-07-03T12:00:00.000Z"),
+      ),
+    ).toBeUndefined();
   });
 
   it("projects search matches, ids, selected anchor, and previews", () => {

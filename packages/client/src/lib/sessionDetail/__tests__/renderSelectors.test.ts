@@ -4,6 +4,7 @@ import type { Message } from "../../../types";
 import type { RenderItem } from "../../../types/renderItems";
 import {
   buildComposerTailItems,
+  buildComposerTailDisplayRows,
   buildAssistantRenderSegments,
   buildSessionDetailRenderItems,
   buildVisibleTimelineEntries,
@@ -267,6 +268,8 @@ describe("session detail render selectors", () => {
     const tailItems = buildComposerTailItems({
       deferredMessages: [
         {
+          attachmentCount: 1,
+          id: "queue-regular-1",
           tempId: "deferred-regular-1",
           timestamp: "2026-07-02T12:10:00.000Z",
         },
@@ -276,6 +279,8 @@ describe("session detail render selectors", () => {
           metadata: { deliveryIntent: "patient" },
         },
         {
+          attachmentCount: 3,
+          id: "queue-regular-2",
           tempId: "deferred-regular-2",
           timestamp: "2026-07-02T12:08:00.000Z",
           status: "paused-after-restart",
@@ -295,12 +300,17 @@ describe("session detail render selectors", () => {
       ],
       projectQueueMessages: [
         {
+          attachmentCount: 2,
           id: "project-second",
+          status: "dispatching",
           timestamp: "2026-07-02T12:20:00.000Z",
           projectPosition: 2,
         },
         {
+          attachmentCount: 1,
+          attachments: [{}],
           id: "project-first",
+          status: "queued",
           timestamp: "2026-07-02T12:21:00.000Z",
           projectPosition: 1,
         },
@@ -334,6 +344,169 @@ describe("session detail render selectors", () => {
       recovered?.kind === "deferred" &&
         isRecoveredDeferredMessage(recovered.message),
     ).toBe(true);
+
+    const rows = buildComposerTailDisplayRows({
+      deferredMessages: [
+        {
+          attachmentCount: 1,
+          id: "queue-regular-1",
+          tempId: "deferred-regular-1",
+          timestamp: "2026-07-02T12:10:00.000Z",
+        },
+        {
+          tempId: "deferred-patient-1",
+          timestamp: "2026-07-02T12:09:00.000Z",
+          metadata: { deliveryIntent: "patient" },
+        },
+        {
+          attachmentCount: 3,
+          id: "queue-regular-2",
+          tempId: "deferred-regular-2",
+          timestamp: "2026-07-02T12:08:00.000Z",
+          status: "paused-after-restart",
+        },
+      ],
+      latestVisibleTimestampMs: Date.parse("2026-07-02T12:21:00.000Z"),
+      nowMs: Date.parse("2026-07-02T12:30:00.000Z"),
+      pendingMessages: [
+        {
+          tempId: "pending-second",
+          timestamp: "2026-07-02T12:01:00.000Z",
+          clientOrder: 2,
+        },
+        {
+          tempId: "pending-first",
+          timestamp: "2026-07-02T12:02:00.000Z",
+          clientOrder: 1,
+        },
+      ],
+      projectQueueMessages: [
+        {
+          attachmentCount: 2,
+          id: "project-second",
+          status: "dispatching",
+          timestamp: "2026-07-02T12:20:00.000Z",
+          projectPosition: 2,
+        },
+        {
+          attachmentCount: 1,
+          attachments: [{}],
+          id: "project-first",
+          status: "queued",
+          timestamp: "2026-07-02T12:21:00.000Z",
+          projectPosition: 1,
+        },
+      ],
+      staleThresholdMs: 5 * 60 * 1000,
+    });
+
+    expect(
+      rows.map((row) => ({
+        kind: row.kind,
+        key: row.key,
+        hasMessageAge: row.hasMessageAge,
+        showAgeByDefault: row.showAgeByDefault,
+        timestampMs: row.timestampMs,
+      })),
+    ).toEqual([
+      {
+        kind: "pending",
+        key: "pending-first",
+        hasMessageAge: true,
+        showAgeByDefault: false,
+        timestampMs: Date.parse("2026-07-02T12:02:00.000Z"),
+      },
+      {
+        kind: "pending",
+        key: "pending-second",
+        hasMessageAge: true,
+        showAgeByDefault: false,
+        timestampMs: Date.parse("2026-07-02T12:01:00.000Z"),
+      },
+      {
+        kind: "deferred",
+        key: "deferred-regular-1",
+        hasMessageAge: true,
+        showAgeByDefault: false,
+        timestampMs: Date.parse("2026-07-02T12:10:00.000Z"),
+      },
+      {
+        kind: "deferred",
+        key: "deferred-patient-1",
+        hasMessageAge: true,
+        showAgeByDefault: false,
+        timestampMs: Date.parse("2026-07-02T12:09:00.000Z"),
+      },
+      {
+        kind: "deferred",
+        key: "deferred-regular-2",
+        hasMessageAge: true,
+        showAgeByDefault: false,
+        timestampMs: Date.parse("2026-07-02T12:08:00.000Z"),
+      },
+      {
+        kind: "project-queue",
+        key: "project-queue-project-first",
+        hasMessageAge: true,
+        showAgeByDefault: true,
+        timestampMs: Date.parse("2026-07-02T12:21:00.000Z"),
+      },
+      {
+        kind: "project-queue",
+        key: "project-queue-project-second",
+        hasMessageAge: true,
+        showAgeByDefault: false,
+        timestampMs: Date.parse("2026-07-02T12:20:00.000Z"),
+      },
+    ]);
+
+    const recoveredRow = rows.find(
+      (row) => row.kind === "deferred" && row.key === "deferred-regular-2",
+    );
+    const patientRow = rows.find(
+      (row) => row.kind === "deferred" && row.key === "deferred-patient-1",
+    );
+    const dispatchingProjectRow = rows.find(
+      (row) =>
+        row.kind === "project-queue" &&
+        row.key === "project-queue-project-second",
+    );
+    const queuedProjectRow = rows.find(
+      (row) =>
+        row.kind === "project-queue" &&
+        row.key === "project-queue-project-first",
+    );
+
+    expect(recoveredRow?.kind === "deferred" && recoveredRow.isRecovered).toBe(
+      true,
+    );
+    expect(
+      recoveredRow?.kind === "deferred" && recoveredRow.recoveredQueueId,
+    ).toBe("queue-regular-2");
+    expect(
+      recoveredRow?.kind === "deferred" &&
+        recoveredRow.showAttachmentCountBadge,
+    ).toBe(true);
+    expect(patientRow?.kind === "deferred" && patientRow.isPatient).toBe(true);
+    expect(patientRow?.kind === "deferred" && patientRow.lanePosition).toEqual({
+      patientIndex: 0,
+    });
+    expect(
+      dispatchingProjectRow?.kind === "project-queue" &&
+        dispatchingProjectRow.projectQueueStatusKind,
+    ).toBe("dispatching");
+    expect(
+      dispatchingProjectRow?.kind === "project-queue" &&
+        dispatchingProjectRow.showAttachmentCountBadge,
+    ).toBe(true);
+    expect(
+      queuedProjectRow?.kind === "project-queue" &&
+        queuedProjectRow.projectQueueStatusKind,
+    ).toBe("queued");
+    expect(
+      queuedProjectRow?.kind === "project-queue" &&
+        queuedProjectRow.showAttachmentCountBadge,
+    ).toBe(false);
   });
 
   it("derives user navigation anchors from searchable user turns", () => {

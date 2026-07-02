@@ -284,6 +284,11 @@ Reducer/helper behavior locked down during Slice 4:
   in `sessionDetail/renderSelectors`, preserving pending/deferred/project-queue
   ordering and patient-vs-regular deferred lane positions while `MessageList`
   keeps row rendering, labels, actions, and attachment display.
+- Composer tail row metadata now lives in `sessionDetail/renderSelectors`,
+  deriving parsed timestamps, stale-age visibility, recovered/patient deferred
+  flags, recovered queue ids, project queue status kind, and attachment-count
+  badge visibility while `MessageList` keeps labels, JSX, buttons, attachment
+  chips, and action wiring.
 - Direction note: existing `scroll-snapshot` shadow divergence logs are treated
   as known noisy signal from the older snapshot path. Do not chase them as a
   near-term migration blocker until the non-scroll store/render surfaces are

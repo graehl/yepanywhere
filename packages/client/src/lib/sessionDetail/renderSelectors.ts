@@ -1,7 +1,11 @@
 import type { TranscriptDisplayObject } from "@yep-anywhere/shared";
 import { toolRegistry } from "../../components/renderers/tools";
 import { getToolSummary } from "../../components/tools/summaries";
-import { getLatestMessageTimestampMs, parseTimestampMs } from "../messageAge";
+import {
+  getLatestMessageTimestampMs,
+  isStaleTimestamp,
+  parseTimestampMs,
+} from "../messageAge";
 import { parseUserPrompt } from "../parseUserPrompt";
 import { getPathBasename, makeDisplayPath } from "../text";
 import type { ContentBlock, Message } from "../../types";
@@ -39,6 +43,8 @@ export interface RenderPendingMessage {
 }
 
 export interface RenderDeferredMessage {
+  attachmentCount?: number | null;
+  attachments?: readonly unknown[] | null;
   id?: string;
   tempId?: string;
   timestamp: string;
@@ -49,7 +55,10 @@ export interface RenderDeferredMessage {
 }
 
 export interface RenderProjectQueueMessage {
+  attachmentCount?: number | null;
+  attachments?: readonly unknown[] | null;
   id: string;
+  status?: string | null;
   timestamp: string;
   projectPosition: number;
 }
@@ -92,6 +101,52 @@ export interface ComposerTailItemsInput<
   deferredMessages?: readonly TDeferred[];
   pendingMessages?: readonly TPending[];
   projectQueueMessages?: readonly TProjectQueue[];
+}
+
+export type ProjectQueueTailStatusKind = "dispatching" | "failed" | "queued";
+
+interface ComposerTailDisplayRowBase {
+  hasMessageAge: boolean;
+  key: string;
+  showAgeByDefault: boolean;
+  sourceIndex: number;
+  timestampMs: number | null;
+}
+
+export type ComposerTailDisplayRow<
+  TPending extends RenderPendingMessage = RenderPendingMessage,
+  TDeferred extends RenderDeferredMessage = RenderDeferredMessage,
+  TProjectQueue extends RenderProjectQueueMessage = RenderProjectQueueMessage,
+> =
+  | (ComposerTailDisplayRowBase & {
+      kind: "pending";
+      message: TPending;
+    })
+  | (ComposerTailDisplayRowBase & {
+      deferredIndex: number;
+      isPatient: boolean;
+      isRecovered: boolean;
+      kind: "deferred";
+      lanePosition: ComposerTailLanePosition | undefined;
+      message: TDeferred;
+      recoveredQueueId: string | null;
+      showAttachmentCountBadge: boolean;
+    })
+  | (ComposerTailDisplayRowBase & {
+      kind: "project-queue";
+      message: TProjectQueue;
+      projectQueueStatusKind: ProjectQueueTailStatusKind;
+      showAttachmentCountBadge: boolean;
+    });
+
+export interface ComposerTailDisplayRowsInput<
+  TPending extends RenderPendingMessage = RenderPendingMessage,
+  TDeferred extends RenderDeferredMessage = RenderDeferredMessage,
+  TProjectQueue extends RenderProjectQueueMessage = RenderProjectQueueMessage,
+> extends ComposerTailItemsInput<TPending, TDeferred, TProjectQueue> {
+  latestVisibleTimestampMs: number | null;
+  nowMs: number;
+  staleThresholdMs: number;
 }
 
 export interface RenderNavAnchor {
@@ -487,8 +542,12 @@ export function buildComposerTailItems<
   >;
 }
 
-export function getComposerTailLanePositions(
-  items: readonly ComposerTailItem[],
+export function getComposerTailLanePositions<
+  TPending extends RenderPendingMessage = RenderPendingMessage,
+  TDeferred extends RenderDeferredMessage = RenderDeferredMessage,
+  TProjectQueue extends RenderProjectQueueMessage = RenderProjectQueueMessage,
+>(
+  items: readonly ComposerTailItem<TPending, TDeferred, TProjectQueue>[],
 ): Map<string, ComposerTailLanePosition> {
   const positions = new Map<string, ComposerTailLanePosition>();
   let regularIndex = 0;
@@ -508,6 +567,89 @@ export function getComposerTailLanePositions(
   }
 
   return positions;
+}
+
+function getProjectQueueTailStatusKind(
+  message: RenderProjectQueueMessage,
+): ProjectQueueTailStatusKind {
+  if (message.status === "dispatching") {
+    return "dispatching";
+  }
+  return message.status === "failed" ? "failed" : "queued";
+}
+
+function showTailAttachmentCountBadge(message: {
+  attachmentCount?: number | null;
+  attachments?: readonly unknown[] | null;
+}): boolean {
+  return Boolean(message.attachmentCount && !message.attachments?.length);
+}
+
+export function buildComposerTailDisplayRows<
+  TPending extends RenderPendingMessage = RenderPendingMessage,
+  TDeferred extends RenderDeferredMessage = RenderDeferredMessage,
+  TProjectQueue extends RenderProjectQueueMessage = RenderProjectQueueMessage,
+>({
+  deferredMessages,
+  latestVisibleTimestampMs,
+  nowMs,
+  pendingMessages,
+  projectQueueMessages,
+  staleThresholdMs,
+}: ComposerTailDisplayRowsInput<TPending, TDeferred, TProjectQueue>): Array<
+  ComposerTailDisplayRow<TPending, TDeferred, TProjectQueue>
+> {
+  const tailItems = buildComposerTailItems({
+    deferredMessages,
+    pendingMessages,
+    projectQueueMessages,
+  });
+  const lanePositions = getComposerTailLanePositions(tailItems);
+
+  return tailItems.map((item) => {
+    const timestampMs = parseTimestampMs(item.message.timestamp);
+    const base = {
+      hasMessageAge: timestampMs !== null,
+      key: item.key,
+      showAgeByDefault:
+        timestampMs !== null &&
+        latestVisibleTimestampMs === timestampMs &&
+        isStaleTimestamp(timestampMs, nowMs, staleThresholdMs),
+      sourceIndex: item.sourceIndex,
+      timestampMs,
+    };
+
+    if (item.kind === "pending") {
+      return {
+        ...base,
+        kind: "pending",
+        message: item.message,
+      };
+    }
+
+    if (item.kind === "project-queue") {
+      return {
+        ...base,
+        kind: "project-queue",
+        message: item.message,
+        projectQueueStatusKind: getProjectQueueTailStatusKind(item.message),
+        showAttachmentCountBadge: showTailAttachmentCountBadge(item.message),
+      };
+    }
+
+    const isRecovered = isRecoveredDeferredMessage(item.message);
+    return {
+      ...base,
+      deferredIndex: item.deferredIndex,
+      isPatient: isPatientDeferredMessage(item.message),
+      isRecovered,
+      kind: "deferred",
+      lanePosition: lanePositions.get(item.key),
+      message: item.message,
+      recoveredQueueId: isRecovered && item.message.id ? item.message.id : null,
+      showAttachmentCountBadge: Boolean(item.message.attachmentCount),
+    };
+  });
 }
 
 function getEarliestMessageTimestampMs(

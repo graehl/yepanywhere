@@ -50,12 +50,15 @@ Covered outputs:
   deferred sends, project queue rows, and `/btw` asides;
 - last timestamped render-item lookup and visible-turn ending rules used by
   transcript-position timestamp sampling;
-- composer tail ordering and deferred queue lane position derivation.
+- composer tail ordering and deferred queue lane position derivation;
+- composer tail row metadata, including parsed timestamps, stale-age
+  visibility, recovered/patient deferred flags, recovered queue ids, project
+  queue status kind, and attachment-count badge visibility.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
 ref, thinking expansion state, search session state and keyboard navigation,
 correct-prompt action wiring, progressive reveal, selection, scroll anchoring,
-composer tail row rendering/actions, and actual rendering.
+composer tail row labels/rendering/actions, and actual rendering.
 
 ## Still Local To MessageList
 
@@ -63,7 +66,7 @@ composer tail row rendering/actions, and actual rendering.
 - Search session state, keyboard/repeat navigation, and selected-match updates.
 - Correct-prompt action wiring.
 - `/btw` aside ownership and rendering.
-- Composer tail row rendering, labels, actions, and attachment display.
+- Composer tail row labels, rendering, actions, and attachment display.
 - Progressive reveal state, status UI, and timers.
 - Scroll snapshots, follow-tail behavior, selection quote UI, and navigation.
 - DOM measurement and row anchoring.
@@ -72,6 +75,6 @@ composer tail row rendering/actions, and actual rendering.
 
 Keep the Developer setting dogfood path default-off while moving one more pure
 projection out of `MessageList`. The next low-risk candidates are
-search/navigation display projections or queued-tail row display metadata,
-while keeping DOM measurement, scroll effects, snapshot ownership, and row
+search/navigation display projections or compact row class/state helpers, while
+keeping DOM measurement, scroll effects, snapshot ownership, labels, and row
 actions local.

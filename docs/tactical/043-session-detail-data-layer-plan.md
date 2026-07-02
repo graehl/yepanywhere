@@ -91,6 +91,10 @@ What is already in place:
 - Latest visible timestamp derivation, last timestamped render-item selection,
   visible-turn ending rules, composer tail ordering, and deferred queue lane
   positions now derive through `sessionDetail/renderSelectors`.
+- Composer tail row metadata now derives through
+  `sessionDetail/renderSelectors`, including parsed row timestamps, stale-age
+  visibility, recovered/patient deferred flags, recovered queue ids, project
+  queue status kind, and attachment-count badge visibility.
 
 Current diagnostic stance:
 
@@ -139,7 +143,8 @@ Ownership is intentionally still split while we migrate:
   assistant-segment, search-anchor, visible-group, search-match, latest
   correctable prompt, timeline-entry, progressive-count, and
   progressive-visibility projections plus thinking summary/display, timestamp,
-  and composer-tail derivation now live outside the component.
+  composer-tail, and composer-tail row metadata derivation now live outside the
+  component.
 - Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
   content now enters through the action layer.
 
@@ -184,7 +189,7 @@ Next likely slice:
   compact reducer or hook fixture, except for known `scroll-snapshot` noise.
 - Continue the render-selector preflight with small pure projection moves that
   do not own DOM measurement or effects. Good candidates are search/navigation
-  display projections or queued-tail row display metadata. Keep scroll
+  display projections or compact row class/state helpers. Keep scroll
   snapshots, follow-tail behavior, and `/btw` ownership local for now.
 
 Then:

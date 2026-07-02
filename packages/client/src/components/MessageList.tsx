@@ -35,9 +35,7 @@ import {
 import {
   formatCompactRelativeAge,
   getLatestMessageTimestampMs,
-  isStaleTimestamp,
   MESSAGE_STALE_THRESHOLD_MS,
-  parseTimestampMs,
 } from "../lib/messageAge";
 import type { ActiveToolApproval } from "../lib/preprocessMessages";
 import {
@@ -47,12 +45,11 @@ import {
 import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
 import {
   buildAssistantRenderSegments,
-  buildComposerTailItems,
+  buildComposerTailDisplayRows,
   buildSessionDetailRenderItems,
   buildVisibleTimelineEntries,
   countThinkingItems,
   getAllTurnSearchAnchors,
-  getComposerTailLanePositions,
   getDisplayRenderItems,
   getFullSessionSearchAnchors,
   getLastTimestampedRenderItem,
@@ -74,8 +71,6 @@ import {
   groupEndsVisibleTurn,
   groupRenderItemsIntoTurns,
   hasVisibleThinkingTextDelta,
-  isPatientDeferredMessage,
-  isRecoveredDeferredMessage,
   normalizeSearchText,
   reconcileAutoExpandedThinkingItemIds,
   selectLatestCorrectablePrompt,
@@ -1643,18 +1638,23 @@ export const MessageList = memo(function MessageList({
       btwAsides,
     ],
   );
-  const composerTailItems = useMemo(
+  const composerTailRows = useMemo(
     () =>
-      buildComposerTailItems({
+      buildComposerTailDisplayRows({
         deferredMessages,
+        latestVisibleTimestampMs,
+        nowMs,
         pendingMessages,
         projectQueueMessages,
+        staleThresholdMs: MESSAGE_STALE_THRESHOLD_MS,
       }),
-    [pendingMessages, deferredMessages, projectQueueMessages],
-  );
-  const composerTailLanePositions = useMemo(
-    () => getComposerTailLanePositions(composerTailItems),
-    [composerTailItems],
+    [
+      pendingMessages,
+      deferredMessages,
+      projectQueueMessages,
+      latestVisibleTimestampMs,
+      nowMs,
+    ],
   );
   const latestCorrectablePrompt = useMemo(() => {
     if (!onCorrectLatestUserMessage) return null;
@@ -3008,19 +3008,16 @@ export const MessageList = memo(function MessageList({
             </div>
           );
         })}
-        {composerTailItems.map((tailItem) => {
-          const timestampMs = parseTimestampMs(tailItem.message.timestamp);
-          const showAgeByDefault =
-            latestVisibleTimestampMs === timestampMs &&
-            isStaleTimestamp(timestampMs, nowMs, MESSAGE_STALE_THRESHOLD_MS);
+        {composerTailRows.map((tailRow) => {
+          const { hasMessageAge, showAgeByDefault, timestampMs } = tailRow;
 
-          if (tailItem.kind === "pending") {
-            const pending = tailItem.message;
+          if (tailRow.kind === "pending") {
+            const pending = tailRow.message;
             return (
               <div
-                key={tailItem.key}
+                key={tailRow.key}
                 className={`pending-message message-render-row ${
-                  timestampMs !== null ? "has-message-age" : ""
+                  hasMessageAge ? "has-message-age" : ""
                 } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
               >
                 <div className="message-render-content">
@@ -3063,14 +3060,14 @@ export const MessageList = memo(function MessageList({
             );
           }
 
-          if (tailItem.kind === "project-queue") {
-            const projectQueue = tailItem.message;
+          if (tailRow.kind === "project-queue") {
+            const projectQueue = tailRow.message;
             const projectQueueStatus =
-              projectQueue.status === "dispatching"
+              tailRow.projectQueueStatusKind === "dispatching"
                 ? t("projectQueueInlineStatusDispatching", {
                     position: projectQueue.projectPosition,
                   })
-                : projectQueue.status === "failed"
+                : tailRow.projectQueueStatusKind === "failed"
                   ? t("projectQueueInlineStatusFailed", {
                       position: projectQueue.projectPosition,
                     })
@@ -3079,9 +3076,9 @@ export const MessageList = memo(function MessageList({
                     });
             return (
               <div
-                key={tailItem.key}
+                key={tailRow.key}
                 className={`deferred-message project-queue-inline-message message-render-row ${
-                  timestampMs !== null ? "has-message-age" : ""
+                  hasMessageAge ? "has-message-age" : ""
                 } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
               >
                 <div className="message-render-content">
@@ -3108,8 +3105,7 @@ export const MessageList = memo(function MessageList({
                     <span className="deferred-message-status project-queue-inline-message-status">
                       {projectQueueStatus}
                     </span>
-                    {projectQueue.attachmentCount &&
-                    !projectQueue.attachments?.length ? (
+                    {tailRow.showAttachmentCountBadge ? (
                       <span
                         className="deferred-message-attachments"
                         title={`${projectQueue.attachmentCount} attachment${
@@ -3173,25 +3169,21 @@ export const MessageList = memo(function MessageList({
             );
           }
 
-          const deferred = tailItem.message;
-          const isPatientDeferred = isPatientDeferredMessage(deferred);
-          const isRecoveredDeferred = isRecoveredDeferredMessage(deferred);
-          const recoveredQueueId =
-            isRecoveredDeferred && deferred.id ? deferred.id : null;
-          const lanePosition = composerTailLanePositions.get(tailItem.key);
-          const deferredStatus = isRecoveredDeferred
+          const deferred = tailRow.message;
+          const recoveredQueueId = tailRow.recoveredQueueId;
+          const deferredStatus = tailRow.isRecovered
             ? t("sessionRecoveredQueuedPaused")
             : getDeferredMessageStatus({
-                isPatient: isPatientDeferred,
-                lanePosition,
+                isPatient: tailRow.isPatient,
+                lanePosition: tailRow.lanePosition,
                 timestampMs,
                 nowMs,
               });
           return (
             <div
-              key={tailItem.key}
+              key={tailRow.key}
               className={`deferred-message message-render-row ${
-                timestampMs !== null ? "has-message-age" : ""
+                hasMessageAge ? "has-message-age" : ""
               } ${showAgeByDefault ? "is-message-age-visible" : ""}`}
             >
               <div className="message-render-content">
@@ -3218,16 +3210,16 @@ export const MessageList = memo(function MessageList({
                   <span
                     className="deferred-message-status"
                     title={
-                      isRecoveredDeferred
+                      tailRow.isRecovered
                         ? t("sessionRecoveredQueuedPausedTitle")
-                        : isPatientDeferred
+                        : tailRow.isPatient
                           ? "Patient queue waits for verified quiet. Regular queued messages may pass it."
                           : undefined
                     }
                   >
                     {deferredStatus}
                   </span>
-                  {deferred.attachmentCount ? (
+                  {tailRow.showAttachmentCountBadge ? (
                     <span
                       className="deferred-message-attachments"
                       title={`${deferred.attachmentCount} attachment${

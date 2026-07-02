@@ -85,6 +85,9 @@ export type SessionDetailAction =
       agentId: string;
     }
   | {
+      type: "clearStreamingPlaceholders";
+    }
+  | {
       type: "applyCatchupMessages";
       messages: Message[];
       session?: SessionMetadata;

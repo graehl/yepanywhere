@@ -326,6 +326,37 @@ describe("transcriptReducer", () => {
     expect(state.messages).toEqual([updated]);
   });
 
+  it("clears main streaming placeholders without replacing durable rows", () => {
+    const durableMessage = assistantMessage(
+      "assistant-durable",
+      "done",
+      "2026-07-01T12:00:00.000Z",
+    );
+    const streamingMessage: Message = {
+      ...assistantMessage(
+        "assistant-streaming",
+        "partial",
+        "2026-07-01T12:00:01.000Z",
+      ),
+      _isStreaming: true,
+    };
+    const state = reduceSessionDetailActions([
+      {
+        type: "upsertStreamingPlaceholder",
+        message: durableMessage,
+      },
+      {
+        type: "upsertStreamingPlaceholder",
+        message: streamingMessage,
+      },
+      {
+        type: "clearStreamingPlaceholders",
+      },
+    ]);
+
+    expect(state.messages).toEqual([durableMessage]);
+  });
+
   it("keeps distinct same-text user turns", () => {
     const state = reduceSessionDetailState(createInitialSessionDetailState(), {
       type: "loadPersistedTranscript",

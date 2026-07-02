@@ -869,8 +869,8 @@ export function useSession(
     mergeLoadedAgentContent,
     updateAgentContextUsage,
     clearAgentStreamingPlaceholders,
+    clearStreamingPlaceholders,
     setAgentContent,
-    setMessages,
     fetchNewMessages,
     pagination,
     loadingOlder,
@@ -1518,8 +1518,7 @@ export function useSession(
           if (msgAgentId) {
             clearAgentStreamingPlaceholders(msgAgentId);
           } else {
-            // Remove ALL streaming placeholder messages from main messages
-            setMessages((prev) => prev.filter((m) => !m._isStreaming));
+            clearStreamingPlaceholders();
           }
         }
 
@@ -1930,7 +1929,7 @@ export function useSession(
       handleStreamSubagentMessage,
       registerToolUseAgent,
       clearAgentStreamingPlaceholders,
-      setMessages,
+      clearStreamingPlaceholders,
       setSession,
       fetchNewMessages,
       throttledFetch,

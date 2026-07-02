@@ -100,7 +100,7 @@ function mergePersistedMessagesForProvider(
     : result.messages;
 }
 
-function clearStreamingMessages(messages: Message[]): Message[] {
+export function clearStreamingPlaceholderMessages(messages: Message[]): Message[] {
   const filtered = messages.filter((message) => !message._isStreaming);
   return filtered.length === messages.length ? messages : filtered;
 }
@@ -163,7 +163,7 @@ function applyStreamMessage(
     incomingTimestampMs <= state.maxPersistedTimestampMs;
 
   if (incoming._isStreaming === true && action.streamingEnabled === false) {
-    const messages = clearStreamingMessages(state.messages);
+    const messages = clearStreamingPlaceholderMessages(state.messages);
     return messages === state.messages ? state : { ...state, messages };
   }
 
@@ -209,7 +209,7 @@ function applyStreamSubagentMessage(
     action.message._isStreaming === true &&
     action.streamingEnabled === false
   ) {
-    const messages = clearStreamingMessages(existing.messages);
+    const messages = clearStreamingPlaceholderMessages(existing.messages);
     if (messages === existing.messages) {
       return state;
     }
@@ -348,7 +348,7 @@ export function clearAgentStreamingPlaceholdersMap(
     return agentContent;
   }
 
-  const messages = clearStreamingMessages(existing.messages);
+  const messages = clearStreamingPlaceholderMessages(existing.messages);
   if (messages === existing.messages) {
     return agentContent;
   }
@@ -551,6 +551,11 @@ export function reduceSessionDetailState(
       return agentContent === state.agentContent
         ? state
         : { ...state, agentContent };
+    }
+
+    case "clearStreamingPlaceholders": {
+      const messages = clearStreamingPlaceholderMessages(state.messages);
+      return messages === state.messages ? state : { ...state, messages };
     }
 
     case "registerToolUseAgent": {

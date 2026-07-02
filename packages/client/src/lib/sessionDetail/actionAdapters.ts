@@ -62,6 +62,11 @@ export type ClearAgentStreamingPlaceholdersAction = Extract<
   { type: "clearAgentStreamingPlaceholders" }
 >;
 
+export type ClearStreamingPlaceholdersAction = Extract<
+  SessionDetailAction,
+  { type: "clearStreamingPlaceholders" }
+>;
+
 export type PrependOlderMessagesAction = Extract<
   SessionDetailAction,
   { type: "prependOlderMessages" }
@@ -202,6 +207,12 @@ export function createClearAgentStreamingPlaceholdersAction(
   return {
     type: "clearAgentStreamingPlaceholders",
     agentId,
+  };
+}
+
+export function createClearStreamingPlaceholdersAction(): ClearStreamingPlaceholdersAction {
+  return {
+    type: "clearStreamingPlaceholders",
   };
 }
 

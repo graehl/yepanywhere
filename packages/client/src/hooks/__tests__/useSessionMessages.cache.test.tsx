@@ -1095,6 +1095,65 @@ describe("useSessionMessages cache", () => {
     ).toEqual([updated]);
   });
 
+  it("clears main streaming placeholders through the session detail store", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "durable-1",
+          type: "assistant",
+          message: { role: "assistant", content: "done" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const streaming: Message = {
+      uuid: "streaming-1",
+      type: "assistant",
+      _isStreaming: true,
+      message: { role: "assistant", content: "partial" },
+    };
+
+    act(() => {
+      result.current.handleStreamingUpdate(streaming);
+      result.current.clearStreamingPlaceholders();
+    });
+
+    expect(result.current.messages.map((message) => message.uuid)).toEqual([
+      "durable-1",
+    ]);
+    expect(
+      defaultSessionDetailStore
+        .read({
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        })
+        ?.messages.map((message) => message.uuid),
+    ).toEqual(["durable-1"]);
+  });
+
   it("upserts subagent streaming placeholders through the session detail store", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {

@@ -32,6 +32,7 @@ const registerToolUseAgent = vi.fn();
 const mergeLoadedAgentContent = vi.fn();
 const updateAgentContextUsage = vi.fn();
 const clearAgentStreamingPlaceholders = vi.fn();
+const clearStreamingPlaceholders = vi.fn();
 
 let fileActivityOptions:
   | {
@@ -157,6 +158,7 @@ vi.mock("../useSessionMessages", () => ({
     mergeLoadedAgentContent,
     updateAgentContextUsage,
     clearAgentStreamingPlaceholders,
+    clearStreamingPlaceholders,
     setAgentContent: vi.fn(),
     setMessages: vi.fn(),
     fetchNewMessages,
@@ -449,6 +451,27 @@ describe("useSession completion reconciliation", () => {
     expect(clearAgentStreamingPlaceholders).toHaveBeenCalledWith(
       "toolu-subagent-1",
     );
+  });
+
+  it("routes main placeholder cleanup through the action wrapper", () => {
+    renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    act(() => {
+      sessionStreamHandler?.({
+        eventType: "message",
+        type: "assistant",
+        id: "assistant-1",
+        content: "done",
+      });
+    });
+
+    expect(clearStreamingPlaceholders).toHaveBeenCalledTimes(1);
+    expect(clearAgentStreamingPlaceholders).not.toHaveBeenCalled();
   });
 
   it("syncs metadata process state when reconnect keeps ownership self", async () => {

@@ -21,6 +21,7 @@ import type { ClientSummarySourceKey } from "../lib/clientSummaryStore";
 import {
   createCatchupMessagesAction,
   createClearAgentStreamingPlaceholdersAction,
+  createClearStreamingPlaceholdersAction,
   createLoadPersistedTranscriptAction,
   createMergeLoadedAgentContentAction,
   createPrependOlderMessagesAction,
@@ -45,6 +46,7 @@ import {
 import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
 import {
   clearAgentStreamingPlaceholdersMap,
+  clearStreamingPlaceholderMessages,
   createInitialSessionDetailState,
   mergeLoadedAgentContentMap,
   reduceSessionDetailState,
@@ -159,9 +161,11 @@ export interface UseSessionMessagesResult {
   ) => void;
   /** Remove transient streaming placeholder rows from a subagent */
   clearAgentStreamingPlaceholders: (agentId: string) => void;
+  /** Remove transient streaming placeholder rows from the main transcript */
+  clearStreamingPlaceholders: () => void;
   /** Update agent content (for lazy loading) */
   setAgentContent: React.Dispatch<React.SetStateAction<AgentContentMap>>;
-  /** Direct messages setter (for clearing streaming placeholders) */
+  /** Legacy direct messages setter for paths not yet represented as actions */
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   /** Fetch new messages incrementally (for file change events) */
   fetchNewMessages: () => Promise<void>;
@@ -1379,6 +1383,17 @@ export function useSessionMessages(
     [dispatchSessionDetailAction, reportShadowDivergence],
   );
 
+  const clearStreamingPlaceholders = useCallback(() => {
+    dispatchSessionDetailAction(createClearStreamingPlaceholdersAction());
+    setMessages((prev) => {
+      const next = clearStreamingPlaceholderMessages(prev);
+      reportShadowDivergence("streaming-placeholder-cleanup", {
+        messages: next,
+      });
+      return next;
+    });
+  }, [dispatchSessionDetailAction, reportShadowDivergence]);
+
   const fetchNewMessagesInFlightRef = useRef<Promise<void> | null>(null);
 
   // Fetch new messages incrementally (for file change events)
@@ -1595,6 +1610,7 @@ export function useSessionMessages(
     mergeLoadedAgentContent,
     updateAgentContextUsage,
     clearAgentStreamingPlaceholders,
+    clearStreamingPlaceholders,
     setAgentContent,
     setMessages,
     fetchNewMessages,

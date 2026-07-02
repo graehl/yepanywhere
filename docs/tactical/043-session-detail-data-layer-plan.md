@@ -33,7 +33,10 @@ placeholder filtering behavior while keeping the cleanup visible to the
 shadow reducer and store. Throttled streaming placeholder updates now flow
 through `upsertStreamingPlaceholder`; raw provider deltas still accumulate in
 refs inside `useStreamingContent`, while the reducer/store see only the
-materialized placeholder rows.
+materialized placeholder rows. Main final-assistant cleanup now flows through
+`clearStreamingPlaceholders`, preserving the existing main transcript
+placeholder filtering behavior while making that cleanup visible to the shadow
+reducer and store.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -312,11 +315,11 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- After selector/action parity is quiet in normal use, wrap the main
-  final-assistant streaming-placeholder cleanup or renderer lazy-load merges
-  next. Renderer lazy-load crosses component/context ownership; main cleanup
-  is narrower but touches `setMessages`. A broad `messages` cutover should
-  still wait.
+- After selector/action parity is quiet in normal use, decide whether to wrap
+  renderer lazy-load merges or `setSession` next. Renderer lazy-load crosses
+  component/context ownership; `setSession` is smaller but touches the
+  top-level session metadata path. A broad `messages` cutover should still
+  wait.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -460,6 +463,11 @@ Status 2026-07-02:
   dispatches the action to the shadow reducer and store. Added reducer coverage
   for main and subagent placeholder replacement plus hook/store coverage for
   both public `handleStreamingUpdate` routes.
+- Added `clearStreamingPlaceholders` as a typed action wrapper for main
+  final-assistant cleanup. The reducer owns the existing behavior of filtering
+  transient `_isStreaming` rows while preserving durable rows, and `useSession`
+  now routes main assistant cleanup through the wrapper. Added reducer coverage
+  and hook/store coverage for the public cleanup route.
 - Remaining Slice 4 work: observe the selector/action parity surface, then
   remove or wrap another raw exposed setter before attempting `messages`.
   `setAgentContent`, `setMessages`, and `setSession` still expose direct local

@@ -43,6 +43,9 @@ What is already in place:
 - Narrow selectors are already used for retained scroll, pagination,
   older-page cursor selection, and main streaming placeholder message
   upsert/cleanup.
+- `toolUseToAgent` registration now has a selector-backed mirror: after the
+  reducer/store dispatch, the local fallback `Map` copies the store-selected
+  mapping entries instead of independently rebuilding from its previous value.
 - `agentContent` has selector-backed mirrors for ordinary subagent stream
   events, loaded subagent content, context-usage updates, and subagent
   streaming placeholder upsert/cleanup; those paths copy the store-selected

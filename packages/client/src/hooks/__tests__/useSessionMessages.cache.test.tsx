@@ -25,6 +25,7 @@ import {
 import {
   selectSessionDetailAgentContent,
   selectSessionDetailMessages,
+  selectSessionDetailToolUseToAgentEntries,
 } from "../../lib/sessionDetail/selectors";
 import { defaultSessionDetailStore } from "../../lib/sessionDetail/sessionDetailStore";
 import { UI_KEYS } from "../../lib/storageKeys";
@@ -93,6 +94,18 @@ function readStoreAgentContent(projectId = "proj-1", sessionId = "sess-1") {
     },
     selectSessionDetailAgentContent,
   );
+}
+
+function readStoreToolUseToAgent(projectId = "proj-1", sessionId = "sess-1") {
+  const entries = defaultSessionDetailStore.readSelected(
+    {
+      sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+      projectId,
+      sessionId,
+    },
+    selectSessionDetailToolUseToAgentEntries,
+  );
+  return entries ? new Map(entries) : undefined;
 }
 
 function returnedDataWarningCalls(warn: {
@@ -810,6 +823,61 @@ describe("useSessionMessages cache", () => {
     expect(
       rendered.result.current.toolUseToAgent.get("toolu_store"),
     ).toBeUndefined();
+  });
+
+  it("mirrors tool-use mappings from the session detail store after registration", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "registerToolUseAgent",
+          toolUseId: "toolu_store",
+          agentId: "agent-store",
+        },
+      );
+      rendered.result.current.registerToolUseAgent("toolu_hook", "agent-hook");
+    });
+
+    expect(
+      Array.from(rendered.result.current.toolUseToAgent.entries()),
+    ).toEqual([
+      ["toolu_store", "agent-store"],
+      ["toolu_hook", "agent-hook"],
+    ]);
+    expect(Array.from(readStoreToolUseToAgent()?.entries() ?? [])).toEqual([
+      ["toolu_store", "agent-store"],
+      ["toolu_hook", "agent-hook"],
+    ]);
   });
 
   it("keeps opted-in store-backed warm agent content gated until hydration", async () => {

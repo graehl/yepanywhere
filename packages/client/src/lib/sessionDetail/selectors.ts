@@ -45,6 +45,12 @@ export function selectSessionDetailAgentContent(
   return state.agentContent;
 }
 
+export function selectSessionDetailToolUseToAgentEntries(
+  state: SessionDetailState,
+): Array<[string, string]> {
+  return state.toolUseToAgentEntries;
+}
+
 export function selectSessionDetailScrollSnapshot(
   state: SessionDetailState,
 ): SessionRouteScrollSnapshot | undefined {

@@ -41,6 +41,7 @@ import {
   selectSessionDetailPagination,
   selectSessionDetailRuntimeSnapshot,
   selectSessionDetailScrollSnapshot,
+  selectSessionDetailToolUseToAgentEntries,
 } from "../lib/sessionDetail/selectors";
 import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
 import {
@@ -608,6 +609,14 @@ export function useSessionMessages(
       ),
     [sourceKey, projectId, sessionId, tailTurns, tailFrom],
   );
+
+  const readSelectorBackedToolUseToAgent = useCallback(() => {
+    const entries = defaultSessionDetailStore.readSelected(
+      { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+      selectSessionDetailToolUseToAgentEntries,
+    );
+    return entries ? new Map(entries) : undefined;
+  }, [sourceKey, projectId, sessionId, tailTurns, tailFrom]);
 
   const canReadStoreBackedDetail = storeBackedMessagesEnabled && !loading;
   const storeBackedDetailState = useSyncExternalStore(
@@ -1458,6 +1467,16 @@ export function useSessionMessages(
         toolUseId,
         agentId,
       });
+      const selectorBackedToolUseToAgent = readSelectorBackedToolUseToAgent();
+      if (selectorBackedToolUseToAgent) {
+        applyToolUseToAgent(selectorBackedToolUseToAgent);
+        reportStoreDivergence("tool-use-agent-map", {
+          toolUseToAgentEntries: Array.from(
+            selectorBackedToolUseToAgent.entries(),
+          ),
+        });
+        return;
+      }
       const prev = toolUseToAgentRef.current;
       if (prev.has(toolUseId)) {
         reportStoreDivergence("tool-use-agent-map", {
@@ -1472,7 +1491,12 @@ export function useSessionMessages(
         toolUseToAgentEntries: Array.from(next.entries()),
       });
     },
-    [applyToolUseToAgent, dispatchSessionDetailAction, reportStoreDivergence],
+    [
+      applyToolUseToAgent,
+      dispatchSessionDetailAction,
+      readSelectorBackedToolUseToAgent,
+      reportStoreDivergence,
+    ],
   );
 
   const mergeLoadedAgentContent = useCallback(

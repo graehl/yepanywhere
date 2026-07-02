@@ -8,6 +8,8 @@ Completed-slice detail lives in
 [`043-session-detail-data-layer-history.md`](043-session-detail-data-layer-history.md).
 The dogfood-toggle transition audit lives in
 [`043-session-detail-data-layer-toggle-preflight.md`](043-session-detail-data-layer-toggle-preflight.md).
+The render-selector preflight lives in
+[`043-session-detail-render-selector-preflight.md`](043-session-detail-render-selector-preflight.md).
 
 ## Current Status
 
@@ -49,10 +51,14 @@ What is already in place:
   `agentContent` is gated during warm hydration, ignores selector-only entries
   when the toggle is off, and returns selector-only entries when the toggle is
   on.
+- Render-item projection has its first selector boundary: preprocessing,
+  transcript display-object insertion, stable item reuse, and turn grouping now
+  live in `sessionDetail/renderSelectors`.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
-still dev-only and default-off. Render-item derivation is not store-owned yet.
+still dev-only and default-off. Render-item derivation has a pure selector
+preflight, but `MessageList` still owns display policy and DOM behavior.
 
 ## Why This Exists
 
@@ -80,8 +86,9 @@ Ownership is intentionally still split while we migrate:
   mirrors, local agent-content mirrors, pagination, and snapshot lifecycle.
 - `defaultSessionDetailStore` owns the reducer-fed canonical mirror and retained
   same-tab cache entries.
-- `MessageList` still owns render-item derivation, progressive rendering,
-  scroll snapshots, selection, quote/search UI, and DOM timing.
+- `MessageList` still owns display policy, progressive rendering, scroll
+  snapshots, selection, quote/search UI, and DOM timing. The first pure
+  render-item projection helper now lives outside the component.
 - Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
   content now enters through the action layer.
 
@@ -124,9 +131,8 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any observed divergence into a
   compact reducer or hook fixture.
-- Start the render-selector preflight: inventory the `MessageList`
-  render-item derivation inputs and identify which selectors can be made pure
-  without taking over scroll or progressive rendering.
+- Continue the render-selector preflight by moving search/nav anchor derivation
+  behind pure helpers without taking over scroll or progressive rendering.
 
 Then:
 

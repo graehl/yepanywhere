@@ -211,6 +211,10 @@ Reducer/helper behavior locked down during Slice 4:
   as fallback.
 - Returned `agentContent` can now be store-selected behind the Developer
   setting without bypassing the warm snapshot deferred reveal path.
+- The first render-selector preflight moved render item projection into
+  `sessionDetail/renderSelectors`: preprocessing, transcript display-object
+  insertion, stable render item reuse, and turn grouping. `MessageList` still
+  owns DOM-local display policy, search state, progressive reveal, and scroll.
 
 ## Verification Details
 

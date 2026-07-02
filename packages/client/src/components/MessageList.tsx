@@ -40,17 +40,17 @@ import {
   parseTimestampMs,
 } from "../lib/messageAge";
 import { parseUserPrompt } from "../lib/parseUserPrompt";
-import {
-  type ActiveToolApproval,
-  preprocessMessages,
-} from "../lib/preprocessMessages";
+import type { ActiveToolApproval } from "../lib/preprocessMessages";
 import {
   dispatchSessionIsearchGuideState,
   type SessionIsearchScope,
 } from "../lib/sessionIsearchGuide";
 import type { SessionRouteScrollSnapshot } from "../lib/sessionRouteSnapshots";
-import { stabilizeRenderItems } from "../lib/stableRenderItems";
-import { insertTranscriptDisplayObjects } from "../lib/transcriptDisplayObjects";
+import {
+  buildSessionDetailRenderItems,
+  groupRenderItemsIntoTurns,
+  type RenderTurnGroup,
+} from "../lib/sessionDetail/renderSelectors";
 import { UI_KEYS } from "../lib/storageKeys";
 import type { ContentBlock, Message } from "../types";
 import type { RenderItem } from "../types/renderItems";
@@ -88,12 +88,6 @@ const PROGRESSIVE_RENDER_REVEAL_DELAY_MS = 180;
 type ProgressiveTimelineEntry =
   | { kind: "turn"; group: { items: readonly unknown[] } }
   | { kind: "btw" };
-
-interface TurnGroup {
-  isUserPrompt: boolean;
-  isStandalone?: boolean;
-  items: RenderItem[];
-}
 
 function getProgressiveTimelineEntryWeight(
   entry: ProgressiveTimelineEntry,
@@ -144,47 +138,6 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-/**
- * Groups consecutive assistant items (text, thinking, tool_call) into turns.
- * User prompts break the grouping and are returned as separate groups.
- */
-function groupItemsIntoTurns(items: RenderItem[]): TurnGroup[] {
-  const groups: TurnGroup[] = [];
-  let currentAssistantGroup: RenderItem[] = [];
-
-  for (const item of items) {
-    if (item.type === "transcript_display_object") {
-      if (currentAssistantGroup.length > 0) {
-        groups.push({ isUserPrompt: false, items: currentAssistantGroup });
-        currentAssistantGroup = [];
-      }
-      groups.push({
-        isUserPrompt: false,
-        isStandalone: true,
-        items: [item],
-      });
-    } else if (item.type === "user_prompt" || item.type === "session_setup") {
-      // Flush any pending assistant items
-      if (currentAssistantGroup.length > 0) {
-        groups.push({ isUserPrompt: false, items: currentAssistantGroup });
-        currentAssistantGroup = [];
-      }
-      // User prompt is its own group
-      groups.push({ isUserPrompt: true, items: [item] });
-    } else {
-      // Accumulate assistant items
-      currentAssistantGroup.push(item);
-    }
-  }
-
-  // Flush remaining assistant items
-  if (currentAssistantGroup.length > 0) {
-    groups.push({ isUserPrompt: false, items: currentAssistantGroup });
-  }
-
-  return groups;
-}
-
 function getEarliestMessageTimestampMs(
   messages: readonly Message[],
 ): number | null {
@@ -228,8 +181,8 @@ function getLastTimestampedItem(items: readonly RenderItem[]): RenderItem | null
 }
 
 function groupEndsVisibleTurn(
-  group: TurnGroup,
-  nextGroup: TurnGroup | undefined,
+  group: RenderTurnGroup,
+  nextGroup: RenderTurnGroup | undefined,
 ): boolean {
   if (group.isStandalone) {
     return true;
@@ -391,7 +344,7 @@ interface VisibleRenderAnchor {
 function getVisibleTurnEndTimestampMs(
   messageList: HTMLDivElement,
   scrollContainer: HTMLElement,
-  groups: readonly TurnGroup[],
+  groups: readonly RenderTurnGroup[],
 ): number | null {
   const containerRect = scrollContainer.getBoundingClientRect();
   let timestampMs: number | null = null;
@@ -473,7 +426,7 @@ function getMiddleVisibleTimestampMs(
 function getTranscriptPositionTimestampMs(
   messageList: HTMLDivElement,
   scrollContainer: HTMLElement,
-  groups: readonly TurnGroup[],
+  groups: readonly RenderTurnGroup[],
   items: readonly RenderItem[],
 ): number | null {
   return (
@@ -1775,23 +1728,19 @@ export const MessageList = memo(function MessageList({
       markdownAugments: Object.keys(markdownAugments ?? {}).length,
       hasActiveToolApproval: !!activeToolApproval,
     });
-    const nextRenderItems = insertTranscriptDisplayObjects(
-      preprocessMessages(messages, {
-        markdown: markdownAugments,
-        activeToolApproval,
-      }),
+    const nextRenderItems = buildSessionDetailRenderItems({
+      messages,
+      markdownAugments,
+      activeToolApproval,
       transcriptDisplayObjects,
-    );
-    const stabilized = stabilizeRenderItems(
-      previousRenderItemsRef.current,
-      nextRenderItems,
-    );
+      previousRenderItems: previousRenderItemsRef.current,
+    });
     markReloadPerfPhase("message_list_preprocess_end", {
       messages: messages.length,
-      renderItems: stabilized.length,
+      renderItems: nextRenderItems.length,
       durationMs: highResolutionNowMs() - startedAt,
     });
-    return stabilized;
+    return nextRenderItems;
   }, [
     messages,
     markdownAugments,
@@ -1930,7 +1879,7 @@ export const MessageList = memo(function MessageList({
   }, [provider, renderItems]);
   const turnGroups = useMemo(() => {
     const startedAt = highResolutionNowMs();
-    const grouped = groupItemsIntoTurns(displayRenderItems);
+    const grouped = groupRenderItemsIntoTurns(displayRenderItems);
     markReloadPerfPhase("message_list_group_end", {
       renderItems: displayRenderItems.length,
       turnGroups: grouped.length,

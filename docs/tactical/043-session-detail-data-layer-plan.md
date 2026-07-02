@@ -2,8 +2,8 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 4 pagination older-load decision selector-backed. The pure
-reducer fixture harness now
+Status: Slice 4 is selector-backed for retained scroll and pagination, and has
+started removing raw hook setter bypasses. The pure reducer fixture harness now
 covers basic persisted, streamed, catch-up, replay, duplicate-prompt,
 duplicate-assistant, pagination, retained-scroll-snapshot, recap-cursor,
 Codex-shaped provider parity, final-message markdown augment paths, and Codex
@@ -18,7 +18,10 @@ and can compare live hook state to a store-selected runtime snapshot under the
 same dev-only diagnostic opt-in. `useSessionMessages.initialScrollSnapshot`
 and returned `pagination` now read through store selectors with prior local
 fallbacks, and `loadOlderMessages` uses the same selector-backed pagination
-source for its older-page cursor decision.
+source for its older-page cursor decision. Reloaded pending-task tool-use
+mappings now flow through `registerToolUseAgent` instead of an exposed raw
+`setToolUseToAgent` setter, so local hook state, the shadow reducer, and the
+session detail store observe the same mapping action.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -297,9 +300,11 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- After selector parity is quiet in normal use, move another low-churn field
-  behind a store selector or replace one raw setter with an action wrapper.
-  `messages` should wait.
+- After selector/action parity is quiet in normal use, replace the next raw
+  setter bypass with a typed action wrapper. `setAgentContent` is the likely
+  target because pending-agent lazy reload still merges child content through a
+  raw setter; preserve the current dedupe behavior while routing the write
+  through the store/reducer action path. `messages` should wait.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -412,9 +417,15 @@ Status 2026-07-02:
   same selector-backed pagination source, with local state fallback. Added
   coverage that mutates store-only pagination before invoking older-page load
   so the request cursor proves the selector source is used.
-- Remaining Slice 4 work: observe the selector parity surface, then either move
-  another low-churn field behind a store selector or replace one raw exposed
-  setter with an action wrapper before attempting `messages`.
+- Removed the raw `setToolUseToAgent` setter from
+  `UseSessionMessagesResult`. Reloaded pending-task mapping hydration in
+  `useSession` now calls `registerToolUseAgent`, so external writes use the
+  same hook/reducer/store action path as streaming mappings. Added hook
+  coverage for the reloaded pending-task mapping path.
+- Remaining Slice 4 work: observe the selector/action parity surface, then
+  remove or wrap another raw exposed setter before attempting `messages`.
+  `setAgentContent`, `setMessages`, and `setSession` still expose direct local
+  hook writes.
 
 ## Slice 5: Hook Adapter Migration
 

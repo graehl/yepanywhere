@@ -867,7 +867,6 @@ export function useSession(
     handleStreamSubagentMessage,
     registerToolUseAgent,
     setAgentContent,
-    setToolUseToAgent,
     setMessages,
     fetchNewMessages,
     pagination,
@@ -1082,17 +1081,11 @@ export function useSession(
           mappings.map((m) => [m.toolUseId, m.agentId]),
         );
 
-        // Update the toolUseToAgent state with loaded mappings
-        // This allows TaskRenderer to access agentContent even after page reload
-        setToolUseToAgent((prev) => {
-          const next = new Map(prev);
-          for (const [toolUseId, agentId] of mappingsMap) {
-            if (!next.has(toolUseId)) {
-              next.set(toolUseId, agentId);
-            }
-          }
-          return next;
-        });
+        // Register loaded mappings so TaskRenderer can access agent content
+        // after page reload through the same reducer/store path as streaming.
+        for (const [toolUseId, agentId] of mappingsMap) {
+          registerToolUseAgent(toolUseId, agentId);
+        }
 
         // Load content for each pending task that has an agent file
         for (const task of pendingTasks) {
@@ -1146,9 +1139,9 @@ export function useSession(
     loading,
     messages,
     projectId,
+    registerToolUseAgent,
     sessionId,
     setAgentContent,
-    setToolUseToAgent,
   ]);
 
   // Leading + trailing edge throttle:

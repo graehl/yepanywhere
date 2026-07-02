@@ -13,6 +13,8 @@ import type { SessionStatus } from "../../types";
 import { __resetAwayRecapTimersForTest, useSession } from "../useSession";
 
 const apiMocks = vi.hoisted(() => ({
+  getAgentMappings: vi.fn(),
+  getAgentSession: vi.fn(),
   getSessionMetadata: vi.fn(),
   requestRecap: vi.fn(),
   requestSessionRecap: vi.fn(),
@@ -26,6 +28,7 @@ const sessionMessagesMock = vi.hoisted(() => ({
 
 const fetchNewMessages = vi.fn(async () => {});
 const fetchSessionMetadata = vi.fn(async () => {});
+const registerToolUseAgent = vi.fn();
 
 let fileActivityOptions:
   | {
@@ -138,9 +141,8 @@ vi.mock("../useSessionMessages", () => ({
     handleStreamingUpdate: vi.fn(),
     handleStreamMessageEvent: vi.fn(),
     handleStreamSubagentMessage: vi.fn(),
-    registerToolUseAgent: vi.fn(),
+    registerToolUseAgent,
     setAgentContent: vi.fn(),
-    setToolUseToAgent: vi.fn(),
     setMessages: vi.fn(),
     fetchNewMessages,
     fetchSessionMetadata,
@@ -185,6 +187,13 @@ describe("useSession completion reconciliation", () => {
     cleanup();
     __resetAwayRecapTimersForTest();
     vi.clearAllMocks();
+    apiMocks.getAgentMappings.mockReset();
+    apiMocks.getAgentMappings.mockResolvedValue({ mappings: [] });
+    apiMocks.getAgentSession.mockReset();
+    apiMocks.getAgentSession.mockResolvedValue({
+      messages: [],
+      status: "completed",
+    });
     apiMocks.getSessionMetadata.mockReset();
     apiMocks.requestRecap.mockReset();
     apiMocks.requestRecap.mockResolvedValue({ supported: true });
@@ -327,6 +336,51 @@ describe("useSession completion reconciliation", () => {
     });
 
     expect(fetchNewMessages).not.toHaveBeenCalled();
+  });
+
+  it("registers reloaded pending task mappings through the action wrapper", async () => {
+    sessionMessagesMock.messages = [
+      {
+        id: "msg-1",
+        type: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu-pending-1",
+            name: "Task",
+            input: {
+              description: "Research data",
+              subagent_type: "general-purpose",
+            },
+          },
+        ],
+      },
+    ];
+    apiMocks.getAgentMappings.mockResolvedValue({
+      mappings: [
+        {
+          toolUseId: "toolu-pending-1",
+          agentId: "agent-1",
+        },
+      ],
+    });
+
+    renderHook(() =>
+      useSession(PROJECT_ID, "sess-1", {
+        owner: "self",
+        processId: "proc-1",
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(registerToolUseAgent).toHaveBeenCalledWith(
+      "toolu-pending-1",
+      "agent-1",
+    );
   });
 
   it("syncs metadata process state when reconnect keeps ownership self", async () => {

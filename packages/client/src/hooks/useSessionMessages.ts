@@ -142,8 +142,6 @@ export interface UseSessionMessagesResult {
   registerToolUseAgent: (toolUseId: string, agentId: string) => void;
   /** Update agent content (for lazy loading) */
   setAgentContent: React.Dispatch<React.SetStateAction<AgentContentMap>>;
-  /** Update toolUseToAgent mapping */
-  setToolUseToAgent: React.Dispatch<React.SetStateAction<Map<string, string>>>;
   /** Direct messages setter (for clearing streaming placeholders) */
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   /** Fetch new messages incrementally (for file change events) */
@@ -1540,7 +1538,6 @@ export function useSessionMessages(
     handleStreamSubagentMessage,
     registerToolUseAgent,
     setAgentContent,
-    setToolUseToAgent,
     setMessages,
     fetchNewMessages,
     fetchSessionMetadata,

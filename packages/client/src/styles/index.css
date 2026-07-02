@@ -14806,6 +14806,13 @@ a.sidebar-nav-item {
   margin-top: var(--space-3);
 }
 
+.login-relay-preview {
+  font-size: var(--font-size-xs);
+  color: var(--text-dimmed);
+  text-align: center;
+  margin: 0;
+}
+
 .login-loading {
   color: var(--text-muted);
   text-align: center;

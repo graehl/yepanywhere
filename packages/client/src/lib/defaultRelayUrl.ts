@@ -24,3 +24,20 @@ export function getDefaultRelayUrl(): string {
     return DEFAULT_RELAY_URL;
   }
 }
+
+/**
+ * Resolve the relay URL a login should use: an explicit form/hash value wins,
+ * then the username's saved host — so a re-login with the field left blank
+ * keeps a previously customized relay instead of silently resetting the saved
+ * host to the deployment default — then the deployment default.
+ *
+ * Throws (from normalizeRelayUrl) on an invalid explicit value.
+ */
+export function resolveLoginRelayUrl(
+  input: string,
+  savedRelayUrl: string | undefined,
+): string {
+  return normalizeRelayUrl(
+    input.trim() || savedRelayUrl || getDefaultRelayUrl(),
+  );
+}

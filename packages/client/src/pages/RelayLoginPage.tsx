@@ -5,14 +5,16 @@
  * server by username. After pairing, SRP authentication proceeds through the relay.
  */
 
-import { normalizeRelayUrl } from "@yep-anywhere/shared";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useI18n } from "../i18n";
-import { getDefaultRelayUrl } from "../lib/defaultRelayUrl";
-import { upsertRelayHost } from "../lib/hostStorage";
+import {
+  getDefaultRelayUrl,
+  resolveLoginRelayUrl,
+} from "../lib/defaultRelayUrl";
+import { getHostByRelayUsername, upsertRelayHost } from "../lib/hostStorage";
 
 /**
  * Parse credentials from URL hash for auto-login via QR code.
@@ -73,6 +75,20 @@ export function RelayLoginPage() {
   const [status, setStatus] = useState<ConnectionStatus>("idle");
   const [error, setError] = useState<string | null>(null);
 
+  // Host of the relay a submit would use right now, so the choice is visible
+  // without expanding the advanced options.
+  const previewRelayHost = useMemo(() => {
+    try {
+      const url = resolveLoginRelayUrl(
+        customRelayUrl,
+        getHostByRelayUsername(relayUsername.trim().toLowerCase())?.relayUrl,
+      );
+      return new URL(url).hostname;
+    } catch {
+      return null;
+    }
+  }, [customRelayUrl, relayUsername]);
+
   // Auto-login from hash credentials (QR code scan)
   const autoLoginAttempted = useRef(false);
   useEffect(() => {
@@ -85,7 +101,10 @@ export function RelayLoginPage() {
     const { username, password, relayUrl } = hashCreds;
     let effectiveRelayUrl: string;
     try {
-      effectiveRelayUrl = normalizeRelayUrl(relayUrl || defaultRelayUrl);
+      effectiveRelayUrl = resolveLoginRelayUrl(
+        relayUrl,
+        getHostByRelayUsername(username)?.relayUrl,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStatus("error");
@@ -133,7 +152,7 @@ export function RelayLoginPage() {
           setShowAdvanced(true);
         }
       });
-  }, [connectViaRelay, defaultRelayUrl, isAutoResuming, setCurrentHostId, t]);
+  }, [connectViaRelay, isAutoResuming, setCurrentHostId, t]);
 
   // If auto-resume is in progress, show a loading screen
   if (isAutoResuming) {
@@ -167,14 +186,17 @@ export function RelayLoginPage() {
       return;
     }
 
+    const username = relayUsername.trim().toLowerCase();
     let relayUrl: string;
     try {
-      relayUrl = normalizeRelayUrl(customRelayUrl.trim() || defaultRelayUrl);
+      relayUrl = resolveLoginRelayUrl(
+        customRelayUrl,
+        getHostByRelayUsername(username)?.relayUrl,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return;
     }
-    const username = relayUsername.trim().toLowerCase();
 
     // Save the current relay URL before connecting so session callbacks and
     // later /:relayUsername routes do not reuse a stale relay endpoint.
@@ -301,6 +323,12 @@ export function RelayLoginPage() {
                 {t("relayLoginCustomRelayUrlHint")}
               </p>
             </div>
+          )}
+
+          {previewRelayHost && (
+            <p className="login-relay-preview" data-testid="relay-host-preview">
+              {t("relayLoginRelayHostPreview", { host: previewRelayHost })}
+            </p>
           )}
 
           {error && (

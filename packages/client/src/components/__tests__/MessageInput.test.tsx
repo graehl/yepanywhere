@@ -3113,4 +3113,165 @@ describe("MessageInput", () => {
       ),
     ).toHaveLength(1);
   });
+
+  it("relaxes bottom-row overflow when visible controls shrink", () => {
+    const originalResizeObserver = window.ResizeObserver;
+    let resizeCallback: ResizeObserverCallback | null = null;
+    class CapturingResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    Object.defineProperty(window, "ResizeObserver", {
+      configurable: true,
+      value: CapturingResizeObserver,
+    });
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 0;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+
+    const currentTier = (
+      element: Element,
+    ): "none" | "early" | "medium" | "late" => {
+      const toolbar = element.closest(".message-input-toolbar");
+      if (!toolbar) return "none";
+      if (toolbar.classList.contains("overflow-tier-late")) return "late";
+      if (toolbar.classList.contains("overflow-tier-medium")) return "medium";
+      if (toolbar.classList.contains("overflow-tier-early")) return "early";
+      return "none";
+    };
+    const inlineHidden = (element: Element): boolean => {
+      if (!element.classList.contains("composer-bottom-overflow-inline")) {
+        return false;
+      }
+      const tier = currentTier(element);
+      return (
+        (element.classList.contains("composer-bottom-overflow-early") &&
+          tier !== "none") ||
+        (element.classList.contains("composer-bottom-overflow-medium") &&
+          (tier === "medium" || tier === "late")) ||
+        (element.classList.contains("composer-bottom-overflow-late") &&
+          tier === "late")
+      );
+    };
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element) => {
+      const hidden = inlineHidden(element);
+      return {
+        display: hidden ? "none" : "block",
+        position: "static",
+        columnGap: "0px",
+        gap: "0px",
+      } as CSSStyleDeclaration;
+    });
+    const rect = (width: number): DOMRect =>
+      ({
+        top: 0,
+        bottom: 32,
+        left: 0,
+        right: width,
+        width,
+        height: 32,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function getToolbarTestRect(this: HTMLElement) {
+        if (this.classList.contains("message-input-toolbar")) return rect(100);
+        if (
+          this.classList.contains("message-input-left") ||
+          this.classList.contains("message-input-actions")
+        ) {
+          return rect(1);
+        }
+        if (this.classList.contains("composer-bottom-overflow")) return rect(24);
+        if (this.classList.contains("attach-button")) return rect(80);
+        if (this.classList.contains("send-button-with-help")) return rect(40);
+        if (
+          this.classList.contains("composer-bottom-overflow-inline") &&
+          this.querySelector(".mode-selector-container")
+        ) {
+          return rect(40);
+        }
+        return rect(0);
+      },
+    );
+
+    const shortcutsControl: MessageInputToolbarViewProps["shortcutsControl"] = {
+      open: false,
+      isearchScope: null,
+      setOpen:
+        vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setOpen"],
+      settingsOpen: false,
+      setSettingsOpen:
+        vi.fn() as unknown as MessageInputToolbarViewProps["shortcutsControl"]["setSettingsOpen"],
+      hasDualActions: false,
+      enterActionKind: "send",
+      canSwapEnterAction: false,
+      queueShortcutLabel: "Queue while agent runs",
+    };
+    const renderMeasuredToolbar = (showAttachments: boolean) => (
+      <MessageInputToolbarView
+        t={toolbarT}
+        visibility={{
+          ...toolbarVisibility,
+          modeSelector: true,
+          attachments: showAttachments,
+          steerNow: false,
+          thinkingToggle: false,
+        }}
+        modeControl={{
+          mode: "default",
+          onModeChange: vi.fn(),
+          modes: ["default"],
+        }}
+        attachmentControl={{ attachmentCount: 0, canAttach: true }}
+        shortcutsControl={shortcutsControl}
+        actionsControl={{
+          send: {
+            onSend: vi.fn(),
+            canSend: true,
+            primaryActionKind: "send",
+            primaryActionLabel: "Send",
+            tooltip: "Send",
+            icon: "↑",
+          },
+        }}
+      />
+    );
+    const resizeEntry = (target: Element, width: number): ResizeObserverEntry =>
+      ({
+        target,
+        contentRect: { width } as DOMRectReadOnly,
+        borderBoxSize: [],
+        contentBoxSize: [],
+        devicePixelContentBoxSize: [],
+      }) as ResizeObserverEntry;
+
+    try {
+      const { container, rerender } = render(renderMeasuredToolbar(true));
+      const toolbar = () =>
+        container.querySelector(".message-input-toolbar") as HTMLElement;
+      act(() => {
+        resizeCallback?.([resizeEntry(toolbar(), 100)], {} as ResizeObserver);
+      });
+      expect(toolbar().classList.contains("overflow-tier-early")).toBe(true);
+
+      rerender(renderMeasuredToolbar(false));
+      act(() => {
+        resizeCallback?.([resizeEntry(toolbar(), 100)], {} as ResizeObserver);
+      });
+
+      expect(toolbar().classList.contains("overflow-tier-none")).toBe(true);
+    } finally {
+      Object.defineProperty(window, "ResizeObserver", {
+        configurable: true,
+        value: originalResizeObserver,
+      });
+    }
+  });
 });

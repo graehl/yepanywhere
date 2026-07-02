@@ -1130,6 +1130,71 @@ export function MessageInputToolbarView({
       actionsControl.send &&
       isPriorityCollapsible("projectQueue"))
   );
+  const bottomOverflowLayoutKey = [
+    `modeSelector:${
+      visibility.modeSelector && modeControl
+        ? controlPriority.modeSelector
+        : "off"
+    }`,
+    `attachments:${
+      visibility.attachments ? controlPriority.attachments : "off"
+    }`,
+    `slashMenu:${
+      visibility.slashMenu && slashControl ? controlPriority.slashMenu : "off"
+    }`,
+    `thinkingToggle:${
+      visibility.thinkingToggle && thinkingControl
+        ? controlPriority.thinkingToggle
+        : "off"
+    }`,
+    `renderMode:${
+      visibility.renderMode && renderModeControl
+        ? controlPriority.renderMode
+        : "off"
+    }`,
+    `nudge:${
+      visibility.nudge && nudgeControl ? controlPriority.nudge : "off"
+    }`,
+    `sessionStatus:${
+      visibility.sessionStatus && showToolbarStatus && statusControl
+        ? controlPriority.sessionStatus
+        : "off"
+    }`,
+    `shortcutsHelp:${
+      visibility.shortcutsHelp ? controlPriority.shortcutsHelp : "off"
+    }`,
+    `contextUsage:${
+      visibility.contextUsage && actionsControl.contextUsage
+        ? controlPriority.contextUsage
+        : "off"
+    }`,
+    `btw:${visibility.btw && actionsControl.btw ? controlPriority.btw : "off"}`,
+    `steerNow:${canToggleSteerNow ? controlPriority.steerNow : "off"}`,
+    `projectQueue:${
+      showProjectQueueButton && actionsControl.send
+        ? controlPriority.projectQueue
+        : "off"
+    }`,
+    `microphone:${
+      visibility.microphone && selectedSpeechMethod && speechControl?.voiceButton
+        ? speechControl.voiceButton.kind
+        : "off"
+    }`,
+    `waveform:${speechWaveformActive}`,
+    `send:${showSendButton ? actionsControl.send?.primaryActionKind : "off"}`,
+    `queue:${
+      queueControl?.hasDualActions
+        ? [
+            actionsControl.send?.primaryActionKind,
+            !!queueControl.onQueue,
+            !!queueControl.onSteer,
+          ].join(":")
+        : "off"
+    }`,
+    `alternate:${!!actionsControl.send?.alternate}`,
+    `stop:${showStopButton}`,
+    `pending:${pendingApproval?.type ?? "off"}`,
+  ].join("|");
   const [bottomOverflowOpen, setBottomOverflowOpen] = useState(false);
   const [bottomOverflowTier, setBottomOverflowTier] =
     useState<ComposerOverflowTier>(() =>
@@ -1137,6 +1202,7 @@ export function MessageInputToolbarView({
     );
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const lastToolbarWidthRef = useRef(0);
+  const lastBottomOverflowLayoutKeyRef = useRef(bottomOverflowLayoutKey);
   const shortcutsLongPressTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
@@ -1151,6 +1217,14 @@ export function MessageInputToolbarView({
   );
 
   useLayoutEffect(() => {
+    if (lastBottomOverflowLayoutKeyRef.current !== bottomOverflowLayoutKey) {
+      lastBottomOverflowLayoutKeyRef.current = bottomOverflowLayoutKey;
+      const resetTier = typeof ResizeObserver === "undefined" ? "late" : "none";
+      if (bottomOverflowTier !== resetTier) {
+        setBottomOverflowTier(resetTier);
+        return;
+      }
+    }
     const toolbar = toolbarRef.current;
     if (!toolbar || !hasBottomOverflowControls) {
       if (bottomOverflowTier !== "none") {
@@ -1242,6 +1316,7 @@ export function MessageInputToolbarView({
     };
   }, [
     bottomOverflowTier,
+    bottomOverflowLayoutKey,
     hasBottomOverflowControls,
     refs?.actions,
     refs?.left,

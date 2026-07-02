@@ -63,6 +63,8 @@ import {
   getSearchSelectionProjection,
   getSearchVisibleTurnGroups,
   getThinkingDurationMs,
+  getThinkingItemIds,
+  getThinkingTextLengths,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
@@ -1326,24 +1328,16 @@ export const MessageList = memo(function MessageList({
   );
   useLayoutEffect(() => {
     const previousThinkingTextLengths = previousThinkingTextLengthsRef.current;
-    const nextThinkingTextLengths = new Map<string, number>();
+    const nextThinkingTextLengths = getThinkingTextLengths(renderItems);
     let visibleThinkingDelta = false;
 
-    for (const item of renderItems) {
-      if (item.type !== "thinking") {
-        continue;
-      }
-      const nextLength = item.thinking.length;
-      nextThinkingTextLengths.set(item.id, nextLength);
-
-      if (previousThinkingTextLengths === null || !thinkingItemsVisible) {
-        continue;
-      }
-
-      const isExpanded = resolveThinkingItemExpanded(item.id);
-      const previousLength = previousThinkingTextLengths.get(item.id) ?? 0;
-      if (isExpanded && nextLength > previousLength) {
-        visibleThinkingDelta = true;
+    if (previousThinkingTextLengths !== null && thinkingItemsVisible) {
+      for (const [itemId, nextLength] of nextThinkingTextLengths) {
+        const isExpanded = resolveThinkingItemExpanded(itemId);
+        const previousLength = previousThinkingTextLengths.get(itemId) ?? 0;
+        if (isExpanded && nextLength > previousLength) {
+          visibleThinkingDelta = true;
+        }
       }
     }
 
@@ -1360,12 +1354,7 @@ export const MessageList = memo(function MessageList({
   ]);
   useLayoutEffect(() => {
     const previouslyObservedThinkingIds = observedThinkingItemIdsRef.current;
-    const existingThinkingIds = new Set<string>();
-    for (const item of renderItems) {
-      if (item.type === "thinking") {
-        existingThinkingIds.add(item.id);
-      }
-    }
+    const existingThinkingIds = getThinkingItemIds(renderItems);
     observedThinkingItemIdsRef.current = existingThinkingIds;
     const seedHistoricalThinking =
       existingThinkingIds.size > 0 &&

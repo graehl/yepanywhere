@@ -19,6 +19,8 @@ import {
   getSearchVisibleTurnGroups,
   getTailEntryCountForRenderItemTarget,
   getThinkingDurationMs,
+  getThinkingItemIds,
+  getThinkingTextLengths,
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
@@ -823,6 +825,41 @@ describe("session detail render selectors", () => {
     expect(
       getDisplayRenderItems(items, { thinkingItemsVisible: false }),
     ).toEqual([text]);
+  });
+
+  it("derives thinking id and text-length summaries", () => {
+    const text: RenderItem = {
+      type: "text",
+      id: "text-1",
+      text: "Answer",
+      sourceMessages: [],
+    };
+    const thinking1: RenderItem = {
+      type: "thinking",
+      id: "thinking-1",
+      thinking: "First",
+      status: "complete",
+      sourceMessages: [],
+    };
+    const thinking2: RenderItem = {
+      type: "thinking",
+      id: "thinking-2",
+      thinking: "Second thought",
+      status: "streaming",
+      sourceMessages: [],
+    };
+    const items = [thinking1, text, thinking2];
+
+    expect(Array.from(getThinkingItemIds(items))).toEqual([
+      "thinking-1",
+      "thinking-2",
+    ]);
+    expect(Array.from(getThinkingTextLengths(items))).toEqual([
+      ["thinking-1", "First".length],
+      ["thinking-2", "Second thought".length],
+    ]);
+    expect(Array.from(getThinkingItemIds([text]))).toEqual([]);
+    expect(Array.from(getThinkingTextLengths([text]))).toEqual([]);
   });
 
   it("projects search matches, ids, selected anchor, and previews", () => {

@@ -327,6 +327,28 @@ export function getLatestThinkingItemId(
   return null;
 }
 
+export function getThinkingTextLengths(
+  items: readonly RenderItem[],
+): Map<string, number> {
+  const lengths = new Map<string, number>();
+  for (const item of items) {
+    if (item.type === "thinking") {
+      lengths.set(item.id, item.thinking.length);
+    }
+  }
+  return lengths;
+}
+
+export function getThinkingItemIds(items: readonly RenderItem[]): Set<string> {
+  const ids = new Set<string>();
+  for (const item of items) {
+    if (item.type === "thinking") {
+      ids.add(item.id);
+    }
+  }
+  return ids;
+}
+
 export function getDisplayRenderItems(
   items: readonly RenderItem[],
   options: { thinkingItemsVisible: boolean },

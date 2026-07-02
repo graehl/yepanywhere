@@ -80,6 +80,8 @@ What is already in place:
 - Display render item filtering now derives through
   `sessionDetail/renderSelectors`, using render items plus the local thinking
   visibility flag.
+- Thinking id and text-length summaries now derive through
+  `sessionDetail/renderSelectors` for the local expansion/follow effects.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
@@ -161,9 +163,9 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any observed divergence into a
   compact reducer or hook fixture.
-- Continue the render-selector preflight by moving thinking id and text-length
-  summary derivation behind pure helpers without taking over thinking
-  visibility state, expansion state, or rendering.
+- Continue the render-selector preflight by moving visible thinking text-delta
+  detection behind a pure helper without taking over follow/scroll effects,
+  thinking visibility state, expansion state, or rendering.
 
 Then:
 

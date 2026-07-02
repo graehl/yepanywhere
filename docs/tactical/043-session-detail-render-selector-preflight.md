@@ -39,7 +39,9 @@ Covered outputs:
 - thinking duration derivation from render items plus `nowMs`;
 - thinking count and latest-thinking-id derivation from render items;
 - display render item filtering from render items plus the local thinking
-  visibility flag.
+  visibility flag;
+- thinking id and text-length summary derivation for local expansion/follow
+  effects.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
 ref, thinking expansion state, search session state and keyboard navigation,
@@ -59,6 +61,6 @@ and actual rendering.
 ## Next Preflight Slice
 
 Keep the Developer setting dogfood path default-off while moving one more pure
-projection out of `MessageList`. The next low-risk candidate is thinking id and
-text-length summary derivation for the local expansion/follow effects, while
-keeping thinking visibility/expansion state and rendering local.
+projection out of `MessageList`. The next low-risk candidate is visible
+thinking text-delta detection from thinking text-length summaries plus the
+local expansion predicate, while keeping follow/scroll effects local.

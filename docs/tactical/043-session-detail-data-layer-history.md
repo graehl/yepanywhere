@@ -262,6 +262,10 @@ Reducer/helper behavior locked down during Slice 4:
 - Display render item filtering now lives in `sessionDetail/renderSelectors`,
   preserving the local thinking visibility flag as input while `MessageList`
   keeps thinking visibility, expansion state, and rendering local.
+- Thinking id and text-length summaries now live in
+  `sessionDetail/renderSelectors`, preserving the inputs for the local
+  expansion/follow effects while keeping their state mutations in
+  `MessageList`.
 
 ## Verification Details
 

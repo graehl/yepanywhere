@@ -33,7 +33,10 @@ import {
   reportSessionDetailShadowDivergence,
   type SessionDetailRuntimeStateInput,
 } from "../lib/sessionDetail/shadowDiagnostics";
-import { selectSessionDetailRuntimeSnapshot } from "../lib/sessionDetail/selectors";
+import {
+  selectSessionDetailRuntimeSnapshot,
+  selectSessionDetailScrollSnapshot,
+} from "../lib/sessionDetail/selectors";
 import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
 import {
   createInitialSessionDetailState,
@@ -1500,6 +1503,13 @@ export function useSessionMessages(
       // Silent fail for metadata updates
     }
   }, [projectId, sessionId]);
+  const selectedInitialScrollSnapshot =
+    defaultSessionDetailStore.readSelected(
+      snapshotKey,
+      selectSessionDetailScrollSnapshot,
+    ) ??
+    cachedLoad?.scrollSnapshot ??
+    null;
 
   return {
     messages,
@@ -1521,7 +1531,7 @@ export function useSessionMessages(
     pagination,
     loadingOlder,
     loadOlderMessages,
-    initialScrollSnapshot: cachedLoad?.scrollSnapshot ?? null,
+    initialScrollSnapshot: selectedInitialScrollSnapshot,
     updateRouteScrollSnapshot,
     restoredFromSnapshot: Boolean(cachedLoad),
   };

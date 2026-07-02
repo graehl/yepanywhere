@@ -20,6 +20,7 @@ import {
 } from "../../lib/clientSummaryStore";
 import { defaultSessionDetailStore } from "../../lib/sessionDetail/sessionDetailStore";
 import { UI_KEYS } from "../../lib/storageKeys";
+import type { SessionRouteScrollSnapshot } from "../../lib/sessionRouteSnapshots";
 
 const apiMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -37,6 +38,20 @@ import { getStreamingEnabled } from "../useStreamingEnabled";
 
 function enableSessionTranscriptCache() {
   window.localStorage.setItem(UI_KEYS.sessionTranscriptCache, "true");
+}
+
+function scrollSnapshot(): SessionRouteScrollSnapshot {
+  return {
+    atBottom: false,
+    scrollTop: 120,
+    scrollHeight: 480,
+    clientHeight: 240,
+    anchor: {
+      id: "msg-1",
+      topOffset: 16,
+    },
+    updatedAtMs: 42,
+  };
 }
 
 describe("useSessionMessages cache", () => {
@@ -194,6 +209,71 @@ describe("useSessionMessages cache", () => {
     rendered.unmount();
 
     expect(defaultSessionDetailStore.read(storeKey)).toBeUndefined();
+  });
+
+  it("returns retained scroll snapshots through the store selector", async () => {
+    enableSessionTranscriptCache();
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:01:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+    });
+
+    const first = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    const retainedScroll = scrollSnapshot();
+    act(() => {
+      first.result.current.updateRouteScrollSnapshot(retainedScroll);
+    });
+    first.unmount();
+
+    const second = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    expect(second.result.current.restoredFromSnapshot).toBe(true);
+    expect(second.result.current.initialScrollSnapshot).toEqual(
+      retainedScroll,
+    );
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
   });
 
   it("reuses the warm session cache before a slow delta fetch resolves", async () => {

@@ -2,8 +2,8 @@
 
 Topic: session-detail-data-layer
 
-Status: Slice 4 selector parity diagnostics added. The pure reducer fixture
-harness now
+Status: Slice 4 first selector-backed hook field added. The pure reducer
+fixture harness now
 covers basic persisted, streamed, catch-up, replay, duplicate-prompt,
 duplicate-assistant, pagination, retained-scroll-snapshot, recap-cursor,
 Codex-shaped provider parity, final-message markdown augment paths, and Codex
@@ -15,7 +15,8 @@ route snapshot cache now sits behind a named session detail store with
 selector subscriptions, retention controls, expiry/eviction, and stats; the
 hook also mirrors its active lifecycle actions into that store while mounted
 and can compare live hook state to a store-selected runtime snapshot under the
-same dev-only diagnostic opt-in.
+same dev-only diagnostic opt-in. `useSessionMessages.initialScrollSnapshot`
+now reads through a store selector with the prior cached-load fallback.
 Subagent work is intentionally scoped to broad shape/provenance coverage for
 now; exact live-vs-durable subagent parity is deferred until the provider
 persistence model is better understood.
@@ -294,8 +295,10 @@ Next likely implementation chunk:
   ids/types/sources/order/cursors/provenance into a reducer test, then decide
   whether the reducer or the current hook behavior is the intended canonical
   shape.
-- After selector parity is quiet in normal use, move one narrow field behind a
-  store selector while keeping the public hook return shape unchanged.
+- After selector parity is quiet in normal use, move the next narrow return
+  field behind a store selector while keeping the public hook return shape
+  unchanged. `pagination` is the likely next candidate; `messages` should
+  wait.
 
 ## Slice 3: Subagent Shape And Tree Projection
 
@@ -397,8 +400,12 @@ Status 2026-07-02:
 - `useSessionMessages` reports store parity at the same coarse boundaries as
   shadow diagnostics, but only when diagnostics are enabled; production reads
   remain on the existing hook state.
-- Remaining Slice 4 work: observe the selector parity surface, then switch one
-  narrow return field to a store selector with rollback still trivial.
+- Moved the first narrow public hook field,
+  `initialScrollSnapshot`, to a store selector read with the previous
+  cached-load value as fallback. Added hook coverage for retained scroll
+  snapshots after warm restore.
+- Remaining Slice 4 work: observe the selector parity surface, then switch the
+  next narrow return field to a store selector with rollback still trivial.
 
 ## Slice 5: Hook Adapter Migration
 

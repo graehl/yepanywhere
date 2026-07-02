@@ -33,6 +33,12 @@ export function selectSessionDetailRuntimeSnapshot(
   };
 }
 
+export function selectSessionDetailScrollSnapshot(
+  state: SessionDetailState,
+): SessionRouteScrollSnapshot | undefined {
+  return state.scrollSnapshot;
+}
+
 export function selectSessionDetailPreprocessAugments(
   state: SessionDetailState,
   options: { activeToolApproval?: ActiveToolApproval } = {},

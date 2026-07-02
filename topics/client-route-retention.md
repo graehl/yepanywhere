@@ -308,7 +308,7 @@ content.
   [session-detail-data-layer.md](session-detail-data-layer.md)), so there is
   a single writer to gate. Keep the existing restore-side discard heuristics
   (`shouldRestoreInitialScrollSnapshot`) as regression guards.
-- Diagnostics: emit a divergence event (the `reportShadowDivergence` pattern)
+- Diagnostics: emit a divergence event (the `reportStoreDivergence` pattern)
   whenever a restore resolves by anything other than the exact anchor, with a
   miss reason. This converts the scroll-reset investigation from anecdotes to
   data.

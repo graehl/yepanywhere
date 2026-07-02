@@ -1,7 +1,6 @@
 import { getMessageId } from "../mergeMessages";
 import { UI_KEYS } from "../storageKeys";
 import type { Message, SessionMetadata } from "../../types";
-import type { SessionDetailState } from "./types";
 import type { SessionDetailRuntimeSnapshot } from "./selectors";
 
 type MessageSource = "sdk" | "jsonl" | undefined;
@@ -61,15 +60,6 @@ export interface SessionDetailRuntimeStateInput {
   lastMessageId?: string;
   maxPersistedTimestampMs: number;
   scrollSnapshot?: SessionDetailRuntimeSnapshot["scrollSnapshot"];
-}
-
-export interface SessionDetailShadowDivergenceInput {
-  boundary: string;
-  projectId: string;
-  sessionId: string;
-  provider?: string;
-  live: SessionDetailRuntimeStateInput;
-  shadow: SessionDetailState;
 }
 
 export interface SessionDetailStoreDivergenceInput {
@@ -233,89 +223,17 @@ function comparableCompact(input: CompactSessionDetail): string {
 
 function findFirstMessageDiff(
   liveMessages: readonly Message[],
-  shadowMessages: readonly Message[],
-): { index: number; live?: CompactMessage; shadow?: CompactMessage } | null {
-  const count = Math.max(liveMessages.length, shadowMessages.length);
+  storeMessages: readonly Message[],
+): { index: number; live?: CompactMessage; store?: CompactMessage } | null {
+  const count = Math.max(liveMessages.length, storeMessages.length);
   for (let index = 0; index < count; index += 1) {
     const live = compactMessage(liveMessages[index]);
-    const shadow = compactMessage(shadowMessages[index]);
-    if (JSON.stringify(live) !== JSON.stringify(shadow)) {
-      return { index, live, shadow };
+    const store = compactMessage(storeMessages[index]);
+    if (JSON.stringify(live) !== JSON.stringify(store)) {
+      return { index, live, store };
     }
   }
   return null;
-}
-
-function findFirstStoreMessageDiff(
-  liveMessages: readonly Message[],
-  storeMessages: readonly Message[],
-): { index: number; live?: CompactMessage; store?: CompactMessage } | null {
-  const diff = findFirstMessageDiff(liveMessages, storeMessages);
-  if (!diff) {
-    return null;
-  }
-  return {
-    index: diff.index,
-    live: diff.live,
-    store: diff.shadow,
-  };
-}
-
-function buildShadowRuntimeInput(
-  shadow: SessionDetailState,
-): SessionDetailRuntimeStateInput {
-  return {
-    messages: shadow.messages,
-    session: shadow.session,
-    pagination: shadow.pagination,
-    agentContent: shadow.agentContent,
-    toolUseToAgentEntries: shadow.toolUseToAgentEntries,
-    lastMessageId: shadow.lastMessageId,
-    maxPersistedTimestampMs: shadow.maxPersistedTimestampMs,
-    scrollSnapshot: shadow.scrollSnapshot,
-  };
-}
-
-export function reportSessionDetailShadowDivergence(
-  input: SessionDetailShadowDivergenceInput,
-): void {
-  if (!isSessionDetailShadowDiagnosticsEnabled()) {
-    return;
-  }
-
-  const live = compactSessionDetail(input.live);
-  const shadow = compactSessionDetail(buildShadowRuntimeInput(input.shadow));
-  const liveKey = comparableCompact(live);
-  const shadowKey = comparableCompact(shadow);
-  if (liveKey === shadowKey) {
-    return;
-  }
-
-  const divergenceKey = [
-    input.boundary,
-    input.projectId,
-    input.sessionId,
-    hashString(liveKey),
-    hashString(shadowKey),
-  ].join(":");
-  if (loggedDivergenceKeys.has(divergenceKey)) {
-    return;
-  }
-  loggedDivergenceKeys.add(divergenceKey);
-
-  console.warn("[SessionDetailShadow]", {
-    event: "session-detail-shadow-divergence",
-    boundary: input.boundary,
-    projectId: input.projectId,
-    sessionId: input.sessionId,
-    provider: input.provider ?? live.provider ?? shadow.provider,
-    firstMessageDiff: findFirstMessageDiff(
-      input.live.messages,
-      input.shadow.messages,
-    ),
-    live,
-    shadow,
-  });
 }
 
 export function reportSessionDetailStoreDivergence(
@@ -352,7 +270,7 @@ export function reportSessionDetailStoreDivergence(
     projectId: input.projectId,
     sessionId: input.sessionId,
     provider: input.provider ?? live.provider ?? store.provider,
-    firstMessageDiff: findFirstStoreMessageDiff(
+    firstMessageDiff: findFirstMessageDiff(
       input.live.messages,
       input.store.messages,
     ),

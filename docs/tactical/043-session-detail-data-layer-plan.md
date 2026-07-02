@@ -24,11 +24,13 @@ What is already in place:
   prompts, duplicate assistant rows, pagination, retained scroll snapshots,
   recaps/cursors, Codex-shaped parity, final markdown augments, and several
   subagent/message-cache paths.
-- `useSessionMessages` feeds a shadow reducer and the session detail store at
-  existing load, stream, catch-up, pagination, mapping, subagent, metadata, and
+- `useSessionMessages` feeds the session detail store at existing load,
+  stream, catch-up, pagination, mapping, subagent, metadata, and
   scroll-snapshot boundaries.
-- Dev-only diagnostics can compare live hook state against the shadow reducer
-  and store without logging transcript text.
+- Dev-only diagnostics can compare live hook state against the store without
+  logging transcript text. The earlier hook-local shadow reducer ref was
+  removed once store parity reporting covered the same comparison; the store
+  is the single mirrored reduction.
 - Same-tab route snapshot retention now sits behind
   `defaultSessionDetailStore`, with TTL, max-entry, byte-cap, retain/release,
   selector subscriptions, and stats.
@@ -116,13 +118,13 @@ What is already in place:
 
 Current diagnostic stance:
 
-- Treat `scroll-snapshot` shadow/store divergence logs as known noisy signal
+- Treat `scroll-snapshot` store divergence logs as known noisy signal
   from the older snapshot path. Do not spend migration time chasing those until
   returned `messages`/`agentContent` and render-selector parity are otherwise
   boring enough for a cleaner cutover audit.
 - Keep dogfooding the Developer toggle and turn non-scroll data divergences
   into compact fixtures. Fresh browser checks with the toggle enabled did not
-  show catastrophic failures or fresh store/shadow divergence.
+  show catastrophic failures or fresh store divergence.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are

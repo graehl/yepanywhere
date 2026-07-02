@@ -1,6 +1,7 @@
 # Cached Session Restore Performance
 
-Status: Second implementation slice landed, 2026-07-01.
+Status: Retention features default-off during scroll-reset investigation,
+2026-07-02.
 
 Progress:
 
@@ -25,8 +26,11 @@ Second slice notes:
   behavior.
 - Moved response streaming, session loading progress, and stable tool preview
   rendering out of Appearance into Performance.
-- Added default-on browser-local toggles for keeping the most recent session
-  mounted briefly and for retaining recent transcript snapshots.
+- Added browser-local toggles for keeping the most recent session mounted
+  briefly and for retaining recent transcript snapshots.
+- These newer retention features now default off while intermittent
+  scroll-to-top restores are investigated. Users can still enable them from
+  Performance settings.
 - Disabling transcript snapshots clears the current in-tab snapshot cache and
   forces future session loads through the cold-load path.
 - Disabling DOM linger prevents the previous session layer from being parked
@@ -210,8 +214,9 @@ warm-navigation pause. Options to evaluate:
 
 ## Settings
 
-The existing Appearance "Session Loading Progress" setting controls the progress
-surface. The retention behaviors themselves are not currently user-configurable.
+The existing Performance "Session Loading Progress" setting controls the
+progress surface. The retention behaviors are browser-local Performance
+settings.
 
 Add browser-local settings for investigation and user control:
 

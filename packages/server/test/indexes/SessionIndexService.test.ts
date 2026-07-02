@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { toUrlProjectId } from "@yep-anywhere/shared";
+import { toUrlProjectId, type UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionIndexService } from "../../src/indexes/SessionIndexService.js";
 import { GrokSessionReader } from "../../src/sessions/grok-reader.js";
@@ -619,6 +619,146 @@ describe("SessionIndexService", () => {
         codexReader,
       );
       expect(refreshed[0]?.title).toBe("Updated title");
+    });
+
+    it("targets loaded codex scopes by rollout session id", async () => {
+      const eventBus = new EventBus();
+      const codexService = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        eventBus,
+        fullValidationIntervalMs: 60000,
+      });
+      await codexService.initialize();
+
+      const codexSessionDir = join(testDir, "codex-sessions");
+      const projectAPath = "/tmp/codex-project-a";
+      const projectBPath = "/tmp/codex-project-b";
+      const projectAId = toUrlProjectId(projectAPath);
+      const projectBId = toUrlProjectId(projectBPath);
+      const sessionA = randomUUID();
+      const sessionB = randomUUID();
+      const relativeA = `2026/07/01/rollout-2026-07-01T09-00-00-${sessionA}.jsonl`;
+      const relativeB = `2026/07/01/rollout-2026-07-01T09-01-00-${sessionB}.jsonl`;
+      const fileA = join(codexSessionDir, ...relativeA.split("/"));
+      const fileB = join(codexSessionDir, ...relativeB.split("/"));
+
+      const writeCodexFile = async (filePath: string, title: string) => {
+        await mkdir(dirname(filePath), { recursive: true });
+        await writeFile(filePath, `${title}\n`);
+      };
+      await writeCodexFile(fileA, "Project A original");
+      await writeCodexFile(fileB, "Project B original");
+
+      const makeCodexReader = (
+        projectPath: string,
+        sessionId: string,
+        filePath: string,
+      ): ISessionReader => {
+        const getSummary = async (
+          requestedSessionId: string,
+          requestedProjectId: UrlProjectId,
+        ): Promise<SessionSummary> => {
+          const title = (await readFile(filePath, "utf-8")).trim();
+          const stats = await stat(filePath);
+          return {
+            id: requestedSessionId,
+            projectId: requestedProjectId,
+            title,
+            fullTitle: title,
+            createdAt: new Date(stats.mtimeMs).toISOString(),
+            updatedAt: new Date(stats.mtimeMs).toISOString(),
+            messageCount: 1,
+            ownership: { owner: "none" },
+            provider: "codex",
+          };
+        };
+
+        return {
+          getIndexScopeKey: (sessionDir) =>
+            `codex::${sessionDir}::${projectPath}`,
+          listSessionFiles: async () => [{ sessionId, filePath }],
+          getSessionSummary: getSummary,
+          getSessionSummaryIfChanged: async (
+            requestedSessionId: string,
+            requestedProjectId: UrlProjectId,
+            cachedMtime: number,
+            cachedSize: number,
+          ) => {
+            const stats = await stat(filePath);
+            if (stats.mtimeMs === cachedMtime && stats.size === cachedSize) {
+              return null;
+            }
+            return {
+              summary: await getSummary(requestedSessionId, requestedProjectId),
+              mtime: stats.mtimeMs,
+              size: stats.size,
+            };
+          },
+          getSessionFilePath: async () => filePath,
+          listSessions: async (requestedProjectId: UrlProjectId) => [
+            await getSummary(sessionId, requestedProjectId),
+          ],
+          getSession: async () => null,
+          getAgentMappings: async () => [],
+          getAgentSession: async () => null,
+        };
+      };
+
+      const readerA = makeCodexReader(projectAPath, sessionA, fileA);
+      const readerB = makeCodexReader(projectBPath, sessionB, fileB);
+
+      const firstA = await codexService.getSessionsWithCache(
+        codexSessionDir,
+        projectAId,
+        readerA,
+      );
+      const firstB = await codexService.getSessionsWithCache(
+        codexSessionDir,
+        projectBId,
+        readerB,
+      );
+      expect(firstA[0]?.title).toBe("Project A original");
+      expect(firstB[0]?.title).toBe("Project B original");
+
+      await writeCodexFile(fileA, "Project A updated");
+      await writeCodexFile(fileB, "Project B updated");
+
+      const staleA = await codexService.getSessionsWithCache(
+        codexSessionDir,
+        projectAId,
+        readerA,
+      );
+      const staleB = await codexService.getSessionsWithCache(
+        codexSessionDir,
+        projectBId,
+        readerB,
+      );
+      expect(staleA[0]?.title).toBe("Project A original");
+      expect(staleB[0]?.title).toBe("Project B original");
+
+      eventBus.emit({
+        type: "file-change",
+        provider: "codex",
+        path: fileA,
+        relativePath: relativeA,
+        changeType: "modify",
+        timestamp: new Date().toISOString(),
+        fileType: "session",
+      });
+
+      const refreshedA = await codexService.getSessionsWithCache(
+        codexSessionDir,
+        projectAId,
+        readerA,
+      );
+      const stillCachedB = await codexService.getSessionsWithCache(
+        codexSessionDir,
+        projectBId,
+        readerB,
+      );
+      expect(refreshedA[0]?.title).toBe("Project A updated");
+      expect(stillCachedB[0]?.title).toBe("Project B original");
     });
   });
 

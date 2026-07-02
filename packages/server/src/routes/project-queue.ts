@@ -8,6 +8,7 @@ import {
   type ProjectQueueRecoveredSessionQueueSummary,
   type ProjectQueueResponse,
   type UpdateProjectQueueItemRequest,
+  getSessionDisplayTitle,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
@@ -30,6 +31,7 @@ import type { Project } from "../supervisor/types.js";
 
 interface ProjectQueueTitleDeps extends Partial<ProviderResolutionDeps> {
   scanner?: ProjectScanner;
+  sessionMetadataService?: SessionMetadataService;
 }
 
 export interface ProjectQueueRoutesDeps extends ProjectQueueTitleDeps {
@@ -44,7 +46,6 @@ export type GlobalProjectQueueRoutesDeps = ProjectQueueTitleDeps & {
     ProjectQueueScheduler,
     "getProjectStatus" | "promoteNow"
   >;
-  sessionMetadataService?: SessionMetadataService;
   sessionQueuePersistenceService?: SessionQueuePersistenceService;
 };
 
@@ -115,6 +116,27 @@ function hasTitleResolutionDeps(
   return typeof deps.readerFactory === "function";
 }
 
+function hasDisplayMetadataDeps(deps: ProjectQueueTitleDeps): boolean {
+  return !!deps.sessionMetadataService || hasTitleResolutionDeps(deps);
+}
+
+function resolveTargetTitles(
+  sessionId: string,
+  summary: { title?: string | null; fullTitle?: string | null } | null,
+  deps: ProjectQueueTitleDeps,
+): Pick<ProjectQueueItemSummary, "targetTitle" | "targetFullTitle"> {
+  const customTitle =
+    deps.sessionMetadataService?.getMetadata(sessionId)?.customTitle;
+  const title = summary?.title ?? null;
+  return {
+    targetTitle:
+      customTitle !== undefined || title !== null
+        ? getSessionDisplayTitle({ customTitle, title })
+        : null,
+    targetFullTitle: customTitle ?? summary?.fullTitle ?? null,
+  };
+}
+
 function buildProviderResolutionDeps(
   deps: ProjectQueueTitleDeps & Pick<ProviderResolutionDeps, "readerFactory">,
 ): ProviderResolutionDeps {
@@ -155,12 +177,19 @@ function buildProviderResolutionDeps(
 }
 
 async function enrichProjectQueueItem(
-  project: Project,
+  project: Project | null,
   item: ProjectQueueItemSummary,
   deps: ProjectQueueTitleDeps,
 ): Promise<ProjectQueueItemSummary> {
-  if (item.target.type !== "existing-session" || !hasTitleResolutionDeps(deps)) {
+  if (item.target.type !== "existing-session" || !hasDisplayMetadataDeps(deps)) {
     return item;
+  }
+
+  if (!project || !hasTitleResolutionDeps(deps)) {
+    const titles = resolveTargetTitles(item.target.sessionId, null, deps);
+    return titles.targetTitle !== null || titles.targetFullTitle !== null
+      ? { ...item, ...titles }
+      : item;
   }
 
   try {
@@ -173,14 +202,16 @@ async function enrichProjectQueueItem(
     );
     return {
       ...item,
-      targetTitle: resolved?.summary.title ?? null,
-      targetFullTitle: resolved?.summary.fullTitle ?? null,
+      ...resolveTargetTitles(
+        item.target.sessionId,
+        resolved?.summary ?? null,
+        deps,
+      ),
     };
   } catch {
     return {
       ...item,
-      targetTitle: null,
-      targetFullTitle: null,
+      ...resolveTargetTitles(item.target.sessionId, null, deps),
     };
   }
 }
@@ -190,7 +221,7 @@ async function enrichProjectQueueItems(
   items: ProjectQueueItemSummary[],
   deps: ProjectQueueTitleDeps,
 ): Promise<ProjectQueueItemSummary[]> {
-  if (!hasTitleResolutionDeps(deps)) {
+  if (!hasDisplayMetadataDeps(deps)) {
     return items;
   }
   return Promise.all(
@@ -218,14 +249,17 @@ async function enrichGlobalProjectQueueItems(
   items: ProjectQueueItemSummary[],
   deps: GlobalProjectQueueRoutesDeps,
 ): Promise<ProjectQueueItemSummary[]> {
-  if (!deps.scanner || !hasTitleResolutionDeps(deps)) {
+  if (!hasDisplayMetadataDeps(deps)) {
     return items;
   }
   const projectCache = new Map<string, Promise<Project | null>>();
   return Promise.all(
     items.map(async (item) => {
-      const project = await resolveProjectForQueueItem(item, deps, projectCache);
-      return project ? enrichProjectQueueItem(project, item, deps) : item;
+      const project =
+        deps.scanner && hasTitleResolutionDeps(deps)
+          ? await resolveProjectForQueueItem(item, deps, projectCache)
+          : null;
+      return enrichProjectQueueItem(project, item, deps);
     }),
   );
 }

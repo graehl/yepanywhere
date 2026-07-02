@@ -90,6 +90,10 @@ function renderNavigationLayoutWithSessionLinger(
   );
 }
 
+function enableSessionDomLinger() {
+  window.localStorage.setItem(UI_KEYS.sessionDomLinger, "true");
+}
+
 describe("NavigationLayout", () => {
   beforeEach(() => {
     mocks.useRetainSidebarSessionFeeds.mockClear();
@@ -111,6 +115,7 @@ describe("NavigationLayout", () => {
   });
 
   it("parks one session DOM layer under a non-session route and reveals it", () => {
+    enableSessionDomLinger();
     renderNavigationLayoutWithSessionLinger();
 
     const sessionLayer = screen.getByTestId("session-layer");
@@ -136,6 +141,7 @@ describe("NavigationLayout", () => {
   });
 
   it("parks the session DOM under a full-frame project file route", () => {
+    enableSessionDomLinger();
     renderNavigationLayoutWithSessionLinger();
 
     const sessionLayer = screen.getByTestId("session-layer");
@@ -160,6 +166,7 @@ describe("NavigationLayout", () => {
   });
 
   it("expires the parked session DOM after the linger window", () => {
+    enableSessionDomLinger();
     vi.useFakeTimers();
     renderNavigationLayoutWithSessionLinger();
 
@@ -175,7 +182,6 @@ describe("NavigationLayout", () => {
   });
 
   it("does not park session DOM when session linger is disabled", () => {
-    window.localStorage.setItem(UI_KEYS.sessionDomLinger, "false");
     renderNavigationLayoutWithSessionLinger();
 
     fireEvent.click(screen.getByText("Agents"));
@@ -185,6 +191,7 @@ describe("NavigationLayout", () => {
   });
 
   it("does not park the old session when navigating directly to another session", () => {
+    enableSessionDomLinger();
     renderNavigationLayoutWithSessionLinger();
 
     const firstSessionLayer = screen.getByTestId("session-layer");

@@ -72,13 +72,13 @@ describe("useSessionPerformanceSettings", () => {
     resetSessionRouteSnapshotsForTests();
   });
 
-  it("defaults session retention features to enabled", () => {
+  it("defaults session retention features to disabled", () => {
     const { result } = renderHook(() => useSessionPerformanceSettings());
 
-    expect(result.current.sessionDomLingerEnabled).toBe(true);
-    expect(result.current.sessionTranscriptCacheEnabled).toBe(true);
-    expect(getSessionDomLingerEnabled()).toBe(true);
-    expect(getSessionTranscriptCacheEnabled()).toBe(true);
+    expect(result.current.sessionDomLingerEnabled).toBe(false);
+    expect(result.current.sessionTranscriptCacheEnabled).toBe(false);
+    expect(getSessionDomLingerEnabled()).toBe(false);
+    expect(getSessionTranscriptCacheEnabled()).toBe(false);
   });
 
   it("reads stored disabled preferences", () => {

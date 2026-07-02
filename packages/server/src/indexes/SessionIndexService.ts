@@ -20,9 +20,19 @@ import {
   type UrlProjectId,
 } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
+import { canonicalizeProjectPath } from "../projects/paths.js";
+import {
+  type CodexRolloutDiscoveryMetadata,
+  readCodexRolloutMetadata,
+} from "../sessions/codex-discovery.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { SessionSummary } from "../supervisor/types.js";
+import {
+  getCodexRolloutDiscoveryIdentity,
+  getCodexRolloutSessionId,
+} from "../utils/codexRolloutFiles.js";
 import type { EventBus, FileChangeEvent } from "../watcher/index.js";
+import { SessionDiscoveryIndex } from "./SessionDiscoveryIndex.js";
 import type { ISessionIndexService, SessionIndexListOptions } from "./types.js";
 
 const LOG_CACHE_PERF = process.env.SESSION_INDEX_LOG_PERF === "true";
@@ -207,6 +217,7 @@ export class SessionIndexService implements ISessionIndexService {
   private inFlightTitleLoads: Map<string, Promise<string | null>> = new Map();
   private inFlightSummaryParses: Map<string, Promise<SessionSummary | null>> =
     new Map();
+  private codexDiscoveryIndexes: Map<string, SessionDiscoveryIndex> = new Map();
   private summaryParseQueue: SummaryParseTask[] = [];
   private activeSummaryParses = 0;
   private warmupJobs: Map<string, SessionIndexWarmupJobState> = new Map();
@@ -547,7 +558,13 @@ export class SessionIndexService implements ISessionIndexService {
     sessionId: string,
     reader?: ISessionReader,
   ): void {
-    const scopeKey = this.getScopeKey(sessionDir, reader);
+    this.markSessionDirtyByScopeKey(
+      this.getScopeKey(sessionDir, reader),
+      sessionId,
+    );
+  }
+
+  private markSessionDirtyByScopeKey(scopeKey: string, sessionId: string): void {
     const current = this.dirtySessionsByDir.get(scopeKey) ?? new Set();
     current.add(sessionId);
     this.dirtySessionsByDir.set(scopeKey, current);
@@ -593,6 +610,43 @@ export class SessionIndexService implements ISessionIndexService {
         this.dirtyDirs.add(this.getScopeKeyFromKnownKey(knownKey));
       }
     }
+  }
+
+  private markLoadedCodexSessionDirty(
+    sessionId: string,
+    changeType: FileChangeEvent["changeType"],
+  ): boolean {
+    let marked = false;
+    const knownScopeKeys = new Set<string>([
+      ...this.indexCache.keys(),
+      ...this.lastFullValidationAt.keys(),
+      ...this.dirtyDirs.values(),
+      ...this.dirtySessionsByDir.keys(),
+    ]);
+
+    for (const knownKey of knownScopeKeys) {
+      const scopeKey = this.getScopeKeyFromKnownKey(knownKey);
+      if (!scopeKey.startsWith("codex::")) continue;
+      const index = this.indexCache.get(scopeKey);
+      if (!index?.sessions[sessionId]) continue;
+      this.markCodexScopeDirty(scopeKey, sessionId, changeType);
+      marked = true;
+    }
+
+    return marked;
+  }
+
+  private markCodexScopeDirty(
+    scopeKey: string,
+    sessionId: string,
+    changeType: FileChangeEvent["changeType"],
+  ): void {
+    if (changeType === "create" || changeType === "delete") {
+      this.dirtyDirs.add(scopeKey);
+      return;
+    }
+
+    this.markSessionDirtyByScopeKey(scopeKey, sessionId);
   }
 
   private buildSummariesFromIndex(
@@ -1015,11 +1069,7 @@ export class SessionIndexService implements ISessionIndexService {
     }
 
     if (event.provider === "codex") {
-      // Codex indexes are project-scoped over a shared sessions tree
-      // (codex::<sessionsDir>::<projectPath>), so a raw file event does not
-      // tell us which project scope owns the changed session. Mark all loaded
-      // Codex scopes dirty and let the next request reconcile via listSessionFiles.
-      this.markMatchingScopesDirty("codex::");
+      this.handleCodexFileChange(event);
       return;
     }
 
@@ -1027,6 +1077,115 @@ export class SessionIndexService implements ISessionIndexService {
       // Gemini uses the same shared-tree + project-scoped index pattern.
       this.markMatchingScopesDirty("gemini::");
     }
+  }
+
+  private handleCodexFileChange(event: FileChangeEvent): void {
+    const sessionId = getCodexRolloutSessionId(event.relativePath);
+    if (!sessionId) {
+      this.markMatchingScopesDirty("codex::");
+      return;
+    }
+
+    if (this.markLoadedCodexSessionDirty(sessionId, event.changeType)) {
+      return;
+    }
+
+    void this.resolveAndMarkCodexFileChange(event, sessionId);
+  }
+
+  private async resolveAndMarkCodexFileChange(
+    event: FileChangeEvent,
+    sessionId: string,
+  ): Promise<void> {
+    try {
+      const resolved = await this.resolveCodexFileChange(event);
+      if (resolved && !resolved.isSubagent) {
+        this.markCodexScopeDirty(
+          resolved.scopeKey,
+          resolved.sessionId,
+          event.changeType,
+        );
+        return;
+      }
+    } catch (error) {
+      getLogger().debug(
+        { err: error, filePath: event.path },
+        "[SessionIndexService] Failed to resolve Codex file change",
+      );
+    }
+
+    if (!this.markLoadedCodexSessionDirty(sessionId, event.changeType)) {
+      this.markMatchingScopesDirty("codex::");
+    }
+  }
+
+  private async resolveCodexFileChange(event: FileChangeEvent): Promise<{
+    sessionId: string;
+    scopeKey: string;
+    isSubagent: boolean;
+  } | null> {
+    const sessionsDir = this.getCodexSessionsDirForEvent(event);
+    const discoveryIndex = this.getCodexDiscoveryIndex(sessionsDir);
+    const identity = getCodexRolloutDiscoveryIdentity(sessionsDir, event.path);
+
+    if (event.changeType === "delete") {
+      const record =
+        await discoveryIndex.getRecord<CodexRolloutDiscoveryMetadata>(
+          identity.shardKey,
+          identity.key,
+        );
+      if (!record) return null;
+      await discoveryIndex.removeRecord(identity.shardKey, identity.key);
+      void discoveryIndex.flush();
+      return this.codexMetadataToDirtyScope(sessionsDir, record.metadata);
+    }
+
+    const metadata = await readCodexRolloutMetadata({
+      sessionsDir,
+      filePath: event.path,
+      discoveryIndex,
+    });
+    void discoveryIndex.flush();
+    if (!metadata) return null;
+    return this.codexMetadataToDirtyScope(sessionsDir, metadata);
+  }
+
+  private codexMetadataToDirtyScope(
+    sessionsDir: string,
+    metadata: CodexRolloutDiscoveryMetadata,
+  ): { sessionId: string; scopeKey: string; isSubagent: boolean } {
+    return {
+      sessionId: metadata.id,
+      scopeKey: `codex::${sessionsDir}::${canonicalizeProjectPath(
+        metadata.cwd,
+      )}`,
+      isSubagent: metadata.isSubagent,
+    };
+  }
+
+  private getCodexDiscoveryIndex(sessionsDir: string): SessionDiscoveryIndex {
+    const resolvedSessionsDir = path.resolve(sessionsDir);
+    let discoveryIndex = this.codexDiscoveryIndexes.get(resolvedSessionsDir);
+    if (!discoveryIndex) {
+      discoveryIndex = new SessionDiscoveryIndex({
+        baseDir: path.join(this.dataDir, "session-discovery"),
+        provider: "codex",
+        sourceRoot: resolvedSessionsDir,
+      });
+      this.codexDiscoveryIndexes.set(resolvedSessionsDir, discoveryIndex);
+    }
+    return discoveryIndex;
+  }
+
+  private getCodexSessionsDirForEvent(event: FileChangeEvent): string {
+    const relativeDir = path.dirname(event.relativePath.replace(/\\/g, "/"));
+    let current = path.resolve(path.dirname(event.path));
+    if (relativeDir === ".") return current;
+
+    for (const _segment of relativeDir.split("/")) {
+      current = path.dirname(current);
+    }
+    return current;
   }
 
   private async applyIncrementalDirtyUpdates(

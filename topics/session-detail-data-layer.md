@@ -1,0 +1,208 @@
+# Session Detail Data Layer
+
+> YA needs a canonical, data-only session detail layer between provider
+> transcript inputs and transcript DOM rendering, so streaming, persisted,
+> replayed, augmented, and subagent messages converge before `MessageList`
+> receives renderable data.
+
+Topic: session-detail-data-layer
+
+Status: Vision. Use this document to orient design work before editing
+`useSession`, `useSessionMessages`, transcript stream handlers, session
+message caches, augments, subagent transcript rendering, or `/btw` transcript
+surfaces. The tactical implementation plan starts in
+[`docs/tactical/043-session-detail-data-layer-plan.md`](../docs/tactical/043-session-detail-data-layer-plan.md).
+
+## Problem
+
+Session detail currently has no well-understood data-only layer of truth. Core
+transcript state is spread across hooks, refs, component-local state, route
+snapshot caches, stream handlers, renderer contexts, and special feature paths.
+That made sense when the session page was smaller, but it now obscures the
+semantics that should be testable independently from the mounted DOM.
+
+Observed and recurring symptoms:
+
+- duplicate assistant messages, duplicate user prompts, and stream-vs-durable
+  dedupe rules that are difficult to reason about from a top-down view;
+- live SDK streaming and persisted/reloaded transcripts can render different
+  shapes for the same provider conversation;
+- server-authoritative parent/tree message following can behave differently
+  during streaming than after a reload;
+- subagent transcript rows can have different live, lazy-loaded, and reloaded
+  shapes;
+- markdown/tool/file augments are order-sensitive and sometimes fail to attach
+  even when the underlying transcript data is present;
+- inline renderer state, including nested scrollbars, can reset because stable
+  data identity and DOM-local state ownership are not cleanly separated;
+- same-tab retained transcript snapshots are stored through an implicit global
+  side channel rather than an explicit session-detail owner;
+- `/btw` asides and related helper-session surfaces act like UI-side channels
+  instead of first-class consumers of session detail data.
+
+The important point is not that refs are bad. YA needs ref-heavy streaming and
+scroll paths for performance. The problem is that refs and nested hooks now own
+semantic transcript decisions that should be visible, reducible, and testable
+without mounting the whole session page.
+
+## Target Shape
+
+The desired pipeline is:
+
+```text
+provider stream / REST load / replay / catch-up / subagent load
+  -> transcript reducer
+  -> canonical session detail store
+  -> render selector
+  -> MessageList DOM and block renderers
+```
+
+The data layer should canonicalize provider input before UI rendering. A live
+SDK stream sequence and the equivalent persisted transcript read should produce
+the same canonical session detail shape, modulo explicitly modeled transient
+state such as an in-flight token stream. Subagents are the early exception to
+that parity bar: provider persistence and live activity surfaces differ enough
+that the first goal is explicit provenance and broad shape correctness, not
+claiming exact live/reload equivalence before fixtures prove it.
+
+## Boundaries
+
+### Store-owned data
+
+A session detail store should own core session data and lifecycle:
+
+- session metadata and ownership/process-derived detail facts;
+- durable transcript messages in canonical identity/order form;
+- pending, deferred, recovered, and project-queue transcript-adjacent rows;
+- pagination and loaded-window metadata;
+- subagent/agent transcript content;
+- tool-use-to-agent mappings and provider parent/tree relationships;
+- load state, load progress, replay/catch-up watermarks, and persisted cursors;
+- retained scroll snapshot metadata, without making every scroll tick a
+  reactive UI event;
+- same-tab retention and eviction rules for warm session detail snapshots.
+
+### MessageList-owned state
+
+`MessageList` and block renderers should continue to own DOM-local behavior:
+
+- actual `scrollTop` and layout measurements;
+- auto-follow refs, scroll-intent detection, resize observers, and catch-up
+  timers;
+- progressive DOM rendering cadence;
+- selection, quote, isearch, and focused preview UI;
+- renderer expansion state that is truly visual-only and keyed by stable
+  canonical render ids;
+- streaming-markdown DOM patch refs when React state per token would be too
+  expensive.
+
+The store should make data identity stable enough that DOM-local state can be
+keyed predictably. It should not become a sink for every browser scroll event
+or token-sized text mutation.
+
+## Canonical Reducer
+
+The center of the design should be a pure transcript reducer. It should accept
+normalized actions and produce a canonical session detail state:
+
+```ts
+loadPersistedTranscript(...)
+applySdkStreamEvent(...)
+applyReplayEvent(...)
+applyCatchupMessages(...)
+loadSubagentContent(...)
+prependOlderMessages(...)
+applyMetadataPatch(...)
+patchScrollSnapshot(...)
+```
+
+Those actions should be testable without React. The reducer is where YA should
+settle duplicate suppression, stable ids, parent/tree projection, subagent
+attachment, durable-vs-live parity, and augment attachment identity.
+
+## Augment Contract
+
+Augments should attach at the data layer by stable message/block identity, not
+by incidental DOM render order or event arrival timing. The render selector may
+decide how to display an augment, but the data layer should answer whether the
+augment belongs to a canonical message/block.
+
+This is especially important for server-rendered markdown/file/diff augments,
+tool result cards, task-list snapshots, subagent excerpts, and any provider
+that emits live stream events with ids that later differ from durable rows.
+
+## Streaming Contract
+
+Streaming remains performance-sensitive. The data layer should distinguish:
+
+- stable message envelope identity and turn/tree placement, which should be
+  store-owned;
+- high-frequency token or streaming markdown DOM updates, which may remain
+  ref-backed and renderer-owned;
+- commit points where streamed content becomes durable/canonical and can be
+  compared against persisted transcript reads.
+
+The goal is not to force every token through React or an external store
+notification. The goal is to make the lifecycle of incoming messages explicit:
+received, normalized, maybe streaming, committed, reconciled with durable data,
+and selected for rendering.
+
+## Store Model
+
+The store should be a custom external store with keyed selectors, not a generic
+global rerender source. Useful properties:
+
+- synchronous reads for first render and cache restoration;
+- imperative reducer actions for stream, REST, replay, pagination, and subagent
+  events;
+- selector-based subscriptions so metadata changes do not rerender the whole
+  transcript and scroll snapshot patches do not notify ordinary subscribers;
+- explicit same-tab retention with TTL, entry count, byte caps, source/auth
+  scoping, diagnostics, and clear APIs;
+- no hidden `globalThis.__YA_SESSION_ROUTE_SNAPSHOTS__` ownership.
+
+The store can still be memory-only. Memory-only is correct for same-tab warm
+session detail retention. The cleanup is about explicit ownership, testability,
+and lifecycle visibility, not durable browser persistence.
+
+## Capabilities This Unlocks
+
+The data layer should make the following substantially easier:
+
+- snapshot tests for provider stream vs persisted transcript parity;
+- regression tests for duplicate user prompts and duplicate assistant rows;
+- deterministic augment attachment tests;
+- explicit subagent provenance across live, lazy-loaded, and reloaded paths, so
+  later provider-specific parity work starts from inspectable data;
+- side-by-side rendering of two session detail consumers;
+- a cleaner `/btw` model as a related session/detail consumer instead of a
+  polling UI side-channel;
+- better performance instrumentation because data transitions and DOM work are
+  separated.
+
+## Non-Goals
+
+- Do not replace the coarse `clientSummaryStore`. Session detail is heavier and
+  has different update/retention constraints.
+- Do not move composer draft persistence into the transcript store.
+- Do not make every scroll update reactive.
+- Do not make every streaming token a React state update.
+- Do not introduce transcript virtualization as part of the first data-layer
+  extraction. Virtualization can consume the render selector later.
+- Do not change provider wire protocols merely to satisfy the client store
+  shape. Normalize at the boundary.
+
+## Relationship To Existing Documents
+
+- [`stream-persisted-render-parity.md`](stream-persisted-render-parity.md)
+  records the invariant this layer should enforce: live-stream and durable
+  reload rendering must converge.
+- [`session-dom-linger-speedup.md`](session-dom-linger-speedup.md) remains a
+  render-retention layer. It should not be the owner of data freshness.
+- [`docs/tactical/025-zustand-client-summary-store.md`](../docs/tactical/025-zustand-client-summary-store.md)
+  and [`docs/tactical/030-client-summary-store-closeout.md`](../docs/tactical/030-client-summary-store-closeout.md)
+  deliberately kept transcript state out of the summary store. This topic is
+  the follow-on for that excluded heavy session-detail domain.
+- [`docs/tactical/041-cached-session-restore-performance.md`](../docs/tactical/041-cached-session-restore-performance.md)
+  documents the current retained snapshot behavior that should migrate behind
+  explicit session-detail store ownership.

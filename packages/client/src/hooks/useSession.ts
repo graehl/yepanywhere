@@ -863,14 +863,15 @@ export function useSession(
     loading,
     sessionLoadProgress,
     session,
-    setSession,
+    updateSession,
     handleStreamingUpdate,
     handleStreamMessageEvent,
     handleStreamSubagentMessage,
     registerToolUseAgent,
-    setAgentContent,
-    setToolUseToAgent,
-    setMessages,
+    mergeLoadedAgentContent,
+    updateAgentContextUsage,
+    clearAgentStreamingPlaceholders,
+    clearStreamingPlaceholders,
     fetchNewMessages,
     pagination,
     loadingOlder,
@@ -1086,17 +1087,11 @@ export function useSession(
           mappings.map((m) => [m.toolUseId, m.agentId]),
         );
 
-        // Update the toolUseToAgent state with loaded mappings
-        // This allows TaskRenderer to access agentContent even after page reload
-        setToolUseToAgent((prev) => {
-          const next = new Map(prev);
-          for (const [toolUseId, agentId] of mappingsMap) {
-            if (!next.has(toolUseId)) {
-              next.set(toolUseId, agentId);
-            }
-          }
-          return next;
-        });
+        // Register loaded mappings so TaskRenderer can access agent content
+        // after page reload through the same reducer/store path as streaming.
+        for (const [toolUseId, agentId] of mappingsMap) {
+          registerToolUseAgent(toolUseId, agentId);
+        }
 
         // Load content for each pending task that has an agent file
         for (const task of pendingTasks) {
@@ -1110,32 +1105,7 @@ export function useSession(
               agentId,
             );
 
-            // Merge into agentContent state, deduping by message ID
-            // Use getMessageId to prefer uuid over id
-            setAgentContent((prev) => {
-              const existing = prev[agentId];
-              if (existing && existing.messages.length > 0) {
-                // Already have content (maybe from stream), merge without duplicates
-                const existingIds = new Set(
-                  existing.messages.map((m) => getMessageId(m)),
-                );
-                const newMessages = agentData.messages.filter(
-                  (m) => !existingIds.has(getMessageId(m)),
-                );
-                return {
-                  ...prev,
-                  [agentId]: {
-                    messages: [...existing.messages, ...newMessages],
-                    status: agentData.status,
-                  },
-                };
-              }
-              // No existing content, use loaded data
-              return {
-                ...prev,
-                [agentId]: agentData,
-              };
-            });
+            mergeLoadedAgentContent(agentId, agentData);
           } catch {
             // Skip agents that can't be loaded
           }
@@ -1149,10 +1119,10 @@ export function useSession(
   }, [
     loading,
     messages,
+    mergeLoadedAgentContent,
     projectId,
+    registerToolUseAgent,
     sessionId,
-    setAgentContent,
-    setToolUseToAgent,
   ]);
 
   // Leading + trailing edge throttle:
@@ -1213,7 +1183,7 @@ export function useSession(
       if (event.sessionId !== sessionId) return;
 
       // Update session metadata from stream event (no API call needed)
-      setSession((prev) => {
+      updateSession((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -1231,14 +1201,14 @@ export function useSession(
         };
       });
     },
-    [sessionId, setSession],
+    [sessionId, updateSession],
   );
 
   const handleSessionMetadataChange = useCallback(
     (event: SessionMetadataChangedEvent) => {
       if (event.sessionId !== sessionId) return;
 
-      setSession((prev) => {
+      updateSession((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
@@ -1294,7 +1264,7 @@ export function useSession(
         );
       }
     },
-    [sessionId, setSession],
+    [sessionId, updateSession],
   );
 
   // Listen for session status changes via stream
@@ -1445,18 +1415,9 @@ export function useSession(
   // Callback for agent context usage updates
   const handleAgentContextUsage = useCallback(
     (agentId: string, usage: { inputTokens: number; percentage: number }) => {
-      setAgentContent((prev) => {
-        const existing = prev[agentId] ?? {
-          messages: [],
-          status: "running",
-        };
-        return {
-          ...prev,
-          [agentId]: { ...existing, contextUsage: usage },
-        };
-      });
+      updateAgentContextUsage(agentId, usage);
     },
-    [setAgentContent],
+    [updateAgentContextUsage],
   );
 
   // Use streaming content hook for handling stream_event stream messages
@@ -1558,20 +1519,9 @@ export function useSession(
           clearStreaming();
 
           if (msgAgentId) {
-            // Remove streaming placeholders from this agent's content
-            setAgentContent((prev) => {
-              const existing = prev[msgAgentId];
-              if (!existing) return prev;
-              const filtered = existing.messages.filter((m) => !m._isStreaming);
-              if (filtered.length === existing.messages.length) return prev;
-              return {
-                ...prev,
-                [msgAgentId]: { ...existing, messages: filtered },
-              };
-            });
+            clearAgentStreamingPlaceholders(msgAgentId);
           } else {
-            // Remove ALL streaming placeholder messages from main messages
-            setMessages((prev) => prev.filter((m) => !m._isStreaming));
+            clearStreamingPlaceholders();
           }
         }
 
@@ -1613,7 +1563,7 @@ export function useSession(
             session?.provider,
           );
           if (usage) {
-            setSession((prev) =>
+            updateSession((prev) =>
               prev ? { ...prev, contextUsage: usage } : prev,
             );
           }
@@ -1859,7 +1809,7 @@ export function useSession(
         const sseProvider = connectedData.provider;
         const sseModel = connectedData.model;
         if (sseProvider) {
-          setSession((prev) => {
+          updateSession((prev) => {
             if (!prev) return prev;
             // Always update model if the connected event has a resolved model
             // (provider won't change, but model resolves from undefined/"Default" to actual name)
@@ -1981,10 +1931,10 @@ export function useSession(
       handleStreamMessageEvent,
       handleStreamSubagentMessage,
       registerToolUseAgent,
-      setAgentContent,
+      clearAgentStreamingPlaceholders,
+      clearStreamingPlaceholders,
       setIsCompacting,
-      setMessages,
-      setSession,
+      updateSession,
       fetchNewMessages,
       throttledFetch,
       session?.provider,
@@ -2043,18 +1993,18 @@ export function useSession(
   // Allow external model update (e.g., after /model command switches mid-session)
   const setSessionModel = useCallback(
     (model: string) => {
-      setSession((prev) => (prev ? { ...prev, model } : prev));
+      updateSession((prev) => (prev ? { ...prev, model } : prev));
     },
-    [setSession],
+    [updateSession],
   );
 
   return {
     session,
-    setSession,
+    updateSession,
     setSessionModel,
     messages,
     agentContent, // Subagent messages keyed by agentId (for Task tool)
-    setAgentContent, // Setter for merging lazy-loaded agent content
+    mergeLoadedAgentContent,
     toolUseToAgent, // Mapping from Task tool_use_id → agentId (for rendering during streaming)
     markdownAugments, // Pre-rendered markdown HTML from REST response (keyed by blockId)
     status,

@@ -3,12 +3,10 @@ import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionMetadataProvider } from "../../../contexts/SessionMetadataContext";
 import { I18nProvider } from "../../../i18n";
+import { buildAssistantRenderSegments } from "../../../lib/sessionDetail/renderSelectors";
 import type { Message } from "../../../types";
 import type { RenderItem, ToolCallItem } from "../../../types/renderItems";
-import {
-  buildAssistantRenderSegments,
-  ExploredToolGroup,
-} from "../ExploredToolGroup";
+import { ExploredToolGroup } from "../ExploredToolGroup";
 
 vi.mock("../../../contexts/SchemaValidationContext", () => ({
   useSchemaValidationContext: () => ({

@@ -945,10 +945,10 @@ function SessionPageContent({
 
   const {
     session,
-    setSession,
+    updateSession,
     messages,
     agentContent,
-    setAgentContent,
+    mergeLoadedAgentContent,
     toolUseToAgent,
     markdownAugments,
     status,
@@ -1139,7 +1139,7 @@ function SessionPageContent({
         objects: TranscriptDisplayObject[],
       ) => TranscriptDisplayObject[],
     ) => {
-      setSession((current) => {
+      updateSession((current) => {
         if (!current || current.id !== targetSessionId) {
           return current;
         }
@@ -1151,7 +1151,7 @@ function SessionPageContent({
         };
       });
     },
-    [setSession],
+    [updateSession],
   );
 
   const rememberSentSubmission = useCallback((text: string, id: string) => {
@@ -5546,7 +5546,7 @@ function SessionPageContent({
             >
               <AgentContentProvider
                 agentContent={agentContent}
-                setAgentContent={setAgentContent}
+                mergeLoadedAgentContent={mergeLoadedAgentContent}
                 toolUseToAgent={toolUseToAgent}
                 projectId={projectId}
                 sessionId={sessionId}

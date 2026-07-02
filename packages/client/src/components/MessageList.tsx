@@ -49,6 +49,7 @@ import {
   buildTimelineEntryDisplayRows,
   buildVisibleTimelineEntries,
   countThinkingItems,
+  getActiveSearchAnchors,
   getAllTurnSearchAnchors,
   getDisplayRenderItems,
   getFullSessionSearchAnchors,
@@ -57,9 +58,11 @@ import {
   getLatestThinkingItemId,
   getNextProgressiveEntryCount,
   getProgressiveTimelineVisibility,
+  getSearchNavigatorStateProjection,
   getTailEntryCountForRenderItemTarget,
   getSearchMatchProjection,
-  getSearchableUserTurnPreview,
+  getSearchPanelProjection,
+  getSearchReady,
   getSearchSelectionProjection,
   getSearchVisibleTurnGroups,
   getThinkingItemIds,
@@ -68,8 +71,8 @@ import {
   getUserTurnSearchAnchors,
   groupEndsVisibleTurn,
   groupRenderItemsIntoTurns,
+  hasSearchableUserTurn,
   hasVisibleThinkingTextDelta,
-  normalizeSearchText,
   reconcileAutoExpandedThinkingItemIds,
   selectLatestCorrectablePrompt,
   type ComposerTailLanePosition,
@@ -300,29 +303,6 @@ function shouldRestoreInitialScrollSnapshot(
   }
 
   return true;
-}
-
-function getSearchScopeLabel(scope: SessionIsearchScope): string {
-  if (scope === "full") {
-    return "Full session";
-  }
-  return scope === "all" ? "All turns" : "User turns";
-}
-
-function getSearchScopeAriaLabel(scope: SessionIsearchScope): string {
-  if (scope === "full") {
-    return "Reverse search full session";
-  }
-  return scope === "all"
-    ? "Reverse search all turns"
-    : "Reverse search user turns";
-}
-
-function getSearchScopeKeys(scope: SessionIsearchScope): string {
-  if (scope === "full") {
-    return "Ctrl+Alt+S";
-  }
-  return scope === "all" ? "Ctrl+S" : "Ctrl+R/Ctrl+Alt+R";
 }
 
 interface UserTurnSearchSession {
@@ -1283,16 +1263,17 @@ export const MessageList = memo(function MessageList({
     });
   }, [messages.length, displayRenderItems.length, turnGroups.length]);
   const hasUserSearchableTurn = useMemo(
-    () => displayRenderItems.some((item) => getSearchableUserTurnPreview(item)),
+    () => hasSearchableUserTurn(displayRenderItems),
     [displayRenderItems],
   );
   const getUserTurnNavAnchorList = useCallback(
     (): UserTurnNavAnchor[] => getUserTurnNavAnchors(displayRenderItems),
     [displayRenderItems],
   );
-  const searchReady =
-    userTurnSearch.active &&
-    normalizeSearchText(userTurnSearch.query).length >= 2;
+  const searchReady = getSearchReady({
+    active: userTurnSearch.active,
+    query: userTurnSearch.query,
+  });
   const includeUserTurnSearchAnchors =
     searchReady && userTurnSearch.scope === "user";
   const userTurnSearchAnchors = useMemo<UserTurnNavAnchor[]>(() => {
@@ -1317,12 +1298,12 @@ export const MessageList = memo(function MessageList({
     }
     return getFullSessionSearchAnchors(turnGroups);
   }, [includeFullSessionSearchAnchors, turnGroups]);
-  const activeSearchAnchors =
-    userTurnSearch.scope === "full"
-      ? fullSessionSearchAnchors
-      : userTurnSearch.scope === "all"
-        ? sessionTurnNavAnchors
-        : userTurnSearchAnchors;
+  const activeSearchAnchors = getActiveSearchAnchors({
+    allAnchors: sessionTurnNavAnchors,
+    fullAnchors: fullSessionSearchAnchors,
+    scope: userTurnSearch.scope,
+    userAnchors: userTurnSearchAnchors,
+  });
   const userTurnSearchProjection = useMemo(
     () =>
       getSearchMatchProjection({
@@ -1363,6 +1344,21 @@ export const MessageList = memo(function MessageList({
   selectedSearchTargetIdRef.current = selectedSearchTargetId;
   const userTurnSearchPreview =
     userTurnSearchSelectionProjection.selectedPreview;
+  const searchPanelProjection = useMemo(
+    () =>
+      getSearchPanelProjection({
+        matches: userTurnSearchMatches,
+        scope: userTurnSearch.scope,
+        searchReady,
+        selectedId: userTurnSearch.selectedId,
+      }),
+    [
+      searchReady,
+      userTurnSearch.scope,
+      userTurnSearch.selectedId,
+      userTurnSearchMatches,
+    ],
+  );
   const getNavigatorAnchors = useCallback(
     () =>
       searchReady
@@ -1379,16 +1375,15 @@ export const MessageList = memo(function MessageList({
   );
   const userTurnNavSearchState = useMemo<UserTurnNavSearchState | null>(
     () =>
-      searchReady
-        ? {
-            activeId: selectedSearchAnchor?.id ?? null,
-            caseSensitive: userTurnSearch.caseSensitive,
-            matchIds: userTurnSearchMatchIds,
-            preview: userTurnSearchPreview,
-            previewsById: userTurnSearchPreviewsById,
-            query: userTurnSearch.query,
-          }
-        : null,
+      getSearchNavigatorStateProjection({
+        caseSensitive: userTurnSearch.caseSensitive,
+        matchIds: userTurnSearchMatchIds,
+        preview: userTurnSearchPreview,
+        previewsById: userTurnSearchPreviewsById,
+        query: userTurnSearch.query,
+        searchReady,
+        selectedAnchorId: selectedSearchAnchor?.id,
+      }),
     [
       searchReady,
       selectedSearchAnchor?.id,
@@ -2692,7 +2687,7 @@ export const MessageList = memo(function MessageList({
     >
       <div className="user-turn-search-main">
         <span className="user-turn-search-label">
-          {getSearchScopeLabel(userTurnSearch.scope)}
+          {searchPanelProjection.scopeLabel}
         </span>
         <input
           ref={searchInputRef}
@@ -2702,7 +2697,7 @@ export const MessageList = memo(function MessageList({
             handleUserTurnSearchQueryChange(event.target.value)
           }
           placeholder="reverse search"
-          aria-label={getSearchScopeAriaLabel(userTurnSearch.scope)}
+          aria-label={searchPanelProjection.scopeAriaLabel}
         />
         <button
           type="button"
@@ -2725,22 +2720,12 @@ export const MessageList = memo(function MessageList({
           Aa
         </button>
         <span className="user-turn-search-count">
-          {!searchReady
-            ? "2+ chars"
-            : userTurnSearchMatches.length > 0
-              ? `${Math.max(
-                  1,
-                  userTurnSearchMatches.findIndex(
-                    (anchor) => anchor.id === userTurnSearch.selectedId,
-                  ) + 1,
-                )}/${userTurnSearchMatches.length}`
-              : "0/0"}
+          {searchPanelProjection.countLabel}
         </span>
       </div>
       <div className="user-turn-search-help">
         <span>
-          {getSearchScopeKeys(userTurnSearch.scope)} prev · ↑↓ matches · click
-          selects
+          {searchPanelProjection.shortcutKeys} prev · ↑↓ matches · click selects
         </span>
         <span>Enter jump+close · Esc cancel · Aa case</span>
       </div>

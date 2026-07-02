@@ -61,7 +61,9 @@ Covered outputs:
   latest-correctable flags, row keys, stale-now hints, and assistant timeline
   row metadata for assistant entries;
 - assistant timeline item action eligibility, including thinking toggle,
-  quote, and user-prompt trim/fork eligibility.
+  quote, and user-prompt trim/fork eligibility;
+- search readiness, active search anchor selection, search panel labels/counts,
+  searchable-user-turn detection, and navigator search-state projection.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
 ref, thinking expansion state, search session state and keyboard navigation,
@@ -71,7 +73,8 @@ composer tail row labels/rendering/actions, and actual rendering.
 ## Still Local To MessageList
 
 - Thinking visibility and expansion policy.
-- Search session state, keyboard/repeat navigation, and selected-match updates.
+- Search session state, keyboard/repeat navigation, selected-match updates, and
+  DOM navigation.
 - Correct-prompt action wiring and rendering actions for user rows.
 - `/btw` aside ownership and rendering.
 - Composer tail row labels, rendering, actions, and attachment display.
@@ -85,6 +88,6 @@ composer tail row labels/rendering/actions, and actual rendering.
 
 Keep the Developer setting dogfood path default-off while moving one more pure
 projection out of `MessageList`. The next low-risk candidates are
-search/navigation display projections or remaining row metadata helpers, while
+search/navigation metadata helpers or remaining row metadata helpers, while
 keeping DOM measurement, scroll effects, snapshot ownership, labels, and row
 actions local.

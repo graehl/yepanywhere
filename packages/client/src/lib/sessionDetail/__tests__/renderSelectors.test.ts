@@ -11,6 +11,7 @@ import {
   buildTimelineEntryDisplayRows,
   buildVisibleTimelineEntries,
   countThinkingItems,
+  getActiveSearchAnchors,
   getAllTurnSearchAnchors,
   getComposerTailLanePositions,
   getDisplayRenderItems,
@@ -22,6 +23,9 @@ import {
   getProgressiveTimelineVisibility,
   getProgressiveTimelineEntryWeight,
   getSearchMatchProjection,
+  getSearchNavigatorStateProjection,
+  getSearchPanelProjection,
+  getSearchReady,
   getSearchSelectionProjection,
   getSearchVisibleTurnGroups,
   getTailEntryCountForRenderItemTarget,
@@ -32,6 +36,7 @@ import {
   getUserTurnSearchAnchors,
   groupEndsVisibleTurn,
   groupRenderItemsIntoTurns,
+  hasSearchableUserTurn,
   hasVisibleThinkingTextDelta,
   isPatientDeferredMessage,
   isRecoveredDeferredMessage,
@@ -1603,6 +1608,119 @@ describe("session detail render selectors", () => {
     });
 
     expect(reconciled).toBe(previousExpanded);
+  });
+
+  it("derives search readiness, panel, active anchors, and navigator state", () => {
+    const userOnlyAnchors = [{ id: "user-1", preview: "User prompt" }];
+    const allTurnAnchors = [
+      { id: "all-1", preview: "All turn one" },
+      { id: "all-2", preview: "All turn two" },
+    ];
+    const fullSessionAnchors = [
+      { id: "full-1", preview: "Full session result" },
+    ];
+    const previewsById = new Map([["all-2", "All turn two preview"]]);
+    const matchIds = new Set(["all-1", "all-2"]);
+
+    expect(getSearchReady({ active: false, query: "prompt" })).toBe(false);
+    expect(getSearchReady({ active: true, query: "p" })).toBe(false);
+    expect(getSearchReady({ active: true, query: " prompt " })).toBe(true);
+    expect(
+      hasSearchableUserTurn([
+        { type: "text", id: "text-1", text: "answer", sourceMessages: [] },
+      ]),
+    ).toBe(false);
+    expect(
+      hasSearchableUserTurn([
+        {
+          type: "user_prompt",
+          id: "user-1",
+          content: "Find this",
+          sourceMessages: [],
+        },
+      ]),
+    ).toBe(true);
+
+    expect(
+      getActiveSearchAnchors({
+        allAnchors: allTurnAnchors,
+        fullAnchors: fullSessionAnchors,
+        scope: "user",
+        userAnchors: userOnlyAnchors,
+      }),
+    ).toBe(userOnlyAnchors);
+    expect(
+      getActiveSearchAnchors({
+        allAnchors: allTurnAnchors,
+        fullAnchors: fullSessionAnchors,
+        scope: "all",
+        userAnchors: userOnlyAnchors,
+      }),
+    ).toBe(allTurnAnchors);
+    expect(
+      getActiveSearchAnchors({
+        allAnchors: allTurnAnchors,
+        fullAnchors: fullSessionAnchors,
+        scope: "full",
+        userAnchors: userOnlyAnchors,
+      }),
+    ).toBe(fullSessionAnchors);
+
+    expect(
+      getSearchPanelProjection({
+        matches: allTurnAnchors,
+        scope: "all",
+        searchReady: true,
+        selectedId: "all-2",
+      }),
+    ).toEqual({
+      countLabel: "2/2",
+      scopeAriaLabel: "Reverse search all turns",
+      scopeLabel: "All turns",
+      shortcutKeys: "Ctrl+S",
+    });
+    expect(
+      getSearchPanelProjection({
+        matches: [],
+        scope: "full",
+        searchReady: false,
+      }).countLabel,
+    ).toBe("2+ chars");
+    expect(
+      getSearchPanelProjection({
+        matches: [],
+        scope: "user",
+        searchReady: true,
+      }).countLabel,
+    ).toBe("0/0");
+
+    expect(
+      getSearchNavigatorStateProjection({
+        caseSensitive: true,
+        matchIds,
+        preview: "All turn two preview",
+        previewsById,
+        query: "turn",
+        searchReady: true,
+        selectedAnchorId: "all-2",
+      }),
+    ).toEqual({
+      activeId: "all-2",
+      caseSensitive: true,
+      matchIds,
+      preview: "All turn two preview",
+      previewsById,
+      query: "turn",
+    });
+    expect(
+      getSearchNavigatorStateProjection({
+        matchIds,
+        preview: null,
+        previewsById,
+        query: "",
+        searchReady: false,
+      }),
+    ).toBeNull();
   });
 
   it("projects search matches, ids, selected anchor, and previews", () => {

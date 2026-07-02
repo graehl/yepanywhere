@@ -199,6 +199,50 @@ export interface SearchSelectionProjection<
 
 export type RenderSearchScope = "user" | "all" | "full";
 
+export interface ActiveSearchAnchorsInput<
+  TAnchor extends RenderNavAnchor = RenderNavAnchor,
+> {
+  allAnchors: readonly TAnchor[];
+  fullAnchors: readonly TAnchor[];
+  scope: RenderSearchScope;
+  userAnchors: readonly TAnchor[];
+}
+
+export interface SearchPanelProjectionInput<
+  TAnchor extends RenderNavAnchor = RenderNavAnchor,
+> {
+  matches: readonly TAnchor[];
+  scope: RenderSearchScope;
+  searchReady: boolean;
+  selectedId?: string | null;
+}
+
+export interface SearchPanelProjection {
+  countLabel: string;
+  scopeAriaLabel: string;
+  scopeLabel: string;
+  shortcutKeys: string;
+}
+
+export interface SearchNavigatorStateProjectionInput {
+  caseSensitive?: boolean;
+  matchIds: ReadonlySet<string>;
+  preview: string | null;
+  previewsById: ReadonlyMap<string, string>;
+  query: string;
+  searchReady: boolean;
+  selectedAnchorId?: string | null;
+}
+
+export interface SearchNavigatorStateProjection {
+  activeId: string | null;
+  caseSensitive?: boolean;
+  matchIds: ReadonlySet<string>;
+  preview: string | null;
+  previewsById: ReadonlyMap<string, string>;
+  query: string;
+}
+
 export interface SearchVisibleTurnGroupsInput<
   TTurnGroup extends RenderTurnGroup = RenderTurnGroup,
 > {
@@ -1402,6 +1446,103 @@ export function normalizeSearchText(
 ): string {
   const compactText = text.replace(/\s+/g, " ").trim();
   return caseSensitive ? compactText : compactText.toLowerCase();
+}
+
+export function hasSearchableUserTurn(items: readonly RenderItem[]): boolean {
+  return items.some((item) => getSearchableUserTurnPreview(item));
+}
+
+export function getSearchReady({
+  active,
+  minQueryLength = 2,
+  query,
+}: {
+  active: boolean;
+  minQueryLength?: number;
+  query: string;
+}): boolean {
+  return active && normalizeSearchText(query).length >= minQueryLength;
+}
+
+export function getActiveSearchAnchors<
+  TAnchor extends RenderNavAnchor = RenderNavAnchor,
+>({
+  allAnchors,
+  fullAnchors,
+  scope,
+  userAnchors,
+}: ActiveSearchAnchorsInput<TAnchor>): readonly TAnchor[] {
+  if (scope === "full") {
+    return fullAnchors;
+  }
+  return scope === "all" ? allAnchors : userAnchors;
+}
+
+export function getSearchScopeLabel(scope: RenderSearchScope): string {
+  if (scope === "full") {
+    return "Full session";
+  }
+  return scope === "all" ? "All turns" : "User turns";
+}
+
+export function getSearchScopeAriaLabel(scope: RenderSearchScope): string {
+  if (scope === "full") {
+    return "Reverse search full session";
+  }
+  return scope === "all"
+    ? "Reverse search all turns"
+    : "Reverse search user turns";
+}
+
+export function getSearchScopeKeys(scope: RenderSearchScope): string {
+  if (scope === "full") {
+    return "Ctrl+Alt+S";
+  }
+  return scope === "all" ? "Ctrl+S" : "Ctrl+R/Ctrl+Alt+R";
+}
+
+export function getSearchPanelProjection<
+  TAnchor extends RenderNavAnchor = RenderNavAnchor,
+>({
+  matches,
+  scope,
+  searchReady,
+  selectedId,
+}: SearchPanelProjectionInput<TAnchor>): SearchPanelProjection {
+  const selectedIndex = selectedId
+    ? matches.findIndex((anchor) => anchor.id === selectedId)
+    : -1;
+  return {
+    countLabel: !searchReady
+      ? "2+ chars"
+      : matches.length > 0
+        ? `${Math.max(1, selectedIndex + 1)}/${matches.length}`
+        : "0/0",
+    scopeAriaLabel: getSearchScopeAriaLabel(scope),
+    scopeLabel: getSearchScopeLabel(scope),
+    shortcutKeys: getSearchScopeKeys(scope),
+  };
+}
+
+export function getSearchNavigatorStateProjection({
+  caseSensitive,
+  matchIds,
+  preview,
+  previewsById,
+  query,
+  searchReady,
+  selectedAnchorId,
+}: SearchNavigatorStateProjectionInput): SearchNavigatorStateProjection | null {
+  return searchReady
+    ? {
+        activeId: selectedAnchorId ?? null,
+        caseSensitive,
+        matchIds,
+        preview,
+        previewsById,
+        query,
+      }
+    : null;
 }
 
 export function buildSearchPreview(

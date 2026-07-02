@@ -38,6 +38,9 @@ What is already in place:
 - `agentContent` has its first selector-backed mirror too: subagent streaming
   placeholder upsert/cleanup copies the store-selected map back into the local
   hook mirror after reducer/store dispatch.
+- A hidden localStorage dogfood toggle can now return store-selected
+  `messages` after initial hydration has reached the same reveal point as the
+  local mirror. Local mirrors still run for fallback and diagnostics.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but the broad returned `messages` and `agentContent` values are
@@ -111,9 +114,9 @@ DOM timing problems.
 
 Next likely slice:
 
-- Add a hidden dogfood toggle for store-authoritative returned `messages`,
-  using the hydration guard called out in the preflight note so warm snapshot
-  restore does not accidentally bypass the intentional loading yield.
+- Dogfood the hidden store-authoritative returned `messages` toggle and turn
+  any observed divergence into a compact reducer or hook fixture before
+  widening the surface.
 
 Then:
 
@@ -124,7 +127,8 @@ Then:
 
 Potential dogfood toggle:
 
-- Name: localStorage or dev flag, not a polished settings UI initially.
+- Name: `yep-anywhere-session-detail-store-messages-enabled`, not a polished
+  settings UI initially.
 - Scope: returned `messages` only at first.
 - Behavior: `effectiveMessages = selectSessionDetailMessages(store) ??
   localMessages`.

@@ -1,5 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { type DeferredQueueMessage, type PaginationInfo, api } from "../api/client";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import {
+  type DeferredQueueMessage,
+  type PaginationInfo,
+  api,
+} from "../api/client";
 import {
   getMessageTimestampMs,
   hasEquivalentJsonlMessage,
@@ -47,6 +57,7 @@ import {
   selectSessionDetailScrollSnapshot,
 } from "../lib/sessionDetail/selectors";
 import { defaultSessionDetailStore } from "../lib/sessionDetail/sessionDetailStore";
+import { UI_KEYS } from "../lib/storageKeys";
 import {
   clearAgentStreamingPlaceholdersMap,
   clearStreamingPlaceholderMessages,
@@ -227,6 +238,19 @@ function writeSessionLoadCache(
 
 export function __resetSessionLoadCacheForTest(): void {
   resetSessionRouteSnapshotsForTests();
+}
+
+function getSessionDetailStoreMessagesEnabled(): boolean {
+  if (
+    typeof globalThis.localStorage === "undefined" ||
+    typeof globalThis.localStorage.getItem !== "function"
+  ) {
+    return false;
+  }
+  return (
+    globalThis.localStorage.getItem(UI_KEYS.sessionDetailStoreMessages) ===
+    "true"
+  );
 }
 
 function usesApproxMessageDedup(provider?: string): boolean {
@@ -581,6 +605,54 @@ export function useSessionMessages(
     [sourceKey, projectId, sessionId, tailTurns, tailFrom],
   );
 
+  const storeBackedMessagesEnabled = getSessionDetailStoreMessagesEnabled();
+  const canReadStoreBackedMessages = storeBackedMessagesEnabled && !loading;
+  const storeBackedMessages = useSyncExternalStore(
+    useCallback(
+      (listener) => {
+        if (!storeBackedMessagesEnabled) {
+          return () => {};
+        }
+        return defaultSessionDetailStore.subscribe(
+          { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+          (state) =>
+            canReadStoreBackedMessages && state
+              ? selectSessionDetailMessages(state)
+              : undefined,
+          listener,
+        );
+      },
+      [
+        sourceKey,
+        projectId,
+        sessionId,
+        tailTurns,
+        tailFrom,
+        storeBackedMessagesEnabled,
+        canReadStoreBackedMessages,
+      ],
+    ),
+    useCallback(
+      () =>
+        canReadStoreBackedMessages
+          ? defaultSessionDetailStore.readSelected(
+              { sourceKey, projectId, sessionId, tailTurns, tailFrom },
+              selectSessionDetailMessages,
+            )
+          : undefined,
+      [
+        sourceKey,
+        projectId,
+        sessionId,
+        tailTurns,
+        tailFrom,
+        canReadStoreBackedMessages,
+      ],
+    ),
+    () => undefined,
+  );
+  const returnedMessages = storeBackedMessages ?? messages;
+
   // Buffering: queue stream messages until initial load completes
   const streamBufferRef = useRef<
     Array<
@@ -623,7 +695,7 @@ export function useSessionMessages(
       return;
     }
     latestSnapshotRef.current = {
-      messages,
+      messages: returnedMessages,
       session,
       pagination,
       agentContent,
@@ -632,7 +704,7 @@ export function useSessionMessages(
       maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
       scrollSnapshot: scrollSnapshotRef.current,
     };
-  }, [agentContent, messages, pagination, session, toolUseToAgent]);
+  }, [agentContent, returnedMessages, pagination, session, toolUseToAgent]);
 
   useEffect(() => {
     return () => {
@@ -1657,7 +1729,7 @@ export function useSessionMessages(
     readSelectorBackedPagination();
 
   return {
-    messages,
+    messages: returnedMessages,
     agentContent,
     toolUseToAgent,
     loading,

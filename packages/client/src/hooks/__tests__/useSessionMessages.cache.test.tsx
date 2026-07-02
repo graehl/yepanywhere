@@ -42,6 +42,10 @@ function enableSessionTranscriptCache() {
   window.localStorage.setItem(UI_KEYS.sessionTranscriptCache, "true");
 }
 
+function enableStoreBackedMessages() {
+  window.localStorage.setItem(UI_KEYS.sessionDetailStoreMessages, "true");
+}
+
 function scrollSnapshot(): SessionRouteScrollSnapshot {
   return {
     atBottom: false,
@@ -69,7 +73,8 @@ function readStoreMessageIds(
       },
       selectSessionDetailMessages,
     )
-    ?.map((message) => message.uuid);
+    ?.map((message) => message.uuid)
+    .filter((uuid): uuid is string => typeof uuid === "string");
 }
 
 describe("useSessionMessages cache", () => {
@@ -180,6 +185,81 @@ describe("useSessionMessages cache", () => {
     expect(readStoreMessageIds()).toEqual(["msg-1", "msg-2"]);
   });
 
+  it("keeps opted-in store-backed warm messages gated until hydration", async () => {
+    enableSessionTranscriptCache();
+    enableStoreBackedMessages();
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+    let resolveDelta!: (value: unknown) => void;
+    apiMocks.getSession.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDelta = resolve;
+      }),
+    );
+
+    const first = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    first.unmount();
+
+    const second = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    expect(second.result.current.loading).toBe(true);
+    expect(second.result.current.messages).toEqual([]);
+    expect(readStoreMessageIds()).toEqual(["msg-1"]);
+
+    await waitFor(() => expect(second.result.current.loading).toBe(false));
+    expect(
+      second.result.current.messages.map((message) => message.uuid),
+    ).toEqual(["msg-1"]);
+
+    await act(async () => {
+      resolveDelta({
+        session: {
+          provider: "claude",
+          updatedAt: "2026-05-04T00:00:00.000Z",
+        },
+        messages: [],
+        ownership: { owner: "self" },
+        pendingInputRequest: null,
+        slashCommands: null,
+      });
+      await apiMocks.getSession.mock.results[1]?.value;
+    });
+  });
+
   it("mirrors active loads into the session detail store without retaining when cache is disabled", async () => {
     apiMocks.getSession.mockResolvedValueOnce({
       session: {
@@ -229,6 +309,68 @@ describe("useSessionMessages cache", () => {
     rendered.unmount();
 
     expect(defaultSessionDetailStore.read(storeKey)).toBeUndefined();
+  });
+
+  it("can return store-selected messages when the hidden toggle is enabled", async () => {
+    enableStoreBackedMessages();
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "claude",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [
+        {
+          uuid: "msg-1",
+          type: "user",
+          timestamp: "2026-05-04T00:00:00.000Z",
+          message: { role: "user", content: "hello" },
+        },
+      ],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 1,
+        returnedMessageCount: 1,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "applyStreamMessage",
+          message: {
+            uuid: "store-only-msg",
+            type: "assistant",
+            timestamp: "2026-05-04T00:01:00.000Z",
+            message: { role: "assistant", content: "store update" },
+          },
+        },
+      );
+    });
+
+    await waitFor(() =>
+      expect(
+        rendered.result.current.messages.map((message) => message.uuid),
+      ).toEqual(["msg-1", "store-only-msg"]),
+    );
   });
 
   it("returns retained scroll snapshots through the store selector", async () => {

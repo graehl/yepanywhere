@@ -6,7 +6,8 @@ This note supports the tactical plan in
 [`043-session-detail-data-layer-plan.md`](043-session-detail-data-layer-plan.md).
 It records the remaining `useSessionMessages` main-transcript writes before a
 hidden dogfood toggle can return store-selected `messages` instead of local
-React state.
+React state. The first hidden toggle now exists behind localStorage key
+`yep-anywhere-session-detail-store-messages-enabled`.
 
 ## Toggle Shape
 
@@ -21,8 +22,8 @@ Keep the first toggle narrow:
 One important guard: warm snapshot restore currently writes the store before it
 reveals local `messages`, because the hook intentionally yields through the
 loading path. A naive `store ?? local` read would bypass that yield. The toggle
-should either stay gated until hydration has completed, or explicitly accept and
-test that behavior change.
+is gated until `loading` is false so dogfooding tests the data source change
+without also changing the deferred warm-reveal behavior.
 
 ## Main Transcript Transition Audit
 
@@ -54,6 +55,6 @@ test that behavior change.
 
 ## Readiness Call
 
-The next implementation chunk can add a hidden opt-in only if it includes the
-hydration guard above. Without that guard, dogfooding would also test a loading
-behavior change, not just a data-source change.
+The hidden opt-in is ready for dogfooding. The next implementation chunk should
+capture any divergence as a compact reducer or hook fixture before broadening
+the toggle to `agentContent`, render selectors, scroll ownership, or `/btw`.

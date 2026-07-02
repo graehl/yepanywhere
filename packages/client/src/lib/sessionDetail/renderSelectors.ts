@@ -305,6 +305,28 @@ export function getThinkingDurationMs(
     : undefined;
 }
 
+export function countThinkingItems(items: readonly RenderItem[]): number {
+  let count = 0;
+  for (const item of items) {
+    if (item.type === "thinking") {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+export function getLatestThinkingItemId(
+  items: readonly RenderItem[],
+): string | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.type === "thinking") {
+      return item.id;
+    }
+  }
+  return null;
+}
+
 export function buildVisibleTimelineEntries<
   TTurnGroup extends RenderTurnGroup = RenderTurnGroup,
   TAside extends RenderTimelineAside = RenderTimelineAside,

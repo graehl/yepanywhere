@@ -6,8 +6,10 @@ import {
   buildAssistantRenderSegments,
   buildSessionDetailRenderItems,
   buildVisibleTimelineEntries,
+  countThinkingItems,
   getAllTurnSearchAnchors,
   getFullSessionSearchAnchors,
+  getLatestThinkingItemId,
   getNextProgressiveEntryCount,
   getProgressiveTimelineVisibility,
   getProgressiveTimelineEntryWeight,
@@ -767,6 +769,35 @@ describe("session detail render selectors", () => {
         Date.parse("2026-07-03T12:00:00.000Z"),
       ),
     ).toBeUndefined();
+  });
+
+  it("derives thinking item count and latest thinking item id", () => {
+    const text: RenderItem = {
+      type: "text",
+      id: "text-1",
+      text: "Answer",
+      sourceMessages: [],
+    };
+    const thinking1: RenderItem = {
+      type: "thinking",
+      id: "thinking-1",
+      thinking: "First",
+      status: "complete",
+      sourceMessages: [],
+    };
+    const thinking2: RenderItem = {
+      type: "thinking",
+      id: "thinking-2",
+      thinking: "Second",
+      status: "streaming",
+      sourceMessages: [],
+    };
+    const items = [thinking1, text, thinking2];
+
+    expect(countThinkingItems(items)).toBe(2);
+    expect(getLatestThinkingItemId(items)).toBe("thinking-2");
+    expect(countThinkingItems([text])).toBe(0);
+    expect(getLatestThinkingItemId([text])).toBeNull();
   });
 
   it("projects search matches, ids, selected anchor, and previews", () => {

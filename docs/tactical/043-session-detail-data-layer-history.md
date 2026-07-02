@@ -255,6 +255,10 @@ Reducer/helper behavior locked down during Slice 4:
   `sessionDetail/renderSelectors`, preserving the existing start/end timestamp
   rules while `MessageList` keeps thinking visibility, expansion state, and
   rendering local.
+- Thinking count and latest-thinking-id derivation now live in
+  `sessionDetail/renderSelectors`, preserving the latest-only expansion input
+  while `MessageList` keeps thinking visibility, expansion state, and rendering
+  local.
 
 ## Verification Details
 

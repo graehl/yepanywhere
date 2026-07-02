@@ -36,7 +36,8 @@ Covered outputs:
 - progressive timeline entry weighting and render-item target count derivation;
 - progressive timeline visibility projection, including effective entry count,
   sliced entries, and progress percent;
-- thinking duration derivation from render items plus `nowMs`.
+- thinking duration derivation from render items plus `nowMs`;
+- thinking count and latest-thinking-id derivation from render items.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
 ref, thinking expansion state, search session state and keyboard navigation,
@@ -56,6 +57,6 @@ and actual rendering.
 ## Next Preflight Slice
 
 Keep the Developer setting dogfood path default-off while moving one more pure
-projection out of `MessageList`. The next low-risk candidate is thinking count
-and latest-thinking-id derivation from render items, while keeping thinking
-visibility/expansion state and rendering local.
+projection out of `MessageList`. The next low-risk candidate is display render
+item filtering from render items plus the local thinking visibility flag, while
+keeping thinking visibility/expansion state and rendering local.

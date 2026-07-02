@@ -49,9 +49,11 @@ import {
   buildAssistantRenderSegments,
   buildSessionDetailRenderItems,
   buildVisibleTimelineEntries,
+  countThinkingItems,
   getAllTurnSearchAnchors,
   getFullSessionSearchAnchors,
   getLatestRenderItemsTimestampMs,
+  getLatestThinkingItemId,
   getNextProgressiveEntryCount,
   getProgressiveTimelineVisibility,
   getTailEntryCountForRenderItemTarget,
@@ -484,16 +486,6 @@ function saveSessionThinkingLatestOnly(latestOnly: boolean) {
   } catch {
     // localStorage is only a display preference; in-memory state still applies.
   }
-}
-
-function countThinkingItems(items: readonly RenderItem[]) {
-  let count = 0;
-  for (const item of items) {
-    if (item.type === "thinking") {
-      count += 1;
-    }
-  }
-  return count;
 }
 
 function providerExpandsHistoricalThinking(provider: string | undefined) {
@@ -1303,13 +1295,10 @@ export const MessageList = memo(function MessageList({
   // Most-recent thinking item; only meaningful in latest-only mode, where its
   // auto-openness is recomputed each render rather than stored, so the prior
   // block collapses with no mutation as soon as a newer one arrives.
-  const lastThinkingItemId = useMemo(() => {
-    for (let i = renderItems.length - 1; i >= 0; i -= 1) {
-      const item = renderItems[i];
-      if (item?.type === "thinking") return item.id;
-    }
-    return null;
-  }, [renderItems]);
+  const lastThinkingItemId = useMemo(
+    () => getLatestThinkingItemId(renderItems),
+    [renderItems],
+  );
   // Single source of truth for "is this thinking block expanded": an explicit
   // user toggle (tri-state: open / collapsed / absent) always wins; otherwise
   // the active auto policy decides. A manual expand is a permanent pin — the

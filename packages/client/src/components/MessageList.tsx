@@ -2967,27 +2967,27 @@ export const MessageList = memo(function MessageList({
                     isStreaming={isStreaming}
                     thinkingExpanded={getThinkingItemExpanded(item)}
                     toggleThinkingExpanded={
-                      item.type === "thinking"
+                      assistantRow.allowsThinkingToggle
                         ? () => toggleThinkingItemExpanded(item)
                         : noopToggleThinkingExpanded
                     }
                     sessionProvider={provider}
                     onTrimBeforeUserPrompt={
-                      item.type === "user_prompt" &&
                       onTrimBeforeUserMessage &&
-                      !item.isSubagent
+                      assistantRow.allowsPromptActions
                         ? () => onTrimBeforeUserMessage(item.id)
                         : undefined
                     }
                     onForkBeforeUserPrompt={
-                      item.type === "user_prompt" &&
                       onForkBeforeUserMessage &&
-                      !item.isSubagent
+                      assistantRow.allowsPromptActions
                         ? () => onForkBeforeUserMessage(item.id)
                         : undefined
                     }
                     onQuoteTextBlock={
-                      item.type === "text" ? handleQuoteTextBlock : undefined
+                      assistantRow.allowsTextQuote
+                        ? handleQuoteTextBlock
+                        : undefined
                     }
                     alwaysShowQuoteCircle={alwaysShowQuoteCircles}
                     staleNowMs={assistantRow.staleNowMs}

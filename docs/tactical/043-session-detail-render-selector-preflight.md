@@ -59,7 +59,9 @@ Covered outputs:
 - timeline entry display row metadata, including `/btw`, empty, standalone,
   user, and assistant row classification plus user-prompt action eligibility,
   latest-correctable flags, row keys, stale-now hints, and assistant timeline
-  row metadata for assistant entries.
+  row metadata for assistant entries;
+- assistant timeline item action eligibility, including thinking toggle,
+  quote, and user-prompt trim/fork eligibility.
 
 `MessageList` still owns the stateful and DOM-local pieces: the previous item
 ref, thinking expansion state, search session state and keyboard navigation,
@@ -83,6 +85,6 @@ composer tail row labels/rendering/actions, and actual rendering.
 
 Keep the Developer setting dogfood path default-off while moving one more pure
 projection out of `MessageList`. The next low-risk candidates are
-search/navigation display projections or small render-action eligibility
-helpers, while keeping DOM measurement, scroll effects, snapshot ownership,
-labels, and row actions local.
+search/navigation display projections or remaining row metadata helpers, while
+keeping DOM measurement, scroll effects, snapshot ownership, labels, and row
+actions local.

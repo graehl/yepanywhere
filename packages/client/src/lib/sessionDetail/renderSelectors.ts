@@ -316,6 +316,9 @@ export type AssistantTimelineRow =
       kind: "item";
       item: RenderItem;
       itemIndex: number;
+      allowsPromptActions: boolean;
+      allowsTextQuote: boolean;
+      allowsThinkingToggle: boolean;
       staleNowMs?: number;
       thinkingDurationMs?: number;
     };
@@ -1163,6 +1166,10 @@ export function buildAssistantTimelineRows({
       kind: "item",
       item: segment.item,
       itemIndex,
+      allowsPromptActions:
+        segment.item.type === "user_prompt" && !segment.item.isSubagent,
+      allowsTextQuote: segment.item.type === "text",
+      allowsThinkingToggle: segment.item.type === "thinking",
       staleNowMs: getRenderItemStaleNowMs(
         segment.item,
         latestVisibleTimestampMs,

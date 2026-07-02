@@ -103,6 +103,9 @@ What is already in place:
   and assistant row classification plus user-prompt action eligibility,
   latest-correctable flags, row keys, stale-now hints, and assistant timeline
   row metadata for assistant entries.
+- Assistant timeline item action eligibility now derives through
+  `sessionDetail/renderSelectors`, including thinking toggle, quote, and
+  user-prompt trim/fork eligibility while callbacks remain local.
 
 Current diagnostic stance:
 
@@ -198,8 +201,8 @@ Next likely slice:
   compact reducer or hook fixture, except for known `scroll-snapshot` noise.
 - Continue the render-selector preflight with small pure projection moves that
   do not own DOM measurement or effects. Good candidates are search/navigation
-  display projections or small render-action eligibility helpers. Keep scroll
-  snapshots, follow-tail behavior, and `/btw` ownership local for now.
+  display projections or remaining row metadata helpers. Keep scroll snapshots,
+  follow-tail behavior, and `/btw` ownership local for now.
 
 Then:
 

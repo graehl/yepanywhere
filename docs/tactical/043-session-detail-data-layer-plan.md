@@ -44,6 +44,10 @@ What is already in place:
   older-page cursor selection, main stream-message fallback mirroring,
   persisted catch-up fallback mirroring, older-page fallback mirroring, and
   main streaming placeholder message upsert/cleanup.
+- Initial load, warm-route restore, and warm delta reveal now copy the
+  store-selected runtime snapshot into the local fallback mirrors after the
+  store restore/load/catch-up action, while preserving the existing loading
+  gate.
 - `toolUseToAgent` registration now has a selector-backed mirror: after the
   reducer/store dispatch, the local fallback `Map` copies the store-selected
   mapping entries instead of independently rebuilding from its previous value.
@@ -232,9 +236,10 @@ Dogfood toggle:
 
 ## Current Risks
 
-- Initial load and warm hydration remain the largest local-mirror coordination
-  surfaces; stream, catch-up, older-page, mapping, and common subagent update
-  paths now copy store-selected data back into their fallback mirrors.
+- Initial load and warm hydration still contain the most sequencing logic
+  because they coordinate loading progress, warm-cache reveal, cache writes,
+  and stream-buffer flushing inside the hook, but their revealed fallback data
+  now comes from the store-selected snapshot.
 - Compaction-tail and full-history states are easy to confuse because the
   default route has no explicit `tailTurns`/`tailFrom` URL parameter even
   though the client requests `tailCompactions: 2`. Treat message-count

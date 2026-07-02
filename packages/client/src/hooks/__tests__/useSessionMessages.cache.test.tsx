@@ -1458,6 +1458,26 @@ describe("useSessionMessages cache", () => {
 
     expect(second.result.current.loading).toBe(true);
     expect(second.result.current.messages).toEqual([]);
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "applyStreamMessage",
+          message: {
+            uuid: "store-only-msg",
+            type: "assistant",
+            timestamp: "2026-05-04T00:00:30.000Z",
+            message: { role: "assistant", content: "store update" },
+          },
+        },
+      );
+    });
+    expect(second.result.current.messages).toEqual([]);
+    expect(readStoreMessageIds()).toEqual(["msg-1", "store-only-msg"]);
 
     await waitFor(() => expect(apiMocks.getSession).toHaveBeenCalledTimes(2));
     expect(apiMocks.getSession).toHaveBeenNthCalledWith(
@@ -1471,7 +1491,7 @@ describe("useSessionMessages cache", () => {
     await waitFor(() => expect(second.result.current.loading).toBe(false));
     expect(
       second.result.current.messages.map((message) => message.uuid),
-    ).toEqual(["msg-1"]);
+    ).toEqual(["msg-1", "store-only-msg"]);
 
     await act(async () => {
       resolveDelta({
@@ -1494,11 +1514,11 @@ describe("useSessionMessages cache", () => {
       await apiMocks.getSession.mock.results[1]?.value;
     });
 
-    await waitFor(() => expect(second.result.current.messages).toHaveLength(2));
+    await waitFor(() => expect(second.result.current.messages).toHaveLength(3));
     expect(
       second.result.current.messages.map((message) => message.uuid),
-    ).toEqual(["msg-1", "msg-2"]);
-    expect(readStoreMessageIds()).toEqual(["msg-1", "msg-2"]);
+    ).toEqual(["msg-1", "store-only-msg", "msg-2"]);
+    expect(readStoreMessageIds()).toEqual(["msg-1", "store-only-msg", "msg-2"]);
     expect(second.result.current.pagination?.totalMessageCount).toBe(1);
   });
 

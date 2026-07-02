@@ -14,6 +14,7 @@ import {
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
   selectSessionDetailRenderItems,
+  selectLatestCorrectablePrompt,
   type RenderTurnGroup,
 } from "../renderSelectors";
 import { createInitialSessionDetailState } from "../transcriptReducer";
@@ -548,5 +549,69 @@ describe("session detail render selectors", () => {
     expect(selection.selectedAnchor).toBeNull();
     expect(selection.selectedTargetId).toBeNull();
     expect(selection.selectedPreview).toBeNull();
+  });
+
+  it("selects latest correctable user prompt", () => {
+    const items: RenderItem[] = [
+      {
+        type: "user_prompt",
+        id: "user-1",
+        content: "Original prompt",
+        sourceMessages: [],
+      },
+      {
+        type: "text",
+        id: "assistant-1",
+        text: "answer",
+        sourceMessages: [],
+      },
+      {
+        type: "user_prompt",
+        id: "subagent-user-1",
+        content: "Subagent prompt",
+        isSubagent: true,
+        sourceMessages: [],
+      },
+      {
+        type: "user_prompt",
+        id: "setup",
+        content: "# AGENTS.md instructions\nRead CLAUDE.md",
+        sourceMessages: [],
+      },
+      {
+        type: "user_prompt",
+        id: "user-2",
+        content: [
+          { type: "text", text: "Correct this prompt" },
+          { type: "thinking", thinking: "not user text" },
+        ],
+        sourceMessages: [],
+      },
+    ];
+
+    expect(selectLatestCorrectablePrompt(items)).toEqual({
+      id: "user-2",
+      content: "Correct this prompt",
+    });
+  });
+
+  it("returns null when no prompt can be corrected", () => {
+    expect(
+      selectLatestCorrectablePrompt([
+        {
+          type: "user_prompt",
+          id: "setup",
+          content: "<environment_context>\n cwd",
+          sourceMessages: [],
+        },
+        {
+          type: "user_prompt",
+          id: "subagent-user-1",
+          content: "Subagent prompt",
+          isSubagent: true,
+          sourceMessages: [],
+        },
+      ]),
+    ).toBeNull();
   });
 });

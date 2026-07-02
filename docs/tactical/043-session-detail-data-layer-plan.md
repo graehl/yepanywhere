@@ -63,6 +63,8 @@ What is already in place:
   `sessionDetail/renderSelectors`.
 - Search match and selected-anchor projection now derive through
   `sessionDetail/renderSelectors`.
+- Latest correctable prompt selection now derives through
+  `sessionDetail/renderSelectors`.
 
 The key remaining truth is simple: the reducer/store is now a real parallel
 data layer, but store-authoritative returned `messages` and `agentContent` are
@@ -99,7 +101,7 @@ Ownership is intentionally still split while we migrate:
 - `MessageList` still owns display policy, progressive rendering, scroll
   snapshots, selection, quote/search UI, and DOM timing. Pure render-item,
   assistant-segment, search-anchor, visible-group, and search-match projections
-  now live outside the component.
+  plus latest correctable prompt selection now live outside the component.
 - Renderer contexts still own DOM/render conveniences, but lazy-loaded agent
   content now enters through the action layer.
 
@@ -142,16 +144,16 @@ Next likely slice:
 - Continue dogfooding the Developer settings store-authoritative returned
   `messages`/`agentContent` toggle and turn any observed divergence into a
   compact reducer or hook fixture.
-- Continue the render-selector preflight by moving latest-correctable-prompt
-  derivation behind a pure helper without taking over editing actions, scroll,
-  or progressive rendering.
+- Continue the render-selector preflight by moving visible timeline entry
+  derivation behind a pure helper without taking over `/btw` ownership,
+  progressive timers, scroll, or rendering.
 
 Then:
 
 - Keep the toggle dev-only and default-off until dogfooding has produced
   fixtures for any live divergence.
-- Do not broaden to render selectors, scroll ownership, or `/btw` until
-  returned `messages` and `agentContent` are boring.
+- Do not broaden to scroll ownership or `/btw` until returned `messages` and
+  `agentContent` are boring.
 
 Dogfood toggle:
 
@@ -171,8 +173,8 @@ Dogfood toggle:
   providers may not persist enough SDK-side subagent data to guarantee exact
   equivalence.
 - `MessageList` still performs some semantic display derivation, especially
-  latest correctable prompt selection, progressive reveal, and `/btw`. Store
-  canonical state does not yet mean render canonical state.
+  timeline entry ordering, progressive reveal, and `/btw`. Store canonical
+  state does not yet mean render canonical state.
 - Scroll symptoms can still be caused by DOM timing, retained snapshots, or
   render-item identity, not just data shape.
 - A store-authoritative messages toggle may expose reducer gaps quickly; that

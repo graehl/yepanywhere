@@ -234,6 +234,10 @@ Reducer/helper behavior locked down during Slice 4:
   lookup. Match projection is kept separate from selected-anchor projection so
   changing the selected id does not churn the match array and reset arrow-repeat
   timers.
+- Latest correctable prompt selection now lives in
+  `sessionDetail/renderSelectors`, reusing selector-owned prompt parsing and
+  setup/subagent filtering while `MessageList` keeps the correction action
+  wiring.
 
 ## Verification Details
 

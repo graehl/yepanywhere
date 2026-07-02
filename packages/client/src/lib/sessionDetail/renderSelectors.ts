@@ -40,6 +40,11 @@ export interface RenderNavAnchor {
   timestampMs?: number | null;
 }
 
+export interface CorrectablePrompt {
+  id: string;
+  content: string;
+}
+
 export interface SearchMatchProjectionInput<
   TAnchor extends RenderNavAnchor = RenderNavAnchor,
 > {
@@ -552,6 +557,23 @@ export function getSearchableUserTurnPreview(
   }
   const preview = getUserTurnPreview(item.content);
   return preview && !isSessionSetupText(preview) ? preview : null;
+}
+
+export function selectLatestCorrectablePrompt(
+  items: readonly RenderItem[],
+): CorrectablePrompt | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.type !== "user_prompt" || item.isSubagent) {
+      continue;
+    }
+    const content = getPromptTextForCorrection(item.content);
+    if (!content || isSessionSetupText(content)) {
+      continue;
+    }
+    return { id: item.id, content };
+  }
+  return null;
 }
 
 function stringifySearchValue(value: unknown): string {

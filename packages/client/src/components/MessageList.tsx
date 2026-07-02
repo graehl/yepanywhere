@@ -51,7 +51,6 @@ import {
   getAllTurnSearchAnchors,
   getFullSessionSearchAnchors,
   getLatestRenderItemsTimestampMs,
-  getPromptTextForCorrection,
   getSearchMatchProjection,
   getSearchableUserTurnPreview,
   getSearchSelectionProjection,
@@ -59,8 +58,8 @@ import {
   getUserTurnNavAnchors,
   getUserTurnSearchAnchors,
   groupRenderItemsIntoTurns,
-  isSessionSetupText,
   normalizeSearchText,
+  selectLatestCorrectablePrompt,
   type RenderTurnGroup,
 } from "../lib/sessionDetail/renderSelectors";
 import { UI_KEYS } from "../lib/storageKeys";
@@ -1965,19 +1964,7 @@ export const MessageList = memo(function MessageList({
   }, [composerTailItems]);
   const latestCorrectablePrompt = useMemo(() => {
     if (!onCorrectLatestUserMessage) return null;
-
-    for (let index = renderItems.length - 1; index >= 0; index -= 1) {
-      const item = renderItems[index];
-      if (item?.type !== "user_prompt" || item.isSubagent) {
-        continue;
-      }
-      const content = getPromptTextForCorrection(item.content);
-      if (!content || isSessionSetupText(content)) {
-        continue;
-      }
-      return { id: item.id, content };
-    }
-    return null;
+    return selectLatestCorrectablePrompt(renderItems);
   }, [renderItems, onCorrectLatestUserMessage]);
   const visibleTurnGroups = useMemo(() => {
     return getSearchVisibleTurnGroups({

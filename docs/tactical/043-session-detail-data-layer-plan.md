@@ -33,7 +33,8 @@ What is already in place:
   is the single mirrored reduction.
 - A dev-only returned-data invariant diagnostic now checks the store-backed
   Developer toggle path itself: once hydration is complete and a store entry
-  exists, returned `messages`/`agentContent` should match the store snapshot.
+  exists, returned `messages`, `agentContent`, and tool-use mappings should
+  match the store snapshot.
 - Same-tab route snapshot retention now sits behind
   `defaultSessionDetailStore`, with TTL, max-entry, byte-cap, retain/release,
   selector subscriptions, and stats.
@@ -46,10 +47,10 @@ What is already in place:
   events, loaded subagent content, context-usage updates, and subagent
   streaming placeholder upsert/cleanup; those paths copy the store-selected
   map back into the local hook mirror after reducer/store dispatch.
-- A Developer settings debug toggle can now return store-selected `messages`
-  and `agentContent` from one coherent store-state snapshot after initial
-  hydration has reached the same reveal point as the local mirror. Local mirrors
-  still run for fallback and diagnostics.
+- A Developer settings debug toggle can now return store-selected `messages`,
+  `agentContent`, and tool-use mappings from one coherent store-state snapshot
+  after initial hydration has reached the same reveal point as the local
+  mirror. Local mirrors still run for fallback and diagnostics.
 - Focused hook coverage now verifies that store-authoritative returned
   `messages` preserve selector-only rows across ordinary stream events,
   incremental catch-up, and older-page prepend.
@@ -57,6 +58,10 @@ What is already in place:
   `agentContent` is gated during warm hydration, ignores selector-only entries
   when the toggle is off, and returns selector-only entries when the toggle is
   on.
+- Focused hook coverage now verifies that store-authoritative returned
+  tool-use mappings can expose selector-only entries when the toggle is on,
+  stay local-only when it is off, and remain quiet under the returned-data
+  invariant during ordinary registration.
 - Warm-cache hook coverage now verifies that a retained full transcript window
   remains coherent when the refresh response falls back to a smaller compacted
   tail window: the store-backed returned data keeps the broader message set and

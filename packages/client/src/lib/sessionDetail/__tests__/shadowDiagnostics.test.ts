@@ -155,6 +155,7 @@ describe("session detail shadow diagnostics", () => {
             status: "running",
           },
         },
+        toolUseToAgentEntries: [["toolu_returned", "agent-returned"]],
       },
       store: {
         messages: [storeMessage],
@@ -164,6 +165,7 @@ describe("session detail shadow diagnostics", () => {
             status: "running",
           },
         },
+        toolUseToAgentEntries: [["toolu_store", "agent-store"]],
       },
     });
 
@@ -186,6 +188,12 @@ describe("session detail shadow diagnostics", () => {
         store: {
           first: { id: "store-agent-1" },
         },
+      },
+      returned: {
+        toolUseToAgentEntries: [["toolu_returned", "agent-returned"]],
+      },
+      store: {
+        toolUseToAgentEntries: [["toolu_store", "agent-store"]],
       },
     });
   });

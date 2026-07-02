@@ -524,6 +524,57 @@ describe("useSessionMessages cache", () => {
     );
   });
 
+  it("can return store-selected tool-use mappings when the debug setting is enabled", async () => {
+    enableStoreBackedMessages();
+
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "registerToolUseAgent",
+          toolUseId: "toolu_store",
+          agentId: "agent-store",
+        },
+      );
+    });
+
+    await waitFor(() =>
+      expect(rendered.result.current.toolUseToAgent.get("toolu_store")).toBe(
+        "agent-store",
+      ),
+    );
+  });
+
   it("keeps returned store-backed data invariant quiet across message and subagent transitions", async () => {
     enableStoreBackedMessages();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -643,6 +694,17 @@ describe("useSessionMessages cache", () => {
       status: "running",
     });
     expect(returnedDataWarningCalls(warn)).toHaveLength(0);
+
+    act(() => {
+      rendered.result.current.registerToolUseAgent("toolu_1", "task-1");
+    });
+
+    await waitFor(() =>
+      expect(rendered.result.current.toolUseToAgent.get("toolu_1")).toBe(
+        "task-1",
+      ),
+    );
+    expect(returnedDataWarningCalls(warn)).toHaveLength(0);
   });
 
   it("does not return store-only agent content when the debug setting is disabled", async () => {
@@ -701,6 +763,53 @@ describe("useSessionMessages cache", () => {
       messages: [storeOnlyMessage],
       status: "completed",
     });
+  });
+
+  it("does not return store-only tool-use mappings when the debug setting is disabled", async () => {
+    apiMocks.getSession.mockResolvedValueOnce({
+      session: {
+        provider: "codex",
+        updatedAt: "2026-05-04T00:00:00.000Z",
+      },
+      messages: [],
+      ownership: { owner: "self" },
+      pendingInputRequest: null,
+      slashCommands: null,
+      pagination: {
+        hasOlderMessages: false,
+        totalMessageCount: 0,
+        returnedMessageCount: 0,
+        totalCompactions: 0,
+      },
+    });
+
+    const rendered = renderHook(() =>
+      useSessionMessages({
+        projectId: "proj-1",
+        sessionId: "sess-1",
+      }),
+    );
+
+    await waitFor(() => expect(rendered.result.current.loading).toBe(false));
+
+    act(() => {
+      defaultSessionDetailStore.dispatch(
+        {
+          sourceKey: LOCAL_CLIENT_SUMMARY_SOURCE_KEY,
+          projectId: "proj-1",
+          sessionId: "sess-1",
+        },
+        {
+          type: "registerToolUseAgent",
+          toolUseId: "toolu_store",
+          agentId: "agent-store",
+        },
+      );
+    });
+
+    expect(
+      rendered.result.current.toolUseToAgent.get("toolu_store"),
+    ).toBeUndefined();
   });
 
   it("keeps opted-in store-backed warm agent content gated until hydration", async () => {

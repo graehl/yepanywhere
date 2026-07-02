@@ -654,6 +654,13 @@ export function useSessionMessages(
   const returnedMessages = storeBackedDetailState?.messages ?? messages;
   const returnedAgentContent =
     storeBackedDetailState?.agentContent ?? agentContent;
+  const returnedToolUseToAgent = useMemo(
+    () =>
+      storeBackedDetailState
+        ? new Map(storeBackedDetailState.toolUseToAgentEntries)
+        : toolUseToAgent,
+    [storeBackedDetailState, toolUseToAgent],
+  );
   useEffect(() => {
     if (
       !storeBackedMessagesEnabled ||
@@ -671,10 +678,12 @@ export function useSessionMessages(
       returned: {
         messages: returnedMessages,
         agentContent: returnedAgentContent,
+        toolUseToAgentEntries: Array.from(returnedToolUseToAgent.entries()),
       },
       store: {
         messages: storeBackedDetailState.messages,
         agentContent: storeBackedDetailState.agentContent,
+        toolUseToAgentEntries: storeBackedDetailState.toolUseToAgentEntries,
       },
     });
   }, [
@@ -686,6 +695,7 @@ export function useSessionMessages(
     session?.provider,
     returnedMessages,
     returnedAgentContent,
+    returnedToolUseToAgent,
   ]);
 
   // Buffering: queue stream messages until initial load completes
@@ -734,7 +744,7 @@ export function useSessionMessages(
       session,
       pagination,
       agentContent: returnedAgentContent,
-      toolUseToAgentEntries: Array.from(toolUseToAgent.entries()),
+      toolUseToAgentEntries: Array.from(returnedToolUseToAgent.entries()),
       lastMessageId: lastMessageIdRef.current,
       maxPersistedTimestampMs: maxPersistedTimestampMsRef.current,
       scrollSnapshot: scrollSnapshotRef.current,
@@ -744,7 +754,7 @@ export function useSessionMessages(
     returnedMessages,
     pagination,
     session,
-    toolUseToAgent,
+    returnedToolUseToAgent,
   ]);
 
   useEffect(() => {
@@ -1745,7 +1755,7 @@ export function useSessionMessages(
   return {
     messages: returnedMessages,
     agentContent: returnedAgentContent,
-    toolUseToAgent,
+    toolUseToAgent: returnedToolUseToAgent,
     loading,
     sessionLoadProgress,
     session,

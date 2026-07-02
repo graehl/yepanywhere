@@ -58,6 +58,7 @@ interface CompactReturnedData {
   lastMessages: CompactMessage[];
   agentKeys: string[];
   agents: Record<string, CompactAgent>;
+  toolUseToAgentEntries: Array<[string, string]>;
 }
 
 export interface SessionDetailRuntimeStateInput {
@@ -83,6 +84,7 @@ export interface SessionDetailStoreDivergenceInput {
 export interface SessionDetailReturnedDataSnapshot {
   messages: SessionDetailRuntimeSnapshot["messages"];
   agentContent: SessionDetailRuntimeSnapshot["agentContent"];
+  toolUseToAgentEntries?: SessionDetailRuntimeSnapshot["toolUseToAgentEntries"];
 }
 
 export interface SessionDetailReturnedDataDivergenceInput {
@@ -243,6 +245,9 @@ function compactReturnedData(
       return agentContent ? [[agentId, compactAgent(agentContent)]] : [];
     }),
   );
+  const toolUseToAgentEntries = [...(input.toolUseToAgentEntries ?? [])].sort(
+    ([left], [right]) => left.localeCompare(right),
+  );
 
   return {
     messageCount: messages.length,
@@ -251,6 +256,7 @@ function compactReturnedData(
     lastMessages: messages.slice(-MESSAGE_SAMPLE_SIZE),
     agentKeys,
     agents,
+    toolUseToAgentEntries,
   };
 }
 
@@ -276,6 +282,7 @@ function comparableReturnedData(input: CompactReturnedData): string {
     messageHash: input.messageHash,
     agentKeys: input.agentKeys,
     agents: input.agents,
+    toolUseToAgentEntries: input.toolUseToAgentEntries,
   });
 }
 
